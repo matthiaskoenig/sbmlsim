@@ -56,7 +56,7 @@ from sbmlsim import parallel
 from sbmlsim.console import console
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.result.scan import POINT, STATUS, TIME, ScanResult
+from sbmlsim.result.scan import POINT, STATUS, TIME, ScanResult, time_magnitudes
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
@@ -286,8 +286,10 @@ class Simulator:
                 the selections or the units of the first one; if a selection
                 is a name the result reserves, e.g. `status`; if a dimension
                 id is a selection; if a simulation, a value or a time does not
-                fit a model, e.g. a target which is no target of a model; or
-                if two dimensions set one target at one time.
+                fit a model, e.g. a target which is no target of a model; if
+                two dimensions set one target at one time; or if the grid of
+                times is empty or a quantity which the unit of time of the
+                first model cannot take.
         """
         models, labels = self._models(model, scan)
         first = models[0]
@@ -767,15 +769,11 @@ def _grid(
     """Get the grid of the result and whether the workers interpolate onto it.
 
     Raises:
-        ValueError: if `time` is empty.
+        ValueError: if `time` is empty, or a quantity and the model has no unit
+            of time or another one, see `time_magnitudes`.
     """
     if time is not None:
-        if isinstance(time, Quantity):
-            unit = model.uinfo.get(TIME, "") or "dimensionless"
-            values: Any = time.to(unit).magnitude
-        else:
-            values = time
-        grid = np.asarray(values, dtype=float).ravel()
+        grid = time_magnitudes(time, model.uinfo.get(TIME))
         if grid.size == 0:
             raise ValueError("The grid of times 'time' is empty.")
         return grid, True

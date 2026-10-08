@@ -71,6 +71,8 @@ res = simulator.run(model, scan)
 print(res["PX"].sizes)
 ```
 
+A dimension and a scan do not change after they were created, the values of a dimension are read-only copies. `dataclasses.replace(dimension, at=10)` creates another dimension with other fields, validated as a new one; it keeps the labels, `labels=None` takes the default labels of values of another length.
+
 A dimension of `simulations` gives every point its own simulation, a dimension of `models` its own model; the model of the run is then `None`:
 
 ```python

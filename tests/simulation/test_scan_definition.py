@@ -1,5 +1,6 @@
 """A scan and its dimensions are validated when they are created and immutable."""
 
+import dataclasses
 import json
 import pickle
 from typing import Any
@@ -259,6 +260,32 @@ def test_one_time_in_other_spellings_is_one_time(other: Any) -> None:
 def test_labels_are_no_string_and_no_scalar(labels: Any) -> None:
     with pytest.raises(ValueError, match="labels"):
         Dimension("d", values={"k1": [5.0, 6.0]}, labels=labels)
+
+
+def test_labels_of_a_zero_dimensional_array_are_an_error() -> None:
+    with pytest.raises(ValueError, match="labels"):
+        Dimension("d", values={"k1": [5.0, 6.0]}, labels=np.array(5))
+
+
+def test_a_dimension_is_replaced_with_other_fields() -> None:
+    """`dataclasses.replace` creates and validates a new dimension."""
+    dimension = Dimension("d", values={"k1": [1.0, 2.0]}, at=Q(1, "h"))
+    later = dataclasses.replace(dimension, at=Q(2, "h"))
+    assert later.at == Q(2, "h")
+    assert later.kind is DimensionKind.VALUES
+    assert later.values["k1"].tolist() == [1.0, 2.0]
+    assert later.labels.tolist() == [0, 1]
+    assert dimension.at == Q(1, "h")
+    renamed = dataclasses.replace(Dimension("s", simulations={"a": SIM}), id="t")
+    assert (renamed.id, list(renamed.simulations)) == ("t", ["a"])
+    longer = dataclasses.replace(dimension, values={"k1": [1.0, 2.0, 3.0]}, labels=None)
+    assert longer.labels.tolist() == [0, 1, 2]
+    with pytest.raises(ValueError, match="labels"):
+        dataclasses.replace(dimension, values={"k1": [1.0, 2.0, 3.0]})
+    with pytest.raises(ValueError, match="exactly one"):
+        dataclasses.replace(dimension, simulations={"a": SIM})
+    with pytest.raises(TypeError, match="kind"):
+        dataclasses.replace(dimension, kind=DimensionKind.MODELS)
 
 
 def test_labels_are_one_dimensional() -> None:

@@ -263,8 +263,11 @@ class Simulation:
 
         A value replaces the value of its target wherever the simulation sets
         it, i.e. in the pre-initialization changes, in those of the
-        presimulation and in every change, and is added to the pre-initialization changes of a target which the
-        simulation does not set. This is how a scan and a fit set their values.
+        presimulation and in every change, and is added to the
+        pre-initialization changes of a target which the simulation does not
+        set. This defines the semantics which `Plan.with_values` applies to a
+        compiled simulation, for the points of a scan and the parameters of a
+        fit.
 
         Args:
             values: target -> value.

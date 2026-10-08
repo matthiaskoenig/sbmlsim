@@ -8,6 +8,7 @@ import weakref
 from pathlib import Path
 from typing import Any
 
+import libsbml
 import numpy as np
 import pytest
 import roadrunner
@@ -372,6 +373,56 @@ def test_a_grid_of_times_with_a_unit() -> None:
     minutes = RoadrunnerSBMLModel(source=sbml_minutes())
     res = Simulator(n_workers=1).run(minutes, Simulation(end=2), time=Q([0, 60], "s"))
     assert res["time"].values.tolist() == [0.0, 1.0]
+
+
+def test_a_grid_of_times_with_a_unit_needs_a_time_unit(simulator: Simulator) -> None:
+    """A model whose time is dimensionless takes the grid as numbers."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml())
+    doc.getModel().setTimeUnits("dimensionless")
+    model = RoadrunnerSBMLModel(source=libsbml.writeSBMLToString(doc))
+    assert model.uinfo.get("time") == "dimensionless"
+    with pytest.raises(ValueError, match=r"has no unit of time.*numbers"):
+        simulator.run(model, Simulation(end=1), time=Q([0, 1], "s"))
+    minutes = RoadrunnerSBMLModel(source=sbml_minutes())
+    with pytest.raises(ValueError, match=r"'milligram'.*'min'"):
+        simulator.run(minutes, Simulation(end=1), time=Q([0, 1], "mg"))
+    res = simulator.run(model, Simulation(end=1, steps=2))
+    with pytest.raises(ValueError, match=r"has no unit of time.*numbers"):
+        res.interpolate(Q([0, 1], "s"))
+    assert res.interpolate([0.0, 1.0])["time"].values.tolist() == [0.0, 1.0]
+
+
+def test_a_scan_whose_points_all_failed_is_interpolated_and_summarized(
+    simulator: Simulator, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A ragged scan without a time point gives NaN on a grid."""
+    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    scan = Scan(Simulation(end=1), [Dimension("rate", values={"k": [2.0, 3.0]})])
+    try:
+        res = simulator.run(blowup, scan, on_error="flag")
+    finally:
+        _c_output(capfd)
+    assert res.ragged
+    assert res["status"].values.tolist() == [1, 1]
+    grid = res.interpolate([0.0, 0.5, 1.0])
+    assert grid["S"].shape == (2, 3)
+    assert np.isnan(grid["S"].values).all()
+    _assert_units(grid)
+    summary = res.summary(times=[0.0, 1.0])
+    assert np.isnan(summary["S"].values).all()
+    _assert_units(summary)
+
+
+def test_a_summary_has_the_unit_of_every_variable_and_coordinate(
+    simulator: Simulator, model: RoadrunnerSBMLModel
+) -> None:
+    scan = Scan(Simulation(end=1, steps=2), [Dimension("d", values={"k1": [0.1, 0.2]})])
+    res = simulator.run(model, scan)
+    _assert_units(res)
+    _assert_units(res.summary(quantiles=[0.5]))
+    _assert_units(
+        simulator.run(model, Scan(Simulation(end=1), scan.dimensions)).summary()
+    )
 
 
 def test_an_empty_grid_of_times_is_an_error(

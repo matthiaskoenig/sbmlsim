@@ -295,8 +295,10 @@ class DataSetsComparison:
 
         * `abs_tol` stand for the absolute tolerance for a tests case,
         * `rel_tol` stand for the relative tolerance for a tests case,
-        * `c_ij` stand for the expected correct value for row `i`, column `j`, of the result data set for the tests case
-        * `u_ij` stand for the corresponding value produced by a given software simulation system run by the user
+        * `c_ij` stand for the expected correct value for row `i`, column
+          `j`, of the result data set for the tests case
+        * `u_ij` stand for the corresponding value produced by a given
+          software simulation system run by the user
 
         These absolute and relative tolerances are used in the following way:
         a data point `u_ij` is considered to be within tolerances

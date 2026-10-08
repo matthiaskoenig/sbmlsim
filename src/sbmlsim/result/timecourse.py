@@ -145,7 +145,13 @@ def grid_weights(time: np.ndarray, grid: np.ndarray) -> GridWeights:
 
 
 def apply_weights(w: GridWeights, values: np.ndarray) -> np.ndarray:
-    """Interpolate the last axis of values with the weights, `NaN` outside."""
+    """Interpolate the last axis of values with the weights, `NaN` outside.
+
+    Values without a time point, e.g. of a ragged scan whose points all
+    failed, are `NaN` at every time of the grid.
+    """
+    if values.shape[-1] == 0:
+        return np.full((*values.shape[:-1], w.weight.size), np.nan)
     out = values[..., w.lower] * (1.0 - w.weight) + values[..., w.upper] * w.weight
     return np.where(w.valid, out, np.nan)
 

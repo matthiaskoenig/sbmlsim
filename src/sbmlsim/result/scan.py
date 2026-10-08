@@ -40,7 +40,7 @@ from sbmlsim.result.timecourse import (
     grid_weights,
     interpolate,
 )
-from sbmlsim.units import Quantity, UnitRegistry
+from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry
 from sbmlsim.units import ureg as package_ureg
 
 #: the dimension of the time of a grid
@@ -157,18 +157,19 @@ class ScanResult:
         return ScanResult(self.ds.isel(indexers))
 
     def time_points(self) -> np.ndarray:
-        """Get the times of the grid, or the union of the time points of the simulations."""
+        """Get the times of the grid, or the union of the times of the simulations."""
         times = np.asarray(self.ds[TIME].values, dtype=float).ravel()
         if not self.ragged:
             return times
         return np.unique(times[np.isfinite(times)])
 
     def _grid(self, times: ArrayLike | Quantity) -> np.ndarray:
-        """Get times as numbers in the time unit of the result."""
-        if isinstance(times, Quantity):
-            unit = self.units.get(TIME) or "dimensionless"
-            return np.asarray(times.to(unit).magnitude, dtype=float).ravel()
-        return np.asarray(times, dtype=float).ravel()
+        """Get times as numbers in the time unit of the result.
+
+        Raises:
+            ValueError: see `time_magnitudes`.
+        """
+        return time_magnitudes(times, self.units.get(TIME), "The result")
 
     def interpolate(self, times: ArrayLike | Quantity) -> ScanResult:
         """Get the result on a grid of times.
@@ -183,6 +184,10 @@ class ScanResult:
 
         Returns:
             The result with the dimension `time`.
+
+        Raises:
+            ValueError: if the times are a quantity and the result has no
+                unit of time or another one, see `time_magnitudes`.
         """
         grid = self._grid(times)
         tdim = POINT if self.ragged else TIME
@@ -304,6 +309,8 @@ class ScanResult:
             parts, labels = _statistics(ds, reduced, statistics, quantiles)
         summary = xr.concat(parts, dim=pd.Index(labels, name=STATISTIC))
         summary.attrs = copy.deepcopy(self.ds.attrs)
+        # the labels of the statistics carry no unit
+        summary.attrs.setdefault("units", {})[STATISTIC] = ""
         if "cv" in labels:
             summary.attrs["statistic_units"] = {"cv": "dimensionless"}
         return ScanResult(summary)
@@ -333,6 +340,42 @@ class ScanResult:
             )
         ds.attrs = json.loads(ds.attrs[NETCDF_ATTRS])
         return cls(ds)
+
+
+def time_magnitudes(
+    times: ArrayLike | Quantity, unit: str | None, owner: str = "The model"
+) -> np.ndarray:
+    """Get times as numbers in a unit of time.
+
+    Args:
+        times: numbers in the unit or a quantity.
+        unit: the unit of time of a model or a result; `None`, empty or
+            `dimensionless` if it has none.
+        owner: what has the unit, for a message.
+
+    Returns:
+        The times, one dimensional.
+
+    Raises:
+        ValueError: if the times are a quantity and the owner has no unit of
+            time, or one the quantity cannot be converted to.
+    """
+    if not isinstance(times, Quantity):
+        return np.asarray(times, dtype=float).ravel()
+    if not unit or unit == "dimensionless":
+        if times.dimensionless:
+            return np.asarray(times.to("dimensionless").magnitude, dtype=float).ravel()
+        raise ValueError(
+            f"{owner} has no unit of time, give the times as numbers, not in "
+            f"'{times.units}'."
+        )
+    try:
+        return np.asarray(times.to(unit).magnitude, dtype=float).ravel()
+    except DimensionalityError as err:
+        raise ValueError(
+            f"The times in '{times.units}' cannot be converted to the unit of "
+            f"time '{unit}' of {owner[0].lower()}{owner[1:]}."
+        ) from err
 
 
 def _json_default(value: Any) -> Any:

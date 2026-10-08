@@ -47,6 +47,40 @@ def test_interpolate_ignores_the_padding_and_the_steady_state() -> None:
     ).all()
 
 
+def test_a_timecourse_without_time_points_is_interpolated_to_nan() -> None:
+    grid = np.array([0.0, 1.0])
+    assert np.isnan(interpolate(np.empty(0), np.empty(0), grid)).all()
+    out = interpolate(np.empty(0), np.empty((0, 3)), grid)
+    assert out.shape == (2, 3)
+    assert np.isnan(out).all()
+
+
+def test_a_ragged_result_without_time_points_is_interpolated_to_nan() -> None:
+    """Every point of a ragged scan failed, so it has no time point at all."""
+    ds = xr.Dataset(
+        {
+            "time": (("d", "_point"), np.empty((2, 0))),
+            "y": (("d", "_point"), np.empty((2, 0))),
+        },
+        coords={"d": [0, 1]},
+        attrs={"dims": ["d"], "units": {"y": "mM", "time": "min", "d": ""}},
+    )
+    out = ScanResult(ds).interpolate([0.0, 1.0, 2.0])
+    assert out["y"].dims == ("d", "time")
+    assert out["y"].shape == (2, 3)
+    assert np.isnan(out["y"].values).all()
+
+
+def test_a_summary_has_a_unit_of_every_variable_and_coordinate() -> None:
+    ds = _grid().ds.copy()
+    ds.attrs["units"] = {**ds.attrs["units"], "d": ""}
+    for result in (ScanResult(ds), _ragged()):
+        summary = result.summary(quantiles=[0.5])
+        assert summary.units["statistic"] == ""
+        missing = [str(v) for v in summary.ds.variables if v not in summary.units]
+        assert not missing
+
+
 def test_the_dimensions_and_the_layout() -> None:
     assert _grid().dims == ("d",)
     assert not _grid().ragged

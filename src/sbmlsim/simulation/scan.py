@@ -29,19 +29,20 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Any
 
 import numpy as np
 
+from sbmlsim.result.scan import POINT, STATISTIC, STATUS, TIME
 from sbmlsim.simulation.definition import Simulation, Time, _encode
 from sbmlsim.units import Quantity, ureg
 
 #: the names of the dimensions and variables of a result, which no dimension of
 #: a scan takes
-RESERVED = frozenset({"time", "_point", "statistic", "status"})
+RESERVED: frozenset[str] = frozenset({TIME, POINT, STATISTIC, STATUS})
 
 
 class DimensionKind(StrEnum):
@@ -84,6 +85,11 @@ def _array(target: str, values: Any) -> np.ndarray | Quantity:
     return array
 
 
+def _not_empty(mapping: object) -> bool:
+    """Check whether an argument of a dimension is no empty mapping."""
+    return not isinstance(mapping, Mapping) or len(mapping) > 0
+
+
 def _model_text(model: Any) -> str:
     """Get the path of a model, or its id, for the provenance of a scan."""
     source = getattr(model, "source", None)
@@ -113,7 +119,8 @@ class Dimension:
     """
 
     id: str
-    kind: DimensionKind
+    # follows from the mapping which is given, see `__init__`
+    kind: DimensionKind = field(init=False)
     values: Mapping[str, Any]
     simulations: Mapping[str, Simulation]
     models: Mapping[str, Any]
@@ -132,6 +139,11 @@ class Dimension:
     ) -> None:
         """Create a dimension, see the class.
 
+        `dataclasses.replace` creates a dimension with other fields, e.g.
+        another `at`; it passes the empty mappings of the other kinds, which
+        count as not given next to a mapping which is not empty. Its labels
+        are the given ones, `labels=None` takes the default ones.
+
         Raises:
             ValueError: if not exactly one of `values`, `simulations` and
                 `models` is given, if it is empty, if the arrays of the values
@@ -139,24 +151,17 @@ class Dimension:
                 dimension which is no dimension of values has `at`, or if the
                 labels do not fit.
         """
-        given = [
-            name
-            for name, mapping in (
-                ("values", values),
-                ("simulations", simulations),
-                ("models", models),
-            )
-            if mapping is not None
-        ]
+        mappings = {"values": values, "simulations": simulations, "models": models}
+        given = [name for name, mapping in mappings.items() if mapping is not None]
+        if len(given) > 1:
+            given = [name for name in given if _not_empty(mappings[name])] or given
         if len(given) != 1:
             raise ValueError(
                 f"The dimension '{id}' needs exactly one of 'values', "
                 f"'simulations' and 'models', it has {given or 'none'}."
             )
         kind = DimensionKind(given[0])
-        chosen = {"values": values, "simulations": simulations, "models": models}[
-            given[0]
-        ]
+        chosen = mappings[given[0]]
         if not isinstance(chosen, Mapping):
             raise ValueError(
                 f"The {kind} of the dimension '{id}' must be a mapping, not {chosen!r}."
@@ -206,7 +211,14 @@ class Dimension:
                 f"The labels {labels!r} of the dimension '{id}' must be a "
                 f"sequence of {len(keys)} labels."
             )
-        coordinate = np.array(keys if labels is None else list(labels))
+        try:
+            coordinate = np.array(keys if labels is None else list(labels))
+        except TypeError as err:
+            # e.g. an array of zero dimensions
+            raise ValueError(
+                f"The labels {labels!r} of the dimension '{id}' must be a "
+                f"sequence of {len(keys)} labels."
+            ) from err
         if coordinate.ndim != 1 or coordinate.size != len(keys):
             raise ValueError(
                 f"The dimension '{id}' has {len(keys)} points, its labels "
