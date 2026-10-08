@@ -695,11 +695,7 @@ class FitReport:
         """
         rows: list[dict[str, str]] = []
         for model in {id(m): m for m in self.problem.models}.values():
-            time = (
-                "absolute"
-                if getattr(model.symbols, "time_dependent", False)
-                else "local"
-            )
+            time = "absolute" if model.symbols.time_dependent else "local"
             for _, row in model.tolerances().iterrows():
                 rows.append(
                     {

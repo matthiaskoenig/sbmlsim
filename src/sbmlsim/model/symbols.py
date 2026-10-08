@@ -89,6 +89,9 @@ class ModelSymbols:
         initial_concentration: species whose initial value is a
             concentration, which a change of their compartment before the
             initialization keeps.
+        events: the symbols of the events.
+        time_dependent: whether a math of the model reads the csymbol time or
+            delay, see `sbmlsim.simulator.executor`.
     """
 
     parameters: frozenset[str]
@@ -103,6 +106,7 @@ class ModelSymbols:
     initial_assignment_dependencies: dict[str, frozenset[str]] | None = None
     initial_concentration: frozenset[str] = frozenset()
     events: tuple[EventSymbols, ...] = ()
+    time_dependent: bool = False
 
     @classmethod
     def from_sbml(cls, sbml: str | Path) -> ModelSymbols:
@@ -133,7 +137,25 @@ class ModelSymbols:
             reads |= {compartment_of[s] for s in reads if s in compartment_of}
             dependencies[assignment.getSymbol()] = frozenset(reads)
         concentration_species = frozenset(compartment_of)
+        maths: list[libsbml.ASTNode | None] = [r.getMath() for r in rules]
+        maths += [
+            reaction.getKineticLaw().getMath()
+            for reaction in model.getListOfReactions()
+            if reaction.isSetKineticLaw()
+        ]
+        maths += [a.getMath() for a in model.getListOfInitialAssignments()]
+        # SBML does not allow the time in a function definition, a model may
+        # still have one
+        maths += [f.getMath() for f in model.getListOfFunctionDefinitions()]
+        for event in model.getListOfEvents():
+            maths.append(event.getTrigger().getMath() if event.isSetTrigger() else None)
+            maths.append(event.getDelay().getMath() if event.isSetDelay() else None)
+            maths.append(
+                event.getPriority().getMath() if event.isSetPriority() else None
+            )
+            maths += [a.getMath() for a in event.getListOfEventAssignments()]
         return cls(
+            time_dependent=any(_reads_time(m) for m in maths),
             events=tuple(
                 _event_symbols(event, concentration_species)
                 for event in model.getListOfEvents()
@@ -228,6 +250,33 @@ def _names(math: libsbml.ASTNode | None) -> set[str]:
             names.add(node.getName())
         stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
     return names
+
+
+#: the definition URLs of the csymbols which read the time
+_TIME_CSYMBOLS = frozenset(
+    {
+        "http://www.sbml.org/sbml/symbols/time",
+        "http://www.sbml.org/sbml/symbols/delay",
+    }
+)
+
+
+def _reads_time(math: libsbml.ASTNode | None) -> bool:
+    """Get whether a math reads the time or a delay (the csymbols, not an id).
+
+    The csymbols are found by their definition URL and not by the type of the
+    node, which is not reliable with a second SWIG module of libsbml, see
+    `_names`.
+    """
+    if math is None:
+        return False
+    stack = [math]
+    while stack:
+        node = stack.pop()
+        if node.getDefinitionURLString() in _TIME_CSYMBOLS:
+            return True
+        stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
+    return False
 
 
 def _expand(names: set[str], rules: dict[str, set[str]]) -> set[str]:
