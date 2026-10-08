@@ -1,4 +1,5 @@
-"""
+"""Simulation experiment of Beermann1976.
+
 Conversion of radioactivity
 
 1 Ci = 3.7×10^10 decays per second
@@ -8,7 +9,7 @@ C14: 62.4 mCi/mmol = 62.4E-3 *3.7*10^10 CPS/mmol = 62.4E-3/60 *3.7*10^10 CPM/mmo
 => 1 CPM = 1/38480000 mmole
 """
 
-from typing import ClassVar
+from typing import ClassVar, override
 
 import pandas as pd
 
@@ -58,8 +59,16 @@ class Beermann1976(HCTZSimulationExperiment):
         35: "tab:green",
         1: "tab:brown",
     }
+    #: application form of the oral doses, the intravenous doses are solutions
+    po_forms: ClassVar[dict[int, ApplicationForm]] = {
+        5: ApplicationForm.SUSPENSION,
+        50: ApplicationForm.CAPSULE,
+        75: ApplicationForm.TABLET,
+    }
 
+    @override
     def datasets(self) -> dict[str, DataSet]:
+        """Define the datasets, the mass based data is converted to amounts."""
         dsets = {}
         for fig_id in ["Tab1A", "Fig2", "Fig3"]:
             df: pd.DataFrame = self.load_dataframe(fig_id)
@@ -73,11 +82,11 @@ class Beermann1976(HCTZSimulationExperiment):
 
                 dsets[label] = dset
 
-        # console.print(dsets.keys())
-        # console.print(dsets)
         return dsets
 
+    @override
     def simulations(self) -> dict[str, Simulation]:
+        """Define a simulation per dose and route."""
         simulations: dict[str, Simulation] = {}
 
         for kd, dose in enumerate(self.doses):
@@ -95,7 +104,9 @@ class Beermann1976(HCTZSimulationExperiment):
 
         return simulations
 
+    @override
     def fit_mappings(self) -> dict[str, FitMapping]:
+        """Define the fit mappings of the data on the simulations."""
         mappings = {}
 
         # urine and feces
@@ -108,13 +119,9 @@ class Beermann1976(HCTZSimulationExperiment):
             dose = int(tokens[-2][4:-2])
             individual = tokens[-1]
             tissue = "urine" if "urine" in dset_id else "feces"
-            if route == "iv":
-                application_form = ApplicationForm.SOLUTION
-            else:
-                if dose == 5:
-                    application_form = ApplicationForm.SUSPENSION
-                elif dose == 50:
-                    application_form = ApplicationForm.CAPSULE
+            application_form = (
+                ApplicationForm.SOLUTION if route == "iv" else self.po_forms[dose]
+            )
 
             mappings[f"fm_hctz_{route}{dose}_{individual}_{tissue}"] = FitMapping(
                 self,
@@ -142,7 +149,8 @@ class Beermann1976(HCTZSimulationExperiment):
                 ),
             )
 
-        # Issues with data, outliers
+        # the data of Fig2 does not agree with the dose, the fit tags both
+        # mappings as outliers (`OUTLIER_MAPPINGS` of the fitting)
         mappings["fm_hctz5po_4"] = FitMapping(
             self,
             reference=FitData(
@@ -165,7 +173,6 @@ class Beermann1976(HCTZSimulationExperiment):
                 coadministration=Coadministration.NONE,
             ),
         )
-        # Issues with data, outliers
         mappings["fm_excretion_hctz5po_4"] = FitMapping(
             self,
             reference=FitData(
@@ -212,13 +219,14 @@ class Beermann1976(HCTZSimulationExperiment):
             ),
         )
 
-        # console.print(mappings)
         return mappings
 
+    @override
     def figures(self) -> dict[str, Figure]:
+        """Define the figures of the data and the simulations."""
         return {
             **self.figure_Tab1A(),
-            # **self.figure_Fig2(),
+            **self.figure_Fig2(),
             **self.figure_Fig3(),
         }
 
@@ -279,7 +287,14 @@ class Beermann1976(HCTZSimulationExperiment):
         }
 
     def figure_Fig2(self) -> dict[str, Figure]:
-        # FIXME: conversion issues
+        """Plasma concentration and urinary excretion rate after 5 mg oral HCTZ.
+
+        The data does not agree with the dose: the plasma concentrations are
+        about 20 times below the simulation, and the excretion rate reaches
+        11 µmol/min, which excretes the cumulative amount in urine of Tab1A
+        (about 12 µmol after 5 mg) within minutes. The figure shows the data the
+        fit tags as outliers.
+        """
         name = "Fig2"
         fig = Figure(
             experiment=self,

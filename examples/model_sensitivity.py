@@ -12,10 +12,12 @@ from sbmlsim.simulator import SimulatorSerial
 
 
 def plot_results(xres: XResult, filename: str) -> None:
+    """Plot the mean and the range of the simulations of a scan."""
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
     fig.subplots_adjust(wspace=0.3, hspace=0.3)
     axes = (ax1, ax2, ax3, ax4)
 
+    times = xres.time_points()
     ax: plt.Axes
     for ax in (ax1, ax3):
         for sid, color in [
@@ -23,15 +25,16 @@ def plot_results(xres: XResult, filename: str) -> None:
             ("[Y]", "tab:red"),
             ("[Z]", "tab:green"),
         ]:
-            # mean line
-            ax.plot(
-                xres["time"],
-                xres.dim_mean(sid).magnitude,
+            # range of the simulations
+            ax.fill_between(
+                times,
+                xres.dim_min(sid).magnitude,
+                xres.dim_max(sid).magnitude,
                 color=color,
-                label=sid,
+                alpha=0.3,
             )
-            # shaded areas
-            # TODO
+            # mean line
+            ax.plot(times, xres.dim_mean(sid).magnitude, color=color, label=sid)
 
     for ax in (ax2, ax4):
         ax.plot(
@@ -57,11 +60,8 @@ def plot_results(xres: XResult, filename: str) -> None:
     plt.close(fig)
 
 
-def run_sensitivity():
-    """Parameter sensitivity simulations.
-
-    :return:
-    """
+def run_sensitivity() -> None:
+    """Parameter sensitivity simulations."""
     simulator = SimulatorSerial(REPRESSILATOR_SBML)
 
     # parameter sensitivity

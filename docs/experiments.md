@@ -4,10 +4,11 @@ A `SimulationExperiment` is the reproducible description of an experiment: the m
 
 ## Defining an experiment
 
-An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers:
+An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, tasks, data, fit mappings, figures and reports.
 
 ```python
 from pathlib import Path
+from typing import override
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import SimulationExperiment
@@ -21,19 +22,24 @@ from sbmlsim.task import Task
 class RepressilatorExperiment(SimulationExperiment):
     """Repressilator with a perturbation of X."""
 
+    @override
     def models(self) -> dict[str, AbstractModel | Path]:
         return {"model": REPRESSILATOR_SBML}
 
+    @override
     def simulations(self) -> dict[str, Simulation]:
         return {"tc": Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)}
 
+    @override
     def tasks(self) -> dict[str, Task]:
         return {"task_tc": Task(model="model", simulation="tc")}
 
+    @override
     def data(self) -> dict[str, Data]:
         data = [Data(sid, task="task_tc") for sid in ["time", "[X]", "[Y]", "[Z]"]]
         return {d.sid: d for d in data}
 
+    @override
     def figures(self) -> dict[str, Figure]:
         fig = Figure(experiment=self, sid="fig1", name="Repressilator", num_rows=1)
         plots = fig.create_plots(

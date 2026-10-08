@@ -24,7 +24,7 @@ from sbmlsim.simulator import SimulatorSerial
 VOID_TAGS = {"img", "br", "hr", "meta", "link", "input", "source", "col"}
 
 #: the figures of Beermann1976
-FIGURES = ["Tab1A", "Fig3"]
+FIGURES = ["Tab1A", "Fig2", "Fig3"]
 
 
 @pytest.fixture(scope="module")

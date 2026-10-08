@@ -3,16 +3,20 @@ Example simulation experiment.
 """
 
 from pathlib import Path
+from typing import override
 
 from examples.curve_types.model import create
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
-from sbmlsim.plot import Figure, Plot
+from sbmlsim.plot import Axis, Figure
 from sbmlsim.result.report import Report
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
+
+#: selections of the timecourse, which the data and the report use
+SELECTIONS = ["time", "S1", "S2", "[S1]", "[S2]"]
 
 
 class CurveTypesExperiment(SimulationExperiment):
@@ -21,41 +25,28 @@ class CurveTypesExperiment(SimulationExperiment):
     #: path of the model, created by `run_curve_types_experiments`
     model_path: Path = Path.cwd() / "results" / "curve_types_model.xml"
 
+    @override
     def models(self) -> dict[str, AbstractModel | Path]:
         """Define models."""
         return {"model": self.model_path}
 
+    @override
     def simulations(self) -> dict[str, Simulation]:
         """Define simulations."""
         return {"tc": Simulation(end=10, steps=10)}
 
+    @override
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""
-        tasks = {}
-        for model in ["model"]:
-            tasks[f"task_{model}_tc"] = Task(model=model, simulation="tc")
-        return tasks
+        return {"task_model_tc": Task(model="model", simulation="tc")}
 
+    @override
     def data(self) -> dict[str, Data]:
         """Define data generators."""
-        # direct access via id
-        data = []
-        for model in ["model"]:
-            for selection in ["time", "S1", "S2", "[S1]", "[S2]"]:
-                data.append(Data(task=f"task_{model}_tc", index=selection))
+        data = [Data(task="task_model_tc", index=selection) for selection in SELECTIONS]
         return {d.sid: d for d in data}
 
-    def reports(self) -> dict[str, dict[str, str]]:
-        """Define reports, i.e., the labels of the data generators."""
-        report1 = Report(
-            sid="report1",
-            datasets={
-                sid: f"task_model_tc__{sid}"
-                for sid in ["time", "S1", "S2", "[S1]", "[S2]"]
-            },
-        )
-        return {report1.sid: report1.datasets}
-
+    @override
     def figures(self) -> dict[str, Figure]:
         """Define figure outputs (plots)."""
         fig = Figure(
@@ -67,14 +58,11 @@ class CurveTypesExperiment(SimulationExperiment):
             width=5,
             height=5,
         )
-
-        # FIXME: add helper to easily create figure layouts with plots
-        p0 = fig.add_subplot(Plot(sid="plot0", name="Timecourse"), row=1, col=1)
-        p0.set_title("Timecourse")
-        p0.set_xaxis("time", unit="min")
-        p0.set_yaxis("data", unit="mM")
-
-        p0.curve(
+        plots = fig.create_plots(
+            xaxis=Axis("time", unit="min"), yaxis=Axis("data", unit="mM")
+        )
+        plots[0].set_title("Timecourse")
+        plots[0].curve(
             x=Data("time", task="task_model_tc"),
             y=Data("[S1]", task="task_model_tc"),
             label="[S1]",
@@ -82,22 +70,28 @@ class CurveTypesExperiment(SimulationExperiment):
 
         return {"fig1": fig}
 
+    @override
+    def reports(self) -> dict[str, dict[str, str]]:
+        """Define reports, i.e., the labels of the data generators."""
+        report1 = Report(
+            sid="report1",
+            datasets={sid: f"task_model_tc__{sid}" for sid in SELECTIONS},
+        )
+        return {report1.sid: report1.datasets}
+
 
 def run_curve_types_experiments(output_path: Path) -> None:
     """Create the model and run the simulation experiments."""
     base_path = Path(__file__).parent
-    data_path = base_path
 
     CurveTypesExperiment.model_path = create(output_dir=output_path / "results")
     runner = ExperimentRunner(
         CurveTypesExperiment,
         simulator=SimulatorSerial(),
-        data_path=data_path,
+        data_path=base_path,
         base_path=base_path,
     )
-    _results = runner.run_experiments(
-        output_path=output_path / "results", show_figures=False
-    )
+    runner.run_experiments(output_path=output_path / "results", show_figures=False)
 
 
 if __name__ == "__main__":

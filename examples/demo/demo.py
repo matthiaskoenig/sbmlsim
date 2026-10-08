@@ -5,6 +5,7 @@ Various scans.
 """
 
 from pathlib import Path
+from typing import override
 
 import numpy as np
 
@@ -19,59 +20,62 @@ from sbmlsim.simulation.sensitivity import ModelSensitivity
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
+#: concentrations of the demo model in the external (e) and the cell (c) compartment
+SELECTIONS = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
+
 
 class DemoExperiment(SimulationExperiment):
-    """Simple repressilator experiment."""
+    """Scans of the demo model over its initial values and parameters."""
 
+    @override
     def models(self) -> dict[str, AbstractModel | Path]:
         """Define models."""
         return {"model": RoadrunnerSBMLModel(source=DEMO_SBML, ureg=self.ureg)}
 
+    @override
+    def simulations(self) -> dict[str, Simulation | ScanSim]:
+        """Define scan simulation."""
+        return {
+            "scan_init": ScanSim(
+                simulation=Simulation(
+                    end=20,
+                    steps=200,
+                    preinit_changes={"[e__A]": Q(10, "mM")},
+                    changes=[Change(10, {"[e__B]": Q(10, "mM")})],
+                ),
+                dimensions=[
+                    Dimension(
+                        "dim_init",
+                        changes={"[e__A]": Q(np.linspace(5, 15, num=11), "mM")},
+                    ),
+                    ModelSensitivity.create_difference_dimension(
+                        model=self._models["model"],
+                        difference=0.5,
+                    ),
+                ],
+            )
+        }
+
+    @override
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""
         return {
             f"task_{key}": Task(model="model", simulation=key)
-            for key in self.simulations()
+            for key in self._simulations
         }
 
-    def simulations(self) -> dict[str, Simulation | ScanSim]:
-        """Define simulations."""
-        return {
-            **self.sim_scans(),
-        }
+    @override
+    def data(self) -> dict[str, Data]:
+        """Define data generators."""
+        self.add_selections_data(selections=["time", *SELECTIONS])
+        return {}
 
-    def sim_scans(self) -> dict[str, ScanSim]:
-        scan_init = ScanSim(
-            simulation=Simulation(
-                end=20,
-                steps=200,
-                preinit_changes={"[e__A]": Q(10, "mM")},
-                changes=[Change(10, {"[e__B]": Q(10, "mM")})],
-            ),
-            dimensions=[
-                Dimension(
-                    "dim_init", changes={"[e__A]": Q(np.linspace(5, 15, num=11), "mM")}
-                ),
-                ModelSensitivity.create_difference_dimension(
-                    model=self._models["model"],
-                    difference=0.5,
-                ),
-            ],
-        )
-
-        return {
-            "scan_init": scan_init,
-        }
-
+    @override
     def figures(self) -> dict[str, Figure]:
-        # print(self._results.keys())
-        # print(self._results["task_scan_init"])
-
-        unit_time = "min"
+        """Define figure outputs (plots)."""
+        unit_time = "second"
         unit_data = "mM"
-
-        selections = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
-        self.add_selections_data(selections=["time", *selections])
+        task_id = "task_scan_init"
 
         fig1 = Figure(experiment=self, sid="Fig1", num_cols=2, num_rows=1)
         plots = fig1.create_plots(
@@ -79,13 +83,10 @@ class DemoExperiment(SimulationExperiment):
             yaxis=Axis("data", unit=unit_data),
             legend=True,
         )
-        for k in [0, 1]:
-            for key in selections:
-                task_id = "task_scan_init"
-
-                # This should plot the individual curve(s), i.e. in a scan the
-                # additional dimensions have to be iterated over
-                plots[k].curve(
+        for plot in plots:
+            for key in SELECTIONS:
+                # a curve of a scan draws the first simulation of the scan
+                plot.curve(
                     x=Data("time", task=task_id),
                     y=Data(key, task=task_id),
                     label=key,
@@ -98,15 +99,14 @@ class DemoExperiment(SimulationExperiment):
 def run_demo_experiments(output_path: Path) -> None:
     """Run the example."""
     base_path = Path(__file__).parent
-    data_path = base_path
 
     runner = ExperimentRunner(
         DemoExperiment,
         simulator=SimulatorSerial(),
-        data_path=data_path,
+        data_path=base_path,
         base_path=base_path,
     )
-    _results = runner.run_experiments(
+    runner.run_experiments(
         output_path=output_path / "results",
         show_figures=False,
         reduced_selections=False,

@@ -12,6 +12,7 @@ the model from that file.
 """
 
 from pathlib import Path
+from typing import override
 
 import pandas as pd
 
@@ -49,16 +50,9 @@ def mapping_id(species: str, validation: bool = False) -> str:
 class NeuralODE(SimulationExperiment):
     """The neural ODE simulated over the data of both species."""
 
-    def models(self) -> dict[str, AbstractModel | Path]:
-        return {
-            "lv": AbstractModel(
-                source=COMPILED_MODEL,
-                base_path=self.base_path,
-                language_type=AbstractModel.LanguageType.SBML,
-            )
-        }
-
+    @override
     def datasets(self) -> dict[str, DataSet]:
+        """Define the training and the validation data of every species."""
         df = pd.read_csv(EXAMPLE_PATH / "data.tsv", sep="\t")
         datasets: dict[str, DataSet] = {}
         for species, rows in df.groupby("observable"):
@@ -79,13 +73,30 @@ class NeuralODE(SimulationExperiment):
                 )
         return datasets
 
+    @override
+    def models(self) -> dict[str, AbstractModel | Path]:
+        """Define the model with the network."""
+        return {
+            "lv": AbstractModel(
+                source=COMPILED_MODEL,
+                base_path=self.base_path,
+                language_type=AbstractModel.LanguageType.SBML,
+            )
+        }
+
+    @override
     def simulations(self) -> dict[str, Simulation]:
+        """Define the simulation over the time of the data."""
         return {"sim": Simulation(end=SIMULATION_END, steps=150)}
 
+    @override
     def tasks(self) -> dict[str, Task]:
+        """Define tasks."""
         return {"task_sim": Task(model="lv", simulation="sim")}
 
+    @override
     def fit_mappings(self) -> dict[str, FitMapping]:
+        """Define the fit mappings of every species and part of the data."""
         return {
             mapping_id(species, validation): FitMapping(
                 self,

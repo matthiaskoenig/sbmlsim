@@ -1,5 +1,7 @@
 """Simulation of SBML models with COPASI via basico."""
 
+from typing import override
+
 import numpy as np
 import pandas as pd
 from basico import (  # ty: ignore[unresolved-import]
@@ -24,11 +26,12 @@ class SimulateCopasiSBML(SimulateSBML):
         # custom model loading
         load_model(location=str(self.sbml_path))
 
+    @override
     def simulate_condition(
         self, condition: Condition, timepoints: np.ndarray
     ) -> pd.DataFrame:
         """Simulate the condition with COPASI."""
-        print(f"simulate condition: {condition.sid}")
+        console.print(f"simulate condition: {condition.sid}")
 
         # reset ? (reloading for resetting)
         # load_model(location=str(self.sbml_path))

@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 import numpy as np
+from matplotlib import rcParams
 from matplotlib.axes import Axes as AxesMPL
 from matplotlib.figure import Figure as FigureMPL
 
@@ -442,6 +443,23 @@ class MatplotlibFigureSerializer:
         hspace = figure.fig_subplots_hspace
         if figure.legend_position == "outside":
             wspace += 1.0
-        fig.subplots_adjust(wspace=wspace, hspace=hspace)
+        fig.subplots_adjust(top=cls._top(figure), wspace=wspace, hspace=hspace)
 
         return fig
+
+    @staticmethod
+    def _top(figure: Figure) -> float:
+        """Get the top of the plots as a fraction of the height of the figure.
+
+        The title of the figure and the titles of the plots below it need a
+        band of a fixed height, i.e., the smaller the figure, the larger the
+        part of it the band takes: the title of the figure is placed at 98% of
+        the height, followed by its line, the line of the title of a plot and
+        the padding of both. A figure without a title keeps the top of
+        matplotlib.
+        """
+        top = float(rcParams["figure.subplot.top"])
+        if not figure.name:
+            return top
+        band = (1.2 * (Figure.fig_titlesize + Figure.axes_titlesize) + 12.0) / 72.0
+        return min(top, 0.98 - band / figure.height)
