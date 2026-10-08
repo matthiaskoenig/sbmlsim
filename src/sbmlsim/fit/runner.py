@@ -1,8 +1,10 @@
 """Module for running parameter optimizations.
 
 The optimization runs either serial or in parallel. The parallel optimization
-uses multiprocessing, i.e., the runner starts one worker process per core and
-hands every repeat of the fit to the worker which is free.
+runs in a pool of `sbmlsim.parallel` which belongs to the fit (`worker_pool`):
+one worker process per core, and every repeat of the fit goes to the worker
+which is free. The pool is stopped after the fit, so the workers do not keep the
+initialized problem, and it is started again, a few times, when a worker dies.
 
 The `OptimizationProblem` is pickled and sent to the workers, so it must be
 picklable: every worker initializes it once and runs repeats on it. The start
@@ -18,8 +20,9 @@ import datetime
 import logging
 import os
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
+from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -407,27 +410,128 @@ def _worker_run(
     return run, fit, trajectory
 
 
-@dataclass(frozen=True)
+#: seconds added to the timeout of a fit before its pending repeats are given up
+START_GRACE = 60.0
+
+#: how often the pool of a fit is started again after a worker died; a worker
+#: which dies (a crash in the integrator, the kernel killing it for memory) breaks
+#: the whole pool, so the repeats which did not finish are submitted again. A
+#: repeat which kills its worker every time is given up after this many restarts.
+MAX_POOL_RESTARTS = 3
+
+
+@dataclass
 class FitPool:
     """The workers of a fit: a pool and the problem its tasks run on.
 
     Attributes:
-        executor: the pool, see `sbmlsim.parallel.start_pool`.
+        executor: the pool, see `sbmlsim.parallel.start_pool`; replaced when
+            the pool broke and was started again, see `run`.
         token: identifies the fit in the caches of the workers.
         problem: the problem, pickled into every task as its definition.
         settings: the settings the workers initialize the problem with.
+        n_cores: the number of workers.
+        preload: the modules the forkserver imports, see `_preload`.
+        restarts: how often the pool was started again.
     """
 
     executor: ProcessPoolExecutor
     token: str
     problem: OptimizationProblem
     settings: FitSettings
+    n_cores: int = 1
+    preload: Sequence[str] = ()
+    restarts: int = 0
 
     def submit(self, function: Callable[..., Any], task: dict[str, Any]) -> Future[Any]:
         """Run `function(token, problem, settings, task)` in a worker."""
         return self.executor.submit(
             function, self.token, self.problem, self.settings, task
         )
+
+    def run(
+        self,
+        function: Callable[..., Any],
+        tasks: Mapping[int, dict[str, Any]],
+        timeout: float | None = None,
+    ) -> Iterator[tuple[int, Any]]:
+        """Run the tasks and hand out their results as they finish.
+
+        A worker which dies breaks the whole pool and with it every task which
+        did not finish. The pool is started again and these tasks are submitted
+        again, at most `MAX_POOL_RESTARTS` times; the tasks which are still
+        unfinished after that are failed.
+
+        Args:
+            function: called in the worker as
+                `function(token, problem, settings, task)`.
+            tasks: the tasks by their key.
+            timeout: seconds without any result after which the tasks which are
+                pending are failed, 60 s are added for the start; no limit if
+                `None`.
+
+        Yields:
+            The key of a task and its result, or the exception which failed it.
+        """
+        pending: dict[Future[Any], int] = {
+            self.submit(function, task): key for key, task in tasks.items()
+        }
+        last = time.monotonic()
+        while pending:
+            remaining = (
+                None
+                if timeout is None
+                else max(1.0, last + timeout + START_GRACE - time.monotonic())
+            )
+            done, _ = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+            if not done:
+                for key in pending.values():
+                    yield (
+                        key,
+                        TimeoutError(
+                            f"no result within {timeout} s and {START_GRACE:g} s more"
+                        ),
+                    )
+                return
+            broken = False
+            for future in sorted(done, key=pending.__getitem__):
+                key = pending.pop(future)
+                try:
+                    result = future.result()
+                except BrokenProcessPool:
+                    broken = True
+                    pending[future] = key
+                    continue
+                except Exception as err:
+                    yield key, err
+                    continue
+                last = time.monotonic()
+                yield key, result
+            if not broken:
+                continue
+            unfinished = sorted(pending.values())
+            if self.restarts >= MAX_POOL_RESTARTS:
+                logger.error(
+                    "'%s': a worker died again, the pool was restarted %s times; "
+                    "the %s unfinished repeats are given up.",
+                    self.problem.opid,
+                    self.restarts,
+                    len(unfinished),
+                )
+                for key in unfinished:
+                    yield key, RuntimeError("the workers died, the pool broke")
+                return
+            self.restarts += 1
+            logger.error(
+                "'%s': a worker died; restarting the pool, %s unfinished repeats "
+                "are submitted again.",
+                self.problem.opid,
+                len(unfinished),
+            )
+            parallel.stop(self.executor)
+            self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
+            pending = {self.submit(function, tasks[key]): key for key in unfinished}
+            last = time.monotonic()
 
 
 def _preload(problem: OptimizationProblem) -> list[str]:
@@ -470,13 +574,20 @@ def worker_pool(
         RuntimeError: if the workers do not start, e.g. in a script without
             the guard, see `sbmlsim.parallel.start_pool`.
     """
-    executor = parallel.start_pool(n_cores, preload=_preload(problem))
+    preload = _preload(problem)
+    pool = FitPool(
+        executor=parallel.start_pool(n_cores, preload=preload),
+        token=uuid4().hex,
+        problem=problem,
+        settings=settings,
+        n_cores=n_cores,
+        preload=preload,
+    )
     try:
-        yield FitPool(
-            executor=executor, token=uuid4().hex, problem=problem, settings=settings
-        )
+        yield pool
     finally:
-        parallel.stop(executor)
+        # the pool of the fit, which may be another one than the one it started
+        parallel.stop(pool.executor)
 
 
 def _run_optimization_parallel(
@@ -520,24 +631,6 @@ def _run_optimization_parallel(
     failures: list[str] = []
     interrupted = False
 
-    # when a repeat came back, i.e., when the workers made progress last
-    finished = time.monotonic()
-
-    def on_result(result: tuple[int, OptimizeResult, list[float]]) -> None:
-        """Store a repeat as soon as it is done, in the thread of the pool."""
-        nonlocal finished
-        finished = time.monotonic()
-        run, fit, trajectory = result
-        _store_run(
-            problem=problem,
-            settings=settings,
-            runs_dir=runs_dir,
-            fit=fit,
-            trajectory=trajectory,
-            sid=f"{problem.opid}_run_{run}",
-        )
-        _advance(progress)
-
     collected: dict[int, tuple[OptimizeResult, list[float]]] = {}
     with (
         optimization_progress(
@@ -545,49 +638,17 @@ def _run_optimization_parallel(
         ) as progress,
         worker_pool(problem, settings, n_cores) as pool,
     ):
-        # one task per repeat, so that a worker which dies loses one repeat
-        futures = {pool.submit(_worker_run, task): task["run"] for task in tasks}
-        pending = set(futures)
-        while pending:
-            # a fit which stopped making progress is a worker which is gone
-            remaining = (
-                None
-                if timeout is None
-                else max(1.0, finished + timeout + 60.0 - time.monotonic())
-            )
-            try:
-                done, pending = wait(
-                    pending, timeout=remaining, return_when=FIRST_COMPLETED
-                )
-            except KeyboardInterrupt:
-                interrupted = True
-                if collected:
-                    logger.warning(
-                        "'%s': the fit was interrupted, it keeps the %s repeats "
-                        "which finished.",
-                        problem.opid,
-                        len(collected),
-                    )
-                break
-            if not done:
-                for future in pending:
-                    message = (
-                        f"repeat {futures[future]}: no result within "
-                        f"{timeout} s and 60 s more"
-                    )
-                    failures.append(message)
-                    logger.error("'%s': %s", problem.opid, message)
-                break
-            for future in sorted(done, key=futures.__getitem__):
-                k = futures[future]
-                try:
-                    _, fit, trajectory = future.result()
-                except Exception as err:
-                    message = f"repeat {k}: {type(err).__name__}: {err}"
+        try:
+            # one task per repeat, so that a worker which dies loses one repeat
+            for k, outcome in pool.run(
+                _worker_run, {task["run"]: task for task in tasks}, timeout
+            ):
+                if isinstance(outcome, Exception):
+                    message = f"repeat {k}: {type(outcome).__name__}: {outcome}"
                     failures.append(message)
                     logger.error("'%s': %s", problem.opid, message)
                     continue
-                finished = time.monotonic()
+                _, fit, trajectory = outcome
                 _store_run(
                     problem=problem,
                     settings=settings,
@@ -598,6 +659,15 @@ def _run_optimization_parallel(
                 )
                 _advance(progress)
                 collected[k] = (fit, trajectory)
+        except KeyboardInterrupt:
+            interrupted = True
+            if collected:
+                logger.warning(
+                    "'%s': the fit was interrupted, it keeps the %s repeats "
+                    "which finished.",
+                    problem.opid,
+                    len(collected),
+                )
 
     fits = [collected[k][0] for k in sorted(collected)]
     trajectories = [collected[k][1] for k in sorted(collected)]

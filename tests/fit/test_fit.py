@@ -1,5 +1,6 @@
 """Test fit."""
 
+import multiprocessing
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -386,6 +387,8 @@ def test_an_interrupted_parallel_fit_keeps_the_repeats_which_finished(
         # the first wait may return both repeats, then there is no second one
         assert fit().size == sum(returned)
         assert len(returned) == 1
+    # the pool of the fit is stopped, whatever interrupted it
+    assert not multiprocessing.active_children()
 
 
 @pytest.mark.parametrize(

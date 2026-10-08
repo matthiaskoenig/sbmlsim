@@ -1122,9 +1122,10 @@ def profile_likelihood(
     ) as progress:
         if parallel:
             with runner.worker_pool(problem, settings, n_cores) as pool:
-                futures = [pool.submit(_worker_scan, task) for task in tasks]
-                for future in futures:
-                    index, direction, points = future.result()
+                for _, outcome in pool.run(_worker_scan, dict(enumerate(tasks))):
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    index, direction, points = outcome
                     scans[index][direction] = points
                     runner._advance(progress)
         else:
