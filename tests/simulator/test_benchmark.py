@@ -22,17 +22,17 @@ from sbmlsim.simulator.executor import execute
 
 pytestmark = pytest.mark.benchmark
 
-#: ms per `SimulatorSerial.simulate` of the repressilator (end=100, steps=100)
-#: in 0.8.5, measured in the pre-flight of the scan core on the machine of the
+#: ms per 0.8.5 `simulate` of the repressilator (end=100, steps=100),
+#: measured in the pre-flight of the scan core on the machine of the
 #: benchmarks; reported, the time of the machine is not asserted
 BASE_SIMULATE_MS = 0.711
 
 #: the most `Simulator.simulate` may cost more than the work of
-#: `SimulatorSerial.simulate` of 0.8.5, i.e. the settings of the integrator
+#: 0.8.5 `simulate`, i.e. the settings of the integrator
 SIMULATE_OVERHEAD = 0.03
 
-#: s per `SimulatorSerial.run_scan` of the 1e3 points of `_scan(1000)` in
-#: 0.8.5, measured in the same pre-flight
+#: s per 0.8.5 `run_scan` of the 1e3 points of `_scan(1000)`,
+#: measured in the same pre-flight
 BASE_SCAN_1E3_S = 0.81
 
 
@@ -103,8 +103,8 @@ def _medians(
 def test_a_simulation(name: str) -> None:
     """`Simulator.simulate` costs little more than the execution of its plan.
 
-    `SimulatorSerial.simulate` of 0.8.5 compiled the simulation and executed
-    the plan, `Simulator.simulate` adds the settings of the integrator, which
+    0.8.5 `simulate` compiled the simulation and executed the plan,
+    `Simulator.simulate` adds the settings of the integrator, which
     it sets only when they changed: a simulation costs at most
     `SIMULATE_OVERHEAD` more than the compile and the execution of its plan,
     and a plan at most that more than its execution. The times are measured

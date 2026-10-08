@@ -1,10 +1,10 @@
-"""Test the result of a timecourse simulation and the results built from it."""
+"""Test the result of a timecourse simulation."""
 
 import numpy as np
 import pytest
 
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.result import TimecourseResult, XResult
+from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
 
@@ -51,30 +51,6 @@ def test_values_must_match_the_columns() -> None:
         TimecourseResult(columns=("time", "X"), values=np.zeros((3, 3)))
     with pytest.raises(ValueError, match="2"):
         TimecourseResult(columns=("time",), values=np.zeros(3))
-
-
-def test_from_timecourses_without_scan() -> None:
-    """Several results without a scan are entries of the `_dfs` dimension."""
-    xres = XResult.from_timecourses([_result(), _result(offset=0.0)])
-    assert xres.xds["[X]"].dims == ("_point", "_dfs")
-    assert xres.xds.sizes["_dfs"] == 2
-    np.testing.assert_array_equal(xres.xds["time"].values[:, 0], [0.0, 1.0, 2.0])
-    np.testing.assert_array_equal(xres.xds["Y"].values[:, 1], [10.0, 20.0, 30.0])
-
-
-def test_from_timecourses_without_time() -> None:
-    """The time is the coordinate of the results, a result without it is refused."""
-    result = TimecourseResult(columns=("X",), values=np.zeros((3, 1)))
-    with pytest.raises(ValueError, match="time"):
-        XResult.from_timecourses([result])
-
-
-def test_from_timecourses_of_different_lengths() -> None:
-    """Results of different lengths are padded, see `tests/result/test_xresult.py`."""
-    short = TimecourseResult(columns=("time", "X"), values=np.zeros((2, 2)))
-    long = TimecourseResult(columns=("time", "X"), values=np.zeros((3, 2)))
-    xres = XResult.from_timecourses([long, short])
-    assert np.isnan(xres.xds["X"].values[2, 1])
 
 
 def test_simulator_returns_arrays() -> None:

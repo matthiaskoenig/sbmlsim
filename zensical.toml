@@ -65,7 +65,6 @@ nav = [
     ] },
     { "sbmlsim.simulator" = [
       { "simulator" = "api/simulator.simulator.md" },
-      { "simulation_serial" = "api/simulator.simulation_serial.md" },
       { "plan" = "api/simulator.plan.md" },
       { "executor" = "api/simulator.executor.md" },
       { "formula" = "api/simulator.formula.md" },
@@ -81,7 +80,6 @@ nav = [
     { "sbmlsim.result" = [
       { "timecourse" = "api/result.timecourse.md" },
       { "scan" = "api/result.scan.md" },
-      { "xresult" = "api/result.xresult.md" },
     ] },
     { "sbmlsim.plot" = [
       { "plotting" = "api/plot.plotting.md" },

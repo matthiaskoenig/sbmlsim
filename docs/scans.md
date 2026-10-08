@@ -96,7 +96,7 @@ print(res["PX"].sel(regimen="multiple").values[-1])
 
 ## The output and the run
 
-With `times` or `steps` every simulation has the same output times and the result has the dimension `time`. With the steps of the integrator every simulation keeps its own time points: the result has the dimension `_point` and the variable `time`, padded with `NaN`. `time=` interpolates every timecourse onto a grid; the value at the time of a change is the value after it:
+When every simulation has the same output times (`times` or `steps`), the result has the dimension `time`. With the steps of the integrator every simulation keeps its own time points: the result has the dimension `_point` and the variable `time`, padded with `NaN`. `time=` interpolates every timecourse onto a grid; the value at the time of a change is the value after it:
 
 ```python
 res = simulator.run(
@@ -115,7 +115,7 @@ print(res.ragged, res["time"].values)
 
 ## Working with scan results
 
-A `ScanResult` is an `xarray.Dataset` with units, `res.ds`; `res.quantity(key)` gives the values with their unit, `res.summary(dims)` the statistics over dimensions and `res.interpolate(times)` puts a ragged result on a grid. `res.ds.to_dataframe()` is the table, `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store the result with its units:
+A `ScanResult` wraps an `xarray.Dataset`, `res.ds`, and keeps the units of its variables and coordinates; `res.quantity(key)` gives the values with their unit, `res.summary(dims)` the statistics over dimensions and `res.interpolate(times)` puts a ragged result on a grid. `res.ds.to_dataframe()` is the table, `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store the result with its units:
 
 ```python
 from pathlib import Path

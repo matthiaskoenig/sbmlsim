@@ -27,7 +27,6 @@ scan.
 
 from __future__ import annotations
 
-import itertools
 import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -37,7 +36,7 @@ from typing import Any
 
 import numpy as np
 
-from sbmlsim.simulation.definition import Change, Simulation, Time, _encode
+from sbmlsim.simulation.definition import Simulation, Time, _encode
 from sbmlsim.units import Quantity, ureg
 
 #: the names of the dimensions and variables of a result, which no dimension of
@@ -428,71 +427,3 @@ class Scan:
             "simulation": self.simulation.to_dict(),
             "dimensions": [dimension.to_dict() for dimension in self.dimensions],
         }
-
-
-class ScanSim:
-    """A scan of a simulation over dimensions of values, see `SimulatorSerial`.
-
-    Superseded by `Scan` and `sbmlsim.simulator.Simulator`, it is removed with
-    `SimulatorSerial`.
-    """
-
-    def __init__(
-        self,
-        simulation: Simulation,
-        dimensions: list[Dimension] | None = None,
-    ):
-        """Scan a simulation.
-
-        Raises:
-            ValueError: if two dimensions have the same id or a dimension is
-                no dimension of values.
-        """
-        self.simulation: Simulation = simulation
-        self.dimensions: list[Dimension] = list(dimensions or [])
-        ids = [dimension.id for dimension in self.dimensions]
-        if len(ids) > len(set(ids)):
-            raise ValueError(f"duplicate dimension keys in scan: {ids}")
-        for dimension in self.dimensions:
-            if dimension.kind is not DimensionKind.VALUES:
-                raise ValueError(
-                    f"A ScanSim scans values, '{dimension.id}' is a dimension of "
-                    f"{dimension.kind}: use Scan."
-                )
-
-    def __repr__(self) -> str:
-        """Get representation."""
-        return f"ScanSim({self.simulation!r}: {self.dimensions})"
-
-    def indices(self) -> list[tuple[int, ...]]:
-        """Get the indices of all combinations of the dimensions."""
-        return list(itertools.product(*(range(len(d)) for d in self.dimensions)))
-
-    def to_dict(self) -> dict[str, Any]:
-        """Convert to a dictionary of JSON types."""
-        return {
-            "type": self.__class__.__name__,
-            "simulation": self.simulation.to_dict(),
-            "dimensions": [dimension.to_dict() for dimension in self.dimensions],
-        }
-
-    def to_simulations(self) -> tuple[list[tuple[int, ...]], list[Simulation]]:
-        """Get the indices of every combination of the dimensions and its simulation."""
-        indices = self.indices()
-        simulations: list[Simulation] = []
-        for index_list in indices:
-            values: dict[str, Any] = {}
-            timed: list[Change] = []
-            for k_dim, k_index in enumerate(index_list):
-                dimension = self.dimensions[k_dim]
-                dim_values = {
-                    key: dimension.values[key][k_index] for key in dimension.values
-                }
-                if dimension.at is None:
-                    values.update(dim_values)
-                else:
-                    timed.append(Change(dimension.at, dim_values))
-            simulation = self.simulation.with_values(values)
-            simulation.changes.extend(timed)
-            simulations.append(simulation)
-        return indices, simulations

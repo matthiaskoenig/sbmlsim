@@ -4,19 +4,20 @@
 
 ## Loading a model
 
-The simulator loads a model from a path or an SBML string:
+The simulator loads a model from a path or an SBML string, with the integrator settings of the simulator:
 
 ```python
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
-simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
-print(simulator.model)
+simulator = Simulator()
+model = simulator.load(REPRESSILATOR_SBML)
+print(model)
 ```
 
 `sbmlsim.resources` provides the three models used throughout the documentation and the tests: `REPRESSILATOR_SBML`, the repressilator of Elowitz and Leibler, `DEMO_SBML`, a small demo model with compartments, and `MIDAZOLAM_SBML`, a whole body pharmacokinetics model of midazolam.
 
-Behind the simulator is a `RoadrunnerSBMLModel`, which owns the roadrunner instance `r`, the units of the model and the selections, i.e., the variables recorded in a simulation:
+The model is a `RoadrunnerSBMLModel`, which owns the roadrunner instance `r`, the units of the model and the selections, i.e., the variables recorded in a simulation:
 
 ```python
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -40,7 +41,7 @@ print(uinfo["time"])
 
 ## Changes and selections
 
-A `RoadrunnerSBMLModel` accepts `changes`, which are applied to the model whenever it is reset, and `selections`, the variables recorded in a simulation. Changes are quantities with units or plain floats in the units of the model:
+A `RoadrunnerSBMLModel` accepts `changes`, which every simulation of the model applies before the initialization unless the simulation sets the target itself, and `selections`, the variables recorded in a simulation. Changes are quantities with units or plain floats in the units of the model:
 
 ```python
 model = RoadrunnerSBMLModel(
@@ -52,7 +53,7 @@ print(model.changes)
 print(model.selections)
 ```
 
-The roadrunner integrator is configured with `settings`, e.g., `settings={"absolute_tolerance": 1e-10}`, or later with `set_integrator_settings`. The absolute tolerance is one value per state from the kind of the state, a concentration species gets the tolerance of a concentration times the initial volume of its compartment, see [Simulations](simulation.md#selections-and-integrator-settings). The vector depends on the initial volumes of the model as loaded, not on an earlier simulation; `RoadrunnerSBMLModel.tolerances()` lists it.
+The roadrunner integrator is configured with `settings`, e.g., `settings={"absolute_tolerance": 1e-10}`, or later with `set_integrator_settings`; a `Simulator` sets its own integrator settings on every model it runs. The absolute tolerance is one value per state from the kind of the state, a concentration species gets the tolerance of a concentration times the initial volume of its compartment, see [Simulations](simulation.md#selections-and-integrator-settings). The vector depends on the initial volumes of the model as loaded, not on an earlier simulation; `RoadrunnerSBMLModel.tolerances()` lists it.
 
 ## Abstract models
 
