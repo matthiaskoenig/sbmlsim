@@ -191,6 +191,7 @@ def run_optimization(
     show_progress: bool = True,
     timeout: float | None = None,
     runs_dir: Path | None = None,
+    sampling: SamplingType = SamplingType.UNIFORM,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimization of the problem.
@@ -217,7 +218,10 @@ def run_optimization(
             so a fit which is interrupted or crashes leaves the runs which
             finished; they are read back with
             `OptimizationResult.from_directory`.
-        kwargs: additional arguments for the optimizer, e.g. xtol.
+        sampling: sampling of the start values, see `sbmlsim.fit.sampling`.
+        kwargs: additional arguments for the optimizer, i.e., for
+            `scipy.optimize.least_squares` or
+            `scipy.optimize.differential_evolution`, e.g. xtol.
 
     Returns:
         OptimizationResult with the fits of all repeats. A repeat which failed
@@ -227,6 +231,8 @@ def run_optimization(
         ValueError: if a bound or a start value does not suit the scale of
             its parameter or the algorithm, or if every worker of a parallel
             fit failed.
+        TypeError: if `kwargs` has an argument which the optimizer of the
+            algorithm does not accept, e.g. one of the other optimizer.
     """
     if settings is None:
         settings = FitSettings()
@@ -240,6 +246,8 @@ def run_optimization(
     problem.initialize(settings)
     # the bounds the algorithm needs are checked once, not in every run
     problem._validate_parameters(algorithm)
+    # an argument which the optimizer does not accept would fail every repeat
+    problem.check_optimizer_arguments(algorithm, kwargs)
     display.print_parameters(
         problem.parameters,
         coverage=(
@@ -260,6 +268,7 @@ def run_optimization(
                 size=size,
                 algorithm=algorithm,
                 seed=seed,
+                sampling=sampling,
                 timeout=timeout,
                 runs_dir=runs_dir,
                 on_progress=lambda: _advance(progress),
@@ -284,6 +293,7 @@ def run_optimization(
             seed=seed,
             n_cores=n_cores,
             show_progress=show_progress,
+            sampling=sampling,
             timeout=timeout,
             runs_dir=runs_dir,
             **kwargs,

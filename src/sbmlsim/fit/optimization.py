@@ -1,9 +1,10 @@
 """Optimization of parameter fitting problem."""
 
+import inspect
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -1493,6 +1494,47 @@ class OptimizationProblem(ObjectJSONEncoder):
         return [
             int(s) for s in np.random.SeedSequence(seed).generate_state(max(size, 1))
         ]
+
+    @staticmethod
+    def check_optimizer_arguments(
+        algorithm: OptimizationAlgorithmType, arguments: Iterable[str]
+    ) -> None:
+        """Check that the optimizer of the algorithm accepts the arguments.
+
+        The additional arguments of a fit are handed to `scipy.optimize.least_squares`
+        or `scipy.optimize.differential_evolution` in every run. An argument they
+        do not accept would fail every run, so it is found before the first run.
+        What the problem passes itself, i.e., the objective, the start values and
+        the bounds, is not an additional argument.
+
+        Args:
+            algorithm: optimization algorithm.
+            arguments: names of the additional arguments of the optimizer.
+
+        Raises:
+            TypeError: if an argument is not an argument of the optimizer.
+        """
+        optimizer: Callable[..., Any]
+        if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
+            optimizer = scipy.optimize.least_squares
+        elif algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
+            optimizer = scipy.optimize.differential_evolution
+        else:
+            # the run reports an algorithm which is not supported
+            return
+        accepted = set(inspect.signature(optimizer).parameters) - {
+            "fun",
+            "func",
+            "x0",
+            "bounds",
+        }
+        unknown = sorted(set(arguments) - accepted)
+        if unknown:
+            raise TypeError(
+                f"Unexpected keyword argument(s) {unknown} for the optimization "
+                f"with '{algorithm.name}', which are passed on to "
+                f"scipy.optimize.{optimizer.__name__} and not accepted by it."
+            )
 
     def optimize_run(
         self,

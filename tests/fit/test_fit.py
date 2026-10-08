@@ -1,5 +1,6 @@
 """Test fit."""
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -15,6 +16,7 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
+from sbmlsim.fit.sampling import SamplingType
 
 settings_testdata: list[FitSettings] = [
     FitSettings(
@@ -217,6 +219,85 @@ def test_fit_lsq_parallel(
     )
     assert opt_result is not None
     assert opt_result.size == 2
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "kwargs", "unknown"),
+    [
+        # removed arguments of an earlier version
+        (
+            OptimizationAlgorithmType.LEAST_SQUARE,
+            {"weighting_local": WeightingPointsType.NO_WEIGHTING},
+            "weighting_local",
+        ),
+        (OptimizationAlgorithmType.LEAST_SQUARE, {"fitting_type": "x"}, "fitting_type"),
+        # an argument of the other optimizer
+        (OptimizationAlgorithmType.LEAST_SQUARE, {"maxiter": 2}, "maxiter"),
+        (OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION, {"max_nfev": 3}, "max_nfev"),
+        # what sbmlsim sets itself
+        (OptimizationAlgorithmType.LEAST_SQUARE, {"bounds": ([0.0], [1.0])}, "bounds"),
+    ],
+)
+def test_unknown_optimizer_arguments(
+    algorithm: OptimizationAlgorithmType,
+    kwargs: dict[str, Any],
+    unknown: str,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    tmp_path: Path,
+) -> None:
+    """An argument the optimizer does not accept is rejected before any run."""
+    with pytest.raises(TypeError, match=unknown) as err:
+        run_optimization(
+            problem=op_hctz_pk,
+            settings=fit_settings,
+            algorithm=algorithm,
+            serial=True,
+            runs_dir=tmp_path,
+            **kwargs,
+        )
+    assert algorithm.name in str(err.value)
+    # no repeat ran
+    assert not list(tmp_path.iterdir())
+
+
+def test_optimizer_arguments_reach_the_optimizer(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+) -> None:
+    """An argument of the optimizer is accepted and limits the run."""
+    assert short_fit == {"max_nfev": 3}
+    opt_result = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
+        size=1,
+        serial=True,
+        **short_fit,
+    )
+    (fit,) = opt_result.fits
+    # a run which failed has no evaluations
+    assert 0 < fit.nfev <= 3
+
+
+def test_sampling_is_not_an_optimizer_argument(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+) -> None:
+    """The sampling of the start values is an argument of the fit, not of scipy."""
+    opt_result = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=1,
+        serial=True,
+        sampling=SamplingType.START,
+        **short_fit,
+    )
+    (fit,) = opt_result.fits
+    # the run started from the start values of the parameters
+    assert list(fit.x0) == pytest.approx(op_hctz_pk.x0)
 
 
 def test_estimate_total_time() -> None:
