@@ -35,3 +35,9 @@ def test_a_parameter_named_time_is_not_the_time() -> None:
     p.setConstant(True)
     p.setValue(1.0)
     assert not ModelSymbols.from_sbml(libsbml.writeSBMLToString(doc)).time_dependent
+
+
+def test_an_event_with_a_delay_is_time_dependent() -> None:
+    """roadrunner keeps a pending event at a time of its clock (not in the math)."""
+    model = "model m\n  A = 1\n  E: at 5 after (A < 0.5): A = 2\n  J: A -> ; A\nend"
+    assert ModelSymbols.from_sbml(sbml(model)).time_dependent

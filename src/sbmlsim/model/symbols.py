@@ -91,7 +91,9 @@ class ModelSymbols:
             initialization keeps.
         events: the symbols of the events.
         time_dependent: whether a math of the model reads the csymbol time or
-            delay, see `sbmlsim.simulator.executor`.
+            delay, or an event has a delay, see `sbmlsim.simulator.executor`.
+            roadrunner keeps a pending event at a time of its clock, so an
+            event with a delay needs the absolute time.
     """
 
     parameters: frozenset[str]
@@ -155,7 +157,8 @@ class ModelSymbols:
             )
             maths += [a.getMath() for a in event.getListOfEventAssignments()]
         return cls(
-            time_dependent=any(_reads_time(m) for m in maths),
+            time_dependent=any(_reads_time(m) for m in maths)
+            or any(event.isSetDelay() for event in model.getListOfEvents()),
             events=tuple(
                 _event_symbols(event, concentration_species)
                 for event in model.getListOfEvents()

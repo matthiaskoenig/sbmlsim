@@ -66,7 +66,7 @@ The flow: the settings of a simulator or a fit, `SimulatorSerial.integrator_sett
 
 ## C. Restarts in local time
 
-`ModelSymbols.time_dependent` is true if any math of the model reads the time or a delay: rules, kinetic laws, initial assignments, function definitions, and triggers, delays, priorities and assignments of events. The test is on the csymbols `time` and `delay` of the math, not on identifiers, so a parameter named `time` (case 01820 of the SBML Test Suite) does not count.
+`ModelSymbols.time_dependent` is true if any math of the model reads the time or a delay: rules, kinetic laws, initial assignments, function definitions, and triggers, delays, priorities and assignments of events. The test is on the csymbols `time` and `delay` of the math, not on identifiers, so a parameter named `time` (case 01820 of the SBML Test Suite) does not count. An event with a delay makes a model time dependent as well, even with a constant delay: roadrunner keeps a pending event at a time of its own clock, which a restart at 0 would move (amended after the review of the branch).
 
 For a model which does not read the time the executor integrates every segment `[a, b]` of a plan as `[0, b - a]`: it sets the time of roadrunner to 0 at the restart, asks for the output times `times - a`, adds `a` to the column of the time, and carries the state over. A value or a change does not read the time either (a formula of a change which reads `time` is evaluated with the absolute time of the change, as now), so the mathematics is the one of the absolute time, and CVODE always starts its first step at 0. A negative `start` is harmless as a consequence.
 

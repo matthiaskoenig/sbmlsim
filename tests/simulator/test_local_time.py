@@ -26,6 +26,16 @@ model events
 end
 """
 
+DELAYED = """
+model delayed
+  compartment C = 1;
+  species A in C;
+  A = 1; n = 0; k = 0.1
+  J: A -> ; k*A
+  E: at 5 after (A < 0.5), t0=true, persistent=true: n = n + 1
+end
+"""
+
 TIME_RULE = """
 model clock
   compartment C = 1;
@@ -89,6 +99,16 @@ def test_an_event_fires_in_local_time() -> None:
     np.testing.assert_allclose(local["[A]"], absolute["[A]"], rtol=1e-5, atol=1e-8)
     # the change to 0.1 made the trigger true: A is reset to 1 at the change
     assert local["[A]"][200] == pytest.approx(1.0)
+
+
+def test_a_pending_delayed_event_fires_at_its_time() -> None:
+    """An event which is pending at a change fires its delay after the trigger."""
+    # A < 0.5 at t = ln(2) / 0.1 = 6.93, the event is pending at the change at 10
+    sim = Simulation(end=40, changes=[Change(10, {"k": 0.1})], steps=40)
+    simulator = SimulatorSerial(model=RoadrunnerSBMLModel(source=sbml(DELAYED)))
+    res = simulator.run_simulation(sim)
+    fired = np.asarray(res["n"], dtype=float) > 0
+    assert np.asarray(res["time"], dtype=float)[np.argmax(fired)] == pytest.approx(12.0)
 
 
 def test_a_model_which_reads_the_time_keeps_the_absolute_time() -> None:
