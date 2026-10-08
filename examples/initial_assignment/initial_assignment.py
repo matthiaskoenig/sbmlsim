@@ -65,7 +65,7 @@ class AssignmentExperiment(SimulationExperiment):
 
     @override
     def data(self) -> dict[str, Data]:
-        """Define data generators."""
+        """Define the data of the experiment."""
         self.add_selections_data(selections=["time", "A1", "[A1]", "D"])
         return {}
 

@@ -48,7 +48,7 @@ class RepressilatorExperiment(SimulationExperiment):
 
     @override
     def data(self) -> dict[str, Data]:
-        """Define data generators."""
+        """Define the data of the experiment."""
         # direct access via id
         data = [
             Data(task=f"task_{model}_tc", index=selection)
@@ -56,7 +56,7 @@ class RepressilatorExperiment(SimulationExperiment):
             for selection in ["time", "PX", "PY", "PZ"]
         ]
 
-        # functions (calculated data generators), which carry the units of
+        # functions (calculated data), which carry the units of
         # their variables
         for sid in ["PX", "PY", "PZ"]:
             data.append(

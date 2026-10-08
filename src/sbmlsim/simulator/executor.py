@@ -1,7 +1,6 @@
 """The executor runs a plan on roadrunner.
 
-The semantics are the ones of PEtab v2, see the design
-`docs/superpowers/specs/2026-10-07-simulation-engine-design.md`:
+The semantics are the ones of PEtab v2:
 
 1. The model is initialized with the pre-initialization values, see
    `RoadrunnerSBMLModel.initialize`: the initial assignments follow a changed

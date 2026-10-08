@@ -81,7 +81,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
 
     @override
     def data(self) -> dict[str, Data]:
-        """Define data generators, the promises of the results."""
+        """Define the data of the experiment."""
         # accessed data
         data = [
             Data(task=f"task_{model}_tc", index=selection)
@@ -89,7 +89,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
             for selection in ["time", "X", "Y", "Z"]
         ]
 
-        # functions (calculated data generators)
+        # functions (calculated data)
         data.extend(
             [
                 Data(

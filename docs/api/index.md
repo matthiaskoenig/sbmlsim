@@ -18,7 +18,7 @@ The top level modules: data, units and the shared output.
 
 ## sbmlsim.model
 
-Models and model changes, see [Models](../models.md).
+Models and the changes of a model, see [Models](../models.md).
 
 | module | description |
 | --- | --- |
@@ -155,6 +155,7 @@ The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md
 | [testsuite.runner](testsuite.runner.md) | `run_case`, simulating a case, and `CaseStatus`, the outcomes a case can have |
 | [testsuite.comparison](testsuite.comparison.md) | comparing the results of a case within its tolerances |
 | [testsuite.report](testsuite.report.md) | `TestSuiteReport`, the interactive report of a run |
+| [testsuite.submission](testsuite.submission.md) | `write_submission`, the archive with the results of a run for the SBML Test Suite Database |
 | [testsuite.cache](testsuite.cache.md) | the download and the cache of a test suite, shared by the SBML Test Suite, the PEtab test suite and the PEtab SciML test suite |
 | [testsuite.baseline](testsuite.baseline.md) | the baseline of the PEtab test suites and of the benchmark collection, i.e. the cases which do not pass with their reasons |
 

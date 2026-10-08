@@ -206,6 +206,10 @@ link = "https://github.com/matthiaskoenig/sbmlsim"
 icon = "fontawesome/brands/python"
 link = "https://pypi.org/project/sbmlsim/"
 
+# the plans and the designs of the development are not part of the documentation
+[project.plugins.exclude]
+glob = ["superpowers/*", "superpowers/**"]
+
 # API reference is rendered from the docstrings, see the `docs/api` pages
 [project.plugins.mkdocstrings]
 default_handler = "python"

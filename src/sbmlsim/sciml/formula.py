@@ -1,4 +1,4 @@
-"""The math of SBML as sympy expressions, read with libsbml and sbmlmath, for the network compiler and the hybridization.
+"""The math of SBML as sympy expressions for the network compiler and hybridization.
 
 `formula_expression`, `formula_symbols` and `evaluate_formula` read a formula
 with libsbml and `sbmlmath`, which make a symbol of every identifier, also of

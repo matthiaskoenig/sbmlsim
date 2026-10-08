@@ -41,7 +41,7 @@ class CurveTypesExperiment(SimulationExperiment):
 
     @override
     def data(self) -> dict[str, Data]:
-        """Define data generators."""
+        """Define the data of the experiment."""
         data = [Data(task="task_model_tc", index=selection) for selection in SELECTIONS]
         return {d.sid: d for d in data}
 
