@@ -4,8 +4,8 @@ Every example is run as a module in a temporary working directory, so the
 files it writes do not end up in the repository. An example which breaks
 fails the test suite.
 
-The examples which need optional tools (`examples.julia`, the AMICI and COPASI
-scripts of `examples.comparison`) are not run here, see `examples/README.md`.
+The examples which need optional tools (the AMICI and COPASI scripts of
+`examples.comparison`) are not run here, see `examples/README.md`.
 """
 
 import os
@@ -33,7 +33,6 @@ SCRIPTS = [
     "examples.fit_sampling",
     "examples.units",
     "examples.model_sensitivity",
-    "examples.interpolation.interpolation_example",
     "examples.curve_types.experiment",
     "examples.initial_assignment.initial_assignment",
     "examples.glucose.glucose",
