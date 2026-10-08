@@ -17,11 +17,8 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result import ScanResult, TimecourseResult
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import ScanError, Simulator
+from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import BLOWUP, PROBE, TOLERANCE_PROBE, sbml, sbml_minutes
-
-posix = pytest.mark.skipif(
-    sys.platform == "win32", reason="the streams of C are flushed with POSIX ctypes"
-)
 
 SEL = ["time", "[A]", "[B]", "X", "k1"]
 
@@ -39,10 +36,21 @@ def simulator() -> Simulator:
 
 
 def _c_output(capfd: pytest.CaptureFixture[str]) -> str:
-    """Take the output of C of the points which failed, see test_worker."""
-    ctypes.CDLL(None).fflush(None)
+    """Take the output of C of the points which failed, see test_worker.
+
+    The streams of C are flushed with POSIX ctypes; on Windows the output of
+    C which is still buffered is not taken.
+    """
+    if sys.platform != "win32":
+        ctypes.CDLL(None).fflush(None)
     captured = capfd.readouterr()
     return captured.out + captured.err
+
+
+def _assert_units(res: ScanResult) -> None:
+    """Check that every variable and coordinate has a unit."""
+    missing = sorted(str(name) for name in res.ds.variables if name not in res.units)
+    assert not missing
 
 
 def test_the_selections_of_a_model() -> None:
@@ -106,6 +114,9 @@ def test_a_dimension_of_values(
     assert res["b0"].values.tolist() == [0.0, 2.0]
     assert res.units["b0"] == ""
     assert res["d"].values.tolist() == [0, 1]
+    # labels carry no unit
+    assert res.units["d"] == ""
+    _assert_units(res)
     for k, b0 in enumerate([0.0, 2.0]):
         expected = simulator.simulate(
             model, Simulation(end=1, steps=10, preinit_changes={"b0": b0})
@@ -199,6 +210,8 @@ def test_a_dimension_of_simulations(
     assert short[:3].tolist() == [0.0, 0.5, 1.0]
     assert np.isnan(short[3:]).all()
     assert res["time"].sel(sim="long").values.tolist() == [0.0, 0.5, 1.0, 1.5, 2.0]
+    assert res.units["sim"] == ""
+    _assert_units(res)
 
 
 def test_simulations_with_one_output_share_a_grid(
@@ -228,10 +241,30 @@ def test_a_dimension_of_models(
     assert res["[A]"].dims == ("model", "time")
     assert res["k1"].sel(model="slow").values[0] == pytest.approx(0.1)
     assert res["k1"].sel(model="fast").values[0] == pytest.approx(0.8)
+    assert res.units["model"] == ""
+    _assert_units(res)
     with pytest.raises(ValueError, match="replaces the model"):
         simulator.run(model, scan)
     with pytest.raises(ValueError, match="needs a model"):
         simulator.run(None, Simulation(end=1))
+
+
+def test_every_model_of_a_dimension_has_its_own_tolerances(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    big = RoadrunnerSBMLModel(source=sbml(PROBE.replace("C = 2", "C = 4")))
+    big.set_selections(SEL)
+    tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
+    simulator = Simulator(n_workers=1, absolute_tolerance=tolerance)
+    scan = Scan(
+        Simulation(end=1, steps=2),
+        [Dimension("model", models={"probe": model, "big": big})],
+    )
+    simulator.run(None, scan)
+    # A and B are concentration species in C, X an amount species
+    for loaded, volume in ((model, 2.0), (big, 4.0)):
+        expected = {"A": 1e-8 * volume, "B": 1e-8 * volume, "X": 1e-9}
+        assert _vector(loaded) == pytest.approx(expected, rel=1e-12, abs=0)
 
 
 def test_a_model_without_a_selection_is_an_error(
@@ -294,6 +327,15 @@ def test_a_grid_of_times(simulator: Simulator, model: RoadrunnerSBMLModel) -> No
     assert np.isnan(res["[A]"].sel(time=3.0).item())
 
 
+def test_a_grid_time_before_the_start_is_nan(
+    simulator: Simulator, model: RoadrunnerSBMLModel
+) -> None:
+    res = simulator.run(model, Simulation(start=0.5, end=2), time=[0.0, 0.5, 1.0])
+    values = res["[A]"].values
+    assert np.isnan(values[0])
+    assert np.isfinite(values[1:]).all()
+
+
 def test_a_grid_of_times_with_a_unit() -> None:
     minutes = RoadrunnerSBMLModel(source=sbml_minutes())
     res = Simulator(n_workers=1).run(minutes, Simulation(end=2), time=Q([0, 60], "s"))
@@ -307,7 +349,6 @@ def test_an_empty_grid_of_times_is_an_error(
         simulator.run(model, Simulation(end=1), time=[])
 
 
-@posix
 def test_a_failed_point_raises_with_its_labels_and_values(
     simulator: Simulator, capfd: pytest.CaptureFixture[str]
 ) -> None:
@@ -324,7 +365,6 @@ def test_a_failed_point_raises_with_its_labels_and_values(
         _c_output(capfd)
 
 
-@posix
 def test_a_failed_simulation_raises(
     simulator: Simulator, capfd: pytest.CaptureFixture[str]
 ) -> None:
@@ -357,7 +397,6 @@ def _failing_scan() -> Scan:
     )
 
 
-@posix
 def test_the_first_failed_point_in_scan_order_raises(
     simulator: Simulator, capfd: pytest.CaptureFixture[str]
 ) -> None:
@@ -369,7 +408,6 @@ def test_the_first_failed_point_in_scan_order_raises(
         _c_output(capfd)
 
 
-@posix
 def test_a_failed_point_is_flagged(
     simulator: Simulator,
     caplog: pytest.LogCaptureFixture,
@@ -385,6 +423,8 @@ def test_a_failed_point_is_flagged(
         output = _c_output(capfd)
     assert res["status"].values.tolist() == [0, 1, 0]
     assert res["status"].dims == ("rate",)
+    assert res.units["status"] == ""
+    _assert_units(res)
     assert np.isnan(res["S"].values[1]).all()
     assert np.isfinite(res["S"].values[[0, 2]]).all()
     assert res.ds.attrs["errors"][0].startswith("rate=1, k=2.0: RuntimeError")
@@ -394,7 +434,6 @@ def test_a_failed_point_is_flagged(
     assert "CVODE Error" not in output
 
 
-@posix
 def test_the_errors_are_in_scan_order(
     simulator: Simulator, capfd: pytest.CaptureFixture[str]
 ) -> None:
@@ -411,8 +450,7 @@ def test_the_errors_are_in_scan_order(
     ]
 
 
-@posix
-def test_a_flagged_scan_keeps_the_log_level_of_roadrunner(
+def test_a_scan_keeps_the_log_level_of_roadrunner(
     simulator: Simulator, capfd: pytest.CaptureFixture[str]
 ) -> None:
     blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
@@ -422,35 +460,80 @@ def test_a_flagged_scan_keeps_the_log_level_of_roadrunner(
     try:
         simulator.run(blowup, scan, on_error="flag")
         assert roadrunner.Logger.getLevel() == roadrunner.Logger.LOG_WARNING
+        # also when the point raises
+        with pytest.raises(ScanError):
+            simulator.run(blowup, scan)
+        assert roadrunner.Logger.getLevel() == roadrunner.Logger.LOG_WARNING
     finally:
         roadrunner.Logger.setLevel(level)
         _c_output(capfd)
 
 
-@posix
+def test_the_errors_are_capped(
+    simulator: Simulator,
+    caplog: pytest.LogCaptureFixture,
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    k = [0.1] + [2.0] * (MAX_ERRORS + 2)
+    scan = Scan(Simulation(end=1, steps=4), [Dimension("rate", values={"k": k})])
+    try:
+        res = simulator.run(blowup, scan, on_error="flag")
+    finally:
+        _c_output(capfd)
+    assert int(res["status"].sum()) == MAX_ERRORS + 2
+    assert [e.split(",")[0] for e in res.ds.attrs["errors"]] == [
+        f"rate={i}" for i in range(1, MAX_ERRORS + 1)
+    ]
+    assert f"{MAX_ERRORS + 2} of {MAX_ERRORS + 3} points" in caplog.text
+
+
+def test_a_selection_which_the_result_reserves_is_an_error(
+    simulator: Simulator,
+) -> None:
+    model = RoadrunnerSBMLModel(
+        source=sbml(PROBE.replace("f = 2", "f = 2; status = 1"))
+    )
+    with pytest.raises(ValueError, match=r"\['status'\]"):
+        simulator.run(model, Simulation(end=1, steps=2), on_error="flag")
+    model.set_selections(["time", "[A]", "status"])
+    with pytest.raises(ValueError, match=r"\['status'\]"):
+        simulator.run(model, Simulation(end=1, steps=2))
+
+
 def test_a_worker_process_silences_sundials(
     monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
 ) -> None:
-    for name in worker_module.SUNDIALS_LOGS:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(worker_module.parallel, "in_worker", lambda: False)
-    worker_module.quiet_sundials()
-    assert not set(worker_module.SUNDIALS_LOGS) & set(os.environ)
-    monkeypatch.setattr(worker_module.parallel, "in_worker", lambda: True)
-    monkeypatch.setenv(worker_module.SUNDIALS_LOGS[0], "mine.log")
-    worker_module.quiet_sundials()
-    # a setting of the user stays
-    assert os.environ[worker_module.SUNDIALS_LOGS[0]] == "mine.log"
-    monkeypatch.delenv(worker_module.SUNDIALS_LOGS[0])
-    worker_module.quiet_sundials()
-    assert {os.environ[name] for name in worker_module.SUNDIALS_LOGS} == {os.devnull}
-    # a model loaded after it fails without the messages of SUNDIALS
-    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
-    scan = Scan(Simulation(end=1, steps=4), [Dimension("rate", values={"k": [2.0]})])
-    _c_output(capfd)
-    res = Simulator(n_workers=1).run(blowup, scan, on_error="flag")
-    assert res["status"].values.tolist() == [1]
-    assert "cvodes" not in _c_output(capfd)
+    names = worker_module.SUNDIALS_LOGS
+    before = {name: os.environ.get(name) for name in names}
+    with monkeypatch.context() as mp:
+        for name in names:
+            # recorded even if it is not set, so the undo removes what
+            # quiet_sundials sets
+            mp.setenv(name, "")
+            mp.delenv(name)
+        mp.setattr(worker_module.parallel, "in_worker", lambda: False)
+        worker_module.quiet_sundials()
+        assert not set(names) & set(os.environ)
+        mp.setattr(worker_module.parallel, "in_worker", lambda: True)
+        mp.setenv(names[0], "mine.log")
+        worker_module.quiet_sundials()
+        # a setting of the user stays
+        assert os.environ[names[0]] == "mine.log"
+        mp.delenv(names[0])
+        worker_module.quiet_sundials()
+        assert {os.environ[name] for name in names} == {os.devnull}
+        # a model loaded after it fails without the messages of SUNDIALS
+        blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+        scan = Scan(
+            Simulation(end=1, steps=4), [Dimension("rate", values={"k": [2.0]})]
+        )
+        _c_output(capfd)
+        res = Simulator(n_workers=1).run(blowup, scan, on_error="flag")
+        assert res["status"].values.tolist() == [1]
+        assert "cvodes" not in _c_output(capfd)
+    # the process of the tests is not silenced
+    assert {name: os.environ.get(name) for name in names} == before
 
 
 def test_no_compile_per_point(
@@ -628,11 +711,15 @@ def test_the_roadrunner_instance_follows_a_derived_model(
     simulator: Simulator, model: RoadrunnerSBMLModel
 ) -> None:
     """A model which is derived for a pre-initialization change is the one run."""
+    tolerances = _vector(model)
     result = simulator.simulate(
         model, Simulation(end=1, preinit_changes={"pinit": 7.0}, times=[0])
     )
     assert result["X"][0] == pytest.approx(21.0)
-    assert simulator.load(model).r_loaded is model.r_loaded
+    # the change is no change of the model: X = 3 * pinit = 3 * 2 * f
+    result = simulator.simulate(model, Simulation(end=1, times=[0]))
+    assert result["X"][0] == pytest.approx(12.0)
+    assert _vector(model) == tolerances
 
 
 def _vector(model: RoadrunnerSBMLModel) -> dict[str, float]:

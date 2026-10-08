@@ -57,7 +57,7 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result.scan import POINT, STATUS, TIME, ScanResult
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
-from sbmlsim.simulation.scan import DimensionKind, Scan
+from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.plan import Plan, compile_simulation, model_time, target_values
 from sbmlsim.simulator.worker import (
@@ -219,7 +219,11 @@ class Simulator:
             on_error: `"raise"` raises a `ScanError` for the first point in
                 the order of the scan which fails; `"flag"` sets every value of
                 a point which fails to `NaN` and records it in the variable
-                `status`.
+                `status`. A failing point is reported by its error, not by the
+                log of roadrunner; a run in a pool prints no messages of the
+                integrator (SUNDIALS), while a serial run, which integrates the
+                model of the user in the calling process, still shows them, a
+                dozen lines or more per failing point.
             progress: show a progress bar; `None` shows it for a run in a pool.
 
         Returns:
@@ -277,7 +281,8 @@ class Simulator:
         Raises:
             ValueError: if neither the run nor a dimension of models gives a
                 model, or both do; if a model of a dimension of models has not
-                the selections or the units of the first one; if a dimension
+                the selections or the units of the first one; if a selection
+                is a name the result reserves, e.g. `status`; if a dimension
                 id is a selection; if a simulation, a value or a time does not
                 fit a model, e.g. a target which is no target of a model; or
                 if two dimensions set one target at one time.
@@ -287,6 +292,13 @@ class Simulator:
         selections = tuple(first.selections or [TIME])
         if selections[0] != TIME:
             selections = (TIME, *selections)
+        reserved = sorted((set(selections[1:]) & RESERVED) - {TIME})
+        if reserved:
+            raise ValueError(
+                f"The selections {reserved} are names of the result "
+                f"({sorted(RESERVED)}), select other entities, see "
+                f"`RoadrunnerSBMLModel.set_selections`."
+            )
         for loaded, label in zip(models[1:], labels[1:], strict=True):
             _check_model(loaded, label, first, selections)
         clash = sorted(set(scan.dims) & set(selections))
@@ -572,6 +584,8 @@ class _Compiled:
         coords: dict[str, Any] = {}
         for dimension in self.scan.dimensions:
             coords[dimension.id] = np.array(dimension.labels)
+            # labels carry no unit
+            units[dimension.id] = ""
             for target, values in dimension.values.items():
                 if target in data_vars or target in coords:
                     # a selection of the same name, the variable stays; or a
@@ -593,6 +607,7 @@ class _Compiled:
         }
         if on_error == "flag":
             data_vars[STATUS] = (dims, status.reshape(shape))
+            units[STATUS] = ""
             attrs["errors"] = [
                 f"{self.point_text(i)}: {message}" if self.scan.dimensions else message
                 for i, message in sorted(errors)[:MAX_ERRORS]

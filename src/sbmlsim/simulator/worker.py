@@ -285,10 +285,15 @@ def quiet_sundials() -> None:
 
     SUNDIALS reads the files of its messages from the environment when
     roadrunner creates the integrator of a model, so this applies to the
-    models loaded after it and is no setting of a loaded model. The messages
-    repeat the errors of the points which fail, which a run reports. Only a
-    worker process of a pool is changed, never the process of the user, and a
-    file the environment names already stays.
+    models loaded after it and is no setting of a loaded model. Only a worker
+    process of a pool is changed, never the process of the user, and a file
+    the environment names already stays.
+
+    The change is permanent for the worker: a kept worker of
+    `sbmlsim.parallel.pool` never prints a message of SUNDIALS again, for
+    every model it loads later, e.g. the cases of `testsuite.map_cases`, also
+    for a scan which raises and for a point which succeeds. A failure is
+    reported through its exception or the variable `status`.
     """
     if not parallel.in_worker():
         return

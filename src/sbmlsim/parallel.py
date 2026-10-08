@@ -220,6 +220,11 @@ def pool(n_workers: int) -> ProcessPoolExecutor:
     broke, e.g. because a worker died, is replaced. Every pool is stopped when
     the process ends, see `shutdown`.
 
+    A worker which ran a chunk of a scan prints no messages of the integrator
+    (SUNDIALS) for the rest of its life, see
+    `sbmlsim.simulator.worker.quiet_sundials`: the workers report a failure
+    through its exception or the variable `status` of a scan.
+
     Args:
         n_workers: the number of worker processes.
 
