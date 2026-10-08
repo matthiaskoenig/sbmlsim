@@ -1,6 +1,6 @@
 # PEtab SciML
 
-[PEtab SciML](https://github.com/PEtab-dev/petab_sciml) is the extension of [PEtab v2](petab.md) for hybrid problems, in which the model is combined with neural networks. The extra `sciml` (`pip install sbmlsim[sciml]`, which brings `petab-sciml`, `h5py` and `pyyaml`) is required to read one. `sbmlsim.sciml` is the native half: a `Network` is the architecture and the arrays of a network, which `Network.forward` evaluates with numpy, and a `Hybridization` says where it sits, in one of three patterns:
+[PEtab SciML](https://github.com/PEtab-dev/petab_sciml) is the extension of [PEtab v2](petab.md) for hybrid problems, in which the model is combined with neural networks. The extra `sciml` (`pip install sbmlsim[sciml]`, which brings `petab-sciml` and `h5py`) is required to read one. `sbmlsim.sciml` is the native half: a `Network` is the architecture and the arrays of a network, which `Network.forward` evaluates with numpy, and a `Hybridization` says where it sits, in one of three patterns:
 
 | pattern | the network is evaluated | inputs | outputs |
 | --- | --- | --- | --- |

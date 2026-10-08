@@ -50,10 +50,8 @@ To work on the repository itself, with the test and documentation tooling, see [
 | [pymetadata](https://github.com/matthiaskoenig/pymetadata) | COMBINE archives of the PEtab problems |
 | [numpy](https://numpy.org), [pandas](https://pandas.pydata.org), [xarray](https://xarray.dev), [scipy](https://scipy.org), [sympy](https://www.sympy.org) | numerics, data and results |
 | [pint](https://pint.readthedocs.io) | units and unit conversions |
-| [petab](https://petab.readthedocs.io), [SALib](https://salib.readthedocs.io) | parameter fitting problems and global sensitivity analysis |
-| [pkpdutils](https://github.com/matthiaskoenig/pkpdutils) | pharmacokinetic and pharmacodynamic analysis of timecourses |
+| [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | parameter fitting problems, the files of the PEtab test suites and global sensitivity analysis |
 | [matplotlib](https://matplotlib.org), [seaborn](https://seaborn.pydata.org), [jinja2](https://jinja.palletsprojects.com) | plots and reports |
-| [sbml4humans](https://github.com/matthiaskoenig/sbml4humans) | human readable reports of the SBML models |
 
 ## Logging
 
