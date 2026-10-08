@@ -14,6 +14,11 @@ from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
+from sbmlsim.model.tolerances import (
+    AbsoluteTolerance,
+    StateTolerance,
+    state_tolerances,
+)
 from sbmlsim.units import UnitRegistry, UnitsInformation
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import md5_for_path
@@ -138,10 +143,15 @@ class RoadrunnerSBMLModel(AbstractModel):
             self.r, selections=self.selections, exclude=set(self.parameters)
         )
 
-        # set integrator settings
-        # logger.info("set integrator settings")
-        if settings:
-            RoadrunnerSBMLModel.set_integrator_settings(self.r, **settings)
+        #: the absolute tolerance set last and the tolerances of the states,
+        #: see `set_integrator_settings`
+        self.absolute_tolerance: AbsoluteTolerance = AbsoluteTolerance()
+        self._state_tolerances: list[StateTolerance] = []
+        #: compartments whose volume was reported as raised to the floor
+        self._raised_reported: set[str] = set()
+        self.set_integrator_settings(
+            **{"absolute_tolerance": AbsoluteTolerance(), **(settings or {})}
+        )
 
         # normalize model changes
         self.uinfo = self.parse_units(ureg if ureg is not None else package_ureg)
@@ -449,30 +459,29 @@ class RoadrunnerSBMLModel(AbstractModel):
             r.timeCourseSelections = selections
         return list(r.timeCourseSelections)
 
-    @staticmethod
     def set_integrator_settings(
-        r: roadrunner.RoadRunner, **kwargs: float | int | bool
+        self, **kwargs: float | int | bool | AbsoluteTolerance
     ) -> roadrunner.Integrator:
         """Set settings of the integrator.
 
         Every setting of the integrator of roadrunner is passed on, for CVODE
-        e.g. `absolute_tolerance`, `relative_tolerance`, `stiff`,
-        `variable_step_size`, `initial_time_step`, `minimum_time_step`,
-        `maximum_time_step` and `maximum_num_steps`. The absolute tolerance is
-        scaled by the smallest volume of the model, see
-        `_tolerance_volume_factor`.
+        e.g. `relative_tolerance`, `stiff`, `variable_step_size`,
+        `initial_time_step`, `minimum_time_step`, `maximum_time_step` and
+        `maximum_num_steps`. `absolute_tolerance`, a float or an
+        `AbsoluteTolerance`, is set as one tolerance per state, see
+        `sbmlsim.model.tolerances`.
 
         Args:
-            r: the roadrunner instance with a loaded model.
             **kwargs: the settings by their names in roadrunner.
 
         Returns:
             The integrator.
 
         Raises:
-            ValueError: if the integrator has no setting of a name.
+            ValueError: if the integrator has no setting of a name, or an
+                override of the absolute tolerance is not a state.
         """
-        integrator: roadrunner.Integrator = r.getIntegrator()
+        integrator: roadrunner.Integrator = self.r_loaded.getIntegrator()
         names = set(integrator.getSettings())
         unknown = sorted(set(kwargs) - names)
         if unknown:
@@ -481,48 +490,79 @@ class RoadrunnerSBMLModel(AbstractModel):
                 f"{unknown}, its settings are {sorted(names)}."
             )
         for key, value in kwargs.items():
-            # adapt the absolute_tolerance relative to the amounts
             if key == "absolute_tolerance":
-                value = min(
-                    value,
-                    value * RoadrunnerSBMLModel._tolerance_volume_factor(r),
-                )
-
-            integrator.setValue(key, value)
-            logger.debug("Integrator setting: '%s = %s'", key, value)
+                if isinstance(value, bool):
+                    raise ValueError("The absolute tolerance is a number.")
+                self._set_absolute_tolerance(AbsoluteTolerance.of(value))
+            else:
+                integrator.setValue(key, value)
+                logger.debug("Integrator setting: '%s = %s'", key, value)
         return integrator
 
-    @staticmethod
-    def _tolerance_volume_factor(r: roadrunner.RoadRunner) -> float:
-        """Get the factor of the absolute tolerance for amounts.
+    def state_ids(self) -> list[str]:
+        """Get the ids of the states which the integrator integrates."""
+        r = self.r_loaded
+        n = len(r.getIntegrator().getAbsoluteToleranceVector())
+        return [r.model.getStateVectorId(k) for k in range(n)]
 
-        The species of a model are integrated as amounts, so the absolute
-        tolerance of the concentrations is scaled by the smallest volume. The
-        initial volumes are used, not the current ones, so that the tolerance
-        does not depend on the state an earlier simulation left behind;
-        compartments without a finite positive volume are ignored.
+    def _set_absolute_tolerance(self, tolerance: AbsoluteTolerance) -> None:
+        """Set the absolute tolerance of every state, see `tolerances`.
 
-        Args:
-            r: the roadrunner instance with a loaded model.
+        roadrunner turns a single value into a vector by its own scaling, so
+        the value of the kind `other` is set first and every state is set by
+        its id afterwards; a later single value would replace the vector.
+        """
+        r = self.r_loaded
+        volumes = dict(
+            zip(
+                r.model.getCompartmentIds(),
+                (float(v) for v in r.model.getCompartmentInitVolumes()),
+                strict=True,
+            )
+        )
+        states = state_tolerances(self.state_ids(), self.symbols, volumes, tolerance)
+        for state in states:
+            if (
+                state.volume_raised
+                and state.compartment is not None
+                and state.compartment not in self._raised_reported
+            ):
+                self._raised_reported.add(state.compartment)
+                logger.warning(
+                    "The compartment '%s' of the model '%s' has the initial volume "
+                    "%s; the absolute tolerances of its species use the volume %s.",
+                    state.compartment,
+                    self.sid or r.model.getModelName(),
+                    volumes.get(state.compartment),
+                    state.volume,
+                )
+        integrator: roadrunner.Integrator = r.getIntegrator()
+        integrator.setValue("absolute_tolerance", tolerance.other)
+        for state in states:
+            integrator.setIndividualTolerance(state.sid, state.absolute_tolerance)
+        self.absolute_tolerance = tolerance
+        self._state_tolerances = states
+
+    def tolerances(self) -> pd.DataFrame:
+        """Get the absolute tolerance of every state.
 
         Returns:
-            The smallest finite positive initial volume, 1 if there is none.
+            A row per state with `sid`, `kind`, `compartment`, `volume` (the
+            reference volume of a concentration species) and
+            `absolute_tolerance`.
         """
-        volumes = np.asarray(r.model.getCompartmentInitVolumes(), dtype=float)
-        volumes = volumes[np.isfinite(volumes) & (volumes > 0)]
-        if volumes.size == 0:
-            return 1.0
-        return float(np.nanmin(volumes))
-
-    @staticmethod
-    def set_default_settings(r: roadrunner.RoadRunner, **kwargs):
-        """Set default settings of integrator."""
-        RoadrunnerSBMLModel.set_integrator_settings(
-            r,
-            variable_step_size=True,
-            stiff=True,
-            absolute_tolerance=1e-8,
-            relative_tolerance=1e-8,
+        return pd.DataFrame(
+            [
+                {
+                    "sid": s.sid,
+                    "kind": s.kind.value,
+                    "compartment": s.compartment,
+                    "volume": s.volume,
+                    "absolute_tolerance": s.absolute_tolerance,
+                }
+                for s in self._state_tolerances
+            ],
+            columns=["sid", "kind", "compartment", "volume", "absolute_tolerance"],
         )
 
     @staticmethod

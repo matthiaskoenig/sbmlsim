@@ -1,6 +1,7 @@
 """Test the profile likelihood analysis of the parameters of a fit."""
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -33,13 +34,17 @@ SCAN_SETTINGS = ProfileSettings(
     reoptimize=False, initial_step=0.5, min_step=0.1, max_step=2.0, max_points=6
 )
 
+#: absolute tolerance of the integration of the scans compared between
+#: processes, tight so that the comparison is not limited by the integration
+COMPARE_ATOL = 1e-12
+
 #: tolerance the cost of a scan is compared with between processes. The
-#: residuals of a problem do not depend on its earlier evaluations, so a
-#: worker on a fresh roadrunner instance gives the cost of the serial scans;
-#: the headroom covers the first load of a model by roadrunner, which differs
-#: from the later ones by about `1e-9` relative. A scan which took another
-#: path differs by the threshold of the test, i.e. `1.92` in the cost
-COST_RTOL = 1e-8
+#: residuals of a problem do not depend on its earlier evaluations, but a
+#: worker process evaluates the model with differences in the last bits,
+#: which can change a step of the integrator and with it the result within
+#: the tolerances of the integration. A scan which took another path differs
+#: by the threshold of the test, i.e. `1.92` in the cost
+COST_RTOL = 1e-5
 
 
 def _profile(
@@ -420,6 +425,7 @@ def test_parallel_equals_serial(
     The scans take the same path, i.e. the same parameter values, and their
     costs agree, see `COST_RTOL`.
     """
+    fit_settings = replace(fit_settings, absolute_tolerance=COMPARE_ATOL)
     serial = _result_of_scan(op_hctz_pk, fit_settings)
     parallel = profile_likelihood(
         problem=op_hctz_pk,

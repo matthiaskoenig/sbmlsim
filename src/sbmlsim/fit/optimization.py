@@ -1004,9 +1004,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         self.set_simulator(simulator)
         for model in {id(m): m for m in self.models}.values():
-            RoadrunnerSBMLModel.set_integrator_settings(
-                model.r_loaded, **simulator.integrator_settings
-            )
+            model.set_integrator_settings(**simulator.integrator_settings)
         self._compile_plans()
 
     @property

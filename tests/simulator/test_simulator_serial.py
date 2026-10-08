@@ -3,10 +3,11 @@
 import numpy as np
 import pytest
 
+from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
 from sbmlsim.simulator import SimulatorSerial
-from tests.simulator.models import sbml
+from tests.simulator.models import TOLERANCE_PROBE, sbml
 
 
 @pytest.fixture
@@ -60,6 +61,12 @@ def test_the_roadrunner_instance_follows_a_derived_model(
     assert simulator.r_loaded is simulator.model_loaded.r_loaded
 
 
+def _vector(simulator: SimulatorSerial) -> list[float]:
+    """Get the sorted absolute tolerances which CVODE uses."""
+    integrator = simulator.r_loaded.getIntegrator()
+    return sorted(float(v) for v in integrator.getAbsoluteToleranceVector())
+
+
 def test_integrator_settings_are_passed_on_and_kept(tmp_path) -> None:
     """Every setting of the integrator reaches roadrunner, also for a later model."""
     path = tmp_path / "probe.xml"
@@ -77,3 +84,40 @@ def test_an_unknown_integrator_setting_is_an_error(simulator: SimulatorSerial) -
     """A setting the integrator does not have is not dropped silently."""
     with pytest.raises(ValueError, match="has no settings"):
         simulator.set_integrator_settings(initial_step=1e-9)
+
+
+def test_the_tolerance_of_every_state_reaches_cvode(tmp_path) -> None:
+    """The tolerances per state are the vector of CVODE, after a new model too."""
+    path = tmp_path / "tolerances.xml"
+    path.write_text(sbml(TOLERANCE_PROBE))
+    tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
+    simulator = SimulatorSerial(model=path, absolute_tolerance=tolerance)
+    # A and S are concentration species in C = 2 and U = 1e-12 (raised to
+    # 2e-6), X an amount species, D a parameter with a rate rule
+    expected = sorted([1e-8 * 2, 1e-8 * 2e-6, 1e-9, 1e-7])
+    assert _vector(simulator) == pytest.approx(expected)
+    simulator.set_model(path)
+    assert _vector(simulator) == pytest.approx(expected)
+    table = simulator.model_loaded.tolerances()
+    assert list(table["sid"]) == simulator.model_loaded.state_ids()
+    assert set(table["kind"]) == {"amount", "concentration", "other"}
+
+
+def test_a_float_tolerance_is_the_same_for_every_kind(tmp_path) -> None:
+    """The scaling of roadrunner by the initial values is not used."""
+    path = tmp_path / "tolerances.xml"
+    path.write_text(sbml(TOLERANCE_PROBE))
+    simulator = SimulatorSerial(model=path, absolute_tolerance=1e-10)
+    expected = sorted([1e-10 * 2, 1e-10 * 2e-6, 1e-10, 1e-10])
+    assert _vector(simulator) == pytest.approx(expected)
+
+
+def test_a_degenerate_compartment_is_logged(tmp_path, caplog) -> None:
+    """A compartment whose volume is raised to the floor is logged once per model."""
+    path = tmp_path / "tolerances.xml"
+    path.write_text(sbml(TOLERANCE_PROBE))
+    with caplog.at_level("WARNING"):
+        simulator = SimulatorSerial(model=path)
+        simulator.set_integrator_settings(absolute_tolerance=1e-9)
+    messages = [r.getMessage() for r in caplog.records if "'U'" in r.getMessage()]
+    assert len(messages) == 1
