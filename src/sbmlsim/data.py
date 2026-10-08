@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import logging
+import re
+from collections.abc import Callable, Mapping
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 import pandas as pd
 
-from sbmlsim import mathml
 from sbmlsim.result import XResult
+from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.units import (
     DimensionalityError,
     Q,
@@ -20,16 +24,127 @@ from sbmlsim.units import (
 
 logger = logging.getLogger(__name__)
 
+#: a call of `max` or `min` which is not the end of a longer identifier
+_REDUCTION_CALL = re.compile(r"(?<![A-Za-z0-9_])(max|min)\s*\(")
+
+#: prefix of the symbol which stands for the value of a reduction
+_REDUCTION_PREFIX = "sbmlsim_reduction__"
+
+#: the reductions of a single argument, which ignore the padding of the data
+_REDUCTIONS: dict[str, Callable[[Any], Any]] = {"max": np.nanmax, "min": np.nanmin}
+
+
+def _closing_parenthesis(formula: str, start: int) -> int:
+    """Find the parenthesis which closes the one opened before `start`.
+
+    Raises:
+        ValueError: if the parentheses of the formula are not balanced.
+    """
+    depth = 1
+    for k in range(start, len(formula)):
+        if formula[k] == "(":
+            depth += 1
+        elif formula[k] == ")":
+            depth -= 1
+            if depth == 0:
+                return k
+    raise ValueError(f"The parentheses of the formula '{formula}' are not balanced.")
+
+
+def _split_arguments(text: str) -> list[str]:
+    """Split the arguments of a call at the commas outside of parentheses."""
+    arguments: list[str] = []
+    depth = 0
+    start = 0
+    for k, character in enumerate(text):
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        elif character == "," and depth == 0:
+            arguments.append(text[start:k])
+            start = k + 1
+    arguments.append(text[start:])
+    return arguments
+
+
+def _replace_reductions(formula: str, values: dict[str, Any]) -> str:
+    """Replace every `max` and `min` of a single argument by its value.
+
+    The argument is evaluated on the data and reduced over it, the call is
+    replaced by a symbol whose value is added to `values`. The arguments of a
+    call are processed first, so an inner reduction is reduced first.
+    """
+    parts: list[str] = []
+    position = 0
+    while (match := _REDUCTION_CALL.search(formula, position)) is not None:
+        end = _closing_parenthesis(formula, match.end())
+        arguments = [
+            _replace_reductions(argument, values)
+            for argument in _split_arguments(formula[match.end() : end])
+        ]
+        parts.append(formula[position : match.start()])
+        if len(arguments) == 1:
+            count = sum(1 for key in values if key.startswith(_REDUCTION_PREFIX))
+            symbol = f"{_REDUCTION_PREFIX}{count}"
+            values[symbol] = _REDUCTIONS[match.group(1)](
+                _evaluate(arguments[0], values)
+            )
+            parts.append(symbol)
+        else:
+            parts.append(f"{match.group(1)}({','.join(arguments)})")
+        position = end + 1
+    parts.append(formula[position:])
+    return "".join(parts)
+
+
+def _evaluate(formula: str, values: Mapping[str, Any]) -> Any:
+    """Evaluate a formula of PEtab math without reductions on the values.
+
+    Raises:
+        ValueError: if the formula is not valid math or reads an identifier
+            which has no value.
+    """
+    compiled = compile_formula(formula)
+    missing = [symbol for symbol in compiled.symbols if symbol not in values]
+    if missing:
+        raise ValueError(
+            f"The formula '{formula}' reads {missing}, which are neither "
+            f"variables nor parameters of the data."
+        )
+    return compiled.apply([values[symbol] for symbol in compiled.symbols])
+
+
+def evaluate_function(formula: str, variables: Mapping[str, Any]) -> Any:
+    """Evaluate the formula of a `Data` of type FUNCTION on its data.
+
+    The formula is the math of PEtab, see `sbmlsim.simulator.formula`, with
+    one extension for data: `max` and `min` of a single argument reduce the
+    argument over the data and ignore `NaN`, the padding of a scan, so
+    `Y/max(Y)` is `Y` normalized to its maximum. With two or more arguments
+    they are the elementwise maximum and minimum of PEtab.
+
+    Args:
+        formula: the formula.
+        variables: the values of the identifiers of the formula, the arrays
+            or quantities of the data and the numbers of the parameters.
+
+    Returns:
+        The value of the formula, a quantity if the variables are quantities.
+
+    Raises:
+        ValueError: if the formula is not valid math or reads an identifier
+            which is not a variable.
+    """
+    values = dict(variables)
+    return _evaluate(_replace_reductions(formula, values), values)
+
 
 class Data:
-    """Data.
+    """Data of a simulation experiment.
 
-    Main data generator class which uses data either from
-    experimental data, simulations or via function calculations.
-
-    All transformation of data and a tree of data operations.
-    This is just a promise for data which will be fullfilled with data from
-    tasks.
+    A column of a dataset, a selection of the results of a task or a function
+    of other data. It is a promise which is fulfilled when the experiment runs.
     """
 
     class Types(Enum):
@@ -257,7 +372,6 @@ class Data:
             # evaluate with actual data
             if self.function is None:
                 raise ValueError(f"Data '{self}' has no function.")
-            astnode = mathml.formula_to_astnode(self.function)
             variables = {}
             for var_key, variable in self.variables.items():
                 # lookup via key
@@ -268,7 +382,7 @@ class Data:
             for par_key, par_value in self.parameters.items():
                 variables[par_key] = par_value
 
-            x = mathml.evaluate(astnode=astnode, variables=variables)
+            x = evaluate_function(self.function, variables)
             if not isinstance(x, Quantity):
                 # a formula of plain numbers evaluates to a number, e.g. a
                 # function of parameters alone; it is dimensionless

@@ -15,6 +15,7 @@ import functools
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 import sympy as sp
@@ -38,7 +39,7 @@ class CompiledFormula:
 
     formula: str
     symbols: tuple[str, ...]
-    _function: Callable[..., float] = field(repr=False, compare=False)
+    _function: Callable[..., Any] = field(repr=False, compare=False)
 
     def evaluate(self, values: Sequence[float]) -> float:
         """Evaluate the formula.
@@ -50,6 +51,20 @@ class CompiledFormula:
             The value of the formula.
         """
         return float(self._function(*values))
+
+    def apply(self, values: Sequence[Any]) -> Any:
+        """Evaluate the formula on values of any type numpy operates on.
+
+        Unlike `evaluate`, the result is not converted to a float, arrays and
+        the quantities of pint keep their shape and their units.
+
+        Args:
+            values: the values of the symbols, in the order of `symbols`.
+
+        Returns:
+            The value of the formula.
+        """
+        return self._function(*values)
 
     def evaluate_array(self, values: Sequence[np.ndarray], size: int) -> np.ndarray:
         """Evaluate the formula on arrays of the values of its symbols.

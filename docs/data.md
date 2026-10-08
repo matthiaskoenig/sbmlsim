@@ -64,6 +64,8 @@ f = Data(
 print(f.sid, f.dtype, f.function)
 ```
 
+The function is a formula of the math of PEtab, the same as the formulas of changes and observables. One extension serves data: `max` and `min` of a single argument reduce it over the data and ignore the `NaN` of padding, so `Y/max(Y)` normalizes `Y` to its maximum; with two or more arguments they are the elementwise maximum and minimum.
+
 ## Resolving data
 
 `Data.get_data(experiment)` returns the quantity for the data in a run experiment, i.e., the values of the task result or the dataset column with their units, optionally converted to other units:
