@@ -12,6 +12,12 @@ inputs:
       the arguments of `uv sync`, e.g. `--extra dev`; empty does not sync
     required: false
     default: ""
+  save-cache:
+    description: >-
+      whether the job saves the cache of uv; jobs which share a key would race
+      for it and warn "Unable to reserve cache"
+    required: false
+    default: "false"
 runs:
   using: composite
   steps:
@@ -21,6 +27,7 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
         enable-cache: true
+        save-cache: ${{ inputs.save-cache }}
     - name: Put libpython on the library search path (linux only)
       # the extension of libroadrunner links against libpython. The standalone
       # interpreters uv installs link it statically and ship it in their `lib`,
