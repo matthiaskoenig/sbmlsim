@@ -58,3 +58,22 @@ def test_the_roadrunner_instance_follows_a_derived_model(
     )
     assert result["X"][0] == pytest.approx(21.0)
     assert simulator.r_loaded is simulator.model_loaded.r_loaded
+
+
+def test_integrator_settings_are_passed_on_and_kept(tmp_path) -> None:
+    """Every setting of the integrator reaches roadrunner, also for a later model."""
+    path = tmp_path / "probe.xml"
+    path.write_text(sbml())
+    simulator = SimulatorSerial(model=path, initial_time_step=1e-9)
+    simulator.set_integrator_settings(maximum_num_steps=1234)
+    # a new model, as for every task of an experiment
+    simulator.set_model(path)
+    integrator = simulator.r_loaded.getIntegrator()
+    assert integrator.getValue("initial_time_step") == pytest.approx(1e-9)
+    assert integrator.getValue("maximum_num_steps") == 1234
+
+
+def test_an_unknown_integrator_setting_is_an_error(simulator: SimulatorSerial) -> None:
+    """A setting the integrator does not have is not dropped silently."""
+    with pytest.raises(ValueError, match="has no settings"):
+        simulator.set_integrator_settings(initial_step=1e-9)

@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING
 
 import libsbml
 import numpy as np
@@ -57,13 +57,6 @@ logger = logging.getLogger(__name__)
 
 class RoadrunnerSBMLModel(AbstractModel):
     """Roadrunner model wrapper."""
-
-    IntegratorSettingKeys: ClassVar[set[str]] = {
-        "variable_step_size",
-        "stiff",
-        "absolute_tolerance",
-        "relative_tolerance",
-    }
 
     def __init__(
         self,
@@ -445,25 +438,36 @@ class RoadrunnerSBMLModel(AbstractModel):
 
     @staticmethod
     def set_integrator_settings(
-        r: roadrunner.RoadRunner, **kwargs
+        r: roadrunner.RoadRunner, **kwargs: float | int | bool
     ) -> roadrunner.Integrator:
-        """Set integrator settings.
+        """Set settings of the integrator.
 
-        Keys are:
-            variable_step_size [boolean]
-            stiff [boolean]
-            absolute_tolerance [float]
-            relative_tolerance [float]
+        Every setting of the integrator of roadrunner is passed on, for CVODE
+        e.g. `absolute_tolerance`, `relative_tolerance`, `stiff`,
+        `variable_step_size`, `initial_time_step`, `minimum_time_step`,
+        `maximum_time_step` and `maximum_num_steps`. The absolute tolerance is
+        scaled by the smallest volume of the model, see
+        `_tolerance_volume_factor`.
 
+        Args:
+            r: the roadrunner instance with a loaded model.
+            **kwargs: the settings by their names in roadrunner.
+
+        Returns:
+            The integrator.
+
+        Raises:
+            ValueError: if the integrator has no setting of a name.
         """
         integrator: roadrunner.Integrator = r.getIntegrator()
+        names = set(integrator.getSettings())
+        unknown = sorted(set(kwargs) - names)
+        if unknown:
+            raise ValueError(
+                f"The integrator '{integrator.getName()}' has no settings "
+                f"{unknown}, its settings are {sorted(names)}."
+            )
         for key, value in kwargs.items():
-            if key not in RoadrunnerSBMLModel.IntegratorSettingKeys:
-                logger.debug(
-                    "Unsupported integrator key for roadrunner integrator: '%s'", key
-                )
-                continue
-
             # adapt the absolute_tolerance relative to the amounts
             if key == "absolute_tolerance":
                 value = min(

@@ -128,13 +128,19 @@ xres = simulator.run_simulation(Simulation(end=10, steps=10))
 print(list(xres.xds.data_vars))
 ```
 
-The integrator settings of roadrunner are passed to the simulator or set afterwards:
+The integrator settings of roadrunner are passed to the simulator or set afterwards. Every setting of the integrator is passed on, a name the integrator does not have is an error, and the settings apply to every model the simulator runs, e.g. the models of the tasks of an experiment:
 
 ```python
 simulator = SimulatorSerial(
     model=REPRESSILATOR_SBML, absolute_tolerance=1e-10, relative_tolerance=1e-10
 )
 simulator.set_integrator_settings(stiff=True)
+```
+
+CVODE estimates its first step after the start and after every change. At a late time a state which starts from 0, e.g. after a reset of an amount, can give a first step which is smaller than the resolution of the time, and CVODE warns "t + h = t on the next step". A small positive `initial_time_step` in the time unit of the model avoids the estimate; a step which is too large fails the error test of the integrator:
+
+```python
+simulator.set_integrator_settings(initial_time_step=1e-10)
 ```
 
 ## Results

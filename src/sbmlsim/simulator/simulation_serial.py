@@ -37,7 +37,8 @@ class SimulatorSerial:
         """Initialize serial simulator.
 
         :param model: Path to model or model
-        :param kwargs: integrator settings
+        :param kwargs: settings of the integrator, every setting of roadrunner,
+            see `RoadrunnerSBMLModel.set_integrator_settings`
         """
         self.model: RoadrunnerSBMLModel | None = None
 
@@ -78,9 +79,15 @@ class SimulatorSerial:
             self.set_integrator_settings(**self.integrator_settings)
             # logger.info("model loading finished")
 
-    def set_integrator_settings(self, **kwargs):
-        """Set settings in the integrator."""
-        RoadrunnerSBMLModel.set_integrator_settings(self.r_loaded, **kwargs)
+    def set_integrator_settings(self, **kwargs: float | int | bool) -> None:
+        """Set settings of the integrator.
+
+        See `RoadrunnerSBMLModel.set_integrator_settings`. The settings apply to the loaded model and to every model set later,
+        e.g. the models of the tasks of an experiment.
+        """
+        if self.model is not None:
+            RoadrunnerSBMLModel.set_integrator_settings(self.r_loaded, **kwargs)
+        self.integrator_settings.update(kwargs)
 
     def set_timecourse_selections(self, selections: list[str] | None) -> None:
         """Set the selections of the simulations, all of the model for `None`."""
