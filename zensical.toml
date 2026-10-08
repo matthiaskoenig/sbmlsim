@@ -78,6 +78,7 @@ nav = [
     ] },
     { "sbmlsim.result" = [
       { "timecourse" = "api/result.timecourse.md" },
+      { "scan" = "api/result.scan.md" },
       { "xresult" = "api/result.xresult.md" },
     ] },
     { "sbmlsim.plot" = [

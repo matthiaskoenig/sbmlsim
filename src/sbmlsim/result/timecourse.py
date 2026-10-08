@@ -2,8 +2,9 @@
 
 The simulator answers every `Simulation` with a `TimecourseResult`: the
 array of the selections which roadrunner returns, with a row per time point and
-a column per selection, and the names of the columns. `XResult.from_timecourses`
-places the results of the simulations of a scan into one `xarray.Dataset`.
+a column per selection, and the names of the columns.
+`sbmlsim.simulator.Simulator.run` places the results of the simulations of a
+scan into a `ScanResult`.
 
 It is deliberately not a data frame. A fit simulates its groups on every
 evaluation of the residuals and a scan simulates every combination of its
@@ -113,3 +114,33 @@ class TimecourseResult:
     def time(self) -> np.ndarray:
         """Get the time points, i.e., the column `time`."""
         return self["time"]
+
+
+def interpolate(time: np.ndarray, values: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    """Interpolate a timecourse linearly onto a grid of times.
+
+    The time points of a simulation increase and a time of a change appears
+    once, with the state after the change, so the value at the time of a
+    change is the value after it. The padding (`NaN`) and the steady state
+    after the end (`inf`) are no time points of the interpolation.
+
+    Args:
+        time: the time points.
+        values: the values, a row per time point, one or two dimensional.
+        grid: the times of the result.
+
+    Returns:
+        The values at the times of the grid, a row per time; `NaN` outside of
+        the finite time points and for a timecourse without any.
+    """
+    grid = np.asarray(grid, dtype=float)
+    mask = np.isfinite(time)
+    out = np.full((grid.size, *values.shape[1:]), np.nan)
+    if not mask.any():
+        return out
+    t, v = time[mask], values[mask]
+    if v.ndim == 1:
+        return np.interp(grid, t, v, left=np.nan, right=np.nan)
+    for j in range(v.shape[1]):
+        out[:, j] = np.interp(grid, t, v[:, j], left=np.nan, right=np.nan)
+    return out
