@@ -19,7 +19,6 @@ from typing import Any
 
 import numpy as np
 import sympy as sp
-from petab.v2.math import sympify_petab
 
 #: a concentration `[S]` in a formula
 _BRACKETS = re.compile(r"\[([A-Za-z_][A-Za-z0-9_]*)\]")
@@ -101,6 +100,10 @@ def compile_formula(formula: str) -> CompiledFormula:
     Raises:
         ValueError: if the formula is not valid math of PEtab.
     """
+    # petab.v2 imports its SciML extension and torch, which costs seconds;
+    # only a simulation with a formula pays it
+    from petab.v2.math import sympify_petab
+
     escaped = _BRACKETS.sub(lambda m: f"{_PREFIX}{m.group(1)}", formula)
     try:
         expression = sympify_petab(escaped)
