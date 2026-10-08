@@ -2,6 +2,7 @@
 
 import multiprocessing
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -263,3 +264,34 @@ def test_an_interrupted_start_stops_the_workers(
     assert stopped == started and len(started) == 1
     assert parallel._POOLS == {}
     assert not any(p.is_alive() for p in (started[0]._processes or {}).values())
+
+
+#: what the initializer of a test pool ran with, in its worker
+_INITIALIZED: list[str] = []
+
+
+def _initialize(value: str) -> None:
+    _INITIALIZED.append(value)
+
+
+def _initialized() -> list[str]:
+    return list(_INITIALIZED)
+
+
+def _interrupt_handler() -> object:
+    return signal.getsignal(signal.SIGINT)
+
+
+def test_a_worker_leaves_ctrl_c_to_the_parent() -> None:
+    """A worker ignores SIGINT, which a terminal sends to every process of the job."""
+    assert parallel.pool(1).submit(_interrupt_handler).result() == signal.SIG_IGN
+    assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+def test_the_initializer_of_a_pool_runs_after_the_one_of_sbmlsim() -> None:
+    executor = parallel.start_pool(1, initializer=_initialize, initargs=("fit",))
+    try:
+        assert executor.submit(_initialized).result() == ["fit"]
+        assert executor.submit(_interrupt_handler).result() == signal.SIG_IGN
+    finally:
+        parallel.stop(executor)

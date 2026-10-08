@@ -12,6 +12,10 @@ Every pool of the package comes from here:
 - `worker_cache` keeps objects in a worker, e.g. the models of a scan or the
   initialized problem of a fit, and builds one only when its key is new.
 
+Ctrl-C belongs to the process of the user: a terminal sends SIGINT to every
+process of the job, the workers ignore it and the parent stops a pool whose
+run it interrupts, see `start_pool` and `stop`.
+
 A pool starts worker processes which import the main module again (the start
 methods `forkserver` and `spawn`), so a script which starts a pool must do it
 behind the guard `if __name__ == "__main__":`. Without it the workers die while
@@ -25,22 +29,27 @@ import atexit
 import logging
 import multiprocessing
 import os
+import signal
 from collections import OrderedDict
 from collections.abc import Callable, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.context import BaseContext
-from typing import cast
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
 
 #: the smallest number of tasks which `resolve_workers` runs in a pool for
-#: `n_workers=None`; below it the start of the workers costs more than it
-#: saves. Set by the benchmark `test_the_pool_pays_from_the_threshold`: a scan
-#: of the repressilator (0.8 ms per point) on a started pool of 20 workers,
-#: each of which loads the model first (about 150 ms), is as fast as serially
-#: at about 200 points and 1.2 times faster at 256; with the model already in
-#: the workers the pool pays from fewer than 32 points
+#: `n_workers=None`, set by the benchmark `test_the_pool_pays_from_the_threshold`
+#: on linux with the start method `forkserver` and 20 CPUs. The start of the
+#: pool and its workers is not counted, it is paid once per process (the first
+#: pooled scan of 256 points of the repressilator, 0.8 ms per point, takes
+#: about 870 ms against 200 ms serially and 30 ms in the next pooled run);
+#: the load of the model in every worker is counted, it is paid per model
+#: (about 150 ms on 20 workers). With it the pool is as fast as serially at
+#: about 200 points and 1.2 times faster at 256; with the model already in the
+#: workers it pays from fewer than 32 points. A short script with a single
+#: scan of a cheap model can therefore be faster with `n_workers=1`.
 POOL_THRESHOLD: int = 256
 
 #: seconds the workers of a new pool may take to start
@@ -165,14 +174,39 @@ def _alive() -> int:
     return os.getpid()
 
 
-def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecutor:
+def _initialize_worker(
+    initializer: Callable[..., object] | None, initargs: tuple[Any, ...]
+) -> None:
+    """Initialize a worker: SIGINT is ignored, then the initializer runs.
+
+    A terminal sends Ctrl-C to every process of the job: a worker which waits
+    for a task would die with a traceback and break the pool. The parent
+    handles it and stops a pool whose run it interrupts, see `stop`.
+    """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    if initializer is not None:
+        initializer(*initargs)
+
+
+def start_pool(
+    n_workers: int,
+    preload: Sequence[str] = (),
+    initializer: Callable[..., object] | None = None,
+    initargs: tuple[Any, ...] = (),
+) -> ProcessPoolExecutor:
     """Start a pool whose workers answer, see `pool` for one which is kept.
+
+    The workers ignore SIGINT, Ctrl-C interrupts the parent only, see the
+    module.
 
     Args:
         n_workers: the number of worker processes.
         preload: modules the forkserver imports once for all workers; it
             takes effect only when the forkserver starts for the first time in
             this process.
+        initializer: a function every worker runs when it starts, after it
+            ignored SIGINT, as the `initializer` of a `ProcessPoolExecutor`.
+        initargs: the arguments of the initializer.
 
     Returns:
         The pool, the caller stops it with `stop`.
@@ -187,7 +221,12 @@ def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecut
             "A pool was started inside a worker process; run the inner part "
             "serially (n_workers=1)."
         )
-    executor = ProcessPoolExecutor(max_workers=n_workers, mp_context=_context(preload))
+    executor = ProcessPoolExecutor(
+        max_workers=n_workers,
+        mp_context=_context(preload),
+        initializer=_initialize_worker,
+        initargs=(initializer, initargs),
+    )
     logger.debug("Starting a pool of %s workers", n_workers)
     try:
         executor.submit(_alive).result(timeout=WORKER_STARTUP_TIMEOUT)

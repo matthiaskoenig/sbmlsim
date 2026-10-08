@@ -5,7 +5,9 @@ when the scan core became slower there than 0.8.5, or the pool does not pay.
 """
 
 import os
+import statistics
 import time
+from collections.abc import Callable
 
 import numpy as np
 import pytest
@@ -13,16 +15,21 @@ import pytest
 import sbmlsim.simulator.simulator as simulator_module
 from sbmlsim import parallel
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.resources import MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
+from sbmlsim.simulator.executor import execute
 
 pytestmark = pytest.mark.benchmark
 
 #: ms per `SimulatorSerial.simulate` of the repressilator (end=100, steps=100)
 #: in 0.8.5, measured in the pre-flight of the scan core on the machine of the
-#: benchmarks
+#: benchmarks; reported, the time of the machine is not asserted
 BASE_SIMULATE_MS = 0.711
+
+#: the most `Simulator.simulate` may cost more than the work of
+#: `SimulatorSerial.simulate` of 0.8.5, i.e. the settings of the integrator
+SIMULATE_OVERHEAD = 0.03
 
 #: s per `SimulatorSerial.run_scan` of the 1e3 points of `_scan(1000)` in
 #: 0.8.5, measured in the same pre-flight
@@ -58,25 +65,79 @@ def _start_every_worker(n_workers: int) -> None:
     assert len(pids) == n_workers
 
 
-def test_a_simulation() -> None:
-    """`Simulator.simulate` is not slower than `SimulatorSerial.simulate` of 0.8.5."""
-    simulator, model = Simulator(n_workers=1), _model()
-    simulation = Simulation(end=100, steps=100)
-    simulator.simulate(model, simulation)
-    # the best of five rounds, as timeit, so that the load of the machine
-    # does not count
-    rounds = []
-    for _ in range(5):
-        start = time.perf_counter()
-        for _ in range(100):
-            simulator.simulate(model, simulation)
-        rounds.append((time.perf_counter() - start) / 100)
-    elapsed = min(rounds)
-    print(
-        f"\nSimulator.simulate: {elapsed * 1e3:.3f} ms per simulation "
-        f"(0.8.5: {BASE_SIMULATE_MS:.3f} ms)"
+#: the models of `test_a_simulation`: a model, its selections and a simulation
+SIMULATIONS = {
+    "repressilator": (
+        REPRESSILATOR_SBML,
+        ["time", "PX", "PY", "PZ"],
+        Simulation(end=100, steps=100),
+    ),
+    "midazolam": (
+        MIDAZOLAM_SBML,
+        ["time", "[Cve_mid]", "[Cve_mid1oh]", "Aurine_mid1oh"],
+        Simulation(end=24 * 60, steps=100, preinit_changes={"PODOSE_mid": 10.0}),
+    ),
+}
+
+
+def _medians(
+    functions: dict[str, Callable[[], object]], n: int = 600
+) -> dict[str, float]:
+    """Get the median time of every function, called in turn.
+
+    The functions are called one after the other, n times, so that a change of
+    the load of the machine hits every one of them alike.
+    """
+    for function in functions.values():
+        function()
+    times: dict[str, list[float]] = {key: [] for key in functions}
+    for _ in range(n):
+        for key, function in functions.items():
+            start = time.perf_counter()
+            function()
+            times[key].append(time.perf_counter() - start)
+    return {key: statistics.median(values) for key, values in times.items()}
+
+
+@pytest.mark.parametrize("name", list(SIMULATIONS))
+def test_a_simulation(name: str) -> None:
+    """`Simulator.simulate` costs little more than the execution of its plan.
+
+    `SimulatorSerial.simulate` of 0.8.5 compiled the simulation and executed
+    the plan, `Simulator.simulate` adds the settings of the integrator, which
+    it sets only when they changed: a simulation costs at most
+    `SIMULATE_OVERHEAD` more than the compile and the execution of its plan,
+    and a plan at most that more than its execution. The times are measured
+    in the same process, the result does not depend on the speed of the
+    machine.
+    """
+    source, selections, simulation = SIMULATIONS[name]
+    model = RoadrunnerSBMLModel(source=source)
+    model.set_selections(selections)
+    simulator = Simulator(n_workers=1)
+    plan = simulator.compile(simulator.load(model), simulation)
+    selected = model.selections or []
+    times = _medians(
+        {
+            "simulation": lambda: simulator.simulate(model, simulation),
+            "0.8.5": lambda: execute(
+                simulator.compile(model, simulation), model, selected
+            ),
+            "plan": lambda: simulator.simulate(model, plan),
+            "execute": lambda: execute(plan, model, selected),
+        }
     )
-    assert elapsed * 1e3 <= 1.1 * BASE_SIMULATE_MS
+    simulation_overhead = times["simulation"] / times["0.8.5"] - 1
+    plan_overhead = times["plan"] / times["execute"] - 1
+    base = f" (0.8.5: {BASE_SIMULATE_MS:.3f} ms)" if name == "repressilator" else ""
+    print(
+        f"\nSimulator.simulate of the {name}: {times['simulation'] * 1e3:.3f} ms"
+        f"{base}, {simulation_overhead * 100:+.1f} % against compile and execute; "
+        f"of its plan {times['plan'] * 1e3:.3f} ms, {plan_overhead * 100:+.1f} % "
+        f"against execute"
+    )
+    assert simulation_overhead <= SIMULATE_OVERHEAD
+    assert plan_overhead <= SIMULATE_OVERHEAD
 
 
 def test_the_serial_time_of_a_scan_of_1e3_points(
@@ -112,7 +173,7 @@ def test_a_scan_of_1e4_points_is_faster_on_4_workers() -> None:
     # the start of the workers is paid once per process
     _start_every_worker(4)
     start = time.perf_counter()
-    pooled = Simulator(n_workers=4).run(model, scan)
+    pooled = Simulator(n_workers=4).run(model, scan, progress=False)
     t4 = time.perf_counter() - start
     print(f"\n1e4 points: {t1:.2f} s on 1 worker, {t4:.2f} s on 4, {t1 / t4:.2f}x")
     np.testing.assert_array_equal(pooled["PX"].values, serial["PX"].values)

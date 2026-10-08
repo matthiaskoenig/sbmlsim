@@ -822,3 +822,53 @@ def test_a_degenerate_compartment_is_logged(
         simulator.load(model)
     messages = [r.getMessage() for r in caplog.records if "'U'" in r.getMessage()]
     assert len(messages) == 1
+
+
+def test_the_tolerances_are_set_once_per_roadrunner_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A simulation does not set the tolerances again, a change of them does."""
+    calls: list[AbsoluteTolerance] = []
+    set_absolute_tolerance = RoadrunnerSBMLModel._set_absolute_tolerance
+
+    def spy(self: RoadrunnerSBMLModel, tolerance: AbsoluteTolerance) -> None:
+        calls.append(tolerance)
+        set_absolute_tolerance(self, tolerance)
+
+    monkeypatch.setattr(RoadrunnerSBMLModel, "_set_absolute_tolerance", spy)
+    model = RoadrunnerSBMLModel(source=sbml())
+    tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
+    simulator = Simulator(n_workers=1, absolute_tolerance=tolerance)
+    simulation = Simulation(end=1, steps=2)
+    calls.clear()
+    simulator.simulate(model, simulation)
+    expected = _vector(model)
+    simulator.simulate(model, simulation)
+    simulator.load(model)
+    assert calls == [tolerance]
+    # a change of the setting
+    simulator.set_integrator_settings(absolute_tolerance=1e-6)
+    simulator.simulate(model, simulation)
+    assert calls == [tolerance, AbsoluteTolerance.of(1e-6)]
+    assert set(_vector(model).values()) == {1e-6 * 2, 1e-6}
+    # the tolerances of the integrator changed elsewhere
+    simulator.set_integrator_settings(absolute_tolerance=tolerance)
+    simulator.simulate(model, simulation)
+    integrator = model.r_loaded.getIntegrator()
+    integrator.setValue("absolute_tolerance", 1e-3)
+    integrator.setValue("relative_tolerance", 1e-3)
+    calls.clear()
+    simulator.simulate(model, simulation)
+    assert calls == [tolerance]
+    assert _vector(model) == expected
+    assert integrator.getValue("relative_tolerance") == 1e-10
+    # a new instance of roadrunner
+    model.r = roadrunner.RoadRunner(model.r_loaded.getSBML())
+    calls.clear()
+    simulator.simulate(model, simulation)
+    assert calls == [tolerance]
+    assert _vector(model) == expected
+    # another simulator with the same settings
+    calls.clear()
+    Simulator(n_workers=1, absolute_tolerance=tolerance).simulate(model, simulation)
+    assert calls == []

@@ -483,7 +483,7 @@ class _Compiled:
         Returns:
             The chunks in the order of their first point.
         """
-        size = max(1, min(MAX_CHUNK, math.ceil(self.size / (4 * workers))))
+        size = chunk_size(self.size, workers)
         positions = self._positions()
         sim_axis = self._axis(DimensionKind.SIMULATIONS)
         model_axis = self._axis(DimensionKind.MODELS)
@@ -622,6 +622,22 @@ class _Compiled:
                     attrs["errors"][0],
                 )
         return ScanResult(xr.Dataset(data_vars, coords=coords, attrs=attrs))
+
+
+def chunk_size(n_points: int, workers: int) -> int:
+    """Get the most points of a chunk.
+
+    Four chunks per worker, so that a worker which finishes early takes
+    another one, of at most `MAX_CHUNK` points and of at least one.
+
+    Args:
+        n_points: the points of the scan.
+        workers: the number of processes of the run.
+
+    Returns:
+        The size of a chunk.
+    """
+    return max(1, min(MAX_CHUNK, math.ceil(n_points / (4 * workers))))
 
 
 def _first(failed: ScanPointError | None, err: ScanPointError) -> ScanPointError:

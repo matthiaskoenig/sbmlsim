@@ -147,6 +147,12 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: see `set_integrator_settings`
         self.absolute_tolerance: AbsoluteTolerance = AbsoluteTolerance()
         self._state_tolerances: list[StateTolerance] = []
+        #: what the tolerances of the states were set for: the instance of
+        #: roadrunner, the initial volumes of its compartments and the vector
+        #: of CVODE, see `_has_absolute_tolerance`
+        self._tolerances_of: (
+            tuple[roadrunner.RoadRunner, list[float], list[float]] | None
+        ) = None
         #: compartments whose volume was reported as raised to the floor
         self._raised_reported: set[str] = set()
         self.set_integrator_settings(
@@ -488,6 +494,13 @@ class RoadrunnerSBMLModel(AbstractModel):
         `AbsoluteTolerance`, is set as one tolerance per state, see
         `sbmlsim.model.tolerances`.
 
+        A setting the integrator has already is not set again, so that a
+        simulator which applies its settings before every simulation costs
+        nothing: the tolerances of the states are computed again only for
+        another tolerance, another instance of roadrunner, other initial
+        volumes of the compartments or a vector of CVODE which was set
+        elsewhere.
+
         Args:
             **kwargs: the settings by their names in roadrunner.
 
@@ -499,7 +512,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 override of the absolute tolerance is not a state.
         """
         integrator: roadrunner.Integrator = self.r_loaded.getIntegrator()
-        names = set(integrator.getSettings())
+        names = _setting_names(integrator)
         unknown = sorted(set(kwargs) - names)
         if unknown:
             raise ValueError(
@@ -510,11 +523,36 @@ class RoadrunnerSBMLModel(AbstractModel):
             if key == "absolute_tolerance":
                 if isinstance(value, bool):
                     raise ValueError("The absolute tolerance is a number.")
-                self._set_absolute_tolerance(AbsoluteTolerance.of(value))
-            else:
+                tolerance = AbsoluteTolerance.of(value)
+                if not self._has_absolute_tolerance(tolerance, integrator):
+                    self._set_absolute_tolerance(tolerance)
+            elif integrator.getValue(key) != value:
                 integrator.setValue(key, value)
                 logger.debug("Integrator setting: '%s = %s'", key, value)
         return integrator
+
+    def _has_absolute_tolerance(
+        self, tolerance: AbsoluteTolerance, integrator: roadrunner.Integrator
+    ) -> bool:
+        """Check whether CVODE integrates with the tolerances of a tolerance.
+
+        The tolerances of the states depend on the instance of roadrunner and
+        the initial volumes of the compartments; the vector of CVODE is
+        compared as well, it may have been set on the integrator directly.
+
+        Args:
+            tolerance: the tolerance.
+            integrator: the integrator of the model.
+        """
+        if tolerance != self.absolute_tolerance or self._tolerances_of is None:
+            return False
+        r = self.r_loaded
+        instance, volumes, vector = self._tolerances_of
+        return (
+            instance is r
+            and _floats(r.model.getCompartmentInitVolumes()) == volumes
+            and _floats(integrator.getAbsoluteToleranceVector()) == vector
+        )
 
     def state_ids(self) -> list[str]:
         """Get the ids of the states which the integrator integrates."""
@@ -561,6 +599,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         )
         self.absolute_tolerance = tolerance
         self._state_tolerances = states
+        self._tolerances_of = (
+            r,
+            _floats(r.model.getCompartmentInitVolumes()),
+            _floats(integrator.getAbsoluteToleranceVector()),
+        )
 
     def tolerances(self) -> pd.DataFrame:
         """Get the absolute tolerance of every state.
@@ -663,6 +706,25 @@ class RoadrunnerSBMLModel(AbstractModel):
                 ]
             ),
         )
+
+
+#: the names of the settings of an integrator by its name, see `_setting_names`
+_SETTING_NAMES: dict[str, frozenset[str]] = {}
+
+
+def _setting_names(integrator: roadrunner.Integrator) -> frozenset[str]:
+    """Get the names of the settings of an integrator, read once per kind."""
+    name = str(integrator.getName())
+    names = _SETTING_NAMES.get(name)
+    if names is None:
+        names = frozenset(integrator.getSettings())
+        _SETTING_NAMES[name] = names
+    return names
+
+
+def _floats(values: Sequence[float] | np.ndarray) -> list[float]:
+    """Get the values of an array of roadrunner as floats."""
+    return np.asarray(values, dtype=float).tolist()
 
 
 def _with_initial_helpers(sbml: str) -> tuple[str, dict[str, str]]:
