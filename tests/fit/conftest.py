@@ -2,8 +2,15 @@
 
 The HCTZ example is the reference fitting problem, `op_hctz_pk` is its
 smallest subset: a single simulation experiment with four fit mappings.
+
+Building a problem selects the fit mappings of the experiments, which takes
+0.1 to 0.2 s. A session builds each problem once and a test gets a deep copy
+of it, 0.1 ms: a test is free to initialize or to change its problem, since
+the copy is its own. With pytest-xdist every worker has its own session and
+builds the problems once.
 """
 
+import copy
 from typing import Any
 
 import pytest
@@ -23,13 +30,23 @@ from sbmlsim.fit.options import (
 )
 
 
+@pytest.fixture(scope="session")
+def _op_hctz_pk_template() -> OptimizationProblem:
+    """Build the uninitialized problem of the pharmacokinetics data once.
+
+    Only the copies in `op_hctz_pk` are handed to a test, so this problem is
+    never initialized.
+    """
+    return FIT_DEFINITIONS["PK"].problem(opid="hctz_pk")
+
+
 @pytest.fixture
-def op_hctz_pk() -> OptimizationProblem:
+def op_hctz_pk(_op_hctz_pk_template: OptimizationProblem) -> OptimizationProblem:
     """Get the uninitialized problem of the pharmacokinetics data.
 
     It has training, validation and outlier fit mappings.
     """
-    return FIT_DEFINITIONS["PK"].problem(opid="hctz_pk")
+    return copy.deepcopy(_op_hctz_pk_template)
 
 
 @pytest.fixture
@@ -75,9 +92,8 @@ def _collections_iv() -> dict[str, list[FitMappingCollection]]:
     )
 
 
-@pytest.fixture
-def definition_hctz_iv() -> FitDefinition:
-    """Get the definition of the fit of the iv data of Beermann1976."""
+def _definition_iv() -> FitDefinition:
+    """Create the definition of the fit of the iv data of Beermann1976."""
     pk = FIT_DEFINITIONS["PK"]
     return FitDefinition(
         mapping_collections=_collections_iv,
@@ -89,9 +105,25 @@ def definition_hctz_iv() -> FitDefinition:
 
 
 @pytest.fixture
-def op_hctz_iv(definition_hctz_iv: FitDefinition) -> OptimizationProblem:
+def definition_hctz_iv() -> FitDefinition:
+    """Get the definition of the fit of the iv data of Beermann1976."""
+    return _definition_iv()
+
+
+@pytest.fixture(scope="session")
+def _op_hctz_iv_template() -> OptimizationProblem:
+    """Build the uninitialized problem of the iv data once.
+
+    Only the copies in `op_hctz_iv` are handed to a test, so this problem is
+    never initialized.
+    """
+    return _definition_iv().problem(opid="hctz_iv")
+
+
+@pytest.fixture
+def op_hctz_iv(_op_hctz_iv_template: OptimizationProblem) -> OptimizationProblem:
     """Get the uninitialized problem of the iv data, four training mappings."""
-    return definition_hctz_iv.problem(opid="hctz_iv")
+    return copy.deepcopy(_op_hctz_iv_template)
 
 
 @pytest.fixture
