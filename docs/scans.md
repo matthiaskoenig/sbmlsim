@@ -18,7 +18,7 @@ simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
 scan = ScanSim(
     simulation=Simulation(end=100, steps=100),
     dimensions=[
-        Dimension("dim_n", changes={"n": np.linspace(2, 4, num=5)}),
+        Dimension("dim_n", values={"n": np.linspace(2, 4, num=5)}),
     ],
 )
 xres = simulator.run_scan(scan)
@@ -32,9 +32,7 @@ The values of a dimension are quantities with units or floats in the units of th
 scan = ScanSim(
     simulation=Simulation(end=100, steps=100),
     dimensions=[
-        Dimension(
-            "dim_n", changes={"n": np.random.normal(loc=3.0, scale=0.2, size=20)}
-        ),
+        Dimension("dim_n", values={"n": np.random.normal(loc=3.0, scale=0.2, size=20)}),
     ],
 )
 xres = simulator.run_scan(scan)
@@ -47,7 +45,7 @@ The value of a scan replaces the value of its target wherever the simulation set
 
 ```python
 dosing = Simulation(end=150, changes=[Change([0, 50, 100], {"X": 10.0})], steps=150)
-scan = ScanSim(dosing, [Dimension("dim_dose", changes={"X": np.array([5.0, 20.0])})])
+scan = ScanSim(dosing, [Dimension("dim_dose", values={"X": np.array([5.0, 20.0])})])
 _, simulations = scan.to_simulations()
 print([s.changes[0].values for s in simulations])
 ```
@@ -57,7 +55,7 @@ A dimension with `at` applies its values as a `Change` at that time instead:
 ```python
 scan = ScanSim(
     Simulation(end=200, steps=200, changes=[Change(100, {"X": 10.0})]),
-    [Dimension("dim_X0", changes={"X": np.array([1.0, 50.0])}, at=0)],
+    [Dimension("dim_X0", values={"X": np.array([1.0, 50.0])}, at=0)],
 )
 xres = simulator.run_scan(scan)
 ```
@@ -70,8 +68,8 @@ Several dimensions are combined: every combination of the indices is simulated. 
 scan = ScanSim(
     simulation=Simulation(end=100, steps=100),
     dimensions=[
-        Dimension("dim_n", changes={"n": np.linspace(2, 4, num=3)}),
-        Dimension("dim_X", changes={"X": np.array([1.0, 10.0, 100.0, 1000.0])}),
+        Dimension("dim_n", values={"n": np.linspace(2, 4, num=3)}),
+        Dimension("dim_X", values={"X": np.array([1.0, 10.0, 100.0, 1000.0])}),
     ],
 )
 xres = simulator.run_scan(scan)

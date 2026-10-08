@@ -49,7 +49,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
                 # the time 100
                 Dimension(
                     "dim1",
-                    changes={"X": Q(np.linspace(0, 10, num=11), unit_data)},
+                    values={"X": Q(np.linspace(0, 10, num=11), unit_data)},
                     at=0,
                 )
             ],
@@ -59,12 +59,12 @@ class RepressilatorScanExperiment(SimulationExperiment):
             dimensions=[
                 Dimension(
                     "dim1",
-                    changes={"X": Q(rng.normal(5, 2, size=10), unit_data)},
+                    values={"X": Q(rng.normal(5, 2, size=10), unit_data)},
                     at=0,
                 ),
                 Dimension(
                     "dim2",
-                    changes={"Y": Q(rng.normal(5, 2, size=10), unit_data)},
+                    values={"Y": Q(rng.normal(5, 2, size=10), unit_data)},
                 ),
             ],
         )

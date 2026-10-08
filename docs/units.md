@@ -54,7 +54,7 @@ scan = ScanSim(
         },
     ),
     dimensions=[
-        Dimension("dim1", changes={"[e__A]": Q(np.linspace(5, 15, num=5), "mM")}),
+        Dimension("dim1", values={"[e__A]": Q(np.linspace(5, 15, num=5), "mM")}),
     ],
 )
 xres = simulator.run_scan(scan)

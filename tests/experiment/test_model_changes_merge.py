@@ -30,7 +30,7 @@ def _experiment(path: Path) -> type[SimulationExperiment]:
                 ),
                 "scan": ScanSim(
                     Simulation(end=1, steps=2),
-                    [Dimension("d", changes={"b0": np.array([1.0, 4.0])})],
+                    [Dimension("d", values={"b0": np.array([1.0, 4.0])})],
                 ),
             }
 

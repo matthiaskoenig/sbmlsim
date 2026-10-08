@@ -32,7 +32,7 @@ def test_run_scan(simulator: SimulatorSerial) -> None:
     """A scan is a result with a dimension per dimension of the scan."""
     scan = ScanSim(
         Simulation(end=1, steps=10),
-        [Dimension("d", changes={"b0": np.array([0.0, 2.0])})],
+        [Dimension("d", values={"b0": np.array([0.0, 2.0])})],
     )
     xres = simulator.run_scan(scan)
     assert xres["[B]"].dims == ("_point", "d")

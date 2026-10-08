@@ -43,7 +43,7 @@ def run_scan1d() -> XResult:
         dimensions=[
             Dimension(
                 "dim1",
-                changes={
+                values={
                     "n": np.linspace(start=2, stop=10, num=8),
                 },
             )
@@ -63,13 +63,13 @@ def run_scan2d() -> XResult:
         dimensions=[
             Dimension(
                 "dim1",
-                changes={
+                values={
                     "n": np.linspace(start=2, stop=10, num=8),
                 },
             ),
             Dimension(
                 "dim2",
-                changes={
+                values={
                     "Y": np.logspace(start=2, stop=2.5, num=4),
                 },
             ),
@@ -88,7 +88,7 @@ def run_scan1d_distribution() -> XResult:
         dimensions=[
             Dimension(
                 "dim1",
-                changes={
+                values={
                     "n": np.random.normal(loc=5.0, scale=0.2, size=50),
                 },
             )

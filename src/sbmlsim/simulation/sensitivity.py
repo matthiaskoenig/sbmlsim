@@ -131,7 +131,7 @@ class ModelSensitivity:
             values = np.random.normal(magnitude, scale=magnitude * cv, size=size)
             changes[key] = Q(values, units)
 
-        return Dimension("dim_sens", changes=changes)
+        return Dimension("dim_sens", values=changes)
 
     @staticmethod
     def create_difference_dimension(
@@ -167,7 +167,7 @@ class ModelSensitivity:
             values[index] = magnitude * (1.0 + difference)
             values[index + num_pars] = magnitude * (1.0 - difference)
             changes[key] = Q(values, model.uinfo[key])
-        return Dimension("dim_sens", changes=changes)
+        return Dimension("dim_sens", values=changes)
 
     @staticmethod
     def reference_dict(

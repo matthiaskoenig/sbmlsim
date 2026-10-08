@@ -61,7 +61,7 @@ def test_difference_scan_of_a_simulation() -> None:
         model=model, simulation=simulation, difference=0.1
     )
     assert scan.simulation is simulation
-    values = scan.dimensions[0].changes["n"].magnitude
+    values = scan.dimensions[0].values["n"].magnitude
     assert any(v == pytest.approx(3.0 * 1.1) for v in values)
     simulator = SimulatorSerial(model)
     simulator.set_timecourse_selections(["time", "n"])

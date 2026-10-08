@@ -41,8 +41,7 @@ def run_demo_example():
         dimensions=[
             Dimension(
                 "dim1",
-                index=np.arange(20),
-                changes={"[e__A]": Q(np.linspace(5, 15, num=20), "mM")},
+                values={"[e__A]": Q(np.linspace(5, 15, num=20), "mM")},
             )
         ],
     )

@@ -46,7 +46,7 @@ class DemoExperiment(SimulationExperiment):
                 dimensions=[
                     Dimension(
                         "dim_init",
-                        changes={"[e__A]": Q(np.linspace(5, 15, num=11), "mM")},
+                        values={"[e__A]": Q(np.linspace(5, 15, num=11), "mM")},
                     ),
                     ModelSensitivity.create_difference_dimension(
                         model=self._models["model"],

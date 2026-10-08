@@ -83,8 +83,8 @@ def test_scan_places_every_simulation() -> None:
     scan = ScanSim(
         simulation=Simulation(end=10, steps=10),
         dimensions=[
-            Dimension("dim_n", changes={"n": np.array([2.0, 3.0, 4.0])}),
-            Dimension("dim_y", changes={"Y": np.array([10.0, 30.0])}),
+            Dimension("dim_n", values={"n": np.array([2.0, 3.0, 4.0])}),
+            Dimension("dim_y", values={"Y": np.array([10.0, 30.0])}),
         ],
     )
     xres = simulator.run_scan(scan)

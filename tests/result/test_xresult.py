@@ -21,9 +21,7 @@ def _scan() -> ScanSim:
     """Get a scan of two simulations."""
     return ScanSim(
         Simulation(end=4),
-        dimensions=[
-            Dimension("d", index=np.arange(2), changes={"k": np.array([1.0, 2.0])})
-        ],
+        dimensions=[Dimension("d", values={"k": np.array([1.0, 2.0])})],
     )
 
 

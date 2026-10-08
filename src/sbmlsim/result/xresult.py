@@ -20,7 +20,7 @@ import xarray as xr
 from numpy.typing import ArrayLike
 
 from sbmlsim.result.timecourse import TimecourseResult
-from sbmlsim.simulation import Dimension, ScanSim
+from sbmlsim.simulation import ScanSim
 from sbmlsim.units import Quantity, UnitsInformation
 
 logger = logging.getLogger(__name__)
@@ -316,28 +316,26 @@ class XResult:
                 )
         n_point = max(len(result) for result in results)
 
-        # Additional dimensions
-        dimensions: list[Dimension]
-        if scan is not None:
-            dimensions = scan.dimensions
-        elif len(results) > 1:
-            dimensions = [Dimension("_dfs", index=np.arange(len(results)))]
-        else:
-            dimensions = []
-
+        # the dimensions of the scan, or `_dfs` for several results without one
         shape = [n_point]
         dims = ["_point"]
         coords: dict[str, np.ndarray] = {"_point": np.arange(n_point)}
-        for dimension in dimensions:
-            shape.append(len(dimension))
-            dim_id = dimension.dimension
-            coords[dim_id] = dimension.index
-            dims.append(dim_id)
+        indices: list[tuple[int, ...]] = [()]
+        if scan is not None and scan.dimensions:
+            for dimension in scan.dimensions:
+                shape.append(len(dimension))
+                dims.append(dimension.id)
+                coords[dimension.id] = dimension.labels
+            indices = scan.indices()
+        elif scan is None and len(results) > 1:
+            shape.append(len(results))
+            dims.append("_dfs")
+            coords["_dfs"] = np.arange(len(results))
+            indices = [(k,) for k in range(len(results))]
 
         # one array for all columns with the column as the first axis, so a
         # result is copied with a single assignment and every variable is a
         # contiguous block of it
-        indices = Dimension.indices_from_dimensions(dimensions) if dimensions else [()]
         data = np.full(shape=(len(columns), *shape), fill_value=np.nan)
         for k, result in enumerate(results):
             data[(slice(None), slice(0, len(result)), *indices[k])] = result.values.T
