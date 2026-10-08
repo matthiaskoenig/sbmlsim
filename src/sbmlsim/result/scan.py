@@ -40,7 +40,8 @@ from sbmlsim.result.timecourse import (
     grid_weights,
     interpolate,
 )
-from sbmlsim.units import Quantity, ureg
+from sbmlsim.units import Quantity, UnitRegistry
+from sbmlsim.units import ureg as package_ureg
 
 #: the dimension of the time of a grid
 TIME = "time"
@@ -113,12 +114,17 @@ class ScanResult:
         """Check whether the result has a variable or coordinate."""
         return key in self.ds.variables
 
-    def quantity(self, key: str) -> Quantity:
+    def quantity(self, key: str, ureg: UnitRegistry | None = None) -> Quantity:
         """Get the values of a variable or coordinate with its unit.
 
         The `cv` of a summary is dimensionless; a variable with a dimension
         `statistic` which holds statistics of different units needs a
         selection of the statistic first.
+
+        Args:
+            key: the variable or coordinate.
+            ureg: the unit registry of the quantity, the one of the package
+                by default; e.g. the registry of a simulation experiment.
 
         Raises:
             ValueError: if the key holds labels, has no unit, or mixes units.
@@ -139,7 +145,8 @@ class ScanResult:
                     f"statistic first, e.g. sel(statistic='mean')."
                 )
             unit = found.pop()
-        return ureg.Quantity(np.asarray(array.values, dtype=float), unit)
+        registry = ureg if ureg is not None else package_ureg
+        return registry.Quantity(np.asarray(array.values, dtype=float), unit)
 
     def sel(self, **indexers: Any) -> ScanResult:
         """Select by labels, see `xarray.Dataset.sel`."""

@@ -6,6 +6,7 @@ import os
 import sys
 import weakref
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -64,6 +65,35 @@ def test_the_selections_of_a_model() -> None:
     assert list(model.r_loaded.timeCourseSelections) == ["time", "X"]
     model.set_selections(None)
     assert model.selections == every
+
+
+@pytest.mark.parametrize(
+    "selections", [["[A]", "time", "X"], ["[A]", "X", "time"], ["time", "[A]", "X"]]
+)
+def test_the_time_is_selected_once(
+    simulator: Simulator,
+    model: RoadrunnerSBMLModel,
+    selections: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The time is the first column of a run, wherever the model selects it.
+
+    The selections of an experiment are sorted, which puts `time` last.
+    """
+    model.set_selections(selections)
+    columns: list[tuple[str, ...]] = []
+    run_chunk = simulator_module.run_chunk
+
+    def recording(chunk: Any, loaded: RoadrunnerSBMLModel) -> Any:
+        result = run_chunk(chunk, loaded)
+        columns.append(chunk.selections)
+        assert result.values.shape[2] == 3
+        return result
+
+    monkeypatch.setattr(simulator_module, "run_chunk", recording)
+    res = simulator.run(model, Simulation(end=1, steps=2))
+    assert columns == [("time", "[A]", "X")]
+    assert res.variables == ["[A]", "X"]
 
 
 def test_simulate_is_one_timecourse(

@@ -6,21 +6,23 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from sbmlsim.data import Data
+from sbmlsim.data import Data, DataSet
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import model_key
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
+from sbmlsim.plot.padding import first_curve, without_padding
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
-from sbmlsim.units import Quantity
+from sbmlsim.units import Quantity, _create_registry
 
 
 class FitMappingExperiment(SimulationExperiment):
@@ -239,6 +241,80 @@ def test_the_data_of_a_scan_has_the_time_last() -> None:
     np.testing.assert_allclose(time.magnitude, np.linspace(0, 10, 11))
     x = Data("X", task="task").get_data(experiment)
     np.testing.assert_allclose(x.magnitude, [1.0, 2.0, 3.0])
+
+
+class RegistryExperiment(FitMappingExperiment):
+    """An experiment whose data combines a task and a dataset."""
+
+    def datasets(self) -> dict:
+        df = pd.DataFrame({"time": [0.0, 10.0, 20.0], "X": [1.0, 4.0, 2.0]})
+        return {
+            "ds": DataSet.from_df(
+                df, udict={"time": "second", "X": "dimensionless"}, ureg=self.ureg
+            )
+        }
+
+
+def test_the_data_of_a_task_is_in_the_registry_of_the_experiment() -> None:
+    """A runner with its own registry combines task data with dataset data."""
+    # a registry with the definitions of the package, but another one
+    ureg = _create_registry()
+    runner = ExperimentRunner(
+        experiment_classes=[RegistryExperiment],
+        simulator=Simulator(),
+        base_path=Path("."),
+        data_path=Path("."),
+        ureg=ureg,
+    )
+    experiment = runner.experiments["RegistryExperiment"]
+    experiment.run(runner.simulator)
+
+    ratio = Data(
+        "ratio",
+        function="x / max(d)",
+        variables={"x": Data("[X]", task="task"), "d": Data("X", dataset="ds")},
+    ).get_data(experiment)
+    x = Data("[X]", task="task").get_data(experiment)
+    assert x._REGISTRY is ureg
+    np.testing.assert_allclose(ratio.magnitude, x.magnitude / 4.0)
+
+
+class RaggedScanExperiment(ScanExperiment):
+    """The scan with the steps of the integrator, a ragged result."""
+
+    def simulations(self) -> dict:
+        return {
+            "scan": Scan(
+                Simulation(end=10),
+                [Dimension("d", values={"X": np.array([1.0, 2.0, 30.0])})],
+            )
+        }
+
+
+def test_the_data_of_a_ragged_scan_has_its_points_last() -> None:
+    """A Data of a ragged result is over `(*dims, _point)`, padded with NaN.
+
+    A curve draws the first point of the scan without its padding.
+    """
+    runner = _runner(RaggedScanExperiment)
+    experiment = runner.experiments["RaggedScanExperiment"]
+    experiment.run(runner.simulator)
+    result = experiment.results["task"]
+    assert result.ragged
+
+    y = Data("[Y]", task="task").get_data(experiment)
+    time = Data("time", task="task").get_data(experiment)
+    assert y.magnitude.shape == time.magnitude.shape == (3, result.ds.sizes["_point"])
+    padded = np.isnan(time.magnitude)
+    assert padded.any()
+    np.testing.assert_array_equal(np.isnan(y.magnitude), padded)
+
+    x, curve = without_padding(first_curve(time.magnitude), first_curve(y.magnitude))
+    native = Simulator().simulate(
+        experiment._models["m"], Simulation(end=10, preinit_changes={"X": 1.0})
+    )
+    np.testing.assert_allclose(x, native.time)
+    np.testing.assert_allclose(curve, native["[Y]"])
 
 
 def test_the_data_of_a_variable_which_was_not_selected_raises() -> None:

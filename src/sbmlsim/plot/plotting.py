@@ -1562,8 +1562,14 @@ class Plot(BasePlotObject):
                     pass
                 elif isinstance(count, str):
                     # resolve count data from dataset
+                    experiment = self.experiment
+                    if experiment is None:
+                        raise ValueError(
+                            f"The count '{count}' is a column of a dataset, but "
+                            f"the plot belongs to no simulation experiment."
+                        )
                     count_data = Data(index=count, dataset=dataset, task=task)
-                    counts = count_data.get_data(self.experiment)
+                    counts = count_data.get_data(experiment)
                     counts_unique = np.unique(counts.magnitude)
                     if counts_unique.size > 1:
                         logger.warning("count is not unique for dataset: '%s'", counts)

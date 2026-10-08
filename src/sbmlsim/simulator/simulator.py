@@ -291,9 +291,9 @@ class Simulator:
         """
         models, labels = self._models(model, scan)
         first = models[0]
-        selections = tuple(first.selections or [TIME])
-        if selections[0] != TIME:
-            selections = (TIME, *selections)
+        # the time is the first column, also where the model selects it
+        # elsewhere, e.g. last in the sorted selections of an experiment
+        selections = (TIME, *(s for s in first.selections or [] if s != TIME))
         reserved = sorted((set(selections[1:]) & RESERVED) - {TIME})
         if reserved:
             raise ValueError(

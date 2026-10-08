@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable, Mapping
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -16,11 +16,13 @@ from sbmlsim.result import ScanResult
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.units import (
     DimensionalityError,
-    Q,
     Quantity,
     UnitRegistry,
     UnitsInformation,
 )
+
+if TYPE_CHECKING:
+    from sbmlsim.experiment import SimulationExperiment
 
 logger = logging.getLogger(__name__)
 
@@ -291,19 +293,40 @@ class Data:
 
     def get_data(
         self,
-        experiment,  # "SimulationExperiment"
+        experiment: SimulationExperiment,
         to_units: str | None = None,
     ) -> Quantity:
-        """Return actual data from the data object.
+        """Get the values of the data from an experiment which ran.
 
-        The data is resolved from the available datasets and
-        the injected Experiment.
+        A dataset gives its column, a task the variable or coordinate of its
+        `ScanResult` and a function its formula evaluated on its variables
+        and parameters; `unit` is set to the unit of the values. The data of a
+        task is in the layout of its result, `(*dims, time)` on a common grid
+        of times or `(*dims, _point)` for a ragged result, whose simulations
+        keep their own time points padded with `NaN`; a coordinate, e.g. a
+        changed target, is over its dimension. The values are quantities of
+        the unit registry of the experiment.
 
-        :param to_units: units to convert to
-        :return:
+        Args:
+            experiment: the experiment whose datasets and results are read.
+            to_units: the unit to convert the values to, their own unit
+                without.
+
+        Returns:
+            The values with their unit.
+
+        Raises:
+            KeyError: if the dataset has no column of the index or no unit of
+                it, or the result of the task has no variable or coordinate of
+                the selection.
+            ValueError: if the dataset is no `DataSet`, the result of the task
+                is no `ScanResult` or its selection holds labels or has no
+                unit, or a function has no formula.
+            DimensionalityError: if the values cannot be converted to
+                `to_units`.
         """
-        # Necessary to resolve the data
-        if self.dtype == Data.Types.DATASET:
+        # the type of the data is the first of task, dataset and function
+        if self.dtype == Data.Types.DATASET and self.dset_id is not None:
             # read dataset data
             if not experiment._datasets:
                 experiment._datasets = experiment.datasets()
@@ -334,14 +357,15 @@ class Data:
                 self.unit = dset.uinfo[uindex]
             except KeyError as err:
                 logger.error(
-                    "Units missing for key '%s' in dataset: '%s'. Add missing units to dataset.",
+                    "Units missing for key '%s' in dataset: '%s'. Add missing "
+                    "units to dataset.",
                     uindex,
                     self.dset_id,
                 )
                 raise err
             x = dset[self.index].values * dset.uinfo.ureg(dset.uinfo[uindex])
 
-        elif self.dtype == Data.Types.TASK:
+        elif self.dtype == Data.Types.TASK and self.task_id is not None:
             result = experiment.results[self.task_id]
             if not isinstance(result, ScanResult):
                 raise ValueError(
@@ -355,8 +379,8 @@ class Data:
                     f"it to the selections of the experiment."
                 )
             # the values in the layout of the result, the time last
-            x = result.quantity(self.selection)
-            self.unit = result.units.get(self.selection, "")
+            x = result.quantity(self.selection, ureg=experiment.ureg)
+            self.unit = result.units[self.selection]
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data
@@ -366,7 +390,9 @@ class Data:
             for var_key, variable in self.variables.items():
                 # lookup via key
                 if isinstance(variable, str):
-                    variables[var_key] = experiment._data[variable].data
+                    variables[var_key] = experiment._data[variable].get_data(
+                        experiment=experiment
+                    )
                 elif isinstance(variable, Data):
                     variables[var_key] = variable.get_data(experiment=experiment)
             for par_key, par_value in self.parameters.items():
@@ -376,7 +402,7 @@ class Data:
             if not isinstance(x, Quantity):
                 # a formula of plain numbers evaluates to a number, e.g. a
                 # function of parameters alone; it is dimensionless
-                x = Q(x, "dimensionless")
+                x = experiment.ureg.Quantity(x, "dimensionless")
             self.unit = str(x.units)
 
         # convert units to requested units
