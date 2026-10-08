@@ -69,8 +69,12 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
         seed: int | None = None,
         n_cores: int | None = None,
         cache_results: bool = False,
+        dpi: int = 300,
     ):
-        """Initialize the sampling analysis with N samples per group."""
+        """Initialize the sampling analysis with N samples per group.
+
+        The figures are written at the resolution `dpi`.
+        """
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
             parameters=parameters,
@@ -79,6 +83,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
             seed=seed,
             n_cores=n_cores,
             cache_results=cache_results,
+            dpi=dpi,
         )
         self.N: int = N
         self.prefix = f"sampling_N{self.N}"
@@ -365,7 +370,7 @@ class SamplingSensitivityAnalysis(SensitivityAnalysis):
 
         plt.savefig(
             self.results_path / f"{self.prefix}_sensitivity_{type}.png",
-            dpi=300,
+            dpi=self.dpi,
             bbox_inches="tight",
         )
         plt.close(f)

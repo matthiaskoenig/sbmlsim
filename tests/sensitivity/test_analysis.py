@@ -1,6 +1,24 @@
 from dataclasses import asdict
+from pathlib import Path
 
-from sbmlsim.sensitivity import AnalysisGroup, SensitivityOutput
+import pytest
+from matplotlib.image import imread
+
+from examples.sensitivity.sensitivity_example import (
+    sensitivity_groups,
+    sensitivity_parameters,
+    sensitivity_simulation,
+)
+from sbmlsim.sensitivity import (
+    AnalysisGroup,
+    FASTSensitivityAnalysis,
+    LocalSensitivityAnalysis,
+    MorrisSensitivityAnalysis,
+    SamplingSensitivityAnalysis,
+    SensitivityAnalysis,
+    SensitivityOutput,
+    SobolSensitivityAnalysis,
+)
 
 # -----------------------------------------------------------------------------
 # SensitivityOutput
@@ -124,3 +142,54 @@ def test_analysis_group_asdict() -> None:
         "changes": {"Dose": 2.0},
         "color": "green",
     }
+
+
+# -----------------------------------------------------------------------------
+# SensitivityAnalysis
+# -----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("analysis", "kwargs"),
+    [
+        (LocalSensitivityAnalysis, {"difference": 0.01}),
+        (SamplingSensitivityAnalysis, {"N": 5}),
+        (SobolSensitivityAnalysis, {"N": 4}),
+        (FASTSensitivityAnalysis, {"N": 65}),
+        (
+            MorrisSensitivityAnalysis,
+            {"N": 4, "num_levels": 4, "optimal_trajectories": 2},
+        ),
+    ],
+)
+def test_the_figures_have_the_resolution_of_the_analysis(
+    tmp_path: Path, analysis: type[SensitivityAnalysis], kwargs: dict
+) -> None:
+    """The figures of an analysis are written at its resolution."""
+
+    def heights() -> dict[str, int]:
+        return {p.name: imread(p).shape[0] for p in sorted(tmp_path.rglob("*.png"))}
+
+    sa = analysis(
+        sensitivity_simulation=sensitivity_simulation,
+        parameters=sensitivity_parameters,
+        groups=[sensitivity_groups[0]],
+        results_path=tmp_path,
+        cache_results=False,
+        n_cores=1,
+        seed=1234,
+        dpi=50,
+        **kwargs,
+    )
+    sa.execute()
+    sa.plot()
+    small = heights()
+    assert small
+
+    # the same figures at twice the resolution are larger
+    sa.dpi = 100
+    sa.plot()
+    large = heights()
+    assert large.keys() == small.keys()
+    for name, height in small.items():
+        assert large[name] > 1.5 * height, name

@@ -22,6 +22,7 @@ REPO_DIR = Path(__file__).parent.parent.parent
 #: the arguments an example runs with in the tests: the samples and the fits
 #: of the examples are sized to show what they do, a test only needs them to run
 ARGUMENTS: dict[str, list[str]] = {
+    "examples.petab.benchmark": ["--no-identifiability", "--runs=2"],
     "examples.sciml.lotka_volterra_fit": ["--max-nfev=4"],
     "examples.sensitivity.sensitivity_example": ["--quick", "--cores=1"],
 }

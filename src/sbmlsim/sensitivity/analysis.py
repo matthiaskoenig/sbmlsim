@@ -134,10 +134,21 @@ class SensitivityAnalysis:
         seed: int | None = None,
         n_cores: int | None = None,
         cache_results: bool = False,
+        dpi: int = 300,
     ) -> None:
         """Create a sensitivity analysis for given parameter ids.
 
         Based on the results matrix the sensitivity is calculated.
+
+        Args:
+            sensitivity_simulation: The simulation which calculates the outputs.
+            parameters: The parameters to vary.
+            groups: The analysis groups, i.e., the conditions of the analysis.
+            results_path: The directory of the results and the figures.
+            seed: Optional random seed for reproducibility.
+            n_cores: Number of processes, 90% of the cores by default.
+            cache_results: Whether to cache the results on disk.
+            dpi: The resolution of the figures the analysis writes.
         """
         self.sensitivity_simulation = sensitivity_simulation
 
@@ -171,6 +182,9 @@ class SensitivityAnalysis:
         self.seed: int | None = seed
         if seed is not None:
             np.random.seed(seed)
+
+        # resolution of the figures
+        self.dpi: int = dpi
 
         # caching
         self.cache_results: bool = cache_results
@@ -460,6 +474,7 @@ class SensitivityAnalysis:
             title=title,
             cmap=cmap,
             fig_path=fig_path,
+            dpi=self.dpi,
             **kwargs,
         )
 

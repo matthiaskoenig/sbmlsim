@@ -78,6 +78,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
         seed: int | None = None,
         n_cores: int | None = None,
         cache_results: bool = False,
+        dpi: int = 300,
         **kwargs: Any,
     ):
         """Initialize a FAST sensitivity analysis.
@@ -95,6 +96,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
             seed: Optional random seed for reproducibility.
             n_cores: Optional number of CPU cores used for parallel execution.
             cache_results: Whether to cache sensitivity results to disk.
+            dpi: The resolution of the figures the analysis writes.
             **kwargs: Additional keyword arguments passed to the base class.
         """
         super().__init__(
@@ -105,6 +107,7 @@ class FASTSensitivityAnalysis(SensitivityAnalysis):
             seed=seed,
             n_cores=n_cores,
             cache_results=cache_results,
+            dpi=dpi,
         )
         self.N: int = N
         self.M: int = M

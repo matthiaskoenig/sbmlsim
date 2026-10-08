@@ -136,8 +136,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--quick",
         action="store_true",
-        help="the smallest samples every method accepts, which checks that the "
-        "example runs; the indices of such samples mean nothing",
+        help="the smallest samples every method accepts and small figures, which "
+        "checks that the example runs; the indices of such samples mean nothing",
     )
     options = parser.parse_args()
     # the sample sizes of the analyses; the smallest ones are the limits of the
@@ -165,6 +165,8 @@ if __name__ == "__main__":
         "cache_results": False,
         "n_cores": options.cores,
         "seed": 1234,
+        # small figures when only checking that the example runs
+        "dpi": 72 if options.quick else 300,
     }
 
     sa_sampling = SamplingSensitivityAnalysis(

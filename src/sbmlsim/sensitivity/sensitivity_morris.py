@@ -75,6 +75,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         seed: int | None = None,
         n_cores: int | None = None,
         cache_results: bool = False,
+        dpi: int = 300,
         **kwargs,
     ):
         """Resulting simulations are (D+1) * N/T with D number of parameters.
@@ -83,6 +84,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
         optimal_trajectories - The number of optimal trajectories to sample (between 2 and N)
         num_levels - The number of grid levels to use (should be even)
         local_optimization - Flag whether to use local optimization according to Ruano et al. (2012) Speeds up the process tremendously for bigger N and num_levels. If set to False brute force method is used
+        dpi - The resolution of the figures the analysis writes
         """
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
@@ -92,6 +94,7 @@ class MorrisSensitivityAnalysis(SensitivityAnalysis):
             seed=seed,
             n_cores=n_cores,
             cache_results=cache_results,
+            dpi=dpi,
         )
         self.N: int = N
         self.optimal_trajectories: int = optimal_trajectories
@@ -335,5 +338,5 @@ def _plot_morris_indices(
                     if ylim[1] < 0.1:
                         ax.set_ylim(top=0.1)
 
-            plt.savefig(f_path, dpi=300, bbox_inches="tight")
+            plt.savefig(f_path, dpi=sa.dpi, bbox_inches="tight")
             plt.close(f)
