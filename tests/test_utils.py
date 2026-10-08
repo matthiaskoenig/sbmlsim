@@ -1,10 +1,9 @@
 """Test the utility functions."""
 
-import multiprocessing
 import subprocess
 import sys
 import threading
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 import pytest
@@ -28,45 +27,29 @@ def test_paths_text(paths: str | Path | Iterable[str | Path] | None, text: str) 
     assert paths_text(paths) == text
 
 
-def _start_methods(
-    monkeypatch: pytest.MonkeyPatch, explicit: str | None, default: str
-) -> None:
-    """Pretend the start method set by the user and the default of the platform."""
-    monkeypatch.setattr(
-        multiprocessing,
-        "get_start_method",
-        lambda allow_none=False: explicit if allow_none else explicit or default,
-    )
-    monkeypatch.setattr(
-        multiprocessing,
-        "get_all_start_methods",
-        lambda: [default, *({"fork", "spawn", "forkserver"} - {default})],
-    )
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
 def test_process_context_is_not_fork_by_default(
-    monkeypatch: pytest.MonkeyPatch,
+    start_methods: Callable[[str | None, str], None],
 ) -> None:
     """The default `fork` of python 3.13 on linux is replaced by `forkserver`."""
-    _start_methods(monkeypatch, explicit=None, default="fork")
+    start_methods(None, "fork")
     assert process_context().get_start_method() == "forkserver"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="windows has no fork")
 def test_process_context_keeps_the_start_method_of_the_user(
-    monkeypatch: pytest.MonkeyPatch,
+    start_methods: Callable[[str | None, str], None],
 ) -> None:
     """A start method set with `multiprocessing.set_start_method` is used."""
-    _start_methods(monkeypatch, explicit="fork", default="forkserver")
+    start_methods("fork", "forkserver")
     assert process_context().get_start_method() == "fork"
-    _start_methods(monkeypatch, explicit="spawn", default="fork")
+    start_methods("spawn", "fork")
     assert process_context().get_start_method() == "spawn"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
 def test_process_context_does_not_take_the_default_for_a_choice(
-    monkeypatch: pytest.MonkeyPatch,
+    start_methods: Callable[[str | None, str], None],
 ) -> None:
     """A start method which is the default of the platform is no choice.
 
@@ -74,15 +57,15 @@ def test_process_context_does_not_take_the_default_for_a_choice(
     process is started by `spawn` or `forkserver`, i.e. by the first pool of
     this context, which must not make the second pool fork.
     """
-    _start_methods(monkeypatch, explicit="fork", default="fork")
+    start_methods("fork", "fork")
     assert process_context().get_start_method() == "forkserver"
 
 
 def test_process_context_keeps_another_default(
-    monkeypatch: pytest.MonkeyPatch,
+    start_methods: Callable[[str | None, str], None],
 ) -> None:
     """The default `spawn` of macos and windows is used."""
-    _start_methods(monkeypatch, explicit=None, default="spawn")
+    start_methods(None, "spawn")
     assert process_context().get_start_method() == "spawn"
 
 

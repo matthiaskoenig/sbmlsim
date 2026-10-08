@@ -1,5 +1,6 @@
 """Test that a fit survives runs which fail or run out of time."""
 
+import multiprocessing
 import sys
 from pathlib import Path
 from typing import Any
@@ -261,43 +262,34 @@ def test_a_worker_without_a_problem_reports_it() -> None:
     assert trajectory == []
 
 
-def _start_methods(
-    monkeypatch: pytest.MonkeyPatch, explicit: str | None, default: str
-) -> None:
-    """Pretend the start method set by the user and the default of the platform."""
-    monkeypatch.setattr(
-        runner.multiprocessing,
-        "get_start_method",
-        lambda allow_none=False: explicit if allow_none else explicit or default,
-    )
-    monkeypatch.setattr(
-        runner.multiprocessing,
-        "get_all_start_methods",
-        lambda: [default, *({"fork", "spawn", "forkserver"} - {default})],
-    )
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
-def test_the_workers_are_not_forked(
+def test_the_forkserver_preloads_the_modules_of_the_fit(
     op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The default `fork` of python 3.13 on linux is replaced by `forkserver`."""
-    _start_methods(monkeypatch, explicit=None, default="fork")
-    assert runner._pool_context(op_hctz_pk).get_start_method() == "forkserver"
+    """The forkserver imports sbmlsim and the experiments once for all workers."""
+    context = multiprocessing.get_context("forkserver")
+    preloaded: list[list[str]] = []
+    monkeypatch.setattr(runner, "process_context", lambda: context)
+    monkeypatch.setattr(context, "set_forkserver_preload", preloaded.append)
+
+    assert runner._pool_context(op_hctz_pk) is context
+    experiments = {
+        mapping_collection.experiment_class.__module__
+        for mapping_collection in op_hctz_pk.mapping_collections
+    }
+    assert preloaded == [sorted({"sbmlsim.fit.optimization", *experiments})]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="windows has no fork")
-def test_a_start_method_the_user_sets_is_kept(
+def test_another_start_method_is_used_as_it_is(
     op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A start method set with `multiprocessing.set_start_method` is used."""
-    _start_methods(monkeypatch, explicit="fork", default="forkserver")
-    assert runner._pool_context(op_hctz_pk).get_start_method() == "fork"
+    """The pool of a fit takes the context of `process_context` without a preload."""
+    context = multiprocessing.get_context("spawn")
+    monkeypatch.setattr(runner, "process_context", lambda: context)
+    monkeypatch.setattr(
+        context,
+        "set_forkserver_preload",
+        lambda modules: pytest.fail("only the forkserver preloads"),
+    )
 
-
-def test_another_default_start_method_is_kept(
-    op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The default `spawn` of macos and windows is used."""
-    _start_methods(monkeypatch, explicit=None, default="spawn")
-    assert runner._pool_context(op_hctz_pk).get_start_method() == "spawn"
+    assert runner._pool_context(op_hctz_pk) is context

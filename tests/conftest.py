@@ -1,9 +1,10 @@
 """Pytest configuration."""
 
 import logging
+import multiprocessing
 import re
 import warnings
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -71,6 +72,30 @@ def _no_fork_of_threads() -> Iterator[None]:
         f"a process which runs threads was forked at "
         f"{forks[0].filename}:{forks[0].lineno}: {forks[0].message}"
     )
+
+
+@pytest.fixture
+def start_methods(monkeypatch: pytest.MonkeyPatch) -> Callable[[str | None, str], None]:
+    """Get the function which pretends the start methods of a platform.
+
+    `start_methods(explicit, default)` makes `multiprocessing` report the start
+    method set with `set_start_method` (`None` if none is set) and the default
+    of the platform, the first of the supported start methods.
+    """
+
+    def pretend(explicit: str | None, default: str) -> None:
+        monkeypatch.setattr(
+            multiprocessing,
+            "get_start_method",
+            lambda allow_none=False: explicit if allow_none else explicit or default,
+        )
+        monkeypatch.setattr(
+            multiprocessing,
+            "get_all_start_methods",
+            lambda: [default, *({"fork", "spawn", "forkserver"} - {default})],
+        )
+
+    return pretend
 
 
 @pytest.fixture

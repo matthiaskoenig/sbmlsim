@@ -73,7 +73,9 @@ def process_context() -> BaseContext:
     process with threads may deadlock in the child. Python 3.14 made
     `forkserver` the default on linux for this reason, a pool takes it on
     python 3.13 as well, where it warns about the fork of a process with
-    threads with a `DeprecationWarning`.
+    threads with a `DeprecationWarning`. A start method which equals the
+    default of the platform counts as no choice, so on python 3.13 on linux a
+    `fork` which is set is replaced by `forkserver` as well, see below.
 
     Every pool of sbmlsim is created from this context, i.e.
     `process_context().Pool(...)` or
