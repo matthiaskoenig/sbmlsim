@@ -13,6 +13,8 @@ from typing import Any
 
 import numpy as np
 
+from sbmlsim.model.tolerances import AbsoluteTolerance
+
 
 class OptimizationStrategy(StrEnum):
     """Strategy for fitting a set of fit experiments.
@@ -240,7 +242,9 @@ class FitSettings:
         weighting_points: weighting of the data points within a curve.
         variable_step_size: use a variable step size in the solver.
         relative_tolerance: relative tolerance of the simulator.
-        absolute_tolerance: absolute tolerance of the simulator.
+        absolute_tolerance: absolute tolerance of the simulator, one per kind
+            of state, see `sbmlsim.model.tolerances`; a float is the same for
+            every kind. The default is the one of the simulator.
         initial_time_step: first step of the integrator after every start and
             change, in the time unit of the model; 0 lets the integrator
             choose it. A small positive value avoids the CVODE warning
@@ -257,14 +261,17 @@ class FitSettings:
     weighting_points: WeightingPointsType = WeightingPointsType.NO_WEIGHTING
     variable_step_size: bool = True
     relative_tolerance: float = 1e-6
-    absolute_tolerance: float = 1e-6
+    absolute_tolerance: float | AbsoluteTolerance = 1e-10
     initial_time_step: float = 0.0
 
     def __post_init__(self) -> None:
-        """Normalize the weighting of the curves to a tuple."""
+        """Normalize the weighting of the curves and the absolute tolerance."""
         if not isinstance(self.weighting_curves, tuple):
             curves: Iterable[WeightingCurvesType] = self.weighting_curves
             object.__setattr__(self, "weighting_curves", tuple(curves))
+        object.__setattr__(
+            self, "absolute_tolerance", AbsoluteTolerance.of(self.absolute_tolerance)
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON serializable values."""
@@ -276,7 +283,9 @@ class FitSettings:
             "weighting_points": self.weighting_points.name,
             "variable_step_size": self.variable_step_size,
             "relative_tolerance": self.relative_tolerance,
-            "absolute_tolerance": self.absolute_tolerance,
+            "absolute_tolerance": AbsoluteTolerance.of(
+                self.absolute_tolerance
+            ).to_dict(),
             "initial_time_step": self.initial_time_step,
         }
 
@@ -301,7 +310,11 @@ class FitSettings:
             weighting_points=WeightingPointsType[d["weighting_points"]],
             variable_step_size=d.get("variable_step_size", True),
             relative_tolerance=d.get("relative_tolerance", 1e-6),
-            absolute_tolerance=d.get("absolute_tolerance", 1e-6),
+            # stored settings of 0.8.4 and earlier have a float, settings
+            # without the key the default of their time
+            absolute_tolerance=AbsoluteTolerance.from_dict(
+                d.get("absolute_tolerance", 1e-6)
+            ),
             initial_time_step=d.get("initial_time_step", 0.0),
         )
 

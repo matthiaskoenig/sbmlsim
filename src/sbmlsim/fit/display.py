@@ -39,6 +39,7 @@ from sbmlsim.fit.derived import HookSummary, ParameterGroup, group_parameters
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameter_mapping import CoverageRow, has_renamed_targets
+from sbmlsim.model.tolerances import AbsoluteTolerance
 
 #: icon of every section, so the sections of a fit are told apart at a glance
 ICON_FIT = ":wrench:"
@@ -215,7 +216,7 @@ def settings_table(settings: FitSettings) -> Table:
         ("weighting curves", weighting_curves),
         ("weighting points", settings.weighting_points.name),
         ("relative tolerance", f"{settings.relative_tolerance:.1e}"),
-        ("absolute tolerance", f"{settings.absolute_tolerance:.1e}"),
+        ("absolute tolerance", str(AbsoluteTolerance.of(settings.absolute_tolerance))),
         ("variable step size", str(settings.variable_step_size)),
         ("initial time step", f"{settings.initial_time_step:g}"),
     ]:

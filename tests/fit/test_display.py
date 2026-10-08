@@ -57,7 +57,13 @@ def test_settings_table() -> None:
         weighting_points=WeightingPointsType.ERROR_WEIGHTING,
     )
     text = render(display.settings_table(settings))
-    for token in ["NORMALIZED", "SOFT_L1", "POINTS", "ERROR_WEIGHTING", "1.0e-06"]:
+    for token in [
+        "NORMALIZED",
+        "SOFT_L1",
+        "POINTS",
+        "ERROR_WEIGHTING",
+        "concentration 1.0e-10",
+    ]:
         assert token in text
 
 

@@ -20,6 +20,7 @@ from sbmlsim.fit.options import (
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
+from sbmlsim.model.tolerances import AbsoluteTolerance
 
 settings_testdata: list[FitSettings] = [
     FitSettings(
@@ -500,3 +501,27 @@ def test_total_time_column() -> None:
     clock[0] = 200.0
     progress.update(task_id, completed=4)
     assert str(column.render(task)) == "~ 0:03:20 total"
+
+
+def test_settings_tolerance_per_kind() -> None:
+    """The absolute tolerance of the settings is one per kind of state."""
+    tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
+    settings = FitSettings(absolute_tolerance=tolerance)
+    assert FitSettings.from_dict(settings.to_dict()) == settings
+    # a float is the same for every kind and equals its normalized form
+    assert FitSettings(absolute_tolerance=1e-6) == FitSettings(
+        absolute_tolerance=AbsoluteTolerance.of(1e-6)
+    )
+
+
+def test_settings_default_tolerance() -> None:
+    """The default absolute tolerance is the one of the simulator."""
+    assert FitSettings().absolute_tolerance == AbsoluteTolerance.of(1e-10)
+
+
+def test_stored_settings_with_a_float_tolerance() -> None:
+    """Stored settings of sbmlsim 0.8.4 have a float absolute tolerance."""
+    stored = FitSettings().to_dict()
+    stored["absolute_tolerance"] = 1e-7
+    settings = FitSettings.from_dict(stored)
+    assert settings.absolute_tolerance == AbsoluteTolerance.of(1e-7)
