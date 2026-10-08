@@ -15,7 +15,7 @@ This design covers the core, i.e. sub-projects 1 (scan, execution, result) and 2
 
 ## The starting point
 
-Measured on `develop` (`4d8fd17`, release 0.8.4):
+Measured on `develop` (`4d8fd17`, release 0.8.4). The design builds on the robust integrator tolerances (`2026-10-08-integrator-tolerances-design.md`, branch `fix/pkdb-models-084`, release 0.8.5), which land first: an absolute tolerance per state from its kind (`AbsoluteTolerance`), every setting of the integrator passed on to roadrunner, and restarts of the integration in local time for a model which does not read the time.
 
 | | |
 | --- | --- |
@@ -50,6 +50,8 @@ Measured on `develop` (`4d8fd17`, release 0.8.4):
 | result | `ScanResult`, an `xarray.Dataset` with the units in `attrs`, netCDF; no `to_dataframe`, `to_tsv` or `to_mean_dataframe` |
 | errors | `on_error="raise"` (default) or `"flag"`: `NaN` and a `status` variable |
 | fit | keeps its plans and its evaluation, which are the engine already; its pool moves to `parallel.py` |
+| integrator settings | the ones of the tolerance design, unchanged: every setting of roadrunner by its name, `absolute_tolerance` a float or an `AbsoluteTolerance`, applied to every model a simulator runs, in the parent and in every worker |
+| time of a segment | owned by `execute` as the tolerance design defines it (local time for a model which does not read the time); observables and results see the absolute time |
 
 ## The scan
 
@@ -148,20 +150,23 @@ The selections a run asks roadrunner for are `time` and the union of what the ob
 ## Execution
 
 ```python
+from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulator import Simulator
 
-simulator = Simulator(n_workers=None, integrator_settings={"absolute_tolerance": 1e-10})
+simulator = Simulator(n_workers=None, absolute_tolerance=AbsoluteTolerance(amount=1e-10, concentration=1e-10, other=1e-10))
 res = simulator.run(model, scan, observables, keep=["ins_rel", "hctz.cmax"])
 res = simulator.run(model, sim)                 # a single simulation
 res = simulator.run(None, scan_over_models)     # a models dimension supplies the model
 tc = simulator.simulate(model, sim)             # one TimecourseResult, for the fit and the test suites
 ```
 
-`Simulator(n_workers=None, integrator_settings=None)`; `run(model, scan, observables=None, *, time=None, keep=None, on_error="raise", progress=None) -> ScanResult`.
+`Simulator(n_workers=None, **integrator_settings)`; `set_integrator_settings(**integrator_settings)`; `run(model, scan, observables=None, *, time=None, keep=None, on_error="raise", progress=None) -> ScanResult`.
+
+The integrator settings are the ones of `SimulatorSerial` after the tolerance design: every setting of the integrator of roadrunner by its name (`absolute_tolerance`, `relative_tolerance`, `variable_step_size`, `initial_time_step`, ...), a name the integrator does not have raises, `absolute_tolerance` is a float or an `AbsoluteTolerance`, the default is `1e-10` for every kind of state. They apply to every model the simulator runs: the model of the run, every model of a `models` dimension and every model a worker loads, each with its own vector of tolerances from `RoadrunnerSBMLModel.set_integrator_settings`. They are validated in the parent, where every model is loaded once for the compile step anyway, so a wrong name raises before a pool starts.
 
 1. **Compile.** One plan per combination of the values of the `simulations` and `models` dimensions (one plan without them), with `compile_simulation`. The `values` dimensions are converted into the units of their targets in the model once per model (a vector of floats per target). The observables are ordered, compiled and checked against the symbols of every model; an observable id which is a symbol of a model or a changed target raises.
 2. **Points.** A point is a tuple of indices; nothing is built per point in the parent. The points are cut into chunks which share one model, at most `ceil(n_points / (4 * n_workers))` and at most 1000 points each.
-3. **Worker.** For every point of a chunk: `plan.with_values(values of the point)`, a `values` dimension with `at` adds or merges its event through `Plan.with_values(values, at=time)`, then `execute(plan, model, selections)`. The model is loaded once per worker and kept under `model_key` together with the integrator settings. The native solutions of the chunk are stacked into a padded array `(n_sim, n_time_max)`, the observables are evaluated on it, the kept timecourses are interpolated onto `time` if it is given, and the worker answers with numpy arrays and the status per point.
+3. **Worker.** For every point of a chunk: `plan.with_values(values of the point)`, a `values` dimension with `at` adds or merges its event through `Plan.with_values(values, at=time)`, then `execute(plan, model, selections)`. The model is loaded once per worker and kept under `model_key` together with the integrator settings (an `AbsoluteTolerance` is hashable and pickles), which the worker applies when it loads the model, so the vector of tolerances is the one of the parent. `execute` integrates every segment between two changes, a change of an `at` dimension included, in local or absolute time as the tolerance design defines; the native solution it returns has the absolute time, which the observables, `at(x, t)` and the dose times of `PK` use. The native solutions of the chunk are stacked into a padded array `(n_sim, n_time_max)`, the observables are evaluated on it, the kept timecourses are interpolated onto `time` if it is given, and the worker answers with numpy arrays and the status per point.
 4. **Assembly.** The parent writes the arrays of each chunk into the arrays of the result (scalars preallocated, ragged timecourses padded to the longest chunk at the end) and reshapes them into the dimensions.
 
 Output grid:
@@ -211,7 +216,7 @@ res.to_netcdf(path); ScanResult.from_netcdf(path)
 - dimensions: the scan dimensions in their order, then `time` or `_point`, i.e. `(*dims, time)`, the layout of pkpdutils `Timecourses`, so the handover needs no transpose;
 - variables: one per kept observable, scalars over the scan dimensions and timecourses over `(*dims, time)` or `(*dims, _point)`, `time` over `(*dims, _point)` in the ragged layout, `status` with `on_error="flag"`;
 - coordinates: the labels of every dimension, every changed target as a coordinate along its dimension (`PODOSE_hctz(dose)`, `k1(sample)`), `time` on a grid;
-- `attrs["units"]` of every variable and coordinate, the convention of pkpdutils; the dataset carries the serialized scan and the observables as provenance.
+- `attrs["units"]` of every variable and coordinate, the convention of pkpdutils; the dataset carries the serialized scan, the observables and the integrator settings (`AbsoluteTolerance.to_dict`) as provenance.
 
 Methods: `__getitem__` (a `DataArray`), `quantity`, `sel`/`isel` (a `ScanResult`), `summary(dims, statistics, quantiles)` (a `ScanResult` with a dimension `statistic`; a timecourse in the ragged layout is interpolated onto the union of its time points first), `interpolate(times)`, `nca(id)` (the `NCAResult` pkpdutils computed, collected from the chunks), `to_timecourses(id)`, `to_netcdf`/`from_netcdf`. A `ScanResult` pickles.
 
@@ -224,7 +229,7 @@ Removing `ScanSim`, `XResult` and `SimulatorSerial` breaks every caller; this de
 - `experiment/`: a `Task` pairs a model with a `Simulation` or a `Scan`, the runner calls `Simulator.run`, the results are `ScanResult` and are written as netCDF instead of TSV (the report links only the datasets as TSV, `report/experiment_report.py:111`).
 - `data.py`: a `Data` of type TASK returns a `DataArray` with its dimensions and coordinates and its unit; the reductions of a FUNCTION are per simulation.
 - `plot/`: reads `ScanResult` as it reads `XResult` today (the first simulation of a scan, `plot/padding.py:17`); curves over the scan dimensions are sub-project 4.
-- `fit/`: `_simulate_groups` keeps `execute` on its plans; `worker_pool` and the identifiability use `parallel.py`; `Simulator.simulate` replaces `SimulatorSerial.simulate`.
+- `fit/`: `_simulate_groups` keeps `execute` on its plans; `worker_pool` and the identifiability use `parallel.py`; `Simulator` replaces `SimulatorSerial` in `OptimizationProblem.initialize`, which hands it the integrator settings of `FitSettings` as today (`absolute_tolerance` as `AbsoluteTolerance`, `relative_tolerance`, `variable_step_size`, `initial_time_step`); the table of the tolerances in the console and the report of a fit is unchanged.
 - `testsuite/`: `Simulator.simulate` and `parallel.pool`.
 - `comparison/`: `DataSetsComparison` takes `xarray.Dataset`s, `examples/comparison/diff_example.py` passes `res.ds`.
 - `simulation/sensitivity.py`: `ModelSensitivity` returns a `Dimension`; its behavior is unchanged until sub-project 3 replaces it.
@@ -253,7 +258,8 @@ pkdb_models uses `ModelSensitivity` and `sensitivity/` and is already stale agai
 - Equivalence: the result of a scan is identical for `n_workers` 1, 2 and 4 and for chunk sizes 1 and 1000.
 - Errors: a point which fails in the integrator with `"raise"` (the message names the labels and values) and with `"flag"` (`NaN`, `status`, the warning).
 - `ScanResult`: coordinates, units, `summary`, `interpolate`, `nca`, `to_timecourses`, netCDF round trip, pickle.
-- Regression: the values of the scan examples (`examples/scan.py`, `repressilator_scans.py`, `glucose/dose_response.py`) are recorded on `develop` before the change and compared after it.
+- Integrator settings: an `AbsoluteTolerance` with overrides by id reaches roadrunner in a worker and for every model of a `models` dimension (`getAbsoluteToleranceVector` matched to the state ids, compared with the parent); an unknown setting raises before the pool starts; a scan of the probe model with a change at a late time agrees between `n_workers` 1 and 4 and prints no "t + h = t".
+- Regression: the values of the scan examples (`examples/scan.py`, `repressilator_scans.py`, `glucose/dose_response.py`) are recorded on `develop` after the tolerance design is merged (0.8.5) and before this change, and compared after it.
 - Speed: a scan does not call `compile_simulation` per point (asserted with a mock in a normal test). With the `benchmark` marker, deselected by default: `Simulator.simulate` is not slower than `SimulatorSerial.simulate` today, the serial time of a scan of 1e3 points is reported against today's `run_scan`, and a scan of 1e4 points on 4 workers is at least 2.5 times faster than on 1.
 
 ## Phases
@@ -261,11 +267,11 @@ pkdb_models uses `ModelSensitivity` and `sensitivity/` and is already stale agai
 1. **The scan core**: `parallel.py`, `Scan` and `Dimension`, `Plan.with_values(..., at=...)`, `Simulator` with the serial and the pooled run, `ScanResult` with the selections as observables, the migration of the callers, examples and docs. Verification: all tests pass, the regression values of the scan examples agree, the equivalence and speed tests pass.
 2. **The observables**: `Formula` with the reductions (the pre-pass moved from `data.py`), `PK` with pkpdutils, `Custom`, `keep`, `nca`/`to_timecourses`, `observables.md`. Verification: the analytic tests and the comparison with pkpdutils.
 
-Each phase has its own plan and pull request.
+Each phase has its own plan and pull request. Phase 1 starts from `develop` after `fix/pkdb-models-084` is merged and released as 0.8.5.
 
 ## Sub-projects 3 and 4 (outline)
 
-- **The analyses** (sub-project 3): `simulation/sampling.py` is the one sampler and returns a `Dimension`: grids, relative changes `±delta` with the reference point, distributions (normal, lognormal, uniform, truncated) with correlations, the designs of LHS, Sobol, FAST and Morris (scipy `qmc`, SALib), parameters of a fit (the covariance of `fisher.py` in the space of the `parameter_scale`, the parameter sets of fit repeats) and virtual populations (a function of a module which maps covariates to parameters). It replaces `ModelSensitivity`, the samplers of `sensitivity/` and `fit/sampling.py`. `sensitivity/` drops `SensitivitySimulation.simulate(r, changes)`: an analysis is a base `Scan`, scalar observables and parameters, run by `Simulator`, the indices computed on the arrays of the result. The uncertainty analysis is a sampler, a run and `summary`, which gives the prediction bands of timecourses and the distributions of scalars.
+- **The analyses** (sub-project 3): `simulation/sampling.py` is the one sampler and returns a `Dimension`: grids, relative changes `±delta` with the reference point, distributions (normal, lognormal, uniform, truncated) with correlations, the designs of LHS, Sobol, FAST and Morris (scipy `qmc`, SALib), parameters of a fit (the covariance of `fisher.py` in the space of the `parameter_scale`, the parameter sets of fit repeats) and virtual populations (a function of a module which maps covariates to parameters). It replaces `ModelSensitivity`, the samplers of `sensitivity/` and `fit/sampling.py`. `sensitivity/` drops `SensitivitySimulation.simulate(r, changes)`: an analysis is a base `Scan`, scalar observables and parameters, run by `Simulator`, the indices computed on the arrays of the result; it takes the integrator settings of a `Simulator`, so the analyses get the tolerances per state instead of the raw roadrunner settings they use today. The uncertainty analysis is a sampler, a run and `summary`, which gives the prediction bands of timecourses and the distributions of scalars.
 - **The experiments** (sub-project 4): observables of a `SimulationExperiment`, `Data("hctz.cmax", task=...)`, plots with one curve per point of the scan dimensions (replacing `first_curve`).
 
 ## Risks
