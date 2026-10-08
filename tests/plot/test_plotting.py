@@ -15,6 +15,7 @@ from sbmlsim.plot.plotting import (
     MarkerType,
     Plot,
     Style,
+    SubPlot,
 )
 
 color_data = [
@@ -241,12 +242,12 @@ def test_a_copied_plot_keeps_its_right_y_axis() -> None:
 def test_a_plot_of_a_figure_knows_its_figure() -> None:
     """A plot resolves its data through its figure, see `Plot.experiment`.
 
-    `Figure.from_plots` and `add_subplot` built the subplots without the
+    The constructor and `add_subplot` built the subplots without the
     association, so `plot.figure` raised for every plot which was not added
     through `add_plots`.
     """
     plot = Plot(sid="p", xaxis=Axis("x", unit="s"))
-    figure = Figure.from_plots(sid="f", plots=[plot], experiment=None)
+    figure = Figure(experiment=None, sid="f", subplots=[SubPlot(plot, row=1, col=1)])
     assert plot.figure is figure
 
     other = Plot(sid="q", xaxis=Axis("x", unit="s"))

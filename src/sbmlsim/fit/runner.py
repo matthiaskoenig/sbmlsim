@@ -47,6 +47,7 @@ from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.log import PACKAGE_LOGGER
+from sbmlsim.utils import process_context
 
 logger = logging.getLogger(__name__)
 
@@ -191,6 +192,7 @@ def run_optimization(
     show_progress: bool = True,
     timeout: float | None = None,
     runs_dir: Path | None = None,
+    sampling: SamplingType = SamplingType.UNIFORM,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimization of the problem.
@@ -208,8 +210,10 @@ def run_optimization(
         size: number of optimizations.
         algorithm: optimization algorithm to use.
         seed: random seed (for sampling of the start values).
-        n_cores: number of workers, `None` uses all available cores but one.
-        serial: run the optimization in a serial fashion (debugging).
+        n_cores: number of workers, `None` uses all available cores but one;
+            one worker fits without starting a process.
+        serial: run the optimization in a serial fashion (debugging), whatever
+            `n_cores` says.
         show_progress: show the progress of the runs on the console.
         timeout: seconds a single optimization may run, no limit if `None`. A
             run which is out of time keeps the parameters it reached.
@@ -217,27 +221,25 @@ def run_optimization(
             so a fit which is interrupted or crashes leaves the runs which
             finished; they are read back with
             `OptimizationResult.from_directory`.
-        kwargs: additional arguments for the optimizer, e.g. xtol.
+        sampling: sampling of the start values, see `sbmlsim.fit.sampling`.
+        kwargs: additional arguments for the optimizer, i.e., for
+            `scipy.optimize.least_squares` or
+            `scipy.optimize.differential_evolution`, e.g. xtol.
 
     Returns:
         OptimizationResult with the fits of all repeats. A repeat which failed
-        is part of the result and carries its message.
+        is part of the result and carries its message. A fit which is
+        interrupted (Ctrl-C) after some repeats finished returns these.
 
     Raises:
-        ValueError: for the removed parameters `fitting_type` and
-            `weighting_local`, if a bound or a start value does not suit the
-            scale of its parameter or the algorithm, or if every worker of a
-            parallel fit failed.
+        ValueError: if a bound or a start value does not suit the scale of
+            its parameter or the algorithm, or if every worker of a parallel
+            fit failed.
+        TypeError: if `kwargs` has an argument which the optimizer of the
+            algorithm does not accept, e.g. one of the other optimizer.
+        KeyboardInterrupt: if the fit is interrupted (Ctrl-C) before a repeat
+            finished, there is no result to keep.
     """
-    for deprecated, replacement in [
-        ("fitting_type", "fitting_strategy"),
-        ("weighting_local", "weighting_points"),
-    ]:
-        if deprecated in kwargs:
-            raise ValueError(
-                f"Deprecated parameter '{deprecated}', use '{replacement}' instead."
-            )
-
     if settings is None:
         settings = FitSettings()
 
@@ -250,6 +252,8 @@ def run_optimization(
     problem.initialize(settings)
     # the bounds the algorithm needs are checked once, not in every run
     problem._validate_parameters(algorithm)
+    # an argument which the optimizer does not accept would fail every repeat
+    problem.check_optimizer_arguments(algorithm, kwargs)
     display.print_parameters(
         problem.parameters,
         coverage=(
@@ -260,8 +264,11 @@ def run_optimization(
         hooks=hook_summaries(problem.hybridizations),
     )
 
+    # a worker without a repeat only costs the start of a process, and one
+    # worker is a serial fit without the start of a process
+    workers = 1 if serial else min(resolve_n_cores(n_cores), size)
     opt_result: OptimizationResult
-    if serial:
+    if workers <= 1:
         display.key_values({"runs": size, "workers": "1 (serial)"})
         with optimization_progress("optimizing", size, show_progress) as progress:
             opt_result = _run_optimization_serial(
@@ -270,6 +277,7 @@ def run_optimization(
                 size=size,
                 algorithm=algorithm,
                 seed=seed,
+                sampling=sampling,
                 timeout=timeout,
                 runs_dir=runs_dir,
                 on_progress=lambda: _advance(progress),
@@ -283,17 +291,16 @@ def run_optimization(
                 f"i.e., the script ran again when it was imported. "
                 f"{GUARD_MESSAGE}"
             )
-        # a worker without a repeat only costs the start of a process
-        n_cores = min(resolve_n_cores(n_cores), size)
-        display.key_values({"runs": size, "workers": n_cores})
+        display.key_values({"runs": size, "workers": workers})
         opt_result = _run_optimization_parallel(
             problem=problem,
             settings=settings,
             size=size,
             algorithm=algorithm,
             seed=seed,
-            n_cores=n_cores,
+            n_cores=workers,
             show_progress=show_progress,
+            sampling=sampling,
             timeout=timeout,
             runs_dir=runs_dir,
             **kwargs,
@@ -409,11 +416,8 @@ def _worker_run(task: dict[str, Any]) -> tuple[int, OptimizeResult, list[float]]
 def _pool_context(problem: OptimizationProblem) -> BaseContext:
     """Get the multiprocessing context of a fit.
 
-    A start method set with `multiprocessing.set_start_method` is used, else
-    the default of the platform, except `fork`: the process of a fit runs the
-    threads of roadrunner and of the linear algebra, and a fork of a process
-    with threads may deadlock in the child. Python 3.14 made `forkserver` the
-    default on linux for this reason, a fit takes it on python 3.13 as well.
+    The start method is the one of `sbmlsim.utils.process_context`, i.e. never
+    `fork` of a process which runs threads.
 
     Under the `forkserver` start method every worker imports sbmlsim and the
     module of the experiments again, which costs more than a short
@@ -427,17 +431,8 @@ def _pool_context(problem: OptimizationProblem) -> BaseContext:
     Returns:
         The context the pool is created from.
     """
-    # `get_context()` without a method would fix the start method of the process,
-    # after which a second fit could not tell it from one the user set
-    method = multiprocessing.get_start_method(allow_none=True)
-    if method is None:
-        # the first of the supported methods is the default of the platform
-        methods = multiprocessing.get_all_start_methods()
-        method = methods[0]
-        if method == "fork" and "forkserver" in methods:
-            method = "forkserver"
-    ctx = multiprocessing.get_context(method)
-    if method != "forkserver":
+    ctx = process_context()
+    if ctx.get_start_method() != "forkserver":
         return ctx
     modules = {"sbmlsim.fit.optimization"}
     for mapping_collection in problem.mapping_collections:
@@ -492,6 +487,7 @@ def _run_optimization_parallel(
     fits: list[OptimizeResult] = []
     trajectories: list[list[float]] = []
     failures: list[str] = []
+    interrupted = False
 
     # when a repeat came back, i.e., when the workers made progress last
     finished = time.monotonic()
@@ -532,12 +528,14 @@ def _run_optimization_parallel(
                 )
                 _, fit, trajectory = async_result.get(timeout=remaining)
             except KeyboardInterrupt:
-                logger.warning(
-                    "'%s': the fit was interrupted, it keeps the %s repeats which "
-                    "finished.",
-                    problem.opid,
-                    len(fits),
-                )
+                interrupted = True
+                if fits:
+                    logger.warning(
+                        "'%s': the fit was interrupted, it keeps the %s repeats "
+                        "which finished.",
+                        problem.opid,
+                        len(fits),
+                    )
                 break
             except Exception as err:
                 message = f"repeat {k}: {type(err).__name__}: {err}"
@@ -555,6 +553,9 @@ def _run_optimization_parallel(
             size,
         )
     if not fits:
+        if interrupted:
+            # nothing to keep, like the serial fit the interrupt is not an error
+            raise KeyboardInterrupt
         stored = f" The runs which finished are in '{runs_dir}'." if runs_dir else ""
         raise ValueError(
             f"'{problem.opid}': every repeat failed, there is no result.{stored} "
@@ -693,18 +694,17 @@ def _run_optimization_serial(
     This function should not be called directly, `run_optimization` executes the
     optimizations. See `run_optimization` for the arguments.
     """
-    if "n_cores" in kwargs:
-        # remove parallel arguments
-        logger.warning(
-            "Parameter 'n_cores' does not have any effect in serial optimization."
-        )
-        kwargs.pop("n_cores")
-
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
 
+    # collected as the repeats finish, so that an interrupt keeps them
+    fits: list[OptimizeResult] = []
+    trajectories: list[list[float]] = []
+
     def on_run_finished(k: int, fit: OptimizeResult, trajectory: list[float]) -> None:
-        """Store the finished run and report the progress."""
+        """Keep the finished run, store it and report the progress."""
+        fits.append(fit)
+        trajectories.append(trajectory)
         _store_run(
             problem=problem,
             settings=settings,
@@ -716,14 +716,24 @@ def _run_optimization_serial(
         if on_progress is not None:
             on_progress()
 
-    fits, trajectories = problem.optimize(
-        size=size,
-        seed=seed,
-        algorithm=algorithm,
-        timeout=timeout,
-        on_run_finished=on_run_finished,
-        **kwargs,
-    )
+    try:
+        problem.optimize(
+            size=size,
+            seed=seed,
+            algorithm=algorithm,
+            timeout=timeout,
+            on_run_finished=on_run_finished,
+            **kwargs,
+        )
+    except KeyboardInterrupt:
+        # like the pool, which keeps the repeats which came back
+        if not fits:
+            raise
+        logger.warning(
+            "'%s': the fit was interrupted, it keeps the %s repeats which finished.",
+            problem.opid,
+            len(fits),
+        )
 
     return OptimizationResult(
         parameters=problem.parameters,

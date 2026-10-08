@@ -43,10 +43,10 @@ import numpy as np
 import sympy
 from petab_sciml import Node
 
-from sbmlsim.mathml import TIME, expression_to_astnode, formula_symbols
 from sbmlsim.model.provenance import record_derivation
 from sbmlsim.sciml.backend import SympyBackend
 from sbmlsim.sciml.errors import NetworkCompilationError, NetworkHybridizationError
+from sbmlsim.sciml.formula import TIME, expression_to_astnode, formula_symbols
 from sbmlsim.sciml.hybridization import (
     ALL_CONDITIONS,
     Hybridization,

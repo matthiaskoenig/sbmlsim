@@ -1,7 +1,11 @@
 """Test fit."""
 
+from functools import partial
+from multiprocessing.pool import ApplyResult
+from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 from sbmlsim.fit import FitSettings
@@ -15,6 +19,7 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
+from sbmlsim.fit.sampling import SamplingType
 
 settings_testdata: list[FitSettings] = [
     FitSettings(
@@ -203,8 +208,12 @@ def test_fit_lsq_parallel(
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
     short_fit: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
-    """Test parallel least square fit, with and without the progress display."""
+    """Test parallel least square fit, with and without the progress display.
+
+    The workers hand every repeat to the runner, which stores it in `runs_dir`.
+    """
     opt_result: OptimizationResult = run_optimization(
         problem=op_hctz_pk,
         settings=fit_settings,
@@ -213,21 +222,236 @@ def test_fit_lsq_parallel(
         n_cores=2,
         serial=False,
         show_progress=show_progress,
+        runs_dir=tmp_path,
         **short_fit,
     )
     assert opt_result is not None
     assert opt_result.size == 2
+    assert sorted(path.name for path in tmp_path.glob("*.json")) == [
+        f"{op_hctz_pk.opid}_run_0.json",
+        f"{op_hctz_pk.opid}_run_1.json",
+    ]
 
 
-def test_deprecated_arguments(
-    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+def test_one_worker_runs_without_a_pool(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The removed arguments are reported."""
-    kwargs: dict[str, Any] = {"weighting_local": WeightingPointsType.NO_WEIGHTING}
-    with pytest.raises(ValueError, match="weighting_local"):
+    """A fit with one worker is serial and fits what a serial fit fits."""
+    from sbmlsim.fit import runner
+
+    serial = runner.run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        serial=True,
+        show_progress=False,
+        **short_fit,
+    )
+
+    def no_pool(**kwargs: Any) -> None:
+        raise AssertionError("a fit with one worker started a pool")
+
+    monkeypatch.setattr(runner, "_run_optimization_parallel", no_pool)
+    one = runner.run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        n_cores=1,
+        show_progress=False,
+        **short_fit,
+    )
+    np.testing.assert_allclose(one.xopt, serial.xopt)
+
+
+def _interrupt_repeat(monkeypatch: pytest.MonkeyPatch, interrupted: int) -> list[int]:
+    """Interrupt the fit (Ctrl-C) in the repeat `interrupted`, counted from 0."""
+    started: list[int] = []
+    optimize_run = OptimizationProblem.optimize_run
+
+    def interrupting(
+        self: OptimizationProblem, *args: Any, **kwargs: Any
+    ) -> tuple[Any, list[float]]:
+        started.append(kwargs["run"])
+        if kwargs["run"] == interrupted:
+            raise KeyboardInterrupt
+        return optimize_run(self, *args, **kwargs)
+
+    monkeypatch.setattr(OptimizationProblem, "optimize_run", interrupting)
+    return started
+
+
+def test_an_interrupted_serial_fit_keeps_the_repeats_which_finished(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Ctrl-C ends a fit with one worker like it ends a parallel fit."""
+    started = _interrupt_repeat(monkeypatch, interrupted=1)
+    opt_result = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=3,
+        seed=1234,
+        n_cores=1,
+        show_progress=False,
+        runs_dir=tmp_path,
+        **short_fit,
+    )
+    # the third repeat did not start, the first one is the result
+    assert started == [0, 1]
+    assert opt_result.size == 1
+    assert [path.name for path in tmp_path.glob("*.json")] == [
+        f"{op_hctz_pk.opid}_run_0.json"
+    ]
+
+
+def test_a_serial_fit_interrupted_before_a_repeat_finished_is_interrupted(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """There is no result to keep, the interrupt is not turned into an error."""
+    _interrupt_repeat(monkeypatch, interrupted=0)
+    with pytest.raises(KeyboardInterrupt):
         run_optimization(
-            problem=op_hctz_pk, settings=fit_settings, serial=True, **kwargs
+            problem=op_hctz_pk,
+            settings=fit_settings,
+            size=2,
+            n_cores=1,
+            show_progress=False,
+            **short_fit,
         )
+
+
+@pytest.mark.parametrize(("interrupted", "kept"), [(0, 0), (1, 1)])
+def test_an_interrupted_parallel_fit_keeps_the_repeats_which_finished(
+    interrupted: int,
+    kept: int,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ctrl-C while the runner waits for a repeat ends the parallel fit.
+
+    The runner collects the repeats in the order they were given out. A fit
+    interrupted after repeats finished returns them; one interrupted before
+    is interrupted and not reported as a fit in which every repeat failed.
+    """
+    get = ApplyResult.get
+    calls: list[int] = []
+
+    def interrupting(self: ApplyResult[Any], timeout: float | None = None) -> Any:
+        calls.append(len(calls))
+        if calls[-1] == interrupted:
+            raise KeyboardInterrupt
+        return get(self, timeout)
+
+    monkeypatch.setattr(ApplyResult, "get", interrupting)
+    fit = partial(
+        run_optimization,
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        n_cores=2,
+        show_progress=False,
+        **short_fit,
+    )
+    if kept == 0:
+        with pytest.raises(KeyboardInterrupt):
+            fit()
+    else:
+        assert fit().size == kept
+    # the runner stopped waiting at the interrupt
+    assert calls == list(range(interrupted + 1))
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "kwargs", "unknown"),
+    [
+        # removed arguments of an earlier version
+        (
+            OptimizationAlgorithmType.LEAST_SQUARE,
+            {"weighting_local": WeightingPointsType.NO_WEIGHTING},
+            "weighting_local",
+        ),
+        (OptimizationAlgorithmType.LEAST_SQUARE, {"fitting_type": "x"}, "fitting_type"),
+        # an argument of the other optimizer
+        (OptimizationAlgorithmType.LEAST_SQUARE, {"maxiter": 2}, "maxiter"),
+        (OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION, {"max_nfev": 3}, "max_nfev"),
+        # what sbmlsim sets itself
+        (OptimizationAlgorithmType.LEAST_SQUARE, {"bounds": ([0.0], [1.0])}, "bounds"),
+    ],
+)
+def test_unknown_optimizer_arguments(
+    algorithm: OptimizationAlgorithmType,
+    kwargs: dict[str, Any],
+    unknown: str,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    tmp_path: Path,
+) -> None:
+    """An argument the optimizer does not accept is rejected before any run."""
+    with pytest.raises(TypeError, match=unknown) as err:
+        run_optimization(
+            problem=op_hctz_pk,
+            settings=fit_settings,
+            algorithm=algorithm,
+            serial=True,
+            runs_dir=tmp_path,
+            **kwargs,
+        )
+    assert algorithm.name in str(err.value)
+    # no repeat ran
+    assert not list(tmp_path.iterdir())
+
+
+def test_optimizer_arguments_reach_the_optimizer(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+) -> None:
+    """An argument of the optimizer is accepted and limits the run."""
+    assert short_fit == {"max_nfev": 3}
+    opt_result = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
+        size=1,
+        serial=True,
+        **short_fit,
+    )
+    (fit,) = opt_result.fits
+    # a run which failed has no evaluations
+    assert 0 < fit.nfev <= 3
+
+
+def test_sampling_is_not_an_optimizer_argument(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+) -> None:
+    """The sampling of the start values is an argument of the fit, not of scipy."""
+    opt_result = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=1,
+        serial=True,
+        sampling=SamplingType.START,
+        **short_fit,
+    )
+    (fit,) = opt_result.fits
+    # the run started from the start values of the parameters
+    assert list(fit.x0) == pytest.approx(op_hctz_pk.x0)
 
 
 def test_estimate_total_time() -> None:

@@ -64,6 +64,15 @@ f = Data(
 print(f.sid, f.dtype, f.function)
 ```
 
+The function is a formula of the math of PEtab, the same as the formulas of changes and observables. One extension serves data: `max` and `min` of a single argument reduce it over the data and ignore the `NaN` of padding, so `Y/max(Y)` normalizes `Y` to its maximum; with two or more arguments they are the elementwise maximum and minimum.
+
+The math of PEtab is not the L3 formula syntax of SBML which a function of data was written in before, and one difference changes a result without an error: `log(x)` is the natural logarithm, as in PEtab, where the L3 syntax read it as the logarithm to base 10. Write `log10(x)` for base 10 (`log2(x)` for base 2) and `log(x, b)` for the logarithm of `x` to base `b`. The other functions and constants of the L3 syntax which differ fail with a `ValueError` when the data is evaluated:
+
+- `asin`, `acos`, `atan`, `asinh` and the other inverse functions are `arcsin`, `arccos`, `arctan`, `arcsinh` and so on.
+- `root(n, x)` is `sqrt(x)` for `n = 2` and `x^(1/n)` otherwise.
+- `pi` is an identifier like any other in PEtab, so its value is a parameter of the data, `Data(..., function="x * pi", parameters={"pi": math.pi})`.
+- `ceiling`, `ceil`, `floor` and `factorial` are not functions of the math of PEtab and have no equivalent.
+
 ## Resolving data
 
 `Data.get_data(experiment)` returns the quantity for the data in a run experiment, i.e., the values of the task result or the dataset column with their units, optionally converted to other units:
@@ -113,7 +122,3 @@ print(time.units, time.magnitude[:3])
 x = Data("[X]", task="task_tc").get_data(experiment, to_units="dimensionless")
 print(x.units, x.magnitude[:3])
 ```
-
-## Data generators
-
-A `DataGenerator` (see `sbmlsim.result.datagenerator`) post-processes results, e.g., `DataGeneratorIndexingFunction` reduces a scan result to a single time point, which turns a scan over doses into a dose response, see `examples/datagenerator.py`.

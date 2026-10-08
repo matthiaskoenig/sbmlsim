@@ -43,7 +43,6 @@ nav = [
     { "Overview" = "api/index.md" },
     { "sbmlsim" = [
       { "data" = "api/data.md" },
-      { "mathml" = "api/mathml.md" },
       { "units" = "api/units.md" },
       { "serialization" = "api/serialization.md" },
       { "utils" = "api/utils.md" },
@@ -54,7 +53,6 @@ nav = [
     { "sbmlsim.model" = [
       { "model" = "api/model.model.md" },
       { "model_roadrunner" = "api/model.model_roadrunner.md" },
-      { "model_change" = "api/model.model_change.md" },
       { "model_resources" = "api/model.model_resources.md" },
       { "symbols" = "api/model.symbols.md" },
       { "provenance" = "api/model.provenance.md" },
@@ -64,10 +62,6 @@ nav = [
       { "scan" = "api/simulation.scan.md" },
       { "sensitivity" = "api/simulation.sensitivity.md" },
       { "range" = "api/simulation.range.md" },
-      { "change" = "api/simulation.change.md" },
-      { "algorithm" = "api/simulation.algorithm.md" },
-      { "calculation" = "api/simulation.calculation.md" },
-      { "base" = "api/simulation.base.md" },
     ] },
     { "sbmlsim.simulator" = [
       { "simulation_serial" = "api/simulator.simulation_serial.md" },
@@ -85,8 +79,6 @@ nav = [
     { "sbmlsim.result" = [
       { "timecourse" = "api/result.timecourse.md" },
       { "xresult" = "api/result.xresult.md" },
-      { "datagenerator" = "api/result.datagenerator.md" },
-      { "report" = "api/result.report.md" },
     ] },
     { "sbmlsim.plot" = [
       { "plotting" = "api/plot.plotting.md" },
@@ -140,6 +132,7 @@ nav = [
       { "network" = "api/sciml.network.md" },
       { "hybridization" = "api/sciml.hybridization.md" },
       { "compiler" = "api/sciml.compiler.md" },
+      { "formula" = "api/sciml.formula.md" },
       { "parameters" = "api/sciml.parameters.md" },
       { "interpreter" = "api/sciml.interpreter.md" },
       { "backend" = "api/sciml.backend.md" },
@@ -212,6 +205,10 @@ link = "https://github.com/matthiaskoenig/sbmlsim"
 [[project.extra.social]]
 icon = "fontawesome/brands/python"
 link = "https://pypi.org/project/sbmlsim/"
+
+# the plans and the designs of the development are not part of the documentation
+[project.plugins.exclude]
+glob = ["superpowers/*", "superpowers/**"]
 
 # API reference is rendered from the docstrings, see the `docs/api` pages
 [project.plugins.mkdocstrings]

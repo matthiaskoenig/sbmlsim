@@ -159,15 +159,6 @@ GAPS: tuple[Gap, ...] = (
         "fit with fewer output points",
     ),
     Gap(
-        id="model-changes",
-        kind=GapKind.UNSUPPORTED,
-        sbmlsim="a structural change of a model, i.e. "
-        "`ModelChange.clamp_species` on its roadrunner instance",
-        petab="a condition changes the value of an entity of the model",
-        detail="a structural change is not a value, the export raises. Apply the "
-        "change to the model and export the model it produces",
-    ),
-    Gap(
         id="condition-target",
         kind=GapKind.UNSUPPORTED,
         sbmlsim="a change of a simulation names what it sets with a selection, "
@@ -354,8 +345,8 @@ GAPS: tuple[Gap, ...] = (
     Gap(
         id="integrator",
         kind=GapKind.EXTENSION,
-        sbmlsim="the integrator settings of a model, i.e. the KISAO terms of "
-        "`sbmlsim.simulation.algorithm`",
+        sbmlsim="the integrator settings of a model, i.e. "
+        "`RoadrunnerSBMLModel.set_integrator_settings`",
         petab="-",
         detail="the settings go to the extension",
     ),

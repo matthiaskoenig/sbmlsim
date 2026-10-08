@@ -26,7 +26,7 @@ A pull request can only be merged once the four required checks are green:
 
 `tests` aggregates the test matrix into a single job, so the name of the required check stays the same when the matrix changes.
 
-Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync` with the extras of the job. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
+Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync` with the extras of the job. The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
 
 Further rules of a pull request:
 
@@ -148,7 +148,7 @@ ty resolves the imports in the environment of the project, which `uv sync --extr
 
 The configuration lives in `[tool.ty]` in `pyproject.toml`. Warnings are treated as errors, so the codebase is kept free of diagnostics. Suppress an unavoidable diagnostic with a rule specific `# ty: ignore[rule-name]` rather than a blanket comment.
 
-libsbml, libsedml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see.
+libsbml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see.
 
 ## Examples
 

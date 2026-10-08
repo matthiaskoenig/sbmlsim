@@ -58,12 +58,15 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
         seed: int | None = None,
         n_cores: int | None = None,
         cache_results: bool = False,
+        dpi: int = 300,
         **kwargs,
     ):
         """N: length of chain (Sobol' sequence), must be power of 2, i.e. 2^m e.g. 4096.
 
         The Sobol' sequence is a popular quasi-random low-discrepancy sequence used
         to generate uniform samples of parameter space.
+
+        dpi: The resolution of the figures the analysis writes.
         """
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
@@ -73,6 +76,7 @@ class SobolSensitivityAnalysis(SensitivityAnalysis):
             seed=seed,
             n_cores=n_cores,
             cache_results=cache_results,
+            dpi=dpi,
         )
         self.N: int = N
         self.prefix = f"sobol_N{self.N}"

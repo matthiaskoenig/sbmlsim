@@ -1,227 +1,26 @@
-"""Evaluation of formulas and MathML expressions.
-
-A `Data` of type `FUNCTION` is a formula of other data, see `sbmlsim.data`.
-The formula is parsed into the abstract syntax tree of libsedml, which
-implements the L3 formula syntax of SBML, and evaluated on the arrays of the
-variables with sympy.
+"""The math of SBML as sympy expressions for the network compiler and hybridization.
 
 `formula_expression`, `formula_symbols` and `evaluate_formula` read a formula
-with libsbml and `sbmlmath`, which make a symbol of every identifier.
-`expr_from_formula` hands the text of a formula to `sympify`, which reads
-`beta`, `gamma`, `lambda`, `S` or `I` as the functions and constants of sympy
-and not as identifiers of a model. `expression_to_astnode` and
+with libsbml and `sbmlmath`, which make a symbol of every identifier, also of
+`beta`, `gamma`, `lambda`, `S` or `I`, which `sympify` would read as the
+functions and constants of sympy. `expression_to_astnode` and
 `expression_to_formula` are the way back, from a sympy expression to the math
 of SBML.
 """
 
 import functools
-import logging
 from collections.abc import Mapping
 from typing import Any
 
 import libsbml
-import libsedml
 import numpy as np
 import sympy
 from sbmlmath import SBMLMathMLParser, SBMLMathMLPrinter, TimeSymbol
 from sbmlmath.csymbol import SBML_L3V2_AVOGADRO_VALUE, CSymbol
-from sympy import Function, lambdify, sympify
-
-logger = logging.getLogger(__name__)
+from sympy import lambdify
 
 #: the name of the time of the model in the variables of a formula
 TIME = "time"
-
-
-def formula_to_astnode(formula: str) -> libsedml.ASTNode:
-    """Parse ASTNode from formula."""
-    astnode = libsedml.parseL3Formula(formula)
-    if not astnode:
-        logger.error("Formula could not be parsed: '%s'", formula)
-        logger.error(libsedml.getLastParseL3Error())
-    return astnode
-
-
-def astnode_to_formula(astnode: libsedml.ASTNode) -> str:
-    """Write ASTNode as formula."""
-    return libsedml.formulaToL3String(astnode)
-
-
-def parse_mathml_str(mathml_str: str):
-    """Parse MathML string."""
-    astnode: libsedml.ASTNode = libsedml.readMathMLFromString(mathml_str)
-    return parse_astnode(astnode)
-
-
-def parse_formula(formula: str) -> libsedml.ASTNode:
-    """Parse formula to ASTNode."""
-    astnode = formula_to_astnode(formula)
-    return parse_astnode(astnode)
-
-
-def parse_astnode(astnode: libsedml.ASTNode) -> Any:
-    """Parse ASTNode.
-
-    An AST node in libSBML is a recursive tree structure; each node has a type,
-    a pointer to a value, and a list of children nodes. Each ASTNode node may
-    have none, one, two, or more children depending on its type. There are
-    node types to represent numbers (with subtypes to distinguish integer,
-    real, and rational numbers), names (e.g., constants or variables),
-    simple mathematical operators, logical or relational operators and
-    functions.
-
-    see also: http://sbml.org/Software/libSBML/docs/python-api/libsedml-math.html
-
-    :param mathml:
-    :return:
-    """
-    formula = libsedml.formulaToL3String(astnode)
-
-    # iterate over ASTNode and figure out variables
-    # variables = _get_variables(astnode)
-
-    # create sympy expression
-    return expr_from_formula(formula)
-
-    # print(formula, expr)
-
-
-def expr_from_formula(formula: str):
-    """Parse sympy expression from given formula string."""
-    # [2] create sympy expressions with variables and formula
-    # necessary to map the expression trees
-    # create symbols
-    formula = replace_piecewise(formula)
-    formula = formula.replace("&&", "&")
-    formula = formula.replace("||", "|")
-
-    # additional methods
-    # ns = {}
-    # symbols = []
-    # exec_('from sbmlsim.processing.mathml_functions import piecewise', ns)
-    # from sympy import Symbol
-    # for variable in sorted(variables):
-    #    symbol = Symbol(variable)
-    #    ns[variable] = symbol
-    #    symbols.append(symbol)
-    # expr = sympify(formula, locals=ns)
-    return sympify(formula)
-
-
-class _ArrayMax(Function):
-    """`max` of a function of data: of one array its largest value."""
-
-
-class _ArrayMin(Function):
-    """`min` of a function of data: of one array its smallest value."""
-
-
-def _array_max(*args: Any) -> Any:
-    """Reduce one array to its maximum, take the maximum of several values."""
-    if len(args) == 1:
-        return np.nanmax(args[0])
-    return np.maximum.reduce(np.broadcast_arrays(*args))
-
-
-def _array_min(*args: Any) -> Any:
-    """Reduce one array to its minimum, take the minimum of several values."""
-    if len(args) == 1:
-        return np.nanmin(args[0])
-    return np.minimum.reduce(np.broadcast_arrays(*args))
-
-
-def evaluate(astnode: libsedml.ASTNode, variables: dict):
-    """Evaluate the astnode with values.
-
-    The values are arrays of data, e.g. a timecourse, so `max` and `min` of a
-    single argument reduce it, `Y/max(Y)` is `Y` normalized to its maximum;
-    sympy would simplify `Max(Y)` to `Y`.
-    """
-    formula = replace_piecewise(libsedml.formulaToL3String(astnode))
-    formula = formula.replace("&&", "&").replace("||", "|")
-    functions: dict[str, Any] = {"max": _ArrayMax, "min": _ArrayMin}
-    # the overloads of sympy do not declare `locals`
-    expr = sympify(formula, locals=functions)  # ty: ignore[no-matching-overload]
-    symbols = sorted(expr.free_symbols, key=str)
-    f = lambdify(
-        args=symbols,
-        expr=expr,
-        modules=[{"_ArrayMax": _array_max, "_ArrayMin": _array_min}, "numpy"],
-    )
-    # only the variables of the expression are passed
-    return f(*[variables[str(symbol)] for symbol in symbols])
-
-
-def _get_variables(
-    astnode: libsedml.ASTNode, variables: set[str] | None = None
-) -> set[str]:
-    """Add variable names to the variables."""
-    if variables is None:
-        variables = set()
-
-    num_children = astnode.getNumChildren()
-    if num_children == 0:
-        if astnode.isName():
-            name = astnode.getName()
-            variables.add(name)
-    else:
-        for k in range(num_children):
-            child = astnode.getChild(k)  # type: libsedml.ASTNode
-            _get_variables(child, variables=variables)
-
-    return variables
-
-
-def replace_piecewise(formula):
-    """Replace libsedml piecewise with sympy piecewise."""
-    while True:
-        index = formula.find("piecewise(")
-        if index == -1:
-            break
-
-        # process piecewise
-        search_idx = index + 9
-
-        # init counters
-        bracket_open = 0
-        pieces = []
-        piece_chars = []
-
-        while search_idx < len(formula):
-            c = formula[search_idx]
-            if c == ",":
-                if bracket_open == 1:
-                    pieces.append("".join(piece_chars).strip())
-                    piece_chars = []
-            else:
-                if c == "(":
-                    if bracket_open != 0:
-                        piece_chars.append(c)
-                    bracket_open += 1
-                elif c == ")":
-                    if bracket_open != 1:
-                        piece_chars.append(c)
-                    bracket_open -= 1
-                else:
-                    piece_chars.append(c)
-
-            if bracket_open == 0:
-                pieces.append("".join(piece_chars).strip())
-                break
-
-            # next character
-            search_idx += 1
-
-        # find end index
-        if (len(pieces) % 2) == 1:
-            pieces.append("True")  # last condition is True
-        sympy_pieces = []
-        for k in range(int(len(pieces) / 2)):
-            sympy_pieces.append(f"({pieces[2 * k]}, {pieces[2 * k + 1]})")
-        new_str = f"Piecewise({','.join(sympy_pieces)})"
-        formula = formula.replace(formula[index : search_idx + 1], new_str)
-
-    return formula
 
 
 _MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML"
@@ -326,9 +125,7 @@ def formula_expression(formula: str) -> sympy.Basic:
             f"{libsbml.getLastParseL3Error()}"
         )
     try:
-        # through the text of the MathML: libsbml and libsedml both wrap the
-        # syntax tree, and the class of a node is the one of the library which
-        # was imported last
+        # through the text of the MathML, which sbmlmath parses
         mathml = libsbml.writeMathMLToString(astnode)
         expression = sympy.sympify(_FormulaParser(ignore_units=True).parse_str(mathml))
     except Exception as err:
@@ -617,35 +414,3 @@ def expression_to_formula(expression: sympy.Basic) -> str:
             expression_to_astnode(expression), settings
         )
     )
-
-
-if __name__ == "__main__":
-    # Piecewise in sympy
-    # https://docs.sympy.org/latest/modules/functions/elementary.html#piecewise
-    # Piecewise((expr, cond), (expr, cond), … )
-    # necessary to do a rewrite of the piecewise function
-    expr = expr_from_formula("piecewise(8, x < 4, 0.1, (4 <= x) && (x < 6), 8)")
-    expr = expr_from_formula(
-        "Piecewise((8, x < 4), (0.1, (x >= 5) & (x < 6)), (8, True))"
-    )
-
-    print(expr)
-
-    # evaluate expression
-    expr = parse_formula("x + y")
-    print(expr, type(expr))
-
-    """
-    # evaluate the function with the values
-    astnode = libsedml.readMathMLFromString(mathmlStr)
-
-    y = 5
-    res = evaluateMathML(astnode,
-                         variables={'x': y})
-    print('Result:', res)
-    """
-
-    """
-    * The Boolean function symbols '&&' (and), '||' (or), '!' (not),
-    and '!=' (not equals) may be used.
-    """

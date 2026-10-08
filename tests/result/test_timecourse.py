@@ -1,7 +1,6 @@
 """Test the result of a timecourse simulation and the results built from it."""
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from sbmlsim.resources import REPRESSILATOR_SBML
@@ -76,23 +75,6 @@ def test_from_timecourses_of_different_lengths() -> None:
     long = TimecourseResult(columns=("time", "X"), values=np.zeros((3, 2)))
     xres = XResult.from_timecourses([long, short])
     assert np.isnan(xres.xds["X"].values[2, 1])
-
-
-def test_from_dfs_is_from_timecourses() -> None:
-    """DataFrames give the same result as the arrays they hold."""
-    frames = [
-        pd.DataFrame(_result().values, columns=list(_result().columns)),
-        pd.DataFrame(_result().values * 2, columns=list(_result().columns)),
-    ]
-    expected = XResult.from_timecourses(
-        [
-            _result(),
-            TimecourseResult(columns=_result().columns, values=_result().values * 2),
-        ]
-    )
-    xres = XResult.from_dfs(dfs=frames)
-    for key in expected.xds:
-        np.testing.assert_array_equal(xres.xds[key].values, expected.xds[key].values)
 
 
 def test_scan_places_every_simulation() -> None:

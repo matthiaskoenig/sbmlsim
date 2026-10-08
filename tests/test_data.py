@@ -5,20 +5,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from sbmlsim import RESOURCES_DIR
-from sbmlsim.data import DataSet, load_pkdb_dataframe
+from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.units import UnitRegistry
 
 data_dir = Path(__file__).parent / "data"
-TEST_PATH = Path(__file__).parents[0]  # directory of tests files
-DATA_DIR = RESOURCES_DIR / "testdata"  # directory of data for tests
-
-MODEL_DIR = DATA_DIR / "models"
-
-MODEL_REPRESSILATOR = MODEL_DIR / "repressilator.xml"
-MODEL_GLCWB = MODEL_DIR / "body21_livertoy_flat.xml"
-MODEL_DEMO = MODEL_DIR / "Koenig_demo_14.xml"
-MODEL_MIDAZOLAM = MODEL_DIR / "midazolam_body_flat.xml"
 
 
 def test_dataset():
@@ -110,3 +100,58 @@ def test_load_pkdb_dataframe_missing(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="Faber1978_Fig9") as err:
         load_pkdb_dataframe(sid="Faber1978_Fig9", data_path=data_path)
     assert all(str(p) in str(err.value) for p in data_path)
+
+
+@pytest.mark.parametrize(
+    ("index", "selection", "sid"),
+    [
+        ("[X]", "[X]", "task__X"),
+        ("X", "X", "task__X"),
+        ("time", "time", "task__time"),
+    ],
+)
+def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> None:
+    """A Data selects what its index names, its sid drops the brackets."""
+    data = Data(index, task="task")
+    assert data.selection == selection
+    assert data.sid == sid
+
+
+@pytest.mark.parametrize(
+    ("data", "selection", "sid", "name", "index"),
+    [
+        (Data("[X]", task="task"), "[X]", "task__X", "X", "X"),
+        (Data("X[1]", task="task"), "X[1]", "task__X[1]", "X[1]", "X[1]"),
+        (Data("[X]", dataset="dset"), "[X]", "dset__X", "X", "X"),
+        (Data("mean", dataset="dset"), "mean", "dset__mean", "mean", "mean"),
+        (Data("[X]", task="task", sid="given"), "[X]", "given", "X", "X"),
+        # a function is named by its single variable, else by its own index
+        (
+            Data("[F]", function="Y/2", variables={"Y": Data("[Y]", task="task")}),
+            "[F]",
+            "F",
+            "Y",
+            "F",
+        ),
+        (
+            Data(
+                "[F]",
+                function="Y/Z",
+                variables={"Y": Data("Y", task="task"), "Z": Data("Z", task="task")},
+            ),
+            "[F]",
+            "F",
+            "F",
+            "F",
+        ),
+    ],
+)
+def test_the_identifiers_of_data(
+    data: Data, selection: str, sid: str, name: str, index: str
+) -> None:
+    """The brackets of a concentration are part of the selection, not of the names."""
+    assert data.selection == selection
+    assert data.sid == sid
+    assert data.name == name
+    assert data.index == index
+    assert data.to_dict()["index"] == index

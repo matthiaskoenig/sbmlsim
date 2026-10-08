@@ -1,10 +1,10 @@
 # Simulation experiments
 
-A `SimulationExperiment` is the reproducible description of an experiment: the models, the datasets, the simulations, the tasks which apply a simulation to a model, the data derived from the results, and the figures and reports. The experiment is a python class; the `ExperimentRunner` executes it and writes results, figures and a JSON serialization.
+A `SimulationExperiment` is the reproducible description of an experiment: the models, the datasets, the simulations, the tasks which apply a simulation to a model, the data derived from the results, and the figures. The experiment is a python class; the `ExperimentRunner` executes it and writes results, figures and a JSON serialization.
 
 ## Defining an experiment
 
-An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, tasks, data, fit mappings, figures and reports.
+An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, tasks, data, fit mappings and figures.
 
 ```python
 from pathlib import Path
@@ -54,7 +54,7 @@ class RepressilatorExperiment(SimulationExperiment):
         return {"fig1": fig}
 ```
 
-- **models** are paths, URLs or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
+- **models** are paths, SBML strings or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
 - **simulations** are `Simulation` or `ScanSim` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md); the changes of a model are changes before the initialization of every simulation of it, unless the simulation sets the target itself.
 - **tasks** apply a simulation to a model; the results of the experiment are keyed by task.
 - **data** are `Data` objects referencing a task or a dataset, see [Data](data.md).

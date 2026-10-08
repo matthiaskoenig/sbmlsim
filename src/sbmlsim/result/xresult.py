@@ -196,18 +196,6 @@ class XResult:
         times = np.asarray(self.xds["time"].values, dtype=float).ravel()
         return np.unique(times[np.isfinite(times)])
 
-    def is_ragged(self) -> bool:
-        """Check whether the simulations have different time points."""
-        if "_point" not in self.xds.dims:
-            return False
-        time = np.asarray(self.xds["time"].values, dtype=float)
-        if time.ndim == 1:
-            return False
-        flat = time.reshape(time.shape[0], -1)
-        return bool(
-            np.isnan(flat).any() or not np.allclose(flat, flat[:, :1], equal_nan=True)
-        )
-
     def interpolate(
         self, times: ArrayLike, keys: Sequence[str] | None = None
     ) -> "XResult":
@@ -368,37 +356,6 @@ class XResult:
                 ds[key].attrs["units"] = uinfo[key]
         return XResult(xdataset=ds, uinfo=uinfo)
 
-    @classmethod
-    def from_dfs(
-        cls,
-        dfs: pd.DataFrame | Sequence[pd.DataFrame],
-        scan: ScanSim | None = None,
-        uinfo: UnitsInformation | None = None,
-    ) -> "XResult":
-        """Create XResult from DataFrames.
-
-        The DataFrames are converted to `TimecourseResult`, see
-        `from_timecourses`, which the simulator uses directly.
-
-        Args:
-            dfs: DataFrames of the individual simulations.
-            scan: Scan defining the additional dimensions.
-            uinfo: Units information.
-
-        Returns:
-            XResult combining the DataFrames.
-        """
-        if isinstance(dfs, pd.DataFrame):
-            dfs = [dfs]
-        results = [
-            TimecourseResult(
-                columns=tuple(str(c) for c in df.columns),
-                values=df.to_numpy(dtype=float),
-            )
-            for df in dfs
-        ]
-        return cls.from_timecourses(results=results, scan=scan, uinfo=uinfo)
-
     def to_netcdf(self, path_nc: str | Path) -> None:
         """Store results as netcdf.
 
@@ -461,16 +418,3 @@ class XResult:
             df.to_csv(path_tsv, sep="\t", index=False)
         else:
             logger.warning("Could not write TSV")
-
-    @staticmethod
-    def from_netcdf(path: str | Path) -> "XResult":
-        """Read from netCDF.
-
-        Args:
-            path: Path to the netCDF file.
-
-        Returns:
-            XResult without units information.
-        """
-        ds = xr.open_dataset(path)
-        return XResult(xdataset=ds, uinfo=None)

@@ -4,8 +4,8 @@ Every example is run as a module in a temporary working directory, so the
 files it writes do not end up in the repository. An example which breaks
 fails the test suite.
 
-The examples which need optional tools (`examples.julia`, the AMICI and COPASI
-scripts of `examples.comparison`) are not run here, see `examples/README.md`.
+The examples which need optional tools (the AMICI and COPASI scripts of
+`examples.comparison`) are not run here, see `examples/README.md`.
 """
 
 import os
@@ -22,6 +22,7 @@ REPO_DIR = Path(__file__).parent.parent.parent
 #: the arguments an example runs with in the tests: the samples and the fits
 #: of the examples are sized to show what they do, a test only needs them to run
 ARGUMENTS: dict[str, list[str]] = {
+    "examples.petab.benchmark": ["--no-identifiability", "--runs=2"],
     "examples.sciml.lotka_volterra_fit": ["--max-nfev=4"],
     "examples.sensitivity.sensitivity_example": ["--quick", "--cores=1"],
 }
@@ -31,11 +32,8 @@ SCRIPTS = [
     "examples.timecourse",
     "examples.scan",
     "examples.fit_sampling",
-    "examples.model_change",
     "examples.units",
     "examples.model_sensitivity",
-    "examples.datagenerator",
-    "examples.interpolation.interpolation_example",
     "examples.curve_types.experiment",
     "examples.initial_assignment.initial_assignment",
     "examples.glucose.glucose",

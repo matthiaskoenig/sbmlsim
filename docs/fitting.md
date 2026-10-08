@@ -216,7 +216,7 @@ The same settings are needed to report a fit, so they are stored with its result
 
 ## Running the optimization
 
-`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`; a parameter with an infinite bound is not sampled and starts from its start value, and a parameter with the linear `FitParameter.scale` is sampled uniformly also under a logarithmic sampling), runs the optimizer from every start point, in parallel on `n_cores`, and returns an `OptimizationResult`. `sampling=SamplingType.START` does not sample: every run starts from the start values of the parameters, which is what a fit needs to improve a solution, e.g. the nominal values of a model or a trained network; the runs are identical then, so `size=1` is enough for the local optimizer. The progress of the runs is shown on the console, with the runs which are done, the elapsed time and an estimate of the total runtime, e.g. `~ 0:12:30 total`; the estimate is the time per batch of `n_cores` runs times the number of batches, so it is there as soon as the first run is done and settles as more runs come back:
+`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`; a parameter with an infinite bound is not sampled and starts from its start value, and a parameter with the linear `FitParameter.scale` is sampled uniformly also under a logarithmic sampling), runs the optimizer from every start point, in parallel on `n_cores` workers (one worker runs them serially in the calling process), and returns an `OptimizationResult`. `sampling=SamplingType.START` does not sample: every run starts from the start values of the parameters, which is what a fit needs to improve a solution, e.g. the nominal values of a model or a trained network; the runs are identical then, so `size=1` is enough for the local optimizer. The progress of the runs is shown on the console, with the runs which are done, the elapsed time and an estimate of the total runtime, e.g. `~ 0:12:30 total`; the estimate is the time per batch of `n_cores` runs times the number of batches (a batch is one run when `n_cores=1`), so it is there as soon as the first run is done and settles as more runs come back:
 
 ```py
 from sbmlsim.fit.options import OptimizationAlgorithmType
@@ -232,7 +232,7 @@ opt_result = run_optimization(
 )
 ```
 
-A parallel fit starts worker processes which import the script again, so the fit must run behind a guard, otherwise the workers fit again and the fit does not end:
+A parallel fit (`n_cores` of two or more) starts worker processes which import the script again, so the fit must run behind a guard, otherwise the workers fit again and the fit does not end:
 
 ```py
 def main() -> None:
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     main()
 ```
 
-Every repeat is a task of the pool, which hands the next repeat to the worker which is free, so repeats of different duration do not leave workers idle, and every worker resolves the data of the problem once. The start points are sampled by the runner and not by the workers, so a fit with a seed gives the same start points for any number of workers. `serial=True` runs the repeats in the process of the caller, which is what a debugger needs.
+Every repeat is a task of the pool, which hands the next repeat to the worker which is free, so repeats of different duration do not leave workers idle, and every worker resolves the data of the problem once. The start points are sampled by the runner and not by the workers, so a fit with a seed gives the same start points for any number of workers. A fit with one worker, `n_cores=1` which is the default, runs the repeats in the process of the caller without starting a pool and gives the result of `serial=True` for the same seed; `serial=True` does so whatever `n_cores` says, which is what a debugger needs.
 
 A fit keeps what it has. A single optimization which fails, with an error of the integrator or any other error of the objective, is a result which carries its message and the other repeats are unaffected; `timeout` gives every repeat a budget in seconds and a repeat which runs out of it keeps the best parameters it reached. In a parallel fit a worker which dies loses the one repeat it was running. With `runs_dir` every repeat is written as JSON the moment it finishes, so a fit which is interrupted or crashes leaves the repeats which are done and `OptimizationResult.from_directory` reads them back:
 

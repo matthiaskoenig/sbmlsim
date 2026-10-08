@@ -80,6 +80,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
         cache_results: bool = False,
         difference: float = 0.01,
         n_var: int = 3,
+        dpi: int = 300,
     ) -> None:
         """Initialize the local sensitivity analysis.
 
@@ -104,6 +105,9 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             n_var (int, optional):
                 Represents the number of steps at which sensitivity is to be evaluated
                 within the variation fold change
+            dpi (int, optional):
+                Resolution of the figures the analysis writes.
+                Defaults to 300.
         """
         super().__init__(
             sensitivity_simulation=sensitivity_simulation,
@@ -113,6 +117,7 @@ class LocalSensitivityAnalysis(SensitivityAnalysis):
             seed=seed,
             n_cores=n_cores,
             cache_results=cache_results,
+            dpi=dpi,
         )
 
         self.difference: float = difference

@@ -1728,14 +1728,6 @@ class Figure(BasePlotObject):
             value = self.num_cols * self.panel_width
         self._width = value
 
-    def num_subplots(self) -> int:
-        """Get number of subplots.
-
-        Returns:
-            Number of subplots.
-        """
-        return len(self.subplots)
-
     def num_panels(self) -> int:
         """Get number of panel spots for plots.
 
@@ -1879,33 +1871,6 @@ class Figure(BasePlotObject):
                 ridx += 1
             else:
                 cidx += 1
-
-    @staticmethod
-    def from_plots(
-        sid: str, plots: list[Plot], experiment: SimulationExperiment | None = None
-    ) -> Figure:
-        """Create figure object from list of plots.
-
-        Args:
-            sid: identifier of the figure
-            plots: plots stacked in a single column
-            experiment: simulation experiment of the figure
-
-        Returns:
-            Figure with the plots.
-        """
-        num_plots = len(plots)
-        return Figure(
-            experiment=experiment,
-            sid=sid,
-            num_rows=num_plots,
-            num_cols=1,
-            height=num_plots * Figure.panel_height,
-            width=Figure.panel_width,
-            subplots=[
-                SubPlot(plot, row=(k + 1), col=1) for k, plot in enumerate(plots)
-            ],
-        )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary.

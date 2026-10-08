@@ -72,7 +72,7 @@ from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.petab_v2.export import period_condition_id, petab_id
 from sbmlsim.fit.petab_v2.sciml import YAML_FORMAT
-from sbmlsim.mathml import formula_expression, formula_symbols
+from sbmlsim.sciml.formula import formula_expression, formula_symbols
 from sbmlsim.sciml.hybridization import (
     ALL_CONDITIONS,
     Hybridization,

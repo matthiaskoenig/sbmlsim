@@ -23,6 +23,7 @@ from sbmlsim.simulation import Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import CaseComparison, compare_case
+from sbmlsim.utils import process_context
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,9 @@ def map_cases[T](
     if workers == 1 or len(cases) <= 1:
         return [function(case) for case in cases]
     chunksize = max(1, min(8, len(cases) // (4 * workers)))
-    with ProcessPoolExecutor(max_workers=min(workers, len(cases))) as executor:
+    with ProcessPoolExecutor(
+        max_workers=min(workers, len(cases)), mp_context=process_context()
+    ) as executor:
         return list(executor.map(function, cases, chunksize=chunksize))
 
 

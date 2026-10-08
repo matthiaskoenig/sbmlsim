@@ -5,7 +5,6 @@ import pytest
 
 from sbmlsim.fit import FitMappingCollection, FitSettings, MappingKind
 from sbmlsim.fit.cli import FitDefinition
-from sbmlsim.fit.helpers import mapping_kinds_info
 from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import EVALUATED_KINDS, UNUSED_KINDS, FitMapping
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -190,18 +189,6 @@ def test_metrics_only_training(
     df = metrics.summary_df()
     assert list(df.kind) == ["training"]
     assert np.isfinite(df.cost.iloc[0])
-
-
-def test_mapping_kinds_info() -> None:
-    """The overview of the data counts the mappings per kind."""
-    import pandas as pd
-
-    df = pd.DataFrame({"kind": ["training", "training", "validation", "outlier"]})
-    info = mapping_kinds_info(df)
-    assert "4 (2 training, 1 validation, 1 outlier)" in info
-
-    # a table without the kind reports the number of mappings
-    assert "2" in mapping_kinds_info(pd.DataFrame({"fm_key": ["a", "b"]}))
 
 
 def test_excluded_is_not_an_outlier() -> None:

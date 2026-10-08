@@ -19,11 +19,8 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/timecourse.py` | simulations of the repressilator: the steps of the integrator, changes before the initialization and a change at a time on an equidistant grid |
 | `examples/scan.py` | parameter scans of dimension 0, 1 and 2, including a scan over a distribution of parameter values |
 | `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
-| `examples/model_change.py` | clamping a species with `ModelChange` on the roadrunner instance of a model |
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | sensitivity scans of all parameters, by relative differences and by sampling from distributions |
-| `examples/datagenerator.py` | reducing scan results with a `DataGenerator` |
-| `examples/interpolation/` | interpolation of data points as an SBML model (`interpolation.py` writes the model, `interpolation_example.py` simulates it) |
 | `examples/curve_types/` | a two reaction model (created with sbmlutils) and a simulation experiment showing the curve types of the plots |
 | `examples/initial_assignment/` | a simulation experiment on a model with initial assignments and changes of the assigned parameters |
 | `examples/glucose/` | dose response experiment of the hepatic glucose model with data from PK-DB |
@@ -34,7 +31,6 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/petab/` | PEtab parameter estimation problems of the [benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab). `benchmark.py` converts `Perelson_Science1996` or `Boehm_JProteomeRes2014` to PEtab v2, fits it with sbmlsim, analyses the identifiability and reports it. The PEtab v2 layer on the HCTZ problem is `examples/hctz_fitting/fitting/petab_problem.py` |
 | `examples/sciml/` | hybrid problems of PEtab SciML: `lotka_volterra_fit.py` reads the case 001 of the test suite (`examples/sciml/lotka_volterra/`, a network in the right hand side), improves it with a short fit in one process, reports the fit and writes the fitted problem as PEtab SciML again; `neural_ode/` is a neural ODE defined in python, fitted once from the values of its network and in parallel from random starts, with validation data after the training data, written as PEtab SciML |
 | `examples/comparison/` | comparison of simulation results between simulators. `diff_example.py` compares roadrunner with [JWS Online](https://jjj.bio.vu.nl) on the repressilator with `sbmlsim.comparison.diff`; `simulate_amici.py`, `simulate_copasi.py` and `example_comparison.py` run the same conditions with AMICI and COPASI (not installed with sbmlsim) |
-| `examples/julia/` | notes and an example on calling julia from python via juliacall (not installed with sbmlsim) |
 
 ## Tests
 

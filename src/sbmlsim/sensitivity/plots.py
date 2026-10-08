@@ -24,12 +24,13 @@ def heatmap(
     vmin: float = -2.0,
     vmax: float = 2.0,
     fig_path: Path | None = None,
+    dpi: int = 300,
 ) -> Figure:
     """Creates heatmap of model sensitivity.
 
-    The figure is saved to `fig_path` if one is given and is returned. It is
-    closed, i.e., it is not held by pyplot and no window is opened; a caller
-    which wants to display it does so itself.
+    The figure is saved to `fig_path` at the resolution `dpi` if one is given and
+    is returned. It is closed, i.e., it is not held by pyplot and no window is
+    opened; a caller which wants to display it does so itself.
     """
 
     def calculate_mask(df, cutoff: float | None = 0.01) -> pd.DataFrame:
@@ -121,7 +122,7 @@ def heatmap(
         plt.suptitle(title, fontsize=40, fontweight="bold")
 
     if fig_path:
-        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+        plt.savefig(fig_path, dpi=dpi, bbox_inches="tight")
     plt.close(cg.figure)
     return cg.figure
 
@@ -159,6 +160,7 @@ def plot_S1_ST_indices(
                 parameter_labels=parameter_labels,
                 ymax=np.max([1.05, ymax]),
                 ymin=np.min([-0.05, ymin]),
+                dpi=sa.dpi,
             )
 
 
@@ -172,6 +174,7 @@ def S1_ST_barplot(  # noqa: D103 -- documented below the signature
     title: str | None = None,
     ymax: float = 1.1,
     ymin: float = -0.1,
+    dpi: int = 300,
 ) -> Figure:
     # width
     figsize = (15, 3)
@@ -213,6 +216,6 @@ def S1_ST_barplot(  # noqa: D103 -- documented below the signature
         plt.suptitle(title, fontsize=20, fontweight="bold")
 
     if fig_path:
-        plt.savefig(fig_path, dpi=300, bbox_inches="tight")
+        plt.savefig(fig_path, dpi=dpi, bbox_inches="tight")
     plt.close(f)
     return f

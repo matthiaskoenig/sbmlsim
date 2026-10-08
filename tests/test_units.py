@@ -6,7 +6,6 @@ from pathlib import Path
 import libsbml
 import pytest
 
-from examples import units as example_units
 from sbmlsim.resources import DEMO_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.units import UnitRegistry, Units, UnitsInformation
 
@@ -57,11 +56,6 @@ def check_uinfo(uinfo: UnitsInformation) -> None:
     assert isinstance(uinfo.udict, dict)
     assert uinfo.ureg
     assert isinstance(uinfo.ureg, UnitRegistry)
-
-
-def test_example_units() -> None:
-    """Run demo examples."""
-    example_units.run_demo_example()
 
 
 def create_udef_examples() -> list[tuple[libsbml.UnitDefinition | None, str]]:

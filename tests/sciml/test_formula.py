@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import sympy
 
-from sbmlsim.mathml import (
+from sbmlsim.sciml.formula import (
     evaluate_formula,
     expression_to_astnode,
     expression_to_formula,
@@ -47,8 +47,7 @@ def test_an_identifier_which_is_a_name_of_sympy(symbol: str) -> None:
     """An identifier of a model is a symbol, whatever sympy calls by its name.
 
     `sympify` reads `beta` and `gamma` as functions and `S`, `I` and `E` as
-    its registry, the imaginary unit and the number of Euler, which
-    `sbmlsim.mathml.expr_from_formula` hands the text of a formula to.
+    its registry, the imaginary unit and the number of Euler.
     """
     assert formula_symbols(f"2 * {symbol} + 1") == {symbol}
     assert evaluate_formula(f"2 * {symbol} + 1", {symbol: 3.0}) == pytest.approx(7.0)

@@ -17,7 +17,7 @@ Around this core the package collects the tasks which come with simulation exper
 
 ### Core
 
-- **[Models](models.md)** - SBML models are loaded into roadrunner with their units, parameter changes and selections; species can be clamped and model sources can be files, URNs or URLs.
+- **[Models](models.md)** - SBML models are loaded into roadrunner with their units, parameter changes and selections; the source of a model is a file or the SBML itself.
 - **[Simulations](simulation.md)** - `Simulation` and `Change`, changes of parameters and initial conditions before the initialization and at times, for dosing protocols and perturbations, with the semantics of PEtab v2.
 - **[Units](units.md)** - the units of the model are read from the SBML and all changes and results carry [pint](https://pint.readthedocs.io) quantities, so values are converted instead of assumed.
 - **[Simulation experiments](experiments.md)** - `SimulationExperiment` and `ExperimentRunner`, the reproducible description of an experiment with models, datasets, simulations, tasks, data and figures.

@@ -160,13 +160,3 @@ json_str = sim.to_json()
 sim2 = Simulation.from_json(json_str)
 print(sim2)
 ```
-
-## Structural changes
-
-A change sets values, it does not change the structure of the model. `ModelChange.clamp_species` clamps a species of a loaded roadrunner instance to a value or a formula by a fast reaction, between simulations:
-
-```python
-from sbmlsim.model import ModelChange
-
-ModelChange.clamp_species(simulator.r_loaded, "X", "10.0")
-```

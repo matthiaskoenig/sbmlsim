@@ -1,6 +1,7 @@
 """The model is initialized with the pre-initialization values of a plan."""
 
-import time
+import timeit
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -96,13 +97,27 @@ def test_helpers_are_not_selected() -> None:
     assert model.initial_helpers["pinit"] == "pinit__initial"
 
 
+def _best_time(function: Callable[[], object], repeat: int, number: int) -> float:
+    """Get the shortest mean time of a call, which a busy machine inflates least."""
+    return min(timeit.repeat(function, repeat=repeat, number=number)) / number
+
+
 def test_initialize_is_fast() -> None:
-    """An initialization sets values and does not regenerate the model."""
+    """An initialization sets values and does not regenerate the model.
+
+    Setting an initial value with `init(...)` regenerates the model, which
+    takes 25 ms on this model and 0.3 to 0.5 s on the HCTZ model. The mean of
+    an initialization (0.04 ms) must be below a tenth of one regeneration.
+    Both are measured here, so a loaded machine, which slows both, does not
+    fail the test the way a bound in seconds does.
+    """
     model = RoadrunnerSBMLModel(source=sbml())
-    start = time.perf_counter()
-    for _ in range(100):
-        model.initialize([_a("f", 5.0), _a("b0", 0.0)])
-    assert (time.perf_counter() - start) / 100 < 0.005
+    reference = RoadrunnerSBMLModel(source=sbml())
+    regeneration = _best_time(reference.r_loaded.regenerateModel, repeat=3, number=1)
+    initialization = _best_time(
+        lambda: model.initialize([_a("f", 5.0), _a("b0", 0.0)]), repeat=5, number=20
+    )
+    assert initialization < regeneration / 10
 
 
 T0_EVENT = """

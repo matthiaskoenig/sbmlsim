@@ -4,12 +4,11 @@ The API reference is generated from the docstrings of the package.
 
 ## sbmlsim
 
-The top level modules: data, formulas, units and the shared output.
+The top level modules: data, units and the shared output.
 
 | module | description |
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
-| [mathml](mathml.md) | evaluation of the formulas of `Data` functions |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
@@ -19,14 +18,13 @@ The top level modules: data, formulas, units and the shared output.
 
 ## sbmlsim.model
 
-Models and model changes, see [Models](../models.md).
+Models and the changes of a model, see [Models](../models.md).
 
 | module | description |
 | --- | --- |
 | [model.model](model.model.md) | `AbstractModel`, the model of a simulation experiment with its changes and selections |
 | [model.model_roadrunner](model.model_roadrunner.md) | `RoadrunnerSBMLModel`, the roadrunner instance of an SBML model with its units and parameter changes |
-| [model.model_change](model.model_change.md) | `ModelChange`, clamping species and other structural changes |
-| [model.model_resources](model.model_resources.md) | resolving model sources, i.e., files, URNs and URLs |
+| [model.model_resources](model.model_resources.md) | `Source`, resolving the source of a model, i.e., a file or the SBML itself |
 | [model.symbols](model.symbols.md) | `ModelSymbols`, the entities of a model a simulation changes and its initial assignments |
 | [model.provenance](model.provenance.md) | the record of what was added to a derived model, i.e. the compiled networks, and its inverse |
 
@@ -39,11 +37,7 @@ Definition of simulations, see [Simulations](../simulation.md) and [Parameter sc
 | [simulation.definition](simulation.definition.md) | `Simulation`, `Change` and `SteadyState`, a simulation with its changes, with units |
 | [simulation.scan](simulation.scan.md) | `ScanSim`, a simulation over the dimensions of parameter changes |
 | [simulation.sensitivity](simulation.sensitivity.md) | `ModelSensitivity`, sensitivity scans of parameters and initial conditions |
-| [simulation.range](simulation.range.md) | ranges of values for scans |
-| [simulation.change](simulation.change.md) | changes applied to a model before a simulation |
-| [simulation.algorithm](simulation.algorithm.md) | `Algorithm` and `AlgorithmParameter`, the KISAO description of an integrator |
-| [simulation.calculation](simulation.calculation.md) | calculations on simulation results |
-| [simulation.base](simulation.base.md) | base classes shared by the simulation objects |
+| [simulation.range](simulation.range.md) | `Dimension`, a dimension of a scan |
 
 ## sbmlsim.simulator, sbmlsim.task
 
@@ -67,8 +61,6 @@ Simulation experiments and their results, see [Simulation experiments](../experi
 | [experiment.runner](experiment.runner.md) | `ExperimentRunner`, executing experiments and writing their results |
 | [result.timecourse](result.timecourse.md) | `TimecourseResult`, the array of the selections of a single timecourse simulation |
 | [result.xresult](result.xresult.md) | `XResult`, simulation results as an xarray dataset with units |
-| [result.datagenerator](result.datagenerator.md) | data generators processing results |
-| [result.report](result.report.md) | reports of results |
 
 ## sbmlsim.plot, sbmlsim.report
 
@@ -145,6 +137,7 @@ The neural networks of hybrid problems, see [PEtab SciML](../petab_sciml.md). Th
 | [sciml.network](sciml.network.md) | `Network`, the architecture and the arrays of a network, its forward pass and the ids of its elements, inputs and outputs |
 | [sciml.hybridization](sciml.hybridization.md) | `Hybridization`, where a network sits, its inputs and outputs, its fit parameters and the derived changes of a network before the simulation |
 | [sciml.compiler](sciml.compiler.md) | `compile_network`, a network in the right hand side or in an observable written into the model as assignment rules |
+| [sciml.formula](sciml.formula.md) | the math of SBML as sympy expressions, read with libsbml and sbmlmath, and written back, for the compiler and the hybridization |
 | [sciml.parameters](sciml.parameters.md) | the nominal values and the fit parameters of a network per network, layer or array |
 | [sciml.interpreter](sciml.interpreter.md) | the walk over the forward pass of the NN YAML with a backend |
 | [sciml.backend](sciml.backend.md) | the numpy backend of the forward pass and the sympy backend of the compiler |
@@ -162,6 +155,7 @@ The semantic cases of the SBML Test Suite, see [SBML Test Suite](../testsuite.md
 | [testsuite.runner](testsuite.runner.md) | `run_case`, simulating a case, and `CaseStatus`, the outcomes a case can have |
 | [testsuite.comparison](testsuite.comparison.md) | comparing the results of a case within its tolerances |
 | [testsuite.report](testsuite.report.md) | `TestSuiteReport`, the interactive report of a run |
+| [testsuite.submission](testsuite.submission.md) | `write_submission`, the archive with the results of a run for the SBML Test Suite Database |
 | [testsuite.cache](testsuite.cache.md) | the download and the cache of a test suite, shared by the SBML Test Suite, the PEtab test suite and the PEtab SciML test suite |
 | [testsuite.baseline](testsuite.baseline.md) | the baseline of the PEtab test suites and of the benchmark collection, i.e. the cases which do not pass with their reasons |
 

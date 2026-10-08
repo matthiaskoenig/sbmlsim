@@ -33,14 +33,6 @@ def to_json(object, path: Path | None = None) -> str | Path:
 class ObjectJSONEncoder(JSONEncoder):
     """Class for encoding in JSON."""
 
-    def to_json(self, path: Path | None = None) -> str | Path:
-        """Convert definition to JSON for exchange.
-
-        :param path: path for file, if None JSON str is returned
-        :return:
-        """
-        return to_json(object=self, path=path)
-
     def default(self, o):
         """JSON encoder."""
         if isinstance(o, Enum):

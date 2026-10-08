@@ -297,9 +297,14 @@ def test_two_networks_with_one_target(
 #: maximum in every exponential 530 KB at L3V1
 SOFTMAX_SIZE = 60 * 1024
 
-#: the longest time roadrunner takes to load it: 0.2 s, with a maximum in
-#: every exponential 28 s at L3V1
-SOFTMAX_LOAD_TIME = 10.0
+#: the longest time roadrunner takes to load it, in multiples of the time it
+#: takes to load a network of the same size with a tanh in the same test: 4
+#: times (0.2 s against 0.05 s on an idle machine), with a maximum in every
+#: exponential 500 times (28 s) at L3V1. A bound in seconds does not hold on a
+#: loaded machine, the load takes 0.5 to 0.8 s with every core busy and three
+#: times the idle time fails, while the load of the tanh network is slowed
+#: alike. The factor is 10 times above the one and 12 times below the other.
+SOFTMAX_LOAD_FACTOR = 40.0
 
 LEVELS = [(3, 1), (3, 2), (2, 4)]
 
@@ -338,6 +343,23 @@ def _compare_large_values(network: Network, r: roadrunner.RoadRunner) -> None:
     assert np.ptp(logits) > 710.0
 
 
+def _load_time(compiled: Path) -> float:
+    """Get the time roadrunner takes to load a compiled model."""
+    start = perf_counter()
+    _load(compiled)
+    return perf_counter() - start
+
+
+def _tanh_load_time(tmp_path: Path, level: int, version: int, n_hidden: int) -> float:
+    """Get the time to load a network with a tanh, the cost of a model of its size."""
+    directory = tmp_path / "tanh"
+    directory.mkdir()
+    path = write_model(directory / "lv.xml", level=level, version=version)
+    network = feed_forward(n_hidden=n_hidden, activation="tanh")
+    compiled = compile_network(path, [_hybridization(network)], compiled_path(path))
+    return _load_time(compiled)
+
+
 def _rules(compiled: Path, ids: list[str]) -> list[str]:
     model = libsbml.readSBMLFromFile(str(compiled)).getModel()
     return [
@@ -357,7 +379,9 @@ def test_a_softmax_of_large_values(tmp_path: Path, level: int, version: int) -> 
     assert compiled.stat().st_size < SOFTMAX_SIZE
     start = perf_counter()
     r = _load(compiled)
-    assert perf_counter() - start < SOFTMAX_LOAD_TIME
+    load_time = perf_counter() - start
+    reference = _tanh_load_time(tmp_path, level, version, 8)
+    assert load_time < SOFTMAX_LOAD_FACTOR * reference
     _compare_large_values(network, r)
     for rule in _rules(compiled, [f"net1__act__{k}" for k in range(8)]):
         assert "max(" not in rule and "piecewise(" not in rule

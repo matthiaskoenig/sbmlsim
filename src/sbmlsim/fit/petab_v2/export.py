@@ -358,9 +358,9 @@ class PetabExporter:
 
         Raises:
             ValueError: for a gap which has no representation in PEtab v2, i.e.
-                a structural model change, an observable which is a python
-                function or a mapping over something else than time; or for a
-                selector without its own id, see `_check_unnamed_versions`.
+                an observable which is a python function or a mapping over
+                something else than time; or for a selector without its own
+                id, see `_check_unnamed_versions`.
         """
         unsupported = [gap for gap in self.gaps if gap.kind == GapKind.UNSUPPORTED]
         if unsupported:
