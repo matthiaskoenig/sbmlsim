@@ -78,8 +78,16 @@ def test_settings_round_trip() -> None:
         loss_function=LossFunctionType.SOFT_L1,
         weighting_curves=(WeightingCurvesType.POINTS,),
         weighting_points=WeightingPointsType.ERROR_WEIGHTING,
+        initial_time_step=1e-9,
     )
     assert FitSettings.from_dict(settings.to_dict()) == settings
+
+
+def test_settings_without_an_initial_time_step() -> None:
+    """Stored settings without the initial time step let the integrator choose it."""
+    stored = FitSettings().to_dict()
+    del stored["initial_time_step"]
+    assert FitSettings.from_dict(stored).initial_time_step == 0.0
 
 
 def test_settings_normalize_weighting_curves() -> None:

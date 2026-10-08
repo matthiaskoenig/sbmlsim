@@ -212,7 +212,7 @@ print(settings)
 - `WeightingCurvesType`: weighting of the curves by their `MAPPING` weight and by the number of `POINTS`,
 - `WeightingPointsType`: `NO_WEIGHTING` or `ERROR_WEIGHTING` of the points by their errors.
 
-The same settings are needed to report a fit, so they are stored with its result. Initializing a problem again with the settings it already has does nothing, i.e., a fit and its report resolve the data once.
+`variable_step_size`, `relative_tolerance`, `absolute_tolerance` and `initial_time_step` are the settings of the integrator of the simulations of the fit, see [Simulations](simulation.md#selections-and-integrator-settings). The same settings are needed to report a fit, so they are stored with its result. Initializing a problem again with the settings it already has does nothing, i.e., a fit and its report resolve the data once.
 
 ## Running the optimization
 

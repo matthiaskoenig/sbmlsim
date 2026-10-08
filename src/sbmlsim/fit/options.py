@@ -241,6 +241,11 @@ class FitSettings:
         variable_step_size: use a variable step size in the solver.
         relative_tolerance: relative tolerance of the simulator.
         absolute_tolerance: absolute tolerance of the simulator.
+        initial_time_step: first step of the integrator after every start and
+            change, in the time unit of the model; 0 lets the integrator
+            choose it. A small positive value avoids the CVODE warning
+            "t + h = t", which the estimate of the first step gives at a late
+            time when the state starts from 0, e.g. a dose after a reset.
     """
 
     residual: ResidualType = ResidualType.ABSOLUTE
@@ -253,6 +258,7 @@ class FitSettings:
     variable_step_size: bool = True
     relative_tolerance: float = 1e-6
     absolute_tolerance: float = 1e-6
+    initial_time_step: float = 0.0
 
     def __post_init__(self) -> None:
         """Normalize the weighting of the curves to a tuple."""
@@ -271,6 +277,7 @@ class FitSettings:
             "variable_step_size": self.variable_step_size,
             "relative_tolerance": self.relative_tolerance,
             "absolute_tolerance": self.absolute_tolerance,
+            "initial_time_step": self.initial_time_step,
         }
 
     @staticmethod
@@ -295,6 +302,7 @@ class FitSettings:
             variable_step_size=d.get("variable_step_size", True),
             relative_tolerance=d.get("relative_tolerance", 1e-6),
             absolute_tolerance=d.get("absolute_tolerance", 1e-6),
+            initial_time_step=d.get("initial_time_step", 0.0),
         )
 
     def __str__(self) -> str:

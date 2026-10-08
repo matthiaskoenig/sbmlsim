@@ -1000,6 +1000,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             absolute_tolerance=settings.absolute_tolerance,
             relative_tolerance=settings.relative_tolerance,
             variable_step_size=settings.variable_step_size,
+            initial_time_step=settings.initial_time_step,
         )
         self.set_simulator(simulator)
         for model in {id(m): m for m in self.models}.values():
