@@ -302,3 +302,17 @@ def test_the_interpolation_of_a_grid_matches_np_interp() -> None:
             np.testing.assert_allclose(
                 out[i, j], np.interp(grid, t, v[i, j], left=np.nan, right=np.nan)
             )
+
+
+@pytest.mark.parametrize(
+    "t",
+    [[0.0, 0.0, 1.0, 2.0], [0.0, 1.0, 1.0, 2.0], [0.0, 1.0, 2.0, 2.0], [0.0, 2.0, 2.0]],
+)
+def test_the_weights_take_the_value_after_a_change(t: list[float]) -> None:
+    time = np.array(t)
+    values = np.arange(1.0, time.size + 1) * 2.0
+    grid = np.array([-1.0, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0])
+    out = scan._apply(scan._weights(time, grid), values)
+    np.testing.assert_allclose(
+        out, np.interp(grid, time, values, left=np.nan, right=np.nan)
+    )

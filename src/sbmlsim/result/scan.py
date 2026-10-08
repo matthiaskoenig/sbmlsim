@@ -221,11 +221,13 @@ class ScanResult:
         A result in the ragged layout is interpolated onto the union of its
         time points first, or onto `times`; the union has a time point per step
         of every simulation, so it is refused above `MAX_UNION_ELEMENTS`
-        elements (points of the scan times time points). `sd` is the sample standard deviation and `cv` the
-        ratio of `sd` and `mean`; a quantile `q` is the statistic `q<q>`,
-        e.g. `q0.05`. `NaN`, e.g. of a failed point, is skipped. The unit of a
-        variable is the unit of its statistics, except of `cv`, a ratio, which
-        `statistic_units` in the attributes records.
+        elements (points of the scan times time points).
+
+        `sd` is the sample standard deviation and `cv` the ratio of `sd` and
+        `mean`; a quantile `q` is the statistic `q<q>`, e.g. `q0.05`. `NaN`,
+        e.g. of a failed point, is skipped. The unit of a variable is the unit
+        of its statistics, except of `cv`, a ratio, which `statistic_units` in
+        the attributes records.
 
         Args:
             dims: the dimensions to reduce, every dimension of the scan by
@@ -380,7 +382,10 @@ def _weights(time: np.ndarray, grid: np.ndarray) -> _Weights:
     low = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, max(t.size - 2, 0))
     up = np.minimum(low + 1, t.size - 1)
     with np.errstate(divide="ignore", invalid="ignore"):
-        weight = np.where(up > low, (grid - t[low]) / (t[up] - t[low]), 0.0)
+        span = t[up] - t[low]
+        # a zero span is a duplicated final time: the value after the change
+        weight = np.where(span > 0, (grid - t[low]) / span, 1.0)
+        weight = np.where(up > low, weight, 0.0)
     return _Weights(finite[low], finite[up], weight, valid)
 
 
