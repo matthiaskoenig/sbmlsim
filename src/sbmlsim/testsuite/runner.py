@@ -17,10 +17,10 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from sbmlsim import parallel
-from sbmlsim.model import AbstractModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import CaseComparison, compare_case
 
@@ -118,17 +118,21 @@ class CaseResult:
         return f"{self.cid}: {self.status.value}{f' ({self.message})' if self.message else ''}"
 
 
-def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> TimecourseResult:
-    """Simulate a case on a simulator which has its model loaded.
+def simulate_case(
+    case: SemanticCase, simulator: Simulator, model: RoadrunnerSBMLModel
+) -> TimecourseResult:
+    """Simulate a case with the selections and the output of its settings.
 
     Args:
-        case: the case to simulate.
-        simulator: simulator with the model of the case.
+        case: the case.
+        simulator: the simulator with the tolerances of the test suite.
+        model: the model of the case, loaded by the simulator.
 
     Returns:
-        The results with a `time` column and one column per selection.
+        The values of the selections of the case at its output times, a `time`
+        column and one column per selection.
     """
-    simulator.set_timecourse_selections(selections=case.selections)
+    model.set_selections(case.selections)
     # the model is initialized with the binding of `resetAll` and not with the
     # method: roadrunner exposes the symbols of a model as attributes of the
     # instance, a model with a species or a parameter named `reset` hides the
@@ -136,7 +140,7 @@ def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> TimecourseR
     simulation = Simulation(
         start=case.start, end=case.start + case.duration, steps=case.steps
     )
-    return simulator.simulate(simulation)
+    return simulator.simulate(model, simulation)
 
 
 def map_cases[T](
@@ -229,19 +233,20 @@ def run_case(case: SemanticCase) -> CaseResult:
             encoding=case.encoding,
         )
 
-    simulator = SimulatorSerial(
+    simulator = Simulator(
+        n_workers=1,
         absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
         relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
         variable_step_size=False,
     )
     try:
-        simulator.set_model(model=AbstractModel(source=case.model_path))
+        model = simulator.load(AbstractModel(source=case.model_path))
     except Exception as err:
         logger.debug("'%s': the model could not be read: %s", case.cid, err)
         return result(CaseStatus.NOT_READ, str(err).strip().splitlines()[0][:300])
 
     try:
-        observed = simulate_case(case, simulator)
+        observed = simulate_case(case, simulator, model)
     except Exception as err:
         logger.debug("'%s': the simulation failed: %s", case.cid, err)
         return result(

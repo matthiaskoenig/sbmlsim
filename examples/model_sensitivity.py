@@ -5,19 +5,20 @@ Example shows basic model simulations and plotting.
 from matplotlib import pyplot as plt
 
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.result import XResult
+from sbmlsim.result import ScanResult
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
 
-def plot_results(xres: XResult, filename: str) -> None:
+def plot_results(res: ScanResult, filename: str) -> None:
     """Plot the mean and the range of the simulations of a scan."""
     fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
     fig.subplots_adjust(wspace=0.3, hspace=0.3)
     axes = (ax1, ax2, ax3, ax4)
 
-    times = xres.time_points()
+    summary = res.summary(statistics=["mean", "min", "max"])
+    times = summary["time"].values
     ax: plt.Axes
     for ax in (ax1, ax3):
         for sid, color in [
@@ -28,18 +29,20 @@ def plot_results(xres: XResult, filename: str) -> None:
             # range of the simulations
             ax.fill_between(
                 times,
-                xres.dim_min(sid).magnitude,
-                xres.dim_max(sid).magnitude,
+                summary[sid].sel(statistic="min").values,
+                summary[sid].sel(statistic="max").values,
                 color=color,
                 alpha=0.3,
             )
             # mean line
-            ax.plot(times, xres.dim_mean(sid).magnitude, color=color, label=sid)
+            ax.plot(
+                times, summary[sid].sel(statistic="mean").values, color=color, label=sid
+            )
 
     for ax in (ax2, ax4):
         ax.plot(
-            xres.dim_mean("[X]").magnitude,
-            xres.dim_mean("[Y]").magnitude,
+            summary["[X]"].sel(statistic="mean").values,
+            summary["[Y]"].sel(statistic="mean").values,
             color="black",
             label="Y~X",
         )
@@ -62,22 +65,22 @@ def plot_results(xres: XResult, filename: str) -> None:
 
 def run_sensitivity() -> None:
     """Parameter sensitivity simulations."""
-    simulator = SimulatorSerial(REPRESSILATOR_SBML)
+    simulator = Simulator()
+    model = simulator.load(REPRESSILATOR_SBML)
+    model.set_selections(["time", "[X]", "[Y]", "[Z]"])
 
     # parameter sensitivity
     tcsim = Simulation(end=200, steps=2000)
 
-    model = simulator.model_loaded
-
     distrib_scan = ModelSensitivity.distribution_sensitivity_scan(
         model=model, simulation=tcsim, cv=0.03, size=50
     )
-    res_distrib_scan = simulator.run_scan(distrib_scan)
+    res_distrib_scan = simulator.run(model, distrib_scan)
 
     diff_scan = ModelSensitivity.difference_sensitivity_scan(
         model=model, simulation=tcsim, difference=0.1
     )
-    res_diff_scan = simulator.run_scan(diff_scan)
+    res_diff_scan = simulator.run(model, diff_scan)
 
     # create figures
     plot_results(res_distrib_scan, "model_sensitivity_distribution.png")

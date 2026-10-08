@@ -11,7 +11,8 @@ import libsbml
 import numpy as np
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import Dimension, ScanSim, Simulation
+from sbmlsim.simulation.definition import Simulation
+from sbmlsim.simulation.scan import Dimension, Scan
 from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.units import Q
 
@@ -38,7 +39,7 @@ class ModelSensitivity:
         exclude_filter=None,
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
-    ) -> ScanSim:
+    ) -> Scan:
         """Create a parameter sensitivity scan for a simulation.
 
         :param model: model for execution (needed to select parameters)
@@ -49,7 +50,8 @@ class ModelSensitivity:
         :param exclude_filter: filter function which defines which parameters should be excluded from scan
         :param exclude_zero: parameters with a value of abs(value)<zero_eps are excluded from scan
         :param zero_eps: epsilon for zero values
-        :return:
+        :return: the scan of the simulation over the dimension `dim_sens`, two
+            points per parameter, see `create_difference_dimension`
         """
         dim = ModelSensitivity.create_difference_dimension(
             model=model,
@@ -60,10 +62,7 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        return ScanSim(
-            simulation=simulation,
-            dimensions=[dim],
-        )
+        return Scan(simulation=simulation, dimensions=[dim])
 
     @staticmethod
     def distribution_sensitivity_scan(
@@ -75,8 +74,12 @@ class ModelSensitivity:
         exclude_filter=None,
         exclude_zero: bool = True,
         zero_eps: float = 1e-8,
-    ) -> ScanSim:
-        """Get sensitivity scan based on distributions for values."""
+    ) -> Scan:
+        """Get sensitivity scan based on distributions for values.
+
+        :return: the scan of the simulation over the dimension `dim_sens`,
+            `size` points, see `create_sampling_dimension`
+        """
         dim = ModelSensitivity.create_sampling_dimension(
             model=model,
             changes=ModelSensitivity._changes(simulation),
@@ -87,10 +90,7 @@ class ModelSensitivity:
             exclude_zero=exclude_zero,
             zero_eps=zero_eps,
         )
-        return ScanSim(
-            simulation=simulation,
-            dimensions=[dim],
-        )
+        return Scan(simulation=simulation, dimensions=[dim])
 
     @staticmethod
     def _changes(simulation: Simulation) -> dict:

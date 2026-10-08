@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import xarray as xr
 from matplotlib import pyplot as plt
 
 from sbmlsim.console import console
@@ -66,11 +67,43 @@ def get_files_by_extension(base_path: Path, extension: str = ".json") -> dict[st
     return dict(zip(keys, files, strict=False))  # type: ignore
 
 
+def to_dataframe(data: pd.DataFrame | xr.Dataset, label: str) -> pd.DataFrame:
+    """Get the table of a result, one row per time point.
+
+    A data frame is returned as it is. A dataset, e.g. `ScanResult.ds` of a
+    simulation or of one point of a scan, is a column per variable and the
+    time as a column; the dimension `_point` of the steps of the integrator,
+    the labels of the dimensions and the changed values are no columns.
+
+    Args:
+        data: the result.
+        label: the name of the result in the messages.
+
+    Returns:
+        The table.
+
+    Raises:
+        ValueError: if the dataset has a dimension of a scan.
+    """
+    if isinstance(data, pd.DataFrame):
+        return data
+    dims = [str(dim) for dim in data.dims if dim not in ("time", "_point")]
+    if dims:
+        raise ValueError(
+            f"The dataset '{label}' has the dimensions {dims} of a scan, compare "
+            f"one point at a time, e.g. ds.isel({dims[0]}=0)."
+        )
+    df = data.reset_coords(drop=True).to_dataframe().reset_index()
+    return df.drop(columns=["_point"], errors="ignore")
+
+
 class DataSetsComparison:
     """Comparing multiple simulation results.
 
-    Only the subset of identical columns are compared. In the beginning a matching of column
-    names is performed to find the subset of columns which can be compared.
+    A result is a data frame or a dataset, e.g. `ScanResult.ds`, see
+    `to_dataframe`. Only the subset of identical columns are compared. In the
+    beginning a matching of column names is performed to find the subset of
+    columns which can be compared.
 
     The simulations must contain a "time" column with identical time points.
     """
@@ -82,7 +115,7 @@ class DataSetsComparison:
     @timeit
     def __init__(
         self,
-        dfs_dict: dict[str, pd.DataFrame],
+        dfs_dict: dict[str, pd.DataFrame | xr.Dataset],
         columns_filter=None,
         time_column: bool = True,
         title: str | None = None,
@@ -91,15 +124,19 @@ class DataSetsComparison:
     ):
         """Initialize the comparison.
 
-        :param dfs_dict: data dictionary d[simulator_key] = df_result
+        :param dfs_dict: data dictionary d[simulator_key] = result, a data
+            frame or a dataset, e.g. `ScanResult.ds`, see `to_dataframe`
         :param columns_filter: function which returns True if in Set or False if should be filtered.
         :param time_column: flag to check for time column
         """
         self.columns_filter = columns_filter
+        frames: dict[str, pd.DataFrame] = {
+            label: to_dataframe(data, label) for label, data in dfs_dict.items()
+        }
 
         # check that identical number of rows (mostly timepoints)
         nrow = 0
-        for label, df in dfs_dict.items():
+        for label, df in frames.items():
             if nrow == 0:
                 nrow = len(df)
 
@@ -111,7 +148,7 @@ class DataSetsComparison:
 
         # check that time column exist in data frames
         if time_column:
-            for label, df in dfs_dict.items():
+            for label, df in frames.items():
                 if "time" not in df.columns:
                     raise ValueError(f"'time' column must exist in data ({label})")
 
@@ -124,7 +161,7 @@ class DataSetsComparison:
             colnames = list(selections.values())[1]
             for key, sel_keys in selections.items():
                 console.log("***", key, "***")
-                df = dfs_dict[key]
+                df = frames[key]
                 # get subset
                 df_new = df[sel_keys]
                 # apply factors
@@ -140,10 +177,10 @@ class DataSetsComparison:
                 )
                 # store updated df
                 console.log(df_new.head())
-                dfs_dict[key] = df_new
+                frames[key] = df_new
 
         # get the subset of columns to compare
-        columns, self.col_intersection, self.col_union = self._process_columns(dfs_dict)
+        columns, self.col_intersection, self.col_union = self._process_columns(frames)
 
         # filtered columns
         if columns_filter:
@@ -152,7 +189,7 @@ class DataSetsComparison:
         logger.info("Comparing: %s", self.columns)
 
         # get common subset of data
-        self.dfs, self.labels = self._filter_dfs(dfs_dict, self.columns)
+        self.dfs, self.labels = self._filter_dfs(frames, self.columns)
 
         # set title
         self.title = title if title else " | ".join(self.labels)

@@ -9,9 +9,11 @@ import numpy as np
 import pytest
 
 from sbmlsim import parallel
+from sbmlsim.model import AbstractModel
+from sbmlsim.simulator import Simulator
 from sbmlsim.testsuite import SemanticSuite, run_suite, write_submission
 from sbmlsim.testsuite.cases import SemanticCase
-from sbmlsim.testsuite.runner import CaseResult, CaseStatus, map_cases
+from sbmlsim.testsuite.runner import CaseResult, CaseStatus, map_cases, simulate_case
 
 SETTINGS = """start: 0
 duration: 2.0
@@ -99,6 +101,23 @@ def test_the_cases_run_in_parallel_as_in_one_process(tmp_path: Path) -> None:
         CaseStatus.PASS,
         CaseStatus.NOT_READ,
     ]
+
+
+def test_a_case_is_simulated_with_a_simulator_and_its_model(tmp_path: Path) -> None:
+    """The model of a case gets the selections and the output of its settings."""
+    _case(tmp_path, "00001")
+    case = SemanticCase.from_directory(tmp_path / "00001")
+    assert case is not None
+    simulator = Simulator(
+        n_workers=1, absolute_tolerance=1e-12, relative_tolerance=1e-12
+    )
+    model = simulator.load(AbstractModel(source=case.model_path))
+
+    observed = simulate_case(case, simulator, model)
+
+    assert observed.columns == ("time", "S1", "S2")
+    np.testing.assert_allclose(observed.time, np.linspace(0.0, 2.0, 21))
+    np.testing.assert_allclose(observed["S1"], np.exp(-0.5 * observed.time), rtol=1e-8)
 
 
 def _interrupted(case: SemanticCase) -> CaseResult:

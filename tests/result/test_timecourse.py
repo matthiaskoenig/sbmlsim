@@ -5,8 +5,8 @@ import pytest
 
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import TimecourseResult, XResult
-from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulation import Change, Simulation
+from sbmlsim.simulator import Simulator
 
 
 def _result(offset: float = 0.0) -> TimecourseResult:
@@ -77,31 +77,15 @@ def test_from_timecourses_of_different_lengths() -> None:
     assert np.isnan(xres.xds["X"].values[2, 1])
 
 
-def test_scan_places_every_simulation() -> None:
-    """The result of a simulation of a scan is at the indices of its changes."""
-    simulator = SimulatorSerial(REPRESSILATOR_SBML)
-    scan = ScanSim(
-        simulation=Simulation(end=10, steps=10),
-        dimensions=[
-            Dimension("dim_n", values={"n": np.array([2.0, 3.0, 4.0])}),
-            Dimension("dim_y", values={"Y": np.array([10.0, 30.0])}),
-        ],
-    )
-    xres = simulator.run_scan(scan)
-    assert xres.xds["Y"].dims == ("_point", "dim_n", "dim_y")
-    assert xres.xds["Y"].shape == (11, 3, 2)
-    np.testing.assert_array_equal(xres.xds["n"].values[0], [[2, 2], [3, 3], [4, 4]])
-    np.testing.assert_array_equal(xres.xds["Y"].values[0], [[10, 30]] * 3)
-
-
 def test_simulator_returns_arrays() -> None:
     """A simulation is the array of its selections, with no DataFrame."""
-    simulator = SimulatorSerial(REPRESSILATOR_SBML)
-    simulator.set_timecourse_selections(["time", "[X]", "Y"])
+    simulator = Simulator(n_workers=1)
+    model = simulator.load(REPRESSILATOR_SBML)
+    model.set_selections(["time", "[X]", "Y"])
     simulation = Simulation(
         start=-5, end=20, changes=[Change(10, {"Y": 5.0})], times=range(21)
     )
-    result = simulator.simulate(simulation)
+    result = simulator.simulate(model, simulation)
 
     assert isinstance(result, TimecourseResult)
     assert result.columns == ("time", "[X]", "Y")

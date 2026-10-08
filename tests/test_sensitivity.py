@@ -52,21 +52,42 @@ def test_sensitivity_change() -> None:
 
 def test_difference_scan_of_a_simulation() -> None:
     """The reference values are the ones of the model with the simulation's changes."""
-    from sbmlsim.simulation import Simulation
-    from sbmlsim.simulator import SimulatorSerial
+    from sbmlsim.simulation import Scan, Simulation
+    from sbmlsim.simulator import Simulator
 
     model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
     simulation = Simulation(end=10, steps=10, preinit_changes={"n": 3.0})
     scan = ModelSensitivity.difference_sensitivity_scan(
         model=model, simulation=simulation, difference=0.1
     )
+    assert isinstance(scan, Scan)
     assert scan.simulation is simulation
     values = scan.dimensions[0].values["n"].magnitude
     assert any(v == pytest.approx(3.0 * 1.1) for v in values)
-    simulator = SimulatorSerial(model)
-    simulator.set_timecourse_selections(["time", "n"])
-    xres = simulator.run_scan(scan)
-    assert xres["n"].values[0].max() == pytest.approx(3.3)
+    model.set_selections(["time", "PX"])
+    res = Simulator(n_workers=1).run(model, scan)
+    # the changed parameters are coordinates of the dimension
+    assert res["n"].values.max() == pytest.approx(3.3)
+    assert res["PX"].dims == ("dim_sens", "time")
+
+
+def test_distribution_scan_of_a_simulation() -> None:
+    """The distribution scan is a scan of one dimension of `size` samples."""
+    from sbmlsim.simulation import Scan, Simulation
+    from sbmlsim.simulator import Simulator
+
+    model = RoadrunnerSBMLModel(REPRESSILATOR_SBML)
+    simulation = Simulation(end=10, steps=10)
+    scan = ModelSensitivity.distribution_sensitivity_scan(
+        model=model, simulation=simulation, cv=0.05, size=4
+    )
+    assert isinstance(scan, Scan)
+    assert scan.simulation is simulation
+    assert scan.dims == ("dim_sens",)
+    model.set_selections(["time", "PX"])
+    res = Simulator(n_workers=1).run(model, scan)
+    assert res["PX"].shape == (4, 11)
+    assert res.units["n"] == "dimensionless"
 
 
 def test_reference_dict_follows_initial_assignments() -> None:

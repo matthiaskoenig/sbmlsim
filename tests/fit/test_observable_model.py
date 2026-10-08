@@ -20,7 +20,7 @@ from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 from tests.simulator.models import sbml
 
@@ -175,10 +175,11 @@ def test_fit_evaluates_the_observable_model(problem: OptimizationProblem) -> Non
     The measurement at `0.5` has no value and is dropped with its placeholder
     value, the others keep theirs: `0.0`, `1.0` and `k1 = 0.8`.
     """
-    simulator = SimulatorSerial(model=MODEL_PATH["path"])
-    simulator.set_timecourse_selections(["time", "[A]"])
+    simulator = Simulator(n_workers=1)
+    model = simulator.load(MODEL_PATH["path"])
+    model.set_selections(["time", "[A]"])
     result = simulator.simulate(
-        Simulation(end=2, times=[0.0, 1.5, 2.0], preinit_changes={"f": 3.0})
+        model, Simulation(end=2, times=[0.0, 1.5, 2.0], preinit_changes={"f": 3.0})
     )
     expected = 3.0 * np.asarray(result["[A]"]) + np.array([0.0, 1.0, 0.8])
 
