@@ -80,10 +80,16 @@ def imports(path: Path) -> list[tuple[str, str]]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     names: list[tuple[str, str]] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("sbmlsim"):
+        if (
+            isinstance(node, ast.ImportFrom)
+            and node.module
+            and node.module.startswith("sbmlsim")
+        ):
             names.extend((node.module, a.name) for a in node.names)
         elif isinstance(node, ast.Import):
-            names.extend((a.name, "") for a in node.names if a.name.startswith("sbmlsim"))
+            names.extend(
+                (a.name, "") for a in node.names if a.name.startswith("sbmlsim")
+            )
     return names
 
 
@@ -260,7 +266,9 @@ def test_a_reduction_ignores_the_padding() -> None:
 def test_a_reduction_of_quantities_keeps_the_units() -> None:
     y = Q(np.array([1.0, 2.0, 4.0]), "mmol/l")
     normalized = evaluate_function("Y/max(Y)", {"Y": y})
-    np.testing.assert_allclose(normalized.to("dimensionless").magnitude, [0.25, 0.5, 1.0])
+    np.testing.assert_allclose(
+        normalized.to("dimensionless").magnitude, [0.25, 0.5, 1.0]
+    )
     shifted = evaluate_function("Y - min(Y)", {"Y": y})
     assert str(shifted.units) == str(y.units)
 
@@ -512,7 +520,9 @@ def test_a_url_is_no_source(tmp_path: Path) -> None:
     from sbmlsim.model.model_resources import Source
 
     with pytest.raises(OSError, match="does not exist"):
-        Source.from_source("https://www.ebi.ac.uk/biomodels/BIOMD0000000012", base_dir=tmp_path)
+        Source.from_source(
+            "https://www.ebi.ac.uk/biomodels/BIOMD0000000012", base_dir=tmp_path
+        )
 ```
 
 (add `from pathlib import Path` and `import pytest` if the file lacks them). Run: `uv run pytest -q -n 0 tests/models/test_model_roadrunner.py -k url`. Expected before the change: FAIL (it downloads or raises another error); after: PASS.
@@ -772,8 +782,13 @@ def test_one_worker_runs_without_a_pool(
     from sbmlsim.fit import runner
 
     serial = runner.run_optimization(
-        problem=op_hctz_pk, settings=fit_settings, size=2, seed=1234,
-        serial=True, show_progress=False, **short_fit,
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        serial=True,
+        show_progress=False,
+        **short_fit,
     )
 
     def no_pool(**kwargs: Any) -> None:
@@ -781,8 +796,13 @@ def test_one_worker_runs_without_a_pool(
 
     monkeypatch.setattr(runner, "_run_optimization_parallel", no_pool)
     one = runner.run_optimization(
-        problem=op_hctz_pk, settings=fit_settings, size=2, seed=1234,
-        n_cores=1, show_progress=False, **short_fit,
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=2,
+        seed=1234,
+        n_cores=1,
+        show_progress=False,
+        **short_fit,
     )
     np.testing.assert_allclose(one.xopt, serial.xopt)
 ```
