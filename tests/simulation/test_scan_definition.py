@@ -240,3 +240,64 @@ def test_a_scan_pickles() -> None:
     again = pickle.loads(pickle.dumps(scan))
     assert again.dims == ("d",)
     assert again.dimensions[0].values["k1"].tolist() == [1.0, 2.0]
+
+
+@pytest.mark.parametrize("other", [Q(1, "hr"), 1], ids=["quantity", "number"])
+def test_one_time_in_other_spellings_is_one_time(other: Any) -> None:
+    hours = Simulation(time_unit="hr", end=2)
+    with pytest.raises(ValueError, match="'k1'"):
+        Scan(
+            hours,
+            [
+                Dimension("a", values={"k1": [1.0]}, at=Q(60, "min")),
+                Dimension("b", values={"k1": [2.0]}, at=other),
+            ],
+        )
+
+
+@pytest.mark.parametrize("labels", ["ab", 5])
+def test_labels_are_no_string_and_no_scalar(labels: Any) -> None:
+    with pytest.raises(ValueError, match="labels"):
+        Dimension("d", values={"k1": [5.0, 6.0]}, labels=labels)
+
+
+def test_labels_are_one_dimensional() -> None:
+    with pytest.raises(ValueError, match="do not fit"):
+        Dimension("d", values={"k1": [5.0, 6.0]}, labels=[[0, 1], [2, 3]])
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"values": {}}, "has no values"),
+        ({"simulations": {}}, "has no simulations"),
+        ({"models": {}}, "has no models"),
+        ({"values": {"k1": "k1*2"}}, "the string 'k1\\*2'"),
+        ({"models": "wt.xml"}, "must be a mapping"),
+        ({"simulations": [SIM]}, "must be a mapping"),
+        ({"values": {"k1": [1.0]}, "at": Q(1, "mg")}, "time"),
+    ],
+)
+def test_dimensions_which_are_no_dimensions(
+    kwargs: dict[str, Any], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        Dimension("d", **kwargs)
+
+
+def test_a_scan_needs_a_simulation() -> None:
+    with pytest.raises(ValueError, match="needs a Simulation"):
+        Scan("sim")  # ty: ignore[invalid-argument-type]
+
+
+def test_a_dimension_does_not_change() -> None:
+    dimension = Dimension("d", values={"k1": [1.0, 2.0]})
+    with pytest.raises(TypeError):
+        dimension.values["k2"] = np.array([1.0])  # ty: ignore[invalid-assignment]
+    sims = Dimension("s", simulations={"a": SIM})
+    with pytest.raises(TypeError):
+        sims.simulations["b"] = SIM  # ty: ignore[invalid-assignment]
+    again = pickle.loads(pickle.dumps(dimension))
+    assert again.values["k1"].tolist() == [1.0, 2.0]
+    with pytest.raises(TypeError):
+        again.values["k2"] = np.array([1.0])

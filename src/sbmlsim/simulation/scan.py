@@ -29,9 +29,10 @@ from __future__ import annotations
 
 import itertools
 import math
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -114,9 +115,9 @@ class Dimension:
 
     id: str
     kind: DimensionKind
-    values: dict[str, Any]
-    simulations: dict[str, Simulation]
-    models: dict[str, Any]
+    values: Mapping[str, Any]
+    simulations: Mapping[str, Simulation]
+    models: Mapping[str, Any]
     at: Time | None
     labels: np.ndarray
 
@@ -154,6 +155,18 @@ class Dimension:
                 f"'simulations' and 'models', it has {given or 'none'}."
             )
         kind = DimensionKind(given[0])
+        chosen = {"values": values, "simulations": simulations, "models": models}[
+            given[0]
+        ]
+        if not isinstance(chosen, Mapping):
+            raise ValueError(
+                f"The {kind} of the dimension '{id}' must be a mapping, not {chosen!r}."
+            )
+        if isinstance(at, Quantity) and not at.check("[time]"):
+            raise ValueError(
+                f"The time 'at' of the dimension '{id}' must have a time "
+                f"unit, not '{at.units}'."
+            )
         arrays: dict[str, Any] = {}
         sims: dict[str, Simulation] = {}
         mods: dict[str, Any] = {}
@@ -187,6 +200,13 @@ class Dimension:
             keys = list(sims or mods)
             if not keys:
                 raise ValueError(f"The dimension '{id}' has no {kind}.")
+        if labels is not None and (
+            isinstance(labels, str) or not isinstance(labels, Iterable)
+        ):
+            raise ValueError(
+                f"The labels {labels!r} of the dimension '{id}' must be a "
+                f"sequence of {len(keys)} labels."
+            )
         coordinate = np.array(keys if labels is None else list(labels))
         if coordinate.ndim != 1 or coordinate.size != len(keys):
             raise ValueError(
@@ -201,11 +221,25 @@ class Dimension:
         coordinate.setflags(write=False)
         object.__setattr__(self, "id", id)
         object.__setattr__(self, "kind", kind)
-        object.__setattr__(self, "values", arrays)
-        object.__setattr__(self, "simulations", sims)
-        object.__setattr__(self, "models", mods)
+        object.__setattr__(self, "values", MappingProxyType(arrays))
+        object.__setattr__(self, "simulations", MappingProxyType(sims))
+        object.__setattr__(self, "models", MappingProxyType(mods))
         object.__setattr__(self, "at", at)
         object.__setattr__(self, "labels", coordinate)
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Get the state, the read-only mappings as plain dictionaries."""
+        state = dict(self.__dict__)
+        for name in ("values", "simulations", "models"):
+            state[name] = dict(state[name])
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Set the state, the dictionaries become read-only mappings again."""
+        for name, value in state.items():
+            if name in ("values", "simulations", "models"):
+                value = MappingProxyType(value)
+            object.__setattr__(self, name, value)
 
     def __len__(self) -> int:
         """Get the number of points."""
@@ -240,13 +274,6 @@ class Dimension:
         }
 
 
-def _at_key(at: Time | None) -> Any:
-    """Get a key of a time which tells two times of dimensions apart."""
-    if isinstance(at, Quantity):
-        return (float(at.magnitude), str(at.units))
-    return None if at is None else float(at)
-
-
 def _validate(simulation: Simulation, dimensions: tuple[Dimension, ...]) -> None:
     """Check the dimensions of a scan, see `Scan`.
 
@@ -278,9 +305,22 @@ def _validate(simulation: Simulation, dimensions: tuple[Dimension, ...]) -> None
             raise ValueError(
                 f"A scan has at most one dimension of {kind}, this one has {count}."
             )
+    simulations = next(
+        (
+            list(dimension.simulations.values())
+            for dimension in dimensions
+            if dimension.kind is DimensionKind.SIMULATIONS
+        ),
+        [simulation],
+    )
     seen: dict[tuple[str, Any], str] = {}
     for dimension in dimensions:
-        key = _at_key(dimension.at)
+        # the same time in another spelling, e.g. 60 min and 1 hr, is one time
+        key = (
+            None
+            if dimension.at is None
+            else tuple(round(sim._magnitude(dimension.at), 9) for sim in simulations)
+        )
         for target in dimension.values:
             other = seen.get((target, key))
             if other is not None:
@@ -294,14 +334,6 @@ def _validate(simulation: Simulation, dimensions: tuple[Dimension, ...]) -> None
                     f"'{other}' and '{dimension.id}': a point sets a target once."
                 )
             seen[(target, key)] = dimension.id
-    simulations = next(
-        (
-            list(dimension.simulations.values())
-            for dimension in dimensions
-            if dimension.kind is DimensionKind.SIMULATIONS
-        ),
-        [simulation],
-    )
     for dimension in dimensions:
         if dimension.at is None:
             continue

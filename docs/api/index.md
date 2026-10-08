@@ -36,7 +36,7 @@ Definition of simulations, see [Simulations](../simulation.md) and [Parameter sc
 | module | description |
 | --- | --- |
 | [simulation.definition](simulation.definition.md) | `Simulation`, `Change` and `SteadyState`, a simulation with its changes, with units |
-| [simulation.scan](simulation.scan.md) | `ScanSim`, a simulation over the dimensions of parameter changes |
+| [simulation.scan](simulation.scan.md) | `Scan` and `Dimension`, a simulation over dimensions of values, simulations or models, and the legacy `ScanSim` |
 | [simulation.sensitivity](simulation.sensitivity.md) | `ModelSensitivity`, sensitivity scans of parameters and initial conditions |
 
 ## sbmlsim.simulator, sbmlsim.task
