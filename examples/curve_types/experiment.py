@@ -11,7 +11,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
 #: selections of the timecourse, which the data uses
@@ -77,7 +77,7 @@ def run_curve_types_experiments(output_path: Path) -> None:
     CurveTypesExperiment.model_path = create(output_dir=output_path / "results")
     runner = ExperimentRunner(
         CurveTypesExperiment,
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         data_path=base_path,
         base_path=base_path,
     )

@@ -16,8 +16,9 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.result import ScanResult
+from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 from sbmlsim.units import Quantity
 
@@ -54,7 +55,7 @@ def _runner(experiment_class: type[SimulationExperiment]) -> ExperimentRunner:
     """Get a runner of a single experiment class."""
     return ExperimentRunner(
         experiment_classes=[experiment_class],
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
     )
@@ -74,7 +75,7 @@ def test_the_selections_cover_the_fit_mappings() -> None:
     assert "[Y]" in experiment._selections_of_model("m")
     experiment.run(runner.simulator, reduced_selections=True)
 
-    variables = set(experiment.results["task"].xds.data_vars)
+    variables = set(experiment.results["task"].ds.data_vars)
     assert {"[X]", "[Y]"} <= variables
     # and the reduction still happens, i.e. not everything is selected
     assert "[Z]" not in variables
@@ -130,7 +131,7 @@ def _runner_of(*classes: type[SimulationExperiment]) -> ExperimentRunner:
     """Get a runner of several experiment classes."""
     return ExperimentRunner(
         experiment_classes=list(classes),
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
     )
@@ -188,7 +189,7 @@ def test_the_figures_are_not_created_when_nothing_uses_them() -> None:
 
     assert experiment._mpl_figures == {}
     # the simulation still ran
-    assert np.asarray(experiment.results["task"].xds["[X]"]).size > 0
+    assert np.asarray(experiment.results["task"].ds["[X]"]).size > 0
 
 
 def test_the_figures_are_created_for_the_output(tmp_path: Path) -> None:
@@ -198,6 +199,75 @@ def test_the_figures_are_created_for_the_output(tmp_path: Path) -> None:
     experiment.run(runner.simulator, output_path=tmp_path)
 
     assert (tmp_path / f"{experiment.sid}.json").exists()
+
+
+class ScanExperiment(SimulationExperiment):
+    """An experiment of a scan of the initial amount of X."""
+
+    def models(self) -> dict:
+        return {"m": AbstractModel(source=REPRESSILATOR_SBML)}
+
+    def simulations(self) -> dict:
+        return {
+            "scan": Scan(
+                Simulation(end=10, steps=10),
+                [Dimension("d", values={"X": np.array([1.0, 2.0, 3.0])})],
+            )
+        }
+
+    def tasks(self) -> dict:
+        return {"task": Task(model="m", simulation="scan")}
+
+    def data(self) -> dict:
+        return {"Y": Data(index="[Y]", task="task")}
+
+
+def test_the_data_of_a_scan_has_the_time_last() -> None:
+    """A Data of a task is the variable of the result, the time last.
+
+    A changed target which is no selection is a coordinate over its
+    dimension.
+    """
+    runner = _runner(ScanExperiment)
+    experiment = runner.experiments["ScanExperiment"]
+    experiment.run(runner.simulator)
+
+    y = Data("[Y]", task="task").get_data(experiment)
+    assert np.shape(y.magnitude) == (3, 11)
+    assert str(y.units) == "dimensionless"
+    time = Data("time", task="task").get_data(experiment, to_units="second")
+    np.testing.assert_allclose(time.magnitude, np.linspace(0, 10, 11))
+    x = Data("X", task="task").get_data(experiment)
+    np.testing.assert_allclose(x.magnitude, [1.0, 2.0, 3.0])
+
+
+def test_the_data_of_a_variable_which_was_not_selected_raises() -> None:
+    """A Data whose variable is not in the result names the variables."""
+    runner = _runner(ScanExperiment)
+    experiment = runner.experiments["ScanExperiment"]
+    experiment.run(runner.simulator)
+
+    with pytest.raises(KeyError, match=r"'\[Z\]' is not in the result.*\[Y\]"):
+        Data("[Z]", task="task").get_data(experiment)
+
+
+def test_an_experiment_without_a_simulator_raises() -> None:
+    """A run needs a simulator."""
+    runner = _runner(ScanExperiment)
+    experiment = runner.experiments["ScanExperiment"]
+
+    with pytest.raises(ValueError, match="has no simulator"):
+        experiment.run(None)
+
+
+def test_the_results_are_written_as_netcdf(tmp_path: Path) -> None:
+    """A run which saves its results writes every task as netCDF, no TSV."""
+    runner = _runner(FitMappingExperiment)
+    experiment = runner.experiments["FitMappingExperiment"]
+    experiment.run(runner.simulator, output_path=tmp_path, save_results=True)
+    path = tmp_path / "FitMappingExperiment_task.nc"
+    assert ScanResult.from_netcdf(path)["[X]"].size > 0
+    assert not list(tmp_path.glob("FitMappingExperiment_task.tsv"))
 
 
 # ---------------------------------------------------------------------------

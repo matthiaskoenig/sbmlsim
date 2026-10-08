@@ -13,8 +13,8 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulation import Change, Dimension, Scan, Simulation
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
 
@@ -32,7 +32,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
         }
 
     @override
-    def simulations(self) -> dict[str, Simulation | ScanSim]:
+    def simulations(self) -> dict[str, Simulation | Scan]:
         """Define the timecourse and the scans of it."""
         unit_data = "dimensionless"
         rng = np.random.default_rng(seed=1234)
@@ -42,7 +42,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
             changes=[Change(100, {"X": Q(10, unit_data), "Y": Q(20, unit_data)})],
         )
 
-        scan1d = ScanSim(
+        scan1d = Scan(
             simulation=tc,
             dimensions=[
                 # the scan sets X at the start, the simulation sets it again at
@@ -54,7 +54,7 @@ class RepressilatorScanExperiment(SimulationExperiment):
                 )
             ],
         )
-        scan2d = ScanSim(
+        scan2d = Scan(
             simulation=tc,
             dimensions=[
                 Dimension(
@@ -172,7 +172,7 @@ def run_repressilator_experiments(output_path: Path) -> None:
 
     runner = ExperimentRunner(
         [RepressilatorScanExperiment],
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         data_path=base_path,
         base_path=base_path,
     )

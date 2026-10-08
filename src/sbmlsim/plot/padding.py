@@ -1,10 +1,10 @@
 """The curves of a result of a scan, without the padding of ragged results.
 
-A result of a scan has a column per simulation and the simulations keep their
-own time points, so a simulation with fewer points is padded with `NaN`, see
-`sbmlsim.result.xresult`. A figure draws the first simulation of a scan, and
-the points whose x is `NaN` are the padding; a `NaN` of y is a gap of the
-data and is kept.
+The values of a result of a scan have the dimensions of the scan first and
+the time last, see `sbmlsim.result.scan`; in the ragged layout every
+simulation keeps its own time points and one with fewer points is padded with
+`NaN`. A figure draws the first point of a scan, and the points whose x is
+`NaN` are the padding; a `NaN` of y is a gap of the data and is kept.
 """
 
 from __future__ import annotations
@@ -15,21 +15,21 @@ import numpy as np
 
 
 def first_curve(values: np.ndarray | None) -> np.ndarray | None:
-    """Get the values of the first simulation of a result.
+    """Get the values of the first point of a scan.
 
     Args:
-        values: the values, the points first and a dimension per dimension
-            of the scan after them.
+        values: the values, a dimension per dimension of the scan and the
+            time last.
 
     Returns:
-        The values of the first simulation, `None` without values.
+        The values of the first point over the time, `None` without values.
     """
     if values is None:
         return None
     array = np.asarray(values)
     if array.ndim <= 1:
         return array
-    return array.reshape(array.shape[0], -1)[:, 0]
+    return array.reshape(-1, array.shape[-1])[0]
 
 
 def without_padding(x: Any, *others: Any) -> tuple[Any, ...]:

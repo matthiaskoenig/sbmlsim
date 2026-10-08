@@ -6,9 +6,11 @@ from sbmlsim.plot.padding import first_curve, without_padding
 
 
 def test_first_curve_of_a_scan() -> None:
-    """A scan has a column per simulation, the first one is drawn."""
-    np.testing.assert_array_equal(first_curve(np.array([[1, 2], [3, 4]])), [1, 3])
-    np.testing.assert_array_equal(first_curve(np.ones((2, 2, 3))), [1, 1])
+    """A scan has the time last, the first point of its dimensions is drawn."""
+    np.testing.assert_array_equal(first_curve(np.array([[1, 2], [3, 4]])), [1, 2])
+    np.testing.assert_array_equal(
+        first_curve(np.arange(12).reshape(2, 2, 3)), [0, 1, 2]
+    )
     np.testing.assert_array_equal(first_curve(np.array([1, 2])), [1, 2])
     assert first_curve(None) is None
 

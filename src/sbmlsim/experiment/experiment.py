@@ -7,7 +7,6 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from matplotlib import pyplot as plt
 
@@ -20,10 +19,10 @@ from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
     MatplotlibFigureSerializer,
 )
-from sbmlsim.result import XResult
+from sbmlsim.result import ScanResult
 from sbmlsim.serialization import ObjectJSONEncoder
-from sbmlsim.simulation import ScanSim, Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulation import Scan, Simulation
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
 from sbmlsim.units import ureg as package_ureg
@@ -65,7 +64,7 @@ class SimulationExperiment:
         if not sid:
             self.sid = self.__class__.__name__
         # the simulator is set by the ExperimentRunner
-        self.simulator: SimulatorSerial | None = None
+        self.simulator: Simulator | None = None
 
         if base_path:
             base_path = Path(base_path).resolve()
@@ -103,10 +102,10 @@ class SimulationExperiment:
         self._data: dict[str, Data] = {}
         self._datasets: dict[str, DataSet] = {}
         self._fit_mappings: dict[str, FitMapping] = {}
-        self._simulations: dict[str, Simulation | ScanSim] = {}
+        self._simulations: dict[str, Simulation | Scan] = {}
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
-        self._results: dict[str, XResult] = {}
+        self._results: dict[str, ScanResult] = {}
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -161,7 +160,7 @@ class SimulationExperiment:
         """
         return {}
 
-    def simulations(self) -> Mapping[str, Simulation | ScanSim]:
+    def simulations(self) -> Mapping[str, Simulation | Scan]:
         """Define simulation definitions.
 
         The child classes fill out the information.
@@ -250,7 +249,7 @@ class SimulationExperiment:
 
     # --- RESULTS ---------------------------------------------------------------------
     @property
-    def results(self) -> dict[str, XResult]:
+    def results(self) -> dict[str, ScanResult]:
         """Access simulation results.
 
         Results are mapped on tasks based on the task_ids. E.g.
@@ -339,9 +338,9 @@ class SimulationExperiment:
                 )
 
         for key, sim in self._simulations.items():
-            if not isinstance(sim, Simulation | ScanSim):
+            if not isinstance(sim, Simulation | Scan):
                 raise ValueError(
-                    f"simulations must be of type Simulation or ScanSim, but "
+                    f"simulations must be of type Simulation or Scan, but "
                     f"simulation '{key}' has type: '{type(sim)}'"
                 )
 
@@ -378,7 +377,7 @@ class SimulationExperiment:
     @timeit
     def run(
         self,
-        simulator,
+        simulator: Simulator | None,
         output_path: Path | None = None,
         show_figures: bool = False,
         save_results: bool = False,
@@ -442,48 +441,41 @@ class SimulationExperiment:
         return ExperimentResult(experiment=self, output_path=output_path)
 
     @timeit
-    def _run_tasks(self, simulator, reduced_selections: bool = True):
-        """Run simulations and scans.
+    def _run_tasks(
+        self, simulator: Simulator | None, reduced_selections: bool = True
+    ) -> None:
+        """Run the tasks of the experiment, the tasks of a model one after another.
 
-        This should not be called directly, but the results of the simulations
-        should be requested by the results property.
-        This allows to hash executed simulations.
+        The selections of a model are the variables its data refers to, every
+        variable of the model without `reduced_selections`. The changes of a
+        model are defaults of the pre-initialization changes of every
+        simulation of it, see `Simulator.compile`.
+
+        Raises:
+            ValueError: without a simulator.
         """
+        if simulator is None:
+            raise ValueError(
+                f"The experiment '{self.sid}' has no simulator: run it with a "
+                f"Simulator or through an ExperimentRunner with one."
+            )
         if self._results is None:
             self._results = {}
-
-        # get all tasks for given model
         model_tasks: dict[str, list[str]] = defaultdict(list)
         for task_key, task in self._tasks.items():
             model_tasks[task.model_id].append(task_key)
-
-        # execute all tasks for given model
         for model_id, task_keys in model_tasks.items():
-            # load model in simulator
-            model: AbstractModel = self._models[model_id]
-            simulator.set_model(model=model)
-            if reduced_selections:
-                # set selections based on data
-                selections = sorted(self._selections_of_model(model_id))
-                simulator.set_timecourse_selections(selections=selections)
-            else:
-                # use the complete selection
-                simulator.set_timecourse_selections(selections=None)
-
-            task_key: str
+            model = self._models[model_id]
+            model.set_selections(
+                sorted(self._selections_of_model(model_id))
+                if reduced_selections
+                else None
+            )
             for task_key in task_keys:
                 task = self._tasks[task_key]
-                sim = self._simulations[task.simulation_id]
-                if isinstance(sim, Simulation):
-                    self._results[task_key] = simulator.run_simulation(
-                        _with_model_changes(sim, model.changes)
-                    )
-                else:
-                    scan = ScanSim(
-                        simulation=_with_model_changes(sim.simulation, model.changes),
-                        dimensions=sim.dimensions,
-                    )
-                    self._results[task_key] = simulator.run_scan(scan)
+                self._results[task_key] = simulator.run(
+                    model, self._simulations[task.simulation_id]
+                )
 
     def _task_data(self) -> Iterator[Data]:
         """Iterate the data of the experiment which comes from a task.
@@ -579,17 +571,16 @@ class SimulationExperiment:
 
     @timeit
     def save_results(self, results_path: Path) -> None:
-        """Save results (mean timecourse).
+        """Save the result of every task as netCDF, see `ScanResult.to_netcdf`.
 
-        :param results_path:
-        :return:
+        Args:
+            results_path: directory of the files, `<sid>_<task>.nc`.
         """
         if self.results is None:
             logger.warning("No results in SimulationExperiment: '%s'", self.sid)
         else:
             for rkey, result in self.results.items():
                 result.to_netcdf(results_path / f"{self.sid}_{rkey}.nc")
-                result.to_tsv(results_path / f"{self.sid}_{rkey}.tsv")
 
     @timeit
     def create_mpl_figures(self) -> dict[str, FigureMPL | Figure]:
@@ -708,20 +699,3 @@ class ExperimentResult:
         return {
             "output_path": self.output_path,
         }
-
-
-def _with_model_changes(simulation: Simulation, changes: dict[str, Any]) -> Simulation:
-    """Get a simulation with the changes of its model.
-
-    A change of the model is a pre-initialization change of the simulation
-    unless the simulation sets the target before the initialization itself,
-    see `Simulation.with_preinit_defaults`.
-
-    Args:
-        simulation: the simulation of a task.
-        changes: the changes of the model of the task.
-
-    Returns:
-        The simulation with the changes of the model.
-    """
-    return simulation.with_preinit_defaults(changes)

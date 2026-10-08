@@ -55,7 +55,7 @@ class RepressilatorExperiment(SimulationExperiment):
 ```
 
 - **models** are paths, SBML strings or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
-- **simulations** are `Simulation` or `ScanSim` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md); the changes of a model are changes before the initialization of every simulation of it, unless the simulation sets the target itself.
+- **simulations** are `Simulation` or `Scan` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md); the changes of a model are changes before the initialization of every simulation of it, unless the simulation sets the target itself.
 - **tasks** apply a simulation to a model; the results of the experiment are keyed by task.
 - **data** are `Data` objects referencing a task or a dataset, see [Data](data.md).
 - **figures** are `Figure` objects with plots and curves, see [Plots and reports](plotting.md).
@@ -67,11 +67,11 @@ The `ExperimentRunner` creates the experiments, loads their models into a simula
 
 ```python
 from sbmlsim.experiment import ExperimentRunner
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
 runner = ExperimentRunner(
     [RepressilatorExperiment],
-    simulator=SimulatorSerial(),
+    simulator=Simulator(),
     base_path=Path.cwd(),
     data_path=Path.cwd(),
 )
@@ -80,12 +80,12 @@ print(results[0].experiment)
 print(sorted(p.name for p in (Path.cwd() / "results").rglob("*") if p.is_file()))
 ```
 
-`base_path` is the directory the model sources are resolved against, `data_path` the directory of the datasets. The `results` of an experiment are the `XResult` of every task:
+`base_path` is the directory the model sources are resolved against, `data_path` the directory of the datasets. The `results` of an experiment are the `ScanResult` of every task, written as netCDF with `save_results=True`:
 
 ```python
 experiment = results[0].experiment
-xres = experiment.results["task_tc"]
-print(xres["[X]"].values[-3:])
+res = experiment.results["task_tc"]
+print(res["[X]"].values[-3:])
 ```
 
 `run_experiments(reduced_selections=True)` records only the variables the data of the experiment refer to, which speeds up large experiments; `reduced_selections=False` records everything.

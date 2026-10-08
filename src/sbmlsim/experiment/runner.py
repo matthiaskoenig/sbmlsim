@@ -17,7 +17,7 @@ from sbmlsim.console import console
 from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.units import UnitRegistry
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import timeit
@@ -67,7 +67,7 @@ class ExperimentRunner:
         | Iterable[type[SimulationExperiment]],
         base_path: Path | None,
         data_path: Path | Iterable[Path] | None,
-        simulator: SimulatorSerial | None = None,
+        simulator: Simulator | None = None,
         ureg: UnitRegistry | None = None,  # FIXME: is this needed on ExperimentRunner?
         **kwargs,
     ):
@@ -86,7 +86,7 @@ class ExperimentRunner:
         self.data_path = data_path
         self.experiments: dict[str, SimulationExperiment] = {}
         self.models: dict[ModelKey, RoadrunnerSBMLModel] = {}
-        self.simulator: SimulatorSerial | None = None
+        self.simulator: Simulator | None = None
 
         classes: list[type[SimulationExperiment]] = (
             list(experiment_classes)
@@ -96,7 +96,7 @@ class ExperimentRunner:
         self.initialize(classes, **kwargs)
         self.set_simulator(simulator)
 
-    def set_simulator(self, simulator: SimulatorSerial | None) -> None:
+    def set_simulator(self, simulator: Simulator | None) -> None:
         """Set simulator on the runner and experiments."""
         if simulator is None:
             logger.debug(
@@ -104,7 +104,7 @@ class ExperimentRunner:
                 "ignored in parameter fitting."
             )
         else:
-            self.simulator: SimulatorSerial = simulator
+            self.simulator = simulator
             for experiment in self.experiments.values():
                 experiment.simulator = simulator
 
@@ -211,7 +211,7 @@ def run_experiments(
     """
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
-    simulator = SimulatorSerial()
+    simulator = Simulator()
 
     runner = ExperimentRunner(
         experiments,

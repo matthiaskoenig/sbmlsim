@@ -15,9 +15,9 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import DEMO_SBML
-from sbmlsim.simulation import Change, Dimension, ScanSim, Simulation
+from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulation.sensitivity import ModelSensitivity
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
 #: concentrations of the demo model in the external (e) and the cell (c) compartment
@@ -33,10 +33,10 @@ class DemoExperiment(SimulationExperiment):
         return {"model": RoadrunnerSBMLModel(source=DEMO_SBML, ureg=self.ureg)}
 
     @override
-    def simulations(self) -> dict[str, Simulation | ScanSim]:
+    def simulations(self) -> dict[str, Simulation | Scan]:
         """Define scan simulation."""
         return {
-            "scan_init": ScanSim(
+            "scan_init": Scan(
                 simulation=Simulation(
                     end=20,
                     steps=200,
@@ -85,7 +85,7 @@ class DemoExperiment(SimulationExperiment):
         )
         for plot in plots:
             for key in SELECTIONS:
-                # a curve of a scan draws the first simulation of the scan
+                # a curve of a scan draws the first point of the scan
                 plot.curve(
                     x=Data("time", task=task_id),
                     y=Data(key, task=task_id),
@@ -102,7 +102,7 @@ def run_demo_experiments(output_path: Path) -> None:
 
     runner = ExperimentRunner(
         DemoExperiment,
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         data_path=base_path,
         base_path=base_path,
     )

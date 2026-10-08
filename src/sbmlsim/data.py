@@ -12,7 +12,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from sbmlsim.result import XResult
+from sbmlsim.result import ScanResult
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.units import (
     DimensionalityError,
@@ -342,18 +342,21 @@ class Data:
             x = dset[self.index].values * dset.uinfo.ureg(dset.uinfo[uindex])
 
         elif self.dtype == Data.Types.TASK:
-            # read results of task
-            # print(experiment.results.keys())
-            xres: XResult = experiment.results[self.task_id]
-            if not isinstance(xres, XResult):
-                raise ValueError("Only Result objects supported in task data.")
-
-            if xres.uinfo is None:
-                raise ValueError(f"No units information in result of '{self.task_id}'.")
-            # units match the symbols
-            self.unit = xres.uinfo[self.selection]
-            # x = xres.dim_mean(self.index)
-            x = xres.uinfo.ureg.Quantity(xres[self.selection].values, self.unit)
+            result = experiment.results[self.task_id]
+            if not isinstance(result, ScanResult):
+                raise ValueError(
+                    f"The result of the task '{self.task_id}' is no ScanResult: "
+                    f"{type(result)}."
+                )
+            if self.selection not in result:
+                raise KeyError(
+                    f"'{self.selection}' is not in the result of the task "
+                    f"'{self.task_id}', its variables are {result.variables}: add "
+                    f"it to the selections of the experiment."
+                )
+            # the values in the layout of the result, the time last
+            x = result.quantity(self.selection)
+            self.unit = result.units.get(self.selection, "")
 
         elif self.dtype == Data.Types.FUNCTION:
             # evaluate with actual data
