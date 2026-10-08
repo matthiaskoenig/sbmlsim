@@ -64,3 +64,20 @@ def sbml_minutes() -> str:
     model.setTimeUnits("minute")
     model.getParameter("f").setUnits("mg")
     return libsbml.writeSBMLToString(doc)
+
+
+#: states of every kind: concentration species in a normal and in a degenerate
+#: compartment, an amount species, a parameter with a rate rule, a species
+#: with an assignment rule and a boundary species, which are no states
+TOLERANCE_PROBE = """
+model tolerances
+  compartment C = 2; compartment U = 1e-12;
+  species A in C; species S in U; substanceOnly species X in C;
+  species Y in C; $Bnd in C;
+  A = 1; S = 0; X = 3; Bnd = 1; D = 5
+  Y := 2*A
+  D' = -0.1*D
+  J1: A -> X; 0.5*A
+  J2: A -> S; 0.1*A
+end
+"""

@@ -14,6 +14,11 @@ The semantics are the ones of PEtab v2:
    change made true fire, which roadrunner does not see.
 5. A segment is integrated with the output of the plan. A time of a change
    appears once in the output, with the state after the change.
+6. A model which does not read the time (`ModelSymbols.time_dependent`) is
+   integrated in local time: every segment starts at the time 0 of
+   roadrunner and its output is shifted back, so the first step of CVODE
+   after a change is never below the resolution of the time. A model which
+   reads the time is integrated in absolute time.
 
 The executor uses no pint, no deepcopy, no xarray and no pandas: it is what
 an evaluation of the objective of a fit runs.
@@ -74,7 +79,13 @@ def execute(
     if not columns or columns[0] != "time":
         columns = ["time", *columns]
     r = model.r_loaded
-    if plan.start != 0.0 and r.model.getNumEvents() > 0 and not model.warned_start:
+    local = not model.symbols.time_dependent
+    if (
+        not local
+        and plan.start != 0.0
+        and r.model.getNumEvents() > 0
+        and not model.warned_start
+    ):
         # roadrunner evaluates the triggers of the events when the model is
         # initialized, at the time 0, and keeps their state across a reset
         logger.warning(
@@ -94,7 +105,7 @@ def execute(
     try:
         if plan.steady_state is not None:
             steady_state(model, plan.steady_state)
-        values = _simulate(plan, model, r, columns)
+        values = _simulate(plan, model, r, columns, local)
     finally:
         integrator.setValue(VARIABLE_STEP_SIZE, variable_step_size)
         model.simulated()
@@ -109,8 +120,17 @@ def _simulate(
     model: RoadrunnerSBMLModel,
     r: roadrunner.RoadRunner,
     columns: list[str],
+    local: bool,
 ) -> np.ndarray:
     """Integrate the segments of a plan, see the module.
+
+    Args:
+        plan: the plan.
+        model: the loaded model.
+        r: its roadrunner instance.
+        columns: the selections.
+        local: integrate every segment from the time 0 of roadrunner (local
+            time) instead of its absolute time.
 
     Returns:
         The values, a row per output time and a column per selection.
@@ -129,7 +149,9 @@ def _simulate(
             if model_events and (a > plan.start or plan.steady_state is not None):
                 # the triggers at the end of the integration before the change,
                 # the one of the steady state for the change at the start
-                triggers = _triggers(model_events, r, float(r.model.getTime()))
+                triggers = _triggers(
+                    model_events, r, a if local else float(r.model.getTime())
+                )
                 _apply(events[a], r, plan)
                 _fire_events(model_events, triggers, r, a, model)
             else:
@@ -137,29 +159,45 @@ def _simulate(
                 # itself
                 _apply(events[a], r, plan)
 
+        # the segment in the time of roadrunner, from 0 in local time
+        offset = a if local else 0.0
+        start, end = a - offset, b - offset
         # an event of the model at the time of the next change fires after
         # the change (PEtab v2, reinitialization): the integration stops just
         # before it, where roadrunner does not fire it, see `_fire_events`
-        b_end = float(np.nextafter(b, -np.inf)) if model_events and not last else b
+        end_stop = (
+            float(np.nextafter(end, -np.inf)) if model_events and not last else end
+        )
         if plan.output is OutputMode.INTEGRATOR:
             integrator.setValue(VARIABLE_STEP_SIZE, True)
-            block = np.array(r.simulate(a, b_end), dtype=float)
+            block = np.array(r.simulate(start, end_stop), dtype=float)
+            block[:, 0] += offset
             if not last:
                 # the state at `b` is the one before the change at `b`
                 block = block[:-1]
         else:
             integrator.setValue(VARIABLE_STEP_SIZE, False)
             wanted = times[(times >= a) & ((times <= b) if last else (times < b))]
-            grid = np.unique(np.concatenate([[a], wanted, [b_end]]))
+            shifted = wanted - offset
+            grid = np.unique(np.concatenate([[start], shifted, [end_stop]]))
             result = np.array(r.simulate(times=grid.tolist()), dtype=float)
-            block = result[np.isin(grid, wanted)]
+            block = result[np.isin(grid, shifted)]
+            if block.shape[0] != wanted.size:
+                raise RuntimeError(
+                    f"The output times of the segment [{a}, {b}] are not distinct "
+                    f"in local time."
+                )
+            # the output times are the ones asked for, not the shifted ones
+            block[:, 0] = wanted
         blocks.append(block)
 
     if plan.end in events:
         # a change at the end is applied after the integration, the last
         # output is the state after it and the events it triggers
         if model_events and plan.end > plan.start:
-            triggers = _triggers(model_events, r, float(r.model.getTime()))
+            triggers = _triggers(
+                model_events, r, plan.end if local else float(r.model.getTime())
+            )
             _apply(events[plan.end], r, plan)
             _fire_events(model_events, triggers, r, plan.end, model)
         else:
@@ -169,7 +207,7 @@ def _simulate(
 
     if plan.steady_state_output is not None:
         # the steady state after the end, PEtab's measurement at `inf`
-        steady_state(model, plan.steady_state_output, start=plan.end)
+        steady_state(model, plan.steady_state_output, start=0.0 if local else plan.end)
         row = _state(r, columns, np.inf)
         blocks.append(row[np.newaxis, :])
 

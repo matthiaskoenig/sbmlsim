@@ -793,3 +793,23 @@ def test_the_report_of_the_fisher_information(
     assert '<th data-sort="text">unit' in section
     assert '<th class="num" data-sort="num">se' in section
     assert "<td>dimensionless</td>" in section or "<td>1/" in section
+
+
+def test_the_report_lists_the_tolerances_of_the_states(
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The settings section lists the absolute tolerance of every state."""
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
+    )
+    context = report.html_context(tmp_path, "report")
+    rows = context["tolerances"]
+    assert rows
+    assert {"model", "time", "sid", "kind", "volume", "absolute tolerance"} == set(
+        rows[0]
+    )
+    assert "concentration" in context["settings"]["absolute tolerance"]

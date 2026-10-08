@@ -116,6 +116,18 @@
     </table>
   </div>
 
+  <h3>Absolute tolerances</h3>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr><th data-sort="text">model</th><th data-sort="text">time</th><th data-sort="text">state</th><th data-sort="text">kind</th><th class="num" data-sort="num">reference volume</th><th class="num" data-sort="num">absolute tolerance</th></tr></thead>
+      <tbody>
+      {% for row in tolerances %}
+      <tr><td>{{ row.model }}</td><td>{{ row.time }}</td><td class="mono">{{ row.sid }}</td><td>{{ row.kind }}</td><td class="num">{{ row.volume }}</td><td class="num">{{ row["absolute tolerance"] }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
   <h3>Data</h3>
   <div class="card">
     <table>

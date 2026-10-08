@@ -120,7 +120,7 @@ A model which does not reach a steady state by `SteadyState(max_time=...)` raise
 
 ## Selections and integrator settings
 
-The variables recorded in a simulation are the selections of the simulator. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded; a smaller selection speeds up the simulation:
+The variables recorded in a simulation are the selections of the simulator. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded, except a compartment without a size (`NaN`), e.g. a membrane whose area the model does not use; a smaller selection speeds up the simulation:
 
 ```python
 simulator.set_timecourse_selections(["time", "[X]", "[Y]", "[Z]"])
@@ -128,13 +128,32 @@ xres = simulator.run_simulation(Simulation(end=10, steps=10))
 print(list(xres.xds.data_vars))
 ```
 
-The integrator settings of roadrunner are passed to the simulator or set afterwards:
+The integrator settings of roadrunner are passed to the simulator or set afterwards. Every setting of the integrator is passed on, a name the integrator does not have is an error, and the settings apply to every model the simulator runs, e.g. the models of the tasks of an experiment:
 
 ```python
 simulator = SimulatorSerial(
     model=REPRESSILATOR_SBML, absolute_tolerance=1e-10, relative_tolerance=1e-10
 )
 simulator.set_integrator_settings(stiff=True)
+```
+
+The absolute tolerance of CVODE is one value per state, which sbmlsim sets from the kind of the state. The tolerances are plain numbers in the units of the model, so they work for a model without units. A species with `hasOnlySubstanceUnits=true` is an `amount`, its tolerance is the one of the amounts. Any other species is a `concentration`: CVODE integrates its amount, so its tolerance is the one of the concentrations times the reference volume of its compartment. The reference volume is the initial volume, raised to `1e-6` times the largest initial volume of the model when it is smaller, not finite or not positive, which is logged once per model. Every other state, i.e. a parameter or a compartment with a rate rule, is `other`. A float is the same tolerance for every kind, an `AbsoluteTolerance` gives one per kind and overrides single states by their id; an override is the tolerance of the integrated value, i.e. the amount of a concentration species. The default is `1e-10` for every kind. `tolerances()` of the model lists the tolerance of every state:
+
+```python
+from sbmlsim.model.tolerances import AbsoluteTolerance
+
+simulator.set_integrator_settings(
+    absolute_tolerance=AbsoluteTolerance(
+        amount=1e-10, concentration=1e-10, other=1e-10, ids={"PX": 1e-12}
+    )
+)
+print(simulator.model_loaded.tolerances())
+```
+
+CVODE estimates its first step after the start and after every change. A model which does not read the time, i.e. no rule, kinetic law, initial assignment or event of it reads the csymbol `time` or `delay` and no event has a delay, is integrated in local time: every segment between two changes starts at the time 0 of roadrunner and its output is shifted back to the absolute time. The first step is then never smaller than the resolution of the time, the results agree with the ones of the absolute time within the tolerances. A model which reads the time is integrated in absolute time. At a late time a state which starts from 0, e.g. a dose after a reset, can then give a first step which is smaller than the resolution of the time, and CVODE warns "t + h = t on the next step". A small positive `initial_time_step` in the time unit of the model avoids the estimate; a step which is too large fails the error test of the integrator:
+
+```python
+simulator.set_integrator_settings(initial_time_step=1e-10)
 ```
 
 ## Results

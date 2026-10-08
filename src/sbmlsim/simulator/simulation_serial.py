@@ -12,6 +12,7 @@ from pathlib import Path
 import roadrunner
 
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result import TimecourseResult, XResult
 from sbmlsim.simulation import ScanSim, Simulation
 from sbmlsim.simulator.executor import execute
@@ -37,12 +38,13 @@ class SimulatorSerial:
         """Initialize serial simulator.
 
         :param model: Path to model or model
-        :param kwargs: integrator settings
+        :param kwargs: settings of the integrator, every setting of roadrunner,
+            see `RoadrunnerSBMLModel.set_integrator_settings`
         """
         self.model: RoadrunnerSBMLModel | None = None
 
         # integrator settings
-        self.integrator_settings = {
+        self.integrator_settings: dict[str, float | int | bool | AbsoluteTolerance] = {
             "absolute_tolerance": 1e-10,
             "relative_tolerance": 1e-10,
             **kwargs,
@@ -75,12 +77,21 @@ class SimulatorSerial:
             if self.model is None:
                 raise ValueError(f"Unsupported model type: {type(model)}")
             # logger.info("set integrator settings")
-            self.set_integrator_settings(**self.integrator_settings)
+            self.model.set_integrator_settings(**self.integrator_settings)
             # logger.info("model loading finished")
 
-    def set_integrator_settings(self, **kwargs):
-        """Set settings in the integrator."""
-        RoadrunnerSBMLModel.set_integrator_settings(self.r_loaded, **kwargs)
+    def set_integrator_settings(
+        self, **kwargs: float | int | bool | AbsoluteTolerance
+    ) -> None:
+        """Set settings of the integrator.
+
+        See `RoadrunnerSBMLModel.set_integrator_settings`. The settings apply
+        to the loaded model and to every model set later, e.g. the models of
+        the tasks of an experiment.
+        """
+        if self.model is not None:
+            self.model.set_integrator_settings(**kwargs)
+        self.integrator_settings.update(kwargs)
 
     def set_timecourse_selections(self, selections: list[str] | None) -> None:
         """Set the selections of the simulations, all of the model for `None`."""

@@ -53,6 +53,7 @@ from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
+from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.report.templates import template_environment
 from sbmlsim.utils import paths_text
 
@@ -684,6 +685,32 @@ class FitReport:
             if (plots_dir / f"{name}.{self.image_format}").exists()
         ]
 
+    def _tolerances(self) -> list[dict[str, str]]:
+        """Get the absolute tolerance of every state of the models of the fit.
+
+        Returns:
+            A row per state and model with the model, whether it is integrated
+            in local or absolute time, the state, its kind, the reference
+            volume of a concentration species and the absolute tolerance.
+        """
+        rows: list[dict[str, str]] = []
+        for model in {id(m): m for m in self.problem.models}.values():
+            time = "absolute" if model.symbols.time_dependent else "local"
+            for _, row in model.tolerances().iterrows():
+                rows.append(
+                    {
+                        "model": model.sid or "",
+                        "time": time,
+                        "sid": str(row["sid"]),
+                        "kind": str(row["kind"]),
+                        "volume": (
+                            "" if pd.isna(row["volume"]) else f"{row['volume']:.3g}"
+                        ),
+                        "absolute tolerance": f"{row['absolute_tolerance']:.2e}",
+                    }
+                )
+        return rows
+
     def html_context(self, results_dir: Path, name: str) -> dict[str, Any]:
         """Collect everything the HTML report shows.
 
@@ -874,9 +901,14 @@ class FitReport:
             "bound_warnings": warnings,
             "array_bound_warnings": array_warnings,
             "settings": {
-                key.replace("_", " "): value
+                key.replace("_", " "): (
+                    str(AbsoluteTolerance.of(self.settings.absolute_tolerance))
+                    if key == "absolute_tolerance"
+                    else value
+                )
                 for key, value in self.settings.to_dict().items()
             },
+            "tolerances": self._tolerances(),
             "data_summary": data_summary,
             "data_total": {"counts": totals, "total": sum(totals)},
             "hints": dict(self.HINTS),

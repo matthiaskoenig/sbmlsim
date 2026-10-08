@@ -30,6 +30,17 @@ def test_the_residuals_do_not_depend_on_earlier_evaluations(
     np.testing.assert_array_equal(residuals[1], residuals[2])
 
 
+def test_the_initial_time_step_reaches_the_models(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The initial time step of the settings is the one of every model of a fit."""
+    problem = op_hctz_pk
+    problem.initialize(replace(fit_settings, initial_time_step=1e-9))
+    for model in problem.models:
+        integrator = model.r_loaded.getIntegrator()
+        assert integrator.getValue("initial_time_step") == pytest.approx(1e-9)
+
+
 def test_a_parameter_whose_target_is_not_an_entity(
     definition_hctz_pk: FitDefinition, fit_settings: FitSettings
 ) -> None:

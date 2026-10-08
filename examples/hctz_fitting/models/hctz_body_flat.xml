@@ -3563,7 +3563,11 @@ injection rate.</p>
                     <ci> Emax_hctz_na </ci>
                     <apply>
                       <power/>
-                      <ci> hctz </ci>
+                      <apply>
+                        <max/>
+                        <ci> hctz </ci>
+                        <cn sbml:units="mM" type="integer"> 0 </cn>
+                      </apply>
                       <ci> gamma_hctz_nacl </ci>
                     </apply>
                   </apply>
@@ -3571,7 +3575,11 @@ injection rate.</p>
                     <plus/>
                     <apply>
                       <power/>
-                      <ci> hctz </ci>
+                      <apply>
+                        <max/>
+                        <ci> hctz </ci>
+                        <cn sbml:units="mM" type="integer"> 0 </cn>
+                      </apply>
                       <ci> gamma_hctz_nacl </ci>
                     </apply>
                     <apply>
@@ -3680,7 +3688,11 @@ injection rate.</p>
                     <ci> Emax_hctz_cl </ci>
                     <apply>
                       <power/>
-                      <ci> hctz </ci>
+                      <apply>
+                        <max/>
+                        <ci> hctz </ci>
+                        <cn sbml:units="mM" type="integer"> 0 </cn>
+                      </apply>
                       <ci> gamma_hctz_nacl </ci>
                     </apply>
                   </apply>
@@ -3688,7 +3700,11 @@ injection rate.</p>
                     <plus/>
                     <apply>
                       <power/>
-                      <ci> hctz </ci>
+                      <apply>
+                        <max/>
+                        <ci> hctz </ci>
+                        <cn sbml:units="mM" type="integer"> 0 </cn>
+                      </apply>
                       <ci> gamma_hctz_nacl </ci>
                     </apply>
                     <apply>

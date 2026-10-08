@@ -31,6 +31,7 @@ from sbmlsim.fit.petab_v2.export import petab_id
 from sbmlsim.fit.petab_v2.extension import EXTENSION_ID, extension_of
 from sbmlsim.fit.petab_v2.likelihood import NOISE_PLACEHOLDER
 from sbmlsim.fit.petab_v2.reader import PetabReader, from_petab
+from sbmlsim.model.tolerances import AbsoluteTolerance
 
 
 @pytest.fixture(scope="module")
@@ -500,3 +501,12 @@ def test_a_condition_of_a_formula_is_a_formula(petab_dir: Path) -> None:
         ]
     ]
     assert "not_a_number_and_not_an_estimated_parameter" in values
+
+
+def test_extension_of_0_8_4_reads() -> None:
+    """The settings of a problem exported by 0.8.4 carry a float tolerance."""
+    settings = FitSettings().to_dict()
+    settings["absolute_tolerance"] = 1e-6
+    assert FitSettings.from_dict(settings).absolute_tolerance == AbsoluteTolerance.of(
+        1e-6
+    )
