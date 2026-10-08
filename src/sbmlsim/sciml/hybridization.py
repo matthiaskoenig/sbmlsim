@@ -33,9 +33,9 @@ from numpy.typing import ArrayLike
 from sbmlsim.fit.derived import HookSummary, ParameterGroup
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.log import some_ids
-from sbmlsim.mathml import TIME, evaluate_formula, formula_symbols
 from sbmlsim.sciml.backend import BackendKind
 from sbmlsim.sciml.errors import NetworkHybridizationError, NetworkImportError
+from sbmlsim.sciml.formula import TIME, evaluate_formula, formula_symbols
 from sbmlsim.sciml.interpreter import PLACEHOLDER
 from sbmlsim.sciml.network import (
     Network,

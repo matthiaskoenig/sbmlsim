@@ -34,11 +34,10 @@ keywords = [
 	"computational modeling",
 ]
 dependencies = [
-	# SBML, COMBINE archives and formula parsing
+	# SBML and its formulas
 	"sbmlutils>=0.16.0",
 	"pymetadata>=0.8.0",
 	"python-libsbml>=5.21.2",
-	"python-libsedml>=2.0.34",
 	# simulation
 	"libroadrunner>=2.10.0",
 	# data structures, units and numerics
@@ -48,7 +47,7 @@ dependencies = [
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
 	# the formulas of a model and of a network as sympy expressions;
-	# `sbmlsim.mathml` overrides `handle_apply` of its parser for `rem` and
+	# `sbmlsim.sciml.formula` overrides `handle_apply` of its parser for `rem` and
 	# `quotient`, the test of both is the tripwire when the bound is raised
 	"sbmlmath>=0.4.1,<0.5",
 	"pint>=0.26.1",

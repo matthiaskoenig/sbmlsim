@@ -43,8 +43,8 @@ from petab_sciml.constants import ALL_CONDITION_IDS, ARRAY
 from sbmlsim.fit.objects import EXTERNAL_PREFIX, FitParameter
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.petab_v2.extension import SCIML_EXTENSION_ID
-from sbmlsim.mathml import expression_to_formula, formula_symbols
 from sbmlsim.sciml.backend import BackendKind
+from sbmlsim.sciml.formula import expression_to_formula, formula_symbols
 from sbmlsim.sciml.hybridization import (
     ALL_CONDITIONS,
     Hybridization,

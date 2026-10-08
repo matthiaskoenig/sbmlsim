@@ -30,7 +30,6 @@ from sbmlsim.fit.petab_v2.export import PetabExporter
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood, nominal_parameters
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.sciml_export import parameters_id, petab_index, petab_math
-from sbmlsim.mathml import formula_expression
 from sbmlsim.sciml import (
     Hybridization,
     NetworkInput,
@@ -38,6 +37,7 @@ from sbmlsim.sciml import (
     compiled_path,
     network_fit_parameters,
 )
+from sbmlsim.sciml.formula import formula_expression
 from sbmlsim.sciml.hybridization import ALL_CONDITIONS
 from sbmlsim.sciml.testsuite import SciMLSuite
 from sbmlsim.simulation import Simulation

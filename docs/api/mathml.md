@@ -1,3 +1,0 @@
-# mathml
-
-::: sbmlsim.mathml

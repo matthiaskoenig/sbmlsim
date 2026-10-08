@@ -148,7 +148,7 @@ ty resolves the imports in the environment of the project, which `uv sync --extr
 
 The configuration lives in `[tool.ty]` in `pyproject.toml`. Warnings are treated as errors, so the codebase is kept free of diagnostics. Suppress an unavoidable diagnostic with a rule specific `# ty: ignore[rule-name]` rather than a blanket comment.
 
-libsbml, libsedml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see.
+libsbml and roadrunner have no type stubs and create their objects through a SWIG layer, so ty sees an untyped API. Annotate their objects (`doc: libsbml.SBMLDocument = ...`) and use the explicit getters (`getVariable()`) rather than the attributes the SWIG layer synthesizes (`variable`), which the type checker cannot see.
 
 ## Examples
 

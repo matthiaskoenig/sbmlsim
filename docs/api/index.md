@@ -4,12 +4,11 @@ The API reference is generated from the docstrings of the package.
 
 ## sbmlsim
 
-The top level modules: data, formulas, units and the shared output.
+The top level modules: data, units and the shared output.
 
 | module | description |
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
-| [mathml](mathml.md) | evaluation of the formulas of `Data` functions |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
@@ -139,6 +138,7 @@ The neural networks of hybrid problems, see [PEtab SciML](../petab_sciml.md). Th
 | [sciml.network](sciml.network.md) | `Network`, the architecture and the arrays of a network, its forward pass and the ids of its elements, inputs and outputs |
 | [sciml.hybridization](sciml.hybridization.md) | `Hybridization`, where a network sits, its inputs and outputs, its fit parameters and the derived changes of a network before the simulation |
 | [sciml.compiler](sciml.compiler.md) | `compile_network`, a network in the right hand side or in an observable written into the model as assignment rules |
+| [sciml.formula](sciml.formula.md) | the math of SBML as sympy expressions, read with libsbml and sbmlmath, and written back, for the compiler and the hybridization |
 | [sciml.parameters](sciml.parameters.md) | the nominal values and the fit parameters of a network per network, layer or array |
 | [sciml.interpreter](sciml.interpreter.md) | the walk over the forward pass of the NN YAML with a backend |
 | [sciml.backend](sciml.backend.md) | the numpy backend of the forward pass and the sympy backend of the compiler |
