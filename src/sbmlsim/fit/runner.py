@@ -420,6 +420,9 @@ START_GRACE = 60.0
 #: the kernel killing it for memory) breaks the whole pool and with it every task
 #: in flight. The pool is still started again, so the tasks which did not run
 #: complete, and every crash after the cap fails the tasks which were running.
+#: A pool which is found broken with no task running is started again as well,
+#: but after this many such restarts in a row without a result the run ends and
+#: the tasks which did not run fail.
 MAX_POOL_RESTARTS = 3
 
 
@@ -468,8 +471,10 @@ class FitPool:
         remaining tasks run again at full width. After `MAX_POOL_RESTARTS`
         restarts the tasks which were running at a crash fail without a second
         run. A pool which is found broken when a task is submitted is started
-        again the same way, with no suspect if nothing was running. If the pool
-        cannot be started again, the tasks which did not run fail.
+        again the same way, with no suspect if nothing was running; after
+        `MAX_POOL_RESTARTS` restarts with no suspect and no result in between
+        the run ends there. If the pool cannot be started again, or the run
+        ends, the tasks which did not run fail.
 
         Args:
             function: called in the worker as
@@ -486,6 +491,9 @@ class FitPool:
         alone: deque[int] = deque()
         running: dict[Future[Any], int] = {}
         solo = False
+        # the restarts with no suspect since the last result, the run ends after
+        # MAX_POOL_RESTARTS of them; a result shows the pool makes progress
+        idle_restarts = 0
         last = time.monotonic()
         while queue or alone or running:
             submit_broken = False
@@ -544,8 +552,10 @@ class FitPool:
                     running[future] = key
                     continue
                 except Exception as err:
+                    idle_restarts = 0
                     yield key, err
                     continue
+                idle_restarts = 0
                 last = time.monotonic()
                 yield key, result
             if not broken:
@@ -554,7 +564,7 @@ class FitPool:
             suspects = sorted(running.values())
             running.clear()
             parallel.stop(self.executor)
-            if not suspects and self.restarts >= MAX_POOL_RESTARTS:
+            if not suspects and idle_restarts >= MAX_POOL_RESTARTS:
                 lost = sorted([*alone, *queue])
                 logger.error(
                     "'%s': the pool keeps breaking, the tasks %s are given up.",
@@ -590,6 +600,7 @@ class FitPool:
                 )
                 alone.extend(suspects)
             else:
+                idle_restarts += 1
                 logger.error(
                     "'%s': a worker died; restarting the pool.", self.problem.opid
                 )
