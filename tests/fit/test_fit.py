@@ -206,8 +206,12 @@ def test_fit_lsq_parallel(
     op_hctz_pk: OptimizationProblem,
     fit_settings: FitSettings,
     short_fit: dict[str, Any],
+    tmp_path: Path,
 ) -> None:
-    """Test parallel least square fit, with and without the progress display."""
+    """Test parallel least square fit, with and without the progress display.
+
+    The workers hand every repeat to the runner, which stores it in `runs_dir`.
+    """
     opt_result: OptimizationResult = run_optimization(
         problem=op_hctz_pk,
         settings=fit_settings,
@@ -216,10 +220,15 @@ def test_fit_lsq_parallel(
         n_cores=2,
         serial=False,
         show_progress=show_progress,
+        runs_dir=tmp_path,
         **short_fit,
     )
     assert opt_result is not None
     assert opt_result.size == 2
+    assert sorted(path.name for path in tmp_path.glob("*.json")) == [
+        f"{op_hctz_pk.opid}_run_0.json",
+        f"{op_hctz_pk.opid}_run_1.json",
+    ]
 
 
 def test_one_worker_runs_without_a_pool(
@@ -255,6 +264,69 @@ def test_one_worker_runs_without_a_pool(
         **short_fit,
     )
     np.testing.assert_allclose(one.xopt, serial.xopt)
+
+
+def _interrupt_repeat(monkeypatch: pytest.MonkeyPatch, interrupted: int) -> list[int]:
+    """Interrupt the fit (Ctrl-C) in the repeat `interrupted`, counted from 0."""
+    started: list[int] = []
+    optimize_run = OptimizationProblem.optimize_run
+
+    def interrupting(
+        self: OptimizationProblem, *args: Any, **kwargs: Any
+    ) -> tuple[Any, list[float]]:
+        started.append(kwargs["run"])
+        if kwargs["run"] == interrupted:
+            raise KeyboardInterrupt
+        return optimize_run(self, *args, **kwargs)
+
+    monkeypatch.setattr(OptimizationProblem, "optimize_run", interrupting)
+    return started
+
+
+def test_an_interrupted_serial_fit_keeps_the_repeats_which_finished(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Ctrl-C ends a fit with one worker like it ends a parallel fit."""
+    started = _interrupt_repeat(monkeypatch, interrupted=1)
+    opt_result = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=3,
+        seed=1234,
+        n_cores=1,
+        show_progress=False,
+        runs_dir=tmp_path,
+        **short_fit,
+    )
+    # the third repeat did not start, the first one is the result
+    assert started == [0, 1]
+    assert opt_result.size == 1
+    assert [path.name for path in tmp_path.glob("*.json")] == [
+        f"{op_hctz_pk.opid}_run_0.json"
+    ]
+
+
+def test_a_serial_fit_interrupted_before_a_repeat_finished_is_interrupted(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """There is no result to keep, the interrupt is not turned into an error."""
+    _interrupt_repeat(monkeypatch, interrupted=0)
+    with pytest.raises(KeyboardInterrupt):
+        run_optimization(
+            problem=op_hctz_pk,
+            settings=fit_settings,
+            size=2,
+            n_cores=1,
+            show_progress=False,
+            **short_fit,
+        )
 
 
 @pytest.mark.parametrize(

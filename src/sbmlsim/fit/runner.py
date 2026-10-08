@@ -227,7 +227,8 @@ def run_optimization(
 
     Returns:
         OptimizationResult with the fits of all repeats. A repeat which failed
-        is part of the result and carries its message.
+        is part of the result and carries its message. A fit which is
+        interrupted (Ctrl-C) after some repeats finished returns these.
 
     Raises:
         ValueError: if a bound or a start value does not suit the scale of
@@ -706,8 +707,14 @@ def _run_optimization_serial(
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
 
+    # collected as the repeats finish, so that an interrupt keeps them
+    fits: list[OptimizeResult] = []
+    trajectories: list[list[float]] = []
+
     def on_run_finished(k: int, fit: OptimizeResult, trajectory: list[float]) -> None:
-        """Store the finished run and report the progress."""
+        """Keep the finished run, store it and report the progress."""
+        fits.append(fit)
+        trajectories.append(trajectory)
         _store_run(
             problem=problem,
             settings=settings,
@@ -719,14 +726,24 @@ def _run_optimization_serial(
         if on_progress is not None:
             on_progress()
 
-    fits, trajectories = problem.optimize(
-        size=size,
-        seed=seed,
-        algorithm=algorithm,
-        timeout=timeout,
-        on_run_finished=on_run_finished,
-        **kwargs,
-    )
+    try:
+        problem.optimize(
+            size=size,
+            seed=seed,
+            algorithm=algorithm,
+            timeout=timeout,
+            on_run_finished=on_run_finished,
+            **kwargs,
+        )
+    except KeyboardInterrupt:
+        # like the pool, which keeps the repeats which came back
+        if not fits:
+            raise
+        logger.warning(
+            "'%s': the fit was interrupted, it keeps the %s repeats which finished.",
+            problem.opid,
+            len(fits),
+        )
 
     return OptimizationResult(
         parameters=problem.parameters,
