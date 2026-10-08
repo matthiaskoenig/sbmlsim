@@ -54,7 +54,7 @@ class RepressilatorExperiment(SimulationExperiment):
         return {"fig1": fig}
 ```
 
-- **models** are paths, URLs or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
+- **models** are paths, SBML strings or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
 - **simulations** are `Simulation` or `ScanSim` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md); the changes of a model are changes before the initialization of every simulation of it, unless the simulation sets the target itself.
 - **tasks** apply a simulation to a model; the results of the experiment are keyed by task.
 - **data** are `Data` objects referencing a task or a dataset, see [Data](data.md).
