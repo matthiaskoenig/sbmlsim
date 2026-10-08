@@ -1,6 +1,7 @@
 """A model which does not read the time is integrated in local time."""
 
 import ctypes
+import sys
 from dataclasses import replace
 
 import numpy as np
@@ -124,25 +125,39 @@ def test_a_model_which_reads_the_time_keeps_the_absolute_time() -> None:
     np.testing.assert_allclose(res["k"], [1.0, 16.0, 31.0])
 
 
-def test_no_warning_after_a_late_dose(capfd) -> None:
-    """A dose into an empty state at a late time does not make CVODE warn.
+def _late_dose_output(capfd, local: bool) -> str:
+    """Get the output of C of a dose into an empty state at a late time.
 
-    In absolute time the first step after the dose at 57600 min is below the
-    resolution of the time ("t + h = t"). CVODE writes the warning to the
-    standard output of C.
+    In absolute time the first step after the dose at 9600 hr is below the
+    resolution of the time ("t + h = t"). CVODE writes the warning with the
+    buffered streams of C, which are flushed first.
     """
     from examples.hctz_fitting import MODEL_PATH
 
-    simulator = SimulatorSerial(model=MODEL_PATH)
-    simulator.run_simulation(
-        Simulation(
-            time_unit="hr",
-            end=1000,
-            steps=100,
-            changes=[Change(960, {"PODOSE_hctz": Q(25, "mg")})],
-        )
+    sim = Simulation(
+        time_unit="hr",
+        end=10000,
+        steps=100,
+        changes=[Change(9600, {"PODOSE_hctz": Q(25, "mg")})],
     )
-    # CVODE writes with the buffered streams of C, which are flushed first
+    model = RoadrunnerSBMLModel(source=MODEL_PATH)
+    assert not model.symbols.time_dependent
+    plan = compile_simulation(sim, model.symbols, model.uinfo)
+    capfd.readouterr()
+    if local:
+        SimulatorSerial(model=model).run_simulation(sim)
+    else:
+        model.symbols = replace(model.symbols, time_dependent=True)
+        execute(plan, model, ["time"])
     ctypes.CDLL(None).fflush(None)
     captured = capfd.readouterr()
-    assert "t + h = t" not in captured.out + captured.err
+    return captured.out + captured.err
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="the streams of C are flushed with POSIX ctypes"
+)
+def test_no_warning_after_a_late_dose(capfd) -> None:
+    """A late dose warns in absolute time, not in the local time of the simulator."""
+    assert "t + h = t" in _late_dose_output(capfd, local=False)
+    assert "t + h = t" not in _late_dose_output(capfd, local=True)
