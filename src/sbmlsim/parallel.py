@@ -35,8 +35,13 @@ from typing import cast
 logger = logging.getLogger(__name__)
 
 #: the smallest number of tasks which `resolve_workers` runs in a pool for
-#: `n_workers=None`; below it the start of the workers costs more than it saves
-POOL_THRESHOLD: int = 64
+#: `n_workers=None`; below it the start of the workers costs more than it
+#: saves. Set by the benchmark `test_the_pool_pays_from_the_threshold`: a scan
+#: of the repressilator (0.8 ms per point) on a started pool of 20 workers,
+#: each of which loads the model first (about 150 ms), is as fast as serially
+#: at about 200 points and 1.2 times faster at 256; with the model already in
+#: the workers the pool pays from fewer than 32 points
+POOL_THRESHOLD: int = 256
 
 #: seconds the workers of a new pool may take to start
 WORKER_STARTUP_TIMEOUT: float = 300.0
