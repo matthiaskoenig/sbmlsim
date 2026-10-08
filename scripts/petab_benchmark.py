@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import multiprocessing as mp
 import sys
 from collections import Counter
 from pathlib import Path
@@ -40,6 +39,7 @@ from sbmlsim.fit.petab_v2.benchmark import (
 )
 from sbmlsim.testsuite import baseline
 from sbmlsim.testsuite.baseline import MISSING_REASON, unexpected_outcomes
+from sbmlsim.utils import process_context
 
 #: the expected outcomes the tests compare a run with
 BASELINE_PATH = (
@@ -72,7 +72,7 @@ def run(
     references = collection.references()
     tasks = [(collection, name, references.get(name)) for name in names]
     results: dict[str, BenchmarkResult] = {}
-    with mp.Pool(processes, maxtasksperchild=1) as pool:
+    with process_context().Pool(processes, maxtasksperchild=1) as pool:
         for result in pool.imap_unordered(_run_problem, tasks):
             results[result.name] = result
             console.print(

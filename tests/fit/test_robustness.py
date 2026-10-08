@@ -291,7 +291,7 @@ def test_a_start_method_the_user_sets_is_kept(
     op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A start method set with `multiprocessing.set_start_method` is used."""
-    _start_methods(monkeypatch, explicit="fork", default="fork")
+    _start_methods(monkeypatch, explicit="fork", default="forkserver")
     assert runner._pool_context(op_hctz_pk).get_start_method() == "fork"
 
 

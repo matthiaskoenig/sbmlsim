@@ -18,6 +18,7 @@ from rich.progress import track
 from sbmlsim.console import console
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.plots import heatmap
+from sbmlsim.utils import process_context
 
 
 @dataclass
@@ -293,7 +294,7 @@ class SensitivityAnalysis:
         # simulates in this process
         with ExitStack() as stack:
             pool = (
-                stack.enter_context(multiprocessing.Pool(processes=self.n_cores))
+                stack.enter_context(process_context().Pool(processes=self.n_cores))
                 if self.n_cores > 1
                 else None
             )

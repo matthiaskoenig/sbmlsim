@@ -47,6 +47,7 @@ from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.log import PACKAGE_LOGGER
+from sbmlsim.utils import process_context
 
 logger = logging.getLogger(__name__)
 
@@ -415,11 +416,8 @@ def _worker_run(task: dict[str, Any]) -> tuple[int, OptimizeResult, list[float]]
 def _pool_context(problem: OptimizationProblem) -> BaseContext:
     """Get the multiprocessing context of a fit.
 
-    A start method set with `multiprocessing.set_start_method` is used, else
-    the default of the platform, except `fork`: the process of a fit runs the
-    threads of roadrunner and of the linear algebra, and a fork of a process
-    with threads may deadlock in the child. Python 3.14 made `forkserver` the
-    default on linux for this reason, a fit takes it on python 3.13 as well.
+    The start method is the one of `sbmlsim.utils.process_context`, i.e. never
+    `fork` of a process which runs threads.
 
     Under the `forkserver` start method every worker imports sbmlsim and the
     module of the experiments again, which costs more than a short
@@ -433,17 +431,8 @@ def _pool_context(problem: OptimizationProblem) -> BaseContext:
     Returns:
         The context the pool is created from.
     """
-    # `get_context()` without a method would fix the start method of the process,
-    # after which a second fit could not tell it from one the user set
-    method = multiprocessing.get_start_method(allow_none=True)
-    if method is None:
-        # the first of the supported methods is the default of the platform
-        methods = multiprocessing.get_all_start_methods()
-        method = methods[0]
-        if method == "fork" and "forkserver" in methods:
-            method = "forkserver"
-    ctx = multiprocessing.get_context(method)
-    if method != "forkserver":
+    ctx = process_context()
+    if ctx.get_start_method() != "forkserver":
         return ctx
     modules = {"sbmlsim.fit.optimization"}
     for mapping_collection in problem.mapping_collections:
