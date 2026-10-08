@@ -37,9 +37,9 @@ from sbmlsim.fit.petab_v2.benchmark import (
     BenchmarkResult,
     BenchmarkStatus,
 )
+from sbmlsim.parallel import process_context
 from sbmlsim.testsuite import baseline
 from sbmlsim.testsuite.baseline import MISSING_REASON, unexpected_outcomes
-from sbmlsim.utils import process_context
 
 #: the expected outcomes the tests compare a run with
 BASELINE_PATH = (

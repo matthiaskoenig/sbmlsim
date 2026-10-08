@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 import roadrunner
 
+from sbmlsim import parallel
 from sbmlsim.log import PACKAGE_LOGGER
 from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
 
@@ -48,10 +49,21 @@ def _package_logging() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _no_pool_left() -> Iterator[None]:
+    """Stop the pools a test started, so that no test leaves workers behind.
+
+    A kept pool lives as long as its process; a worker of pytest-xdist runs
+    many tests, whose pools would add up.
+    """
+    yield
+    parallel.shutdown()
+
+
+@pytest.fixture(autouse=True)
 def _no_fork_of_threads() -> Iterator[None]:
     """Fail a test in which a process which runs threads is forked.
 
-    No pool of sbmlsim forks, see `sbmlsim.utils.process_context`: a fork of a
+    No pool of sbmlsim forks, see `sbmlsim.parallel.process_context`: a fork of a
     process with threads may deadlock in the child, and the process of a test
     runs threads (every worker of pytest-xdist does). Python reports the fork
     as a `DeprecationWarning` which it clears right after raising it, so the

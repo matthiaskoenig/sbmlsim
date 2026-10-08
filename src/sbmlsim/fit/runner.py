@@ -47,7 +47,7 @@ from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.log import PACKAGE_LOGGER
-from sbmlsim.utils import process_context
+from sbmlsim.parallel import process_context
 
 logger = logging.getLogger(__name__)
 
@@ -416,7 +416,7 @@ def _worker_run(task: dict[str, Any]) -> tuple[int, OptimizeResult, list[float]]
 def _pool_context(problem: OptimizationProblem) -> BaseContext:
     """Get the multiprocessing context of a fit.
 
-    The start method is the one of `sbmlsim.utils.process_context`, i.e. never
+    The start method is the one of `sbmlsim.parallel.process_context`, i.e. never
     `fork` of a process which runs threads.
 
     Under the `forkserver` start method every worker imports sbmlsim and the

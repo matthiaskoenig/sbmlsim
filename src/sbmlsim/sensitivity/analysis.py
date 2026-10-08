@@ -16,9 +16,9 @@ import xarray as xr
 from rich.progress import track
 
 from sbmlsim.console import console
+from sbmlsim.parallel import process_context
 from sbmlsim.sensitivity.parameters import SensitivityParameter
 from sbmlsim.sensitivity.plots import heatmap
-from sbmlsim.utils import process_context
 
 
 @dataclass

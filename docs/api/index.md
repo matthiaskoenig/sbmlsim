@@ -12,6 +12,7 @@ The top level modules: data, units and the shared output.
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
+| [parallel](parallel.md) | the process pools of the package, the number of workers and the objects of a worker |
 | [console](console.md) | shared rich console |
 | [display](display.md) | the output of scripts: sections, key/value blocks and links which the terminal opens with a click |
 | [log](log.md) | logging of the package |
