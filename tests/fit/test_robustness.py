@@ -149,31 +149,6 @@ def test_from_directory_without_runs(tmp_path: Path) -> None:
         OptimizationResult.from_directory(tmp_path / "empty")
 
 
-def test_run_result(op_hctz_pk: OptimizationProblem, fit_settings: FitSettings) -> None:
-    """A single run of a result is a result of its own."""
-    opt_result = run_optimization(
-        problem=op_hctz_pk,
-        settings=fit_settings,
-        size=2,
-        n_cores=1,
-        serial=True,
-        seed=1234,
-        show_progress=False,
-    )
-    run = opt_result.run_result(0)
-    assert run.size == 1
-    assert run.opid == opt_result.opid
-    assert run.settings == opt_result.settings
-    assert run.sid.endswith("_0")
-    # the runs are indexed in the order they ran, not by their cost
-    assert np.allclose(run.xopt, opt_result.fits[0].x)
-    assert run.trajectories[0] == opt_result.trajectories[0]
-
-    # the parameter sets are ordered by cost instead
-    best = opt_result.parameter_set(0)
-    assert best.cost == pytest.approx(opt_result.df_fits.cost.iloc[0])
-
-
 def test_mappings_are_grouped_by_simulation(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:

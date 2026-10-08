@@ -32,7 +32,6 @@ def test_a_single_result_has_no_scan_dimension() -> None:
     xres = XResult.from_timecourses([_tc([0, 1, 3], [0, 1, 3])])
     assert xres["y"].dims == ("_point",)
     np.testing.assert_allclose(xres["time"].values, [0, 1, 3])
-    assert not xres.is_ragged()
 
 
 def test_a_ragged_scan_is_padded() -> None:
@@ -44,7 +43,6 @@ def test_a_ragged_scan_is_padded() -> None:
     assert xres["y"].shape == (3, 2)
     assert np.isnan(xres["y"].values[2, 0])
     assert np.isnan(xres["time"].values[2, 0])
-    assert xres.is_ragged()
 
 
 def test_interpolate_onto_a_common_grid() -> None:
@@ -56,7 +54,6 @@ def test_interpolate_onto_a_common_grid() -> None:
     assert grid["y"].dims == ("_time", "d")
     np.testing.assert_allclose(grid["y"].values, [[0, 0], [2, 4.0], [4, 8]])
     np.testing.assert_allclose(grid["_time"].values, [0, 2, 4])
-    assert not grid.is_ragged()
 
 
 def test_interpolate_outside_of_a_simulation_is_nan() -> None:

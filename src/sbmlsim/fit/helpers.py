@@ -318,24 +318,3 @@ def select_mapping_collections(
         validation=validation,
         print_info=print_info,
     ).collections
-
-
-def mapping_kinds_info(df: pd.DataFrame) -> str:
-    """Summarize how the fit mappings of a metadata table are used.
-
-    Args:
-        df: metadata table of a `MappingSelection`.
-
-    Returns:
-        One line with the number of mappings per `MappingKind`.
-    """
-    if "kind" not in df.columns:
-        return f"{'mappings':<12}: {len(df)}"
-
-    counts = df["kind"].value_counts()
-    parts = [
-        f"{int(counts[kind.value])} {kind.value}"
-        for kind in MappingKind
-        if kind.value in counts
-    ]
-    return f"{'mappings':<12}: {len(df)} ({', '.join(parts)})"

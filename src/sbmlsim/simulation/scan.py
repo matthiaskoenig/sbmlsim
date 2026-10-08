@@ -48,13 +48,6 @@ class ScanSim:
             f"[{', '.join([str(d) for d in self.dimensions])}])"
         )
 
-    def get_dimension(self, key: str) -> Dimension:
-        """Get dimension by key."""
-        for dim in self.dimensions:
-            if dim.dimension == key:
-                return dim
-        raise KeyError(f"Dimension with key '{key}' does not exist.")
-
     def indices(self) -> list[tuple[Any, ...]]:
         """Get indices of all combinations."""
         return Dimension.indices_from_dimensions(self.dimensions)

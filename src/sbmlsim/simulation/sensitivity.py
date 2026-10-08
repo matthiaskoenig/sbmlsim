@@ -10,7 +10,6 @@ from enum import Enum
 import libsbml
 import numpy as np
 
-from sbmlsim.console import console
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Dimension, ScanSim, Simulation
 from sbmlsim.simulator.plan import compile_simulation
@@ -25,15 +24,6 @@ class SensitivityType(Enum):
     PARAMETER_SENSITIVITY = 1
     SPECIES_SENSITIVITY = 2
     All_SENSITIVITY = 3
-
-
-class DistributionType(Enum):
-    """Type of supported distributions.
-
-    # FIXME: support lognormal
-    """
-
-    NORMAL_DISTRIBUTION = 1
 
 
 class ModelSensitivity:
@@ -81,7 +71,6 @@ class ModelSensitivity:
         simulation: Simulation,
         cv: float = 0.1,
         size: int = 10,
-        distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
         exclude_zero: bool = True,
@@ -93,7 +82,6 @@ class ModelSensitivity:
             changes=ModelSensitivity._changes(simulation),
             cv=cv,
             size=size,
-            distribution=distribution,
             stype=stype,
             exclude_filter=exclude_filter,
             exclude_zero=exclude_zero,
@@ -115,7 +103,6 @@ class ModelSensitivity:
         changes: dict | None = None,
         cv: float = 0.1,
         size: int = 10,
-        distribution: DistributionType = DistributionType.NORMAL_DISTRIBUTION,
         stype: SensitivityType = SensitivityType.PARAMETER_SENSITIVITY,
         exclude_filter=None,
         exclude_zero: bool = True,
@@ -141,10 +128,7 @@ class ModelSensitivity:
         for key, magnitude in p_ref.items():
             units = model.uinfo[key]
             # FIXME: use lognormal to avoid negative values, or remove negative samples
-            if distribution == DistributionType.NORMAL_DISTRIBUTION:
-                values = np.random.normal(magnitude, scale=magnitude * cv, size=size)
-            else:
-                raise ValueError(f"Unsupported distribution: {distribution}")
+            values = np.random.normal(magnitude, scale=magnitude * cv, size=size)
             changes[key] = Q(values, units)
 
         return Dimension("dim_sens", changes=changes)
@@ -269,27 +253,3 @@ class ModelSensitivity:
         """
         d = ref_dict.copy()
         return {k: v * (1.0 + change) for k, v in d.items()}
-
-
-if __name__ == "__main__":
-    from sbmlsim.resources import REPRESSILATOR_SBML
-
-    console.print("Loading model")
-    model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
-
-    console.print("Reference dict")
-    p_ref = ModelSensitivity.reference_dict(
-        model=model, stype=SensitivityType.PARAMETER_SENSITIVITY
-    )
-    s_ref = ModelSensitivity.reference_dict(
-        model=model, stype=SensitivityType.SPECIES_SENSITIVITY
-    )
-
-    console.print("Apply changes")
-    console.print(p_ref)
-    console.print(ModelSensitivity.apply_change_to_dict(p_ref, change=0.1))
-    console.print(ModelSensitivity.apply_change_to_dict(p_ref, change=-0.1))
-
-    console.print(s_ref)
-    console.print(ModelSensitivity.apply_change_to_dict(s_ref, change=0.1))
-    console.print(ModelSensitivity.apply_change_to_dict(s_ref, change=-0.1))

@@ -2,7 +2,6 @@
 
 import functools
 import hashlib
-import inspect
 import logging
 import os
 import time
@@ -61,11 +60,3 @@ def paths_text(paths: str | Path | Iterable[str | Path] | None) -> str:
     if isinstance(paths, (str, Path)):
         return str(paths)
     return "\n".join(str(path) for path in paths)
-
-
-def function_name() -> str:
-    """Get current function name."""
-    frame = inspect.currentframe()
-    if frame is None:
-        raise RuntimeError("No current frame available.")
-    return inspect.getframeinfo(frame).function

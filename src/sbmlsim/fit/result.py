@@ -171,30 +171,6 @@ class OptimizationResult(ObjectJSONEncoder):
         self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
         self.df_traces = OptimizationResult.process_traces(self.trajectories)
 
-    def run_result(self, k: int) -> "OptimizationResult":
-        """Get the result of a single optimization run.
-
-        The run is a result of its own, so it is stored while a fit runs and
-        collected again afterwards, see `write_run` and `from_directory`.
-
-        The runs are indexed in the order they ran, which pairs a fit with its
-        trajectory; `parameter_set` indexes them by increasing cost instead.
-
-        Args:
-            k: index of the run in `fits`, i.e., in the order they ran.
-
-        Returns:
-            An `OptimizationResult` with this run only.
-        """
-        return OptimizationResult(
-            parameters=self.parameters,
-            fits=[self.fits[k]],
-            trajectories=[self.trajectories[k]] if k < len(self.trajectories) else [[]],
-            sid=f"{self.sid}_{k}",
-            opid=self.opid,
-            settings=self.settings,
-        )
-
     @staticmethod
     def write_run(
         directory: Path,

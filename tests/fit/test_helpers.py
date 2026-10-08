@@ -8,7 +8,6 @@ from sbmlsim.fit import FitMapping, MappingKind
 from sbmlsim.fit.helpers import (
     FitMappings,
     MappingSelection,
-    mapping_kinds_info,
     select_mapping_collections,
 )
 
@@ -181,14 +180,6 @@ def test_select_mapping_collections() -> None:
     kinds = {c.kind for c in collections["Beermann1976"]}
     assert MappingKind.VALIDATION in kinds
     assert MappingKind.TRAINING in kinds
-
-
-def test_mapping_kinds_info(fit_mappings: FitMappings) -> None:
-    """The overview counts the mappings per kind."""
-    selection = fit_mappings.select(outliers={"fm_hctz_iv1_5_urine"}, print_info=False)
-    info = mapping_kinds_info(selection.df)
-    assert info.startswith("mappings")
-    assert "1 outlier" in info
 
 
 def test_filter_keys_selects_the_named_mappings() -> None:

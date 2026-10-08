@@ -1,13 +1,10 @@
 """The dimensions of a scan."""
 
 import itertools
-import logging
 from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
-
-logger = logging.getLogger(__name__)
 
 
 class Dimension:

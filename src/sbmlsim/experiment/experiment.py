@@ -566,22 +566,6 @@ class SimulationExperiment:
             "figures": self._figures,
         }
 
-    @classmethod
-    def from_json(cls, json_info: Path | str) -> "SimulationExperiment":
-        """Load experiment from json path or str."""
-        # FIXME: update serialization
-        if isinstance(json_info, Path):
-            with open(json_info, encoding="utf-8") as f_json:
-                d = json.load(f_json)
-        elif isinstance(json_info, str):
-            d = json.loads(json_info)
-        else:
-            raise ValueError("Unsupported json format.")
-
-        raise NotImplementedError(
-            f"Deserialization of SimulationExperiment not supported: {d.keys()}"
-        )
-
     @timeit
     def save_datasets(self, results_path: Path) -> None:
         """Save datasets."""

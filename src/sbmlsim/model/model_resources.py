@@ -1,11 +1,8 @@
 """The source of a model, a file or the SBML itself."""
 
-import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass

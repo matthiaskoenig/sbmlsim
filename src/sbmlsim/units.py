@@ -15,8 +15,6 @@ import libsbml
 import numpy as np
 from sbmlutils.io import read_sbml
 
-from sbmlsim.console import console
-
 # Disable Pint's old fallback behavior (must come before importing Pint)
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
@@ -615,10 +613,3 @@ def _enclosed(expression: str) -> bool:
         if depth == 0 and k < len(expression) - 1:
             return False
     return True
-
-
-if __name__ == "__main__":
-    from sbmlsim.resources import DEMO_SBML
-
-    uinfo = UnitsInformation.from_sbml(DEMO_SBML)
-    console.log(uinfo.udict)
