@@ -24,7 +24,9 @@ a run which flags the points which fail keeps their errors in that order.
 
 The integrator settings of a simulator apply to every model it runs: the model
 of a run, every model of a dimension of models and every model a worker
-loads, each with its own tolerance per state.
+loads, each with its own tolerance per state. A setting of a model which the
+simulator does not set stays, and a worker loads the model with the
+integrator and the settings the model has in the calling process.
 """
 
 from __future__ import annotations
@@ -384,9 +386,7 @@ class Simulator:
                 fails, with `on_error="raise"`.
             RuntimeError: if a worker of the pool dies.
         """
-        specs = [
-            ModelSpec.of(model, self.integrator_settings) for model in compiled.models
-        ]
+        specs = [ModelSpec.of(model) for model in compiled.models]
         executor = parallel.pool(workers)
         results: list[ChunkResult] = []
         failed: ScanPointError | None = None

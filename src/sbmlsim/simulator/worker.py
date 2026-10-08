@@ -8,9 +8,10 @@ solution is interpolated onto it first. Nothing in here uses pint or xarray,
 and a chunk and its result are numbers, strings and a plan, so they pickle.
 
 In a worker process the model of a chunk is loaded once from its `ModelSpec`
-and kept, see `sbmlsim.parallel.worker_cache`, with the settings of the
-integrator of the parent, so every worker integrates with the tolerances of
-the parent.
+and kept, see `sbmlsim.parallel.worker_cache`, with the integrator of the
+model of the parent and every one of its settings, those of the simulator and
+those set on the model, so a worker integrates as the parent does and the
+result does not depend on the number of workers.
 
 A point which fails is reported once, by its error: roadrunner logs the error
 of CVODE as well, so its log level is lowered while a chunk runs. SUNDIALS
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Generator, Mapping
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,23 +77,33 @@ class ModelSpec:
     """What a worker needs to load a model as the parent loaded it.
 
     Attributes:
-        key: identifies the model and the settings of its integrator, the key
-            of the model in the cache of a worker.
+        key: identifies the model, its integrator and the settings of the
+            integrator, the key of the model in the cache of a worker.
         source: the path of the model or the SBML.
         base_path: the directory a relative path is resolved against.
         parameters: the parameters added to the model, see `AbstractModel`.
-        settings: the settings of the integrator.
+        integrator: the name of the integrator, e.g. `cvode`.
+        settings: every setting of the integrator by its name, the absolute
+            tolerance as the `AbsoluteTolerance` of the model.
     """
 
     key: str
     source: str
     base_path: Path | None
     parameters: tuple[tuple[str, float], ...]
+    integrator: str
     settings: tuple[tuple[str, Any], ...]
 
     @classmethod
-    def of(cls, model: RoadrunnerSBMLModel, settings: Mapping[str, Any]) -> ModelSpec:
-        """Get the spec of a loaded model and the settings of its integrator."""
+    def of(cls, model: RoadrunnerSBMLModel) -> ModelSpec:
+        """Get the spec of a loaded model and of the state of its integrator.
+
+        The integrator and its settings are read from the model after the
+        simulator set its own, see `integrator_state`, so a setting of the
+        model which the simulator does not set, e.g. one of
+        `RoadrunnerSBMLModel(settings=...)` or of `set_integrator_settings`,
+        holds in a worker as well.
+        """
         # the key is the content of the model and not its path, a worker
         # lives as long as its pool and the file may be rewritten meanwhile;
         # the files a comp model includes are not part of it
@@ -105,26 +116,58 @@ class ModelSpec:
         parameters = tuple(
             sorted((str(k), float(v)) for k, v in (model.parameters or {}).items())
         )
-        items = tuple(sorted(settings.items()))
+        integrator, settings = integrator_state(model)
         digest = hashlib.sha256(
-            repr((text, model.base_path, parameters, items)).encode("utf-8")
+            repr((text, model.base_path, parameters, integrator, settings)).encode(
+                "utf-8"
+            )
         ).hexdigest()
         return cls(
             key=digest,
             source=source,
             base_path=model.base_path,
             parameters=parameters,
-            settings=items,
+            integrator=integrator,
+            settings=settings,
         )
 
     def load(self) -> RoadrunnerSBMLModel:
-        """Load the model and set the settings of its integrator."""
-        return RoadrunnerSBMLModel(
+        """Load the model with the integrator and its settings."""
+        model = RoadrunnerSBMLModel(
             source=self.source,
             base_path=self.base_path,
             parameters=dict(self.parameters) or None,
-            settings=dict(self.settings),
         )
+        r = model.r_loaded
+        if r.getIntegrator().getName() != self.integrator:
+            r.setIntegrator(self.integrator)
+        model.set_integrator_settings(**dict(self.settings))
+        return model
+
+
+def integrator_state(
+    model: RoadrunnerSBMLModel,
+) -> tuple[str, tuple[tuple[str, Any], ...]]:
+    """Get the name of the integrator of a model and every one of its settings.
+
+    The absolute tolerance is the `AbsoluteTolerance` of the model, from which
+    `RoadrunnerSBMLModel.set_integrator_settings` computes the tolerance of
+    every state, and not the vector of the integrator.
+
+    Args:
+        model: the loaded model.
+
+    Returns:
+        The name of the integrator and its settings, sorted by name.
+    """
+    integrator: roadrunner.Integrator = model.r_loaded.getIntegrator()
+    settings: list[tuple[str, Any]] = []
+    for name in sorted(str(name) for name in integrator.getSettings()):
+        if name == "absolute_tolerance":
+            settings.append((name, model.absolute_tolerance))
+        else:
+            settings.append((name, integrator.getValue(name)))
+    return str(integrator.getName()), tuple(settings)
 
 
 @dataclass(frozen=True)

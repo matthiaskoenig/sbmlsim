@@ -211,7 +211,7 @@ def test_the_tolerances_reach_the_workers() -> None:
     # tolerance times the volume (2e-9), but an override is an amount
     tolerances = dict(zip(model.state_ids(), expected, strict=True))
     assert tolerances == pytest.approx({"A": 1e-14, "B": 2e-9, "X": 1e-12}, abs=0)
-    spec = ModelSpec.of(model, simulator.integrator_settings)
+    spec = ModelSpec.of(model)
     assert parallel.pool(2).submit(_worker_tolerances, spec).result() == expected
 
 
@@ -233,7 +233,7 @@ def test_every_model_of_a_dimension_gets_the_tolerances(tmp_path: Path) -> None:
             float(v)
             for v in model.r_loaded.getIntegrator().getAbsoluteToleranceVector()
         ]
-        spec = ModelSpec.of(model, simulator.integrator_settings)
+        spec = ModelSpec.of(model)
         assert parallel.pool(2).submit(_worker_tolerances, spec).result() == vector
         assert len(ids) == len(vector)
 
@@ -248,6 +248,42 @@ def test_a_kept_pool_runs_other_settings_with_them() -> None:
         xr.testing.assert_identical(pooled.ds, serial.ds)
         results.append(pooled)
     assert not results[0]["[A]"].equals(results[1]["[A]"])
+
+
+def _model_with_steps(how: str) -> RoadrunnerSBMLModel:
+    """Get the probe model whose integrator takes at most three steps."""
+    if how == "constructor":
+        model = RoadrunnerSBMLModel(source=sbml(), settings={"maximum_num_steps": 3})
+        model.set_selections(SEL)
+    else:
+        model = _model()
+        model.set_integrator_settings(maximum_num_steps=3)
+    return model
+
+
+@pytest.mark.parametrize("how", ["constructor", "setter"])
+def test_the_settings_of_the_model_reach_the_workers(
+    how: str, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A setting of the model, not of the simulator, holds in the pool as well.
+
+    Three points need more than three steps of the integrator and fail
+    serially; in the pool they fail only if the workers have the setting.
+    """
+    scan = Scan(
+        Simulation(end=10, steps=4),
+        [Dimension("d", values={"k2": [0.1, 0.2, 0.4, 0.8]})],
+    )
+    try:
+        serial = Simulator(n_workers=1).run(
+            _model_with_steps(how), scan, on_error="flag"
+        )
+    finally:
+        _c_output(capfd)
+    pooled = Simulator(n_workers=2).run(_model_with_steps(how), scan, on_error="flag")
+    assert _pools() == [2]
+    assert serial["status"].values.tolist() == [1, 1, 1, 0]
+    xr.testing.assert_identical(pooled.ds, serial.ds)
 
 
 def test_an_unknown_setting_raises_before_a_pool_starts() -> None:

@@ -215,10 +215,10 @@ def test_a_worker_sees_a_rewritten_model(
     path = tmp_path / "blowup.xml"
     path.write_text(sbml(BLOWUP))
     first = RoadrunnerSBMLModel(source=path)
-    spec = ModelSpec.of(first, {})
+    spec = ModelSpec.of(first)
     path.write_text(sbml(BLOWUP.replace("species S in C = 1", "species S in C = 0.5")))
     second = RoadrunnerSBMLModel(source=path)
-    other = ModelSpec.of(second, {})
+    other = ModelSpec.of(second)
     assert other.key != spec.key
     chunk = _chunk(
         second,
@@ -242,15 +242,27 @@ def test_the_spec_of_a_model_loads_it_with_the_settings(
         "relative_tolerance": 1e-8,
     }
     model.set_integrator_settings(**settings)
-    spec = ModelSpec.of(model, settings)
+    # settings of the model which no simulator sets
+    model.set_integrator_settings(
+        stiff=False, maximum_num_steps=50, initial_time_step=1e-3
+    )
+    spec = ModelSpec.of(model)
+    assert spec.integrator == "cvode"
     loaded = spec.load()
     np.testing.assert_allclose(
         loaded.r_loaded.getIntegrator().getAbsoluteToleranceVector(),
         model.r_loaded.getIntegrator().getAbsoluteToleranceVector(),
     )
-    assert loaded.r_loaded.getIntegrator().getValue("relative_tolerance") == 1e-8
-    assert ModelSpec.of(model, settings).key == spec.key
-    assert ModelSpec.of(model, {**settings, "relative_tolerance": 1e-6}).key != spec.key
+    integrator = loaded.r_loaded.getIntegrator()
+    assert integrator.getValue("relative_tolerance") == 1e-8
+    assert integrator.getValue("stiff") is False
+    assert integrator.getValue("maximum_num_steps") == 50
+    assert integrator.getValue("initial_time_step") == 1e-3
+    # the loaded model has the state of the model of the parent
+    assert ModelSpec.of(loaded) == spec
+    assert ModelSpec.of(model).key == spec.key
+    model.set_integrator_settings(relative_tolerance=1e-6)
+    assert ModelSpec.of(model).key != spec.key
     assert pickle.loads(pickle.dumps(spec)) == spec
 
 
@@ -258,7 +270,7 @@ def test_a_worker_loads_a_model_once(
     model: RoadrunnerSBMLModel, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(parallel, "_CACHE", OrderedDict())
-    spec = ModelSpec.of(model, {})
+    spec = ModelSpec.of(model)
     loads: list[str] = []
     load = ModelSpec.load
 
