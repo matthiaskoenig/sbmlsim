@@ -20,6 +20,7 @@ def test_the_core_does_not_import_petab(module: str) -> None:
         "print(sorted(m for m in ('petab', 'torch', 'petab_sciml') if m in sys.modules))"
     )
     result = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        [sys.executable, "-c", code], capture_output=True, text=True, check=False
     )
+    assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[]"
