@@ -22,6 +22,13 @@ DATA = Path(__file__).parents[1] / "data" / "scan_regression.json"
 RECORD: dict[str, dict[str, Any]] = json.loads(DATA.read_text(encoding="utf-8"))
 EXAMPLES = Path(__file__).parents[2] / "examples"
 
+# The values were recorded on one machine. The math library and the code which
+# roadrunner compiles for the processor of another machine round in the last
+# bits, which the oscillations of the repressilator grow to 3e-8 relative (the
+# runners of GitHub); a change of one ulp in the scanned values already gives
+# 4e-9. A scan which differs in what it simulates differs far above 1e-6.
+RTOL = 1e-6
+
 
 def _compare(res: ScanResult, recorded: dict[str, Any], step: int = 1) -> None:
     for key, values in recorded.items():
@@ -30,7 +37,7 @@ def _compare(res: ScanResult, recorded: dict[str, Any], step: int = 1) -> None:
             actual = np.broadcast_to(res["time"].values[::step], expected.shape)
         else:
             actual = res[key].values[..., ::step]
-        np.testing.assert_allclose(actual, expected, rtol=1e-9, atol=1e-12, err_msg=key)
+        np.testing.assert_allclose(actual, expected, rtol=RTOL, atol=1e-12, err_msg=key)
 
 
 def _results(
