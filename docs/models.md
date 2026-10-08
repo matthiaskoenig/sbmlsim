@@ -4,7 +4,7 @@
 
 ## Loading a model
 
-The simulator loads a model from a path, a URL or an SBML string:
+The simulator loads a model from a path or an SBML string:
 
 ```python
 from sbmlsim.resources import REPRESSILATOR_SBML
@@ -71,19 +71,7 @@ model = RoadrunnerSBMLModel.from_abstract_model(abstract_model)
 print(model.r)
 ```
 
-The source of a model is resolved by `sbmlsim.model.model_resources`: a path relative to the `base_path` of the experiment, an absolute path, a URL, or a `urn:miriam:biomodels.db:` URN which downloads the model from BioModels.
-
-## Clamping species
-
-`ModelChange` implements structural changes of the model, currently clamping a species to a fixed value or formula. Clamping changes the roadrunner instance of a model between simulations, a `Simulation` itself only changes values, see [Simulations](simulation.md#structural-changes):
-
-```python
-from sbmlsim.model import ModelChange
-
-r = model.r
-ModelChange.clamp_species(r, "X", "10.0")  # clamp X to 10.0
-ModelChange.clamp_species(r, "X", False)  # release the clamp
-```
+The source of a model is resolved by `sbmlsim.model.model_resources`: a path relative to the `base_path` of the experiment, an absolute path, or the SBML itself. A model is never downloaded, a source which is neither a path nor SBML raises an `OSError`.
 
 ## Inspecting a model
 

@@ -53,7 +53,6 @@ nav = [
     { "sbmlsim.model" = [
       { "model" = "api/model.model.md" },
       { "model_roadrunner" = "api/model.model_roadrunner.md" },
-      { "model_change" = "api/model.model_change.md" },
       { "model_resources" = "api/model.model_resources.md" },
       { "symbols" = "api/model.symbols.md" },
       { "provenance" = "api/model.provenance.md" },

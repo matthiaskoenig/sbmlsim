@@ -1,7 +1,6 @@
 """RoadRunner model."""
 
 import logging
-import tempfile
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
@@ -388,16 +387,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         md5 = md5_for_path(sbml_path)
         return Path(f"{sbml_path}_rr{roadrunner.__version__}_{md5}.state")
-
-    @classmethod
-    def copy_roadrunner_model(cls, r: roadrunner.RoadRunner) -> roadrunner.RoadRunner:
-        """Copy roadrunner model by using the state."""
-        with tempfile.NamedTemporaryFile() as ftmp:
-            filename = ftmp.name
-            r.saveState(filename)
-            r2 = roadrunner.RoadRunner()
-            r2.loadState(filename)
-        return r2
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
         """Parse units from SBML model."""

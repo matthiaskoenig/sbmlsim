@@ -31,7 +31,6 @@ SCRIPTS = [
     "examples.timecourse",
     "examples.scan",
     "examples.fit_sampling",
-    "examples.model_change",
     "examples.units",
     "examples.model_sensitivity",
     "examples.interpolation.interpolation_example",

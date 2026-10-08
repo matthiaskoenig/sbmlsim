@@ -1,9 +1,7 @@
 """Models.
 
 Functions for model loading, model manipulation and settings on the integrator.
-Model can be in different formats, main supported format being SBML.
-
-Other formats could be supported like CellML or NeuroML.
+A model is described by its SBML, read from a file or given as a string.
 """
 
 import logging
@@ -27,14 +25,6 @@ class AbstractModel:
         """Language types."""
 
         SBML = 1
-        CELLML = 2
-
-    class SourceType(Enum):
-        """Source types."""
-
-        PATH = 1
-        URN = 2
-        URL = 3
 
     def __repr__(self) -> str:
         """Get string representation."""
@@ -55,7 +45,7 @@ class AbstractModel:
         """Initialize the model description.
 
         Args:
-            source: path, URN or URL of the model, or the SBML itself.
+            source: path of the model, or the SBML itself.
             sid: id of the model.
             name: name of the model.
             language: language of the model, e.g. `sbml`.

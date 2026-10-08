@@ -19,7 +19,6 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/timecourse.py` | simulations of the repressilator: the steps of the integrator, changes before the initialization and a change at a time on an equidistant grid |
 | `examples/scan.py` | parameter scans of dimension 0, 1 and 2, including a scan over a distribution of parameter values |
 | `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
-| `examples/model_change.py` | clamping a species with `ModelChange` on the roadrunner instance of a model |
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | sensitivity scans of all parameters, by relative differences and by sampling from distributions |
 | `examples/interpolation/` | interpolation of data points as an SBML model (`interpolation.py` writes the model, `interpolation_example.py` simulates it) |

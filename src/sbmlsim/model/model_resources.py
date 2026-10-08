@@ -1,16 +1,9 @@
-"""Model resources.
-
-Interacting with model resources to retrieve models.
-This currently includes BioModels, but can easily be extended to other models.
-"""
+"""The source of a model, a file or the SBML itself."""
 
 import logging
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
-
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +14,7 @@ class Source:
 
     source: str
     path: Path | None = None  # if source is a path
-    content: str | None = None  # if source is something which has to be resolved
-
-    def is_path(self) -> bool:
-        """Check if the source is a Path."""
-        return self.path is not None
+    content: str | None = None  # if source is the SBML itself
 
     def is_content(self) -> bool:
         """Check if the source is Content."""
@@ -46,21 +35,28 @@ class Source:
     def from_source(
         cls, source: Union["Source", str, Path], base_dir: Path | None = None
     ) -> "Source":
-        """Resolve the source string."""
+        """Resolve the source string.
+
+        Args:
+            source: path of the model or the SBML itself.
+            base_dir: directory a relative path is resolved against, the
+                current working directory by default.
+
+        Returns:
+            The resolved source.
+
+        Raises:
+            OSError: if the path of the source does not exist.
+        """
         if isinstance(source, Source):
             return source
 
         path: Path | None = None
         content: str | None = None
 
-        if isinstance(source, str):
-            if source.lstrip().startswith("<"):
-                # the SBML itself
-                content = source
-            elif is_urn(source):
-                content = model_from_urn(source)
-            elif is_http(source):
-                content = model_from_url(url=source)
+        if isinstance(source, str) and source.lstrip().startswith("<"):
+            # the SBML itself
+            content = source
 
         # is path
         if content is None:
@@ -73,91 +69,3 @@ class Source:
                 )
 
         return Source(str(source), path, content)
-
-
-def is_urn(source: str) -> bool:
-    """Check if urn source."""
-    return source.lower().startswith("urn")
-
-
-def is_http(source: str) -> bool:
-    """Check if http source."""
-    return source.lower().startswith("http")
-
-
-def model_from_urn(urn: str) -> str:
-    """Get model string from given URN."""
-    logger.debug("Loading model from urn: %s", urn)
-    if "biomodel" in urn:
-        mid = parse_biomodels_mid(urn)
-        content = model_from_biomodels(mid)
-    else:
-        raise ValueError(f"Unkown URN for model: {urn}")
-
-    return content
-
-
-def model_from_url(url: str) -> str:
-    """Get model string from given URL.
-
-    Handles redirects of the download page.
-
-    :param url:
-    :return:
-    """
-    # check for special case of old biomodel urls
-    if url.startswith("https://www.ebi.ac.uk/biomodels-main/download?mid="):
-        mid = parse_biomodels_mid(url)
-        logger.error(
-            "Use of deprecated biomodels URL '%s',use updated url instead: 'https://www.ebi.ac.uk/biomodels/model/download/%s?filename=%s_url.xml'",
-            url,
-            mid,
-            mid,
-        )
-        return model_from_biomodels(mid)
-
-    response = requests.get(url, allow_redirects=True)
-    response.raise_for_status()
-    model_str = response.content
-
-    # bytes array in py3
-    return str(model_str.decode("utf-8"))
-
-
-# --- BioModels ---
-def parse_biomodels_mid(text: str) -> str:
-    """Parse biomodel id from string."""
-    pattern = r"((BIOMD|MODEL)\d{10})|(BMID\d{12})"
-    match = re.search(pattern, text)
-    if match:
-        mid = match.group(0)
-    else:
-        raise ValueError(f"Biomodel id pattern '{pattern}' not found in string: 'text'")
-    return mid
-
-
-def model_from_biomodels(mid: str) -> str:
-    """Get SBML string from given BioModels identifier.
-
-    :param mid: biomodels id
-    :return: SBML string
-    """
-    # query file information
-    url = f"https://www.ebi.ac.uk/biomodels/{mid}?format=json"
-    r = requests.get(url)
-    r.raise_for_status()
-
-    # query main file
-    json = r.json()
-    try:
-        filename = json["files"]["main"][0]["name"]
-        url = (
-            f"https://www.ebi.ac.uk/biomodels/model/download/{mid}?filename={filename}"
-        )
-    except (TypeError, KeyError) as err:
-        logger.error(
-            "Filename of 'main' file could not be resolved from response: '%s'", json
-        )
-        raise err
-
-    return model_from_url(url)
