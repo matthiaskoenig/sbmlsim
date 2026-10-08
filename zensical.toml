@@ -64,10 +64,6 @@ nav = [
       { "scan" = "api/simulation.scan.md" },
       { "sensitivity" = "api/simulation.sensitivity.md" },
       { "range" = "api/simulation.range.md" },
-      { "change" = "api/simulation.change.md" },
-      { "algorithm" = "api/simulation.algorithm.md" },
-      { "calculation" = "api/simulation.calculation.md" },
-      { "base" = "api/simulation.base.md" },
     ] },
     { "sbmlsim.simulator" = [
       { "simulation_serial" = "api/simulator.simulation_serial.md" },

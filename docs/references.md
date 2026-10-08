@@ -123,13 +123,6 @@
 > *BMC Bioinformatics.* 2014;15:369.
 > [doi:10.1186/s12859-014-0369-z](https://doi.org/10.1186/s12859-014-0369-z)
 
-**KISAO.** The ontology of simulation algorithms and their parameters, see `sbmlsim.simulation.algorithm`.
-
-> Courtot M, Juty N, Knüpfer C, Waltemath D, Zhukova A, Dräger A, Dumontier M, Finney A, Golebiewski M, Hastings J, Hoops S, Keating S, Kell DB, Kerrien S, Lawson J, Lister A, Lu J, Machne R, Mendes P, Pocock M, Rodriguez N, Villeger A, Wilkinson DJ, Wimalaratne S, Laibe C, Hucka M, Le Novère N.
-> **Controlled vocabularies and semantics in systems biology.**
-> *Molecular Systems Biology.* 2011;7:543.
-> [doi:10.1038/msb.2011.77](https://doi.org/10.1038/msb.2011.77)
-
 **PEtab.** The specification of parameter estimation problems which `sbmlsim.fit.petab_v2` reads and writes and `sbmlsim.fit.petab_omex` packages, see [PEtab](petab.md).
 
 > Schmiester L, Schälte Y, Bergmann FT, Camba T, Dudkin E, Egert J, Fröhlich F, Fuhrmann L, Hauber AL, Kemmer S, Lakrisenko P, Loos C, Merkt S, Müller W, Pathirana D, Raimúndez E, Refisch L, Rosenblatt M, Stapor PL, Städter P, Wang D, Wieland FG, Banga JR, Timmer J, Villaverde AF, Sahle S, Kreutz C, Hasenauer J, Weindl D.

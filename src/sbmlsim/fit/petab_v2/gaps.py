@@ -354,8 +354,8 @@ GAPS: tuple[Gap, ...] = (
     Gap(
         id="integrator",
         kind=GapKind.EXTENSION,
-        sbmlsim="the integrator settings of a model, i.e. the KISAO terms of "
-        "`sbmlsim.simulation.algorithm`",
+        sbmlsim="the integrator settings of a model, i.e. "
+        "`RoadrunnerSBMLModel.set_integrator_settings`",
         petab="-",
         detail="the settings go to the extension",
     ),
