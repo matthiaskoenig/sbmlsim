@@ -120,7 +120,7 @@ A model which does not reach a steady state by `SteadyState(max_time=...)` raise
 
 ## Selections and integrator settings
 
-The variables recorded in a simulation are the selections of the simulator. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded; a smaller selection speeds up the simulation:
+The variables recorded in a simulation are the selections of the simulator. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded, except a compartment without a size (`NaN`), e.g. a membrane whose area the model does not use; a smaller selection speeds up the simulation:
 
 ```python
 simulator.set_timecourse_selections(["time", "[X]", "[Y]", "[Z]"])

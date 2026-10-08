@@ -402,6 +402,10 @@ class RoadrunnerSBMLModel(AbstractModel):
     ) -> list[str]:
         """Set the selections of the simulations.
 
+        Without selections every entity of the model is selected, except a
+        compartment without a size (`NaN`), e.g. a membrane whose area the
+        model does not use, which has no value to record.
+
         Args:
             r: the roadrunner instance.
             selections: the selections, every entity of the model without.
@@ -413,6 +417,15 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         if selections is None:
             r_model: roadrunner.ExecutableModel = r.model
+            compartments = [
+                cid
+                for cid, size in zip(
+                    r_model.getCompartmentIds(),
+                    r_model.getCompartmentVolumes(),
+                    strict=True,
+                )
+                if not np.isnan(size)
+            ]
 
             r.timeCourseSelections = [
                 "time",
@@ -424,7 +437,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                     if not pid.endswith(INITIAL_SUFFIX) and pid not in exclude
                 ],
                 *r_model.getReactionIds(),
-                *r_model.getCompartmentIds(),
+                *compartments,
             ]
             r.timeCourseSelections += [
                 f"[{key}]"
