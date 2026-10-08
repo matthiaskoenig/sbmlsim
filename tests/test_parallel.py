@@ -154,6 +154,40 @@ def test_a_stopped_pool_is_replaced() -> None:
     assert second.submit(os.getpid).result() != os.getpid()
 
 
+def test_the_pool_alone_waits_for_its_workers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`stop` leaves the waiting for the workers to the thread of the pool.
+
+    Two threads which wait for one process race under the start method
+    `spawn` on POSIX: the one which loses finds no process and a worker which
+    ended looks alive for a moment. `stop` waits for the thread of the pool,
+    so the workers have ended when it returns, under every start method.
+    """
+    executor = parallel.start_pool(2)
+    processes = list((executor._processes or {}).values())
+    caller = threading.current_thread()
+    waits: list[str] = []
+    for name in ("join", "is_alive"):
+        original = getattr(multiprocessing.process.BaseProcess, name)
+
+        def recording(
+            self: Any,
+            *args: Any,
+            _original: Any = original,
+            _name: str = name,
+            **kwargs: Any,
+        ) -> Any:
+            if threading.current_thread() is caller and self in processes:
+                waits.append(_name)
+            return _original(self, *args, **kwargs)
+
+        monkeypatch.setattr(multiprocessing.process.BaseProcess, name, recording)
+    parallel.stop(executor)
+    monkeypatch.undo()
+    assert processes
+    assert waits == []
+    assert all(process.exitcode is not None for process in processes)
+
+
 def test_shutdown_stops_every_pool() -> None:
     parallel.pool(2)
     parallel.shutdown()
@@ -241,10 +275,12 @@ def test_an_interrupted_start_stops_the_workers(
 ) -> None:
     started: list[ProcessPoolExecutor] = []
     stopped: list[ProcessPoolExecutor] = []
+    processes: list[Any] = []
     real_stop = parallel.stop
 
     def stop(executor: ProcessPoolExecutor) -> None:
         stopped.append(executor)
+        processes.extend((executor._processes or {}).values())
         real_stop(executor)
 
     def interrupted(self: Future, timeout: float | None = None) -> int:
@@ -263,7 +299,8 @@ def test_an_interrupted_start_stops_the_workers(
         parallel.start_pool(2)
     assert stopped == started and len(started) == 1
     assert parallel._POOLS == {}
-    assert not any(p.is_alive() for p in (started[0]._processes or {}).values())
+    assert processes
+    assert not any(p.is_alive() for p in processes)
 
 
 def _interrupt_handler() -> object:

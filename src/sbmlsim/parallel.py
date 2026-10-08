@@ -30,6 +30,7 @@ import logging
 import multiprocessing
 import os
 import signal
+import threading
 from collections import OrderedDict
 from collections.abc import Callable, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor
@@ -54,6 +55,9 @@ POOL_THRESHOLD: int = 256
 
 #: seconds the workers of a new pool may take to start
 WORKER_STARTUP_TIMEOUT: float = 300.0
+
+#: seconds `stop` waits for the pool to end its workers
+STOP_TIMEOUT: float = 30.0
 
 #: the most objects a worker keeps, see `worker_cache`
 WORKER_CACHE_SIZE: int = 16
@@ -200,9 +204,10 @@ def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecut
         The pool, the caller stops it with `stop`.
 
     Raises:
-        RuntimeError: in a worker process (no nested pools), or if the workers die while they
-            start or do not start within `WORKER_STARTUP_TIMEOUT`; both are
-            what a script without the guard does, see `GUARD_MESSAGE`.
+        RuntimeError: in a worker process (no nested pools), or if the
+            workers die while they start or do not start within
+            `WORKER_STARTUP_TIMEOUT`; both are what a script without the
+            guard does, see `GUARD_MESSAGE`.
     """
     if in_worker():
         raise RuntimeError(
@@ -282,18 +287,31 @@ def stop(executor: ProcessPoolExecutor) -> None:
     The workers are terminated, so a pool whose workers still run, e.g. after
     Ctrl-C or a timeout, stops at once. A kept pool is dropped, the next
     `pool` starts a new one.
+
+    The thread of the pool which manages its workers is the only one which
+    waits for them to end, and `stop` waits for that thread: when it returns,
+    the workers have ended and the pool knows it. A second thread which
+    waited for a worker would race with it under the start method `spawn` on
+    POSIX: the one which loses finds no process to wait for, and the worker
+    looks alive for a moment after it ended.
     """
     for n_workers, kept in list(_POOLS.items()):
         if kept is executor:
             del _POOLS[n_workers]
     logger.debug("Stopping a pool")
     processes = list((executor._processes or {}).values())
+    # typeshed declares the thread as the object which wakes it up
+    manager = cast(threading.Thread | None, executor._executor_manager_thread)
     executor.shutdown(wait=False, cancel_futures=True)
     for process in processes:
-        if process.is_alive():
-            process.terminate()
-    for process in processes:
-        process.join(timeout=5.0)
+        # a worker which ended already is not signalled again
+        process.terminate()
+    if manager is not None:
+        manager.join(timeout=STOP_TIMEOUT)
+        if manager.is_alive():
+            logger.warning(
+                "The workers of a pool did not end within %s s.", STOP_TIMEOUT
+            )
 
 
 def shutdown() -> None:

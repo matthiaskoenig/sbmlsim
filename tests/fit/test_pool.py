@@ -254,7 +254,9 @@ class FakeExecutor:
     that submit with nothing running on it.
     """
 
+    # the attributes of a ProcessPoolExecutor which `parallel.stop` reads
     _processes: ClassVar[dict[int, Any]] = {}
+    _executor_manager_thread: ClassVar[Any] = None
 
     def __init__(
         self,
