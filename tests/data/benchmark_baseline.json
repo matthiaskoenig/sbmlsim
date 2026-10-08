@@ -4,8 +4,8 @@
   "n_passed": 28,
   "expected_failures": {
     "Chen_MSB2009": {
-      "status": "error",
-      "reason": "roadrunner stalls at the steps of the rules of the model at t = 1799.99 and 2659.99 (piecewise of the time, a sine ramp of 0.01, t + h = t, CV_TOO_MUCH_WORK) with the tolerances 1e-10 and 1e-8; it integrates with 1e-8 and 1e-6, which the other problems are too coarse for"
+      "status": "tolerance",
+      "reason": "5 of the 120 simulations differ from the collection by up to 0.28 % (AKT_PP 17.7228 against 17.7718 at t = 1950, ERK_PP after t = 3600); the log-likelihood -130591.753 differs from AMICI (-115700.119) and stays the same from the tolerances 1e-10 and 1e-8 to 1e-16 and 1e-12, so the integration is not the cause. With one absolute tolerance, which roadrunner scaled, CVODE stalled at the steps of the rules at t = 1799.99 and 2659.99 (t + h = t, CV_TOO_MUCH_WORK)"
     },
     "Crauste_CellSystems2017": {
       "status": "tolerance",
