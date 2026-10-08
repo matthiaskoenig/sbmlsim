@@ -1,7 +1,10 @@
 """A chunk of a scan runs its points on one plan and one model."""
 
+import ctypes
 import pickle
+import sys
 from collections import OrderedDict
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -13,7 +16,9 @@ from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import (
+    MAX_ERRORS,
     Chunk,
+    ChunkResult,
     ModelSpec,
     OnError,
     ScanPointError,
@@ -21,6 +26,10 @@ from sbmlsim.simulator.worker import (
     run_chunk_in_worker,
 )
 from tests.simulator.models import BLOWUP, sbml
+
+posix = pytest.mark.skipif(
+    sys.platform == "win32", reason="the streams of C are flushed with POSIX ctypes"
+)
 
 SEL = ("time", "[A]", "[B]", "k1")
 
@@ -99,36 +108,125 @@ def test_a_grid_of_times_is_interpolated(model: RoadrunnerSBMLModel) -> None:
     assert np.isnan(result.values[0, 3, 1])
 
 
-def _blowup_chunk(on_error: OnError) -> tuple[Chunk, RoadrunnerSBMLModel]:
+def _blowup_chunk(
+    on_error: OnError, k: list[float] | None = None, time: np.ndarray | None = None
+) -> tuple[Chunk, RoadrunnerSBMLModel]:
     blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    k = k or [0.1, 2.0, 0.1]
     chunk = _chunk(
         blowup,
         Simulation(end=1, steps=4),
-        values={"k": np.array([0.1, 2.0, 0.1])},
+        values={"k": np.array(k)},
         selections=("time", "S"),
         on_error=on_error,
-        indices=np.array([4, 5, 6]),
+        indices=np.arange(4, 4 + len(k)),
+        time=time,
     )
     return chunk, blowup
 
 
-def test_a_failed_point_is_flagged() -> None:
+def _run_failing(chunk: Chunk, model: RoadrunnerSBMLModel, capfd) -> ChunkResult:
+    """Run a chunk with failing points and take the output of CVODE."""
+    capfd.readouterr()
+    try:
+        return run_chunk(chunk, model)
+    finally:
+        ctypes.CDLL(None).fflush(None)
+        captured = capfd.readouterr()
+        assert "CVODE" in captured.out + captured.err
+
+
+@posix
+def test_a_failed_point_is_flagged(capfd) -> None:
     chunk, blowup = _blowup_chunk("flag")
-    result = run_chunk(chunk, blowup)
+    result = _run_failing(chunk, blowup, capfd)
     assert result.status.tolist() == [0, 1, 0]
-    assert np.isnan(result.values[1]).all()
+    assert np.isnan(result.values[1, :, 1]).all()
     assert np.isfinite(result.values[[0, 2]]).all()
+    # the point after a failure is the point it would be alone
+    np.testing.assert_array_equal(result.values[2], result.values[0])
     assert result.errors[0][0] == 5
     assert "CVODE" in result.errors[0][1]
 
 
-def test_a_failed_point_raises_with_its_index() -> None:
+@posix
+def test_a_failed_point_raises_with_its_index(capfd) -> None:
     chunk, blowup = _blowup_chunk("raise")
     with pytest.raises(ScanPointError) as info:
-        run_chunk(chunk, blowup)
+        _run_failing(chunk, blowup, capfd)
     assert info.value.index == 5
     again = pickle.loads(pickle.dumps(info.value))
     assert (again.index, again.message) == (5, info.value.message)
+
+
+@posix
+def test_a_failed_point_has_the_grid_as_time(capfd) -> None:
+    grid = np.array([0.0, 0.5, 1.0])
+    chunk, blowup = _blowup_chunk("flag", time=grid)
+    result = _run_failing(chunk, blowup, capfd)
+    assert result.status.tolist() == [0, 1, 0]
+    np.testing.assert_array_equal(result.values[1, :, 0], grid)
+    assert np.isnan(result.values[1, :, 1]).all()
+
+
+@posix
+def test_the_errors_are_capped(capfd) -> None:
+    chunk, blowup = _blowup_chunk("flag", k=[2.0] * (MAX_ERRORS + 2))
+    result = _run_failing(chunk, blowup, capfd)
+    assert result.status.sum() == MAX_ERRORS + 2
+    assert [i for i, _ in result.errors] == list(range(4, 4 + MAX_ERRORS))
+
+
+def test_a_wrong_definition_is_no_failed_point(model: RoadrunnerSBMLModel) -> None:
+    chunk = _chunk(
+        model,
+        Simulation(end=1),
+        timed={5.0: {"k1": np.array([1.0, 2.0])}},
+        on_error="flag",
+    )
+    with pytest.raises(ValueError):
+        run_chunk(chunk, model)
+
+
+def test_a_chunk_and_its_result_pickle(model: RoadrunnerSBMLModel) -> None:
+    chunk = _chunk(
+        model,
+        Simulation(end=1, steps=2),
+        values={"k1": np.array([0.1, 0.2])},
+        timed={0.5: {"b0": np.array([1.0, 2.0])}},
+        time=np.array([0.0, 1.0]),
+    )
+    again = pickle.loads(pickle.dumps(chunk))
+    first, second = run_chunk(chunk, model), run_chunk(again, model)
+    again_result = pickle.loads(pickle.dumps(first))
+    np.testing.assert_array_equal(first.values, second.values)
+    np.testing.assert_array_equal(again_result.values, first.values)
+    assert again_result.errors == first.errors
+    np.testing.assert_array_equal(again_result.status, first.status)
+
+
+def test_a_worker_sees_a_rewritten_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(parallel, "_CACHE", OrderedDict())
+    path = tmp_path / "blowup.xml"
+    path.write_text(sbml(BLOWUP))
+    first = RoadrunnerSBMLModel(source=path)
+    spec = ModelSpec.of(first, {})
+    path.write_text(sbml(BLOWUP.replace("species S in C = 1", "species S in C = 0.5")))
+    second = RoadrunnerSBMLModel(source=path)
+    other = ModelSpec.of(second, {})
+    assert other.key != spec.key
+    chunk = _chunk(
+        second,
+        Simulation(end=1, steps=2),
+        values={"k": np.array([0.1])},
+        selections=("time", "S"),
+        indices=np.arange(1),
+    )
+    run_chunk_in_worker(spec, chunk)
+    result = run_chunk_in_worker(other, chunk)
+    assert result.values[0, 0, 1] == pytest.approx(0.5)
 
 
 def test_the_spec_of_a_model_loads_it_with_the_settings(

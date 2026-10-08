@@ -25,7 +25,7 @@ import numpy as np
 
 from sbmlsim import parallel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
-from sbmlsim.result.timecourse import interpolate
+from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.plan import Plan
 
@@ -77,17 +77,21 @@ class ModelSpec:
     @classmethod
     def of(cls, model: RoadrunnerSBMLModel, settings: Mapping[str, Any]) -> ModelSpec:
         """Get the spec of a loaded model and the settings of its integrator."""
-        source = (
-            model.source.content
-            if model.source.content is not None
-            else str(model.source.path)
-        )
+        # the key is the content of the model and not its path, a worker
+        # lives as long as its pool and the file may be rewritten meanwhile;
+        # the files a comp model includes are not part of it
+        if model.source.content is not None:
+            source = model.source.content
+            text = source
+        else:
+            source = str(model.source.path)
+            text = Path(source).read_text(encoding="utf-8")
         parameters = tuple(
             sorted((str(k), float(v)) for k, v in (model.parameters or {}).items())
         )
         items = tuple(sorted(settings.items()))
         digest = hashlib.sha256(
-            repr((source, model.base_path, parameters, items)).encode("utf-8")
+            repr((text, model.base_path, parameters, items)).encode("utf-8")
         ).hexdigest()
         return cls(
             key=digest,
@@ -99,13 +103,12 @@ class ModelSpec:
 
     def load(self) -> RoadrunnerSBMLModel:
         """Load the model and set the settings of its integrator."""
-        model = RoadrunnerSBMLModel(
+        return RoadrunnerSBMLModel(
             source=self.source,
             base_path=self.base_path,
             parameters=dict(self.parameters) or None,
+            settings=dict(self.settings),
         )
-        model.set_integrator_settings(**dict(self.settings))
-        return model
 
 
 @dataclass(frozen=True)
@@ -189,8 +192,10 @@ def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
     errors: list[tuple[int, str]] = []
     for k in range(n):
         index = int(chunk.indices[k])
+        # a definition which does not fit the plan is no failed point
+        plan = chunk.plan_of(k)
         try:
-            result = execute(chunk.plan_of(k), model, chunk.selections)
+            result = execute(plan, model, chunk.selections)
         except Exception as err:
             message = f"{type(err).__name__}: {err}"
             if chunk.on_error == "raise":
@@ -198,11 +203,15 @@ def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
             status[k] = 1
             if len(errors) < MAX_ERRORS:
                 errors.append((index, message))
-            rows.append(None)
-            continue
-        values = result.values
+            values = None
+        else:
+            values = result.values
+            if chunk.time is not None:
+                weights = grid_weights(values[:, 0], chunk.time)
+                values = apply_weights(weights, values.T).T
         if chunk.time is not None:
-            values = interpolate(values[:, 0], values, chunk.time)
+            if values is None:
+                values = np.full((chunk.time.size, len(chunk.selections)), np.nan)
             values[:, 0] = chunk.time
         rows.append(values)
     n_rows = (

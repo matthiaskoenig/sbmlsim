@@ -12,7 +12,7 @@ import xarray as xr
 from sbmlsim import Q
 from sbmlsim.result import ScanResult, scan
 from sbmlsim.result.scan import STATUS
-from sbmlsim.result.timecourse import interpolate
+from sbmlsim.result.timecourse import apply_weights, grid_weights, interpolate
 
 
 def _grid() -> ScanResult:
@@ -312,7 +312,7 @@ def test_the_weights_take_the_value_after_a_change(t: list[float]) -> None:
     time = np.array(t)
     values = np.arange(1.0, time.size + 1) * 2.0
     grid = np.array([-1.0, 0.0, 0.5, 1.0, 1.5, 2.0, 3.0])
-    out = scan._apply(scan._weights(time, grid), values)
+    out = apply_weights(grid_weights(time, grid), values)
     np.testing.assert_allclose(
         out, np.interp(grid, time, values, left=np.nan, right=np.nan)
     )

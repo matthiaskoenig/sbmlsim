@@ -27,14 +27,19 @@ import json
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from sbmlsim.result.timecourse import interpolate
+from sbmlsim.result.timecourse import (
+    GridWeights,
+    apply_weights,
+    grid_weights,
+    interpolate,
+)
 from sbmlsim.units import Quantity, ureg
 
 #: the dimension of the time of a grid
@@ -176,7 +181,7 @@ class ScanResult:
         tdim = POINT if self.ragged else TIME
         time_dims = self.ds[TIME].dims
         variables: dict[str, Any] = {}
-        weights: _Weights | None = None
+        weights: GridWeights | None = None
         for name, array in self.ds.data_vars.items():
             if name == TIME:
                 continue
@@ -194,10 +199,10 @@ class ScanResult:
                 order = (*[d for d in array.dims if d != TIME], TIME)
                 values = np.asarray(array.transpose(*order).values, dtype=float)
                 if weights is None:
-                    weights = _weights(
+                    weights = grid_weights(
                         np.asarray(self.ds[TIME].values, dtype=float), grid
                     )
-                out = _apply(weights, values)
+                out = apply_weights(weights, values)
             variables[str(name)] = ([*order[:-1], TIME], out)
         coords = {
             name: coord
@@ -360,36 +365,3 @@ def _statistics(
         parts.append(ds.quantile(q, dim=reduced, skipna=True).drop_vars("quantile"))
         labels.append(f"q{q:g}")
     return parts, labels
-
-
-class _Weights(NamedTuple):
-    """The linear interpolation from a common time axis onto a grid."""
-
-    lower: np.ndarray
-    upper: np.ndarray
-    weight: np.ndarray
-    valid: np.ndarray
-
-
-def _weights(time: np.ndarray, grid: np.ndarray) -> _Weights:
-    """Get the indices and weights which interpolate `time` onto `grid` once."""
-    finite = np.flatnonzero(np.isfinite(time))
-    t = time[finite]
-    if t.size == 0:
-        zeros = np.zeros(grid.size, dtype=int)
-        return _Weights(zeros, zeros, np.zeros(grid.size), np.zeros(grid.size, bool))
-    valid = (grid >= t[0]) & (grid <= t[-1])
-    low = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, max(t.size - 2, 0))
-    up = np.minimum(low + 1, t.size - 1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        span = t[up] - t[low]
-        # a zero span is a duplicated final time: the value after the change
-        weight = np.where(span > 0, (grid - t[low]) / span, 1.0)
-        weight = np.where(up > low, weight, 0.0)
-    return _Weights(finite[low], finite[up], weight, valid)
-
-
-def _apply(w: _Weights, values: np.ndarray) -> np.ndarray:
-    """Interpolate the last axis of values with the weights, `NaN` outside."""
-    out = values[..., w.lower] * (1.0 - w.weight) + values[..., w.upper] * w.weight
-    return np.where(w.valid, out, np.nan)
