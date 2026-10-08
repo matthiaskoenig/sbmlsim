@@ -513,8 +513,10 @@ def test_a_failed_point_is_flagged(
     assert res.ds.attrs["errors"][0].startswith("rate=1, k=2.0: RuntimeError")
     assert "1 of 3 points of the scan failed" in caplog.text
     assert len([r for r in caplog.records if r.levelname == "WARNING"]) == 1
-    # roadrunner does not repeat the error of every point which failed
-    assert "CVODE Error" not in output
+    # roadrunner does not repeat the error of every point which failed; on
+    # windows the output of C is not flushed, so it proves nothing there
+    if sys.platform != "win32":
+        assert "CVODE Error" not in output
 
 
 def test_the_errors_are_in_scan_order(
@@ -614,7 +616,10 @@ def test_a_worker_process_silences_sundials(
         _c_output(capfd)
         res = Simulator(n_workers=1).run(blowup, scan, on_error="flag")
         assert res["status"].values.tolist() == [1]
-        assert "cvodes" not in _c_output(capfd)
+        output = _c_output(capfd)
+        # on windows the output of C is not flushed, see `_c_output`
+        if sys.platform != "win32":
+            assert "cvodes" not in output
     # the process of the tests is not silenced
     assert {name: os.environ.get(name) for name in names} == before
 

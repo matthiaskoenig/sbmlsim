@@ -340,7 +340,16 @@ def test_the_interpolation_of_a_grid_matches_np_interp() -> None:
 
 @pytest.mark.parametrize(
     "t",
-    [[0.0, 0.0, 1.0, 2.0], [0.0, 1.0, 1.0, 2.0], [0.0, 1.0, 2.0, 2.0], [0.0, 2.0, 2.0]],
+    [
+        [0.0, 0.0, 1.0, 2.0],
+        [0.0, 1.0, 1.0, 2.0],
+        [0.0, 1.0, 2.0, 2.0],
+        [0.0, 2.0, 2.0],
+        # three changes at one time, at the start, in the middle and at the end
+        [0.0, 0.0, 0.0, 1.0, 2.0],
+        [0.0, 1.0, 1.0, 1.0, 2.0],
+        [0.0, 1.0, 2.0, 2.0, 2.0],
+    ],
 )
 def test_the_weights_take_the_value_after_a_change(t: list[float]) -> None:
     time = np.array(t)

@@ -1,7 +1,9 @@
 """The speed of the scan core: `pytest -m benchmark -n 0 -s tests/simulator/test_benchmark.py`.
 
-The times are those of the machine they were measured on: a benchmark fails
-when the scan core became slower there than 0.8.5, or the pool does not pay.
+A benchmark compares times measured in the same process, so it does not
+depend on the speed of the machine: it fails when the scan core costs more
+than the work it does, or the pool does not pay. The times of 0.8.5 are
+reported.
 """
 
 import os
@@ -32,8 +34,12 @@ BASE_SIMULATE_MS = 0.711
 SIMULATE_OVERHEAD = 0.03
 
 #: s per 0.8.5 `run_scan` of the 1e3 points of `_scan(1000)`,
-#: measured in the same pre-flight
+#: measured in the same pre-flight; reported, not asserted
 BASE_SCAN_1E3_S = 0.81
+
+#: the most a serial scan may cost more than the execution of the plans of
+#: its points, i.e. the chunks, the stacking and the assembly of the result
+SCAN_OVERHEAD = 0.05
 
 
 def _model() -> RoadrunnerSBMLModel:
@@ -143,7 +149,13 @@ def test_a_simulation(name: str) -> None:
 def test_the_serial_time_of_a_scan_of_1e3_points(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The scan is compiled once; its time is reported against 0.8.5."""
+    """A serial scan is compiled once and costs little more than its points.
+
+    The work of a point is its plan with the value of the point,
+    `Plan.with_values`, and its execution, `execute`: a serial scan of 1e3
+    points costs at most `SCAN_OVERHEAD` more than that work for every point,
+    measured in turn in the same process. The time of 0.8.5 is reported.
+    """
     calls: list[int] = []
     compile_simulation = simulator_module.compile_simulation
 
@@ -152,17 +164,31 @@ def test_the_serial_time_of_a_scan_of_1e3_points(
         return compile_simulation(*args, **kwargs)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(simulator_module, "compile_simulation", counting)
-    model = _model()
-    start = time.perf_counter()
-    Simulator(n_workers=1).run(model, _scan(1000))
-    elapsed = time.perf_counter() - start
-    print(
-        f"\na serial scan of 1e3 points: {elapsed:.2f} s "
-        f"(0.8.5 run_scan: {BASE_SCAN_1E3_S:.2f} s)"
-    )
+    model, scan = _model(), _scan(1000)
+    simulator = Simulator(n_workers=1)
+    simulator.run(model, scan)
     assert len(calls) == 1
-    # a regression of the serial path, beyond the noise of the machine
-    assert elapsed <= 1.25 * BASE_SCAN_1E3_S
+    monkeypatch.undo()
+
+    loaded = simulator.load(model)
+    plan = simulator.compile(loaded, scan.simulation)
+    selections = loaded.selections or []
+    values = [float(v) for v in scan.dimensions[0].values["n"]]
+
+    def points() -> None:
+        for value in values:
+            execute(plan.with_values({"n": value}), loaded, selections)
+
+    times = _medians(
+        {"scan": lambda: simulator.run(model, scan), "points": points}, n=7
+    )
+    overhead = times["scan"] / times["points"] - 1
+    print(
+        f"\na serial scan of 1e3 points: {times['scan']:.2f} s, "
+        f"{overhead * 100:+.1f} % against the execution of its points "
+        f"({times['points']:.2f} s); 0.8.5 run_scan: {BASE_SCAN_1E3_S:.2f} s"
+    )
+    assert overhead <= SCAN_OVERHEAD
 
 
 def test_a_scan_of_1e4_points_is_faster_on_4_workers() -> None:
