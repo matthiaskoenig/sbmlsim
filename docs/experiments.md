@@ -1,10 +1,10 @@
 # Simulation experiments
 
-A `SimulationExperiment` is the reproducible description of an experiment: the models, the datasets, the simulations, the tasks which apply a simulation to a model, the data derived from the results, and the figures and reports. The experiment is a python class; the `ExperimentRunner` executes it and writes results, figures and a JSON serialization.
+A `SimulationExperiment` is the reproducible description of an experiment: the models, the datasets, the simulations, the tasks which apply a simulation to a model, the data derived from the results, and the figures. The experiment is a python class; the `ExperimentRunner` executes it and writes results, figures and a JSON serialization.
 
 ## Defining an experiment
 
-An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, tasks, data, fit mappings, figures and reports.
+An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, tasks, data, fit mappings and figures.
 
 ```python
 from pathlib import Path

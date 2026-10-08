@@ -113,15 +113,3 @@ def test_a_reduction_interpolates_only_its_variable() -> None:
     )
     grid = xres.interpolate([0, 4], keys=["y"])
     assert set(grid.xds.data_vars) == {"y", "time"}
-
-
-def test_datagenerator_picks_the_last_point_of_every_simulation() -> None:
-    """The last point of a ragged result is the last point of each simulation."""
-    from sbmlsim.result.datagenerator import DataGeneratorIndexingFunction
-
-    xres = XResult.from_timecourses(
-        [_tc([0, 4], [0, 4]), _tc([0, 1, 4], [0, 2, 8])], scan=_scan()
-    )
-    last = DataGeneratorIndexingFunction(index=-1)(xresults={"r": xres})["r"]
-    np.testing.assert_allclose(last["y"].values, [4, 8])
-    np.testing.assert_allclose(last["time"].values, [4, 4])

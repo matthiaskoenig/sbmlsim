@@ -34,7 +34,6 @@ SCRIPTS = [
     "examples.model_change",
     "examples.units",
     "examples.model_sensitivity",
-    "examples.datagenerator",
     "examples.interpolation.interpolation_example",
     "examples.curve_types.experiment",
     "examples.initial_assignment.initial_assignment",

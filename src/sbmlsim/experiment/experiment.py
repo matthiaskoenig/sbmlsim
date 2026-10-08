@@ -107,7 +107,6 @@ class SimulationExperiment:
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
         self._results: dict[str, XResult] = {}
-        self._reports: dict[str, dict[str, str]] = {}
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -125,7 +124,6 @@ class SimulationExperiment:
             self._tasks.update(self.tasks())
             self._data.update(self.data())
             self._figures.update(self.figures())
-            self._reports.update(self.reports())
             self._fit_mappings.update(self.fit_mappings())
 
             # validation of information
@@ -146,7 +144,6 @@ class SimulationExperiment:
             f"{'tasks':20} {list(self._tasks.keys())}",
             f"{'results':20} {list(self._results.keys())}",
             f"{'figures':20} {list(self._figures.keys())}",
-            f"{'reports':20} {list(self._reports.keys())}",
         ]
         return "\n".join(info)
 
@@ -179,13 +176,13 @@ class SimulationExperiment:
         return {}
 
     def data(self) -> dict[str, Data]:
-        """Define DataGenerators including functions.
+        """Define the data of the experiment, including functions of other data.
 
         This determines the selection in the model.
 
-        All data which is accessed in a simulation result must be defined in a
-        data generator. The data generators are important for defining the
-        selections of a simulation experiment.
+        All data which is accessed in a simulation result must be defined here.
+        The data is important for defining the selections of a simulation
+        experiment.
         """
         return {}
 
@@ -193,7 +190,7 @@ class SimulationExperiment:
         """Figure definition.
 
         Selections accessed in figures and analyses must be registered beforehand
-        via datagenerators.
+        via the data of the experiment.
 
         Most figures do not require access to concrete data, but only abstract
         data concepts.
@@ -204,7 +201,7 @@ class SimulationExperiment:
         """Matplotlib figure definition.
 
         Selections accessed in figures and analyses must be registered beforehand
-        via datagenerators.
+        via the data of the experiment.
 
         Most figures do not require access to concrete data, but only abstract
         data concepts.
@@ -217,14 +214,6 @@ class SimulationExperiment:
         Mapping reference data on observables.
         Used for the optimization of parameters.
         The child classes fill out the information.
-        """
-        return {}
-
-    def reports(self) -> dict[str, dict[str, str]]:
-        """Define reports.
-
-        Reports are defined by a hashmap label:Data.
-        Reports can be serialized in multiple manners.
         """
         return {}
 
@@ -288,7 +277,6 @@ class SimulationExperiment:
             "_tasks",
             "_data",
             "_figures",
-            "_reports",
             "_fit_mappings",
         ]:
             field = getattr(self, field_key)

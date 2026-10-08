@@ -10,12 +10,11 @@ from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.result.report import Report
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulator.simulation_serial import SimulatorSerial
 from sbmlsim.task import Task
 
-#: selections of the timecourse, which the data and the report use
+#: selections of the timecourse, which the data uses
 SELECTIONS = ["time", "S1", "S2", "[S1]", "[S2]"]
 
 
@@ -69,15 +68,6 @@ class CurveTypesExperiment(SimulationExperiment):
         )
 
         return {"fig1": fig}
-
-    @override
-    def reports(self) -> dict[str, dict[str, str]]:
-        """Define reports, i.e., the labels of the data generators."""
-        report1 = Report(
-            sid="report1",
-            datasets={sid: f"task_model_tc__{sid}" for sid in SELECTIONS},
-        )
-        return {report1.sid: report1.datasets}
 
 
 def run_curve_types_experiments(output_path: Path) -> None:
