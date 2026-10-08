@@ -1,0 +1,194 @@
+"""A chunk of a scan runs its points on one plan and one model."""
+
+import pickle
+from collections import OrderedDict
+
+import numpy as np
+import pytest
+
+from sbmlsim import parallel
+from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.tolerances import AbsoluteTolerance
+from sbmlsim.simulation import Change, Simulation
+from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.plan import compile_simulation
+from sbmlsim.simulator.worker import (
+    Chunk,
+    ModelSpec,
+    OnError,
+    ScanPointError,
+    run_chunk,
+    run_chunk_in_worker,
+)
+from tests.simulator.models import BLOWUP, sbml
+
+SEL = ("time", "[A]", "[B]", "k1")
+
+
+@pytest.fixture
+def model() -> RoadrunnerSBMLModel:
+    return RoadrunnerSBMLModel(source=sbml())
+
+
+def _chunk(
+    model: RoadrunnerSBMLModel,
+    simulation: Simulation,
+    values: dict[str, np.ndarray] | None = None,
+    timed: dict[float, dict[str, np.ndarray]] | None = None,
+    time: np.ndarray | None = None,
+    selections: tuple[str, ...] = SEL,
+    on_error: OnError = "raise",
+    indices: np.ndarray | None = None,
+) -> Chunk:
+    return Chunk(
+        indices=np.arange(2) if indices is None else indices,
+        plan=compile_simulation(simulation, model.symbols, model.uinfo),
+        model=0,
+        selections=selections,
+        values=values or {},
+        timed=timed or {},
+        time=time,
+        on_error=on_error,
+    )
+
+
+def test_every_point_is_its_simulation(model: RoadrunnerSBMLModel) -> None:
+    chunk = _chunk(
+        model,
+        Simulation(end=2, steps=4),
+        values={"b0": np.array([0.0, 2.0])},
+        timed={1.0: {"k1": np.array([0.1, 3.0])}},
+    )
+    result = run_chunk(chunk, model)
+    assert result.values.shape == (2, 5, 4)
+    assert result.status.tolist() == [0, 0]
+    for k, (b0, k1) in enumerate([(0.0, 0.1), (2.0, 3.0)]):
+        simulation = Simulation(
+            end=2,
+            steps=4,
+            preinit_changes={"b0": b0},
+            changes=[Change(1.0, {"k1": k1})],
+        )
+        plan = compile_simulation(simulation, model.symbols, model.uinfo)
+        np.testing.assert_allclose(
+            result.values[k], execute(plan, model, SEL).values, rtol=1e-12
+        )
+
+
+def test_the_points_are_padded_to_the_longest(model: RoadrunnerSBMLModel) -> None:
+    chunk = _chunk(model, Simulation(end=2), values={"k1": np.array([0.1, 30.0])})
+    result = run_chunk(chunk, model)
+    rows = [int(np.isfinite(result.values[k, :, 0]).sum()) for k in range(2)]
+    assert rows[0] < rows[1] == result.values.shape[1]
+    assert np.isnan(result.values[0, rows[0] :]).all()
+
+
+def test_a_grid_of_times_is_interpolated(model: RoadrunnerSBMLModel) -> None:
+    grid = np.array([0.0, 0.5, 1.0, 3.0])
+    chunk = _chunk(
+        model,
+        Simulation(end=2, changes=[Change(1.0, {"[A]": 5.0})]),
+        values={"k1": np.array([0.1, 0.2])},
+        time=grid,
+    )
+    result = run_chunk(chunk, model)
+    assert result.values.shape == (2, 4, 4)
+    np.testing.assert_array_equal(result.values[0, :, 0], grid)
+    # the value after the change and none after the end
+    assert result.values[0, 2, 1] == pytest.approx(5.0)
+    assert np.isnan(result.values[0, 3, 1])
+
+
+def _blowup_chunk(on_error: OnError) -> tuple[Chunk, RoadrunnerSBMLModel]:
+    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    chunk = _chunk(
+        blowup,
+        Simulation(end=1, steps=4),
+        values={"k": np.array([0.1, 2.0, 0.1])},
+        selections=("time", "S"),
+        on_error=on_error,
+        indices=np.array([4, 5, 6]),
+    )
+    return chunk, blowup
+
+
+def test_a_failed_point_is_flagged() -> None:
+    chunk, blowup = _blowup_chunk("flag")
+    result = run_chunk(chunk, blowup)
+    assert result.status.tolist() == [0, 1, 0]
+    assert np.isnan(result.values[1]).all()
+    assert np.isfinite(result.values[[0, 2]]).all()
+    assert result.errors[0][0] == 5
+    assert "CVODE" in result.errors[0][1]
+
+
+def test_a_failed_point_raises_with_its_index() -> None:
+    chunk, blowup = _blowup_chunk("raise")
+    with pytest.raises(ScanPointError) as info:
+        run_chunk(chunk, blowup)
+    assert info.value.index == 5
+    again = pickle.loads(pickle.dumps(info.value))
+    assert (again.index, again.message) == (5, info.value.message)
+
+
+def test_the_spec_of_a_model_loads_it_with_the_settings(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    settings: dict[str, float | AbsoluteTolerance] = {
+        "absolute_tolerance": AbsoluteTolerance(
+            amount=1e-12, concentration=1e-9, ids={"A": 1e-14}
+        ),
+        "relative_tolerance": 1e-8,
+    }
+    model.set_integrator_settings(**settings)
+    spec = ModelSpec.of(model, settings)
+    loaded = spec.load()
+    np.testing.assert_allclose(
+        loaded.r_loaded.getIntegrator().getAbsoluteToleranceVector(),
+        model.r_loaded.getIntegrator().getAbsoluteToleranceVector(),
+    )
+    assert loaded.r_loaded.getIntegrator().getValue("relative_tolerance") == 1e-8
+    assert ModelSpec.of(model, settings).key == spec.key
+    assert ModelSpec.of(model, {**settings, "relative_tolerance": 1e-6}).key != spec.key
+    assert pickle.loads(pickle.dumps(spec)) == spec
+
+
+def test_a_worker_loads_a_model_once(
+    model: RoadrunnerSBMLModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(parallel, "_CACHE", OrderedDict())
+    spec = ModelSpec.of(model, {})
+    loads: list[str] = []
+    load = ModelSpec.load
+
+    def counting(self: ModelSpec) -> RoadrunnerSBMLModel:
+        loads.append(self.key)
+        return load(self)
+
+    monkeypatch.setattr(ModelSpec, "load", counting)
+    chunk = _chunk(
+        model, Simulation(end=1, steps=2), values={"k1": np.array([0.1, 0.2])}
+    )
+    first = run_chunk_in_worker(spec, chunk)
+    second = run_chunk_in_worker(spec, chunk)
+    np.testing.assert_array_equal(first.values, second.values)
+    assert loads == [spec.key]
+
+
+def test_a_change_of_a_dimension_wins_at_its_time(model: RoadrunnerSBMLModel) -> None:
+    chunk = _chunk(
+        model,
+        Simulation(end=2, steps=4),
+        values={"k1": np.array([0.1, 0.1])},
+        timed={1.0: {"k1": np.array([3.0, 0.1])}},
+    )
+    result = run_chunk(chunk, model)
+    simulation = Simulation(
+        end=2, steps=4, preinit_changes={"k1": 0.1}, changes=[Change(1.0, {"k1": 3.0})]
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    np.testing.assert_allclose(
+        result.values[0], execute(plan, model, SEL).values, rtol=1e-12
+    )
+    assert result.values[0, -1, 3] == pytest.approx(3.0)
+    assert result.values[1, -1, 3] == pytest.approx(0.1)

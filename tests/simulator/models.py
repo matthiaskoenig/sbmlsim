@@ -81,3 +81,16 @@ model tolerances
   J2: A -> S; 0.1*A
 end
 """
+
+
+#: a species which grows as `S' = k S^2` and goes to infinity at the time
+#: `1 / (k S0)`: the integration up to the time 1 fails for `k = 2` and works
+#: for `k = 0.1`
+BLOWUP = """
+model blowup
+  compartment C = 1
+  species S in C = 1
+  k = 0.1
+  J: -> S; k*S^2
+end
+"""

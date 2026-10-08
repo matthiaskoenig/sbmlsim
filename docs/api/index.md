@@ -49,6 +49,7 @@ Execution of simulations.
 | [simulator.plan](simulator.plan.md) | `Plan`, a simulation compiled against a model, without units |
 | [simulator.executor](simulator.executor.md) | `execute`, running a plan on roadrunner with the semantics of PEtab v2 |
 | [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation |
+| [simulator.worker](simulator.worker.md) | the worker of a scan, the points of a chunk on one plan and one model |
 | [task.task](task.task.md) | `Task`, a simulation applied to a model |
 
 ## sbmlsim.experiment, sbmlsim.result

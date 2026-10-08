@@ -68,6 +68,7 @@ nav = [
       { "plan" = "api/simulator.plan.md" },
       { "executor" = "api/simulator.executor.md" },
       { "formula" = "api/simulator.formula.md" },
+      { "worker" = "api/simulator.worker.md" },
     ] },
     { "sbmlsim.task" = [
       { "task" = "api/task.task.md" },
