@@ -22,10 +22,12 @@ A `ScanResult` wraps one `xarray.Dataset`:
 
 from __future__ import annotations
 
+import copy
 import json
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -45,6 +47,11 @@ STATISTIC = "statistic"
 STATISTICS: tuple[str, ...] = ("mean", "sd", "cv", "min", "max")
 #: the attribute of a netCDF file which holds the attributes of the result
 NETCDF_ATTRS = "sbmlsim"
+#: the variable of the outcome of every point, reserved like `TIME`
+STATUS = "status"
+#: the most elements (points of the scan times time points) of the union of the
+#: time points of a ragged result which `ScanResult.summary` interpolates onto
+MAX_UNION_ELEMENTS = 10_000_000
 
 
 class ScanResult:
@@ -81,7 +88,7 @@ class ScanResult:
     @property
     def variables(self) -> list[str]:
         """Get the variables of the selections, without `time` and `status`."""
-        return [str(name) for name in self.ds.data_vars if name not in (TIME, "status")]
+        return [str(name) for name in self.ds.data_vars if name not in (TIME, STATUS)]
 
     def __getitem__(self, key: str) -> xr.DataArray:
         """Get a variable or a coordinate.
@@ -102,9 +109,32 @@ class ScanResult:
         return key in self.ds.variables
 
     def quantity(self, key: str) -> Quantity:
-        """Get the values of a variable or coordinate with its unit."""
-        values = np.asarray(self[key].values, dtype=float)
-        return ureg.Quantity(values, self.units.get(key, ""))
+        """Get the values of a variable or coordinate with its unit.
+
+        The `cv` of a summary is dimensionless; a variable with a dimension
+        `statistic` which holds statistics of different units needs a
+        selection of the statistic first.
+
+        Raises:
+            ValueError: if the key holds labels, has no unit, or mixes units.
+        """
+        array = self[key]
+        if array.dtype.kind not in "fiub":
+            raise ValueError(f"'{key}' holds labels, not values, so it is no quantity.")
+        if key not in self.units:
+            raise ValueError(f"'{key}' has no unit in the units of the result.")
+        unit = self.units[key]
+        overrides: dict[str, str] = self.ds.attrs.get("statistic_units", {})
+        if overrides and STATISTIC in array.coords and key in self.ds.data_vars:
+            labels = np.atleast_1d(array.coords[STATISTIC].values)
+            found = {overrides.get(str(label), unit) for label in labels}
+            if len(found) > 1:
+                raise ValueError(
+                    f"'{key}' has statistics of different units, select a "
+                    f"statistic first, e.g. sel(statistic='mean')."
+                )
+            unit = found.pop()
+        return ureg.Quantity(np.asarray(array.values, dtype=float), unit)
 
     def sel(self, **indexers: Any) -> ScanResult:
         """Select by labels, see `xarray.Dataset.sel`."""
@@ -146,28 +176,28 @@ class ScanResult:
         tdim = POINT if self.ragged else TIME
         time_dims = self.ds[TIME].dims
         variables: dict[str, Any] = {}
+        weights: _Weights | None = None
         for name, array in self.ds.data_vars.items():
             if name == TIME:
                 continue
             if tdim not in array.dims:
                 variables[str(name)] = array
                 continue
-            order = (
-                time_dims
-                if self.ragged
-                else (*[d for d in array.dims if d != TIME], TIME)
-            )
-            values = np.asarray(array.transpose(*order).values, dtype=float)
-            times_of = (
-                np.asarray(self.ds[TIME].values, dtype=float)
-                if self.ragged
-                else np.broadcast_to(
-                    np.asarray(self.ds[TIME].values, dtype=float), values.shape
-                )
-            )
-            out = np.full((*values.shape[:-1], grid.size), np.nan)
-            for index in np.ndindex(*values.shape[:-1]):
-                out[index] = interpolate(times_of[index], values[index], grid)
+            if self.ragged:
+                order = time_dims
+                values = np.asarray(array.transpose(*order).values, dtype=float)
+                times_of = np.asarray(self.ds[TIME].values, dtype=float)
+                out = np.full((*values.shape[:-1], grid.size), np.nan)
+                for index in np.ndindex(*values.shape[:-1]):
+                    out[index] = interpolate(times_of[index], values[index], grid)
+            else:
+                order = (*[d for d in array.dims if d != TIME], TIME)
+                values = np.asarray(array.transpose(*order).values, dtype=float)
+                if weights is None:
+                    weights = _weights(
+                        np.asarray(self.ds[TIME].values, dtype=float), grid
+                    )
+                out = _apply(weights, values)
             variables[str(name)] = ([*order[:-1], TIME], out)
         coords = {
             name: coord
@@ -176,7 +206,7 @@ class ScanResult:
         }
         coords[TIME] = grid
         return ScanResult(
-            xr.Dataset(variables, coords=coords, attrs=dict(self.ds.attrs))
+            xr.Dataset(variables, coords=coords, attrs=copy.deepcopy(self.ds.attrs))
         )
 
     def summary(
@@ -184,20 +214,27 @@ class ScanResult:
         dims: str | Sequence[str] | None = None,
         statistics: Sequence[str] = STATISTICS,
         quantiles: Sequence[float] = (),
+        times: ArrayLike | Quantity | None = None,
     ) -> ScanResult:
         """Get statistics of the variables over dimensions of the scan.
 
         A result in the ragged layout is interpolated onto the union of its
-        time points first. `sd` is the sample standard deviation and `cv` the
+        time points first, or onto `times`; the union has a time point per step
+        of every simulation, so it is refused above `MAX_UNION_ELEMENTS`
+        elements (points of the scan times time points). `sd` is the sample standard deviation and `cv` the
         ratio of `sd` and `mean`; a quantile `q` is the statistic `q<q>`,
         e.g. `q0.05`. `NaN`, e.g. of a failed point, is skipped. The unit of a
-        variable is the unit of its statistics, except of `cv`, a ratio.
+        variable is the unit of its statistics, except of `cv`, a ratio, which
+        `statistic_units` in the attributes records.
 
         Args:
             dims: the dimensions to reduce, every dimension of the scan by
                 default.
             statistics: statistics of `STATISTICS`.
             quantiles: quantiles between 0 and 1.
+            times: the times to interpolate onto before, numbers in the time
+                unit of the result or a quantity; the union of the time points
+                of a ragged result by default.
 
         Returns:
             The result with the dimension `statistic` instead of the reduced
@@ -205,7 +242,8 @@ class ScanResult:
 
         Raises:
             ValueError: if a dimension is no dimension of the scan, a
-                statistic is unknown or a quantile is outside of [0, 1].
+                statistic is unknown, a quantile is outside of [0, 1] or the union
+                of the time points of a ragged result is too large.
         """
         reduced = (
             list(self.dims)
@@ -228,41 +266,125 @@ class ScanResult:
         outside = [q for q in quantiles if not 0.0 <= q <= 1.0]
         if outside:
             raise ValueError(f"The quantiles {outside} are outside of [0, 1].")
-        source = self.interpolate(self.time_points()) if self.ragged else self
-        ds = source.ds.drop_vars("status", errors="ignore")
-        parts: list[xr.Dataset] = []
-        labels: list[str] = []
-        for statistic in statistics:
-            if statistic == "mean":
-                part = ds.mean(dim=reduced, skipna=True)
-            elif statistic == "sd":
-                part = ds.std(dim=reduced, skipna=True, ddof=1)
-            elif statistic == "cv":
-                part = ds.std(dim=reduced, skipna=True, ddof=1) / ds.mean(
-                    dim=reduced, skipna=True
+        if times is not None:
+            source = self.interpolate(times)
+        elif self.ragged:
+            union = self.time_points()
+            n_points = int(np.prod([self.ds.sizes[d] for d in self.dims]))
+            if n_points * union.size > MAX_UNION_ELEMENTS:
+                raise ValueError(
+                    f"The union of the time points of the {n_points} points has "
+                    f"{union.size} times, {n_points * union.size} elements per "
+                    f"variable, above {MAX_UNION_ELEMENTS}. Pass times= to "
+                    f"summary, call interpolate(times) first, or run with time= "
+                    f"for a common grid."
                 )
-            elif statistic == "min":
-                part = ds.min(dim=reduced, skipna=True)
-            else:
-                part = ds.max(dim=reduced, skipna=True)
-            parts.append(part)
-            labels.append(statistic)
-        for q in quantiles:
-            parts.append(ds.quantile(q, dim=reduced, skipna=True).drop_vars("quantile"))
-            labels.append(f"q{q:g}")
+            source = self.interpolate(union)
+        else:
+            source = self
+        ds = source.ds.drop_vars(STATUS, errors="ignore")
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", message="All-NaN slice encountered", category=RuntimeWarning
+            )
+            parts, labels = _statistics(ds, reduced, statistics, quantiles)
         summary = xr.concat(parts, dim=pd.Index(labels, name=STATISTIC))
-        summary.attrs = dict(self.ds.attrs)
+        summary.attrs = copy.deepcopy(self.ds.attrs)
+        if "cv" in labels:
+            summary.attrs["statistic_units"] = {"cv": "dimensionless"}
         return ScanResult(summary)
 
     def to_netcdf(self, path: str | Path) -> None:
-        """Write the result as netCDF, the attributes as JSON."""
+        """Write the result as netCDF4, the attributes as JSON.
+
+        The attributes must be JSON serializable, numpy scalars and arrays
+        are written as numbers and lists.
+        """
         ds = self.ds.copy()
-        ds.attrs = {NETCDF_ATTRS: json.dumps(self.ds.attrs)}
-        ds.to_netcdf(path)
+        ds.attrs = {NETCDF_ATTRS: json.dumps(self.ds.attrs, default=_json_default)}
+        ds.to_netcdf(path, engine="h5netcdf")
 
     @classmethod
     def from_netcdf(cls, path: str | Path) -> ScanResult:
-        """Read a result written by `to_netcdf`."""
-        ds = xr.load_dataset(path)
-        ds.attrs = json.loads(ds.attrs.get(NETCDF_ATTRS, "{}"))
+        """Read a result written by `to_netcdf`.
+
+        Raises:
+            ValueError: if the file has no attributes of a result.
+        """
+        ds = xr.load_dataset(path, engine="h5netcdf")
+        if NETCDF_ATTRS not in ds.attrs:
+            raise ValueError(
+                f"'{path}' is no result of sbmlsim, it has no '{NETCDF_ATTRS}' "
+                f"attribute."
+            )
+        ds.attrs = json.loads(ds.attrs[NETCDF_ATTRS])
         return cls(ds)
+
+
+def _json_default(value: Any) -> Any:
+    """Convert a numpy value of the attributes for JSON."""
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    raise TypeError(f"{type(value).__name__} is not JSON serializable.")
+
+
+def _statistics(
+    ds: xr.Dataset,
+    reduced: list[str],
+    statistics: Sequence[str],
+    quantiles: Sequence[float],
+) -> tuple[list[xr.Dataset], list[str]]:
+    """Reduce a dataset over dimensions, a part per statistic."""
+    parts: list[xr.Dataset] = []
+    labels: list[str] = []
+    for statistic in statistics:
+        if statistic == "mean":
+            part = ds.mean(dim=reduced, skipna=True)
+        elif statistic == "sd":
+            part = ds.std(dim=reduced, skipna=True, ddof=1)
+        elif statistic == "cv":
+            part = ds.std(dim=reduced, skipna=True, ddof=1) / ds.mean(
+                dim=reduced, skipna=True
+            )
+        elif statistic == "min":
+            part = ds.min(dim=reduced, skipna=True)
+        else:
+            part = ds.max(dim=reduced, skipna=True)
+        parts.append(part)
+        labels.append(statistic)
+    for q in quantiles:
+        parts.append(ds.quantile(q, dim=reduced, skipna=True).drop_vars("quantile"))
+        labels.append(f"q{q:g}")
+    return parts, labels
+
+
+class _Weights(NamedTuple):
+    """The linear interpolation from a common time axis onto a grid."""
+
+    lower: np.ndarray
+    upper: np.ndarray
+    weight: np.ndarray
+    valid: np.ndarray
+
+
+def _weights(time: np.ndarray, grid: np.ndarray) -> _Weights:
+    """Get the indices and weights which interpolate `time` onto `grid` once."""
+    finite = np.flatnonzero(np.isfinite(time))
+    t = time[finite]
+    if t.size == 0:
+        zeros = np.zeros(grid.size, dtype=int)
+        return _Weights(zeros, zeros, np.zeros(grid.size), np.zeros(grid.size, bool))
+    valid = (grid >= t[0]) & (grid <= t[-1])
+    low = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, max(t.size - 2, 0))
+    up = np.minimum(low + 1, t.size - 1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        weight = np.where(up > low, (grid - t[low]) / (t[up] - t[low]), 0.0)
+    return _Weights(finite[low], finite[up], weight, valid)
+
+
+def _apply(w: _Weights, values: np.ndarray) -> np.ndarray:
+    """Interpolate the last axis of values with the weights, `NaN` outside."""
+    out = values[..., w.lower] * (1.0 - w.weight) + values[..., w.upper] * w.weight
+    return np.where(w.valid, out, np.nan)
