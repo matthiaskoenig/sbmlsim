@@ -20,6 +20,7 @@ import datetime
 import logging
 import os
 import time
+from collections import deque
 from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
@@ -413,10 +414,11 @@ def _worker_run(
 #: seconds added to the timeout of a fit before its pending repeats are given up
 START_GRACE = 60.0
 
-#: how often the pool of a fit is started again after a worker died; a worker
-#: which dies (a crash in the integrator, the kernel killing it for memory) breaks
-#: the whole pool, so the repeats which did not finish are submitted again. A
-#: repeat which kills its worker every time is given up after this many restarts.
+#: how often a task which was running when a worker died is run again alone to
+#: find the one which killed it, per `FitPool.run`. A worker which dies (a crash in
+#: the integrator, the kernel killing it for memory) breaks the whole pool and
+#: with it every task in flight; after this many restarts the tasks which were in
+#: flight at a crash are failed without being run again, the others still run.
 MAX_POOL_RESTARTS = 3
 
 
@@ -457,35 +459,59 @@ class FitPool:
     ) -> Iterator[tuple[int, Any]]:
         """Run the tasks and hand out their results as they finish.
 
-        A worker which dies breaks the whole pool and with it every task which
-        did not finish. The pool is started again and these tasks are submitted
-        again, at most `MAX_POOL_RESTARTS` times; the tasks which are still
-        unfinished after that are failed.
+        At most `n_cores` tasks are in flight, the next is submitted when one
+        finishes, so a crash implicates only the tasks which were running. A
+        worker which dies breaks the whole pool; it is started again and the
+        tasks which were running, the suspects, are run again one at a time, so
+        a task fails only if it breaks the pool while it runs alone. Then the remaining tasks
+        run again at full width. After `MAX_POOL_RESTARTS` restarts the tasks
+        which were running at a crash fail without a second run. If the pool
+        cannot be started again, the tasks which did not run fail.
 
         Args:
             function: called in the worker as
                 `function(token, problem, settings, task)`.
             tasks: the tasks by their key.
             timeout: seconds without any result after which the tasks which are
-                pending are failed, 60 s are added for the start; no limit if
-                `None`.
+                running or waiting fail, `START_GRACE` s are added for the
+                start; no limit if `None`.
 
         Yields:
             The key of a task and its result, or the exception which failed it.
         """
-        pending: dict[Future[Any], int] = {
-            self.submit(function, task): key for key, task in tasks.items()
-        }
+        queue = deque(tasks)
+        alone: deque[int] = deque()
+        running: dict[Future[Any], int] = {}
+        solo = False
         last = time.monotonic()
-        while pending:
+        while queue or alone or running:
+            if alone:
+                if not running:
+                    key = alone.popleft()
+                    running[self.submit(function, tasks[key])] = key
+                    solo = True
+            else:
+                solo = False
+                while queue and len(running) < self.n_cores:
+                    key = queue.popleft()
+                    running[self.submit(function, tasks[key])] = key
             remaining = (
                 None
                 if timeout is None
                 else max(1.0, last + timeout + START_GRACE - time.monotonic())
             )
-            done, _ = wait(pending, timeout=remaining, return_when=FIRST_COMPLETED)
+            done, _ = wait(running, timeout=remaining, return_when=FIRST_COMPLETED)
             if not done:
-                for key in pending.values():
+                lost = sorted([*running.values(), *alone, *queue])
+                logger.error(
+                    "'%s': no result within %s s and %g s more, the tasks %s are "
+                    "given up.",
+                    self.problem.opid,
+                    timeout,
+                    START_GRACE,
+                    lost,
+                )
+                for key in lost:
                     yield (
                         key,
                         TimeoutError(
@@ -494,13 +520,13 @@ class FitPool:
                     )
                 return
             broken = False
-            for future in sorted(done, key=pending.__getitem__):
-                key = pending.pop(future)
+            for future in sorted(done, key=running.__getitem__):
+                key = running.pop(future)
                 try:
                     result = future.result()
                 except BrokenProcessPool:
                     broken = True
-                    pending[future] = key
+                    running[future] = key
                     continue
                 except Exception as err:
                     yield key, err
@@ -509,28 +535,46 @@ class FitPool:
                 yield key, result
             if not broken:
                 continue
-            unfinished = sorted(pending.values())
-            if self.restarts >= MAX_POOL_RESTARTS:
+            # the tasks which were in flight are the suspects
+            suspects = sorted(running.values())
+            running.clear()
+            if solo or self.restarts >= MAX_POOL_RESTARTS:
+                failed = suspects
+                reason = "killed its worker" if solo else "were running"
                 logger.error(
-                    "'%s': a worker died again, the pool was restarted %s times; "
-                    "the %s unfinished repeats are given up.",
+                    "'%s': a worker died, the tasks %s %s and fail.",
                     self.problem.opid,
-                    self.restarts,
-                    len(unfinished),
+                    failed,
+                    reason,
                 )
-                for key in unfinished:
-                    yield key, RuntimeError("the workers died, the pool broke")
+                for key in failed:
+                    yield key, RuntimeError("the task killed its worker")
+            else:
+                logger.error(
+                    "'%s': a worker died; restarting the pool, the tasks %s which "
+                    "were running run again one at a time.",
+                    self.problem.opid,
+                    suspects,
+                )
+                alone.extend(suspects)
+            parallel.stop(self.executor)
+            if not (queue or alone):
                 return
             self.restarts += 1
-            logger.error(
-                "'%s': a worker died; restarting the pool, %s unfinished repeats "
-                "are submitted again.",
-                self.problem.opid,
-                len(unfinished),
-            )
-            parallel.stop(self.executor)
-            self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
-            pending = {self.submit(function, tasks[key]): key for key in unfinished}
+            try:
+                self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
+            except RuntimeError as err:
+                lost = sorted([*alone, *queue])
+                logger.error(
+                    "'%s': the pool could not be started again (%s), the tasks %s "
+                    "are given up.",
+                    self.problem.opid,
+                    err,
+                    lost,
+                )
+                for key in lost:
+                    yield key, err
+                return
             last = time.monotonic()
 
 
@@ -639,14 +683,14 @@ def _run_optimization_parallel(
         worker_pool(problem, settings, n_cores) as pool,
     ):
         try:
-            # one task per repeat, so that a worker which dies loses one repeat
+            # at most one repeat per worker is in flight, see `FitPool.run`
             for k, outcome in pool.run(
                 _worker_run, {task["run"]: task for task in tasks}, timeout
             ):
                 if isinstance(outcome, Exception):
                     message = f"repeat {k}: {type(outcome).__name__}: {outcome}"
                     failures.append(message)
-                    logger.error("'%s': %s", problem.opid, message)
+                    logger.debug("'%s': %s", problem.opid, message)
                     continue
                 _, fit, trajectory = outcome
                 _store_run(
@@ -674,10 +718,11 @@ def _run_optimization_parallel(
 
     if failures:
         logger.warning(
-            "'%s': %s of %s repeats were lost, the fit continues with the others.",
+            "'%s': %s of %s repeats were lost, the fit continues with the others: %s",
             problem.opid,
             len(failures),
             size,
+            failures,
         )
     if not fits:
         if interrupted:
