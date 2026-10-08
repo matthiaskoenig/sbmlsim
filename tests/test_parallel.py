@@ -222,7 +222,7 @@ def test_the_forkserver_preloads_the_modules(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(parallel, "process_context", lambda: context)
     monkeypatch.setattr(context, "set_forkserver_preload", preloaded.append)
 
-    assert parallel._context(["examples.demo.demo"]) is context
+    assert parallel._context(["examples.demo.demo"]).get_start_method() == "forkserver"
     assert preloaded == [sorted({*parallel.PRELOAD, "examples.demo.demo"})]
 
 
@@ -234,7 +234,7 @@ def test_another_start_method_is_used_as_it_is(monkeypatch: pytest.MonkeyPatch) 
         "set_forkserver_preload",
         lambda modules: pytest.fail("only the forkserver preloads"),
     )
-    assert parallel._context(["examples.demo.demo"]) is context
+    assert parallel._context(["examples.demo.demo"]).get_start_method() == "spawn"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
@@ -316,3 +316,83 @@ def test_a_worker_leaves_ctrl_c_to_the_parent() -> None:
     finally:
         parallel.stop(executor)
     assert signal.getsignal(signal.SIGINT) is signal.default_int_handler
+
+
+def _sigint_blocked() -> bool:
+    return signal.SIGINT in signal.pthread_sigmask(signal.SIG_BLOCK, set())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a signal mask of POSIX")
+def test_a_worker_runs_its_tasks_with_sigint_unblocked() -> None:
+    """A worker starts with SIGINT blocked and unblocks it once it ignores it."""
+    assert parallel.pool(1).submit(_sigint_blocked).result() is False
+    assert not _sigint_blocked()
+
+
+#: a script whose workers import it slowly and get Ctrl-C meanwhile
+STARTING_SCRIPT = """
+import multiprocessing
+import os
+import sys
+import time
+
+from sbmlsim import parallel
+
+if __name__ == "__mp_main__":
+    # a worker imports the main module before its initializer runs
+    time.sleep(2.0)
+
+
+def main():
+    multiprocessing.set_start_method(sys.argv[1])
+    executor = parallel.pool(3)
+    # the first worker answers while the two others start
+    for future in [executor.submit(os.getpid) for _ in range(3)]:
+        future.result()
+    try:
+        print("READY", flush=True)
+        time.sleep(60)
+    except KeyboardInterrupt:
+        print("INTERRUPTED", flush=True)
+    assert parallel.pool(3) is executor
+    list(executor.map(time.sleep, [0.2] * 12))
+    processes = list(executor._processes.values())
+    assert len(processes) == 3 and all(p.is_alive() for p in processes)
+    print("DONE", flush=True)
+
+
+if __name__ == "__main__":
+    main()
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a terminal of POSIX")
+@pytest.mark.parametrize("method", ["spawn", "forkserver"])
+def test_ctrl_c_while_the_workers_start(method: str, tmp_path: Path) -> None:
+    """Ctrl-C reaches a worker which still imports the main module, before it ignores SIGINT.
+
+    `spawn` and `forkserver` start the workers of a pool when it gets its
+    first tasks; on a slow machine a worker still starts while the pool waits
+    for the next run. Such a worker must neither print a traceback nor die.
+    """
+    script = tmp_path / "starting.py"
+    script.write_text(STARTING_SCRIPT)
+    process = subprocess.Popen(
+        [sys.executable, str(script), method],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        assert process.stdout is not None
+        assert process.stdout.readline().strip() == "READY"
+        os.killpg(process.pid, signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=120)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+    assert stderr == ""
+    assert stdout.split() == ["INTERRUPTED", "DONE"]
+    assert process.returncode == 0

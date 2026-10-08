@@ -14,7 +14,9 @@ Every pool of the package comes from here:
 
 Ctrl-C belongs to the process of the user: a terminal sends SIGINT to every
 process of the job, the workers ignore it and the parent stops a pool whose
-run it interrupts, see `start_pool` and `stop`.
+run it interrupts, see `start_pool` and `stop`. On POSIX a worker starts with
+SIGINT blocked, so Ctrl-C does not reach it while it still imports, see
+`_SigintBlocked`.
 
 A pool starts worker processes which import the main module again (the start
 methods `forkserver` and `spawn`), so a script which starts a pool must do it
@@ -30,13 +32,25 @@ import logging
 import multiprocessing
 import os
 import signal
+import sys
 import threading
 from collections import OrderedDict
 from collections.abc import Callable, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.context import BaseContext
-from typing import cast
+from multiprocessing.process import BaseProcess
+from typing import cast, override
+
+if sys.platform != "win32":
+    from multiprocessing.context import (
+        ForkContext,
+        ForkProcess,
+        ForkServerContext,
+        ForkServerProcess,
+        SpawnContext,
+        SpawnProcess,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -160,17 +174,77 @@ def resolve_workers(n_workers: int | None, n_tasks: int) -> int:
     return max(1, os.process_cpu_count() or 1)
 
 
+#: the contexts of the pools by their start method, see `_context`
+_WORKER_CONTEXTS: dict[str, BaseContext] = {}
+
+if sys.platform != "win32":
+
+    class _SigintBlocked(BaseProcess):
+        """A worker process which starts with SIGINT blocked.
+
+        A worker imports the main module and sbmlsim before its initializer
+        ignores SIGINT, which takes seconds under `spawn`. Ctrl-C in that time
+        would end it with a traceback and break the pool. The signal mask of
+        the starting thread is inherited by the process through fork and
+        exec, so SIGINT stays pending until `_initialize_worker` ignores it,
+        which discards it.
+        """
+
+        @override
+        def start(self) -> None:
+            """Start the process with SIGINT blocked."""
+            mask = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})
+            try:
+                super().start()
+            finally:
+                signal.pthread_sigmask(signal.SIG_SETMASK, mask)
+
+    class _SpawnWorker(_SigintBlocked, SpawnProcess):
+        """A worker started by `spawn`, see `_SigintBlocked`."""
+
+    class _ForkServerWorker(_SigintBlocked, ForkServerProcess):
+        """A worker started by `forkserver`, see `_SigintBlocked`.
+
+        The worker is forked by the forkserver and has its mask, i.e. the mask
+        of the thread which started the forkserver, the first worker.
+        """
+
+    class _ForkWorker(_SigintBlocked, ForkProcess):
+        """A worker started by `fork`, see `_SigintBlocked`."""
+
+    class _SpawnContext(SpawnContext):
+        """The context of a pool started by `spawn`."""
+
+        Process = _SpawnWorker
+
+    class _ForkServerContext(ForkServerContext):
+        """The context of a pool started by `forkserver`."""
+
+        Process = _ForkServerWorker
+
+    class _ForkContext(ForkContext):
+        """The context of a pool started by `fork`."""
+
+        Process = _ForkWorker
+
+    _WORKER_CONTEXTS.update(
+        spawn=_SpawnContext(), forkserver=_ForkServerContext(), fork=_ForkContext()
+    )
+
+
 def _context(preload: Sequence[str]) -> BaseContext:
     """Get the context of a pool, the forkserver preloads the modules.
 
     The forkserver imports the modules once and the workers inherit them; the
     main module is never preloaded, so a worker imports it and a script without
-    the guard is found, see the module.
+    the guard is found, see the module. On POSIX the workers start with SIGINT
+    blocked, see `_SigintBlocked`.
     """
     context = process_context()
-    if context.get_start_method() == "forkserver":
+    method = context.get_start_method()
+    if method == "forkserver":
         context.set_forkserver_preload(sorted({*PRELOAD, *preload}))
-    return context
+    return _WORKER_CONTEXTS.get(method, context)
 
 
 def _alive() -> int:
@@ -183,9 +257,13 @@ def _initialize_worker() -> None:
 
     A terminal sends Ctrl-C to every process of the job: a worker which waits
     for a task would die with a traceback and break the pool. The parent
-    handles it and stops a pool whose run it interrupts, see `stop`.
+    handles it and stops a pool whose run it interrupts, see `stop`. On POSIX
+    the worker started with SIGINT blocked, see `_SigintBlocked`: ignoring it
+    discards a SIGINT which arrived since, and it is unblocked again.
     """
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+    if sys.platform != "win32":
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
 
 
 def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecutor:
