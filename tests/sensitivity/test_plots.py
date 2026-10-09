@@ -166,3 +166,13 @@ def test_unknown_selections() -> None:
         plot_morris(_morris(), "x")
     with pytest.raises(ValueError, match="index 'nope'"):
         plot_heatmap(_sobol(), "nope", dose=0)
+
+
+def test_plot_morris_labels_inside_frame() -> None:
+    figure = plot_morris(_morris(), "y")
+    figure.canvas.draw()
+    ax = figure.axes[0]
+    frame = ax.get_window_extent()
+    for note in ax.texts:
+        box = note.get_window_extent()
+        assert box.x1 < frame.x1 and box.y1 < frame.y1

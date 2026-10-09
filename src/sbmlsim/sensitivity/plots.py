@@ -138,6 +138,12 @@ def _heatmap(
     cg.ax_cbar.tick_params(labelsize=label_fontsize)
     cg.ax_row_dendrogram.set_visible(False)
     cg.ax_col_dendrogram.set_visible(False)
+    # the space of the hidden dendrograms goes to the heatmap
+    box = cg.ax_heatmap.get_position()
+    width = cg.figure.get_figwidth()
+    left = min(box.x0, max(0.06, min(0.1, 0.03 + 0.7 / width)))
+    top = 0.97 if not title else 0.9
+    cg.ax_heatmap.set_position((left, box.y0, box.x1 - left, top - box.y0))
 
     if title:
         plt.suptitle(title, fontsize=40, fontweight="bold")
@@ -490,8 +496,26 @@ def plot_morris(
     figure = Figure(figsize=(5, 4.5), layout="constrained")
     ax = figure.subplots()
     ax.scatter(mu_star.values, sigma.values, color="tab:blue", edgecolor="black")
-    for name, x, y in zip(result.parameters, mu_star.values, sigma.values, strict=True):
+    notes = [
         ax.annotate(name, (x, y), xytext=(4, 4), textcoords="offset points")
+        for name, x, y in zip(
+            result.parameters, mu_star.values, sigma.values, strict=True
+        )
+    ]
+    ax.margins(0.1)
+    # widen the limits until no label touches or crosses the frame
+    figure.canvas.draw()
+    frame = ax.get_window_extent()
+    pad = 6.0
+    to_data = ax.transData.inverted()
+    x1, y1 = to_data.transform((frame.x1 - pad, frame.y1 - pad))
+    boxes = [n.get_window_extent() for n in notes]
+    if boxes:
+        edge_x, edge_y = to_data.transform(
+            (max(b.x1 for b in boxes), max(b.y1 for b in boxes))
+        )
+        ax.set_xlim(right=ax.get_xlim()[1] + max(0.0, float(edge_x - x1)))
+        ax.set_ylim(top=ax.get_ylim()[1] + max(0.0, float(edge_y - y1)))
     unit = result.units.get(f"{observable}.mu_star")
     ax.set_xlabel(_label("mu_star", unit))
     ax.set_ylabel(_label("sigma", result.units.get(f"{observable}.sigma")))
