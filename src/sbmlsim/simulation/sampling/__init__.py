@@ -18,6 +18,7 @@ from sbmlsim.simulation.sampling.distributions import (
     Truncated,
     Uniform,
 )
+from sbmlsim.simulation.sampling.references import parameters_of, references
 from sbmlsim.simulation.scan import Design
 
 __all__ = [
@@ -30,4 +31,6 @@ __all__ = [
     "Normal",
     "Truncated",
     "Uniform",
+    "parameters_of",
+    "references",
 ]
