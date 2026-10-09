@@ -1,17 +1,22 @@
 """The global sensitivity analyses."""
 
 import copy
+import warnings
 from pathlib import Path
 
 import numpy as np
 import pytest
+from SALib.analyze import fast as salib_fast
+from SALib.analyze import morris as salib_morris
 from SALib.analyze import sobol as salib_sobol
+from SALib.sample import morris as salib_morris_sampler
 
 from sbmlsim import sensitivity
 from sbmlsim.result import ScanResult
-from sbmlsim.sensitivity.result import PARAMETER, PARAMETER_2
+from sbmlsim.sensitivity.result import PARAMETER, PARAMETER_2, SensitivityResult
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation, sampling
 from sbmlsim.simulation.sampling import Uniform
+from sbmlsim.simulation.sampling.designs import unit_problem
 from sbmlsim.simulator import Simulator
 from tests.sensitivity.models import ISHIGAMI
 from tests.simulator.models import BLOWUP, sbml
@@ -82,6 +87,8 @@ def test_indices_per_label_of_another_dimension() -> None:
     )
     s = sensitivity.sobol(res)
     assert s["y_max.S1"].dims == (PARAMETER, "shift")
+    np.testing.assert_allclose(s["y_max.S1"].values[:, 0], s["y_max.S1"].values[:, 1])
+    assert np.isfinite(s["y_max.S1"].values).all()
 
 
 def test_timecourses_and_scalars() -> None:
@@ -114,7 +121,7 @@ def test_a_failed_point_gives_nan_indices(caplog: pytest.LogCaptureFixture) -> N
 
 def test_a_constant_element_gives_nan_variance_indices_and_zero_effects() -> None:
     model = Simulator().load(sbml(ISHIGAMI))
-    obs = [Formula("one", "1 + 0 * max(y)")]
+    obs = [Formula("one", "1 + 1e-15 * max(y)")]
     scan = Scan(Simulation(end=1, steps=1), [sampling.sobol(BOUNDS, 16, seed=1)])
     s = sensitivity.sobol(Simulator(n_workers=1).run(model, scan, obs))
     assert np.isnan(s["one.S1"].values).all() and np.isnan(s["one.ST"].values).all()
@@ -146,3 +153,110 @@ def test_a_wrong_number_of_points_raises() -> None:
             d["design"]["options"]["n"] = 32
     with pytest.raises(ValueError, match="points"):
         sensitivity.sobol(ScanResult(ds))
+
+
+def _conf(s: SensitivityResult, name: str, key: str) -> np.ndarray:
+    return s[f"{name}.{key}"].values
+
+
+@pytest.mark.parametrize("seed", [0, 3])
+def test_the_intervals_are_reproducible_and_independent_of_other_elements(
+    seed: int,
+) -> None:
+    model = Simulator().load(sbml(ISHIGAMI))
+    for design, analysis, n in (
+        (sampling.sobol(BOUNDS, 64, seed=seed), sensitivity.sobol, 64),
+        (sampling.fast(BOUNDS, 65, seed=seed), sensitivity.fast, 65),
+    ):
+        assert len(design) >= n
+        scan = Scan(Simulation(end=1, steps=1), [design])
+        both = Simulator(n_workers=1).run(
+            model, scan, [Formula("y_min", "min(y)"), *OBSERVABLES]
+        )
+        first = analysis(both)
+        again = analysis(both)
+        alone = analysis(both, observables=["y_max"])
+        np.testing.assert_array_equal(
+            _conf(first, "y_max", "S1_conf"), _conf(again, "y_max", "S1_conf")
+        )
+        np.testing.assert_array_equal(
+            _conf(first, "y_max", "ST_conf"), _conf(alone, "y_max", "ST_conf")
+        )
+        assert np.isfinite(_conf(first, "y_max", "S1_conf")).all()
+
+
+def test_fast_leaves_the_global_random_state() -> None:
+    res = _run(sampling.fast(BOUNDS, 65, seed=3))
+    np.random.seed(123)
+    before = np.random.get_state()
+    sensitivity.fast(res)
+    after = np.random.get_state()
+    assert before[0] == after[0]
+    np.testing.assert_array_equal(before[1], after[1])
+    assert before[2:] == after[2:]
+
+
+def test_the_points_are_analysed_in_the_order_of_their_labels() -> None:
+    res = _run(sampling.sobol(BOUNDS, 64, seed=2))
+    permutation = np.random.default_rng(0).permutation(len(res.ds["sobol"]))
+    s = sensitivity.sobol(res)
+    shuffled = sensitivity.sobol(res.isel(sobol=permutation))
+    np.testing.assert_allclose(shuffled["y_max.S1"].values, s["y_max.S1"].values)
+    np.testing.assert_allclose(shuffled["y_max.ST"].values, s["y_max.ST"].values)
+    with pytest.raises(ValueError, match="sobol"):
+        sensitivity.sobol(res.isel(sobol=slice(0, 100)))
+
+
+def test_the_options_hold_the_design_and_the_analysis(tmp_path: Path) -> None:
+    res = _run(sampling.sobol(BOUNDS, 32, seed=0))
+    s = sensitivity.sobol(res, conf_level=0.9, num_resamples=50)
+    assert s.ds.attrs["options"]["n"] == 32
+    assert s.ds.attrs["options"]["conf_level"] == 0.9
+    assert s.ds.attrs["options"]["num_resamples"] == 50
+    assert "bootstrap_seed" in s.ds.attrs["options"]
+    path = tmp_path / "s.nc"
+    s.to_netcdf(path)
+    again = SensitivityResult.from_netcdf(path)
+    assert again.ds.attrs["options"] == s.ds.attrs["options"]
+
+
+@pytest.mark.parametrize(
+    "kwargs", [{"conf_level": 1.5}, {"conf_level": 0.0}, {"num_resamples": 0}]
+)
+def test_the_arguments_are_validated(kwargs: dict[str, float]) -> None:
+    res = _run(sampling.sobol(BOUNDS, 16, seed=1))
+    with pytest.raises(ValueError, match=r"conf_level|num_resamples"):
+        sensitivity.sobol(res, **kwargs)  # ty: ignore[invalid-argument-type]
+
+
+def test_morris_with_other_levels_equals_salib_on_its_grid() -> None:
+    design = sampling.morris(BOUNDS, 20, levels=6, seed=4)
+    s = sensitivity.morris(_run(design))
+    problem = unit_problem(3)
+    grid = salib_morris_sampler.sample(problem, 20, num_levels=6, seed=4)
+    # the grid is the one of the design, the values are a function of the centred cube
+    res = _run(design)
+    expected = salib_morris.analyze(
+        problem,
+        grid,
+        res["y_max"].values,
+        num_levels=6,
+        scaled=False,
+        print_to_console=False,
+        seed=4,
+    )
+    np.testing.assert_allclose(s["y_max.mu"].values, expected["mu"])
+    np.testing.assert_allclose(s["y_max.mu_star"].values, expected["mu_star"])
+
+
+def test_fast_with_another_m_equals_salib() -> None:
+    res = _run(sampling.fast(BOUNDS, 257, m=2, seed=3))
+    f = sensitivity.fast(res)
+    assert f.ds.attrs["options"]["m"] == 2
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        expected = salib_fast.analyze(
+            unit_problem(3), res["y_max"].values, M=2, print_to_console=False
+        )
+    np.testing.assert_allclose(f["y_max.S1"].values, expected["S1"])
+    np.testing.assert_allclose(f["y_max.ST"].values, expected["ST"])

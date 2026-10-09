@@ -424,8 +424,16 @@ def lhs(
     )
 
 
-def _problem(d: int) -> dict[str, Any]:
-    """Get the problem of SALib on the unit cube of `d` dimensions."""
+def unit_problem(d: int) -> dict[str, Any]:
+    """Get the problem of SALib on the unit cube of `d` dimensions.
+
+    Args:
+        d: the number of targets.
+
+    Returns:
+        The problem, `d` variables with the bounds `[0, 1]`; the analyses of
+        `sbmlsim.sensitivity` use it as well.
+    """
     return {
         "num_vars": d,
         "names": [f"x{k}" for k in range(d)],
@@ -455,7 +463,7 @@ def unit_cube(design: Design, d: int) -> np.ndarray:
         from SALib.sample import sobol as sobol_sampler
 
         return sobol_sampler.sample(
-            _problem(d),
+            unit_problem(d),
             options["n"],
             calc_second_order=options["second_order"],
             scramble=True,
@@ -465,14 +473,14 @@ def unit_cube(design: Design, d: int) -> np.ndarray:
         from SALib.sample import fast_sampler
 
         return fast_sampler.sample(
-            _problem(d), options["n"], M=options["m"], seed=options["seed"]
+            unit_problem(d), options["n"], M=options["m"], seed=options["seed"]
         )
     if design.method == "morris":
         from SALib.sample import morris as morris_sampler
 
         levels = options["levels"]
         grid = morris_sampler.sample(
-            _problem(d),
+            unit_problem(d),
             options["trajectories"],
             num_levels=levels,
             seed=options["seed"],

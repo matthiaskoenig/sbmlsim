@@ -34,7 +34,7 @@ from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT
 from sbmlsim.sensitivity.result import PARAMETER, PARAMETER_2, SensitivityResult
 from sbmlsim.simulation.sampling import Design
-from sbmlsim.simulation.sampling.designs import _problem, unit_cube
+from sbmlsim.simulation.sampling.designs import unit_cube, unit_problem
 from sbmlsim.units import ureg
 
 logger = logging.getLogger(__name__)
@@ -262,7 +262,8 @@ def _unit_points(
         The targets of the design and its unit cube, a row per point.
 
     Raises:
-        ValueError: if the dimension has another number of points than the cube.
+        ValueError: if the dimension has another number of points than the cube
+            or its labels are not `0..n-1`, the rows of the cube.
     """
     parameters = list(design.distributions)
     cube = unit_cube(design, len(parameters))
@@ -272,7 +273,29 @@ def _unit_points(
             f"The design of the dimension '{dim}' has {cube.shape[0]} points by its "
             f"record, the result has {points} points."
         )
+    labels = np.asarray(result.ds[dim].values)
+    if not np.array_equal(np.sort(labels), np.arange(points)):
+        raise ValueError(
+            f"The labels of the dimension '{dim}' must be 0..{points - 1}, the rows "
+            f"of its design; the result was cut or its labels changed."
+        )
     return parameters, cube
+
+
+def _check(conf_level: float, num_resamples: int) -> None:
+    """Check the arguments of the bootstrap of an analysis.
+
+    Args:
+        conf_level: the level of the confidence intervals.
+        num_resamples: the number of bootstrap resamples.
+
+    Raises:
+        ValueError: if the level is not in (0, 1) or there is no resample.
+    """
+    if not 0.0 < conf_level < 1.0:
+        raise ValueError(f"conf_level must be in (0, 1), not {conf_level}.")
+    if num_resamples < 1:
+        raise ValueError(f"num_resamples must be at least 1, not {num_resamples}.")
 
 
 def _global(
@@ -280,42 +303,60 @@ def _global(
     methods: set[str],
     dim: str | None,
     observables: Sequence[str] | None,
-    analyze: Callable[[Design, np.ndarray, np.ndarray], dict[str, np.ndarray]],
+    analyze: Callable[[Design, np.ndarray, np.ndarray, int], dict[str, np.ndarray]],
+    *,
     keys: Sequence[str],
-    unitless: Collection[str],
+    dimensionless: bool,
     constant: float,
+    bootstrap: Callable[[int], int],
+    conf_level: float,
+    num_resamples: int,
     pair_keys: Sequence[str] = (),
 ) -> SensitivityResult:
     """Compute the indices of a SALib method for every element, see the module.
+
+    An element is analysed on its own, with the same bootstrap seed, so its
+    intervals do not depend on the other elements. The points are in the order
+    of the rows of the cube, i.e. of the labels `0..n-1` of the dimension. An
+    element whose values differ by no more than `1e-12` of their largest
+    magnitude counts as constant.
 
     Args:
         result: the result of the scan.
         methods: the methods of the design.
         dim: the dimension of the design.
         observables: the observables.
-        analyze: `analyze(design, cube, y)` gives the indices of one element, `y`
-            the values of its points; a `d` vector per key and a `d x d` matrix
-            per pair key (second order, only when the design has it).
+        analyze: `analyze(design, cube, y, seed)` gives the indices of one
+            element, `y` the values of its points; a `d` vector per key and a
+            `d x d` matrix per pair key (second order, only when the design has
+            it).
         keys: the indices over the parameters.
-        unitless: the indices which have no unit (the others have the unit of
-            the observable).
+        dimensionless: whether the indices are dimensionless (else they have
+            the unit of the observable).
         constant: the value of every index of a constant element.
+        bootstrap: the seed of the bootstrap of the intervals from the seed of
+            the design.
+        conf_level: the level of the confidence intervals.
+        num_resamples: the number of bootstrap resamples.
         pair_keys: the indices over pairs of parameters, present when the
             design has second order indices.
 
     Returns:
         The sensitivity result.
     """
+    _check(conf_level, num_resamples)
     dim, design = design_of(result, methods, dim)
     parameters, cube = _unit_points(result, dim, design)
+    seed = bootstrap(int(design.options["seed"]))
     d = len(parameters)
     pairs = list(pair_keys) if design.options.get("second_order") else []
     indices: dict[str, tuple[list[str], np.ndarray]] = {}
     units: dict[str, str] = {}
     failed = 0
+    order = np.argsort(np.asarray(result.ds[dim].values))
     for name in _observables(result, observables):
         values, others = _moved(result, name, dim)
-        flat = values.reshape(values.shape[0], -1)
+        flat = values[order].reshape(values.shape[0], -1)
         out: dict[str, np.ndarray] = {
             key: np.full((d, flat.shape[1]), np.nan) for key in keys
         }
@@ -325,20 +366,19 @@ def _global(
             if not np.isfinite(y).all():
                 failed += 1
                 continue
-            if np.ptp(y) == 0.0:
+            if np.ptp(y) <= 1e-12 * np.max(np.abs(y)):
                 for key in out:
                     out[key][..., k] = constant
                 continue
-            found = analyze(design, cube, y)
+            found = analyze(design, cube, y, seed)
             for key in out:
                 out[key][..., k] = np.asarray(found[key], dtype=float)
         for key, array in out.items():
             lead = [PARAMETER, PARAMETER_2] if key in pairs else [PARAMETER]
             shape = array.shape[: len(lead)] + values.shape[1:]
             indices[f"{name}.{key}"] = ([*lead, *others], array.reshape(shape))
-            base = key.removesuffix("_conf")
             units[f"{name}.{key}"] = (
-                "dimensionless" if base in unitless else result.units.get(name, "")
+                "dimensionless" if dimensionless else result.units.get(name, "")
             )
     if failed:
         logger.warning(
@@ -346,9 +386,13 @@ def _global(
             "indices are NaN.",
             failed,
         )
-    return _assemble(
-        result, dim, design.method, dict(design.options), parameters, indices, units
-    )
+    options = {
+        **design.options,
+        "conf_level": conf_level,
+        "num_resamples": num_resamples,
+        "bootstrap_seed": seed,
+    }
+    return _assemble(result, dim, design.method, options, parameters, indices, units)
 
 
 def sobol(
@@ -363,37 +407,43 @@ def sobol(
 
     The indices are `S1` and `ST` (and `S2` over `(parameter, parameter_2)` when
     the design has second order) with their bootstrap intervals `<index>_conf`,
-    computed by SALib on the unit cube the record recreates, seeded with the
-    seed of the design. A constant element has `NaN` indices.
+    computed by SALib on the unit cube the record recreates. The bootstrap is
+    seeded with the seed of the design for every element, so the intervals are
+    reproducible for every seed, and the global random state is not touched.
+    `S2` is the upper triangle of SALib: `NaN` on and below the diagonal, so
+    `S2` of `x1` and `x3` is at `(x1, x3)` only. A constant element has `NaN`
+    indices. The options of the result are those of the design and the
+    arguments of the analysis (`conf_level`, `num_resamples`, `bootstrap_seed`).
 
     Args:
         result: the result of a scan with a `sampling.sobol` design.
         dim: the dimension of the design, needed when there are several.
         observables: the observables, every variable of the result by default.
-        conf_level: the level of the confidence intervals.
-        num_resamples: the number of bootstrap resamples.
+        conf_level: the level of the confidence intervals, in (0, 1).
+        num_resamples: the number of bootstrap resamples, at least 1.
 
     Returns:
         The indices of every observable.
 
     Raises:
         ValueError: if the result has no Sobol design or several without `dim`,
-            an observable is a ragged timecourse or the dimension has another
-            number of points than its record.
+            an observable is a ragged timecourse, the dimension has another
+            number of points than its record or labels other than `0..n-1`, or
+            an argument is out of range.
     """
     from SALib.analyze import sobol as analyzer
 
     def analyze(
-        design: Design, cube: np.ndarray, y: np.ndarray
+        design: Design, cube: np.ndarray, y: np.ndarray, seed: int
     ) -> dict[str, np.ndarray]:
         found = analyzer.analyze(
-            _problem(cube.shape[1]),
+            unit_problem(cube.shape[1]),
             y,
             calc_second_order=bool(design.options["second_order"]),
             num_resamples=num_resamples,
             conf_level=conf_level,
             print_to_console=False,
-            seed=design.options["seed"],
+            seed=np.random.default_rng(seed),
         )
         return {
             key: found[key]
@@ -407,11 +457,29 @@ def sobol(
         dim,
         observables,
         analyze,
-        ("S1", "S1_conf", "ST", "ST_conf"),
-        {"S1", "ST", "S2"},
-        np.nan,
-        ("S2", "S2_conf"),
+        keys=("S1", "S1_conf", "ST", "ST_conf"),
+        dimensionless=True,
+        constant=np.nan,
+        bootstrap=int,
+        conf_level=conf_level,
+        num_resamples=num_resamples,
+        pair_keys=("S2", "S2_conf"),
     )
+
+
+def _fast_seed(seed: int) -> int:
+    """Get the non-zero seed of the bootstrap of FAST from the seed of the design.
+
+    SALib seeds FAST only for a seed which is true, so 0 would leave the global
+    random state in charge.
+
+    Args:
+        seed: the seed of the design.
+
+    Returns:
+        A seed in `[1, 2**31)`.
+    """
+    return int(np.random.default_rng(seed).integers(1, 2**31))
 
 
 def fast(
@@ -425,45 +493,53 @@ def fast(
     """Compute the FAST indices of a scan with a FAST design, see the module.
 
     The indices are `S1` and `ST` with `S1_conf` and `ST_conf`, computed by
-    SALib on the unit cube the record recreates. A constant element has `NaN`
-    indices. SALib documents that the bootstrap intervals of FAST are
-    unreliable, so `S1_conf` and `ST_conf` are indicative only.
+    SALib on the unit cube the record recreates. SALib draws the bootstrap from
+    the global random state, so a call seeds it with a seed derived from the
+    seed of the design (`bootstrap_seed`) and restores the state of the caller
+    afterwards; the intervals are reproducible for every seed. A constant
+    element has `NaN` indices. SALib documents that the bootstrap intervals of
+    FAST are unreliable, so `S1_conf` and `ST_conf` are indicative only.
 
     Args:
         result: the result of a scan with a `sampling.fast` design.
         dim: the dimension of the design, needed when there are several.
         observables: the observables, every variable of the result by default.
-        conf_level: the level of the confidence intervals.
-        num_resamples: the number of bootstrap resamples.
+        conf_level: the level of the confidence intervals, in (0, 1).
+        num_resamples: the number of bootstrap resamples, at least 1.
 
     Returns:
         The indices of every observable.
 
     Raises:
         ValueError: if the result has no FAST design or several without `dim`,
-            an observable is a ragged timecourse or the dimension has another
-            number of points than its record.
+            an observable is a ragged timecourse, the dimension has another
+            number of points than its record or labels other than `0..n-1`, or
+            an argument is out of range.
     """
     from SALib.analyze import fast as analyzer
 
     def analyze(
-        design: Design, cube: np.ndarray, y: np.ndarray
+        design: Design, cube: np.ndarray, y: np.ndarray, seed: int
     ) -> dict[str, np.ndarray]:
-        with warnings.catch_warnings():
-            # SALib warns on every call that the bootstrap intervals are unreliable,
-            # which the docstring of `fast` says
-            warnings.filterwarnings(
-                "ignore", message="FAST confidence intervals", category=UserWarning
-            )
-            found = analyzer.analyze(
-                _problem(cube.shape[1]),
-                y,
-                M=int(design.options["m"]),
-                num_resamples=num_resamples,
-                conf_level=conf_level,
-                print_to_console=False,
-                seed=design.options["seed"],
-            )
+        state = np.random.get_state()
+        try:
+            with warnings.catch_warnings():
+                # SALib warns on every call that the bootstrap intervals are
+                # unreliable, which the docstring of `fast` says
+                warnings.filterwarnings(
+                    "ignore", message="FAST confidence intervals", category=UserWarning
+                )
+                found = analyzer.analyze(
+                    unit_problem(cube.shape[1]),
+                    y,
+                    M=int(design.options["m"]),
+                    num_resamples=num_resamples,
+                    conf_level=conf_level,
+                    print_to_console=False,
+                    seed=seed,
+                )
+        finally:
+            np.random.set_state(state)
         return {key: found[key] for key in ("S1", "S1_conf", "ST", "ST_conf")}
 
     return _global(
@@ -472,9 +548,12 @@ def fast(
         dim,
         observables,
         analyze,
-        ("S1", "S1_conf", "ST", "ST_conf"),
-        {"S1", "ST"},
-        np.nan,
+        keys=("S1", "S1_conf", "ST", "ST_conf"),
+        dimensionless=True,
+        constant=np.nan,
+        bootstrap=_fast_seed,
+        conf_level=conf_level,
+        num_resamples=num_resamples,
     )
 
 
@@ -490,33 +569,35 @@ def morris(
 
     The indices are `mu`, `mu_star`, `sigma` and `mu_star_conf`, computed by
     SALib on the unit cube the record recreates (`scaled=False`). They are the
-    change of the observable per step of the unit cube, so they have the unit
-    of the observable. A constant element has zero effects.
+    change of the observable divided by the jump `levels / (2 (levels - 1))` of
+    SALib's grid of levels on `[0, 1]`, i.e. per unit of that grid, so they have
+    the unit of the observable. A constant element has zero effects.
 
     Args:
         result: the result of a scan with a `sampling.morris` design.
         dim: the dimension of the design, needed when there are several.
         observables: the observables, every variable of the result by default.
-        conf_level: the level of the confidence interval.
-        num_resamples: the number of bootstrap resamples.
+        conf_level: the level of the confidence interval, in (0, 1).
+        num_resamples: the number of bootstrap resamples, at least 1.
 
     Returns:
         The indices of every observable.
 
     Raises:
         ValueError: if the result has no Morris design or several without `dim`,
-            an observable is a ragged timecourse or the dimension has another
-            number of points than its record.
+            an observable is a ragged timecourse, the dimension has another
+            number of points than its record or labels other than `0..n-1`, or
+            an argument is out of range.
     """
     from SALib.analyze import morris as analyzer
 
     keys = ("mu", "mu_star", "sigma", "mu_star_conf")
 
     def analyze(
-        design: Design, cube: np.ndarray, y: np.ndarray
+        design: Design, cube: np.ndarray, y: np.ndarray, seed: int
     ) -> dict[str, np.ndarray]:
         found = analyzer.analyze(
-            _problem(cube.shape[1]),
+            unit_problem(cube.shape[1]),
             cube,
             y,
             num_resamples=num_resamples,
@@ -524,8 +605,20 @@ def morris(
             scaled=False,
             print_to_console=False,
             num_levels=int(design.options["levels"]),
-            seed=design.options["seed"],
+            seed=np.random.default_rng(seed),
         )
         return {key: found[key] for key in keys}
 
-    return _global(result, {"morris"}, dim, observables, analyze, keys, set(), 0.0)
+    return _global(
+        result,
+        {"morris"},
+        dim,
+        observables,
+        analyze,
+        keys=keys,
+        dimensionless=False,
+        constant=0.0,
+        bootstrap=int,
+        conf_level=conf_level,
+        num_resamples=num_resamples,
+    )
