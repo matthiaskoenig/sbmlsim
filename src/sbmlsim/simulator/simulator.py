@@ -61,6 +61,7 @@ from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
 from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.observables import ObservableGraph, compile_observables
 from sbmlsim.simulator.plan import Plan, compile_simulation, model_time, target_values
 from sbmlsim.simulator.worker import (
     MAX_ERRORS,
@@ -295,7 +296,8 @@ class Simulator:
         first = models[0]
         # the time is the first column, also where the model selects it
         # elsewhere, e.g. last in the sorted selections of an experiment
-        selections = (TIME, *(s for s in first.selections or [] if s != TIME))
+        graph = compile_observables(None, first)
+        selections = (TIME, *graph.selections)
         reserved = sorted((set(selections[1:]) & RESERVED) - {TIME})
         if reserved:
             raise ValueError(
@@ -333,7 +335,7 @@ class Simulator:
             plans=plans,
             vectors=vectors,
             at_times=at_times,
-            selections=selections,
+            graph=graph,
             grid=grid,
             interpolate=interpolate,
         )
@@ -448,7 +450,7 @@ class _Compiled:
             in the unit of the target in the model.
         at_times: plan -> dimension -> the time of its values in the time unit
             of the model, `None` for a dimension without `at`.
-        selections: the columns of the result, `time` first.
+        graph: the observables of the run.
         grid: the times of a grid, `None` for the ragged layout.
         interpolate: whether the workers interpolate onto the grid.
     """
@@ -458,7 +460,7 @@ class _Compiled:
     plans: dict[tuple[int, int], Plan]
     vectors: list[list[dict[str, np.ndarray]]]
     at_times: dict[tuple[int, int], list[float | None]]
-    selections: tuple[str, ...]
+    graph: ObservableGraph
     grid: np.ndarray | None
     interpolate: bool
 
@@ -514,7 +516,7 @@ class _Compiled:
                         indices=part,
                         plan=plan,
                         model=m,
-                        selections=self.selections,
+                        graph=self.graph,
                         values=values,
                         timed=timed,
                         time=self.grid if self.interpolate else None,
@@ -556,33 +558,39 @@ class _Compiled:
         changes it, unless a selection of the same name is a variable.
         """
         n, shape = self.size, self.scan.shape
+        names = self.graph.timecourses
+        scalars = self.graph.scalars
         n_rows = (
             self.grid.size
             if self.grid is not None
             else max((r.values.shape[1] for r in results), default=0)
         )
-        cube = np.full((len(self.selections), n, n_rows), np.nan)
+        cube = np.full((1 + len(names), n, n_rows), np.nan)
+        table = np.full((len(scalars), n), np.nan)
         status = np.zeros(n, dtype=np.int8)
         errors: list[tuple[int, str]] = []
         for result in results:
             rows = result.values.shape[1]
             cube[:, result.indices, :rows] = np.moveaxis(result.values, 2, 0)
+            table[:, result.indices] = result.scalars.T
             status[result.indices] = result.status
             errors.extend(result.errors)
 
         first = self.models[0]
         dims = list(self.scan.dims)
         tdim = TIME if self.grid is not None else POINT
-        units: dict[str, str] = {TIME: first.uinfo.get(TIME, "") or ""}
+        units: dict[str, str] = {}
         data_vars: dict[str, Any] = {}
-        for name, j in _columns(self.selections).items():
-            values = cube[j].reshape(*shape, n_rows)
-            if name == TIME:
-                if self.grid is None:
-                    data_vars[TIME] = ([*dims, POINT], values)
-                continue
-            data_vars[name] = ([*dims, tdim], values)
-            units[name] = first.uinfo.get(name, "") or ""
+        if names:
+            units[TIME] = first.uinfo.get(TIME, "") or ""
+            if self.grid is None:
+                data_vars[TIME] = ([*dims, POINT], cube[0].reshape(*shape, n_rows))
+        for j, name in enumerate(names, 1):
+            data_vars[name] = ([*dims, tdim], cube[j].reshape(*shape, n_rows))
+            units[name] = self.graph.units[name]
+        for j, name in enumerate(scalars):
+            data_vars[name] = (dims, table[j].reshape(shape))
+            units[name] = self.graph.units[name]
         coords: dict[str, Any] = {}
         for dimension in self.scan.dimensions:
             coords[dimension.id] = np.array(dimension.labels)
@@ -599,7 +607,7 @@ class _Compiled:
                 else:
                     coords[target] = (dimension.id, np.array(values))
                     units[target] = first.uinfo.get(target, "") or ""
-        if self.grid is not None:
+        if self.grid is not None and names:
             coords[TIME] = self.grid
         attrs: dict[str, Any] = {
             "dims": dims,
@@ -645,11 +653,6 @@ def _chunk_size(n_points: int, workers: int) -> int:
 def _first(failed: ScanPointError | None, err: ScanPointError) -> ScanPointError:
     """Get the error of the point which is first in the order of the scan."""
     return err if failed is None or err.index < failed.index else failed
-
-
-def _columns(selections: Sequence[str]) -> dict[str, int]:
-    """Get the column of every name, a name which appears twice is its first column."""
-    return {name: selections.index(name) for name in dict.fromkeys(selections)}
 
 
 def _settings(settings: Mapping[str, Any]) -> dict[str, Any]:

@@ -14,6 +14,7 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.observables import identity_graph
 from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import (
     MAX_ERRORS,
@@ -53,12 +54,17 @@ def _chunk(
         indices=np.arange(2) if indices is None else indices,
         plan=compile_simulation(simulation, model.symbols, model.uinfo),
         model=0,
-        selections=selections,
+        graph=identity_graph(selections),
         values=values or {},
         timed=timed or {},
         time=time,
         on_error=on_error,
     )
+
+
+def test_a_chunk_without_observables_has_no_scalars(model: RoadrunnerSBMLModel) -> None:
+    result = run_chunk(_chunk(model, Simulation(end=2, steps=4)), model)
+    assert result.scalars.shape == (2, 0)
 
 
 def test_every_point_is_its_simulation(model: RoadrunnerSBMLModel) -> None:
