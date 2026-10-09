@@ -36,6 +36,7 @@ from .analysis import (
     SensitivityOutput,
     SensitivitySimulation,
 )
+from .indices import local
 from .parameters import (
     ParameterType,
     SensitivityParameter,
@@ -58,4 +59,5 @@ __all__ = [
     "SensitivityParameter",
     "SensitivitySimulation",
     "SobolSensitivityAnalysis",
+    "local",
 ]
