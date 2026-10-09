@@ -115,6 +115,23 @@ print(res.ragged, res["time"].values)
 
 `Simulator(n_workers=...)` sets the processes: `1` runs in the calling process, a number is the size of the pool, and `None` (the default) uses every CPU for a scan of `sbmlsim.parallel.POOL_THRESHOLD` points or more, i.e. 256, and runs a smaller scan in the calling process. The pool is kept for the process, so the start of the workers is paid by the first pooled run of a process and every worker loads a model once; a short script with a single scan of a cheap model can therefore be faster with `n_workers=1`. The result does not depend on the number of workers. A script which runs a pool must do it behind `if __name__ == "__main__":`, because the workers import the script again. `on_error="flag"` keeps the points which ran when a point fails in the integrator: its values are `NaN` and the variable `status` is `1`.
 
+## Observables
+
+A scan computes observables from every simulation, e.g. the maximum of a concentration or the parameters of a non-compartmental analysis, with `Simulator.run(model, scan, observables, keep=...)`; see [Observables](observables.md):
+
+```python
+from sbmlsim.simulation import Formula
+
+res = simulator.run(
+    model,
+    Scan(
+        Simulation(end=100, steps=100), [Dimension("dim_n", values={"n": [2.0, 3.0]})]
+    ),
+    [Formula("px_max", "max(PX)")],
+)
+print(res["px_max"].values)
+```
+
 ## Working with scan results
 
 A `ScanResult` wraps an `xarray.Dataset`, `res.ds`, and keeps the units of its variables and coordinates; `res.quantity(key)` gives the values with their unit, `res.summary(dims)` the statistics over dimensions and `res.interpolate(times)` puts a ragged result on a grid. `res.ds.to_dataframe()` is the table, `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store the result with its units:

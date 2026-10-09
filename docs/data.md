@@ -64,7 +64,7 @@ f = Data(
 print(f.sid, f.dtype, f.function)
 ```
 
-The function is a formula of the math of PEtab, the same as the formulas of changes and observables. One extension serves data: `max` and `min` of a single argument reduce it over the data and ignore the `NaN` of padding, so `Y/max(Y)` normalizes `Y` to its maximum; with two or more arguments they are the elementwise maximum and minimum.
+The function is a formula of the math of PEtab, the same as the formulas of changes and observables. One extension serves data: `max` and `min` of a single argument reduce it along the time of every simulation and ignore the `NaN` of padding, so `Y/max(Y)` normalizes every simulation of a scan to its own maximum; with two or more arguments they are the elementwise maximum and minimum. The reductions `mean` and `at` need the time points of a simulation and are part of the observables of a scan, see [Observables](observables.md).
 
 The math of PEtab is not the L3 formula syntax of SBML which a function of data was written in before, and one difference changes a result without an error: `log(x)` is the natural logarithm, as in PEtab, where the L3 syntax read it as the logarithm to base 10. Write `log10(x)` for base 10 (`log2(x)` for base 2) and `log(x, b)` for the logarithm of `x` to base `b`. The other functions and constants of the L3 syntax which differ fail with a `ValueError` when the data is evaluated:
 

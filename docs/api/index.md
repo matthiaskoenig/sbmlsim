@@ -31,12 +31,13 @@ Models and the changes of a model, see [Models](../models.md).
 
 ## sbmlsim.simulation
 
-Definition of simulations, see [Simulations](../simulation.md) and [Parameter scans](../scans.md).
+Definition of simulations, see [Simulations](../simulation.md) and [Parameter scans](../scans.md) and [Observables](../observables.md).
 
 | module | description |
 | --- | --- |
 | [simulation.definition](simulation.definition.md) | `Simulation`, `Change` and `SteadyState`, a simulation with its changes, with units |
 | [simulation.scan](simulation.scan.md) | `Scan` and `Dimension`, a simulation over dimensions of values, simulations and models |
+| [simulation.observables](simulation.observables.md) | `Formula`, `PK` and `Custom`, what a scan computes from every simulation |
 | [simulation.sensitivity](simulation.sensitivity.md) | `ModelSensitivity`, sensitivity scans of parameters and initial conditions |
 
 ## sbmlsim.simulator, sbmlsim.task
@@ -50,6 +51,8 @@ Execution of simulations.
 | [simulator.executor](simulator.executor.md) | `execute`, running a plan on roadrunner with the semantics of PEtab v2 |
 | [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation |
 | [simulator.worker](simulator.worker.md) | the chunks of a scan, run on one plan and one model in a worker |
+| [simulator.observables](simulator.observables.md) | the compiled observables of a scan and their evaluation on the native solutions |
+| [simulator.pk](simulator.pk.md) | the non-compartmental analysis of a `PK` observable with pkpdutils |
 | [task.task](task.task.md) | `Task`, a simulation applied to a model |
 
 ## sbmlsim.experiment, sbmlsim.result

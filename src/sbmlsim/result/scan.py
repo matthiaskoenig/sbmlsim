@@ -17,6 +17,8 @@ A `ScanResult` wraps one `xarray.Dataset`:
   unit of every variable and coordinate, `scan` and `integrator_settings`,
   the provenance, and `errors` for a run with `on_error="flag"`.
 
+`nca` and `to_timecourses` hand a PK analysis and a timecourse over to pkpdutils, whose layout `(*dims, time)` the result has.
+
 `xarray` does the rest: `res["[X]"].sel(dose=10)`, `res.ds.to_dataframe()`.
 """
 
@@ -27,7 +29,7 @@ import json
 import warnings
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -43,6 +45,9 @@ from sbmlsim.result.timecourse import (
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry
 from sbmlsim.units import ureg as package_ureg
 
+if TYPE_CHECKING:
+    from pkpdutils import NCAResult, Timecourses
+
 #: the dimension of the time of a grid
 TIME = "time"
 #: the dimension of the output points of the ragged layout
@@ -55,6 +60,8 @@ STATISTICS: tuple[str, ...] = ("mean", "sd", "cv", "min", "max")
 NETCDF_ATTRS = "sbmlsim"
 #: the variable of the outcome of every point, reserved like `TIME`
 STATUS = "status"
+#: the variable of the flags of the analysis of a PK observable, `<id>.flags`
+FLAGS = "flags"
 #: the most elements (points of the scan times time points) of the union of the
 #: time points of a ragged result which `ScanResult.summary` interpolates onto
 MAX_UNION_ELEMENTS = 10_000_000
@@ -147,6 +154,81 @@ class ScanResult:
             unit = found.pop()
         registry = ureg if ureg is not None else package_ureg
         return registry.Quantity(np.asarray(array.values, dtype=float), unit)
+
+    def nca(self, observable: str) -> NCAResult:
+        """Get the analysis of a PK observable as the result of pkpdutils.
+
+        The kept parameters of the observable, `<id>.<parameter>`, with their
+        units and its flags over the dimensions of the scan. A point which
+        failed has `NaN` parameters and the flags `NCAFlag.NO_DATA`, which
+        pkpdutils gives a sample without data.
+
+        Args:
+            observable: the id of the PK observable.
+
+        Returns:
+            The `pkpdutils.NCAResult`.
+
+        Raises:
+            KeyError: if the result does not keep the flags of the observable.
+        """
+        from pkpdutils import NCAFlag, NCAResult
+
+        prefix = f"{observable}."
+        flags = f"{prefix}{FLAGS}"
+        if flags not in self.ds.data_vars:
+            raise KeyError(
+                f"The result does not keep the PK observable '{observable}': keep "
+                f"its flags '{flags}', e.g. keep=['{observable}']."
+            )
+        data_vars: dict[str, xr.DataArray] = {}
+        for name in self.ds.data_vars:
+            name = str(name)
+            if not name.startswith(prefix):
+                continue
+            values = self.ds[name]
+            parameter = name.removeprefix(prefix)
+            if parameter == FLAGS:
+                values = values.fillna(int(NCAFlag.NO_DATA)).astype(int)
+            data_vars[parameter] = values.assign_attrs(units=self.units.get(name, ""))
+        return NCAResult(xr.Dataset(data_vars).reset_coords(drop=True))
+
+    def to_timecourses(self, key: str, **kwargs: Any) -> Timecourses:
+        """Get a timecourse of the result as the timecourses of pkpdutils.
+
+        Args:
+            key: the variable, a timecourse.
+            **kwargs: the other arguments of `Timecourses.from_arrays`, e.g.
+                `dose` and `route`.
+
+        Returns:
+            The `pkpdutils.Timecourses` over the dimensions of the scan.
+
+        Raises:
+            ValueError: if the variable is no timecourse of the result.
+        """
+        from pkpdutils import Timecourses
+
+        tdim = POINT if self.ragged else TIME
+        if key not in self.ds.data_vars or tdim not in self.ds[key].dims:
+            raise ValueError(f"'{key}' is no timecourse of the result.")
+        dims = tuple(self.dims)
+        values = self.ds[key].transpose(*dims, tdim).values
+        time = (
+            self.ds[TIME].transpose(*dims, POINT).values
+            if self.ragged
+            else self.ds[TIME].values
+        )
+        coords = {dim: self.ds[dim].values for dim in dims}
+        return Timecourses.from_arrays(
+            time,
+            values,
+            time_unit=self.units.get(TIME) or "dimensionless",
+            unit=self.units.get(key) or "dimensionless",
+            dims=dims,
+            coords=coords or None,
+            **kwargs,
+        )
 
     def sel(self, **indexers: Any) -> ScanResult:
         """Select by labels, see `xarray.Dataset.sel`."""

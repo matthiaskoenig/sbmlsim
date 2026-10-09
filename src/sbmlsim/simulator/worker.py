@@ -2,10 +2,16 @@
 
 `run_chunk` is the same function serially and in a worker process: for every
 point of a chunk it applies the values of the point to the plan of the chunk,
-`Plan.with_values`, runs the plan with `execute` and stacks the native
-solutions into one array, padded with `NaN`; with a grid of times every
-solution is interpolated onto it first. Nothing in here uses pint or xarray,
-and a chunk and its result are numbers, strings and a plan, so they pickle.
+`Plan.with_values`, and runs the plan with `execute`; the native solutions of
+the points which ran are stacked into arrays padded with `NaN`, the observables
+of the run are evaluated on them, see `sbmlsim.simulator.observables`, and the
+kept timecourses are interpolated onto the grid of times of the chunk, if it
+has one. A run without observables needs no native solution: the kept
+selections of every point are interpolated right after its simulation, so the
+memory of a chunk is bounded by its grid. A point fails exactly when its own
+simulation or observables fail, not because of the other points of its chunk.
+Nothing in here uses pint or xarray, and a chunk and its result are numbers,
+strings, a plan and the graph of the observables, so they pickle.
 
 In a worker process the model of a chunk is loaded once from its `ModelSpec`
 and kept, see `sbmlsim.parallel.worker_cache`, with the integrator of the
@@ -24,7 +30,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Generator
+from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,8 +41,10 @@ import roadrunner
 
 from sbmlsim import parallel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
+from sbmlsim.result.scan import TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.observables import TIMECOURSE, ObservableError, ObservableGraph
 from sbmlsim.simulator.plan import Plan
 
 #: what a run does about a point which fails: raise its error or flag it
@@ -170,6 +178,34 @@ def integrator_state(
     return str(integrator.getName()), tuple(settings)
 
 
+def point_plan(
+    plan: Plan,
+    values: Mapping[str, np.ndarray],
+    timed: Mapping[float, Mapping[str, np.ndarray]],
+    k: int,
+) -> Plan:
+    """Get the plan of the `k`-th point of values.
+
+    The values of the dimensions without a time are applied first, then the
+    changes of the dimensions with one in time order, so a target in both has
+    the value of the change at its time.
+
+    Args:
+        plan: the plan of the points.
+        values: target -> value of every point.
+        timed: time -> target -> value of every point.
+        k: the point.
+
+    Returns:
+        The plan with the values of the point.
+    """
+    plan = plan.with_values({t: float(v[k]) for t, v in values.items()})
+    for at in sorted(timed):
+        changes = timed[at]
+        plan = plan.with_values({t: float(v[k]) for t, v in changes.items()}, at=at)
+    return plan
+
+
 @dataclass(frozen=True)
 class Chunk:
     """Points of a scan which share a plan and a model.
@@ -179,37 +215,33 @@ class Chunk:
         plan: the plan of the points.
         model: the index of the model of the points among the models of the
             run.
-        selections: the columns of the result, `time` first.
+        graph: the observables of the run, which give the selections.
         values: target -> value of every point, which replaces the target
             wherever the plan sets it and is a change before the
             initialization otherwise.
         timed: time -> target -> value of every point, a change at that time.
-        time: the grid of times to interpolate onto, `None` for the time
-            points of the simulation.
+        time: the grid of times to interpolate the kept timecourses onto,
+            `None` for the time points of the simulation.
         on_error: what to do about a point which fails.
     """
 
     indices: np.ndarray
     plan: Plan
     model: int
-    selections: tuple[str, ...]
+    graph: ObservableGraph
     values: dict[str, np.ndarray]
     timed: dict[float, dict[str, np.ndarray]]
     time: np.ndarray | None
     on_error: OnError = "raise"
 
-    def plan_of(self, k: int) -> Plan:
-        """Get the plan of the `k`-th point of the chunk.
+    @property
+    def selections(self) -> tuple[str, ...]:
+        """Get the selections of roadrunner, `time` first."""
+        return (TIME, *self.graph.selections)
 
-        The values of the dimensions without a time are applied first, then
-        the changes of the dimensions with one in time order, so a target in
-        both has the value of the change at its time.
-        """
-        plan = self.plan.with_values({t: float(v[k]) for t, v in self.values.items()})
-        for at in sorted(self.timed):
-            values = self.timed[at]
-            plan = plan.with_values({t: float(v[k]) for t, v in values.items()}, at=at)
-        return plan
+    def plan_of(self, k: int) -> Plan:
+        """Get the plan of the `k`-th point of the chunk, see `point_plan`."""
+        return point_plan(self.plan, self.values, self.timed, k)
 
 
 @dataclass(frozen=True)
@@ -218,15 +250,18 @@ class ChunkResult:
 
     Attributes:
         indices: the flat indices of the points, those of the chunk.
-        values: the values, `(point, row, column)` with the columns of the
-            selections, the time first, padded with `NaN`.
+        values: the kept timecourses, `(point, row, column)` with the time
+            first and the timecourses of the graph, padded with `NaN`.
+        scalars: the kept values per simulation, `(point, column)` with the
+            scalars of the graph.
         status: `0` for a point which ran, `1` for one which failed.
         errors: the flat index and the error of the first `MAX_ERRORS`
-            points which failed.
+            points which failed, in the order of the scan.
     """
 
     indices: np.ndarray
     values: np.ndarray
+    scalars: np.ndarray
     status: np.ndarray
     errors: tuple[tuple[int, str], ...]
 
@@ -250,46 +285,220 @@ def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
 
 
 def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
-    """Run the points of a chunk, see `run_chunk`."""
+    """Run the points of a chunk, see `run_chunk`.
+
+    With `on_error="raise"` the first point which fails in the order of the
+    scan is raised, whatever the chunking: a failed simulation stops the
+    chunk, the observables of the points before it are evaluated, and a point
+    among them whose observable fails comes before it.
+
+    Without observables (a graph without nodes) the kept selections of a
+    solution are its outputs, which are interpolated onto the grid right after
+    the simulation: such a chunk never holds the native solutions of its
+    points, which only the observables need.
+    """
     n = len(chunk.indices)
-    rows: list[np.ndarray | None] = []
     status = np.zeros(n, dtype=np.int8)
-    errors: list[tuple[int, str]] = []
+    failures: list[tuple[int, str, BaseException]] = []
+    points: list[int] = []
+    solutions: list[np.ndarray] = []
+    plans: list[Plan] = []
+    observed = bool(chunk.graph.nodes)
+    columns = (
+        []
+        if observed
+        else [chunk.selections.index(s) for s in (TIME, *chunk.graph.timecourses)]
+    )
     for k in range(n):
-        index = int(chunk.indices[k])
         # a definition which does not fit the plan is no failed point
         plan = chunk.plan_of(k)
         try:
             result = execute(plan, model, chunk.selections)
         except Exception as err:
-            message = f"{type(err).__name__}: {err}"
+            failures.append((k, f"{type(err).__name__}: {err}", err))
             if chunk.on_error == "raise":
-                raise ScanPointError(index, message) from err
-            status[k] = 1
-            if len(errors) < MAX_ERRORS:
-                errors.append((index, message))
-            values = None
+                break
+            continue
+        points.append(k)
+        if observed:
+            solutions.append(result.values)
+            plans.append(plan)
         else:
-            values = result.values
-            if chunk.time is not None:
-                weights = grid_weights(values[:, 0], chunk.time)
-                values = apply_weights(weights, values.T).T
-        if chunk.time is not None:
-            if values is None:
-                values = np.full((chunk.time.size, len(chunk.selections)), np.nan)
-            values[:, 0] = chunk.time
-        rows.append(values)
-    n_rows = (
-        chunk.time.size
-        if chunk.time is not None
-        else max((r.shape[0] for r in rows if r is not None), default=0)
-    )
-    out = np.full((n, n_rows, len(chunk.selections)), np.nan)
-    for k, values in enumerate(rows):
-        if values is not None:
-            out[k, : values.shape[0]] = values
+            solutions.append(_on_grid(chunk.time, result.values[:, columns].T))
+    if observed:
+        points, time, outputs, failed = _observe(chunk, points, solutions, plans)
+        failures.extend(failed)
+        n_rows = time.shape[1]
+        rows: Iterable[np.ndarray] = _timecourses(chunk, time, outputs)
+        scalars = np.empty((len(points), len(chunk.graph.scalars)))
+        if points:
+            for c, name in enumerate(chunk.graph.scalars):
+                scalars[:, c] = outputs[name]
+    else:
+        n_rows = max((solution.shape[1] for solution in solutions), default=0)
+        rows = solutions
+        scalars = np.empty((len(points), 0))
+    failures.sort(key=lambda failure: failure[0])
+    errors: list[tuple[int, str]] = []
+    for k, message, cause in failures:
+        index = int(chunk.indices[k])
+        if chunk.on_error == "raise":
+            raise ScanPointError(index, message) from cause
+        status[k] = 1
+        errors.append((index, message))
+    return _pack(chunk, points, n_rows, rows, scalars, status, errors)
+
+
+def _on_grid(grid: np.ndarray | None, rows: np.ndarray) -> np.ndarray:
+    """Interpolate timecourses `(column, row)` with the time first onto a grid.
+
+    Without a grid the timecourses are returned as they are.
+    """
+    if grid is None:
+        return rows
+    rows = apply_weights(grid_weights(rows[0], grid), rows)
+    rows[0] = grid
+    return rows
+
+
+def _stack(
+    chunk: Chunk, solutions: Sequence[np.ndarray]
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Stack native solutions into the time and the columns `(point, row)`.
+
+    The solutions are padded with `NaN` to the longest of them.
+    """
+    rows = max(solution.shape[0] for solution in solutions)
+    stacked = np.full((len(solutions), rows, len(chunk.selections)), np.nan)
+    for r, solution in enumerate(solutions):
+        stacked[r, : solution.shape[0]] = solution
+    columns = {name: stacked[:, :, j] for j, name in enumerate(chunk.selections) if j}
+    return stacked[:, :, 0], columns
+
+
+def _observe(
+    chunk: Chunk,
+    points: Sequence[int],
+    solutions: Sequence[np.ndarray],
+    plans: Sequence[Plan],
+) -> tuple[
+    list[int], np.ndarray, dict[str, np.ndarray], list[tuple[int, str, BaseException]]
+]:
+    """Evaluate the observables on the native solutions of the points which ran.
+
+    The graph is evaluated on the whole chunk. If an observable fails the
+    points are evaluated one at a time, each alone on its native solution
+    without padding, so a point fails exactly when its own evaluation fails,
+    whatever the other points of the chunk are; the outputs of the points
+    which succeed are stacked again, padded with `NaN` to the longest of them.
+
+    Args:
+        chunk: the chunk.
+        points: the positions in the chunk of the points which ran.
+        solutions: their native solutions.
+        plans: their plans.
+
+    Returns:
+        The positions of the points which are left, their time points
+        `(n_points, n_rows)` padded with `NaN`, the kept outputs and the
+        points whose observable failed with their message and error.
+    """
+    if not points:
+        return [], np.empty((0, 0)), {}, []
+    time, columns = _stack(chunk, solutions)
+    try:
+        return list(points), time, chunk.graph.evaluate(time, columns, plans), []
+    except ObservableError:
+        pass
+    kept: list[int] = []
+    singles: list[tuple[np.ndarray, dict[str, np.ndarray]]] = []
+    failed: list[tuple[int, str, BaseException]] = []
+    for k, solution, plan in zip(points, solutions, plans, strict=True):
+        single_time, single_columns = _stack(chunk, [solution])
+        try:
+            outputs = chunk.graph.evaluate(single_time, single_columns, [plan])
+        except ObservableError as err:
+            failed.append((k, err.message, err))
+            continue
+        kept.append(k)
+        singles.append((single_time, outputs))
+    if not kept:
+        return [], np.empty((0, 0)), {}, failed
+    n_rows = max(single_time.shape[1] for single_time, _ in singles)
+    time = np.full((len(kept), n_rows), np.nan)
+    stacked = {
+        name: np.full(
+            (len(kept), n_rows) if chunk.graph.kinds[name] is TIMECOURSE else len(kept),
+            np.nan,
+        )
+        for name in chunk.graph.keep
+    }
+    for r, (single_time, outputs) in enumerate(singles):
+        rows = single_time.shape[1]
+        time[r, :rows] = single_time[0]
+        for name, value in outputs.items():
+            if value.ndim == 2:
+                stacked[name][r, :rows] = value[0]
+            else:
+                stacked[name][r] = value[0]
+    return kept, time, stacked, failed
+
+
+def _timecourses(
+    chunk: Chunk, time: np.ndarray, outputs: Mapping[str, np.ndarray]
+) -> Iterator[np.ndarray]:
+    """Get the time and the kept timecourses of every point, see `_pack`.
+
+    The points are interpolated onto the grid of the chunk one at a time, as
+    `_pack` writes them, so the interpolated outputs are not held twice.
+    """
+    names = chunk.graph.timecourses
+    for r in range(time.shape[0]):
+        rows = np.stack([time[r], *(outputs[name][r] for name in names)])
+        yield _on_grid(chunk.time, rows)
+
+
+def _pack(
+    chunk: Chunk,
+    points: Sequence[int],
+    n_rows: int,
+    rows: Iterable[np.ndarray],
+    scalars: np.ndarray,
+    status: np.ndarray,
+    errors: list[tuple[int, str]],
+) -> ChunkResult:
+    """Write the outputs of the points which ran into the arrays of a chunk.
+
+    A failed point is `NaN`, with the time of the grid if the chunk has one.
+
+    Args:
+        chunk: the chunk.
+        points: the positions in the chunk of the points which ran.
+        n_rows: the number of rows of their native timecourses, padded to the
+            longest, which a chunk without a grid has.
+        rows: the time and the kept timecourses of every point which ran,
+            `(column, row)`, on the grid of the chunk if it has one.
+        scalars: the kept values per simulation of every point which ran,
+            `(point, column)`.
+        status: `0` for a point which ran, `1` for one which failed.
+        errors: the flat index and the error of every point which failed.
+    """
+    n = len(chunk.indices)
+    if chunk.time is not None:
+        n_rows = chunk.time.size
+    values = np.full((n, n_rows, 1 + len(chunk.graph.timecourses)), np.nan)
+    if chunk.time is not None:
+        values[:, :, 0] = chunk.time
+    table = np.full((n, len(chunk.graph.scalars)), np.nan)
+    for k, point_rows, point_scalars in zip(points, rows, scalars, strict=True):
+        values[k, : point_rows.shape[1]] = point_rows.T
+        table[k] = point_scalars
     return ChunkResult(
-        indices=chunk.indices, values=out, status=status, errors=tuple(errors)
+        indices=chunk.indices,
+        values=values,
+        scalars=table,
+        status=status,
+        errors=tuple(sorted(errors)[:MAX_ERRORS]),
     )
 
 

@@ -60,6 +60,9 @@ dependencies = [
 	# parameter fitting and sensitivity analysis
 	"petab>=0.9.0",
 	"SALib>=1.6.0",
+	# the non-compartmental analysis of the PK observables of a scan, imported
+	# when a PK observable is compiled
+	"pkpdutils>=1.3.0",
 	# the files of the PEtab test suite, the benchmark collection and the networks
 	"pyyaml>=6.0.3",
 	# plots and reports

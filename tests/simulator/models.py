@@ -6,7 +6,10 @@ parameter with an assignment rule, a species with only substance units and a
 compartment whose size is not one.
 """
 
+from typing import Any
+
 import antimony
+import numpy as np
 
 PROBE = """
 model probe
@@ -94,3 +97,87 @@ model blowup
   J: -> S; k*S^2
 end
 """
+
+
+def auc_of_c(time: np.ndarray, values: dict[str, Any]) -> float:
+    """A custom observable: the trapezoidal area under `[C]`."""
+    return float(np.trapezoid(values["[C]"], time))
+
+
+def doubled(time: np.ndarray, values: dict[str, Any]) -> np.ndarray:
+    """A custom timecourse: twice `[C]`."""
+    return 2.0 * values["[C]"]
+
+
+def last_value(time: np.ndarray, values: dict[str, Any]) -> float:
+    """A custom observable: the last value of `S`."""
+    return float(values["S"][-1])
+
+
+def fails_for_large_k1(time: np.ndarray, values: dict[str, Any]) -> float:
+    """A custom observable which fails for a point whose `k1` is above one."""
+    if values["k1"][0] > 1.0:
+        raise ValueError("k1 is too large")
+    return 0.0
+
+
+#: a one-compartment model with a first-order absorption from the depot
+#: `PODOSE`: for a dose D at 0, C(t) = D ka / (V (ka - ke)) (exp(-ke t) - exp(-ka t))
+PK_MODEL = """
+model onecomp
+  compartment V = 10
+  species C in V = 0
+  ka = 1; ke = {ke}
+  PODOSE = 0
+  PODOSE' = -ka*PODOSE
+  absorption: -> C; ka*PODOSE
+  elimination: C -> ; ke*C*V
+end
+"""
+
+
+#: a parameter of the PK model with `blowup=True` which grows as `B' = kb B^2`
+#: and goes to infinity at the time `1 / kb`: the integration up to 48 hours
+#: fails for `kb = 1` and works for `kb = 0`, which leaves the model unchanged
+PK_BLOWUP = """
+  kb = 0; B = 1
+  B' = kb*B^2
+end
+"""
+
+
+def sbml_pk(ke: float = 0.2, blowup: bool = False) -> str:
+    """Get the one-compartment model in hours, mg and litres."""
+    import libsbml
+
+    text = PK_MODEL.format(ke=ke)
+    if blowup:
+        text = text.removesuffix("end\n") + PK_BLOWUP
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(text))
+    model: libsbml.Model = doc.getModel()
+    for uid, kind, scale, multiplier, exponent in (
+        ("hr", libsbml.UNIT_KIND_SECOND, 0, 3600.0, 1),
+        ("mg", libsbml.UNIT_KIND_GRAM, -3, 1.0, 1),
+        ("per_hr", libsbml.UNIT_KIND_SECOND, 0, 3600.0, -1),
+    ):
+        definition = model.createUnitDefinition()
+        definition.setId(uid)
+        unit = definition.createUnit()
+        unit.setKind(kind)
+        unit.setScale(scale)
+        unit.setMultiplier(multiplier)
+        unit.setExponent(exponent)
+    model.setTimeUnits("hr")
+    model.setSubstanceUnits("mg")
+    model.setExtentUnits("mg")
+    model.setVolumeUnits("litre")
+    model.getCompartment("V").setUnits("litre")
+    model.getSpecies("C").setSubstanceUnits("mg")
+    for pid, uid in (("ka", "per_hr"), ("ke", "per_hr"), ("PODOSE", "mg")):
+        model.getParameter(pid).setUnits(uid)
+    return libsbml.writeSBMLToString(doc)
+
+
+def doubled_c(time: np.ndarray, values: dict[str, Any]) -> np.ndarray:
+    """A custom timecourse: twice the concentration `c`."""
+    return 2.0 * values["c"]

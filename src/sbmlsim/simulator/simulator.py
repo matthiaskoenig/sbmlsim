@@ -7,13 +7,16 @@
    `compile_simulation`; the values of the dimensions of values in the units
    of their targets in every model, once; the times of the dimensions with
    `at` in the time unit of every model; the selections and the grid of the
-   output.
+   output; the observables of the run, ordered, checked against the first
+   model and with their kinds and units, see `sbmlsim.simulator.observables`.
 2. Points: a point is a tuple of indices, nothing is built per point in the
    parent. The points are cut into chunks which share a plan, at most
    `ceil(n_points / (4 * n_workers))` and at most `MAX_CHUNK` points each.
 3. Worker: a chunk applies the values of each point to its plan and runs it,
    see `sbmlsim.simulator.worker`; the same function runs serially in the
-   calling process and in a worker of a pool of `sbmlsim.parallel`.
+   calling process and in a worker of a pool of `sbmlsim.parallel`; the
+   observables are evaluated on the native solutions of the points of a chunk
+   before the kept timecourses are interpolated onto a grid.
 4. Assembly: the arrays of the chunks are written into the arrays of the
    result, a `ScanResult`, and reshaped into the dimensions of the scan.
 
@@ -59,8 +62,10 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result.scan import POINT, STATUS, TIME, ScanResult, time_magnitudes
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
+from sbmlsim.simulation.observables import Observable
 from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
 from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.observables import ObservableGraph, compile_observables
 from sbmlsim.simulator.plan import Plan, compile_simulation, model_time, target_values
 from sbmlsim.simulator.worker import (
     MAX_ERRORS,
@@ -69,6 +74,7 @@ from sbmlsim.simulator.worker import (
     ModelSpec,
     OnError,
     ScanPointError,
+    point_plan,
     run_chunk,
     run_chunk_in_worker,
 )
@@ -200,24 +206,34 @@ class Simulator:
         self,
         model: ModelLike | None,
         scan: Scan | Simulation,
+        observables: Sequence[Observable] | None = None,
         *,
         time: ArrayLike | Quantity | None = None,
+        keep: Sequence[str] | None = None,
         on_error: OnError = "raise",
         progress: bool | None = None,
     ) -> ScanResult:
         """Run every point of a scan, see the module.
 
-        The variables of the result are the selections of the model, of the
-        first model of a dimension of models.
+        The variables of the result are the kept observables; without
+        observables they are the selections of the model, of the first model of
+        a dimension of models, each a timecourse of its own name.
 
         Args:
             model: the model of the run; `None` for a scan with a dimension
                 of models, which gives the model of every point.
             scan: the scan, a simulation is a scan without dimensions.
+            observables: what the run computes from every simulation, see
+                `sbmlsim.simulation.observables`; they are evaluated on the
+                native solution of every simulation, also with `time`.
             time: a grid of times every timecourse is interpolated onto,
                 numbers in the time unit of the model or a quantity; without
                 it the result keeps the output times of the simulations, a
                 dimension `time` if they agree and `_point` otherwise.
+            keep: the observables of the result, every one by default; the id
+                of a PK observable keeps all its parameters; without
+                observables the selections of the result. The others are
+                evaluated where a kept one needs them and dropped.
             on_error: `"raise"` raises a `ScanError` for the first point in
                 the order of the scan which fails; `"flag"` sets every value of
                 a point which fails to `NaN` and records it in the variable
@@ -239,7 +255,7 @@ class Simulator:
         """
         if on_error not in ("raise", "flag"):
             raise ValueError(f"'on_error' is 'raise' or 'flag', not '{on_error}'.")
-        compiled = self._compile(model, Scan.of(scan), time)
+        compiled = self._compile(model, Scan.of(scan), time, observables, keep)
         workers = parallel.resolve_workers(self.n_workers, compiled.size)
         chunks = compiled.chunks(workers, on_error)
         show = workers > 1 if progress is None else progress
@@ -276,42 +292,37 @@ class Simulator:
         return models, [str(label) for label in dimension.labels]
 
     def _compile(
-        self, model: ModelLike | None, scan: Scan, time: ArrayLike | Quantity | None
+        self,
+        model: ModelLike | None,
+        scan: Scan,
+        time: ArrayLike | Quantity | None,
+        observables: Sequence[Observable] | None = None,
+        keep: Sequence[str] | None = None,
     ) -> _Compiled:
         """Compile a scan against its models, see the module.
 
+        Args:
+            model: the model of the run, or `None`.
+            scan: the scan.
+            time: the grid of times, see `run`.
+            observables: the observables of the run.
+            keep: the ids of the observables to keep.
+
         Raises:
             ValueError: if neither the run nor a dimension of models gives a
-                model, or both do; if a model of a dimension of models has not
-                the selections or the units of the first one; if a selection
-                is a name the result reserves, e.g. `status`; if a dimension
-                id is a selection; if a simulation, a value or a time does not
-                fit a model, e.g. a target which is no target of a model; if
-                two dimensions set one target at one time; or if the grid of
-                times is empty or a quantity which the unit of time of the
-                first model cannot take.
+                model, or both do; an observable which does not fit the first
+                model, see `compile_observables`; an observable id which is a
+                dimension id or a target the scan changes; if a model of a
+                dimension of models has not the selections or the units of the
+                first one; if a selection is a name the result reserves, e.g.
+                `status`; if a dimension id is a selection; if a simulation, a
+                value or a time does not fit a model, e.g. a target which is no
+                target of a model; if two dimensions set one target at one
+                time; or if the grid of times is empty or a quantity which the
+                unit of time of the first model cannot take.
         """
         models, labels = self._models(model, scan)
         first = models[0]
-        # the time is the first column, also where the model selects it
-        # elsewhere, e.g. last in the sorted selections of an experiment
-        selections = (TIME, *(s for s in first.selections or [] if s != TIME))
-        reserved = sorted((set(selections[1:]) & RESERVED) - {TIME})
-        if reserved:
-            raise ValueError(
-                f"The selections {reserved} are names of the result "
-                f"({sorted(RESERVED)}), select other entities, see "
-                f"`RoadrunnerSBMLModel.set_selections`."
-            )
-        for loaded, label in zip(models[1:], labels[1:], strict=True):
-            _check_model(loaded, label, first, selections)
-        clash = sorted(set(scan.dims) & set(selections))
-        if clash:
-            raise ValueError(
-                f"The dimension ids {clash} are selections of the model: a "
-                f"dimension and a variable of the result share no name, choose "
-                f"other ids."
-            )
         plans: dict[tuple[int, int], Plan] = {}
         at_times: dict[tuple[int, int], list[float | None]] = {}
         for s, simulation in enumerate(scan.simulations()):
@@ -326,6 +337,48 @@ class Simulator:
             _vectors(scan, loaded, label)
             for loaded, label in zip(models, labels, strict=True)
         ]
+        positions = _positions(scan)
+        # the plan of the first point of every simulation and model carries the
+        # assignments of the values dimensions and of those with `at`, which
+        # give the dose times of the PK observables, see `compile_pk`
+        point_plans: list[Plan] = []
+        for (s, m), plan in plans.items():
+            indices = _plan_points(scan, positions, s, m)
+            if indices.size:
+                values, timed = _values_of(
+                    scan, positions, vectors[m], at_times[(s, m)], indices[:1]
+                )
+                point_plans.append(point_plan(plan, values, timed, 0))
+        graph = compile_observables(observables, first, keep=keep, plans=point_plans)
+        # the time is the first column, also where the model selects it
+        # elsewhere, e.g. last in the sorted selections of an experiment
+        selections = (TIME, *graph.selections)
+        if not observables:
+            reserved = sorted((set(selections[1:]) & RESERVED) - {TIME})
+            if reserved:
+                raise ValueError(
+                    f"The selections {reserved} are names of the result "
+                    f"({sorted(RESERVED)}), select other entities, see "
+                    f"`RoadrunnerSBMLModel.set_selections`."
+                )
+        for loaded, label in zip(models[1:], labels[1:], strict=True):
+            _check_model(loaded, label, first, (*selections, *graph.doses))
+        clash = sorted(set(scan.dims) & set(graph.outputs))
+        if clash:
+            raise ValueError(
+                f"The dimension ids {clash} are selections of the model or "
+                f"observables of the run: a dimension and a variable of the "
+                f"result share no name, choose other ids."
+            )
+        # the guard of the rule that an observable id is no changed target,
+        # reached only for a target which is no selection of the model
+        targets = {t for dimension in scan.dimensions for t in dimension.values}
+        changed = sorted(targets & set(graph.outputs)) if observables else []
+        if changed:
+            raise ValueError(
+                f"The observables {changed} are targets the scan changes, which "
+                f"are coordinates of the result; choose other ids."
+            )
         grid, interpolate = _grid(plans, time, first)
         return _Compiled(
             scan=scan,
@@ -333,9 +386,10 @@ class Simulator:
             plans=plans,
             vectors=vectors,
             at_times=at_times,
-            selections=selections,
+            graph=graph,
             grid=grid,
             interpolate=interpolate,
+            observables=tuple(observables or ()),
         )
 
     def _run_serial(
@@ -448,9 +502,11 @@ class _Compiled:
             in the unit of the target in the model.
         at_times: plan -> dimension -> the time of its values in the time unit
             of the model, `None` for a dimension without `at`.
-        selections: the columns of the result, `time` first.
+        graph: the observables of the run.
         grid: the times of a grid, `None` for the ragged layout.
         interpolate: whether the workers interpolate onto the grid.
+        observables: the observables of the run, their definitions are the
+            provenance of the result.
     """
 
     scan: Scan
@@ -458,26 +514,15 @@ class _Compiled:
     plans: dict[tuple[int, int], Plan]
     vectors: list[list[dict[str, np.ndarray]]]
     at_times: dict[tuple[int, int], list[float | None]]
-    selections: tuple[str, ...]
+    graph: ObservableGraph
     grid: np.ndarray | None
     interpolate: bool
+    observables: tuple[Observable, ...] = ()
 
     @property
     def size(self) -> int:
         """Get the number of points."""
         return self.scan.size
-
-    def _positions(self) -> np.ndarray:
-        """Get the index of every point along every dimension, a row per point."""
-        if not self.scan.dimensions:
-            return np.zeros((1, 0), dtype=int)
-        return np.stack(np.unravel_index(np.arange(self.size), self.scan.shape), axis=1)
-
-    def _axis(self, kind: DimensionKind) -> int | None:
-        """Get the position of the dimension of a kind, `None` without one."""
-        return next(
-            (k for k, d in enumerate(self.scan.dimensions) if d.kind is kind), None
-        )
 
     def chunks(self, workers: int, on_error: OnError) -> list[Chunk]:
         """Cut the points into chunks which share a plan, see the module.
@@ -486,35 +531,21 @@ class _Compiled:
             The chunks in the order of their first point.
         """
         size = _chunk_size(self.size, workers)
-        positions = self._positions()
-        sim_axis = self._axis(DimensionKind.SIMULATIONS)
-        model_axis = self._axis(DimensionKind.MODELS)
+        positions = _positions(self.scan)
         chunks: list[Chunk] = []
         for (s, m), plan in self.plans.items():
-            mask = np.ones(self.size, dtype=bool)
-            if sim_axis is not None:
-                mask &= positions[:, sim_axis] == s
-            if model_axis is not None:
-                mask &= positions[:, model_axis] == m
-            indices = np.flatnonzero(mask)
+            indices = _plan_points(self.scan, positions, s, m)
             for start in range(0, indices.size, size):
                 part = indices[start : start + size]
-                values: dict[str, np.ndarray] = {}
-                timed: dict[float, dict[str, np.ndarray]] = {}
-                for i in range(len(self.scan.dimensions)):
-                    at = self.at_times[(s, m)][i]
-                    for target, vector in self.vectors[m][i].items():
-                        point_values = vector[positions[part, i]]
-                        if at is None:
-                            values[target] = point_values
-                        else:
-                            timed.setdefault(at, {})[target] = point_values
+                values, timed = _values_of(
+                    self.scan, positions, self.vectors[m], self.at_times[(s, m)], part
+                )
                 chunks.append(
                     Chunk(
                         indices=part,
                         plan=plan,
                         model=m,
-                        selections=self.selections,
+                        graph=self.graph,
                         values=values,
                         timed=timed,
                         time=self.grid if self.interpolate else None,
@@ -556,33 +587,41 @@ class _Compiled:
         changes it, unless a selection of the same name is a variable.
         """
         n, shape = self.size, self.scan.shape
+        names = self.graph.timecourses
+        scalars = self.graph.scalars
         n_rows = (
             self.grid.size
             if self.grid is not None
             else max((r.values.shape[1] for r in results), default=0)
         )
-        cube = np.full((len(self.selections), n, n_rows), np.nan)
+        cube = np.full((1 + len(names), n, n_rows), np.nan)
+        table = np.full((len(scalars), n), np.nan)
         status = np.zeros(n, dtype=np.int8)
         errors: list[tuple[int, str]] = []
         for result in results:
             rows = result.values.shape[1]
             cube[:, result.indices, :rows] = np.moveaxis(result.values, 2, 0)
+            table[:, result.indices] = result.scalars.T
             status[result.indices] = result.status
             errors.extend(result.errors)
 
         first = self.models[0]
         dims = list(self.scan.dims)
         tdim = TIME if self.grid is not None else POINT
-        units: dict[str, str] = {TIME: first.uinfo.get(TIME, "") or ""}
+        units: dict[str, str] = {}
         data_vars: dict[str, Any] = {}
-        for name, j in _columns(self.selections).items():
-            values = cube[j].reshape(*shape, n_rows)
-            if name == TIME:
-                if self.grid is None:
-                    data_vars[TIME] = ([*dims, POINT], values)
-                continue
-            data_vars[name] = ([*dims, tdim], values)
-            units[name] = first.uinfo.get(name, "") or ""
+        # a run without observables keeps the time also without a selection
+        timed = bool(names) or not self.observables
+        if timed:
+            units[TIME] = first.uinfo.get(TIME, "") or ""
+            if self.grid is None:
+                data_vars[TIME] = ([*dims, POINT], cube[0].reshape(*shape, n_rows))
+        for j, name in enumerate(names, 1):
+            data_vars[name] = ([*dims, tdim], cube[j].reshape(*shape, n_rows))
+            units[name] = self.graph.units[name]
+        for j, name in enumerate(scalars):
+            data_vars[name] = (dims, table[j].reshape(shape))
+            units[name] = self.graph.units[name]
         coords: dict[str, Any] = {}
         for dimension in self.scan.dimensions:
             coords[dimension.id] = np.array(dimension.labels)
@@ -599,7 +638,7 @@ class _Compiled:
                 else:
                     coords[target] = (dimension.id, np.array(values))
                     units[target] = first.uinfo.get(target, "") or ""
-        if self.grid is not None:
+        if self.grid is not None and timed:
             coords[TIME] = self.grid
         attrs: dict[str, Any] = {
             "dims": dims,
@@ -607,6 +646,8 @@ class _Compiled:
             "scan": self.scan.to_dict(),
             "integrator_settings": _settings(settings),
         }
+        if self.observables:
+            attrs["observables"] = [o.to_dict() for o in self.observables]
         if on_error == "flag":
             data_vars[STATUS] = (dims, status.reshape(shape))
             units[STATUS] = ""
@@ -624,6 +665,51 @@ class _Compiled:
                     attrs["errors"][0],
                 )
         return ScanResult(xr.Dataset(data_vars, coords=coords, attrs=attrs))
+
+
+def _positions(scan: Scan) -> np.ndarray:
+    """Get the index of every point along every dimension, a row per point."""
+    if not scan.dimensions:
+        return np.zeros((1, 0), dtype=int)
+    return np.stack(np.unravel_index(np.arange(scan.size), scan.shape), axis=1)
+
+
+def _axis(scan: Scan, kind: DimensionKind) -> int | None:
+    """Get the position of the dimension of a kind, `None` without one."""
+    return next((k for k, d in enumerate(scan.dimensions) if d.kind is kind), None)
+
+
+def _plan_points(scan: Scan, positions: np.ndarray, s: int, m: int) -> np.ndarray:
+    """Get the flat indices of the points of a simulation and a model."""
+    mask = np.ones(scan.size, dtype=bool)
+    sim_axis = _axis(scan, DimensionKind.SIMULATIONS)
+    model_axis = _axis(scan, DimensionKind.MODELS)
+    if sim_axis is not None:
+        mask &= positions[:, sim_axis] == s
+    if model_axis is not None:
+        mask &= positions[:, model_axis] == m
+    return np.flatnonzero(mask)
+
+
+def _values_of(
+    scan: Scan,
+    positions: np.ndarray,
+    vectors: Sequence[Mapping[str, np.ndarray]],
+    at_times: Sequence[float | None],
+    part: np.ndarray,
+) -> tuple[dict[str, np.ndarray], dict[float, dict[str, np.ndarray]]]:
+    """Get the values of points: target -> values, and time -> target -> values."""
+    values: dict[str, np.ndarray] = {}
+    timed: dict[float, dict[str, np.ndarray]] = {}
+    for i in range(len(scan.dimensions)):
+        at = at_times[i]
+        for target, vector in vectors[i].items():
+            point_values = vector[positions[part, i]]
+            if at is None:
+                values[target] = point_values
+            else:
+                timed.setdefault(at, {})[target] = point_values
+    return values, timed
 
 
 def _chunk_size(n_points: int, workers: int) -> int:
@@ -645,11 +731,6 @@ def _chunk_size(n_points: int, workers: int) -> int:
 def _first(failed: ScanPointError | None, err: ScanPointError) -> ScanPointError:
     """Get the error of the point which is first in the order of the scan."""
     return err if failed is None or err.index < failed.index else failed
-
-
-def _columns(selections: Sequence[str]) -> dict[str, int]:
-    """Get the column of every name, a name which appears twice is its first column."""
-    return {name: selections.index(name) for name in dict.fromkeys(selections)}
 
 
 def _settings(settings: Mapping[str, Any]) -> dict[str, Any]:
