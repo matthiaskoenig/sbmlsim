@@ -67,6 +67,7 @@ def test_the_fisher_information_of_the_example(
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
 
     assert fim.k == len(problem.pids)
+    assert fim.targets == [p.target_id for p in problem.parameters]
     assert fim.matrix.shape == (fim.k, fim.k)
     # `J' J` is symmetric and positive semi-definite
     assert np.allclose(fim.matrix, fim.matrix.T)
