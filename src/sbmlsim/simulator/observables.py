@@ -35,7 +35,7 @@ from sbmlsim.simulation.observables import (
     Observable,
     ObservableKind,
 )
-from sbmlsim.simulator.formula import evaluate_reduced, reduce_formula
+from sbmlsim.simulator.formula import compile_formula, evaluate_reduced, reduce_formula
 from sbmlsim.simulator.pk import PKNode, compile_pk, evaluate_pk
 from sbmlsim.simulator.plan import Plan
 from sbmlsim.units import Quantity, ureg
@@ -52,8 +52,10 @@ class FormulaNode:
         id: the id of the observable.
         formula: the formula.
         kind: a timecourse or a value per simulation.
-        factor: the factor into the unit of the observable, `1` without a
-            conversion.
+        factor: the factor from the natural unit of the formula into its
+            declared unit, `1` without a conversion; `evaluate` applies it to
+            the kept outputs only, the observables which read the formula see
+            its natural unit.
     """
 
     id: str
@@ -114,7 +116,9 @@ class ObservableGraph:
             `time`.
         kinds: the kind of every symbol and output: `time` and the selections
             are timecourses.
-        units: the unit of every symbol and output.
+        units: the unit of every symbol and output, for a formula the declared
+            unit, to which `evaluate` converts the kept values; inside of the
+            graph every observable keeps its natural unit.
         keep: the outputs of the result, in order.
         outputs: every output: the ids of the formulas and customs and the
             parameters of the PK observables; the selections without
@@ -179,16 +183,24 @@ class ObservableGraph:
                         f"The PK observable '{node.id}' failed: "
                         f"{type(err).__name__}: {err}",
                     ) from err
-        return {
-            key: values[key][:, 0] if self.kinds[key] is SCALAR else values[key]
-            for key in self.keep
+        factors = {
+            node.id: node.factor
+            for node in self.nodes
+            if isinstance(node, FormulaNode) and node.factor != 1.0
         }
+        out: dict[str, np.ndarray] = {}
+        for key in self.keep:
+            value = values[key][:, 0] if self.kinds[key] is SCALAR else values[key]
+            out[key] = value * factors[key] if key in factors else value
+        return out
 
 
 def _formula(
     node: FormulaNode, time: np.ndarray, values: Mapping[str, np.ndarray]
 ) -> np.ndarray:
     """Evaluate a formula; a floating point error gives `inf` or `NaN`.
+
+    The padding of a timecourse is `NaN`, the steady state (`inf`) is kept.
 
     Raises:
         ObservableError: if the formula fails, for every point.
@@ -198,16 +210,17 @@ def _formula(
             value = np.asarray(
                 evaluate_reduced(node.formula, values, time), dtype=float
             )
-            if node.factor != 1.0:
-                value = value * node.factor
+            shape = (time.shape[0], 1) if node.kind is SCALAR else time.shape
+            value = np.broadcast_to(value, shape).copy()
+            if node.kind is TIMECOURSE:
+                value[np.isnan(time)] = np.nan
     except Exception as err:
         raise ObservableError(
             None,
             f"The formula of the observable '{node.id}' failed: "
             f"{type(err).__name__}: {err}",
         ) from err
-    shape = (time.shape[0], 1) if node.kind is SCALAR else time.shape
-    return np.broadcast_to(value, shape).copy()
+    return value
 
 
 def _custom(
@@ -312,8 +325,15 @@ def compile_observables(
             of the model; a symbol which is neither an observable nor a
             selection; a cycle; a time of `at` which is a timecourse; a unit
             which cannot be derived without `unit=` or not be converted into
-            it; a PK observable which does not fit the model (see
+            it; a time of `at` which has not the time unit of the model; a
+            formula which mixes units of one dimension at different scales; a
+            PK observable which does not fit the model (see
             `compile_pk`); or a `keep` which names no output.
+
+    Inside of the graph every observable keeps its natural unit, the derived
+    one; a declared unit converts only the kept outputs. A formula which adds
+    units of one dimension at different scales is refused, but a comparison of
+    mixed scales is not detected.
     """
     uinfo = model.uinfo
     time_unit = uinfo.get(TIME, "") or ""
@@ -338,6 +358,7 @@ def compile_observables(
         )
     kinds: dict[str, ObservableKind] = {TIME: TIMECOURSE}
     units: dict[str, str] = {TIME: time_unit}
+    declared: dict[str, str] = {}
     selections: dict[str, None] = {}
     compiled: dict[str, Node] = {}
     outputs: dict[str, tuple[str, ...]] = {}
@@ -348,8 +369,9 @@ def compile_observables(
                 symbol, name, model, definitions, outputs, kinds, units, selections
             )
         if isinstance(observable, Formula):
-            node, unit = _compile_formula(observable, kinds, units)
-            kinds[name], units[name] = node.kind, unit
+            node, natural, declared_unit = _compile_formula(observable, kinds, units)
+            kinds[name], units[name] = node.kind, natural
+            declared[name] = declared_unit
             outputs[name] = (name,)
         elif isinstance(observable, Custom):
             node = CustomNode(
@@ -382,7 +404,7 @@ def compile_observables(
         nodes=nodes,
         selections=tuple(s for s in selections if s in read),
         kinds=kinds,
-        units=units,
+        units={**units, **declared},
         keep=kept,
         outputs=every,
         doses=tuple(dict.fromkeys(doses)),
@@ -491,16 +513,97 @@ def _derive_unit(formula: str, units: Mapping[str, str]) -> str | None:
     return "dimensionless"
 
 
+def _symbol_quantities(symbols: Sequence[str], units: Mapping[str, str]) -> dict:
+    """Get the quantities of one in the natural units of the symbols."""
+    return {
+        symbol: ureg.Quantity(1.0, units[symbol] or "dimensionless")
+        for symbol in symbols
+    }
+
+
+def _mixes_scales(formula: str, units: Mapping[str, str]) -> bool:
+    """Check whether a formula adds units of one dimension at different scales.
+
+    The formula is evaluated on quantities of one in the natural units of its
+    symbols and on plain ones; pint converts the unit of a sum, so a different
+    magnitude means that the scales differ, e.g. `ng/ml - mg/l`.
+    """
+    symbols = reduce_formula(formula).symbols
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with np.errstate(all="ignore"):
+                quantity = evaluate_reduced(formula, _symbol_quantities(symbols, units))
+                plain = evaluate_reduced(formula, dict.fromkeys(symbols, 1.0))
+        magnitude = quantity.magnitude if isinstance(quantity, Quantity) else quantity
+        return not np.allclose(magnitude, plain, rtol=1e-9, atol=1e-12)
+    except Exception:
+        return False
+
+
+def _time_units(formula: str, units: Mapping[str, str]) -> list[Any]:
+    """Derive the values of the times of the `at` reductions of a formula.
+
+    Returns:
+        The times applied to quantities of one in the natural units of the
+        symbols, in the order of the reductions; empty where pint cannot.
+    """
+    reduced = reduce_formula(formula)
+    scope = _symbol_quantities(reduced.symbols, units)
+    times: list[Any] = []
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with np.errstate(all="ignore"):
+                for reduction in reduced.reductions:
+                    x = compile_formula(reduction.arguments[0])
+                    scope[reduction.symbol] = x.apply([scope[s] for s in x.symbols])
+                    if reduction.function == "at":
+                        when = compile_formula(reduction.arguments[1])
+                        times.append(when.apply([scope[s] for s in when.symbols]))
+    except Exception:
+        return []
+    return times
+
+
+def _check_times(observable: Formula, units: Mapping[str, str]) -> None:
+    """Check that the time of every `at` is a number or in the time unit.
+
+    Raises:
+        ValueError: if a time has another unit than the time of the model.
+    """
+    time_unit = units[TIME] or "dimensionless"
+    for when in _time_units(observable.formula, units):
+        if not isinstance(when, Quantity):
+            continue
+        try:
+            factor = float(ureg.Quantity(1.0, when.units).to(time_unit).magnitude)
+        except Exception:
+            factor = None
+        if factor is None or abs(factor - 1.0) > 1e-9:
+            raise ValueError(
+                f"The time of 'at' in the formula of the observable "
+                f"'{observable.id}' has the unit '{when.units}', not the time unit "
+                f"of the model '{units[TIME]}'; give a number or a time in the "
+                f"time unit of the model."
+            )
+
+
 def _compile_formula(
     observable: Formula,
     kinds: Mapping[str, ObservableKind],
     units: Mapping[str, str],
-) -> tuple[FormulaNode, str]:
-    """Compile a formula: its kind, its unit and the factor into it.
+) -> tuple[FormulaNode, str, str]:
+    """Compile a formula: its kind, its natural and its declared unit and the factor.
+
+    Returns:
+        The node, the natural unit (the one the observables which read it see)
+        and the declared unit (the unit of the output).
 
     Raises:
-        ValueError: if a time of `at` is a timecourse, or the unit cannot be
-            derived without `unit=` or not be converted into it.
+        ValueError: if a time of `at` is a timecourse or has no time unit, the
+            formula mixes scales, or the unit cannot be derived without `unit=`
+            or not be converted into it.
     """
     reduced = reduce_formula(observable.formula)
     for symbol in reduced.time_symbols:
@@ -510,6 +613,13 @@ def _compile_formula(
                 f"'{observable.id}' reads the timecourse '{symbol}'; it is a number "
                 f"or a value per simulation."
             )
+    _check_times(observable, units)
+    if _mixes_scales(observable.formula, units):
+        raise ValueError(
+            f"The formula '{observable.formula}' of the observable '{observable.id}' "
+            f"mixes units of different scale (e.g. ng/ml and mg/l); the values are "
+            f"in the units of their symbols, convert one of them first."
+        )
     kind = (
         SCALAR if all(kinds[s] is SCALAR for s in reduced.outer_symbols) else TIMECOURSE
     )
@@ -521,18 +631,22 @@ def _compile_formula(
                 f"'{observable.id}' cannot be derived, e.g. of a comparison or of "
                 f"piecewise; give it as unit=."
             )
-        return FormulaNode(observable.id, observable.formula, kind, 1.0), derived
-    factor = 1.0
-    if derived is not None:
-        try:
-            factor = float(ureg.Quantity(1.0, derived).to(observable.unit).magnitude)
-        except Exception as err:
-            raise ValueError(
-                f"The formula of the observable '{observable.id}' has the unit "
-                f"'{derived}', which cannot be converted into its unit "
-                f"'{observable.unit}'."
-            ) from err
-    return FormulaNode(observable.id, observable.formula, kind, factor), observable.unit
+        node = FormulaNode(observable.id, observable.formula, kind, 1.0)
+        return node, derived, derived
+    unitless = all(not units[s] for s in reduced.symbols)
+    if derived is None or (derived == "dimensionless" and unitless):
+        node = FormulaNode(observable.id, observable.formula, kind, 1.0)
+        return node, observable.unit, observable.unit
+    try:
+        factor = float(ureg.Quantity(1.0, derived).to(observable.unit).magnitude)
+    except Exception as err:
+        raise ValueError(
+            f"The formula of the observable '{observable.id}' has the unit "
+            f"'{derived}', which cannot be converted into its unit "
+            f"'{observable.unit}'."
+        ) from err
+    node = FormulaNode(observable.id, observable.formula, kind, factor)
+    return node, derived, observable.unit
 
 
 def _compile_pk(

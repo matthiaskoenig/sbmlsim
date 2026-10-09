@@ -249,3 +249,76 @@ def test_a_model_without_units_is_dimensionless() -> None:
     model = Simulator().load(sbml())
     graph = compile_observables([Formula("a", "[A] + 1")], model)
     assert graph.units["a"] == "dimensionless"
+
+
+def test_the_padding_of_a_timecourse_formula_is_nan(
+    pk_model: RoadrunnerSBMLModel,
+) -> None:
+    graph = compile_observables(
+        [Formula("high", "piecewise(1, [C] > 2, 5)", unit="dimensionless")], pk_model
+    )
+    out = graph.evaluate(T, {"[C]": C}, [])
+    assert np.isnan(out["high"][1, 3])
+    assert out["high"][1, 2] == 1.0 and out["high"][0, 3] == 5.0
+
+
+def test_observables_see_the_natural_units_of_the_ones_they_read(
+    pk_model: RoadrunnerSBMLModel,
+) -> None:
+    graph = compile_observables(
+        [
+            Formula("c", "[C]", unit="ng/ml"),
+            Formula("diff", "c - [C]", unit="mg/l"),
+        ],
+        pk_model,
+    )
+    out = graph.evaluate(T, {"[C]": C}, [])
+    np.testing.assert_allclose(out["c"], C * 1000.0)
+    np.testing.assert_allclose(out["diff"], np.where(np.isnan(C), np.nan, 0.0))
+    assert graph.units["c"] == "ng/ml"
+
+
+def test_a_formula_which_mixes_scales_is_refused(pk_model: RoadrunnerSBMLModel) -> None:
+    with pytest.raises(ValueError, match="different scale"):
+        compile_observables(
+            [
+                Custom("small", auc_of_c, "ng/ml", symbols=["[C]"]),
+                Formula("x", "small - [C]"),
+            ],
+            pk_model,
+        )
+
+
+def test_the_time_of_at_has_the_time_unit(pk_model: RoadrunnerSBMLModel) -> None:
+    with pytest.raises(ValueError, match="time unit"):
+        compile_observables([Formula("x", "at([C], max([C]))")], pk_model)
+    graph = compile_observables(
+        [Formula("t0", "1", unit="hr"), Formula("x", "at([C], t0)")], pk_model
+    )
+    assert graph.kinds["x"] is SCALAR
+    with pytest.raises(ValueError, match="'minute'"):
+        compile_observables(
+            [Formula("t0", "1", unit="min"), Formula("x", "at([C], t0)")], pk_model
+        )
+
+
+def test_a_declared_unit_of_a_unitless_formula_is_taken() -> None:
+    model = Simulator().load(sbml())
+    graph = compile_observables(
+        [Formula("a", "[A]", unit="mmol/l"), Formula("t", "24", unit="hr")], model
+    )
+    assert graph.units == {**graph.units, "a": "mmol/l", "t": "hr"}
+    assert all(node.factor == 1.0 for node in graph.nodes)  # ty: ignore[unresolved-attribute]
+
+
+def test_a_real_dimensionless_unit_is_converted(pk_model: RoadrunnerSBMLModel) -> None:
+    with pytest.raises(ValueError, match="cannot be converted"):
+        compile_observables([Formula("r", "[C] / max([C])", unit="mmol/l")], pk_model)
+
+
+def test_a_formula_of_the_wrong_shape_is_an_observable_error(
+    pk_model: RoadrunnerSBMLModel,
+) -> None:
+    graph = compile_observables([Formula("c", "[C]")], pk_model)
+    with pytest.raises(ObservableError):
+        graph.evaluate(T, {"[C]": C[:, :2]}, [])
