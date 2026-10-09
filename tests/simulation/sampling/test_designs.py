@@ -15,6 +15,7 @@ from sbmlsim.simulation.sampling import (
     local,
     random,
 )
+from sbmlsim.simulation.sampling.designs import _iman_conover
 from sbmlsim.simulation.scan import Design
 from sbmlsim.simulator import Simulator
 from tests.simulator.models import sbml, sbml_minutes
@@ -81,6 +82,18 @@ def test_lhs_has_one_point_per_stratum() -> None:
         assert sorted(strata.tolist()) == list(range(50))
 
 
+def test_a_weak_rank_correlation_is_reached() -> None:
+    for design in (random, lhs):
+        dimension = design(
+            {"a": LogNormal(1.0, 0.3), "b": Uniform(0.0, 1.0)},
+            2000,
+            seed=2,
+            correlation=[[1.0, 0.3], [0.3, 1.0]],
+        )
+        rho = stats.spearmanr(dimension.values["a"], dimension.values["b"]).statistic
+        assert rho == pytest.approx(0.3, abs=0.02)
+
+
 def test_a_correlation_is_reached() -> None:
     correlation = [[1.0, 0.7], [0.7, 1.0]]
     for design in (random, lhs):
@@ -91,7 +104,7 @@ def test_a_correlation_is_reached() -> None:
             correlation=correlation,
         )
         rho = stats.spearmanr(dimension.values["a"], dimension.values["b"]).statistic
-        assert rho == pytest.approx(0.7, abs=0.05)
+        assert rho == pytest.approx(0.7, abs=0.02)
     correlated = lhs(
         {"a": Uniform(0.0, 1.0), "b": Uniform(0.0, 1.0)},
         40,
@@ -150,3 +163,39 @@ def test_a_design_runs_in_a_scan() -> None:
         np.asarray(design.values["f"].to("mg").magnitude),
     )
     assert res.ds.attrs["scan"]["dimensions"][0]["design"]["method"] == "random"
+
+
+def test_a_correlated_lhs_with_few_points_never_raises_a_linalg_error() -> None:
+    distributions = {"a": Uniform(0.0, 1.0), "b": Uniform(0.0, 1.0)}
+    correlation = [[1.0, 0.5], [0.5, 1.0]]
+    dimension = lhs(distributions, 4, seed=7, correlation=correlation)
+    assert len(dimension) == 4
+    for seed in range(50):
+        lhs(distributions, 4, seed=seed, correlation=correlation)
+
+
+def test_a_collinear_hypercube_raises_a_value_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def singular(_: object) -> object:
+        raise np.linalg.LinAlgError("singular")
+
+    monkeypatch.setattr(np.linalg, "cholesky", singular)
+    with pytest.raises(ValueError, match="too few"):
+        _iman_conover(
+            np.random.default_rng(0).random((4, 2)),
+            np.eye(2),
+            np.random.default_rng(1),
+        )
+
+
+def test_a_negative_seed_raises_a_value_error() -> None:
+    with pytest.raises(ValueError, match="seed"):
+        random({"a": Uniform(0.0, 1.0)}, 5, seed=-1)
+
+
+def test_the_cheap_arguments_are_checked_before_the_model_is_read() -> None:
+    with pytest.raises(ValueError, match="seed"):
+        random({"k1": LogNormal(cv=0.1)}, 5, seed=-1)
+    with pytest.raises(ValueError, match="'n'"):
+        lhs({"k1": LogNormal(cv=0.1)}, 0, seed=1)

@@ -6,6 +6,7 @@ scan writes into the provenance of its result:
 - `local`: the reference point and every target alone at `1 + delta` and
   `1 - delta` times its reference;
 - `random`: independent draws, with a correlation a Gaussian copula;
+  `correlation` is the Spearman rank correlation of the values
 - `lhs`: a Latin hypercube, with a correlation the rank reordering of Iman
   and Conover, which keeps one point per stratum;
 - `sobol`, `fast`, `morris`: the designs of SALib for the sensitivity
@@ -20,7 +21,7 @@ takes `seed`; `None` draws a seed, which the record keeps.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -35,17 +36,23 @@ from sbmlsim.simulation.scan import Design, Dimension
 from sbmlsim.simulator.simulator import ModelLike
 from sbmlsim.units import Quantity, ureg
 
+MAX_REDRAWS = 100
+"""How often the orders of the scores of a correlated hypercube are drawn again."""
+
 
 def _seed(seed: int | None) -> int:
     """Get the seed of a design; `None` draws one, which the record keeps.
 
     Raises:
         TypeError: if the seed is no integer.
+        ValueError: if the seed is negative.
     """
     if seed is None:
         return int(np.random.SeedSequence().generate_state(1)[0])
     if isinstance(seed, bool) or not isinstance(seed, int | np.integer):
         raise TypeError(f"The seed of a design is an integer, not {seed!r}.")
+    if seed < 0:
+        raise ValueError(f"The seed of a design is not negative, not {seed}.")
     return int(seed)
 
 
@@ -143,7 +150,11 @@ def _record(
 
 
 def _correlation(correlation: ArrayLike | None, d: int) -> np.ndarray | None:
-    """Get the Cholesky factor of a correlation matrix, `None` without one.
+    """Get the Cholesky factor of the normal-score correlation of a rank correlation.
+
+    The asked matrix is the Spearman rank correlation of the values. The
+    rank correlation of normal scores with the correlation `r` is
+    `(6 / pi) arcsin(r / 2)`, so the scores get `2 sin(pi rho / 6)`.
 
     Raises:
         ValueError: if it is no symmetric, positive definite `d x d` matrix with
@@ -161,11 +172,14 @@ def _correlation(correlation: ArrayLike | None, d: int) -> np.ndarray | None:
             f"The correlation of a design is a symmetric {d} x {d} matrix with ones "
             f"on the diagonal, not {matrix.tolist()}."
         )
+    converted = 2.0 * np.sin(np.pi * matrix / 6.0)
+    np.fill_diagonal(converted, 1.0)
     try:
-        return np.linalg.cholesky(matrix)
+        return np.linalg.cholesky(converted)
     except np.linalg.LinAlgError as err:
         raise ValueError(
-            f"The correlation {matrix.tolist()} of a design is not positive definite."
+            f"The correlation {matrix.tolist()} of a design is not positive "
+            f"definite once converted to the correlation of normal scores."
         ) from err
 
 
@@ -180,7 +194,8 @@ def _iman_conover(
     strata of a Latin hypercube, stay.
 
     Raises:
-        ValueError: if the sample has not more points than columns.
+        ValueError: if the sample has not more points than columns, or the
+            scores are collinear in every draw.
     """
     n, d = u.shape
     if d == 1:
@@ -191,8 +206,18 @@ def _iman_conover(
             f"points, it has {n}."
         )
     scores = stats.norm.ppf(np.arange(1, n + 1) / (n + 1))
-    s = np.column_stack([rng.permutation(scores) for _ in range(d)])
-    q = np.linalg.cholesky(np.corrcoef(s, rowvar=False))
+    for _ in range(MAX_REDRAWS):
+        s = np.column_stack([rng.permutation(scores) for _ in range(d)])
+        try:
+            q = np.linalg.cholesky(np.corrcoef(s, rowvar=False))
+            break
+        except np.linalg.LinAlgError:
+            continue
+    else:
+        raise ValueError(
+            f"{n} points are too few for a correlated Latin hypercube of {d} "
+            f"targets: the scores stay collinear after {MAX_REDRAWS} draws."
+        )
     target = s @ np.linalg.inv(q).T @ factor.T
     out = np.empty_like(u)
     for k in range(d):
@@ -251,6 +276,58 @@ def local(
     return Dimension(id, values=values, labels=labels, design=record)
 
 
+def _drawn(
+    method: str,
+    distributions: Mapping[str, Distribution],
+    n: int,
+    seed: int | None,
+    correlation: ArrayLike | None,
+    model: ModelLike | None,
+    simulation: Simulation | None,
+    id: str,
+    draw: Callable[[np.random.Generator, int, int, np.ndarray | None], np.ndarray],
+) -> Dimension:
+    """Get a random design: check the arguments, draw the unit cube, map it.
+
+    The cheap arguments are checked before the references are read, which may
+    load the model.
+
+    Args:
+        method: the name of the design.
+        distributions: target -> its distribution.
+        n: the number of points.
+        seed: the seed, `None` draws one.
+        correlation: the asked rank correlation.
+        model: the model, which a relative distribution needs.
+        simulation: the simulation whose pre-initialization gives the references.
+        id: the id of the dimension.
+        draw: draws the points of the unit cube from the generator, given the
+            number of points, the number of targets and the Cholesky factor.
+
+    Returns:
+        The dimension.
+    """
+    _check(distributions)
+    n = _count(n)
+    d = len(distributions)
+    factor = _correlation(correlation, d)
+    seed = _seed(seed)
+    refs = _resolve(distributions, model, simulation)
+    u = draw(np.random.default_rng(seed), n, d, factor)
+    options = {
+        "n": n,
+        "seed": seed,
+        "correlation": None
+        if correlation is None
+        else np.asarray(correlation, dtype=float).tolist(),
+    }
+    return Dimension(
+        id,
+        values=_values(distributions, refs, u),
+        design=_record(method, distributions, options, refs),
+    )
+
+
 def random(
     distributions: Mapping[str, Distribution],
     n: int,
@@ -265,15 +342,16 @@ def random(
 
     Without a correlation the points of the unit cube are `rng.random((n, d))`;
     with one they are standard normals with the Cholesky factor of the
-    correlation, mapped through the normal CDF (a Gaussian copula), so the
-    rank correlation of the values is the asked one for any marginals.
+    correlation of normal scores which has the asked rank correlation, mapped
+    through the normal CDF (a Gaussian copula), so the Spearman rank
+    correlation of the values is the asked one for any marginals.
 
     Args:
         distributions: target -> its distribution.
         n: the number of points.
-        seed: the seed; `None` draws one, which the record keeps.
-        correlation: the correlation of the targets, in the order of
-            `distributions`.
+        seed: the seed, not negative; `None` draws one, which the record keeps.
+        correlation: the Spearman rank correlation of the values of the
+            targets, in the order of `distributions`.
         model: the model, which a relative distribution needs.
         simulation: the simulation whose pre-initialization gives the references.
         id: the id of the dimension.
@@ -283,29 +361,19 @@ def random(
 
     Raises:
         TypeError: if the distributions or the seed have the wrong type.
-        ValueError: if `n` is no positive integer, the correlation is not
-            valid, or a relative distribution has no model.
+        ValueError: if `n` is no positive integer, the seed is negative, the
+            correlation is not valid, or a relative distribution has no model.
     """
-    n = _count(n)
-    refs = _resolve(distributions, model, simulation)
-    factor = _correlation(correlation, len(distributions))
-    seed = _seed(seed)
-    rng = np.random.default_rng(seed)
-    if factor is None:
-        u = rng.random((n, len(distributions)))
-    else:
-        u = stats.norm.cdf(rng.standard_normal((n, len(distributions))) @ factor.T)
-    options = {
-        "n": n,
-        "seed": seed,
-        "correlation": None
-        if correlation is None
-        else np.asarray(correlation, dtype=float).tolist(),
-    }
-    return Dimension(
-        id,
-        values=_values(distributions, refs, u),
-        design=_record("random", distributions, options, refs),
+
+    def draw(
+        rng: np.random.Generator, n: int, d: int, factor: np.ndarray | None
+    ) -> np.ndarray:
+        if factor is None:
+            return rng.random((n, d))
+        return stats.norm.cdf(rng.standard_normal((n, d)) @ factor.T)
+
+    return _drawn(
+        "random", distributions, n, seed, correlation, model, simulation, id, draw
     )
 
 
@@ -323,15 +391,16 @@ def lhs(
 
     The points of the unit cube are `qmc.LatinHypercube(d, rng=rng).random(n)`,
     one point per stratum of every target; with a correlation the columns are
-    reordered by the method of Iman and Conover, which keeps the strata.
+    reordered by the method of Iman and Conover, which keeps the strata, so
+    the Spearman rank correlation of the values is the asked one.
 
     Args:
         distributions: target -> its distribution.
         n: the number of points, more than the number of targets with a
             correlation.
-        seed: the seed; `None` draws one, which the record keeps.
-        correlation: the correlation of the targets, in the order of
-            `distributions`.
+        seed: the seed, not negative; `None` draws one, which the record keeps.
+        correlation: the Spearman rank correlation of the values of the
+            targets, in the order of `distributions`.
         model: the model, which a relative distribution needs.
         simulation: the simulation whose pre-initialization gives the references.
         id: the id of the dimension.
@@ -343,23 +412,13 @@ def lhs(
         TypeError: if the distributions or the seed have the wrong type.
         ValueError: see `random`, and a correlated hypercube with too few points.
     """
-    n = _count(n)
-    refs = _resolve(distributions, model, simulation)
-    factor = _correlation(correlation, len(distributions))
-    seed = _seed(seed)
-    rng = np.random.default_rng(seed)
-    u = qmc.LatinHypercube(d=len(distributions), rng=rng).random(n=n)
-    if factor is not None:
-        u = _iman_conover(u, factor, rng)
-    options = {
-        "n": n,
-        "seed": seed,
-        "correlation": None
-        if correlation is None
-        else np.asarray(correlation, dtype=float).tolist(),
-    }
-    return Dimension(
-        id,
-        values=_values(distributions, refs, u),
-        design=_record("lhs", distributions, options, refs),
+
+    def draw(
+        rng: np.random.Generator, n: int, d: int, factor: np.ndarray | None
+    ) -> np.ndarray:
+        u = qmc.LatinHypercube(d=d, rng=rng).random(n=n)
+        return u if factor is None else _iman_conover(u, factor, rng)
+
+    return _drawn(
+        "lhs", distributions, n, seed, correlation, model, simulation, id, draw
     )
