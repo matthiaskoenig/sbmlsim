@@ -41,6 +41,7 @@ from .parameters import (
     ParameterType,
     SensitivityParameter,
 )
+from .plots import plot_heatmap, plot_indices, plot_morris
 from .sensitivity_fast import FASTSensitivityAnalysis
 from .sensitivity_local import LocalSensitivityAnalysis
 from .sensitivity_morris import MorrisSensitivityAnalysis
@@ -62,5 +63,8 @@ __all__ = [
     "fast",
     "local",
     "morris",
+    "plot_heatmap",
+    "plot_indices",
+    "plot_morris",
     "sobol",
 ]

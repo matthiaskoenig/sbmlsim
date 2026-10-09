@@ -1,16 +1,21 @@
 """Plotting functionality for sensitivity analysis."""
 
 import warnings
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import xarray as xr
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 
+from sbmlsim.sensitivity.result import PARAMETER, SensitivityResult
 
-def heatmap(
+
+def _heatmap(
     df: pd.DataFrame,
     parameter_labels: dict[str, str] | None = None,
     output_labels: dict[str, str] | None = None,
@@ -219,3 +224,195 @@ def S1_ST_barplot(  # noqa: D103 -- documented below the signature
         plt.savefig(fig_path, dpi=dpi, bbox_inches="tight")
     plt.close(f)
     return f
+
+
+def _selected(
+    data: xr.DataArray, selection: Mapping[str, Any], keep: set[str]
+) -> xr.DataArray:
+    """Select labels and check that only the dimensions of `keep` remain.
+
+    Args:
+        data: the indices.
+        selection: the labels to select, by dimension.
+        keep: the dimensions which the plot draws.
+
+    Returns:
+        The selected data.
+
+    Raises:
+        ValueError: if a dimension outside `keep` has more than one label.
+    """
+    selected = data.sel(selection)
+    for dim in selected.dims:
+        if str(dim) not in keep and selected.sizes[dim] > 1:
+            raise ValueError(
+                f"Choose one label of '{dim}' with {dim}=..., it has "
+                f"{selected.sizes[dim]}."
+            )
+    return selected.squeeze([d for d in selected.dims if str(d) not in keep])
+
+
+def _label(name: str, unit: str | None) -> str:
+    """Get an axis label with the unit if one is known."""
+    return f"{name} [{unit}]" if unit and unit != "dimensionless" else name
+
+
+def plot_heatmap(
+    result: SensitivityResult,
+    index: str,
+    *,
+    observables: Sequence[str] | None = None,
+    cutoff: float | None = 0.1,
+    cluster_rows: bool = True,
+    title: str | None = None,
+    cmap: str = "seismic",
+    vmin: float | None = None,
+    vmax: float | None = None,
+    path: Path | None = None,
+    dpi: int = 300,
+    **selection: Any,
+) -> Figure:
+    """Draw an index of the scalar observables over the parameters.
+
+    Args:
+        result: the sensitivity result.
+        index: the index, e.g. `ST` or `normalized`.
+        observables: the observables, every scalar one with the index by default.
+        cutoff: parameters whose values are all below it are left out.
+        cluster_rows: whether the parameters are clustered.
+        title: the title of the figure.
+        cmap: the color map.
+        vmin: the lower end of the color scale, `-2` for `normalized`, else `0`.
+        vmax: the upper end of the color scale, `2` for `normalized`, else `1`.
+        path: where the figure is saved, if given.
+        dpi: the resolution of the saved figure.
+        **selection: the label of every other dimension, e.g. `dose=0`.
+
+    Returns:
+        The figure.
+
+    Raises:
+        ValueError: if a dimension with several labels is not chosen.
+    """
+    data = _selected(
+        result.index(index, observables), selection, {PARAMETER, "observable"}
+    )
+    df = pd.DataFrame(
+        data.transpose(PARAMETER, "observable").values,
+        index=data[PARAMETER].values,
+        columns=data["observable"].values,
+    )
+    normalized = index == "normalized"
+    low = (-2.0 if normalized else 0.0) if vmin is None else vmin
+    high = (2.0 if normalized else 1.0) if vmax is None else vmax
+    return _heatmap(
+        df=df,
+        cutoff=cutoff,
+        cluster_rows=cluster_rows,
+        title=title,
+        cmap=cmap,
+        vcenter=(low + high) / 2,
+        vmin=low,
+        vmax=high,
+        fig_path=path,
+        dpi=dpi,
+    )
+
+
+def plot_indices(
+    result: SensitivityResult,
+    observable: str,
+    *,
+    path: Path | None = None,
+    **selection: Any,
+) -> Figure:
+    """Draw the S1 and ST indices of an observable with their intervals.
+
+    Args:
+        result: the result of a Sobol or FAST analysis.
+        observable: the observable.
+        path: where the figure is saved, if given.
+        **selection: the label of every other dimension, e.g. `dose=0`.
+
+    Returns:
+        The figure, a pair of bars per parameter.
+
+    Raises:
+        ValueError: if a dimension with several labels is not chosen.
+    """
+    keep = {PARAMETER}
+    values = {
+        key: _selected(result[f"{observable}.{key}"], selection, keep)
+        for key in ("S1", "ST", "S1_conf", "ST_conf")
+        if f"{observable}.{key}" in result
+    }
+    parameters = result.parameters
+    x = np.arange(len(parameters))
+    width = 0.4
+    figure = Figure(
+        figsize=(max(6.0, 0.6 * len(parameters) + 2), 4), layout="constrained"
+    )
+    ax = figure.subplots()
+    for offset, key, color in (
+        (-width / 2, "S1", "tab:blue"),
+        (width / 2, "ST", "black"),
+    ):
+        if key not in values:
+            continue
+        ax.bar(
+            x + offset,
+            values[key].values,
+            width,
+            label=key,
+            color=color,
+            edgecolor="black",
+            yerr=values[f"{key}_conf"].values if f"{key}_conf" in values else None,
+            capsize=4,
+        )
+    ax.set_xticks(x, parameters, rotation=90)
+    ax.set_xlabel("Parameter")
+    ax.set_ylabel(_label("Sensitivity", result.units.get(f"{observable}.ST")))
+    ax.set_title(observable)
+    ax.grid(True, axis="y")
+    ax.legend()
+    if path:
+        figure.savefig(path, dpi=150)
+    return figure
+
+
+def plot_morris(
+    result: SensitivityResult,
+    observable: str,
+    *,
+    path: Path | None = None,
+    **selection: Any,
+) -> Figure:
+    """Draw `mu_star` against `sigma` of an observable, a point per parameter.
+
+    Args:
+        result: the result of a Morris analysis.
+        observable: the observable.
+        path: where the figure is saved, if given.
+        **selection: the label of every other dimension.
+
+    Returns:
+        The figure, every point labelled with its parameter.
+
+    Raises:
+        ValueError: if a dimension with several labels is not chosen.
+    """
+    mu_star = _selected(result[f"{observable}.mu_star"], selection, {PARAMETER})
+    sigma = _selected(result[f"{observable}.sigma"], selection, {PARAMETER})
+    figure = Figure(figsize=(5, 4.5), layout="constrained")
+    ax = figure.subplots()
+    ax.scatter(mu_star.values, sigma.values, color="tab:blue", edgecolor="black")
+    for name, x, y in zip(result.parameters, mu_star.values, sigma.values, strict=True):
+        ax.annotate(name, (x, y), xytext=(4, 4), textcoords="offset points")
+    unit = result.units.get(f"{observable}.mu_star")
+    ax.set_xlabel(_label("mu_star", unit))
+    ax.set_ylabel(_label("sigma", result.units.get(f"{observable}.sigma")))
+    ax.set_title(observable)
+    ax.grid(True)
+    if path:
+        figure.savefig(path, dpi=150)
+    return figure

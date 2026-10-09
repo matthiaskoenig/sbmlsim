@@ -18,7 +18,7 @@ from rich.progress import track
 from sbmlsim.console import console
 from sbmlsim.parallel import process_context
 from sbmlsim.sensitivity.parameters import SensitivityParameter
-from sbmlsim.sensitivity.plots import heatmap
+from sbmlsim.sensitivity.plots import _heatmap
 
 
 @dataclass
@@ -466,7 +466,7 @@ class SensitivityAnalysis:
         **kwargs,
     ) -> None:
         df = self.sensitivity_df(group_id=group_id, key=sensitivity_key)
-        heatmap(
+        _heatmap(
             df=df,
             parameter_labels={p.uid: f"{p.uid}: {p.name}" for p in self.parameters},
             output_labels={q.uid: q.name for q in self.outputs},
