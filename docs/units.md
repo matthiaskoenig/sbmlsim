@@ -27,7 +27,7 @@ print(uinfo["e__A"])  # amount of the species
 print(uinfo["[e__A]"])  # concentration of the species
 ```
 
-A unit of a model is the expression of its unit definition in the units of pint, with the prefixes and names pint knows, e.g. `mmol/min` for a millimole per minute; the ids of the unit definitions of a model are not defined in the registry, so two models which define one id differently keep their own units. A unit whose factor is no prefix, e.g. the `133.322 N/m^2` of a millimeter of mercury, is defined in the registry under its id, or under `<id>_<n>` if another model defines the id differently. Every `RoadrunnerSBMLModel` and every `SimulatorSerial` carry the units of their model as `uinfo`.
+A unit of a model is the expression of its unit definition in the units of pint, with the prefixes and names pint knows, e.g. `mmol/min` for a millimole per minute; the ids of the unit definitions of a model are not defined in the registry, so two models which define one id differently keep their own units. A unit whose factor is no prefix, e.g. the `133.322 N/m^2` of a millimeter of mercury, is defined in the registry under its id, or under `<id>_<n>` if another model defines the id differently. Every `RoadrunnerSBMLModel` carries the units of its model as `uinfo`, and every `ScanResult` the units of its variables and coordinates as `units`.
 
 ## Changes with units
 
@@ -36,11 +36,11 @@ The values of a `Simulation`, its `Change`s and the `Dimension`s of a scan are q
 ```python
 import numpy as np
 
-from sbmlsim.simulation import Dimension, ScanSim, Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.simulator import Simulator
 
-simulator = SimulatorSerial(model=DEMO_SBML)
-scan = ScanSim(
+simulator = Simulator()
+scan = Scan(
     simulation=Simulation(
         end=10,
         steps=100,
@@ -54,24 +54,24 @@ scan = ScanSim(
         },
     ),
     dimensions=[
-        Dimension("dim1", changes={"[e__A]": Q(np.linspace(5, 15, num=5), "mM")}),
+        Dimension("dim1", values={"[e__A]": Q(np.linspace(5, 15, num=5), "mM")}),
     ],
 )
-xres = simulator.run_scan(scan)
-print(xres["[e__A]"].values[0])
+res = simulator.run(DEMO_SBML, scan)
+print(res["[e__A]"].values[:, 0])
 ```
 
 A change with a unit which cannot be converted into the unit of the model raises a `ValueError` which names the target and both units, which is the point: a dose in `mg` for a parameter in `mmole` is a mistake the units catch. The times of a simulation are converted the same way, from its `time_unit` into the time unit of the model, see [Simulations](simulation.md#units-and-times).
 
 ## Results with units
 
-The result of a simulation knows the units of its variables, so reductions return quantities:
+The result of a simulation knows the units of its variables, so its values and their statistics are quantities:
 
 ```python
-print(xres.uinfo["[e__A]"])
-mean = xres.dim_mean("[e__A]")
+print(res.units["[e__A]"])
+mean = res.summary("dim1", statistics=["mean"]).quantity("[e__A]")
 print(mean.units)
-print(mean.to("mole/litre").magnitude[:3])
+print(mean.to("mole/litre").magnitude[0, :3])
 ```
 
 Data in a `Data` object or a `DataSet` are converted into requested units the same way, see [Data](data.md); the axes of a plot declare their unit and the curves are converted to it, see [Plots and reports](plotting.md).

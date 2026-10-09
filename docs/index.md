@@ -9,7 +9,7 @@
 
 SBML is the exchange format for computational models in systems biology ([Keating *et al.* 2020](references.md#standards)) and libroadrunner is a fast simulator for it ([Welsh *et al.* 2023](references.md#simulation)). Simulating a model is a few lines with roadrunner; a simulation *experiment* is more: the model comes with changes of parameters and initial conditions, doses are given at times, parameters are scanned over ranges, the results are compared to experimental data in the units of the model, plotted and reported, and all of that has to be reproducible.
 
-`sbmlsim` is the layer above the simulator which describes these experiments. A `Simulation` is a simulation with its changes before the initialization and at times, e.g. the doses of a dosing protocol, a `ScanSim` runs a simulation over the dimensions of parameter changes, and a `SimulationExperiment` collects models, datasets, simulations, tasks, data and figures into one python object which is executed and reported by an `ExperimentRunner`. Results are `XResult` objects, labeled N-dimensional arrays with units, so the mean over a scan dimension or the conversion to the units of a dataset is one call.
+`sbmlsim` is the layer above the simulator which describes these experiments. A `Simulation` is a simulation with its changes before the initialization and at times, e.g. the doses of a dosing protocol, a `Scan` runs a simulation over dimensions of values, simulations and models, serially or in a pool of processes, and a `SimulationExperiment` collects models, datasets, simulations, tasks, data and figures into one python object which is executed and reported by an `ExperimentRunner`. Results are `ScanResult` objects, labeled N-dimensional arrays with units, so the statistics over a scan dimension or the conversion to the units of a dataset is one call.
 
 Around this core the package collects the tasks which come with simulation experiments: fitting parameters to data, exchanging a fit as a PEtab problem, and analysing the sensitivity of a model to its parameters.
 
@@ -26,7 +26,7 @@ Around this core the package collects the tasks which come with simulation exper
 
 ### Sensitivity and uncertainty
 
-- **[Parameter scans](scans.md)** - `ScanSim` runs a simulation over the dimensions of parameter changes, the result is an N-dimensional `XResult`.
+- **[Parameter scans](scans.md)** - `Scan` and `Dimension` run a simulation over dimensions of values, simulations and models, serially or in a pool of processes; the result is a `ScanResult` with the changed values as coordinates.
 - **[Sensitivity analysis](sensitivity.md)** - local sensitivities by finite differences and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), with classification and plots.
 
 ### Parameter optimization
@@ -44,17 +44,17 @@ The standards and methods behind the package are cited in [References](reference
 
 ## Quickstart
 
-A model is simulated with a `Simulation`, the result is an `XResult`:
+A model is simulated with a `Simulation`, the result is a `ScanResult`:
 
 ```python
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Change, Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
-simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
+simulator = Simulator()
 simulation = Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)
-xres = simulator.run_simulation(simulation)
-print(xres["X"])
+res = simulator.run(REPRESSILATOR_SBML, simulation)
+print(res["X"])
 ```
 
 Continue with [Installation](installation.md) and the [simulation guide](simulation.md).

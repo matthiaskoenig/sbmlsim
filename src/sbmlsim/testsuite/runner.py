@@ -13,17 +13,16 @@ import logging
 import os
 import time
 from collections.abc import Callable, Iterable, Sequence
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from sbmlsim.model import AbstractModel
+from sbmlsim import parallel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import CaseComparison, compare_case
-from sbmlsim.utils import process_context
 
 logger = logging.getLogger(__name__)
 
@@ -119,17 +118,21 @@ class CaseResult:
         return f"{self.cid}: {self.status.value}{f' ({self.message})' if self.message else ''}"
 
 
-def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> TimecourseResult:
-    """Simulate a case on a simulator which has its model loaded.
+def simulate_case(
+    case: SemanticCase, simulator: Simulator, model: RoadrunnerSBMLModel
+) -> TimecourseResult:
+    """Simulate a case with the selections and the output of its settings.
 
     Args:
-        case: the case to simulate.
-        simulator: simulator with the model of the case.
+        case: the case.
+        simulator: the simulator with the tolerances of the test suite.
+        model: the model of the case, loaded by the simulator.
 
     Returns:
-        The results with a `time` column and one column per selection.
+        The values of the selections of the case at its output times, a `time`
+        column and one column per selection.
     """
-    simulator.set_timecourse_selections(selections=case.selections)
+    model.set_selections(case.selections)
     # the model is initialized with the binding of `resetAll` and not with the
     # method: roadrunner exposes the symbols of a model as attributes of the
     # instance, a model with a species or a parameter named `reset` hides the
@@ -137,7 +140,7 @@ def simulate_case(case: SemanticCase, simulator: SimulatorSerial) -> TimecourseR
     simulation = Simulation(
         start=case.start, end=case.start + case.duration, steps=case.steps
     )
-    return simulator.simulate(simulation)
+    return simulator.simulate(model, simulation)
 
 
 def map_cases[T](
@@ -149,7 +152,9 @@ def map_cases[T](
 
     The cases are independent of each other, so they are spread over a pool of
     processes. A case takes from milliseconds to seconds, so they are handed
-    out in small chunks, which keeps every process busy until the end.
+    out in small chunks, which keeps every process busy until the end. The
+    pool is the kept pool of `sbmlsim.parallel`; a run which is interrupted,
+    e.g. by Ctrl-C, which the workers ignore, stops it.
 
     Args:
         function: a module level function, the processes import it.
@@ -164,10 +169,15 @@ def map_cases[T](
     if workers == 1 or len(cases) <= 1:
         return [function(case) for case in cases]
     chunksize = max(1, min(8, len(cases) // (4 * workers)))
-    with ProcessPoolExecutor(
-        max_workers=min(workers, len(cases)), mp_context=process_context()
-    ) as executor:
+    executor = parallel.pool(workers)
+    try:
         return list(executor.map(function, cases, chunksize=chunksize))
+    except BaseException as err:
+        if not isinstance(err, Exception):
+            # e.g. Ctrl-C: the workers still run their chunks, the pool stops;
+            # after an error of a case the pending chunks are cancelled
+            parallel.stop(executor)
+        raise
 
 
 def run_suite(
@@ -223,19 +233,20 @@ def run_case(case: SemanticCase) -> CaseResult:
             encoding=case.encoding,
         )
 
-    simulator = SimulatorSerial(
+    simulator = Simulator(
+        n_workers=1,
         absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
         relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
         variable_step_size=False,
     )
     try:
-        simulator.set_model(model=AbstractModel(source=case.model_path))
+        model = simulator.load(AbstractModel(source=case.model_path))
     except Exception as err:
         logger.debug("'%s': the model could not be read: %s", case.cid, err)
         return result(CaseStatus.NOT_READ, str(err).strip().splitlines()[0][:300])
 
     try:
-        observed = simulate_case(case, simulator)
+        observed = simulate_case(case, simulator, model)
     except Exception as err:
         logger.debug("'%s': the simulation failed: %s", case.cid, err)
         return result(

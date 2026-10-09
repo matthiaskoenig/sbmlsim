@@ -13,7 +13,7 @@
 Features include
 
 - **timecourse simulations** - concatenated timecourses with changes of parameters and initial conditions, in the units of the model
-- **parameter scans** - simulations over the dimensions of parameter changes, with results as labeled N-dimensional arrays ([xarray](https://xarray.dev))
+- **parameter scans** - simulations over dimensions of values, simulations and models, serially or in a pool of processes, with results as labeled N-dimensional arrays with units ([xarray](https://xarray.dev))
 - **simulation experiments** - models, datasets, simulations, tasks and figures of an experiment as one reproducible python object, with HTML and markdown reports
 - **parameter fitting** - optimization problems from experimental data with local and global optimizers, and PEtab archives
 - **sensitivity analysis** - local sensitivities and the global Morris, Sobol and FAST methods

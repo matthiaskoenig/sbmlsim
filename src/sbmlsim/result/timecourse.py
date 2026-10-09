@@ -2,8 +2,9 @@
 
 The simulator answers every `Simulation` with a `TimecourseResult`: the
 array of the selections which roadrunner returns, with a row per time point and
-a column per selection, and the names of the columns. `XResult.from_timecourses`
-places the results of the simulations of a scan into one `xarray.Dataset`.
+a column per selection, and the names of the columns.
+`sbmlsim.simulator.Simulator.run` places the results of the simulations of a
+scan into a `ScanResult`.
 
 It is deliberately not a data frame. A fit simulates its groups on every
 evaluation of the residuals and a scan simulates every combination of its
@@ -15,6 +16,7 @@ array roadrunner returned.
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import NamedTuple
 
 import numpy as np
 
@@ -113,3 +115,64 @@ class TimecourseResult:
     def time(self) -> np.ndarray:
         """Get the time points, i.e., the column `time`."""
         return self["time"]
+
+
+class GridWeights(NamedTuple):
+    """The linear interpolation from a common time axis onto a grid."""
+
+    lower: np.ndarray
+    upper: np.ndarray
+    weight: np.ndarray
+    valid: np.ndarray
+
+
+def grid_weights(time: np.ndarray, grid: np.ndarray) -> GridWeights:
+    """Get the indices and weights which interpolate `time` onto `grid` once."""
+    finite = np.flatnonzero(np.isfinite(time))
+    t = time[finite]
+    if t.size == 0:
+        zeros = np.zeros(grid.size, dtype=int)
+        return GridWeights(zeros, zeros, np.zeros(grid.size), np.zeros(grid.size, bool))
+    valid = (grid >= t[0]) & (grid <= t[-1])
+    low = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, max(t.size - 2, 0))
+    up = np.minimum(low + 1, t.size - 1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        span = t[up] - t[low]
+        # a zero span is a duplicated final time: the value after the change
+        weight = np.where(span > 0, (grid - t[low]) / span, 1.0)
+        weight = np.where(up > low, weight, 0.0)
+    return GridWeights(finite[low], finite[up], weight, valid)
+
+
+def apply_weights(w: GridWeights, values: np.ndarray) -> np.ndarray:
+    """Interpolate the last axis of values with the weights, `NaN` outside.
+
+    Values without a time point, e.g. of a ragged scan whose points all
+    failed, are `NaN` at every time of the grid.
+    """
+    if values.shape[-1] == 0:
+        return np.full((*values.shape[:-1], w.weight.size), np.nan)
+    out = values[..., w.lower] * (1.0 - w.weight) + values[..., w.upper] * w.weight
+    return np.where(w.valid, out, np.nan)
+
+
+def interpolate(time: np.ndarray, values: np.ndarray, grid: np.ndarray) -> np.ndarray:
+    """Interpolate a timecourse linearly onto a grid of times.
+
+    The time points of a simulation increase and a time of a change appears
+    once, with the state after the change, so the value at the time of a
+    change is the value after it, also at a duplicated time (`grid_weights`).
+    The padding (`NaN`) and the steady state after the end (`inf`) are no
+    time points of the interpolation.
+
+    Args:
+        time: the time points.
+        values: the values, a row per time point, one or two dimensional.
+        grid: the times of the result.
+
+    Returns:
+        The values at the times of the grid, a row per time; `NaN` outside of
+        the finite time points and for a timecourse without any.
+    """
+    weights = grid_weights(np.asarray(time, dtype=float), np.asarray(grid, dtype=float))
+    return np.moveaxis(apply_weights(weights, np.moveaxis(values, 0, -1)), -1, 0)

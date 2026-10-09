@@ -12,6 +12,7 @@ The top level modules: data, units and the shared output.
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
+| [parallel](parallel.md) | the process pools of sbmlsim: the start method, the kept pools and the caches of the workers |
 | [console](console.md) | shared rich console |
 | [display](display.md) | the output of scripts: sections, key/value blocks and links which the terminal opens with a click |
 | [log](log.md) | logging of the package |
@@ -35,9 +36,8 @@ Definition of simulations, see [Simulations](../simulation.md) and [Parameter sc
 | module | description |
 | --- | --- |
 | [simulation.definition](simulation.definition.md) | `Simulation`, `Change` and `SteadyState`, a simulation with its changes, with units |
-| [simulation.scan](simulation.scan.md) | `ScanSim`, a simulation over the dimensions of parameter changes |
+| [simulation.scan](simulation.scan.md) | `Scan` and `Dimension`, a simulation over dimensions of values, simulations and models |
 | [simulation.sensitivity](simulation.sensitivity.md) | `ModelSensitivity`, sensitivity scans of parameters and initial conditions |
-| [simulation.range](simulation.range.md) | `Dimension`, a dimension of a scan |
 
 ## sbmlsim.simulator, sbmlsim.task
 
@@ -45,10 +45,11 @@ Execution of simulations.
 
 | module | description |
 | --- | --- |
-| [simulator.simulation_serial](simulator.simulation_serial.md) | `SimulatorSerial`, running simulations and scans on a roadrunner model |
+| [simulator.simulator](simulator.simulator.md) | `Simulator`, simulations and scans of models, serially or in a pool of processes |
 | [simulator.plan](simulator.plan.md) | `Plan`, a simulation compiled against a model, without units |
 | [simulator.executor](simulator.executor.md) | `execute`, running a plan on roadrunner with the semantics of PEtab v2 |
 | [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation |
+| [simulator.worker](simulator.worker.md) | the chunks of a scan, run on one plan and one model in a worker |
 | [task.task](task.task.md) | `Task`, a simulation applied to a model |
 
 ## sbmlsim.experiment, sbmlsim.result
@@ -60,7 +61,7 @@ Simulation experiments and their results, see [Simulation experiments](../experi
 | [experiment.experiment](experiment.experiment.md) | `SimulationExperiment`, models, datasets, simulations, tasks, data and figures of an experiment |
 | [experiment.runner](experiment.runner.md) | `ExperimentRunner`, executing experiments and writing their results |
 | [result.timecourse](result.timecourse.md) | `TimecourseResult`, the array of the selections of a single timecourse simulation |
-| [result.xresult](result.xresult.md) | `XResult`, simulation results as an xarray dataset with units |
+| [result.scan](result.scan.md) | `ScanResult`, the result of a scan as an xarray dataset with units |
 
 ## sbmlsim.plot, sbmlsim.report
 

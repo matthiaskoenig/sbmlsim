@@ -46,6 +46,7 @@ nav = [
       { "units" = "api/units.md" },
       { "serialization" = "api/serialization.md" },
       { "utils" = "api/utils.md" },
+      { "parallel" = "api/parallel.md" },
       { "console" = "api/console.md" },
       { "display" = "api/display.md" },
       { "log" = "api/log.md" },
@@ -61,13 +62,13 @@ nav = [
       { "definition" = "api/simulation.definition.md" },
       { "scan" = "api/simulation.scan.md" },
       { "sensitivity" = "api/simulation.sensitivity.md" },
-      { "range" = "api/simulation.range.md" },
     ] },
     { "sbmlsim.simulator" = [
-      { "simulation_serial" = "api/simulator.simulation_serial.md" },
+      { "simulator" = "api/simulator.simulator.md" },
       { "plan" = "api/simulator.plan.md" },
       { "executor" = "api/simulator.executor.md" },
       { "formula" = "api/simulator.formula.md" },
+      { "worker" = "api/simulator.worker.md" },
     ] },
     { "sbmlsim.task" = [
       { "task" = "api/task.task.md" },
@@ -78,7 +79,7 @@ nav = [
     ] },
     { "sbmlsim.result" = [
       { "timecourse" = "api/result.timecourse.md" },
-      { "xresult" = "api/result.xresult.md" },
+      { "scan" = "api/result.scan.md" },
     ] },
     { "sbmlsim.plot" = [
       { "plotting" = "api/plot.plotting.md" },

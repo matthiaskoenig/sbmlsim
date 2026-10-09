@@ -5,15 +5,18 @@ Used to benchmark the simulation results.
 """
 
 import logging
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import xarray as xr
 from matplotlib import pyplot as plt
 
 from sbmlsim.console import console
+from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -53,24 +56,66 @@ def within_tolerance(
         return difference <= (abs_tol + rel_tol * np.abs(expected))
 
 
-def get_files_by_extension(base_path: Path, extension: str = ".json") -> dict[str, str]:
+def get_files_by_extension(
+    base_path: Path, extension: str = ".json"
+) -> dict[str, Path]:
     """Get all files by given extension.
 
     Simulation definitions are json files.
+
+    Args:
+        base_path: the directory which is searched, with its subdirectories.
+        extension: the extension of the files.
+
+    Returns:
+        The path of every file by its name without the extension.
     """
-    # get all files with extension in given path
     files = [f for f in base_path.glob("**/*") if f.is_file() and f.suffix == extension]
     offset = len(extension)
-    keys = [f.name[:-offset] for f in files]
+    return {f.name[:-offset]: f for f in files}
 
-    return dict(zip(keys, files, strict=False))  # type: ignore
+
+def to_dataframe(data: pd.DataFrame | xr.Dataset, label: str) -> pd.DataFrame:
+    """Get the table of a result, one row per time point.
+
+    A data frame is returned as it is. A dataset, e.g. `ScanResult.ds` of a
+    simulation or of one point of a scan, is a column per variable and the
+    time as a column; the dimension `_point` of the steps of the integrator,
+    the labels of the dimensions and the changed values are no columns, and
+    the padding of a point of a ragged scan, the rows without a time, is no
+    row.
+
+    Args:
+        data: the result.
+        label: the name of the result in the messages.
+
+    Returns:
+        The table.
+
+    Raises:
+        ValueError: if the dataset has a dimension of a scan.
+    """
+    if isinstance(data, pd.DataFrame):
+        return data
+    dims = [str(dim) for dim in data.dims if dim not in (TIME, POINT)]
+    if dims:
+        raise ValueError(
+            f"The dataset '{label}' has the dimensions {dims} of a scan, compare "
+            f"one point at a time, e.g. ds.isel({dims[0]}=0)."
+        )
+    df = data.reset_coords(drop=True).to_dataframe().reset_index()
+    if POINT in data.dims and TIME in df.columns:
+        df = df[df[TIME].notna()].reset_index(drop=True)
+    return df.drop(columns=[POINT], errors="ignore")
 
 
 class DataSetsComparison:
     """Comparing multiple simulation results.
 
-    Only the subset of identical columns are compared. In the beginning a matching of column
-    names is performed to find the subset of columns which can be compared.
+    A result is a data frame or a dataset, e.g. `ScanResult.ds`, see
+    `to_dataframe`. Only the subset of identical columns are compared. In the
+    beginning a matching of column names is performed to find the subset of
+    columns which can be compared.
 
     The simulations must contain a "time" column with identical time points.
     """
@@ -82,24 +127,33 @@ class DataSetsComparison:
     @timeit
     def __init__(
         self,
-        dfs_dict: dict[str, pd.DataFrame],
+        dfs_dict: Mapping[str, pd.DataFrame | xr.Dataset],
         columns_filter=None,
         time_column: bool = True,
         title: str | None = None,
-        selections: dict[str, str] | None = None,
-        factors: dict[str, float] | None = None,
+        selections: Mapping[str, list[str]] | None = None,
+        factors: Mapping[str, list[float]] | None = None,
     ):
         """Initialize the comparison.
 
-        :param dfs_dict: data dictionary d[simulator_key] = df_result
-        :param columns_filter: function which returns True if in Set or False if should be filtered.
+        :param dfs_dict: data dictionary d[simulator_key] = result, a data
+            frame or a dataset, e.g. `ScanResult.ds`, see `to_dataframe`
+        :param columns_filter: function which returns True if in Set or False
+            if should be filtered.
         :param time_column: flag to check for time column
+        :param title: the title of the report, the labels by default
+        :param selections: label -> the columns of the result which are
+            compared, renamed to the columns of the second result
+        :param factors: label -> the factor of every selected column
         """
         self.columns_filter = columns_filter
+        frames: dict[str, pd.DataFrame] = {
+            label: to_dataframe(data, label) for label, data in dfs_dict.items()
+        }
 
         # check that identical number of rows (mostly timepoints)
         nrow = 0
-        for label, df in dfs_dict.items():
+        for label, df in frames.items():
             if nrow == 0:
                 nrow = len(df)
 
@@ -111,7 +165,7 @@ class DataSetsComparison:
 
         # check that time column exist in data frames
         if time_column:
-            for label, df in dfs_dict.items():
+            for label, df in frames.items():
                 if "time" not in df.columns:
                     raise ValueError(f"'time' column must exist in data ({label})")
 
@@ -124,15 +178,14 @@ class DataSetsComparison:
             colnames = list(selections.values())[1]
             for key, sel_keys in selections.items():
                 console.log("***", key, "***")
-                df = dfs_dict[key]
+                df = frames[key]
                 # get subset
                 df_new = df[sel_keys]
                 # apply factors
                 fs = factors.get(key, [1.0] * len(sel_keys))
                 for k, sel in enumerate(sel_keys):
-                    console.log(f"scaling: '{sel}' * {fs[k]}")  # type: ignore
-                    # df_new[sel] = fs[k] * df_new[sel]
-                    df_new.loc[:, sel] *= fs[k]  # type: ignore
+                    console.log(f"scaling: '{sel}' * {fs[k]}")
+                    df_new.loc[:, sel] *= fs[k]
 
                 # do renaming
                 df_new = df_new.rename(
@@ -140,10 +193,10 @@ class DataSetsComparison:
                 )
                 # store updated df
                 console.log(df_new.head())
-                dfs_dict[key] = df_new
+                frames[key] = df_new
 
         # get the subset of columns to compare
-        columns, self.col_intersection, self.col_union = self._process_columns(dfs_dict)
+        columns, self.col_intersection, self.col_union = self._process_columns(frames)
 
         # filtered columns
         if columns_filter:
@@ -152,7 +205,7 @@ class DataSetsComparison:
         logger.info("Comparing: %s", self.columns)
 
         # get common subset of data
-        self.dfs, self.labels = self._filter_dfs(dfs_dict, self.columns)
+        self.dfs, self.labels = self._filter_dfs(frames, self.columns)
 
         # set title
         self.title = title if title else " | ".join(self.labels)
@@ -242,8 +295,10 @@ class DataSetsComparison:
 
         * `abs_tol` stand for the absolute tolerance for a tests case,
         * `rel_tol` stand for the relative tolerance for a tests case,
-        * `c_ij` stand for the expected correct value for row `i`, column `j`, of the result data set for the tests case
-        * `u_ij` stand for the corresponding value produced by a given software simulation system run by the user
+        * `c_ij` stand for the expected correct value for row `i`, column
+          `j`, of the result data set for the tests case
+        * `u_ij` stand for the corresponding value produced by a given
+          software simulation system run by the user
 
         These absolute and relative tolerances are used in the following way:
         a data point `u_ij` is considered to be within tolerances
@@ -376,18 +431,30 @@ class DataSetsComparison:
         df_diff.drop(labels=col_drops, axis=1, inplace=True)
         df_diff[df_diff < 0] = np.nan
 
-        vmax = max(abs(df_diff.max().max()), abs(df_diff.min().min()))
-        sns.heatmap(
-            data=df_diff.T,
-            cmap="seismic",
-            linewidths=0.2,
-            linecolor="black",
-            vmin=-vmax,
-            vmax=vmax,
-            ax=ax1,
-            # yticklabels=self.diff_tol_bool.columns,
-            cbar=True,
-        )
+        if df_diff.empty:
+            # every value is within the tolerances, there is nothing to map
+            ax1.text(
+                0.5,
+                0.5,
+                "every value within the tolerances",
+                ha="center",
+                va="center",
+                transform=ax1.transAxes,
+            )
+            ax1.set_xticks([])
+            ax1.set_yticks([])
+        else:
+            vmax = max(abs(df_diff.max().max()), abs(df_diff.min().min()))
+            sns.heatmap(
+                data=df_diff.T,
+                cmap="seismic",
+                linewidths=0.2,
+                linecolor="black",
+                vmin=-vmax,
+                vmax=vmax,
+                ax=ax1,
+                cbar=True,
+            )
         ax1.set_title(f"equal = {str(self.is_equal()).upper()}", fontweight="bold")
         ax1.set_ylabel("Tolerance difference", fontweight="bold")
 
@@ -395,9 +462,12 @@ class DataSetsComparison:
             ax2.plot(diff_tol[cid], label=cid)
             ax3.plot(diff_abs[cid], label=cid)
             ax4.plot(diff_rel[cid], label=cid)
+        # a legend only of the columns which differ above the epsilon
+        labelled = len(diff_abs.columns) > 0
 
         ax2.set_ylabel("Tolerance difference", fontweight="bold")
-        ax2.legend(prop={"size": 6})
+        if labelled:
+            ax2.legend(prop={"size": 6})
         ax3.set_ylabel("Absolute difference", fontweight="bold")
         ax4.set_ylabel("Relative difference", fontweight="bold")
 
@@ -405,7 +475,8 @@ class DataSetsComparison:
             ax.set_xlabel("time index", fontweight="bold")
             ax.set_yscale("log")
             ax.set_ylim(bottom=1e-10)
-            ax.legend(prop={"size": 6})
+            if labelled:
+                ax.legend(prop={"size": 6})
 
             if ax.get_ylim()[1] < 10 * DataSetsComparison.tol_abs:
                 ax.set_ylim(top=10 * DataSetsComparison.tol_abs)

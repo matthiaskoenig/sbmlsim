@@ -85,7 +85,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
 
@@ -110,7 +110,7 @@ class DataExperiment(SimulationExperiment):
 
 runner = ExperimentRunner(
     [DataExperiment],
-    simulator=SimulatorSerial(),
+    simulator=Simulator(),
     base_path=Path.cwd(),
     data_path=Path.cwd(),
 )

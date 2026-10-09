@@ -8,24 +8,17 @@ from matplotlib import pyplot as plt
 from sbmlsim import Q
 from sbmlsim.console import console
 from sbmlsim.resources import DEMO_SBML
-from sbmlsim.result import XResult
-from sbmlsim.simulation import Dimension, ScanSim, Simulation
-from sbmlsim.simulator import SimulatorSerial
-from sbmlsim.units import UnitsInformation
+from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.simulator import Simulator
 
 
 def run_demo_example():
     """Run various timecourses."""
-    simulator = SimulatorSerial(DEMO_SBML)
-
-    # units information
-    uinfo = UnitsInformation.from_sbml(DEMO_SBML)
-
     # 1. simple timecourse simulation
     print("*** setting concentrations and amounts ***")
 
     # the quantities are converted into the units of the model
-    tc_scan = ScanSim(
+    tc_scan = Scan(
         simulation=Simulation(
             end=10,
             steps=100,
@@ -41,16 +34,14 @@ def run_demo_example():
         dimensions=[
             Dimension(
                 "dim1",
-                index=np.arange(20),
-                changes={"[e__A]": Q(np.linspace(5, 15, num=20), "mM")},
+                values={"[e__A]": Q(np.linspace(5, 15, num=20), "mM")},
             )
         ],
     )
 
-    xres: XResult = simulator.run_scan(tc_scan)
-    xres.uinfo = uinfo
-
-    console.log(xres)
+    # the result carries the units of the model, `res.units`
+    res = Simulator().run(DEMO_SBML, tc_scan)
+    console.log(res)
 
     # create figure
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(nrows=1, ncols=4, figsize=(20, 5))
@@ -69,12 +60,16 @@ def run_demo_example():
         xunit = ax_units["xunit"]
         yunit = ax_units["yunit"]
 
-        for key in ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]:
-            ax.plot(
-                Q(xres["time"].values, xres.uinfo["time"]).to(xunit).m,
-                Q(xres[key].values, xres.uinfo[key]).to(yunit).m,
-                label=f"{key} [{yunit}]",
+        keys = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
+        for k, key in enumerate(keys):
+            # the values are (dim1, time), one line per point of the scan
+            lines = ax.plot(
+                res.quantity("time").to(xunit).m,
+                res.quantity(key).to(yunit).m.T,
+                color=f"C{k}",
             )
+            # the lines of a variable share its color and its entry of the legend
+            lines[0].set_label(f"{key} [{yunit}]")
         ax.legend()
         ax.set_xlabel(f"time [{xunit}]")
         ax.set_ylabel(f"concentration [{yunit}]")

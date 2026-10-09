@@ -6,20 +6,23 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 
-from sbmlsim.data import Data
+from sbmlsim.data import Data, DataSet
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import model_key
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
+from sbmlsim.plot.padding import first_curve, without_padding
 from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.result import ScanResult
+from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
-from sbmlsim.units import Quantity
+from sbmlsim.units import Quantity, _create_registry
 
 
 class FitMappingExperiment(SimulationExperiment):
@@ -54,7 +57,7 @@ def _runner(experiment_class: type[SimulationExperiment]) -> ExperimentRunner:
     """Get a runner of a single experiment class."""
     return ExperimentRunner(
         experiment_classes=[experiment_class],
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
     )
@@ -74,7 +77,7 @@ def test_the_selections_cover_the_fit_mappings() -> None:
     assert "[Y]" in experiment._selections_of_model("m")
     experiment.run(runner.simulator, reduced_selections=True)
 
-    variables = set(experiment.results["task"].xds.data_vars)
+    variables = set(experiment.results["task"].ds.data_vars)
     assert {"[X]", "[Y]"} <= variables
     # and the reduction still happens, i.e. not everything is selected
     assert "[Z]" not in variables
@@ -130,7 +133,7 @@ def _runner_of(*classes: type[SimulationExperiment]) -> ExperimentRunner:
     """Get a runner of several experiment classes."""
     return ExperimentRunner(
         experiment_classes=list(classes),
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
     )
@@ -188,7 +191,7 @@ def test_the_figures_are_not_created_when_nothing_uses_them() -> None:
 
     assert experiment._mpl_figures == {}
     # the simulation still ran
-    assert np.asarray(experiment.results["task"].xds["[X]"]).size > 0
+    assert np.asarray(experiment.results["task"].ds["[X]"]).size > 0
 
 
 def test_the_figures_are_created_for_the_output(tmp_path: Path) -> None:
@@ -198,6 +201,149 @@ def test_the_figures_are_created_for_the_output(tmp_path: Path) -> None:
     experiment.run(runner.simulator, output_path=tmp_path)
 
     assert (tmp_path / f"{experiment.sid}.json").exists()
+
+
+class ScanExperiment(SimulationExperiment):
+    """An experiment of a scan of the initial amount of X."""
+
+    def models(self) -> dict:
+        return {"m": AbstractModel(source=REPRESSILATOR_SBML)}
+
+    def simulations(self) -> dict:
+        return {
+            "scan": Scan(
+                Simulation(end=10, steps=10),
+                [Dimension("d", values={"X": np.array([1.0, 2.0, 3.0])})],
+            )
+        }
+
+    def tasks(self) -> dict:
+        return {"task": Task(model="m", simulation="scan")}
+
+    def data(self) -> dict:
+        return {"Y": Data(index="[Y]", task="task")}
+
+
+def test_the_data_of_a_scan_has_the_time_last() -> None:
+    """A Data of a task is the variable of the result, the time last.
+
+    A changed target which is no selection is a coordinate over its
+    dimension.
+    """
+    runner = _runner(ScanExperiment)
+    experiment = runner.experiments["ScanExperiment"]
+    experiment.run(runner.simulator)
+
+    y = Data("[Y]", task="task").get_data(experiment)
+    assert np.shape(y.magnitude) == (3, 11)
+    assert str(y.units) == "dimensionless"
+    time = Data("time", task="task").get_data(experiment, to_units="second")
+    np.testing.assert_allclose(time.magnitude, np.linspace(0, 10, 11))
+    x = Data("X", task="task").get_data(experiment)
+    np.testing.assert_allclose(x.magnitude, [1.0, 2.0, 3.0])
+
+
+class RegistryExperiment(FitMappingExperiment):
+    """An experiment whose data combines a task and a dataset."""
+
+    def datasets(self) -> dict:
+        df = pd.DataFrame({"time": [0.0, 10.0, 20.0], "X": [1.0, 4.0, 2.0]})
+        return {
+            "ds": DataSet.from_df(
+                df, udict={"time": "second", "X": "dimensionless"}, ureg=self.ureg
+            )
+        }
+
+
+def test_the_data_of_a_task_is_in_the_registry_of_the_experiment() -> None:
+    """A runner with its own registry combines task data with dataset data."""
+    # a registry with the definitions of the package, but another one
+    ureg = _create_registry()
+    runner = ExperimentRunner(
+        experiment_classes=[RegistryExperiment],
+        simulator=Simulator(),
+        base_path=Path("."),
+        data_path=Path("."),
+        ureg=ureg,
+    )
+    experiment = runner.experiments["RegistryExperiment"]
+    experiment.run(runner.simulator)
+
+    ratio = Data(
+        "ratio",
+        function="x / max(d)",
+        variables={"x": Data("[X]", task="task"), "d": Data("X", dataset="ds")},
+    ).get_data(experiment)
+    x = Data("[X]", task="task").get_data(experiment)
+    assert x._REGISTRY is ureg
+    np.testing.assert_allclose(ratio.magnitude, x.magnitude / 4.0)
+
+
+class RaggedScanExperiment(ScanExperiment):
+    """The scan with the steps of the integrator, a ragged result."""
+
+    def simulations(self) -> dict:
+        return {
+            "scan": Scan(
+                Simulation(end=10),
+                [Dimension("d", values={"X": np.array([1.0, 2.0, 30.0])})],
+            )
+        }
+
+
+def test_the_data_of_a_ragged_scan_has_its_points_last() -> None:
+    """A Data of a ragged result is over `(*dims, _point)`, padded with NaN.
+
+    A curve draws the first point of the scan without its padding.
+    """
+    runner = _runner(RaggedScanExperiment)
+    experiment = runner.experiments["RaggedScanExperiment"]
+    experiment.run(runner.simulator)
+    result = experiment.results["task"]
+    assert result.ragged
+
+    y = Data("[Y]", task="task").get_data(experiment)
+    time = Data("time", task="task").get_data(experiment)
+    assert y.magnitude.shape == time.magnitude.shape == (3, result.ds.sizes["_point"])
+    padded = np.isnan(time.magnitude)
+    assert padded.any()
+    np.testing.assert_array_equal(np.isnan(y.magnitude), padded)
+
+    x, curve = without_padding(first_curve(time.magnitude), first_curve(y.magnitude))
+    native = Simulator().simulate(
+        experiment._models["m"], Simulation(end=10, preinit_changes={"X": 1.0})
+    )
+    np.testing.assert_allclose(x, native.time)
+    np.testing.assert_allclose(curve, native["[Y]"])
+
+
+def test_the_data_of_a_variable_which_was_not_selected_raises() -> None:
+    """A Data whose variable is not in the result names the variables."""
+    runner = _runner(ScanExperiment)
+    experiment = runner.experiments["ScanExperiment"]
+    experiment.run(runner.simulator)
+
+    with pytest.raises(KeyError, match=r"'\[Z\]' is not in the result.*\[Y\]"):
+        Data("[Z]", task="task").get_data(experiment)
+
+
+def test_an_experiment_without_a_simulator_raises() -> None:
+    """A run needs a simulator."""
+    runner = _runner(ScanExperiment)
+    experiment = runner.experiments["ScanExperiment"]
+
+    with pytest.raises(ValueError, match="has no simulator"):
+        experiment.run(None)
+
+
+def test_the_results_are_written_as_netcdf(tmp_path: Path) -> None:
+    """A run which saves its results writes every task as netCDF, no TSV."""
+    runner = _runner(FitMappingExperiment)
+    experiment = runner.experiments["FitMappingExperiment"]
+    experiment.run(runner.simulator, output_path=tmp_path, save_results=True)
+    path = tmp_path / "FitMappingExperiment_task.nc"
+    assert ScanResult.from_netcdf(path)["[X]"].size > 0
+    assert not list(tmp_path.glob("FitMappingExperiment_task.tsv"))
 
 
 # ---------------------------------------------------------------------------

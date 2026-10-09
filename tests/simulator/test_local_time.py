@@ -10,7 +10,7 @@ import pytest
 from sbmlsim import Q
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Change, Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.plan import compile_simulation
 from tests.simulator.models import sbml
@@ -106,8 +106,7 @@ def test_a_pending_delayed_event_fires_at_its_time() -> None:
     """An event which is pending at a change fires its delay after the trigger."""
     # A < 0.5 at t = ln(2) / 0.1 = 6.93, the event is pending at the change at 10
     sim = Simulation(end=40, changes=[Change(10, {"k": 0.1})], steps=40)
-    simulator = SimulatorSerial(model=RoadrunnerSBMLModel(source=sbml(DELAYED)))
-    res = simulator.run_simulation(sim)
+    res = Simulator(n_workers=1).run(RoadrunnerSBMLModel(source=sbml(DELAYED)), sim)
     fired = np.asarray(res["n"], dtype=float) > 0
     assert np.asarray(res["time"], dtype=float)[np.argmax(fired)] == pytest.approx(12.0)
 
@@ -145,7 +144,7 @@ def _late_dose_output(capfd, local: bool) -> str:
     plan = compile_simulation(sim, model.symbols, model.uinfo)
     capfd.readouterr()
     if local:
-        SimulatorSerial(model=model).run_simulation(sim)
+        Simulator(n_workers=1).run(model, sim)
     else:
         model.symbols = replace(model.symbols, time_dependent=True)
         execute(plan, model, ["time"])

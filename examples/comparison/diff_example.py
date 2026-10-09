@@ -1,9 +1,9 @@
 """Comparison of simulation results of the repressilator with JWS Online.
 
 `DataSetsComparison` (`sbmlsim.comparison.diff`) compares the results of a
-simulation between simulators: it matches the columns of the data frames,
-computes the absolute and relative differences on the shared time points and
-reports which of them are above the tolerances.
+simulation between simulators: it matches the columns of the data frames or
+datasets, computes the absolute and relative differences on the shared time
+points and reports which of them are above the tolerances.
 
 The example simulates the six timecourses of `diff/example_*.json` with
 roadrunner and compares them against the results of the same simulations on
@@ -15,18 +15,19 @@ the figure `<example>_diff.png`.
 from pathlib import Path
 
 import pandas as pd
+import xarray as xr
 from matplotlib import pyplot as plt
 
 from sbmlsim.comparison.diff import DataSetsComparison, get_files_by_extension
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
 #: the simulations and the reference results of JWS Online
 DIFF_DIR: Path = Path(__file__).parent / "diff"
 
 
-def simulate_examples() -> dict[str, pd.DataFrame]:
+def simulate_examples() -> dict[str, xr.Dataset]:
     """Simulate the example timecourses with roadrunner.
 
     The tolerances of the integrator are tightened, the comparison is of the
@@ -35,28 +36,24 @@ def simulate_examples() -> dict[str, pd.DataFrame]:
     Returns:
         The results of the simulations, by the key of the example.
     """
-    simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
-    simulator.set_integrator_settings(
-        absolute_tolerance=1e-16,
-        relative_tolerance=1e-13,
-    )
+    simulator = Simulator(absolute_tolerance=1e-16, relative_tolerance=1e-13)
+    model = simulator.load(REPRESSILATOR_SBML)
 
-    dfs: dict[str, pd.DataFrame] = {}
+    results: dict[str, xr.Dataset] = {}
     for key, json_path in sorted(get_files_by_extension(DIFF_DIR).items()):
         simulation = Simulation.from_json(json_path)
-        xres = simulator.run_simulation(simulation)
-        dfs[key] = xres.to_dataframe()
-    return dfs
+        results[key] = simulator.run(model, simulation).ds
+    return results
 
 
-def compare_examples(dfs: dict[str, pd.DataFrame], output_path: Path) -> None:
+def compare_examples(results: dict[str, xr.Dataset], output_path: Path) -> None:
     """Compare the simulations with the results of JWS Online.
 
     Args:
-        dfs: results of the simulations, by the key of the example.
+        results: results of the simulations, by the key of the example.
         output_path: directory the reports and figures are written into.
     """
-    for key, df_sbmlsim in dfs.items():
+    for key, ds_sbmlsim in results.items():
         df_jws = pd.read_csv(DIFF_DIR / "jws" / f"{key}.tsv", sep="\t")
         # JWS Online reports the time of a change twice, before and after it;
         # `sbmlsim` reports the state after the change
@@ -65,7 +62,7 @@ def compare_examples(dfs: dict[str, pd.DataFrame], output_path: Path) -> None:
         ).reset_index(drop=True)
 
         comparison = DataSetsComparison(
-            dfs_dict={"sbmlsim": df_sbmlsim, "jws": df_jws},
+            dfs_dict={"sbmlsim": ds_sbmlsim, "jws": df_jws},
             title=f"{key} (sbmlsim | jws)",
         )
         fig = comparison.report()
@@ -83,7 +80,7 @@ def diff_example(output_path: Path) -> None:
         output_path: directory the reports and figures are written into.
     """
     output_path.mkdir(parents=True, exist_ok=True)
-    compare_examples(dfs=simulate_examples(), output_path=output_path)
+    compare_examples(results=simulate_examples(), output_path=output_path)
 
 
 if __name__ == "__main__":

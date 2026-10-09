@@ -19,12 +19,12 @@ A pull request can only be merged once the four required checks are green:
 
 | check   | workflow      | content                                                              |
 | ------- | ------------- | -------------------------------------------------------------------- |
-| `tests` | `ci-cd.yml`   | the test matrix, linux with python 3.13 and 3.14, macos and windows with 3.14 |
+| `tests` | `ci-cd.yml`   | the test matrix, linux with python 3.13 and 3.14, macos and windows with 3.14, and the plain install |
 | `ruff`  | `lint.yml`    | `ruff check` and `ruff format --check`                                |
 | `ty`    | `lint.yml`    | `ty check`                                                            |
 | `docs`  | `docs.yml`    | the zensical build including the api reference and the agent files    |
 
-`tests` aggregates the test matrix into a single job, so the name of the required check stays the same when the matrix changes.
+`tests` aggregates the test matrix and the job `plain install` into a single job, so the name of the required check stays the same when the matrix changes. `plain install` installs the package without extras, as `pip install sbmlsim` does, and runs `scripts/plain_install.py`, a scan whose result is written as netCDF and read back: the test matrix has the extras of `dev`, which would hide a dependency the package needs and does not declare.
 
 Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync` with the extras of the job. The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
 

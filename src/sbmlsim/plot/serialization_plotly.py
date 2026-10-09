@@ -84,14 +84,14 @@ def _values(data: Any, experiment: Any, unit: str | None) -> np.ndarray | None:
         unit: the unit the values are converted to.
 
     Returns:
-        The values, the first column of a data cube, or `None`.
+        The values of the first point of a scan, or `None`.
     """
     if data is None:
         return None
     quantity = data.get_data(experiment=experiment, to_units=unit)
     if quantity is None:
         return None
-    # a scan has a column per simulation, the first one is plotted, as in the
+    # a scan has the time last, its first point is plotted, as in the
     # matplotlib serializer
     return first_curve(np.asarray(quantity.magnitude))
 

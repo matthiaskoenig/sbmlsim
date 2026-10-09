@@ -158,8 +158,8 @@ class MatplotlibFigureSerializer:
 
                     label = curve.name if curve.name else "_nolegend_"
 
-                    # a scan has a column per simulation, the first one is
-                    # drawn without the padding of a ragged result
+                    # a scan has the time last, its first point is drawn
+                    # without the padding of a ragged result
                     x_data, y_data, xerr_data, yerr_data = without_padding(
                         first_curve(None if x is None else x.magnitude),
                         first_curve(None if y is None else y.magnitude),
@@ -256,7 +256,7 @@ class MatplotlibFigureSerializer:
                     yfrom = area.yfrom.get_data(experiment=experiment, to_units=yunit)
                     yto = area.yto.get_data(experiment=experiment, to_units=yunit)
 
-                    # the first simulation of a scan, without the padding
+                    # the first point of a scan, without the padding
                     x_data, yfrom_data, yto_data = without_padding(
                         first_curve(None if x is None else x.magnitude),
                         first_curve(None if yfrom is None else yfrom.magnitude),

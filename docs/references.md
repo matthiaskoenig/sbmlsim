@@ -189,7 +189,7 @@ The global methods of `sbmlsim.sensitivity` are the implementations of [SALib](h
 
 ## Data structures
 
-**xarray.** Simulation results are stored as labeled N-dimensional arrays, see `sbmlsim.result.xresult`.
+**xarray.** Simulation results are stored as labeled N-dimensional arrays, see `sbmlsim.result.scan`.
 
 > Hoyer S, Hamman J.
 > **xarray: N-D labeled arrays and datasets in Python.**

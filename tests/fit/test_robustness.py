@@ -1,9 +1,8 @@
 """Test that a fit survives runs which fail or run out of time."""
 
-import multiprocessing
-import sys
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import numpy as np
 import pytest
@@ -250,46 +249,38 @@ def test_a_run_of_a_worker_never_raises(
     assert trajectory == []
 
 
+class _Broken:
+    """A problem whose data cannot be resolved."""
+
+    calls: int = 0
+
+    def initialize(self, settings: Any) -> None:
+        _Broken.calls += 1
+        raise ValueError("no data")
+
+
 def test_a_worker_without_a_problem_reports_it() -> None:
-    """A worker which could not initialize reports it for every repeat."""
-    runner._WORKER_PROBLEM = None
-    runner._WORKER_ERROR = "ValueError: no data"
-    run, fit, trajectory = runner._worker_run({"run": 3, "x0": None})
+    """A worker which could not initialize reports it for every repeat, once."""
+    _Broken.calls = 0
+    token = f"broken-{uuid4().hex}"
+    problem, task = _Broken(), {"run": 3, "x0": None}
+    for _ in range(2):
+        run, fit, trajectory = runner._worker_run(token, problem, None, task)  # ty: ignore[invalid-argument-type]
+        assert run == 3
+        assert fit.success is False
+        assert "no data" in fit.message
+        assert trajectory == []
+    # the error of the initialization is kept like an initialized problem
+    assert _Broken.calls == 1
+    assert task == {"run": 3, "x0": None}
 
-    assert run == 3
-    assert fit.success is False
-    assert "no data" in fit.message
-    assert trajectory == []
 
-
-@pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
-def test_the_forkserver_preloads_the_modules_of_the_fit(
-    op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The forkserver imports sbmlsim and the experiments once for all workers."""
-    context = multiprocessing.get_context("forkserver")
-    preloaded: list[list[str]] = []
-    monkeypatch.setattr(runner, "process_context", lambda: context)
-    monkeypatch.setattr(context, "set_forkserver_preload", preloaded.append)
-
-    assert runner._pool_context(op_hctz_pk) is context
+def test_the_fit_preloads_its_modules(op_hctz_pk: OptimizationProblem) -> None:
+    """The forkserver imports the optimization and the experiments once."""
     experiments = {
         mapping_collection.experiment_class.__module__
         for mapping_collection in op_hctz_pk.mapping_collections
     }
-    assert preloaded == [sorted({"sbmlsim.fit.optimization", *experiments})]
-
-
-def test_another_start_method_is_used_as_it_is(
-    op_hctz_pk: OptimizationProblem, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The pool of a fit takes the context of `process_context` without a preload."""
-    context = multiprocessing.get_context("spawn")
-    monkeypatch.setattr(runner, "process_context", lambda: context)
-    monkeypatch.setattr(
-        context,
-        "set_forkserver_preload",
-        lambda modules: pytest.fail("only the forkserver preloads"),
+    assert runner._preload(op_hctz_pk) == sorted(
+        {"sbmlsim.fit.optimization", *experiments}
     )
-
-    assert runner._pool_context(op_hctz_pk) is context

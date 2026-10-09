@@ -16,10 +16,9 @@ import pytest
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976
-from examples.hctz_fitting.helpers import MODEL_PATH
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
 VOID_TAGS = {"img", "br", "hr", "meta", "link", "input", "source", "col"}
 
@@ -41,7 +40,7 @@ def report_and_dir(
         experiment_classes=[Beermann1976],
         data_path=DATA_PATH,
         base_path=HCTZ_PATH,
-        simulator=SimulatorSerial(model=MODEL_PATH),
+        simulator=Simulator(),
     )
     results = runner.run_experiments(
         output_path=output_path,

@@ -30,7 +30,7 @@ from sbmlsim.plot.serialization_matplotlib import (
 )
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
 
@@ -212,7 +212,7 @@ def _render_curve(with_error: bool) -> Axes:
     """Run the experiment and render a single curve."""
     runner = ExperimentRunner(
         experiment_classes=[_CurveExperiment],
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
     )

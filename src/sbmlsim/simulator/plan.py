@@ -119,27 +119,37 @@ class Plan:
     symbols: ModelSymbols = field(repr=False, compare=False)
     steady_state_output: SteadyStatePlan | None = None
 
-    def with_values(self, values: Mapping[str, float]) -> Plan:
+    def with_values(self, values: Mapping[str, float], at: float | None = None) -> Plan:
         """Get the plan with other values of targets.
 
         A value replaces the assignment of its target wherever the plan has
         one, i.e. before the initialization, in the steady state and at every
-        time, and is added
-        to the assignments before the initialization of a target which the
-        plan does not set. This is the rule of `Simulation.with_values` on
-        numbers in the units of the model, which is what a fit sets.
+        time, and is added to the assignments before the initialization of a
+        target which the plan does not set. This is the rule of
+        `Simulation.with_values` on numbers in the units of the model, which
+        is what a fit and a scan set.
+
+        With `at` the values are a change at that time instead: they join the
+        event of that time, where they replace the assignment of a target the
+        event already has, or are a new event. This is a dimension of a scan
+        with `at`.
 
         Args:
             values: target -> value in the unit of the target in the model.
+            at: the time of the change in the time unit of the model, `None`
+                for the rule above.
 
         Returns:
             The new plan, this one is not changed.
 
         Raises:
-            ValueError: if a target is not a target of the model.
+            ValueError: if a target is not a target of the model, or `at` is
+                outside of the simulation.
         """
         if not values:
             return self
+        if at is not None:
+            return self._with_change(values, at)
 
         def replaced(assignments: tuple[Assignment, ...]) -> tuple[Assignment, ...]:
             return tuple(
@@ -170,6 +180,47 @@ class Plan:
             self, preinit=tuple(preinit), events=events, steady_state=steady_state
         )
 
+    def _with_change(self, values: Mapping[str, float], at: float) -> Plan:
+        """Get the plan with the values as a change at a time, see `with_values`."""
+        if not self.start <= at <= self.end:
+            raise ValueError(
+                f"The change of {sorted(values)} at the time {at} is outside of "
+                f"the simulation [{self.start}, {self.end}] in the time unit of "
+                f"the model."
+            )
+        added = tuple(
+            Assignment(target, self.symbols.kind(target), value=float(value))
+            for target, value in values.items()
+        )
+        events: list[PlanEvent] = []
+        merged = False
+        for event in self.events:
+            if event.time == at:
+                kept = tuple(a for a in event.assignments if a.target not in values)
+                events.append(PlanEvent(at, kept + added))
+                merged = True
+            else:
+                events.append(event)
+        if not merged:
+            events.append(PlanEvent(at, added))
+            events.sort(key=lambda event: event.time)
+        return replace(self, events=tuple(events))
+
+    def output_times(self) -> tuple[float, ...] | None:
+        """Get the times of the result of the plan.
+
+        Returns:
+            The output times shifted by `time_shift`, with `inf` last for the
+            steady state after the end; `None` for the steps of the
+            integrator, which differ between the values of a scan.
+        """
+        if self.output is not OutputMode.TIMES:
+            return None
+        times = tuple(t + self.time_shift for t in self.times)
+        if self.steady_state_output is not None:
+            times = (*times, float(np.inf))
+        return times
+
 
 @functools.lru_cache(maxsize=4096)
 def _factor(units: Any, unit: str) -> float:
@@ -177,16 +228,46 @@ def _factor(units: Any, unit: str) -> float:
     return float(units._REGISTRY.Quantity(1.0, units).to(unit).magnitude)
 
 
-def _to(value: Quantity, unit: str) -> float:
+def _to(value: Quantity, unit: str) -> Any:
     """Convert a quantity into a unit, the factor of a pair of units once.
 
     The changes of a model are the same quantities in every simulation of a
     fit, and pint converts slowly. A unit with an offset, e.g. a temperature
-    in degree Celsius, is converted directly.
+    in degree Celsius, is converted directly. A scalar gives a float, an array
+    an array.
     """
+    magnitude = value.magnitude
     if not value._is_multiplicative:
-        return float(value.to(unit).magnitude)
-    return float(value.magnitude) * _factor(value.units, unit)
+        converted = value.to(unit).magnitude
+    else:
+        converted = magnitude * _factor(value.units, unit)
+    return float(converted) if np.ndim(converted) == 0 else np.asarray(converted)
+
+
+def _in_model_unit(target: str, value: Quantity, uinfo: UnitsInformation) -> Any:
+    """Convert a quantity into the unit of a target in the model.
+
+    Returns:
+        The magnitude, a float or an array like the quantity.
+
+    Raises:
+        ValueError: if the target has no unit in the model or the quantity
+            cannot be converted into it.
+    """
+    unit = uinfo.get(target)
+    if unit is None:
+        raise ValueError(
+            f"'{target}' has no unit in the model, its value '{value}' "
+            f"cannot be converted: give a number in the unit the model "
+            f"means."
+        )
+    try:
+        return _to(value, unit or "dimensionless")
+    except (DimensionalityError, UndefinedUnitError) as err:
+        raise ValueError(
+            f"The value '{value}' of '{target}' cannot be converted into "
+            f"the unit '{unit}' of the model: {err}"
+        ) from err
 
 
 class _Converter:
@@ -249,21 +330,9 @@ class _Converter:
             self._check_formula(target, value)
             return Assignment(target, kind, formula=value)
         if isinstance(value, Quantity):
-            unit = self.uinfo.get(target)
-            if unit is None:
-                raise ValueError(
-                    f"'{target}' has no unit in the model, its value '{value}' "
-                    f"cannot be converted: give a number in the unit the model "
-                    f"means."
-                )
-            try:
-                magnitude = _to(value, unit or "dimensionless")
-            except (DimensionalityError, UndefinedUnitError) as err:
-                raise ValueError(
-                    f"The value '{value}' of '{target}' cannot be converted into "
-                    f"the unit '{unit}' of the model: {err}"
-                ) from err
-            return Assignment(target, kind, value=float(magnitude))
+            return Assignment(
+                target, kind, value=float(_in_model_unit(target, value, self.uinfo))
+            )
         return Assignment(target, kind, value=float(value))
 
     def _check_formula(self, target: str, formula: str) -> None:
@@ -392,6 +461,51 @@ def compile_simulation(
         symbols=symbols,
         steady_state_output=steady_output,
     )
+
+
+def target_values(
+    target: str, values: Any, symbols: ModelSymbols, uinfo: UnitsInformation
+) -> np.ndarray:
+    """Get values of a target as numbers in the unit of the target in the model.
+
+    Args:
+        target: the target, `S`, `[S]` or the id of a parameter or a
+            compartment.
+        values: a quantity, or numbers in the unit of the target in the model.
+        symbols: the symbols of the model.
+        uinfo: the units of the model.
+
+    Returns:
+        The values as floats.
+
+    Raises:
+        ValueError: if the target is not a target of the model, or a quantity
+            cannot be converted into the unit of the target.
+    """
+    symbols.kind(target)
+    if isinstance(values, Quantity):
+        values = _in_model_unit(target, values, uinfo)
+    return np.asarray(values, dtype=float)
+
+
+def model_time(
+    simulation: Simulation, time: Time, symbols: ModelSymbols, uinfo: UnitsInformation
+) -> float:
+    """Get a time of a simulation in the time unit of the model.
+
+    Args:
+        simulation: the simulation, a number is in its `time_unit`.
+        time: a number or a quantity.
+        symbols: the symbols of the model.
+        uinfo: the units of the model.
+
+    Returns:
+        The time in the time unit of the model.
+
+    Raises:
+        ValueError: if the time cannot be converted.
+    """
+    return _Converter(simulation, symbols, uinfo).time(time)
 
 
 def _steady_state(

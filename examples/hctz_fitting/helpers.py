@@ -2,12 +2,12 @@
 
 from pathlib import Path
 
-from examples.hctz_fitting import DATA_PATH, HCTZ_PATH, MODEL_PATH
+from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from sbmlsim import log
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.plot import Figure
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
 Figure.legend_fontsize = 10
 
@@ -31,7 +31,7 @@ def run_experiments(
     log.enable_rich_logging()
 
     output_path = Path("results") / output_dir
-    simulator = SimulatorSerial(model=MODEL_PATH)
+    simulator = Simulator()
 
     if not isinstance(experiment_classes, list):
         experiment_classes = [experiment_classes]

@@ -4,26 +4,28 @@ A `Simulation` describes what is simulated: the interval, the changes applied to
 
 ## A simulation
 
-`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose; the simulator returns an `XResult`:
+`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose; `Simulator.run` returns a `ScanResult`:
 
 ```python
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 
-simulator = SimulatorSerial(model=REPRESSILATOR_SBML)
+simulator = Simulator()
+model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
 
-xres = simulator.run_simulation(Simulation(end=100))
-print(xres["time"].values[:5])
-print(xres["[X]"].values[:5])
+res = simulator.run(model, Simulation(end=100))
+print(res["time"].values[:5])
+print(res["[X]"].values[:5])
 ```
 
 The variables are accessed with the selection ids of roadrunner: `X` for the amount of a species and `[X]` for its concentration. The output is set with `times`, exact output times, or with `steps`, an equidistant grid of `steps + 1` points:
 
 ```python
-xres = simulator.run_simulation(Simulation(end=100, steps=100))
-xres = simulator.run_simulation(Simulation(end=100, times=[0, 1, 5, 10, 50, 100]))
-print(xres["time"].values)
+res = simulator.run(model, Simulation(end=100, steps=100))
+res = simulator.run(model, Simulation(end=100, times=[0, 1, 5, 10, 50, 100]))
+print(res["time"].values)
 ```
 
 ## Units and times
@@ -41,10 +43,10 @@ sim = Simulation(time_unit="hr", start=-24, end=Q(30, "min"), steps=50)
 `preinit_changes` are applied to the model before it is initialized: the initial assignments of the model are evaluated with them, so an entity whose initial assignment reads a changed parameter follows the change. A target which is set replaces its own initial assignment:
 
 ```python
-xres = simulator.run_simulation(
-    Simulation(end=100, steps=100, preinit_changes={"X": 10, "Y": 200})
+res = simulator.run(
+    model, Simulation(end=100, steps=100, preinit_changes={"X": 10, "Y": 200})
 )
-print(xres["X"].values[0], xres["Y"].values[0])
+print(res["X"].values[0], res["Y"].values[0])
 ```
 
 ## Changes at times and multiple dosing
@@ -62,7 +64,7 @@ sim = Simulation(
     ],
     steps=150,
 )
-xres = simulator.run_simulation(sim)
+res = simulator.run(model, sim)
 ```
 
 A value of a change is a number, a quantity or a formula. A formula is a string of the math of PEtab over the symbols of the model, in the units of the model, and is evaluated with the state at the time of the change; `S` is the amount of a species, `[S]` its concentration and `time` the time of the change:
@@ -73,7 +75,7 @@ sim = Simulation(
     changes=[Change([20, 40, 60], {"[X]": "[X] + 5"})],
     steps=100,
 )
-xres = simulator.run_simulation(sim)
+res = simulator.run(model, sim)
 ```
 
 A dosing protocol whose data is reported from the last dose starts at a negative time, e.g. eleven doses every twelve hours:
@@ -102,7 +104,7 @@ sim = Simulation(
     changes=[Change(0, {"ps_a": 0.4})],
     times=[0, 50, 100],
 )
-xres = simulator.run_simulation(sim)
+res = simulator.run(model, sim)
 ```
 
 A model which does not reach a steady state by `SteadyState(max_time=...)` raises a `SteadyStateError`.
@@ -120,20 +122,18 @@ A model which does not reach a steady state by `SteadyState(max_time=...)` raise
 
 ## Selections and integrator settings
 
-The variables recorded in a simulation are the selections of the simulator. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded, except a compartment without a size (`NaN`), e.g. a membrane whose area the model does not use; a smaller selection speeds up the simulation:
+The variables recorded in a simulation are the selections of the model. By default all species (amounts and concentrations), parameters, reactions and compartments are recorded, except a compartment without a size (`NaN`), e.g. a membrane whose area the model does not use; a smaller selection speeds up the simulation:
 
 ```python
-simulator.set_timecourse_selections(["time", "[X]", "[Y]", "[Z]"])
-xres = simulator.run_simulation(Simulation(end=10, steps=10))
-print(list(xres.xds.data_vars))
+model.set_selections(["time", "[X]", "[Y]", "[Z]"])
+res = simulator.run(model, Simulation(end=10, steps=10))
+print(res.variables)
 ```
 
-The integrator settings of roadrunner are passed to the simulator or set afterwards. Every setting of the integrator is passed on, a name the integrator does not have is an error, and the settings apply to every model the simulator runs, e.g. the models of the tasks of an experiment:
+The integrator settings of roadrunner are passed to the simulator or set afterwards. Every setting of the integrator is passed on, a name the integrator does not have is an error, and the settings apply to every model the simulator runs, e.g. the models of the tasks of an experiment, also in the workers of a pool:
 
 ```python
-simulator = SimulatorSerial(
-    model=REPRESSILATOR_SBML, absolute_tolerance=1e-10, relative_tolerance=1e-10
-)
+simulator = Simulator(absolute_tolerance=1e-10, relative_tolerance=1e-10)
 simulator.set_integrator_settings(stiff=True)
 ```
 
@@ -147,7 +147,7 @@ simulator.set_integrator_settings(
         amount=1e-10, concentration=1e-10, other=1e-10, ids={"PX": 1e-12}
     )
 )
-print(simulator.model_loaded.tolerances())
+print(simulator.load(model).tolerances())
 ```
 
 CVODE estimates its first step after the start and after every change. A model which does not read the time, i.e. no rule, kinetic law, initial assignment or event of it reads the csymbol `time` or `delay` and no event has a delay, is integrated in local time: every segment between two changes starts at the time 0 of roadrunner and its output is shifted back to the absolute time. The first step is then never smaller than the resolution of the time, the results agree with the ones of the absolute time within the tolerances. A model which reads the time is integrated in absolute time. At a late time a state which starts from 0, e.g. a dose after a reset, can then give a first step which is smaller than the resolution of the time, and CVODE warns "t + h = t on the next step". A small positive `initial_time_step` in the time unit of the model avoids the estimate; a step which is too large fails the error test of the integrator:
@@ -158,16 +158,15 @@ simulator.set_integrator_settings(initial_time_step=1e-10)
 
 ## Results
 
-The result of a simulation is a labeled array (an `xarray.Dataset` wrapped in an `XResult`) with the dimension `_point`, the output points of the simulation, and the time as a variable like every selection. The simulations of a [scan](scans.md) keep their own time points, `XResult.interpolate(times)` puts them on a common grid. An `XResult` is converted to pandas for further processing and stored as netCDF or TSV:
+The result of a simulation is a `ScanResult`, which wraps an `xarray.Dataset` and keeps the units of its variables, see [Parameter scans](scans.md#working-with-scan-results). With `times` or `steps` it has the dimension `time`; with the steps of the integrator it has the dimension `_point` and the time as a variable. `simulator.simulate(model, simulation)` gives the native solution of one simulation, a `TimecourseResult`. A result is converted to pandas for further processing and stored as netCDF with its units:
 
 ```python
 from pathlib import Path
 
-df = xres.to_dataframe()
+df = res.ds.to_dataframe()
 print(df.head())
 
-xres.to_netcdf(Path("repressilator.nc"))
-xres.to_tsv(Path("repressilator.tsv"))
+res.to_netcdf(Path("repressilator.nc"))
 ```
 
 ## Serialization

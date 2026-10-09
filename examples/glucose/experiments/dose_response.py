@@ -12,8 +12,8 @@ from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot.serialization_matplotlib import FigureMPL
-from sbmlsim.result import XResult
-from sbmlsim.simulation import Dimension, ScanSim, Simulation
+from sbmlsim.result import ScanResult
+from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.task import Task
 
 from .plotting import add_data
@@ -68,9 +68,9 @@ GLUCAGON_CLAMP_STUDIES = [
 ]
 INSULIN_SUPPRESSION = 3.4
 
-#: selections of the scan: the glucose and the hormones, which are assignment
-#: rules of the glucose
-SELECTIONS = ["[glc_ext]", "glu", "epi", "ins", "gamma"]
+#: selections of the scan: the hormones, which are assignment rules of the
+#: glucose; the glucose of the scan is a coordinate of the result
+SELECTIONS = ["glu", "epi", "ins", "gamma"]
 
 
 class DoseResponseExperiment(SimulationExperiment):
@@ -109,17 +109,17 @@ class DoseResponseExperiment(SimulationExperiment):
         return {"model1": Path(__file__).parent.parent / "model" / "liver_glucose.xml"}
 
     @override
-    def simulations(self) -> dict[str, ScanSim]:
+    def simulations(self) -> dict[str, Scan]:
         """Scanning dose-response curves of hormones and gamma function.
 
         Vary external glucose concentrations (boundary condition).
         """
-        glc_scan = ScanSim(
+        glc_scan = Scan(
             simulation=Simulation(end=1, steps=1),
             dimensions=[
                 Dimension(
                     "dim1",
-                    changes={"[glc_ext]": Q(np.linspace(2, 20, num=30), "mM")},
+                    values={"[glc_ext]": Q(np.linspace(2, 20, num=30), "mM")},
                 ),
             ],
         )
@@ -146,14 +146,14 @@ class DoseResponseExperiment(SimulationExperiment):
         yunit_gamma = "dimensionless"
 
         # the hormones are assignment rules of the glucose, the first time point
-        # of every simulation of the scan is the dose response
-        xres: XResult = self.results["task_glc_scan"]
-        if xres.uinfo is None:
-            raise ValueError("The results of the glucose scan have no units.")
-        initial = xres.xds.isel(_point=0)
+        # of every simulation of the scan is the dose response; the glucose of
+        # the scan is the coordinate of the dimension
+        res: ScanResult = self.results["task_glc_scan"]
+        initial = res.ds.isel(time=0)
+        columns = ["[glc_ext]", *SELECTIONS]
         dset = DataSet.from_df(
-            pd.DataFrame({sid: initial[sid].values for sid in SELECTIONS}),
-            udict={sid: xres.uinfo[sid] for sid in SELECTIONS},
+            pd.DataFrame({sid: np.asarray(initial[sid].values) for sid in columns}),
+            udict={sid: res.units[sid] for sid in columns},
             ureg=self.ureg,
         )
 

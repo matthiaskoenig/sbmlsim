@@ -49,6 +49,7 @@ To work on the repository itself, with the test and documentation tooling, see [
 | [sbmlutils](https://github.com/matthiaskoenig/sbmlutils), [python-libsbml](https://sbml.org/software/libsbml/) | reading, validating and changing SBML models |
 | [pymetadata](https://github.com/matthiaskoenig/pymetadata) | COMBINE archives of the PEtab problems |
 | [numpy](https://numpy.org), [pandas](https://pandas.pydata.org), [xarray](https://xarray.dev), [scipy](https://scipy.org), [sympy](https://www.sympy.org) | numerics, data and results |
+| [h5netcdf](https://h5netcdf.org), [h5py](https://www.h5py.org) | the netCDF files of the results |
 | [sbmlmath](https://github.com/dweindl/sbmlmath) | the math of SBML as sympy expressions |
 | [pint](https://pint.readthedocs.io), [pydantic](https://docs.pydantic.dev) | units and unit conversions, validated data |
 | [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | parameter fitting problems, the files of the PEtab test suites and global sensitivity analysis |

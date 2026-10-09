@@ -44,6 +44,11 @@ dependencies = [
 	"numpy>=2.5.3",
 	"pandas>=3.0.6",
 	"xarray>=2026.9.0",
+	# the netCDF files of a ScanResult: h5netcdf and h5py, its backend, which
+	# h5netcdf only installs as its extra `h5py`; `sbmlsim.sciml` reads the
+	# weights of the networks with h5py as well
+	"h5netcdf>=1.6.0",
+	"h5py>=3.16.0",
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
 	# the formulas of a model and of a network as sympy expressions;
@@ -69,7 +74,6 @@ dependencies = [
 # packages sbmlsim.sciml imports which are not dependencies of sbmlsim
 sciml = [
 	"petab-sciml>=0.0.3",
-	"h5py>=3.16.0",
 ]
 dev = [
 	"sbmlsim[sciml]",
@@ -115,12 +119,13 @@ testpaths = ["tests"]
 # The semantic cases of the SBML Test Suite are not part of a normal run, they
 # are the conformance of libroadrunner and not of a change: `pytest -m testsuite`
 # runs them, and a release does
-addopts = "-n auto --dist worksteal -m 'not testsuite and not sciml_testsuite and not petab_testsuite and not petab_benchmark'"
+addopts = "-n auto --dist worksteal -m 'not testsuite and not sciml_testsuite and not petab_testsuite and not petab_benchmark and not benchmark'"
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
     "sciml_testsuite: a case of the PEtab SciML test suite, run before a release",
     "petab_testsuite: a case of the PEtab v2 test suite, run before a release",
     "petab_benchmark: a problem of the PEtab benchmark collection, run on demand",
+    "benchmark: the speed of the scan core, run on demand with `-n 0 -s`",
 ]
 
 [tool.ty.environment]

@@ -19,7 +19,7 @@ import pandas as pd
 
 from sbmlsim import __version__
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.report import versions
 from sbmlsim.testsuite.runner import (
@@ -46,14 +46,15 @@ def case_csv(case: SemanticCase) -> tuple[str | None, str]:
         The CSV of the results and an empty message, or `None` and why the case
         could not be read or integrated.
     """
-    simulator = SimulatorSerial(
+    simulator = Simulator(
+        n_workers=1,
         absolute_tolerance=INTEGRATOR_ABSOLUTE_TOLERANCE,
         relative_tolerance=INTEGRATOR_RELATIVE_TOLERANCE,
         variable_step_size=False,
     )
     try:
-        simulator.set_model(model=AbstractModel(source=case.model_path))
-        observed = simulate_case(case, simulator)
+        model = simulator.load(AbstractModel(source=case.model_path))
+        observed = simulate_case(case, simulator, model)
     except Exception as err:
         lines = str(err).strip().splitlines()
         return None, lines[0][:300] if lines else type(err).__name__

@@ -20,7 +20,7 @@ from sbmlsim.plot.plotting import (
     Style,
 )
 from sbmlsim.simulation import Change, Simulation
-from sbmlsim.simulator.simulation_serial import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
 #: model with an initial assignment, the initial amount of `A1` is twice the dose `D`
@@ -115,7 +115,7 @@ def run(output_path: Path) -> None:
 
     runner = ExperimentRunner(
         AssignmentExperiment,
-        simulator=SimulatorSerial(),
+        simulator=Simulator(),
         base_path=base_path,
         data_path=base_path,
     )

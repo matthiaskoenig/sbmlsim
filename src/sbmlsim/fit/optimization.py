@@ -53,7 +53,7 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import Simulation
-from sbmlsim.simulator import SimulatorSerial
+from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import SteadyStateError, execute
 from sbmlsim.simulator.plan import (
     STEADY_STATE,
@@ -995,8 +995,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         self._group_derived_changes()
 
-        # set simulator instance with arguments
-        simulator = SimulatorSerial(
+        # the simulator of the experiments with the integrator settings of the
+        # fit; serial, since the fit runs its plans in a pool of its own and an
+        # experiment initialized in a worker of that pool runs in the worker
+        simulator = Simulator(
+            n_workers=1,
             absolute_tolerance=settings.absolute_tolerance,
             relative_tolerance=settings.relative_tolerance,
             variable_step_size=settings.variable_step_size,
@@ -1350,7 +1353,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             parameters=self.parameters, x=self.xmodel, sid=sid
         )
 
-    def set_simulator(self, simulator: SimulatorSerial | None) -> None:
+    def set_simulator(self, simulator: Simulator | None) -> None:
         """Set the simulator on the runner and the experiments."""
         self.runner_initialized.set_simulator(simulator)
 
@@ -1725,7 +1728,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def _simulate_groups(
         self,
-        simulator: SimulatorSerial,
+        simulator: Simulator,
         quantities: Sequence[Quantity],
         evaluated: set[int],
         x: np.ndarray,
@@ -1927,7 +1930,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def _simulator_and_quantities(
         self, x: np.ndarray
-    ) -> tuple[SimulatorSerial, Sequence[Quantity]]:
+    ) -> tuple[Simulator, Sequence[Quantity]]:
         """Get the simulator and the parameters as quantities.
 
         The parameters are the same for every mapping, the quantities are
@@ -1943,7 +1946,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             ValueError: if the problem is not initialized or if no simulator
                 is set.
         """
-        simulator: SimulatorSerial | None = self.runner_initialized.simulator
+        simulator: Simulator | None = self.runner_initialized.simulator
         if simulator is None:
             raise ValueError(f"No simulator set on OptimizationProblem '{self.opid}'.")
         if not any(self.group_derived):

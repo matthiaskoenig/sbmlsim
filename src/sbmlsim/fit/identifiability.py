@@ -930,14 +930,19 @@ def _scan_task(
     )
 
 
-def _worker_scan(task: dict[str, Any]) -> tuple[int, int, list[ProfilePoint]]:
-    """Run a scan in a worker process of the pool.
+def _worker_scan(
+    token: str,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    task: dict[str, Any],
+) -> tuple[int, int, list[ProfilePoint]]:
+    """Run a scan in a worker process of the pool of the fit.
 
     Returns:
         The index of the parameter, the direction and the points of the scan.
     """
-    problem = runner.worker_problem()
-    return int(task["index"]), int(task["direction"]), _scan_task(problem, task)
+    initialized = runner.worker_problem(token, problem, settings)
+    return int(task["index"]), int(task["direction"]), _scan_task(initialized, task)
 
 
 def _assemble_profile(
@@ -1117,11 +1122,10 @@ def profile_likelihood(
     ) as progress:
         if parallel:
             with runner.worker_pool(problem, settings, n_cores) as pool:
-                async_results = [
-                    pool.apply_async(_worker_scan, (task,)) for task in tasks
-                ]
-                for async_result in async_results:
-                    index, direction, points = async_result.get()
+                for _, outcome in pool.run(_worker_scan, dict(enumerate(tasks))):
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    index, direction, points = outcome
                     scans[index][direction] = points
                     runner._advance(progress)
         else:
