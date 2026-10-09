@@ -14,7 +14,15 @@ import pytest
 DOCS_DIR = Path(__file__).parents[2] / "docs"
 
 #: the pages whose code is run
-PAGES = ["index.md", "simulation.md", "scans.md", "models.md", "units.md", "data.md"]
+PAGES = [
+    "index.md",
+    "simulation.md",
+    "scans.md",
+    "models.md",
+    "units.md",
+    "data.md",
+    "observables.md",
+]
 
 #: a fenced block of python
 BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)

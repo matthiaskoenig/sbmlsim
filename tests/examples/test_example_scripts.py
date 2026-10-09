@@ -31,6 +31,7 @@ ARGUMENTS: dict[str, list[str]] = {
 SCRIPTS = [
     "examples.timecourse",
     "examples.scan",
+    "examples.observables",
     "examples.fit_sampling",
     "examples.units",
     "examples.model_sensitivity",
