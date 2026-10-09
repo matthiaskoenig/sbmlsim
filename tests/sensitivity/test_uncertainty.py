@@ -3,10 +3,11 @@
 import numpy as np
 import pytest
 from matplotlib.figure import Figure
+from matplotlib.patches import Rectangle
 from scipy import stats
 
 from sbmlsim.result.scan import ScanResult
-from sbmlsim.sensitivity.uncertainty import plot_bands, plot_distribution
+from sbmlsim.sensitivity.uncertainty import _unit_label, plot_bands, plot_distribution
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation
 from sbmlsim.simulation.sampling import LogNormal, random
 from sbmlsim.simulator import Simulator
@@ -47,10 +48,20 @@ def test_plot_bands_draws_a_band_per_label(result: ScanResult) -> None:
 def test_plot_distribution_per_label(result: ScanResult) -> None:
     figure = plot_distribution(result, "k", dim="random")
     assert isinstance(figure, Figure)
-    assert len(figure.axes[0].patches) > 0
+    patches = figure.axes[0].patches
+    assert len(patches) > 0
+    # the labels share the bin edges, so every bar has one width
+    widths = [p.get_width() for p in patches if isinstance(p, Rectangle)]
+    assert len(widths) == len(patches) and np.allclose(widths, widths[0])
     box = plot_distribution(result, "k", dim="random", kind="box")
     assert isinstance(box, Figure)
     with pytest.raises(ValueError, match="kind"):
         plot_distribution(result, "k", dim="random", kind="violin")
     with pytest.raises(ValueError, match="time"):
         plot_distribution(result, "rate", dim="random")
+
+
+def test_a_unit_is_written_only_when_there_is_one() -> None:
+    assert _unit_label("k", "1/s") == "k [1/s]"
+    assert _unit_label("k", "") == "k"
+    assert _unit_label("k", None) == "k"

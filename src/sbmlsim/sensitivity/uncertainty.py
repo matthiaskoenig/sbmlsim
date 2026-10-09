@@ -42,6 +42,11 @@ def _labels(data: Any, skip: set[str]) -> list[dict[str, Any]]:
     ]
 
 
+def _unit_label(name: str, unit: str | None) -> str:
+    """Get the label of an axis, with ` [unit]` only for a unit."""
+    return f"{name} [{unit}]" if unit else name
+
+
 def _text(selection: dict[str, Any]) -> str:
     """Get the label of a curve."""
     return ", ".join(f"{d}={v}" for d, v in selection.items())
@@ -103,8 +108,8 @@ def plot_bands(
             linewidth=0,
         )
     units = summary.units
-    axes.set_xlabel(f"time [{units.get(TIME, '')}]")
-    axes.set_ylabel(f"{key} [{units.get(key, '')}]")
+    axes.set_xlabel(_unit_label("time", units.get(TIME)))
+    axes.set_ylabel(_unit_label(key, units.get(key)))
     if len(axes.lines) > 1:
         axes.legend()
     return figure
@@ -127,7 +132,7 @@ def plot_distribution(
         dim: the dimension of the draws.
         kind: `hist` or `box`.
         ax: the axes to draw into, a new figure without.
-        bins: the bins of a histogram.
+        bins: the number of bins of a histogram, shared by every label.
 
     Returns:
         The figure.
@@ -153,13 +158,14 @@ def plot_distribution(
     samples = [s[np.isfinite(s)] for s in samples]
     names = [_text(s) or key for s in selections]
     if kind == "hist":
+        edges = np.histogram_bin_edges(np.concatenate(samples), bins=bins)
         for values, name in zip(samples, names, strict=True):
-            axes.hist(values, bins=bins, alpha=0.5, label=name)
-        axes.set_xlabel(f"{key} [{result.units.get(key, '')}]")
+            axes.hist(values, bins=edges, alpha=0.5, label=name)
+        axes.set_xlabel(_unit_label(key, result.units.get(key)))
         axes.set_ylabel("count")
         if len(samples) > 1:
             axes.legend()
     else:
         axes.boxplot(samples, tick_labels=names)
-        axes.set_ylabel(f"{key} [{result.units.get(key, '')}]")
+        axes.set_ylabel(_unit_label(key, result.units.get(key)))
     return figure
