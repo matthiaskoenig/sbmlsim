@@ -119,3 +119,47 @@ def fails_for_large_k1(time: np.ndarray, values: dict[str, Any]) -> float:
     if values["k1"][0] > 1.0:
         raise ValueError("k1 is too large")
     return 0.0
+
+
+#: a one-compartment model with a first-order absorption from the depot
+#: `PODOSE`: for a dose D at 0, C(t) = D ka / (V (ka - ke)) (exp(-ke t) - exp(-ka t))
+PK_MODEL = """
+model onecomp
+  compartment V = 10
+  species C in V = 0
+  ka = 1; ke = {ke}
+  PODOSE = 0
+  PODOSE' = -ka*PODOSE
+  absorption: -> C; ka*PODOSE
+  elimination: C -> ; ke*C*V
+end
+"""
+
+
+def sbml_pk(ke: float = 0.2) -> str:
+    """Get the one-compartment model in hours, mg and litres."""
+    import libsbml
+
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PK_MODEL.format(ke=ke)))
+    model: libsbml.Model = doc.getModel()
+    for uid, kind, scale, multiplier, exponent in (
+        ("hr", libsbml.UNIT_KIND_SECOND, 0, 3600.0, 1),
+        ("mg", libsbml.UNIT_KIND_GRAM, -3, 1.0, 1),
+        ("per_hr", libsbml.UNIT_KIND_SECOND, 0, 3600.0, -1),
+    ):
+        definition = model.createUnitDefinition()
+        definition.setId(uid)
+        unit = definition.createUnit()
+        unit.setKind(kind)
+        unit.setScale(scale)
+        unit.setMultiplier(multiplier)
+        unit.setExponent(exponent)
+    model.setTimeUnits("hr")
+    model.setSubstanceUnits("mg")
+    model.setExtentUnits("mg")
+    model.setVolumeUnits("litre")
+    model.getCompartment("V").setUnits("litre")
+    model.getSpecies("C").setSubstanceUnits("mg")
+    for pid, uid in (("ka", "per_hr"), ("ke", "per_hr"), ("PODOSE", "mg")):
+        model.getParameter(pid).setUnits(uid)
+    return libsbml.writeSBMLToString(doc)

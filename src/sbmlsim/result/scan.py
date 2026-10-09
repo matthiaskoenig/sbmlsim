@@ -55,6 +55,8 @@ STATISTICS: tuple[str, ...] = ("mean", "sd", "cv", "min", "max")
 NETCDF_ATTRS = "sbmlsim"
 #: the variable of the outcome of every point, reserved like `TIME`
 STATUS = "status"
+#: the variable of the flags of the analysis of a PK observable, `<id>.flags`
+FLAGS = "flags"
 #: the most elements (points of the scan times time points) of the union of the
 #: time points of a ragged result which `ScanResult.summary` interpolates onto
 MAX_UNION_ELEMENTS = 10_000_000
