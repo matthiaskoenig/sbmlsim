@@ -27,7 +27,7 @@ print(
 | --- | --- |
 | `Uniform(lower, upper)`, `Uniform(relative=r)` | uniform in the bounds, or in the reference times `[1 - r, 1 + r]` |
 | `LogUniform(lower, upper)`, `LogUniform(factor=f)` | uniform in log10, or between the reference divided and multiplied by `f` |
-| `Normal(mean, sd)`, `Normal(cv=c)` | normal, around the reference with `sd = c * |reference|` |
+| `Normal(mean, sd)`, `Normal(cv=c)` | normal, around the reference with `sd` is `c` times the magnitude of the reference |
 | `LogNormal(median, cv)`, `LogNormal(cv=c)` | lognormal, around the reference |
 | `Truncated(distribution, lower, upper)` | the distribution restricted to the interval |
 | `Empirical(values)` | the values with equal weights |
@@ -54,10 +54,12 @@ print(local.labels[:3], len(draws), draws.design.method, draws.design.options["s
 | `random(distributions, n, seed=..., correlation=...)` | independent draws, or correlated ones (a Gaussian copula) |
 | `lhs(distributions, n, seed=..., correlation=...)` | a Latin hypercube; with a correlation the rank reordering of Iman and Conover keeps its strata |
 | `sobol(distributions, n, seed=...)`, `fast(...)`, `morris(...)` | the designs of SALib for the global sensitivity analyses |
-| `fit_parameters(fisher, n, seed=...)` | the parameters of a fit from the normal of its Fisher covariance |
-| `profile_parameters(identifiability, n, seed=...)` | every parameter of a fit from its profile likelihood, which follows asymmetric and open confidence intervals |
+| `fit_parameters(fisher, n, seed=...)` | the parameters of a fit from the normal of its Fisher covariance, drawn only in the directions the information constrains (the others stay at the fitted value, `profile_parameters` is the design for a parameter which is not identifiable); it raises without degrees of freedom |
+| `profile_parameters(identifiability, n, seed=...)` | every parameter of a fit from its profile likelihood, which follows asymmetric and open confidence intervals: a closed side of a profile is extended by its quadratic tail, an open side to the bound, and no draw leaves the bounds of a parameter |
 | `fit_repeats(result, size)` | the best parameter sets of the repeats of a fit |
 | `population(function, covariates, n, seed=...)` | covariates drawn and mapped to the values of targets by a function of a module; the covariates are coordinates of the result |
+
+`correlation` is the Spearman rank correlation of the drawn values. The designs of a fit write a parameter to its target (`FitParameter.target_id`) unless `targets` maps it elsewhere. A coordinate of a dimension, e.g. a covariate of a population, is carried by the result but never set on a model; its name must not be a variable of the result, a dimension id or a changed target, which raises when the scan is compiled.
 
 A design is a dimension like any other, so it combines with the other dimensions of a scan, e.g. doses or conditions. `seed=None` draws a seed and records it, so a result can always be drawn again.
 
