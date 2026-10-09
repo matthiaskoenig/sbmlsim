@@ -6,8 +6,10 @@ point of a chunk it applies the values of the point to the plan of the chunk,
 the points which ran are stacked into arrays padded with `NaN`, the observables
 of the run are evaluated on them, see `sbmlsim.simulator.observables`, and the
 kept timecourses are interpolated onto the grid of times of the chunk, if it
-has one. Nothing in here uses pint or xarray, and a chunk and its result are
-numbers, strings, a plan and the graph of the observables, so they pickle.
+has one. A point fails exactly when its own simulation or observables fail, not
+because of the other points of its chunk. Nothing in here uses pint or xarray,
+and a chunk and its result are numbers, strings, a plan and the graph of the
+observables, so they pickle.
 
 In a worker process the model of a chunk is loaded once from its `ModelSpec`
 and kept, see `sbmlsim.parallel.worker_cache`, with the integrator of the
@@ -26,7 +28,7 @@ from __future__ import annotations
 
 import hashlib
 import os
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -40,7 +42,7 @@ from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.result.scan import TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.simulator.executor import execute
-from sbmlsim.simulator.observables import ObservableError, ObservableGraph
+from sbmlsim.simulator.observables import TIMECOURSE, ObservableError, ObservableGraph
 from sbmlsim.simulator.plan import Plan
 
 #: what a run does about a point which fails: raise its error or flag it
@@ -281,18 +283,16 @@ def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
 
 
 def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
-    """Run the points of a chunk, see `run_chunk`."""
+    """Run the points of a chunk, see `run_chunk`.
+
+    With `on_error="raise"` the first point which fails in the order of the
+    scan is raised, whatever the chunking: a failed simulation stops the
+    chunk, the observables of the points before it are evaluated, and a point
+    among them whose observable fails comes before it.
+    """
     n = len(chunk.indices)
     status = np.zeros(n, dtype=np.int8)
-    errors: list[tuple[int, str]] = []
-
-    def fail(k: int, message: str, cause: BaseException) -> None:
-        index = int(chunk.indices[k])
-        if chunk.on_error == "raise":
-            raise ScanPointError(index, message) from cause
-        status[k] = 1
-        errors.append((index, message))
-
+    failures: list[tuple[int, str, BaseException]] = []
     points: list[int] = []
     solutions: list[np.ndarray] = []
     plans: list[Plan] = []
@@ -302,51 +302,104 @@ def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
         try:
             result = execute(plan, model, chunk.selections)
         except Exception as err:
-            fail(k, f"{type(err).__name__}: {err}", err)
+            failures.append((k, f"{type(err).__name__}: {err}", err))
+            if chunk.on_error == "raise":
+                break
             continue
         points.append(k)
         solutions.append(result.values)
         plans.append(plan)
-    time, outputs = _observe(chunk, points, solutions, plans, fail)
+    points, time, outputs, failed = _observe(chunk, points, solutions, plans)
+    failures.extend(failed)
+    failures.sort(key=lambda failure: failure[0])
+    errors: list[tuple[int, str]] = []
+    for k, message, cause in failures:
+        index = int(chunk.indices[k])
+        if chunk.on_error == "raise":
+            raise ScanPointError(index, message) from cause
+        status[k] = 1
+        errors.append((index, message))
     return _pack(chunk, n, points, time, outputs, status, errors)
+
+
+def _stack(
+    chunk: Chunk, solutions: Sequence[np.ndarray]
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Stack native solutions into the time `(point, row)` and the columns, padded with `NaN`."""
+    rows = max(solution.shape[0] for solution in solutions)
+    stacked = np.full((len(solutions), rows, len(chunk.selections)), np.nan)
+    for r, solution in enumerate(solutions):
+        stacked[r, : solution.shape[0]] = solution
+    columns = {name: stacked[:, :, j] for j, name in enumerate(chunk.selections) if j}
+    return stacked[:, :, 0], columns
 
 
 def _observe(
     chunk: Chunk,
-    points: list[int],
-    solutions: list[np.ndarray],
-    plans: list[Plan],
-    fail: Callable[[int, str, BaseException], None],
-) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    points: Sequence[int],
+    solutions: Sequence[np.ndarray],
+    plans: Sequence[Plan],
+) -> tuple[
+    list[int], np.ndarray, dict[str, np.ndarray], list[tuple[int, str, BaseException]]
+]:
     """Evaluate the observables on the native solutions of the points which ran.
 
-    A point whose observable fails fails and is dropped, and the observables
-    are evaluated again on the others; an observable which fails for every
-    point fails them all. `points`, `solutions` and `plans` keep the points
-    which are left.
+    The graph is evaluated on the whole chunk. If an observable fails the
+    points are evaluated one at a time, each alone on its native solution
+    without padding, so a point fails exactly when its own evaluation fails,
+    whatever the other points of the chunk are; the outputs of the points
+    which succeed are stacked again, padded with `NaN` to the longest of them.
+
+    Args:
+        chunk: the chunk.
+        points: the positions in the chunk of the points which ran.
+        solutions: their native solutions.
+        plans: their plans.
 
     Returns:
-        The time points `(n_points, n_rows)` padded with `NaN` and the kept
-        outputs of the points which are left.
+        The positions of the points which are left, their time points
+        `(n_points, n_rows)` padded with `NaN`, the kept outputs and the
+        points whose observable failed with their message and error.
     """
-    while points:
-        rows = max(solution.shape[0] for solution in solutions)
-        stacked = np.full((len(points), rows, len(chunk.selections)), np.nan)
-        for r, solution in enumerate(solutions):
-            stacked[r, : solution.shape[0]] = solution
-        time = stacked[:, :, 0]
-        columns = {
-            name: stacked[:, :, j] for j, name in enumerate(chunk.selections) if j
-        }
+    if not points:
+        return [], np.empty((0, 0)), {}, []
+    time, columns = _stack(chunk, solutions)
+    try:
+        return list(points), time, chunk.graph.evaluate(time, columns, plans), []
+    except ObservableError:
+        pass
+    kept: list[int] = []
+    singles: list[tuple[np.ndarray, dict[str, np.ndarray]]] = []
+    failed: list[tuple[int, str, BaseException]] = []
+    for k, solution, plan in zip(points, solutions, plans, strict=True):
+        single_time, single_columns = _stack(chunk, [solution])
         try:
-            return time, chunk.graph.evaluate(time, columns, plans)
+            outputs = chunk.graph.evaluate(single_time, single_columns, [plan])
         except ObservableError as err:
-            failing = list(range(len(points))) if err.row is None else [err.row]
-            for r in failing:
-                fail(points[r], err.message, err)
-            for r in reversed(failing):
-                del points[r], solutions[r], plans[r]
-    return np.empty((0, 0)), {}
+            failed.append((k, err.message, err))
+            continue
+        kept.append(k)
+        singles.append((single_time, outputs))
+    if not kept:
+        return [], np.empty((0, 0)), {}, failed
+    n_rows = max(single_time.shape[1] for single_time, _ in singles)
+    time = np.full((len(kept), n_rows), np.nan)
+    stacked = {
+        name: np.full(
+            (len(kept), n_rows) if chunk.graph.kinds[name] is TIMECOURSE else len(kept),
+            np.nan,
+        )
+        for name in chunk.graph.keep
+    }
+    for r, (single_time, outputs) in enumerate(singles):
+        rows = single_time.shape[1]
+        time[r, :rows] = single_time[0]
+        for name, value in outputs.items():
+            if value.ndim == 2:
+                stacked[name][r, :rows] = value[0]
+            else:
+                stacked[name][r] = value[0]
+    return kept, time, stacked, failed
 
 
 def _pack(

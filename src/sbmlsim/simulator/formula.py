@@ -436,7 +436,9 @@ def _mean(x: Any, time: np.ndarray | None, formula: str) -> Any:
     segment = valid[..., 1:] & valid[..., :-1]
     with np.errstate(invalid="ignore", over="ignore"):
         pieces = 0.5 * (magnitude[..., 1:] + magnitude[..., :-1]) * np.diff(t, axis=-1)
-    area = np.where(segment, pieces, 0.0).sum(axis=-1, keepdims=True)
+    # a sequential sum: the trailing zeros of the padding leave it unchanged,
+    # which the pairwise sum of np.sum does not guarantee for another length
+    area = np.cumsum(np.where(segment, pieces, 0.0), axis=-1)[..., -1:]
     finite = np.where(valid, t, np.nan)
     span = np.fmax.reduce(finite, axis=-1, keepdims=True) - np.fmin.reduce(
         finite, axis=-1, keepdims=True

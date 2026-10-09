@@ -13,8 +13,9 @@ from sbmlsim import parallel
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Simulation
+from sbmlsim.simulation.observables import Custom, Formula
 from sbmlsim.simulator.executor import execute
-from sbmlsim.simulator.observables import identity_graph
+from sbmlsim.simulator.observables import compile_observables, identity_graph
 from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import (
     MAX_ERRORS,
@@ -26,7 +27,7 @@ from sbmlsim.simulator.worker import (
     run_chunk,
     run_chunk_in_worker,
 )
-from tests.simulator.models import BLOWUP, sbml
+from tests.simulator.models import BLOWUP, fails_for_large_k1, sbml
 
 posix = pytest.mark.skipif(
     sys.platform == "win32", reason="the streams of C are flushed with POSIX ctypes"
@@ -311,3 +312,124 @@ def test_a_change_of_a_dimension_wins_at_its_time(model: RoadrunnerSBMLModel) ->
     )
     assert result.values[0, -1, 3] == pytest.approx(3.0)
     assert result.values[1, -1, 3] == pytest.approx(0.1)
+
+
+def fails_for_middle_k(time: np.ndarray, values: dict[str, np.ndarray]) -> float:
+    if 0.3 < values["k"][0] < 1.0:
+        raise ValueError("k is in the middle")
+    return float(values["k"][0])
+
+
+def _observed_chunk(
+    model: RoadrunnerSBMLModel,
+    observables: list[Custom | Formula],
+    values: dict[str, np.ndarray],
+    on_error: OnError,
+    indices: np.ndarray,
+    simulation: Simulation,
+) -> Chunk:
+    return Chunk(
+        indices=indices,
+        plan=compile_simulation(simulation, model.symbols, model.uinfo),
+        model=0,
+        graph=compile_observables(observables, model),
+        values=values,
+        timed={},
+        time=None,
+        on_error=on_error,
+    )
+
+
+def _large_k1(model: RoadrunnerSBMLModel, on_error: OnError) -> Chunk:
+    return _observed_chunk(
+        model,
+        [
+            Custom("bad", fails_for_large_k1, "dimensionless", symbols=["k1"]),
+            Formula("a", "[A]"),
+        ],
+        {"k1": np.array([0.5, 2.0, 0.7])},
+        on_error,
+        np.arange(10, 13),
+        Simulation(end=2, steps=4),
+    )
+
+
+def test_a_custom_which_fails_flags_only_its_point(model: RoadrunnerSBMLModel) -> None:
+    result = run_chunk(_large_k1(model, "flag"), model)
+    assert result.status.tolist() == [0, 1, 0]
+    assert [index for index, _ in result.errors] == [11]
+    assert "k1 is too large" in result.errors[0][1]
+    assert np.isnan(result.values[1]).all()
+    assert np.isnan(result.scalars[1]).all()
+    for k in (0, 2):
+        assert np.isfinite(result.values[k]).all()
+        assert result.scalars[k].tolist() == [0.0]
+
+
+def test_the_points_which_ran_do_not_depend_on_a_failing_one(
+    model: RoadrunnerSBMLModel,
+) -> None:
+    both = run_chunk(_large_k1(model, "flag"), model)
+    chunk = _large_k1(model, "flag")
+    chunk.values["k1"] = np.array([0.5, 0.7, 0.7])
+    healthy = run_chunk(chunk, model)
+    np.testing.assert_array_equal(both.values[0], healthy.values[0])
+    np.testing.assert_array_equal(both.values[2], healthy.values[2])
+
+
+def test_a_custom_which_fails_raises_its_point(model: RoadrunnerSBMLModel) -> None:
+    with pytest.raises(ScanPointError, match="k1 is too large") as info:
+        run_chunk(_large_k1(model, "raise"), model)
+    assert info.value.index == 11
+
+
+def _ordered(blowup: RoadrunnerSBMLModel, k: list[float], first: int) -> Chunk:
+    return _observed_chunk(
+        blowup,
+        [Custom("bad", fails_for_middle_k, "dimensionless", symbols=["k"])],
+        {"k": np.array(k)},
+        "raise",
+        np.arange(first, first + len(k)),
+        Simulation(end=1, steps=4),
+    )
+
+
+@posix
+def test_the_first_point_to_fail_is_raised_whatever_the_chunking(
+    capfd: pytest.CaptureFixture[str],
+) -> None:
+    # point 1 fails its observable, point 2 its simulation
+    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    k = [0.1, 0.5, 2.0]
+    with pytest.raises(ScanPointError, match="middle") as one:
+        run_chunk(_ordered(blowup, k, 0), blowup)
+    assert one.value.index == 1
+    with pytest.raises(ScanPointError, match="middle") as head:
+        run_chunk(_ordered(blowup, k[:2], 0), blowup)
+    assert head.value.index == 1
+    with pytest.raises(ScanPointError) as tail:
+        run_chunk(_ordered(blowup, k[2:], 2), blowup)
+    assert tail.value.index == 2
+    ctypes.CDLL(None).fflush(None)
+    capfd.readouterr()
+
+
+def test_the_scalars_of_a_chunk_are_filled(model: RoadrunnerSBMLModel) -> None:
+    chunk = _observed_chunk(
+        model,
+        [
+            Formula("a", "[A]"),
+            Formula("amax", "max(a)"),
+            Formula("alast", "at(a, 2)"),
+        ],
+        {"k1": np.array([0.5, 2.0])},
+        "raise",
+        np.arange(2),
+        Simulation(end=2, steps=4),
+    )
+    result = run_chunk(chunk, model)
+    assert chunk.graph.scalars == ("amax", "alast")
+    assert result.scalars.shape == (2, 2)
+    a = result.values[:, :, 1]
+    np.testing.assert_allclose(result.scalars[:, 0], a.max(axis=1))
+    np.testing.assert_allclose(result.scalars[:, 1], a[:, -1])
