@@ -31,6 +31,7 @@ from sbmlsim.simulation.sampling.fit import (
     fit_repeats,
     profile_parameters,
 )
+from sbmlsim.simulation.sampling.population import population
 from sbmlsim.simulation.sampling.references import parameters_of, references
 from sbmlsim.simulation.scan import Design
 
@@ -51,6 +52,7 @@ __all__ = [
     "local",
     "morris",
     "parameters_of",
+    "population",
     "profile_parameters",
     "random",
     "references",
