@@ -2,7 +2,8 @@
 
 A PK observable analyses one timecourse of every simulation of a chunk with
 `pkpdutils.nca`: the timecourses are handed over as `Timecourses.from_arrays`
-with the time points of every simulation, padded with `NaN`, and the doses
+with the time points of every simulation (the padding with `NaN` is trimmed
+away in groups of the same length), and the doses
 the plan of every point assigns to the dose target. Every parameter pkpdutils
 derives is a value per simulation `<id>.<parameter>`, and `<id>.flags` the
 flags of the analysis (`pkpdutils.NCAFlag`).
@@ -12,7 +13,9 @@ adds the parameters of the dosing interval, a dose the clearance and the
 volume) and on the options. `compile_pk` finds them and their units by an
 analysis of a synthetic timecourse with the dosing of every plan of a run,
 so every point of the result has the same variables; the points of a chunk
-are analysed in groups of the same number of doses.
+are analysed in groups of the same number of doses and of time points, each
+group trimmed to its time points, so no row is padded and a parameter does
+not depend on the chunking.
 
 pkpdutils is imported when a PK observable is compiled or evaluated, not on
 the import of sbmlsim: it imports pandas, scipy and xarray, about a second.
@@ -297,6 +300,11 @@ def evaluate_pk(
 ) -> dict[str, np.ndarray]:
     """Analyse the timecourses of the points of a chunk.
 
+    The points are analysed in groups of the same number of doses and of the
+    same number of time points, each group trimmed to that number, so pkpdutils
+    sees no padding: it sums the rows pairwise, and padding would change the
+    last bits of a parameter with the chunking.
+
     Args:
         node: the observable.
         time: the time points `(n_points, n_rows)`, padded with `NaN`.
@@ -315,16 +323,20 @@ def evaluate_pk(
     empty = (np.empty(0), np.empty(0))
     doses = [empty if node.dose is None else doses_of(p, node.dose) for p in plans]
     counts = np.array([times.size for times, _ in doses], dtype=int)
-    for count in np.unique(counts):
-        rows = np.flatnonzero(counts == count)
+    points = finite.sum(axis=1)
+    groups = np.unique(np.stack([counts, points], axis=1), axis=0)
+    for count, n_points in groups:
+        if n_points == 0:
+            continue
+        rows = np.flatnonzero((counts == count) & (points == n_points))
         result = _analyse(
             time_unit=node.time_unit,
             unit=node.unit,
             dose_unit=None if node.dose is None else node.dose.unit,
             route=node.route,
             options=node.options,
-            time=time[rows],
-            values=values[rows],
+            time=time[rows, :n_points],
+            values=values[rows, :n_points],
             dose_times=np.array([doses[r][0] for r in rows]).reshape(rows.size, count),
             dose_amounts=np.array([doses[r][1] for r in rows]).reshape(
                 rows.size, count
