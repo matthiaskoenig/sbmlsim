@@ -184,3 +184,44 @@ def test_the_start_sampling_is_not_random() -> None:
     """The start sampling is neither logarithmic nor a latin hypercube."""
     assert not SamplingType.START.is_log
     assert not SamplingType.START.is_lhs
+
+
+def _reference_samples(
+    parameters: list[FitParameter], size: int, sampling: SamplingType, seed: int
+) -> np.ndarray:
+    """The start values of fit/sampling.py before the sampler (344e43ee)."""
+    rng = np.random.default_rng(seed)
+    if sampling.is_lhs:
+        x = qmc.LatinHypercube(d=len(parameters), rng=rng).random(n=size)
+    else:
+        x = rng.random(size=(size, len(parameters)))
+    for k, p in enumerate(parameters):
+        if np.isinf(p.lower_bound) or np.isinf(p.upper_bound):
+            x[:, k] = p.start_value
+            continue
+        is_log = sampling.is_log and p.scale is not ParameterScaleType.LINEAR
+        lb, ub = float(p.lower_bound), float(p.upper_bound)
+        if is_log and lb <= 0.0:
+            lb = 1e-10
+        if is_log:
+            x[:, k] = np.power(
+                10, np.log10(lb) + x[:, k] * (np.log10(ub) - np.log10(lb))
+            )
+        else:
+            x[:, k] = lb + x[:, k] * (ub - lb)
+    return x
+
+
+@pytest.mark.parametrize("sampling", RANDOM)
+def test_the_start_values_did_not_change(sampling: SamplingType) -> None:
+    parameters = [
+        FitParameter("a", 1.0, lower_bound=1e-3, upper_bound=1e3),
+        FitParameter("b", 0.5, lower_bound=0.0, upper_bound=2.0),
+        FitParameter("c", 3.0, lower_bound=-np.inf, upper_bound=np.inf),
+        FitParameter("d", 0.0, lower_bound=-1.0, upper_bound=1.0, scale="LINEAR"),
+    ]
+    df = create_samples(parameters, size=7, sampling=sampling, seed=11)
+    np.testing.assert_array_equal(
+        df.values, _reference_samples(parameters, 7, sampling, 11)
+    )
+    assert list(df.columns) == ["a", "b", "c", "d"]

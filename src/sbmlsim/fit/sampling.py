@@ -1,14 +1,20 @@
-"""Sampling of parameter values."""
+"""Sampling of the start values of a fit, on the designs of `sbmlsim.simulation.sampling`.
+
+The values for a seed are the ones of the sampling before it.
+"""
 
 import logging
 from enum import Enum
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from scipy.stats import qmc
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.options import ParameterScaleType
+
+if TYPE_CHECKING:
+    from sbmlsim.simulation.sampling import Distribution
 
 logger = logging.getLogger(__name__)
 
@@ -88,20 +94,11 @@ def create_samples(
     if sampling is SamplingType.START:
         return _start_samples(parameters, size)
 
-    rng = np.random.default_rng(seed)
+    # imported here: the designs of a fit import the fit, which imports this module
+    from sbmlsim.simulation.sampling import Fixed, LogUniform, Uniform, lhs, random
 
-    # get samples in the unit hypercube [0, 1)
-    x: np.ndarray
-    if sampling.is_lhs:
-        # Latin-Hypercube sampling
-        sampler = qmc.LatinHypercube(d=len(parameters), rng=rng)
-        x = sampler.random(n=size)
-    elif sampling in {SamplingType.UNIFORM, SamplingType.LOGUNIFORM}:
-        x = rng.random(size=(size, len(parameters)))
-    else:
-        raise ValueError(f"Unsupported SamplingType: '{sampling}'")
-
-    for k, p in enumerate(parameters):
+    distributions: dict[str, Distribution] = {}
+    for p in parameters:
         if np.isinf(p.lower_bound) or np.isinf(p.upper_bound):
             if p.start_value is None:
                 raise ValueError(
@@ -109,21 +106,22 @@ def create_samples(
                     f"[{p.lower_bound} - {p.upper_bound}] is not sampled and "
                     f"requires a 'start_value'."
                 )
-            x[:, k] = p.start_value
+            # the column is drawn and replaced, so the others keep their draws
+            distributions[p.pid] = Fixed(float(p.start_value))
             continue
         is_log = sampling.is_log and p.scale is not ParameterScaleType.LINEAR
         lb, ub = _sampling_bounds(parameter=p, is_log=is_log, min_bound=min_bound)
+        distributions[p.pid] = LogUniform(lb, ub) if is_log else Uniform(lb, ub)
 
-        # stretch sampling dimension from [0, 1) to [lb, ub)
-        if is_log:
-            lb_log = np.log10(lb)
-            ub_log = np.log10(ub)
-            # samples are in log space, parameter values in real space
-            x[:, k] = np.power(10, lb_log + x[:, k] * (ub_log - lb_log))
-        else:
-            x[:, k] = lb + x[:, k] * (ub - lb)
-
-    return pd.DataFrame(x, columns=pd.Index([p.pid for p in parameters]))
+    if sampling.is_lhs:
+        design = lhs(distributions, size, seed=seed)
+    elif sampling in {SamplingType.UNIFORM, SamplingType.LOGUNIFORM}:
+        design = random(distributions, size, seed=seed)
+    else:
+        raise ValueError(f"Unsupported SamplingType: '{sampling}'")
+    return pd.DataFrame(
+        {p.pid: np.asarray(design.values[p.pid], dtype=float) for p in parameters}
+    )
 
 
 def _start_samples(parameters: list[FitParameter], size: int) -> pd.DataFrame:
