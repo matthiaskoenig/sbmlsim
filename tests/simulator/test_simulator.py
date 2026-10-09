@@ -97,6 +97,19 @@ def test_the_time_is_selected_once(
     assert res.variables == ["[A]", "X"]
 
 
+@pytest.mark.parametrize("steps", [2, None])
+def test_a_model_which_selects_only_the_time(
+    simulator: Simulator, model: RoadrunnerSBMLModel, steps: int | None
+) -> None:
+    model.set_selections(["time"])
+    res = simulator.run(model, Simulation(end=1, steps=steps))
+    assert "time" in res.ds.variables and "time" in res.units
+    if steps is None:
+        assert res.ragged and res["time"].values[0] == 0.0
+    else:
+        np.testing.assert_array_equal(res["time"].values, [0.0, 0.5, 1.0])
+
+
 def test_simulate_is_one_timecourse(
     simulator: Simulator, model: RoadrunnerSBMLModel
 ) -> None:

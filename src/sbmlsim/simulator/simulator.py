@@ -606,7 +606,9 @@ class _Compiled:
         tdim = TIME if self.grid is not None else POINT
         units: dict[str, str] = {}
         data_vars: dict[str, Any] = {}
-        if names:
+        # a run without observables keeps the time also without a selection
+        timed = bool(names) or not self.observables
+        if timed:
             units[TIME] = first.uinfo.get(TIME, "") or ""
             if self.grid is None:
                 data_vars[TIME] = ([*dims, POINT], cube[0].reshape(*shape, n_rows))
@@ -632,7 +634,7 @@ class _Compiled:
                 else:
                     coords[target] = (dimension.id, np.array(values))
                     units[target] = first.uinfo.get(target, "") or ""
-        if self.grid is not None and names:
+        if self.grid is not None and timed:
             coords[TIME] = self.grid
         attrs: dict[str, Any] = {
             "dims": dims,
