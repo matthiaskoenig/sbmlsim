@@ -157,25 +157,24 @@ res.to_netcdf(Path("scan.nc"))
 print(ScanResult.from_netcdf(Path("scan.nc")).quantity("time")[-1])
 ```
 
-## Sensitivity scans
+## Designs
 
-`ModelSensitivity` creates scans of all parameters of a model, either by relative differences or by sampling from distributions, see `sbmlsim.simulation.sensitivity`. The reference values are the ones of the model with the `preinit_changes` of the simulation:
+A design is a dimension whose values follow a design: the sampler `sbmlsim.simulation.sampling` creates the local design of all parameters, random draws, Latin hypercubes, the designs of the global sensitivity analyses, draws of the parameters of a fit and virtual populations, see [Sampling and uncertainty](sampling.md):
 
 ```python
-from sbmlsim.simulation.sensitivity import ModelSensitivity
+from sbmlsim.simulation import sampling
 
 simulation = Simulation(end=100, steps=100)
-diff_scan = ModelSensitivity.difference_sensitivity_scan(
-    model=model, simulation=simulation, difference=0.1
-)
-res = simulator.run(model, diff_scan)
+parameters = sampling.parameters_of(model)
+local = sampling.local(parameters, delta=0.1, model=model)
+res = simulator.run(model, Scan(simulation, [local]))
 print(res["PX"].sizes)
 
-distrib_scan = ModelSensitivity.distribution_sensitivity_scan(
-    model=model, simulation=simulation, cv=0.05, size=10
+draws = sampling.lhs(
+    {pid: sampling.LogNormal(cv=0.05) for pid in parameters}, 10, seed=1, model=model
 )
-res = simulator.run(model, distrib_scan)
+res = simulator.run(model, Scan(simulation, [draws]))
 print(res["PX"].sizes)
 ```
 
-The difference scan varies every constant parameter up and down by the relative `difference` (two simulations per parameter); the distribution scan samples `size` values of every parameter from a normal distribution with the coefficient of variation `cv`. The global sensitivity methods of `sbmlsim.sensitivity` build on scans like these, see [Sensitivity analysis](sensitivity.md).
+The local design varies every constant parameter alone up and down by the relative `delta` around its reference, the value the model gives it after the pre-initialization of the simulation; the Latin hypercube draws 10 points of lognormal distributions around the references. The record of a design is part of the provenance of the result.

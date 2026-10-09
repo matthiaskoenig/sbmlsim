@@ -6,8 +6,7 @@ from matplotlib import pyplot as plt
 
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
-from sbmlsim.simulation import Simulation
-from sbmlsim.simulation.sensitivity import ModelSensitivity
+from sbmlsim.simulation import Scan, Simulation, sampling
 from sbmlsim.simulator import Simulator
 
 
@@ -64,23 +63,25 @@ def plot_results(res: ScanResult, filename: str) -> None:
 
 
 def run_sensitivity() -> None:
-    """Parameter sensitivity simulations."""
+    """Parameter sensitivity simulations: a local design and lognormal draws."""
     simulator = Simulator()
     model = simulator.load(REPRESSILATOR_SBML)
     model.set_selections(["time", "[X]", "[Y]", "[Z]"])
-
-    # parameter sensitivity
     tcsim = Simulation(end=200, steps=2000)
+    parameters = sampling.parameters_of(model)
 
-    distrib_scan = ModelSensitivity.distribution_sensitivity_scan(
-        model=model, simulation=tcsim, cv=0.03, size=50
+    # the parameters drawn from lognormal distributions around their references
+    draws = sampling.random(
+        {pid: sampling.LogNormal(cv=0.03) for pid in parameters},
+        50,
+        seed=1234,
+        model=model,
     )
-    res_distrib_scan = simulator.run(model, distrib_scan)
+    res_distrib_scan = simulator.run(model, Scan(tcsim, [draws]))
 
-    diff_scan = ModelSensitivity.difference_sensitivity_scan(
-        model=model, simulation=tcsim, difference=0.1
-    )
-    res_diff_scan = simulator.run(model, diff_scan)
+    # every parameter alone 10 % up and down
+    local = sampling.local(parameters, delta=0.1, model=model)
+    res_diff_scan = simulator.run(model, Scan(tcsim, [local]))
 
     # create figures
     plot_results(res_distrib_scan, "model_sensitivity_distribution.png")

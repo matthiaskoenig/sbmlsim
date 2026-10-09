@@ -18,6 +18,7 @@ PAGES = [
     "index.md",
     "simulation.md",
     "scans.md",
+    "sampling.md",
     "models.md",
     "units.md",
     "data.md",

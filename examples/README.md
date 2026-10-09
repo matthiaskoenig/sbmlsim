@@ -21,7 +21,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/observables.py` | observables of a scan: a formula of the mass concentration, the PK analysis of pkpdutils and a custom function of midazolam over three doses |
 | `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
 | `examples/units.py` | units of a model and changes with pint quantities |
-| `examples/model_sensitivity.py` | sensitivity scans of all parameters, by relative differences and by sampling from distributions |
+| `examples/model_sensitivity.py` | a local design and lognormal draws of all parameters of the repressilator, with the uncertainty bands |
 | `examples/curve_types/` | a two reaction model (created with sbmlutils) and a simulation experiment showing the curve types of the plots |
 | `examples/initial_assignment/` | a simulation experiment on a model with initial assignments and changes of the assigned parameters |
 | `examples/glucose/` | dose response experiment of the hepatic glucose model with data from PK-DB |

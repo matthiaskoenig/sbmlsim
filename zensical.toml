@@ -23,6 +23,7 @@ nav = [
   ] },
   { "Sensitivity & uncertainty" = [
     { "Parameter scans" = "scans.md" },
+    { "Sampling and uncertainty" = "sampling.md" },
     { "Observables" = "observables.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
   ] },
@@ -63,7 +64,7 @@ nav = [
       { "definition" = "api/simulation.definition.md" },
       { "scan" = "api/simulation.scan.md" },
       { "observables" = "api/simulation.observables.md" },
-      { "sensitivity" = "api/simulation.sensitivity.md" },
+      { "sampling" = "api/simulation.sampling.md" },
     ] },
     { "sbmlsim.simulator" = [
       { "simulator" = "api/simulator.simulator.md" },
@@ -123,6 +124,7 @@ nav = [
     ] },
     { "sbmlsim.sensitivity" = [
       { "analysis" = "api/sensitivity.analysis.md" },
+      { "uncertainty" = "api/sensitivity.uncertainty.md" },
       { "parameters" = "api/sensitivity.parameters.md" },
       { "sensitivity_local" = "api/sensitivity.sensitivity_local.md" },
       { "sensitivity_sampling" = "api/sensitivity.sensitivity_sampling.md" },

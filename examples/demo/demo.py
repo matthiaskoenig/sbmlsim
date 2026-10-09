@@ -15,8 +15,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import DEMO_SBML
-from sbmlsim.simulation import Change, Dimension, Scan, Simulation
-from sbmlsim.simulation.sensitivity import ModelSensitivity
+from sbmlsim.simulation import Change, Dimension, Scan, Simulation, sampling
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
@@ -48,9 +47,11 @@ class DemoExperiment(SimulationExperiment):
                         "dim_init",
                         values={"[e__A]": Q(np.linspace(5, 15, num=11), "mM")},
                     ),
-                    ModelSensitivity.create_difference_dimension(
+                    sampling.local(
+                        sampling.parameters_of(self._models["model"]),
+                        delta=0.5,
                         model=self._models["model"],
-                        difference=0.5,
+                        id="dim_sens",
                     ),
                 ],
             )

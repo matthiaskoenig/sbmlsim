@@ -38,7 +38,7 @@ Definition of simulations, see [Simulations](../simulation.md) and [Parameter sc
 | [simulation.definition](simulation.definition.md) | `Simulation`, `Change` and `SteadyState`, a simulation with its changes, with units |
 | [simulation.scan](simulation.scan.md) | `Scan` and `Dimension`, a simulation over dimensions of values, simulations and models |
 | [simulation.observables](simulation.observables.md) | `Formula`, `PK` and `Custom`, what a scan computes from every simulation |
-| [simulation.sensitivity](simulation.sensitivity.md) | `ModelSensitivity`, sensitivity scans of parameters and initial conditions |
+| [simulation.sampling](simulation.sampling.md) | the sampler: distributions, references and the designs of a scan, of the sensitivity analyses, of a fit and of a population |
 
 ## sbmlsim.simulator, sbmlsim.task
 
