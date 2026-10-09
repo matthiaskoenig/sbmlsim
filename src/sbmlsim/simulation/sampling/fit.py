@@ -203,7 +203,8 @@ def _density(
     confidence bound, whose outermost point is not at the bound of the
     parameter) is extended by its quadratic tail: the cost beyond the outermost
     point follows `cost_min + b (x - x_opt)^2` through the optimum and that
-    point, out to a rise of `TAIL_RISE` or to the bound of the parameter. An
+    point, out to a rise of `TAIL_RISE` or to the bound of the parameter (a side
+    which reaches the bound gets no tail). An
     open side is extended to the (finite) bound with the density of its
     outermost point.
 
@@ -233,6 +234,9 @@ def _density(
             bound = parameter.lower_bound if lower else parameter.upper_bound
         outer = values[0] if lower else values[-1]
         beyond = bool(bound < outer) if lower else bool(bound > outer)
+        if np.isfinite(bound) and not beyond:
+            # the profile reaches the bound: nothing to extend past it
+            continue
         xb = np.nan
         if np.isfinite(bound) and beyond:
             xb = float(scale.to_scale(np.array([bound]))[0])

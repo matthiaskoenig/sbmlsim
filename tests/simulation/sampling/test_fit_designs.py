@@ -49,7 +49,6 @@ def test_fit_parameters_follow_the_fisher_covariance() -> None:
     assert str(dimension.values["k1"].units) == "1 / minute"
     assert dimension.design is not None
     assert dimension.design.method == "fit_parameters"
-    assert dimension.design is not None
     assert dimension.design.options["opid"] == "op"
 
 
@@ -88,7 +87,9 @@ def _profile(
 
 
 def _identifiability(
-    profile: ParameterProfile, bounds: tuple[float, float]
+    profile: ParameterProfile,
+    bounds: tuple[float, float],
+    scale: ParameterScaleType = ParameterScaleType.LOG10,
 ) -> IdentifiabilityResult:
     parameter = FitParameter(
         pid="k1", start_value=1.0, lower_bound=bounds[0], upper_bound=bounds[1]
@@ -98,7 +99,7 @@ def _identifiability(
         parameter_set=ParameterSet(sid="best", values={"k1": 1.0}, cost=0.0),
         parameters=[parameter],
         settings=ProfileSettings(),
-        fit_settings=FitSettings(parameter_scale=ParameterScaleType.LOG10),
+        fit_settings=FitSettings(parameter_scale=scale),
         cost=0.0,
         profiles={"k1": profile},
     )
@@ -113,6 +114,7 @@ def test_profile_parameters_follow_the_likelihood_of_the_profile() -> None:
     assert stats.kstest(logs, stats.norm(0.0, 0.1).cdf).pvalue > 0.01
     assert dimension.design is not None
     assert dimension.design.options["alpha"] == pytest.approx(0.95)
+    assert logs.min() >= -3.0 and logs.max() <= 3.0
 
 
 def test_a_flat_side_reaches_the_bound() -> None:
@@ -233,3 +235,22 @@ def test_a_profile_cut_at_the_threshold_keeps_its_spread() -> None:
     logs = np.log10(np.asarray(dimension.values["k1"]))
     assert logs.std() == pytest.approx(0.1, rel=0.03)
     assert stats.kstest(logs, stats.norm(0.0, 0.1).cdf).pvalue > 0.01
+
+
+def test_a_closed_side_at_the_bound_has_no_tail_past_it() -> None:
+    x = np.linspace(-0.196, 0.196, 99)
+    values = 10.0**x
+    profile = _profile(values, 0.5 * (x / 0.1) ** 2, values[0], values[-1])
+    dimension = profile_parameters(
+        _identifiability(profile, (values[0], values[-1])), 5000, seed=5
+    )
+    draws = np.asarray(dimension.values["k1"])
+    assert draws.min() >= values[0] and draws.max() <= values[-1]
+
+
+def test_a_linear_profile_at_a_lower_bound_of_zero_has_no_negative_draw() -> None:
+    values = np.linspace(0.0, 2.0, 101)
+    profile = _profile(values, 0.5 * ((values - 1.0) / 0.4) ** 2, 0.0, 2.0)
+    result = _identifiability(profile, (0.0, 1e3), ParameterScaleType.LINEAR)
+    draws = np.asarray(profile_parameters(result, 5000, seed=6).values["k1"])
+    assert draws.min() >= 0.0 and draws.max() <= 1e3
