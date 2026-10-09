@@ -53,16 +53,21 @@ def run(quick: bool, cores: int | None) -> dict[str, sensitivity.SensitivityResu
         results[name] = analysis(simulator.run(model, scan, OBSERVABLES))
 
     dpi = 72 if quick else 300
-    reference = conditions.values["[S1]"][list(conditions.labels).index("reference")]
-    condition = f"[S1] = {reference:g}"
-    sensitivity.plot_heatmap(
-        results["local"],
-        "normalized",
-        title=f"normalized, {condition}",
-        S1_0="reference",
-        path=Path("local.png"),
-        dpi=dpi,
-    )
+    # the indices keep the values the dimension of conditions changes
+    initial = results["local"].ds["[S1]"].sel(S1_0="reference").item()
+    condition = f"[S1] = {initial:g}"
+    # the index of every analysis: normalized and ST without a unit, with the
+    # cutoff 0.1 of the heatmap; mu_star in the unit of the observables, all shown
+    shown = {"local": "normalized", "sobol": "ST", "fast": "ST", "morris": "mu_star"}
+    for name, result in results.items():
+        sensitivity.plot_heatmap(
+            result,
+            shown[name],
+            title=f"{shown[name]}, {name}, {condition}",
+            S1_0="reference",
+            path=Path(f"{name}.png"),
+            dpi=dpi,
+        )
     sensitivity.plot_indices(
         results["sobol"],
         "S2_mean",
@@ -79,7 +84,6 @@ def run(quick: bool, cores: int | None) -> dict[str, sensitivity.SensitivityResu
         path=Path("morris_S2_mean.png"),
         dpi=dpi,
     )
-    shown = {"local": "normalized", "sobol": "ST", "fast": "ST", "morris": "mu_star"}
     for name, result in results.items():
         print(f"{name}: {shown[name]} at {condition}")
         print(result.index(shown[name]).sel(S1_0="reference").to_pandas().round(5))
