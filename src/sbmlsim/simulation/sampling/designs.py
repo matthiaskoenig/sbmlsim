@@ -422,3 +422,202 @@ def lhs(
     return _drawn(
         "lhs", distributions, n, seed, correlation, model, simulation, id, draw
     )
+
+
+def _problem(d: int) -> dict[str, Any]:
+    """Get the problem of SALib on the unit cube of `d` dimensions."""
+    return {
+        "num_vars": d,
+        "names": [f"x{k}" for k in range(d)],
+        "bounds": [[0.0, 1.0]] * d,
+    }
+
+
+def unit_cube(design: Design, d: int) -> np.ndarray:
+    """Get the points of the unit cube of a recorded design of SALib.
+
+    The points follow from the method, the options and the seed of the
+    record, so a result of the design needs not store them; phase 2 creates
+    them again for the analysis.
+
+    Args:
+        design: the record of a `sobol`, `fast` or `morris` design.
+        d: the number of targets.
+
+    Returns:
+        The points, a row per point of the dimension.
+
+    Raises:
+        ValueError: if the record is of another method.
+    """
+    options = design.options
+    if design.method == "sobol":
+        from SALib.sample import sobol as sobol_sampler
+
+        return sobol_sampler.sample(
+            _problem(d),
+            options["n"],
+            calc_second_order=options["second_order"],
+            scramble=True,
+            seed=options["seed"],
+        )
+    if design.method == "fast":
+        from SALib.sample import fast_sampler
+
+        return fast_sampler.sample(
+            _problem(d), options["n"], M=options["m"], seed=options["seed"]
+        )
+    if design.method == "morris":
+        from SALib.sample import morris as morris_sampler
+
+        levels = options["levels"]
+        grid = morris_sampler.sample(
+            _problem(d),
+            options["trajectories"],
+            num_levels=levels,
+            seed=options["seed"],
+        )
+        # the centre of the stratum of every level, so an unbounded marginal is finite
+        return (grid * (levels - 1) + 0.5) / levels
+    raise ValueError(f"The design '{design.method}' is no design of SALib.")
+
+
+def _salib(
+    method: str,
+    distributions: Mapping[str, Distribution],
+    options: dict[str, Any],
+    model: ModelLike | None,
+    simulation: Simulation | None,
+    id: str,
+) -> Dimension:
+    """Create a design of SALib: its unit cube mapped through the distributions."""
+    refs = _resolve(distributions, model, simulation)
+    record = _record(method, distributions, options, refs)
+    u = unit_cube(record, len(distributions))
+    return Dimension(id, values=_values(distributions, refs, u), design=record)
+
+
+def sobol(
+    distributions: Mapping[str, Distribution],
+    n: int,
+    *,
+    seed: int | None = None,
+    second_order: bool = False,
+    model: ModelLike | None = None,
+    simulation: Simulation | None = None,
+    id: str = "sobol",
+) -> Dimension:
+    """Get the design of Saltelli for the Sobol indices.
+
+    `SALib.sample.sobol.sample` on the unit cube, scrambled, mapped through the
+    distributions: `n (d + 2)` points, `n (2 d + 2)` with second order. The
+    targets are independent, a correlation is not taken.
+
+    Args:
+        distributions: target -> its distribution.
+        n: the base number of points, a power of two.
+        seed: the seed, not negative; `None` draws one, which the record keeps.
+        second_order: include the points of the second order indices.
+        model: the model, which a relative distribution needs.
+        simulation: the simulation whose pre-initialization gives the references.
+        id: the id of the dimension.
+
+    Returns:
+        The dimension.
+
+    Raises:
+        TypeError: if the distributions or the seed have the wrong type.
+        ValueError: if `n` is no power of two, or see `random`.
+    """
+    _check(distributions)
+    n = _count(n)
+    if n < 2 or n & (n - 1):
+        raise ValueError(f"The n of a Sobol design is a power of two, not {n}.")
+    options = {"n": n, "seed": _seed(seed), "second_order": bool(second_order)}
+    return _salib("sobol", distributions, options, model, simulation, id)
+
+
+def fast(
+    distributions: Mapping[str, Distribution],
+    n: int,
+    *,
+    m: int = 4,
+    seed: int | None = None,
+    model: ModelLike | None = None,
+    simulation: Simulation | None = None,
+    id: str = "fast",
+) -> Dimension:
+    """Get the design of the extended FAST.
+
+    `SALib.sample.fast_sampler.sample` on the unit cube, mapped through the
+    distributions: `n d` points. The targets are independent, a correlation is
+    not taken.
+
+    Args:
+        distributions: target -> its distribution.
+        n: the number of points per target, more than `4 m^2`.
+        m: the interference factor of SALib.
+        seed: the seed, not negative; `None` draws one, which the record keeps.
+        model: the model, which a relative distribution needs.
+        simulation: the simulation whose pre-initialization gives the references.
+        id: the id of the dimension.
+
+    Returns:
+        The dimension.
+
+    Raises:
+        TypeError: if the distributions or the seed have the wrong type.
+        ValueError: if `n` is not more than `4 m^2`, or see `random`.
+    """
+    _check(distributions)
+    n = _count(n)
+    m = _count(m, "m")
+    if n <= 4 * m * m:
+        raise ValueError(
+            f"The n of a FAST design is more than 4 m^2 = {4 * m * m}, not {n}."
+        )
+    options = {"n": n, "seed": _seed(seed), "m": m}
+    return _salib("fast", distributions, options, model, simulation, id)
+
+
+def morris(
+    distributions: Mapping[str, Distribution],
+    trajectories: int,
+    *,
+    levels: int = 4,
+    seed: int | None = None,
+    model: ModelLike | None = None,
+    simulation: Simulation | None = None,
+    id: str = "morris",
+) -> Dimension:
+    """Get the design of Morris for the elementary effects.
+
+    `SALib.sample.morris.sample` on the unit cube: `trajectories (d + 1)`
+    points. The level `k` of the grid of SALib (`0` to `1` in `levels - 1`
+    steps) is mapped to `(k + 0.5) / levels`, the centre of the stratum of
+    that level, so an unbounded marginal stays finite. The targets are
+    independent, a correlation is not taken.
+
+    Args:
+        distributions: target -> its distribution.
+        trajectories: the number of trajectories.
+        levels: the number of levels of the grid, at least two.
+        seed: the seed, not negative; `None` draws one, which the record keeps.
+        model: the model, which a relative distribution needs.
+        simulation: the simulation whose pre-initialization gives the references.
+        id: the id of the dimension.
+
+    Returns:
+        The dimension.
+
+    Raises:
+        TypeError: if the distributions or the seed have the wrong type.
+        ValueError: if `levels` is below two, or see `random`.
+    """
+    _check(distributions)
+    trajectories = _count(trajectories, "trajectories")
+    levels = _count(levels, "levels")
+    if levels < 2:
+        raise ValueError(f"The levels of a Morris design are at least 2, not {levels}.")
+    options = {"trajectories": trajectories, "seed": _seed(seed), "levels": levels}
+    return _salib("morris", distributions, options, model, simulation, id)
