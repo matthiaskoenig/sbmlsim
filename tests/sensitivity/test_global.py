@@ -1,6 +1,8 @@
 """The global sensitivity analyses."""
 
 import copy
+import ctypes
+import sys
 import warnings
 from pathlib import Path
 
@@ -14,11 +16,19 @@ from SALib.sample import morris as salib_morris_sampler
 from sbmlsim import sensitivity
 from sbmlsim.result import ScanResult
 from sbmlsim.sensitivity.result import PARAMETER, PARAMETER_2, SensitivityResult
-from sbmlsim.simulation import Dimension, Formula, Scan, Simulation, sampling
+from sbmlsim.simulation import (
+    Custom,
+    Dimension,
+    Formula,
+    Observable,
+    Scan,
+    Simulation,
+    sampling,
+)
 from sbmlsim.simulation.sampling import Uniform
 from sbmlsim.simulation.sampling.designs import unit_problem
 from sbmlsim.simulator import Simulator
-from tests.sensitivity.models import ISHIGAMI
+from tests.sensitivity.models import CHAIN, ISHIGAMI, s2_end_fails_for_high_s1_and_k1
 from tests.simulator.models import BLOWUP, sbml
 
 PI = np.pi
@@ -104,19 +114,46 @@ def test_timecourses_and_scalars() -> None:
     assert s["y_max.ST"].dims == (PARAMETER,)
 
 
-def test_a_failed_point_gives_nan_indices(caplog: pytest.LogCaptureFixture) -> None:
+def _take_c_output(capfd: pytest.CaptureFixture[str]) -> None:
+    """Take the messages of SUNDIALS of the points which failed, see test_simulator.
+
+    The streams of C are flushed with POSIX ctypes while the capture runs;
+    on Windows the output of C which is still buffered is not taken.
+    """
+    if sys.platform != "win32":
+        ctypes.CDLL(None).fflush(None)
+    capfd.readouterr()
+
+
+def test_a_failed_point_gives_nan_indices(
+    caplog: pytest.LogCaptureFixture, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """S' = k S^2 blows up before t = 1 for k S0 > 1: only S0 = 1 has failed points."""
     model = Simulator().load(sbml(BLOWUP))
     design = sampling.sobol({"k": Uniform(0.1, 3.0)}, 8, seed=7)
-    res = Simulator(n_workers=1).run(
-        model,
-        Scan(Simulation(end=1, steps=2), [design]),
-        [Formula("s_max", "max(S)")],
-        on_error="flag",
+    initial = Dimension("S0", values={"S": [0.1, 1.0]})
+    try:
+        res = Simulator(n_workers=1).run(
+            model,
+            Scan(Simulation(end=1, steps=2), [initial, design]),
+            [Formula("s_max", "max(S)")],
+            on_error="flag",
+        )
+        caplog.clear()
+        s = sensitivity.sobol(res)
+        alone = sensitivity.sobol(res.isel(S0=[0]))
+    finally:
+        _take_c_output(capfd)
+    assert res["status"].sel(S0=1).values.any()
+    assert not res["status"].sel(S0=0).values.any()
+    assert np.isnan(s["s_max.S1"].sel(S0=1).values).all()
+    # the element without a failed point is the one of its analysis alone
+    np.testing.assert_array_equal(
+        s["s_max.S1"].sel(S0=0).values, alone["s_max.S1"].sel(S0=0).values
     )
-    assert res["status"].values.any()
-    s = sensitivity.sobol(res)
-    assert np.isnan(s["s_max.S1"].values).all()
-    assert sum(r.name == "sbmlsim.sensitivity.indices" for r in caplog.records) == 1
+    assert np.isfinite(s["s_max.S1"].sel(S0=0).values).all()
+    records = [r for r in caplog.records if r.name == "sbmlsim.sensitivity.indices"]
+    assert len(records) == 1 and records[0].getMessage().startswith("1 elements")
 
 
 def test_a_constant_element_gives_nan_variance_indices_and_zero_effects() -> None:
@@ -260,3 +297,181 @@ def test_fast_with_another_m_equals_salib() -> None:
         )
     np.testing.assert_allclose(f["y_max.S1"].values, expected["S1"])
     np.testing.assert_allclose(f["y_max.ST"].values, expected["ST"])
+
+
+#: the times of the chain: before the saturation of [S3] and ten after it
+CHAIN_TIMES = [0.0, 2.0, 5.0, 10.0, *range(100, 1001, 100)]
+
+
+def _chain_run(design: Dimension) -> ScanResult:
+    model = Simulator().load(sbml(CHAIN))
+    return Simulator(n_workers=1).run(
+        model,
+        Scan(Simulation(end=1000, times=CHAIN_TIMES), [design]),
+        [
+            Formula("s3", "[S3]"),
+            Formula("total", "[S1] + [S2] + [S3]"),
+            Formula("total_end", "at([S1] + [S2] + [S3], 1000)"),
+        ],
+    )
+
+
+CHAIN_BOUNDS = {"k1": Uniform(relative=0.15), "k2": Uniform(relative=0.15)}
+
+
+@pytest.mark.parametrize("method", ["sobol", "fast"])
+def test_the_noise_of_the_integrator_gives_no_variance_indices(method: str) -> None:
+    """[S3] saturates and the total is conserved: they vary by the error only."""
+    model = Simulator().load(sbml(CHAIN))
+    if method == "sobol":
+        design = sampling.sobol(CHAIN_BOUNDS, 64, seed=1, model=model)
+    else:
+        design = sampling.fast(CHAIN_BOUNDS, 65, seed=1, model=model)
+    res = _chain_run(design)
+    analysis = sensitivity.sobol if method == "sobol" else sensitivity.fast
+    s = analysis(res)
+    assert s.ds.attrs["options"]["tolerance"] == pytest.approx(1e-7)
+    late = s["s3.ST"].sel(time=slice(100, None))
+    assert late.sizes["time"] == 10 and np.isnan(late.values).all()
+    assert np.isnan(s["total.ST"].values).all()
+    assert np.isnan(s["total_end.S1"].values).all()
+    # before the saturation [S3] depends on both rates
+    early = s["s3.ST"].sel(time=slice(1, 50))
+    assert np.isfinite(early.values).all()
+    # without a tolerance the noise gives indices
+    noisy = analysis(res, tolerance=0.0)
+    assert np.isfinite(noisy["total_end.ST"].values).all()
+
+
+def test_the_noise_of_the_integrator_gives_no_elementary_effects() -> None:
+    model = Simulator().load(sbml(CHAIN))
+    design = sampling.morris(CHAIN_BOUNDS, 10, seed=1, model=model)
+    m = sensitivity.morris(_chain_run(design))
+    for key in ("mu", "mu_star", "sigma", "mu_star_conf"):
+        np.testing.assert_array_equal(m[f"total_end.{key}"].values, 0.0)
+        late = m[f"s3.{key}"].sel(time=slice(100, None)).values
+        np.testing.assert_array_equal(late, 0.0)
+    assert (m["s3.mu_star"].sel(time=slice(1, 50)).values > 0).all()
+
+
+def test_a_small_real_effect_keeps_its_indices() -> None:
+    model = Simulator().load(
+        sbml("model small\n  x1 = 0; x2 = 0\n  y := 1 + 1e-5 * x1 + 1e-6 * x2\nend\n")
+    )
+    bounds = {"x1": Uniform(0.0, 1.0), "x2": Uniform(0.0, 1.0)}
+    scan = Scan(Simulation(end=1, steps=1), [sampling.sobol(bounds, 256, seed=1)])
+    res = Simulator(n_workers=1).run(model, scan, OBSERVABLES)
+    assert np.ptp(res["y_max"].values) < 2e-5
+    s = sensitivity.sobol(res)
+    np.testing.assert_allclose(s["y_max.S1"].values, [100 / 101, 1 / 101], atol=0.02)
+    # an explicit tolerance wins
+    coarse = sensitivity.sobol(res, tolerance=1e-4)
+    assert np.isnan(coarse["y_max.S1"].values).all()
+    assert coarse.ds.attrs["options"]["tolerance"] == 1e-4
+
+
+def test_the_tolerance_follows_the_integrator(tmp_path: Path) -> None:
+    model = Simulator().load(sbml(ISHIGAMI))
+    scan = Scan(Simulation(end=1, steps=1), [sampling.morris(BOUNDS, 4, seed=1)])
+    res = Simulator(n_workers=1, relative_tolerance=1e-6).run(model, scan, OBSERVABLES)
+    assert sensitivity.morris(res).ds.attrs["options"]["tolerance"] == pytest.approx(
+        1e-3
+    )
+    path = tmp_path / "r.nc"
+    res.to_netcdf(path)
+    stored = ScanResult.from_netcdf(path)
+    assert sensitivity.morris(stored).ds.attrs["options"]["tolerance"] == pytest.approx(
+        1e-3
+    )
+    # below 1e-10 the error of the integrator does not decrease
+    tight = Simulator(n_workers=1, relative_tolerance=1e-12).run(
+        model, scan, OBSERVABLES
+    )
+    assert sensitivity.morris(tight).ds.attrs["options"]["tolerance"] == pytest.approx(
+        1e-7
+    )
+    # a result without the settings of its integrator has the one of the default
+    ds = res.ds.copy()
+    ds.attrs = {k: v for k, v in res.ds.attrs.items() if k != "integrator_settings"}
+    assert sensitivity.morris(ScanResult(ds)).ds.attrs["options"][
+        "tolerance"
+    ] == pytest.approx(1e-7)
+    with pytest.raises(ValueError, match="tolerance"):
+        sensitivity.morris(res, tolerance=-1.0)
+
+
+def _chain_with_conditions(design: Dimension, *, fail: bool) -> ScanResult:
+    """Run the chain under three conditions; with `fail` the high one has failed points."""
+    model = Simulator().load(sbml(CHAIN))
+    conditions = Dimension(
+        "S1_0",
+        values={"[S1]": [0.1, 1.0, 10.0]},
+        labels=["low", "reference", "high"],
+    )
+    observables: list[Observable] = [
+        Formula("s2", "[S2]"),
+        Formula("s2_max", "max([S2])"),
+    ]
+    if fail:
+        observables.append(
+            Custom(
+                "s2_end",
+                s2_end_fails_for_high_s1_and_k1,
+                "dimensionless",
+                symbols=["[S1]", "[S2]", "k1"],
+            )
+        )
+    return Simulator(n_workers=1).run(
+        model,
+        Scan(Simulation(end=4, steps=4), [conditions, design]),
+        observables,
+        on_error="flag",
+    )
+
+
+@pytest.mark.parametrize("method", ["local", "sobol", "fast", "morris"])
+def test_the_chain_with_conditions_timecourses_and_a_failed_point(
+    method: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    model = Simulator().load(sbml(CHAIN))
+    designs = {
+        "local": sampling.local(["k1", "k2"], 0.01, model=model),
+        "sobol": sampling.sobol(CHAIN_BOUNDS, 64, seed=1, model=model),
+        "fast": sampling.fast(CHAIN_BOUNDS, 65, seed=1, model=model),
+        "morris": sampling.morris(CHAIN_BOUNDS, 10, seed=1, model=model),
+    }
+    analysis = getattr(sensitivity, method)
+    failed = _chain_with_conditions(designs[method], fail=True)
+    assert failed["status"].sel(S1_0="high").values.any()
+    assert not failed["status"].sel(S1_0=["low", "reference"]).values.any()
+    caplog.clear()
+    s = analysis(failed)
+    expected = analysis(_chain_with_conditions(designs[method], fail=False))
+    key = {"local": "normalized", "sobol": "ST", "fast": "ST", "morris": "mu_star"}[
+        method
+    ]
+    assert s[f"s2.{key}"].dims == (PARAMETER, "S1_0", "time")
+    assert s[f"s2_max.{key}"].dims == (PARAMETER, "S1_0")
+    # the conditions without a failed point are the ones of a run without one
+    for name in ("s2", "s2_max"):
+        for variable in expected.ds.data_vars:
+            if str(variable).startswith(f"{name}."):
+                np.testing.assert_array_equal(
+                    s[str(variable)].sel(S1_0=["low", "reference"]).values,
+                    expected[str(variable)].sel(S1_0=["low", "reference"]).values,
+                )
+        later = expected[f"{name}.{key}"].sel(S1_0=["low", "reference"])
+        if "time" in later.dims:
+            # at t = 0 [S2] = 0 for every point, constant
+            later = later.sel(time=slice(1, None))
+        assert np.isfinite(later.values).all()
+    high = s[f"s2.{key}"].sel(S1_0="high")
+    if method == "local":
+        # only the point k1+ failed
+        assert np.isnan(high.sel(parameter="k1").values).all()
+        assert np.isfinite(high.sel(parameter="k2", time=slice(1, None)).values).all()
+    else:
+        assert np.isnan(high.values).all()
+    records = [r for r in caplog.records if r.name == "sbmlsim.sensitivity.indices"]
+    # s2 at five time points, s2_max and s2_end of the high condition
+    assert len(records) == 1 and records[0].getMessage().startswith("7 elements")

@@ -17,7 +17,10 @@ ragged timecourse has no common time points; run the scan with `time=`.
   SALib on the unit cube the record recreates.
 
 An element whose points contain a failed simulation (`NaN`) has `NaN`
-indices, one warning counts them.
+indices, one warning counts them. An element of a global analysis which is
+constant, i.e. whose values vary by no more than the error of the integrator,
+has `NaN` indices of variance (Sobol, FAST) and zero effects (Morris), see
+`constant_tolerance`.
 """
 
 from __future__ import annotations
@@ -38,6 +41,21 @@ from sbmlsim.simulation.sampling.designs import unit_cube, unit_problem
 from sbmlsim.units import ureg
 
 logger = logging.getLogger(__name__)
+
+#: the relative tolerance of the integrator of a result which does not record
+#: it, the default of `sbmlsim.simulator.Simulator`
+RELATIVE_TOLERANCE = 1e-10
+
+#: the smallest relative tolerance of the integrator a tolerance is derived
+#: from: below it the error of the integrator does not decrease any more (about
+#: `5e-9` of a value at `1e-10` and `1e-8` at `1e-12`, double precision)
+SMALLEST_RELATIVE_TOLERANCE = 1e-10
+
+#: the tolerance of a constant element in relative tolerances of the
+#: integrator: the error of a value is up to about 50 relative tolerances
+#: (`5e-9` at `1e-10`, the saturated and the conserved values of the chain
+#: S1 -> S2 -> S3), the factor keeps a margin of 20 over it
+CONSTANT_FACTOR = 1000.0
 
 
 def design_of(
@@ -153,11 +171,16 @@ def _assemble(
     """
     used = {d for dims, _ in indices.values() for d in dims}
     coords: dict[str, Any] = {PARAMETER: parameters}
+    units = {**units, PARAMETER: ""}
     if PARAMETER_2 in used:
         coords[PARAMETER_2] = parameters
-    for name in used - {PARAMETER, PARAMETER_2}:
-        if name in result.ds.coords:
-            coords[name] = result.ds.coords[name].values
+        units[PARAMETER_2] = ""
+    for name, coord in result.ds.coords.items():
+        # the labels of the other dimensions, the values a dimension changes
+        # along them and the time, not the values along the design
+        if set(coord.dims) <= used - {PARAMETER, PARAMETER_2}:
+            coords[str(name)] = (coord.dims, coord.values)
+            units[str(name)] = result.units.get(str(name), "")
     ds = xr.Dataset(
         {name: (dims, values) for name, (dims, values) in indices.items()},
         coords=coords,
@@ -173,7 +196,7 @@ def _assemble(
 
 
 def _unit_ratio(numerator: str, denominator: str) -> str:
-    """Get the unit of a ratio of two units.
+    """Get the unit of a ratio of two units in its short form, e.g. `h*mg/l`.
 
     Args:
         numerator: the unit of the numerator.
@@ -184,7 +207,22 @@ def _unit_ratio(numerator: str, denominator: str) -> str:
     """
     if not numerator or not denominator:
         return ""
-    return str(ureg.Unit(numerator) / ureg.Unit(denominator))
+    unit = ureg.Unit(numerator) / ureg.Unit(denominator)
+    return f"{unit:~C}" if not unit.dimensionless else "dimensionless"
+
+
+def _warn_failed(failed: int) -> None:
+    """Log one warning which counts the elements with a failed simulation.
+
+    Args:
+        failed: the number of elements whose points contain a `NaN`.
+    """
+    if failed:
+        logger.warning(
+            "%s elements of the result contain a failed simulation (NaN); the "
+            "indices which use it are NaN.",
+            failed,
+        )
 
 
 def local(
@@ -195,10 +233,14 @@ def local(
 ) -> SensitivityResult:
     """Compute the local sensitivities of a scan with a local design, see the module.
 
-    `raw = (y(+) - y(-)) / (2 delta p_ref)` and `normalized = (y(+) - y(-)) /
-    (2 delta y_ref)`, with `y_ref` the value at the reference; a zero `y_ref`
-    or a zero reference of a parameter gives `NaN`. A variable has one unit, so
-    `raw` has one only when all targets share a unit (else `""`).
+    `raw = (y(+) - y(-)) / (2 delta p_ref)` in the unit of the observable per
+    unit of the parameter and `normalized = (y(+) - y(-)) / (2 delta y_ref)`,
+    with `y_ref` the value at the reference. A zero `y_ref` gives a `NaN`
+    `normalized`; a parameter whose reference is zero is not moved by the
+    design, so both of its indices are `NaN`. A variable has one unit, so `raw`
+    has one only when all targets share a unit (else `""`). An element whose
+    points contain a failed simulation (`NaN`) has `NaN` indices where they
+    use such a point, one warning counts the elements.
 
     Args:
         result: the result of a scan with a `sampling.local` design.
@@ -210,18 +252,27 @@ def local(
 
     Raises:
         ValueError: if the result has no local design or several without
-            `dim`, or an observable is a ragged timecourse.
+            `dim`, an observable is a ragged timecourse, or the labels of the
+            dimension are not the ones of the design (a cut result).
     """
     dim, design = design_of(result, {"local"}, dim)
     delta = float(design.options["delta"])
     targets = [str(t) for t in design.options["targets"]]
     labels = [str(label) for label in result.ds[dim].values.tolist()]
+    expected = ["reference", *(f"{t}{sign}" for t in targets for sign in "+-")]
+    if sorted(labels) != sorted(expected):
+        raise ValueError(
+            f"The labels of the dimension '{dim}' must be {expected}, the points of "
+            f"its design, not {labels}; the result was cut or its labels changed."
+        )
     reference = labels.index("reference")
     target_units = {str(design.references[t]["unit"]) for t in targets}
     indices: dict[str, tuple[list[str], np.ndarray]] = {}
     units: dict[str, str] = {}
+    failed = 0
     for name in _observables(result, observables):
         values, others = _moved(result, name, dim)
+        failed += int((~np.isfinite(values)).any(axis=0).sum())
         y_ref = values[reference]
         raw = []
         normalized = []
@@ -229,11 +280,13 @@ def local(
             up = values[labels.index(f"{target}+")]
             down = values[labels.index(f"{target}-")]
             p_ref = float(design.references[target]["value"])
+            if p_ref == 0.0:
+                # the design does not move a parameter whose reference is zero
+                raw.append(np.full_like(up, np.nan))
+                normalized.append(np.full_like(up, np.nan))
+                continue
             with np.errstate(divide="ignore", invalid="ignore"):
-                if p_ref != 0.0:
-                    raw.append((up - down) / (2.0 * delta * p_ref))
-                else:
-                    raw.append(np.full_like(up, np.nan))
+                raw.append((up - down) / (2.0 * delta * p_ref))
                 normalized.append(
                     np.where(y_ref != 0.0, (up - down) / (2.0 * delta * y_ref), np.nan)
                 )
@@ -244,6 +297,7 @@ def local(
         shared = next(iter(target_units)) if len(target_units) == 1 else ""
         units[f"{name}.raw"] = _unit_ratio(unit, shared)
         units[f"{name}.normalized"] = "dimensionless"
+    _warn_failed(failed)
     options = {"delta": delta, "targets": targets}
     return _assemble(result, dim, "local", options, targets, indices, units)
 
@@ -298,6 +352,46 @@ def _check(conf_level: float, num_resamples: int) -> None:
         raise ValueError(f"num_resamples must be at least 1, not {num_resamples}.")
 
 
+def constant_tolerance(result: ScanResult, tolerance: float | None = None) -> float:
+    """Get the relative range up to which an element of a result is constant.
+
+    An element of a global analysis is constant when the range of its values
+    is at most `tolerance * max|y|`: the integrator solves a value only up to
+    its error, so an element which is constant except for that error (a
+    saturated or a conserved value, a steady state) has no variance a Sobol or
+    FAST index could share out. The tolerance is `CONSTANT_FACTOR` times the
+    relative tolerance of the integrator, which the result records in
+    `attrs["integrator_settings"]`, at least `SMALLEST_RELATIVE_TOLERANCE`;
+    the default of `Simulator`, `1e-10`, gives `1e-7`. A result without the
+    record takes `RELATIVE_TOLERANCE`. A value near zero, at the level of the
+    absolute tolerance (a species which has decayed), varies by its error
+    relative to itself and is not caught.
+
+    Args:
+        result: the result of the scan.
+        tolerance: the tolerance, which wins over the record; `0` keeps every
+            element which is not exactly constant.
+
+    Returns:
+        The tolerance.
+
+    Raises:
+        ValueError: if the tolerance is negative or not finite.
+    """
+    if tolerance is not None:
+        if not (np.isfinite(tolerance) and tolerance >= 0.0):
+            raise ValueError(
+                f"The tolerance of a constant element is a number of at least 0, "
+                f"not {tolerance}."
+            )
+        return float(tolerance)
+    settings = result.ds.attrs.get("integrator_settings") or {}
+    rtol = settings.get("relative_tolerance", RELATIVE_TOLERANCE)
+    if isinstance(rtol, bool) or not isinstance(rtol, int | float):
+        rtol = RELATIVE_TOLERANCE
+    return CONSTANT_FACTOR * max(float(rtol), SMALLEST_RELATIVE_TOLERANCE)
+
+
 def _global(
     result: ScanResult,
     methods: set[str],
@@ -311,6 +405,7 @@ def _global(
     bootstrap: Callable[[int], int],
     conf_level: float,
     num_resamples: int,
+    tolerance: float | None,
     pair_keys: Sequence[str] = (),
 ) -> SensitivityResult:
     """Compute the indices of a SALib method for every element, see the module.
@@ -318,8 +413,8 @@ def _global(
     An element is analysed on its own, with the same bootstrap seed, so its
     intervals do not depend on the other elements. The points are in the order
     of the rows of the cube, i.e. of the labels `0..n-1` of the dimension. An
-    element whose values differ by no more than `1e-12` of their largest
-    magnitude counts as constant.
+    element whose values differ by no more than the tolerance of
+    `constant_tolerance` times their largest magnitude counts as constant.
 
     Args:
         result: the result of the scan.
@@ -338,6 +433,8 @@ def _global(
             the design.
         conf_level: the level of the confidence intervals.
         num_resamples: the number of bootstrap resamples.
+        tolerance: the tolerance of a constant element, see
+            `constant_tolerance`.
         pair_keys: the indices over pairs of parameters, present when the
             design has second order indices.
 
@@ -345,6 +442,7 @@ def _global(
         The sensitivity result.
     """
     _check(conf_level, num_resamples)
+    tolerance = constant_tolerance(result, tolerance)
     dim, design = design_of(result, methods, dim)
     parameters, cube = _unit_points(result, dim, design)
     seed = bootstrap(int(design.options["seed"]))
@@ -366,7 +464,7 @@ def _global(
             if not np.isfinite(y).all():
                 failed += 1
                 continue
-            if np.ptp(y) <= 1e-12 * np.max(np.abs(y)):
+            if np.ptp(y) <= tolerance * np.max(np.abs(y)):
                 for key in out:
                     out[key][..., k] = constant
                 continue
@@ -380,17 +478,13 @@ def _global(
             units[f"{name}.{key}"] = (
                 "dimensionless" if dimensionless else result.units.get(name, "")
             )
-    if failed:
-        logger.warning(
-            "%s elements of the result contain a failed simulation (NaN); their "
-            "indices are NaN.",
-            failed,
-        )
+    _warn_failed(failed)
     options = {
         **design.options,
         "conf_level": conf_level,
         "num_resamples": num_resamples,
         "bootstrap_seed": seed,
+        "tolerance": tolerance,
     }
     return _assemble(result, dim, design.method, options, parameters, indices, units)
 
@@ -402,6 +496,7 @@ def sobol(
     observables: Sequence[str] | None = None,
     conf_level: float = 0.95,
     num_resamples: int = 100,
+    tolerance: float | None = None,
 ) -> SensitivityResult:
     """Compute the Sobol indices of a scan with a Sobol design, see the module.
 
@@ -411,9 +506,10 @@ def sobol(
     seeded with the seed of the design for every element, so the intervals are
     reproducible for every seed, and the global random state is not touched.
     `S2` is the upper triangle of SALib: `NaN` on and below the diagonal, so
-    `S2` of `x1` and `x3` is at `(x1, x3)` only. A constant element has `NaN`
-    indices. The options of the result are those of the design and the
-    arguments of the analysis (`conf_level`, `num_resamples`, `bootstrap_seed`).
+    `S2` of `x1` and `x3` is at `(x1, x3)` only. A constant element (within
+    `tolerance`) has `NaN` indices. The options of the result are those of the
+    design and the arguments of the analysis (`conf_level`, `num_resamples`,
+    `bootstrap_seed`, `tolerance`).
 
     Args:
         result: the result of a scan with a `sampling.sobol` design.
@@ -421,6 +517,9 @@ def sobol(
         observables: the observables, every variable of the result by default.
         conf_level: the level of the confidence intervals, in (0, 1).
         num_resamples: the number of bootstrap resamples, at least 1.
+        tolerance: the relative range up to which an element is constant,
+            derived from the relative tolerance of the integrator by default,
+            see `constant_tolerance`.
 
     Returns:
         The indices of every observable.
@@ -463,6 +562,7 @@ def sobol(
         bootstrap=int,
         conf_level=conf_level,
         num_resamples=num_resamples,
+        tolerance=tolerance,
         pair_keys=("S2", "S2_conf"),
     )
 
@@ -489,6 +589,7 @@ def fast(
     observables: Sequence[str] | None = None,
     conf_level: float = 0.95,
     num_resamples: int = 100,
+    tolerance: float | None = None,
 ) -> SensitivityResult:
     """Compute the FAST indices of a scan with a FAST design, see the module.
 
@@ -497,8 +598,9 @@ def fast(
     the global random state, so a call seeds it with a seed derived from the
     seed of the design (`bootstrap_seed`) and restores the state of the caller
     afterwards; the intervals are reproducible for every seed. A constant
-    element has `NaN` indices. SALib documents that the bootstrap intervals of
-    FAST are unreliable, so `S1_conf` and `ST_conf` are indicative only.
+    element (within `tolerance`) has `NaN` indices. SALib documents that the
+    bootstrap intervals of FAST are unreliable, so `S1_conf` and `ST_conf` are
+    indicative only.
 
     Args:
         result: the result of a scan with a `sampling.fast` design.
@@ -506,6 +608,9 @@ def fast(
         observables: the observables, every variable of the result by default.
         conf_level: the level of the confidence intervals, in (0, 1).
         num_resamples: the number of bootstrap resamples, at least 1.
+        tolerance: the relative range up to which an element is constant,
+            derived from the relative tolerance of the integrator by default,
+            see `constant_tolerance`.
 
     Returns:
         The indices of every observable.
@@ -554,6 +659,7 @@ def fast(
         bootstrap=_fast_seed,
         conf_level=conf_level,
         num_resamples=num_resamples,
+        tolerance=tolerance,
     )
 
 
@@ -564,6 +670,7 @@ def morris(
     observables: Sequence[str] | None = None,
     conf_level: float = 0.95,
     num_resamples: int = 100,
+    tolerance: float | None = None,
 ) -> SensitivityResult:
     """Compute the elementary effects of a scan with a Morris design, see the module.
 
@@ -571,7 +678,10 @@ def morris(
     SALib on the unit cube the record recreates (`scaled=False`). They are the
     change of the observable divided by the jump `levels / (2 (levels - 1))` of
     SALib's grid of levels on `[0, 1]`, i.e. per unit of that grid, so they have
-    the unit of the observable. A constant element has zero effects.
+    the unit of the observable: an effect is `2 (levels - 1) / levels` times the
+    change of the observable over one step of a trajectory, which moves the
+    probability of one parameter by `1/2` (`1.5` times for 4 levels). A
+    constant element (within `tolerance`) has zero effects.
 
     Args:
         result: the result of a scan with a `sampling.morris` design.
@@ -579,6 +689,9 @@ def morris(
         observables: the observables, every variable of the result by default.
         conf_level: the level of the confidence interval, in (0, 1).
         num_resamples: the number of bootstrap resamples, at least 1.
+        tolerance: the relative range up to which an element is constant,
+            derived from the relative tolerance of the integrator by default,
+            see `constant_tolerance`.
 
     Returns:
         The indices of every observable.
@@ -621,4 +734,5 @@ def morris(
         bootstrap=int,
         conf_level=conf_level,
         num_resamples=num_resamples,
+        tolerance=tolerance,
     )
