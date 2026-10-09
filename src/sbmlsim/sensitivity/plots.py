@@ -146,7 +146,7 @@ def _heatmap(
     cg.ax_heatmap.set_position((left, box.y0, box.x1 - left, top - box.y0))
 
     if title:
-        plt.suptitle(title, fontsize=40, fontweight="bold")
+        cg.figure.suptitle(title, fontsize=16, fontweight="bold", y=0.985)
 
     if fig_path:
         plt.savefig(fig_path, dpi=dpi, bbox_inches="tight")

@@ -6,10 +6,12 @@ import matplotlib
 import numpy as np
 import pytest
 import xarray as xr
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import LineCollection, QuadMesh
 from matplotlib.colors import to_rgba
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
+from matplotlib.text import Text
 
 from sbmlsim.sensitivity import plot_heatmap, plot_indices, plot_morris
 from sbmlsim.sensitivity.result import PARAMETER, SensitivityResult
@@ -144,6 +146,21 @@ def test_heatmap_keeps_undefined_rows() -> None:
         p for p in ax.patches if np.allclose(p.get_facecolor(), to_rgba("lightgrey"))
     ]
     assert len(grey) == 2
+
+
+def test_heatmap_title_fits_the_figure() -> None:
+    figure = plot_heatmap(_sobol(), "ST", dose=0, title="normalized, [S1] = 1")
+    canvas = FigureCanvasAgg(figure)
+    canvas.draw()
+    renderer = canvas.get_renderer()
+    (title,) = [
+        t for t in figure.findobj(Text) if t.get_text() == "normalized, [S1] = 1"
+    ]
+    box = title.get_window_extent(renderer)
+    assert box.x0 >= 0 and box.x1 <= figure.bbox.x1 and box.y1 <= figure.bbox.y1
+    mesh = _mesh(figure)
+    assert mesh.axes is not None
+    assert box.y0 > mesh.axes.get_window_extent(renderer).y1
 
 
 def test_heatmap_defaults() -> None:

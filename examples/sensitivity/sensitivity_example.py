@@ -53,11 +53,12 @@ def run(quick: bool, cores: int | None) -> dict[str, sensitivity.SensitivityResu
         results[name] = analysis(simulator.run(model, scan, OBSERVABLES))
 
     dpi = 72 if quick else 300
-    condition = "[S1] = 1"
+    reference = conditions.values["[S1]"][list(conditions.labels).index("reference")]
+    condition = f"[S1] = {reference:g}"
     sensitivity.plot_heatmap(
         results["local"],
         "normalized",
-        title=condition,
+        title=f"normalized, {condition}",
         S1_0="reference",
         path=Path("local.png"),
         dpi=dpi,
