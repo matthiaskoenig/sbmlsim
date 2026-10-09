@@ -31,7 +31,7 @@ Models and the changes of a model, see [Models](../models.md).
 
 ## sbmlsim.simulation
 
-Definition of simulations, see [Simulations](../simulation.md) and [Parameter scans](../scans.md).
+Definition of simulations, see [Simulations](../simulation.md) and [Parameter scans](../scans.md) and [Observables](../observables.md).
 
 | module | description |
 | --- | --- |

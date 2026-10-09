@@ -17,7 +17,7 @@ from sbmlsim.simulator.observables import (
 )
 from sbmlsim.simulator.plan import Plan
 from sbmlsim.units import ureg
-from tests.simulator.models import auc_of_c, doubled, sbml, sbml_pk
+from tests.simulator.models import auc_of_c, doubled, doubled_c, sbml, sbml_pk
 
 SCALAR, TIMECOURSE = ObservableKind.SCALAR, ObservableKind.TIMECOURSE
 
@@ -82,7 +82,7 @@ def test_the_units_are_derived(pk_model: RoadrunnerSBMLModel) -> None:
 def test_a_declared_unit_converts_the_values(pk_model: RoadrunnerSBMLModel) -> None:
     graph = compile_observables([Formula("c", "[C]", unit="ng/ml")], pk_model)
     (node,) = graph.nodes
-    assert graph.units["c"] == "ng/ml"
+    assert graph.units["c"] == "nanogram / milliliter"
     assert isinstance(node, FormulaNode)
     assert node.factor == pytest.approx(1000.0)
     with pytest.raises(ValueError, match="cannot be converted"):
@@ -271,8 +271,31 @@ def test_a_formula_which_reads_a_declared_observable_sees_its_unit(
     out = graph.evaluate(T, {"[C]": C}, [])
     np.testing.assert_allclose(out["c"], C * 1000.0)
     np.testing.assert_allclose(out["cmax"], np.nanmax(C, axis=1) * 1000.0)
-    assert graph.units["c"] == "ng/ml"
+    assert graph.units["c"] == "nanogram / milliliter"
     assert ureg.Unit(graph.units["cmax"]) == ureg.Unit("ng/ml")
+
+
+def test_custom_and_pk_read_the_declared_unit(
+    pk_model: RoadrunnerSBMLModel, plan: Plan
+) -> None:
+    graph = compile_observables(
+        [
+            Formula("c", "[C]", unit="ng/ml"),
+            Custom("dbl", doubled_c, "ng/ml", kind=TIMECOURSE, symbols=["c"]),
+            PK("pk", "c", dose="PODOSE", route="oral"),
+            Formula("c_ref", "[C]"),
+            PK("pk_ref", "c_ref", dose="PODOSE", route="oral"),
+        ],
+        pk_model,
+        plans=[plan],
+    )
+    assert _equal(graph.units["pk.cmax"], "ng/ml")
+    assert _equal(graph.units["pk_ref.cmax"], "mg/l")
+    time = np.arange(0.0, 48.0, 1.0)[None, :]
+    conc = np.exp(-0.2 * time) * (1 - np.exp(-time))
+    out = graph.evaluate(time, {"[C]": conc}, [plan])
+    np.testing.assert_allclose(out["dbl"], 2000.0 * conc)
+    np.testing.assert_allclose(out["pk.cmax"], 1000.0 * out["pk_ref.cmax"])
 
 
 def test_a_declared_unit_and_its_source_are_mixed_scales(
@@ -317,7 +340,7 @@ def test_a_declared_unit_of_a_unitless_formula_is_taken() -> None:
     graph = compile_observables(
         [Formula("a", "[A]", unit="mmol/l"), Formula("t", "24", unit="hr")], model
     )
-    assert graph.units == {**graph.units, "a": "mmol/l", "t": "hr"}
+    assert graph.units["a"] == "millimole / liter" and graph.units["t"] == "hour"
     assert all(node.factor == 1.0 for node in graph.nodes)  # ty: ignore[unresolved-attribute]
 
 

@@ -163,3 +163,8 @@ def sbml_pk(ke: float = 0.2) -> str:
     for pid, uid in (("ka", "per_hr"), ("ke", "per_hr"), ("PODOSE", "mg")):
         model.getParameter(pid).setUnits(uid)
     return libsbml.writeSBMLToString(doc)
+
+
+def doubled_c(time: np.ndarray, values: dict[str, Any]) -> np.ndarray:
+    """A custom timecourse: twice the concentration `c`."""
+    return 2.0 * values["c"]

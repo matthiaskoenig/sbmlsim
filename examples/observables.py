@@ -50,10 +50,19 @@ def run() -> Any:
         MIDAZOLAM_SBML,
         scan,
         observables,
-        keep=["mid", "pk.cmax", "pk.tmax", "pk.auc_inf_obs", "pk.thalf", "t_above"],
+        keep=[
+            "mid",
+            "mid_rel",
+            "pk.cmax",
+            "pk.tmax",
+            "pk.auc_inf_obs",
+            "pk.thalf",
+            "t_above",
+        ],
     )
     for name in ("pk.cmax", "pk.tmax", "pk.auc_inf_obs", "pk.thalf", "t_above"):
         print(name, res[name].values.round(3), res.units[name])
+    print("mid_rel max", res["mid_rel"].values.max(axis=-1).round(3))
     return res
 
 

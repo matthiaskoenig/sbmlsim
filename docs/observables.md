@@ -1,6 +1,6 @@
 # Observables
 
-An observable is what a scan computes from every simulation: a timecourse, such as a concentration normalized to its maximum, or a value per simulation, such as the maximum itself or the area under the curve. `Simulator.run(model, scan, observables, keep=...)` evaluates them in the workers on the native solution of every simulation, before any interpolation onto a grid, so they are as exact as the output of the simulation. There are three kinds: a `Formula` of the math of PEtab with reductions over the time, the non-compartmental analysis of pkpdutils (`PK`) and a `Custom` function; `keep` chooses which of them the result keeps.
+An observable is what a scan computes from every simulation: a timecourse, such as a concentration normalized to its maximum, or a value per simulation, such as the maximum itself or the area under the curve. `Simulator.run(model, scan, observables, keep=...)` evaluates them in the workers on the native solution of every simulation, before any interpolation onto a grid, so they are as exact as the output of the simulation. There are three types: a `Formula` of the math of PEtab with reductions over the time, the non-compartmental analysis of pkpdutils (`PK`) and a `Custom` function; `keep` chooses which of them the result keeps.
 
 ## Formulas and reductions
 
@@ -34,8 +34,8 @@ Four reductions reduce the time of every simulation on its own:
 | reduction | value |
 | --- | --- |
 | `max(x)`, `min(x)` | the largest and the smallest value, ignoring `NaN` |
-| `mean(x)` | the time weighted mean: the trapezoidal integral divided by the time between the first and the last time point, which does not depend on the steps of the integrator |
-| `at(x, t)` | the value at the time `t`, a number in the time unit of the model or a quantity of a time unit, interpolated linearly; at the time of a change the value after it, outside of the simulated times `NaN` |
+| `mean(x)` | the time weighted mean: the trapezoidal integral divided by the time between the first and the last time point, weighted by the time between the points and not by their number |
+| `at(x, t)` | the value at the time `t`, a number, read in the time unit of the model, or a value per simulation in the time unit of the model (e.g. `pk.tmax`), interpolated linearly; at the time of a change the value after it, outside of the simulated times `NaN` |
 
 A formula which reads only values per simulation is a value per simulation, otherwise a timecourse; a value per simulation in a timecourse is the same at every time, which is how `px / px_max` normalizes every simulation to its own maximum and `ins / at(ins, 0)` to its baseline. `max` and `min` with two or more arguments are the elementwise maximum and minimum of PEtab. The padding of a ragged scan and the steady state after the end are no time points of a reduction.
 
@@ -61,7 +61,9 @@ res = Simulator().run(
 print(res.units["mid"], res.units["mid_max"])
 ```
 
-Where pint cannot derive a unit, e.g. for `piecewise` or a comparison, the formula needs `unit=`, which is then taken as declared: `Formula("high", "piecewise(1, mid > 100, 0)", unit="dimensionless")`. The same holds for a formula which derives a dimensionless unit from symbols which have no unit or from numbers only. The compile step of a scan raises for a formula without a unit it needs, for a unit which cannot be converted, for a symbol which is neither a selection nor an observable and for observables which read each other in a cycle, before any simulation runs.
+The time of `at` is a number, read in the time unit of the model, or a value per simulation whose unit (the declared one where it has one) is the time unit of the model; another time unit or a value without a unit raises when the scan is compiled.
+
+Where pint cannot derive a unit, e.g. for `piecewise` or a comparison, the formula needs `unit=`, which is then taken as declared: `Formula("high", "piecewise(1, mid > 100, 0)", unit="dimensionless")`. A `unit=` is also taken as declared for a formula which derives a dimensionless unit from symbols which have no unit or from numbers only. The compile step of a scan raises for a formula without a unit it needs, for a unit which cannot be converted, for a symbol which is neither a selection nor an observable and for observables which read each other in a cycle, before any simulation runs.
 
 ## PK
 

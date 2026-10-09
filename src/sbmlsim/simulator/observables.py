@@ -328,8 +328,7 @@ def compile_observables(
 
     A declared unit is the unit of the observable: the values are converted
     when the formula is evaluated and the observables which read it see them in
-    that unit. A formula which adds
-    units of one dimension at different scales is refused, but a comparison of
+    that unit. A formula which adds units of one dimension at different scales is refused, but a comparison of
     mixed scales is not detected.
     """
     uinfo = model.uinfo
@@ -375,7 +374,7 @@ def compile_observables(
                 kind=observable.kind,
                 symbols=tuple(observable.symbols),
             )
-            kinds[name], units[name] = observable.kind, observable.unit
+            kinds[name], units[name] = observable.kind, str(ureg.Unit(observable.unit))
             outputs[name] = (name,)
         elif isinstance(observable, PK):
             node, pk_units = _compile_pk(observable, model, kinds, units, plans)
@@ -509,7 +508,7 @@ def _derive_unit(formula: str, units: Mapping[str, str]) -> str | None:
 
 
 def _symbol_quantities(symbols: Sequence[str], units: Mapping[str, str]) -> dict:
-    """Get the quantities of one in the natural units of the symbols."""
+    """Get the quantities of one in the units of the symbols."""
     return {
         symbol: ureg.Quantity(1.0, units[symbol] or "dimensionless")
         for symbol in symbols
@@ -519,7 +518,7 @@ def _symbol_quantities(symbols: Sequence[str], units: Mapping[str, str]) -> dict
 def _mixes_scales(formula: str, units: Mapping[str, str]) -> bool:
     """Check whether a formula adds units of one dimension at different scales.
 
-    The formula is evaluated on quantities of one in the natural units of its
+    The formula is evaluated on quantities of one in the units of its
     symbols and on plain ones; pint converts the unit of a sum, so a different
     magnitude means that the scales differ, e.g. `ng/ml - mg/l`.
     """
@@ -540,7 +539,7 @@ def _time_units(formula: str, units: Mapping[str, str]) -> list[Any]:
     """Derive the values of the times of the `at` reductions of a formula.
 
     Returns:
-        The times applied to quantities of one in the natural units of the
+        The times applied to quantities of one in the units of the
         symbols, in the order of the reductions; empty where pint cannot.
     """
     reduced = reduce_formula(formula)
@@ -619,7 +618,8 @@ def _compile_formula(
         SCALAR if all(kinds[s] is SCALAR for s in reduced.outer_symbols) else TIMECOURSE
     )
     derived = _derive_unit(observable.formula, units)
-    if observable.unit is None:
+    declared = None if observable.unit is None else str(ureg.Unit(observable.unit))
+    if declared is None:
         if derived is None:
             raise ValueError(
                 f"The unit of the formula '{observable.formula}' of the observable "
@@ -631,9 +631,9 @@ def _compile_formula(
     unitless = all(not units[s] for s in reduced.symbols)
     if derived is None or (derived == "dimensionless" and unitless):
         node = FormulaNode(observable.id, observable.formula, kind, 1.0)
-        return node, observable.unit
+        return node, declared
     try:
-        factor = float(ureg.Quantity(1.0, derived).to(observable.unit).magnitude)
+        factor = float(ureg.Quantity(1.0, derived).to(declared).magnitude)
     except Exception as err:
         raise ValueError(
             f"The formula of the observable '{observable.id}' has the unit "
@@ -641,7 +641,7 @@ def _compile_formula(
             f"'{observable.unit}'."
         ) from err
     node = FormulaNode(observable.id, observable.formula, kind, factor)
-    return node, observable.unit
+    return node, declared
 
 
 def _compile_pk(
