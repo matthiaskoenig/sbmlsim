@@ -53,7 +53,7 @@ print(local.labels[:3], len(draws), draws.design.method, draws.design.options["s
 | `local(targets, delta, model=...)` | the reference and every target alone at `1 + delta` and `1 - delta` times its reference |
 | `random(distributions, n, seed=..., correlation=...)` | independent draws, or correlated ones (a Gaussian copula) |
 | `lhs(distributions, n, seed=..., correlation=...)` | a Latin hypercube; with a correlation the rank reordering of Iman and Conover keeps its strata |
-| `sobol(distributions, n, seed=...)`, `fast(...)`, `morris(...)` | the designs of SALib for the global sensitivity analyses |
+| `sobol(distributions, n, seed=...)`, `fast(...)`, `morris(...)` | the designs of SALib for the global sensitivity analyses, see [Sensitivity analysis](sensitivity.md) |
 | `fit_parameters(fisher, n, seed=...)` | the parameters of a fit from the normal of its Fisher covariance, drawn only in the directions the information constrains (the others stay at the fitted value, `profile_parameters` is the design for a parameter which is not identifiable); it raises without degrees of freedom |
 | `profile_parameters(identifiability, n, seed=...)` | every parameter of a fit from its profile likelihood, which follows asymmetric and open confidence intervals: a closed side of a profile is extended by its quadratic tail, an open side to the bound, and no draw leaves the bounds of a parameter |
 | `fit_repeats(result, size)` | the best parameter sets of the repeats of a fit |

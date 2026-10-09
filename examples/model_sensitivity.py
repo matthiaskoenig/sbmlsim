@@ -22,9 +22,9 @@ def plot_results(res: ScanResult, filename: str) -> None:
     ax: plt.Axes
     for ax in (ax1, ax3):
         for sid, color in [
-            ("[X]", "tab:blue"),
-            ("[Y]", "tab:red"),
-            ("[Z]", "tab:green"),
+            ("x", "tab:blue"),
+            ("y", "tab:red"),
+            ("z", "tab:green"),
         ]:
             # range of the simulations
             ax.fill_between(
@@ -41,8 +41,8 @@ def plot_results(res: ScanResult, filename: str) -> None:
 
     for ax in (ax2, ax4):
         ax.plot(
-            summary["[X]"].sel(statistic="mean").values,
-            summary["[Y]"].sel(statistic="mean").values,
+            summary["x"].sel(statistic="mean").values,
+            summary["y"].sel(statistic="mean").values,
             color="black",
             label="Y~X",
         )
@@ -67,9 +67,14 @@ def run_sensitivity() -> None:
     """Parameter sensitivity simulations: a local design and lognormal draws."""
     simulator = Simulator()
     model = simulator.load(REPRESSILATOR_SBML)
-    model.set_selections(["time", "[X]", "[Y]", "[Z]"])
     tcsim = Simulation(end=200, steps=2000)
     parameters = sampling.parameters_of(model)
+    observables = [
+        Formula("x", "[X]"),
+        Formula("y", "[Y]"),
+        Formula("z", "[Z]"),
+        Formula("x_max", "max([X])"),
+    ]
 
     # the parameters drawn from lognormal distributions around their references
     draws = sampling.random(
@@ -78,19 +83,15 @@ def run_sensitivity() -> None:
         seed=1234,
         model=model,
     )
-    res_distrib_scan = simulator.run(model, Scan(tcsim, [draws]))
+    res_distrib_scan = simulator.run(model, Scan(tcsim, [draws]), observables)
 
     # every parameter alone 10 % up and down
     local = sampling.local(parameters, delta=0.1, model=model)
-    res_diff_scan = simulator.run(model, Scan(tcsim, [local]))
+    res_diff_scan = simulator.run(model, Scan(tcsim, [local]), observables)
 
-    # the local indices of the maximum of X: a run with an observable, which keeps
-    # no timecourse, so the figures above come from the runs without observables
-    res_local = simulator.run(
-        model, Scan(tcsim, [local]), [Formula("x_max", "max([X])")]
-    )
-    normalized = sensitivity.local(res_local).index("normalized")
-    print(normalized.to_pandas().round(3))
+    # the local indices of the maximum of X
+    local_indices = sensitivity.local(res_diff_scan, observables=["x_max"])
+    print(local_indices.index("normalized").to_pandas().round(3))
 
     # create figures
     plot_results(res_distrib_scan, "model_sensitivity_distribution.png")

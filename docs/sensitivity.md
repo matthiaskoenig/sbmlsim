@@ -1,8 +1,8 @@
 # Sensitivity analysis
 
-Sensitivity analysis quantifies how the outputs of a model depend on its parameters. An analysis of `sbmlsim.sensitivity` is three steps: a design of the sampler, a run and the indices on the result. The design (`local`, `sobol`, `fast` or `morris` of `sbmlsim.simulation.sampling`, see [Sampling and uncertainty](sampling.md)) is a dimension of a `Scan`, `Simulator.run` simulates its points with the observables, and `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast` and `sensitivity.morris` read the record of the design from the result and compute the indices of the global methods of [SALib](https://salib.readthedocs.io), see [References](references.md#sensitivity-analysis).
+Sensitivity analysis quantifies how the outputs of a model depend on its parameters. An analysis of `sbmlsim.sensitivity` is three steps: a design of the sampler, a run and the indices on the result. The design (`local`, `sobol`, `fast` or `morris` of `sbmlsim.simulation.sampling`, see [Sampling and uncertainty](sampling.md)) is a dimension of a `Scan`, `Simulator.run` simulates its points with the observables, and `sensitivity.local`, `sensitivity.sobol`, `sensitivity.fast` and `sensitivity.morris` read the record of the design from the result and compute the local indices and the global indices of [SALib](https://salib.readthedocs.io), see [References](references.md#sensitivity-analysis).
 
-The indices are computed for every observable and for every label of the other dimensions of the scan, e.g. a dose or a condition, and for every time point of a timecourse on a grid (`time=` of the run). A scan can combine a design with any other dimensions, so one run gives the sensitivities for all conditions. A timecourse with its native time points (ragged) has no common time points to compute indices on and raises, ask for a grid with `time=`.
+The indices are computed for every observable and for every label of the other dimensions of the scan, e.g. a dose or a condition, and for every time point of a timecourse on a common time grid (`time=` of the run, or a simulation with `steps` or `times`). A scan can combine a design with any other dimensions, so one run gives the sensitivities for all conditions. A timecourse with its native time points (ragged) has no common time points to compute indices on and raises, ask for a grid with `time=` or a simulation with `steps` or `times`.
 
 The examples below use the repressilator and three of its parameters.
 
@@ -72,7 +72,7 @@ A simulation of a point which fails gives `NaN` for the point (`on_error="flag"`
 
 ## The result
 
-A `SensitivityResult` wraps an `xarray.Dataset` (`ds`) with a variable per observable and index, `<observable>.<index>`, over `(parameter, *dimensions, [time])`, the unit of every observable in `attrs["units"]` and the method, its options and the provenance of the scan in `attrs`. Second order indices are over `(parameter, parameter_2, ...)`.
+A `SensitivityResult` wraps an `xarray.Dataset` (`ds`) with a variable per observable and index, `<observable>.<index>`, over `(parameter, *dimensions, [time])`, the unit of every variable in `attrs["units"]` and the method, its options and the provenance of the scan in `attrs`. Second order indices are over `(parameter, parameter_2, ...)`.
 
 ```python
 print(sorted(sobol.ds.data_vars))
@@ -103,7 +103,7 @@ sensitivity.plot_morris(morris, "px_max", path="morris.png", dpi=72)
 
 | plot | shows |
 | --- | --- |
-| `plot_heatmap(result, index, ...)` | an index of all scalar observables over the parameters, clustered, with a `cutoff` for the parameters without an effect; for `raw` and `normalized` on a diverging color map around 0 |
+| `plot_heatmap(result, index, ...)` | an index of all scalar observables over the parameters, clustered, with a `cutoff` for the parameters without an effect; for the signed indices (`raw`, `normalized` and `mu`) on a diverging color map around 0 |
 | `plot_indices(result, observable)` | the bars of `S1` and `ST` of a Sobol or FAST analysis with their intervals |
 | `plot_morris(result, observable)` | `mu_star` against `sigma` with a point per parameter |
 

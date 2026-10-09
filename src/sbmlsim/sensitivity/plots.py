@@ -29,7 +29,7 @@ def _heatmap(
     vcenter: float | None = 0.0,
     vmin: float = -2.0,
     vmax: float = 2.0,
-    fig_path: Path | None = None,
+    fig_path: str | Path | None = None,
     dpi: int = 300,
 ) -> Figure:
     """Creates heatmap of model sensitivity.
@@ -228,7 +228,7 @@ def plot_heatmap(
     cmap: str | None = None,
     vmin: float | None = None,
     vmax: float | None = None,
-    path: Path | None = None,
+    path: str | Path | None = None,
     dpi: int = 300,
     **selection: Any,
 ) -> Figure:
@@ -311,7 +311,8 @@ def plot_indices(
     result: SensitivityResult,
     observable: str,
     *,
-    path: Path | None = None,
+    title: str | None = None,
+    path: str | Path | None = None,
     dpi: int = 300,
     **selection: Any,
 ) -> Figure:
@@ -320,6 +321,7 @@ def plot_indices(
     Args:
         result: the result of a Sobol or FAST analysis.
         observable: the observable.
+        title: the title of the figure, the observable by default.
         path: where the figure is saved, if given.
         dpi: the resolution of the saved figure.
         **selection: the label of every other dimension, e.g. `dose=0`.
@@ -364,7 +366,7 @@ def plot_indices(
     ax.set_xticks(x, parameters, rotation=90)
     ax.set_xlabel("Parameter")
     ax.set_ylabel(INDEX_NAMES.get(result.method, "Sensitivity index"))
-    ax.set_title(observable)
+    ax.set_title(title or observable)
     ax.grid(True, axis="y")
     ax.legend()
     if path:
@@ -376,7 +378,8 @@ def plot_morris(
     result: SensitivityResult,
     observable: str,
     *,
-    path: Path | None = None,
+    title: str | None = None,
+    path: str | Path | None = None,
     dpi: int = 300,
     **selection: Any,
 ) -> Figure:
@@ -385,6 +388,7 @@ def plot_morris(
     Args:
         result: the result of a Morris analysis.
         observable: the observable.
+        title: the title of the figure, the observable by default.
         path: where the figure is saved, if given.
         dpi: the resolution of the saved figure.
         **selection: the label of every other dimension.
@@ -425,7 +429,7 @@ def plot_morris(
     unit = result.units.get(f"{observable}.mu_star")
     ax.set_xlabel(_label("mu_star", unit))
     ax.set_ylabel(_label("sigma", result.units.get(f"{observable}.sigma")))
-    ax.set_title(observable)
+    ax.set_title(title or observable)
     ax.grid(True)
     if path:
         figure.savefig(path, dpi=dpi)

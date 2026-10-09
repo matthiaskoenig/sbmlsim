@@ -9,8 +9,6 @@ is a design of the sampler, a run and the indices on the result.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 from sbmlsim import sensitivity
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation, sampling
 from sbmlsim.simulator import Simulator
@@ -18,9 +16,9 @@ from sbmlsim.simulator import Simulator
 MODEL = Path(__file__).parent / "simple_chain.xml"
 
 OBSERVABLES = [
-    Formula("S1_auc", "mean([S1]) * 1000"),
-    Formula("S2_auc", "mean([S2]) * 1000"),
-    Formula("S3_auc", "mean([S3]) * 1000"),
+    Formula("S1_mean", "mean([S1])"),
+    Formula("S2_mean", "mean([S2])"),
+    Formula("S3_mean", "mean([S3])"),
     Formula("S2_max", "max([S2])"),
 ]
 
@@ -30,7 +28,9 @@ def run(quick: bool, cores: int | None) -> dict[str, sensitivity.SensitivityResu
     simulator = Simulator(n_workers=cores)
     model = simulator.load(MODEL)
     simulation = Simulation(end=1000, steps=1000)
-    conditions = Dimension("S1_0", values={"[S1]": [0.1, 1.0, 10.0]})
+    conditions = Dimension(
+        "S1_0", values={"[S1]": [0.1, 1.0, 10.0]}, labels=["low", "reference", "high"]
+    )
     parameters = sampling.parameters_of(model)
     bounds = {pid: sampling.Uniform(relative=0.15) for pid in parameters}
     n = 32 if quick else 1024
@@ -53,24 +53,35 @@ def run(quick: bool, cores: int | None) -> dict[str, sensitivity.SensitivityResu
         results[name] = analysis(simulator.run(model, scan, OBSERVABLES))
 
     dpi = 72 if quick else 300
+    condition = "[S1] = 1"
     sensitivity.plot_heatmap(
-        results["local"], "normalized", S1_0=1, path=Path("local.png"), dpi=dpi
+        results["local"],
+        "normalized",
+        title=condition,
+        S1_0="reference",
+        path=Path("local.png"),
+        dpi=dpi,
     )
     sensitivity.plot_indices(
-        results["sobol"], "S2_auc", S1_0=1, path=Path("sobol_S2_auc.png"), dpi=dpi
+        results["sobol"],
+        "S2_mean",
+        title=f"S2_mean, Sobol, {condition}",
+        S1_0="reference",
+        path=Path("sobol_S2_mean.png"),
+        dpi=dpi,
     )
     sensitivity.plot_morris(
-        results["morris"], "S2_auc", S1_0=1, path=Path("morris_S2_auc.png"), dpi=dpi
+        results["morris"],
+        "S2_mean",
+        title=f"S2_mean, Morris, {condition}",
+        S1_0="reference",
+        path=Path("morris_S2_mean.png"),
+        dpi=dpi,
     )
+    shown = {"local": "normalized", "sobol": "ST", "fast": "ST", "morris": "mu_star"}
     for name, result in results.items():
-        index = {
-            "local": "normalized",
-            "sobol": "ST",
-            "fast": "ST",
-            "morris": "mu_star",
-        }
-        values = result.index(index[name]).sel(S1_0=1)
-        print(name, index[name], np.round(values.values, 3).tolist())
+        print(f"{name}: {shown[name]} at {condition}")
+        print(result.index(shown[name]).sel(S1_0="reference").to_pandas().round(5))
     return results
 
 
