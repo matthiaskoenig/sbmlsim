@@ -34,7 +34,7 @@ Measured on `develop` (`344e43ee`).
 | design | a `Dimension` of values with a design record; a scan with a design is an ordinary scan, which other dimensions (doses, conditions, simulations, models) multiply |
 | references | a distribution takes explicit numbers or quantities; one without a location is relative to the reference of its target, the value the model gives the target after the pre-initialization of the simulation (the changes of the model and of the simulation and the initial assignments) |
 | marginals | every design maps points of the unit cube through the inverse CDF of each distribution, so any marginal works with every design |
-| correlation | a Gaussian copula for `random`, the rank reordering of Iman and Conover for `lhs` (it keeps the strata); refused for `sobol`, `fast` and `morris`, whose indices assume independence |
+| correlation | the Spearman rank correlation of the values, converted to the correlation of normal scores (`2 sin(π ρ / 6)`); a Gaussian copula for `random`, the rank reordering of Iman and Conover for `lhs` (it keeps the strata); refused for `sobol`, `fast` and `morris`, whose indices assume independence |
 | seed | every random design takes `seed`; `None` draws a seed, which the record keeps, so a result is reproducible from its record alone |
 | fit uncertainty | `fit_parameters` draws from the normal of the Fisher covariance (correlated, local), `profile_parameters` from the profile likelihood of every parameter (independent, follows asymmetric and open profiles), `fit_repeats` takes the parameter sets of the repeats of a fit |
 | sensitivity | functions of a `ScanResult`; the indices per array element, i.e. per label of every other dimension and per time point of a timecourse on a common grid |
