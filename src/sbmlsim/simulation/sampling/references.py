@@ -77,7 +77,7 @@ def parameters_of(
     model: ModelLike,
     *,
     species: bool = False,
-    exclude: Callable[[str], bool] | Collection[str] | None = None,
+    exclude: Callable[[str], bool] | Collection[str] | str | None = None,
     exclude_zero: bool = True,
     simulation: Simulation | None = None,
 ) -> list[str]:
@@ -86,7 +86,7 @@ def parameters_of(
     Args:
         model: the model, loaded or a source.
         species: list the species as well (their amounts).
-        exclude: ids, or a function which is true for an id, to leave out.
+        exclude: an id, ids, or a function which is true for an id, to leave out.
         exclude_zero: leave out a target whose reference is below `ZERO` in
             magnitude, which a relative change does not change.
         simulation: the simulation whose pre-initialization gives the
@@ -105,6 +105,8 @@ def parameters_of(
     excluded: Callable[[str], bool]
     if exclude is None:
         excluded = _nothing
+    elif isinstance(exclude, str):
+        excluded = {exclude}.__contains__
     elif isinstance(exclude, Collection):
         excluded = set(exclude).__contains__
     else:

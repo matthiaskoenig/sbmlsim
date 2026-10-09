@@ -8,6 +8,7 @@ design works with every marginal; a distribution without a location is
 relative to the reference of its target, see `references`.
 """
 
+from sbmlsim.simulation.sampling.designs import lhs, local, random
 from sbmlsim.simulation.sampling.distributions import (
     Distribution,
     Empirical,
@@ -31,6 +32,9 @@ __all__ = [
     "Normal",
     "Truncated",
     "Uniform",
+    "lhs",
+    "local",
     "parameters_of",
+    "random",
     "references",
 ]

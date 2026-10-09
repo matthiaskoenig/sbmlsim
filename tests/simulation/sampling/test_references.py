@@ -42,6 +42,8 @@ def test_the_parameters_of_a_model() -> None:
     assert {"a0", "b0", "k1", "k2", "f"} <= set(parameters)
     assert not any(p.endswith("__initial") for p in parameters)
     assert "k1" not in parameters_of(model, exclude={"k1"})
+    assert "k1" not in parameters_of(model, exclude="k1")
+    assert "k2" in parameters_of(model, exclude="k1")
     assert "k1" not in parameters_of(model, exclude=lambda pid: pid.startswith("k"))
     assert {"A", "B", "X"} <= set(parameters_of(model, species=True))
     zero = RoadrunnerSBMLModel(source=sbml(), changes={"k2": 0.0})
