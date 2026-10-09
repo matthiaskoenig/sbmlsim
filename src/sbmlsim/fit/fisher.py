@@ -65,6 +65,9 @@ class FisherInformation:
         cost: cost of the parameter set.
         n: number of data points of the fit.
         alpha: confidence level of the intervals.
+        targets: the target of the model every parameter is written to, in the
+            order of the matrix (`FitParameter.target_id`); empty for an
+            information which does not know them, then the pids are the targets.
     """
 
     opid: str
@@ -79,6 +82,7 @@ class FisherInformation:
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE
     units: list[str | None] = field(default_factory=list)
     scales: list[ParameterScaleType] = field(default_factory=list)
+    targets: list[str] = field(default_factory=list)
 
     #: the covariance is read by the errors, the correlations and the table, so
     #: the warning of a rank deficient information is logged for the first of
@@ -91,6 +95,12 @@ class FisherInformation:
         Raises:
             ValueError: if the scales are given and not one per parameter.
         """
+        if self.targets and len(self.targets) != len(self.pids):
+            raise ValueError(
+                f"'{self.opid}': the Fisher information requires one target per "
+                f"parameter, but '{len(self.targets)}' targets are given for the "
+                f"'{len(self.pids)}' parameters '{self.pids}'."
+            )
         if self.scales and len(self.scales) != len(self.pids):
             raise ValueError(
                 f"'{self.opid}': the Fisher information requires one scale per "
@@ -287,6 +297,7 @@ class FisherInformation:
             "n": self.n,
             "alpha": self.alpha,
             "units": list(self.units),
+            "targets": list(self.targets),
         }
 
 
@@ -360,4 +371,5 @@ def fisher_information(
         rank_tolerance=rank_tolerance,
         units=[p.unit for p in problem.parameters],
         scales=list(problem.scales_initialized),
+        targets=[p.target_id for p in problem.parameters],
     )

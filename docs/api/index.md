@@ -38,7 +38,7 @@ Definition of simulations, see [Simulations](../simulation.md) and [Parameter sc
 | [simulation.definition](simulation.definition.md) | `Simulation`, `Change` and `SteadyState`, a simulation with its changes, with units |
 | [simulation.scan](simulation.scan.md) | `Scan` and `Dimension`, a simulation over dimensions of values, simulations and models |
 | [simulation.observables](simulation.observables.md) | `Formula`, `PK` and `Custom`, what a scan computes from every simulation |
-| [simulation.sensitivity](simulation.sensitivity.md) | `ModelSensitivity`, sensitivity scans of parameters and initial conditions |
+| [simulation.sampling](simulation.sampling.md) | the sampler: distributions, references and the designs of a scan, of the sensitivity analyses, of a fit and of a population |
 
 ## sbmlsim.simulator, sbmlsim.task
 
@@ -121,15 +121,11 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 
 | module | description |
 | --- | --- |
-| [sensitivity.analysis](sensitivity.analysis.md) | the common analysis of a model, i.e., outputs, observables and the simulation of parameter samples |
-| [sensitivity.parameters](sensitivity.parameters.md) | selection, bounds and distributions of the analysed parameters |
-| [sensitivity.sensitivity_local](sensitivity.sensitivity_local.md) | local sensitivities by finite differences |
-| [sensitivity.sensitivity_sampling](sensitivity.sensitivity_sampling.md) | sampling based sensitivity and uncertainty analysis |
-| [sensitivity.sensitivity_morris](sensitivity.sensitivity_morris.md) | Morris elementary effects screening |
-| [sensitivity.sensitivity_sobol](sensitivity.sensitivity_sobol.md) | variance based Sobol indices |
-| [sensitivity.sensitivity_fast](sensitivity.sensitivity_fast.md) | Fourier amplitude sensitivity test (FAST) |
+| [sensitivity.indices](sensitivity.indices.md) | the local, Sobol, FAST and Morris indices of the result of a scan |
+| [sensitivity.result](sensitivity.result.md) | the `SensitivityResult` with the indices, `classify` and netCDF |
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
-| [sensitivity.plots](sensitivity.plots.md) | plots of the sensitivity results |
+| [sensitivity.plots](sensitivity.plots.md) | heatmap, bars of the indices and the plane of Morris |
+| [sensitivity.uncertainty](sensitivity.uncertainty.md) | bands and distributions of a scan over draws |
 
 ## sbmlsim.sciml
 

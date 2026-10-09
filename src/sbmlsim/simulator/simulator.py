@@ -318,8 +318,10 @@ class Simulator:
                 `status`; if a dimension id is a selection; if a simulation, a
                 value or a time does not fit a model, e.g. a target which is no
                 target of a model; if two dimensions set one target at one
-                time; or if the grid of times is empty or a quantity which the
-                unit of time of the first model cannot take.
+                time; if a coordinate of a dimension has the name of an output,
+                a dimension id, a changed target or a coordinate of another
+                dimension; or if the grid of times is empty or a quantity which
+                the unit of time of the first model cannot take.
         """
         models, labels = self._models(model, scan)
         first = models[0]
@@ -379,6 +381,7 @@ class Simulator:
                 f"The observables {changed} are targets the scan changes, which "
                 f"are coordinates of the result; choose other ids."
             )
+        _check_coordinates(scan, set(graph.outputs))
         grid, interpolate = _grid(plans, time, first)
         return _Compiled(
             scan=scan,
@@ -487,6 +490,40 @@ class Simulator:
         if failed is not None:
             raise compiled.error(failed) from failed
         return results
+
+
+def _check_coordinates(scan: Scan, outputs: set[str]) -> None:
+    """Check that no coordinate hides or is hidden by another name of the result.
+
+    Raises:
+        ValueError: if a coordinate has the name of an output, a dimension id, a
+            changed target or a coordinate of another dimension.
+    """
+    taken: dict[str, str] = {}
+    for dimension in scan.dimensions:
+        for target in dimension.values:
+            taken.setdefault(target, "a changed target")
+    owner: dict[str, str] = {}
+    for dimension in scan.dimensions:
+        for name in dimension.coordinates:
+            if name in RESERVED:
+                what = "a name of the result"
+            elif name in outputs:
+                what = "an output of the result"
+            elif name in scan.dims:
+                what = "a dimension id"
+            elif name in taken:
+                what = "a changed target"
+            elif name in owner:
+                what = f"a coordinate of the dimension '{owner[name]}'"
+            else:
+                owner[name] = dimension.id
+                continue
+            raise ValueError(
+                f"The coordinate '{name}' of the dimension '{dimension.id}' would "
+                f"hide or be hidden by {what} of the same name; rename the "
+                f"covariate."
+            )
 
 
 @dataclass
@@ -638,6 +675,15 @@ class _Compiled:
                 else:
                     coords[target] = (dimension.id, np.array(values))
                     units[target] = first.uinfo.get(target, "") or ""
+            for name, values in dimension.coordinates.items():
+                if name in data_vars or name in coords:
+                    continue
+                if isinstance(values, Quantity):
+                    coords[name] = (dimension.id, np.array(values.magnitude))
+                    units[name] = str(values.units)
+                else:
+                    coords[name] = (dimension.id, np.array(values))
+                    units[name] = ""
         if self.grid is not None and timed:
             coords[TIME] = self.grid
         attrs: dict[str, Any] = {

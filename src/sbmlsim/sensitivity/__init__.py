@@ -1,61 +1,35 @@
-"""Sensitivity analysis.
+"""Sensitivity analysis on the result of a scan.
 
-This package provides a unified framework for analyzing how uncertainty and
-variability in model parameters affect model outputs. It supports multiple
-complementary sensitivity analysis strategies, including local, sampling-based,
-and global methods. Together, these enable both qualitative and quantitative
-assessment of parameter influence on model behavior.
+An analysis is a design of the sampler, a run and the indices on the result.
+The design of [`sbmlsim.simulation.sampling`](../api/simulation.sampling.md)
+(`local`, `sobol`, `fast` or `morris`) is a dimension of a `Scan`,
+`Simulator.run` simulates it, and `local`, `sobol`, `fast` and `morris` read
+the record of the design from the result and compute the indices of every
+observable for every label of the other dimensions and every time point of a
+timecourse on a grid.
 
-The available sensitivity analysis methods are implemented in the following
-modules:
-
-- [`sensitivity.sensitivity_fast`](../api/sensitivity.sensitivity_fast.qmd):
-  Global sensitivity analysis using FAST (Fourier Amplitude Sensitivity Test).
-
-- [`sensitivity.sensitivity_local`](../api/sensitivity.sensitivity_local.qmd):
-  Local (derivative-based) sensitivity analysis around a nominal parameter set.
-
-- [`sensitivity.sensitivity_morris`](../api/sensitivity.sensitivity_morris.qmd):
-  Global screening based on Morris elementary effects.
-
-- [`sensitivity.sensitivity_sampling`](../api/sensitivity.sensitivity_sampling.qmd):
-  Sampling-based sensitivity analysis using parameter perturbations and
-  statistical summaries.
-
-- [`sensitivity.sensitivity_sobol`](../api/sensitivity.sensitivity_sobol.qmd):
-  Variance-based global sensitivity analysis using Sobol indices.
-
-All methods share a common interface and data model. This allows consistent
-configuration, execution, and comparison of sensitivity analysis results across
-different techniques.
+- [`sensitivity.indices`](../api/sensitivity.indices.md): the four analyses.
+- [`sensitivity.result`](../api/sensitivity.result.md): the `SensitivityResult`
+  with the indices, their units, `to_dataframe`, `classify` and netCDF.
+- [`sensitivity.plots`](../api/sensitivity.plots.md): the heatmap, the bars of
+  the indices and the plane of Morris.
+- [`sensitivity.classification`](../api/sensitivity.classification.md): the
+  classification of sensitivities.
+- [`sensitivity.uncertainty`](../api/sensitivity.uncertainty.md): the bands and
+  distributions of a scan over draws.
 """
 
-from .analysis import (
-    AnalysisGroup,
-    SensitivityAnalysis,
-    SensitivityOutput,
-    SensitivitySimulation,
-)
-from .parameters import (
-    ParameterType,
-    SensitivityParameter,
-)
-from .sensitivity_fast import FASTSensitivityAnalysis
-from .sensitivity_local import LocalSensitivityAnalysis
-from .sensitivity_morris import MorrisSensitivityAnalysis
-from .sensitivity_sampling import SamplingSensitivityAnalysis
-from .sensitivity_sobol import SobolSensitivityAnalysis
+from .indices import fast, local, morris, sobol
+from .plots import plot_heatmap, plot_indices, plot_morris
+from .result import SensitivityResult
 
 __all__ = [
-    "AnalysisGroup",
-    "FASTSensitivityAnalysis",
-    "LocalSensitivityAnalysis",
-    "MorrisSensitivityAnalysis",
-    "ParameterType",
-    "SamplingSensitivityAnalysis",
-    "SensitivityAnalysis",
-    "SensitivityOutput",
-    "SensitivityParameter",
-    "SensitivitySimulation",
-    "SobolSensitivityAnalysis",
+    "SensitivityResult",
+    "fast",
+    "local",
+    "morris",
+    "plot_heatmap",
+    "plot_indices",
+    "plot_morris",
+    "sobol",
 ]

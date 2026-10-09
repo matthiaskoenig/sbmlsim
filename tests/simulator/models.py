@@ -181,3 +181,26 @@ def sbml_pk(ke: float = 0.2, blowup: bool = False) -> str:
 def doubled_c(time: np.ndarray, values: dict[str, Any]) -> np.ndarray:
     """A custom timecourse: twice the concentration `c`."""
     return 2.0 * values["c"]
+
+
+def clearance_of(covariates: dict[str, Any]) -> dict[str, Any]:
+    """A population function: k1 scales with the body weight to the power 0.75."""
+    bw = np.asarray(
+        getattr(covariates["BW"], "magnitude", covariates["BW"]), dtype=float
+    )
+    return {"k1": 0.8 * (bw / 70.0) ** 0.75}
+
+
+def no_mapping(covariates: dict[str, Any]) -> Any:
+    """A wrong population function, which returns a list."""
+    return [1.0]
+
+
+def wrong_length(covariates: dict[str, Any]) -> dict[str, Any]:
+    """A wrong population function, which returns one value too many."""
+    return {"k1": np.ones(len(covariates["BW"]) + 1)}
+
+
+def covariate_as_target(covariates: dict[str, Any]) -> dict[str, Any]:
+    """A wrong population function, which returns a covariate."""
+    return {"BW": covariates["BW"]}
