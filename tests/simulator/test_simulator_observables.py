@@ -83,6 +83,26 @@ def test_reductions_against_the_analytic_solution(pk_sbml: str) -> None:
     assert res.units["rel"] == "dimensionless"
 
 
+def test_the_observables_are_computed_on_the_native_solution(pk_sbml: str) -> None:
+    observables = [*REDUCTIONS, PK("p", "[C]", dose="PODOSE", route="oral")]
+    scan = dose_scan(steps=None, doses=(50.0, 200.0))
+    grid = np.linspace(0.0, 48.0, 7)
+    native = Simulator().run(pk_sbml, scan, observables)
+    gridded = Simulator().run(pk_sbml, scan, observables, time=grid)
+    assert native.ragged and not gridded.ragged
+    scalars = [str(n) for n in native.ds.data_vars if native.ds[n].dims == ("dose",)]
+    assert {"cmax", "cmean", "c10", "p.cmax", "p.cl_f"} <= set(scalars)
+    for name in scalars:
+        xr.testing.assert_identical(gridded[name], native[name])
+    # the maximum of the solution, not of the coarse grid
+    assert (gridded["cmax"].values > gridded["c"].values.max(axis=1)).all()
+    assert gridded["c"].dims == ("dose", "time")
+    np.testing.assert_array_equal(gridded["time"].values, grid)
+    on_grid = native.interpolate(grid)
+    for name in ("c", "rel"):
+        np.testing.assert_array_equal(gridded[name].values, on_grid[name].values)
+
+
 def test_a_baseline_formula_broadcasts_over_the_time(pk_sbml: str) -> None:
     observables = [
         Formula("c", "[C]"),
