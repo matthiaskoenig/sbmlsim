@@ -262,20 +262,30 @@ def test_the_padding_of_a_timecourse_formula_is_nan(
     assert out["high"][1, 2] == 1.0 and out["high"][0, 3] == 5.0
 
 
-def test_observables_see_the_natural_units_of_the_ones_they_read(
+def test_a_formula_which_reads_a_declared_observable_sees_its_unit(
     pk_model: RoadrunnerSBMLModel,
 ) -> None:
     graph = compile_observables(
-        [
-            Formula("c", "[C]", unit="ng/ml"),
-            Formula("diff", "c - [C]", unit="mg/l"),
-        ],
-        pk_model,
+        [Formula("c", "[C]", unit="ng/ml"), Formula("cmax", "max(c)")], pk_model
     )
     out = graph.evaluate(T, {"[C]": C}, [])
     np.testing.assert_allclose(out["c"], C * 1000.0)
-    np.testing.assert_allclose(out["diff"], np.where(np.isnan(C), np.nan, 0.0))
+    np.testing.assert_allclose(out["cmax"], np.nanmax(C, axis=1) * 1000.0)
     assert graph.units["c"] == "ng/ml"
+    assert ureg.Unit(graph.units["cmax"]) == ureg.Unit("ng/ml")
+
+
+def test_a_declared_unit_and_its_source_are_mixed_scales(
+    pk_model: RoadrunnerSBMLModel,
+) -> None:
+    with pytest.raises(ValueError, match="different scale"):
+        compile_observables(
+            [
+                Formula("c", "[C]", unit="ng/ml"),
+                Formula("diff", "c - [C]", unit="mg/l"),
+            ],
+            pk_model,
+        )
 
 
 def test_a_formula_which_mixes_scales_is_refused(pk_model: RoadrunnerSBMLModel) -> None:

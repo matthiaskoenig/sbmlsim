@@ -52,10 +52,10 @@ class FormulaNode:
         id: the id of the observable.
         formula: the formula.
         kind: a timecourse or a value per simulation.
-        factor: the factor from the natural unit of the formula into its
+        factor: the factor from the derived unit of the formula into its
             declared unit, `1` without a conversion; `evaluate` applies it to
-            the kept outputs only, the observables which read the formula see
-            its natural unit.
+            the values of the formula, so every observable which reads it sees
+            the unit of the observable.
     """
 
     id: str
@@ -117,8 +117,8 @@ class ObservableGraph:
         kinds: the kind of every symbol and output: `time` and the selections
             are timecourses.
         units: the unit of every symbol and output, for a formula the declared
-            unit, to which `evaluate` converts the kept values; inside of the
-            graph every observable keeps its natural unit.
+            unit if it has one (the values of `evaluate` are in it), else the
+            derived one.
         keep: the outputs of the result, in order.
         outputs: every output: the ids of the formulas and customs and the
             parameters of the PK observables; the selections without
@@ -183,15 +183,9 @@ class ObservableGraph:
                         f"The PK observable '{node.id}' failed: "
                         f"{type(err).__name__}: {err}",
                     ) from err
-        factors = {
-            node.id: node.factor
-            for node in self.nodes
-            if isinstance(node, FormulaNode) and node.factor != 1.0
-        }
         out: dict[str, np.ndarray] = {}
         for key in self.keep:
-            value = values[key][:, 0] if self.kinds[key] is SCALAR else values[key]
-            out[key] = value * factors[key] if key in factors else value
+            out[key] = values[key][:, 0] if self.kinds[key] is SCALAR else values[key]
         return out
 
 
@@ -212,6 +206,8 @@ def _formula(
             )
             shape = (time.shape[0], 1) if node.kind is SCALAR else time.shape
             value = np.broadcast_to(value, shape).copy()
+            if node.factor != 1.0:
+                value *= node.factor
             if node.kind is TIMECOURSE:
                 value[np.isnan(time)] = np.nan
     except Exception as err:
@@ -330,8 +326,9 @@ def compile_observables(
             PK observable which does not fit the model (see
             `compile_pk`); or a `keep` which names no output.
 
-    Inside of the graph every observable keeps its natural unit, the derived
-    one; a declared unit converts only the kept outputs. A formula which adds
+    A declared unit is the unit of the observable: the values are converted
+    when the formula is evaluated and the observables which read it see them in
+    that unit. A formula which adds
     units of one dimension at different scales is refused, but a comparison of
     mixed scales is not detected.
     """
@@ -358,7 +355,6 @@ def compile_observables(
         )
     kinds: dict[str, ObservableKind] = {TIME: TIMECOURSE}
     units: dict[str, str] = {TIME: time_unit}
-    declared: dict[str, str] = {}
     selections: dict[str, None] = {}
     compiled: dict[str, Node] = {}
     outputs: dict[str, tuple[str, ...]] = {}
@@ -369,9 +365,8 @@ def compile_observables(
                 symbol, name, model, definitions, outputs, kinds, units, selections
             )
         if isinstance(observable, Formula):
-            node, natural, declared_unit = _compile_formula(observable, kinds, units)
-            kinds[name], units[name] = node.kind, natural
-            declared[name] = declared_unit
+            node, unit = _compile_formula(observable, kinds, units)
+            kinds[name], units[name] = node.kind, unit
             outputs[name] = (name,)
         elif isinstance(observable, Custom):
             node = CustomNode(
@@ -404,7 +399,7 @@ def compile_observables(
         nodes=nodes,
         selections=tuple(s for s in selections if s in read),
         kinds=kinds,
-        units={**units, **declared},
+        units=units,
         keep=kept,
         outputs=every,
         doses=tuple(dict.fromkeys(doses)),
@@ -593,12 +588,12 @@ def _compile_formula(
     observable: Formula,
     kinds: Mapping[str, ObservableKind],
     units: Mapping[str, str],
-) -> tuple[FormulaNode, str, str]:
-    """Compile a formula: its kind, its natural and its declared unit and the factor.
+) -> tuple[FormulaNode, str]:
+    """Compile a formula: its kind, its unit and the factor into it.
 
     Returns:
-        The node, the natural unit (the one the observables which read it see)
-        and the declared unit (the unit of the output).
+        The node and the unit of the observable: the declared one, else the
+        derived one.
 
     Raises:
         ValueError: if a time of `at` is a timecourse or has no time unit, the
@@ -632,11 +627,11 @@ def _compile_formula(
                 f"piecewise; give it as unit=."
             )
         node = FormulaNode(observable.id, observable.formula, kind, 1.0)
-        return node, derived, derived
+        return node, derived
     unitless = all(not units[s] for s in reduced.symbols)
     if derived is None or (derived == "dimensionless" and unitless):
         node = FormulaNode(observable.id, observable.formula, kind, 1.0)
-        return node, observable.unit, observable.unit
+        return node, observable.unit
     try:
         factor = float(ureg.Quantity(1.0, derived).to(observable.unit).magnitude)
     except Exception as err:
@@ -646,7 +641,7 @@ def _compile_formula(
             f"'{observable.unit}'."
         ) from err
     node = FormulaNode(observable.id, observable.formula, kind, factor)
-    return node, derived, observable.unit
+    return node, observable.unit
 
 
 def _compile_pk(

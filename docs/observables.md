@@ -41,7 +41,7 @@ A formula which reads only values per simulation is a value per simulation, othe
 
 ## Units
 
-The unit of a formula is derived from the units of what it reads, the reductions keep the unit of their argument. A formula with `unit=` is converted into it, and only the result is converted: inside of the run every observable keeps its natural unit, the derived one, which is the unit a `PK` and a `Custom` see. A formula which mixes units of one dimension at different scales, e.g. ng/ml and mg/l, raises when the scan is compiled, while a comparison of mixed scales is not detected:
+The unit of a formula is derived from the units of what it reads, the reductions keep the unit of their argument. A formula with `unit=` is converted into it, and that unit is the unit of the observable everywhere: the result, the observables which read it, a `PK` and a `Custom` see its values in it. A formula which mixes units of one dimension at different scales, e.g. a declared `mid` in ng/ml and a concentration in mg/l, raises when the scan is compiled, while a comparison of mixed scales is not detected:
 
 ```python
 from sbmlsim import Q
@@ -65,7 +65,7 @@ Where pint cannot derive a unit, e.g. for `piecewise` or a comparison, the formu
 
 ## PK
 
-`PK` is the non-compartmental analysis of a timecourse with pkpdutils, every parameter a value per simulation `<id>.<parameter>`. The analysis runs on the natural unit of the timecourse, so the parameters of the example below are in `g*mmol/l/mol` (mg/l) and minutes:
+`PK` is the non-compartmental analysis of a timecourse with pkpdutils, every parameter a value per simulation `<id>.<parameter>`. The analysis runs on the timecourse in its unit, so the concentration parameters of the example below are in ng/ml and the times in minutes:
 
 ```python
 doses = Scan(
@@ -88,7 +88,7 @@ The doses are read from every point of the scan: the values the simulation assig
 
 ## Custom functions
 
-A `Custom` observable is a function of a module, `function(time, values)`, called once per simulation with its time points in the time unit of the model and the values of its symbols in their natural unit; it returns a float, or an array of the length of `time` with `kind=ObservableKind.TIMECOURSE`. The unit of the result is given by the observable. The example function reads the concentration `mid`, whose natural unit is mg/l, and compares it with a threshold of 25 ng/ml:
+A `Custom` observable is a function of a module, `function(time, values)`, called once per simulation with its time points in the time unit of the model and the values of its symbols in their units; it returns a float, or an array of the length of `time` with `kind=ObservableKind.TIMECOURSE`. The unit of the result is given by the observable. The example function reads the concentration `mid` in its declared unit, ng/ml, and compares it with a threshold of 25 ng/ml:
 
 ```python
 from examples.observables import time_above
