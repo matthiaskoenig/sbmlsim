@@ -484,6 +484,21 @@ class RoadrunnerSBMLModel(AbstractModel):
             exclude=set(self.parameters),
         )
 
+    def has_selection(self, selection: str) -> bool:
+        """Check whether roadrunner has a selection of a name in the model.
+
+        Args:
+            selection: the name, e.g. `S`, `[S]`, a parameter or `time`.
+
+        Returns:
+            Whether the loaded model can select it.
+        """
+        try:
+            self.r_loaded.getValue(selection)
+        except RuntimeError:
+            return False
+        return True
+
     def set_integrator_settings(
         self, **kwargs: float | int | bool | AbsoluteTolerance
     ) -> roadrunner.Integrator:

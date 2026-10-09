@@ -42,7 +42,7 @@ def test_a_pk_observable() -> None:
         "[Cve_hctz]",
         dose="PODOSE_hctz",
         route="oral",
-        parameters=["cmax", "auc_inf_obs"],  # ty: ignore[invalid-argument-type]
+        parameters=["cmax", "auc_inf_obs"],
     )
     assert pk.parameters == ("cmax", "auc_inf_obs")
     assert pk.reads == ("[Cve_hctz]",)
@@ -60,13 +60,13 @@ def test_a_fixed_dose_is_one_amount() -> None:
 
 def test_the_parameters_are_a_sequence_of_names() -> None:
     with pytest.raises(TypeError):
-        PK("p", "[C]", parameters="cmax")  # ty: ignore[invalid-argument-type]
+        PK("p", "[C]", parameters="cmax")
     with pytest.raises(ValueError):
-        PK("p", "[C]", parameters=["cmax", "cmax"])  # ty: ignore[invalid-argument-type]
+        PK("p", "[C]", parameters=["cmax", "cmax"])
 
 
 def test_a_custom_observable() -> None:
-    custom = Custom("auc", auc_of_c, "mg*hr/l", symbols=["[C]"])  # ty: ignore[invalid-argument-type]
+    custom = Custom("auc", auc_of_c, "mg*hr/l", symbols=["[C]"])
     assert custom.kind is ObservableKind.SCALAR
     assert custom.symbols == ("[C]",)
     assert custom.reads == ("[C]",)
@@ -74,21 +74,21 @@ def test_a_custom_observable() -> None:
 
 def test_a_lambda_or_a_closure_is_refused() -> None:
     with pytest.raises(ValueError, match="module"):
-        Custom("r", lambda t, v: 1.0, "dimensionless", symbols=[])  # ty: ignore[invalid-argument-type]
+        Custom("r", lambda t, v: 1.0, "dimensionless", symbols=[])
 
     def inner(t: object, v: object) -> float:
         return 1.0
 
     with pytest.raises(ValueError, match="module"):
-        Custom("r", inner, "dimensionless", symbols=[])  # ty: ignore[invalid-argument-type]
+        Custom("r", inner, "dimensionless", symbols=[])
 
 
 def test_the_definitions_pickle_and_serialize() -> None:
     observables: list[Observable] = [
         Formula("f", "max([C])", unit="mg/l"),
         PK("p", "[C]", dose=Q(10.0, "mg"), route="oral", options=NCAOptions()),
-        PK("q", "[C]", dose="PODOSE", route="iv_bolus", parameters=["cmax"]),  # ty: ignore[invalid-argument-type]
-        Custom("c", auc_of_c, "mg*hr/l", symbols=["[C]"]),  # ty: ignore[invalid-argument-type]
+        PK("q", "[C]", dose="PODOSE", route="iv_bolus", parameters=["cmax"]),
+        Custom("c", auc_of_c, "mg*hr/l", symbols=["[C]"]),
     ]
     for observable in observables:
         again = pickle.loads(pickle.dumps(observable))

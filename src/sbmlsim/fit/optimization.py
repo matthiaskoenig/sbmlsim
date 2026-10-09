@@ -141,15 +141,6 @@ def minimal_result(
     )
 
 
-def _is_selection(model: RoadrunnerSBMLModel, symbol: str) -> bool:
-    """Check whether a symbol is a selection of the model."""
-    try:
-        model.r_loaded.getValue(symbol)
-    except RuntimeError:
-        return False
-    return True
-
-
 def _check_symbols(
     model: RoadrunnerSBMLModel, observable: ObservableModel, name: str
 ) -> None:
@@ -164,7 +155,7 @@ def _check_symbols(
         ValueError: if a symbol is not a selection of the model.
     """
     for symbol in observable.symbols:
-        if not _is_selection(model, symbol):
+        if not model.has_selection(symbol):
             raise ValueError(
                 f"{name}: the symbol '{symbol}' of the observable "
                 f"'{observable.formula}' is not a selection of the model, nor a "
@@ -195,7 +186,7 @@ def _noise_selections(
     except ValueError as err:
         logger.warning("%s: the noise model cannot be evaluated: %s", name, err)
         return ()
-    return tuple(s for s in symbols if _is_selection(model, s))
+    return tuple(s for s in symbols if model.has_selection(s))
 
 
 @dataclass(frozen=True)

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, override
@@ -229,7 +229,7 @@ class PK(Observable):
     dose: str | Quantity | None = field(default=None, kw_only=True)
     route: str | None = field(default=None, kw_only=True)
     options: NCAOptions | None = field(default=None, kw_only=True)
-    parameters: tuple[str, ...] | None = field(default=None, kw_only=True)
+    parameters: Sequence[str] | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         """Check the definition.
@@ -318,7 +318,7 @@ class Custom(Observable):
 
     function: Callable[[np.ndarray, dict[str, Any]], Any]
     unit: str
-    symbols: tuple[str, ...] = field(kw_only=True)
+    symbols: Sequence[str] = field(kw_only=True)
     kind: ObservableKind = field(default=ObservableKind.SCALAR, kw_only=True)
 
     def __post_init__(self) -> None:
@@ -345,7 +345,7 @@ class Custom(Observable):
     @override
     def reads(self) -> tuple[str, ...]:
         """Get the symbols the function reads."""
-        return self.symbols
+        return tuple(self.symbols)
 
     @override
     def to_dict(self) -> dict[str, Any]:
