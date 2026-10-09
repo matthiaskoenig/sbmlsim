@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-import re
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -13,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from sbmlsim.result import ScanResult
-from sbmlsim.simulator.formula import compile_formula
+from sbmlsim.simulator.formula import compile_formula, evaluate_reduced, reduce_formula
 from sbmlsim.units import (
     DimensionalityError,
     Quantity,
@@ -26,105 +25,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: a call of `max` or `min` which is not the end of a longer identifier
-_REDUCTION_CALL = re.compile(r"(?<![A-Za-z0-9_])(max|min)\s*\(")
-
-#: prefix of the symbol which stands for the value of a reduction
-_REDUCTION_PREFIX = "sbmlsim_reduction__"
-
-#: the reductions of a single argument, which ignore the padding of the data
-_REDUCTIONS: dict[str, Callable[[Any], Any]] = {"max": np.nanmax, "min": np.nanmin}
-
-
-def _closing_parenthesis(formula: str, start: int) -> int:
-    """Find the parenthesis which closes the one opened before `start`.
-
-    Raises:
-        ValueError: if the parentheses of the formula are not balanced.
-    """
-    depth = 1
-    for k in range(start, len(formula)):
-        if formula[k] == "(":
-            depth += 1
-        elif formula[k] == ")":
-            depth -= 1
-            if depth == 0:
-                return k
-    raise ValueError(f"The parentheses of the formula '{formula}' are not balanced.")
-
-
-def _split_arguments(text: str) -> list[str]:
-    """Split the arguments of a call at the commas outside of parentheses."""
-    arguments: list[str] = []
-    depth = 0
-    start = 0
-    for k, character in enumerate(text):
-        if character == "(":
-            depth += 1
-        elif character == ")":
-            depth -= 1
-        elif character == "," and depth == 0:
-            arguments.append(text[start:k])
-            start = k + 1
-    arguments.append(text[start:])
-    return arguments
-
-
-def _replace_reductions(formula: str, values: dict[str, Any]) -> str:
-    """Replace every `max` and `min` of a single argument by its value.
-
-    The argument is evaluated on the data and reduced over it, the call is
-    replaced by a symbol whose value is added to `values`. The arguments of a
-    call are processed first, so an inner reduction is reduced first.
-    """
-    parts: list[str] = []
-    position = 0
-    while (match := _REDUCTION_CALL.search(formula, position)) is not None:
-        end = _closing_parenthesis(formula, match.end())
-        arguments = [
-            _replace_reductions(argument, values)
-            for argument in _split_arguments(formula[match.end() : end])
-        ]
-        parts.append(formula[position : match.start()])
-        if len(arguments) == 1:
-            count = sum(1 for key in values if key.startswith(_REDUCTION_PREFIX))
-            symbol = f"{_REDUCTION_PREFIX}{count}"
-            values[symbol] = _REDUCTIONS[match.group(1)](
-                _evaluate(arguments[0], values)
-            )
-            parts.append(symbol)
-        else:
-            parts.append(f"{match.group(1)}({','.join(arguments)})")
-        position = end + 1
-    parts.append(formula[position:])
-    return "".join(parts)
-
-
-def _evaluate(formula: str, values: Mapping[str, Any]) -> Any:
-    """Evaluate a formula of PEtab math without reductions on the values.
-
-    Raises:
-        ValueError: if the formula is not valid math or reads an identifier
-            which has no value.
-    """
-    compiled = compile_formula(formula)
-    missing = [symbol for symbol in compiled.symbols if symbol not in values]
-    if missing:
-        raise ValueError(
-            f"The formula '{formula}' reads {missing}, which are neither "
-            f"variables nor parameters of the data."
-        )
-    return compiled.apply([values[symbol] for symbol in compiled.symbols])
-
 
 def evaluate_function(formula: str, variables: Mapping[str, Any]) -> Any:
     """Evaluate the formula of a `Data` of type FUNCTION on its data.
 
     The formula is the math of PEtab, see `sbmlsim.simulator.formula`, with
-    one extension for data: `max` and `min` of a single argument reduce the
-    argument over the data and ignore `NaN`, the padding of a scan, so
-    `Y/max(Y)` is `Y` normalized to its maximum. With two or more arguments
-    they are the elementwise maximum and minimum of PEtab.
+    the reductions of `evaluate_reduced`: `max` and `min` of a single argument
+    reduce it along its last axis, the time of a simulation, and ignore `NaN`,
+    the padding of a scan, so `Y/max(Y)` normalizes every simulation of a scan
+    to its own maximum. With two or more arguments they are the elementwise
+    maximum and minimum of PEtab. `mean` and `at` need the time points of a
+    simulation, which data has not; they are reductions of the observables of
+    a scan. A formula whose identifiers are all reductions or numbers is a
+    value per simulation, a number for a single simulation.
 
     Args:
         formula: the formula.
@@ -135,11 +48,19 @@ def evaluate_function(formula: str, variables: Mapping[str, Any]) -> Any:
         The value of the formula, a quantity if the variables are quantities.
 
     Raises:
-        ValueError: if the formula is not valid math or reads an identifier
-            which is not a variable.
+        ValueError: if the formula is not valid math, reads an identifier
+            which is not a variable, or uses `mean` or `at` on an array.
     """
-    values = dict(variables)
-    return _evaluate(_replace_reductions(formula, values), values)
+    value = evaluate_reduced(formula, variables)
+    reduced = reduce_formula(formula)
+    per_simulation = bool(reduced.reductions) and all(
+        symbol in reduced.placeholders
+        or np.ndim(getattr(variables[symbol], "magnitude", variables[symbol])) == 0
+        for symbol in compile_formula(reduced.outer).symbols
+    )
+    if per_simulation and np.ndim(getattr(value, "magnitude", value)) > 0:
+        return value[..., 0]
+    return value
 
 
 class Data:

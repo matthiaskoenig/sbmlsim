@@ -69,3 +69,23 @@ def test_invalid_math_is_reported(formula: str) -> None:
 def test_an_unknown_identifier_is_reported() -> None:
     with pytest.raises(ValueError, match="W"):
         evaluate_function("Y / W", {"Y": np.array([1.0])})
+
+
+def test_a_reduction_of_a_scan_is_per_simulation() -> None:
+    y = np.array([[1.0, 2.0, 4.0], [1.0, 1.0, 2.0]])
+    np.testing.assert_allclose(
+        evaluate_function("Y/max(Y)", {"Y": y}), [[0.25, 0.5, 1.0], [0.5, 0.5, 1.0]]
+    )
+    np.testing.assert_allclose(evaluate_function("max(Y)", {"Y": y}), [4.0, 2.0])
+
+
+def test_a_reduction_of_a_simulation_is_a_number() -> None:
+    value = evaluate_function("max(Y) + k", {"Y": np.array([1.0, 3.0]), "k": 1.0})
+    assert np.ndim(value) == 0
+    assert value == pytest.approx(4.0)
+
+
+@pytest.mark.parametrize("formula", ["mean(Y)", "at(Y, 1)"])
+def test_mean_and_at_are_no_reductions_of_data(formula: str) -> None:
+    with pytest.raises(ValueError, match="observable"):
+        evaluate_function(formula, {"Y": np.array([1.0, 2.0])})
