@@ -26,6 +26,11 @@ from sbmlsim.simulation.sampling.distributions import (
     Truncated,
     Uniform,
 )
+from sbmlsim.simulation.sampling.fit import (
+    fit_parameters,
+    fit_repeats,
+    profile_parameters,
+)
 from sbmlsim.simulation.sampling.references import parameters_of, references
 from sbmlsim.simulation.scan import Design
 
@@ -40,10 +45,13 @@ __all__ = [
     "Truncated",
     "Uniform",
     "fast",
+    "fit_parameters",
+    "fit_repeats",
     "lhs",
     "local",
     "morris",
     "parameters_of",
+    "profile_parameters",
     "random",
     "references",
     "sobol",
