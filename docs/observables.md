@@ -41,7 +41,7 @@ A formula which reads only values per simulation is a value per simulation, othe
 
 ## Units
 
-The unit of a formula is derived from the units of what it reads, the reductions keep the unit of their argument. A formula with `unit=` is converted into it, and that unit is the unit of the observable everywhere: the result, the observables which read it, a `PK` and a `Custom` see its values in it. A formula which mixes units of one dimension at different scales, e.g. a declared `mid` in ng/ml and a concentration in mg/l, raises when the scan is compiled, while a comparison of mixed scales is not detected:
+The unit of a formula is derived from the units of what it reads, the reductions keep the unit of their argument. A formula with `unit=` is converted into it, and that unit is the unit of the observable everywhere: the result, the observables which read it, a `PK` and a `Custom` see its values in it:
 
 ```python
 from sbmlsim import Q
@@ -60,6 +60,8 @@ res = Simulator().run(
 )
 print(res.units["mid"], res.units["mid_max"])
 ```
+
+A formula which mixes units of one dimension at different scales, e.g. `mid - [Cve_mid] * Mr_mid` of the declared `mid` in ng/ml and a concentration in mg/l, raises when the scan is compiled: declare one of them as a `Formula` with `unit=`, a factor in the formula does not convert it. A comparison or a piecewise, which pint cannot evaluate, is not checked for mixed scales: `piecewise(mid, time < 600, [Cve_mid] * Mr_mid)` runs and is off by the factor 1000 in one of its branches.
 
 The time of `at` is a number, read in the time unit of the model, or a value per simulation whose unit (the declared one where it has one) is the time unit of the model; another time unit or a value without a unit raises when the scan is compiled.
 

@@ -313,19 +313,16 @@ class Simulator:
                 model, or both do; an observable which does not fit the first
                 model, see `compile_observables`; an observable id which is a
                 dimension id or a target the scan changes; if a model of a
-                dimension of models has not
-                the selections or the units of the first one; if a selection
-                is a name the result reserves, e.g. `status`; if a dimension
-                id is a selection; if a simulation, a value or a time does not
-                fit a model, e.g. a target which is no target of a model; if
-                two dimensions set one target at one time; or if the grid of
-                times is empty or a quantity which the unit of time of the
-                first model cannot take.
+                dimension of models has not the selections or the units of the
+                first one; if a selection is a name the result reserves, e.g.
+                `status`; if a dimension id is a selection; if a simulation, a
+                value or a time does not fit a model, e.g. a target which is no
+                target of a model; if two dimensions set one target at one
+                time; or if the grid of times is empty or a quantity which the
+                unit of time of the first model cannot take.
         """
         models, labels = self._models(model, scan)
         first = models[0]
-        # the time is the first column, also where the model selects it
-        # elsewhere, e.g. last in the sorted selections of an experiment
         plans: dict[tuple[int, int], Plan] = {}
         at_times: dict[tuple[int, int], list[float | None]] = {}
         for s, simulation in enumerate(scan.simulations()):
@@ -341,6 +338,9 @@ class Simulator:
             for loaded, label in zip(models, labels, strict=True)
         ]
         positions = _positions(scan)
+        # the plan of the first point of every simulation and model carries the
+        # assignments of the values dimensions and of those with `at`, which
+        # give the dose times of the PK observables, see `compile_pk`
         point_plans: list[Plan] = []
         for (s, m), plan in plans.items():
             indices = _plan_points(scan, positions, s, m)
@@ -350,6 +350,8 @@ class Simulator:
                 )
                 point_plans.append(point_plan(plan, values, timed, 0))
         graph = compile_observables(observables, first, keep=keep, plans=point_plans)
+        # the time is the first column, also where the model selects it
+        # elsewhere, e.g. last in the sorted selections of an experiment
         selections = (TIME, *graph.selections)
         if not observables:
             reserved = sorted((set(selections[1:]) & RESERVED) - {TIME})
@@ -368,6 +370,8 @@ class Simulator:
                 f"observables of the run: a dimension and a variable of the "
                 f"result share no name, choose other ids."
             )
+        # the guard of the rule that an observable id is no changed target,
+        # reached only for a target which is no selection of the model
         targets = {t for dimension in scan.dimensions for t in dimension.values}
         changed = sorted(targets & set(graph.outputs)) if observables else []
         if changed:

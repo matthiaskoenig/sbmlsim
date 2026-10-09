@@ -328,8 +328,9 @@ def compile_observables(
 
     A declared unit is the unit of the observable: the values are converted
     when the formula is evaluated and the observables which read it see them in
-    that unit. A formula which adds units of one dimension at different scales is refused, but a comparison of
-    mixed scales is not detected.
+    that unit. A formula which adds units of one dimension at different scales
+    is refused, but a comparison or a piecewise, which pint cannot evaluate, is
+    not checked for mixed scales.
     """
     uinfo = model.uinfo
     time_unit = uinfo.get(TIME, "") or ""
@@ -520,7 +521,9 @@ def _mixes_scales(formula: str, units: Mapping[str, str]) -> bool:
 
     The formula is evaluated on quantities of one in the units of its
     symbols and on plain ones; pint converts the unit of a sum, so a different
-    magnitude means that the scales differ, e.g. `ng/ml - mg/l`.
+    magnitude means that the scales differ, e.g. `ng/ml - mg/l`. A formula
+    which pint cannot evaluate, e.g. a comparison or a piecewise, is not
+    checked.
     """
     symbols = reduce_formula(formula).symbols
     try:
@@ -612,7 +615,8 @@ def _compile_formula(
         raise ValueError(
             f"The formula '{observable.formula}' of the observable '{observable.id}' "
             f"mixes units of different scale (e.g. ng/ml and mg/l); the values are "
-            f"in the units of their symbols, convert one of them first."
+            f"in the units of their symbols: declare one of them as a Formula with "
+            f"unit=..., a factor in the formula does not convert it."
         )
     kind = (
         SCALAR if all(kinds[s] is SCALAR for s in reduced.outer_symbols) else TIMECOURSE

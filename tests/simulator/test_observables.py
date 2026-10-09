@@ -301,7 +301,8 @@ def test_custom_and_pk_read_the_declared_unit(
 def test_a_declared_unit_and_its_source_are_mixed_scales(
     pk_model: RoadrunnerSBMLModel,
 ) -> None:
-    with pytest.raises(ValueError, match="different scale"):
+    remedy = r"different scale.*declare one of them as a Formula with unit=\.\.\."
+    with pytest.raises(ValueError, match=remedy):
         compile_observables(
             [
                 Formula("c", "[C]", unit="ng/ml"),
