@@ -5,11 +5,13 @@ import pytest
 
 from sbmlsim import sensitivity
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.result import ScanResult
 from sbmlsim.sensitivity.result import PARAMETER
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation, sampling
 from sbmlsim.simulator import Simulator
+from sbmlsim.units import ureg
 from tests.sensitivity.models import POWER_LAW
-from tests.simulator.models import sbml
+from tests.simulator.models import sbml, sbml_pk
 
 
 @pytest.fixture(scope="module")
@@ -70,3 +72,88 @@ def test_a_ragged_timecourse_raises() -> None:
     )
     with pytest.raises(ValueError, match="time="):
         sensitivity.local(res)
+
+
+def _pk_result(targets: list[str]) -> ScanResult:
+    model = Simulator().load(sbml_pk())
+    design = sampling.local(targets, 0.01, model=model)
+    return Simulator().run(
+        model,
+        Scan(Simulation(end=4, steps=4), [design]),
+        [Formula("cmax", "max([C])"), Formula("c_end", "[C]")],
+    )
+
+
+def test_the_units_of_the_indices() -> None:
+    res = _pk_result(["ka", "ke"])
+    s = sensitivity.local(res, observables=["cmax"])
+    unit = res.units["cmax"]
+    assert unit
+    assert s.units["cmax.normalized"] == "dimensionless"
+    assert s.units["cmax.raw"] == str(ureg.Unit(unit) / ureg.Unit("1/hr"))
+    mixed = sensitivity.local(_pk_result(["ke", "PODOSE"]), observables=["cmax"])
+    assert mixed.units["cmax.raw"] == ""
+    assert mixed.units["cmax.normalized"] == "dimensionless"
+
+
+def test_a_zero_observable_has_no_normalized_sensitivity() -> None:
+    model = Simulator().load(sbml(POWER_LAW))
+    design = sampling.local(["a"], 0.1, model=model)
+    res = Simulator().run(
+        model,
+        Scan(Simulation(end=1, steps=1), [design]),
+        [Formula("z", "0 * y"), Formula("y_max", "max(y)")],
+    )
+    s = sensitivity.local(res)
+    assert np.isnan(s["z.normalized"].values).all()
+    np.testing.assert_allclose(s["z.raw"].values, 0.0)
+    assert np.isfinite(s["y_max.normalized"].values).all()
+
+
+def test_a_zero_parameter_has_no_raw_sensitivity() -> None:
+    model = Simulator().load(sbml("model zero\n  a = 0; b = 3\n  y := a + b\nend\n"))
+    design = sampling.local(["a", "b"], 0.1, model=model)
+    res = Simulator().run(
+        model, Scan(Simulation(end=1, steps=1), [design]), [Formula("y_max", "max(y)")]
+    )
+    s = sensitivity.local(res)
+    assert np.isnan(s["y_max.raw"].sel(parameter="a").values).all()
+    assert np.isfinite(s["y_max.raw"].sel(parameter="b").values).all()
+
+
+def test_observables_restrict_the_variables(model: RoadrunnerSBMLModel) -> None:
+    design = sampling.local(["a"], 0.001, model=model)
+    res = Simulator().run(
+        model,
+        Scan(Simulation(end=1, steps=1), [design]),
+        [Formula("y_max", "max(y)"), Formula("y_min", "min(y)")],
+    )
+    s = sensitivity.local(res, observables=["y_min"])
+    assert set(s.ds.data_vars) == {"y_min.raw", "y_min.normalized"}
+
+
+def test_an_unknown_observable_raises(model: RoadrunnerSBMLModel) -> None:
+    design = sampling.local(["a"], 0.001, model=model)
+    res = Simulator().run(
+        model, Scan(Simulation(end=1, steps=1), [design]), [Formula("y_max", "max(y)")]
+    )
+    with pytest.raises(ValueError, match="nope"):
+        sensitivity.local(res, observables=["nope"])
+
+
+def test_dim_chooses_one_of_two_designs(model: RoadrunnerSBMLModel) -> None:
+    first = sampling.local(["a"], 0.001, model=model, id="first")
+    second = sampling.local(["b"], 0.001, model=model, id="second")
+    res = Simulator().run(
+        model,
+        Scan(Simulation(end=1, steps=1), [first, second]),
+        [Formula("y_max", "max(y)")],
+    )
+    with pytest.raises(ValueError, match="dim="):
+        sensitivity.local(res)
+    s = sensitivity.local(res, dim="second")
+    assert s.parameters == ["b"]
+    assert s["y_max.normalized"].dims == (PARAMETER, "first")
+    np.testing.assert_allclose(s["y_max.normalized"].values, [[-1.0] * 3], rtol=1e-5)
+    with pytest.raises(ValueError, match="third"):
+        sensitivity.local(res, dim="third")
