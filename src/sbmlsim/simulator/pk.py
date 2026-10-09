@@ -3,19 +3,21 @@
 A PK observable analyses one timecourse of every simulation of a chunk with
 `pkpdutils.nca`: the timecourses are handed over as `Timecourses.from_arrays`
 with the time points of every simulation (the padding with `NaN` is trimmed
-away in groups of the same length), and the doses
-the plan of every point assigns to the dose target. Every parameter pkpdutils
-derives is a value per simulation `<id>.<parameter>`, and `<id>.flags` the
-flags of the analysis (`pkpdutils.NCAFlag`).
+away in groups of the same length), and the doses the plan of every point
+assigns to the dose target. Every parameter pkpdutils derives is a value per
+simulation `<id>.<parameter>`, and `<id>.flags` the flags of the analysis
+(`pkpdutils.NCAFlag`).
 
 Which parameters pkpdutils derives depends on the dosing (a multiple dosing
 adds the parameters of the dosing interval, a dose the clearance and the
 volume) and on the options. `compile_pk` finds them and their units by an
-analysis of a synthetic timecourse with the dosing of every plan of a run,
-so every point of the result has the same variables; the points of a chunk
-are analysed in groups of the same number of doses and of time points, each
-group trimmed to its time points, so no row is padded and a parameter does
-not depend on the chunking.
+analysis of a synthetic timecourse for every plan of a run, dosed at every
+time the plan assigns the dose target, a zero value included, so every point
+of the result has the same variables whatever the order of the values of a
+dimension; a point whose dose is zero has `NaN` for the parameters of that
+dose. The points of a chunk are analysed in groups of the same number of
+doses and of time points, each group trimmed to its time points, so no row is
+padded and a parameter does not depend on the chunking.
 
 pkpdutils is imported when a PK observable is compiled or evaluated, not on
 the import of sbmlsim: it imports pandas, scipy and xarray, about a second.
@@ -87,7 +89,9 @@ class PKNode:
         return tuple(self.output(parameter) for parameter in self.parameters)
 
 
-def doses_of(plan: Plan, dose: DoseSpec) -> tuple[np.ndarray, np.ndarray]:
+def doses_of(
+    plan: Plan, dose: DoseSpec, *, zeros: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
     """Get the times and the amounts of the doses of the plan of a point.
 
     A fixed dose is one dose at the start. The doses of a target are the
@@ -100,6 +104,10 @@ def doses_of(plan: Plan, dose: DoseSpec) -> tuple[np.ndarray, np.ndarray]:
     Args:
         plan: the plan of a point, with its values.
         dose: where the doses come from.
+        zeros: whether a value which is not positive, e.g. the zero dose of
+            a control, is a dose as well, so every time the plan assigns the
+            target is a dose time; the probe of `compile_pk` counts them, the
+            analysis of a point does not.
 
     Returns:
         The times and the amounts, sorted by time.
@@ -125,7 +133,7 @@ def doses_of(plan: Plan, dose: DoseSpec) -> tuple[np.ndarray, np.ndarray]:
                 f"simulation; a PK observable reads the dose as a number."
             )
         found[time] = assignment.value
-    doses = sorted((time, value) for time, value in found.items() if value > 0)
+    doses = sorted((time, value) for time, value in found.items() if zeros or value > 0)
     times = np.array([time for time, _ in doses], dtype=float) + plan.time_shift
     amounts = np.array([value for _, value in doses], dtype=float)
     return times, amounts
@@ -197,7 +205,10 @@ def compile_pk(
         dose_unit: the unit of the dose target in the model; `None` for a fixed
             dose or without a dose.
         plans: the plans of the run, each with the values of a point, whose
-            dosing decides the parameters.
+            dose times decide the parameters: every assignment of the dose
+            target is a dose of the probe, a zero value included, so the
+            first point of a values dimension or a dimension with `at` which
+            sets the target gives the parameters of the doses of every point.
 
     Returns:
         The compiled observable and the unit of each of its outputs.
@@ -257,8 +268,13 @@ def compile_pk(
                 f"time span, [{plan.start}, {plan.end}]."
             )
         times, amounts = (
-            (np.empty(0), np.empty(0)) if dose is None else doses_of(plan, dose)
+            (np.empty(0), np.empty(0))
+            if dose is None
+            else doses_of(plan, dose, zeros=True)
         )
+        # a zero value of the target is the dose of another point: the probe
+        # doses it, so the parameters of that dose are found
+        amounts = np.where(amounts > 0, amounts, 1.0)
         t, c = _probe(plan, times, route)
         result = _analyse(
             time_unit=time_unit,

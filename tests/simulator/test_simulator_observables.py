@@ -149,6 +149,30 @@ def test_a_multiple_dosing(pk_sbml: str) -> None:
     assert float(res["depot"]) == pytest.approx(100.0)
 
 
+def test_a_zero_dose_first_keeps_the_dose_parameters(pk_sbml: str) -> None:
+    res = Simulator().run(
+        pk_sbml,
+        dose_scan(doses=(0.0, 50.0, 100.0)),
+        [PK("c", "[C]", dose="PODOSE", route="oral")],
+    )
+    cl_f = res["c.cl_f"].values
+    assert np.isnan(cl_f[0])
+    np.testing.assert_allclose(cl_f[1:], V * KE, rtol=2e-3)
+    assert np.isfinite(res["c.cmax"].values).all()
+
+
+def test_a_second_dose_which_is_zero_first_keeps_the_interval(pk_sbml: str) -> None:
+    scan = Scan(
+        dosed(),
+        [Dimension("second", values={"PODOSE": Q([0.0, 100.0], "mg")}, at=24.0)],
+    )
+    res = Simulator().run(pk_sbml, scan, [PK("c", "[C]", dose="PODOSE", route="oral")])
+    tau = res["c.tau"].values
+    assert np.isnan(tau[0])
+    assert tau[1] == pytest.approx(24.0)
+    np.testing.assert_allclose(res["c.cl_f"].values[0], V * KE, rtol=2e-3)
+
+
 def test_pk_without_a_dose(pk_sbml: str) -> None:
     res = Simulator().run(pk_sbml, dosed(), [PK("c", "[C]")])
     assert "c.cmax" in res and "c.cl_f" not in res

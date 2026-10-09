@@ -53,6 +53,12 @@ def plans() -> dict[str, Plan]:
         ),
         "formula": plan(Simulation(end=48, changes=[Change(0, {"PODOSE": "2 * ka"})])),
         "none": plan(Simulation(end=48)),
+        "zero": plan(
+            Simulation(
+                end=48,
+                changes=[Change(0, {"PODOSE": 0.0}), Change(24, {"PODOSE": 100.0})],
+            )
+        ),
         "presimulation": plan(
             Simulation(
                 end=48,
@@ -97,6 +103,13 @@ def test_no_dose_and_a_fixed_dose(plans: dict[str, Plan]) -> None:
     assert times.tolist() == [0.0] and amounts.tolist() == [7.0]
 
 
+def test_a_zero_value_is_a_dose_only_for_the_probe(plans: dict[str, Plan]) -> None:
+    times, amounts = doses_of(plans["zero"], DOSE)
+    assert times.tolist() == [24.0] and amounts.tolist() == [100.0]
+    times, amounts = doses_of(plans["zero"], DOSE, zeros=True)
+    assert times.tolist() == [0.0, 24.0] and amounts.tolist() == [0.0, 100.0]
+
+
 def test_a_formula_dose_raises(plans: dict[str, Plan]) -> None:
     with pytest.raises(ValueError, match="formula"):
         doses_of(plans["formula"], DOSE)
@@ -131,6 +144,13 @@ def test_a_multiple_dosing_adds_the_parameters_of_its_interval(
     )
     assert "c.tau" not in single
     assert "c.tau" in both and set(single) < set(both)
+
+
+def test_a_zero_value_of_the_target_gives_the_parameters_of_a_dose(
+    plans: dict[str, Plan],
+) -> None:
+    _, units = _compile(PK("c", "[C]", dose="PODOSE", route="oral"), plans["zero"])
+    assert "c.cl_f" in units and "c.tau" in units
 
 
 def test_without_a_dose_the_parameters_of_the_dose_are_left_out(
