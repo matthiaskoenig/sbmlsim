@@ -506,7 +506,9 @@ def _check_coordinates(scan: Scan, outputs: set[str]) -> None:
     owner: dict[str, str] = {}
     for dimension in scan.dimensions:
         for name in dimension.coordinates:
-            if name in outputs:
+            if name in RESERVED:
+                what = "a name of the result"
+            elif name in outputs:
                 what = "an output of the result"
             elif name in scan.dims:
                 what = "a dimension id"

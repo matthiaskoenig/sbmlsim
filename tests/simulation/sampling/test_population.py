@@ -1,5 +1,7 @@
 """Virtual populations."""
 
+from typing import Literal
+
 import numpy as np
 import pytest
 
@@ -57,10 +59,9 @@ def test_a_wrong_population_function_raises() -> None:
         population(clearance_of, COVARIATES, 5, seed=1, method="sobol")
 
 
-def test_a_coordinate_never_hides_or_is_hidden_by_a_name() -> None:
-    simulation = Simulation(end=1, steps=2)
+def _hiding_cases() -> dict[str, list[Dimension]]:
     ones = np.ones(2)
-    cases = {
+    return {
         "a selection": [Dimension("d", values={"k2": ones}, coordinates={"k1": ones})],
         "a dimension id": [
             Dimension("d", values={"k2": ones}, coordinates={"e": ones}),
@@ -70,11 +71,21 @@ def test_a_coordinate_never_hides_or_is_hidden_by_a_name() -> None:
             Dimension("d", values={"k2": ones}),
             Dimension("e", values={"k1": ones}, coordinates={"k2": ones}),
         ],
+        "time": [Dimension("d", values={"k2": ones}, coordinates={"time": ones})],
+        "status": [Dimension("d", values={"k2": ones}, coordinates={"status": ones})],
+        "_point": [Dimension("d", values={"k2": ones}, coordinates={"_point": ones})],
         "a coordinate": [
             Dimension("d", values={"k2": ones}, coordinates={"w": ones}),
             Dimension("e", values={"k1": ones}, coordinates={"w": ones}),
         ],
     }
-    for dimensions in cases.values():
-        with pytest.raises(ValueError, match="hide"):
-            Simulator().run(sbml(), Scan(simulation, dimensions))
+
+
+@pytest.mark.parametrize("case", list(_hiding_cases()))
+@pytest.mark.parametrize("on_error", ["raise", "flag"])
+def test_a_coordinate_never_hides_or_is_hidden_by_a_name(
+    case: str, on_error: Literal["raise", "flag"]
+) -> None:
+    scan = Scan(Simulation(end=1, steps=2), _hiding_cases()[case])
+    with pytest.raises(ValueError, match="hide"):
+        Simulator().run(sbml(), scan, on_error=on_error)
