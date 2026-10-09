@@ -6,7 +6,10 @@ parameter with an assignment rule, a species with only substance units and a
 compartment whose size is not one.
 """
 
+from typing import Any
+
 import antimony
+import numpy as np
 
 PROBE = """
 model probe
@@ -94,3 +97,25 @@ model blowup
   J: -> S; k*S^2
 end
 """
+
+
+def auc_of_c(time: np.ndarray, values: dict[str, Any]) -> float:
+    """A custom observable: the trapezoidal area under `[C]`."""
+    return float(np.trapezoid(values["[C]"], time))
+
+
+def doubled(time: np.ndarray, values: dict[str, Any]) -> np.ndarray:
+    """A custom timecourse: twice `[C]`."""
+    return 2.0 * values["[C]"]
+
+
+def last_value(time: np.ndarray, values: dict[str, Any]) -> float:
+    """A custom observable: the last value of `S`."""
+    return float(values["S"][-1])
+
+
+def fails_for_large_k1(time: np.ndarray, values: dict[str, Any]) -> float:
+    """A custom observable which fails for a point whose `k1` is above one."""
+    if values["k1"][0] > 1.0:
+        raise ValueError("k1 is too large")
+    return 0.0
