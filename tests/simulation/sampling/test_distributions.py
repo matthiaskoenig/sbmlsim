@@ -209,3 +209,24 @@ def test_the_distributions_serialize() -> None:
     assert data[0] == {"type": "Uniform", "lower": 1.0, "upper": 2.0, "relative": None}
     assert data[3]["mean"] == {"value": 75.0, "unit": "kilogram"}
     assert data[5]["distribution"]["type"] == "Normal"
+
+
+def test_a_quantity_reference_is_converted_into_the_unit_of_the_distribution() -> None:
+    reference = Q(5.0, "kg")
+    values = quantity(Normal(sd=Q(1.0, "g")), np.array([0.5]), reference)
+    assert str(values.units) == "gram"
+    assert values.to("kg").magnitude[0] == pytest.approx(5.0)
+    truncated = Truncated(Normal(cv=0.1), lower=Q(4000.0, "g"))
+    values = quantity(truncated, np.linspace(0.0, 1.0, 11), reference)
+    assert values.to("kg").magnitude.min() >= 4.0
+    values = quantity(Uniform(relative=0.5), np.array([0.0, 1.0]), reference)
+    np.testing.assert_allclose(values.to("kg").magnitude, [2.5, 7.5])
+
+
+def test_incompatible_units_raise_a_value_error() -> None:
+    with pytest.raises(ValueError, match="Uniform"):
+        Uniform(Q(1.0, "kg"), Q(2.0, "s"))
+    with pytest.raises(ValueError, match="Normal"):
+        Normal(sd=Q(1.0, "g")).ppf(np.array([0.5]), Q(5.0, "s"))
+    with pytest.raises(ValueError, match="Truncated"):
+        Truncated(Normal(Q(1.0, "kg"), Q(1.0, "kg")), lower=Q(1.0, "s"))

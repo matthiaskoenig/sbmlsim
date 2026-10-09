@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any, override
 
 import numpy as np
+from pint.errors import DimensionalityError
 from scipy import stats
 
 from sbmlsim.simulation.definition import _encode
@@ -42,10 +43,21 @@ def _unit_of(*values: Any) -> str | None:
     return next((str(v.units) for v in values if isinstance(v, Quantity)), None)
 
 
-def _magnitude(value: Number, unit: str | None) -> float:
-    """Get a number in a unit; a plain number is in it already."""
+def _magnitude(value: Number, unit: str | None, distribution: Distribution) -> float:
+    """Get a number in a unit; a plain number is in it already.
+
+    Raises:
+        ValueError: if the unit of a quantity does not fit the unit.
+    """
     if isinstance(value, Quantity):
-        return float(value.to(unit).magnitude) if unit else float(value.magnitude)
+        if not unit:
+            return float(value.magnitude)
+        try:
+            return float(value.to(unit).magnitude)
+        except DimensionalityError as err:
+            raise ValueError(
+                f"{distribution!r}: the unit {value.units} of {value} does not fit the unit {unit}."
+            ) from err
     return float(value)
 
 
@@ -62,9 +74,12 @@ def _split(values: np.ndarray | Quantity) -> tuple[np.ndarray, str | None]:
 
 
 def _reference(
-    reference: Number | None, distribution: Distribution
+    reference: Number | None, distribution: Distribution, unit: str | None = None
 ) -> tuple[float, str | None]:
     """Split a reference into its number and its unit.
+
+    A quantity is converted into `unit` where one is given, the unit in which
+    the distribution computes.
 
     Raises:
         ValueError: without a reference.
@@ -75,6 +90,8 @@ def _reference(
             f"design the model (model=) to read it."
         )
     if isinstance(reference, Quantity):
+        if unit:
+            return _magnitude(reference, unit, distribution), unit
         return float(reference.magnitude), str(reference.units)
     return float(reference), None
 
@@ -191,7 +208,7 @@ class Uniform(Distribution):
         if self.lower is None or self.upper is None:
             raise ValueError(f"{self!r} needs a lower and an upper bound.")
         unit = _unit_of(self.lower, self.upper)
-        return _magnitude(self.lower, unit), _magnitude(self.upper, unit)
+        return _magnitude(self.lower, unit, self), _magnitude(self.upper, unit, self)
 
     @override
     def _unit(self, reference: Number | None) -> str | None:
@@ -275,7 +292,7 @@ class LogUniform(Distribution):
         if self.lower is None or self.upper is None:
             raise ValueError(f"{self!r} needs a lower and an upper bound.")
         unit = _unit_of(self.lower, self.upper)
-        return _magnitude(self.lower, unit), _magnitude(self.upper, unit)
+        return _magnitude(self.lower, unit, self), _magnitude(self.upper, unit, self)
 
     @override
     def _unit(self, reference: Number | None) -> str | None:
@@ -289,6 +306,7 @@ class LogUniform(Distribution):
         """Get the values, `10 ** (log10(lower) + u (log10(upper) - log10(lower)))`."""
         lower, upper = self._bounds(reference)
         log_lower, log_upper = np.log10(lower), np.log10(upper)
+        # the start values of a fit depend on exactly this formula (Task 8)
         values = np.power(
             10.0, log_lower + np.asarray(u, dtype=float) * (log_upper - log_lower)
         )
@@ -342,7 +360,7 @@ class Normal(Distribution):
         """
         if (self.sd is None) == (self.cv is None):
             raise ValueError(f"{self!r} needs exactly one of sd and cv.")
-        if self.sd is not None and not _magnitude(self.sd, None) > 0.0:
+        if self.sd is not None and not _magnitude(self.sd, None, self) > 0.0:
             raise ValueError(f"{self!r} needs a positive standard deviation.")
         if self.cv is not None and not self.cv > 0.0:
             raise ValueError(f"{self!r} needs a positive coefficient of variation.")
@@ -364,11 +382,11 @@ class Normal(Distribution):
         """Get the mean and the standard deviation in the unit of the distribution."""
         unit = self._unit(reference)
         if self.mean is None:
-            mean = _reference(reference, self)[0]
+            mean = _reference(reference, self, unit)[0]
         else:
-            mean = _magnitude(self.mean, unit)
+            mean = _magnitude(self.mean, unit, self)
         sd = (
-            _magnitude(self.sd, unit)
+            _magnitude(self.sd, unit, self)
             if self.sd is not None
             else (self.cv or 0.0) * abs(mean)
         )
@@ -425,7 +443,7 @@ class LogNormal(Distribution):
         """
         if self.cv is None or not self.cv > 0.0:
             raise ValueError(f"{self!r} needs a positive coefficient of variation.")
-        if self.median is not None and not _magnitude(self.median, None) > 0.0:
+        if self.median is not None and not _magnitude(self.median, None, self) > 0.0:
             raise ValueError(f"{self!r} needs a positive median.")
 
     @property
@@ -446,7 +464,7 @@ class LogNormal(Distribution):
         if self.median is None:
             median = _positive(_reference(reference, self)[0], self)
         else:
-            median = _magnitude(self.median, self._unit(reference))
+            median = _magnitude(self.median, self._unit(reference), self)
         return median, math.sqrt(math.log1p((self.cv or 0.0) ** 2))
 
     @override
@@ -501,7 +519,9 @@ class Truncated(Distribution):
             raise ValueError(f"{self!r} needs a lower or an upper bound.")
         if self.lower is not None and self.upper is not None:
             unit = _unit_of(self.lower, self.upper)
-            if not _magnitude(self.lower, unit) < _magnitude(self.upper, unit):
+            if not _magnitude(self.lower, unit, self) < _magnitude(
+                self.upper, unit, self
+            ):
                 raise ValueError(
                     f"{self!r}: the lower bound must be below the upper one."
                 )
@@ -522,8 +542,8 @@ class Truncated(Distribution):
     def _bounds(self, reference: Number | None) -> tuple[float | None, float | None]:
         """Get the bounds in the unit of the distribution."""
         unit = self._unit(reference)
-        lower = None if self.lower is None else _magnitude(self.lower, unit)
-        upper = None if self.upper is None else _magnitude(self.upper, unit)
+        lower = None if self.lower is None else _magnitude(self.lower, unit, self)
+        upper = None if self.upper is None else _magnitude(self.upper, unit, self)
         return lower, upper
 
     def _probabilities(self, reference: Number | None) -> tuple[float, float]:
@@ -662,13 +682,14 @@ class Fixed(Distribution):
     def ppf(self, u: Any, reference: Number | None = None) -> np.ndarray | Quantity:
         """Get the value for every probability."""
         unit = self._unit(reference)
-        return _values(np.full(np.shape(u), _magnitude(self.value, unit)), unit)
+        return _values(np.full(np.shape(u), _magnitude(self.value, unit, self)), unit)
 
     @override
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values, 1 from the value on."""
         return (
-            np.asarray(x, dtype=float) >= _magnitude(self.value, self._unit(reference))
+            np.asarray(x, dtype=float)
+            >= _magnitude(self.value, self._unit(reference), self)
         ).astype(float)
 
     @override
