@@ -1,224 +1,89 @@
-"""Example for sensitivity analysis."""
+"""Sensitivity analyses of a simple chain: local, Sobol, FAST and Morris.
 
+The chain S1 -> S2 -> S3 with the rates k1 and k2 is simulated for three
+initial concentrations of S1 (a dimension of the scan); the observables are
+the mean concentration of every species and the maximum of S2. Every analysis
+is a design of the sampler, a run and the indices on the result.
+"""
+
+import argparse
 from pathlib import Path
-from typing import Any, override
 
 import numpy as np
-import roadrunner
 
-from sbmlsim.console import console
-from sbmlsim.sensitivity import (
-    AnalysisGroup,
-    SensitivityOutput,
-    SensitivityParameter,
-    SensitivitySimulation,
-)
+from sbmlsim import sensitivity
+from sbmlsim.simulation import Dimension, Formula, Scan, Simulation, sampling
+from sbmlsim.simulator import Simulator
 
-# model
-model_path: Path = Path(__file__).parent / "simple_chain.xml"
+MODEL = Path(__file__).parent / "simple_chain.xml"
 
-# subgroups to perform sensitivity analysis on
-sensitivity_groups: list[AnalysisGroup] = [
-    AnalysisGroup(
-        uid="lowS1",
-        name="Low S1",
-        changes={"[S1]": 0.1},
-        color="tab:red",
-    ),
-    AnalysisGroup(
-        uid="refS1",
-        name="Reference S1",
-        changes={"[S1]": 1},
-        color="dimgrey",
-    ),
-    AnalysisGroup(
-        uid="highS1",
-        name="High S1",
-        changes={"[S1]": 10},
-        color="tab:blue",
-    ),
+OBSERVABLES = [
+    Formula("S1_auc", "mean([S1]) * 1000"),
+    Formula("S2_auc", "mean([S2]) * 1000"),
+    Formula("S3_auc", "mean([S3]) * 1000"),
+    Formula("S2_max", "max([S2])"),
 ]
 
 
-class ExampleSensitivitySimulation(SensitivitySimulation):
-    """Simulation for sensitivity calculation."""
+def run(quick: bool, cores: int | None) -> dict[str, sensitivity.SensitivityResult]:
+    """Run the four analyses and draw their figures into the working directory."""
+    simulator = Simulator(n_workers=cores)
+    model = simulator.load(MODEL)
+    simulation = Simulation(end=1000, steps=1000)
+    conditions = Dimension("S1_0", values={"[S1]": [0.1, 1.0, 10.0]})
+    parameters = sampling.parameters_of(model)
+    bounds = {pid: sampling.Uniform(relative=0.15) for pid in parameters}
+    n = 32 if quick else 1024
 
-    tend = 1000
-    steps = 1000
+    designs = {
+        "local": (sampling.local(parameters, 0.01, model=model), sensitivity.local),
+        "sobol": (sampling.sobol(bounds, n, seed=1, model=model), sensitivity.sobol),
+        "fast": (
+            sampling.fast(bounds, max(n, 65), seed=1, model=model),
+            sensitivity.fast,
+        ),
+        "morris": (
+            sampling.morris(bounds, 10 if quick else 100, seed=1, model=model),
+            sensitivity.morris,
+        ),
+    }
+    results = {}
+    for name, (design, analysis) in designs.items():
+        scan = Scan(simulation, [conditions, design])
+        results[name] = analysis(simulator.run(model, scan, OBSERVABLES))
 
-    @override
-    def simulate(
-        self, r: roadrunner.RoadRunner, changes: dict[str, float]
-    ) -> dict[str, float]:
-        """Simulate the model with the changes and calculate the outputs."""
-        # apply changes and simulate
-        all_changes = {
-            **self.changes_simulation,  # model
-            **changes,  # sensitivity
-        }
-        self.apply_changes(r, all_changes, reset_all=True)
-
-        # ensure identical tolerances on all simulations
-        r.integrator.setValue("absolute_tolerance", self.init_tolerances)
-        s = r.simulate(start=0, end=self.tend, steps=self.steps)
-
-        # calculate outputs y (custom functions)
-        # this can be registered functions calculating scalars based on subsets of the
-        # timecourse vectors
-        y: dict[str, float] = {}
-        t = s["time"]
-        for key in "S1", "S2", "S3":
-            rr_key = f"[{key}]"
-            v = s[rr_key]
-            t_idx = np.argmax(v)
-            if key in ["S2"]:
-                y[f"{rr_key}_tmax"] = t[t_idx]
-                y[f"{rr_key}_max"] = v[t_idx]
-            y[f"{rr_key}_auc"] = np.trapezoid(y=v, x=t)
-
-        return y
-
-
-sensitivity_simulation = ExampleSensitivitySimulation(
-    model_path=model_path,
-    selections=["time", "[S1]", "[S2]", "[S3]"],
-    changes_simulation={},
-    outputs=[
-        SensitivityOutput(uid="[S1]_auc", name="[S1] AUC", unit=None),
-        SensitivityOutput(uid="[S2]_tmax", name="[S2] time maximum", unit=None),
-        SensitivityOutput(uid="[S2]_max", name="[S2] maximum", unit=None),
-        SensitivityOutput(uid="[S2]_auc", name="[S2] AUC", unit=None),
-        SensitivityOutput(uid="[S3]_auc", name="[S3] AUC", unit=None),
-    ],
-)
-
-
-def _sensitivity_parameters() -> list[SensitivityParameter]:
-    """Definition of parameters and bounds for sensitivity analysis."""
-    console.rule("Parameters", style="white")
-    parameters: list[SensitivityParameter] = SensitivityParameter.parameters_from_sbml(
-        sbml_path=model_path,
-        exclude_ids=None,
-        exclude_na=True,
-        exclude_zero=True,
+    dpi = 72 if quick else 300
+    sensitivity.plot_heatmap(
+        results["local"], "normalized", S1_0=1, path=Path("local.png"), dpi=dpi
     )
-    # setting bounds;
-    bounds_fraction = 0.15  # fraction of bounds relative to value
-    for p in parameters:
-        if np.isnan(p.lower_bound) and np.isnan(p.upper_bound):
-            p.lower_bound = p.value * (1 - bounds_fraction)
-            p.upper_bound = p.value * (1 + bounds_fraction)
+    sensitivity.plot_indices(
+        results["sobol"], "S2_auc", S1_0=1, path=Path("sobol_S2_auc.png"), dpi=dpi
+    )
+    sensitivity.plot_morris(
+        results["morris"], "S2_auc", S1_0=1, path=Path("morris_S2_auc.png"), dpi=dpi
+    )
+    for name, result in results.items():
+        index = {
+            "local": "normalized",
+            "sobol": "ST",
+            "fast": "ST",
+            "morris": "mu_star",
+        }
+        values = result.index(index[name]).sel(S1_0=1)
+        print(name, index[name], np.round(values.values, 3).tolist())
+    return results
 
-    return parameters
-
-
-sensitivity_parameters = _sensitivity_parameters()
 
 if __name__ == "__main__":
-    import argparse
-    import multiprocessing
-
-    from sbmlsim.sensitivity import (
-        FASTSensitivityAnalysis,
-        LocalSensitivityAnalysis,
-        MorrisSensitivityAnalysis,
-        SamplingSensitivityAnalysis,
-        SobolSensitivityAnalysis,
-    )
-
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--quick", action="store_true", help="small designs and figures, for the tests"
+    )
     parser.add_argument(
         "--cores",
         type=int,
-        default=round(0.9 * multiprocessing.cpu_count()),
-        help="number of processes, 90%% of the cores by default",
-    )
-    parser.add_argument(
-        "--quick",
-        action="store_true",
-        help="the smallest samples every method accepts and small figures, which "
-        "checks that the example runs; the indices of such samples mean nothing",
+        default=None,
+        help="the workers of the simulator, all from 256 points by default",
     )
     options = parser.parse_args()
-    # the sample sizes of the analyses; the smallest ones are the limits of the
-    # methods: FAST needs N > 4 M^2 with M = 4, Morris more trajectories than
-    # it selects
-    samples = (
-        {"sampling": 20, "sobol": 16, "fast": 65, "morris": 4, "trajectories": 2}
-        if options.quick
-        else {
-            "sampling": 1000,
-            "sobol": 4096,
-            "fast": 1000,
-            "morris": 100,
-            "trajectories": 25,
-        }
-    )
-
-    sensitivity_path = Path.cwd() / "results" / "sensitivity"
-    sensitivity_path.mkdir(parents=True, exist_ok=True)
-    df = SensitivityParameter.parameters_to_df(sensitivity_parameters)
-    df.to_csv(sensitivity_path / "parameters.tsv", sep="\t", index=False)
-    console.print(df)
-
-    settings: dict[str, Any] = {
-        "cache_results": False,
-        "n_cores": options.cores,
-        "seed": 1234,
-        # small figures when only checking that the example runs
-        "dpi": 72 if options.quick else 300,
-    }
-
-    sa_sampling = SamplingSensitivityAnalysis(
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=sensitivity_groups,
-        results_path=sensitivity_path / "sampling",
-        N=samples["sampling"],
-        **settings,
-    )
-
-    sa_local = LocalSensitivityAnalysis(
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=sensitivity_groups,
-        results_path=sensitivity_path / "local",
-        difference=0.01,
-        **settings,
-    )
-
-    sa_sobol = SobolSensitivityAnalysis(
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=[sensitivity_groups[1]],
-        results_path=sensitivity_path / "sobol",
-        N=samples["sobol"],
-        **settings,
-    )
-
-    sa_fast = FASTSensitivityAnalysis(
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=sensitivity_groups,
-        results_path=sensitivity_path / "fast",
-        N=samples["fast"],
-        **settings,
-    )
-
-    sa_morris = MorrisSensitivityAnalysis(
-        sensitivity_simulation=sensitivity_simulation,
-        parameters=sensitivity_parameters,
-        groups=sensitivity_groups,
-        results_path=sensitivity_path / "morris",
-        N=samples["morris"],
-        num_levels=4,
-        optimal_trajectories=samples["trajectories"],
-        **settings,
-    )
-
-    # every method, the documentation calls this the complete example. The
-    # analyses take about a minute in all (measured: local 8 s, sampling
-    # 10 s, Sobol 11 s, FAST 18 s, Morris 13 s on 90% of the cores)
-    for sa in [sa_local, sa_sampling, sa_sobol, sa_fast, sa_morris]:
-        sa.execute()
-        sa.plot()
+    run(options.quick, options.cores)

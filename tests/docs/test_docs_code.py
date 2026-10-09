@@ -23,6 +23,7 @@ PAGES = [
     "units.md",
     "data.md",
     "observables.md",
+    "sensitivity.md",
 ]
 
 #: a fenced block of python

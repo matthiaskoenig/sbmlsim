@@ -4,9 +4,10 @@ Example shows basic model simulations and plotting.
 
 from matplotlib import pyplot as plt
 
+from sbmlsim import sensitivity
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
-from sbmlsim.simulation import Scan, Simulation, sampling
+from sbmlsim.simulation import Formula, Scan, Simulation, sampling
 from sbmlsim.simulator import Simulator
 
 
@@ -82,6 +83,14 @@ def run_sensitivity() -> None:
     # every parameter alone 10 % up and down
     local = sampling.local(parameters, delta=0.1, model=model)
     res_diff_scan = simulator.run(model, Scan(tcsim, [local]))
+
+    # the local indices of the maximum of X: a run with an observable, which keeps
+    # no timecourse, so the figures above come from the runs without observables
+    res_local = simulator.run(
+        model, Scan(tcsim, [local]), [Formula("x_max", "max([X])")]
+    )
+    normalized = sensitivity.local(res_local).index("normalized")
+    print(normalized.to_pandas().round(3))
 
     # create figures
     plot_results(res_distrib_scan, "model_sensitivity_distribution.png")

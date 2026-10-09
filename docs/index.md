@@ -27,7 +27,7 @@ Around this core the package collects the tasks which come with simulation exper
 ### Sensitivity and uncertainty
 
 - **[Parameter scans](scans.md)** - `Scan` and `Dimension` run a simulation over dimensions of values, simulations and models, serially or in a pool of processes; the result is a `ScanResult` with the changed values as coordinates.
-- **[Sensitivity analysis](sensitivity.md)** - local sensitivities by finite differences and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), with classification and plots.
+- **[Sensitivity analysis](sensitivity.md)** - local sensitivities and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), computed on the result of a scan with a design of the sampler, with classification and plots.
 
 ### Parameter optimization
 
