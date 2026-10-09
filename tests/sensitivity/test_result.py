@@ -99,3 +99,35 @@ def test_two_designs_need_dim() -> None:
         design_of(res, {"local"})
     assert design_of(res, {"local"}, dim="b")[0] == "b"
     assert isinstance(res, ScanResult)
+
+
+def test_a_selection_of_one_parameter_keeps_the_dimension() -> None:
+    s = _result()
+    one = s.sel(parameter="k1")
+    assert one.parameters == ["k1"]
+    assert one["auc.ST"].dims == (PARAMETER, "dose")
+    assert s.isel(parameter=1).parameters == ["k2"]
+    assert s.sel(parameter=["k2"]).parameters == ["k2"]
+    # a variable selects a scalar as in xarray
+    assert s["auc.ST"].sel(parameter="k1", dose=0).item() == 0.6
+
+
+def test_index_raises_for_a_named_observable_it_cannot_stack() -> None:
+    s = _result()
+    with pytest.raises(ValueError, match=r"'c'.*time"):
+        s.index("ST", observables=["auc", "c"])
+    with pytest.raises(ValueError, match=r"'x' has no index 'ST'"):
+        s.index("ST", observables=["x"])
+    with pytest.raises(ValueError, match="no observable"):
+        s.index("ST", observables=[])
+    # a time point of the timecourse is a scalar observable
+    stacked = s.sel(time=1.0).index("ST", observables=["auc", "c"])
+    assert stacked["observable"].values.tolist() == ["auc", "c"]
+
+
+def test_classify_needs_a_dimensionless_index() -> None:
+    ds = _result().ds.copy()
+    ds["auc.mu_star"] = ds["auc.ST"]
+    ds.attrs = {**ds.attrs, "units": {**ds.attrs["units"], "auc.mu_star": "mM"}}
+    with pytest.raises(ValueError, match=r"auc\.mu_star.*mM"):
+        SensitivityResult(ds).classify("auc.mu_star")

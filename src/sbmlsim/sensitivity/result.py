@@ -32,6 +32,34 @@ PARAMETER_2 = "parameter_2"
 #: the attribute which carries the attributes as JSON in a netCDF file
 NETCDF_ATTRS = "sbmlsim"
 
+#: the indices without a unit, comparable between parameters and observables;
+#: the others (`raw`, `mu`, `mu_star`, `sigma`, `mu_star_conf`) have the unit
+#: of the observable or of the observable per unit of the parameter
+DIMENSIONLESS_INDICES: tuple[str, ...] = (
+    "normalized",
+    "S1",
+    "S1_conf",
+    "ST",
+    "ST_conf",
+    "S2",
+    "S2_conf",
+)
+
+
+def _keep_parameter(indexers: dict[str, Any]) -> dict[str, Any]:
+    """Keep the dimension `parameter` of a selection of one parameter.
+
+    Args:
+        indexers: the labels or positions to select, by dimension.
+
+    Returns:
+        The indexers, a single label or position of `parameter` as a list.
+    """
+    chosen = indexers.get(PARAMETER)
+    if chosen is not None and not isinstance(chosen, slice) and np.ndim(chosen) == 0:
+        return {**indexers, PARAMETER: [chosen]}
+    return indexers
+
 
 class SensitivityResult:
     """The indices of a sensitivity analysis, see the module.
@@ -88,6 +116,8 @@ class SensitivityResult:
     ) -> xr.DataArray:
         """Stack an index of the scalar observables into `(parameter, observable, ...)`.
 
+        A timecourse is stacked at one time point, e.g. `sel(time=10).index(...)`.
+
         Args:
             name: the index, e.g. `ST`.
             observables: the observables, every scalar observable which has
@@ -98,20 +128,40 @@ class SensitivityResult:
 
         Raises:
             KeyError: if no scalar observable has the index.
+            ValueError: if `observables` is empty, or a named observable has no
+                such index or is a timecourse.
         """
-        chosen = [
-            o
-            for o in (observables or self.observables)
-            if f"{o}.{name}" in self.ds.data_vars
-            and TIME not in self.ds[f"{o}.{name}"].dims
-        ]
-        if not chosen:
-            raise KeyError(
-                f"No scalar observable of the result has the index '{name}'."
-            )
+        if observables is None:
+            chosen = [
+                o
+                for o in self.observables
+                if f"{o}.{name}" in self.ds.data_vars
+                and TIME not in self.ds[f"{o}.{name}"].dims
+            ]
+            if not chosen:
+                raise KeyError(
+                    f"No scalar observable of the result has the index '{name}'."
+                )
+        else:
+            chosen = list(observables)
+            if not chosen:
+                raise ValueError("The list of observables is empty, no observable.")
+            for o in chosen:
+                if f"{o}.{name}" not in self.ds.data_vars:
+                    raise ValueError(
+                        f"The observable '{o}' has no index '{name}', the observables "
+                        f"are {self.observables}."
+                    )
+                if TIME in self.ds[f"{o}.{name}"].dims:
+                    raise ValueError(
+                        f"The observable '{o}' is a timecourse over '{TIME}'; select "
+                        f"a time point first, e.g. sel({TIME}=...)."
+                    )
         stacked = xr.concat(
             [self.ds[f"{o}.{name}"] for o in chosen],
             dim=pd.Index(chosen, name="observable"),
+            coords="minimal",
+            compat="override",
         )
         dims = [
             PARAMETER,
@@ -121,12 +171,19 @@ class SensitivityResult:
         return stacked.transpose(*dims)
 
     def sel(self, **indexers: Any) -> SensitivityResult:
-        """Select labels, see `xarray.Dataset.sel`."""
-        return SensitivityResult(self.ds.sel(**indexers))
+        """Select labels, see `xarray.Dataset.sel`.
+
+        A single label of `parameter` keeps the dimension, which a result has:
+        `sel(parameter="k1")` is `sel(parameter=["k1"])`.
+        """
+        return SensitivityResult(self.ds.sel(**_keep_parameter(indexers)))
 
     def isel(self, **indexers: Any) -> SensitivityResult:
-        """Select positions, see `xarray.Dataset.isel`."""
-        return SensitivityResult(self.ds.isel(**indexers))
+        """Select positions, see `xarray.Dataset.isel`.
+
+        A single position of `parameter` keeps the dimension, as in `sel`.
+        """
+        return SensitivityResult(self.ds.isel(**_keep_parameter(indexers)))
 
     def to_dataframe(self, name: str) -> pd.DataFrame:
         """Get a variable as a table, a row per parameter.
@@ -147,13 +204,27 @@ class SensitivityResult:
     def classify(self, name: str) -> xr.DataArray:
         """Classify every value of an index, see `sensitivity_classification`.
 
+        The thresholds are the ones of the IPCS for normalized local
+        sensitivities, which need an index without a unit
+        (`DIMENSIONLESS_INDICES`), e.g. `normalized`, `S1` or `ST`.
+
         Args:
             name: the variable, e.g. `auc.normalized`.
 
         Returns:
             The classes as strings (`high`, `medium`, `low`, `negligible`), `""`
             for `NaN`.
+
+        Raises:
+            ValueError: if the index has a unit, e.g. `raw` or `mu_star`.
         """
+        index = name.rsplit(".", 1)[-1]
+        if index not in DIMENSIONLESS_INDICES:
+            raise ValueError(
+                f"classify applies the thresholds of normalized sensitivities, which "
+                f"need an index without a unit {list(DIMENSIONLESS_INDICES)}; "
+                f"'{name}' has the unit '{self.units.get(name, '')}'."
+            )
         data = self.ds[name]
         classes = np.vectorize(
             lambda v: "" if np.isnan(v) else str(sensitivity_classification(float(v))),
