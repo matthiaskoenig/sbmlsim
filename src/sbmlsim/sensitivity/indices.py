@@ -285,10 +285,18 @@ def local(
                 raw.append(np.full_like(up, np.nan))
                 normalized.append(np.full_like(up, np.nan))
                 continue
-            with np.errstate(divide="ignore", invalid="ignore"):
-                raw.append((up - down) / (2.0 * delta * p_ref))
+            # a non-finite value at the reference or a moved point is a failed point
+            usable = np.isfinite(up) & np.isfinite(down) & np.isfinite(y_ref)
+            with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+                raw.append(
+                    np.where(usable, (up - down) / (2.0 * delta * p_ref), np.nan)
+                )
                 normalized.append(
-                    np.where(y_ref != 0.0, (up - down) / (2.0 * delta * y_ref), np.nan)
+                    np.where(
+                        usable & (y_ref != 0.0),
+                        (up - down) / (2.0 * delta * y_ref),
+                        np.nan,
+                    )
                 )
         dims = [PARAMETER, *others]
         indices[f"{name}.raw"] = (dims, np.stack(raw))

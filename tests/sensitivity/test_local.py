@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
+from matplotlib.axes import Axes
 from matplotlib.colors import to_rgba
 
 from sbmlsim import sensitivity
@@ -262,3 +263,20 @@ def test_a_stored_result_is_analysed(
     again = sensitivity.local(ScanResult.from_netcdf(path))
     xr.testing.assert_allclose(again.ds, sensitivity.local(res).ds)
     assert again.units == sensitivity.local(res).units
+
+
+def test_an_infinite_value_gives_nan_indices_and_a_finite_heatmap_order() -> None:
+    """An infinite output at the reference is a failed point, so is its clustering."""
+    model = Simulator().load(
+        sbml("model infinite\n  a = 2; b = 3\n  y := b / (a - 2)\nend\n")
+    )
+    design = sampling.local(["a", "b"], 0.1, model=model)
+    res = Simulator().run(
+        model, Scan(Simulation(end=1, steps=1), [design]), [Formula("y_max", "max(y)")]
+    )
+    assert not np.isfinite(res["y_max"].sel({design.id: "reference"}).item())
+    s = sensitivity.local(res)
+    for index in ("raw", "normalized"):
+        assert np.isnan(s[f"y_max.{index}"].values).all()
+    figure = sensitivity.plot_heatmap(s, "normalized")
+    assert isinstance(figure.axes[0], Axes)

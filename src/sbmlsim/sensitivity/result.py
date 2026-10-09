@@ -83,7 +83,7 @@ class SensitivityResult:
 
     @property
     def units(self) -> dict[str, str]:
-        """Get the unit of every variable."""
+        """Get the unit of every variable, of `parameter` and of the kept coordinates."""
         return dict(self.ds.attrs.get("units", {}))
 
     @property

@@ -439,3 +439,65 @@ def test_plot_morris_axes_and_undefined_parameters() -> None:
     notes = [t.get_text() for t in figure.findobj(Text)]
     assert any("undefined" in n and "c" in n for n in notes)
     assert ax.get_xlabel() == "mu_star [mM]"
+
+
+def _table(values: np.ndarray, columns: list[str] | None = None) -> SensitivityResult:
+    n_rows, n_cols = values.shape
+    names = columns or [f"o{i}" for i in range(n_cols)]
+    data = {f"{n}.mu_star": ((PARAMETER,), values[:, i]) for i, n in enumerate(names)}
+    return SensitivityResult(
+        xr.Dataset(
+            data,
+            coords={PARAMETER: [f"p{i}" for i in range(n_rows)]},
+            attrs={"units": dict.fromkeys(data, ""), "method": "morris"},
+        )
+    )
+
+
+def _cells(figure: Figure) -> list[str]:
+    (ax,) = [a for a in figure.axes if a.get_label() == "heatmap"]
+    return [t.get_text() for t in ax.texts]
+
+
+def test_forty_observables_do_not_overlap() -> None:
+    rng = np.random.default_rng(0)
+    names = [f"cmax_{i:02d}" for i in range(40)]
+    figure = plot_heatmap(_table(rng.random((3, 40)) + 0.5, names), "mu_star")
+    figure.draw_without_rendering()
+    (ax,) = [a for a in figure.axes if a.get_label() == "heatmap"]
+    labels = ax.get_xticklabels()
+    width = ax.get_window_extent().width / 40
+    if labels[0].get_rotation() == 0:
+        boxes = [t.get_window_extent() for t in labels]
+        assert not any(a.overlaps(b) for a, b in pairwise(boxes))
+    else:
+        # rotated by 45 degrees, parallel texts clear each other if the height of
+        # the text fits in the distance between them across the slant
+        text_height = float(labels[0].get_fontsize()) * float(figure.dpi) / 72
+        assert labels[0].get_rotation() == 45
+        assert width * np.sin(np.pi / 4) > text_height
+
+
+def test_an_infinite_value_is_clustered_like_nan() -> None:
+    values = np.array([[1.0, np.inf], [1.2, 0.0], [np.nan, 0.5]])
+    figure = plot_heatmap(_table(values), "mu_star", cutoff=0)
+    assert isinstance(figure, Figure)
+
+
+def test_a_zero_is_printed_as_zero() -> None:
+    figure = plot_heatmap(_table(np.zeros((2, 2))), "mu_star", cutoff=0)
+    assert set(_cells(figure)) == {"0"}
+    values = np.array([[1.0, -1e-9], [-0.0, 0.5]])
+    texts = _cells(plot_heatmap(_table(values), "mu_star", cutoff=0))
+    assert sorted(texts) == ["0", "0", "0.50", "1.00"]
+    assert not any("-" in t or t[:2] == "\N{MINUS SIGN}0" for t in texts)
+
+
+def test_a_parameter_without_indices_is_marked() -> None:
+    result = _sobol()
+    result.ds["auc.S1"].values[1] = np.nan
+    result.ds["auc.ST"].values[1] = np.nan
+    figure = plot_indices(result, "auc", dose=0)
+    (ax,) = figure.axes
+    assert [t.get_text() for t in ax.texts] == ["n/a"]
+    assert ax.get_xlim()[1] > len(result.parameters) - 1 + 0.2

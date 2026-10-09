@@ -50,12 +50,15 @@ def plot_results(res: ScanResult, filename: str) -> None:
         ax.set_ylabel(_label("concentration", res.units["x"]))
         ax.legend()
 
+    x_mean = summary["x"].sel(statistic="mean").values
+    y_mean = summary["y"].sel(statistic="mean").values
+    # the log-log plane has no point where a concentration is not positive
+    positive = (x_mean > 0) & (y_mean > 0)
     for ax in (ax2, ax4):
-        ax.plot(
-            summary["x"].sel(statistic="mean").values,
-            summary["y"].sel(statistic="mean").values,
-            color="black",
-        )
+        if ax is ax4:
+            ax.plot(x_mean[positive], y_mean[positive], color="black")
+        else:
+            ax.plot(x_mean, y_mean, color="black")
         ax.set_xlabel(_label("[X]", res.units["x"]))
         ax.set_ylabel(_label("[Y]", res.units["y"]))
 

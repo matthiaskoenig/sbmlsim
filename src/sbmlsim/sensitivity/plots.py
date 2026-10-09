@@ -29,6 +29,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.text import Annotation, Text
 from matplotlib.ticker import ScalarFormatter
 from scipy.cluster.hierarchy import leaves_list, linkage
+from scipy.spatial.distance import pdist
 
 from sbmlsim.sensitivity.result import (
     DIMENSIONLESS_INDICES,
@@ -155,11 +156,30 @@ def _value_format(top: float) -> str:
         The format: two decimals from `0.1` to `1000`, none up to `1e5` and
         scientific otherwise.
     """
+    if top == 0.0:
+        return "{:.0f}"
     if 0.1 <= top < 1000.0:
         return "{:.2f}"
     if 1000.0 <= top < 1e5:
         return "{:.0f}"
     return "{:.1e}"
+
+
+def _cell_text(value: float, fmt: str) -> str:
+    """Get the text of a cell, a zero without a sign or an exponent.
+
+    Args:
+        value: the value of the cell.
+        fmt: the format of the values.
+
+    Returns:
+        The text, `0` for a value which rounds to zero, else the formatted
+        value with a minus sign.
+    """
+    text = fmt.format(value)
+    if float(text) == 0.0:
+        return "0"
+    return text.replace("-", "\N{MINUS SIGN}")
 
 
 def _text_color(rgba: tuple[float, float, float, float]) -> str:
@@ -179,7 +199,7 @@ def _order(values: np.ndarray, cluster: bool) -> np.ndarray:
     """Get the order of the rows by a hierarchical clustering.
 
     Args:
-        values: the values, a row per entry; `NaN` counts as 0.
+        values: the values, a row per entry; `NaN` and infinite values count as 0.
         cluster: whether the rows are clustered.
 
     Returns:
@@ -188,9 +208,8 @@ def _order(values: np.ndarray, cluster: bool) -> np.ndarray:
     """
     if not cluster or values.shape[0] < 2:
         return np.arange(values.shape[0])
-    return leaves_list(
-        linkage(np.nan_to_num(values, nan=0.0), method="single", metric="euclidean")
-    )
+    finite = np.where(np.isfinite(values), values, 0.0)
+    return leaves_list(linkage(pdist(finite), method="single"))
 
 
 def _heatmap(
@@ -210,7 +229,7 @@ def _heatmap(
     """Draw a clustered heatmap of a table, a row per parameter and a column per observable.
 
     A row is kept if one of its values reaches the cutoff or one is undefined
-    (`NaN`); a cell below the cutoff is white, an undefined cell light grey,
+    (`NaN` or infinite); a cell below the cutoff is white, an undefined cell light grey,
     and every other cell carries its value. The rows are clustered on the
     values with `NaN` as 0. The cells have a fixed size up to the largest
     figure, the parameters are on the left, the observables below (rotated by
@@ -238,8 +257,8 @@ def _heatmap(
         ValueError: if no row reaches the cutoff and none is undefined.
     """
     values = df.to_numpy(dtype=float)
-    undefined = np.isnan(values)
-    magnitude = np.abs(np.nan_to_num(values, nan=0.0))
+    undefined = ~np.isfinite(values)
+    magnitude = np.abs(np.where(undefined, 0.0, values))
     if cutoff > 0:
         keep = (magnitude >= cutoff).any(axis=1) | undefined.any(axis=1)
         if not keep.any():
@@ -282,7 +301,7 @@ def _heatmap(
         ax.text(
             col + 0.5,
             row + 0.5,
-            fmt.format(value).replace("-", "\N{MINUS SIGN}"),
+            _cell_text(value, fmt),
             ha="center",
             va="center",
             size=VALUE_SIZE,
@@ -327,13 +346,16 @@ def _heatmap(
         else None
     )
     figure.draw_without_rendering()
+    _fit(figure, ax, cells, heading)
+    # the rotation follows the width of a cell in the final, possibly capped figure
     widest = max(t.get_window_extent().width for t in ax.get_xticklabels())
-    if widest / figure.dpi > cell_width - 0.1:
+    final_width = ax.get_window_extent().width / figure.dpi / n_cols
+    if widest / figure.dpi > final_width - 0.1:
         for tick in ax.get_xticklabels():
             tick.set_rotation(45)
             tick.set_horizontalalignment("right")
             tick.set_rotation_mode("anchor")
-    _fit(figure, ax, cells, heading)
+        _fit(figure, ax, cells, heading)
     if path:
         figure.savefig(path, dpi=dpi, bbox_inches="tight")
     return figure
@@ -540,7 +562,7 @@ def plot_heatmap(
         columns=data["observable"].values,
     )
     finite = np.abs(df.to_numpy(dtype=float))
-    top = float(np.nanmax(finite)) if np.isfinite(finite).any() else 1.0
+    top = float(finite[np.isfinite(finite)].max()) if np.isfinite(finite).any() else 1.0
     top = top if top > 0 else 1.0
     signed = index in SIGNED_INDICES
     if signed:
@@ -633,6 +655,20 @@ def plot_indices(
             capsize=4,
         )
     ax.set_xticks(x, parameters)
+    ax.set_xlim(-0.7, len(parameters) - 0.3)
+    undefined = np.all(
+        [np.isnan(v.values) for k, v in values.items() if k in ("S1", "ST")], axis=0
+    )
+    for position in x[undefined]:
+        ax.annotate(
+            "n/a",
+            (position, 0),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            color=INTERVAL_COLOR,
+        )
     ax.set_xlabel("Parameter")
     ax.set_ylabel(INDEX_NAMES.get(result.method, "Sensitivity index"))
     ax.set_title(title or observable)
