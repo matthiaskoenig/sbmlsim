@@ -303,6 +303,33 @@ def test_a_failing_point_is_nan_for_every_observable() -> None:
         Simulator().run(sbml(BLOWUP), scan, observables)
 
 
+def test_a_failing_point_has_no_pk_analysis() -> None:
+    model = sbml_pk(blowup=True)
+    observables = [PK("c", "[C]", dose="PODOSE", route="oral")]
+
+    def scan(kb: list[float], doses: list[float]) -> Scan:
+        values = {"kb": kb, "PODOSE": Q(doses, "mg")}
+        return Scan(dosed(), [Dimension("point", values=values)])
+
+    res = Simulator().run(
+        model, scan([0.0, 1.0, 0.0], [50.0, 100.0, 200.0]), observables, on_error="flag"
+    )
+    assert res["status"].values.tolist() == [0, 1, 0]
+    reference = Simulator().run(model, scan([0.0, 0.0], [50.0, 200.0]), observables)
+    parameters = [str(n) for n in reference.ds.data_vars]
+    assert "c.cl_f" in parameters
+    for name in parameters:
+        values = res[name].values
+        assert np.isnan(values[1])
+        np.testing.assert_array_equal(values[[0, 2]], reference[name].values)
+    assert np.isfinite(res["c.cmax"].values[[0, 2]]).all()
+    nca = res.nca("c")
+    assert nca["flags"].values.tolist() == [0, int(pk.NCAFlag.NO_DATA), 0]
+    assert np.isnan(nca["cmax"].values[1]) and np.isnan(nca["cl_f"].values[1])
+    assert nca.flags(point=1) == [pk.NCAFlag.NO_DATA.name]
+    assert nca.flags(point=0) == []
+
+
 def test_an_observable_which_fails_fails_its_point() -> None:
     scan = Scan(Simulation(end=1, steps=4), [Dimension("d", values={"k1": [0.5, 2.0]})])
     observables = [Custom("check", fails_for_large_k1, "dimensionless", symbols=["k1"])]

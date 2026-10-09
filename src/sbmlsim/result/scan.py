@@ -160,7 +160,8 @@ class ScanResult:
 
         The kept parameters of the observable, `<id>.<parameter>`, with their
         units and its flags over the dimensions of the scan. A point which
-        failed has the flags `0` and `NaN` parameters.
+        failed has `NaN` parameters and the flags `NCAFlag.NO_DATA`, which
+        pkpdutils gives a sample without data.
 
         Args:
             observable: the id of the PK observable.
@@ -171,7 +172,7 @@ class ScanResult:
         Raises:
             KeyError: if the result does not keep the flags of the observable.
         """
-        from pkpdutils import NCAResult
+        from pkpdutils import NCAFlag, NCAResult
 
         prefix = f"{observable}."
         flags = f"{prefix}{FLAGS}"
@@ -188,7 +189,7 @@ class ScanResult:
             values = self.ds[name]
             parameter = name.removeprefix(prefix)
             if parameter == FLAGS:
-                values = values.fillna(0).astype(int)
+                values = values.fillna(int(NCAFlag.NO_DATA)).astype(int)
             data_vars[parameter] = values.assign_attrs(units=self.units.get(name, ""))
         return NCAResult(xr.Dataset(data_vars).reset_coords(drop=True))
 

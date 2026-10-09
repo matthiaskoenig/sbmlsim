@@ -53,7 +53,7 @@
 - With observables, `keep` names observables (the id of a PK observable keeps all its parameters); the selections are intermediates. Without observables, `keep` names selections. An observable no kept observable needs is not evaluated, and its selections are not selected.
 - A result whose kept observables are all values per simulation has no time dimension and no variable or coordinate `time`.
 - The observables are evaluated on the points which ran, on the chunk at once; after a failure the points are evaluated one at a time, so a point fails exactly when its own evaluation fails. With `on_error="raise"` the first failing point in the order of the scan is raised, an observable failure of an earlier point before a later execution failure.
-- `nca` gives a failed point the flags `0` and `NaN` parameters; `to_timecourses(id, **kwargs)` passes `dose`, `route` and the other arguments of `Timecourses.from_arrays` on.
+- `nca` gives a failed point the flags `NO_DATA` (`pkpdutils.NCAFlag.NO_DATA`, which pkpdutils gives a sample without data) and `NaN` parameters; `to_timecourses(id, **kwargs)` passes `dose`, `route` and the other arguments of `Timecourses.from_arrays` on.
 - `RoadrunnerSBMLModel.has_selection(name)` checks a selection (`r.getValue`), which the fit used as `_is_selection` and the observables need; the fit uses the method.
 - `FLAGS = "flags"` is a constant of `sbmlsim.result.scan`, which `simulator/pk.py` imports, so the result does not import the simulator.
 

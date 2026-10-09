@@ -136,11 +136,24 @@ end
 """
 
 
-def sbml_pk(ke: float = 0.2) -> str:
+#: a parameter of the PK model with `blowup=True` which grows as `B' = kb B^2`
+#: and goes to infinity at the time `1 / kb`: the integration up to 48 hours
+#: fails for `kb = 1` and works for `kb = 0`, which leaves the model unchanged
+PK_BLOWUP = """
+  kb = 0; B = 1
+  B' = kb*B^2
+end
+"""
+
+
+def sbml_pk(ke: float = 0.2, blowup: bool = False) -> str:
     """Get the one-compartment model in hours, mg and litres."""
     import libsbml
 
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PK_MODEL.format(ke=ke)))
+    text = PK_MODEL.format(ke=ke)
+    if blowup:
+        text = text.removesuffix("end\n") + PK_BLOWUP
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(text))
     model: libsbml.Model = doc.getModel()
     for uid, kind, scale, multiplier, exponent in (
         ("hr", libsbml.UNIT_KIND_SECOND, 0, 3600.0, 1),
