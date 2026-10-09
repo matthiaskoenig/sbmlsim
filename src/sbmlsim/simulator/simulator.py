@@ -638,6 +638,15 @@ class _Compiled:
                 else:
                     coords[target] = (dimension.id, np.array(values))
                     units[target] = first.uinfo.get(target, "") or ""
+            for name, values in dimension.coordinates.items():
+                if name in data_vars or name in coords:
+                    continue
+                if isinstance(values, Quantity):
+                    coords[name] = (dimension.id, np.array(values.magnitude))
+                    units[name] = str(values.units)
+                else:
+                    coords[name] = (dimension.id, np.array(values))
+                    units[name] = ""
         if self.grid is not None and timed:
             coords[TIME] = self.grid
         attrs: dict[str, Any] = {

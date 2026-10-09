@@ -27,6 +27,7 @@ scan.
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -100,6 +101,74 @@ def _model_text(model: Any) -> str:
     return str(getattr(model, "sid", None) or "<sbml>")
 
 
+@dataclass(frozen=True, eq=False)
+class Design:
+    """The record of the design of a dimension, see `sbmlsim.simulation.sampling`.
+
+    It is made of JSON types, so `Dimension.to_dict` writes it into the
+    provenance of a result and an analysis reads it from there, also from a
+    result stored as netCDF. Two records are equal when their contents are.
+
+    Attributes:
+        method: the design, e.g. `local`, `random`, `lhs`, `sobol`, `fast`,
+            `morris`, `fit_parameters`, `profile_parameters`, `fit_repeats`
+            or `population`.
+        distributions: target -> its distribution as a dictionary.
+        options: the options of the design, e.g. `n` and `seed`.
+        references: target -> `{"value": ..., "unit": ...}`, the references
+            the design resolved.
+    """
+
+    method: str
+    distributions: dict[str, dict[str, Any]] = field(default_factory=dict)
+    options: dict[str, Any] = field(default_factory=dict)
+    references: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Check that the record is made of JSON types.
+
+        Raises:
+            ValueError: if a part of the record is no JSON type.
+        """
+        try:
+            json.dumps(self.to_dict())
+        except TypeError as err:
+            raise ValueError(
+                f"The record of the design '{self.method}' must be made of JSON "
+                f"types: {err}"
+            ) from err
+
+    def __eq__(self, other: object) -> bool:
+        """Compare two records by their contents."""
+        return isinstance(other, Design) and self.to_dict() == other.to_dict()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Get the record as a dictionary of JSON types."""
+        return {
+            "method": self.method,
+            "distributions": self.distributions,
+            "options": self.options,
+            "references": self.references,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> Design:
+        """Create a record from its dictionary.
+
+        Args:
+            d: the dictionary of `to_dict`.
+
+        Returns:
+            The record.
+        """
+        return cls(
+            method=str(d["method"]),
+            distributions=dict(d.get("distributions") or {}),
+            options=dict(d.get("options") or {}),
+            references=dict(d.get("references") or {}),
+        )
+
+
 @dataclass(frozen=True, init=False, eq=False)
 class Dimension:
     """A dimension of a scan, see the module.
@@ -116,6 +185,11 @@ class Dimension:
         at: the time of the values, `None` for the rule of
             `Simulation.with_values`.
         labels: the read-only coordinate of the dimension.
+        design: the record of the design which created the dimension, `None`
+            for a dimension given by hand, see `sbmlsim.simulation.sampling`.
+        coordinates: name -> a read-only array or quantity along the
+            dimension, which the result carries as a coordinate and which is
+            never set on a model, e.g. the covariates of a population.
     """
 
     id: str
@@ -126,6 +200,8 @@ class Dimension:
     models: Mapping[str, Any]
     at: Time | None
     labels: np.ndarray
+    design: Design | None
+    coordinates: Mapping[str, Any]
 
     def __init__(
         self,
@@ -136,6 +212,8 @@ class Dimension:
         models: Mapping[str, Any] | None = None,
         at: Time | None = None,
         labels: Sequence[Any] | np.ndarray | None = None,
+        design: Design | None = None,
+        coordinates: Mapping[str, Any] | None = None,
     ) -> None:
         """Create a dimension, see the class.
 
@@ -149,7 +227,10 @@ class Dimension:
                 `models` is given, if it is empty, if the arrays of the values
                 differ in their length or are no arrays of numbers, if a
                 dimension which is no dimension of values has `at`, or if the
-                labels do not fit.
+                labels do not fit; a design or coordinates of a dimension which
+                is no dimension of values; coordinates of another length than
+                the dimension or with the name of a target.
+            TypeError: if the design is no `Design`.
         """
         mappings = {"values": values, "simulations": simulations, "models": models}
         given = [name for name, mapping in mappings.items() if mapping is not None]
@@ -230,6 +311,29 @@ class Dimension:
                 f"not unique."
             )
         coordinate.setflags(write=False)
+        if design is not None and not isinstance(design, Design):
+            raise TypeError(
+                f"The design of the dimension '{id}' is a Design, not {design!r}."
+            )
+        extra: dict[str, Any] = {}
+        if (design is not None or coordinates) and kind is not DimensionKind.VALUES:
+            raise ValueError(
+                f"The dimension '{id}' of {kind} has a design or coordinates, which "
+                f"only a dimension of values has."
+            )
+        for name, column in (coordinates or {}).items():
+            if name in arrays:
+                raise ValueError(
+                    f"The coordinate '{name}' of the dimension '{id}' is a target of "
+                    f"its values; a coordinate is never set on a model."
+                )
+            array: Any = _array(name, column)
+            if len(array) != len(keys):
+                raise ValueError(
+                    f"The coordinate '{name}' of the dimension '{id}' has the length "
+                    f"{len(array)}, the dimension has {len(keys)} points."
+                )
+            extra[name] = array
         object.__setattr__(self, "id", id)
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "values", MappingProxyType(arrays))
@@ -237,18 +341,20 @@ class Dimension:
         object.__setattr__(self, "models", MappingProxyType(mods))
         object.__setattr__(self, "at", at)
         object.__setattr__(self, "labels", coordinate)
+        object.__setattr__(self, "design", design)
+        object.__setattr__(self, "coordinates", MappingProxyType(extra))
 
     def __getstate__(self) -> dict[str, Any]:
         """Get the state, the read-only mappings as plain dictionaries."""
         state = dict(self.__dict__)
-        for name in ("values", "simulations", "models"):
+        for name in ("values", "simulations", "models", "coordinates"):
             state[name] = dict(state[name])
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         """Set the state, the dictionaries become read-only mappings again."""
         for name, value in state.items():
-            if name in ("values", "simulations", "models"):
+            if name in ("values", "simulations", "models", "coordinates"):
                 value = MappingProxyType(value)
             object.__setattr__(self, name, value)
 
@@ -260,7 +366,8 @@ class Dimension:
         """Get the representation."""
         what = list(self.values or self.simulations or self.models)
         at = "" if self.at is None else f", at={self.at}"
-        return f"Dimension({self.id}[{len(self)}], {self.kind}={what}{at})"
+        design = "" if self.design is None else f", design={self.design.method}"
+        return f"Dimension({self.id}[{len(self)}], {self.kind}={what}{at}{design})"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON types."""
@@ -282,6 +389,13 @@ class Dimension:
                 label: _model_text(model) for label, model in self.models.items()
             },
             "at": _encode(self.at),
+            "design": None if self.design is None else self.design.to_dict(),
+            "coordinates": {
+                name: _encode(values)
+                if isinstance(values, Quantity)
+                else values.tolist()
+                for name, values in self.coordinates.items()
+            },
         }
 
 
