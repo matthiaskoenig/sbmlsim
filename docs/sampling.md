@@ -27,7 +27,7 @@ print(
 | --- | --- |
 | `Uniform(lower, upper)`, `Uniform(relative=r)` | uniform in the bounds, or in the reference times `[1 - r, 1 + r]` |
 | `LogUniform(lower, upper)`, `LogUniform(factor=f)` | uniform in log10, or between the reference divided and multiplied by `f` |
-| `Normal(mean, sd)`, `Normal(cv=c)` | normal, around the reference with `sd` is `c` times the magnitude of the reference |
+| `Normal(mean, sd)`, `Normal(cv=c)` | normal, around the reference, where `sd` is `c` times the magnitude of the reference |
 | `LogNormal(median, cv)`, `LogNormal(cv=c)` | lognormal, around the reference |
 | `Truncated(distribution, lower, upper)` | the distribution restricted to the interval |
 | `Empirical(values)` | the values with equal weights |

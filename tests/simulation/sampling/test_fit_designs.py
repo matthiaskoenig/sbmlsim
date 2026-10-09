@@ -52,13 +52,16 @@ def test_fit_parameters_follow_the_fisher_covariance() -> None:
     assert dimension.design.options["opid"] == "op"
 
 
-def test_a_rank_deficient_covariance_warns_once_and_draws(
+def test_a_rank_deficient_information_warns_at_every_draw(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     fisher = _fisher(np.array([[1.0, 1.0], [1.0, 1.0]]))
-    dimension = fit_parameters(fisher, 100, seed=1)
-    assert np.isfinite(np.asarray(dimension.values["k2"])).all()
-    assert sum("rank" in r.message for r in caplog.records) == 1
+    _ = fisher.covariance  # read before, its own warning is spent
+    for _i in range(2):
+        dimension = fit_parameters(fisher, 100, seed=1)
+        assert np.isfinite(np.asarray(dimension.values["k2"])).all()
+    messages = [r.message for r in caplog.records if "profile_parameters" in r.message]
+    assert len(messages) == 2 and "1 of 2" in messages[0]
 
 
 def test_targets_map_parameters_and_versions_raise() -> None:
@@ -114,6 +117,8 @@ def test_profile_parameters_follow_the_likelihood_of_the_profile() -> None:
     assert stats.kstest(logs, stats.norm(0.0, 0.1).cdf).pvalue > 0.01
     assert dimension.design is not None
     assert dimension.design.options["alpha"] == pytest.approx(0.95)
+    assert dimension.design.options["sid"] == "best"
+    assert dimension.design.options["scales"] == ["LOG10"]
     assert logs.min() >= -3.0 and logs.max() <= 3.0
 
 

@@ -1,6 +1,8 @@
 # simulation.sampling
 
 ::: sbmlsim.simulation.sampling
+    options:
+      members: false
 
 ::: sbmlsim.simulation.sampling.distributions
 

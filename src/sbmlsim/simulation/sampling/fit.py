@@ -130,15 +130,22 @@ def fit_parameters(
         )
     names = _targets(fisher.pids, fisher.targets or None, targets)
     seed = _seed(seed)
-    if not fisher.is_identifiable:
-        # logs the warning about the unconstrained directions once
-        _ = fisher.covariance
     eigenvalues, eigenvectors = np.linalg.eigh(fisher.matrix)
     constrained = eigenvalues > eigenvalues.max() * fisher.rank_tolerance
     if not constrained.any():
         raise ValueError(
             f"The Fisher information of '{fisher.opid}' constrains no direction "
             f"of the parameters {list(fisher.pids)}."
+        )
+    if constrained.sum() < fisher.k:
+        logger.warning(
+            "The Fisher information of '%s' constrains %d of %d directions of the "
+            "parameters; the draws have no spread in the other %d, see "
+            "profile_parameters.",
+            fisher.opid,
+            int(constrained.sum()),
+            fisher.k,
+            fisher.k - int(constrained.sum()),
         )
     scale = np.sqrt(fisher.sigma2 / eigenvalues[constrained])
     basis = eigenvectors[:, constrained]
@@ -305,6 +312,7 @@ def profile_parameters(
     seed = _seed(seed)
     rng = np.random.default_rng(seed)
     columns: dict[str, Any] = {}
+    scale_names: list[str] = []
     for pid, target in zip(pids, names, strict=True):
         parameter = parameters.get(pid)
         scale = (
@@ -312,6 +320,7 @@ def profile_parameters(
             if parameter is not None and parameter.scale is not None
             else identifiability.fit_settings.parameter_scale
         )
+        scale_names.append(scale.name)
         x, density = _density(
             identifiability.profiles[pid], parameter, scale, identifiability.cost_min
         )
@@ -331,7 +340,9 @@ def profile_parameters(
             "seed": seed,
             "opid": identifiability.opid,
             "alpha": identifiability.settings.alpha,
+            "sid": identifiability.parameter_set.sid,
             "pids": pids,
+            "scales": scale_names,
         },
         references={
             target: {
