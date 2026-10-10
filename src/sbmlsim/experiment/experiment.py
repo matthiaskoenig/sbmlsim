@@ -60,10 +60,11 @@ class SimulationExperiment:
     #: the settings of the figures of the experiment, overrides of the settings
     #: of the run by the names of the fields of `FigureSettings`, which the
     #: settings of a figure override in turn (`Figure(settings=...)`). A
-    #: subclass assigns a mapping of its own, e.g.
-    #: `figure_settings = {"legend_fontsize": 10}`, which its subclasses
-    #: inherit; `{**Base.figure_settings, "fig_dpi": 300}` extends the one of
-    #: a base. Checked at `initialize`.
+    #: subclass assigns a read-only mapping of its own, e.g.
+    #: `figure_settings = MappingProxyType({"legend_fontsize": 10})`, which its
+    #: subclasses inherit;
+    #: `MappingProxyType({**Base.figure_settings, "fig_dpi": 300})` extends the
+    #: one of a base. Checked at `initialize`.
     figure_settings: ClassVar[Mapping[str, Any]] = MappingProxyType({})
 
     def __init__(

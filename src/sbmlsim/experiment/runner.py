@@ -260,6 +260,10 @@ class ExperimentRunner:
             if figure_settings is not None
             else None
         )
+        if settings == FigureSettings():
+            # the run sets nothing, e.g. `{}`: an overridden `run` which does
+            # not take the settings misses nothing
+            settings = None
         if not output_path.exists():
             output_path.mkdir(parents=True)
 

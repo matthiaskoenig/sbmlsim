@@ -7,6 +7,7 @@ from typing import Any
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from sbmlsim import log
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.plot import FigureSettings
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import Simulator
 
@@ -14,7 +15,7 @@ from sbmlsim.simulator import Simulator
 def run_experiments(
     experiment_classes: type[SimulationExperiment] | list[type[SimulationExperiment]],
     output_dir: Path | str,
-    figure_settings: Mapping[str, Any] | None = None,
+    figure_settings: FigureSettings | Mapping[str, Any] | None = None,
 ) -> Path:
     """Execute the given simulation experiment(s).
 

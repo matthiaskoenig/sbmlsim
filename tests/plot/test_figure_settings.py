@@ -333,6 +333,15 @@ def test_the_settings_of_a_figure_are_read_only_and_checked() -> None:
     assert dict(figure.settings) == {"legend_fontsize": 10}
     with pytest.raises(ValueError, match="the figure 'fig'"):
         figure.settings = {"legend_size": 10}
+    figure.settings = None
+    assert dict(figure.settings) == {}
+
+
+@pytest.mark.parametrize("settings", [[], "", ()])
+def test_settings_of_a_figure_which_are_no_mapping_raise(settings: Any) -> None:
+    """A falsy value which is no mapping is not taken for no settings."""
+    with pytest.raises(TypeError, match="the figure 'fig' are a mapping"):
+        Figure(experiment=None, sid="fig", settings=settings)
 
 
 @pytest.mark.parametrize("name", list(DEFAULTS))
@@ -343,7 +352,7 @@ def test_a_setting_on_the_class_or_a_figure_fails_loudly(name: str) -> None:
         "FigureSettings",
         "figure_settings=",
         "SimulationExperiment.figure_settings",
-        "figure_settings = ",
+        "figure_settings = MappingProxyType({",
         "Figure(settings=...)",
         f"FigureSettings().{name}",
     ]
@@ -375,9 +384,30 @@ def test_a_setting_at_the_module_level_raises_at_import(tmp_path: Path) -> None:
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     with pytest.raises(
-        AttributeError, match=re.escape("figure_settings = {'legend_fontsize'")
+        AttributeError,
+        match=re.escape("figure_settings = MappingProxyType({'legend_fontsize'"),
     ):
         spec.loader.exec_module(module)
+
+
+def test_a_setting_in_the_body_of_a_subclass_fails_loudly() -> None:
+    """A setting defined in a subclass of `Figure` would be ignored, it raises."""
+    match = r"'legend_fontsize' is no attribute.*SimulationExperiment\.figure_settings"
+    with pytest.raises(AttributeError, match=match):
+
+        class LegendFigure(Figure):
+            legend_fontsize = 10
+
+    for name in DEFAULTS:
+        with pytest.raises(AttributeError, match=f"'{name}' is no attribute"):
+            type("MyFigure", (Figure,), {name: 10})
+
+    class MyFigure(Figure):
+        """A subclass with attributes of its own is fine."""
+
+        color = "red"
+
+    assert MyFigure(experiment=None, sid="fig").color == "red"
 
 
 def test_other_attributes_of_a_figure_are_as_before() -> None:
@@ -492,7 +522,9 @@ def test_an_override_of_run_without_figure_settings_is_run_and_logged(
     plain = _pixels(tmp_path / "Plain" / "Plain_fig.png")
     assert plain[1] > 1.5 * old[1]
     assert results[0].error is None
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        _run(tmp_path / "default", OldSignature)
-    assert "figure_settings" not in caplog.text
+    for settings in [None, {}, FigureSettings(), {"fig_dpi": 72}]:
+        # a run which sets nothing, the override misses nothing
+        caplog.clear()
+        with caplog.at_level(logging.WARNING):
+            _run(tmp_path / "default", OldSignature, figure_settings=settings)
+        assert "figure_settings" not in caplog.text

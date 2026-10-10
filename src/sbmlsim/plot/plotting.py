@@ -1988,7 +1988,7 @@ class FigureSettings:
 
 
 def _removed_setting(name: str) -> str:
-    """Get the message of a figure setting read or set on `Figure` or a figure."""
+    """Get the message of a setting read, set or defined on `Figure` or a figure."""
     return (
         f"'{name}' is no attribute of the class `Figure` or of a figure any more: "
         f"set on the class it changed every later figure of the process, also "
@@ -1997,8 +1997,8 @@ def _removed_setting(name: str) -> str:
         f"`figure_settings={{'{name}': <value>}}` of `SimulationExperiment.run`, "
         f"`ExperimentRunner.run_experiments` or `run_experiments`; for an "
         f"experiment and its subclasses with `SimulationExperiment.figure_settings`, "
-        f"i.e. `figure_settings = {{'{name}': <value>}}` in the class body; for one "
-        f"figure with `Figure(settings=...)`, i.e. "
+        f"i.e. `figure_settings = MappingProxyType({{'{name}': <value>}})` in the "
+        f"class body; for one figure with `Figure(settings=...)`, i.e. "
         f"`Figure(..., settings={{'{name}': <value>}})`."
     )
 
@@ -2094,7 +2094,20 @@ class Figure(BasePlotObject, metaclass=_FigureType):
         self.height: float | None = height
         self.width: float | None = width
         self._settings: dict[str, Any] = {}
-        self.settings = settings or {}
+        self.settings = settings
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Refuse a setting of `FigureSettings` in the body of a subclass.
+
+        Defined in the body of a subclass, a setting would be an attribute the
+        serializers never read, see `_FigureType`.
+
+        Raises:
+            AttributeError: for a name of a setting in the body of the subclass.
+        """
+        super().__init_subclass__(**kwargs)
+        for name in sorted(_SETTING_NAMES.intersection(vars(cls))):
+            raise AttributeError(_removed_setting(name), name=name, obj=cls)
 
     def __repr__(self) -> str:
         """Get representation string."""
@@ -2133,8 +2146,8 @@ class Figure(BasePlotObject, metaclass=_FigureType):
         return MappingProxyType(self._settings)
 
     @settings.setter
-    def settings(self, value: Mapping[str, Any]) -> None:
-        """Set the settings of this figure, overrides by name.
+    def settings(self, value: Mapping[str, Any] | None) -> None:
+        """Set the settings of this figure, overrides by name, `None` for none.
 
         Raises:
             TypeError: if the settings are no mapping.

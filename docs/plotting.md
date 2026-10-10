@@ -114,10 +114,12 @@ The resolution, the panel size, the fonts and the legend of a figure are the fie
 
 - the defaults of `FigureSettings`,
 - the run: `figure_settings=` of `SimulationExperiment.run`, `ExperimentRunner.run_experiments` and `run_experiments`, a `FigureSettings` or a mapping of overrides of the defaults, for every figure of the run, e.g. the resolution of a publication,
-- the experiment: the class attribute `figure_settings` of a `SimulationExperiment`, a mapping of overrides, empty by default. A subclass inherits it, so the base experiment of a model sets the settings of all its experiments; a subclass which assigns its own replaces it, `{**Base.figure_settings, "fig_dpi": 300}` extends it,
+- the experiment: the class attribute `figure_settings` of a `SimulationExperiment`, a read-only mapping of overrides (`MappingProxyType`, which also keeps the `RUF012` rule of ruff quiet), empty by default. A subclass inherits it, so the base experiment of a model sets the settings of all its experiments; a subclass which assigns its own replaces it, `MappingProxyType({**Base.figure_settings, "fig_dpi": 300})` extends it,
 - the figure: `Figure(..., settings={...})`, a mapping of overrides for one figure.
 
 ```python
+from types import MappingProxyType
+
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.plot import Figure, FigureSettings
 
@@ -125,7 +127,7 @@ from sbmlsim.plot import Figure, FigureSettings
 class ModelExperiment(SimulationExperiment):
     """The base of the experiments of a model."""
 
-    figure_settings = {"legend_fontsize": 10, "axes_labelsize": 16}
+    figure_settings = MappingProxyType({"legend_fontsize": 10, "axes_labelsize": 16})
 
 
 fig = Figure(experiment=None, sid="fig1", num_cols=2, settings={"axes_labelsize": 14})
@@ -137,12 +139,12 @@ settings = FigureSettings.resolve(
 print(settings.fig_dpi, settings.legend_fontsize, settings.axes_labelsize)  # 300 10 14
 print(fig.size(settings))  # (14.0, 5.0)
 print(fig.size(FigureSettings(panel_width=4.0)))  # (8.0, 5.0)
-# runner.run_experiments(output_path=Path.cwd() / "results", figure_settings={"fig_dpi": 300})
+# runner.run_experiments(output_path, figure_settings={"fig_dpi": 300})
 ```
 
-A serializer resolves the settings of a figure the same way, `Figure.resolved_settings(experiment, run=...)`. An unknown key raises a `ValueError` which names the settings: the one of a run when the run starts, the one of an experiment at `initialize` and the one of a figure when the figure is created. A figure without an explicit `width` or `height` is `num_cols * panel_width` wide and `num_rows * panel_height` high in the settings it is rendered with (`Figure.size`), and the pixels of an image and of an interactive page are its inches times `fig_dpi`. A figure therefore looks the same whether its experiment runs alone or after others.
+A serializer resolves the settings of a figure the same way, `Figure.resolved_settings(experiment, run=...)`. An unknown key raises a `ValueError` which names the settings: the one of a run when the run starts, the one of an experiment at `initialize` and the one of a figure when the figure is created. A figure without an explicit `width` or `height` is `num_cols * panel_width` wide and `num_rows * panel_height` high in the settings it is rendered with. `figure.width` and `figure.height` are the explicit size and `None` without it, also in the JSON of an experiment, and `figure.size(figure.resolved_settings(experiment))` is the size in inches it is rendered with. The pixels of an interactive page are these inches times `fig_dpi`; a static image has the resolution `fig_dpi` and is cropped to its content (`bbox_inches="tight"`), so its pixels are those of the drawn content rather than of the whole figure. A figure therefore looks the same whether its experiment runs alone or after others.
 
-The settings were class attributes of `Figure` (`Figure.fig_dpi = 300`), which changed every later figure of the process, also those of other experiments. Setting or reading one on `Figure` or on a figure raises an `AttributeError` which says where it goes: `Figure.legend_fontsize = 10` at the top of the module of a model becomes `figure_settings = {"legend_fontsize": 10}` of its base experiment, `Figure.fig_dpi = 300` before a run becomes `figure_settings={"fig_dpi": 300}` of the run, and the read of a default, e.g. to style a figure of `figures_mpl()`, becomes `FigureSettings().fig_titlesize`.
+The settings were class attributes of `Figure` (`Figure.fig_dpi = 300`), which changed every later figure of the process, also those of other experiments. Setting or reading one on `Figure` or on a figure, or defining one in the body of a subclass of `Figure`, raises an `AttributeError` which says where it goes: `Figure.legend_fontsize = 10` at the top of the module of a model becomes `figure_settings = MappingProxyType({"legend_fontsize": 10})` of its base experiment, `Figure.fig_dpi = 300` before a run becomes `figure_settings={"fig_dpi": 300}` of the run, and the read of a default, e.g. to style a figure of `figures_mpl()`, becomes `FigureSettings().fig_titlesize`.
 
 ## Reports
 
