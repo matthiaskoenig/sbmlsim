@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pandas as pd
 
-from sbmlsim.data import Data
+from sbmlsim.data import Data, to_quantity
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.serialization import to_json
 from sbmlsim.simulator.formula import compile_formula
@@ -1139,7 +1139,7 @@ class FitData:
         # FIXME: remove duplication with add_data in plotting
         count_data = Data(index=count, dataset=self.dset_id, task=self.task_id)
         counts = count_data.get_data(self.experiment)
-        counts_unique = np.unique(counts.magnitude)
+        counts_unique = np.unique(np.asarray(counts.values))
         if counts_unique.size > 1:
             logger.warning("count is not unique for dataset: '%s'", counts)
         return int(counts_unique[0])
@@ -1188,7 +1188,11 @@ class FitData:
             logger.debug("FitData.get_data: %s.%s", self, key)
             d: Data | None = getattr(self, key)
             if d is not None:
-                setattr(result, key, d.get_data(self.experiment))
+                setattr(
+                    result,
+                    key,
+                    to_quantity(d.get_data(self.experiment), self.experiment.ureg),
+                )
 
         return result
 

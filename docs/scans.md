@@ -28,7 +28,7 @@ print(res["PX"].dims, res["PX"].shape)
 print(res["n"].values)
 ```
 
-The result has the dimensions of the scan first and the time last, `(dim_n, time)`. A changed target is a coordinate along its dimension, here `n`, unless it is also a selection of the model: then the result keeps its timecourse as a variable. The labels of a dimension of values are `0..n-1` by default and can be given with `labels=`.
+The result has the dimensions of the scan first and the time last, `(dim_n, time)`. A changed target is a coordinate along its dimension, here `n`, unless it is also a selection of the model: then the result keeps its timecourse under the plain name and stores the values of the dimension as `<dimension>.<target>`, e.g. `dim_n.n` when `n` is selected; the `Data` of a task of a simulation experiment names them `<dimension>.<target>` in either case, see [Data](data.md#selecting-points). The labels of a dimension of values are `0..n-1` by default and can be given with `labels=`.
 
 ## Where the values of a scan go
 

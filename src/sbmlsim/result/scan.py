@@ -12,7 +12,8 @@ A `ScanResult` wraps one `xarray.Dataset`:
   `NaN`; `status` over the dimensions of the scan for a run with
   `on_error="flag"`;
 - coordinates: the labels of every dimension, every changed target of a
-  dimension of values along its dimension, and `time` on a grid;
+  dimension of values along its dimension (`<dimension>.<target>` when the
+  target is also a variable of the result, which keeps the plain name), and `time` on a grid;
 - `attrs`: `dims`, the dimensions of the scan in their order, `units`, the
   unit of every variable and coordinate, `scan` and `integrator_settings`,
   the provenance, and `errors` for a run with `on_error="flag"`.

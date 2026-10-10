@@ -1,24 +1,25 @@
 """Tests of running a simulation experiment."""
 
 import gc
+import json
 import logging
 import sys
 import weakref
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from sbmlsim.data import Data, DataSet
+from sbmlsim.data import Data, DataSet, to_quantity
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import model_key
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
-from sbmlsim.plot.padding import first_curve, without_padding
+from sbmlsim.plot.padding import without_padding
 from sbmlsim.report.experiment_report import ReportResults
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
@@ -76,8 +77,6 @@ def test_the_selections_cover_the_fit_mappings() -> None:
     """
     runner = _runner(FitMappingExperiment)
     experiment = runner.experiments["FitMappingExperiment"]
-
-    assert "[Y]" in experiment._selections_of_model("m")
     experiment.run(runner.simulator, reduced_selections=True)
 
     variables = set(experiment.results["task"].ds.data_vars)
@@ -86,11 +85,32 @@ def test_the_selections_cover_the_fit_mappings() -> None:
     assert "[Z]" not in variables
 
 
-def test_the_selections_of_another_model_are_not_added() -> None:
-    """The selections of a model are the data of its own tasks."""
-    runner = _runner(FitMappingExperiment)
-    experiment = runner.experiments["FitMappingExperiment"]
-    assert experiment._selections_of_model("other") == {"time"}
+class TwoTaskExperiment(FitMappingExperiment):
+    """Two tasks of one model whose data read different selections."""
+
+    def tasks(self) -> dict:
+        return {
+            "task": Task(model="m", simulation="sim"),
+            "task2": Task(model="m", simulation="sim"),
+        }
+
+    def data(self) -> dict:
+        return {
+            "X": Data(index="[X]", task="task"),
+            "Y2": Data(index="[Y]", task="task2"),
+        }
+
+    def fit_mappings(self) -> dict:
+        return {}
+
+
+def test_the_selections_of_another_task_are_not_added() -> None:
+    """The selections of a task are the data of the task, not of the model."""
+    runner = _runner(TwoTaskExperiment)
+    experiment = runner.experiments["TwoTaskExperiment"]
+    experiment.run(runner.simulator)
+    assert set(experiment.results["task"].ds.data_vars) == {"[X]"}
+    assert set(experiment.results["task2"].ds.data_vars) == {"[Y]"}
 
 
 # ---------------------------------------------------------------------------
@@ -227,23 +247,61 @@ class ScanExperiment(SimulationExperiment):
         return {"Y": Data(index="[Y]", task="task")}
 
 
+class ScanFigureExperiment(ScanExperiment):
+    """The scan with a figure of Y, of one point or of all points."""
+
+    SEL: ClassVar[dict | None] = None
+
+    def figures(self) -> dict:
+        figure = Figure(experiment=self, sid="fig", num_rows=1, num_cols=1)
+        plot = figure.create_plots(xaxis=Axis("time"), yaxis=Axis("Y"))[0]
+        sel = type(self).SEL
+        plot.curve(
+            x=Data("time", task="task", sel=sel),
+            y=Data("[Y]", task="task", sel=sel),
+            label="Y",
+        )
+        return {"fig": figure}
+
+
+class OnePointFigureExperiment(ScanFigureExperiment):
+    SEL: ClassVar[dict | None] = {"d": 1}
+
+
+def test_a_curve_of_a_scan_without_a_selection_raises() -> None:
+    runner = _runner(ScanFigureExperiment)
+    experiment = runner.experiments["ScanFigureExperiment"]
+    experiment.run(runner.simulator)
+    with pytest.raises(ValueError, match=r"'d'.*Data\(sel=\.\.\.\)"):
+        experiment.create_mpl_figures()
+
+
+def test_a_curve_of_one_point_of_a_scan_is_drawn(tmp_path: Path) -> None:
+    runner = _runner(OnePointFigureExperiment)
+    experiment = runner.experiments["OnePointFigureExperiment"]
+    experiment.run(
+        runner.simulator, output_path=tmp_path, figure_formats=["png", "html"]
+    )
+    assert (tmp_path / f"{experiment.sid}_fig.png").exists()
+
+
 def test_the_data_of_a_scan_has_the_time_last() -> None:
     """A Data of a task is the variable of the result, the time last.
 
-    A changed target which is no selection is a coordinate over its
-    dimension.
+    The values a dimension sets are `<dimension>.<target>` over the dimension.
     """
     runner = _runner(ScanExperiment)
     experiment = runner.experiments["ScanExperiment"]
     experiment.run(runner.simulator)
 
     y = Data("[Y]", task="task").get_data(experiment)
-    assert np.shape(y.magnitude) == (3, 11)
-    assert str(y.units) == "dimensionless"
+    assert y.shape == (3, 11)
+    assert y.attrs["units"] == "dimensionless"
     time = Data("time", task="task").get_data(experiment, to_units="second")
-    np.testing.assert_allclose(time.magnitude, np.linspace(0, 10, 11))
-    x = Data("X", task="task").get_data(experiment)
-    np.testing.assert_allclose(x.magnitude, [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(time.values, np.linspace(0, 10, 11))
+    x = Data("d.X", task="task").get_data(experiment)
+    np.testing.assert_allclose(x.values, [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(y["d.X"].values, [1.0, 2.0, 3.0])
 
 
 class RegistryExperiment(FitMappingExperiment):
@@ -278,8 +336,9 @@ def test_the_data_of_a_task_is_in_the_registry_of_the_experiment() -> None:
         variables={"x": Data("[X]", task="task"), "d": Data("X", dataset="ds")},
     ).get_data(experiment)
     x = Data("[X]", task="task").get_data(experiment)
-    assert x._REGISTRY is ureg
-    np.testing.assert_allclose(ratio.magnitude, x.magnitude / 4.0)
+    assert experiment.ureg is ureg
+    assert to_quantity(x, experiment.ureg)._REGISTRY is ureg
+    np.testing.assert_allclose(ratio.values, x.values / 4.0)
 
 
 class RaggedScanExperiment(ScanExperiment):
@@ -307,12 +366,12 @@ def test_the_data_of_a_ragged_scan_has_its_points_last() -> None:
 
     y = Data("[Y]", task="task").get_data(experiment)
     time = Data("time", task="task").get_data(experiment)
-    assert y.magnitude.shape == time.magnitude.shape == (3, result.ds.sizes["_point"])
-    padded = np.isnan(time.magnitude)
+    assert y.values.shape == time.values.shape == (3, result.ds.sizes["_point"])
+    padded = np.isnan(time.values)
     assert padded.any()
-    np.testing.assert_array_equal(np.isnan(y.magnitude), padded)
+    np.testing.assert_array_equal(np.isnan(y.values), padded)
 
-    x, curve = without_padding(first_curve(time.magnitude), first_curve(y.magnitude))
+    x, curve = without_padding(time.values[0], y.values[0])
     native = Simulator().simulate(
         experiment._models["m"], Simulation(end=10, preinit_changes={"X": 1.0})
     )
@@ -518,3 +577,13 @@ def test_the_interactive_figures_need_plotly(
 
     assert not (tmp_path / "FigureExperiment_fig.html").exists()
     assert any("plotly" in record.getMessage() for record in caplog.records)
+
+
+def test_the_json_of_an_experiment_needs_no_results(tmp_path: Path) -> None:
+    """`to_json` describes the experiment from its definition, also after the release."""
+    runner = _runner(FitMappingExperiment)
+    experiment = runner.experiments["FitMappingExperiment"]
+    runner.run_experiments(output_path=tmp_path)
+
+    assert experiment._results == {}
+    assert "task" in json.loads(experiment.to_json())["tasks"]

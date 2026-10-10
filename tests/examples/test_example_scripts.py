@@ -32,6 +32,7 @@ SCRIPTS = [
     "examples.timecourse",
     "examples.scan",
     "examples.observables",
+    "examples.experiment_scans",
     "examples.fit_sampling",
     "examples.units",
     "examples.model_sensitivity",

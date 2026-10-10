@@ -11,7 +11,7 @@ from matplotlib.axes import Axes as AxesMPL
 from matplotlib.figure import Figure as FigureMPL
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
-from sbmlsim.plot.padding import first_curve, without_padding
+from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
     AbstractCurve,
     AxisScale,
@@ -158,13 +158,8 @@ class MatplotlibFigureSerializer:
 
                     label = curve.name if curve.name else "_nolegend_"
 
-                    # a scan has the time last, its first point is drawn
-                    # without the padding of a ragged result
-                    x_data, y_data, xerr_data, yerr_data = without_padding(
-                        first_curve(None if x is None else x.magnitude),
-                        first_curve(None if y is None else y.magnitude),
-                        first_curve(None if xerr is None else xerr.magnitude),
-                        first_curve(None if yerr is None else yerr.magnitude),
+                    x_data, y_data, xerr_data, yerr_data = line_values(
+                        curve.sid or curve.name or "", x, y, xerr, yerr
                     )
 
                     kwargs: dict[str, Any] = {}
@@ -256,11 +251,8 @@ class MatplotlibFigureSerializer:
                     yfrom = area.yfrom.get_data(experiment=experiment, to_units=yunit)
                     yto = area.yto.get_data(experiment=experiment, to_units=yunit)
 
-                    # the first point of a scan, without the padding
-                    x_data, yfrom_data, yto_data = without_padding(
-                        first_curve(None if x is None else x.magnitude),
-                        first_curve(None if yfrom is None else yfrom.magnitude),
-                        first_curve(None if yto is None else yto.magnitude),
+                    x_data, yfrom_data, yto_data = line_values(
+                        area.sid or area.name or "", x, yfrom, yto
                     )
 
                     label = area.name if area.name else "_nolegend_"
@@ -282,6 +274,14 @@ class MatplotlibFigureSerializer:
                 if axis_type not in ["x", "y"]:
                     raise ValueError
 
+                # the scale first: a bound set on a linear axis fixes the
+                # other limit at the linear autoscale limit, without the
+                # margin of a log axis
+                if axis_type == "x":
+                    ax.set_xscale(cls._get_scale(sax))
+                elif axis_type == "y":
+                    ax.set_yscale(cls._get_scale(sax))
+
                 if sax.min is not None:
                     if axis_type == "x":
                         ax.set_xlim(left=sax.min)
@@ -302,11 +302,6 @@ class MatplotlibFigureSerializer:
                         ax.invert_xaxis()
                     elif axis_type == "y":
                         ax.invert_yaxis()
-
-                if axis_type == "x":
-                    ax.set_xscale(cls._get_scale(sax))
-                elif axis_type == "y":
-                    ax.set_yscale(cls._get_scale(sax))
 
                 if sax.label_visible and sax.name:
                     if axis_type == "x":

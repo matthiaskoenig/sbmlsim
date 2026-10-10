@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import logging
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
@@ -1470,6 +1471,7 @@ class Plot(BasePlotObject):
         type: CurveType = CurveType.POINTS,
         style: Style | None = None,
         yaxis_position: YAxisPosition | None = None,
+        sel: Mapping[str, Any] | None = None,
         **kwargs: Any,
     ) -> None:
         """Add a data curve to the plot.
@@ -1491,6 +1493,8 @@ class Plot(BasePlotObject):
             type: type of curve (default points)
             style: style for curve
             yaxis_position: position of yaxis for this curve
+            sel: labels of the dimensions of a task, or column values of the
+                rows of a dataset, for every `Data` of the curve, see `Data`
             **kwargs: matplotlib styling kwargs
 
         Raises:
@@ -1527,12 +1531,12 @@ class Plot(BasePlotObject):
             if xid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
             xerr_label = "±SD"
-            xerr = Data(xid_sd, dataset=dataset, task=task)
+            xerr = Data(xid_sd, dataset=dataset, task=task, sel=sel)
         elif xid_se:
             if xid_se.endswith("sd"):
                 logger.warning("SE error column ends with 'sd', check names.")
             xerr_label = "±SE"
-            xerr = Data(xid_se, dataset=dataset, task=task)
+            xerr = Data(xid_se, dataset=dataset, task=task, sel=sel)
 
         _ = xerr_label
 
@@ -1545,12 +1549,12 @@ class Plot(BasePlotObject):
             if yid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
             yerr_label = "±SD"
-            yerr = Data(yid_sd, dataset=dataset, task=task)
+            yerr = Data(yid_sd, dataset=dataset, task=task, sel=sel)
         elif yid_se:
             if yid_se.endswith("sd"):
                 logger.warning("SE error column ends with 'sd', check names.")
             yerr_label = "±SE"
-            yerr = Data(yid_se, dataset=dataset, task=task)
+            yerr = Data(yid_se, dataset=dataset, task=task, sel=sel)
 
         if label is not None:
             # add count information
@@ -1568,9 +1572,9 @@ class Plot(BasePlotObject):
                             f"The count '{count}' is a column of a dataset, but "
                             f"the plot belongs to no simulation experiment."
                         )
-                    count_data = Data(index=count, dataset=dataset, task=task)
+                    count_data = Data(index=count, dataset=dataset, task=task, sel=sel)
                     counts = count_data.get_data(experiment)
-                    counts_unique = np.unique(counts.magnitude)
+                    counts_unique = np.unique(np.asarray(counts.values))
                     if counts_unique.size > 1:
                         logger.warning("count is not unique for dataset: '%s'", counts)
                     count = int(counts_unique[0])
@@ -1584,8 +1588,8 @@ class Plot(BasePlotObject):
             label = f"{label}{yerr_label}{count_label}"
 
         self.curve(
-            x=Data(xid, dataset=dataset, task=task),
-            y=Data(yid, dataset=dataset, task=task),
+            x=Data(xid, dataset=dataset, task=task, sel=sel),
+            y=Data(yid, dataset=dataset, task=task, sel=sel),
             xerr=xerr,
             yerr=yerr,
             label=label,

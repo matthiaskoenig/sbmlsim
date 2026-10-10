@@ -356,3 +356,22 @@ def test_a_formula_of_the_wrong_shape_is_an_observable_error(
     graph = compile_observables([Formula("c", "[C]")], pk_model)
     with pytest.raises(ObservableError):
         graph.evaluate(T, {"[C]": C[:, :2]}, [])
+
+
+def test_keep_names_selections_next_to_observables(
+    pk_model: RoadrunnerSBMLModel,
+) -> None:
+    graph = compile_observables(
+        [Formula("cmax", "max([C])")], pk_model, keep=["cmax", "[C]", "C"]
+    )
+    assert graph.keep == ("cmax", "[C]", "C")
+    assert graph.kinds["[C]"] is TIMECOURSE and graph.kinds["C"] is TIMECOURSE
+    assert set(graph.selections) == {"[C]", "C"}
+    assert graph.units["[C]"] == (pk_model.uinfo.get("[C]", "") or "")
+    assert graph.timecourses == ("[C]", "C") and graph.scalars == ("cmax",)
+    with pytest.raises(
+        ValueError, match="neither an observable of the run nor a selection"
+    ):
+        compile_observables(
+            [Formula("cmax", "max([C])")], pk_model, keep=["cmax", "nope"]
+        )

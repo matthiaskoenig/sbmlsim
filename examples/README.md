@@ -19,6 +19,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/timecourse.py` | simulations of the repressilator: the steps of the integrator, changes before the initialization and a change at a time on an equidistant grid |
 | `examples/scan.py` | parameter scans of dimension 0, 1 and 2, including a scan over a distribution of parameter values |
 | `examples/observables.py` | observables of a scan: a formula of the mass concentration, the PK analysis of pkpdutils and a custom function of midazolam over three doses |
+| `examples/experiment_scans.py` | scans and observables in a simulation experiment: the PK parameters of midazolam over three doses as labelled arrays, read by the labels of the doses |
 | `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | a local design and lognormal draws of all parameters of the repressilator, with their mean and range |
@@ -37,6 +38,6 @@ An example writes what it creates into the current working directory: figures ar
 
 `tests/examples/test_example_scripts.py` runs the examples which work offline and without optional dependencies as `python -m examples.<module>` in a temporary working directory, so an example which breaks fails the test suite.
 
-A curve of a scan draws the first simulation of the scan; `examples/demo`, `examples/glucose` and `examples/repressilator` run and are tested.
+A curve draws one line: the point of a scan it shows is selected with `Data(sel=...)`; `examples/demo`, `examples/glucose` and `examples/repressilator` run and are tested.
 
 `examples/hctz_fitting` is the reference problem of the parameter fitting: `python -m examples.hctz_fitting.simulations` runs the simulation experiments, `python -m examples.hctz_fitting.fitting.fitting` the fit, and `python -m examples.hctz_fitting.fitting.run_report <parameters.json>` creates the report of a finished fit again, or of several fits at once, without optimizing. `python -m examples.hctz_fitting.fitting.identifiability` runs a global optimization followed by the profile likelihood of the best parameter set, and `python -m examples.hctz_fitting.fitting.identifiability_report <parameters.json>` computes the profiles of stored parameters. `python -m examples.hctz_fitting.fitting.petab_problem` writes the fit as a PEtab v2 problem, validates it with `petab` and reads it back, and reports what PEtab cannot express about the fit. These are the general tools of `sbmlsim.fit.cli` and `sbmlsim.fit.petab_v2` on the `FitDefinition` objects of `examples/hctz_fitting/fitting/fitting.py`, which is all the example has to provide. The tests in `tests/fit/` use it.
