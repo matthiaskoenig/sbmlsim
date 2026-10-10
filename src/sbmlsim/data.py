@@ -716,7 +716,7 @@ def _own_units[T: DataSet | DataSeries](result: T) -> T:
     """Give a new DataSet or DataSeries a copy of its units information."""
     uinfo = getattr(result, "uinfo", None)
     if isinstance(uinfo, UnitsInformation):
-        result.uinfo = UnitsInformation(dict(uinfo.udict), ureg=uinfo.ureg)
+        result.uinfo = uinfo.copy()
     return result
 
 

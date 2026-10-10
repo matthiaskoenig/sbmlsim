@@ -11,6 +11,7 @@ from typing import Any, Literal
 
 import numpy as np
 from matplotlib import pyplot as plt
+from pint.errors import UndefinedUnitError
 
 from sbmlsim.data import Data, DataSet, check_sel
 from sbmlsim.fit import FitMapping
@@ -29,7 +30,13 @@ from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulation.observables import PK, Observable
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
-from sbmlsim.units import UnitRegistry
+from sbmlsim.units import (
+    Quantity,
+    UnitRegistry,
+    UnitsInformation,
+    replace_unit_ids,
+    unit_identifiers,
+)
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import timeit
 
@@ -158,6 +165,115 @@ class SimulationExperiment:
             f"{'figures':20} {list(self._figures.keys())}",
         ]
         return "\n".join(info)
+
+    def Q(
+        self, value: Any, unit: str | None = None, model: str | None = None
+    ) -> Quantity:
+        """Create a quantity in a unit of pint and of the unit ids of the models.
+
+        The runner loads the models of an experiment before `initialize`, so
+        the unit ids of a model are known in `simulations()` and later, e.g.
+        `self.Q(10, "mg_per_min")`; a unit id is replaced by its expression,
+        see `UnitsInformation.quantity`. Before the models are loaded `Q`
+        takes the units of pint. `sbmlsim.Q` takes the units of pint only.
+
+        Args:
+            value: the magnitude, a number or an array.
+            unit: the unit, dimensionless without one.
+            model: the id of the model whose unit ids the unit has. Without
+                it a unit id must have the same expression in every model of
+                the experiment which has it.
+
+        Returns:
+            The quantity.
+
+        Raises:
+            ValueError: for a `model` which is no loaded model of the
+                experiment, and without `model` for a unit id which models of
+                the experiment define differently.
+            UndefinedUnitError: for a unit which is neither a unit of pint nor
+                a unit id of the models.
+        """
+        units = self._model_unit_information()
+        if model is not None:
+            if model not in units:
+                raise ValueError(
+                    f"'{model}' is not loaded as a model of the experiment "
+                    f"'{self.sid}', its loaded models are {sorted(units)}. The "
+                    f"runner loads the models before `initialize`, the unit ids "
+                    f"of a model work in `simulations()` and later."
+                )
+            return units[model].quantity(value, unit)
+        if not unit:
+            return self.ureg.Quantity(value, unit)
+        try:
+            return self.ureg.Quantity(
+                value, replace_unit_ids(unit, self._unit_ids(unit, units))
+            )
+        except UndefinedUnitError as err:
+            if units:
+                err.add_note(
+                    f"The unit '{unit}' is neither a unit of pint nor a unit id "
+                    f"of the models {sorted(units)} of the experiment "
+                    f"'{self.sid}'."
+                )
+            else:
+                err.add_note(
+                    f"The models of the experiment '{self.sid}' are not loaded "
+                    f"and `Q` takes the units of pint. The runner loads the "
+                    f"models before `initialize`, the unit ids of a model work "
+                    f"in `simulations()` and later."
+                )
+            raise
+
+    def _model_unit_information(self) -> dict[str, UnitsInformation]:
+        """Get the units of the loaded models of the experiment, by model id."""
+        units: dict[str, UnitsInformation] = {}
+        for model_id, model in self._models.items():
+            # a model of an experiment which the runner did not load is the
+            # abstract model, without units
+            uinfo = getattr(model, "uinfo", None)
+            if isinstance(uinfo, UnitsInformation):
+                units[model_id] = uinfo
+        return units
+
+    def _unit_ids(
+        self, unit: str, units: Mapping[str, UnitsInformation]
+    ) -> dict[str, str]:
+        """Get the expressions of the unit ids of a unit in the models.
+
+        Args:
+            unit: the unit.
+            units: the units of the models by model id.
+
+        Returns:
+            The expression of every identifier of the unit which is a unit id
+            of a model.
+
+        Raises:
+            ValueError: if models define a unit id of the unit differently.
+        """
+        unit_ids: dict[str, str] = {}
+        for uid in unit_identifiers(unit):
+            expressions = {
+                model_id: uinfo.unit_ids[uid]
+                for model_id, uinfo in units.items()
+                if uid in uinfo.unit_ids
+            }
+            if len(set(expressions.values())) > 1:
+                defined = ", ".join(
+                    f"'{model_id}': '{expression}'"
+                    for model_id, expression in expressions.items()
+                )
+                raise ValueError(
+                    f"The unit id '{uid}' of the unit '{unit}' differs between "
+                    f"the models of the experiment '{self.sid}' ({defined}): "
+                    f"give the model whose unit it is, `Q(value, unit, "
+                    f"model=...)`."
+                )
+            if expressions:
+                unit_ids[uid] = next(iter(expressions.values()))
+        return unit_ids
 
     def models(self) -> dict[str, AbstractModel | Path]:
         """Define model definitions.

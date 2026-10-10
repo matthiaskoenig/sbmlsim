@@ -69,7 +69,7 @@ from sbmlsim.simulator.plan import (
 )
 from sbmlsim.simulator.simulator import scan_point_plans, scan_point_values
 from sbmlsim.simulator.worker import observe, point_plan
-from sbmlsim.units import DimensionalityError, Q, Quantity
+from sbmlsim.units import DimensionalityError, Quantity, UndefinedUnitError, ureg
 from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
@@ -1246,6 +1246,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"{self.experiment_keys[group[0]]}|{self.mapping_keys[group[0]]}"
                 for group in self.mapping_groups
             ],
+            # the unit of a parameter may have the unit ids of the model of its
+            # target
+            units=[self.models[group[0]].uinfo for group in self.mapping_groups],
         )
         self._group_derived_changes()
 
@@ -1772,12 +1775,27 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self._warn_dimension_target(k_group, scan, target, index)
                 factor = 1.0
                 unit = model.uinfo.get(target)
-                punit = self.punits[index]
+                # the unit of the parameter with the unit ids of the model
+                # resolved
+                punit = mapping.parameter_units[index]
                 if unit and punit:
                     # one conversion per pair of units, not per group
-                    key = (str(punit), str(unit))
+                    key = (punit, str(unit))
                     if key not in factors:
-                        factors[key] = float(Q(1.0, punit).to(unit).magnitude)
+                        try:
+                            factors[key] = float(
+                                model.uinfo.ureg.Quantity(1.0, punit).to(unit).magnitude
+                            )
+                        except (UndefinedUnitError, DimensionalityError) as err:
+                            parameter = self.parameters[index]
+                            err.add_note(
+                                f"'{self.opid}': the parameter '{parameter.pid}' "
+                                f"in '{parameter.unit}' writes '{target}' in "
+                                f"'{unit}', the unit of the model. The unit of a "
+                                f"parameter is a unit of pint and of the unit ids "
+                                f"of the model of its target."
+                            )
+                            raise
                     factor = factors[key]
                 targets.append((target, index, factor))
             self._group_targets.append(targets)
@@ -2762,7 +2780,9 @@ class OptimizationProblem(ObjectJSONEncoder):
             # only the derived changes read quantities, a fit without them
             # does not call pint
             return simulator, []
-        quantities = [Q(value, self.punits[ix]) for ix, value in enumerate(x)]
+        # the units of the parameters with the unit ids of the models resolved
+        units = self.parameter_mapping_initialized.parameter_units
+        quantities = [ureg.Quantity(value, units[ix]) for ix, value in enumerate(x)]
         return simulator, quantities
 
     def predictions(

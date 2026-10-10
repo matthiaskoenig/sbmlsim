@@ -12,6 +12,7 @@ from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.parameter_mapping import ParameterMapping, has_renamed_targets
+from sbmlsim.units import UnitsInformation, ureg
 
 
 def _parameter(
@@ -421,3 +422,63 @@ def test_a_version_counts_as_a_parameter_everywhere(
         show_progress=False,
     )
     assert set(result.profiles) == {"Ka_po", "Ka_iv"}
+
+
+def _units(**unit_ids: str) -> UnitsInformation:
+    """Get the units of a model with the unit ids."""
+    return UnitsInformation(udict={}, ureg=ureg, unit_ids=unit_ids)
+
+
+def _version(pid: str, unit: str) -> FitParameter:
+    """Build a version of `Ka` in a unit."""
+    return FitParameter(
+        pid, 1.0, 0.1, 10.0, unit, target="Ka", mappings=lambda k, m: True
+    )
+
+
+@pytest.mark.parametrize(
+    "unit_a, unit_b, agree",
+    [
+        # a unit id of the model and its expression (#268)
+        ("per_min", "1/min", True),
+        ("mg_per_min", "mg/min", True),
+        # one unit written in two ways
+        ("1/min", "min^-1", True),
+        ("per_min", "1/hr", False),
+        ("mg_per_min", "mg/hr", False),
+    ],
+)
+def test_the_versions_of_a_target_compare_parsed_units(
+    unit_a: str, unit_b: str, agree: bool
+) -> None:
+    """The units of the versions are compared as units, a unit id as its expression."""
+    units = _units(per_min="1/min", mg_per_min="mg/min")
+    parameters = [_version("Ka_a", unit_a), _version("Ka_b", unit_b)]
+    if agree:
+        mapping = ParameterMapping(
+            parameters, {0: {0, 1}, 1: {2}}, GROUPS, KEYS, units=[units, units]
+        )
+        assert [ureg.Quantity(1.0, u) for u in mapping.parameter_units] == [
+            ureg.Quantity(1.0, units.resolve_unit(unit_a)),
+            ureg.Quantity(1.0, units.resolve_unit(unit_b)),
+        ]
+    else:
+        with pytest.raises(ValueError, match="disagree on their unit"):
+            ParameterMapping(
+                parameters, {0: {0, 1}, 1: {2}}, GROUPS, KEYS, units=[units, units]
+            )
+
+
+def test_a_unit_id_is_resolved_in_the_models_a_parameter_reaches() -> None:
+    """A unit id must mean one unit in the models of the simulations of a parameter."""
+    parameters = [FitParameter("Vd", 1.0, 0.1, 10.0, "per_x")]
+    one = _units(per_x="1/min")
+    other = _units(per_x="1/hr")
+    mapping = ParameterMapping(parameters, {}, GROUPS, KEYS, units=[one, one])
+    assert mapping.parameter_units == ["(1/min)"]
+    with pytest.raises(ValueError, match=r"'per_x'.*'Vd'.*'\(1/min\)'.*'\(1/hr\)'"):
+        ParameterMapping(parameters, {}, GROUPS, KEYS, units=[one, other])
+    # a version is resolved only in the models of the simulations it reaches
+    version = _version("Ka_a", "per_x")
+    mapping = ParameterMapping([version], {0: {2}}, GROUPS, KEYS, units=[other, one])
+    assert mapping.parameter_units == ["(1/min)"]
