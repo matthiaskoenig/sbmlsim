@@ -14,7 +14,11 @@ from pathlib import Path
 from typing import cast
 
 from sbmlsim.console import console
-from sbmlsim.experiment.experiment import ExperimentResult, SimulationExperiment
+from sbmlsim.experiment.experiment import (
+    ExperimentResult,
+    ExperimentRunError,
+    SimulationExperiment,
+)
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import Simulator
@@ -170,6 +174,7 @@ class ExperimentRunner:
         figure_formats: list[str] | None = None,
         reduced_selections: bool = True,
         keep_results: bool = False,
+        raise_on_failure: bool = False,
     ) -> list[ExperimentResult]:
         """Run the experiments and write their outputs.
 
@@ -183,9 +188,16 @@ class ExperimentRunner:
                 are written. By default they are released, so a run holds only
                 the results of the experiment it runs and not of all experiments
                 until its end; `SimulationExperiment.results` then raises.
+            raise_on_failure: raise an `ExperimentRunError` after every
+                experiment ran when an experiment or a figure failed. By default
+                the failures are logged and recorded in the results
+                (`ExperimentResult.failed`) only.
 
         Returns:
             The results of the experiments, which the report is created from.
+
+        Raises:
+            ExperimentRunError: with `raise_on_failure`, if something failed.
         """
         if not output_path.exists():
             output_path.mkdir(parents=True)
@@ -210,7 +222,10 @@ class ExperimentRunner:
                 )
             except Exception as err:
                 logger.exception("The experiment '%s' failed", sid)
-                (output_path / sid).mkdir(parents=True, exist_ok=True)
+                try:
+                    (output_path / sid).mkdir(parents=True, exist_ok=True)
+                except OSError:
+                    logger.exception("Cannot create the directory of '%s'", sid)
                 result = ExperimentResult(
                     experiment=experiment,
                     output_path=output_path / sid,
@@ -218,12 +233,14 @@ class ExperimentRunner:
                 )
             exp_results.append(result)
         self._log_summary(exp_results)
+        if raise_on_failure and any(r.failed for r in exp_results):
+            raise ExperimentRunError(exp_results)
         return exp_results
 
     @staticmethod
     def _log_summary(results: list[ExperimentResult]) -> None:
         """Log which experiments and figures failed in a run."""
-        failed = [r for r in results if r.error or r.failed_figures]
+        failed = [r for r in results if r.failed]
         if not failed:
             return
         lines = []
@@ -247,7 +264,8 @@ def run_experiments(
     base_path: Path | None = None,
     data_path: Path | Iterable[Path] | None = None,
     show_report: bool = False,
-) -> None:
+    raise_on_failure: bool = False,
+) -> list[ExperimentResult]:
     """Run simulation experiments and write their report to the output path.
 
     Args:
@@ -256,6 +274,15 @@ def run_experiments(
         base_path: base path of the simulation experiments.
         data_path: path or paths of the datasets of the simulation experiments.
         show_report: open the report in a web browser.
+        raise_on_failure: raise an `ExperimentRunError` when an experiment or
+            a figure failed, after every experiment ran and the report was
+            written.
+
+    Returns:
+        The results of the experiments.
+
+    Raises:
+        ExperimentRunError: with `raise_on_failure`, if something failed.
     """
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
@@ -277,3 +304,6 @@ def run_experiments(
 
     report = ExperimentReport(report_results)
     report.create_report(output_path=output_path, show_report=show_report)
+    if raise_on_failure and any(r.failed for r in results):
+        raise ExperimentRunError(results)
+    return results

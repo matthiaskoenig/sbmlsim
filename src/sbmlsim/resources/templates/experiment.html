@@ -70,10 +70,10 @@
 <section id="figures">
   <h2>Figures ({{ figures | length }})</h2>
   {% if error %}
-  <p style="color: var(--outlier);">The experiment failed: {{ error }}</p>
+  <p class="failed">The experiment failed: {{ error }}</p>
   {% endif %}
   {% for fig_id, fig_error in failed_figures.items() %}
-  <p style="color: var(--outlier);">The figure {{ fig_id }} failed: {{ fig_error }}</p>
+  <p class="failed">The figure {{ fig_id }} failed: {{ fig_error }}</p>
   {% endfor %}
   {% for fig_id, fig in figures.items() %}
   <div class="card mapping" data-filter="card">

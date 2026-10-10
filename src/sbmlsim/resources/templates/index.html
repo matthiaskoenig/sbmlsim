@@ -34,10 +34,10 @@
       <span class="exp">{{ context.figures | length }} figure(s) · {{ context.models | length }} model(s)</span>
     </header>
     {% if context.error %}
-    <p style="color: var(--outlier);">The experiment failed: {{ context.error }}</p>
+    <p class="failed">The experiment failed: {{ context.error }}</p>
     {% endif %}
     {% for fig_id, error in context.failed_figures.items() %}
-    <p style="color: var(--outlier);">The figure {{ fig_id }} failed: {{ error }}</p>
+    <p class="failed">The figure {{ fig_id }} failed: {{ error }}</p>
     {% endfor %}
     <div class="grid">
       {% for fig_id, fig in context.figures.items() %}

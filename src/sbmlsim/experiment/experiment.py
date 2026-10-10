@@ -465,74 +465,81 @@ class SimulationExperiment:
             The result of the experiment, which the report is created from.
         """
         failed_figures: dict[str, str] = {}
-        # run simulations (sets self._results)
-        self._results_released = False
-        self._run_tasks(simulator, reduced_selections=reduced_selections)
+        mpl_figures: dict[str, FigureMPL] = {}
+        try:
+            # run simulations (sets self._results)
+            self._results_released = False
+            self._run_tasks(simulator, reduced_selections=reduced_selections)
 
-        # evaluate mappings
-        self.evaluate_fit_mappings()
+            # evaluate mappings
+            self.evaluate_fit_mappings()
 
-        # create outputs
-        if output_path is None:
-            if save_results:
-                logger.error("'output_path' required to save results.")
+            # create outputs
+            if output_path is None:
+                if save_results:
+                    logger.error("'output_path' required to save results.")
 
-        else:
-            if not Path.exists(output_path):
-                Path.mkdir(output_path, parents=True)
-                logger.debug("'output_path' created: '%s'", output_path)
+            else:
+                if not Path.exists(output_path):
+                    Path.mkdir(output_path, parents=True)
+                    logger.debug("'output_path' created: '%s'", output_path)
 
-            # save outputs
-            self.save_datasets(output_path)
+                # save outputs
+                self.save_datasets(output_path)
 
-            # Saving takes often much longer then simulation
-            if save_results:
-                self.save_results(output_path)
+                # Saving takes often much longer then simulation
+                if save_results:
+                    self.save_results(output_path)
 
-        # the format decides which backend draws a figure: matplotlib draws
-        # the static images, plotly the interactive pages
-        formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
-        static_formats = [f for f in formats if f != INTERACTIVE_FORMAT]
-        interactive = INTERACTIVE_FORMAT in formats
+            # the format decides which backend draws a figure: matplotlib draws
+            # the static images, plotly the interactive pages
+            formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
+            static_formats = [f for f in formats if f != INTERACTIVE_FORMAT]
+            interactive = INTERACTIVE_FORMAT in formats
 
-        # create figures, but only when something looks at them: rendering
-        # every figure is most of the time a run takes, and a run without an
-        # output path which does not show them would close them again
-        self._mpl_figure_keys = []
-        if show_figures or (output_path and static_formats):
-            mpl_figures = self.create_mpl_figures(
-                on_error=on_error, failed=failed_figures
-            )
-            if show_figures:
-                self.show_mpl_figures(mpl_figures=mpl_figures)
-            if output_path and static_formats:
-                self.save_mpl_figures(
-                    output_path,
-                    mpl_figures=mpl_figures,
-                    figure_formats=static_formats,
-                    on_error=on_error,
-                    failed=failed_figures,
+            # create figures, but only when something looks at them: rendering
+            # every figure is most of the time a run takes, and a run without an
+            # output path which does not show them would close them again
+            self._mpl_figure_keys = []
+            if show_figures or (output_path and static_formats):
+                mpl_figures = self.create_mpl_figures(
+                    on_error=on_error, failed=failed_figures
                 )
+                if show_figures:
+                    self.show_mpl_figures(mpl_figures=mpl_figures)
+                if output_path and static_formats:
+                    self.save_mpl_figures(
+                        output_path,
+                        mpl_figures=mpl_figures,
+                        figure_formats=static_formats,
+                        on_error=on_error,
+                        failed=failed_figures,
+                    )
+                self.close_mpl_figures(mpl_figures=mpl_figures)
+                # only the keys are kept: a figure keeps the pixel buffer of its last
+                # rendering, so the figures of every experiment of a run would stay
+                # in memory until its end
+                self._mpl_figure_keys = list(mpl_figures)
+
+            if output_path and interactive:
+                self.save_interactive_figures(
+                    output_path, on_error=on_error, failed=failed_figures
+                )
+
+            # only perform serialization after data evaluation (to access units)
+            if output_path:
+                # serialization
+                self.to_json(output_path / f"{self.sid}.json")
+
+        finally:
+            # also after an error: the figures of `figures_mpl()` may come from
+            # `pyplot`, and the results of a failed experiment are as large as
+            # those of a passing one
             self.close_mpl_figures(mpl_figures=mpl_figures)
-            # only the keys are kept: a figure keeps the pixel buffer of its last
-            # rendering, so the figures of every experiment of a run would stay
-            # in memory until its end
-            self._mpl_figure_keys = list(mpl_figures)
-
-        if output_path and interactive:
-            self.save_interactive_figures(
-                output_path, on_error=on_error, failed=failed_figures
-            )
-
-        # only perform serialization after data evaluation (to access units)
-        if output_path:
-            # serialization
-            self.to_json(output_path / f"{self.sid}.json")
-
-        if not keep_results:
-            # every output is written, the report needs no results
-            self._results = {}
-            self._results_released = True
+            if not keep_results:
+                # every output is written, the report needs no results
+                self._results = {}
+                self._results_released = True
 
         return ExperimentResult(
             experiment=self, output_path=output_path, failed_figures=failed_figures
@@ -1004,12 +1011,17 @@ class SimulationExperiment:
             except Exception as err:
                 self._figure_failed(fig_key, err, on_error, failed)
 
-        # additional custom figures
+        # additional custom figures, all of them fail together with the method;
+        # the key is no valid figure key, so it cannot clash with a figure. The
+        # pyplot figures created before the error are closed
+        open_before = set(plt.get_fignums())
         try:
             for fig_key, fig_mpl in self.figures_mpl().items():
                 mpl_figures[fig_key] = fig_mpl
         except Exception as err:
-            self._figure_failed("figures_mpl", err, on_error, failed)
+            for num in set(plt.get_fignums()) - open_before:
+                plt.close(num)
+            self._figure_failed("figures_mpl()", err, on_error, failed)
 
         return mpl_figures
 
@@ -1031,7 +1043,11 @@ class SimulationExperiment:
             exc_info=err,
         )
         if failed is not None:
-            failed[fig_key] = f"{type(err).__name__}: {err}"
+            message = f"{type(err).__name__}: {err}"
+            # a figure may fail in more than one pass (static and interactive)
+            failed[fig_key] = (
+                f"{failed[fig_key]}; {message}" if fig_key in failed else message
+            )
 
     @timeit
     def show_mpl_figures(self, mpl_figures: dict[str, FigureMPL]) -> None:
@@ -1082,6 +1098,8 @@ class SimulationExperiment:
                 try:
                     fig_mpl.savefig(fig_path, bbox_inches="tight")
                 except Exception as err:
+                    # no partial file of a figure which is reported as failed
+                    fig_path.unlink(missing_ok=True)
                     self._figure_failed(fkey, err, on_error, failed)
                     break
 
@@ -1150,6 +1168,30 @@ class SimulationExperiment:
             plt.close(fig_mpl)
 
 
+class ExperimentRunError(Exception):
+    """One or more experiments or figures of a run failed.
+
+    Raised by `ExperimentRunner.run_experiments(raise_on_failure=True)` after
+    every experiment ran.
+
+    Attributes:
+        results: the results of all experiments of the run.
+    """
+
+    def __init__(self, results: "list[ExperimentResult]") -> None:
+        """Create the error from the results of a run."""
+        self.results = results
+        lines = []
+        for result in results:
+            sid = result.experiment.sid
+            if result.error:
+                lines.append(f"experiment '{sid}': {result.error}")
+            for key, error in result.failed_figures.items():
+                lines.append(f"figure '{key}' of '{sid}': {error}")
+        super().__init__("\n".join(lines))
+        self.failures = lines
+
+
 @dataclass
 class ExperimentResult:
     """Result of a simulation experiment."""
@@ -1158,8 +1200,14 @@ class ExperimentResult:
     output_path: Path | None
     #: the error of an experiment which failed in a run of the `ExperimentRunner`
     error: str | None = None
-    #: the figures which failed and were skipped, `{key: error}`
+    #: the figures which failed and were skipped, `{key: error}`; the custom
+    #: figures of a failing `figures_mpl()` are under the key `figures_mpl()`
     failed_figures: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def failed(self) -> bool:
+        """Check whether the experiment or one of its figures failed."""
+        return bool(self.error or self.failed_figures)
 
     def to_dict(self) -> dict:
         """Conversion to dictionary.
