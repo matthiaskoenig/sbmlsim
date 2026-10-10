@@ -6,6 +6,7 @@ import pytest
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
+from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 from tests.experiment.test_experiment_observables import PKExperiment, _runner
 
@@ -37,6 +38,23 @@ def test_a_key_must_be_a_full_sid(key: str) -> None:
 
     with pytest.raises(ValueError, match=r"\[a-zA-Z_\]\[a-zA-Z0-9_\]\*.*" + key):
         _runner(Bad)
+
+
+def test_every_invalid_key_is_named_in_one_error() -> None:
+    class Bad(PKExperiment):
+        def datasets(self) -> dict:
+            return {"a-1": None, "ok": None, "b.2": None}
+
+        def simulations(self) -> dict:
+            return {**super().simulations(), "sim 3": Simulation(end=1)}
+
+    with pytest.raises(ValueError, match="3 are not") as info:
+        _runner(Bad)
+    message = str(info.value)
+    assert "Bad" in message
+    for key in ["'a-1'", "'b.2'", "'sim 3'"]:
+        assert key in message
+    assert "'ok'" not in message
 
 
 def test_an_amount_and_its_concentration_have_different_sids() -> None:

@@ -295,11 +295,19 @@ class SimulationExperiment:
         return self._results
 
     # --- VALIDATION ------------------------------------------------------------------
-    def _check_keys(self):
-        """Check keys in information dictionaries."""
+    def _check_keys(self) -> None:
+        """Check keys in information dictionaries.
+
+        Raises:
+            ValueError: for a key which is no string or a duplicate, and for the
+                keys which are no valid SIds, all of them in one error.
+        """
         # string keys for main objects must be unique on SimulationExperiment
         all_keys = {}
         allowed_types = dict
+        pattern_sid = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
+        # every key which is no SId, so that one run names all of them
+        invalid: list[str] = []
         for field_key in [
             "_models",
             "_datasets",
@@ -321,30 +329,27 @@ class SimulationExperiment:
                     f"(returning NoneType)."
                 )
 
-            pattern_sid = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
             for key in getattr(self, field_key):
                 if not isinstance(key, str):
                     raise ValueError(
                         f"'{field_key} keys must be str: '{key} -> {type(key)}'"
                     )
-                # Check that valid Sid
-                try:
-                    if not pattern_sid.fullmatch(key):
-                        raise ValueError(
-                            f"{field_key} key is not a valid SId "
-                            f"({pattern_sid.pattern}): '{key}'"
-                        )
-                except TypeError as err:
-                    raise ValueError(
-                        f"{field_key} key is not a valid SId. "
-                        f"Incorrect type: '{key}', {type(key)}"
-                    ) from err
+                if not pattern_sid.fullmatch(key):
+                    invalid.append(f"{field_key} key '{key}'")
+                    continue
 
                 if key in all_keys:
                     raise ValueError(
                         f"Duplicate key '{key}' for '{field_key}' and '{all_keys[key]}'"
                     )
                 all_keys[key] = field_key
+
+        if invalid:
+            raise ValueError(
+                f"The keys of the experiment '{self.sid}' must be valid SIds "
+                f"({pattern_sid.pattern}), {len(invalid)} "
+                f"{'is' if len(invalid) == 1 else 'are'} not: {', '.join(invalid)}"
+            )
 
     def _check_types(self):
         """Check for correctness of types."""
