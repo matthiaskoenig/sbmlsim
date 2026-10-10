@@ -11,6 +11,7 @@ dimension of a scan against a table: `run` fits the maximal velocity of the
 metabolism of midazolam to the (synthetic) data.
 """
 
+from functools import cache
 from pathlib import Path
 from typing import override
 
@@ -76,22 +77,32 @@ def _observables() -> dict[str, Observable]:
     }
 
 
+@cache
+def _synthetic_cmax() -> np.ndarray:
+    """Get the cmax of every dose at the reference parameters with 1 percent noise.
+
+    The data is computed once per process rather than whenever the experiment
+    is initialized.
+    """
+    result = Simulator().run(
+        MIDAZOLAM_SBML,
+        _dose_scan(),
+        list(_observables().values()),
+        keep=["pk.cmax"],
+    )
+    cmax = result.ds["pk.cmax"].values
+    return cmax * np.random.default_rng(1).normal(1.0, 0.01, len(cmax))
+
+
 class MidazolamDoses(SimulationExperiment):
     """Oral midazolam at three doses."""
 
     @override
     def datasets(self) -> dict[str, DataSet]:
         # synthetic data: the cmax of the simulation of this example at the
-        # reference parameters with 1 percent of noise (regenerated whenever the
-        # experiment is initialized); the stated error is 5 percent
-        result = Simulator().run(
-            MIDAZOLAM_SBML,
-            _dose_scan(),
-            list(_observables().values()),
-            keep=["pk.cmax"],
-        )
-        cmax = result.ds["pk.cmax"].values
-        cmax = cmax * np.random.default_rng(1).normal(1.0, 0.01, len(cmax))
+        # reference parameters with 1 percent of noise; the stated error is 5
+        # percent
+        cmax = _synthetic_cmax()
         df = pd.DataFrame({"dose": DOSES, "cmax": cmax, "cmax_sd": 0.05 * cmax})
         return {
             "cmax_doses": DataSet.from_df(
