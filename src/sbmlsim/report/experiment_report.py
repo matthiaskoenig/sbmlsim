@@ -143,6 +143,7 @@ class ReportResults:
             # a failed experiment or figure is listed, not hidden
             "error": exp_result.error,
             "failed_figures": exp_result.failed_figures,
+            "failed": exp_result.failed,
         }
 
 

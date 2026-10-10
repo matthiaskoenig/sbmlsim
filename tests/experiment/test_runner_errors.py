@@ -160,6 +160,26 @@ def test_the_report_lists_the_failed_experiments(tmp_path: Path) -> None:
     index = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "BrokenTask" in index
     assert "experiment broken" in index
+    # the failed experiments are counted and can be filtered
+    assert 'class="badge failed">failed <b>1</b>' in index
+    assert 'class="chip" data-kind="failed"' in index
+    assert 'data-filter="card" data-kind="failed"' in index
+    assert 'data-filter="card" data-kind="passed"' in index
+    # the page of the experiment says it in its header and overview
+    page = (tmp_path / "BrokenTask" / "BrokenTask.html").read_text(encoding="utf-8")
+    assert 'class="badge failed">experiment <b>failed</b>' in page
+    overview = page.split('<section id="overview">')[1].split("</section>")[0]
+    assert "The experiment failed: RuntimeError: experiment broken" in overview
+
+
+def test_a_report_without_failures_has_no_filter(tmp_path: Path) -> None:
+    """The chips are only there when an experiment failed."""
+    results = _runner(GoodExperiment).run_experiments(output_path=tmp_path)
+    ExperimentReport(results).create_report(output_path=tmp_path)
+    index = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert 'class="chip"' not in index
+    assert "data-kind" not in index.split("<main>")[1].split("</main>")[0]
+    assert "badge failed" not in index
 
 
 def test_a_failing_experiment_releases_its_results_and_figures(

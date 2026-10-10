@@ -6,8 +6,19 @@
 {% block subtitle %}{{ data | length }} experiment(s){% endblock %}
 {% block placeholder %}Search experiments and figures …{% endblock %}
 
+{% set failed = data.values() | selectattr("failed") | list %}
+
 {% block badges %}
 <span class="badge">experiments <b>{{ data | length }}</b></span>
+{% if failed %}<span class="badge failed">failed <b>{{ failed | length }}</b></span>{% endif %}
+{% endblock %}
+
+{# the chips filter the experiments which failed, they are only needed then #}
+{% block chips %}
+{% if failed %}
+<button class="chip" data-kind="passed" aria-pressed="true">passed</button>
+<button class="chip" data-kind="failed" aria-pressed="true">failed</button>
+{% endif %}
 {% endblock %}
 
 {% block nav %}
@@ -20,6 +31,8 @@
      a figure in full size */
   #experiments figure img { height: 220px; object-fit: contain; }
   #experiments figure a.interactive { display: flex; align-items: center; justify-content: center; height: 220px; border: 1px dashed var(--line); border-radius: 8px; }
+  .chip[data-kind="passed"][aria-pressed="true"] { background: var(--training); }
+  .chip[data-kind="failed"][aria-pressed="true"] { background: var(--outlier); }
 </style>
 {% endblock %}
 
@@ -28,7 +41,7 @@
 <section id="experiments">
   <h2>Experiments ({{ data | length }})</h2>
   {% for exp_id, context in data.items() %}
-  <div class="card mapping" data-filter="card">
+  <div class="card mapping" data-filter="card"{% if failed %} data-kind="{{ 'failed' if context.failed else 'passed' }}"{% endif %}>
     <header>
       <span class="name"><a href="{{ exp_id }}/{{ exp_id }}.html">{{ exp_id }}</a></span>
       <span class="exp">{{ context.figures | length }} figure(s) · {{ context.models | length }} model(s)</span>
@@ -39,6 +52,7 @@
     {% for fig_id, error in context.failed_figures.items() %}
     <p class="failed">The figure {{ fig_id }} failed: {{ error }}</p>
     {% endfor %}
+    {% if context.figures %}
     <div class="grid">
       {% for fig_id, fig in context.figures.items() %}
       <figure>
@@ -51,6 +65,7 @@
       </figure>
       {% endfor %}
     </div>
+    {% endif %}
   </div>
   {% endfor %}
   <p class="empty hidden" data-empty>No experiment matches the search.</p>
