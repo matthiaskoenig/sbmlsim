@@ -67,7 +67,17 @@ def test_the_scans_of_the_repressilator(tmp_path: Path) -> None:
     keys = [key for key in RECORD if key.startswith("repressilator_scans.")]
     assert len(keys) == 4
     for key in keys:
-        _compare(results[key.split(".", 1)[1]], RECORD[key], step=200)
+        res = results[key.split(".", 1)[1]]
+        # a target the scan changes is the coordinate of its dimension and no
+        # timecourse of the scan (it was one before a result kept the
+        # coordinates apart), so only the other variables are compared
+        recorded = {
+            k: v
+            for k, v in RECORD[key].items()
+            if k == "time" or k not in res.ds.coords
+        }
+        assert len(recorded) < len(RECORD[key])
+        _compare(res, recorded, step=200)
 
 
 def test_the_dose_response_of_the_glucose(tmp_path: Path) -> None:

@@ -477,8 +477,10 @@ class SimulationExperiment:
     ) -> None:
         """Run the tasks of the experiment, the tasks of a model one after another.
 
-        The selections of a model are the variables its data refers to, every
-        variable of the model without `reduced_selections`. The changes of a
+        The selections of a task are the variables its data refers to, every
+        variable of the model without `reduced_selections`, set on the model
+        right before the task runs; the coordinates of its own scan are never
+        among them. The changes of a
         model are defaults of the pre-initialization changes of every
         simulation of it, see `Simulator.compile`. A task whose data read
         observables runs with the observables they need and keeps them and the
@@ -501,25 +503,22 @@ class SimulationExperiment:
             model_tasks[task.model_id].append(task_key)
         for model_id, task_keys in model_tasks.items():
             model = self._models[model_id]
-            model.set_selections(
-                sorted(self._selections_of_model(model_id))
-                if reduced_selections
-                else None
-            )
+            if not reduced_selections:
+                model.set_selections(None)
+                every = [s for s in model.selections or [] if s != TIME]
             for task_key in task_keys:
                 task = self._tasks[task_key]
                 scan = self._simulations[task.simulation_id]
+                coordinates = _coordinates(scan)
                 observed, selections = self._task_outputs(task_key)
+                if not reduced_selections:
+                    selections = [s for s in every if s not in coordinates]
                 if not observed:
+                    # a changed target is a coordinate of the result of its own
+                    # scan and never a timecourse, whatever other tasks read
+                    model.set_selections(sorted({TIME, *selections}))
                     self._results[task_key] = simulator.run(model, scan)
                     continue
-                if not reduced_selections:
-                    coordinates = _coordinates(scan)
-                    selections = [
-                        s
-                        for s in model.selections or []
-                        if s != TIME and s not in coordinates
-                    ]
                 self._results[task_key] = simulator.run(
                     model,
                     scan,

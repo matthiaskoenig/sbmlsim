@@ -187,3 +187,25 @@ def test_the_json_has_the_observables(experiment: SimulationExperiment) -> None:
     assert d["observables"]["pk"]["type"]
     assert d["tasks"]["task_scan"]["observables"] == ["pk", "cmax"]
     assert d["tasks"]["task_sim"]["observables"] == []
+
+
+class SharedTarget(PKExperiment):
+    """A plain task reads PODOSE, the scan over PODOSE without observables."""
+
+    def data(self) -> dict:
+        return {
+            "plain": Data("PODOSE", task="task_sim"),
+            "scan_time": Data("time", task="task_scan"),
+            "scan_c": Data("[C]", task="task_scan"),
+            "scan_dose": Data("PODOSE", task="task_scan"),
+        }
+
+
+@pytest.mark.parametrize("reduced", [True, False])
+def test_a_changed_target_is_a_coordinate_of_its_own_scan(reduced: bool) -> None:
+    runner = _runner(SharedTarget)
+    experiment = runner.experiments["SharedTarget"]
+    experiment.run(runner.simulator, reduced_selections=reduced)
+    scan = experiment.results["task_scan"]
+    assert scan["PODOSE"].dims == ("dose",)
+    assert experiment.results["task_sim"]["PODOSE"].dims == ("time",)
