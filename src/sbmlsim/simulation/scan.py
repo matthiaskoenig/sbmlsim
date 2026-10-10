@@ -28,6 +28,7 @@ scan.
 from __future__ import annotations
 
 import json
+import logging
 import math
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -40,6 +41,8 @@ import numpy as np
 from sbmlsim.result.scan import POINT, STATISTIC, STATUS, TIME
 from sbmlsim.simulation.definition import Simulation, Time, _encode
 from sbmlsim.units import Quantity, ureg
+
+logger = logging.getLogger(__name__)
 
 #: the names of the dimensions and variables of a result, which no dimension of
 #: a scan takes
@@ -469,6 +472,69 @@ def _validate(simulation: Simulation, dimensions: tuple[Dimension, ...]) -> None
                     f"The time {dimension.at} of the dimension '{dimension.id}' is "
                     f"outside of the simulation [{sim.start}, {sim.end}]."
                 )
+    _warn_replaced_targets(simulations, dimensions)
+
+
+def _same_value(a: Any, b: Any) -> bool:
+    """Check whether two values of a change are equal as given.
+
+    A quantity is equal to a quantity of the same dimension after the
+    conversion, a formula is equal to the same string, and values which cannot
+    be compared (other dimensions, a quantity and a number) are different.
+    """
+    try:
+        return bool(a == b)
+    except Exception:  # pint raises for some mixes of quantities and numbers
+        return False
+
+
+def _warn_replaced_targets(
+    simulations: Sequence[Simulation], dimensions: Sequence[Dimension]
+) -> None:
+    """Warn about a dimension which replaces a target set to different values.
+
+    A dimension without `at` replaces its target wherever the simulation sets
+    it (`Simulation.with_values`), so a scan over the rate of an infusion also
+    replaces the stop of the infusion. This is one warning per dimension and
+    target, naming the values of the simulation with their times, for the
+    first simulation which sets them to different values.
+    """
+    for dimension in dimensions:
+        if dimension.at is not None:
+            continue
+        for target in dimension.values:
+            for sim in simulations:
+                entries: list[tuple[Any, str]] = []
+                if target in sim.preinit_changes:
+                    entries.append(
+                        (sim.preinit_changes[target], "before the initialization")
+                    )
+                if sim.presimulation is not None:
+                    steady = sim.presimulation.preinit_changes
+                    if target in steady:
+                        entries.append((steady[target], "in the presimulation"))
+                for change in sim.changes:
+                    if target in change.values:
+                        entries.extend(
+                            (change.values[target], f"at {time}")
+                            for time in change.times
+                        )
+                if len(entries) < 2 or all(
+                    _same_value(entries[0][0], value) for value, _ in entries[1:]
+                ):
+                    continue
+                logger.warning(
+                    "The dimension '%s' replaces the target '%s' in every place "
+                    "the simulation sets it, which sets it to different values "
+                    "(%s), so the point has one value of '%s' at all of these "
+                    "times. Use Dimension(..., at=<time>) to set the values at "
+                    "one time and keep the others.",
+                    dimension.id,
+                    target,
+                    ", ".join(f"{value} {when}" for value, when in entries),
+                    target,
+                )
+                break
 
 
 @dataclass(frozen=True, init=False, eq=False)

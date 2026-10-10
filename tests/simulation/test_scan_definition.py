@@ -2,6 +2,7 @@
 
 import dataclasses
 import json
+import logging
 import pickle
 from typing import Any
 
@@ -9,7 +10,7 @@ import numpy as np
 import pytest
 
 from sbmlsim import Q
-from sbmlsim.simulation import Change, Dimension, Scan, Simulation
+from sbmlsim.simulation import Change, Dimension, Scan, Simulation, SteadyState
 from sbmlsim.simulation.scan import DimensionKind
 
 SIM = Simulation(end=10, steps=10)
@@ -328,3 +329,89 @@ def test_a_dimension_does_not_change() -> None:
     assert again.values["k1"].tolist() == [1.0, 2.0]
     with pytest.raises(TypeError):
         again.values["k2"] = np.array([1.0])
+
+
+def _replaced_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [r.getMessage() for r in caplog.records if "replaces" in r.getMessage()]
+
+
+def test_scan_warns_when_it_replaces_different_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The stop of an infusion is replaced by the rate of the scan (#264)."""
+    sim = Simulation(
+        end=100,
+        steps=10,
+        changes=[Change(0, {"Ri": 1.0}), Change(60, {"Ri": 0.0})],
+    )
+    dimension = Dimension("rate", values={"Ri": [0.5, 1.0, 2.0]})
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulation.scan"):
+        Scan(sim, [dimension])
+    [message] = _replaced_warnings(caplog)
+    assert "'rate'" in message
+    assert "'Ri'" in message
+    assert "1.0 at 0" in message
+    assert "0.0 at 60" in message
+    assert "at=" in message
+
+
+def test_scan_warns_for_preinit_and_presimulation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sim = Simulation(
+        end=100,
+        steps=10,
+        preinit_changes={"k": 1.0},
+        changes=[Change(10, {"k": 2.0})],
+        presimulation=SteadyState(preinit_changes={"p": 1.0}),
+    )
+    dimensions = [Dimension("kvals", values={"k": [1.0, 2.0]})]
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulation.scan"):
+        Scan(sim, dimensions)
+    assert len(_replaced_warnings(caplog)) == 1
+
+
+def test_scan_does_not_warn_for_equal_values_or_at(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    dose = Simulation(
+        end=100, steps=10, changes=[Change([0, 24, 48], {"D": Q(10, "mg")})]
+    )
+    infusion = Simulation(
+        end=100,
+        steps=10,
+        changes=[Change(0, {"Ri": 1.0}), Change(60, {"Ri": 0.0})],
+    )
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulation.scan"):
+        Scan(dose, [Dimension("d", values={"D": Q([5, 20], "mg")})])
+        Scan(
+            Simulation(
+                end=100,
+                steps=10,
+                changes=[
+                    Change(0, {"D": Q(10, "mg")}),
+                    Change(24, {"D": Q(0.01, "g")}),
+                ],
+            ),
+            [Dimension("d", values={"D": Q([5], "mg")})],
+        )
+        Scan(infusion, [Dimension("rate", values={"Ri": [0.5, 2.0]}, at=0)])
+    assert _replaced_warnings(caplog) == []
+
+
+def test_scan_warns_once_per_dimension_and_target(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    sim = Simulation(
+        end=100,
+        steps=10,
+        changes=[Change(0, {"Ri": 1.0}), Change(60, {"Ri": 0.0})],
+    )
+    other = Simulation(end=100, steps=10, changes=[Change(0, {"Ri": 3.0})])
+    dimensions = [
+        Dimension("rate", values={"Ri": [0.5, 1.0, 2.0]}),
+        Dimension("sim", simulations={"a": sim, "b": other}),
+    ]
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulation.scan"):
+        Scan(sim, dimensions)
+    assert len(_replaced_warnings(caplog)) == 1

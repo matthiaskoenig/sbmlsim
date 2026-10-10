@@ -32,7 +32,7 @@ The result has the dimensions of the scan first and the time last, `(dim_n, time
 
 ## Where the values of a scan go
 
-A value replaces its target wherever the simulation sets it, i.e. in the `preinit_changes` and in every `Change`; a target which the simulation does not set is a change before the initialization. Scanning the dose of a multiple dosing therefore scans every dose. A dimension with `at` sets its values as a `Change` at that time instead:
+A value replaces its target wherever the simulation sets it, i.e. in the `preinit_changes` and in every `Change`; a target which the simulation does not set is a change before the initialization. Scanning the dose of a multiple dosing therefore scans every dose. Scanning the rate of an infusion which a later `Change` stops therefore also replaces the stop, so a scan logs a warning for a dimension without `at` whose target the simulation sets to different values (in `changes` at different times, in `preinit_changes` and a change, or in the presimulation), naming the values with their times; a dose repeated with one value does not warn. Use `at` to set the values at one time and keep the other changes of the simulation. A dimension with `at` sets its values as a `Change` at that time instead:
 
 ```python
 dosing = Simulation(end=150, changes=[Change([0, 50, 100], {"X": 10.0})], steps=150)
