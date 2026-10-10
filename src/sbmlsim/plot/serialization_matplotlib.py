@@ -161,10 +161,10 @@ class MatplotlibFigureSerializer:
                     # a scan has the time last, its first point is drawn
                     # without the padding of a ragged result
                     x_data, y_data, xerr_data, yerr_data = without_padding(
-                        first_curve(None if x is None else x.magnitude),
-                        first_curve(None if y is None else y.magnitude),
-                        first_curve(None if xerr is None else xerr.magnitude),
-                        first_curve(None if yerr is None else yerr.magnitude),
+                        first_curve(None if x is None else x.values),
+                        first_curve(None if y is None else y.values),
+                        first_curve(None if xerr is None else xerr.values),
+                        first_curve(None if yerr is None else yerr.values),
                     )
 
                     kwargs: dict[str, Any] = {}
@@ -258,9 +258,9 @@ class MatplotlibFigureSerializer:
 
                     # the first point of a scan, without the padding
                     x_data, yfrom_data, yto_data = without_padding(
-                        first_curve(None if x is None else x.magnitude),
-                        first_curve(None if yfrom is None else yfrom.magnitude),
-                        first_curve(None if yto is None else yto.magnitude),
+                        first_curve(None if x is None else x.values),
+                        first_curve(None if yfrom is None else yfrom.values),
+                        first_curve(None if yto is None else yto.values),
                     )
 
                     label = area.name if area.name else "_nolegend_"

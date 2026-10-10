@@ -75,7 +75,7 @@ The math of PEtab is not the L3 formula syntax of SBML which a function of data 
 
 ## Resolving data
 
-`Data.get_data(experiment)` returns the quantity for the data in a run experiment, i.e., the values of the task result or the dataset column with their units, optionally converted to other units:
+`Data.get_data(experiment)` returns the values of the data in a run experiment as a labelled array, an `xarray.DataArray` with the dimensions of its source, their coordinates and the unit in `attrs["units"]`, optionally converted to other units; `sbmlsim.data.to_quantity(array, ureg)` gives the pint quantity:
 
 ```python
 from pathlib import Path
@@ -118,7 +118,11 @@ results = runner.run_experiments(output_path=Path.cwd() / "results")
 experiment = results[0].experiment
 
 time = Data("time", task="task_tc").get_data(experiment)
-print(time.units, time.magnitude[:3])
+print(time.attrs["units"], time.values[:3])
 x = Data("[X]", task="task_tc").get_data(experiment, to_units="dimensionless")
-print(x.units, x.magnitude[:3])
+print(x.attrs["units"], x.values[:3])
 ```
+
+## Selecting points
+
+The data of a task has the dimensions of its scan: a timecourse is over `(*dims, time)`, or `(*dims, _point)` for a ragged result whose simulations keep their own time points padded with `NaN`, a value per simulation is over `(*dims)`, and a changed target is over its dimension. `sel` selects labels: `Data("[X]", task="task_scan", sel={"dose": "high"})` keeps one point and drops the dimension, `sel={"dose": ["low", "high"]}` keeps the dimension with two labels. A dimension of the scan which the data has not, e.g. the dimension of a scan for the time on a common grid, is skipped, so the same `sel` serves the time and the values of a curve; a dimension or label which does not exist raises with the ones which do. The data of a dataset is a column over the dimension `row`, and `sel={"group": "b"}` keeps the rows whose column `group` has the value. A function broadcasts its data by the names of their dimensions, and `max` and `min` of a single argument reduce along the time of a timecourse, or along the rows of a dataset.

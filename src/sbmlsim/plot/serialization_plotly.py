@@ -88,12 +88,12 @@ def _values(data: Any, experiment: Any, unit: str | None) -> np.ndarray | None:
     """
     if data is None:
         return None
-    quantity = data.get_data(experiment=experiment, to_units=unit)
-    if quantity is None:
+    array = data.get_data(experiment=experiment, to_units=unit)
+    if array is None:
         return None
     # a scan has the time last, its first point is plotted, as in the
     # matplotlib serializer
-    return first_curve(np.asarray(quantity.magnitude))
+    return first_curve(np.asarray(array.values))
 
 
 def _axis_options(axis: Axis | None) -> dict[str, Any]:

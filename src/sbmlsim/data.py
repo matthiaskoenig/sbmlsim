@@ -10,9 +10,11 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 from sbmlsim.result import ScanResult
-from sbmlsim.simulator.formula import compile_formula, evaluate_reduced, reduce_formula
+from sbmlsim.result.scan import POINT, TIME
+from sbmlsim.simulator.formula import compile_formula, reduce_formula
 from sbmlsim.units import (
     DimensionalityError,
     Quantity,
@@ -26,41 +28,227 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def evaluate_function(formula: str, variables: Mapping[str, Any]) -> Any:
+#: the dimension of the rows of a dataset
+ROW = "row"
+
+#: the dimensions a reduction of data runs along: the first one an array has
+REDUCED_DIMS = (TIME, POINT, ROW)
+
+
+def to_quantity(array: xr.DataArray, ureg: UnitRegistry) -> Quantity:
+    """Get the values of data as a quantity.
+
+    Args:
+        array: the values of a `Data`, see `Data.get_data`.
+        ureg: the registry of the quantity, e.g. the one of the experiment.
+
+    Returns:
+        The values with the unit of `attrs["units"]`.
+
+    Raises:
+        ValueError: if the array holds labels or has no unit.
+    """
+    if array.dtype.kind not in "fiub":
+        raise ValueError(
+            f"'{array.name}' holds labels, not values, so it is no quantity."
+        )
+    unit = array.attrs.get("units")
+    if unit is None:
+        raise ValueError(f"'{array.name}' has no unit, so it is no quantity.")
+    return ureg.Quantity(np.array(array.values, dtype=float), unit)
+
+
+def evaluate_function(
+    formula: str,
+    variables: Mapping[str, xr.DataArray | float],
+    ureg: UnitRegistry,
+) -> xr.DataArray:
     """Evaluate the formula of a `Data` of type FUNCTION on its data.
 
-    The formula is the math of PEtab, see `sbmlsim.simulator.formula`, with
-    the reductions of `evaluate_reduced`: `max` and `min` of a single argument
-    reduce it along its last axis, the time of a simulation, and ignore `NaN`,
-    the padding of a scan, so `Y/max(Y)` normalizes every simulation of a scan
-    to its own maximum. With two or more arguments they are the elementwise
-    maximum and minimum of PEtab. `mean` and `at` need the time points of a
-    simulation, which data has not; they are reductions of the observables of
-    a scan. A formula whose identifiers are all reductions or numbers is a
-    value per simulation, a number for a single simulation.
+    The formula is the math of PEtab, see `sbmlsim.simulator.formula`. The
+    arrays are broadcast by the names of their dimensions, so `y / dose` over
+    `(dose, time)` and `(dose,)` needs no reshaping; two arrays must have the
+    same coordinates of a dimension they share. `max` and `min` of a single
+    argument reduce it along its time (`time`, or `_point` of a ragged
+    result) or, without one, along the rows of a dataset, ignoring `NaN`, the
+    padding of a scan; the other dimensions stay, so `Y/max(Y)` normalizes
+    every simulation of a scan to its own maximum. With two or more arguments
+    they are the elementwise maximum and minimum of PEtab. `mean` and `at`
+    need the time points of a simulation, they are reductions of the
+    observables of a scan. An array without a unit is evaluated as plain
+    numbers, a formula without units is dimensionless.
 
     Args:
         formula: the formula.
-        variables: the values of the identifiers of the formula, the arrays
-            or quantities of the data and the numbers of the parameters.
+        variables: the arrays of the data and the numbers of the parameters,
+            by the identifiers of the formula.
+        ureg: the registry of the units.
 
     Returns:
-        The value of the formula, a quantity if the variables are quantities.
+        The value of the formula over the broadcast dimensions, with its unit.
 
     Raises:
         ValueError: if the formula is not valid math, reads an identifier
-            which is not a variable, or uses `mean` or `at` on an array.
+            which is not a variable, uses `mean` or `at`, or combines arrays
+            with different coordinates of one dimension.
     """
-    value = evaluate_reduced(formula, variables)
     reduced = reduce_formula(formula)
-    per_simulation = bool(reduced.reductions) and all(
-        symbol in reduced.placeholders
-        or np.ndim(getattr(variables[symbol], "magnitude", variables[symbol])) == 0
-        for symbol in compile_formula(reduced.outer).symbols
+    scope: dict[str, xr.DataArray | float] = dict(variables)
+    for reduction in reduced.reductions:
+        if reduction.function in ("mean", "at"):
+            raise ValueError(
+                f"'{reduction.function}' in the formula '{formula}' needs the time "
+                f"points of a simulation: it is a reduction of the observables of a "
+                f"scan, see sbmlsim.simulation.observables."
+            )
+        x = _evaluate_part(reduction.arguments[0], scope, formula, ureg)
+        scope[reduction.symbol] = _extreme(reduction.function, x)
+    return _evaluate_part(reduced.outer, scope, formula, ureg)
+
+
+def _evaluate_part(
+    part: str,
+    scope: Mapping[str, xr.DataArray | float],
+    formula: str,
+    ureg: UnitRegistry,
+) -> xr.DataArray:
+    """Evaluate a part of a formula without reductions, broadcasting by name.
+
+    Raises:
+        ValueError: if the part reads an identifier without a value, or two
+            arrays have different coordinates of one dimension.
+    """
+    compiled = compile_formula(part)
+    missing = [symbol for symbol in compiled.symbols if symbol not in scope]
+    if missing:
+        raise ValueError(
+            f"The formula '{formula}' reads {missing}, which have no values."
+        )
+    arrays = {
+        symbol: value
+        for symbol in compiled.symbols
+        if isinstance(value := scope[symbol], xr.DataArray)
+    }
+    try:
+        aligned = xr.align(*arrays.values(), join="exact") if arrays else ()
+    except ValueError as err:
+        raise ValueError(
+            f"The data of the formula '{formula}' has different coordinates of a "
+            f"dimension: {err}"
+        ) from err
+    broadcast = dict(zip(arrays, xr.broadcast(*aligned), strict=True)) if arrays else {}
+    arguments = [
+        _argument(broadcast[symbol], ureg) if symbol in broadcast else scope[symbol]
+        for symbol in compiled.symbols
+    ]
+    value = compiled.apply(arguments)
+    if isinstance(value, Quantity):
+        magnitude, unit = np.asarray(value.magnitude, dtype=float), str(value.units)
+    else:
+        magnitude, unit = np.asarray(value, dtype=float), "dimensionless"
+    template = next(iter(broadcast.values()), None)
+    if template is None:
+        return xr.DataArray(magnitude, attrs={"units": unit})
+    return xr.DataArray(
+        np.broadcast_to(magnitude, template.shape).copy(),
+        dims=template.dims,
+        coords=template.coords,
+        attrs={"units": unit},
     )
-    if per_simulation and np.ndim(getattr(value, "magnitude", value)) > 0:
-        return value[..., 0]
-    return value
+
+
+def _argument(array: xr.DataArray, ureg: UnitRegistry) -> Any:
+    """Get the value of an array for a formula: a quantity, plain numbers without a unit."""
+    if array.attrs.get("units") is None:
+        return np.asarray(array.values, dtype=float)
+    return to_quantity(array, ureg)
+
+
+def _extreme(function: str, x: xr.DataArray) -> xr.DataArray:
+    """Reduce data to its largest or smallest value along its reduced dimension.
+
+    The dimension is the first of `REDUCED_DIMS` the array has; an array
+    without one is a value per simulation and stays. `NaN`, the padding of a
+    ragged result, is ignored, and only `NaN` gives `NaN`.
+    """
+    dim = next((d for d in REDUCED_DIMS if d in x.dims), None)
+    if dim is None:
+        return x
+    ufunc = np.fmax if function == "max" else np.fmin
+    reduced = x.reduce(lambda values, axis: ufunc.reduce(values, axis=axis), dim=dim)
+    reduced.attrs = dict(x.attrs)
+    return reduced
+
+
+def _select(
+    array: xr.DataArray,
+    sel: Mapping[str, Any],
+    data: Data,
+    source: xr.Dataset | xr.DataArray,
+) -> xr.DataArray:
+    """Select the labels of `sel` from data, see `Data`.
+
+    A dimension of the source (the result of a task, or the array itself for
+    a function) which the array has not is skipped: the array is constant
+    along it. A dimension without labels is selected by position.
+
+    Raises:
+        ValueError: if a dimension is not one of the source, or a label is not
+            one of its dimension.
+    """
+    by_label: dict[str, Any] = {}
+    by_position: dict[str, Any] = {}
+    for dim, label in sel.items():
+        if dim not in source.sizes:
+            raise ValueError(
+                f"{data} selects the dimension '{dim}', which its source has not: "
+                f"{[str(d) for d in source.sizes]}."
+            )
+        labelled = dim in source.coords
+        labels = (
+            source[dim].values.tolist() if labelled else list(range(source.sizes[dim]))
+        )
+        wanted = (
+            list(label) if isinstance(label, list | tuple | np.ndarray) else [label]
+        )
+        unknown = [w for w in wanted if w not in labels]
+        if unknown:
+            raise ValueError(
+                f"{data} selects {unknown} of the dimension '{dim}', whose labels "
+                f"are {labels}."
+            )
+        if dim in array.dims:
+            value = list(label) if isinstance(label, tuple | np.ndarray) else label
+            (by_label if labelled else by_position)[dim] = value
+    if by_label:
+        array = array.sel(by_label)
+    if by_position:
+        array = array.isel(by_position)
+    return array
+
+
+def _rows(dset: pd.DataFrame, sel: Mapping[str, Any], data: Data) -> pd.DataFrame:
+    """Select the rows of a dataset whose columns have the values of `sel`.
+
+    Raises:
+        ValueError: if a column is not one of the dataset, or no row is left.
+    """
+    rows = dset
+    for column, value in sel.items():
+        if column not in dset.columns:
+            raise ValueError(
+                f"{data} selects rows by the column '{column}', which the dataset "
+                f"has not: {list(dset.columns)}."
+            )
+        values = (
+            list(value) if isinstance(value, list | tuple | np.ndarray) else [value]
+        )
+        rows = rows[rows[column].isin(values)]
+    if sel and rows.empty:
+        raise ValueError(
+            f"{data} selects {dict(sel)}, which no row of the dataset has."
+        )
+    return rows
 
 
 class Data:
@@ -86,6 +274,7 @@ class Data:
         variables: dict[str, Data] | None = None,
         parameters: dict[str, float] | None = None,
         sid: str | None = None,
+        sel: Mapping[str, Any] | None = None,
     ):
         """Construct data.
 
@@ -103,6 +292,11 @@ class Data:
             parameters: the numbers the function reads, by the identifier in
                 the formula.
             sid: id of the data, `<task or dataset>__<index>` if not given.
+            sel: labels of dimensions to select, `{dim: label}` keeps one point
+                and drops the dimension, `{dim: [labels]}` keeps the dimension;
+                for a dataset the values of columns whose rows are kept, see
+                `get_data`. The sid does not depend on it, give `sid` to tell
+                apart two data of one index with different selections.
 
         Raises:
             ValueError: if none of `task`, `dataset` and `function` is given.
@@ -120,6 +314,7 @@ class Data:
         self.parameters: dict[str, float] = parameters if parameters is not None else {}
         self.unit: str | None = None
         self._sid = sid
+        self.sel: dict[str, Any] = dict(sel) if sel else {}
 
         if (not self.task_id) and (not self.dset_id) and (not self.function):
             raise ValueError(
@@ -191,7 +386,6 @@ class Data:
             raise ValueError("DataType could not be determined!")
         return dtype
 
-    # todo: dimensions, data type
     # TODO: calculations
     # TODO: conversion factors for units, necessary to store
     # TODO: storage of definitions on simulation.
@@ -210,23 +404,33 @@ class Data:
             "dataset": self.dset_id,
             "function": self.function,
             "variables": self.variables if self.variables else None,
+            "sel": self.sel or None,
         }
 
     def get_data(
         self,
         experiment: SimulationExperiment,
         to_units: str | None = None,
-    ) -> Quantity:
+    ) -> xr.DataArray:
         """Get the values of the data from an experiment which ran.
 
-        A dataset gives its column, a task the variable or coordinate of its
-        `ScanResult` and a function its formula evaluated on its variables
-        and parameters; `unit` is set to the unit of the values. The data of a
-        task is in the layout of its result, `(*dims, time)` on a common grid
-        of times or `(*dims, _point)` for a ragged result, whose simulations
-        keep their own time points padded with `NaN`; a coordinate, e.g. a
-        changed target, is over its dimension. The values are quantities of
-        the unit registry of the experiment.
+        The values are a labelled array named by the sid of the data, with the
+        unit in `attrs["units"]` (`None` for labels), see `to_quantity`:
+
+        - a task: the variable or coordinate of its `ScanResult` with its
+          coordinates, a timecourse over `(*dims, time)` or `(*dims, _point)`
+          for a ragged result padded with `NaN`, a value per simulation over
+          `(*dims)`; `time` is the time, a changed target or a coordinate of a
+          dimension is over its dimension, a dimension id gives its labels;
+        - a dataset: the column over the dimension `row`, whose coordinate is
+          the index of the dataset;
+        - a function: its formula on its variables and parameters, see
+          `evaluate_function`.
+
+        `sel` selects labels of the dimensions of a task or a function (a
+        dimension of the scan which the data has not is skipped) and the rows
+        of a dataset by the values of its columns. `unit` is set to the unit of
+        the values.
 
         Args:
             experiment: the experiment whose datasets and results are read.
@@ -234,121 +438,114 @@ class Data:
                 without.
 
         Returns:
-            The values with their unit.
+            The values.
 
         Raises:
             KeyError: if the dataset has no column of the index or no unit of
                 it, or the result of the task has no variable or coordinate of
                 the selection.
             ValueError: if the dataset is no `DataSet`, the result of the task
-                is no `ScanResult` or its selection holds labels or has no
-                unit, or a function has no formula.
+                is no `ScanResult` or its selection has no unit, a function has
+                no formula, or `sel` names a dimension, label or column which
+                does not exist.
             DimensionalityError: if the values cannot be converted to
                 `to_units`.
         """
-        # the type of the data is the first of task, dataset and function
-        if self.dtype == Data.Types.DATASET and self.dset_id is not None:
-            # read dataset data
-            if not experiment._datasets:
-                experiment._datasets = experiment.datasets()
-            dset = experiment._datasets[self.dset_id]
-            if not isinstance(dset, DataSet):
-                raise ValueError(
-                    f"DataSet '{self.dset_id}' is not a DataSet, but "
-                    f"type '{type(dset)}'\n"
-                    f"{dset}"
-                )
-            if dset.empty:
-                logger.error("Adding empty dataset '%s' for '%s'.", dset, self.dset_id)
-
-            # data with units
-            if self.index.endswith("_se") or self.index.endswith("_sd"):
-                uindex = self.index[:-3]
-            else:
-                uindex = self.index
-
-            if self.index not in dset.columns:
-                error_msg = (
-                    f"Data column with key '{self.index}' does not "
-                    f"exist in dataset: '{self.dset_id}'."
-                )
-                logger.error(error_msg)
-                raise KeyError(error_msg)
-            try:
-                self.unit = dset.uinfo[uindex]
-            except KeyError as err:
-                logger.error(
-                    "Units missing for key '%s' in dataset: '%s'. Add missing "
-                    "units to dataset.",
-                    uindex,
-                    self.dset_id,
-                )
-                raise err
-            x = dset[self.index].values * dset.uinfo.ureg(dset.uinfo[uindex])
-
-        elif self.dtype == Data.Types.TASK and self.task_id is not None:
-            result = experiment.results[self.task_id]
-            if not isinstance(result, ScanResult):
-                raise ValueError(
-                    f"The result of the task '{self.task_id}' is no ScanResult: "
-                    f"{type(result)}."
-                )
-            if self.selection not in result:
-                raise KeyError(
-                    f"'{self.selection}' is not in the result of the task "
-                    f"'{self.task_id}', its variables are {result.variables}: add "
-                    f"it to the selections of the experiment."
-                )
-            # the values in the layout of the result, the time last
-            x = result.quantity(self.selection, ureg=experiment.ureg)
-            self.unit = result.units[self.selection]
-
-        elif self.dtype == Data.Types.FUNCTION:
-            # evaluate with actual data
-            if self.function is None:
-                raise ValueError(f"Data '{self}' has no function.")
-            variables = {}
-            for var_key, variable in self.variables.items():
-                # lookup via key
-                if isinstance(variable, str):
-                    variables[var_key] = experiment._data[variable].get_data(
-                        experiment=experiment
-                    )
-                elif isinstance(variable, Data):
-                    variables[var_key] = variable.get_data(experiment=experiment)
-            for par_key, par_value in self.parameters.items():
-                variables[par_key] = par_value
-
-            x = evaluate_function(self.function, variables)
-            if not isinstance(x, Quantity):
-                # a formula of plain numbers evaluates to a number, e.g. a
-                # function of parameters alone; it is dimensionless
-                x = experiment.ureg.Quantity(x, "dimensionless")
-            self.unit = str(x.units)
-
-        # convert units to requested units
+        if self.dtype == Data.Types.DATASET:
+            array = self._dataset_array(experiment)
+        elif self.dtype == Data.Types.TASK:
+            array = self._task_array(experiment)
+        else:
+            array = self._function_array(experiment)
+        array.name = self.sid
+        self.unit = array.attrs.get("units")
         if to_units is not None:
             try:
-                x = x.to(to_units)
-            except DimensionalityError as err:
-                logger.error(
-                    "Could not convert '%s' to units '%s' with data \n'%s'",
-                    self,
-                    to_units,
-                    x,
-                )
-                raise err
-            except AttributeError as err:
-                logger.error(
-                    "Could not convert '%s' with data '%s (%s)' to units '%s'",
-                    self,
-                    x,
-                    type(x),
-                    to_units,
-                )
-                raise err
+                quantity = to_quantity(array, experiment.ureg).to(to_units)
+            except DimensionalityError:
+                logger.error("Could not convert '%s' to units '%s'.", self, to_units)
+                raise
+            array = array.copy(data=np.asarray(quantity.magnitude, dtype=float))
+            array.attrs = {"units": to_units}
+        return array
 
-        return x
+    def _dataset_array(self, experiment: SimulationExperiment) -> xr.DataArray:
+        """Get the column of the dataset over its rows, see `get_data`."""
+        if not experiment._datasets:
+            experiment._datasets = experiment.datasets()
+        dset = experiment._datasets[str(self.dset_id)]
+        if not isinstance(dset, DataSet):
+            raise ValueError(
+                f"DataSet '{self.dset_id}' is not a DataSet, but type '{type(dset)}'"
+            )
+        if dset.empty:
+            logger.error("Adding empty dataset '%s' for '%s'.", dset, self.dset_id)
+        uindex = self.index[:-3] if self.index.endswith(("_se", "_sd")) else self.index
+        if self.index not in dset.columns:
+            error_msg = (
+                f"Data column with key '{self.index}' does not exist in dataset: "
+                f"'{self.dset_id}'."
+            )
+            logger.error(error_msg)
+            raise KeyError(error_msg)
+        try:
+            unit = dset.uinfo[uindex]
+        except KeyError:
+            logger.error(
+                "Units missing for key '%s' in dataset: '%s'. Add missing units to "
+                "dataset.",
+                uindex,
+                self.dset_id,
+            )
+            raise
+        rows = _rows(dset, self.sel, self)
+        return xr.DataArray(
+            np.asarray(rows[self.index].values),
+            dims=(ROW,),
+            coords={ROW: np.asarray(rows.index.values)},
+            attrs={"units": unit},
+        )
+
+    def _task_array(self, experiment: SimulationExperiment) -> xr.DataArray:
+        """Get the variable or coordinate of the result of the task, see `get_data`."""
+        result = experiment.results[str(self.task_id)]
+        if not isinstance(result, ScanResult):
+            raise ValueError(
+                f"The result of the task '{self.task_id}' is no ScanResult: "
+                f"{type(result)}."
+            )
+        if self.selection not in result:
+            raise KeyError(
+                f"'{self.selection}' is not in the result of the task "
+                f"'{self.task_id}', its variables are {result.variables}: add "
+                f"it to the selections of the experiment."
+            )
+        array = result[self.selection]
+        numeric = array.dtype.kind in "fiub"
+        unit = result.units.get(self.selection) if numeric else None
+        if unit == "":
+            unit = "dimensionless"
+        if unit is None and numeric:
+            raise ValueError(
+                f"'{self.selection}' of the task '{self.task_id}' has no unit in "
+                f"the result."
+            )
+        array = _select(array, self.sel, self, result.ds)
+        return xr.DataArray(
+            array.values, dims=array.dims, coords=array.coords, attrs={"units": unit}
+        )
+
+    def _function_array(self, experiment: SimulationExperiment) -> xr.DataArray:
+        """Evaluate the function on its variables and parameters, see `get_data`."""
+        if self.function is None:
+            raise ValueError(f"Data '{self}' has no function.")
+        variables: dict[str, xr.DataArray | float] = {}
+        for key, variable in self.variables.items():
+            d = experiment._data[variable] if isinstance(variable, str) else variable
+            variables[key] = d.get_data(experiment=experiment)
+        variables.update(self.parameters)
+        array = evaluate_function(self.function, variables, experiment.ureg)
+        return _select(array, self.sel, self, array)
 
 
 class DataSeries(pd.Series):

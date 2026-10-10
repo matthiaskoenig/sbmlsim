@@ -1570,7 +1570,7 @@ class Plot(BasePlotObject):
                         )
                     count_data = Data(index=count, dataset=dataset, task=task)
                     counts = count_data.get_data(experiment)
-                    counts_unique = np.unique(counts.magnitude)
+                    counts_unique = np.unique(np.asarray(counts.values))
                     if counts_unique.size > 1:
                         logger.warning("count is not unique for dataset: '%s'", counts)
                     count = int(counts_unique[0])

@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from sbmlsim.data import Data, DataSet
+from sbmlsim.data import Data, DataSet, to_quantity
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment.runner import model_key
 from sbmlsim.fit import FitData, FitMapping
@@ -235,12 +235,12 @@ def test_the_data_of_a_scan_has_the_time_last() -> None:
     experiment.run(runner.simulator)
 
     y = Data("[Y]", task="task").get_data(experiment)
-    assert np.shape(y.magnitude) == (3, 11)
-    assert str(y.units) == "dimensionless"
+    assert y.shape == (3, 11)
+    assert y.attrs["units"] == "dimensionless"
     time = Data("time", task="task").get_data(experiment, to_units="second")
-    np.testing.assert_allclose(time.magnitude, np.linspace(0, 10, 11))
+    np.testing.assert_allclose(time.values, np.linspace(0, 10, 11))
     x = Data("X", task="task").get_data(experiment)
-    np.testing.assert_allclose(x.magnitude, [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(x.values, [1.0, 2.0, 3.0])
 
 
 class RegistryExperiment(FitMappingExperiment):
@@ -275,8 +275,9 @@ def test_the_data_of_a_task_is_in_the_registry_of_the_experiment() -> None:
         variables={"x": Data("[X]", task="task"), "d": Data("X", dataset="ds")},
     ).get_data(experiment)
     x = Data("[X]", task="task").get_data(experiment)
-    assert x._REGISTRY is ureg
-    np.testing.assert_allclose(ratio.magnitude, x.magnitude / 4.0)
+    assert experiment.ureg is ureg
+    assert to_quantity(x, experiment.ureg)._REGISTRY is ureg
+    np.testing.assert_allclose(ratio.values, x.values / 4.0)
 
 
 class RaggedScanExperiment(ScanExperiment):
@@ -304,12 +305,12 @@ def test_the_data_of_a_ragged_scan_has_its_points_last() -> None:
 
     y = Data("[Y]", task="task").get_data(experiment)
     time = Data("time", task="task").get_data(experiment)
-    assert y.magnitude.shape == time.magnitude.shape == (3, result.ds.sizes["_point"])
-    padded = np.isnan(time.magnitude)
+    assert y.values.shape == time.values.shape == (3, result.ds.sizes["_point"])
+    padded = np.isnan(time.values)
     assert padded.any()
-    np.testing.assert_array_equal(np.isnan(y.magnitude), padded)
+    np.testing.assert_array_equal(np.isnan(y.values), padded)
 
-    x, curve = without_padding(first_curve(time.magnitude), first_curve(y.magnitude))
+    x, curve = without_padding(first_curve(time.values), first_curve(y.values))
     native = Simulator().simulate(
         experiment._models["m"], Simulation(end=10, preinit_changes={"X": 1.0})
     )
