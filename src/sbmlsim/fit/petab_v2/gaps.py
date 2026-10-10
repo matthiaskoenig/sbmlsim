@@ -169,8 +169,8 @@ GAPS: tuple[Gap, ...] = (
         sbmlsim="a data point at the time of a change after the start is compared "
         "with the state before the change (`FitSettings.data_at_change`, `before` "
         "by default), e.g. cumulative urine at the end of a collection which a "
-        "change empties, except the first point of a curve, the start of a "
-        "collection",
+        "change empties, except the first point of a curve with data at a later "
+        "time, the start of a collection",
         petab="a measurement at the time of a change of the condition is the value "
         "after the change",
         detail="the setting goes to the extension, so `sbmlsim` compares these "

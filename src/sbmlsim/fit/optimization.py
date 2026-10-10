@@ -1983,10 +1983,13 @@ class OptimizationProblem(ObjectJSONEncoder):
         """Get the change whose state before it every data point of a mapping takes.
 
         A data point at the time of a change after the start takes the state
-        before the change, except the first point of the curve, i.e. the point
+        before the change, except the first point of a curve, i.e. the point
         or points with the smallest time of the mapping (up to the resolution
-        of the time), which takes the state after the change: the start of a
-        collection, e.g. a cumulative amount which starts at `0` at a reset.
+        of the time) if the mapping has data at a later time, which takes the
+        state after the change: the start of a collection, e.g. a cumulative
+        amount which starts at `0` at a reset. A curve of a single time is no
+        start of a collection, e.g. a total amount at the end of a collection
+        or a pre-dose trough, and takes the state before the change.
 
         Args:
             k: index of the fit mapping, a timecourse over the time.
@@ -2001,6 +2004,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         if times.size == 0:
             return at_change
         first = times <= np.min(times) + time_tolerance(plan.start, plan.end)
+        if np.all(first):
+            return at_change
         return np.where(first, -1, at_change)
 
     def _warn_dimension_target(

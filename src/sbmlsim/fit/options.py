@@ -245,12 +245,14 @@ class DataAtChangeType(StrEnum):
     `before` (default) : a data point at the time of a change after the
     start is compared with the state before the change, also at the end of
     the simulation, except the first point of a curve, i.e. the data point
-    or points with the smallest time of a fit mapping (replicates included),
-    which is compared with the state after the change: it is the start of a
-    collection, e.g. a cumulative amount which starts at `0` at a reset
-    after the start. A curve of a single time is its first point. The
-    observables of a simulation, e.g. the parameters of a `PK` observable,
-    are computed on its timecourse as a run has it.
+    or points with the smallest time of a fit mapping (replicates included)
+    which has data at a later time, which is compared with the state after
+    the change: it is the start of a collection, e.g. a cumulative amount
+    which starts at `0` at a reset after the start. A curve of a single time
+    is no start of a collection, e.g. a total amount at the end of a
+    collection or a pre-dose trough, and is compared with the state before
+    the change. The observables of a simulation, e.g. the parameters of a
+    `PK` observable, are computed on its timecourse as a run has it.
 
     `after` : a data point at the time of a change is compared with the state
     after it, the semantics of PEtab v2, which a PEtab problem without the

@@ -148,6 +148,17 @@ class UrineStudy(SimulationExperiment):
             "first": DataSet.from_df(
                 urine.iloc[:2], udict={"time": "hr", "Aurine": "mg"}, ureg=self.ureg
             ),
+            # the second collection with two replicates at its start
+            "replicates": DataSet.from_df(
+                pd.DataFrame(
+                    {
+                        "time": [24.0, *TIMES[1:]],
+                        "Aurine": [0.0, 0.0, TRUTH["urine"][2], TRUTH["urine"][3]],
+                    }
+                ),
+                udict={"time": "hr", "Aurine": "mg"},
+                ureg=self.ureg,
+            ),
             # the second collection, which starts at the reset
             "second": DataSet.from_df(
                 pd.DataFrame(
@@ -246,7 +257,7 @@ class UrineStudy(SimulationExperiment):
                 reference=FitData(self, dataset="first", xid="time", yid="Aurine"),
                 observable=FitData(self, task="task_end", xid="time", yid="Aurine"),
             ),
-            # a curve of one time, which is its first point
+            # a curve of one time, a total amount at the end of the collection
             "fm_end_single": FitMapping(
                 self,
                 reference=FitData(
@@ -264,6 +275,13 @@ class UrineStudy(SimulationExperiment):
             "fm_second": FitMapping(
                 self,
                 reference=FitData(self, dataset="second", xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="Aurine"
+                ),
+            ),
+            "fm_replicates": FitMapping(
+                self,
+                reference=FitData(self, dataset="replicates", xid="time", yid="Aurine"),
                 observable=FitData(
                     self, task="task_collected", xid="time", yid="Aurine"
                 ),
@@ -560,12 +578,35 @@ def test_a_change_at_the_end_is_compared_before_it(tmp_path: Path, dense: bool) 
 
 
 @pytest.mark.parametrize("dense", [False, True])
-def test_a_curve_of_one_time_is_its_first_point(tmp_path: Path, dense: bool) -> None:
-    """The only time of a curve at a change takes the state after it."""
+def test_a_curve_of_one_time_takes_the_state_before(
+    tmp_path: Path, dense: bool
+) -> None:
+    """A total amount at the reset is no start of a collection: the amount before."""
     mappings = ["fm_end_single", "fm_end_cmax"] if dense else ["fm_end_single"]
     problem = _problem(mappings, tmp_path)
-    assert problem.times_before_changes(0).size == 0
-    assert _predictions(problem)["fm_end_single"][0] == pytest.approx(0.0, abs=1e-8)
+    k = problem.mapping_keys.index("fm_end_single")
+    assert problem.times_before_changes(k).tolist() == [24.0]
+    assert _predictions(problem)["fm_end_single"][0] == pytest.approx(
+        TRUTH["urine"][1], rel=STEPS_RTOL
+    )
+    after = _problem(mappings, tmp_path, DataAtChangeType.AFTER)
+    assert _predictions(after)["fm_end_single"][0] == pytest.approx(0.0, abs=1e-8)
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_replicates_at_the_start_of_a_curve_take_the_state_after(
+    tmp_path: Path, dense: bool
+) -> None:
+    """Two points at the first time of a longer curve both start the collection."""
+    mappings = ["fm_replicates", "fm_first"] + (["fm_cmax"] if dense else [])
+    problem = _problem(mappings, tmp_path)
+    k = problem.mapping_keys.index("fm_replicates")
+    assert problem.times_before_changes(k).size == 0
+    predictions = _predictions(problem)
+    np.testing.assert_allclose(predictions["fm_replicates"][:2], 0.0, atol=1e-8)
+    assert predictions["fm_first"][1] == pytest.approx(
+        TRUTH["urine"][1], rel=STEPS_RTOL
+    )
 
 
 @pytest.mark.parametrize("dense", [False, True])
