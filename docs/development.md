@@ -19,14 +19,16 @@ A pull request can only be merged once the four required checks are green:
 
 | check   | workflow      | content                                                              |
 | ------- | ------------- | -------------------------------------------------------------------- |
-| `tests` | `ci-cd.yml`   | the test matrix, linux with python 3.13 and 3.14, macos and windows with 3.14, and the plain install |
+| `tests` | `ci-cd.yml`   | the test matrix, python 3.14 on linux, macos and windows, and the plain install |
 | `ruff`  | `lint.yml`    | `ruff check` and `ruff format --check`, with the ruff of `uv.lock`    |
 | `ty`    | `lint.yml`    | `ty check`                                                            |
 | `docs`  | `docs.yml`    | the zensical build including the api reference and the agent files    |
 
 `tests` aggregates the test matrix and the job `plain install` into a single job, so the name of the required check stays the same when the matrix changes. `plain install` installs the package without extras, as `pip install sbmlsim` does, and runs `scripts/plain_install.py`, a scan whose result is written as netCDF and read back: the test matrix has the extras of `dev`, which would hide a dependency the package needs and does not declare. It is the one job which does not use the lock, see [Dependencies](#dependencies).
 
-Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync --locked` with the extras of the job, i.e. the versions of `uv.lock`, see [Dependencies](#dependencies). The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
+Every job sets up its environment with the action `.github/actions/setup`: uv with its cache of the packages and the interpreters, the python of the job, the libpython roadrunner needs on linux, and `uv sync --locked` with the extras of the job, i.e. the versions of `uv.lock`, see [Dependencies](#dependencies). The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit. The release builds the distributions without the cache (`cache: "false"`).
+
+Continuous integration is kept small: every workflow cancels its running build when a newer commit of the same pull request arrives, uv caches the packages and the interpreters between runs, dependabot proposes its updates once a month, and the matrix tests only the newest python. Python 3.13 is tested locally, see [Testing](#testing), before a pull request is opened.
 
 Further rules of a pull request:
 
@@ -98,7 +100,7 @@ Three things do not use the lock on purpose. The job `plain install` resolves fr
 
 After changing a dependency in `pyproject.toml` run `uv lock`: the action syncs with `uv sync --locked`, which fails when `pyproject.toml` and the lock disagree, so the change and the `uv lock` which records it go into the same pull request. `uv lock --upgrade` moves every package of the lock to its newest release, `uv lock --upgrade-package <name>` a single one.
 
-Dependabot keeps the lock current: once a week it opens one pull request which bumps the packages of the lock together, with the prefix `build`. Its `versioning-strategy: lockfile-only` only changes `uv.lock`, the lower bounds in `pyproject.toml` are never raised by it and change by hand. The revisions of the ruff and ty hooks in `.pre-commit-config.yaml` are the versions of the lock, which dependabot does not update: when such a pull request moves ruff or ty, raise the revision of the hook to the same version.
+Dependabot keeps the lock current: once a month it opens one pull request which bumps the packages of the lock together, with the prefix `build`. Its `versioning-strategy: lockfile-only` only changes `uv.lock`, the lower bounds in `pyproject.toml` are never raised by it and change by hand. The revisions of the ruff and ty hooks in `.pre-commit-config.yaml` are the versions of the lock, which dependabot does not update: when such a pull request moves ruff or ty, raise the revision of the hook to the same version.
 
 ## Testing
 
@@ -116,7 +118,7 @@ and the complete matrix in parallel with
 tox run-parallel
 ```
 
-This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14`. Continuous integration does not use tox, it runs `pytest` in an environment of the python of the job, see [pull requests](#pull-requests).
+This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14`. It is the complete test and is run before a pull request is opened: continuous integration runs only python 3.14, on linux, macos and windows. It does not use tox, it runs `pytest` in an environment of the python of the job, see [pull requests](#pull-requests).
 
 To run the tests directly against the development environment use
 
