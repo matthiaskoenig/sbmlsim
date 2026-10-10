@@ -20,8 +20,10 @@ from sbmlsim.plot.serialization_matplotlib import (
     MatplotlibFigureSerializer,
 )
 from sbmlsim.result import ScanResult
+from sbmlsim.result.scan import TIME
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import Scan, Simulation
+from sbmlsim.simulation.observables import PK, Observable
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -103,6 +105,7 @@ class SimulationExperiment:
         self._datasets: dict[str, DataSet] = {}
         self._fit_mappings: dict[str, FitMapping] = {}
         self._simulations: dict[str, Simulation | Scan] = {}
+        self._observables: dict[str, Observable] = {}
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
         self._results: dict[str, ScanResult] = {}
@@ -120,6 +123,7 @@ class SimulationExperiment:
             # self._models: dict[str, AbstractModel] = self.models()
             self._datasets.update(self.datasets())
             self._simulations.update(self.simulations())
+            self._observables.update(self.observables())
             self._tasks.update(self.tasks())
             self._data.update(self.data())
             self._figures.update(self.figures())
@@ -128,6 +132,7 @@ class SimulationExperiment:
             # validation of information
             self._check_keys()
             self._check_types()
+            self._check_task_data()
         except Exception as err:
             logger.error("Problem initializing '%s'", self.__class__.__name__)
             raise err
@@ -140,6 +145,7 @@ class SimulationExperiment:
             f"{'datasets':20} {list(self._datasets.keys())}",
             f"{'fit_mappings':20} {list(self._fit_mappings.keys())}",
             f"{'simulations':20} {list(self._simulations.keys())}",
+            f"{'observables':20} {list(self._observables.keys())}",
             f"{'tasks':20} {list(self._tasks.keys())}",
             f"{'results':20} {list(self._results.keys())}",
             f"{'figures':20} {list(self._figures.keys())}",
@@ -167,6 +173,17 @@ class SimulationExperiment:
         """
         return {}
 
+    def observables(self) -> dict[str, Observable]:
+        """Define the observables of the experiment, by their id.
+
+        A `Formula`, `PK` or `Custom` of `sbmlsim.simulation.observables`. A
+        `Data` of a task reads an observable by its id and a parameter of a
+        `PK` observable as `<id>.<parameter>`; a task computes the observables
+        its data read, see `_run_tasks`. The child classes fill out the
+        information.
+        """
+        return {}
+
     def tasks(self) -> dict[str, Task]:
         """Define task definitions.
 
@@ -179,17 +196,18 @@ class SimulationExperiment:
 
         This determines the selection in the model.
 
-        All data which is accessed in a simulation result must be defined here.
-        The data is important for defining the selections of a simulation
-        experiment.
+        The data of tasks, fit mappings and figures determines the selections
+        of a simulation experiment; registering the data of a figure here is no
+        longer needed. Registered data of a task which no figure or mapping
+        reads still counts, e.g. via `add_selections_data`.
         """
         return {}
 
     def figures(self) -> dict[str, Figure]:
         """Figure definition.
 
-        Selections accessed in figures and analyses must be registered beforehand
-        via the data of the experiment.
+        The data the curves and areas of the figures read counts for the
+        selections of the tasks, it needs no registration in `data()`.
 
         Most figures do not require access to concrete data, but only abstract
         data concepts.
@@ -273,6 +291,7 @@ class SimulationExperiment:
             "_models",
             "_datasets",
             "_simulations",
+            "_observables",
             "_tasks",
             "_data",
             "_figures",
@@ -342,6 +361,18 @@ class SimulationExperiment:
                 raise ValueError(
                     f"simulations must be of type Simulation or Scan, but "
                     f"simulation '{key}' has type: '{type(sim)}'"
+                )
+
+        for key, observable in self._observables.items():
+            if not isinstance(observable, Observable):
+                raise ValueError(
+                    f"observables must be of type Formula, PK or Custom, but "
+                    f"observable '{key}' has type: '{type(observable)}'"
+                )
+            if observable.id != key:
+                raise ValueError(
+                    f"The observable of the key '{key}' has the id "
+                    f"'{observable.id}': the key of an observable is its id."
                 )
 
         for key, task in self._tasks.items():
@@ -449,7 +480,11 @@ class SimulationExperiment:
         The selections of a model are the variables its data refers to, every
         variable of the model without `reduced_selections`. The changes of a
         model are defaults of the pre-initialization changes of every
-        simulation of it, see `Simulator.compile`.
+        simulation of it, see `Simulator.compile`. A task whose data read
+        observables runs with the observables they need and keeps them and the
+        selections its data read, every selection of the model without
+        `reduced_selections`; a task without runs with the selections of the
+        model.
 
         Raises:
             ValueError: without a simulator.
@@ -473,31 +508,170 @@ class SimulationExperiment:
             )
             for task_key in task_keys:
                 task = self._tasks[task_key]
+                scan = self._simulations[task.simulation_id]
+                observed, selections = self._task_outputs(task_key)
+                if not observed:
+                    self._results[task_key] = simulator.run(model, scan)
+                    continue
+                if not reduced_selections:
+                    coordinates = _coordinates(scan)
+                    selections = [
+                        s
+                        for s in model.selections or []
+                        if s != TIME and s not in coordinates
+                    ]
                 self._results[task_key] = simulator.run(
-                    model, self._simulations[task.simulation_id]
+                    model,
+                    scan,
+                    self._needed_observables(observed),
+                    keep=[*observed, *selections],
                 )
+
+    def _figure_data(self) -> Iterator[Data]:
+        """Iterate the data the curves and areas of the figures read."""
+        for figure in self._figures.values():
+            for plot in figure.get_plots():
+                for curve in plot.curves:
+                    for d in (curve.x, curve.y, curve.xerr, curve.yerr):
+                        if d is not None:
+                            yield d
+                for area in plot.areas:
+                    yield from (area.x, area.yfrom, area.yto)
 
     def _task_data(self) -> Iterator[Data]:
         """Iterate the data of the experiment which comes from a task.
 
-        The data of `data()` and the data every fit mapping reads, i.e.
-        everything a run has to simulate. A `FitData` builds its `Data` when
-        it is resolved and does not register it, so a fit mapping is asked for
-        its data here rather than looked up in `self._data`.
+        The data of `data()`, of every fit mapping and of every figure, and
+        the variables of a function among them, i.e. everything a run has to
+        simulate. A `FitData` builds its `Data` when it is created and does
+        not register it, so a fit mapping is asked for its data here rather
+        than looked up in `self._data`.
 
         Yields:
             Every `Data` of the experiment which reads a task.
         """
-        for d in self._data.values():
+
+        def walk(d: Data) -> Iterator[Data]:
             if d.is_task():
                 yield d
+            elif d.is_function():
+                for variable in d.variables.values():
+                    found = (
+                        self._data.get(variable)
+                        if isinstance(variable, str)
+                        else variable
+                    )
+                    if isinstance(found, Data):
+                        yield from walk(found)
 
+        sources: list[Data] = list(self._data.values())
         for mapping in self._fit_mappings.values():
             for fit_data in (mapping.reference, mapping.observable):
                 for key in FitDataInitialized.KEYS:
+                    # the `y` of an observable model is the name of a formula
+                    # of selections, not an index of the simulation
+                    if (
+                        key == "y"
+                        and fit_data is mapping.observable
+                        and mapping.observable_model is not None
+                    ):
+                        continue
                     d = getattr(fit_data, key, None)
-                    if isinstance(d, Data) and d.is_task():
-                        yield d
+                    if isinstance(d, Data):
+                        sources.append(d)
+        sources.extend(self._figure_data())
+        for d in sources:
+            yield from walk(d)
+
+    def _index_kind(self, d: Data) -> str:
+        """Classify the index of task data.
+
+        Returns:
+            `"time"`, `"observable"` (an observable or a parameter of a `PK`
+            observable), `"coordinate"` (a dimension of the scan of the task, a
+            target it changes or a coordinate of a dimension) or `"selection"`.
+
+        Raises:
+            ValueError: if the data reads a task which does not exist, or an
+                index which is none of these.
+        """
+        task = self._tasks.get(str(d.task_id))
+        if task is None:
+            raise ValueError(
+                f"{d} reads the task '{d.task_id}', which is no task of the "
+                f"experiment '{self.sid}': {sorted(self._tasks)}."
+            )
+        index = d.selection
+        if index == TIME:
+            return "time"
+        if index in self._observables:
+            return "observable"
+        head, _, parameter = index.partition(".")
+        if parameter and isinstance(self._observables.get(head), PK):
+            return "observable"
+        if index in _coordinates(self._simulations[task.simulation_id]):
+            return "coordinate"
+        model = self._models.get(task.model_id)
+        if (
+            isinstance(model, RoadrunnerSBMLModel)
+            and model.r is not None
+            and not model.has_selection(index)
+        ):
+            raise ValueError(
+                f"{d} of the experiment '{self.sid}' reads '{index}', which is "
+                f"neither an observable of the experiment "
+                f"{sorted(self._observables)}, a coordinate of the scan of the "
+                f"task '{d.task_id}' nor a selection of the model "
+                f"'{task.model_id}'."
+            )
+        return "selection"
+
+    def _check_task_data(self) -> None:
+        """Check the index of every task data before anything is simulated.
+
+        Raises:
+            ValueError: see `_index_kind`.
+        """
+        for d in self._task_data():
+            self._index_kind(d)
+
+    def _task_outputs(self, task_key: str) -> tuple[list[str], list[str]]:
+        """Get the observable outputs and the selections the data of a task read.
+
+        Returns:
+            The observable ids and `<id>.<parameter>` of PK observables, and the
+            selections, each in the order of the data.
+        """
+        observed: dict[str, None] = {}
+        selections: dict[str, None] = {}
+        for d in self._task_data():
+            if d.task_id != task_key:
+                continue
+            kind = self._index_kind(d)
+            if kind == "observable":
+                observed[d.selection] = None
+            elif kind == "selection":
+                selections[d.selection] = None
+        return list(observed), list(selections)
+
+    def _needed_observables(self, outputs: Iterable[str]) -> list[Observable]:
+        """Get the observables the outputs need, in the order of `observables()`.
+
+        An output is an observable id or `<id>.<parameter>` of a PK observable;
+        an observable needs the observables its formula or function reads.
+        """
+        needed: set[str] = set()
+        stack = [o if o in self._observables else o.partition(".")[0] for o in outputs]
+        while stack:
+            name = stack.pop()
+            if name in needed or name not in self._observables:
+                continue
+            needed.add(name)
+            for symbol in self._observables[name].reads:
+                stack.append(
+                    symbol if symbol in self._observables else symbol.partition(".")[0]
+                )
+        return [o for name, o in self._observables.items() if name in needed]
 
     def _selections_of_model(self, model_id: str) -> set[str]:
         """Get the selections a model has to be simulated with.
@@ -506,17 +680,13 @@ class SimulationExperiment:
             model_id: the model the tasks are run on.
 
         Returns:
-            `time` and the selection of every data of the experiment which
-            reads a task of the model.
+            `time` and the selections the data of the tasks of the model read;
+            observables and coordinates are no selections.
         """
-        selections = {"time"}
-        for d in self._task_data():
-            if d.task_id is None:
-                continue
-            task = self._tasks.get(d.task_id)
-            # the data of another model is selected when that model runs
-            if task is not None and task.model_id == model_id:
-                selections.add(d.selection)
+        selections = {TIME}
+        for task_key, task in self._tasks.items():
+            if task.model_id == model_id:
+                selections.update(self._task_outputs(task_key)[1])
         return selections
 
     def evaluate_fit_mappings(self):
@@ -552,7 +722,16 @@ class SimulationExperiment:
             "base_path": str(self.base_path) if self.base_path else None,
             "data_path": [str(p) for p in self.data_path] if self.data_path else None,
             "models": {k: v.to_dict() for k, v in self._models.items()},
-            "tasks": {k: v.to_dict() for k, v in self._tasks.items()},
+            "tasks": {
+                k: {
+                    **v.to_dict(),
+                    "observables": [
+                        o.id for o in self._needed_observables(self._task_outputs(k)[0])
+                    ],
+                }
+                for k, v in self._tasks.items()
+            },
+            "observables": self._observables,
             "simulations": {k: v.to_dict() for k, v in self._simulations.items()},
             "data": self._data,
             "figures": self._figures,
@@ -699,3 +878,19 @@ class ExperimentResult:
         return {
             "output_path": self.output_path,
         }
+
+
+def _coordinates(simulation: Simulation | Scan) -> set[str]:
+    """Get the names the result of a scan has as coordinates of its dimensions.
+
+    The dimension ids, the targets the dimensions change and the coordinates
+    of the dimensions; a simulation has none.
+    """
+    if not isinstance(simulation, Scan):
+        return set()
+    names: set[str] = set()
+    for dimension in simulation.dimensions:
+        names.add(dimension.id)
+        names.update(dimension.values)
+        names.update(dimension.coordinates)
+    return names
