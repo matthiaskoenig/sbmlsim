@@ -137,6 +137,14 @@ def _evaluate_part(
             f"dimension: {err}"
         ) from err
     broadcast = dict(zip(arrays, xr.broadcast(*aligned), strict=True)) if arrays else {}
+    if broadcast:
+        # one order for all: the reduced dimensions (time, points, rows) last,
+        # the others as the broadcast has them, so the time stays last
+        first = next(iter(broadcast.values()))
+        order = [d for d in first.dims if d not in REDUCED_DIMS] + [
+            d for d in REDUCED_DIMS if d in first.dims
+        ]
+        broadcast = {k: v.transpose(*order) for k, v in broadcast.items()}
     arguments = [
         _argument(broadcast[symbol], ureg) if symbol in broadcast else scope[symbol]
         for symbol in compiled.symbols

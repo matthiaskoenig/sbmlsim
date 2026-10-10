@@ -170,3 +170,17 @@ def test_to_quantity(experiment: SimulationExperiment) -> None:
 def test_the_selection_is_serialized() -> None:
     assert Data("[Y]", task="grid", sel={"d": "lo"}).to_dict()["sel"] == {"d": "lo"}
     assert Data("[Y]", task="grid").to_dict()["sel"] is None
+
+
+def test_a_function_of_a_scan_and_a_reference_has_the_time_last(
+    experiment: SimulationExperiment,
+) -> None:
+    ratio = Data(
+        "ratio",
+        function="b_scan / a_ref",
+        variables={
+            "a_ref": Data("[Y]", task="grid", sel={"d": "lo"}),
+            "b_scan": Data("[Y]", task="grid"),
+        },
+    ).get_data(experiment)
+    assert ratio.dims == ("d", "time")

@@ -120,3 +120,18 @@ def test_different_coordinates_of_a_dimension_raise() -> None:
 def test_mean_and_at_are_no_reductions_of_data(formula: str) -> None:
     with pytest.raises(ValueError, match="observable"):
         evaluate_function(formula, {"Y": _tc([1.0, 2.0])}, ureg)
+
+
+def test_the_time_stays_last_whatever_the_names_sort_like() -> None:
+    a_ref = xr.DataArray([1.0, 2.0, 4.0], dims=("time",), attrs={"units": None})
+    b_scan = xr.DataArray(np.ones((2, 3)), dims=("d", "time"), attrs={"units": None})
+    result = evaluate_function(
+        "b_scan / a_ref", {"a_ref": a_ref, "b_scan": b_scan}, ureg
+    )
+    assert result.dims == ("d", "time")
+    np.testing.assert_allclose(result.values[1], [1.0, 0.5, 0.25])
+    flipped = b_scan.transpose("time", "d")
+    result = evaluate_function(
+        "b_scan / a_ref", {"a_ref": a_ref, "b_scan": flipped}, ureg
+    )
+    assert result.dims == ("d", "time")
