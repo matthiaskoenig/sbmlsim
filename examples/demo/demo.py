@@ -23,6 +23,11 @@ from sbmlsim.task import Task
 SELECTIONS = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
 
 
+#: the point of the scan a curve draws: the middle initial value of A and the
+#: reference of the local design
+POINT_SEL = {"dim_init": 5, "dim_sens": "reference"}
+
+
 class DemoExperiment(SimulationExperiment):
     """Scans of the demo model over its initial values and parameters."""
 
@@ -86,10 +91,10 @@ class DemoExperiment(SimulationExperiment):
         )
         for plot in plots:
             for key in SELECTIONS:
-                # a curve of a scan draws the first point of the scan
+                # a curve draws one point of the scan, selected by its labels
                 plot.curve(
-                    x=Data("time", task=task_id),
-                    y=Data(key, task=task_id),
+                    x=Data("time", task=task_id, sel=POINT_SEL),
+                    y=Data(key, task=task_id, sel=POINT_SEL),
                     label=key,
                 )
         plots[1].set_yaxis("data", unit=unit_data, scale="log")

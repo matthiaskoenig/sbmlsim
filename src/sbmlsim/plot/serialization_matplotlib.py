@@ -11,7 +11,7 @@ from matplotlib.axes import Axes as AxesMPL
 from matplotlib.figure import Figure as FigureMPL
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
-from sbmlsim.plot.padding import first_curve, without_padding
+from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
     AbstractCurve,
     AxisScale,
@@ -158,13 +158,8 @@ class MatplotlibFigureSerializer:
 
                     label = curve.name if curve.name else "_nolegend_"
 
-                    # a scan has the time last, its first point is drawn
-                    # without the padding of a ragged result
-                    x_data, y_data, xerr_data, yerr_data = without_padding(
-                        first_curve(None if x is None else x.values),
-                        first_curve(None if y is None else y.values),
-                        first_curve(None if xerr is None else xerr.values),
-                        first_curve(None if yerr is None else yerr.values),
+                    x_data, y_data, xerr_data, yerr_data = line_values(
+                        curve.sid or curve.name or "", x, y, xerr, yerr
                     )
 
                     kwargs: dict[str, Any] = {}
@@ -256,11 +251,8 @@ class MatplotlibFigureSerializer:
                     yfrom = area.yfrom.get_data(experiment=experiment, to_units=yunit)
                     yto = area.yto.get_data(experiment=experiment, to_units=yunit)
 
-                    # the first point of a scan, without the padding
-                    x_data, yfrom_data, yto_data = without_padding(
-                        first_curve(None if x is None else x.values),
-                        first_curve(None if yfrom is None else yfrom.values),
-                        first_curve(None if yto is None else yto.values),
+                    x_data, yfrom_data, yto_data = line_values(
+                        area.sid or area.name or "", x, yfrom, yto
                     )
 
                     label = area.name if area.name else "_nolegend_"

@@ -3,7 +3,7 @@
 import logging
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 import pandas as pd
@@ -16,7 +16,7 @@ from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
-from sbmlsim.plot.padding import first_curve, without_padding
+from sbmlsim.plot.padding import without_padding
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
 from sbmlsim.simulation import Dimension, Scan, Simulation
@@ -224,6 +224,44 @@ class ScanExperiment(SimulationExperiment):
         return {"Y": Data(index="[Y]", task="task")}
 
 
+class ScanFigureExperiment(ScanExperiment):
+    """The scan with a figure of Y, of one point or of all points."""
+
+    SEL: ClassVar[dict | None] = None
+
+    def figures(self) -> dict:
+        figure = Figure(experiment=self, sid="fig", num_rows=1, num_cols=1)
+        plot = figure.create_plots(xaxis=Axis("time"), yaxis=Axis("Y"))[0]
+        sel = type(self).SEL
+        plot.curve(
+            x=Data("time", task="task", sel=sel),
+            y=Data("[Y]", task="task", sel=sel),
+            label="Y",
+        )
+        return {"fig": figure}
+
+
+class OnePointFigureExperiment(ScanFigureExperiment):
+    SEL: ClassVar[dict | None] = {"d": 1}
+
+
+def test_a_curve_of_a_scan_without_a_selection_raises() -> None:
+    runner = _runner(ScanFigureExperiment)
+    experiment = runner.experiments["ScanFigureExperiment"]
+    experiment.run(runner.simulator)
+    with pytest.raises(ValueError, match=r"'d'.*Data\(sel=\.\.\.\)"):
+        experiment.create_mpl_figures()
+
+
+def test_a_curve_of_one_point_of_a_scan_is_drawn(tmp_path: Path) -> None:
+    runner = _runner(OnePointFigureExperiment)
+    experiment = runner.experiments["OnePointFigureExperiment"]
+    experiment.run(
+        runner.simulator, output_path=tmp_path, figure_formats=["png", "html"]
+    )
+    assert (tmp_path / f"{experiment.sid}_fig.png").exists()
+
+
 def test_the_data_of_a_scan_has_the_time_last() -> None:
     """A Data of a task is the variable of the result, the time last.
 
@@ -310,7 +348,7 @@ def test_the_data_of_a_ragged_scan_has_its_points_last() -> None:
     assert padded.any()
     np.testing.assert_array_equal(np.isnan(y.values), padded)
 
-    x, curve = without_padding(first_curve(time.values), first_curve(y.values))
+    x, curve = without_padding(time.values[0], y.values[0])
     native = Simulator().simulate(
         experiment._models["m"], Simulation(end=10, preinit_changes={"X": 1.0})
     )

@@ -29,8 +29,9 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+import xarray as xr
 
-from sbmlsim.plot.padding import first_curve, without_padding
+from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
     Axis,
     AxisScale,
@@ -75,8 +76,8 @@ SYMBOL_BY_MARKER: dict[MarkerType, str] = {
 }
 
 
-def _values(data: Any, experiment: Any, unit: str | None) -> np.ndarray | None:
-    """Resolve a `Data` of a curve to the numbers which are plotted.
+def _values(data: Any, experiment: Any, unit: str | None) -> xr.DataArray | None:
+    """Resolve a `Data` of a curve to its labelled array.
 
     Args:
         data: the `Data` of the curve, or `None`.
@@ -84,16 +85,11 @@ def _values(data: Any, experiment: Any, unit: str | None) -> np.ndarray | None:
         unit: the unit the values are converted to.
 
     Returns:
-        The values of the first point of a scan, or `None`.
+        The values of the data, or `None`.
     """
     if data is None:
         return None
-    array = data.get_data(experiment=experiment, to_units=unit)
-    if array is None:
-        return None
-    # a scan has the time last, its first point is plotted, as in the
-    # matplotlib serializer
-    return first_curve(np.asarray(array.values))
+    return data.get_data(experiment=experiment, to_units=unit)
 
 
 def _axis_options(axis: Axis | None) -> dict[str, Any]:
@@ -242,7 +238,8 @@ class PlotlyFigureSerializer:
 
         if isinstance(abstract_curve, ShadedArea):
             area: ShadedArea = abstract_curve
-            x, yfrom, yto = without_padding(
+            x, yfrom, yto = line_values(
+                area.sid or area.name or "",
                 _values(area.x, experiment, xunit),
                 _values(area.yfrom, experiment, yunit),
                 _values(area.yto, experiment, yunit),
@@ -272,7 +269,8 @@ class PlotlyFigureSerializer:
             )
             return None
 
-        x, y, yerr, xerr = without_padding(
+        x, y, yerr, xerr = line_values(
+            curve.sid or curve.name or "",
             _values(curve.x, experiment, xunit),
             _values(curve.y, experiment, yunit),
             _values(curve.yerr, experiment, yunit),
