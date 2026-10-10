@@ -111,9 +111,6 @@ class SimulationExperiment:
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
         self._results: dict[str, ScanResult] = {}
-        # the keys of the matplotlib figures of the last run; the figures are
-        # released once they are written (the report needs only the keys)
-        self._mpl_figure_keys: list[str] = []
         # the results were released after the run wrote its outputs
         self._results_released: bool = False
 
@@ -488,7 +485,7 @@ class SimulationExperiment:
         mpl_figures: dict[str, FigureMPL] = {}
         error: str | None = None
         completed = False
-        self._mpl_figure_keys = []
+        saved_datasets: list[str] = []
         try:
             if output_path is not None and not output_path.exists():
                 output_path.mkdir(parents=True)
@@ -508,6 +505,7 @@ class SimulationExperiment:
             else:
                 # save outputs
                 self.save_datasets(output_path)
+                saved_datasets = list(self._datasets)
 
                 # Saving takes often much longer then simulation
                 if save_results:
@@ -536,11 +534,10 @@ class SimulationExperiment:
                             path = self._figure_path(output_path, key, fig_format)
                             if path in saved_paths:
                                 written.setdefault(key, []).append(fig_format)
+                # nothing refers to a figure afterwards: it keeps the pixel buffer
+                # of its last rendering, so the figures of every experiment of a
+                # run would stay in memory until its end
                 self.close_mpl_figures(mpl_figures=mpl_figures)
-                # only the keys are kept: a figure keeps the pixel buffer of its last
-                # rendering, so the figures of every experiment of a run would stay
-                # in memory until its end
-                self._mpl_figure_keys = list(mpl_figures)
 
             if output_path and interactive:
                 pages = self.save_interactive_figures(
@@ -584,6 +581,7 @@ class SimulationExperiment:
             output_path=output_path,
             error=error,
             failed_figures=failed_figures,
+            datasets=saved_datasets,
             figures={
                 key: written[key]
                 for key in dict.fromkeys([*self._figures, *mpl_figures, *written])
@@ -1321,6 +1319,8 @@ class ExperimentResult:
     #: the figures this run wrote, `{key: [formats]}`, which the report shows;
     #: a figure which failed in one pass keeps the formats of the other one
     figures: dict[str, list[str]] = field(default_factory=dict)
+    #: the datasets this run wrote
+    datasets: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -1337,6 +1337,7 @@ class ExperimentResult:
             "error": self.error,
             "failed_figures": self.failed_figures,
             "figures": self.figures,
+            "datasets": self.datasets,
         }
 
 

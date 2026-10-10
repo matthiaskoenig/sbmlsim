@@ -9,6 +9,7 @@ This includes
 """
 
 import dataclasses
+import inspect
 import logging
 from collections.abc import Iterable
 from pathlib import Path
@@ -254,21 +255,23 @@ class ExperimentRunner:
             console.rule(style="white")
             if sid in self.failed:
                 # the definition raised, the experiment is reported, not run
-                exp_results.append(self._failed_result(sid, output_path / sid, formats))
+                exp_results.append(
+                    self._failed_result(self.failed[sid], output_path / sid, formats)
+                )
                 continue
             logger.info("Running SimulationExperiment: '%s'", sid)
             # ExperimentResult used to create report; an error of the experiment
             # or of a figure is logged and recorded in it
             exp_results.append(
-                self.experiments[sid].run(
-                    simulator=self.simulator,
-                    output_path=output_path / sid,
+                self._run_experiment(
+                    sid,
+                    output_path / sid,
+                    formats,
                     show_figures=show_figures,
                     save_results=save_results,
                     figure_formats=figure_formats,
                     reduced_selections=reduced_selections,
                     keep_results=keep_results,
-                    on_error="log",
                 )
             )
         self._log_summary(exp_results)
@@ -276,21 +279,78 @@ class ExperimentRunner:
             raise ExperimentRunError(exp_results)
         return exp_results
 
-    def _failed_result(
-        self, sid: str, output_path: Path, formats: list[str]
+    def _run_experiment(
+        self,
+        sid: str,
+        output_path: Path,
+        formats: list[str],
+        *,
+        figure_formats: list[str] | None,
+        **options: Any,
     ) -> ExperimentResult:
-        """Get the result of an experiment whose definition raised.
+        """Run an experiment, an error which escapes its `run` is recorded.
+
+        The base `run` records its errors itself. This is the backstop for a
+        subclass which overrides `run` (e.g. to post-process its results) and
+        raises, or which has the signature before `keep_results` and `on_error`:
+        it must not stop the experiments after it. The new keyword arguments are
+        passed only to a `run` which accepts them.
+
+        Args:
+            sid: the experiment.
+            output_path: the directory of the experiment.
+            formats: the figure formats of the run.
+            figure_formats: the figure formats as given by the caller.
+            **options: the other arguments of `SimulationExperiment.run`.
+        """
+        experiment = self.experiments[sid]
+        kwargs: dict[str, Any] = {
+            "simulator": self.simulator,
+            "output_path": output_path,
+            "figure_formats": figure_formats,
+            **options,
+            "on_error": "log",
+        }
+        parameters = inspect.signature(experiment.run).parameters
+        if not any(
+            p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
+        ):
+            kwargs = {k: v for k, v in kwargs.items() if k in parameters}
+        try:
+            result = experiment.run(**kwargs)
+        except Exception as err:
+            if self.on_error == "raise":
+                raise
+            logger.exception("The experiment '%s' failed", sid)
+            return self._failed_result(
+                ExperimentResult(
+                    experiment=experiment,
+                    output_path=output_path,
+                    error=f"{type(err).__name__}: {err}",
+                ),
+                output_path,
+                formats,
+            )
+        # the keys of a failing `figures_mpl()` are not known
+        self._remove_unknown_figure_files(result, formats)
+        return result
+
+    def _failed_result(
+        self, failed: ExperimentResult, output_path: Path, formats: list[str]
+    ) -> ExperimentResult:
+        """Get the result of an experiment which failed outside of its `run`.
 
         Its directory is created for its report, and the files of its figures
         which an earlier run left there are removed, so that no figure looks
         like one of this run.
 
         Args:
-            sid: the experiment.
+            failed: the result of the failure, without an output path.
             output_path: the directory of the experiment.
             formats: the figure formats of the run.
         """
-        result = dataclasses.replace(self.failed[sid], output_path=output_path)
+        result = dataclasses.replace(failed, output_path=output_path)
+        sid = result.experiment.sid
         try:
             output_path.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -298,7 +358,47 @@ class ExperimentRunner:
             return result
         experiment = result.experiment
         experiment._remove_figure_files(output_path, experiment._figures, formats)
+        self._remove_unknown_figure_files(result, formats)
         return result
+
+    @staticmethod
+    def _remove_unknown_figure_files(
+        result: ExperimentResult, formats: list[str]
+    ) -> None:
+        """Remove the figure files of earlier runs from the directory of a failure.
+
+        When the definition of an experiment failed before its figures were
+        known, or its `figures_mpl()` failed, the files of its figures cannot
+        be named. The runner gives every experiment a directory of its own, so
+        every `<sid>_*.<format>` of the formats of the run in it is from the
+        experiment, except for the files this run wrote. Never done in a
+        directory which an experiment shares with others.
+
+        Args:
+            result: the result of the failed experiment.
+            formats: the figure formats of the run.
+        """
+        if not result.failed or result.output_path is None:
+            return
+        sid = result.experiment.sid
+        kept = {
+            f"{sid}_{key}.{fig_format}"
+            for key, written in result.figures.items()
+            for fig_format in written
+        }
+        for fig_format in formats:
+            for path in result.output_path.glob(f"{sid}_*.{fig_format}"):
+                if path.name in kept or not path.is_file():
+                    continue
+                logger.info(
+                    "The file '%s' of '%s' is from an earlier run, it is removed",
+                    path.name,
+                    sid,
+                )
+                try:
+                    path.unlink()
+                except OSError:
+                    logger.exception("Cannot remove the file '%s'", path)
 
     @staticmethod
     def _log_summary(results: list[ExperimentResult]) -> None:

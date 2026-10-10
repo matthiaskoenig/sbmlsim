@@ -160,6 +160,7 @@ def _runner_of(*classes: type[SimulationExperiment]) -> ExperimentRunner:
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
 
 
@@ -211,9 +212,9 @@ def test_the_figures_are_not_created_when_nothing_uses_them() -> None:
     """A run which neither shows nor saves the figures does not draw them."""
     runner = _runner(FitMappingExperiment)
     experiment = runner.experiments["FitMappingExperiment"]
-    experiment.run(runner.simulator, show_figures=False)
+    result = experiment.run(runner.simulator, show_figures=False)
 
-    assert experiment._mpl_figure_keys == []
+    assert result.figures == {}
     # the simulation still ran
     assert np.asarray(experiment.results["task"].ds["[X]"]).size > 0
 
@@ -324,6 +325,7 @@ def test_the_data_of_a_task_is_in_the_registry_of_the_experiment() -> None:
         base_path=Path("."),
         data_path=Path("."),
         ureg=ureg,
+        on_error="raise",
     )
     experiment = runner.experiments["RegistryExperiment"]
     experiment.run(runner.simulator)
@@ -461,14 +463,16 @@ def test_the_interactive_format_is_drawn_by_plotly(tmp_path: Path) -> None:
     pytest.importorskip("plotly")
     runner = _runner(FigureExperiment)
     experiment = runner.experiments["FigureExperiment"]
-    experiment.run(runner.simulator, output_path=tmp_path, figure_formats=["html"])
+    result = experiment.run(
+        runner.simulator, output_path=tmp_path, figure_formats=["html"]
+    )
 
     page = tmp_path / "FigureExperiment_fig.html"
     assert page.exists()
     assert (tmp_path / "plotly.min.js").exists()
     assert not (tmp_path / "FigureExperiment_fig.svg").exists()
     # matplotlib was not used, so nothing was rendered and closed
-    assert experiment._mpl_figure_keys == []
+    assert result.figures == {"fig": ["html"]}
 
     html = page.read_text(encoding="utf-8")
     assert "plotly-graph-div" in html
@@ -483,7 +487,7 @@ def test_the_interactive_format_is_drawn_by_plotly(tmp_path: Path) -> None:
 def test_the_figures_are_released_once_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Only the keys of the matplotlib figures are kept after a run.
+    """The matplotlib figures are released once a run wrote them.
 
     A figure keeps the pixel buffer of its last rendering: kept figures of every
     experiment of a run would stay in memory until its end.
@@ -503,7 +507,7 @@ def test_the_figures_are_released_once_written(
 
     assert figures
     assert all(figure() is None for figure in figures)
-    assert result.experiment._mpl_figure_keys == ["fig"]
+    assert result.figures == {"fig": ["svg"]}
     assert (tmp_path / "FigureExperiment" / "FigureExperiment_fig.svg").exists()
     # the report lists the figure from its key
     report = ReportResults()

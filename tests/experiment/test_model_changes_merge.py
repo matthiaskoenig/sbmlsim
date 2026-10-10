@@ -50,7 +50,9 @@ def test_model_changes_merge_into_preinit(tmp_path: Path) -> None:
     path = tmp_path / "probe.xml"
     path.write_text(sbml())
     exp_class = _experiment(path)
-    runner = ExperimentRunner([exp_class], base_path=tmp_path, data_path=tmp_path)
+    runner = ExperimentRunner(
+        [exp_class], base_path=tmp_path, data_path=tmp_path, on_error="raise"
+    )
     exp = runner.experiments["Exp"]
     exp.run(Simulator(), reduced_selections=False)
 

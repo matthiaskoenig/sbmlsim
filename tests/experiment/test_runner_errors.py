@@ -3,14 +3,16 @@
 import logging
 import pickle
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import matplotlib.pyplot as plt
+import pandas as pd
 import pytest
 from matplotlib.figure import Figure as FigureMPL
 
-from sbmlsim.data import Data
+from sbmlsim.data import Data, DataSet
 from sbmlsim.experiment import (
+    ExperimentResult,
     ExperimentRunError,
     ExperimentRunner,
     SimulationExperiment,
@@ -443,3 +445,164 @@ def test_the_error_of_a_run_can_be_pickled(tmp_path: Path) -> None:
     assert "experiment broken" in str(copy)
     assert copy.failures == error.failures
     assert copy.results == []
+
+
+class RaisesAfterRun(_Base):
+    """An experiment whose override of `run` post-processes and raises."""
+
+    @override
+    def run(self, *args: Any, **kwargs: Any) -> ExperimentResult:
+        super().run(*args, **kwargs)
+        raise RuntimeError("post-processing broken")
+
+
+class OldSignature(_Base):
+    """An experiment whose override of `run` predates `keep_results`."""
+
+    @override
+    def run(
+        self,
+        simulator: Simulator | None = None,
+        output_path: Path | None = None,
+        show_figures: bool = False,
+        save_results: bool = False,
+        figure_formats: list[str] | None = None,
+        reduced_selections: bool = True,
+    ) -> ExperimentResult:
+        return super().run(
+            simulator=simulator,
+            output_path=output_path,
+            show_figures=show_figures,
+            save_results=save_results,
+            figure_formats=figure_formats,
+            reduced_selections=reduced_selections,
+        )
+
+
+class RaisesBeforeRun(_Base):
+    """An override of `run` with the old signature which fails itself."""
+
+    @override
+    def run(
+        self, simulator: Simulator | None = None, output_path: Path | None = None
+    ) -> ExperimentResult:
+        raise RuntimeError("override broken")
+
+
+def test_an_override_of_run_which_raises_does_not_stop_the_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The backstop of the runner records the error and goes on (#270)."""
+    stale = _stale(tmp_path / "RaisesAfterRun" / "RaisesAfterRun_fig_ok.svg")
+    with caplog.at_level(logging.INFO):
+        results = _runner(RaisesAfterRun, GoodExperiment).run_experiments(
+            output_path=tmp_path
+        )
+    assert "post-processing broken" in (results[0].error or "")
+    assert results[0].failed
+    assert results[0].figures == {}
+    assert results[1].error is None
+    assert (tmp_path / "GoodExperiment" / "GoodExperiment_fig_ok.svg").exists()
+    assert not stale.exists()
+    # logged once, with the traceback
+    logged = [r for r in caplog.records if "post-processing broken" in r.getMessage()]
+    assert len([r for r in caplog.records if r.exc_info]) == 1
+    assert logged or "post-processing broken" in caplog.text
+    ExperimentReport(results).create_report(output_path=tmp_path)
+    assert "post-processing broken" in (tmp_path / "index.html").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_an_override_of_run_with_the_old_signature_is_run(tmp_path: Path) -> None:
+    """The new keyword arguments are passed only to a `run` which takes them."""
+    results = _runner(OldSignature, RaisesBeforeRun, GoodExperiment).run_experiments(
+        output_path=tmp_path
+    )
+    assert results[0].error is None
+    assert (tmp_path / "OldSignature" / "OldSignature_fig_ok.svg").exists()
+    assert "override broken" in (results[1].error or "")
+    assert results[2].error is None
+    assert (tmp_path / "GoodExperiment" / "GoodExperiment_fig_ok.svg").exists()
+
+
+def test_a_raising_override_of_run_can_raise_in_a_runner_which_raises(
+    tmp_path: Path,
+) -> None:
+    """The backstop is for the runner which logs, `on_error="raise"` raises."""
+    runner = ExperimentRunner(
+        experiment_classes=[RaisesAfterRun],
+        simulator=Simulator(),
+        base_path=Path("."),
+        data_path=Path("."),
+        on_error="raise",
+    )
+    with pytest.raises(RuntimeError, match="post-processing broken"):
+        runner.run_experiments(output_path=tmp_path)
+
+
+class BrokenFiguresMpl(_Base):
+    """An experiment whose custom figures raise."""
+
+    def figures_mpl(self) -> dict[str, FigureMPL]:
+        raise RuntimeError("custom figures broken")
+
+
+@pytest.mark.parametrize("broken", [BrokenFigures, BrokenFiguresMpl, BadKey])
+def test_the_runner_removes_the_stale_figures_of_unknown_keys(
+    broken: type[SimulationExperiment], tmp_path: Path
+) -> None:
+    """The figure keys are unknown, so the directory of the experiment is cleaned."""
+    name = broken.__name__
+    stale = _stale(tmp_path / name / f"{name}_never_known.svg")
+    page = _stale(tmp_path / name / f"{name}_never_known.html")
+    other = _stale(tmp_path / name / "other_never_known.svg")
+    (result, _) = _runner(broken, GoodExperiment).run_experiments(
+        output_path=tmp_path, figure_formats=["svg", "html"]
+    )
+    assert result.failed
+    assert not stale.exists()
+    assert not page.exists()
+    # not a file of the experiment
+    assert other.exists()
+    # a figure which this run wrote stays
+    for key, formats in result.figures.items():
+        for fig_format in formats:
+            assert (tmp_path / name / f"{name}_{key}.{fig_format}").exists()
+
+
+def test_a_direct_run_in_a_shared_directory_keeps_files_of_unknown_keys(
+    tmp_path: Path,
+) -> None:
+    """Only the directory of an experiment of its own is cleaned by the runner."""
+    runner = _runner(BrokenFiguresMpl)
+    experiment = runner.experiments["BrokenFiguresMpl"]
+    stale = _stale(tmp_path / "BrokenFiguresMpl_never_known.svg")
+    result = experiment.run(runner.simulator, output_path=tmp_path, on_error="log")
+    assert result.failed_figures
+    assert stale.exists()
+
+
+def test_the_report_lists_no_stale_dataset_of_a_failed_experiment(
+    tmp_path: Path,
+) -> None:
+    """A dataset file of an earlier run is not one of this run."""
+
+    class BrokenWithDataset(_Base):
+        def datasets(self) -> dict:
+            return {
+                "table": DataSet.from_df(pd.DataFrame({"time": [0.0]}), ureg=self.ureg)
+            }
+
+        def evaluate_fit_mappings(self) -> None:
+            raise RuntimeError("experiment broken")
+
+    stale = tmp_path / "BrokenWithDataset" / "BrokenWithDataset_table.tsv"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("time\n0\n", encoding="utf-8")
+    results = _runner(BrokenWithDataset).run_experiments(output_path=tmp_path)
+    ExperimentReport(results).create_report(output_path=tmp_path)
+    page = (tmp_path / "BrokenWithDataset" / "BrokenWithDataset.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'href="BrokenWithDataset_table.tsv"' not in page

@@ -26,6 +26,7 @@ def test_a_runner_experiment_has_the_class_name_as_sid() -> None:
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
     assert runner.experiments["Plain"].sid == "Plain"
 

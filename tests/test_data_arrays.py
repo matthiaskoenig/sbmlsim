@@ -60,6 +60,7 @@ def experiment() -> SimulationExperiment:
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
     experiment = runner.experiments["ArrayExperiment"]
     experiment.run(runner.simulator)
