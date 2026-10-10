@@ -238,8 +238,8 @@ class Patel1984(HCTZSimulationExperiment):
         for plot, (key, label, unit) in zip(
             plots,
             [
-                ("cmax", "cmax", "mM"),
-                ("auc_inf_obs", "AUC", "mM*hr"),
+                ("cmax", "cmax", self.unit_hctz),
+                ("auc_inf_obs", "AUC", f"{self.unit_hctz}*hr"),
             ],
             strict=True,
         ):

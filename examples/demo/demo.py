@@ -102,14 +102,16 @@ class DemoExperiment(SimulationExperiment):
         plots[1].set_yaxis("data", unit=unit_data, scale="log", min=1e-3)
 
         # one curve per initial value of A, with a colour bar for its eleven
-        # values, at the reference of the local design
+        # values, at the reference of the local design; a panel is titled by
+        # the concentration it draws
         fig2 = Figure(experiment=self, sid="Fig2", num_cols=2, num_rows=1)
         plots = fig2.create_plots(
             xaxis=Axis("time", unit=unit_time),
-            yaxis=Axis("data", unit=unit_data),
+            yaxis=Axis("concentration", unit=unit_data),
             legend=True,
         )
         for plot, key in zip(plots, ["[e__A]", "[c__A]"], strict=True):
+            plot.set_title(key)
             plot.curve(
                 x=Data("time", task=task_id, sel={"dim_sens": "reference"}),
                 y=Data(key, task=task_id, sel={"dim_sens": "reference"}),

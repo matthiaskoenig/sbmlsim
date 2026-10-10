@@ -161,7 +161,9 @@ class DoseResponseExperiment(SimulationExperiment):
                 linewidth=2,
                 label="simulation",
             )
-            # experimental data
+            # experimental data; a panel without data has no legend of the
+            # one simulation
+            plot.legend = label in self._datasets
             if label in self._datasets:
                 plot.add_data(
                     dataset=label,
