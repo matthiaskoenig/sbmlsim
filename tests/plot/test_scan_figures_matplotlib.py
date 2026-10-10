@@ -269,6 +269,40 @@ def test_a_band_per_dose_has_an_entry_per_point_and_one_for_the_range(
     ]
 
 
+def test_a_band_without_median_names_the_upper_line(
+    experiment: SimulationExperiment,
+) -> None:
+    _, ax = _axes(
+        experiment,
+        lambda p: p.band(
+            Data("time", task="task_dose_draws"),
+            Data("[C]", task="task_dose_draws"),
+            across="draw",
+            over="dose",
+            name="C",
+            median=False,
+        ),
+    )
+    assert sorted(_labels(ax)) == [
+        "5-95 %",
+        "C, PODOSE = 100 mg",
+        "C, PODOSE = 200 mg",
+        "C, PODOSE = 50 mg",
+    ]
+    named = [ln for ln in ax.get_lines() if not str(ln.get_label()).startswith("_")]
+    assert len(named) == 3
+    for line in named:
+        peak = float(np.max(np.asarray(line.get_ydata(), dtype=float)))
+        same = [
+            o
+            for o in ax.get_lines()
+            if o.get_color() == line.get_color() and o is not line
+        ]
+        assert all(
+            float(np.max(np.asarray(o.get_ydata(), dtype=float))) <= peak for o in same
+        )
+
+
 def test_a_band_on_the_right_axis(experiment: SimulationExperiment) -> None:
     fig = _figure(
         experiment,

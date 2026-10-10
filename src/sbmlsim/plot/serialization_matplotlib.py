@@ -249,7 +249,7 @@ class MatplotlibFigureSerializer:
 
         The boundaries of the area are thin lines, which the placement of a
         legend takes into account, unlike an area. The legend has one entry
-        per point (the median, else the lower boundary) and one grey entry of
+        per point (the median, else the upper boundary) and one grey entry of
         the quantile range.
         """
         low, high = (f"{100 * q:g}" for q in band.quantiles)
@@ -275,8 +275,8 @@ class MatplotlibFigureSerializer:
                 "linewidth": 0.6,
                 "alpha": min(1.0, 2 * band.alpha),
             }
-            ax.plot(b.x, b.low, label="_nolegend_" if band.median else label, **edge)
-            ax.plot(b.x, b.high, label="_nolegend_", **edge)
+            ax.plot(b.x, b.low, label="_nolegend_", **edge)
+            ax.plot(b.x, b.high, label="_nolegend_" if band.median else label, **edge)
             if band.median:
                 ax.plot(b.x, b.median, color=color, linewidth=2.0, label=label)
         ax.fill_between(
