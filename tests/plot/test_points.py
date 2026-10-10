@@ -1,5 +1,7 @@
 """The lines of a curve over the points of the dimensions of a scan."""
 
+import warnings
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -109,6 +111,25 @@ def test_band_quantiles_ignore_nan() -> None:
     np.testing.assert_allclose(band.low, np.nanquantile(values, 0.25, axis=0))
     np.testing.assert_allclose(band.high, np.nanquantile(values, 0.75, axis=0))
     np.testing.assert_allclose(band.median, np.nanmedian(values, axis=0))
+
+
+def test_a_time_point_of_only_nan_draws_is_nan_without_a_warning() -> None:
+    values = np.array(
+        [[1.0, np.nan, 3.0], [2.0, np.nan, 4.0], [3.0, np.nan, 5.0], [4.0, np.nan, 6.0]]
+    )
+    y = xr.DataArray(values, dims=("draw", "time"), coords={"time": TIME})
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        (band,) = band_lines("b", (), "draw", (0.25, 0.75), _time(), y)
+    assert np.isnan(band.low[1]) and np.isnan(band.median[1]) and np.isnan(band.high[1])
+    keep = [0, 2]
+    np.testing.assert_allclose(
+        band.low[keep], np.nanquantile(values[:, keep], 0.25, axis=0)
+    )
+    np.testing.assert_allclose(
+        band.high[keep], np.nanquantile(values[:, keep], 0.75, axis=0)
+    )
+    np.testing.assert_allclose(band.median[keep], np.nanmedian(values[:, keep], axis=0))
 
 
 def test_a_band_per_point_of_another_dimension() -> None:

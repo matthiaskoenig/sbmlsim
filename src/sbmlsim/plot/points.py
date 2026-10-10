@@ -196,9 +196,21 @@ def band_lines(
             f"The band '{sid}' reduces the dimension '{across}', which its data has "
             f"not: {[str(d) for d in y.dims]}."
         )
-    low = y.quantile(quantiles[0], dim=across, skipna=True).drop_vars("quantile")
-    high = y.quantile(quantiles[1], dim=across, skipna=True).drop_vars("quantile")
-    median = y.median(dim=across, skipna=True)
+    # a point at which every draw is NaN (all simulations failed) has no quantile:
+    # it is reduced on zeros, which the mask then replaces with NaN
+    valid = y.notnull().any(dim=across)
+    filled = y.where(valid, 0.0)
+    low = (
+        filled.quantile(quantiles[0], dim=across, skipna=True)
+        .drop_vars("quantile")
+        .where(valid)
+    )
+    high = (
+        filled.quantile(quantiles[1], dim=across, skipna=True)
+        .drop_vars("quantile")
+        .where(valid)
+    )
+    median = filled.median(dim=across, skipna=True).where(valid)
     lows = curve_lines(sid, over, x, low)
     medians = curve_lines(sid, over, x, median)
     highs = curve_lines(sid, over, x, high)
