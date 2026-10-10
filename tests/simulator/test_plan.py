@@ -2,12 +2,13 @@
 
 import pickle
 
+import numpy as np
 import pytest
 
 from sbmlsim import Q
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulation import Change, Simulation, SteadyState
-from sbmlsim.simulator.plan import OutputMode, compile_simulation
+from sbmlsim.simulator.plan import OutputMode, compile_simulation, merge_times
 from sbmlsim.units import UnitsInformation
 from tests.simulator.models import sbml, sbml_minutes
 
@@ -203,3 +204,32 @@ def test_with_values_replaces_a_target_of_the_steady_state(probe) -> None:
     assert changed.preinit == ()
     assert changed.steady_state is not None
     assert [(a.target, a.value) for a in changed.steady_state.preinit] == [("k1", 5.0)]
+
+
+def test_near_identical_output_times_are_one_time(minutes) -> None:
+    """Times which differ by noise after the conversion are one output time."""
+    symbols, uinfo = minutes
+    plan = compile_simulation(
+        Simulation(time_unit="hr", end=5, times=[0, 3.99999999999999, 4.0, 5]),
+        symbols,
+        uinfo,
+    )
+    assert plan.times == (pytest.approx(0.0), pytest.approx(240.0), 300.0)
+
+
+def test_merge_times() -> None:
+    """A cluster becomes its smallest time and every time knows its index."""
+    merged, index = merge_times([5.0, 1.0, 1.0 + 1e-12, 1.0 + 2e-12, 3.0], 0.0, 10.0)
+    assert merged.tolist() == [1.0, 3.0, 5.0]
+    assert index.tolist() == [2, 0, 0, 0, 1]
+    # distances are consecutive and relative to the time scale of the plan
+    merged, _ = merge_times([0.0, 1e-3], 0.0, 1e3)
+    assert merged.tolist() == [0.0, 1e-3]
+    merged, _ = merge_times([0.0, 1e-7], 0.0, 1e3)
+    assert merged.tolist() == [0.0]
+    # a negative start and the steady state
+    merged, index = merge_times([-5.0, -5.0 + 1e-12, np.inf, np.inf], -5.0, 5.0)
+    assert merged.tolist() == [-5.0, np.inf]
+    assert index.tolist() == [0, 0, 1, 1]
+    merged, index = merge_times([], 0.0, 1.0)
+    assert merged.size == 0 and index.size == 0

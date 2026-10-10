@@ -65,6 +65,7 @@ from sbmlsim.simulator.plan import (
     Plan,
     SteadyStatePlan,
     compile_simulation,
+    merge_times,
     target_values,
 )
 from sbmlsim.simulator.simulator import scan_point_plans, scan_point_values
@@ -1733,20 +1734,23 @@ class OptimizationProblem(ObjectJSONEncoder):
             if graph is not None:
                 self._check_times(k_group, plan)
             elif all(self.xid_observable[k] == "time" for k in group):
-                data_times = np.unique(
-                    np.concatenate(
-                        [np.asarray(self.x_references[k], float) for k in group]
-                    )
+                data_times = np.concatenate(
+                    [np.asarray(self.x_references[k], float) for k in group]
                 )
-                # the output are the times of the data and the rows are found
-                # by their index: the shift of the time back and forth is not
-                # exact in floating point
+                # times closer than the resolution of the time are one output
+                # time (`merge_times`, in the time of the plan) and every row
+                # is found by the index of its merged time: the shift of the
+                # time back and forth is not exact in floating point
+                times, index = merge_times(
+                    data_times - plan.time_shift, plan.start, plan.end
+                )
+                position = 0
                 for k in group:
-                    self._rows[k] = np.searchsorted(
-                        data_times, np.asarray(self.x_references[k], float)
-                    )
-                steady = bool(np.isposinf(data_times[-1]))
-                times = data_times[np.isfinite(data_times)] - plan.time_shift
+                    size = len(self.x_references[k])
+                    self._rows[k] = index[position : position + size]
+                    position += size
+                steady = bool(np.isposinf(times[-1]))
+                times = times[np.isfinite(times)]
                 outside = times[(times < plan.start) | (times > plan.end)]
                 if outside.size:
                     raise ValueError(

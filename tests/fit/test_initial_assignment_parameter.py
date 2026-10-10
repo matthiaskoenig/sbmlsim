@@ -139,6 +139,52 @@ def test_fit_with_a_time_shift(tmp_path: Path) -> None:
     assert predictions[0].shape == (3,)
 
 
+class NoisyTimesExperiment(IAExperiment):
+    """Data with two times which differ by noise, in one mapping, on a negative start."""
+
+    def datasets(self) -> dict[str, DataSet]:
+        df = pd.DataFrame(
+            {
+                "time": [0.5, 0.99999999999999, 1.0, 1.5],
+                "time_unit": "s",
+                "B": [0.1, 0.2, 0.3, 0.5],
+                "B_unit": "dimensionless",
+            }
+        )
+        return {"d": DataSet.from_df(df, ureg=self.ureg)}
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {"s": Simulation(start=-1000.0, end=2)}
+
+
+def test_fit_with_near_identical_data_times(tmp_path: Path) -> None:
+    """Data times closer than the resolution of the time are one output time (#261)."""
+    MODEL_PATH["path"] = tmp_path / "probe.xml"
+    MODEL_PATH["path"].write_text(sbml())
+    problem = OptimizationProblem(
+        opid="noisy",
+        mapping_collections=[
+            FitMappingCollection(experiment=NoisyTimesExperiment, mappings=["fm"])
+        ],
+        fit_parameters=[
+            FitParameter(
+                pid="b0",
+                lower_bound=0.0,
+                upper_bound=2.0,
+                start_value=1.0,
+                unit="dimensionless",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    assert problem.plans[0].times == (0.5, 0.99999999999999, 1.5)
+    predictions = problem.predictions(np.array([0.5]))
+    assert predictions[0].shape == (4,)
+    assert predictions[0][1] == predictions[0][2]
+
+
 class SteadyExperiment(IAExperiment):
     """Data at the steady state of the probe model."""
 

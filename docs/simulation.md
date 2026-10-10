@@ -28,6 +28,8 @@ res = simulator.run(model, Simulation(end=100, times=[0, 1, 5, 10, 50, 100]))
 print(res["time"].values)
 ```
 
+Output times which differ by less than the resolution of the time are one output time, so digitized times such as `3.99999999999999` and `4.0` are simulated once, at the smaller one. The tolerance is `1e-9` times the larger of the absolute start, the absolute end and the length of the interval, and a chain of times whose consecutive distances are within it is merged. A fit merges the times of its data the same way and compares every data point with the merged output time.
+
 ## Units and times
 
 A value is a number in the unit of its target in the model or a quantity, which is converted into the unit of the model; `Q` is the quantity of the unit registry of `sbmlsim`, see [Units](units.md). The times of a simulation are numbers in its `time_unit`, the time unit of the model without one, or quantities. A simulation can start at a negative time:

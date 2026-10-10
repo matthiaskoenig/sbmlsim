@@ -976,3 +976,17 @@ def test_the_tolerances_are_set_once_per_roadrunner_instance(
     calls.clear()
     Simulator(n_workers=1, absolute_tolerance=tolerance).simulate(model, simulation)
     assert calls == []
+
+
+def test_near_identical_output_times_simulate_once() -> None:
+    """Times which collapse in the local time of a segment are merged (#261)."""
+    minutes = RoadrunnerSBMLModel(source=sbml_minutes())
+    minutes.set_selections(["time", "X"])
+    sim = Simulation(
+        start=-1000.0,
+        end=10,
+        changes=[Change(-995.0, {"k1": 2.0})],
+        times=[-1000.0, 3.99999999999999, 4.0, 10],
+    )
+    res = Simulator(n_workers=1).simulate(minutes, sim)
+    assert res["time"].tolist() == [-1000.0, 3.99999999999999, 10.0]

@@ -31,6 +31,48 @@ from sbmlsim.units import Quantity, UnitsInformation
 #: the tolerances of the steady state of an output at the time `inf`
 STEADY_STATE = SteadyState()
 
+TIME_RTOL = 1e-9
+"""Output times closer than `TIME_RTOL` times the time scale are one output time."""
+
+
+def merge_times(
+    times: Sequence[float] | np.ndarray, start: float, end: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Merge output times which differ by less than the resolution of the time.
+
+    Two times which differ by floating point noise (digitized data, a conversion
+    of the time unit) are one output time. The tolerance is
+    `TIME_RTOL * max(abs(start), abs(end), end - start)` in the time of the
+    plan, and a cluster of times whose consecutive distances are within it
+    becomes its smallest time. A time at `inf` stays a time of its own.
+
+    Args:
+        times: The output times in the time of the plan.
+        start: The start of the simulation in the time of the plan.
+        end: The end of the simulation in the time of the plan.
+
+    Returns:
+        The merged, sorted output times and, for every given time, the index of
+        its merged time.
+    """
+    values = np.asarray(times, dtype=float)
+    if values.size == 0:
+        return values, np.zeros(0, dtype=int)
+    tolerance = TIME_RTOL * max(abs(start), abs(end), end - start)
+    order = np.argsort(values, kind="stable")
+    ordered = values[order]
+    # inf - inf is nan, which is not within the tolerance: only the first of
+    # several times at inf starts a cluster, the others have no distance
+    with np.errstate(invalid="ignore"):
+        gaps = np.diff(ordered)
+    gaps[np.isnan(gaps)] = 0.0
+    new = np.concatenate([[True], gaps > tolerance])
+    cluster = np.cumsum(new) - 1
+    merged = ordered[new]
+    index = np.empty(values.size, dtype=int)
+    index[order] = cluster
+    return merged, index
+
 
 @dataclass(frozen=True)
 class Assignment:
@@ -441,7 +483,8 @@ def compile_simulation(
                 relative_tolerance=STEADY_STATE.relative_tolerance,
                 max_time=STEADY_STATE.max_time,
             )
-        times = tuple(sorted(converted))
+        merged, _ = merge_times(sorted(converted), start, end)
+        times = tuple(float(t) for t in merged)
         outside = [t for t in times if not start <= t <= end]
         if outside:
             raise ValueError(
