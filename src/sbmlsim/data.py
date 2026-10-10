@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+import pint
 import xarray as xr
 
 from sbmlsim.result import ScanResult
@@ -690,6 +691,66 @@ class Data:
         return _select(array, self.sel, self, array)
 
 
+def _own_units(result):
+    """Give a new DataSet or DataSeries a copy of its units information."""
+    uinfo = getattr(result, "uinfo", None)
+    if isinstance(uinfo, UnitsInformation):
+        result.uinfo = UnitsInformation(dict(uinfo.udict), ureg=uinfo.ureg)
+    return result
+
+
+def _unify_units(
+    df: pd.DataFrame,
+    value_key: str,
+    unit_key: str,
+    ureg: UnitRegistry,
+    error_keys: list[str],
+) -> str | None:
+    """Convert the rows of a column to the unit of its first row with a value.
+
+    The rows without a value or without a unit are ignored (a column without any
+    value uses the rows which have a unit). Rows with another unit are converted in
+    place, the value, the error columns `error_keys` and the unit column, and the
+    unit of the first row is returned (None if no row has a unit).
+
+    :raises ValueError: if a unit cannot be converted into the first unit
+    """
+    has_unit = df[unit_key].notna()
+    present = has_unit & df[value_key].notna()
+    rows = present if present.any() else has_unit
+    units = df.loc[rows, unit_key].unique()
+    if len(units) == 0:
+        return None
+    target = units[0]
+    if len(units) == 1:
+        return str(target)
+
+    factors: dict[str, float] = {}
+    for unit in units[1:]:
+        try:
+            factors[unit] = float(ureg.Quantity(1.0, unit).to(target).magnitude)
+        except pint.errors.PintError as err:
+            dimensions = {u: str(ureg.Quantity(1.0, u).dimensionality) for u in units}
+            raise ValueError(
+                f"Column '{value_key}' has units '{list(units)}' which cannot be "
+                f"converted into '{target}' (dimensions {dimensions}): {err}"
+            ) from err
+    logger.info(
+        "Column '%s' has the units %s, the rows are converted to '%s'",
+        value_key,
+        list(units),
+        target,
+    )
+    for unit, factor in factors.items():
+        mask = rows & (df[unit_key] == unit)
+        for key in [value_key, *error_keys]:
+            if key in df.columns:
+                df[key] = df[key].astype(float)
+                df.loc[mask, key] = df.loc[mask, key] * factor
+    df.loc[has_unit, unit_key] = target
+    return str(target)
+
+
 class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
 
@@ -708,11 +769,10 @@ class DataSeries(pd.Series):
         self, other, method=None, **kwargs
     ):
         """Finalize and give the new object its own unit information."""
-        result = super().__finalize__(other, method=method, **kwargs)
-        uinfo = getattr(result, "uinfo", None)
-        if isinstance(uinfo, UnitsInformation):
-            result.uinfo = UnitsInformation(dict(uinfo.udict), ureg=uinfo.ureg)
-        return result
+        # pandas hands the metadata on by reference and only __finalize__ (final in
+        # the typing of pandas, not enforced) sees the new object with its metadata;
+        # the results of concat and merge have no uinfo at all
+        return _own_units(super().__finalize__(other, method=method, **kwargs))
 
 
 class DataSet(pd.DataFrame):
@@ -733,11 +793,10 @@ class DataSet(pd.DataFrame):
         self, other, method=None, **kwargs
     ):
         """Finalize and give the new object its own unit information."""
-        result = super().__finalize__(other, method=method, **kwargs)
-        uinfo = getattr(result, "uinfo", None)
-        if isinstance(uinfo, UnitsInformation):
-            result.uinfo = UnitsInformation(dict(uinfo.udict), ureg=uinfo.ureg)
-        return result
+        # pandas hands the metadata on by reference and only __finalize__ (final in
+        # the typing of pandas, not enforced) sees the new object with its metadata;
+        # the results of concat and merge have no uinfo at all
+        return _own_units(super().__finalize__(other, method=method, **kwargs))
 
     def get_quantity(self, key: str):
         """Return quantity for given key.
@@ -798,16 +857,17 @@ class DataSet(pd.DataFrame):
                         "Missing * column '%s' for unit column: '%s'", item_key, key
                     )
                     continue
-                present = df[item_key].notna() & df[key].notna()
-                units = df.loc[present, key].unique()
-                if len(units) > 1:
-                    logger.error(
-                        "Column '%s' units are not unique: '%s' in \n%s", key, units, df
-                    )
-                elif len(units) == 0:
-                    logger.error("Column '%s' units are missing: '%s'", key, units)
+                unit = _unify_units(
+                    df,
+                    item_key,
+                    key,
+                    ureg,
+                    [f"{item_key}_sd", f"{item_key}_se"],
+                )
+                if unit is None:
+                    logger.error("Column '%s' units are missing", key)
                 else:
-                    all_udict[item_key] = units[0]
+                    all_udict[item_key] = unit
 
             elif key == "unit":
                 # add unit to "mean" and "value"
@@ -815,13 +875,14 @@ class DataSet(pd.DataFrame):
                     if (key in df.columns) and f"{key}_unit" not in df.columns:
                         # FIXME: probably not a good idea to add columns while iterating over them
                         df[f"{key}_unit"] = df.unit
-                        unit_keys = df.unit.unique()
-                        if len(df.unit.unique()) > 1:
-                            logger.error(
-                                "More than one unit in 'unit' column will create issues in unit conversion, filter data to reduce units: '%s'",
-                                df.unit.unique(),
-                            )
-                        udict[key] = unit_keys[0]
+                        error_keys = [f"{key}_sd", f"{key}_se"]
+                        if key == "mean":
+                            error_keys += ["sd", "se"]
+                        unit = _unify_units(df, key, f"{key}_unit", ureg, error_keys)
+                        if unit is None:
+                            logger.error("Column 'unit' has no unit for '%s'", key)
+                        else:
+                            udict[key] = unit
 
                         # rename the sd and se columns to mean_sd and mean_se
                         if key == "mean":

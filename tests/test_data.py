@@ -205,3 +205,66 @@ def test_slices_own_their_units() -> None:
     assert b.uinfo["value"] == "mM"
     assert a.uinfo is not dset.uinfo
     assert a.uinfo.ureg is dset.uinfo.ureg
+    assert dset["value"].uinfo is not dset.uinfo
+    c = dset.copy()
+    assert c.uinfo is not dset.uinfo
+    c.unit_conversion("value", 1000 * ureg.Quantity(1.0, "dimensionless"))
+    assert dset.uinfo["value"] == "mM"
+
+
+def test_from_df_converts_rows_to_the_first_unit(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Rows with other units of the same dimension are converted, with their sd."""
+    df = pd.DataFrame(
+        {
+            "value": [1.0, 2000.0, float("nan"), 3000.0],
+            "value_sd": [0.1, 100.0, float("nan"), 500.0],
+            "value_unit": ["g", "mg", "mg", "mg"],
+        }
+    )
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert [r for r in caplog.records if r.levelname == "ERROR"] == []
+    assert dset.uinfo["value"] == "g"
+    assert dset["value"].dropna().tolist() == pytest.approx([1.0, 2.0, 3.0])
+    assert dset["value_sd"].dropna().tolist() == pytest.approx([0.1, 0.1, 0.5])
+    assert set(dset["value_unit"]) == {"g"}
+
+
+def test_from_df_unit_column_converts_rows_to_the_first_unit() -> None:
+    """The single unit column is converted the same way."""
+    df = pd.DataFrame(
+        {
+            "mean": [float("nan"), 1000.0, 2.0],
+            "sd": [float("nan"), 100.0, 0.5],
+            "unit": ["g", "mg", "g"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["mean"] == "mg"
+    assert dset["mean"].dropna().tolist() == pytest.approx([1000.0, 2000.0])
+    assert dset["mean_sd"].dropna().tolist() == pytest.approx([100.0, 500.0])
+
+
+def test_from_df_incompatible_units_raise() -> None:
+    """Units of other dimensions in one column are an error naming them."""
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": ["mM", "mg"]})
+    with pytest.raises(ValueError, match=r"value.*mM.*mg"):
+        DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+
+
+def test_from_df_column_without_units(caplog: pytest.LogCaptureFixture) -> None:
+    """A column with no unit at all is an error and has no unit."""
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": [float("nan")] * 2})
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert any("units are missing" in r.getMessage() for r in caplog.records)
+    assert "value" not in dset.uinfo
+
+
+def test_from_df_unit_column_ignores_missing_value() -> None:
+    """The unit column gives the first unit of the rows with a value, never nan."""
+    df = pd.DataFrame({"value": [float("nan"), 2.0], "unit": [float("nan"), "mM"]})
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["value"] == "mM"
