@@ -37,6 +37,10 @@ SLOW = {
     "examples.hctz_fitting.simulations",
 }
 
+#: the summary of a run of experiments in which an experiment or a figure failed,
+#: see `sbmlsim.experiment.runner.ExperimentRunner.run_experiments`
+FAILURES = "experiments failed or have failed figures"
+
 #: examples which run offline and without optional dependencies
 SCRIPTS = [
     "examples.timecourse",
@@ -67,8 +71,15 @@ def run_example(
     """Run an example as a module in `cwd`."""
     if module.startswith("examples.sciml"):
         pytest.importorskip("petab_sciml", reason="the extra `sciml` is not installed")
-    # the output of rich is utf-8 on every platform, the locale of windows is not
-    env = dict(os.environ, PYTHONPATH=str(REPO_DIR), MPLBACKEND="Agg", PYTHONUTF8="1")
+    # the output of rich is utf-8 on every platform, the locale of windows is not;
+    # its lines are not wrapped, so a message is found in the output
+    env = dict(
+        os.environ,
+        PYTHONPATH=str(REPO_DIR),
+        MPLBACKEND="Agg",
+        PYTHONUTF8="1",
+        COLUMNS="400",
+    )
     result = subprocess.run(
         [sys.executable, "-m", module, *arguments],
         cwd=cwd,
@@ -78,6 +89,10 @@ def run_example(
         check=False,
     )
     assert result.returncode == 0, result.stderr
+    # a run of experiments logs a failing experiment or figure and goes on, its
+    # summary is the sign that an example broke
+    output = result.stdout + result.stderr
+    assert FAILURES not in output, output[-4000:]
     return result
 
 
