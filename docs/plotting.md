@@ -59,6 +59,14 @@ plots[0].add_data(
 
 The `CurveType` of a curve is `POINTS` (lines and markers), `BAR`, `BARSTACKED`, `HORIZONTALBAR` or `HORIZONTALBARSTACKED`; `ShadedArea` fills the area between two data curves. `examples/curve_types` shows all of them.
 
+## Curves over the points of a scan
+
+A curve of task data draws one line. When the data has dimensions of a scan, the curve names the ones it draws one line per point of, `plot.curve(x=Data("time", task="task_doses"), y=Data("mid", task="task_doses"), over="dose")`; every other dimension of the scan is selected with `Data(sel=...)`, and a dimension which is neither the axis, in `over` nor selected raises when the experiment is initialized. The lines take shades of the colour of the curve, or the colour map viridis without one, along the labels of the dimension. A second dimension, `over=("dose", "condition")`, sets the line style (solid, dashed, dotted, dash-dot, so at most four points left after `sel`): the first dimension gets the colour entries of the legend and the second grey entries with its line styles. A legend entry reads `<curve name>, <target> = <value> <unit>`, e.g. `mid, PODOSE_mid = 5 mg`, with the label of the point when its dimension changes no target. From eleven points a colour bar of the dimension, labelled `<target> [<unit>]` and placed beside its panel, replaces the legend entries. A value per simulation is drawn over the values a dimension sets: `plot.curve(x=Data("dose.PODOSE_mid", task="task_doses"), y=Data("pk.cmax", task="task_doses"))`.
+
+## Bands
+
+`plot.band(x, y, across="draw", quantiles=(0.05, 0.95), median=True)` reduces the dimension `across` of y, e.g. the draws of a Latin hypercube design (see [Sampling and uncertainty](sampling.md)), to two quantiles, ignoring `NaN`, and draws the area between them with the median as a line and the quantile boundaries as thin lines in the band colour; `over=` (at most one dimension) gives one band per point of another dimension. A band takes `color=` and `alpha=` and may sit on the right y axis. The legend has one entry per point, the median labelled `<name>, <point label>` (`<name> median` without `over`; the upper boundary with `median=False`), and one grey entry of the quantile range, e.g. `5-95 %`. The quantiles are computed when the figure is drawn, so no summary of the result is needed; a band needs a common grid of times, a ragged scan raises. `examples/experiment_scans.py` draws curves per dose, cmax over dose and a band over draws.
+
 ## Styles
 
 A `Style` bundles the `Line` (type, color, thickness), the `Marker` (type, size, fill, line color) and the `Fill` of a curve. Matplotlib keywords such as `color`, `linestyle`, `linewidth`, `marker` and `alpha` are translated into a style, so a curve is styled either way:
