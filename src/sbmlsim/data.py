@@ -704,6 +704,16 @@ class DataSeries(pd.Series):
     def _constructor_expanddim(self):
         return DataSet
 
+    def __finalize__(  # ty: ignore[override-of-final-method]
+        self, other, method=None, **kwargs
+    ):
+        """Finalize and give the new object its own unit information."""
+        result = super().__finalize__(other, method=method, **kwargs)
+        uinfo = getattr(result, "uinfo", None)
+        if isinstance(uinfo, UnitsInformation):
+            result.uinfo = UnitsInformation(dict(uinfo.udict), ureg=uinfo.ureg)
+        return result
+
 
 class DataSet(pd.DataFrame):
     """DataSet, a pd.DataFrame with additional unit information."""
@@ -718,6 +728,16 @@ class DataSet(pd.DataFrame):
     @property
     def _constructor(self):
         return DataSet
+
+    def __finalize__(  # ty: ignore[override-of-final-method]
+        self, other, method=None, **kwargs
+    ):
+        """Finalize and give the new object its own unit information."""
+        result = super().__finalize__(other, method=method, **kwargs)
+        uinfo = getattr(result, "uinfo", None)
+        if isinstance(uinfo, UnitsInformation):
+            result.uinfo = UnitsInformation(dict(uinfo.udict), ureg=uinfo.ureg)
+        return result
 
     def get_quantity(self, key: str):
         """Return quantity for given key.
@@ -770,19 +790,22 @@ class DataSet(pd.DataFrame):
         for key in df.columns:
             # handle '*_unit columns'
             if key.endswith("_unit"):
-                # parse the item and unit in dict
-                units = df[key].unique()
+                # parse the item and unit in dict; a row without a value has no
+                # unit, which is not a unit of the column
+                item_key = key[0:-5]
+                if item_key not in df.columns:
+                    logger.error(
+                        "Missing * column '%s' for unit column: '%s'", item_key, key
+                    )
+                    continue
+                present = df[item_key].notna() & df[key].notna()
+                units = df.loc[present, key].unique()
                 if len(units) > 1:
                     logger.error(
                         "Column '%s' units are not unique: '%s' in \n%s", key, units, df
                     )
                 elif len(units) == 0:
                     logger.error("Column '%s' units are missing: '%s'", key, units)
-                item_key = key[0:-5]
-                if item_key not in df.columns:
-                    logger.error(
-                        "Missing * column '%s' for unit column: '%s'", item_key, key
-                    )
                 else:
                     all_udict[item_key] = units[0]
 

@@ -155,3 +155,53 @@ def test_the_identifiers_of_data(
     assert data.name == name
     assert data.index == index
     assert data.to_dict()["index"] == index
+
+
+def test_from_df_ignores_unit_of_missing_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A row without a value has no unit, which is no second unit of the column (#275)."""
+    df = pd.DataFrame(
+        {
+            "time": [0.0, 1.0, 2.0],
+            "time_unit": ["hr", "hr", "hr"],
+            "meanperiod": [float("nan"), 2.0, 3.0],
+            "meanperiod_unit": [float("nan"), "hr", "hr"],
+        }
+    )
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert [r for r in caplog.records if r.levelname == "ERROR"] == []
+    assert dset.uinfo["meanperiod"] == "hr"
+
+
+def test_from_df_missing_first_unit_is_not_nan() -> None:
+    """The unit of a column is never nan, also when the first row has none (#275)."""
+    df = pd.DataFrame(
+        {
+            "value": [float("nan"), 2.0],
+            "value_unit": [float("nan"), "mM"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["value"] == "mM"
+
+
+def test_slices_own_their_units() -> None:
+    """The unit conversion of a slice changes no other slice nor the parent (#267)."""
+    ureg = UnitRegistry(on_redefinition="ignore")
+    df = pd.DataFrame(
+        {
+            "group": ["a", "a", "b", "b"],
+            "value": [1.0, 2.0, 3.0, 4.0],
+            "value_unit": ["mM"] * 4,
+        }
+    )
+    dset = DataSet.from_df(df, ureg=ureg)
+    a = dset[dset.group == "a"]
+    b = dset[dset.group == "b"]
+    a.unit_conversion("value", 1000 * ureg.Quantity(1.0, "dimensionless"))
+    assert dset.uinfo["value"] == "mM"
+    assert b.uinfo["value"] == "mM"
+    assert a.uinfo is not dset.uinfo
+    assert a.uinfo.ureg is dset.uinfo.ureg
