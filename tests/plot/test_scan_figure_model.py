@@ -6,7 +6,8 @@ import pytest
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.plot import Axis, Band, Curve, Figure
+from sbmlsim.plot import Axis, Band, Curve, Figure, Plot
+from sbmlsim.plot.plotting import CurveType
 from sbmlsim.simulator import Simulator
 from tests.plot.scan_experiment import ScanFigures
 
@@ -224,3 +225,48 @@ def test_the_limit_of_a_second_dimension_counts_the_selected_points() -> None:
 
     with pytest.raises(ValueError, match="at most 4"):
         _runner(_with_figure(all_five))
+
+
+def test_a_band_which_names_a_dimension_twice_is_called_a_band() -> None:
+    with pytest.raises(ValueError, match="The band 'b' names a dimension twice"):
+        Band(
+            Data("time", task="t"),
+            Data("[C]", task="t"),
+            across="draw",
+            over=("dose", "dose"),
+            sid="b",
+        )
+    with pytest.raises(ValueError, match="The curve 'C' names a dimension twice"):
+        Curve(
+            x=Data("time", task="t"),
+            y=Data("[C]", task="t"),
+            over=("dose", "dose"),
+            label="C",
+        )
+
+
+def test_the_representation_of_a_curve() -> None:
+    curve = Curve(x=Data("time", task="t"), y=Data("[C]", task="t"), over="dose")
+    assert "over=('dose',) xerr=False yerr=False" in repr(curve)
+
+
+def test_a_bar_curve_over_a_dimension_raises_when_it_is_defined() -> None:
+    with pytest.raises(ValueError, match="bar curve, which draws no line per point"):
+        Curve(
+            x=Data("time", task="t"),
+            y=Data("[C]", task="t"),
+            over="dose",
+            type=CurveType.BAR,
+        )
+
+
+def test_plot_band_takes_an_id_and_an_order() -> None:
+    plot = Plot(sid="p")
+    band = plot.band(
+        Data("time", task="t"),
+        Data("[C]", task="t"),
+        across="draw",
+        sid="mine",
+        order=3,
+    )
+    assert band.sid == "mine" and band.order == 3
