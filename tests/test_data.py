@@ -1,5 +1,6 @@
 """Testing DataSet and Data functionality."""
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -121,7 +122,7 @@ def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> 
     ("data", "selection", "sid", "name", "index"),
     [
         (Data("[X]", task="task"), "[X]", "task__conc__X", "X", "X"),
-        (Data("X[1]", task="task"), "X[1]", "task__X[1]", "X[1]", "X[1]"),
+        (Data("X[1]", task="task"), "X[1]", "task__X_x5b_1_x5d_", "X[1]", "X[1]"),
         (Data("[X]", dataset="dset"), "[X]", "dset__conc__X", "X", "X"),
         (Data("mean", dataset="dset"), "mean", "dset__mean", "mean", "mean"),
         (Data("[X]", task="task", sid="given"), "[X]", "given", "X", "X"),
@@ -155,6 +156,28 @@ def test_the_identifiers_of_data(
     assert data.name == name
     assert data.index == index
     assert data.to_dict()["index"] == index
+    assert data.to_dict()["selection"] == selection
+
+
+@pytest.mark.parametrize(
+    ("index", "sid"),
+    [
+        ("X'", "task__X_x27_"),
+        ("eigenReal(X)", "task__eigenReal_x28_X_x29_"),
+        ("[X']", "task__conc__X_x27_"),
+        ("cc(J, X)", "task__cc_x28_J_x2c__x20_X_x29_"),
+        ("pk.cmax", "task__pk__cmax"),
+        ("Xμ", "task__X_x3bc_"),
+    ],
+)
+def test_the_sid_of_data_encodes_what_is_no_letter_digit_or_underscore(
+    index: str, sid: str
+) -> None:
+    """A selection of roadrunner gives a valid SId, a dot gives `__` (#269)."""
+    data = Data(index, task="task")
+    assert data.sid == sid
+    assert re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", data.sid)
+    assert data.selection == index
 
 
 def test_from_df_ignores_unit_of_missing_value(

@@ -62,3 +62,21 @@ def test_an_amount_and_a_concentration_are_both_kept() -> None:
     experiment.run(runner.simulator)
     names = set(experiment.results["task_sim"].ds.data_vars)
     assert {"C", "[C]"} <= names
+
+
+def test_selections_which_are_no_sid_are_recorded() -> None:
+    """A rate of change or a function of roadrunner is a selection (#269)."""
+
+    class Rates(PKExperiment):
+        def data(self) -> dict:
+            self.add_selections_data(["time", "C'", "[C]", "eigenReal(C)"])
+            return {}
+
+    runner = _runner(Rates)
+    experiment = runner.experiments["Rates"]
+    assert {"task_sim__C_x27_", "task_sim__eigenReal_x28_C_x29_"} <= set(
+        experiment._data
+    )
+    experiment.run(runner.simulator)
+    names = set(experiment.results["task_sim"].ds.data_vars)
+    assert {"C'", "eigenReal(C)"} <= names

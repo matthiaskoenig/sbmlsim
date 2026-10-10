@@ -49,7 +49,7 @@ print(x.sid, x.dtype, y.selection)
 print(y_data.sid, y_data.dtype)
 ```
 
-A species in brackets is a concentration, without brackets an amount; `Data.selection` is the roadrunner selection recorded for it. In an experiment the selections of every task are reduced to the data which reads it in `data()`, the figures and the fit mappings; `data()` registers the data which nothing else reads, e.g. data an analysis reads after the run.
+A species in brackets is a concentration, without brackets an amount; `Data.selection` is the roadrunner selection recorded for it. The id of a data, `Data.sid`, is `<task or dataset>__<index>` for an amount and `<task or dataset>__conc__<index>` for a concentration, so both are kept; a dot of the index becomes `__` (`pk.cmax` gives `<task>__pk__cmax`) and any other character which is no letter, digit or underscore `_x<hex>_` (the rate of change `X'` gives `<task>__X_x27_`), so the id is a valid SId. In an experiment the selections of every task are reduced to the data which reads it in `data()`, the figures and the fit mappings; `data()` registers the data which nothing else reads, e.g. data an analysis reads after the run.
 
 ## Functions of data
 

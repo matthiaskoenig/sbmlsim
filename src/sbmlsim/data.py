@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Mapping
 from enum import Enum
 from pathlib import Path
@@ -371,7 +372,9 @@ class Data:
             sid: id of the data, if not given `<task or dataset>__<index>` for
                 an amount and `<task or dataset>__conc__<index>` for a
                 concentration (`"[S]"`), with `__` for a dot of the index
-                (`pk.cmax` is `<task>__pk__cmax`), so it is a valid SId.
+                (`pk.cmax` is `<task>__pk__cmax`) and `_x<hex>_` for every
+                other character which is no letter, digit or underscore (the
+                rate of change `X'` is `<task>__X_x27_`), so it is a valid SId.
             sel: labels of dimensions to select, `{dim: label}` keeps one point
                 and drops the dimension, `{dim: [labels]}` keeps the dimension;
                 for a dataset the values of columns whose rows are kept, see
@@ -418,7 +421,7 @@ class Data:
         sid: str
         if self._sid:
             return self._sid
-        name = self.index.replace(".", "__")
+        name = _sid_part(self.index)
         if self.selection != self.index:
             name = f"conc__{name}"
         if self.task_id:
@@ -482,6 +485,8 @@ class Data:
         return {
             "type": self.dtype,
             "index": self.index,
+            # the selection tells an amount `S` and a concentration `[S]` apart
+            "selection": self.selection,
             "unit": self.unit,
             "task": self.task_id,
             "dataset": self.dset_id,
@@ -689,6 +694,21 @@ class Data:
         variables.update(self.parameters)
         array = evaluate_function(self.function, variables, experiment.ureg)
         return _select(array, self.sel, self, array)
+
+
+#: a character which a generated sid encodes
+_NOT_IN_SID = re.compile(r"[^a-zA-Z0-9_]")
+
+
+def _sid_part(index: str) -> str:
+    """Encode an index for a sid: a dot as `__`, any other character as `_x<hex>_`.
+
+    Every character which is no letter, digit or underscore is encoded, so a
+    selection of roadrunner (`X'`, `eigenReal(X)`, `X[1]`) gives a valid SId.
+    """
+    return _NOT_IN_SID.sub(
+        lambda m: "__" if m.group() == "." else f"_x{ord(m.group()):x}_", index
+    )
 
 
 def _own_units(result):
