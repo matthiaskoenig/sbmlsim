@@ -73,6 +73,7 @@ Figures and reports, see [Plots and reports](../plotting.md).
 | module | description |
 | --- | --- |
 | [plot.plotting](plot.plotting.md) | `Figure`, `Plot`, `Axis`, `Curve` and their styles, the plot description independent of the backend |
+| [plot.points](plot.points.md) | the lines, colours, legend labels and colour bars of a curve over the points of a scan, and the quantiles of a band |
 | [plot.serialization_matplotlib](plot.serialization_matplotlib.md) | rendering of the figures with matplotlib |
 | [report.experiment_report](report.experiment_report.md) | HTML and markdown reports of simulation experiments |
 
