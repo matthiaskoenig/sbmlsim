@@ -47,11 +47,11 @@ jobs:
     - name: Set up the environment
       # the dependencies are the versions of uv.lock, the package is installed
       # as a wheel and not editable, so the tests run against what is
-      # published. The key of the cache has the os and the
-      # python version but not the job, so every entry of the matrix has a key
-      # of its own and saves it; the other jobs on linux with python 3.14 (ty,
-      # docs, the suites) share the key of the entry (ubuntu-latest, 3.14) and
-      # only restore it
+      # published. The key of the cache has the os and the python version but
+      # not the job, so every entry of the matrix has a key of its own and
+      # saves it; the other jobs on linux with python 3.14 (ty, docs, the
+      # suites) share the key of the entry (ubuntu-latest, 3.14) and only
+      # restore it
       uses: ./.github/actions/setup
       with:
         python-version: ${{ matrix.python-version }}
