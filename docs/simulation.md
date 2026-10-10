@@ -120,7 +120,7 @@ A model which does not reach a steady state by `SteadyState(max_time=...)` raise
 | steady state | with a `SteadyState`, the model is integrated until the rates of change vanish |
 | a change at a time | every value is evaluated with the state at that time, then all values are set at once; a compartment keeps the concentration of the concentration species in it and the amount of the amount species |
 | events | the events of the model whose trigger became true fire after the change |
-| output | an output time which is the time of a change is the state after the change |
+| output | an output time which is the time of a change is the state after the change; a fit compares its data there with the state before it, see [Parameter fitting](fitting.md#data-at-the-time-of-a-change) |
 
 ## Selections and integrator settings
 

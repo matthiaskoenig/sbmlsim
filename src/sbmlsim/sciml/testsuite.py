@@ -41,7 +41,7 @@ from petab_sciml.constants import ARRAY
 
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.export import to_petab
 from sbmlsim.fit.petab_v2.likelihood import (
     gradient,
@@ -747,13 +747,16 @@ class ProblemImportCase:
         Returns:
             Settings with the linear scale, a fixed grid and the tolerances
             `PROBLEM_IMPORT_TOLERANCE`: two simulations on a variable grid
-            differ by more than a difference of the gradient resolves.
+            differ by more than a difference of the gradient resolves. A
+            measurement at the time of a change is the state after it, as
+            PEtab defines it.
         """
         return FitSettings(
             parameter_scale=ParameterScaleType.LINEAR,
             variable_step_size=False,
             absolute_tolerance=PROBLEM_IMPORT_TOLERANCE,
             relative_tolerance=PROBLEM_IMPORT_TOLERANCE,
+            data_at_change=DataAtChangeType.AFTER,
         )
 
     def expected_simulations(self) -> pd.DataFrame:

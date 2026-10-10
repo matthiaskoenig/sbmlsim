@@ -52,9 +52,10 @@ class SbmlsimExtension(ExtensionConfig):
     of a problem must be `required`, and that a tool must reject a problem
     which requires an extension it does not know but may ignore one which is
     not required (PEtab v2, extensions). The settings this extension carries,
-    i.e. the residual, the loss function and the weighting, are the objective
-    `sbmlsim` optimizes, so a problem which is read without them is fitted with
-    a different objective on the same data. It is therefore `required`, and a
+    i.e. the residual, the loss function, the weighting and the state a
+    measurement at the time of a change is compared with (`data_at_change`),
+    are the objective `sbmlsim` optimizes, so a problem which is read without
+    them is fitted with a different objective on the same data. It is therefore `required`, and a
     tool which does not know `sbmlsim` has to say so instead of fitting the
     problem differently without telling anyone.
 

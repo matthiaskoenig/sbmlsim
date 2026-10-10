@@ -219,6 +219,7 @@ def settings_table(settings: FitSettings) -> Table:
         ("absolute tolerance", str(AbsoluteTolerance.of(settings.absolute_tolerance))),
         ("variable step size", str(settings.variable_step_size)),
         ("initial time step", f"{settings.initial_time_step:g}"),
+        ("data at a change", settings.data_at_change.value),
     ]:
         table.add_row(key, value)
     return table

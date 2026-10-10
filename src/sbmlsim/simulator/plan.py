@@ -35,16 +35,32 @@ TIME_RTOL = 1e-9
 """Output times closer than `TIME_RTOL` times the time scale are one output time."""
 
 
+def time_tolerance(start: float, end: float) -> float:
+    """Get the resolution of the time of a simulation.
+
+    Two times which differ by less are one time: output times are merged
+    (`merge_times`) and a time is at the time of a change
+    (`Plan.at_change`).
+
+    Args:
+        start: The start of the simulation in the time of the plan.
+        end: The end of the simulation in the time of the plan.
+
+    Returns:
+        `TIME_RTOL * max(abs(start), abs(end), end - start)`.
+    """
+    return TIME_RTOL * max(abs(start), abs(end), end - start)
+
+
 def merge_times(
     times: Sequence[float] | np.ndarray, start: float, end: float
 ) -> tuple[np.ndarray, np.ndarray]:
     """Merge output times which differ by less than the resolution of the time.
 
     Two times which differ by floating point noise (digitized data, a conversion
-    of the time unit) are one output time. The tolerance is
-    `TIME_RTOL * max(abs(start), abs(end), end - start)` in the time of the
-    plan, and a cluster of times whose consecutive distances are within it
-    becomes its smallest time inside `[start, end]`, else its
+    of the time unit) are one output time. The tolerance is `time_tolerance`
+    in the time of the plan, and a cluster of times whose consecutive distances
+    are within it becomes its smallest time inside `[start, end]`, else its
     smallest time. A time at `inf` stays a time of its own.
 
     Args:
@@ -59,7 +75,7 @@ def merge_times(
     values = np.asarray(times, dtype=float)
     if values.size == 0:
         return values, np.zeros(0, dtype=int)
-    tolerance = TIME_RTOL * max(abs(start), abs(end), end - start)
+    tolerance = time_tolerance(start, end)
     order = np.argsort(values, kind="stable")
     ordered = values[order]
     # inf - inf is nan, which is not within the tolerance: only the first of
@@ -155,6 +171,11 @@ class Plan:
         time_shift: added to the time of the result.
         symbols: the symbols of the model, which resolve a target `with_values`
             adds.
+        before_changes: an output time at the time of a change after the
+            start (`at_change`) is the state before the change instead of the
+            state after it. A fit compares its data so, see
+            `sbmlsim.fit.options.FitSettings.data_at_change`; a run never
+            sets it. Only for `OutputMode.TIMES`.
     """
 
     start: float
@@ -167,6 +188,59 @@ class Plan:
     time_shift: float
     symbols: ModelSymbols = field(repr=False, compare=False)
     steady_state_output: SteadyStatePlan | None = None
+    before_changes: bool = False
+
+    def __post_init__(self) -> None:
+        """Check that the state before the changes is asked of output times.
+
+        Raises:
+            ValueError: if `before_changes` is set for the steps of the
+                integrator, whose output at the time of a change is the
+                state after it.
+        """
+        if self.before_changes and self.output is not OutputMode.TIMES:
+            raise ValueError(
+                "The state before the changes is an output of exact output times "
+                "(`OutputMode.TIMES`), not of the steps of the integrator."
+            )
+
+    @property
+    def change_times(self) -> tuple[float, ...]:
+        """Get the times of the changes after the start, sorted.
+
+        A change at the start is the initial condition of the simulation and
+        no change of its output; a change at the end is one.
+        """
+        return tuple(event.time for event in self.events if event.time > self.start)
+
+    def at_change(self, times: Sequence[float] | np.ndarray) -> np.ndarray:
+        """Get the change after the start which every time is at.
+
+        A time is at the time of a change if they differ by at most the
+        resolution of the time (`time_tolerance`), so a time which differs
+        from it by floating point noise, on either side, is at the change.
+
+        Args:
+            times: times in the time of the plan, i.e. without `time_shift`.
+
+        Returns:
+            For every time the index of its change in `change_times`, `-1`
+            for a time which is at no change.
+        """
+        values = np.asarray(times, dtype=float)
+        changes = np.asarray(self.change_times, dtype=float)
+        index = np.full(values.shape, -1, dtype=int)
+        if changes.size == 0 or values.size == 0:
+            return index
+        tolerance = time_tolerance(self.start, self.end)
+        # the first change which is not before the time by more than the
+        # tolerance, which the time is at if it is not after it by more
+        first = np.searchsorted(changes, values - tolerance, side="left")
+        inside = first < changes.size
+        near = np.zeros(values.shape, dtype=bool)
+        near[inside] = changes[first[inside]] <= values[inside] + tolerance
+        index[near] = first[near]
+        return index
 
     def with_values(self, values: Mapping[str, float], at: float | None = None) -> Plan:
         """Get the plan with other values of targets.

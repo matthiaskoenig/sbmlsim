@@ -196,6 +196,7 @@ The problem is picklable, so it is distributed to worker processes; `initialize`
 ```python
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.options import (
+    DataAtChangeType,
     LossFunctionType,
     ResidualType,
     WeightingCurvesType,
@@ -209,6 +210,7 @@ settings = FitSettings(
     weighting_points=WeightingPointsType.ERROR_WEIGHTING,
     relative_tolerance=1e-6,
     absolute_tolerance=1e-10,
+    data_at_change=DataAtChangeType.BEFORE,
 )
 print(settings)
 ```
@@ -216,9 +218,18 @@ print(settings)
 - `ResidualType`: `ABSOLUTE` residuals or `NORMALIZED` residuals, i.e., relative to the data,
 - `LossFunctionType`: `LINEAR`, `SOFT_L1`, `CAUCHY` or `ARCTAN` as in `scipy.optimize.least_squares`, applied to the squared residuals so that the cost is `0.5 * sum(rho(r**2))`,
 - `WeightingCurvesType`: weighting of the curves by their `MAPPING` weight and by the number of `POINTS`,
-- `WeightingPointsType`: `NO_WEIGHTING` or `ERROR_WEIGHTING` of the points by their errors.
+- `WeightingPointsType`: `NO_WEIGHTING` or `ERROR_WEIGHTING` of the points by their errors,
+- `DataAtChangeType`: whether a data point at the time of a change is compared with the state `BEFORE` the change (the default) or `AFTER` it, see [Data at the time of a change](#data-at-the-time-of-a-change).
 
 `variable_step_size`, `relative_tolerance`, `absolute_tolerance` and `initial_time_step` are the settings of the integrator of the simulations of the fit, see [Simulations](simulation.md#selections-and-integrator-settings). `absolute_tolerance` is a float, the same tolerance for every kind of state, or an `AbsoluteTolerance` with one per kind and overrides by id; the default is `1e-10`, the one of the simulator. Settings stored by sbmlsim 0.8.4 and earlier have a float, which roadrunner scaled by the smallest volume of the model; it reads back as the same tolerance for every kind, which is looser (`1e-6` in a model with a volume of `1e-12` was about `1e-18`), so a report of a stored fit integrates with other tolerances than the fit. The settings section of the report lists the absolute tolerance of every state and whether the model is integrated in local or absolute time. The same settings are needed to report a fit, so they are stored with its result. Initializing a problem again with the settings it already has does nothing, i.e., a fit and its report resolve the data once.
+
+### Data at the time of a change
+
+At the time of a `Change` a simulation has two states, the one before the change and the one after it, and the results of a run keep the state after it, the semantics of PEtab v2 (see [Simulations](simulation.md#the-semantics)). A measurement at that time is mostly taken before the change: cumulative urine data which ends at a collection reset, i.e. a change which empties the urine at that time, is the amount collected until then and not `0`, and a sample at the time of a dose is a pre-dose sample. A fit therefore compares a data point at the time of a change after the start of its simulation with the state before the change (`data_at_change=DataAtChangeType.BEFORE`, the default), also at a change at the end of the simulation. `DataAtChangeType.AFTER` compares it with the state after the change, as PEtab does.
+
+A time is at the time of a change if they differ by at most the resolution of the time of the simulation, the tolerance which merges output times (see [Simulations](simulation.md#a-simulation)), on either side of the change. A change at the start of the simulation is the initial condition of the experiment and no change of its output, so data at the start sees the state after the changes at the start whatever the setting, also a pre-dose sample at the time of a dose at the start. The first point of a cumulative curve which starts at `0` at a reset after the start, e.g. the urine collected after the last dose of a multiple dosing protocol which starts at a negative time, is meant after the reset and is compared with the urine of the interval before it: such a point carries no information, it belongs out of the data or the fit compares with `AFTER`.
+
+Only the timecourses the fit mappings read at the time of a change see the state before it. A group of mappings whose simulation outputs the times of their data outputs the state before the change at such a time. A group which keeps the output of its simulation, i.e. one with observables or a timecourse over another selection, keeps the state before every change next to its output and reads the data at a change there, an observable which is a timecourse evaluated on the output with the states before the changes; the observables of the simulation, e.g. the parameters of a `PK` observable and the reductions of a formula, are computed on the output as a run has it. `problem.times_at_changes(k)` lists the times of the data of a mapping at a change, and settings stored by sbmlsim 0.8.5 and earlier read back with `AFTER`, the comparison of their time.
 
 ## Running the optimization
 

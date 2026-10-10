@@ -5,7 +5,7 @@ import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -39,6 +39,7 @@ from sbmlsim.fit.objects import (
     describe_array,
 )
 from sbmlsim.fit.options import (
+    DataAtChangeType,
     FitSettings,
     LossFunctionType,
     OptimizationAlgorithmType,
@@ -57,8 +58,16 @@ from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import ObservableKind, Scan, Simulation
 from sbmlsim.simulation.scan import DimensionKind
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.executor import SteadyStateError, execute
-from sbmlsim.simulator.observables import ObservableGraph, compile_observables
+from sbmlsim.simulator.executor import (
+    SteadyStateError,
+    execute,
+    execute_with_before_changes,
+)
+from sbmlsim.simulator.observables import (
+    ObservableGraph,
+    compile_observables,
+    identity_graph,
+)
 from sbmlsim.simulator.plan import (
     STEADY_STATE,
     OutputMode,
@@ -220,7 +229,7 @@ class ObservationKind(StrEnum):
 
 @dataclass(frozen=True)
 class GroupResult:
-    """The simulation of a group of fit mappings which reads observables.
+    """The simulation of a group of fit mappings which keeps its output.
 
     Attributes:
         time: the time points of every simulated point of the group, `(n_points,
@@ -228,10 +237,49 @@ class GroupResult:
         outputs: the observables and selections the mappings of the group read,
             a timecourse `(n_points, n_rows)`, a value per simulation
             `(n_points,)`, see `sbmlsim.simulator.worker.observe`.
+        before: the timecourses which the mappings of the group read at the
+            time of a change after the start, a value per change of
+            `Plan.change_times` of the one point of the group: their values
+            on the output with the state before every change at its time
+            (`FitSettings.data_at_change`). Empty if no data of the group is
+            at such a time.
     """
 
     time: np.ndarray
     outputs: dict[str, np.ndarray]
+    before: dict[str, np.ndarray] = field(default_factory=dict)
+
+
+def _with_states_before(
+    solution: np.ndarray, states: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Set the state before every change at its time in the output of a simulation.
+
+    The output has the state after a change at its time, if it has the time;
+    a row at the time of a change is replaced by the state before it, else
+    the state is inserted, so the times stay sorted and every other row stays.
+
+    Args:
+        solution: the output of a simulation, a row per time, the time first.
+        states: the states before the changes after the start, a row per
+            change in the order of the changes, the time first, see
+            `sbmlsim.simulator.executor.execute_with_before_changes`.
+
+    Returns:
+        The output with the states before the changes, and the row of every
+        change in it.
+    """
+    time = solution[:, 0]
+    position = np.searchsorted(time, states[:, 0], side="left")
+    present = position < time.size
+    present[present] = time[position[present]] == states[present, 0]
+    out = solution.copy()
+    out[position[present]] = states[present]
+    missing = ~present
+    out = np.insert(out, position[missing], states[missing], axis=0)
+    # an inserted row moves the rows after it, the changes are in time order
+    rows = position + np.cumsum(missing) - missing
+    return out, rows
 
 
 @dataclass(frozen=True)
@@ -569,8 +617,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: its plan, and their number, `None` for a plain simulation, see
         #: `_compile_plans`
         self._group_points: list[_Points | None] = []
-        #: the observables of every group which reads one, `None` for a group
-        #: which reads selections only, see `_compile_plans`
+        #: the observables of every group which keeps the output of its
+        #: simulation (its selections for a group which reads no observable),
+        #: `None` for a group which outputs the times of its data, see
+        #: `_compile_plans`
         self._group_graphs: list[ObservableGraph | None] = []
         #: target, index into the parameter vector and factor into the unit
         #: of the target in the model, of every parameter of a group
@@ -579,6 +629,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: mapping, `None` for a mapping whose x is not the time, see
         #: `_compile_plans`
         self._rows: list[np.ndarray | None] = []
+        #: the change every data point of a timecourse over the time is at,
+        #: its index into `Plan.change_times` of the one point of its group,
+        #: `-1` for a point at no change after the start; `None` for the other
+        #: mappings, see `_compile_plans`
+        self._at_change: list[np.ndarray | None] = []
+        #: the timecourses every group which keeps its output reads at the
+        #: time of a change after the start, evaluated on its output with the
+        #: states before the changes; `None` if the group compares no data
+        #: at such a time with the state before it, see `_before_graph`
+        self._group_before_graphs: list[ObservableGraph | None] = []
         self.selections: list[Any] = []
         #: id of the model and of the simulation of every mapping in its
         #: experiment
@@ -626,6 +686,36 @@ class OptimizationProblem(ObjectJSONEncoder):
         return {
             kind: len(self.indices(kind)) for kind in MappingKind if self.indices(kind)
         }
+
+    def times_at_changes(self, k: int) -> np.ndarray:
+        """Get the times of the data of a mapping which are at a change.
+
+        A data point of a timecourse over the time whose time is the time of
+        a change after the start of its simulation, up to the resolution of
+        the time (`sbmlsim.simulator.plan.time_tolerance`), is compared with
+        the state before the change or after it, see
+        `FitSettings.data_at_change`.
+
+        Args:
+            k: index of the fit mapping.
+
+        Returns:
+            The times of the reference data at the time of a change after the
+            start, in the time of the data; empty for a mapping which is no
+            timecourse over the time.
+
+        Raises:
+            ValueError: if the problem is not initialized.
+        """
+        if not self.is_initialized:
+            raise ValueError(
+                f"'{self.opid}': the times of the data require the resolved "
+                f"mappings, call `initialize(settings)` first."
+            )
+        at_change = self._at_change[k]
+        if at_change is None:
+            return np.empty(0)
+        return np.asarray(self.x_references[k], dtype=float)[at_change >= 0]
 
     @property
     def is_initialized(self) -> bool:
@@ -1693,13 +1783,19 @@ class OptimizationProblem(ObjectJSONEncoder):
         where the data is; this is the fit of the timecourses of a plain
         simulation. A group of a scan task keeps the values of its points,
         which an evaluation applies to the plan after the fitted values, so
-        the values of a dimension win over a fitted value of their target. A
-        group whose mappings read observables compiles them once, with the
-        selections its mappings read kept next to them, and keeps the output
-        of its simulation: a cmax needs the dense output, not the times of
-        the data. The factors convert the values of the parameters into the
-        units of their targets once, so an evaluation multiplies instead of
-        calling pint.
+        the values of a dimension win over a fitted value of their target.
+        Every other group keeps the output of its simulation and compiles the
+        observables its mappings read once, with the selections they read
+        kept next to them: a cmax needs the dense output, not the times of
+        the data, and so does a timecourse over another selection. The
+        factors convert the values of the parameters into the units of their
+        targets once, so an evaluation multiplies instead of calling pint.
+
+        A data point at the time of a change after the start is compared with
+        the state before the change (`FitSettings.data_at_change`): the plan
+        of the times of the data outputs it there (`Plan.before_changes`),
+        and a group which keeps its output reads it from the states before
+        the changes, see `_before_graph`.
 
         Raises:
             ValueError: if a time of the data is outside of its simulation,
@@ -1714,6 +1810,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         factors: dict[tuple[str, str], float] = {}
         external = {k for k, p in enumerate(self.parameters) if p.is_external}
         self._rows = [None] * len(self.mapping_keys)
+        self._at_change = [None] * len(self.mapping_keys)
+        self._group_before_graphs = []
+        before = self.settings_initialized.data_at_change is DataAtChangeType.BEFORE
         for k_group, group in enumerate(self.mapping_groups):
             k0 = group[0]
             model: RoadrunnerSBMLModel = self.models[k0]
@@ -1724,16 +1823,27 @@ class OptimizationProblem(ObjectJSONEncoder):
             if scan is not None and positions is not None:
                 values, timed = scan_point_values(scan, model, plan, positions)
                 points = _Points(values=values, timed=timed, size=len(positions))
-            graph = (
-                self._group_graph(k_group, plan, points)
-                if any(self._observed[k] for k in group)
-                else None
+            # the plan of the first point, whose changes a timecourse has
+            first = plan if points is None else points.plan(plan, 0)
+            at_data = all(
+                not self._observed[k] and self.xid_observable[k] == TIME for k in group
             )
+            graph = None if at_data else self._group_graph(k_group, first)
             self._group_points.append(points)
             self._group_graphs.append(graph)
             if graph is not None:
                 self._check_times(k_group, plan)
-            elif all(self.xid_observable[k] == "time" for k in group):
+                for k in group:
+                    if (
+                        self.observation_kinds[k] is ObservationKind.TIMECOURSE
+                        and self.xid_observable[k] == TIME
+                    ):
+                        times = np.asarray(self.x_references[k], dtype=float)
+                        self._at_change[k] = first.at_change(times - plan.time_shift)
+                self._group_before_graphs.append(
+                    self._before_graph(k_group, first) if before else None
+                )
+            else:
                 data_times = np.concatenate(
                     [np.asarray(self.x_references[k], float) for k in group]
                 )
@@ -1744,11 +1854,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                 times, index = merge_times(
                     data_times - plan.time_shift, plan.start, plan.end
                 )
+                at_change = first.at_change(times)
                 position = 0
                 for k in group:
                     size = len(self.x_references[k])
                     self._rows[k] = index[position : position + size]
+                    self._at_change[k] = at_change[self._rows[k]]
                     position += size
+                self._group_before_graphs.append(None)
                 steady = bool(np.isposinf(times[-1]))
                 times = times[np.isfinite(times)]
                 outside = times[(times < plan.start) | (times > plan.end)]
@@ -1773,6 +1886,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
                     if steady
                     else None,
+                    # the data at the time of a change after the start is the
+                    # state before the change
+                    before_changes=before,
                 )
             self.plans.append(plan)
 
@@ -1834,25 +1950,19 @@ class OptimizationProblem(ObjectJSONEncoder):
                     dimension.id,
                 )
 
-    def _group_graph(
-        self,
-        k_group: int,
-        plan: Plan,
-        points: _Points | None,
-    ) -> ObservableGraph:
+    def _group_graph(self, k_group: int, first: Plan) -> ObservableGraph:
         """Compile the observables a group reads.
 
         The graph keeps the observable outputs of its mappings and the
         selections they read next to them: the y of a timecourse of a
         selection, an x which is not the time, the symbols of an observable
         model and of a noise model. The parameters of a `PK` observable are
-        decided by the dosing of the first point of the group.
+        decided by the dosing of the first point of the group. A group which
+        reads no observable keeps its selections.
 
         Args:
             k_group: index of the simulation group.
-            plan: the compiled plan of the group.
-            points: the values of the points of a scan group, `None` for a
-                simulation.
+            first: the plan of the first point of the group.
 
         Returns:
             The graph.
@@ -1877,7 +1987,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 selections.append(x)
             selections.extend(self.noise_selections[k])
         keep = [name for name in dict.fromkeys([*outputs, *selections]) if name != TIME]
-        first = plan if points is None else points.plan(plan, 0)
+        if not outputs:
+            return identity_graph(keep)
         try:
             return compile_observables(
                 experiment._needed_observables(outputs),
@@ -1891,6 +2002,53 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"'{self.parameter_mapping_initialized.group_names[k_group]}' do "
                 f"not fit the model: {err}"
             ) from err
+
+    def _before_graph(self, k_group: int, first: Plan) -> ObservableGraph | None:
+        """Compile the timecourses a group reads at the time of a change.
+
+        A group which keeps the output of its simulation has the state after
+        a change at its time. The timecourses its mappings read at the time
+        of a change after the start, i.e. the y or the symbols of an
+        observable model and the symbols of a noise model, are evaluated
+        again on the output with the state before every change at its time,
+        see `_simulate_points`; an observable which is a timecourse with the
+        observables it reads, so the observables of the group, e.g. the
+        parameters of a `PK` observable, are computed on the output as a run
+        has it.
+
+        Args:
+            k_group: index of the simulation group.
+            first: the plan of the first point of the group.
+
+        Returns:
+            The graph of the timecourses, `None` if no data of the group is at
+            the time of a change after the start.
+
+        Raises:
+            ValueError: if the observables do not fit the model.
+        """
+        names: list[str] = []
+        for k in self.mapping_groups[k_group]:
+            at_change = self._at_change[k]
+            if at_change is None or not np.any(at_change >= 0):
+                continue
+            observable = self.observable_models[k]
+            if observable is not None:
+                names.extend(observable.symbols)
+            else:
+                names.append(self.yid_observable[k])
+            names.extend(self.noise_selections[k])
+        keep = [name for name in dict.fromkeys(names) if name != TIME]
+        if not keep:
+            return None
+        k0 = self.mapping_groups[k_group][0]
+        experiment = self.runner_initialized.experiments[self.experiment_keys[k0]]
+        observables = experiment._needed_observables(keep)
+        if not observables:
+            return identity_graph(keep)
+        return compile_observables(
+            observables, self.models[k0], keep=keep, plans=[first]
+        )
 
     def _check_times(self, k_group: int, plan: Plan) -> None:
         """Check that the times of the timecourses of a group are simulated.
@@ -2511,14 +2669,32 @@ class OptimizationProblem(ObjectJSONEncoder):
         ]
         model = self.models[self.mapping_groups[k_group][0]]
         selections = (TIME, *graph.selections)
+        # a group which reads data at the time of a change has one point
+        before_graph = self._group_before_graphs[k_group]
         solutions: list[np.ndarray] = []
+        states = np.empty((0, len(selections)))
         try:
-            for point in plans:
-                solutions.append(execute(point, model, selections).values)
+            for i, point in enumerate(plans):
+                if i == 0 and before_graph is not None:
+                    result, before = execute_with_before_changes(
+                        point, model, selections
+                    )
+                    states = before.values
+                else:
+                    result = execute(point, model, selections)
+                solutions.append(result.values)
         except (RuntimeError, SteadyStateError) as err:
             self._log_integration_error(x, err)
             return None
         time, outputs, failures = observe(graph, selections, solutions, plans)
+        if not failures and before_graph is not None:
+            # the output with the states before the changes, which only the
+            # timecourses at the times of the changes are read from
+            output, rows = _with_states_before(solutions[0], states)
+            _, left, failures = observe(before_graph, selections, [output], plans[:1])
+            if not failures:
+                values = {name: left[name][0, rows] for name in before_graph.keep}
+                return GroupResult(time=time, outputs=outputs, before=values)
         if failures:
             _, message, _ = failures[0]
             logger.error(
@@ -2746,46 +2922,55 @@ class OptimizationProblem(ObjectJSONEncoder):
     ) -> np.ndarray:
         """Get a selection of the simulation of a fit mapping at its data.
 
+        A group which outputs the times of its data has a row per data point.
+        A group which keeps the output of its simulation is interpolated at the
+        x values of the data; its output has the state after a change at its
+        time, so a data point at the time of a change after the start reads
+        the state before it from `GroupResult.before` if the settings say so,
+        see `_before_graph`.
+
         Args:
             k: index of the fit mapping.
             result: result of the simulation of the mapping.
             selection: the selection.
 
         Returns:
-            The values, interpolated at the x values of the reference data.
+            The values at the x values of the reference data.
 
         Raises:
-            ValueError: if the reference data is outside of the simulation.
+            ValueError: if the reference data is outside of the simulation, or
+                the result of a group which outputs the times of its data has
+                no rows of the mapping.
         """
-        rows = self._rows[k] if k < len(self._rows) else None
         if isinstance(result, GroupResult):
-            # the group reads observables and outputs the times of its
-            # simulation
             f = interpolate.interp1d(
                 x=self._column(result, self._xid(k)),
                 y=self._column(result, selection),
                 copy=False,
                 assume_sorted=True,
             )
-        elif rows is not None:
-            # the simulation outputs the times of the data
-            return np.asarray(result[selection][rows], dtype=float)
-        else:
-            f = interpolate.interp1d(
-                x=result[self._xid(k)],
-                y=result[selection],
-                copy=False,
-                assume_sorted=True,
+            try:
+                values = np.array(f(self.x_references[k]), dtype=float)
+            except ValueError:
+                logger.error(
+                    "Interpolation error in the fit mapping '%s.%s'.",
+                    self.experiment_keys[k],
+                    self.mapping_keys[k],
+                )
+                raise
+            at_change = self._at_change[k]
+            if result.before and at_change is not None:
+                at = at_change >= 0
+                values[at] = result.before[selection][at_change[at]]
+            return values
+        rows = self._rows[k]
+        if rows is None:
+            raise ValueError(
+                f"'{self.opid}': the fit mapping '{self.experiment_keys[k]}."
+                f"{self.mapping_keys[k]}' is no timecourse over the time of a "
+                f"simulation which outputs the times of its data."
             )
-        try:
-            return np.asarray(f(self.x_references[k]), dtype=float)
-        except ValueError:
-            logger.error(
-                "Interpolation error in the fit mapping '%s.%s'.",
-                self.experiment_keys[k],
-                self.mapping_keys[k],
-            )
-            raise
+        return np.asarray(result[selection][rows], dtype=float)
 
     def _simulator_and_quantities(
         self, x: np.ndarray

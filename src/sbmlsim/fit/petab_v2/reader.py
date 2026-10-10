@@ -46,7 +46,7 @@ from sbmlsim.fit.objects import (
     Prior,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.extension import (
     SCIML_EXTENSION_ID,
@@ -377,13 +377,19 @@ class PetabReader:
 
     @property
     def settings(self) -> FitSettings:
-        """Get the settings of the fit, the defaults without the extension."""
+        """Get the settings of the fit, the defaults without the extension.
+
+        Without the extension a data point at the time of a change is
+        compared with the state after the change, the semantics of PEtab
+        (`DataAtChangeType.AFTER`).
+        """
         if self.extension is None or not self.extension.settings:
             logger.info(
                 "The PEtab problem does not carry the 'sbmlsim' extension, the "
-                "default `FitSettings` are used."
+                "default `FitSettings` with the measurements at the time of a "
+                "change after the change, as PEtab defines them, are used."
             )
-            return FitSettings()
+            return FitSettings(data_at_change=DataAtChangeType.AFTER)
         return FitSettings.from_dict(self.extension.settings)
 
     # --- THE PARTS OF THE SIMULATION EXPERIMENT ---

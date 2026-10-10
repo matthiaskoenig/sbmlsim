@@ -13,7 +13,11 @@ The semantics are the ones of PEtab v2:
 4. After a change at a time after the start, the events whose triggers the
    change made true fire, which roadrunner does not see.
 5. A segment is integrated with the output of the plan. A time of a change
-   appears once in the output, with the state after the change.
+   appears once in the output, with the state after the change; with
+   `Plan.before_changes`, which a fit sets, an output time at a change after
+   the start is the state before it, the end of the segment before the
+   change. `execute_with_before_changes` gives these states next to the
+   output.
 6. A model which does not read the time (`ModelSymbols.time_dependent`) is
    integrated in local time: every segment starts at the time 0 of
    roadrunner and its output is shifted back, so the first step of CVODE
@@ -73,6 +77,49 @@ def execute(
         SteadyStateError: if the presimulation does not reach a steady state.
         RuntimeError: if roadrunner fails to integrate.
     """
+    result, _ = _execute(plan, model, selections, keep_before=False)
+    return result
+
+
+def execute_with_before_changes(
+    plan: Plan, model: RoadrunnerSBMLModel, selections: Sequence[str]
+) -> tuple[TimecourseResult, TimecourseResult]:
+    """Run a plan and keep the state before every change after the start.
+
+    The output is the one of `execute`, the state after a change at its time.
+    The state before it is the end of the integration of the segment before
+    the change, which the output drops; a fit which keeps the output of a
+    simulation for its observables reads its data at the time of a change
+    there, see `sbmlsim.fit.options.FitSettings.data_at_change`.
+
+    Args:
+        plan: the plan, compiled against the model.
+        model: the loaded model.
+        selections: the columns of the result, `time` is added as the first
+            column if it is missing.
+
+    Returns:
+        The result of `execute` and the states before the changes: a row per
+        time of `Plan.change_times`, with the columns of the result and the
+        time shifted by `plan.time_shift`.
+
+    Raises:
+        SteadyStateError: if the presimulation does not reach a steady state.
+        RuntimeError: if roadrunner fails to integrate.
+    """
+    result, before = _execute(plan, model, selections, keep_before=True)
+    if before is None:
+        raise RuntimeError("The states before the changes were not kept.")
+    return result, before
+
+
+def _execute(
+    plan: Plan,
+    model: RoadrunnerSBMLModel,
+    selections: Sequence[str],
+    keep_before: bool,
+) -> tuple[TimecourseResult, TimecourseResult | None]:
+    """Run a plan, see `execute` and `execute_with_before_changes`."""
     # a model may have an entity named `time` as well, which is a second
     # column `time` after the time of the simulation (case 01820)
     columns = list(selections)
@@ -102,17 +149,24 @@ def execute(
 
     integrator: roadrunner.Integrator = r.getIntegrator()
     variable_step_size = bool(integrator.getValue(VARIABLE_STEP_SIZE))
+    before: list[np.ndarray] | None = [] if keep_before else None
     try:
         if plan.steady_state is not None:
             steady_state(model, plan.steady_state)
-        values = _simulate(plan, model, r, columns, local)
+        values = _simulate(plan, model, r, columns, local, before)
     finally:
         integrator.setValue(VARIABLE_STEP_SIZE, variable_step_size)
         model.simulated()
 
     if plan.time_shift != 0.0:
         values[:, 0] += plan.time_shift
-    return TimecourseResult(columns=tuple(columns), values=values)
+    result = TimecourseResult(columns=tuple(columns), values=values)
+    if before is None:
+        return result, None
+    states = np.array(before, dtype=float).reshape(len(before), len(columns))
+    if plan.time_shift != 0.0:
+        states[:, 0] += plan.time_shift
+    return result, TimecourseResult(columns=tuple(columns), values=states)
 
 
 def _simulate(
@@ -121,6 +175,7 @@ def _simulate(
     r: roadrunner.RoadRunner,
     columns: list[str],
     local: bool,
+    before: list[np.ndarray] | None = None,
 ) -> np.ndarray:
     """Integrate the segments of a plan, see the module.
 
@@ -131,6 +186,8 @@ def _simulate(
         columns: the selections.
         local: integrate every segment from the time 0 of roadrunner (local
             time) instead of its absolute time.
+        before: the list the state before every change after the start is
+            appended to, in the order of the changes; `None` to keep none.
 
     Returns:
         The values, a row per output time and a column per selection.
@@ -140,6 +197,13 @@ def _simulate(
     model_events = plan.symbols.events
     integrator: roadrunner.Integrator = r.getIntegrator()
     times = np.asarray(plan.times, dtype=float)
+    # with `before_changes` the time of the change every output time is at
+    # (`NaN` for none), whose output is the state at the end of the segment
+    # before the change
+    at_change = np.full(times.size, np.nan)
+    if plan.before_changes:
+        index = plan.at_change(times)
+        at_change[index >= 0] = np.asarray(plan.change_times)[index[index >= 0]]
 
     blocks: list[np.ndarray] = []
     for k in range(len(points) - 1):
@@ -172,12 +236,14 @@ def _simulate(
             integrator.setValue(VARIABLE_STEP_SIZE, True)
             block = np.array(r.simulate(start, end_stop), dtype=float)
             block[:, 0] += offset
+            end_state = block[-1].copy()
             if not last:
                 # the state at `b` is the one before the change at `b`
                 block = block[:-1]
         else:
             integrator.setValue(VARIABLE_STEP_SIZE, False)
-            wanted = times[(times >= a) & ((times <= b) if last else (times < b))]
+            in_segment = (times >= a) & ((times <= b) if last else (times < b))
+            wanted = times[in_segment & np.isnan(at_change)]
             shifted = wanted - offset
             grid = np.unique(np.concatenate([[start], shifted, [end_stop]]))
             result = np.array(r.simulate(times=grid.tolist()), dtype=float)
@@ -189,11 +255,23 @@ def _simulate(
                 )
             # the output times are the ones asked for, not the shifted ones
             block[:, 0] = wanted
+            end_state = result[-1].copy()
+            # the output times at the change at `b`, on either side of it,
+            # are the state before the change, the end of this segment
+            at_b = times[at_change == b]
+            if at_b.size:
+                rows = np.repeat(end_state[np.newaxis, :], at_b.size, axis=0)
+                rows[:, 0] = at_b
+                block = np.concatenate([block, rows], axis=0)
+        if before is not None and b > plan.start and b in events:
+            end_state[0] = b
+            before.append(end_state)
         blocks.append(block)
 
     if plan.end in events:
         # a change at the end is applied after the integration, the last
-        # output is the state after it and the events it triggers
+        # output is the state after it and the events it triggers, unless
+        # the output at the end is the state before it (`before_changes`)
         if model_events and plan.end > plan.start:
             triggers = _triggers(
                 model_events, r, plan.end if local else float(r.model.getTime())
@@ -202,7 +280,12 @@ def _simulate(
             _fire_events(model_events, triggers, r, plan.end, model)
         else:
             _apply(events[plan.end], r, plan)
-        if blocks and blocks[-1].shape[0] and blocks[-1][-1, 0] == plan.end:
+        if (
+            not plan.before_changes
+            and blocks
+            and blocks[-1].shape[0]
+            and blocks[-1][-1, 0] == plan.end
+        ):
             blocks[-1][-1, :] = _state(r, columns, plan.end)
 
     if plan.steady_state_output is not None:
