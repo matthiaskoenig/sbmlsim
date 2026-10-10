@@ -2,10 +2,12 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pytest
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import to_hex
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.lines import Line2D
@@ -13,7 +15,7 @@ from matplotlib.lines import Line2D
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.plot import Axis, Figure, Plot
-from sbmlsim.plot.plotting import CurveType
+from sbmlsim.plot.plotting import CurveType, YAxisPosition
 from sbmlsim.plot.points import point_colors
 from sbmlsim.plot.serialization_matplotlib import MatplotlibFigureSerializer
 from sbmlsim.simulator import Simulator
@@ -188,13 +190,13 @@ def test_a_band_with_its_median(experiment: SimulationExperiment) -> None:
             name="C",
         ),
     )
-    assert len(ax.collections) == 1
-    (median,) = _data_lines(ax)
+    assert len(ax.collections) == 2  # the area and the empty one of the legend
+    _low, _high, median = _data_lines(ax)
     y = Data("[C]", task="task_draws").get_data(experiment, to_units="mg/l")
     np.testing.assert_allclose(
         np.asarray(median.get_ydata()), np.nanmedian(y.values, axis=0)
     )
-    assert sorted(_labels(ax)) == ["C 5-95 %", "C median"]
+    assert sorted(_labels(ax)) == ["5-95 %", "C median"]
 
 
 def test_a_band_per_dose(experiment: SimulationExperiment) -> None:
@@ -208,7 +210,7 @@ def test_a_band_per_dose(experiment: SimulationExperiment) -> None:
             name="C",
         ),
     )
-    assert len(ax.collections) == 3
+    assert len(ax.collections) == 4  # three areas and the one of the legend
 
 
 def test_a_bar_curve_over_a_dimension_raises(experiment: SimulationExperiment) -> None:
@@ -222,3 +224,128 @@ def test_a_bar_curve_over_a_dimension_raises(experiment: SimulationExperiment) -
                 type=CurveType.BAR,
             ),
         )
+
+
+def _figure(
+    experiment: SimulationExperiment,
+    draw: Callable[[Plot], object],
+    right: bool = False,
+    outside: bool = False,
+) -> FigureMPL:
+    figure = Figure(experiment=experiment, sid="fig", num_rows=1, num_cols=1)
+    if outside:
+        figure.legend_position = "outside"
+    plot = figure.create_plots(
+        xaxis=Axis("time", unit="hr"),
+        yaxis=Axis("C", unit="mg/l"),
+        legend=True,
+    )[0]
+    if right:
+        plot.yaxis_right = Axis("C right", unit="mg/l")
+    draw(plot)
+    fig = MatplotlibFigureSerializer.to_figure(experiment, figure)
+    FigureCanvasAgg(fig).draw()
+    return fig
+
+
+def test_a_band_per_dose_has_an_entry_per_point_and_one_for_the_range(
+    experiment: SimulationExperiment,
+) -> None:
+    _, ax = _axes(
+        experiment,
+        lambda p: p.band(
+            Data("time", task="task_dose_draws"),
+            Data("[C]", task="task_dose_draws"),
+            across="draw",
+            over="dose",
+            name="C",
+        ),
+    )
+    assert sorted(_labels(ax)) == [
+        "5-95 %",
+        "C, PODOSE = 100 mg",
+        "C, PODOSE = 200 mg",
+        "C, PODOSE = 50 mg",
+    ]
+
+
+def test_a_band_on_the_right_axis(experiment: SimulationExperiment) -> None:
+    fig = _figure(
+        experiment,
+        lambda p: p.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+            name="C",
+            yaxis_position=YAxisPosition.RIGHT,
+        ),
+        right=True,
+    )
+    assert len(fig.axes) == 2 and len(fig.axes[1].lines) > 0
+
+
+def test_the_colour_bar_leaves_the_right_axis_label_alone(
+    experiment: SimulationExperiment,
+) -> None:
+    fig = _figure(
+        experiment,
+        lambda p: p.curve(
+            x=Data("time", task="task_many"),
+            y=Data("[C]", task="task_many"),
+            over="dose",
+            yaxis_position=YAxisPosition.RIGHT,
+        ),
+        right=True,
+    )
+    renderer = cast(FigureCanvasAgg, fig.canvas).get_renderer()
+    ax1, ax2, bar = fig.axes
+    assert ax2.yaxis.label.get_window_extent(renderer).x1 <= (
+        bar.get_window_extent(renderer).x0
+    )
+    assert ax1.get_position().width == pytest.approx(ax2.get_position().width)
+
+
+def test_an_outside_legend_is_right_of_the_colour_bar(
+    experiment: SimulationExperiment,
+) -> None:
+    fig = _figure(
+        experiment,
+        lambda p: p.curve(
+            x=Data("time", task="task_many2"),
+            y=Data("[C]", task="task_many2"),
+            over=("dose", "rate"),
+        ),
+        outside=True,
+    )
+    renderer = cast(FigureCanvasAgg, fig.canvas).get_renderer()
+    ax, bar = fig.axes
+    legend = ax.get_legend()
+    assert legend is not None
+    tight = bar.get_tightbbox(renderer)
+    assert tight is not None
+    assert legend.get_window_extent(renderer).x0 >= tight.x1
+
+
+def test_the_legend_of_bands_covers_no_boundary(
+    experiment: SimulationExperiment,
+) -> None:
+    fig = _figure(
+        experiment,
+        lambda p: p.band(
+            Data("time", task="task_dose_draws"),
+            Data("[C]", task="task_dose_draws"),
+            across="draw",
+            over="dose",
+            name="C",
+        ),
+    )
+    renderer = cast(FigureCanvasAgg, fig.canvas).get_renderer()
+    ax = fig.axes[0]
+    legend = ax.get_legend()
+    assert legend is not None
+    box = legend.get_window_extent(renderer)
+    for line in ax.get_lines():
+        xy = ax.transData.transform(
+            np.column_stack([line.get_xdata(), line.get_ydata()])
+        )
+        assert not any(box.contains(x, y) for x, y in xy)

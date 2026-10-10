@@ -9,8 +9,10 @@ import numpy as np
 from matplotlib import rcParams
 from matplotlib.axes import Axes as AxesMPL
 from matplotlib.cm import ScalarMappable
+from matplotlib.colorbar import Colorbar
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure as FigureMPL
+from matplotlib.transforms import ScaledTranslation
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
 from sbmlsim.plot.padding import line_values
@@ -35,6 +37,10 @@ from sbmlsim.plot.points import (
 )
 
 logger = logging.getLogger(__name__)
+
+#: the distance in inches of an outside legend from the colour bar, which has
+#: room for its ticks and its label
+COLORBAR_LEGEND_OFFSET = 0.9
 
 
 class MatplotlibFigureSerializer:
@@ -166,11 +172,12 @@ class MatplotlibFigureSerializer:
         cls,
         fig: FigureMPL,
         ax: AxesMPL,
+        axes: list[AxesMPL],
         experiment: Any,
         curve: Curve,
         lines: list[Line],
         kwargs: dict[str, Any],
-    ) -> None:
+    ) -> Colorbar | None:
         """Draw the lines of a curve over scan points, with legend or colour bar."""
         task = curve.y.task_id or curve.x.task_id
         dimensions = [
@@ -201,27 +208,50 @@ class MatplotlibFigureSerializer:
             for ls, text in zip(styles.linestyles, styles.labels[1], strict=True):
                 ax.plot([], [], color="0.4", linestyle=ls, label=text)
         if styles.colorbar:
-            cls._colorbar(fig, ax, styles, color)
+            return cls._colorbar(fig, axes, styles, color)
+        return None
 
     @classmethod
     def _colorbar(
-        cls, fig: FigureMPL, ax: AxesMPL, styles: PointStyle, color: str | None
-    ) -> None:
-        """Draw the colour bar of the first dimension of a curve over scan points."""
+        cls,
+        fig: FigureMPL,
+        axes: list[AxesMPL],
+        styles: PointStyle,
+        color: str | None,
+    ) -> Colorbar:
+        """Draw the colour bar of the first dimension of a curve over scan points.
+
+        It takes its space from every axes of the plot, so a right y axis keeps
+        its label, and is labelled like the axes.
+        """
         norm = Normalize(float(np.min(styles.values)), float(np.max(styles.values)))
         mappable = ScalarMappable(norm=norm, cmap=point_colormap(color))
-        fig.colorbar(mappable, ax=ax, label=styles.title)
+        colorbar = fig.colorbar(mappable, ax=axes)
+        colorbar.set_label(
+            styles.title,
+            fontsize=Figure.axes_labelsize,
+            fontweight=Figure.axes_labelweight,
+        )
+        colorbar.ax.tick_params(labelsize=Figure.ytick_labelsize)
+        return colorbar
 
     @classmethod
     def _draw_bands(
         cls,
         fig: FigureMPL,
         ax: AxesMPL,
+        axes: list[AxesMPL],
         experiment: Any,
         band: Band,
         bands: list[BandLine],
-    ) -> None:
-        """Draw the quantile areas and medians of a band, one per point of `over`."""
+    ) -> Colorbar | None:
+        """Draw the quantile areas and medians of a band, one per point of `over`.
+
+        The boundaries of the area are thin lines, which the placement of a
+        legend takes into account, unlike an area. The legend has one entry
+        per point (the median, else the lower boundary) and one grey entry of
+        the quantile range.
+        """
         low, high = (f"{100 * q:g}" for q in band.quantiles)
         styles = None
         if band.over:
@@ -229,31 +259,38 @@ class MatplotlibFigureSerializer:
             dimension = experiment.scan_dimension(task, band.over[0]) if task else None
             units = experiment.model_units(task) if task else {}
             styles = point_styles(bands, band.over, band.color, [dimension], units)
+        show = styles is None or not styles.colorbar
         for b in bands:
             color = styles.colors[b.index[0]] if styles else (band.color or "C0")
-            name = (
-                f"{band.name}, {styles.labels[0][b.index[0]]}" if styles else band.name
-            )
-            show = styles is None or not styles.colorbar
+            if styles:
+                label = f"{band.name}, {styles.labels[0][b.index[0]]}"
+            else:
+                label = f"{band.name} median" if band.median else band.name
+            label = label if show else "_nolegend_"
             ax.fill_between(
-                b.x,
-                b.low,
-                b.high,
-                color=color,
-                alpha=band.alpha,
-                linewidth=0,
-                label=f"{name} {low}-{high} %" if show else "_nolegend_",
+                b.x, b.low, b.high, color=color, alpha=band.alpha, linewidth=0
             )
+            edge: dict[str, Any] = {
+                "color": color,
+                "linewidth": 0.6,
+                "alpha": min(1.0, 2 * band.alpha),
+            }
+            ax.plot(b.x, b.low, label="_nolegend_" if band.median else label, **edge)
+            ax.plot(b.x, b.high, label="_nolegend_", **edge)
             if band.median:
-                ax.plot(
-                    b.x,
-                    b.median,
-                    color=color,
-                    linewidth=2.0,
-                    label=f"{name} median" if show else "_nolegend_",
-                )
+                ax.plot(b.x, b.median, color=color, linewidth=2.0, label=label)
+        ax.fill_between(
+            [],
+            [],
+            [],
+            color="0.5",
+            alpha=band.alpha,
+            linewidth=0,
+            label=f"{low}-{high} %",
+        )
         if styles is not None and styles.colorbar:
-            cls._colorbar(fig, ax, styles, band.color)
+            return cls._colorbar(fig, axes, styles, band.color)
+        return None
 
     @classmethod
     def to_figure(
@@ -286,6 +323,15 @@ class MatplotlibFigureSerializer:
         # at the end, over the whole figure
         gs = fig.add_gridspec(nrows=figure.num_rows, ncols=figure.num_cols)
 
+        # the spacing comes first: a colour bar of several axes is placed from
+        # the positions of the axes when it is created and `subplots_adjust`
+        # does not move it afterwards
+        wspace = figure.fig_subplots_wspace
+        hspace = figure.fig_subplots_hspace
+        if figure.legend_position == "outside":
+            wspace += 1.0
+        fig.subplots_adjust(top=cls._top(figure), wspace=wspace, hspace=hspace)
+
         subplot: SubPlot
         for subplot in figure.subplots:
             plot = subplot.plot
@@ -304,7 +350,7 @@ class MatplotlibFigureSerializer:
             ax2: AxesMPL | None = None
             axes: list[AxesMPL] = [ax1]
             if yax_right:
-                for curve in plot.curves:
+                for curve in [*plot.curves, *plot.areas, *plot.bands]:
                     if (
                         curve.yaxis_position
                         and curve.yaxis_position == YAxisPosition.RIGHT
@@ -333,6 +379,7 @@ class MatplotlibFigureSerializer:
 
             # memory for stacked bars
             stacks: dict[str, Any] = {}
+            colorbars: list[Colorbar] = []
 
             # plot ordered curves
             abstract_curves: list[AbstractCurve] = sorted(
@@ -384,7 +431,11 @@ class MatplotlibFigureSerializer:
                             ax, curve, line, kwargs, curve.name or "_nolegend_", stacks
                         )
                         continue
-                    cls._draw_points(fig, ax, experiment, curve, lines, kwargs)
+                    colorbar = cls._draw_points(
+                        fig, ax, axes, experiment, curve, lines, kwargs
+                    )
+                    if colorbar is not None:
+                        colorbars.append(colorbar)
 
                 elif isinstance(abstract_curve, Band):
                     # --- Band ---
@@ -399,7 +450,9 @@ class MatplotlibFigureSerializer:
                         x,
                         y,
                     )
-                    cls._draw_bands(fig, ax, experiment, band, bands)
+                    colorbar = cls._draw_bands(fig, ax, axes, experiment, band, bands)
+                    if colorbar is not None:
+                        colorbars.append(colorbar)
 
                 elif isinstance(abstract_curve, ShadedArea):
                     # --- ShadedArea ---
@@ -555,6 +608,17 @@ class MatplotlibFigureSerializer:
 
             if plot.legend:
                 outside = figure.legend_position == "outside"
+                # outside, the legend is right of the colour bar, with room
+                # for its ticks and its label
+                anchor: dict[str, Any] = {"bbox_to_anchor": (1.04, 1)}
+                if colorbars:
+                    anchor = {
+                        "bbox_to_anchor": (1.0, 1.0),
+                        "bbox_transform": colorbars[0].ax.transAxes
+                        + ScaledTranslation(
+                            COLORBAR_LEGEND_OFFSET, 0.0, fig.dpi_scale_trans
+                        ),
+                    }
                 if ax2 is None:
                     handles1, _ = ax1.get_legend_handles_labels()
                     if handles1:
@@ -562,7 +626,7 @@ class MatplotlibFigureSerializer:
                             ax1.legend(
                                 fontsize=Figure.legend_fontsize,
                                 loc="upper left",
-                                bbox_to_anchor=(1.04, 1),
+                                **anchor,
                             )
                         else:
                             ax1.legend(
@@ -581,7 +645,7 @@ class MatplotlibFigureSerializer:
                             labels1 + labels2,
                             fontsize=Figure.legend_fontsize,
                             loc="upper left",
-                            bbox_to_anchor=(1.04, 1),
+                            **anchor,
                         )
                 else:
                     handles1, _ = ax1.get_legend_handles_labels()
@@ -590,12 +654,6 @@ class MatplotlibFigureSerializer:
                     handles2, _ = ax2.get_legend_handles_labels()
                     if handles2:
                         ax2.legend(fontsize=Figure.legend_fontsize, loc="upper right")
-
-        wspace = figure.fig_subplots_wspace
-        hspace = figure.fig_subplots_hspace
-        if figure.legend_position == "outside":
-            wspace += 1.0
-        fig.subplots_adjust(top=cls._top(figure), wspace=wspace, hspace=hspace)
 
         return fig
 

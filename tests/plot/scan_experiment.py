@@ -43,6 +43,10 @@ class ScanFigures(SimulationExperiment):
                 dosed(),
                 [doses(), Dimension("draw", values={"ke": np.linspace(0.1, 0.4, 8)})],
             ),
+            "many2": Scan(
+                dosed(),
+                [doses(12), Dimension("rate", values={"ke": np.array([0.1, 0.3])})],
+            ),
             "grid5": Scan(
                 dosed(),
                 [doses(), Dimension("rate", values={"ke": np.linspace(0.1, 0.5, 5)})],
