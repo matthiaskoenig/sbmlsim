@@ -268,3 +268,32 @@ def test_from_df_unit_column_ignores_missing_value() -> None:
     df = pd.DataFrame({"value": [float("nan"), 2.0], "unit": [float("nan"), "mM"]})
     dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
     assert dset.uinfo["value"] == "mM"
+
+
+def test_from_df_does_not_change_the_data_frame() -> None:
+    """The caller's data frame keeps its values, dtypes and columns."""
+    df = pd.DataFrame({"value": [1, 2000], "value_unit": ["g", "mg"], "unit": "x"})
+    df = df.drop(columns="unit")
+    before = df.copy()
+    DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    pd.testing.assert_frame_equal(df, before)
+
+
+def test_from_df_converts_sd_of_row_without_value() -> None:
+    """The sd of a row without a value follows the unit of its row."""
+    df = pd.DataFrame(
+        {
+            "value": [1.0, float("nan")],
+            "value_sd": [0.1, 500.0],
+            "value_unit": ["g", "mg"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset["value_sd"].tolist() == pytest.approx([0.1, 0.5])
+
+
+def test_from_df_offset_units_raise() -> None:
+    """Units with an offset cannot be converted by a factor."""
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": ["kelvin", "degC"]})
+    with pytest.raises(ValueError, match=r"offset"):
+        DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))

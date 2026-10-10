@@ -722,12 +722,16 @@ def _unify_units(
     if len(units) == 0:
         return None
     target = units[0]
+    # the units of all rows with a unit are converted, also of those without a value
+    units = df.loc[has_unit, unit_key].unique()
+    units = np.concatenate([[target], units[units != target]])
     if len(units) == 1:
         return str(target)
 
     factors: dict[str, float] = {}
     for unit in units[1:]:
         try:
+            zero = float(ureg.Quantity(0.0, unit).to(target).magnitude)
             factors[unit] = float(ureg.Quantity(1.0, unit).to(target).magnitude)
         except pint.errors.PintError as err:
             dimensions = {u: str(ureg.Quantity(1.0, u).dimensionality) for u in units}
@@ -735,6 +739,12 @@ def _unify_units(
                 f"Column '{value_key}' has units '{list(units)}' which cannot be "
                 f"converted into '{target}' (dimensions {dimensions}): {err}"
             ) from err
+        if zero != 0.0:
+            raise ValueError(
+                f"Column '{value_key}' has the units '{list(units)}', the unit "
+                f"'{unit}' has an offset to '{target}' (e.g. degC) and cannot be "
+                "converted by a factor, use one unit for the column"
+            )
     logger.info(
         "Column '%s' has the units %s, the rows are converted to '%s'",
         value_key,
@@ -742,7 +752,8 @@ def _unify_units(
         target,
     )
     for unit, factor in factors.items():
-        mask = rows & (df[unit_key] == unit)
+        # all rows of the unit, also those without a value, so their sd and se follow
+        mask = has_unit & (df[unit_key] == unit)
         for key in [value_key, *error_keys]:
             if key in df.columns:
                 df[key] = df[key].astype(float)
@@ -839,6 +850,9 @@ class DataSet(pd.DataFrame):
             )
         if df.empty:
             raise ValueError(f"DataFrame cannot be empty, check DataFrame: {df}")
+
+        # the caller's data frame is not changed
+        df = df.copy()
 
         if udict is None:
             udict = {}
