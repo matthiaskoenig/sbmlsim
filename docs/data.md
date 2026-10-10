@@ -114,7 +114,8 @@ runner = ExperimentRunner(
     base_path=Path.cwd(),
     data_path=Path.cwd(),
 )
-results = runner.run_experiments(output_path=Path.cwd() / "results")
+# the results are read after the run: keep them
+results = runner.run_experiments(output_path=Path.cwd() / "results", keep_results=True)
 experiment = results[0].experiment
 
 time = Data("time", task="task_tc").get_data(experiment)
@@ -168,7 +169,7 @@ results = ExperimentRunner(
     simulator=Simulator(),
     base_path=Path.cwd(),
     data_path=Path.cwd(),
-).run_experiments(output_path=Path.cwd() / "results")
+).run_experiments(output_path=Path.cwd() / "results", keep_results=True)
 experiment = results[0].experiment
 
 x0 = Data("x0.X", task="task_scan").get_data(experiment)

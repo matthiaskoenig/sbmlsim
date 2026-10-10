@@ -77,7 +77,9 @@ def run(output_path: Path) -> SimulationExperiment:
     runner = ExperimentRunner(
         MidazolamDoses, simulator=Simulator(), base_path=base_path, data_path=base_path
     )
-    experiment = runner.run_experiments(output_path=output_path)[0].experiment
+    experiment = runner.run_experiments(output_path=output_path, keep_results=True)[
+        0
+    ].experiment
     for index in PARAMETERS:
         values = Data(index, task="task_doses").get_data(experiment)
         per_dose = dict(

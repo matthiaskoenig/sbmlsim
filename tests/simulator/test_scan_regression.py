@@ -52,6 +52,7 @@ def _results(
         show_figures=False,
         figure_formats=[],
         reduced_selections=reduced,
+        keep_results=True,
     )
     return next(iter(runner.experiments.values())).results
 

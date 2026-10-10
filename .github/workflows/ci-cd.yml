@@ -45,12 +45,13 @@ jobs:
       with:
         persist-credentials: false
     - name: Set up the environment
-      # the package is installed as a wheel and not editable, so the tests run
-      # against what is published. The key of the cache has the os and the
-      # python version but not the job, so every entry of the matrix has a key
-      # of its own and saves it; the other jobs on linux with python 3.14 (ty,
-      # docs, the suites) share the key of the entry (ubuntu-latest, 3.14) and
-      # only restore it
+      # the dependencies are the versions of uv.lock, the package is installed
+      # as a wheel and not editable, so the tests run against what is
+      # published. The key of the cache has the os and the python version but
+      # not the job, so every entry of the matrix has a key of its own and
+      # saves it; the other jobs on linux with python 3.14 (ty, docs, the
+      # suites) share the key of the entry (ubuntu-latest, 3.14) and only
+      # restore it
       uses: ./.github/actions/setup
       with:
         python-version: ${{ matrix.python-version }}
@@ -63,7 +64,11 @@ jobs:
   install:
     # the package as `pip install sbmlsim` installs it, without extras: the
     # environment of the test matrix has the extras of `dev`, which would hide
-    # a dependency the package needs and does not declare
+    # a dependency the package needs and does not declare. It is the one job
+    # which does not use uv.lock: it resolves from pyproject.toml as the
+    # install of a user does, i.e. the newest releases within the bounds, so a
+    # release of a dependency which breaks sbmlsim shows up here before
+    # dependabot moves the lock to it
     name: plain install
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest

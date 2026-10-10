@@ -705,13 +705,13 @@ class DataSet(pd.DataFrame):
     # additional properties
     _metadata = ["uinfo", "Q_"]  # noqa: RUF012 -- pandas declares it as an instance variable
 
+    # a column of a DataSet is a DataSeries; pandas declares the constructor of
+    # the columns as an attribute, a property would be read-only
+    _constructor_sliced = DataSeries
+
     @property
     def _constructor(self):
         return DataSet
-
-    @property
-    def _constructor_sliced(self):
-        return DataSeries
 
     def get_quantity(self, key: str):
         """Return quantity for given key.

@@ -80,12 +80,12 @@ runner = ExperimentRunner(
     base_path=Path.cwd(),
     data_path=Path.cwd(),
 )
-results = runner.run_experiments(output_path=Path.cwd() / "results")
+results = runner.run_experiments(output_path=Path.cwd() / "results", keep_results=True)
 print(results[0].experiment)
 print(sorted(p.name for p in (Path.cwd() / "results").rglob("*") if p.is_file()))
 ```
 
-`base_path` is the directory the model sources are resolved against, `data_path` the directory of the datasets. The `results` of an experiment are the `ScanResult` of every task, written as netCDF with `save_results=True`:
+`base_path` is the directory the model sources are resolved against, `data_path` the directory of the datasets. The `results` of an experiment are the `ScanResult` of every task, written as netCDF with `save_results=True`. The runner releases the results of an experiment once its outputs are written, so that a run of many experiments holds only the results of the one it runs, and `results` raises afterwards; `keep_results=True` keeps them, as above:
 
 ```python
 experiment = results[0].experiment

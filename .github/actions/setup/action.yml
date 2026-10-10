@@ -2,14 +2,15 @@ name: Set up the environment
 description: >-
   Install uv with its cache, set the python version of the job, put the
   libpython of the interpreter on the library search path and sync the
-  environment of the project
+  environment of the project from uv.lock
 inputs:
   python-version:
     description: the python version, e.g. 3.14
     required: true
   sync:
     description: >-
-      the arguments of `uv sync`, e.g. `--extra dev`; empty does not sync
+      the arguments of `uv sync --locked`, e.g. `--extra dev`; empty does not
+      sync
     required: false
     default: ""
   save-cache:
@@ -41,10 +42,13 @@ runs:
         prefix=$(uv run --no-project --python "$PYTHON_VERSION" python -c "import sys; print(sys.base_prefix)")
         echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
         echo "libpython: $(ls "$prefix"/lib/libpython*.so.1.0)"
-    - name: Sync the environment
+    - name: Sync the environment from the lock (fails if uv.lock is out of date with pyproject.toml, run `uv lock`)
       if: inputs.sync != ''
       shell: bash
       env:
         SYNC: ${{ inputs.sync }}
-      # word splitting of the arguments is intended
-      run: uv sync $SYNC
+      # every job runs against the versions of uv.lock, the same ones as a
+      # local `uv sync`. `--locked` refuses to update the lock: a change of the
+      # dependencies in pyproject.toml has to come with the `uv lock` which
+      # records it. Word splitting of the arguments is intended
+      run: uv sync --locked $SYNC

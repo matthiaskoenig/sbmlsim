@@ -111,6 +111,11 @@ class SimulationExperiment:
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
         self._results: dict[str, ScanResult] = {}
+        # the keys of the matplotlib figures of the last run; the figures are
+        # released once they are written (the report needs only the keys)
+        self._mpl_figure_keys: list[str] = []
+        # the results were released after the run wrote its outputs
+        self._results_released: bool = False
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -279,6 +284,11 @@ class SimulationExperiment:
             self.results["task_glciv"]
         ```
         """
+        if self._results_released:
+            raise RuntimeError(
+                f"The results of '{self.sid}' were released once its outputs were "
+                f"written; run it with `keep_results=True` to keep them."
+            )
         if self._results is None:
             self._run_tasks(self.simulator)
         return self._results
@@ -428,9 +438,28 @@ class SimulationExperiment:
         save_results: bool = False,
         figure_formats: list[str] | None = None,
         reduced_selections: bool = True,
+        keep_results: bool = True,
     ) -> "ExperimentResult":
-        """Execute given experiment and store results."""
+        """Execute given experiment and store results.
+
+        Args:
+            simulator: the simulator of the tasks.
+            output_path: directory of the outputs (datasets, results, figures and
+                the serialization), none are written without it.
+            show_figures: show the matplotlib figures.
+            save_results: write the results of the tasks into the output path.
+            figure_formats: formats of the figures, `STATIC_FORMAT` by default.
+            reduced_selections: simulate only the selections the experiment uses.
+            keep_results: keep the results of the tasks after the outputs are
+                written. Without them an experiment holds only what its report
+                needs, and a run of many experiments only the results of the one
+                it runs; `results` then raises.
+
+        Returns:
+            The result of the experiment, which the report is created from.
+        """
         # run simulations (sets self._results)
+        self._results_released = False
         self._run_tasks(simulator, reduced_selections=reduced_selections)
 
         # evaluate mappings
@@ -462,18 +491,22 @@ class SimulationExperiment:
         # create figures, but only when something looks at them: rendering
         # every figure is most of the time a run takes, and a run without an
         # output path which does not show them would close them again
-        self._mpl_figures = {}
+        self._mpl_figure_keys = []
         if show_figures or (output_path and static_formats):
-            self._mpl_figures = self.create_mpl_figures()
+            mpl_figures = self.create_mpl_figures()
             if show_figures:
-                self.show_mpl_figures(mpl_figures=self._mpl_figures)
+                self.show_mpl_figures(mpl_figures=mpl_figures)
             if output_path and static_formats:
                 self.save_mpl_figures(
                     output_path,
-                    mpl_figures=self._mpl_figures,
+                    mpl_figures=mpl_figures,
                     figure_formats=static_formats,
                 )
-            self.close_mpl_figures(mpl_figures=self._mpl_figures)
+            self.close_mpl_figures(mpl_figures=mpl_figures)
+            # only the keys are kept: a figure keeps the pixel buffer of its last
+            # rendering, so the figures of every experiment of a run would stay
+            # in memory until its end
+            self._mpl_figure_keys = list(mpl_figures)
 
         if output_path and interactive:
             self.save_interactive_figures(output_path)
@@ -482,6 +515,11 @@ class SimulationExperiment:
         if output_path:
             # serialization
             self.to_json(output_path / f"{self.sid}.json")
+
+        if not keep_results:
+            # every output is written, the report needs no results
+            self._results = {}
+            self._results_released = True
 
         return ExperimentResult(experiment=self, output_path=output_path)
 
