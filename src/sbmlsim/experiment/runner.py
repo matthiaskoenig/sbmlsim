@@ -169,8 +169,24 @@ class ExperimentRunner:
         save_results: bool = False,
         figure_formats: list[str] | None = None,
         reduced_selections: bool = True,
+        keep_results: bool = False,
     ) -> list[ExperimentResult]:
-        """Run the experiments."""
+        """Run the experiments and write their outputs.
+
+        Args:
+            output_path: directory of the outputs, one directory per experiment.
+            show_figures: show the matplotlib figures.
+            save_results: write the results of the tasks.
+            figure_formats: formats of the figures.
+            reduced_selections: simulate only the selections an experiment uses.
+            keep_results: keep the results of every experiment after its outputs
+                are written. By default they are released, so a run holds only
+                the results of the experiment it runs and not of all experiments
+                until its end; `SimulationExperiment.results` then raises.
+
+        Returns:
+            The results of the experiments, which the report is created from.
+        """
         if not output_path.exists():
             output_path.mkdir(parents=True)
 
@@ -188,6 +204,7 @@ class ExperimentRunner:
                 save_results=save_results,
                 figure_formats=figure_formats,
                 reduced_selections=reduced_selections,
+                keep_results=keep_results,
             )
             exp_results.append(result)
         return exp_results

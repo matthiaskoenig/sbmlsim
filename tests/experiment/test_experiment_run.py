@@ -421,7 +421,7 @@ def test_the_interactive_format_is_drawn_by_plotly(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# a run keeps what its report needs, not its figures
+# a run keeps what its report needs, not its figures and results
 # ---------------------------------------------------------------------------
 def test_the_figures_are_released_once_written(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -452,6 +452,49 @@ def test_the_figures_are_released_once_written(
     report = ReportResults()
     report.add_experiment_result(exp_result=result)
     assert list(report.data["FigureExperiment"]["figures"]) == ["fig"]
+
+
+def test_a_run_keeps_its_results_by_default(tmp_path: Path) -> None:
+    """A run of an experiment keeps its results, they are read after it."""
+    runner = _runner(FitMappingExperiment)
+    experiment = runner.experiments["FitMappingExperiment"]
+    experiment.run(runner.simulator, output_path=tmp_path)
+
+    assert np.asarray(experiment.results["task"].ds["[X]"]).size > 0
+
+
+def test_a_run_releases_its_results_on_request(tmp_path: Path) -> None:
+    """`keep_results=False` releases the results once the outputs are written."""
+    runner = _runner(FitMappingExperiment)
+    experiment = runner.experiments["FitMappingExperiment"]
+    experiment.run(
+        runner.simulator, output_path=tmp_path, save_results=True, keep_results=False
+    )
+
+    assert experiment._results == {}
+    with pytest.raises(RuntimeError, match="keep_results=True"):
+        _ = experiment.results
+    # the outputs were written from the results
+    assert (tmp_path / "FitMappingExperiment_task.nc").exists()
+    assert (tmp_path / "FitMappingExperiment.json").exists()
+
+
+def test_the_runner_releases_the_results_of_an_experiment(tmp_path: Path) -> None:
+    """The runner releases the results of an experiment once it is written.
+
+    A run of many experiments holds only the results of the one it runs; a run
+    with `keep_results=True` keeps them, also after a run which released them.
+    """
+    runner = _runner(FitMappingExperiment)
+    experiment = runner.experiments["FitMappingExperiment"]
+    runner.run_experiments(output_path=tmp_path)
+
+    assert experiment._results == {}
+    with pytest.raises(RuntimeError, match="keep_results=True"):
+        _ = experiment.results
+
+    runner.run_experiments(output_path=tmp_path, keep_results=True)
+    assert np.asarray(experiment.results["task"].ds["[X]"]).size > 0
 
 
 def test_both_formats_are_written(tmp_path: Path) -> None:
