@@ -12,7 +12,7 @@ import dataclasses
 import inspect
 import logging
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -24,6 +24,7 @@ from sbmlsim.experiment.experiment import (
     SimulationExperiment,
 )
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.plot import FigureSettings
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import Simulator
 from sbmlsim.units import UnitRegistry
@@ -223,6 +224,7 @@ class ExperimentRunner:
         reduced_selections: bool = True,
         keep_results: bool = False,
         raise_on_failure: bool = False,
+        figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> list[ExperimentResult]:
         """Run the experiments and write their outputs.
 
@@ -240,13 +242,24 @@ class ExperimentRunner:
                 experiment ran when an experiment or a figure failed. By default
                 the failures are logged and recorded in the results
                 (`ExperimentResult.failed`) only.
+            figure_settings: the settings of the figures of every experiment,
+                a `FigureSettings` or overrides of its defaults, which the
+                `figure_settings` of an experiment and the settings of a figure
+                override.
 
         Returns:
             The results of the experiments, which the report is created from.
 
         Raises:
             ExperimentRunError: with `raise_on_failure`, if something failed.
+            ValueError: if a key of `figure_settings` is no setting, before
+                any experiment runs.
         """
+        settings = (
+            FigureSettings.resolve(run=figure_settings)
+            if figure_settings is not None
+            else None
+        )
         if not output_path.exists():
             output_path.mkdir(parents=True)
 
@@ -273,6 +286,7 @@ class ExperimentRunner:
                     figure_formats=figure_formats,
                     reduced_selections=reduced_selections,
                     keep_results=keep_results,
+                    figure_settings=settings,
                 )
             )
         self._log_summary(exp_results)
@@ -295,7 +309,9 @@ class ExperimentRunner:
         subclass which overrides `run` (e.g. to post-process its results) and
         raises, or which has the signature before `keep_results` and `on_error`:
         it must not stop the experiments after it. The new keyword arguments are
-        passed only to a `run` which accepts them.
+        passed only to a `run` which accepts them; the figures of a `run` which
+        does not accept the `figure_settings` of the run are rendered without
+        them, which is logged.
 
         Args:
             sid: the experiment.
@@ -317,6 +333,14 @@ class ExperimentRunner:
             p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
         ):
             kwargs = {k: v for k, v in kwargs.items() if k in parameters}
+            if options.get("figure_settings") is not None and (
+                "figure_settings" not in kwargs
+            ):
+                logger.warning(
+                    "The run of '%s' does not take `figure_settings`, its figures "
+                    "are rendered without the figure settings of the run",
+                    sid,
+                )
         started = time.time()
         try:
             result = experiment.run(**kwargs)
@@ -471,6 +495,7 @@ def run_experiments(
     data_path: Path | Iterable[Path] | None = None,
     show_report: bool = False,
     raise_on_failure: bool = False,
+    figure_settings: FigureSettings | Mapping[str, Any] | None = None,
 ) -> list[ExperimentResult]:
     """Run simulation experiments and write their report to the output path.
 
@@ -483,6 +508,8 @@ def run_experiments(
         raise_on_failure: raise an `ExperimentRunError` when an experiment or
             a figure failed, after every experiment ran and the report was
             written.
+        figure_settings: the settings of the figures of every experiment, see
+            `ExperimentRunner.run_experiments`.
 
     Returns:
         The results of the experiments.
@@ -503,6 +530,7 @@ def run_experiments(
     results = runner.run_experiments(
         output_path=output_path,
         show_figures=False,
+        figure_settings=figure_settings,
     )
     report_results = ReportResults()
     for exp_result in results:

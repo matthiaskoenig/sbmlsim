@@ -13,7 +13,6 @@ from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984, W
 from examples.hctz_fitting.helpers import run_experiments
 from sbmlsim import display
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.plot import Figure
 
 EXPERIMENTS: dict[str, list[type[SimulationExperiment]]] = {
     "studies": [
@@ -41,9 +40,6 @@ def run_simulation_experiments(
         ValueError: if neither a group nor experiment classes are given, or the
             group does not exist.
     """
-    Figure.fig_dpi = 300
-    Figure.legend_fontsize = 10
-
     if experiment_classes is not None:
         experiments_to_run = experiment_classes
         output_dir = output_dir or "custom_selection"
@@ -60,8 +56,11 @@ def run_simulation_experiments(
             "No experiments specified, use 'selected' or 'experiment_classes'."
         )
 
+    # the PNG figures in the resolution of a publication
     output_path = run_experiments(
-        experiment_classes=experiments_to_run, output_dir=output_dir
+        experiment_classes=experiments_to_run,
+        output_dir=output_dir,
+        figure_settings={"fig_dpi": 300},
     )
 
     # collect the figures in a single folder

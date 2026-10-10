@@ -1,20 +1,20 @@
 """Reusable functionality to run the HCTZ simulation experiments."""
 
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from sbmlsim import log
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.plot import Figure
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import Simulator
-
-Figure.legend_fontsize = 10
 
 
 def run_experiments(
     experiment_classes: type[SimulationExperiment] | list[type[SimulationExperiment]],
     output_dir: Path | str,
+    figure_settings: Mapping[str, Any] | None = None,
 ) -> Path:
     """Execute the given simulation experiment(s).
 
@@ -24,6 +24,8 @@ def run_experiments(
     Args:
         experiment_classes: simulation experiment class or classes to run.
         output_dir: directory for the results, relative to the working directory.
+        figure_settings: the settings of the figures of the run, which the
+            settings of the experiments override, see `FigureSettings`.
 
     Returns:
         Path of the directory the results were written to.
@@ -50,6 +52,7 @@ def run_experiments(
         save_results=False,
         figure_formats=["svg", "png"],
         reduced_selections=True,
+        figure_settings=figure_settings,
     )
 
     report_results = ReportResults()

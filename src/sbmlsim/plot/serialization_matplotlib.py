@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -25,6 +26,7 @@ from sbmlsim.plot.plotting import (
     AxisScale,
     Band,
     CurveType,
+    FigureSettings,
     LineType,
     ShadedArea,
     Style,
@@ -266,7 +268,13 @@ class MatplotlibFigureSerializer:
         return styles if styles.colorbar else None
 
     @classmethod
-    def _colorbar(cls, fig: FigureMPL, cax: AxesMPL, styles: PointStyle) -> Colorbar:
+    def _colorbar(
+        cls,
+        fig: FigureMPL,
+        cax: AxesMPL,
+        styles: PointStyle,
+        settings: FigureSettings,
+    ) -> Colorbar:
         """Draw the colour bar of the first dimension of a curve over scan points.
 
         It maps the values through the norm of the colours of the lines, with
@@ -285,15 +293,19 @@ class MatplotlibFigureSerializer:
             colorbar.ax.yaxis.set_minor_formatter(NullFormatter())
         colorbar.set_label(
             styles.title,
-            fontsize=Figure.axes_labelsize,
-            fontweight=Figure.axes_labelweight,
+            fontsize=settings.axes_labelsize,
+            fontweight=settings.axes_labelweight,
         )
-        colorbar.ax.tick_params(labelsize=Figure.ytick_labelsize)
+        colorbar.ax.tick_params(labelsize=settings.ytick_labelsize)
         return colorbar
 
     @classmethod
     def _place_colorbars(
-        cls, fig: FigureMPL, num_cols: int, panels: list[_Panel]
+        cls,
+        fig: FigureMPL,
+        num_cols: int,
+        panels: list[_Panel],
+        settings: FigureSettings,
     ) -> None:
         """Place the colour bars of every panel side by side right of it.
 
@@ -324,7 +336,7 @@ class MatplotlibFigureSerializer:
                     cax = fig.add_axes(
                         (box.x1, box.y0, COLORBAR_WIDTH / width, box.height)
                     )
-                    panel_bars.append(cls._colorbar(fig, cax, styles))
+                    panel_bars.append(cls._colorbar(fig, cax, styles, settings))
                     tight = cax.get_tightbbox()
                     end = tight.x1 / dpi if tight is not None else 0.0
                     panel_rooms.append(max(0.0, end - box.x1 * width - COLORBAR_WIDTH))
@@ -364,7 +376,7 @@ class MatplotlibFigureSerializer:
             panel.edge = x / wider
 
     @classmethod
-    def _legend(cls, fig: FigureMPL, figure: Figure, panel: _Panel) -> None:
+    def _legend(cls, fig: FigureMPL, settings: FigureSettings, panel: _Panel) -> None:
         """Draw the legend of a panel.
 
         Outside, one legend of both axes is right of the panel, or right of its
@@ -381,7 +393,7 @@ class MatplotlibFigureSerializer:
             labels += more_labels
         if not handles:
             return
-        if figure.legend_position == "outside":
+        if settings.legend_position == "outside":
             anchor: dict[str, Any] = {"bbox_to_anchor": (1.04, 1)}
             if panel.edge is not None:
                 anchor = {
@@ -394,7 +406,7 @@ class MatplotlibFigureSerializer:
             ax1.legend(
                 handles,
                 labels,
-                fontsize=Figure.legend_fontsize,
+                fontsize=settings.legend_fontsize,
                 loc="upper left",
                 **anchor,
             )
@@ -439,8 +451,8 @@ class MatplotlibFigureSerializer:
         ax.legend(
             handles,
             labels,
-            fontsize=Figure.legend_fontsize,
-            loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
+            fontsize=settings.legend_fontsize,
+            loc=settings.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
         )
 
     @classmethod
@@ -519,8 +531,22 @@ class MatplotlibFigureSerializer:
         cls,
         experiment,  # "SimulationExperiment",
         figure: Figure,
+        settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> FigureMPL:
-        """Convert sbmlsim.Figure to matplotlib figure."""
+        """Convert sbmlsim.Figure to matplotlib figure.
+
+        Args:
+            experiment: the experiment the data of the figure is read from,
+                whose `figure_settings` override the settings of the run.
+            figure: the figure.
+            settings: the settings of the run, a `FigureSettings` or overrides
+                of the defaults, which the settings of the experiment and of
+                the figure override, see `Figure.resolved_settings`.
+
+        Returns:
+            The matplotlib figure.
+        """
+        resolved = figure.resolved_settings(experiment, run=settings)
         # the figure is created directly and not through `pyplot`, which keeps
         # every figure it creates in a global registry until someone closes it:
         # a library which renders many figures leaks them, and matplotlib warns
@@ -529,16 +555,16 @@ class MatplotlibFigureSerializer:
         # `SimulationExperiment.show_mpl_figures` attaches a manager when a
         # figure is actually shown
         fig: FigureMPL = FigureMPL(
-            figsize=(figure.width, figure.height),
-            dpi=Figure.fig_dpi,
-            facecolor=Figure.fig_facecolor,
+            figsize=figure.size(resolved),
+            dpi=resolved.fig_dpi,
+            facecolor=resolved.fig_facecolor,
         )
 
         if figure.name:
             fig.suptitle(
                 figure.name,
-                fontsize=Figure.fig_titlesize,
-                fontweight=Figure.fig_titleweight,
+                fontsize=resolved.fig_titlesize,
+                fontweight=resolved.fig_titleweight,
             )
 
         # create grid for figure
@@ -547,11 +573,13 @@ class MatplotlibFigureSerializer:
         # the spacing comes first, over the whole figure: the colour bars are
         # placed from the positions of the axes, and `subplots_adjust` would
         # move the axes back into their cells afterwards
-        wspace = figure.fig_subplots_wspace
-        hspace = figure.fig_subplots_hspace
-        if figure.legend_position == "outside":
+        wspace = resolved.fig_subplots_wspace
+        hspace = resolved.fig_subplots_hspace
+        if resolved.legend_position == "outside":
             wspace += 1.0
-        fig.subplots_adjust(top=cls._top(figure), wspace=wspace, hspace=hspace)
+        fig.subplots_adjust(
+            top=cls._top(figure, resolved), wspace=wspace, hspace=hspace
+        )
 
         panels: list[_Panel] = []
         subplot: SubPlot
@@ -803,14 +831,14 @@ class MatplotlibFigureSerializer:
 
             # figure styling
             for ax in axes:
-                ax.title.set_fontsize(Figure.axes_titlesize)
-                ax.title.set_fontweight(Figure.axes_titleweight)
-                ax.xaxis.label.set_fontsize(Figure.axes_labelsize)
-                ax.xaxis.label.set_fontweight(Figure.axes_labelweight)
-                ax.yaxis.label.set_fontsize(Figure.axes_labelsize)
-                ax.yaxis.label.set_fontweight(Figure.axes_labelweight)
-                ax.tick_params(axis="x", labelsize=Figure.xtick_labelsize)
-                ax.tick_params(axis="y", labelsize=Figure.ytick_labelsize)
+                ax.title.set_fontsize(resolved.axes_titlesize)
+                ax.title.set_fontweight(resolved.axes_titleweight)
+                ax.xaxis.label.set_fontsize(resolved.axes_labelsize)
+                ax.xaxis.label.set_fontweight(resolved.axes_labelweight)
+                ax.yaxis.label.set_fontsize(resolved.axes_labelsize)
+                ax.yaxis.label.set_fontweight(resolved.axes_labelweight)
+                ax.tick_params(axis="x", labelsize=resolved.xtick_labelsize)
+                ax.tick_params(axis="y", labelsize=resolved.ytick_labelsize)
 
             # hide none-existing axes; the horizontal spines belong to the x
             # axis and the vertical ones to the y axis, and they are hidden on
@@ -839,15 +867,15 @@ class MatplotlibFigureSerializer:
 
         # the colour bars and the legends, once every axes has its ticks and
         # labels
-        cls._place_colorbars(fig, figure.num_cols, panels)
+        cls._place_colorbars(fig, figure.num_cols, panels, resolved)
         for panel in panels:
             if panel.plot.legend:
-                cls._legend(fig, figure, panel)
+                cls._legend(fig, resolved, panel)
 
         return fig
 
     @staticmethod
-    def _top(figure: Figure) -> float:
+    def _top(figure: Figure, settings: FigureSettings) -> float:
         """Get the top of the plots as a fraction of the height of the figure.
 
         The title of the figure and the titles of the plots below it need a
@@ -860,5 +888,5 @@ class MatplotlibFigureSerializer:
         top = float(rcParams["figure.subplot.top"])
         if not figure.name:
             return top
-        band = (1.2 * (Figure.fig_titlesize + Figure.axes_titlesize) + 12.0) / 72.0
-        return min(top, 0.98 - band / figure.height)
+        band = (1.2 * (settings.fig_titlesize + settings.axes_titlesize) + 12.0) / 72.0
+        return min(top, 0.98 - band / figure.size(settings)[1])

@@ -19,9 +19,10 @@ import copy
 import logging
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 import numpy as np
 from matplotlib.colors import to_hex, to_rgba
@@ -1854,18 +1855,50 @@ class SubPlot(BasePlotObject):
         return f"<Subplot[{self.row},{self.col}]>"
 
 
-class Figure(BasePlotObject):
-    """A figure consists of multiple subplots.
+@dataclass(frozen=True)
+class FigureSettings:
+    """The settings a figure is rendered with.
 
-    A reference to the experiment is required, so the plot can
-    resolve the datasets and the simulations.
+    The settings cascade, the more specific wins: the defaults of this class,
+    the settings of the run (`figure_settings=` of `SimulationExperiment.run`,
+    `ExperimentRunner.run_experiments` and the function `run_experiments`, a
+    `FigureSettings` or a mapping of overrides of the defaults), the settings
+    of the experiment (the class attribute `SimulationExperiment.figure_settings`,
+    a mapping of overrides, which the subclasses of an experiment inherit) and
+    the settings of the figure (`Figure(settings=...)`, a mapping of
+    overrides), see `resolve`. An override is a field by its name, e.g.
+    `{"fig_dpi": 300, "legend_fontsize": 10}`. The settings of a figure
+    therefore do not depend on the experiments which ran before it.
+
+    Attributes:
+        fig_dpi: the resolution in dots per inch, which turns the size of a
+            figure in inches into the pixels of an image or a page.
+        fig_facecolor: the colour of the figure.
+        fig_subplots_wspace: the horizontal spacing between the panels, as a
+            fraction of the panel width.
+        fig_subplots_hspace: the vertical spacing between the panels, as a
+            fraction of the panel height.
+        panel_width: the width of a panel in inches, which gives the width of
+            a figure without an explicit `width`.
+        panel_height: the height of a panel in inches, which gives the height
+            of a figure without an explicit `height`.
+        fig_titlesize: the font size of the title of the figure.
+        fig_titleweight: the font weight of the title of the figure.
+        axes_titlesize: the font size of the title of a plot.
+        axes_titleweight: the font weight of the title of a plot.
+        axes_labelsize: the font size of the label of an axis.
+        axes_labelweight: the font weight of the label of an axis.
+        xtick_labelsize: the font size of the tick labels of an x axis.
+        ytick_labelsize: the font size of the tick labels of a y axis.
+        legend_fontsize: the font size of a legend.
+        legend_position: `"inside"` a plot or `"outside"` right of it.
+        legend_loc: the location of a legend inside a plot, a location of
+            matplotlib, e.g. `"best"` or `"upper left"`.
     """
 
     fig_dpi: int = 72
     fig_facecolor: str = "white"
-    #: horizontal spacing between the panels, as a fraction of the panel width
     fig_subplots_wspace: float = 0.3
-    #: vertical spacing between the panels, as a fraction of the panel height
     fig_subplots_hspace: float = 0.3
     panel_width: float = 7.0
     panel_height: float = 5.0
@@ -1878,8 +1911,139 @@ class Figure(BasePlotObject):
     xtick_labelsize: int = 15
     ytick_labelsize: int = 15
     legend_fontsize: int = 13
-    legend_position: str = "inside"  # "outside"
+    legend_position: str = "inside"
     legend_loc: str = "best"
+
+    @classmethod
+    def names(cls) -> tuple[str, ...]:
+        """Get the names of the settings, in the order of the fields."""
+        return tuple(f.name for f in fields(cls))
+
+    @classmethod
+    def check(cls, overrides: Mapping[str, Any] | None, owner: str) -> dict[str, Any]:
+        """Check the overrides of a level of the cascade.
+
+        Args:
+            overrides: the overrides by the names of the settings.
+            owner: the level for the message, e.g. "the experiment 'Exp'".
+
+        Returns:
+            A copy of the overrides, empty for `None`.
+
+        Raises:
+            TypeError: if the overrides are no mapping.
+            ValueError: if a key is no setting, the message names the settings.
+        """
+        if overrides is None:
+            return {}
+        if not isinstance(overrides, Mapping):
+            raise TypeError(
+                f"The figure settings of {owner} are a mapping of overrides by "
+                f"the names of the settings, e.g. {{'fig_dpi': 300}}, not "
+                f"'{type(overrides).__name__}'."
+            )
+        names = cls.names()
+        unknown = [key for key in overrides if key not in names]
+        if unknown:
+            raise ValueError(
+                f"The figure settings of {owner} have unknown keys "
+                f"{', '.join(repr(k) for k in unknown)}. The settings are the "
+                f"fields of `FigureSettings`: {', '.join(names)}."
+            )
+        return dict(overrides)
+
+    @classmethod
+    def resolve(
+        cls,
+        run: FigureSettings | Mapping[str, Any] | None = None,
+        experiment: Mapping[str, Any] | None = None,
+        figure: Mapping[str, Any] | None = None,
+    ) -> FigureSettings:
+        """Get the settings of the cascade, the more specific level wins.
+
+        Args:
+            run: the settings of the run, a `FigureSettings` or overrides of
+                the defaults.
+            experiment: the overrides of the experiment,
+                `SimulationExperiment.figure_settings`.
+            figure: the overrides of the figure, `Figure.settings`.
+
+        Returns:
+            The settings.
+
+        Raises:
+            ValueError: if a level has a key which is no setting.
+        """
+        settings = (
+            run if isinstance(run, FigureSettings) else cls(**cls.check(run, "the run"))
+        )
+        for overrides, owner in [
+            (experiment, "the experiment"),
+            (figure, "the figure"),
+        ]:
+            checked = cls.check(overrides, owner)
+            if checked:
+                settings = replace(settings, **checked)
+        return settings
+
+
+def _removed_setting(name: str) -> str:
+    """Get the message of a figure setting read or set on `Figure` or a figure."""
+    return (
+        f"'{name}' is no attribute of the class `Figure` or of a figure any more: "
+        f"set on the class it changed every later figure of the process, also "
+        f"those of other experiments (#260). It is a field of `FigureSettings` "
+        f"(the default is `FigureSettings().{name}`) and is set for a run with "
+        f"`figure_settings={{'{name}': <value>}}` of `SimulationExperiment.run`, "
+        f"`ExperimentRunner.run_experiments` or `run_experiments`; for an "
+        f"experiment and its subclasses with `SimulationExperiment.figure_settings`, "
+        f"i.e. `figure_settings = {{'{name}': <value>}}` in the class body; for one "
+        f"figure with `Figure(settings=...)`, i.e. "
+        f"`Figure(..., settings={{'{name}': <value>}})`."
+    )
+
+
+#: the settings of a figure, which `Figure` and a figure refuse as attributes
+_SETTING_NAMES: frozenset[str] = frozenset(FigureSettings.names())
+
+
+class _FigureType(type):
+    """The type of `Figure`, which refuses the settings as class attributes.
+
+    The settings were class attributes of `Figure`, which an experiment set for
+    every later figure of the process (#260). Setting or reading one on the
+    class raises with the way to set it now, rather than being ignored.
+    """
+
+    # hidden from the type checker, which would take any attribute of the class
+    # for one of `__getattr__` and allow setting any, while without them it
+    # reports a setting read or set on `Figure` as no attribute of it
+    if not TYPE_CHECKING:
+
+        def __getattr__(cls, name: str) -> NoReturn:
+            """Raise for an attribute the class does not have."""
+            if name in _SETTING_NAMES:
+                raise AttributeError(_removed_setting(name), name=name, obj=cls)
+            raise AttributeError(
+                f"type object '{cls.__name__}' has no attribute '{name}'",
+                name=name,
+                obj=cls,
+            )
+
+        def __setattr__(cls, name: str, value: Any) -> None:
+            """Set a class attribute, except a setting of a figure."""
+            if name in _SETTING_NAMES:
+                raise AttributeError(_removed_setting(name), name=name, obj=cls)
+            super().__setattr__(name, value)
+
+
+class Figure(BasePlotObject, metaclass=_FigureType):
+    """A figure consists of multiple subplots.
+
+    A reference to the experiment is required, so the plot can
+    resolve the datasets and the simulations. The figure is rendered with
+    the settings of `FigureSettings`, which its `settings` override.
+    """
 
     def __init__(
         self,
@@ -1891,6 +2055,7 @@ class Figure(BasePlotObject):
         width: float | None = None,
         num_rows: int = 1,
         num_cols: int = 1,
+        settings: Mapping[str, Any] | None = None,
     ):
         """Initialize Figure.
 
@@ -1899,10 +2064,19 @@ class Figure(BasePlotObject):
             sid: identifier of the figure
             name: title of the figure
             subplots: subplots of the figure
-            height: height of the figure (calculated from panels if not set)
-            width: width of the figure (calculated from panels if not set)
+            height: height of the figure in inches, without it the number of
+                rows times the panel height of the settings it is rendered with
+            width: width of the figure in inches, without it the number of
+                columns times the panel width of the settings it is rendered with
             num_rows: number of panel rows
             num_cols: number of panel columns
+            settings: the settings of this figure, overrides of the settings of
+                the run and of the experiment by name, e.g.
+                `{"legend_fontsize": 10}`, see `FigureSettings`.
+
+        Raises:
+            TypeError: if the settings are no mapping.
+            ValueError: if a key of the settings is no field of `FigureSettings`.
         """
         super().__init__(sid, name)
         self.experiment: SimulationExperiment | None = experiment
@@ -1915,10 +2089,12 @@ class Figure(BasePlotObject):
             subplot.plot.figure = self
         self.num_rows: int = num_rows
         self.num_cols: int = num_cols
-        self._height: float
-        self._width: float
-        self.height = height
-        self.width = width
+        #: the explicit size in inches, `None` for the size of the panels of the
+        #: settings the figure is rendered with, see `size`
+        self.height: float | None = height
+        self.width: float | None = width
+        self._settings: dict[str, Any] = {}
+        self.settings = settings or {}
 
     def __repr__(self) -> str:
         """Get representation string."""
@@ -1928,29 +2104,93 @@ class Figure(BasePlotObject):
             f"#subplots={len(self.subplots)})"
         )
 
+    # hidden from the type checker for the reason of `_FigureType`
+    if not TYPE_CHECKING:
+
+        def __getattr__(self, name: str) -> NoReturn:
+            """Raise for an attribute the figure does not have.
+
+            A setting of `FigureSettings` raises with the way to set it, see
+            `settings`.
+            """
+            if name in _SETTING_NAMES:
+                raise AttributeError(_removed_setting(name), name=name, obj=self)
+            raise AttributeError(
+                f"'{type(self).__name__}' object has no attribute '{name}'",
+                name=name,
+                obj=self,
+            )
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            """Set an attribute, except a setting of `FigureSettings`."""
+            if name in _SETTING_NAMES:
+                raise AttributeError(_removed_setting(name), name=name, obj=self)
+            super().__setattr__(name, value)
+
     @property
-    def height(self) -> float:
-        """Get height."""
-        return self._height
+    def settings(self) -> Mapping[str, Any]:
+        """Get the settings of this figure, overrides by name (read-only)."""
+        return MappingProxyType(self._settings)
 
-    @height.setter
-    def height(self, value: float | None) -> None:
-        """Set height."""
-        if value is None:
-            value = self.num_rows * self.panel_height
-        self._height = value
+    @settings.setter
+    def settings(self, value: Mapping[str, Any]) -> None:
+        """Set the settings of this figure, overrides by name.
 
-    @property
-    def width(self) -> float:
-        """Get width."""
-        return self._width
+        Raises:
+            TypeError: if the settings are no mapping.
+            ValueError: if a key is no field of `FigureSettings`.
+        """
+        self._settings = FigureSettings.check(value, f"the figure '{self.sid}'")
 
-    @width.setter
-    def width(self, value: float | None) -> None:
-        """Set width."""
-        if value is None:
-            value = self.num_cols * self.panel_width
-        self._width = value
+    def resolved_settings(
+        self,
+        experiment: SimulationExperiment | None = None,
+        run: FigureSettings | Mapping[str, Any] | None = None,
+    ) -> FigureSettings:
+        """Get the settings the figure is rendered with.
+
+        The settings of the figure override those of its experiment, which
+        override those of the run, see `FigureSettings.resolve`.
+
+        Args:
+            experiment: the experiment the figure is rendered for, its
+                `figure_settings`; without it there is no level of an experiment.
+            run: the settings of the run, a `FigureSettings` or overrides of
+                the defaults.
+
+        Returns:
+            The settings.
+        """
+        return FigureSettings.resolve(
+            run=run,
+            experiment=experiment.figure_settings if experiment is not None else None,
+            figure=self._settings,
+        )
+
+    def size(self, settings: FigureSettings) -> tuple[float, float]:
+        """Get the width and the height in inches the figure is rendered with.
+
+        The explicit `width` and `height`, else the number of columns and rows
+        times the panel size of the settings.
+
+        Args:
+            settings: the settings the figure is rendered with, see
+                `resolved_settings`.
+
+        Returns:
+            The width and the height.
+        """
+        width = (
+            self.width
+            if self.width is not None
+            else self.num_cols * settings.panel_width
+        )
+        height = (
+            self.height
+            if self.height is not None
+            else self.num_rows * settings.panel_height
+        )
+        return width, height
 
     def num_panels(self) -> int:
         """Get number of panel spots for plots.
@@ -2109,5 +2349,6 @@ class Figure(BasePlotObject):
             "num_cols": self.num_cols,
             "width": self.width,
             "height": self.height,
+            "settings": self._settings,
             "subplots": self.subplots,
         }

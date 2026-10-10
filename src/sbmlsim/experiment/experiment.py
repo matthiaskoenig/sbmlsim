@@ -7,7 +7,8 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from types import MappingProxyType
+from typing import Any, ClassVar, Literal
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -17,7 +18,7 @@ from sbmlsim.data import Data, DataSet, check_sel
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.plot import Figure
+from sbmlsim.plot import Figure, FigureSettings
 from sbmlsim.plot.points import point_linestyles
 from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
@@ -55,6 +56,15 @@ class SimulationExperiment:
 
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
+
+    #: the settings of the figures of the experiment, overrides of the settings
+    #: of the run by the names of the fields of `FigureSettings`, which the
+    #: settings of a figure override in turn (`Figure(settings=...)`). A
+    #: subclass assigns a mapping of its own, e.g.
+    #: `figure_settings = {"legend_fontsize": 10}`, which its subclasses
+    #: inherit; `{**Base.figure_settings, "fig_dpi": 300}` extends the one of
+    #: a base. Checked at `initialize`.
+    figure_settings: ClassVar[Mapping[str, Any]] = MappingProxyType({})
 
     def __init__(
         self,
@@ -144,6 +154,7 @@ class SimulationExperiment:
             self._check_types()
             self._check_task_data()
             self._check_figures()
+            FigureSettings.check(self.figure_settings, f"the experiment '{self.sid}'")
         except Exception as err:
             # a note and no log entry: the runner logs the error of an experiment
             # once, with its traceback, which shows the note
@@ -559,6 +570,7 @@ class SimulationExperiment:
         reduced_selections: bool = True,
         keep_results: bool = True,
         on_error: Literal["raise", "log"] = "raise",
+        figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> "ExperimentResult":
         """Execute given experiment and store results.
 
@@ -584,10 +596,19 @@ class SimulationExperiment:
                 `ExperimentRunner` uses: a failing figure is skipped and the
                 others are written (`ExperimentResult.failed_figures`), an error
                 of the experiment ends its run (`ExperimentResult.error`).
+            figure_settings: the settings of the figures of the run, a
+                `FigureSettings` or overrides of its defaults, which the
+                `figure_settings` of the experiment and the settings of a
+                figure override.
 
         Returns:
             The result of the experiment, which the report is created from.
+
+        Raises:
+            ValueError: if a key of `figure_settings` is no setting, also with
+                `on_error="log"`.
         """
+        settings = FigureSettings.resolve(run=figure_settings)
         # the format decides which backend draws a figure: matplotlib draws
         # the static images, plotly the interactive pages
         formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
@@ -631,7 +652,7 @@ class SimulationExperiment:
             # output path which does not show them would close them again
             if show_figures or (output_path and static_formats):
                 mpl_figures = self.create_mpl_figures(
-                    on_error=on_error, failed=failed_figures
+                    on_error=on_error, failed=failed_figures, figure_settings=settings
                 )
                 if show_figures:
                     self.show_mpl_figures(mpl_figures=mpl_figures)
@@ -656,7 +677,10 @@ class SimulationExperiment:
 
             if output_path and interactive:
                 pages = self.save_interactive_figures(
-                    output_path, on_error=on_error, failed=failed_figures
+                    output_path,
+                    on_error=on_error,
+                    failed=failed_figures,
+                    figure_settings=settings,
                 )
                 for key in pages:
                     written.setdefault(key, []).append(INTERACTIVE_FORMAT)
@@ -1152,6 +1176,7 @@ class SimulationExperiment:
         self,
         on_error: Literal["raise", "log"] = "raise",
         failed: dict[str, str] | None = None,
+        figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> dict[str, FigureMPL | Figure]:
         """Create matplotlib figures.
 
@@ -1159,6 +1184,7 @@ class SimulationExperiment:
             on_error: `"raise"` raises the error of a figure, `"log"` logs it,
                 skips the figure and goes on with the next.
             failed: collects the failed figures as `{key: error}`.
+            figure_settings: the settings of the run, see `run`.
 
         Returns:
             The figures by their key, without the failed ones.
@@ -1166,7 +1192,9 @@ class SimulationExperiment:
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
             try:
-                mpl_figures[fig_key] = MatplotlibFigureSerializer.to_figure(self, fig)
+                mpl_figures[fig_key] = MatplotlibFigureSerializer.to_figure(
+                    self, fig, settings=figure_settings
+                )
             except Exception as err:
                 self._figure_failed(fig_key, err, on_error, failed)
 
@@ -1275,6 +1303,7 @@ class SimulationExperiment:
         results_path: Path,
         on_error: Literal["raise", "log"] = "raise",
         failed: dict[str, str] | None = None,
+        figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> dict[str, Path]:
         """Write the figures as interactive pages.
 
@@ -1292,6 +1321,7 @@ class SimulationExperiment:
             on_error: `"raise"` raises the error of a figure, `"log"` logs it
                 and goes on with the next figure.
             failed: collects the failed figures as `{key: error}`.
+            figure_settings: the settings of the run, see `run`.
 
         Returns:
             The path of the page of every figure, empty without plotly.
@@ -1310,7 +1340,11 @@ class SimulationExperiment:
         paths: dict[str, Path] = {}
         for key, figure in self._figures.items():
             try:
-                paths.update(figures_to_html(self, results_path, {key: figure}))
+                paths.update(
+                    figures_to_html(
+                        self, results_path, {key: figure}, settings=figure_settings
+                    )
+                )
             except Exception as err:
                 # no partial page of a figure which is reported as failed
                 self._figure_path(results_path, key, INTERACTIVE_FORMAT).unlink(
