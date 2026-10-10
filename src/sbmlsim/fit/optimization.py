@@ -196,6 +196,12 @@ def _noise_selections(
     return tuple(s for s in symbols if model.has_selection(s))
 
 
+#: the relative tolerance within which a reference x of a mapping over a
+#: dimension matches an end value of the dimension, the rounding of a unit
+#: conversion of the reference into the unit of the model
+END_RTOL = 1e-9
+
+
 class ObservationKind(StrEnum):
     """What the observable of a fit mapping is, see `OptimizationProblem.initialize`.
 
@@ -1071,9 +1077,15 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 if observation.dim_values is not None:
                     # the values of the dimension are matched to the x of the
-                    # reference, which they must cover like the time does
+                    # reference, which they must cover like the time does; an
+                    # end value is matched within the rounding of a unit
+                    # conversion, e.g. 1.001 g are 1000.9999999999999 mg
                     values = observation.dim_values
-                    outside = x_ref[(x_ref < values.min()) | (x_ref > values.max())]
+                    low, high = float(values.min()), float(values.max())
+                    at_end = np.isclose(x_ref, low, rtol=END_RTOL, atol=0.0) | (
+                        np.isclose(x_ref, high, rtol=END_RTOL, atol=0.0)
+                    )
+                    outside = x_ref[((x_ref < low) | (x_ref > high)) & ~at_end]
                     if outside.size:
                         raise ValueError(
                             f"{sid}.{mapping_id}: the data has the x values "
@@ -1081,6 +1093,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                             f"{values.tolist()} of '{obs_xid}' along the dimension "
                             f"'{observation.dim}' of the scan of its task."
                         )
+                    x_ref = np.clip(x_ref, low, high)
 
                 # --- WEIGHTS ---
 
@@ -2341,20 +2354,17 @@ class OptimizationProblem(ObjectJSONEncoder):
                 continue
 
             k0 = indices[0]
-            plan = self.evaluated_plan(k_group, x, quantities)
             graph = self._group_graphs[k_group]
-            points = self._group_points[k_group]
 
             result: TimecourseResult | GroupResult | None
             if graph is not None:
-                result = self._simulate_points(k_group, plan, graph, points, x)
+                result = self._simulate_points(k_group, graph, x, quantities)
                 for k in indices:
                     results[k] = result
                 continue
-            if points is not None:
-                # the one point of a scan which a group without observables
-                # reads, see `_observation_of`
-                plan = points.plan(plan, 0)
+            # a simulation, or the one point of a scan which a group without
+            # observables reads, see `_observation_of`
+            plan = self.evaluated_plan(k_group, x, quantities)
             try:
                 result = execute(
                     plan,
@@ -2362,12 +2372,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     sorted({s for k in group for s in self.selections[k]}),
                 )
             except (RuntimeError, SteadyStateError) as err:
-                logger.error(
-                    "RuntimeError in ODE integration ('%s = %s'): \n%s",
-                    self.pids,
-                    x,
-                    err,
-                )
+                self._log_integration_error(x, err)
                 result = None
 
             for k in indices:
@@ -2375,33 +2380,37 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         return results
 
+    def _log_integration_error(self, x: np.ndarray, err: Exception) -> None:
+        """Log an integration which failed for the parameters `x`."""
+        logger.error(
+            "RuntimeError in ODE integration ('%s = %s'): \n%s", self.pids, x, err
+        )
+
     def _simulate_points(
         self,
         k_group: int,
-        plan: Plan,
         graph: ObservableGraph,
-        points: _Points | None,
         x: np.ndarray,
+        quantities: Sequence[Quantity],
     ) -> GroupResult | None:
         """Simulate the points of a group which reads observables.
 
         Args:
             k_group: index of the simulation group.
-            plan: the plan of the group with the fitted values.
             graph: the observables of the group.
-            points: the values of the points of a scan group, `None` for a
-                simulation, which is one point.
-            x: parameter values in the units of the parameters, for the log.
+            x: parameter values in the units of the parameters.
+            quantities: the quantity of every parameter, for the derived
+                changes; empty without them.
 
         Returns:
             The time and the outputs of every point, `None` if the integration
             of a point or its observables failed.
         """
-        plans = (
-            [plan]
-            if points is None
-            else [points.plan(plan, i) for i in range(points.size)]
-        )
+        points = self._group_points[k_group]
+        plans = [
+            self.evaluated_plan(k_group, x, quantities, point=i)
+            for i in range(1 if points is None else points.size)
+        ]
         model = self.models[self.mapping_groups[k_group][0]]
         selections = (TIME, *graph.selections)
         solutions: list[np.ndarray] = []
@@ -2409,12 +2418,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             for point in plans:
                 solutions.append(execute(point, model, selections).values)
         except (RuntimeError, SteadyStateError) as err:
-            logger.error(
-                "RuntimeError in ODE integration ('%s = %s'): \n%s",
-                self.pids,
-                x,
-                err,
-            )
+            self._log_integration_error(x, err)
             return None
         time, outputs, failures = observe(graph, selections, solutions, plans)
         if failures:
@@ -2430,24 +2434,35 @@ class OptimizationProblem(ObjectJSONEncoder):
         k_group: int,
         x: np.ndarray,
         quantities: Sequence[Quantity] | None = None,
+        point: int = 0,
     ) -> Plan:
         """Get the plan a group is simulated with for the given parameters.
+
+        The values of the parameters are applied first; for a group of a scan
+        the values of the point follow, so a dimension wins over a fitted
+        value of its target; the derived changes come last and read the
+        values of the point, e.g. a covariate of a population dimension.
 
         Args:
             k_group: index of the simulation group.
             x: parameter values in the units of the parameters.
             quantities: the quantity of every parameter, built from `x` if a
                 group has derived changes and they are not given.
+            point: the point of a group of a scan, in the order of its
+                points; a group of a simulation has one.
 
         Returns:
-            The plan of the group with the values of the parameters and the
-            derived changes in the units of the model.
+            The plan of the group with the values of the parameters, of the
+            point and the derived changes in the units of the model.
         """
         values: dict[str, float] = {
             target: float(x[index]) * factor
             for target, index, factor in self._group_targets[k_group]
         }
         plan = self.plans[k_group].with_values(values)
+        points = self._group_points[k_group]
+        if points is not None:
+            plan = points.plan(plan, point)
         if self.group_derived[k_group]:
             if not quantities:
                 _, quantities = self._simulator_and_quantities(np.asarray(x))
@@ -2507,16 +2522,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         if isinstance(result, GroupResult):
             kind = self.observation_kinds[k]
-            y = np.asarray(result.outputs.get(self.yid_observable[k], []), dtype=float)
             if kind is ObservationKind.SCALAR:
-                return np.full(len(self.y_references[k]), float(y[0]))
+                value = float(self._output(k, result)[0])
+                return np.full(len(self.y_references[k]), value)
             if kind is ObservationKind.DIMENSION:
                 values = self._values_of_dimension(k)
                 order = np.argsort(values)
                 return np.interp(
                     np.asarray(self.x_references[k], dtype=float),
                     values[order],
-                    y[order],
+                    self._output(k, result)[order],
                 )
         observable = self.observable_models[k]
         if observable is None:
@@ -2544,11 +2559,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         if isinstance(result, GroupResult):
             kind = self.observation_kinds[k]
-            y = np.asarray(result.outputs.get(self.yid_observable[k], []), dtype=float)
             if kind is ObservationKind.SCALAR:
-                return np.array([np.nan]), y[:1]
+                return np.array([np.nan]), self._output(k, result)[:1]
             if kind is ObservationKind.DIMENSION:
-                return self._values_of_dimension(k).copy(), y
+                return self._values_of_dimension(k).copy(), self._output(k, result)
         x = self._column(result, self._xid(k))
         observable = self.observable_models[k]
         if observable is None:
@@ -2562,6 +2576,21 @@ class OptimizationProblem(ObjectJSONEncoder):
             {s: self._column(result, s) for s in observable.symbols},
             size=x.size,
         )
+
+    def _output(self, k: int, result: GroupResult) -> np.ndarray:
+        """Get the output of a group which a mapping reads, at every point.
+
+        Raises:
+            KeyError: if the group has no output of the y of the mapping.
+        """
+        name = self.yid_observable[k]
+        if name not in result.outputs:
+            raise KeyError(
+                f"'{self.opid}': the simulation of the fit mapping "
+                f"'{self.experiment_keys[k]}.{self.mapping_keys[k]}' has no output "
+                f"'{name}', its outputs are {sorted(result.outputs)}."
+            )
+        return np.asarray(result.outputs[name], dtype=float)
 
     def _values_of_dimension(self, k: int) -> np.ndarray:
         """Get the values of the dimension of a mapping over a dimension.
@@ -2770,6 +2799,44 @@ class OptimizationProblem(ObjectJSONEncoder):
             )
         return evaluations
 
+    def _not_finite(
+        self,
+        k: int,
+        result: TimecourseResult | GroupResult,
+        prediction: np.ndarray,
+        x: np.ndarray,
+    ) -> bool:
+        """Check whether the prediction of a mapping with observables failed.
+
+        An observable which cannot be evaluated for the parameters, e.g. the
+        half-life of a PK observable without a terminal phase, is `NaN` and
+        no error of the simulation; its mapping takes the failure residuals
+        like a failed integration, so the optimizer continues. A timecourse
+        of a simulation without observables is not checked, as before.
+
+        Args:
+            k: index of the fit mapping.
+            result: result of the simulation of the mapping.
+            prediction: the prediction of the mapping at its data.
+            x: parameter values in the units of the parameters, for the log.
+
+        Returns:
+            Whether the mapping reads a group with observables and its
+            prediction has a value which is not finite.
+        """
+        if not isinstance(result, GroupResult) or np.all(np.isfinite(prediction)):
+            return False
+        logger.warning(
+            "%s.%s: the prediction is not finite for ('%s = %s'), the residuals "
+            "are the residuals of a failed simulation: %s",
+            self.experiment_keys[k],
+            self.mapping_keys[k],
+            self.pids,
+            x,
+            prediction,
+        )
+        return True
+
     def _interrupted_result(
         self, err: Exception, x0log: np.ndarray
     ) -> RuntimeErrorOptimizeResult:
@@ -2850,11 +2917,13 @@ class OptimizationProblem(ObjectJSONEncoder):
                     # subtract simulation baseline
                     y_obsip = y_obsip - y_obsip[0]
 
+            if result is None or self._not_finite(k, result, y_obsip, x):
+                # the integration or an observable failed, setting high
+                # residuals & cost
+                res_abs = 5.0 * self.y_references[k]  # total error
+            else:
                 # calculate absolute residuals (f(x_{i}) - y_{i})
                 res_abs = y_obsip - self.y_references[k]
-            else:
-                # the integration failed, setting high residuals & cost
-                res_abs = 5.0 * self.y_references[k]  # total error
 
             # with np.errstate(divide="ignore", invalid="ignore"):
             res_norm = res_abs / np.mean(self.y_references[k])

@@ -17,17 +17,22 @@ from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType, ResidualType
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.simulation import Change, Custom, Dimension, Observable, Scan, Simulation
+from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.worker import SUNDIALS_LOGS
+from tests.fit.hooks import Scaling
 from tests.fit.scalar_experiment import (
     CMAX,
+    CMAX_UNIT,
     DOSES,
+    OBSERVABLES,
     TRUE_V,
     DoseStudy,
     MixedStudy,
     OutsideStudy,
     RowsStudy,
     ScalarStudy,
+    dose_scan,
     dosed,
 )
 from tests.simulator.models import sbml_pk
@@ -165,6 +170,100 @@ class SimulationsStudy(ScalarStudy):
         }
 
 
+class ThalfStudy(ScalarStudy):
+    """The half-life of a simulation of 12 hr.
+
+    A slow absorption has its peak after the end, so the analysis finds no
+    terminal phase and the half-life has no value.
+    """
+
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        short = Simulation(
+            end=12, steps=120, changes=[Change(0, {"PODOSE": Q(100, "mg")})]
+        )
+        return {"single": short, "doses": dose_scan()}
+
+    def datasets(self) -> dict[str, DataSet]:
+        df = pd.DataFrame({"thalf": [3.5]})
+        return {"tab": DataSet.from_df(df, udict={"thalf": "hr"}, ureg=self.ureg)}
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        return {
+            "fm_thalf": FitMapping(
+                self,
+                reference=FitData(self, dataset="tab", xid=None, yid="thalf"),
+                observable=FitData(self, task="task_single", xid=None, yid="pk.thalf"),
+            )
+        }
+
+
+def peak_below_20_litre(time: np.ndarray, values: dict[str, Any]) -> float:
+    """The peak of [C], which fails for a volume above 20 l."""
+    if values["V"][0] > 20.0:
+        raise ValueError("the volume is too large")
+    return float(np.max(values["[C]"]))
+
+
+class CustomStudy(ScalarStudy):
+    """The cmax of 100 mg against an observable which fails for large volumes."""
+
+    def observables(self) -> dict[str, Observable]:
+        peak = Custom("peak", peak_below_20_litre, "mg/l", symbols=["[C]", "V"])
+        return {**OBSERVABLES, "peak": peak}
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        return {
+            "fm_peak": FitMapping(
+                self,
+                reference=FitData(
+                    self, dataset="tab", xid=None, yid="cmax", yid_sd="cmax_sd"
+                ),
+                observable=FitData(self, task="task_single", xid=None, yid="peak"),
+            )
+        }
+
+
+class RateStudy(DoseStudy):
+    """The cmax over a scan of the elimination, whose rate a hook reads."""
+
+    RATES: ClassVar[list[float]] = [0.1, 0.2, 0.4]
+
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        rates = Dimension("rate", values={"ke": Q(self.RATES, "1/hr")})
+        return {"single": dosed(), "doses": Scan(dosed(), [rates])}
+
+    def datasets(self) -> dict[str, DataSet]:
+        df = pd.DataFrame({"ke": self.RATES, "cmax": np.full(3, CMAX[1])})
+        units = {"ke": "1/hr", "cmax": CMAX_UNIT}
+        return {"tab_rates": DataSet.from_df(df, udict=units, ureg=self.ureg)}
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        return {
+            "fm_rate": FitMapping(
+                self,
+                reference=FitData(self, dataset="tab_rates", xid="ke", yid="cmax"),
+                observable=FitData(
+                    self, task="task_doses", xid="rate.ke", yid="pk.cmax"
+                ),
+            )
+        }
+
+
+class GramStudy(DoseStudy):
+    """The doses of the data in g, which round below the doses of the scan in mg."""
+
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        doses = Dimension("dose", values={"PODOSE": Q([1001.0, 2002.0, 4004.0], "mg")})
+        return {"single": dosed(), "doses": Scan(dosed(), [doses])}
+
+    def datasets(self) -> dict[str, DataSet]:
+        grams = np.array([1.001, 2.002, 4.004])
+        cmax = CMAX[1] * grams * 10.0
+        df = pd.DataFrame({"dose": grams, "cmax": cmax, "cmax_sd": 0.05 * cmax})
+        units = {"dose": "g", "cmax": CMAX_UNIT}
+        return {"tab_doses": DataSet.from_df(df, udict=units, ureg=self.ureg)}
+
+
 class BlowupStudy(ScalarStudy):
     """The cmax of a model whose integration fails for `kb = 1`."""
 
@@ -295,6 +394,70 @@ def test_a_failed_integration_gives_the_failure_residual(
     assert isinstance(working, np.ndarray) and isinstance(failed, np.ndarray)
     np.testing.assert_allclose(working, 0.0, atol=1e-4)
     np.testing.assert_allclose(failed, 5.0 * problem.y_references[0])
+
+
+def test_a_parameter_without_value_gives_the_failure_residual(tmp_path: Path) -> None:
+    ka = FitParameter(
+        pid="ka", lower_bound=1e-4, upper_bound=10.0, start_value=1.0, unit="1/hr"
+    )
+    problem = _problem(ThalfStudy, ["fm_thalf"], tmp_path, parameter=ka)
+    working = problem.residuals(np.array([1.0]))
+    failed = problem.residuals(np.array([1e-3]))
+    assert isinstance(working, np.ndarray) and isinstance(failed, np.ndarray)
+    assert np.isfinite(working).all() and abs(working[0]) < 0.1
+    np.testing.assert_allclose(failed, 5.0 * problem.y_references[0])
+    data = problem.residuals(np.array([1e-3]), complete_data=True)
+    assert isinstance(data, dict)
+    np.testing.assert_allclose(data["res_abs"][0], 5.0 * problem.y_references[0])
+    assert np.isnan(data["y_obsip"][0]).all()
+    # the optimizer starts where the half-life has no value and continues
+    fit, _ = problem.optimize_run(x0=np.array([1e-3]), max_nfev=5)
+    assert fit.status != -1, fit.message
+
+
+def test_an_observable_which_fails_gives_the_failure_residual(tmp_path: Path) -> None:
+    problem = _problem(CustomStudy, ["fm_peak"], tmp_path)
+    working = problem.residuals(np.array([TRUE_V]))
+    failed = problem.residuals(np.array([30.0]))
+    assert isinstance(working, np.ndarray) and isinstance(failed, np.ndarray)
+    np.testing.assert_allclose(working, 0.0, atol=1e-9)
+    np.testing.assert_allclose(failed, 5.0 * problem.y_references[0])
+
+
+def test_the_derived_changes_read_the_values_of_a_point(tmp_path: Path) -> None:
+    problem = OptimizationProblem(
+        "scalar",
+        [FitMappingCollection(experiment=RateStudy, mappings=["fm_rate"])],
+        [FitParameter(pid="V", lower_bound=1.0, upper_bound=100.0, unit="l")],
+        base_path=tmp_path,
+        data_path=tmp_path,
+        hybridizations=[Scaling(model="m", target="ka", factor="ke")],
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    for point, ke in enumerate(RateStudy.RATES):
+        plan = problem.evaluated_plan(0, np.array([TRUE_V]), point=point)
+        preinit = {a.target: a.value for a in plan.preinit}
+        # the hook sets `ka = ke * ka` from the elimination of the point
+        assert preinit["ke"] == pytest.approx(ke)
+        assert preinit["ka"] == pytest.approx(ke * 1.0)
+    # the simulation of the points is the scan with the derived absorption
+    data = problem.residuals(np.array([TRUE_V]), complete_data=True)
+    assert isinstance(data, dict)
+    rates = Q(RateStudy.RATES, "1/hr")
+    scan = Scan(dosed(), [Dimension("rate", values={"ke": rates, "ka": rates})])
+    expected = Simulator().run(sbml_pk(), scan, list(OBSERVABLES.values()))
+    np.testing.assert_allclose(data["y_obs"][0], expected["pk.cmax"].values, rtol=1e-5)
+
+
+def test_a_reference_at_an_end_of_a_dimension_matches_after_rounding(
+    tmp_path: Path,
+) -> None:
+    problem = _problem(GramStudy, ["fm_dose"], tmp_path)
+    assert problem.x_references[0][0] == 1001.0
+    np.testing.assert_allclose(problem.x_references[0], [1001.0, 2002.0, 4004.0])
+    residuals = problem.residuals(np.array([TRUE_V]))
+    assert isinstance(residuals, np.ndarray)
+    np.testing.assert_allclose(residuals / problem.y_references[0], 0.0, atol=1e-4)
 
 
 def test_a_mapping_over_two_dimensions_raises(tmp_path: Path) -> None:
