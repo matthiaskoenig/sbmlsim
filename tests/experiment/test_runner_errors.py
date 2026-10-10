@@ -1,6 +1,7 @@
 """Tests of a run of experiments which has a failing experiment or figure (#270)."""
 
 import logging
+import os
 import pickle
 from pathlib import Path
 from typing import Any, override
@@ -492,26 +493,30 @@ class RaisesBeforeRun(_Base):
 def test_an_override_of_run_which_raises_does_not_stop_the_run(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """The backstop of the runner records the error and goes on (#270)."""
-    stale = _stale(tmp_path / "RaisesAfterRun" / "RaisesAfterRun_fig_ok.svg")
+    """The backstop records the error, keeps what the run wrote, and goes on (#270)."""
+    out = tmp_path / "RaisesAfterRun"
+    stale = _stale(out / "RaisesAfterRun_fig_old.svg")
+    os.utime(stale, (1, 1))
     with caplog.at_level(logging.INFO):
         results = _runner(RaisesAfterRun, GoodExperiment).run_experiments(
             output_path=tmp_path
         )
     assert "post-processing broken" in (results[0].error or "")
     assert results[0].failed
-    assert results[0].figures == {}
+    # the figure the base run wrote is current, the one of an earlier run is not
+    assert results[0].figures == {"fig_ok": ["svg"]}
+    assert (out / "RaisesAfterRun_fig_ok.svg").exists()
+    assert not stale.exists()
     assert results[1].error is None
     assert (tmp_path / "GoodExperiment" / "GoodExperiment_fig_ok.svg").exists()
-    assert not stale.exists()
     # logged once, with the traceback
-    logged = [r for r in caplog.records if "post-processing broken" in r.getMessage()]
     assert len([r for r in caplog.records if r.exc_info]) == 1
-    assert logged or "post-processing broken" in caplog.text
     ExperimentReport(results).create_report(output_path=tmp_path)
-    assert "post-processing broken" in (tmp_path / "index.html").read_text(
-        encoding="utf-8"
-    )
+    index = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "post-processing broken" in index
+    page = (out / "RaisesAfterRun.html").read_text(encoding="utf-8")
+    figures = page.split('<section id="figures">')[1].split("</section>")[0]
+    assert 'src="RaisesAfterRun_fig_ok.svg"' in figures
 
 
 def test_an_override_of_run_with_the_old_signature_is_run(tmp_path: Path) -> None:

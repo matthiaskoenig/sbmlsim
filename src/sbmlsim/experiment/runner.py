@@ -11,6 +11,7 @@ This includes
 import dataclasses
 import inspect
 import logging
+import time
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -316,24 +317,66 @@ class ExperimentRunner:
             p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
         ):
             kwargs = {k: v for k, v in kwargs.items() if k in parameters}
+        started = time.time()
         try:
             result = experiment.run(**kwargs)
         except Exception as err:
             if self.on_error == "raise":
                 raise
             logger.exception("The experiment '%s' failed", sid)
-            return self._failed_result(
+            result = self._written_result(
                 ExperimentResult(
                     experiment=experiment,
                     output_path=output_path,
                     error=f"{type(err).__name__}: {err}",
                 ),
-                output_path,
                 formats,
+                started,
             )
         # the keys of a failing `figures_mpl()` are not known
         self._remove_unknown_figure_files(result, formats)
         return result
+
+    @staticmethod
+    def _written_result(
+        result: ExperimentResult, formats: list[str], started: float
+    ) -> ExperimentResult:
+        """Add the files which a `run` wrote before an error escaped it.
+
+        A file of the directory of the experiment which is not older than the
+        start of the run is one of this run and is listed, an older one is
+        removed by the caller as stale.
+
+        Args:
+            result: the failed result, with the directory of the experiment.
+            formats: the figure formats of the run.
+            started: the time the run started.
+        """
+        path = result.output_path
+        if path is None:
+            return result
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.exception("Cannot create the directory '%s'", path)
+            return result
+        sid = result.experiment.sid
+        # the clock of a file system is coarser than the clock of the process
+        since = started - 0.5
+
+        def current(fmt: str) -> dict[str, Path]:
+            return {
+                p.name[len(sid) + 1 : -len(fmt) - 1]: p
+                for p in path.glob(f"{sid}_*.{fmt}")
+                if p.is_file() and p.stat().st_mtime >= since
+            }
+
+        figures: dict[str, list[str]] = {}
+        for fmt in formats:
+            for key in current(fmt):
+                figures.setdefault(key, []).append(fmt)
+        datasets = [key for key in current("tsv") if key in result.experiment._datasets]
+        return dataclasses.replace(result, figures=figures, datasets=datasets)
 
     def _failed_result(
         self, failed: ExperimentResult, output_path: Path, formats: list[str]
