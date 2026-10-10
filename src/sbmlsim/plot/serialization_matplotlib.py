@@ -10,11 +10,12 @@ import numpy as np
 from matplotlib import rcParams
 from matplotlib.axes import Axes as AxesMPL
 from matplotlib.cm import ScalarMappable
-from matplotlib.collections import PolyCollection
+from matplotlib.collections import LineCollection, PolyCollection
 from matplotlib.colorbar import Colorbar
 from matplotlib.colors import LogNorm, to_hex
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 from matplotlib.ticker import FuncFormatter, NullFormatter
 
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
@@ -399,12 +400,30 @@ class MatplotlibFigureSerializer:
             )
             return
         ax = others[-1] if others else ax1
-        for artist in [*ax1.lines, *ax1.collections] if others else []:
+        for artist in [*ax1.lines, *ax1.collections, *ax1.patches] if others else []:
             if isinstance(artist, Line2D):
                 ax.add_artist(
                     Line2D(
                         artist.get_xdata(),
                         artist.get_ydata(),
+                        transform=ax1.transData,
+                        visible=False,
+                    )
+                )
+            elif isinstance(artist, Rectangle):
+                ax.add_artist(
+                    Rectangle(
+                        artist.get_xy(),
+                        artist.get_width(),
+                        artist.get_height(),
+                        transform=ax1.transData,
+                        visible=False,
+                    )
+                )
+            elif isinstance(artist, LineCollection):
+                ax.add_artist(
+                    LineCollection(
+                        [path.vertices for path in artist.get_paths()],
                         transform=ax1.transData,
                         visible=False,
                     )

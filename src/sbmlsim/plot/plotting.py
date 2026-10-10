@@ -1175,10 +1175,11 @@ class Band(AbstractCurve):
         self.across: str = across
         self.quantiles: tuple[float, float] = (low, high)
         self.median: bool = median
-        self.over: tuple[str, ...] = _dimensions(over, "band", sid or self.name)
+        label = sid or self.name
+        self.over: tuple[str, ...] = _dimensions(over, "band", label)
         if across in self.over:
             raise ValueError(
-                f"The band '{sid}' reduces '{across}', which is also in over."
+                f"The band '{label}' reduces '{across}', which is also in over."
             )
         if len(self.over) > 1:
             raise ValueError(

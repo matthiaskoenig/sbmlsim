@@ -682,3 +682,34 @@ def test_the_legend_entries_of_two_dimensions_carry_the_markers(
     handles = [h for h in legend.legend_handles if isinstance(h, Line2D)]
     assert len(handles) == 5
     assert all(h.get_marker() == "o" for h in handles)
+
+
+def test_the_combined_legend_covers_no_bar_of_the_left_axis(
+    experiment: SimulationExperiment,
+) -> None:
+    def draw(plot: Plot) -> None:
+        plot.curve(
+            x=Data("time", task="task_doses", sel={"dose": 2}),
+            y=Data("[C]", task="task_doses", sel={"dose": 2}),
+            label="bars",
+            type=CurveType.BAR,
+        )
+        _curve(
+            plot,
+            "task_doses",
+            (),
+            sel={"dose": 1},
+            label="C right",
+            yaxis_position=YAxisPosition.RIGHT,
+        )
+
+    fig = _figure(experiment, draw, right=True)
+    ax1, ax2 = fig.axes
+    legend = ax2.get_legend()
+    assert legend is not None
+    assert ax1.patches
+    box = legend.get_window_extent(_renderer(fig))
+    for bar in ax1.patches:
+        assert not box.overlaps(bar.get_window_extent())
+    # the legend is placed off invisible copies of the bars on its own axes
+    assert len([p for p in ax2.patches if not p.get_visible()]) == len(ax1.patches)

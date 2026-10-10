@@ -387,6 +387,7 @@ class PlotlyFigureSerializer:
                 trace.fillcolor,
                 trace.line.color,
                 trace.line.dash,
+                trace.line.width,
                 trace.marker.symbol,
                 trace.marker.color if isinstance(trace.marker.color, str) else None,
             )
@@ -812,7 +813,7 @@ class PlotlyFigureSerializer:
                         mode="lines",
                         line={"color": _rgba("0.5", max(band.alpha, 0.3)), "width": 8},
                         name=quantiles,
-                        legendgroup=sid,
+                        legendgroup=f"{sid}__range",
                         showlegend=True,
                         hoverinfo="skip",
                     ),

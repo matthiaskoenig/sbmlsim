@@ -428,3 +428,31 @@ def test_the_legend_shows_an_entry_of_several_panels_once(
     simulations = [t for t in fig.data if t.name == "simulation"]
     assert len(simulations) == 2
     assert simulations[0].legendgroup == simulations[1].legendgroup is not None
+
+
+def test_the_bands_of_two_panels_keep_their_own_legend_groups(
+    experiment: SimulationExperiment,
+) -> None:
+    figure = Figure(experiment=experiment, sid="fig", num_rows=1, num_cols=2)
+    plots = figure.create_plots(
+        xaxis=Axis("time", unit="hr"), yaxis=Axis("C", unit="mg/l"), legend=True
+    )
+    for plot, name in zip(plots, ("a", "b"), strict=True):
+        plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+            name=name,
+            sid=f"band_{name}",
+        )
+    fig = PlotlyFigureSerializer.to_figure(experiment, figure)
+    groups = {
+        name: {t.legendgroup for t in fig.data if t.name in (name, f"{name} median")}
+        for name in ("a", "b")
+    }
+    assert groups == {"a": {"band_a"}, "b": {"band_b"}}
+    ranges = [t for t in fig.data if t.name == "5-95 %" and t.showlegend]
+    assert len(ranges) == 1
+    assert ranges[0].legendgroup not in ("band_a", "band_b")
+    medians = [t for t in fig.data if (t.name or "").endswith("median")]
+    assert {t.legendgroup for t in medians} == {"band_a", "band_b"}
