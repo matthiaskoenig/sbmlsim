@@ -23,6 +23,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import FitData, FitMapping, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import MIDAZOLAM_SBML
@@ -81,7 +82,8 @@ class MidazolamDoses(SimulationExperiment):
     @override
     def datasets(self) -> dict[str, DataSet]:
         # synthetic data: the cmax of the simulation of this example at the
-        # reference parameters with a few percent of noise
+        # reference parameters with 1 percent of noise (regenerated whenever the
+        # experiment is initialized); the stated error is 5 percent
         result = Simulator().run(
             MIDAZOLAM_SBML,
             _dose_scan(),
@@ -89,7 +91,7 @@ class MidazolamDoses(SimulationExperiment):
             keep=["pk.cmax"],
         )
         cmax = result.ds["pk.cmax"].values
-        cmax = cmax * np.random.default_rng(1).normal(1.0, 0.02, len(cmax))
+        cmax = cmax * np.random.default_rng(1).normal(1.0, 0.01, len(cmax))
         df = pd.DataFrame({"dose": DOSES, "cmax": cmax, "cmax_sd": 0.05 * cmax})
         return {
             "cmax_doses": DataSet.from_df(
@@ -166,7 +168,6 @@ class MidazolamDoses(SimulationExperiment):
             Data("mid", task="task_doses"),
             over="dose",
         )
-        plots[1].legend = False
         plots[1].set_xaxis("dose", unit="mg")
         plots[1].set_yaxis("cmax", unit="ng/ml")
         plots[1].curve(
@@ -174,6 +175,9 @@ class MidazolamDoses(SimulationExperiment):
             Data("pk.cmax", task="task_doses"),
             color="black",
             marker="o",
+            markersize=11,
+            markerfacecolor="white",
+            markeredgecolor="black",
             label="simulation",
         )
         plots[1].add_data(
@@ -184,6 +188,7 @@ class MidazolamDoses(SimulationExperiment):
             label="data",
             color="tab:red",
             linestyle="None",
+            markersize=5,
         )
         plots[2].set_yaxis("midazolam", unit="ng/ml")
         plots[2].band(
@@ -228,8 +233,10 @@ def run(output_path: Path) -> SimulationExperiment:
 def fit_cmax(base_path: Path) -> OptimizationProblem:
     """Fit the maximal velocity of the metabolism to the cmax over the doses.
 
-    A short serial least squares fit starting at twice the reference value,
-    no report is written.
+    A short serial least squares fit which starts at twice the reference value
+    (`SamplingType.START`, the default draws the start from the bounds), no
+    report is written. The cmax depends only weakly on the parameter, so the
+    fit moves from the start towards the reference and stops near it, not at it.
     """
     problem = OptimizationProblem(
         "midazolam_cmax",
@@ -247,7 +254,7 @@ def fit_cmax(base_path: Path) -> OptimizationProblem:
         data_path=base_path,
     )
     problem.initialize(FitSettings())
-    fits, _ = problem.optimize(size=1, seed=1, max_nfev=15)
+    fits, _ = problem.optimize(size=1, seed=1, sampling=SamplingType.START, max_nfev=30)
     fitted = float(fits[0].x[0])
     print(
         f"fit of {FIT_PARAMETER}: start {2 * REFERENCE_VALUE:.4g}, "
