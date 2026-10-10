@@ -274,6 +274,14 @@ class MatplotlibFigureSerializer:
                 if axis_type not in ["x", "y"]:
                     raise ValueError
 
+                # the scale first: a bound set on a linear axis fixes the
+                # other limit at the linear autoscale limit, without the
+                # margin of a log axis
+                if axis_type == "x":
+                    ax.set_xscale(cls._get_scale(sax))
+                elif axis_type == "y":
+                    ax.set_yscale(cls._get_scale(sax))
+
                 if sax.min is not None:
                     if axis_type == "x":
                         ax.set_xlim(left=sax.min)
@@ -294,11 +302,6 @@ class MatplotlibFigureSerializer:
                         ax.invert_xaxis()
                     elif axis_type == "y":
                         ax.invert_yaxis()
-
-                if axis_type == "x":
-                    ax.set_xscale(cls._get_scale(sax))
-                elif axis_type == "y":
-                    ax.set_yscale(cls._get_scale(sax))
 
                 if sax.label_visible and sax.name:
                     if axis_type == "x":

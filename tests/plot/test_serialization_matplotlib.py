@@ -210,6 +210,11 @@ def _curve_plot(with_error: bool) -> Plot:
 
 def _render_curve(with_error: bool) -> Axes:
     """Run the experiment and render a single curve."""
+    return _render(_curve_plot(with_error=with_error))
+
+
+def _render(plot: Plot) -> Axes:
+    """Run the experiment and render a plot of its data."""
     runner = ExperimentRunner(
         experiment_classes=[_CurveExperiment],
         simulator=Simulator(),
@@ -218,7 +223,6 @@ def _render_curve(with_error: bool) -> Axes:
     )
     experiment = runner.experiments["_CurveExperiment"]
     experiment.run(runner.simulator, show_figures=False)
-    plot = _curve_plot(with_error=with_error)
     figure = Figure(
         experiment=experiment,
         sid="fig",
@@ -251,6 +255,36 @@ def test_a_curve_with_error_data_is_drawn_with_its_error_bars() -> None:
     """And one which has error data still goes through `errorbar`."""
     axes = _render_curve(with_error=True)
     assert len(axes.containers) == 1
+
+
+@pytest.mark.parametrize("axis", ["x", "y"])
+def test_a_bound_of_a_log_axis_keeps_the_other_limit_of_the_log_scale(
+    axis: str,
+) -> None:
+    """The scale of an axis is set before its bounds.
+
+    A bound was set while the axis was still linear, which fixed the other
+    limit at the linear autoscale limit, no margin on a log axis: the log
+    panel of the demo cut the peak of a curve at its top.
+    """
+
+    def plot_of(bound: float | None) -> Plot:
+        plot = _curve_plot(with_error=False)
+        unit = "second" if axis == "x" else "dimensionless"
+        log = Axis("v", unit=unit, scale="log", min=bound)
+        if axis == "x":
+            plot.xaxis = log
+        else:
+            plot.yaxis = log
+        return plot
+
+    def limits(axes: Axes) -> tuple[float, float]:
+        return axes.get_xlim() if axis == "x" else axes.get_ylim()
+
+    free = limits(_render(plot_of(None)))
+    bounded = limits(_render(plot_of(1e-3)))
+    assert bounded[0] == 1e-3
+    assert bounded[1] == pytest.approx(free[1])
 
 
 # ---------------------------------------------------------------------------

@@ -23,9 +23,9 @@ from sbmlsim.task import Task
 SELECTIONS = ["[e__A]", "[e__B]", "[e__C]", "[c__A]", "[c__B]", "[c__C]"]
 
 
-#: the point of the scan a curve draws: the middle initial value of A and the
-#: reference of the local design
-POINT_SEL = {"dim_init": 5, "dim_sens": "reference"}
+#: the point of the scan a curve draws: the lowest initial value of A (label 0,
+#: 5 mM) and the reference of the local design, the first point of the scan
+POINT_SEL = {"dim_init": 0, "dim_sens": "reference"}
 
 
 class DemoExperiment(SimulationExperiment):
@@ -97,7 +97,9 @@ class DemoExperiment(SimulationExperiment):
                     y=Data(key, task=task_id, sel=POINT_SEL),
                     label=key,
                 )
-        plots[1].set_yaxis("data", unit=unit_data, scale="log")
+        # the concentrations which start at zero leave the log axis at its
+        # lower limit
+        plots[1].set_yaxis("data", unit=unit_data, scale="log", min=1e-3)
 
         return {"fig1": fig1}
 
