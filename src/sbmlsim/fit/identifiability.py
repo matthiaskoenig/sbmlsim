@@ -629,8 +629,9 @@ class IdentifiabilityResult:
         """Get the table of the analysis, one row per profiled parameter.
 
         Returns:
-            Table with the parameter, its value, unit and bounds, the
-            confidence interval (`NaN` for an open side), the classification,
+            Table with the parameter, its value, unit (as the user defined
+            it, `model` for the unit of the model) and bounds, the confidence
+            interval (`NaN` for an open side), the classification,
             the number of points of the profile and its lowest cost.
         """
         rows = []
@@ -640,7 +641,9 @@ class IdentifiabilityResult:
                 {
                     "parameter": pid,
                     "value": profile.value_optimum,
-                    "unit": p.unit,
+                    # the unit as the user defined it, as every table of a
+                    # report shows it
+                    "unit": p.unit or "model",
                     "lower_bound": p.lower_bound,
                     "upper_bound": p.upper_bound,
                     "ci_lower": (

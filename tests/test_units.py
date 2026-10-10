@@ -48,19 +48,41 @@ def test_package_registry() -> None:
     assert ureg("percent").to("dimensionless").magnitude == 0.01
 
 
-@pytest.mark.parametrize("unit", ["IU", "IU/ml", "IU_per_ml"])
+@pytest.mark.parametrize("unit", ["IU", "IU/ml", "IU_per_ml", "µIU/ml", "mg/IU"])
 def test_the_package_registry_has_no_international_unit(unit: str) -> None:
     """An international unit is specific to a substance, the registry has none (#263).
 
     An `IU` of the registry was a mass of insulin, so data in `IU/ml` of any
-    other substance was read as a mass concentration of insulin.
+    other substance was read as a mass concentration of insulin. The error says
+    how to define one, and that a model resolves its own unit ids.
     """
     from pint.errors import UndefinedUnitError
 
     from sbmlsim import Q
 
-    with pytest.raises(UndefinedUnitError):
+    with pytest.raises(UndefinedUnitError) as info:
         Q(1, unit)
+    notes = "\n".join(info.value.__notes__)
+    assert "no international unit" in notes
+    assert "#263" in notes
+    assert 'ureg.define("IU_insulin = 0.0347 * mg")' in notes
+    assert 'ureg.define("IU = count")' in notes
+    assert "model.Q" in notes
+
+
+def test_only_an_international_unit_has_the_note_of_one() -> None:
+    """The note of an international unit is not added to another undefined unit."""
+    from pint.errors import UndefinedUnitError
+
+    from sbmlsim import Q
+
+    with pytest.raises(UndefinedUnitError) as info:
+        Q(1, "cpm")
+    assert "international unit" not in "\n".join(info.value.__notes__)
+    # a quantity of a model without a unit definition `IU` has it
+    with pytest.raises(UndefinedUnitError) as info:
+        UnitsInformation.from_sbml(LOTKA_VOLTERRA_SBML).quantity(5.0, "mIU/ml")
+    assert "no international unit" in "\n".join(info.value.__notes__)
 
 
 def check_uinfo(uinfo: UnitsInformation) -> None:
@@ -473,3 +495,19 @@ def test_a_model_creates_quantities_of_its_unit_ids() -> None:
     dose = model.Q(2.0, "mg_per_min/kg")
     assert dose.to("mg/min/kg").magnitude == pytest.approx(2.0)
     assert model.Q(3.0, "mg").to("g").magnitude == pytest.approx(0.003)
+
+
+def test_a_quantity_of_a_model_takes_a_unit_of_pint() -> None:
+    """A unit of pint, e.g. the units of a quantity, is taken as it is, as by `Q`."""
+    from sbmlsim import Q
+    from sbmlsim.model import RoadrunnerSBMLModel
+    from sbmlsim.units import ureg
+
+    source = _sbml_with_units(mg_per_min=(MILLIGRAM, PER_MINUTE))
+    uinfo = UnitsInformation.from_sbml(source)
+    model = RoadrunnerSBMLModel(source=source)
+    rate = model.Q(2.0, "mg_per_min")
+    for unit in [ureg.mg, Q(1.0, "mg/min").units, rate.units]:
+        for quantity in [uinfo.quantity(3.0, unit), model.Q(3.0, unit)]:
+            assert quantity.units == unit
+            assert quantity.magnitude == 3.0

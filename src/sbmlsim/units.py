@@ -43,7 +43,9 @@ def _create_registry() -> UnitRegistry:
 
     The units of a model are not defined in it: a model stores the expression
     of every unit definition (`Units.udef_to_str`), so two models which use
-    one id for different units never share a definition.
+    one id for different units never share a definition. The exception is a
+    unit definition with a factor which is no prefix, see
+    `UnitsInformation.model_uid_dict`.
 
     The registry defines no international unit (`IU`): it is specific to a
     substance, so a model or a user defines the one they need under a name of
@@ -68,6 +70,34 @@ _Q_NOTE = (
     "`SimulationExperiment`, whose models the runner loads before `initialize`."
 )
 
+#: the note of an error for an international unit which nothing defines
+_INTERNATIONAL_UNIT_NOTE = (
+    "The unit registry of sbmlsim defines no international unit (`IU`) since "
+    "#263: an international unit is specific to a substance. Define the one the "
+    "code or the data needs before it is used, under a name of the substance, "
+    'e.g. `sbmlsim.units.ureg.define("IU_insulin = 0.0347 * mg")`, or as a '
+    'count, `sbmlsim.units.ureg.define("IU = count")`.'
+)
+
+
+def international_unit_note(err: Exception) -> str | None:
+    """Get the note how to define an international unit for an error of one.
+
+    Args:
+        err: the error of reading a unit.
+
+    Returns:
+        The note for an `UndefinedUnitError` of a name which is `IU`, ends in
+        `IU` (`µIU`, `mIU`) or starts with `IU_` (`IU_per_ml`), else `None`.
+    """
+    if not isinstance(err, UndefinedUnitError):
+        return None
+    names = err.unit_names
+    for name in (names,) if isinstance(names, str) else names:
+        if name.endswith("IU") or name.startswith("IU_"):
+            return _INTERNATIONAL_UNIT_NOTE
+    return None
+
 
 class _Quantities:
     """The quantities of the registry of the package, `Q(10, "mg")`.
@@ -91,11 +121,14 @@ class _Quantities:
 
         Raises:
             UndefinedUnitError: for a unit pint does not define, with a note
-                which names the quantities of a model and of an experiment.
+                which names the quantities of a model and of an experiment,
+                and for an international unit how to define one.
         """
         try:
             return ureg.Quantity(value, units)
         except UndefinedUnitError as err:
+            if note := international_unit_note(err):
+                err.add_note(note)
             err.add_note(_Q_NOTE)
             raise
 
@@ -279,17 +312,19 @@ class UnitsInformation(MutableMapping):
         """
         return replace_unit_ids(unit, self.unit_ids)
 
-    def quantity(self, value: Any, unit: str | None = None) -> Quantity:
+    def quantity(self, value: Any, unit: str | PlainUnit | None = None) -> Quantity:
         """Create a quantity in a unit of pint and of the unit ids of the model.
 
-        Every identifier of the unit which is a unit id of the model is its
-        expression, see `resolve_unit`, so `mg_per_min/kg` is a unit as well
-        as `mg/min/kg`; a unit id wins over a unit of pint of the same name,
-        the model defines what its id means.
+        Every identifier of a unit string which is a unit id of the model is
+        its expression, see `resolve_unit`, so `mg_per_min/kg` is a unit as
+        well as `mg/min/kg`; a unit id wins over a unit of pint of the same
+        name, the model defines what its id means. A unit of pint, e.g. the
+        `units` of a quantity, is taken as it is.
 
         Args:
             value: the magnitude, a number or an array.
-            unit: the unit, dimensionless without one.
+            unit: the unit, a string or a unit of pint, dimensionless without
+                one.
 
         Returns:
             The quantity of the registry of the units information.
@@ -299,12 +334,16 @@ class UnitsInformation(MutableMapping):
                 a unit id of the model.
         """
         try:
-            return self.ureg.Quantity(value, self.resolve_unit(unit) if unit else unit)
+            return self.ureg.Quantity(
+                value, self.resolve_unit(unit) if isinstance(unit, str) else unit
+            )
         except UndefinedUnitError as err:
             err.add_note(
                 f"The unit '{unit}' is neither a unit of pint nor a unit id of "
                 f"the model."
             )
+            if note := international_unit_note(err):
+                err.add_note(note)
             raise
 
     @staticmethod
@@ -358,7 +397,11 @@ class UnitsInformation(MutableMapping):
         The expression is a unit pint parses: the id itself for a unit kind of
         SBML pint knows and for a unit definition whose id pint parses as the
         same unit, the expression of the unit definition (`Units.udef_to_str`)
-        otherwise. Nothing is defined in the registry.
+        otherwise. The registry gets a definition only for a unit definition
+        with a factor which is no prefix, e.g. the 133.322 of a mmHg, which
+        pint cannot parse: `_define` defines it under its id, or under a
+        collision free name when the registry has the id as another unit, and
+        the definition holds for the whole process, also for `sbmlsim.Q`.
 
         Args:
             model: the model.

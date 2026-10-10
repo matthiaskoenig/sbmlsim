@@ -831,6 +831,11 @@ class FitParameter:
             lower_bound: lower bound for the fitting.
             upper_bound: upper bound for the fitting.
             unit: unit of the parameter, the model unit is assumed if not given.
+                It is a unit of pint or has the unit ids of the model of its
+                target, e.g. `per_min` or `mg_per_min/kg`, which the fit
+                resolves with the units of that model, see
+                `OptimizationProblem.parameter_units`. The tables of a fit show
+                the unit as it is given here.
             target: entity of the model the value is written to. `None` means
                 the parameter is the entity, i.e. `target_id` is `pid`. Several
                 parameters write one target when each of them selects a part of

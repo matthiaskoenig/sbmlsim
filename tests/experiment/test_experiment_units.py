@@ -117,6 +117,9 @@ def test_a_unit_id_of_several_models_must_agree(tmp_path: Path) -> None:
     assert exp.Q(1.0, "only_a").to("1/min").magnitude == pytest.approx(1.0)
     assert exp.Q(1.0, "g_per_hr").to("g/hr").magnitude == pytest.approx(1.0)
     assert exp.Q(1.0, "mmol").to("mol").magnitude == pytest.approx(1e-3)
+    # a unit of pint is taken as it is, also with `model=`
+    unit = exp.Q(1.0, "only_a").units
+    assert exp.Q(2.0, unit) == exp.Q(2.0, unit, model="b") == exp.Q(2.0, "1/min")
     with pytest.raises(ValueError, match=r"'c'.*\['a', 'b'\]"):
         exp.Q(1.0, "mg", model="c")
     with pytest.raises(UndefinedUnitError) as info:

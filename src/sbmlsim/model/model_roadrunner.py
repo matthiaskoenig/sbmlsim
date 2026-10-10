@@ -10,6 +10,7 @@ import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
+from pint.facets.plain import PlainUnit
 from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
 from sbmlsim.model import AbstractModel
@@ -399,17 +400,19 @@ class RoadrunnerSBMLModel(AbstractModel):
         md5 = md5_for_path(sbml_path)
         return Path(f"{sbml_path}_rr{roadrunner.__version__}_{md5}.state")
 
-    def Q(self, value: Any, unit: str | None = None) -> Quantity:
+    def Q(self, value: Any, unit: str | PlainUnit | None = None) -> Quantity:
         """Create a quantity in a unit of pint and of the unit ids of the model.
 
         A unit id of the model is its expression, e.g. `mg_per_min/kg` is a
         milligram per minute and kilogram for a model whose unit definition
         `mg_per_min` is a milligram per minute, see
         `UnitsInformation.quantity`. `sbmlsim.Q` takes the units of pint only.
+        A unit of pint, e.g. the `units` of a quantity, is taken as it is.
 
         Args:
             value: the magnitude, a number or an array.
-            unit: the unit, dimensionless without one.
+            unit: the unit, a string or a unit of pint, dimensionless without
+                one.
 
         Returns:
             The quantity.

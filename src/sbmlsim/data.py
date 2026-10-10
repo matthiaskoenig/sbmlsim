@@ -24,6 +24,7 @@ from sbmlsim.units import (
     Quantity,
     UnitRegistry,
     UnitsInformation,
+    international_unit_note,
 )
 
 if TYPE_CHECKING:
@@ -819,7 +820,8 @@ def _parse_unit(
 
     Raises:
         ValueError: naming the column, its units and the unit, if the unit is
-            no string or not a unit of the registry.
+            no string or not a unit of the registry; for an international unit
+            the message says how to define one.
     """
     if not isinstance(unit, str):
         raise ValueError(
@@ -831,9 +833,10 @@ def _parse_unit(
     # pint raises errors of many kinds for a unit it cannot read: its own, a
     # ValueError for a factor, a TypeError or the TokenError of its parser
     except Exception as err:
+        note = international_unit_note(err)
         raise ValueError(
             f"Column '{value_key}' has the units {list(units)}, the unit '{unit}' "
-            f"cannot be read: {err}"
+            f"cannot be read: {err}" + (f". {note}" if note else "")
         ) from err
 
 

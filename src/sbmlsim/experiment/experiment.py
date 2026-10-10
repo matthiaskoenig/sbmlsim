@@ -13,6 +13,7 @@ from typing import Any, ClassVar, Literal
 import numpy as np
 from matplotlib import pyplot as plt
 from pint.errors import UndefinedUnitError
+from pint.facets.plain import PlainUnit
 
 from sbmlsim.data import Data, DataSet, check_sel
 from sbmlsim.fit import FitMapping
@@ -178,7 +179,10 @@ class SimulationExperiment:
         return "\n".join(info)
 
     def Q(
-        self, value: Any, unit: str | None = None, model: str | None = None
+        self,
+        value: Any,
+        unit: str | PlainUnit | None = None,
+        model: str | None = None,
     ) -> Quantity:
         """Create a quantity in a unit of pint and of the unit ids of the models.
 
@@ -186,11 +190,13 @@ class SimulationExperiment:
         the unit ids of a model are known in `simulations()` and later, e.g.
         `self.Q(10, "mg_per_min")`; a unit id is replaced by its expression,
         see `UnitsInformation.quantity`. Before the models are loaded `Q`
-        takes the units of pint. `sbmlsim.Q` takes the units of pint only.
+        takes the units of pint. `sbmlsim.Q` takes the units of pint only. A
+        unit of pint, e.g. the `units` of a quantity, is taken as it is.
 
         Args:
             value: the magnitude, a number or an array.
-            unit: the unit, dimensionless without one.
+            unit: the unit, a string or a unit of pint, dimensionless without
+                one.
             model: the id of the model whose unit ids the unit has. Without
                 it a unit id must have the same expression in every model of
                 the experiment which has it.
@@ -218,7 +224,9 @@ class SimulationExperiment:
         # the unit ids of the models which the unit has, in the units of the
         # experiment, which resolve the unit as the units of a model do
         common = UnitsInformation(
-            {}, self.ureg, unit_ids=self._unit_ids(unit, units) if unit else None
+            {},
+            self.ureg,
+            unit_ids=self._unit_ids(unit, units) if isinstance(unit, str) else None,
         )
         try:
             return common.quantity(value, unit)

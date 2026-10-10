@@ -449,6 +449,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # parameter information
         self.pids = [p.pid for p in self.parameters]
+        #: the unit of every parameter as the user defined it, `FitParameter.unit`
+        #: (a unit of pint or with the unit ids of the model of its target,
+        #: `None` for the unit of the model); `parameter_units` has the units of
+        #: pint of the values
         self.punits = [p.unit for p in self.parameters]
         lb = [p.lower_bound for p in self.parameters]
         ub = [p.upper_bound for p in self.parameters]

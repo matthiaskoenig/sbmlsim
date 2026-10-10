@@ -22,7 +22,7 @@ ureg.define("IU_insulin = 0.0347 * mg")
 print(Q(10, "IU_insulin/ml").to("mg/ml"))
 ```
 
-A unit string with an `IU` which nothing defines raises, as every unit which cannot be read: `Q` raises the `UndefinedUnitError` of pint, and `DataSet.from_df` raises the `ValueError` which names the column when the data is imported. Every unit of a `DataSet` column is read on import, also the one unit of a column whose rows all have it, so data in a unit the registry does not define, e.g. `IU/l` or `µIU/ml`, fails on import and not when it is used; define the unit in the registry before the data is read.
+A unit string with an `IU` which nothing defines raises, as every unit which cannot be read: `Q` raises the `UndefinedUnitError` of pint, and `DataSet.from_df` raises the `ValueError` which names the column when the data is imported; for an undefined `IU`, `µIU`, `mIU` or `IU_per_ml` both say how to define an international unit. Every unit of a `DataSet` column is read on import, also the one unit of a column whose rows all have it, so data in a unit the registry does not define, e.g. `IU/l` or `µIU/ml`, fails on import and not when it is used; define the unit in the registry before the data is read.
 
 ## Units of a model
 

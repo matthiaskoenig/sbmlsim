@@ -242,8 +242,18 @@ class ParameterSets:
             raise ValueError("At least one ParameterSet is required.")
         return psets
 
-    def to_df(self) -> pd.DataFrame:
-        """Get a DataFrame with one row per parameter and one column per set."""
+    def to_df(self, units: Mapping[str, str | None] | None = None) -> pd.DataFrame:
+        """Get a DataFrame with one row per parameter and one column per set.
+
+        Args:
+            units: the unit to show for a parameter by parameter id, e.g. the
+                unit as the user defined it, which a report shows. A parameter
+                which is not in it has the unit of the sets, `a|b` when the
+                sets disagree.
+
+        Returns:
+            The table with the columns `parameter`, `unit` and one per set.
+        """
         pids: list[str] = []
         for pset in self.sets:
             pids.extend(pid for pid in pset.values if pid not in pids)
@@ -251,12 +261,17 @@ class ParameterSets:
         data: list[dict[str, Any]] = []
         for pid in pids:
             row: dict[str, Any] = {"parameter": pid}
-            units = {pset.units.get(pid) for pset in self.sets if pid in pset.values}
-            row["unit"] = (
-                next(iter(units))
-                if len(units) == 1
-                else "|".join(str(unit) for unit in sorted(units, key=str))
-            )
+            if units is not None and pid in units:
+                row["unit"] = units[pid]
+            else:
+                set_units = {
+                    pset.units.get(pid) for pset in self.sets if pid in pset.values
+                }
+                row["unit"] = (
+                    next(iter(set_units))
+                    if len(set_units) == 1
+                    else "|".join(str(unit) for unit in sorted(set_units, key=str))
+                )
             for pset in self.sets:
                 row[pset.sid] = pset.values.get(pid, np.nan)
             data.append(row)

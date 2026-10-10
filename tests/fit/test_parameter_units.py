@@ -6,10 +6,12 @@ Fisher information, the profiles) carry the unit of pint, which the designs
 of `sbmlsim.simulation.sampling` read without a model.
 """
 
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import pytest
 
 from sbmlsim import Q
@@ -18,6 +20,8 @@ from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.parameters import ParameterSets
+from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.simulation.sampling import fit_parameters, fit_repeats, profile_parameters
@@ -114,3 +118,56 @@ def test_the_profile_design_takes_a_unit_id_of_the_model(
     assert dimension.values["Ka_dis_hctz"].units == PER_MINUTE
     assert dimension.design is not None
     assert dimension.design.references["Ka_dis_hctz"]["unit"] == "1/min"
+
+
+def test_the_tables_of_a_report_show_the_unit_as_defined(
+    problem_per_min: OptimizationProblem, fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """Every table of a report shows `per_min`, the values keep `1/min`."""
+    pset = problem_per_min.parameter_set_model()
+    identifiability = profile_likelihood(
+        problem=problem_per_min,
+        settings=fit_settings,
+        parameter_set=pset,
+        profile_settings=ProfileSettings(
+            reoptimize=False, initial_step=0.5, min_step=0.1, max_step=2.0, max_points=6
+        ),
+        pids=["Ka_dis_hctz"],
+        serial=True,
+        show_progress=False,
+    )
+    fisher = fisher_information(problem_per_min, fit_settings, pset)
+    report = FitReport(
+        problem=problem_per_min,
+        settings=fit_settings,
+        parameter_sets=ParameterSets([pset]),
+        identifiability=identifiability,
+        fisher=fisher,
+        mapping_figures=False,
+    )
+    results_dir = report.create(output_dir=tmp_path, name="report")
+
+    # the parameters and the profiles of the text report
+    text = (results_dir / "report.txt").read_text(encoding="utf-8")
+    assert re.search(r"Ka_dis_hctz\s+per_min\s", text)
+    assert re.search(r"Ka_dis_hctz\s+\S+\s+per_min\s", text)
+    assert not any(
+        "1/min" in line for line in text.splitlines() if "Ka_dis_hctz" in line
+    )
+    for name in ["fisher.tsv", "identifiability.tsv"]:
+        table = pd.read_csv(results_dir / name, sep="\t").set_index("parameter")
+        assert table.loc["Ka_dis_hctz", "unit"] == "per_min", name
+    # the parameters, the Fisher information, the correlation and the
+    # profiles of the HTML report, the correlation has no unit
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    rows = [
+        row
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.DOTALL)
+        if re.search(r"<td[^>]*>Ka_dis_hctz</td>", row)
+    ]
+    assert len(rows) == 4
+    assert sum("<td>per_min</td>" in row for row in rows) == 3
+    assert not any("1/min" in row for row in rows)
+    # the values carry the units of pint
+    assert fisher.units[0] == "1/min"
+    assert identifiability.parameter_set.units["Ka_dis_hctz"] == "1/min"
