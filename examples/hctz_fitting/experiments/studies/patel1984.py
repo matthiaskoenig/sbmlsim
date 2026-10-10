@@ -17,10 +17,10 @@ from examples.hctz_fitting.experiments.metadata import (
 )
 from examples.hctz_fitting.helpers import run_experiments
 from sbmlsim import Q
-from sbmlsim.data import DataSet
+from sbmlsim.data import Data, DataSet
 from sbmlsim.fit import FitData, FitMapping
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.simulation import Simulation
+from sbmlsim.simulation import PK, Change, Dimension, Observable, Scan, Simulation
 
 
 class Patel1984(HCTZSimulationExperiment):
@@ -57,9 +57,9 @@ class Patel1984(HCTZSimulationExperiment):
         return dsets
 
     @override
-    def simulations(self) -> dict[str, Simulation]:
+    def simulations(self) -> dict[str, Simulation | Scan]:
         """Define a simulation per oral dose."""
-        simulations: dict[str, Simulation] = {}
+        simulations: dict[str, Simulation | Scan] = {}
 
         for dose in self.doses:
             simulations[f"hctz{dose}"] = Simulation(
@@ -72,7 +72,27 @@ class Patel1984(HCTZSimulationExperiment):
                 },
             )
 
+        # the PK parameters over the doses, without the zero dose whose
+        # parameters are undefined
+        simulations["hctz_doses"] = Scan(
+            Simulation(
+                time_unit="hr",
+                end=50,
+                steps=500,
+                preinit_changes=self.default_changes(),
+                changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
+            ),
+            [Dimension("dose", values={"PODOSE_hctz": Q(self.doses[1:], "mg")})],
+        )
+
         return simulations
+
+    @override
+    def observables(self) -> dict[str, Observable]:
+        """Define the non-compartmental analysis of HCTZ in plasma."""
+        return {
+            "pk": PK("pk", "[Cve_hctz]", dose="PODOSE_hctz", route="oral"),
+        }
 
     @override
     def fit_mappings(self) -> dict[str, FitMapping]:
@@ -203,7 +223,34 @@ class Patel1984(HCTZSimulationExperiment):
             **self.figure_Fig1(),
             **self.figure_Fig2(),
             **self.figure_Tab4(),
+            **self.figure_pk(),
         }
+
+    def figure_pk(self) -> dict[str, Figure]:
+        name = "Fig_pk"
+        fig = Figure(
+            experiment=self,
+            sid=name,
+            num_cols=2,
+            name=f"{self.__class__.__name__} PK parameters over the dose",
+        )
+        plots = fig.create_plots(xaxis=Axis("dose", unit="mg"), legend=False)
+        for plot, (key, label, unit) in zip(
+            plots,
+            [
+                ("cmax", "cmax", "mM"),
+                ("auc_inf_obs", "AUC", "mM*hr"),
+            ],
+            strict=True,
+        ):
+            plot.set_yaxis(label, unit=unit)
+            plot.curve(
+                x=Data("dose.PODOSE_hctz", task="task_hctz_doses"),
+                y=Data(f"pk.{key}", task="task_hctz_doses"),
+                color="black",
+                marker="o",
+            )
+        return {name: fig}
 
     def figure_Fig1(self) -> dict[str, Figure]:
         name = "Fig1"

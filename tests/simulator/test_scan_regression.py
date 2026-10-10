@@ -81,4 +81,8 @@ def test_the_dose_response_of_the_glucose(tmp_path: Path) -> None:
     glucose_values = np.asarray(recorded.pop("[glc_ext]"), dtype=float)
     assert "[glc_ext]" in res.ds.coords
     np.testing.assert_allclose(res["[glc_ext]"].values, glucose_values[:, 0], rtol=1e-9)
-    _compare(res, recorded)
+    # the experiment keeps the hormones at the start of every simulation, which
+    # is the first time point of the recorded timecourses
+    recorded.pop("time")
+    initial = {f"{key}_0": np.asarray(v)[:, 0] for key, v in recorded.items()}
+    _compare(res, initial)

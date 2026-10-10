@@ -3,7 +3,9 @@
 The experiment declares the observables of the scan core next to its
 simulations, the mass concentration of midazolam in plasma and its
 non-compartmental analysis, and its data are labelled arrays which keep the
-dimension of the doses: the cmax of every dose is read by its label.
+dimension of the doses: the cmax of every dose is read by its label. `Fig1` draws
+the midazolam of every dose as one curve each, the cmax over the dose, and a band
+of the midazolam over 40 Latin hypercube draws of two parameters.
 """
 
 from pathlib import Path
@@ -13,6 +15,7 @@ from sbmlsim import Q
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
+from sbmlsim.plot import Axis, Figure
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.simulation import (
     PK,
@@ -22,6 +25,7 @@ from sbmlsim.simulation import (
     Observable,
     Scan,
     Simulation,
+    sampling,
 )
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
@@ -50,7 +54,17 @@ class MidazolamDoses(SimulationExperiment):
             values={"PODOSE_mid": Q([5.0, 7.5, 15.0], "mg")},
             labels=["low", "standard", "high"],
         )
-        return {"doses": Scan(simulation, [doses])}
+        draws = sampling.lhs(
+            {
+                "LI__MIDIM_Vmax": sampling.LogNormal(cv=0.3),
+                "Ka_abs_mid": sampling.LogNormal(cv=0.3),
+            },
+            40,
+            seed=1,
+            model=self._models["model"],
+            id="draw",
+        )
+        return {"doses": Scan(simulation, [doses]), "draws": Scan(simulation, [draws])}
 
     @override
     def observables(self) -> dict[str, Observable]:
@@ -61,7 +75,10 @@ class MidazolamDoses(SimulationExperiment):
 
     @override
     def tasks(self) -> dict[str, Task]:
-        return {"task_doses": Task(model="model", simulation="doses")}
+        return {
+            "task_doses": Task(model="model", simulation="doses"),
+            "task_draws": Task(model="model", simulation="draws"),
+        }
 
     @override
     def data(self) -> dict[str, Data]:
@@ -69,6 +86,34 @@ class MidazolamDoses(SimulationExperiment):
         return {
             "data_" + i.replace(".", "_"): Data(i, task="task_doses") for i in indices
         }
+
+    @override
+    def figures(self) -> dict[str, Figure]:
+        fig = Figure(experiment=self, sid="Fig1", num_cols=3, num_rows=1)
+        plots = fig.create_plots(xaxis=Axis("time", unit="hr"), legend=True)
+        plots[0].set_yaxis("midazolam", unit="ng/ml")
+        plots[0].curve(
+            Data("time", task="task_doses"),
+            Data("mid", task="task_doses"),
+            over="dose",
+        )
+        plots[1].legend = False
+        plots[1].set_xaxis("dose", unit="mg")
+        plots[1].set_yaxis("cmax", unit="ng/ml")
+        plots[1].curve(
+            Data("dose.PODOSE_mid", task="task_doses"),
+            Data("pk.cmax", task="task_doses"),
+            color="black",
+            marker="o",
+        )
+        plots[2].set_yaxis("midazolam", unit="ng/ml")
+        plots[2].band(
+            Data("time", task="task_draws"),
+            Data("mid", task="task_draws"),
+            across="draw",
+            name="mid",
+        )
+        return {"fig1": fig}
 
 
 def run(output_path: Path) -> SimulationExperiment:

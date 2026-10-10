@@ -4,19 +4,14 @@ from pathlib import Path
 from typing import override
 
 import numpy as np
-import pandas as pd
-from matplotlib import pyplot as plt
 
 from sbmlsim import Q
 from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.model import AbstractModel
-from sbmlsim.plot.serialization_matplotlib import FigureMPL
-from sbmlsim.result import ScanResult
-from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.plot import Axis, Figure
+from sbmlsim.simulation import Dimension, Formula, Observable, Scan, Simulation
 from sbmlsim.task import Task
-
-from .plotting import add_data
 
 #: studies of the healthy controls per hormone, the data of the other studies is
 #: not used
@@ -126,39 +121,26 @@ class DoseResponseExperiment(SimulationExperiment):
         return {"glc_scan": glc_scan}
 
     @override
+    def observables(self) -> dict[str, Observable]:
+        """Define the hormones at the start of every simulation of the scan."""
+        return {f"{sid}_0": Formula(f"{sid}_0", f"at({sid}, 0)") for sid in SELECTIONS}
+
+    @override
     def tasks(self) -> dict[str, Task]:
         """Define tasks."""
         return {"task_glc_scan": Task(model="model1", simulation="glc_scan")}
 
     @override
-    def data(self) -> dict[str, Data]:
-        """Define the data of the experiment."""
-        self.add_selections_data(
-            selections=["time", *SELECTIONS], task_ids=["task_glc_scan"]
-        )
-        return {}
-
-    @override
-    def figures_mpl(self) -> dict[str, FigureMPL]:
-        """Define the matplotlib figure of the dose responses."""
+    def figures(self) -> dict[str, Figure]:
+        """Define the figure of the dose responses."""
         xunit = "mM"
         yunit_hormone = "pmol/l"
         yunit_gamma = "dimensionless"
 
-        # the hormones are assignment rules of the glucose, the first time point
-        # of every simulation of the scan is the dose response; the glucose of
-        # the scan is the coordinate of the dimension
-        res: ScanResult = self.results["task_glc_scan"]
-        initial = res.ds.isel(time=0)
-        columns = ["[glc_ext]", *SELECTIONS]
-        dset = DataSet.from_df(
-            pd.DataFrame({sid: np.asarray(initial[sid].values) for sid in columns}),
-            udict={sid: res.units[sid] for sid in columns},
-            ureg=self.ureg,
+        fig = Figure(
+            experiment=self, sid="fig1", name="Dose response", num_cols=2, num_rows=2
         )
-
-        fig_mpl, axes = plt.subplots(2, 2, figsize=(10, 10))
-        fig_mpl.subplots_adjust(wspace=0.3, hspace=0.3)
+        plots = fig.create_plots(xaxis=Axis("glucose", unit=xunit))
 
         # selection, label (and dataset), unit, limits of the x and y axis
         panels = [
@@ -167,38 +149,29 @@ class DoseResponseExperiment(SimulationExperiment):
             ("ins", "insulin", yunit_hormone, (2, 20), (0, 800)),
             ("gamma", "gamma", yunit_gamma, (2, 20), (0, 1)),
         ]
-        for ax, (sid, label, yunit, xlim, ylim) in zip(axes.flat, panels, strict=True):
-            # simulation
-            add_data(
-                ax,
-                dset,
-                xid="[glc_ext]",
-                yid=sid,
-                xunit=xunit,
-                yunit=yunit,
-                linewidth=2,
-                linestyle="-",
-                marker="None",
+        for plot, (sid, label, yunit, xlim, ylim) in zip(plots, panels, strict=True):
+            plot.set_xaxis("glucose", unit=xunit, min=xlim[0], max=xlim[1])
+            plot.set_yaxis(label, unit=yunit, min=ylim[0], max=ylim[1])
+            # simulation: the hormones at the start of every simulation of the
+            # scan over the glucose
+            plot.curve(
+                x=Data("dim1.[glc_ext]", task="task_glc_scan"),
+                y=Data(f"{sid}_0", task="task_glc_scan"),
                 color="black",
+                linewidth=2,
+                label="simulation",
             )
             # experimental data
             if label in self._datasets:
-                add_data(
-                    ax,
-                    self._datasets[label],
+                plot.add_data(
+                    dataset=label,
                     xid="glc",
                     yid="mean",
                     yid_se="mean_se",
-                    xunit=xunit,
-                    yunit=yunit,
                     label=label.capitalize(),
                     color="black",
                     linestyle="None",
                     alpha=0.6,
                 )
-            ax.set_xlabel(f"glucose [{xunit}]")
-            ax.set_ylabel(f"{label} [{yunit}]")
-            ax.set_xlim(*xlim)
-            ax.set_ylim(*ylim)
 
-        return {"fig1": fig_mpl}
+        return {"fig1": fig}
