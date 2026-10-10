@@ -508,6 +508,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: dimension, `None` for a value per simulation
         self.xid_observable: list[str | None] = []
         self.yid_observable: list[str] = []
+        #: the unit of the x of every mapping in the model, `None` for a value
+        #: per simulation
+        self.x_units: list[str | None] = []
         #: the kind of the observable of every mapping, see `ObservationKind`
         self.observation_kinds: list[ObservationKind] = []
         #: the dimension of every mapping of values over a dimension, `None`
@@ -1172,6 +1175,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.mapping_kinds.append(mapping_collection.kind)
                 self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
+                self.x_units.append(obs_x_unit)
                 self.yid_observable.append(obs_yid)
                 self.observation_kinds.append(observation.kind)
                 self.observation_dims.append(observation.dim)

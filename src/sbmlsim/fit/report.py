@@ -48,7 +48,7 @@ from sbmlsim.fit.objects import (
     MappingKind,
     describe_array,
 )
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
 from sbmlsim.fit.options import FitSettings
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
@@ -1351,6 +1351,52 @@ class FitReport:
                 fontsize="small",
             )
 
+    def _is_scalar(self, k: int) -> bool:
+        """Whether mapping `k` compares one value per simulation."""
+        return self.problem.observation_kinds[k] is ObservationKind.SCALAR
+
+    def _x_positions(self, k: int) -> np.ndarray:
+        """Get the x positions of the reference points of mapping `k` in a figure.
+
+        The reference points of a value per simulation have no x, they are drawn
+        next to each other at `0..n-1`.
+        """
+        x_ref = np.asarray(self.problem.x_references[k], dtype=float)
+        if self._is_scalar(k):
+            return np.arange(x_ref.size, dtype=float)
+        return x_ref
+
+    def _x_label(self, k: int) -> str:
+        """Get the label of the x axis of mapping `k`.
+
+        The time of a timecourse, `<target> [<unit>]` of values over a dimension
+        and the mapping for a value per simulation, which has no quantity on x.
+        """
+        x_id = self.problem.xid_observable[k]
+        if self._is_scalar(k) or x_id is None:
+            return self.problem.mapping_keys[k]
+        if self.problem.observation_kinds[k] is ObservationKind.DIMENSION:
+            x_id = x_id.split(".", 1)[-1]
+            unit = self.problem.x_units[k]
+            return f"{x_id} [{unit}]" if unit else x_id
+        return x_id
+
+    def _set_x_limits(self, ax: Axes, k: int, x_obs: Sequence[np.ndarray]) -> None:
+        """Set the x limits of mapping `k` to the data and the simulated curves."""
+        x_pos = self._x_positions(k)
+        if self._is_scalar(k):
+            # room on the right for the legend, so it does not cover the data
+            ax.set_xlim(-0.6, x_pos.size + 1.0)
+            ax.set_xticks([])
+            return
+        values = np.concatenate([x_pos, *[np.asarray(x, dtype=float) for x in x_obs]])
+        if self.problem.observation_kinds[k] is ObservationKind.DIMENSION:
+            low, high = np.nanmin(values), np.nanmax(values)
+        else:
+            low, high = np.min(x_pos), np.max(x_pos)
+        delta = high - low
+        ax.set_xlim(left=low - 0.1 * delta, right=high + 0.1 * delta)
+
     def plot_fit(self, output_dir: Path) -> None:
         """Plot the data and the simulation of every parameter set per mapping."""
         res_data = {pset.sid: self.residual_data(pset) for pset in self.parameter_sets}
@@ -1361,18 +1407,18 @@ class FitReport:
             )
 
             sid = self.problem.experiment_keys[k]
-            x_ref = self.problem.x_references[k]
+            x_ref = self._x_positions(k)
             y_ref = self.problem.y_references[k]
             y_ref_err = self.problem.y_errors[k]
             y_ref_err_type = self.problem.y_errors_type[k]
-            x_id = self.problem.xid_observable[k]
+            scalar = self._is_scalar(k)
             y_id = self.problem.yid_observable[k]
 
             for ax in [ax1, ax2]:
                 if self.show_titles:
                     ax.set_title(self.mapping_title(k))
                 ax.set_ylabel(y_id)
-                ax.set_xlabel(x_id)
+                ax.set_xlabel(self._x_label(k))
 
                 # reference data, the same for all parameter sets
                 if y_ref_err is None:
@@ -1398,6 +1444,17 @@ class FitReport:
                 # simulation of every parameter set
                 for pset in self.parameter_sets:
                     data = res_data[pset.sid]
+                    if scalar:
+                        # the one simulated value, at the position of the data
+                        ax.plot(
+                            x_ref,
+                            np.full(x_ref.size, float(data["y_obs"][k][0])),
+                            "-",
+                            marker=self.set_marker(pset),
+                            color=self.color(pset),
+                            label=pset.sid,
+                        )
+                        continue
                     ax.plot(
                         data["x_obs"][k],
                         data["y_obs"][k],
@@ -1406,10 +1463,8 @@ class FitReport:
                         label=pset.sid,
                     )
 
-                xdelta = np.max(x_ref) - np.min(x_ref)
-                ax.set_xlim(
-                    left=np.min(x_ref) - 0.1 * xdelta,
-                    right=np.max(x_ref) + 0.1 * xdelta,
+                self._set_x_limits(
+                    ax, k, [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
                 )
                 self._set_legend(ax)
 
@@ -1435,17 +1490,17 @@ class FitReport:
             )
 
             sid = self.problem.experiment_keys[k]
-            x_ref = self.problem.x_references[k]
+            x_ref = self._x_positions(k)
             y_ref = self.problem.y_references[k]
             y_ref_err = self.problem.y_errors[k]
-            x_id = self.problem.xid_observable[k]
+            scalar = self._is_scalar(k)
             y_id = self.problem.yid_observable[k]
 
             for ax in (ax1, ax3):
                 ax.axhline(y=0, color="black")
                 ax.set_ylabel(y_id)
             for ax in (ax3, ax4):
-                ax.set_xlabel(x_id)
+                ax.set_xlabel(self._x_label(k))
 
             for ax in (ax1, ax2):
                 if self.show_titles:
@@ -1468,14 +1523,22 @@ class FitReport:
                 for pset in self.parameter_sets:
                     data = res_data[pset.sid]
                     color = self.color(pset)
+                    if not scalar:
+                        ax.plot(
+                            data["x_obs"][k],
+                            data["y_obs"][k],
+                            "-",
+                            color=color,
+                            label=pset.sid,
+                        )
                     ax.plot(
-                        data["x_obs"][k],
-                        data["y_obs"][k],
-                        "-",
+                        x_ref,
+                        data["y_obsip"][k],
+                        "o",
                         color=color,
-                        label=pset.sid,
+                        alpha=0.6,
+                        label=pset.sid if scalar else None,
                     )
-                    ax.plot(x_ref, data["y_obsip"][k], "o", color=color, alpha=0.6)
                     ax.plot(
                         x_ref,
                         data["residuals"][k],
@@ -1499,8 +1562,12 @@ class FitReport:
                     )
                 ax.set_xlim(ax1.get_xlim())
 
+            x_obs = [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
             for ax in (ax1, ax2, ax3, ax4):
-                ax.set_xlim(right=1.1 * np.max(x_ref))
+                if self.problem.observation_kinds[k] is ObservationKind.TIMECOURSE:
+                    ax.set_xlim(right=1.1 * np.max(x_ref))
+                else:
+                    self._set_x_limits(ax, k, x_obs)
                 self._set_legend(ax)
 
             for ax in (ax2, ax4):
