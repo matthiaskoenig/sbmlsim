@@ -348,3 +348,70 @@ def _shade(color: str, white: float) -> str:
     """Mix a colour with a part of white, as a hex string."""
     rgb = np.asarray(to_rgb(color))
     return to_hex(rgb + (1.0 - rgb) * white)
+
+
+@dataclass(frozen=True)
+class PointStyle:
+    """How the lines of a curve over scan points look, see `point_styles`.
+
+    Attributes:
+        colors: the colour of every point of the first dimension.
+        linestyles: the line style of every point of the second, `None` with one.
+        labels: the legend label of every point of every dimension.
+        colorbar: whether the first dimension gets a colour bar.
+        values: the values of the colour bar, the positions without a target.
+        title: the label of the colour bar, `<target> [<unit>]` or the dimension.
+    """
+
+    colors: list[str]
+    linestyles: list[str] | None
+    labels: list[list[str]]
+    colorbar: bool
+    values: np.ndarray
+    title: str
+
+
+def point_styles(
+    lines: Sequence[Line | BandLine],
+    over: Sequence[str],
+    color: str | None,
+    dimensions: Sequence[Dimension | None],
+    units: Mapping[str, str],
+) -> PointStyle:
+    """Get the colours, line styles, labels and colour bar of the lines of a curve.
+
+    Args:
+        lines: the lines of the curve or band.
+        over: the ids of the dimensions it is drawn over.
+        color: the colour of the style of the curve, `None` without.
+        dimensions: the dimension of the scan of every one of `over`, `None`
+            where it is not known.
+        units: the units of the symbols of the model, see `point_values`.
+
+    Returns:
+        The style shared by the serializers.
+
+    Raises:
+        ValueError: for more points of a second dimension than line styles.
+    """
+    labels_of = [
+        list(dict.fromkeys(line.point[k] for line in lines)) for k in range(len(over))
+    ]
+    labels = [
+        point_labels(d, labels_of[k], dimensions[k], units) for k, d in enumerate(over)
+    ]
+    n = len(labels_of[0])
+    found = point_values(dimensions[0], units)
+    if found is None:
+        values, title = np.arange(n, dtype=float), over[0]
+    else:
+        target, values, unit = found
+        title = f"{target} [{unit}]" if unit else target
+    return PointStyle(
+        colors=point_colors(n, color),
+        linestyles=point_linestyles(len(labels_of[1])) if len(over) == 2 else None,
+        labels=labels,
+        colorbar=n >= COLORBAR_FROM,
+        values=values,
+        title=title,
+    )

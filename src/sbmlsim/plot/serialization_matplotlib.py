@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 from matplotlib import rcParams
 from matplotlib.axes import Axes as AxesMPL
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 from matplotlib.figure import Figure as FigureMPL
 
 from sbmlsim.plot import Axis, Curve, Figure, SubPlot
@@ -15,11 +17,21 @@ from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
     AbstractCurve,
     AxisScale,
+    Band,
     CurveType,
     LineType,
     ShadedArea,
     Style,
     YAxisPosition,
+)
+from sbmlsim.plot.points import (
+    BandLine,
+    Line,
+    PointStyle,
+    band_lines,
+    curve_lines,
+    point_colormap,
+    point_styles,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +48,212 @@ class MatplotlibFigureSerializer:
         if axis.scale == AxisScale.LOG10:
             return "log"
         raise ValueError(f"Unsupported axis scale: '{axis.scale}'")
+
+    @classmethod
+    def _curve_kwargs(cls, curve: Curve) -> dict[str, Any]:
+        """Get the matplotlib keyword arguments of the style of a curve."""
+        if not curve.style:
+            return {}
+        style: Style = curve.style.resolve_style()
+        if curve.type == CurveType.POINTS:
+            return style.to_mpl_points_kwargs()
+        return style.to_mpl_bar_kwargs()
+
+    @classmethod
+    def _style_color(cls, style: Any) -> str | None:
+        """Get the colour of the line of a style, `None` if it sets none."""
+        if not style:
+            return None
+        resolved: Style = style.resolve_style()
+        if resolved.line is not None and resolved.line.color is not None:
+            return resolved.line.color.color
+        return None
+
+    @classmethod
+    def _draw_line(
+        cls, ax: AxesMPL, line: Line, kwargs: dict[str, Any], label: str
+    ) -> None:
+        """Draw a line, with error bars if it has errors."""
+        kwargs = dict(kwargs)
+        if line.xerr is None and line.yerr is None:
+            # `errorbar` builds the containers of the bars whether or not there
+            # are any, and is twice the cost of `plot` for the same line
+            kwargs.pop("capsize", None)
+            ax.plot(line.x, line.y, label=label, **kwargs)
+        else:
+            ax.errorbar(
+                x=line.x,
+                y=line.y,
+                xerr=line.xerr,
+                yerr=line.yerr,
+                label=label,
+                **kwargs,
+            )
+
+    @classmethod
+    def _draw_curve(
+        cls,
+        ax: AxesMPL,
+        curve: Curve,
+        line: Line,
+        kwargs: dict[str, Any],
+        label: str,
+        stacks: dict[str, Any],
+    ) -> None:
+        """Draw the one line of a curve of its type."""
+        x_data, y_data, xerr_data, yerr_data = line.x, line.y, line.xerr, line.yerr
+        if curve.type == CurveType.POINTS:
+            cls._draw_line(ax, line, kwargs, label)
+
+        elif curve.type == CurveType.BAR:
+            ax.bar(
+                x=x_data,
+                height=y_data,
+                xerr=xerr_data,
+                yerr=yerr_data,
+                label=label,
+                **kwargs,
+            )
+
+        elif curve.type == CurveType.HORIZONTALBAR:
+            ax.barh(
+                y=x_data,
+                width=y_data,
+                xerr=yerr_data,
+                yerr=xerr_data,
+                label=label,
+                **kwargs,
+            )
+
+        elif curve.type == CurveType.BARSTACKED:
+            if "barstack_x" not in stacks:
+                stacks["barstack_x"] = x_data
+                stacks["barstack_y"] = np.zeros_like(y_data)
+
+            if not np.all(np.isclose(stacks["barstack_x"], x_data)):
+                raise ValueError("x data must match for stacked bars.")
+            ax.bar(
+                x=x_data,
+                height=y_data,
+                bottom=stacks["barstack_y"],
+                xerr=xerr_data,
+                yerr=yerr_data,
+                label=label,
+                **kwargs,
+            )
+            stacks["barstack_y"] = stacks["barstack_y"] + y_data
+
+        elif curve.type == CurveType.HORIZONTALBARSTACKED:
+            if "barhstack_x" not in stacks:
+                stacks["barhstack_x"] = x_data
+                stacks["barhstack_y"] = np.zeros_like(y_data)
+
+            if not np.all(np.isclose(stacks["barhstack_x"], x_data)):
+                raise ValueError("x data must match for stacked bars.")
+            ax.barh(
+                y=x_data,
+                width=y_data,
+                left=stacks["barhstack_y"],
+                xerr=yerr_data,
+                yerr=xerr_data,
+                label=label,
+                **kwargs,
+            )
+            stacks["barhstack_y"] = stacks["barhstack_y"] + y_data
+
+    @classmethod
+    def _draw_points(
+        cls,
+        fig: FigureMPL,
+        ax: AxesMPL,
+        experiment: Any,
+        curve: Curve,
+        lines: list[Line],
+        kwargs: dict[str, Any],
+    ) -> None:
+        """Draw the lines of a curve over scan points, with legend or colour bar."""
+        task = curve.y.task_id or curve.x.task_id
+        dimensions = [
+            experiment.scan_dimension(task, d) if task else None for d in curve.over
+        ]
+        units = experiment.model_units(task) if task else {}
+        color = cls._style_color(curve.style)
+        styles = point_styles(lines, curve.over, color, dimensions, units)
+        prefix = f"{curve.name}, " if curve.name else ""
+        labelled = len(curve.over) == 1 and not styles.colorbar
+        for line in lines:
+            kw = dict(kwargs)
+            kw["color"] = styles.colors[line.index[0]]
+            if "markerfacecolor" in kw:
+                kw["markerfacecolor"] = kw["color"]
+            if styles.linestyles is not None:
+                kw["linestyle"] = styles.linestyles[line.index[1]]
+            label = (
+                f"{prefix}{styles.labels[0][line.index[0]]}"
+                if labelled
+                else "_nolegend_"
+            )
+            cls._draw_line(ax, line, kw, label)
+        if styles.linestyles is not None:
+            if not styles.colorbar:
+                for c, text in zip(styles.colors, styles.labels[0], strict=True):
+                    ax.plot([], [], color=c, label=f"{prefix}{text}")
+            for ls, text in zip(styles.linestyles, styles.labels[1], strict=True):
+                ax.plot([], [], color="0.4", linestyle=ls, label=text)
+        if styles.colorbar:
+            cls._colorbar(fig, ax, styles, color)
+
+    @classmethod
+    def _colorbar(
+        cls, fig: FigureMPL, ax: AxesMPL, styles: PointStyle, color: str | None
+    ) -> None:
+        """Draw the colour bar of the first dimension of a curve over scan points."""
+        norm = Normalize(float(np.min(styles.values)), float(np.max(styles.values)))
+        mappable = ScalarMappable(norm=norm, cmap=point_colormap(color))
+        fig.colorbar(mappable, ax=ax, label=styles.title)
+
+    @classmethod
+    def _draw_bands(
+        cls,
+        fig: FigureMPL,
+        ax: AxesMPL,
+        experiment: Any,
+        band: Band,
+        bands: list[BandLine],
+    ) -> None:
+        """Draw the quantile areas and medians of a band, one per point of `over`."""
+        low, high = (f"{100 * q:g}" for q in band.quantiles)
+        styles = None
+        if band.over:
+            task = band.y.task_id
+            dimension = experiment.scan_dimension(task, band.over[0]) if task else None
+            units = experiment.model_units(task) if task else {}
+            styles = point_styles(bands, band.over, band.color, [dimension], units)
+        for b in bands:
+            color = styles.colors[b.index[0]] if styles else (band.color or "C0")
+            name = (
+                f"{band.name}, {styles.labels[0][b.index[0]]}" if styles else band.name
+            )
+            show = styles is None or not styles.colorbar
+            ax.fill_between(
+                b.x,
+                b.low,
+                b.high,
+                color=color,
+                alpha=band.alpha,
+                linewidth=0,
+                label=f"{name} {low}-{high} %" if show else "_nolegend_",
+            )
+            if band.median:
+                ax.plot(
+                    b.x,
+                    b.median,
+                    color=color,
+                    linewidth=2.0,
+                    label=f"{name} median" if show else "_nolegend_",
+                )
+        if styles is not None and styles.colorbar:
+            cls._colorbar(fig, ax, styles, band.color)
 
     @classmethod
     def to_figure(
@@ -114,14 +332,11 @@ class MatplotlibFigureSerializer:
                 ax1.set_facecolor(plot.facecolor.color)
 
             # memory for stacked bars
-            barstack_x = None
-            barstack_y = None
-            barhstack_x = None
-            barhstack_y = None
+            stacks: dict[str, Any] = {}
 
             # plot ordered curves
             abstract_curves: list[AbstractCurve] = sorted(
-                [*plot.curves, *plot.areas],
+                [*plot.curves, *plot.areas, *plot.bands],
                 key=lambda x: x.order if x.order is not None else 0,
             )
             ax: AxesMPL
@@ -155,94 +370,36 @@ class MatplotlibFigureSerializer:
                         yerr = curve.yerr.get_data(
                             experiment=experiment, to_units=yunit
                         )
+                    sid = curve.sid or curve.name or ""
+                    if curve.over and curve.type != CurveType.POINTS:
+                        raise ValueError(
+                            f"The curve '{sid}' is a bar curve, which draws no line "
+                            f"per point of {list(curve.over)}; draw points or select a label."
+                        )
+                    lines = curve_lines(sid, curve.over, x, y, xerr, yerr)
+                    kwargs = cls._curve_kwargs(curve)
+                    if not curve.over:
+                        (line,) = lines
+                        cls._draw_curve(
+                            ax, curve, line, kwargs, curve.name or "_nolegend_", stacks
+                        )
+                        continue
+                    cls._draw_points(fig, ax, experiment, curve, lines, kwargs)
 
-                    label = curve.name if curve.name else "_nolegend_"
-
-                    x_data, y_data, xerr_data, yerr_data = line_values(
-                        curve.sid or curve.name or "", x, y, xerr, yerr
+                elif isinstance(abstract_curve, Band):
+                    # --- Band ---
+                    band: Band = abstract_curve
+                    x = band.x.get_data(experiment=experiment, to_units=xunit)
+                    y = band.y.get_data(experiment=experiment, to_units=yunit)
+                    bands = band_lines(
+                        band.sid or band.name or "",
+                        band.over,
+                        band.across,
+                        band.quantiles,
+                        x,
+                        y,
                     )
-
-                    kwargs: dict[str, Any] = {}
-                    if curve.style:
-                        style: Style = curve.style.resolve_style()
-                        if curve.type == CurveType.POINTS:
-                            kwargs = style.to_mpl_points_kwargs()
-                        else:
-                            # bar plot
-                            kwargs = style.to_mpl_bar_kwargs()
-
-                    if curve.type == CurveType.POINTS:
-                        if xerr_data is None and yerr_data is None:
-                            # `errorbar` builds the containers of the bars
-                            # whether or not there are any, and is twice the
-                            # cost of `plot` for the same line
-                            kwargs.pop("capsize", None)
-                            ax.plot(x_data, y_data, label=label, **kwargs)
-                        else:
-                            ax.errorbar(
-                                x=x_data,
-                                y=y_data,
-                                xerr=xerr_data,
-                                yerr=yerr_data,
-                                label=label,
-                                **kwargs,
-                            )
-
-                    elif curve.type == CurveType.BAR:
-                        ax.bar(
-                            x=x_data,
-                            height=y_data,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
-                            label=label,
-                            **kwargs,
-                        )
-
-                    elif curve.type == CurveType.HORIZONTALBAR:
-                        ax.barh(
-                            y=x_data,
-                            width=y_data,
-                            xerr=yerr_data,
-                            yerr=xerr_data,
-                            label=label,
-                            **kwargs,
-                        )
-
-                    elif curve.type == CurveType.BARSTACKED:
-                        if barstack_x is None:
-                            barstack_x = x_data
-                            barstack_y = np.zeros_like(y_data)
-
-                        if not np.all(np.isclose(barstack_x, x_data)):
-                            raise ValueError("x data must match for stacked bars.")
-                        ax.bar(
-                            x=x_data,
-                            height=y_data,
-                            bottom=barstack_y,
-                            xerr=xerr_data,
-                            yerr=yerr_data,
-                            label=label,
-                            **kwargs,
-                        )
-                        barstack_y = barstack_y + y_data
-
-                    elif curve.type == CurveType.HORIZONTALBARSTACKED:
-                        if barhstack_x is None:
-                            barhstack_x = x_data
-                            barhstack_y = np.zeros_like(y_data)
-
-                        if not np.all(np.isclose(barhstack_x, x_data)):
-                            raise ValueError("x data must match for stacked bars.")
-                        ax.barh(
-                            y=x_data,
-                            width=y_data,
-                            left=barhstack_y,
-                            xerr=yerr_data,
-                            yerr=xerr_data,
-                            label=label,
-                            **kwargs,
-                        )
-                        barhstack_y = barhstack_y + y_data
+                    cls._draw_bands(fig, ax, experiment, band, bands)
 
                 elif isinstance(abstract_curve, ShadedArea):
                     # --- ShadedArea ---

@@ -25,7 +25,7 @@ from sbmlsim.plot.serialization_matplotlib import (
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.serialization import ObjectJSONEncoder
-from sbmlsim.simulation import Scan, Simulation
+from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulation.observables import PK, Observable
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
@@ -775,6 +775,19 @@ class SimulationExperiment:
                     point_linestyles(len(selected[0]))
                 else:
                     point_linestyles(len(known))
+
+    def scan_dimension(self, task: str, dim: str) -> Dimension | None:
+        """Get a dimension of the scan of a task by its id, `None` if it has none of it."""
+        simulation = self._simulations[self._tasks[task].simulation_id]
+        if not isinstance(simulation, Scan):
+            return None
+        return next((d for d in simulation.dimensions if d.id == dim), None)
+
+    def model_units(self, task: str) -> Mapping[str, str]:
+        """Get the units of the symbols of the model of a task, `{}` for a model which is not loaded."""
+        model = self._models.get(self._tasks[task].model_id)
+        uinfo = getattr(model, "uinfo", None)
+        return dict(uinfo) if uinfo is not None else {}
 
     def _index_kind(self, d: Data) -> str:
         """Classify the index of task data.

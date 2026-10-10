@@ -11,14 +11,16 @@ from matplotlib.colors import to_hex, to_rgb
 from sbmlsim import Q
 from sbmlsim.plot.points import (
     LINE_STYLES,
+    Line,
     band_lines,
     curve_lines,
     point_colors,
     point_labels,
     point_linestyles,
+    point_styles,
     point_values,
 )
-from sbmlsim.simulation import Dimension
+from sbmlsim.simulation import Dimension, Simulation
 
 TIME = np.array([0.0, 1.0, 2.0])
 
@@ -191,3 +193,51 @@ def test_point_labels_name_the_values_of_a_changed_target() -> None:
     )
     assert point_labels("both", ["x", "y"], two, {}) == ["both = x", "both = y"]
     assert point_labels("d", ["lo", "hi"], None, {}) == ["d = lo", "d = hi"]
+
+
+def test_point_styles_of_one_dimension() -> None:
+    dose = Dimension("dose", values={"PODOSE": Q([50.0, 100.0, 200.0], "mg")})
+    lines = [
+        Line(point=(label,), index=(i,), x=TIME, y=TIME)
+        for i, label in enumerate(dose.labels)
+    ]
+    style = point_styles(lines, ["dose"], None, [dose], {})
+    assert style.colors == point_colors(3, None)
+    assert style.linestyles is None
+    assert style.labels[0] == ["PODOSE = 50 mg", "PODOSE = 100 mg", "PODOSE = 200 mg"]
+    assert style.colorbar is False
+    assert style.title == "PODOSE [mg]"
+    np.testing.assert_allclose(style.values, [50.0, 100.0, 200.0])
+
+
+def test_point_styles_colour_bar_from_eleven_points() -> None:
+    dose = Dimension("dose", values={"PODOSE": Q(np.arange(1.0, 13.0), "mg")})
+    lines = [
+        Line(point=(label,), index=(i,), x=TIME, y=TIME)
+        for i, label in enumerate(dose.labels)
+    ]
+    assert point_styles(lines, ["dose"], None, [dose], {}).colorbar is True
+
+
+def test_point_styles_of_two_dimensions() -> None:
+    dose = Dimension("dose", values={"PODOSE": Q([50.0, 100.0], "mg")})
+    rate = Dimension("rate", values={"ke": np.array([0.1, 0.3])})
+    lines = [
+        Line(point=(a, b), index=(i, j), x=TIME, y=TIME)
+        for i, a in enumerate(dose.labels)
+        for j, b in enumerate(rate.labels)
+    ]
+    style = point_styles(lines, ["dose", "rate"], None, [dose, rate], {"ke": "1/hr"})
+    assert style.linestyles == ["-", "--"]
+    assert style.labels[1] == ["ke = 0.1 1/hr", "ke = 0.3 1/hr"]
+
+
+def test_point_styles_without_a_target_use_the_positions() -> None:
+    sims = Dimension("s", simulations={"a": Simulation(end=1), "b": Simulation(end=2)})
+    lines = [
+        Line(point=(label,), index=(i,), x=TIME, y=TIME)
+        for i, label in enumerate(sims.labels)
+    ]
+    style = point_styles(lines, ["s"], None, [sims], {})
+    assert style.title == "s"
+    np.testing.assert_allclose(style.values, [0.0, 1.0])
