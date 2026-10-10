@@ -329,7 +329,7 @@ def test_a_plain_name_which_is_only_the_values_of_a_dimension_raises(
     ):
         Data("PODOSE", task="task_scan").get_data(experiment)
     values = Data("dose.PODOSE", task="task_scan").get_data(experiment)
-    assert values.dims == ("dose",) and values.name == "task_scan__dose.PODOSE"
+    assert values.dims == ("dose",) and values.name == "task_scan__dose__PODOSE"
     assert list(values.coords) == ["dose", "dose.PODOSE"]
 
 

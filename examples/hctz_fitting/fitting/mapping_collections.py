@@ -99,7 +99,7 @@ def _metadata(fit_mapping: FitMapping) -> HCTZMappingMetaData:
 
 def _yid(fit_mapping: FitMapping) -> str:
     """Get the observable of a fit mapping."""
-    return "__".join(fit_mapping.observable.y.sid.split("__")[1:])
+    return fit_mapping.observable.y.index
 
 
 def filter_coadministration(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:

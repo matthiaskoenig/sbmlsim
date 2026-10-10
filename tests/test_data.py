@@ -105,13 +105,13 @@ def test_load_pkdb_dataframe_missing(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("index", "selection", "sid"),
     [
-        ("[X]", "[X]", "task__X"),
+        ("[X]", "[X]", "task__conc__X"),
         ("X", "X", "task__X"),
         ("time", "time", "task__time"),
     ],
 )
 def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> None:
-    """A Data selects what its index names, its sid drops the brackets."""
+    """A Data selects what its index names, its sid marks a concentration."""
     data = Data(index, task="task")
     assert data.selection == selection
     assert data.sid == sid
@@ -120,16 +120,16 @@ def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> 
 @pytest.mark.parametrize(
     ("data", "selection", "sid", "name", "index"),
     [
-        (Data("[X]", task="task"), "[X]", "task__X", "X", "X"),
+        (Data("[X]", task="task"), "[X]", "task__conc__X", "X", "X"),
         (Data("X[1]", task="task"), "X[1]", "task__X[1]", "X[1]", "X[1]"),
-        (Data("[X]", dataset="dset"), "[X]", "dset__X", "X", "X"),
+        (Data("[X]", dataset="dset"), "[X]", "dset__conc__X", "X", "X"),
         (Data("mean", dataset="dset"), "mean", "dset__mean", "mean", "mean"),
         (Data("[X]", task="task", sid="given"), "[X]", "given", "X", "X"),
         # a function is named by its single variable, else by its own index
         (
             Data("[F]", function="Y/2", variables={"Y": Data("[Y]", task="task")}),
             "[F]",
-            "F",
+            "conc__F",
             "Y",
             "F",
         ),
@@ -140,7 +140,7 @@ def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> 
                 variables={"Y": Data("Y", task="task"), "Z": Data("Z", task="task")},
             ),
             "[F]",
-            "F",
+            "conc__F",
             "F",
             "F",
         ),

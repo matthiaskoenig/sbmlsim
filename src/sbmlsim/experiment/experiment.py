@@ -66,8 +66,7 @@ class SimulationExperiment:
         :param ureg:
         :param kwargs:
         """
-        if not sid:
-            self.sid = self.__class__.__name__
+        self.sid: str = sid if sid else self.__class__.__name__
         # the simulator is set by the ExperimentRunner
         self.simulator: Simulator | None = None
 
@@ -322,7 +321,6 @@ class SimulationExperiment:
                     f"(returning NoneType)."
                 )
 
-            # \w matches any alphanumeric character; this is equivalent to [a-zA-Z0-9_]
             pattern_sid = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
             for key in getattr(self, field_key):
                 if not isinstance(key, str):
@@ -331,10 +329,10 @@ class SimulationExperiment:
                     )
                 # Check that valid Sid
                 try:
-                    if not re.match(pattern_sid, key):
+                    if not pattern_sid.fullmatch(key):
                         raise ValueError(
                             f"{field_key} key is not a valid SId "
-                            f"([a-zA-Z0-9][a-zA-Z0-9_]*): '{key}'"
+                            f"({pattern_sid.pattern}): '{key}'"
                         )
                 except TypeError as err:
                     raise ValueError(

@@ -72,7 +72,7 @@ def test_task_data_keeps_the_dimensions_and_coordinates(
     y = Data("[Y]", task="grid").get_data(experiment)
     assert isinstance(y, xr.DataArray)
     assert y.dims == ("d", "time") and y.shape == (3, 11)
-    assert y.name == "grid__Y"
+    assert y.name == "grid__conc__Y"
     assert y["d"].values.tolist() == ["lo", "mid", "hi"]
     np.testing.assert_allclose(y["d.X"].values, [1.0, 2.0, 30.0])
     assert "X" not in y.coords

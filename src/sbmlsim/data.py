@@ -367,7 +367,10 @@ class Data:
                 formula.
             parameters: the numbers the function reads, by the identifier in
                 the formula.
-            sid: id of the data, `<task or dataset>__<index>` if not given.
+            sid: id of the data, if not given `<task or dataset>__<index>` for
+                an amount and `<task or dataset>__conc__<index>` for a
+                concentration (`"[S]"`), with `__` for a dot of the index
+                (`pk.cmax` is `<task>__pk__cmax`), so it is a valid SId.
             sel: labels of dimensions to select, `{dim: label}` keeps one point
                 and drops the dimension, `{dim: [labels]}` keeps the dimension;
                 for a dataset the values of columns whose rows are kept, see
@@ -413,13 +416,16 @@ class Data:
         """Get id."""
         sid: str
         if self._sid:
-            sid = self._sid
-        elif self.task_id:
-            sid = f"{self.task_id}__{self.index}"
+            return self._sid
+        name = self.index.replace(".", "__")
+        if self.selection != self.index:
+            name = f"conc__{name}"
+        if self.task_id:
+            sid = f"{self.task_id}__{name}"
         elif self.dset_id:
-            sid = f"{self.dset_id}__{self.index}"
-        elif self.function:
-            sid = self.index
+            sid = f"{self.dset_id}__{name}"
+        else:
+            sid = name
 
         return sid
 
