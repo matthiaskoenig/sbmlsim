@@ -415,3 +415,22 @@ def test_scan_warns_once_per_dimension_and_target(
     with caplog.at_level(logging.WARNING, logger="sbmlsim.simulation.scan"):
         Scan(sim, dimensions)
     assert len(_replaced_warnings(caplog)) == 1
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "same"),
+    [
+        ("k1*2", "k1*2", True),
+        ("k1*2", "k1*3", False),
+        (Q(1, "mg"), Q(1000, "ug"), True),
+        (Q(1, "mg"), 1.0, False),
+        (Q(1, "mg"), Q(1, "s"), False),
+        (np.array([1.0, 2.0]), np.array([1.0, 2.0]), True),
+        (np.array([1.0, 2.0]), np.array([1.0, 3.0]), False),
+        (Q(np.array([1.0, 2.0]), "mg"), Q(np.array([1.0, 2.0]), "mg"), True),
+    ],
+)
+def test_same_value(a: Any, b: Any, same: bool) -> None:
+    from sbmlsim.simulation.scan import _same_value
+
+    assert _same_value(a, b) is same

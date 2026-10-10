@@ -483,7 +483,12 @@ def _same_value(a: Any, b: Any) -> bool:
     be compared (other dimensions, a quantity and a number) are different.
     """
     try:
-        return bool(a == b)
+        equal = a == b
+        if isinstance(equal, np.ndarray) or isinstance(
+            getattr(equal, "magnitude", None), np.ndarray
+        ):
+            return bool(np.all(equal))
+        return bool(equal)
     except Exception:  # pint raises for some mixes of quantities and numbers
         return False
 
