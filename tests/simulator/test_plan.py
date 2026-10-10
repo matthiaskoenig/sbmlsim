@@ -233,3 +233,16 @@ def test_merge_times() -> None:
     assert index.tolist() == [0, 0, 1, 1]
     merged, index = merge_times([], 0.0, 1.0)
     assert merged.size == 0 and index.size == 0
+
+
+def test_merge_times_at_the_edges_and_at_a_change() -> None:
+    """A cluster is represented inside the interval, and not anchored to changes."""
+    merged, index = merge_times([-1e-12, 0.0, 5.0, 10.0, 10.0 + 1e-12], 0.0, 10.0)
+    assert merged.tolist() == [0.0, 5.0, 10.0]
+    assert index.tolist() == [0, 0, 1, 2, 2]
+    # entirely outside: the smallest time, which the range check reports
+    merged, _ = merge_times([10.0 + 1e-12, 10.0 + 2e-12], 0.0, 10.0)
+    assert merged.tolist() == [10.0 + 1e-12]
+    # a cluster around a change time at 4 keeps its smallest member, before it
+    merged, _ = merge_times([4.0 - 1e-12, 4.0 + 1e-12], 0.0, 10.0)
+    assert merged.tolist() == [4.0 - 1e-12]

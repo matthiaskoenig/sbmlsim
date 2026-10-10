@@ -185,6 +185,59 @@ def test_fit_with_near_identical_data_times(tmp_path: Path) -> None:
     assert predictions[0][1] == predictions[0][2]
 
 
+class PkdbExperiment(IAExperiment):
+    """The configuration of #261: multiple dosing, a time shift, digitized times."""
+
+    def datasets(self) -> dict[str, DataSet]:
+        df = pd.DataFrame(
+            {
+                "time": [2.0, 3.99999999999999, 4.0, 5.99999999999999, 6.0],
+                "time_unit": "s",
+                "B": [0.1, 0.2, 0.3, 0.4, 0.5],
+                "B_unit": "dimensionless",
+            }
+        )
+        return {"d": DataSet.from_df(df, ureg=self.ureg)}
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            "s": Simulation(
+                end=6 * 24 + 48,
+                changes=[Change([24.0 * k for k in range(1, 7)], {"X": 0.0})],
+                time_shift=-6 * 24,
+            )
+        }
+
+
+def test_fit_with_digitized_times_after_the_last_dose(tmp_path: Path) -> None:
+    """Data times which differ by noise collide once shifted to the plan (#261)."""
+    MODEL_PATH["path"] = tmp_path / "probe.xml"
+    MODEL_PATH["path"].write_text(sbml())
+    problem = OptimizationProblem(
+        opid="pkdb",
+        mapping_collections=[
+            FitMappingCollection(experiment=PkdbExperiment, mappings=["fm"])
+        ],
+        fit_parameters=[
+            FitParameter(
+                pid="b0",
+                lower_bound=0.0,
+                upper_bound=2.0,
+                start_value=1.0,
+                unit="dimensionless",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    assert len(problem.plans[0].times) == 3
+    predictions = problem.predictions(np.array([0.5]))
+    assert predictions[0].shape == (5,)
+    assert predictions[0][1] == predictions[0][2]
+    assert predictions[0][3] == predictions[0][4]
+
+
 class SteadyExperiment(IAExperiment):
     """Data at the steady state of the probe model."""
 

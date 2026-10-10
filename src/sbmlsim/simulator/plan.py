@@ -44,7 +44,8 @@ def merge_times(
     of the time unit) are one output time. The tolerance is
     `TIME_RTOL * max(abs(start), abs(end), end - start)` in the time of the
     plan, and a cluster of times whose consecutive distances are within it
-    becomes its smallest time. A time at `inf` stays a time of its own.
+    becomes its smallest time inside `[start, end]`, else its
+    smallest time. A time at `inf` stays a time of its own.
 
     Args:
         times: The output times in the time of the plan.
@@ -68,7 +69,13 @@ def merge_times(
     gaps[np.isnan(gaps)] = 0.0
     new = np.concatenate([[True], gaps > tolerance])
     cluster = np.cumsum(new) - 1
-    merged = ordered[new]
+    starts = np.flatnonzero(new)
+    # the smallest time of a cluster which lies in the simulation, else its
+    # smallest time: noise at the start or the end must not leave the interval
+    position = np.arange(ordered.size)
+    inside = (ordered >= start) & (ordered <= end)
+    first = np.minimum.reduceat(np.where(inside, position, ordered.size), starts)
+    merged = ordered[np.where(first < ordered.size, first, starts)]
     index = np.empty(values.size, dtype=int)
     index[order] = cluster
     return merged, index

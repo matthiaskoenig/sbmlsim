@@ -28,7 +28,7 @@ res = simulator.run(model, Simulation(end=100, times=[0, 1, 5, 10, 50, 100]))
 print(res["time"].values)
 ```
 
-Output times which differ by less than the resolution of the time are one output time, so digitized times such as `3.99999999999999` and `4.0` are simulated once, at the smaller one. The tolerance is `1e-9` times the larger of the absolute start, the absolute end and the length of the interval, and a chain of times whose consecutive distances are within it is merged. A fit merges the times of its data the same way and compares every data point with the merged output time.
+Output times which differ by less than the resolution of the time are one output time, so digitized times such as `3.99999999999999` and `4.0` are simulated once, at the smaller one. The tolerance is `1e-9` times the larger of the absolute start, the absolute end and the length of the interval, and a chain of times whose consecutive distances are within it is merged, into its smallest time inside the simulation. A cluster is not anchored to the time of a change: a cluster around a change time is its smallest member, i.e. before the change. A fit merges the times of its data the same way and compares every data point with the merged output time.
 
 ## Units and times
 
