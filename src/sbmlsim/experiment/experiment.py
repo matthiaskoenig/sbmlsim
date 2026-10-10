@@ -1272,7 +1272,9 @@ class ExperimentRunError(Exception):
     every experiment ran.
 
     Attributes:
-        results: the results of all experiments of the run.
+        results: the results of all experiments of the run, empty in a copy
+            which was pickled.
+        failures: the failed experiments and figures, one line each.
     """
 
     def __init__(self, results: "list[ExperimentResult]") -> None:
@@ -1287,6 +1289,22 @@ class ExperimentRunError(Exception):
                 lines.append(f"figure '{key}' of '{sid}': {error}")
         super().__init__("\n".join(lines))
         self.failures = lines
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        """Pickle the failures and not the results.
+
+        The results hold the experiments and their models, which cannot be
+        pickled, e.g. for the error of a run in a worker process.
+        """
+        return (_run_error_of_failures, (self.failures,))
+
+
+def _run_error_of_failures(failures: list[str]) -> ExperimentRunError:
+    """Recreate a pickled `ExperimentRunError` from its failures."""
+    error = ExperimentRunError([])
+    error.failures = list(failures)
+    error.args = ("\n".join(failures),)
+    return error
 
 
 @dataclass

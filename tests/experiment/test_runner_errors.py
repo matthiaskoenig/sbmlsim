@@ -1,6 +1,7 @@
 """Tests of a run of experiments which has a failing experiment or figure (#270)."""
 
 import logging
+import pickle
 from pathlib import Path
 from typing import Any
 
@@ -430,3 +431,15 @@ def test_a_figure_failing_only_as_page_keeps_its_image(
     assert "Figures (1)" in figures
     assert 'src="GoodExperiment_fig_ok.svg"' in figures
     assert "GoodExperiment_fig_ok.html" not in figures
+
+
+def test_the_error_of_a_run_can_be_pickled(tmp_path: Path) -> None:
+    """A copy keeps the message and the failures, not the results."""
+    results = _runner(BrokenTask, GoodExperiment).run_experiments(tmp_path)
+    error = ExperimentRunError(results)
+    copy = pickle.loads(pickle.dumps(error))
+    assert isinstance(copy, ExperimentRunError)
+    assert str(copy) == str(error)
+    assert "experiment broken" in str(copy)
+    assert copy.failures == error.failures
+    assert copy.results == []
