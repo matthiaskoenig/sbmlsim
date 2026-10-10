@@ -13,11 +13,10 @@ The semantics are the ones of PEtab v2:
 4. After a change at a time after the start, the events whose triggers the
    change made true fire, which roadrunner does not see.
 5. A segment is integrated with the output of the plan. A time of a change
-   appears once in the output, with the state after the change; with
-   `Plan.before_changes`, which a fit sets, an output time at a change after
-   the start is the state before it, the end of the segment before the
-   change. `execute_with_before_changes` gives these states next to the
-   output.
+   appears once in the output, with the state after the change. The state
+   before a change after the start is the end of the segment before it,
+   which `execute_with_before_changes` gives next to the output, see
+   `sbmlsim.fit.options.FitSettings.data_at_change`.
 6. A model which does not read the time (`ModelSymbols.time_dependent`) is
    integrated in local time: every segment starts at the time 0 of
    roadrunner and its output is shifted back, so the first step of CVODE
@@ -88,9 +87,8 @@ def execute_with_before_changes(
 
     The output is the one of `execute`, the state after a change at its time.
     The state before it is the end of the integration of the segment before
-    the change, which the output drops; a fit which keeps the output of a
-    simulation for its observables reads its data at the time of a change
-    there, see `sbmlsim.fit.options.FitSettings.data_at_change`.
+    the change, which the output drops; a fit reads its data at the time of a
+    change there, see `sbmlsim.fit.options.FitSettings.data_at_change`.
 
     Args:
         plan: the plan, compiled against the model.
@@ -197,13 +195,6 @@ def _simulate(
     model_events = plan.symbols.events
     integrator: roadrunner.Integrator = r.getIntegrator()
     times = np.asarray(plan.times, dtype=float)
-    # with `before_changes` the time of the change every output time is at
-    # (`NaN` for none), whose output is the state at the end of the segment
-    # before the change
-    at_change = np.full(times.size, np.nan)
-    if plan.before_changes:
-        index = plan.at_change(times)
-        at_change[index >= 0] = np.asarray(plan.change_times)[index[index >= 0]]
 
     blocks: list[np.ndarray] = []
     for k in range(len(points) - 1):
@@ -242,8 +233,7 @@ def _simulate(
                 block = block[:-1]
         else:
             integrator.setValue(VARIABLE_STEP_SIZE, False)
-            in_segment = (times >= a) & ((times <= b) if last else (times < b))
-            wanted = times[in_segment & np.isnan(at_change)]
+            wanted = times[(times >= a) & ((times <= b) if last else (times < b))]
             shifted = wanted - offset
             grid = np.unique(np.concatenate([[start], shifted, [end_stop]]))
             result = np.array(r.simulate(times=grid.tolist()), dtype=float)
@@ -256,13 +246,6 @@ def _simulate(
             # the output times are the ones asked for, not the shifted ones
             block[:, 0] = wanted
             end_state = result[-1].copy()
-            # the output times at the change at `b`, on either side of it,
-            # are the state before the change, the end of this segment
-            at_b = times[at_change == b]
-            if at_b.size:
-                rows = np.repeat(end_state[np.newaxis, :], at_b.size, axis=0)
-                rows[:, 0] = at_b
-                block = np.concatenate([block, rows], axis=0)
         if before is not None and b > plan.start and b in events:
             end_state[0] = b
             before.append(end_state)
@@ -270,8 +253,7 @@ def _simulate(
 
     if plan.end in events:
         # a change at the end is applied after the integration, the last
-        # output is the state after it and the events it triggers, unless
-        # the output at the end is the state before it (`before_changes`)
+        # output is the state after it and the events it triggers
         if model_events and plan.end > plan.start:
             triggers = _triggers(
                 model_events, r, plan.end if local else float(r.model.getTime())
@@ -280,12 +262,7 @@ def _simulate(
             _fire_events(model_events, triggers, r, plan.end, model)
         else:
             _apply(events[plan.end], r, plan)
-        if (
-            not plan.before_changes
-            and blocks
-            and blocks[-1].shape[0]
-            and blocks[-1][-1, 0] == plan.end
-        ):
+        if blocks and blocks[-1].shape[0] and blocks[-1][-1, 0] == plan.end:
             blocks[-1][-1, :] = _state(r, columns, plan.end)
 
     if plan.steady_state_output is not None:

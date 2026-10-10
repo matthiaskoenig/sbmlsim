@@ -171,11 +171,6 @@ class Plan:
         time_shift: added to the time of the result.
         symbols: the symbols of the model, which resolve a target `with_values`
             adds.
-        before_changes: an output time at the time of a change after the
-            start (`at_change`) is the state before the change instead of the
-            state after it. A fit compares its data so, see
-            `sbmlsim.fit.options.FitSettings.data_at_change`; a run never
-            sets it. Only for `OutputMode.TIMES`.
     """
 
     start: float
@@ -188,21 +183,6 @@ class Plan:
     time_shift: float
     symbols: ModelSymbols = field(repr=False, compare=False)
     steady_state_output: SteadyStatePlan | None = None
-    before_changes: bool = False
-
-    def __post_init__(self) -> None:
-        """Check that the state before the changes is asked of output times.
-
-        Raises:
-            ValueError: if `before_changes` is set for the steps of the
-                integrator, whose output at the time of a change is the
-                state after it.
-        """
-        if self.before_changes and self.output is not OutputMode.TIMES:
-            raise ValueError(
-                "The state before the changes is an output of exact output times "
-                "(`OutputMode.TIMES`), not of the steps of the integrator."
-            )
 
     @property
     def change_times(self) -> tuple[float, ...]:

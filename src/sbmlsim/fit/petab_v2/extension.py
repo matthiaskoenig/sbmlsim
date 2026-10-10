@@ -55,9 +55,9 @@ class SbmlsimExtension(ExtensionConfig):
     i.e. the residual, the loss function, the weighting and the state a
     measurement at the time of a change is compared with (`data_at_change`),
     are the objective `sbmlsim` optimizes, so a problem which is read without
-    them is fitted with a different objective on the same data. It is therefore `required`, and a
-    tool which does not know `sbmlsim` has to say so instead of fitting the
-    problem differently without telling anyone.
+    them is fitted with a different objective on the same data. It is
+    therefore `required`, and a tool which does not know `sbmlsim` has to say
+    so instead of fitting the problem differently without telling anyone.
 
     `to_petab(..., required_extension=False)` writes it as not required, which
     is what a problem meant for other tools wants: they read the tables and

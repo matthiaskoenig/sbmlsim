@@ -8,7 +8,13 @@ import pytest
 from sbmlsim import Q
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulation import Change, Simulation, SteadyState
-from sbmlsim.simulator.plan import OutputMode, compile_simulation, merge_times
+from sbmlsim.simulator.plan import (
+    TIME_RTOL,
+    OutputMode,
+    compile_simulation,
+    merge_times,
+    time_tolerance,
+)
 from sbmlsim.units import UnitsInformation
 from tests.simulator.models import sbml, sbml_minutes
 
@@ -246,3 +252,24 @@ def test_merge_times_at_the_edges_and_at_a_change() -> None:
     # a cluster around a change time at 4 keeps its smallest member, before it
     merged, _ = merge_times([4.0 - 1e-12, 4.0 + 1e-12], 0.0, 10.0)
     assert merged.tolist() == [4.0 - 1e-12]
+
+
+def test_the_times_at_the_changes_after_the_start(probe) -> None:
+    """A time is at a change after the start within the resolution of the time."""
+    symbols, uinfo = probe
+    plan = compile_simulation(
+        Simulation(
+            start=-10,
+            end=10,
+            changes=[Change([-10, 0, 10], {"k1": 1.0})],
+        ),
+        symbols,
+        uinfo,
+    )
+    # the change at the start is the initial condition, the one at the end is one
+    assert plan.change_times == (0.0, 10.0)
+    tolerance = time_tolerance(plan.start, plan.end)
+    assert tolerance == pytest.approx(TIME_RTOL * 20)
+    times = [-10.0, -0.5 * tolerance, 0.0, 0.5 * tolerance, 2 * tolerance, 5.0, 10.0]
+    assert plan.at_change(times).tolist() == [-1, 0, 0, 0, -1, -1, 1]
+    assert plan.at_change([]).size == 0

@@ -18,7 +18,14 @@ import pytest
 from sbmlsim import Q
 from sbmlsim.data import DataSet
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.fit import FitData, FitMapping, FitMappingCollection, FitParameter
+from sbmlsim.fit import (
+    FitData,
+    FitMapping,
+    FitMappingCollection,
+    FitParameter,
+    NoiseModel,
+)
+from sbmlsim.fit.objects import ObservableModel
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2 import to_petab
@@ -51,6 +58,9 @@ OBSERVABLES: dict[str, Observable] = {
     # compute on the timecourse of a run
     "urine_max": Formula("urine_max", "max(Aurine)"),
     "urine_twice": Formula("urine_twice", "2 * Aurine"),
+    # a timecourse which reads a value per simulation, and one with a reduction
+    "urine_ratio": Formula("urine_ratio", "Aurine / urine_max"),
+    "urine_share": Formula("urine_share", "Aurine / max(Aurine)"),
 }
 
 
@@ -130,8 +140,28 @@ class UrineStudy(SimulationExperiment):
             # a time which differs from the reset by less than the resolution
             # of the time is at the reset
             "noisy": DataSet.from_df(
-                pd.DataFrame({"time": [24.0 + NOISE], "Aurine": [TRUTH["urine"][1]]}),
+                urine.iloc[:2].assign(time=[12.0, 24.0 + NOISE]),
                 udict={"time": "hr", "Aurine": "mg"},
+                ureg=self.ureg,
+            ),
+            # the first collection, which ends at the reset
+            "first": DataSet.from_df(
+                urine.iloc[:2], udict={"time": "hr", "Aurine": "mg"}, ureg=self.ureg
+            ),
+            # the second collection, which starts at the reset
+            "second": DataSet.from_df(
+                pd.DataFrame(
+                    {
+                        "time": TIMES[1:],
+                        "Aurine": [0.0, TRUTH["urine"][2], TRUTH["urine"][3]],
+                    }
+                ),
+                udict={"time": "hr", "Aurine": "mg"},
+                ureg=self.ureg,
+            ),
+            "ratio": DataSet.from_df(
+                pd.DataFrame({"time": TIMES, "r": [1.0] * len(TIMES)}),
+                udict={"time": "hr", "r": "dimensionless"},
                 ureg=self.ureg,
             ),
             # the dose at the start
@@ -213,10 +243,68 @@ class UrineStudy(SimulationExperiment):
             ),
             "fm_end": FitMapping(
                 self,
+                reference=FitData(self, dataset="first", xid="time", yid="Aurine"),
+                observable=FitData(self, task="task_end", xid="time", yid="Aurine"),
+            ),
+            # a curve of one time, which is its first point
+            "fm_end_single": FitMapping(
+                self,
                 reference=FitData(
                     self, dataset="urine", xid="time", yid="Aurine", sel={"time": 24.0}
                 ),
                 observable=FitData(self, task="task_end", xid="time", yid="Aurine"),
+            ),
+            "fm_first": FitMapping(
+                self,
+                reference=FitData(self, dataset="first", xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="Aurine"
+                ),
+            ),
+            "fm_second": FitMapping(
+                self,
+                reference=FitData(self, dataset="second", xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="Aurine"
+                ),
+            ),
+            "fm_model": FitMapping(
+                self,
+                reference=FitData(self, dataset="twice", xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="urine_model"
+                ),
+                observable_model=ObservableModel("2 * Aurine", unit="mg"),
+            ),
+            "fm_noise": FitMapping(
+                self,
+                reference=FitData(self, dataset="urine", xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="Aurine"
+                ),
+                noise=NoiseModel(formula="0.1 * Aurine + 0.01 * PODOSE"),
+            ),
+            "fm_depot_noise": FitMapping(
+                self,
+                reference=FitData(self, dataset="depot", xid="time", yid="PODOSE"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="PODOSE"
+                ),
+                noise=NoiseModel(formula="0.1 * PODOSE"),
+            ),
+            "fm_ratio": FitMapping(
+                self,
+                reference=FitData(self, dataset="ratio", xid="time", yid="r"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="urine_ratio"
+                ),
+            ),
+            "fm_share": FitMapping(
+                self,
+                reference=FitData(self, dataset="ratio", xid="time", yid="r"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="urine_share"
+                ),
             ),
             "fm_coarse": FitMapping(
                 self,
@@ -370,9 +458,9 @@ def test_a_time_within_the_resolution_is_at_the_change(
     """A time just after the reset, closer than the resolution, sees the state before."""
     mappings = ["fm_noisy", "fm_cmax"] if dense else ["fm_noisy"]
     before = _predictions(_problem(mappings, tmp_path))["fm_noisy"]
-    assert before[0] == pytest.approx(TRUTH["urine"][1], rel=STEPS_RTOL)
+    assert before[1] == pytest.approx(TRUTH["urine"][1], rel=STEPS_RTOL)
     after = _predictions(_problem(mappings, tmp_path, DataAtChangeType.AFTER))
-    assert after["fm_noisy"][0] == pytest.approx(0.0, abs=1e-6)
+    assert after["fm_noisy"][1] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_a_timecourse_over_another_selection(tmp_path: Path) -> None:
@@ -408,8 +496,8 @@ def test_two_mappings_of_one_time_near_a_change(tmp_path: Path, dense: bool) -> 
         # both times are one output time
         assert len(problem.plans[0].times) == len(TIMES)
     predictions = _predictions(problem)
-    assert predictions["fm_noisy"][0] == predictions["fm_urine"][1]
-    assert predictions["fm_noisy"][0] == pytest.approx(
+    assert predictions["fm_noisy"][1] == predictions["fm_urine"][1]
+    assert predictions["fm_noisy"][1] == pytest.approx(
         TRUTH["urine"][1], rel=STEPS_RTOL
     )
 
@@ -419,7 +507,7 @@ def test_a_negative_start_and_a_time_shift(tmp_path: Path, dense: bool) -> None:
     """The change at 0 of a simulation from -24 h is at 24 h in the time of the data."""
     mappings = ["fm_shifted", "fm_shifted_max"] if dense else ["fm_shifted"]
     problem = _problem(mappings, tmp_path)
-    assert problem.times_at_changes(0).tolist() == [24.0]
+    assert problem.times_before_changes(0).tolist() == [24.0]
     before = _predictions(problem)["fm_shifted"]
     after = _predictions(_problem(mappings, tmp_path, DataAtChangeType.AFTER))
     assert before[1] == pytest.approx(TRUTH["urine"][1], rel=STEPS_RTOL)
@@ -467,8 +555,101 @@ def test_a_change_at_the_end_is_compared_before_it(tmp_path: Path, dense: bool) 
     mappings = ["fm_end", "fm_end_cmax"] if dense else ["fm_end"]
     before = _predictions(_problem(mappings, tmp_path))["fm_end"]
     after = _predictions(_problem(mappings, tmp_path, DataAtChangeType.AFTER))["fm_end"]
-    assert before[0] == pytest.approx(TRUTH["urine"][1], rel=STEPS_RTOL)
-    assert after[0] == pytest.approx(0.0, abs=1e-8)
+    assert before[1] == pytest.approx(TRUTH["urine"][1], rel=STEPS_RTOL)
+    assert after[1] == pytest.approx(0.0, abs=1e-8)
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_a_curve_of_one_time_is_its_first_point(tmp_path: Path, dense: bool) -> None:
+    """The only time of a curve at a change takes the state after it."""
+    mappings = ["fm_end_single", "fm_end_cmax"] if dense else ["fm_end_single"]
+    problem = _problem(mappings, tmp_path)
+    assert problem.times_before_changes(0).size == 0
+    assert _predictions(problem)["fm_end_single"][0] == pytest.approx(0.0, abs=1e-8)
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_a_curve_which_starts_and_one_which_ends_at_a_reset(
+    tmp_path: Path, dense: bool
+) -> None:
+    """The first collection ends at the reset, the second starts at it.
+
+    In one simulation the data at the reset is the collected amount for the
+    curve which ends there and `0` for the first point of the curve which
+    starts there (#262, "First point after").
+    """
+    mappings = ["fm_first", "fm_second"] + (["fm_cmax"] if dense else [])
+    problem = _problem(mappings, tmp_path)
+    assert len(problem.mapping_groups) == 1
+    predictions = _predictions(problem)
+    assert predictions["fm_first"][1] == pytest.approx(
+        TRUTH["urine"][1], rel=STEPS_RTOL
+    )
+    assert predictions["fm_second"][0] == pytest.approx(0.0, abs=1e-8)
+    after = _predictions(_problem(mappings, tmp_path, DataAtChangeType.AFTER))
+    np.testing.assert_array_equal(predictions["fm_second"], after["fm_second"])
+    assert after["fm_first"][1] == pytest.approx(0.0, abs=1e-8)
+    if not dense:
+        np.testing.assert_allclose(
+            predictions["fm_second"][1:], TRUTH["urine"][2:], rtol=1e-5
+        )
+        assert problem.cost_least_square(np.array([TRUE_KE])) == pytest.approx(
+            0.0, abs=1e-6
+        )
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_a_group_with_data_at_a_change_and_without(tmp_path: Path, dense: bool) -> None:
+    """A mapping without data at the change shares the group with one which has it."""
+    mappings = ["fm_urine", "fm_depot"] + (["fm_cmax"] if dense else [])
+    problem = _problem(mappings, tmp_path)
+    predictions = _predictions(problem)
+    assert predictions["fm_depot"] == pytest.approx([100.0])
+    assert predictions["fm_urine"][1] == pytest.approx(
+        TRUTH["urine"][1], rel=STEPS_RTOL
+    )
+    assert np.isfinite(problem.cost_least_square(np.array([TRUE_KE])))
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_an_observable_model_and_a_noise_model_at_a_change(
+    tmp_path: Path, dense: bool
+) -> None:
+    """The symbols of an observable model and of a noise model take the state before."""
+    mappings = ["fm_model", "fm_noise", "fm_depot_noise"]
+    problem = _problem(mappings + (["fm_cmax"] if dense else []), tmp_path)
+    assert len(problem.mapping_groups) == 1
+    x = np.array([TRUE_KE])
+    evaluations = problem.evaluations(x, problem.indices())
+    by_key = {problem.mapping_keys[k]: e for k, e in evaluations.items()}
+    assert by_key["fm_model"].prediction[1] == pytest.approx(
+        2 * TRUTH["urine"][1], rel=STEPS_RTOL
+    )
+    noise = by_key["fm_noise"].selections
+    assert noise["Aurine"][1] == pytest.approx(TRUTH["urine"][1], rel=STEPS_RTOL)
+    assert set(noise) == {"Aurine", "PODOSE"}
+    assert by_key["fm_depot_noise"].selections["PODOSE"] == pytest.approx([100.0])
+
+
+def test_a_timecourse_reads_the_values_per_simulation_of_the_run(
+    tmp_path: Path,
+) -> None:
+    """A value per simulation which a timecourse reads is the one of the run.
+
+    `Aurine / urine_max` at the reset is the collected amount over the maximum
+    of the dense output of the run, which misses the state before the reset,
+    so the ratio is above one. A reduction inside the formula of the
+    timecourse, `Aurine / max(Aurine)`, is evaluated on the output with the
+    state before the reset, whose maximum is that state: the ratio is one.
+    """
+    problem = _problem(["fm_ratio", "fm_share", "fm_cmax"], tmp_path)
+    predictions = _predictions(problem)
+    ratio = predictions["fm_ratio"][1]
+    assert ratio == pytest.approx(
+        TRUTH["urine"][1] / TRUTH["urine_max"], rel=STEPS_RTOL
+    )
+    assert ratio > 1.0
+    assert predictions["fm_share"][1] == pytest.approx(1.0, rel=1e-12)
 
 
 def test_the_settings_compare_the_data_before_a_change_by_default() -> None:
@@ -492,17 +673,23 @@ def test_the_settings_compare_the_data_before_a_change_by_default() -> None:
 
 def test_the_times_of_the_data_at_a_change(tmp_path: Path) -> None:
     """The data at the reset and the noisy time are at the change, not the start."""
-    problem = _problem(["fm_urine", "fm_noisy", "fm_depot", "fm_cmax"], tmp_path)
+    problem = _problem(
+        ["fm_urine", "fm_noisy", "fm_depot", "fm_second", "fm_cmax"], tmp_path
+    )
     times = {
-        problem.mapping_keys[k]: problem.times_at_changes(k).tolist()
+        problem.mapping_keys[k]: problem.times_before_changes(k).tolist()
         for k in problem.indices()
     }
     assert times == {
         "fm_urine": [24.0],
         "fm_noisy": [24.0 + NOISE],
         "fm_depot": [],
+        # the first point of a curve takes the state after the change
+        "fm_second": [],
         "fm_cmax": [],
     }
+    after = _problem(["fm_urine"], tmp_path, DataAtChangeType.AFTER)
+    assert after.times_before_changes(0).size == 0
 
 
 def test_the_export_reports_the_measurements_at_a_change(
@@ -519,8 +706,11 @@ def test_the_export_reports_the_measurements_at_a_change(
     after = _problem(["fm_urine"], tmp_path, DataAtChangeType.AFTER)
     assert "measurement-at-change" not in {gap.id for gap in gaps_of_problem(after)}
     assert measurements_at_changes(after) == {}
-    depot = _problem(["fm_depot"], tmp_path)
-    assert "measurement-at-change" not in {gap.id for gap in gaps_of_problem(depot)}
+    for start in (["fm_depot"], ["fm_second"]):
+        problem = _problem(start, tmp_path)
+        assert "measurement-at-change" not in {
+            gap.id for gap in gaps_of_problem(problem)
+        }
 
 
 @pytest.mark.parametrize(

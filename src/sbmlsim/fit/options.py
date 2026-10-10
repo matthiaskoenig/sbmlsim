@@ -244,8 +244,13 @@ class DataAtChangeType(StrEnum):
 
     `before` (default) : a data point at the time of a change after the
     start is compared with the state before the change, also at the end of
-    the simulation. The observables of a simulation, e.g. the parameters of
-    a `PK` observable, are computed on its timecourse as a run has it.
+    the simulation, except the first point of a curve, i.e. the data point
+    or points with the smallest time of a fit mapping (replicates included),
+    which is compared with the state after the change: it is the start of a
+    collection, e.g. a cumulative amount which starts at `0` at a reset
+    after the start. A curve of a single time is its first point. The
+    observables of a simulation, e.g. the parameters of a `PK` observable,
+    are computed on its timecourse as a run has it.
 
     `after` : a data point at the time of a change is compared with the state
     after it, the semantics of PEtab v2, which a PEtab problem without the
@@ -282,8 +287,9 @@ class FitSettings:
             "t + h = t", which the estimate of the first step gives at a late
             time when the state starts from 0, e.g. a dose after a reset.
         data_at_change: whether a data point at the time of a change after the
-            start is compared with the state before the change (the default)
-            or after it, see `DataAtChangeType`; a string is converted.
+            start is compared with the state before the change (the default,
+            except the first point of a curve) or after it, see
+            `DataAtChangeType`; a string is converted.
     """
 
     residual: ResidualType = ResidualType.ABSOLUTE
@@ -367,9 +373,7 @@ class FitSettings:
             initial_time_step=d.get("initial_time_step", 0.0),
             # stored settings of 0.8.5 and earlier compared the data at a change
             # with the state after it
-            data_at_change=DataAtChangeType(
-                d.get("data_at_change", DataAtChangeType.AFTER.value)
-            ),
+            data_at_change=d.get("data_at_change", DataAtChangeType.AFTER.value),
         )
 
     def __str__(self) -> str:

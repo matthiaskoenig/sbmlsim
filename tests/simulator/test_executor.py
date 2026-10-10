@@ -1,7 +1,5 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
-from dataclasses import replace
-
 import numpy as np
 import pytest
 
@@ -13,7 +11,7 @@ from sbmlsim.simulator.executor import (
     execute,
     execute_with_before_changes,
 )
-from sbmlsim.simulator.plan import TIME_RTOL, OutputMode, compile_simulation
+from sbmlsim.simulator.plan import compile_simulation
 from tests.simulator.models import sbml
 
 SEL = ["time", "[A]", "[B]", "X", "C", "k1"]
@@ -356,15 +354,6 @@ def test_an_event_of_a_change_at_the_end() -> None:
     assert np.asarray(result["Y"]).tolist() == [0.0, 0.0, 1.0]
 
 
-def run_before(
-    sim: Simulation, model: RoadrunnerSBMLModel | None = None
-) -> TimecourseResult:
-    """Run a simulation of the probe model with the state before the changes."""
-    model = model or RoadrunnerSBMLModel(source=sbml())
-    plan = compile_simulation(sim, model.symbols, model.uinfo)
-    return execute(replace(plan, before_changes=True), model, SEL)
-
-
 #: a change at the start, after it and at the end of the probe model
 CHANGES = [
     Change(0, {"[A]": 5.0}),
@@ -373,39 +362,36 @@ CHANGES = [
 ]
 
 
-def test_before_changes_outputs_the_state_before_a_change() -> None:
-    """An output time at a change after the start is the state before it (#262)."""
-    res = run_before(Simulation(end=2, changes=CHANGES, times=[0, 0.5, 1, 1.5, 2]))
-    after = run(Simulation(end=2, changes=CHANGES, times=[0, 0.5, 1, 1.5, 2]))
+def run_before(
+    sim: Simulation, model: RoadrunnerSBMLModel | None = None
+) -> tuple[TimecourseResult, TimecourseResult]:
+    """Run a simulation of the probe model with the states before the changes."""
+    model = model or RoadrunnerSBMLModel(source=sbml())
+    plan = compile_simulation(sim, model.symbols, model.uinfo)
+    return execute_with_before_changes(plan, model, SEL)
+
+
+def test_the_states_before_the_changes_after_the_start() -> None:
+    """The state before a change is the end of the segment before it (#262)."""
+    result, before = run_before(
+        Simulation(end=2, changes=CHANGES, times=[0, 0.5, 1, 1.5, 2])
+    )
     reference = run(Simulation(end=1, changes=CHANGES[:1], times=[0, 1]))
-    np.testing.assert_allclose(res.time, [0, 0.5, 1, 1.5, 2])
-    # the change at the start is the initial condition
-    assert res["[A]"][0] == pytest.approx(5.0)
-    assert res["[A]"][1] == pytest.approx(after["[A]"][1])
-    assert res["[A]"][2] == pytest.approx(reference["[A]"][1], rel=1e-6)
-    assert after["[A]"][2] == pytest.approx(reference["[A]"][1] + 10.0, rel=1e-6)
-    # the times between the changes do not move
-    assert res["[A]"][3] == pytest.approx(after["[A]"][3])
-    # the change at the end is applied after the output
-    assert after["X"][-1] == pytest.approx(0.0)
-    assert res["X"][-1] == pytest.approx(after["X"][-2])
+    # the output is the one of a run, the state after a change at its time
+    np.testing.assert_array_equal(
+        result.values,
+        run(Simulation(end=2, changes=CHANGES, times=[0, 0.5, 1, 1.5, 2])).values,
+    )
+    assert result["[A]"][2] == pytest.approx(reference["[A]"][1] + 10.0, rel=1e-6)
+    assert result["X"][-1] == pytest.approx(0.0)
+    # the change at the start is the initial condition, it has no state before
+    np.testing.assert_allclose(before.time, [1.0, 2.0])
+    assert before["[A]"][0] == pytest.approx(reference["[A]"][1], rel=1e-6)
+    assert before["X"][1] == pytest.approx(12.0)
 
 
-@pytest.mark.parametrize("offset", [-0.5, 0.5])
-def test_a_time_within_the_resolution_is_at_the_change(offset: float) -> None:
-    """A time which differs from a change by floating point noise is at it."""
-    noise = offset * TIME_RTOL * 2
-    res = run_before(Simulation(end=2, changes=CHANGES, times=[1 + noise, 2]))
-    reference = run(Simulation(end=1, changes=CHANGES[:1], times=[1]))
-    assert res.time[0] == 1 + noise
-    assert res["[A]"][0] == pytest.approx(reference["[A]"][0], rel=1e-6)
-    after = run(Simulation(end=2, changes=CHANGES, times=[1 + noise, 2]))
-    expected = reference["[A]"][0] + (10.0 if offset > 0 else 0.0)
-    assert after["[A]"][0] == pytest.approx(expected, rel=1e-6)
-
-
-def test_before_changes_in_local_time_from_a_negative_start() -> None:
-    """The state before a change of a simulation from a negative time, shifted."""
+def test_the_states_before_the_changes_from_a_negative_start() -> None:
+    """The states of a simulation from a negative time in local time, shifted."""
     simulation = Simulation(
         start=-1,
         end=1,
@@ -413,39 +399,26 @@ def test_before_changes_in_local_time_from_a_negative_start() -> None:
         times=[-1, 0, 1],
         time_shift=1,
     )
-    res = run_before(simulation)
+    result, before = run_before(simulation)
     reference = run(Simulation(end=1, times=[0, 1]))
-    np.testing.assert_allclose(res.time, [0, 1, 2])
-    assert res["[A]"][1] == pytest.approx(reference["[A]"][1], rel=1e-6)
-    assert run(simulation)["[A]"][1] == pytest.approx(
-        reference["[A]"][1] + 10.0, rel=1e-6
-    )
+    np.testing.assert_allclose(result.time, [0, 1, 2])
+    np.testing.assert_allclose(before.time, [1.0])
+    assert before["[A]"][0] == pytest.approx(reference["[A]"][1], rel=1e-6)
+    assert result["[A]"][1] == pytest.approx(reference["[A]"][1] + 10.0, rel=1e-6)
 
 
-def test_before_changes_with_an_event_at_the_time_of_the_change() -> None:
-    """The state before the change is also before the event it triggers."""
+def test_the_state_before_a_change_is_before_the_event_it_triggers() -> None:
+    """An event a change triggers fires after the change, not before it."""
     model = RoadrunnerSBMLModel(source=sbml(COUNTER))
     simulation = Simulation(
         end=2, times=[0, 1, 2], changes=[Change(1, {"X": 2.0}), Change(2, {"X": 0.0})]
     )
     plan = compile_simulation(simulation, model.symbols, model.uinfo)
-    res = execute(replace(plan, before_changes=True), model, ["time", "X", "Y"])
-    assert np.asarray(res["X"]).tolist() == [0.0, 0.0, 2.0]
-    assert np.asarray(res["Y"]).tolist() == [0.0, 0.0, 1.0]
-    res = execute(plan, model, ["time", "X", "Y"])
-    assert np.asarray(res["X"]).tolist() == [0.0, 2.0, 0.0]
-    assert np.asarray(res["Y"]).tolist() == [0.0, 1.0, 1.0]
-
-
-def test_before_changes_is_an_option_of_output_times() -> None:
-    """The steps of the integrator have no state before the changes."""
-    model = RoadrunnerSBMLModel(source=sbml())
-    plan = compile_simulation(
-        Simulation(end=2, changes=CHANGES), model.symbols, model.uinfo
-    )
-    assert plan.output is OutputMode.INTEGRATOR
-    with pytest.raises(ValueError, match="output times"):
-        replace(plan, before_changes=True)
+    result, before = execute_with_before_changes(plan, model, ["time", "X", "Y"])
+    assert np.asarray(result["X"]).tolist() == [0.0, 2.0, 0.0]
+    assert np.asarray(result["Y"]).tolist() == [0.0, 1.0, 1.0]
+    assert np.asarray(before["X"]).tolist() == [0.0, 2.0]
+    assert np.asarray(before["Y"]).tolist() == [0.0, 1.0]
 
 
 @pytest.mark.parametrize("times", [None, [0.5, 1, 2]])
