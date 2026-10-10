@@ -171,3 +171,26 @@ def test_a_band_on_the_right_axis(experiment: SimulationExperiment) -> None:
     fig = PlotlyFigureSerializer.to_figure(experiment, figure)
     drawn = [t for t in fig.data if t.x is not None and t.x[0] is not None]
     assert len(drawn) == 3 and {t.yaxis for t in drawn} == {"y2"}
+
+
+def test_a_band_without_median_names_the_upper_line(
+    experiment: SimulationExperiment,
+) -> None:
+    traces = _traces(
+        experiment,
+        lambda p: p.band(
+            Data("time", task="task_dose_draws"),
+            Data("[C]", task="task_dose_draws"),
+            across="draw",
+            over="dose",
+            name="C",
+            median=False,
+        ),
+    )
+    assert [t.name for t in traces if t.showlegend] == [
+        "C, PODOSE = 50 mg",
+        "C, PODOSE = 100 mg",
+        "C, PODOSE = 200 mg",
+        "5-95 %",
+    ]
+    assert all(t.fill == "tonexty" for t in traces if t.showlegend and t.fill)

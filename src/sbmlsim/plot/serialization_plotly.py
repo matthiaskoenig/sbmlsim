@@ -578,7 +578,7 @@ class PlotlyFigureSerializer:
                     fillcolor=_rgba(color, band.alpha),
                     name=name,
                     legendgroup=sid,
-                    showlegend=False,
+                    showlegend=show and not band.median,
                     hoverinfo="skip",
                 )
             )
