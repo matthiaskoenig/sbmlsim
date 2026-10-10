@@ -710,6 +710,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
 
                 # observable units
+                if mapping.observable.x is None:
+                    raise ValueError(
+                        f"The mapping {sid}.{mapping_id} has an observable without x, "
+                        "which a fit does not support yet."
+                    )
                 obs_xid = mapping.observable.x.selection
                 observable_model = mapping.observable_model
                 if observable_model is None:

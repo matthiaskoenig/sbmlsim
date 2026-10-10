@@ -1055,7 +1055,7 @@ class FitData:
     def __init__(
         self,
         experiment: Any,  # SimulationExperiment (avoid circular import)
-        xid: str,
+        xid: str | None,
         yid: str,
         xid_sd: str | None = None,
         xid_se: str | None = None,
@@ -1065,12 +1065,14 @@ class FitData:
         dataset: str | None = None,
         task: str | None = None,
         function: str | None = None,
+        sel: Mapping[str, Any] | None = None,
     ):
         """Initialize FitData.
 
         Args:
             experiment: simulation experiment the data belongs to.
-            xid: index of the x data.
+            xid: index of the x data, `None` for data without x, i.e. a value per
+                simulation.
             yid: index of the y data.
             xid_sd: index of the standard deviation of the x data.
             xid_se: index of the standard error of the x data.
@@ -1080,6 +1082,8 @@ class FitData:
             dataset: id of the dataset the data comes from.
             task: id of the task the data comes from.
             function: id of the function the data is calculated with.
+            sel: labels of the dimensions of a task, or column values of the rows
+                of a dataset, for every data of the fit data, see `Data`.
 
         Raises:
             ValueError: if `count` is set without a dataset or has a wrong type.
@@ -1088,10 +1092,11 @@ class FitData:
         self.dset_id = dataset
         self.task_id = task
         self.function = function
+        self.sel: dict[str, Any] = dict(sel) if sel else {}
         self.count: int | None = self._resolve_count(count)
 
         # actual data
-        self.x = self._data(xid)
+        self.x: Data | None = self._data(xid) if xid is not None else None
         self.y = self._data(yid)
         self.x_sd = self._error_data(xid_sd, error_type="sd")
         self.x_se = self._error_data(xid_se, error_type="se")
@@ -1105,6 +1110,7 @@ class FitData:
             task=self.task_id,
             dataset=self.dset_id,
             function=self.function,
+            sel=self.sel or None,
         )
 
     def _error_data(self, index: str | None, error_type: str) -> Data | None:
@@ -1137,7 +1143,12 @@ class FitData:
 
         # resolve count data from dataset
         # FIXME: remove duplication with add_data in plotting
-        count_data = Data(index=count, dataset=self.dset_id, task=self.task_id)
+        count_data = Data(
+            index=count,
+            dataset=self.dset_id,
+            task=self.task_id,
+            sel=self.sel or None,
+        )
         counts = count_data.get_data(self.experiment)
         counts_unique = np.unique(np.asarray(counts.values))
         if counts_unique.size > 1:
