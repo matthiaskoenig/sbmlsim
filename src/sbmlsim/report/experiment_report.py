@@ -113,7 +113,7 @@ class ReportResults:
         # the figures of the experiment and the custom matplotlib ones. The
         # keys come from the figures and not from the rendered matplotlib
         # objects, so a run which only wrote the interactive pages is reported
-        keys = list(dict.fromkeys([*experiment._figures, *experiment._mpl_figures]))
+        keys = list(dict.fromkeys([*experiment._figures, *experiment._mpl_figure_keys]))
         figures = {}
         for key in keys:
             stem = f"{exp_id}_{key}"

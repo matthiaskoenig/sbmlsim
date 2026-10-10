@@ -106,6 +106,9 @@ class SimulationExperiment:
         self._tasks: dict[str, Task] = {}
         self._figures: dict[str, Figure] = {}
         self._results: dict[str, ScanResult] = {}
+        # the keys of the matplotlib figures of the last run; the figures are
+        # released once they are written (the report needs only the keys)
+        self._mpl_figure_keys: list[str] = []
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -417,18 +420,22 @@ class SimulationExperiment:
         # create figures, but only when something looks at them: rendering
         # every figure is most of the time a run takes, and a run without an
         # output path which does not show them would close them again
-        self._mpl_figures = {}
+        self._mpl_figure_keys = []
         if show_figures or (output_path and static_formats):
-            self._mpl_figures = self.create_mpl_figures()
+            mpl_figures = self.create_mpl_figures()
             if show_figures:
-                self.show_mpl_figures(mpl_figures=self._mpl_figures)
+                self.show_mpl_figures(mpl_figures=mpl_figures)
             if output_path and static_formats:
                 self.save_mpl_figures(
                     output_path,
-                    mpl_figures=self._mpl_figures,
+                    mpl_figures=mpl_figures,
                     figure_formats=static_formats,
                 )
-            self.close_mpl_figures(mpl_figures=self._mpl_figures)
+            self.close_mpl_figures(mpl_figures=mpl_figures)
+            # only the keys are kept: a figure keeps the pixel buffer of its last
+            # rendering, so the figures of every experiment of a run would stay
+            # in memory until its end
+            self._mpl_figure_keys = list(mpl_figures)
 
         if output_path and interactive:
             self.save_interactive_figures(output_path)

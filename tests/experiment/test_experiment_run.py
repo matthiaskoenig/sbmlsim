@@ -1,7 +1,9 @@
 """Tests of running a simulation experiment."""
 
+import gc
 import logging
 import sys
+import weakref
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.plot.padding import first_curve, without_padding
+from sbmlsim.report.experiment_report import ReportResults
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
 from sbmlsim.simulation import Dimension, Scan, Simulation
@@ -189,7 +192,7 @@ def test_the_figures_are_not_created_when_nothing_uses_them() -> None:
     experiment = runner.experiments["FitMappingExperiment"]
     experiment.run(runner.simulator, show_figures=False)
 
-    assert experiment._mpl_figures == {}
+    assert experiment._mpl_figure_keys == []
     # the simulation still ran
     assert np.asarray(experiment.results["task"].ds["[X]"]).size > 0
 
@@ -408,13 +411,47 @@ def test_the_interactive_format_is_drawn_by_plotly(tmp_path: Path) -> None:
     assert (tmp_path / "plotly.min.js").exists()
     assert not (tmp_path / "FigureExperiment_fig.svg").exists()
     # matplotlib was not used, so nothing was rendered and closed
-    assert experiment._mpl_figures == {}
+    assert experiment._mpl_figure_keys == []
 
     html = page.read_text(encoding="utf-8")
     assert "plotly-graph-div" in html
     # the page loads its javascript from next to it and not from the network
     assert 'src="plotly.min.js"' in html
     assert "https://" not in html.split("<script")[1][:400]
+
+
+# ---------------------------------------------------------------------------
+# a run keeps what its report needs, not its figures
+# ---------------------------------------------------------------------------
+def test_the_figures_are_released_once_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the keys of the matplotlib figures are kept after a run.
+
+    A figure keeps the pixel buffer of its last rendering: kept figures of every
+    experiment of a run would stay in memory until its end.
+    """
+    figures: list[weakref.ref] = []
+    create = FigureExperiment.create_mpl_figures
+
+    def create_and_watch(self: FigureExperiment) -> dict:
+        mpl_figures = create(self)
+        figures.extend(weakref.ref(figure) for figure in mpl_figures.values())
+        return mpl_figures
+
+    monkeypatch.setattr(FigureExperiment, "create_mpl_figures", create_and_watch)
+    runner = _runner(FigureExperiment)
+    result = runner.run_experiments(output_path=tmp_path)[0]
+    gc.collect()
+
+    assert figures
+    assert all(figure() is None for figure in figures)
+    assert result.experiment._mpl_figure_keys == ["fig"]
+    assert (tmp_path / "FigureExperiment" / "FigureExperiment_fig.svg").exists()
+    # the report lists the figure from its key
+    report = ReportResults()
+    report.add_experiment_result(exp_result=result)
+    assert list(report.data["FigureExperiment"]["figures"]) == ["fig"]
 
 
 def test_both_formats_are_written(tmp_path: Path) -> None:
