@@ -26,6 +26,15 @@ print(dset.uinfo["time"], dset.uinfo["mean"])
 print(dset)
 ```
 
+The unit of a column is the unit of its first row with a value. The unit of a row which carries no number (no value, sd or se) is ignored, and a column without any unit has no unit. Rows with another unit of the same dimension are converted to the unit of the column, their values, sd and se, and their unit column is rewritten; the data frame passed in is not changed. A column whose rows cannot be brought to one unit raises a `ValueError` which names the column and its units: a unit of another dimension or with an offset (`degC` next to `kelvin`), a unit which is undefined, has a factor (`100*mg`) or is no string, and values which are no numbers.
+
+```python
+mixed = pd.DataFrame({"dose": [1.0, 500.0], "dose_unit": ["g", "mg"]})
+print(DataSet.from_df(mixed, ureg=ureg)["dose"].tolist())
+```
+
+A slice, a column or a copy of a dataset owns a copy of its units, so a `unit_conversion` of one changes no other.
+
 The units of the dataset are a `UnitsInformation` like the units of a model, see [Units](units.md). A column is read as a quantity and converted:
 
 ```python

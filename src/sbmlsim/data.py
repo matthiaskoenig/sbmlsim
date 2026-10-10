@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 import numpy as np
 import pandas as pd
 import pint
 import xarray as xr
+from pint.facets.plain import PlainUnit
 
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT, TIME
@@ -711,7 +712,7 @@ def _sid_part(index: str) -> str:
     )
 
 
-def _own_units(result):
+def _own_units[T: DataSet | DataSeries](result: T) -> T:
     """Give a new DataSet or DataSeries a copy of its units information."""
     uinfo = getattr(result, "uinfo", None)
     if isinstance(uinfo, UnitsInformation):
@@ -733,7 +734,9 @@ def _unify_units(
     place, the value, the error columns `error_keys` and the unit column, and the
     unit of the first row is returned (None if no row has a unit).
 
-    :raises ValueError: if a unit cannot be converted into the first unit
+    :raises ValueError: naming the column and its units, if a unit cannot be read
+        (no string, undefined or with a factor) or converted into the first unit by
+        a factor, or if a column which is converted has values which are no numbers
     """
     has_unit = df[unit_key].notna()
     present = has_unit & df[value_key].notna()
@@ -755,20 +758,24 @@ def _unify_units(
     if len(units) == 1:
         return str(target)
 
+    # every unit is read once, so an error names the unit which is wrong
+    parsed = {unit: _parse_unit(value_key, unit, units, ureg) for unit in units}
     factors: dict[str, float] = {}
     for unit in units[1:]:
         try:
-            zero = float(ureg.Quantity(0.0, unit).to(target).magnitude)
-            factors[unit] = float(ureg.Quantity(1.0, unit).to(target).magnitude)
+            zero = float(ureg.Quantity(0.0, parsed[unit]).to(parsed[target]).magnitude)
+            factors[unit] = float(
+                ureg.Quantity(1.0, parsed[unit]).to(parsed[target]).magnitude
+            )
         except pint.errors.PintError as err:
-            dimensions = {u: str(ureg.Quantity(1.0, u).dimensionality) for u in units}
+            dimensions = {u: str(parsed[u].dimensionality) for u in units}
             raise ValueError(
-                f"Column '{value_key}' has units '{list(units)}' which cannot be "
-                f"converted into '{target}' (dimensions {dimensions}): {err}"
+                f"Column '{value_key}' has the units {list(units)}, which cannot "
+                f"be converted into '{target}' (dimensions {dimensions}): {err}"
             ) from err
         if zero != 0.0:
             raise ValueError(
-                f"Column '{value_key}' has the units '{list(units)}', the unit "
+                f"Column '{value_key}' has the units {list(units)}, the unit "
                 f"'{unit}' has an offset to '{target}' (e.g. degC) and cannot be "
                 "converted by a factor, use one unit for the column"
             )
@@ -778,15 +785,53 @@ def _unify_units(
         list(units),
         target,
     )
+    keys = [key for key in [value_key, *error_keys] if key in df.columns]
+    for key in keys:
+        try:
+            df[key] = df[key].astype(float)
+        except (TypeError, ValueError) as err:
+            raise ValueError(
+                f"Column '{key}' has the units {list(units)}, which are converted "
+                f"to '{target}', but values which are no numbers: {err}"
+            ) from err
     for unit, factor in factors.items():
         # all rows of the unit which carry a number, so an sd without a value follows
         mask = carries & (df[unit_key] == unit)
-        for key in [value_key, *error_keys]:
-            if key in df.columns:
-                df[key] = df[key].astype(float)
-                df.loc[mask, key] = df.loc[mask, key] * factor
+        for key in keys:
+            df.loc[mask, key] = df.loc[mask, key] * factor
     df.loc[has_unit, unit_key] = target
     return str(target)
+
+
+def _parse_unit(
+    value_key: str, unit: object, units: Iterable[object], ureg: UnitRegistry
+) -> PlainUnit:
+    """Read a unit of a column.
+
+    Args:
+        value_key: the column.
+        unit: the unit of some of its rows.
+        units: all units of the column, for the message.
+        ureg: the unit registry.
+
+    Raises:
+        ValueError: naming the column, its units and the unit, if the unit is
+            no string or not a unit of the registry.
+    """
+    if not isinstance(unit, str):
+        raise ValueError(
+            f"Column '{value_key}' has the units {list(units)}, the unit "
+            f"{unit!r} is no string"
+        )
+    try:
+        return ureg.Quantity(1.0, unit).units
+    # pint raises errors of many kinds for a unit it cannot read: its own, a
+    # ValueError for a factor, a TypeError or the TokenError of its parser
+    except Exception as err:
+        raise ValueError(
+            f"Column '{value_key}' has the units {list(units)}, the unit '{unit}' "
+            f"cannot be read: {err}"
+        ) from err
 
 
 class DataSeries(pd.Series):
@@ -804,8 +849,8 @@ class DataSeries(pd.Series):
         return DataSet
 
     def __finalize__(  # ty: ignore[override-of-final-method]
-        self, other, method=None, **kwargs
-    ):
+        self, other: object, method: str | None = None, **kwargs: Any
+    ) -> Self:
         """Finalize and give the new object its own unit information."""
         # pandas hands the metadata on by reference and only __finalize__ (final in
         # the typing of pandas, not enforced) sees the new object with its metadata;
@@ -828,8 +873,8 @@ class DataSet(pd.DataFrame):
         return DataSet
 
     def __finalize__(  # ty: ignore[override-of-final-method]
-        self, other, method=None, **kwargs
-    ):
+        self, other: object, method: str | None = None, **kwargs: Any
+    ) -> Self:
         """Finalize and give the new object its own unit information."""
         # pandas hands the metadata on by reference and only __finalize__ (final in
         # the typing of pandas, not enforced) sees the new object with its metadata;
@@ -866,10 +911,23 @@ class DataSet(pd.DataFrame):
         2. units annotations based on 'unit' column which is applied on
            'mean', 'value', 'sd' and 'se' columns
 
+        The unit of a column is the unit of its first row with a value; the unit
+        of a row without a number (no value, sd or se) is ignored, and a column
+        without any unit has no unit. Rows with another unit of the same
+        dimension are converted to it, their values, sd and se, and their unit
+        column is rewritten. The data frame of the caller is not changed.
+
         :param df: pandas.DataFrame
-        :param uinfo: optional units information
+        :param ureg: the unit registry
+        :param udict: optional units of columns
 
         :return: dataset
+
+        :raises ValueError: naming the column and its units, if a unit of a column
+            with several units cannot be read (no string, undefined or with a
+            factor), cannot be converted by a factor (another dimension or an
+            offset such as degC), or if such a column has values which are no
+            numbers
         """
         if not isinstance(ureg, UnitRegistry):
             raise ValueError(

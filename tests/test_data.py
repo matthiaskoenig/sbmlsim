@@ -295,8 +295,7 @@ def test_from_df_unit_column_ignores_missing_value() -> None:
 
 def test_from_df_does_not_change_the_data_frame() -> None:
     """The caller's data frame keeps its values, dtypes and columns."""
-    df = pd.DataFrame({"value": [1, 2000], "value_unit": ["g", "mg"], "unit": "x"})
-    df = df.drop(columns="unit")
+    df = pd.DataFrame({"value": [1, 2000], "value_unit": ["g", "mg"]})
     before = df.copy()
     DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
     pd.testing.assert_frame_equal(df, before)
@@ -335,3 +334,26 @@ def test_from_df_ignores_the_unit_of_an_empty_row(junk: str) -> None:
     dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
     assert dset.uinfo["value"] == "mg"
     assert dset["value"].dropna().tolist() == pytest.approx([1000.0, 2000.0])
+
+
+@pytest.mark.parametrize(
+    ("column", "values", "units", "match"),
+    [
+        # an undefined unit, after or as the first unit
+        ("value", [1.0, 2.0], ["mg", "xyz"], r"'value'.*'xyz'.*not defined"),
+        ("value", [1.0, 2.0], ["xyz", "mg"], r"'value'.*'xyz'.*not defined"),
+        # a unit with a factor
+        ("value", [1.0, 2.0], ["mg", "100*mg"], r"'value'.*'100\*mg'.*factor"),
+        # values which are no numbers in a column which is converted
+        ("time", ["-24|-16", "0"], ["hr", "min"], r"'time'.*\['hr', 'min'\].*number"),
+        # a unit which is no string
+        ("value", [1.0, 2.0], ["mg", 5], r"'value'.*\['mg', 5\].*5.*no string"),
+    ],
+)
+def test_from_df_unit_errors_name_the_column_and_units(
+    column: str, values: list, units: list, match: str
+) -> None:
+    """Every unit error of a column is a ValueError naming the column and units."""
+    df = pd.DataFrame({column: values, f"{column}_unit": units})
+    with pytest.raises(ValueError, match=match):
+        DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
