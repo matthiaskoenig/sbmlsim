@@ -364,6 +364,11 @@ class SimulationExperiment:
 
         Most figures do not require access to concrete data, but only abstract
         data concepts.
+
+        A figure is styled with the settings of the experiment,
+        `FigureSettings.resolve(experiment=self.figure_settings)`, e.g. its
+        `fig_titlesize`; the settings of a run (`figure_settings=` of `run`)
+        do not reach this method.
         """
         return {}
 

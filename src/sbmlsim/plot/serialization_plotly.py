@@ -93,6 +93,11 @@ SYMBOL_BY_MARKER: dict[MarkerType, str] = {
 }
 
 
+#: the pixels per inch of a page: a page is the size of its figure in inches
+#: times 72 pixels, whatever the `fig_dpi` of the settings, which is the
+#: resolution of the static images; a browser zooms a page instead
+PAGE_PIXELS_PER_INCH = 72
+
 #: the dash of plotly of every line style of `sbmlsim.plot.points.LINE_STYLES`
 DASH_BY_LINESTYLE = {"-": "solid", "--": "dash", ":": "dot", "-.": "dashdot"}
 
@@ -320,8 +325,9 @@ class PlotlyFigureSerializer:
     ) -> Any:
         """Convert a figure of the model into a plotly figure.
 
-        The page has the size in pixels of the matplotlib figure, i.e. the
-        size of the figure in inches times `fig_dpi` of its settings.
+        The page is the size of the figure in inches times
+        `PAGE_PIXELS_PER_INCH` pixels; `fig_dpi` of the settings is the
+        resolution of the static images and does not change the page.
 
         Args:
             experiment: the experiment whose results the curves read, whose
@@ -371,8 +377,8 @@ class PlotlyFigureSerializer:
         width, height = figure.size(resolved)
         fig.update_layout(
             title={"text": figure.name} if figure.name else None,
-            width=int(width * resolved.fig_dpi),
-            height=int(height * resolved.fig_dpi),
+            width=int(width * PAGE_PIXELS_PER_INCH),
+            height=int(height * PAGE_PIXELS_PER_INCH),
             template="plotly_white",
             hovermode="closest",
             legend={"traceorder": "normal"},

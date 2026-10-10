@@ -529,7 +529,7 @@ class MatplotlibFigureSerializer:
     @classmethod
     def to_figure(
         cls,
-        experiment,  # "SimulationExperiment",
+        experiment: Any,
         figure: Figure,
         settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> FigureMPL:

@@ -1871,8 +1871,10 @@ class FigureSettings:
     therefore do not depend on the experiments which ran before it.
 
     Attributes:
-        fig_dpi: the resolution in dots per inch, which turns the size of a
-            figure in inches into the pixels of an image or a page.
+        fig_dpi: the resolution of a static image in dots per inch, which
+            turns the size of a figure in inches into its pixels. An
+            interactive page has a fixed 72 pixels per inch, see
+            `serialization_plotly.PAGE_PIXELS_PER_INCH`, whatever `fig_dpi`.
         fig_facecolor: the colour of the figure.
         fig_subplots_wspace: the horizontal spacing between the panels, as a
             fraction of the panel width.
@@ -1896,21 +1898,21 @@ class FigureSettings:
             matplotlib, e.g. `"best"` or `"upper left"`.
     """
 
-    fig_dpi: int = 72
+    fig_dpi: float = 72
     fig_facecolor: str = "white"
     fig_subplots_wspace: float = 0.3
     fig_subplots_hspace: float = 0.3
     panel_width: float = 7.0
     panel_height: float = 5.0
-    fig_titlesize: int = 25
+    fig_titlesize: float = 25
     fig_titleweight: str = "bold"
-    axes_titlesize: int = 20
+    axes_titlesize: float = 20
     axes_titleweight: str = "bold"
-    axes_labelsize: int = 18
+    axes_labelsize: float = 18
     axes_labelweight: str = "bold"
-    xtick_labelsize: int = 15
-    ytick_labelsize: int = 15
-    legend_fontsize: int = 13
+    xtick_labelsize: float = 15
+    ytick_labelsize: float = 15
+    legend_fontsize: float = 13
     legend_position: str = "inside"
     legend_loc: str = "best"
 
@@ -1999,7 +2001,11 @@ def _removed_setting(name: str) -> str:
         f"experiment and its subclasses with `SimulationExperiment.figure_settings`, "
         f"i.e. `figure_settings = MappingProxyType({{'{name}': <value>}})` in the "
         f"class body; for one figure with `Figure(settings=...)`, i.e. "
-        f"`Figure(..., settings={{'{name}': <value>}})`."
+        f"`Figure(..., settings={{'{name}': <value>}})`, or for a figure which "
+        f"exists with `fig.settings = {{**fig.settings, '{name}': <value>}}`. A "
+        f"figure of `figures_mpl()` reads the value of its experiment with "
+        f"`FigureSettings.resolve(experiment=self.figure_settings).{name}`; the "
+        f"settings of the run do not reach `figures_mpl()`."
     )
 
 

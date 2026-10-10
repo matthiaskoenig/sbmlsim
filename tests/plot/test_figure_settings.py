@@ -144,6 +144,9 @@ def test_the_settings_are_the_attributes_of_figure_of_before() -> None:
     assert FigureSettings.names() == tuple(DEFAULTS)
     assert vars(FigureSettings()) == DEFAULTS
     assert FigureSettings(fig_dpi=300).fig_dpi == 300
+    # the numbers are floats, which ty checks
+    settings = FigureSettings(fig_dpi=150.5, legend_fontsize=9.5, axes_labelsize=12.5)
+    assert (settings.fig_dpi, settings.legend_fontsize) == (150.5, 9.5)
     with pytest.raises(AttributeError):
         FigureSettings().fig_dpi = 300  # ty: ignore[invalid-assignment]
 
@@ -355,6 +358,9 @@ def test_a_setting_on_the_class_or_a_figure_fails_loudly(name: str) -> None:
         "figure_settings = MappingProxyType({",
         "Figure(settings=...)",
         f"FigureSettings().{name}",
+        # a figure which exists, and a figure of `figures_mpl()`
+        f"fig.settings = {{**fig.settings, '{name}': <value>}}",
+        f"FigureSettings.resolve(experiment=self.figure_settings).{name}",
     ]
     checks = [
         lambda: setattr(Figure, name, 1),
@@ -463,7 +469,7 @@ def test_an_explicit_size_is_kept_and_the_default_is_computed_at_rendering() -> 
 
 
 def test_the_pages_of_plotly_have_the_size_of_the_settings(tmp_path: Path) -> None:
-    """The pixels of a page are the inches of the figure times its `fig_dpi`."""
+    """The pixels of a page are the inches of the figure times 72, whatever `fig_dpi`."""
     pytest.importorskip("plotly")
     from sbmlsim.plot.serialization_plotly import PlotlyFigureSerializer
 
@@ -471,20 +477,33 @@ def test_the_pages_of_plotly_have_the_size_of_the_settings(tmp_path: Path) -> No
     default = Figure(experiment=None, sid="fig", num_cols=2)
     run = {"fig_dpi": 100, "panel_width": 4.0}
     for figure, expected in [
-        (explicit, (300, 200)),
-        (default, (800, 500)),
+        (explicit, (216, 144)),
+        (default, (576, 360)),
     ]:
         layout = PlotlyFigureSerializer.to_figure(None, figure, settings=run).layout
         assert (layout.width, layout.height) == expected
     layout = PlotlyFigureSerializer.to_figure(None, default).layout
     assert (layout.width, layout.height) == (1008, 360)
 
-    # the settings of a run reach the pages, the experiment's override them
+
+def test_a_run_at_300_dpi_has_pages_of_the_default_size(tmp_path: Path) -> None:
+    """`fig_dpi` is the resolution of the static images, not the pixels of a page."""
+    pytest.importorskip("plotly")
+    _runner(Plain).run_experiments(tmp_path / "default", figure_formats=["html"])
+    page = _page_size(tmp_path / "default" / "Plain" / "Plain_fig.html")
+    assert page == (504, 360)
+
+    # the dpi of the run and the dpi of the experiment
     _runner(Styled, Plain).run_experiments(
-        tmp_path, figure_formats=["html"], figure_settings={"fig_dpi": 100}
+        tmp_path / "dpi",
+        figure_formats=["html", "png"],
+        figure_settings={"fig_dpi": 300},
     )
-    assert _page_size(tmp_path / "Plain" / "Plain_fig.html") == (700, 500)
-    assert _page_size(tmp_path / "Styled" / "Styled_fig.html") == (2100, 1500)
+    for sid in ["Plain", "Styled"]:
+        assert _page_size(tmp_path / "dpi" / sid / f"{sid}_fig.html") == page
+        # the image has the resolution, about 300 / 72 times the default pixels
+        height, width = _pixels(tmp_path / "dpi" / sid / f"{sid}_fig.png")
+        assert width > 3 * page[0] and height > 3 * page[1]
 
 
 def _page_size(path: Path) -> tuple[int, int]:
@@ -528,3 +547,11 @@ def test_an_override_of_run_without_figure_settings_is_run_and_logged(
         with caplog.at_level(logging.WARNING):
             _run(tmp_path / "default", OldSignature, figure_settings=settings)
         assert "figure_settings" not in caplog.text
+
+
+def test_the_migration_of_a_figure_which_exists_works() -> None:
+    """`fig.settings = {**fig.settings, ...}` of the message sets one setting."""
+    figure = Figure(experiment=None, sid="fig", settings={"legend_fontsize": 9.5})
+    figure.settings = {**figure.settings, "legend_position": "outside"}
+    resolved = figure.resolved_settings()
+    assert (resolved.legend_fontsize, resolved.legend_position) == (9.5, "outside")
