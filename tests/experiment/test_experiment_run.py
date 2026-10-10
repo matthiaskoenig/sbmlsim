@@ -490,8 +490,8 @@ def test_the_figures_are_released_once_written(
     figures: list[weakref.ref] = []
     create = FigureExperiment.create_mpl_figures
 
-    def create_and_watch(self: FigureExperiment) -> dict:
-        mpl_figures = create(self)
+    def create_and_watch(self: FigureExperiment, **kwargs: Any) -> dict:
+        mpl_figures = create(self, **kwargs)
         figures.extend(weakref.ref(figure) for figure in mpl_figures.values())
         return mpl_figures
 

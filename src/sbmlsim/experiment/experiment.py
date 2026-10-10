@@ -5,9 +5,9 @@ import logging
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -439,6 +439,7 @@ class SimulationExperiment:
         figure_formats: list[str] | None = None,
         reduced_selections: bool = True,
         keep_results: bool = True,
+        on_error: Literal["raise", "log"] = "raise",
     ) -> "ExperimentResult":
         """Execute given experiment and store results.
 
@@ -454,10 +455,16 @@ class SimulationExperiment:
                 written. Without them an experiment holds only what its report
                 needs, and a run of many experiments only the results of the one
                 it runs; `results` then raises.
+            on_error: what a failing figure does. `"raise"` (the default) raises
+                its error, so a user who runs one experiment sees it; `"log"`
+                logs the error with its traceback, skips the figure, writes the
+                others and records the figure in `ExperimentResult.failed_figures`,
+                which is what the `ExperimentRunner` uses.
 
         Returns:
             The result of the experiment, which the report is created from.
         """
+        failed_figures: dict[str, str] = {}
         # run simulations (sets self._results)
         self._results_released = False
         self._run_tasks(simulator, reduced_selections=reduced_selections)
@@ -493,7 +500,9 @@ class SimulationExperiment:
         # output path which does not show them would close them again
         self._mpl_figure_keys = []
         if show_figures or (output_path and static_formats):
-            mpl_figures = self.create_mpl_figures()
+            mpl_figures = self.create_mpl_figures(
+                on_error=on_error, failed=failed_figures
+            )
             if show_figures:
                 self.show_mpl_figures(mpl_figures=mpl_figures)
             if output_path and static_formats:
@@ -501,6 +510,8 @@ class SimulationExperiment:
                     output_path,
                     mpl_figures=mpl_figures,
                     figure_formats=static_formats,
+                    on_error=on_error,
+                    failed=failed_figures,
                 )
             self.close_mpl_figures(mpl_figures=mpl_figures)
             # only the keys are kept: a figure keeps the pixel buffer of its last
@@ -509,7 +520,9 @@ class SimulationExperiment:
             self._mpl_figure_keys = list(mpl_figures)
 
         if output_path and interactive:
-            self.save_interactive_figures(output_path)
+            self.save_interactive_figures(
+                output_path, on_error=on_error, failed=failed_figures
+            )
 
         # only perform serialization after data evaluation (to access units)
         if output_path:
@@ -521,7 +534,9 @@ class SimulationExperiment:
             self._results = {}
             self._results_released = True
 
-        return ExperimentResult(experiment=self, output_path=output_path)
+        return ExperimentResult(
+            experiment=self, output_path=output_path, failed_figures=failed_figures
+        )
 
     @timeit
     def _run_tasks(
@@ -967,18 +982,56 @@ class SimulationExperiment:
                 result.to_netcdf(results_path / f"{self.sid}_{rkey}.nc")
 
     @timeit
-    def create_mpl_figures(self) -> dict[str, FigureMPL | Figure]:
-        """Create matplotlib figures."""
+    def create_mpl_figures(
+        self,
+        on_error: Literal["raise", "log"] = "raise",
+        failed: dict[str, str] | None = None,
+    ) -> dict[str, FigureMPL | Figure]:
+        """Create matplotlib figures.
+
+        Args:
+            on_error: `"raise"` raises the error of a figure, `"log"` logs it,
+                skips the figure and goes on with the next.
+            failed: collects the failed figures as `{key: error}`.
+
+        Returns:
+            The figures by their key, without the failed ones.
+        """
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
-            fig_mpl = MatplotlibFigureSerializer.to_figure(self, fig)
-            mpl_figures[fig_key] = fig_mpl
+            try:
+                mpl_figures[fig_key] = MatplotlibFigureSerializer.to_figure(self, fig)
+            except Exception as err:
+                self._figure_failed(fig_key, err, on_error, failed)
 
         # additional custom figures
-        for fig_key, fig_mpl in self.figures_mpl().items():
-            mpl_figures[fig_key] = fig_mpl
+        try:
+            for fig_key, fig_mpl in self.figures_mpl().items():
+                mpl_figures[fig_key] = fig_mpl
+        except Exception as err:
+            self._figure_failed("figures_mpl", err, on_error, failed)
 
         return mpl_figures
+
+    def _figure_failed(
+        self,
+        fig_key: str,
+        err: Exception,
+        on_error: Literal["raise", "log"],
+        failed: dict[str, str] | None,
+    ) -> None:
+        """Handle the error of a figure: raise it or log it and record the key."""
+        if on_error == "raise":
+            raise err
+        logger.error(
+            "The figure '%s' of '%s' failed and is skipped: %s",
+            fig_key,
+            self.sid,
+            err,
+            exc_info=err,
+        )
+        if failed is not None:
+            failed[fig_key] = f"{type(err).__name__}: {err}"
 
     @timeit
     def show_mpl_figures(self, mpl_figures: dict[str, FigureMPL]) -> None:
@@ -1006,8 +1059,19 @@ class SimulationExperiment:
         results_path: Path,
         mpl_figures: dict[str, FigureMPL],
         figure_formats: list[str] | None = None,
+        on_error: Literal["raise", "log"] = "raise",
+        failed: dict[str, str] | None = None,
     ) -> dict[str, list[Path]]:
-        """Save matplotlib figures."""
+        """Save matplotlib figures.
+
+        Args:
+            results_path: directory of the files.
+            mpl_figures: the figures to save.
+            figure_formats: formats of the files, `svg` by default.
+            on_error: `"raise"` raises the error of a figure, `"log"` logs it
+                and goes on with the next figure.
+            failed: collects the failed figures as `{key: error}`.
+        """
         if figure_formats is None:
             # default to SVG output
             figure_formats = ["svg"]
@@ -1015,13 +1079,22 @@ class SimulationExperiment:
         for fkey, fig_mpl in mpl_figures.items():  # type
             for fig_format in figure_formats:
                 fig_path = results_path / f"{self.sid}_{fkey}.{fig_format}"
-                fig_mpl.savefig(fig_path, bbox_inches="tight")
+                try:
+                    fig_mpl.savefig(fig_path, bbox_inches="tight")
+                except Exception as err:
+                    self._figure_failed(fkey, err, on_error, failed)
+                    break
 
                 paths[fig_format].append(fig_path)
 
         return paths
 
-    def save_interactive_figures(self, results_path: Path) -> dict[str, Path]:
+    def save_interactive_figures(
+        self,
+        results_path: Path,
+        on_error: Literal["raise", "log"] = "raise",
+        failed: dict[str, str] | None = None,
+    ) -> dict[str, Path]:
         """Write the figures as interactive pages.
 
         The pages are drawn by plotly, see
@@ -1035,6 +1108,9 @@ class SimulationExperiment:
 
         Args:
             results_path: directory of the pages.
+            on_error: `"raise"` raises the error of a figure, `"log"` logs it
+                and goes on with the next figure.
+            failed: collects the failed figures as `{key: error}`.
 
         Returns:
             The path of the page of every figure, empty without plotly.
@@ -1050,7 +1126,13 @@ class SimulationExperiment:
             )
             return {}
 
-        return figures_to_html(self, results_path)
+        paths: dict[str, Path] = {}
+        for key, figure in self._figures.items():
+            try:
+                paths.update(figures_to_html(self, results_path, {key: figure}))
+            except Exception as err:
+                self._figure_failed(key, err, on_error, failed)
+        return paths
 
     @classmethod
     def close_mpl_figures(cls, mpl_figures: dict[str, FigureMPL]) -> None:
@@ -1074,6 +1156,10 @@ class ExperimentResult:
 
     experiment: SimulationExperiment
     output_path: Path | None
+    #: the error of an experiment which failed in a run of the `ExperimentRunner`
+    error: str | None = None
+    #: the figures which failed and were skipped, `{key: error}`
+    failed_figures: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         """Conversion to dictionary.
@@ -1082,6 +1168,8 @@ class ExperimentResult:
         """
         return {
             "output_path": self.output_path,
+            "error": self.error,
+            "failed_figures": self.failed_figures,
         }
 
 

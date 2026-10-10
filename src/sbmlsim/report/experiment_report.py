@@ -113,7 +113,13 @@ class ReportResults:
         # the figures of the experiment and the custom matplotlib ones. The
         # keys come from the figures and not from the rendered matplotlib
         # objects, so a run which only wrote the interactive pages is reported
-        keys = list(dict.fromkeys([*experiment._figures, *experiment._mpl_figure_keys]))
+        keys = [
+            key
+            for key in dict.fromkeys(
+                [*experiment._figures, *experiment._mpl_figure_keys]
+            )
+            if key not in exp_result.failed_figures
+        ]
         figures = {}
         for key in keys:
             stem = f"{exp_id}_{key}"
@@ -131,6 +137,9 @@ class ReportResults:
             "figures": figures,
             "code_path": code_rel_path,
             "code": code,
+            # a failed experiment or figure is listed, not hidden
+            "error": exp_result.error,
+            "failed_figures": exp_result.failed_figures,
         }
 
 

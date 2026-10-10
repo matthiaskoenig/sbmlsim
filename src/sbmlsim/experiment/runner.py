@@ -197,17 +197,48 @@ class ExperimentRunner:
             logger.info("Running SimulationExperiment: '%s'", sid)
 
             # ExperimentResult used to create report
-            result = experiment.run(
-                simulator=self.simulator,
-                output_path=output_path / sid,
-                show_figures=show_figures,
-                save_results=save_results,
-                figure_formats=figure_formats,
-                reduced_selections=reduced_selections,
-                keep_results=keep_results,
-            )
+            try:
+                result = experiment.run(
+                    simulator=self.simulator,
+                    output_path=output_path / sid,
+                    show_figures=show_figures,
+                    save_results=save_results,
+                    figure_formats=figure_formats,
+                    reduced_selections=reduced_selections,
+                    keep_results=keep_results,
+                    on_error="log",
+                )
+            except Exception as err:
+                logger.exception("The experiment '%s' failed", sid)
+                (output_path / sid).mkdir(parents=True, exist_ok=True)
+                result = ExperimentResult(
+                    experiment=experiment,
+                    output_path=output_path / sid,
+                    error=f"{type(err).__name__}: {err}",
+                )
             exp_results.append(result)
+        self._log_summary(exp_results)
         return exp_results
+
+    @staticmethod
+    def _log_summary(results: list[ExperimentResult]) -> None:
+        """Log which experiments and figures failed in a run."""
+        failed = [r for r in results if r.error or r.failed_figures]
+        if not failed:
+            return
+        lines = []
+        for result in failed:
+            sid = result.experiment.sid
+            if result.error:
+                lines.append(f"  experiment '{sid}': {result.error}")
+            for key, error in result.failed_figures.items():
+                lines.append(f"  figure '{key}' of '{sid}': {error}")
+        logger.error(
+            "%s of %s experiments failed or have failed figures:\n%s",
+            len(failed),
+            len(results),
+            "\n".join(lines),
+        )
 
 
 def run_experiments(
