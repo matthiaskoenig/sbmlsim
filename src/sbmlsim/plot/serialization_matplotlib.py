@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 from matplotlib import rcParams
 from matplotlib.axes import Axes as AxesMPL
 from matplotlib.cm import ScalarMappable
+from matplotlib.collections import PolyCollection
 from matplotlib.colorbar import Colorbar
-from matplotlib.colors import Normalize
+from matplotlib.colors import LogNorm, to_hex
 from matplotlib.figure import Figure as FigureMPL
-from matplotlib.transforms import ScaledTranslation
+from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter, NullFormatter
 
-from sbmlsim.plot import Axis, Curve, Figure, SubPlot
+from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.plot.padding import line_values
 from sbmlsim.plot.plotting import (
     AbstractCurve,
@@ -32,15 +35,42 @@ from sbmlsim.plot.points import (
     PointStyle,
     band_lines,
     curve_lines,
-    point_colormap,
+    cycle_color,
+    format_value,
     point_styles,
+    tick_positions,
 )
 
 logger = logging.getLogger(__name__)
 
-#: the distance in inches of an outside legend from the colour bar, which has
-#: room for its ticks and its label
-COLORBAR_LEGEND_OFFSET = 0.9
+#: the gap in inches between a panel (or the ticks and the title of its right y
+#: axis), each of its colour bars and an outside legend
+COLORBAR_GAP = 0.12
+
+#: the width of a colour bar in inches
+COLORBAR_WIDTH = 0.15
+
+
+@dataclass
+class _Panel:
+    """A drawn panel, whose colour bars and legend are placed after all panels.
+
+    Attributes:
+        plot: the plot of the panel.
+        axes: its axes, the left one first and the right one if it has one.
+        first: the first column of the grid the panel spans, from 0.
+        last: the last column of the grid the panel spans.
+        pending: the styles of its colour bars, in the order of its curves.
+        edge: the right edge of its last colour bar with its ticks and label,
+            in figure coordinates, `None` without colour bars.
+    """
+
+    plot: Plot
+    axes: list[AxesMPL]
+    first: int
+    last: int
+    pending: list[PointStyle] = field(default_factory=list)
+    edge: float | None = None
 
 
 class MatplotlibFigureSerializer:
@@ -168,17 +198,40 @@ class MatplotlibFigureSerializer:
             stacks["barhstack_y"] = stacks["barhstack_y"] + y_data
 
     @classmethod
+    def _proxy(
+        cls,
+        ax: AxesMPL,
+        kwargs: dict[str, Any],
+        color: str,
+        label: str,
+        linestyle: str | None = None,
+    ) -> None:
+        """Add a legend entry without data in the style of the lines of a curve."""
+        kw = {k: v for k, v in kwargs.items() if k != "capsize"}
+        kw["color"] = color
+        if "markerfacecolor" in kw:
+            kw["markerfacecolor"] = color
+        if linestyle is not None:
+            kw["linestyle"] = linestyle
+        ax.plot([], [], label=label, **kw)
+
+    @classmethod
     def _draw_points(
         cls,
-        fig: FigureMPL,
         ax: AxesMPL,
-        axes: list[AxesMPL],
         experiment: Any,
         curve: Curve,
         lines: list[Line],
         kwargs: dict[str, Any],
-    ) -> Colorbar | None:
-        """Draw the lines of a curve over scan points, with legend or colour bar."""
+    ) -> PointStyle | None:
+        """Draw the lines of a curve over scan points with their legend entries.
+
+        A curve with a colour bar keeps one entry of its name, in the colour of
+        the middle of the colour map.
+
+        Returns:
+            The style of the points if they get a colour bar, else `None`.
+        """
         task = curve.y.task_id or curve.x.task_id
         dimensions = [
             experiment.scan_dimension(task, d) if task else None for d in curve.over
@@ -201,32 +254,34 @@ class MatplotlibFigureSerializer:
                 else "_nolegend_"
             )
             cls._draw_line(ax, line, kw, label)
+        if styles.colorbar and curve.name:
+            cls._proxy(ax, kwargs, styles.middle, curve.name)
         if styles.linestyles is not None:
             if not styles.colorbar:
                 for c, text in zip(styles.colors, styles.labels[0], strict=True):
-                    ax.plot([], [], color=c, label=f"{prefix}{text}")
+                    cls._proxy(ax, kwargs, c, f"{prefix}{text}")
             for ls, text in zip(styles.linestyles, styles.labels[1], strict=True):
-                ax.plot([], [], color="0.4", linestyle=ls, label=text)
-        if styles.colorbar:
-            return cls._colorbar(fig, axes, styles, color)
-        return None
+                cls._proxy(ax, kwargs, to_hex("0.4"), text, linestyle=ls)
+        return styles if styles.colorbar else None
 
     @classmethod
-    def _colorbar(
-        cls,
-        fig: FigureMPL,
-        axes: list[AxesMPL],
-        styles: PointStyle,
-        color: str | None,
-    ) -> Colorbar:
+    def _colorbar(cls, fig: FigureMPL, cax: AxesMPL, styles: PointStyle) -> Colorbar:
         """Draw the colour bar of the first dimension of a curve over scan points.
 
-        It takes its space from every axes of the plot, so a right y axis keeps
-        its label, and is labelled like the axes.
+        It maps the values through the norm of the colours of the lines, with
+        the values as ticks of a logarithmic norm and the labels of the points
+        as ticks of a discrete one, and is labelled like the axes.
         """
-        norm = Normalize(float(np.min(styles.values)), float(np.max(styles.values)))
-        mappable = ScalarMappable(norm=norm, cmap=point_colormap(color))
-        colorbar = fig.colorbar(mappable, ax=axes)
+        mappable = ScalarMappable(norm=styles.norm, cmap=styles.colormap)
+        colorbar = fig.colorbar(mappable, cax=cax)
+        if styles.ticks is not None:
+            positions = tick_positions(len(styles.ticks))
+            colorbar.set_ticks(positions, labels=[styles.ticks[k] for k in positions])
+        elif isinstance(styles.norm, LogNorm):
+            colorbar.ax.yaxis.set_major_formatter(
+                FuncFormatter(lambda value, _: format_value(value))
+            )
+            colorbar.ax.yaxis.set_minor_formatter(NullFormatter())
         colorbar.set_label(
             styles.title,
             fontsize=Figure.axes_labelsize,
@@ -236,21 +291,168 @@ class MatplotlibFigureSerializer:
         return colorbar
 
     @classmethod
+    def _place_colorbars(
+        cls, fig: FigureMPL, num_cols: int, panels: list[_Panel]
+    ) -> None:
+        """Place the colour bars of every panel side by side right of it.
+
+        A panel needs room for the ticks and the title of a right y axis and,
+        per bar, a gap, the bar and its ticks and label, which are measured on
+        the drawn bar. Every column of the grid gets the room its widest panel
+        needs and the figure is that much wider, so the panels keep their size
+        and the columns their alignment, and nothing overlaps. The right edge
+        of the last bar of a panel, where an outside legend starts, is set as
+        its `edge`.
+        """
+        width, dpi = fig.get_figwidth(), fig.dpi
+        boxes = [panel.axes[0].get_position() for panel in panels]
+        rooms: list[list[float]] = []
+        bars: list[list[Colorbar]] = []
+        for panel, box in zip(panels, boxes, strict=True):
+            panel_rooms: list[float] = []
+            panel_bars: list[Colorbar] = []
+            if panel.pending:
+                # the ticks and the title of a right y axis, in inches
+                right = 0.0
+                for ax in panel.axes[1:]:
+                    tight = ax.yaxis.get_tightbbox()
+                    if tight is not None:
+                        right = max(right, tight.x1 / dpi - box.x1 * width)
+                panel_rooms.append(right)
+                for styles in panel.pending:
+                    cax = fig.add_axes(
+                        (box.x1, box.y0, COLORBAR_WIDTH / width, box.height)
+                    )
+                    panel_bars.append(cls._colorbar(fig, cax, styles))
+                    tight = cax.get_tightbbox()
+                    end = tight.x1 / dpi if tight is not None else 0.0
+                    panel_rooms.append(max(0.0, end - box.x1 * width - COLORBAR_WIDTH))
+            rooms.append(panel_rooms)
+            bars.append(panel_bars)
+
+        def need(panel_rooms: list[float]) -> float:
+            """Get the room of the bars of a panel right of it, in inches."""
+            if not panel_rooms:
+                return 0.0
+            right, *labels = panel_rooms
+            return right + sum(COLORBAR_GAP + COLORBAR_WIDTH + r for r in labels)
+
+        columns = [0.0] * num_cols
+        for panel, panel_rooms in zip(panels, rooms, strict=True):
+            columns[panel.last] = max(columns[panel.last], need(panel_rooms))
+        if not any(columns):
+            return
+        wider = width + sum(columns)
+        fig.set_size_inches(wider, fig.get_figheight())
+        for panel, box, panel_rooms, panel_bars in zip(
+            panels, boxes, rooms, bars, strict=True
+        ):
+            x0 = box.x0 * width + sum(columns[: panel.first])
+            x1 = box.x1 * width + sum(columns[: panel.last])
+            for ax in panel.axes:
+                ax.set_position((x0 / wider, box.y0, (x1 - x0) / wider, box.height))
+            if not panel_bars:
+                continue
+            x = x1 + panel_rooms[0]
+            for bar, room in zip(panel_bars, panel_rooms[1:], strict=True):
+                x += COLORBAR_GAP
+                bar.ax.set_position(
+                    (x / wider, box.y0, COLORBAR_WIDTH / wider, box.height)
+                )
+                x += COLORBAR_WIDTH + room
+            panel.edge = x / wider
+
+    @classmethod
+    def _legend(cls, fig: FigureMPL, figure: Figure, panel: _Panel) -> None:
+        """Draw the legend of a panel.
+
+        Outside, one legend of both axes is right of the panel, or right of its
+        last colour bar. Inside, a panel with a right y axis gets one legend of
+        both axes as well, on the right axes, which are drawn last, placed
+        against the data of both: the lines and areas of the left axes are on
+        the right axes as invisible copies, which only the placement sees.
+        """
+        ax1, *others = panel.axes
+        handles, labels = ax1.get_legend_handles_labels()
+        for ax in others:
+            more_handles, more_labels = ax.get_legend_handles_labels()
+            handles += more_handles
+            labels += more_labels
+        if not handles:
+            return
+        if figure.legend_position == "outside":
+            anchor: dict[str, Any] = {"bbox_to_anchor": (1.04, 1)}
+            if panel.edge is not None:
+                anchor = {
+                    "bbox_to_anchor": (
+                        panel.edge + COLORBAR_GAP / fig.get_figwidth(),
+                        ax1.get_position().y1,
+                    ),
+                    "bbox_transform": fig.transFigure,
+                }
+            ax1.legend(
+                handles,
+                labels,
+                fontsize=Figure.legend_fontsize,
+                loc="upper left",
+                **anchor,
+            )
+            return
+        ax = others[-1] if others else ax1
+        for artist in [*ax1.lines, *ax1.collections] if others else []:
+            if isinstance(artist, Line2D):
+                ax.add_artist(
+                    Line2D(
+                        artist.get_xdata(),
+                        artist.get_ydata(),
+                        transform=ax1.transData,
+                        visible=False,
+                    )
+                )
+            elif isinstance(artist, PolyCollection):
+                ax.add_artist(
+                    PolyCollection(
+                        [path.vertices for path in artist.get_paths()],
+                        transform=ax1.transData,
+                        visible=False,
+                    )
+                )
+        ax.legend(
+            handles,
+            labels,
+            fontsize=Figure.legend_fontsize,
+            loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
+        )
+
+    @classmethod
     def _draw_bands(
         cls,
-        fig: FigureMPL,
         ax: AxesMPL,
-        axes: list[AxesMPL],
         experiment: Any,
         band: Band,
         bands: list[BandLine],
-    ) -> Colorbar | None:
+        color: str,
+        ranges: set[str],
+    ) -> PointStyle | None:
         """Draw the quantile areas and medians of a band, one per point of `over`.
 
         The boundaries of the area are thin lines, which the placement of a
         legend takes into account, unlike an area. The legend has one entry
-        per point (the median, else the upper boundary) and one grey entry of
-        the quantile range.
+        per point (the median, else the upper boundary), or one of the name of
+        a band with a colour bar, and a grey entry of the quantile range once
+        per panel and range.
+
+        Args:
+            ax: the axes the band is drawn on.
+            experiment: the experiment the dimensions are read from.
+            band: the band.
+            bands: its quantiles and medians, one per point of `over`.
+            color: the colour of a band without `over`.
+            ranges: the quantile ranges of the panel with a legend entry, which
+                this one is added to.
+
+        Returns:
+            The style of the points if they get a colour bar, else `None`.
         """
         low, high = (f"{100 * q:g}" for q in band.quantiles)
         styles = None
@@ -261,36 +463,37 @@ class MatplotlibFigureSerializer:
             styles = point_styles(bands, band.over, band.color, [dimension], units)
         show = styles is None or not styles.colorbar
         for b in bands:
-            color = styles.colors[b.index[0]] if styles else (band.color or "C0")
+            c = styles.colors[b.index[0]] if styles else color
             if styles:
                 label = f"{band.name}, {styles.labels[0][b.index[0]]}"
             else:
                 label = f"{band.name} median" if band.median else band.name
             label = label if show else "_nolegend_"
-            ax.fill_between(
-                b.x, b.low, b.high, color=color, alpha=band.alpha, linewidth=0
-            )
+            ax.fill_between(b.x, b.low, b.high, color=c, alpha=band.alpha, linewidth=0)
             edge: dict[str, Any] = {
-                "color": color,
+                "color": c,
                 "linewidth": 0.6,
                 "alpha": min(1.0, 2 * band.alpha),
             }
             ax.plot(b.x, b.low, label="_nolegend_", **edge)
             ax.plot(b.x, b.high, label="_nolegend_" if band.median else label, **edge)
             if band.median:
-                ax.plot(b.x, b.median, color=color, linewidth=2.0, label=label)
-        ax.fill_between(
-            [],
-            [],
-            [],
-            color="0.5",
-            alpha=band.alpha,
-            linewidth=0,
-            label=f"{low}-{high} %",
-        )
-        if styles is not None and styles.colorbar:
-            return cls._colorbar(fig, axes, styles, band.color)
-        return None
+                ax.plot(b.x, b.median, color=c, linewidth=2.0, label=label)
+        if styles is not None and styles.colorbar and band.name:
+            ax.plot([], [], color=styles.middle, linewidth=2.0, label=band.name)
+        quantiles = f"{low}-{high} %"
+        if quantiles not in ranges:
+            ranges.add(quantiles)
+            ax.fill_between(
+                [],
+                [],
+                [],
+                color="0.5",
+                alpha=band.alpha,
+                linewidth=0,
+                label=quantiles,
+            )
+        return styles if styles is not None and styles.colorbar else None
 
     @classmethod
     def to_figure(
@@ -319,19 +522,19 @@ class MatplotlibFigureSerializer:
                 fontweight=Figure.fig_titleweight,
             )
 
-        # create grid for figure; the spacing is applied with `subplots_adjust`
-        # at the end, over the whole figure
+        # create grid for figure
         gs = fig.add_gridspec(nrows=figure.num_rows, ncols=figure.num_cols)
 
-        # the spacing comes first: a colour bar of several axes is placed from
-        # the positions of the axes when it is created and `subplots_adjust`
-        # does not move it afterwards
+        # the spacing comes first, over the whole figure: the colour bars are
+        # placed from the positions of the axes, and `subplots_adjust` would
+        # move the axes back into their cells afterwards
         wspace = figure.fig_subplots_wspace
         hspace = figure.fig_subplots_hspace
         if figure.legend_position == "outside":
             wspace += 1.0
         fig.subplots_adjust(top=cls._top(figure), wspace=wspace, hspace=hspace)
 
+        panels: list[_Panel] = []
         subplot: SubPlot
         for subplot in figure.subplots:
             plot = subplot.plot
@@ -379,7 +582,14 @@ class MatplotlibFigureSerializer:
 
             # memory for stacked bars
             stacks: dict[str, Any] = {}
-            colorbars: list[Colorbar] = []
+            # the colour bars of the panel are placed after every panel got
+            # its labels; the quantile ranges with a legend entry
+            panel = _Panel(
+                plot=plot, axes=axes, first=cidx, last=cidx + subplot.col_span - 1
+            )
+            panels.append(panel)
+            pending = panel.pending
+            ranges: set[str] = set()
 
             # plot ordered curves
             abstract_curves: list[AbstractCurve] = sorted(
@@ -418,11 +628,6 @@ class MatplotlibFigureSerializer:
                             experiment=experiment, to_units=yunit
                         )
                     sid = curve.sid or curve.name or ""
-                    if curve.over and curve.type != CurveType.POINTS:
-                        raise ValueError(
-                            f"The curve '{sid}' is a bar curve, which draws no line "
-                            f"per point of {list(curve.over)}; draw points or select a label."
-                        )
                     lines = curve_lines(sid, curve.over, x, y, xerr, yerr)
                     kwargs = cls._curve_kwargs(curve)
                     if not curve.over:
@@ -431,11 +636,9 @@ class MatplotlibFigureSerializer:
                             ax, curve, line, kwargs, curve.name or "_nolegend_", stacks
                         )
                         continue
-                    colorbar = cls._draw_points(
-                        fig, ax, axes, experiment, curve, lines, kwargs
-                    )
-                    if colorbar is not None:
-                        colorbars.append(colorbar)
+                    styles = cls._draw_points(ax, experiment, curve, lines, kwargs)
+                    if styles is not None:
+                        pending.append(styles)
 
                 elif isinstance(abstract_curve, Band):
                     # --- Band ---
@@ -450,9 +653,18 @@ class MatplotlibFigureSerializer:
                         x,
                         y,
                     )
-                    colorbar = cls._draw_bands(fig, ax, axes, experiment, band, bands)
-                    if colorbar is not None:
-                        colorbars.append(colorbar)
+                    # a band without a colour takes the colour of the cycle at
+                    # its position among the bands of the plot
+                    styles = cls._draw_bands(
+                        ax,
+                        experiment,
+                        band,
+                        bands,
+                        band.color or cycle_color(plot.bands.index(band)),
+                        ranges,
+                    )
+                    if styles is not None:
+                        pending.append(styles)
 
                 elif isinstance(abstract_curve, ShadedArea):
                     # --- ShadedArea ---
@@ -606,54 +818,12 @@ class MatplotlibFigureSerializer:
             else:
                 ax1.grid(False)
 
-            if plot.legend:
-                outside = figure.legend_position == "outside"
-                # outside, the legend is right of the colour bar, with room
-                # for its ticks and its label
-                anchor: dict[str, Any] = {"bbox_to_anchor": (1.04, 1)}
-                if colorbars:
-                    anchor = {
-                        "bbox_to_anchor": (1.0, 1.0),
-                        "bbox_transform": colorbars[0].ax.transAxes
-                        + ScaledTranslation(
-                            COLORBAR_LEGEND_OFFSET, 0.0, fig.dpi_scale_trans
-                        ),
-                    }
-                if ax2 is None:
-                    handles1, _ = ax1.get_legend_handles_labels()
-                    if handles1:
-                        if outside:
-                            ax1.legend(
-                                fontsize=Figure.legend_fontsize,
-                                loc="upper left",
-                                **anchor,
-                            )
-                        else:
-                            ax1.legend(
-                                fontsize=Figure.legend_fontsize,
-                                loc=Figure.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
-                            )
-                elif outside:
-                    # two legends outside would sit on top of each other, so
-                    # the curves of both axes go into one; `legend_position`
-                    # was honoured for a single axis only
-                    handles1, labels1 = ax1.get_legend_handles_labels()
-                    handles2, labels2 = ax2.get_legend_handles_labels()
-                    if handles1 or handles2:
-                        ax1.legend(
-                            handles1 + handles2,
-                            labels1 + labels2,
-                            fontsize=Figure.legend_fontsize,
-                            loc="upper left",
-                            **anchor,
-                        )
-                else:
-                    handles1, _ = ax1.get_legend_handles_labels()
-                    if handles1:
-                        ax1.legend(fontsize=Figure.legend_fontsize, loc="upper left")
-                    handles2, _ = ax2.get_legend_handles_labels()
-                    if handles2:
-                        ax2.legend(fontsize=Figure.legend_fontsize, loc="upper right")
+        # the colour bars and the legends, once every axes has its ticks and
+        # labels
+        cls._place_colorbars(fig, figure.num_cols, panels)
+        for panel in panels:
+            if panel.plot.legend:
+                cls._legend(fig, figure, panel)
 
         return fig
 

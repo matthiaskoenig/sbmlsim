@@ -22,8 +22,20 @@ def doses(n: int = 3) -> Dimension:
     return Dimension("dose", values={"PODOSE": Q(values, "mg")})
 
 
+def conditions(n: int = 12) -> Dimension:
+    """A dimension of two targets, labelled by numbers which are no values."""
+    return Dimension(
+        "cond",
+        values={
+            "PODOSE": Q(np.linspace(10.0, 120.0, n), "mg"),
+            "ke": np.linspace(0.1, 0.4, n),
+        },
+        labels=[10 * k for k in range(n)],
+    )
+
+
 class ScanFigures(SimulationExperiment):
-    """Doses, many doses, doses times elimination rates, draws and a ragged scan."""
+    """Doses (also geometric, decreasing), rates, draws, conditions and a ragged scan."""
 
     def models(self) -> dict:
         return {"m": AbstractModel(source=sbml_pk())}
@@ -43,6 +55,10 @@ class ScanFigures(SimulationExperiment):
                 dosed(),
                 [doses(), Dimension("draw", values={"ke": np.linspace(0.1, 0.4, 8)})],
             ),
+            "many_draws": Scan(
+                dosed(),
+                [doses(12), Dimension("draw", values={"ke": np.linspace(0.1, 0.4, 4)})],
+            ),
             "many2": Scan(
                 dosed(),
                 [doses(12), Dimension("rate", values={"ke": np.array([0.1, 0.3])})],
@@ -52,6 +68,23 @@ class ScanFigures(SimulationExperiment):
                 [doses(), Dimension("rate", values={"ke": np.linspace(0.1, 0.5, 5)})],
             ),
             "ragged": Scan(dosed(steps=None), [doses()]),
+            "geom": Scan(
+                dosed(),
+                [
+                    Dimension(
+                        "dose", values={"PODOSE": Q(np.geomspace(1, 1000, 12), "mg")}
+                    )
+                ],
+            ),
+            "decreasing": Scan(
+                dosed(),
+                [
+                    Dimension(
+                        "dose", values={"PODOSE": Q(np.linspace(120, 10, 12), "mg")}
+                    )
+                ],
+            ),
+            "cond": Scan(dosed(), [conditions()]),
         }
 
     def observables(self) -> dict[str, Observable]:

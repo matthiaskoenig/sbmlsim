@@ -8,14 +8,20 @@ values a scan sets (a value per simulation over a dimension). The lines are in
 the order of the labels of the `over` dimensions, the last one fastest. Their
 colours follow the first `over` dimension, their line styles the second; a
 legend entry names its point by the value and unit of the target its
-dimension changes, else by its label. A band reduces a dimension of draws to
-two quantiles and the median, computed when the figure is drawn; it needs a
-common grid of times.
+dimension changes, else by its label. Everything of a point is found by its
+label in the dimension, so a curve of selected points (`Data(sel=...)`) names
+and colours the points it draws. The colour of a point is the colour map at its
+value, through the norm of the colour bar (logarithmic for positive values
+spanning more than a factor of `LOG_RATIO`); a dimension which does not change
+one target is coloured by position, with the labels on a discrete colour bar. A
+band reduces a dimension of draws to two quantiles and the median, computed
+when the figure is drawn; it needs a common grid of times.
 """
 
 from __future__ import annotations
 
 import itertools
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -24,9 +30,12 @@ import numpy as np
 import xarray as xr
 from matplotlib import colormaps
 from matplotlib.colors import (
+    BoundaryNorm,
     Colormap,
     LinearSegmentedColormap,
     ListedColormap,
+    LogNorm,
+    Normalize,
     to_hex,
     to_rgb,
 )
@@ -46,6 +55,13 @@ COLORBAR_FROM = 11
 
 #: the colour map of the points of a curve whose style sets no colour
 COLORMAP = "viridis"
+
+#: the ratio of the largest to the smallest value of a dimension above which its
+#: colours and its colour bar follow a logarithmic norm, if all are positive
+LOG_RATIO = 100.0
+
+#: the most tick labels of a discrete colour bar, every k-th label above
+MAX_TICKS = 12
 
 #: the part of the colour map the points use: its light yellow end is hard to
 #: see on white
@@ -249,6 +265,15 @@ def point_colormap(color: str | None) -> Colormap:
     return ListedColormap(colormaps[COLORMAP](np.linspace(0.0, _COLORMAP_END, 256)))
 
 
+def cycle_color(position: int) -> str:
+    """Get the colour of the colour cycle of matplotlib at a position, as a hex string.
+
+    It is the colour of a band without a colour, by its position among the
+    bands of its plot, in both backends.
+    """
+    return to_hex(f"C{position}")
+
+
 def point_linestyles(n: int) -> list[str]:
     """Get the line styles of the points of a second `over` dimension.
 
@@ -264,24 +289,38 @@ def point_linestyles(n: int) -> list[str]:
 
 
 def point_values(
-    dimension: Dimension | None, units: Mapping[str, str]
+    dimension: Dimension | None,
+    units: Mapping[str, str],
+    labels: Sequence[Any] | None = None,
 ) -> tuple[str, np.ndarray, str] | None:
     """Get the target, the values and the unit of a dimension which changes one target.
 
     Args:
         dimension: the dimension of the scan, `None` if it is not known.
         units: the units of the symbols of the model, for values without a unit.
+        labels: the labels of the points, in their order, every point of the
+            dimension by default; a point is found by its label.
 
     Returns:
-        The target, its values and their unit, `None` for a dimension which
-        changes no or several targets.
+        The target, the values of the points and their unit, `None` for a
+        dimension which changes no or several targets or has not every label.
     """
     if dimension is None or len(dimension.values) != 1:
         return None
     ((target, values),) = dimension.values.items()
     if isinstance(values, Quantity):
-        return target, np.asarray(values.magnitude, dtype=float), f"{values.units:~P}"
-    return target, np.asarray(values, dtype=float), units.get(target, "") or ""
+        magnitudes, unit = (
+            np.asarray(values.magnitude, dtype=float),
+            f"{values.units:~P}",
+        )
+    else:
+        magnitudes, unit = np.asarray(values, dtype=float), units.get(target, "") or ""
+    if labels is not None:
+        positions = _positions(dimension, labels)
+        if positions is None:
+            return None
+        magnitudes = magnitudes[positions]
+    return target, magnitudes, unit
 
 
 def point_labels(
@@ -294,7 +333,7 @@ def point_labels(
 
     Args:
         dim: the id of the dimension.
-        labels: the labels of its points.
+        labels: the labels of the points, in their order.
         dimension: the dimension of the scan, `None` if it is not known.
         units: the units of the symbols of the model, see `point_values`.
 
@@ -302,11 +341,63 @@ def point_labels(
         `<target> = <value> <unit>` for a dimension which changes one target,
         else `<dim> = <label>`.
     """
-    found = point_values(dimension, units)
+    found = point_values(dimension, units, labels)
     if found is None:
-        return [f"{dim} = {label}" for label in labels]
+        return [f"{dim} = {label_text(label)}" for label in labels]
     target, values, unit = found
-    return [f"{target} = {value:g} {unit}".rstrip() for value in values]
+    return [f"{target} = {format_value(value)} {unit}".rstrip() for value in values]
+
+
+def point_norm(values: np.ndarray) -> Normalize | None:
+    """Get the norm which maps the values of the points of a dimension onto a colour map.
+
+    Returns:
+        A logarithmic norm when all values are positive and the largest is
+        more than `LOG_RATIO` times the smallest, else a linear one from the
+        smallest to the largest value; `None` if the values do not span a
+        range (a single value, equal values or a value which is not finite).
+    """
+    if values.size == 0 or not np.all(np.isfinite(values)):
+        return None
+    vmin, vmax = float(np.min(values)), float(np.max(values))
+    if vmax <= vmin:
+        return None
+    if vmin > 0.0 and vmax / vmin > LOG_RATIO:
+        return LogNorm(vmin, vmax)
+    return Normalize(vmin, vmax)
+
+
+def format_value(value: float) -> str:
+    """Format a value of a dimension: six significant digits, a short exponent."""
+    text = f"{value:.6g}"
+    if "e" not in text:
+        return text
+    mantissa, exponent = text.split("e")
+    return f"{mantissa}e{int(exponent)}"
+
+
+def label_text(label: Any) -> str:
+    """Get the text of a label of a dimension, a float formatted as a value."""
+    if isinstance(label, float):
+        return format_value(label)
+    return str(label)
+
+
+def tick_positions(n: int) -> list[int]:
+    """Get the positions of the points of a discrete colour bar which get a tick.
+
+    Every point up to `MAX_TICKS` points, else every k-th from the first.
+    """
+    return list(range(0, n, max(1, math.ceil(n / MAX_TICKS))))
+
+
+def _positions(dimension: Dimension, labels: Sequence[Any]) -> list[int] | None:
+    """Get the positions of labels in a dimension, `None` if one is not in it."""
+    index = {label: k for k, label in enumerate(dimension.labels.tolist())}
+    try:
+        return [index[label] for label in labels]
+    except (KeyError, TypeError):
+        return None
 
 
 def _broadcast(
@@ -359,8 +450,14 @@ class PointStyle:
         linestyles: the line style of every point of the second, `None` with one.
         labels: the legend label of every point of every dimension.
         colorbar: whether the first dimension gets a colour bar.
-        values: the values of the colour bar, the positions without a target.
+        values: the values of the points of the first dimension, their
+            positions without a single target.
         title: the label of the colour bar, `<target> [<unit>]` or the dimension.
+        norm: the norm of the colours and the colour bar: linear or logarithmic
+            over the values, a boundary per point over the positions.
+        colormap: the colour map the norm maps onto.
+        ticks: the tick labels of a discrete colour bar (the labels of the
+            points), `None` for a colour bar of values.
     """
 
     colors: list[str]
@@ -369,6 +466,14 @@ class PointStyle:
     colorbar: bool
     values: np.ndarray
     title: str
+    norm: Normalize
+    colormap: Colormap
+    ticks: list[str] | None
+
+    @property
+    def middle(self) -> str:
+        """Get the colour of the middle of the colour map, of the legend entry of a curve."""
+        return to_hex(self.colormap(0.5))
 
 
 def point_styles(
@@ -379,6 +484,9 @@ def point_styles(
     units: Mapping[str, str],
 ) -> PointStyle:
     """Get the colours, line styles, labels and colour bar of the lines of a curve.
+
+    The points are the ones the lines draw, i.e. the labels left after the
+    `sel` of the data, each found by its label in its dimension.
 
     Args:
         lines: the lines of the curve or band.
@@ -401,17 +509,29 @@ def point_styles(
         point_labels(d, labels_of[k], dimensions[k], units) for k, d in enumerate(over)
     ]
     n = len(labels_of[0])
-    found = point_values(dimensions[0], units)
-    if found is None:
-        values, title = np.arange(n, dtype=float), over[0]
-    else:
+    found = point_values(dimensions[0], units, labels_of[0])
+    norm = point_norm(found[1]) if found is not None else None
+    ticks: list[str] | None = None
+    if found is not None and norm is not None:
         target, values, unit = found
         title = f"{target} [{unit}]" if unit else target
+        colormap = point_colormap(color)
+        colors = [to_hex(colormap(float(norm(value)))) for value in values]
+    else:
+        values = np.arange(n, dtype=float)
+        title = over[0]
+        colors = point_colors(n, color)
+        colormap = ListedColormap(colors) if n else point_colormap(color)
+        norm = BoundaryNorm(np.arange(n + 1) - 0.5, n) if n else Normalize(0.0, 1.0)
+        ticks = [label_text(label) for label in labels_of[0]]
     return PointStyle(
-        colors=point_colors(n, color),
+        colors=colors,
         linestyles=point_linestyles(len(labels_of[1])) if len(over) == 2 else None,
         labels=labels,
         colorbar=n >= COLORBAR_FROM,
         values=values,
         title=title,
+        norm=norm,
+        colormap=colormap,
+        ticks=ticks,
     )

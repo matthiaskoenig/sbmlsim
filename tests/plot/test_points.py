@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import xarray as xr
 from matplotlib import colormaps
-from matplotlib.colors import to_hex, to_rgb
+from matplotlib.colors import LogNorm, Normalize, to_hex, to_rgb
 
 from sbmlsim import Q
 from sbmlsim.plot.points import (
@@ -14,9 +14,12 @@ from sbmlsim.plot.points import (
     Line,
     band_lines,
     curve_lines,
+    format_value,
+    point_colormap,
     point_colors,
     point_labels,
     point_linestyles,
+    point_norm,
     point_styles,
     point_values,
 )
@@ -195,14 +198,20 @@ def test_point_labels_name_the_values_of_a_changed_target() -> None:
     assert point_labels("d", ["lo", "hi"], None, {}) == ["d = lo", "d = hi"]
 
 
+def _lines(dimension: Dimension, labels: list | None = None) -> list[Line]:
+    """One line per label, all labels of the dimension by default."""
+    chosen = dimension.labels.tolist() if labels is None else labels
+    return [
+        Line(point=(label,), index=(i,), x=TIME, y=TIME)
+        for i, label in enumerate(chosen)
+    ]
+
+
 def test_point_styles_of_one_dimension() -> None:
     dose = Dimension("dose", values={"PODOSE": Q([50.0, 100.0, 200.0], "mg")})
-    lines = [
-        Line(point=(label,), index=(i,), x=TIME, y=TIME)
-        for i, label in enumerate(dose.labels)
-    ]
-    style = point_styles(lines, ["dose"], None, [dose], {})
-    assert style.colors == point_colors(3, None)
+    style = point_styles(_lines(dose), ["dose"], None, [dose], {})
+    cmap = point_colormap(None)
+    assert style.colors == [to_hex(cmap(f)) for f in (0.0, 1 / 3, 1.0)]
     assert style.linestyles is None
     assert style.labels[0] == ["PODOSE = 50 mg", "PODOSE = 100 mg", "PODOSE = 200 mg"]
     assert style.colorbar is False
@@ -239,5 +248,85 @@ def test_point_styles_without_a_target_use_the_positions() -> None:
         for i, label in enumerate(sims.labels)
     ]
     style = point_styles(lines, ["s"], None, [sims], {})
-    assert style.title == "s"
+    assert style.title == "s" and style.ticks == ["a", "b"]
     np.testing.assert_allclose(style.values, [0.0, 1.0])
+
+
+def test_point_labels_and_values_of_selected_points_follow_their_labels() -> None:
+    dose = Dimension("dose", values={"PODOSE": Q([50.0, 100.0, 200.0], "mg")})
+    assert point_labels("dose", [2, 1], dose, {}) == [
+        "PODOSE = 200 mg",
+        "PODOSE = 100 mg",
+    ]
+    _, values, _ = point_values(dose, {}, [2, 0]) or ("", np.array([]), "")
+    assert values.tolist() == [200.0, 50.0]
+
+
+def test_point_styles_of_selected_points_of_two_dimensions() -> None:
+    dose = Dimension("dose", values={"PODOSE": Q([50.0, 100.0, 200.0], "mg")})
+    rate = Dimension("rate", values={"ke": np.linspace(0.1, 0.5, 5)})
+    lines = [
+        Line(point=(a, b), index=(i, j), x=TIME, y=TIME)
+        for i, a in enumerate([2, 1])
+        for j, b in enumerate([3, 1])
+    ]
+    style = point_styles(lines, ["dose", "rate"], None, [dose, rate], {"ke": "1/hr"})
+    assert style.labels == [
+        ["PODOSE = 200 mg", "PODOSE = 100 mg"],
+        ["ke = 0.4 1/hr", "ke = 0.2 1/hr"],
+    ]
+    assert style.linestyles == ["-", "--"]
+    np.testing.assert_allclose(style.values, [200.0, 100.0])
+    cmap = point_colormap(None)
+    assert style.colors == [to_hex(cmap(1.0)), to_hex(cmap(0.0))]
+
+
+def test_point_norm_is_logarithmic_above_a_factor_of_one_hundred() -> None:
+    assert isinstance(point_norm(np.array([1.0, 101.0])), LogNorm)
+    linear = point_norm(np.array([1.0, 100.0]))
+    assert type(linear) is Normalize and (linear.vmin, linear.vmax) == (1.0, 100.0)
+    assert type(point_norm(np.array([0.0, 1000.0]))) is Normalize
+    assert type(point_norm(np.array([-1.0, 1000.0]))) is Normalize
+    assert point_norm(np.array([5.0, 5.0])) is None
+    assert point_norm(np.array([5.0, np.nan])) is None
+
+
+def test_point_colours_are_the_colour_map_at_their_values() -> None:
+    values = np.geomspace(1, 1000, 12)
+    geometric = Dimension("dose", values={"PODOSE": Q(values, "mg")})
+    style = point_styles(_lines(geometric), ["dose"], None, [geometric], {})
+    assert isinstance(style.norm, LogNorm) and style.colorbar
+    cmap = point_colormap(None)
+    assert style.colors == [to_hex(cmap(float(style.norm(v)))) for v in values]
+    assert style.ticks is None
+
+    decreasing = Dimension("dose", values={"PODOSE": Q(np.linspace(120, 10, 12), "mg")})
+    style = point_styles(_lines(decreasing), ["dose"], "tab:red", [decreasing], {})
+    assert type(style.norm) is Normalize
+    assert (style.norm.vmin, style.norm.vmax) == (10.0, 120.0)
+    shades = point_colormap("tab:red")
+    assert style.colors[0] == to_hex(shades(1.0))
+    assert style.colors[-1] == to_hex(shades(0.0))
+    assert style.middle == to_hex(shades(0.5))
+
+
+def test_point_styles_without_a_target_are_discrete_with_the_labels() -> None:
+    cond = Dimension(
+        "cond",
+        values={"a": np.array([1.0, 2.0, 3.0]), "b": np.array([3.0, 4.0, 5.0])},
+        labels=[0, 10, 20],
+    )
+    style = point_styles(_lines(cond), ["cond"], None, [cond], {})
+    assert style.title == "cond"
+    assert style.ticks == ["0", "10", "20"]
+    assert style.colors == point_colors(3, None)
+    assert [to_hex(style.colormap(style.norm(k))) for k in range(3)] == style.colors
+    assert style.labels[0] == ["cond = 0", "cond = 10", "cond = 20"]
+
+
+def test_format_value() -> None:
+    assert format_value(25.0) == "25"
+    assert format_value(0.1) == "0.1"
+    assert format_value(1e-5) == "1e-5"
+    assert format_value(1234567.0) == "1.23457e6"
+    assert format_value(0.00012) == "0.00012"
