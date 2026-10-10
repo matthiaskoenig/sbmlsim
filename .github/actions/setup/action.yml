@@ -19,6 +19,12 @@ inputs:
       for it and warn "Unable to reserve cache"
     required: false
     default: "false"
+  cache:
+    description: >-
+      whether the job uses the cache of uv at all; the release builds the
+      distributions without one, so nothing a cache holds ends up in them
+    required: false
+    default: "true"
 runs:
   using: composite
   steps:
@@ -27,7 +33,9 @@ runs:
       uses: astral-sh/setup-uv@v10.2.0
       with:
         python-version: ${{ inputs.python-version }}
-        enable-cache: true
+        enable-cache: ${{ inputs.cache }}
+        # the interpreter is cached with the packages instead of downloaded by every run
+        cache-python: ${{ inputs.cache }}
         save-cache: ${{ inputs.save-cache }}
     - name: Put libpython on the library search path (linux only)
       # the extension of libroadrunner links against libpython. The standalone

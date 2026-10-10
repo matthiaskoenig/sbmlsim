@@ -129,6 +129,7 @@ markers = [
     "petab_testsuite: a case of the PEtab v2 test suite, run before a release",
     "petab_benchmark: a problem of the PEtab benchmark collection, run on demand",
     "benchmark: the speed of the scan core, run on demand with `-n 0 -s`",
+    "slow: a long end-to-end run, deselected in continuous integration with `--skip-slow`",
 ]
 
 [tool.ty.environment]

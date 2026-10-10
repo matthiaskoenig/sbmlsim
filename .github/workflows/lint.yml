@@ -12,9 +12,9 @@ permissions:
   contents: read
 
 concurrency:
-  # a superseded run of a pull request is cancelled, a push is checked on its own
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  # a newer run supersedes the running one of the same branch or pull request
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ruff:

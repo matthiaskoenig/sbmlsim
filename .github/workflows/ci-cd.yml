@@ -14,31 +14,28 @@ permissions:
   contents: read
 
 concurrency:
-  # a superseded run of a pull request is cancelled. A push is a group of its
-  # own: a release waits for the run of its commit on develop (see the job
-  # `tested`), and a group keeps one run waiting and cancels it for the next
-  # one even without `cancel-in-progress`, so two merges in a row would leave
-  # the first commit untested
+  # a newer run supersedes the running one of the same pull request. A push is
+  # a group of its own, so it is never superseded: a release waits for the run
+  # of its commit on develop (see the job `tested`), and two merges in a row
+  # would otherwise leave the first commit untested. A release is never
+  # superseded either, every tag is a group of its own
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || format('{0}-{1}', github.ref, github.sha) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   test:
     # a tag is not tested again, see the job `tested`
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        # continuous integration tests the newest python on every platform, the
+        # older versions are tested locally with `tox run-parallel`, see
+        # docs/development.md
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.13", "3.14"]
-        # linux covers the full range, windows and macos only the newest version
-        exclude:
-          - os: windows-latest
-            python-version: "3.13"
-          - os: macos-latest
-            python-version: "3.13"
+        python-version: ["3.14"]
 
     steps:
     - uses: actions/checkout@v7
@@ -58,8 +55,10 @@ jobs:
         sync: --extra dev --no-editable
         save-cache: "true"
     - name: Test
-      # the slowest tests are listed at the end of the log
-      run: uv run --no-sync pytest --durations=20
+      # in parallel on every core (`addopts` of pyproject.toml), without the
+      # tests marked `slow`, which run locally; the slowest tests are listed at
+      # the end of the log
+      run: uv run --no-sync pytest --skip-slow --durations=15
 
   install:
     # the package as `pip install sbmlsim` installs it, without extras: the
@@ -280,6 +279,7 @@ jobs:
       uses: ./.github/actions/setup
       with:
         python-version: "3.14"
+        cache: "false"
     - name: Build package
       run: uvx hatch build
     - name: Check the package
