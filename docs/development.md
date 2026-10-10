@@ -118,7 +118,7 @@ and the complete matrix in parallel with
 tox run-parallel
 ```
 
-This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14`. It is the complete test and is run before a pull request is opened: continuous integration runs only python 3.14, on linux, macos and windows. It does not use tox, it runs `pytest` in an environment of the python of the job, see [pull requests](#pull-requests).
+This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14`. It is the complete test and is run before a pull request is opened: continuous integration runs only python 3.14, on linux, macos and windows, without the tests marked `slow`. It does not use tox, it runs `pytest` in an environment of the python of the job, see [pull requests](#pull-requests).
 
 To run the tests directly against the development environment use
 
@@ -136,6 +136,13 @@ The `conftest.py` at the root of the repository selects the non-interactive matp
 Some tests are skipped on purpose: the simulation experiment examples are marked with `pytest.mark.skip` while that part of the package is reworked. The skips are listed with `pytest -rs`.
 
 `tests/examples/test_example_scripts.py` runs the examples as `python -m examples.<module>` in a temporary working directory, so a broken example fails the test suite.
+
+The tests marked `slow` are long end-to-end runs, the examples which fit, sample or scan a whole study and take ten seconds and more. They run by default, locally and in tox; continuous integration deselects them with `--skip-slow`, an option of the root `conftest.py`, and lists the 15 slowest of the rest (`--durations=15`), so a test which becomes slow shows up in the log.
+
+```bash
+pytest --skip-slow                              # the suite as continuous integration runs it
+pytest -m slow                                  # only the slow tests
+```
 
 ## Linting and formatting
 

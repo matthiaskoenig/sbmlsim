@@ -27,6 +27,16 @@ ARGUMENTS: dict[str, list[str]] = {
     "examples.sensitivity.sensitivity_example": ["--quick", "--cores=1"],
 }
 
+#: the examples which take ten seconds and more even with the arguments above,
+#: a fit, a sampling or the scans of a whole study; they run locally and in tox,
+#: continuous integration deselects them with `--skip-slow`
+SLOW = {
+    "examples.sciml.lotka_volterra_fit",
+    "examples.sensitivity.sensitivity_example",
+    "examples.repressilator.repressilator_scans",
+    "examples.hctz_fitting.simulations",
+}
+
 #: examples which run offline and without optional dependencies
 SCRIPTS = [
     "examples.timecourse",
@@ -71,12 +81,19 @@ def run_example(
     return result
 
 
-@pytest.mark.parametrize("module", SCRIPTS)
+@pytest.mark.parametrize(
+    "module",
+    [
+        pytest.param(module, marks=pytest.mark.slow) if module in SLOW else module
+        for module in SCRIPTS
+    ],
+)
 def test_example_script(module: str, tmp_path: Path) -> None:
     """Every example runs without an error and writes into the working directory."""
     run_example(module, tmp_path, *ARGUMENTS.get(module, []))
 
 
+@pytest.mark.slow
 def test_neural_ode_example(tmp_path: Path) -> None:
     """The neural ODE starts from its network, is fitted in parallel and written."""
     result = run_example(

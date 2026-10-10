@@ -1,6 +1,6 @@
 """Test session configuration.
 
-Two things are set up for the whole test session:
+Three things are set up for the whole test session:
 
 - **matplotlib never opens a window.** The `Agg` backend is selected before
   pyplot is imported anywhere, so a figure created by an example or by a test
@@ -10,8 +10,34 @@ Two things are set up for the whole test session:
   in `examples/` at the root of the repository, see `examples/README.md`.
   pytest puts the directory of this file on `sys.path`, so that the tests can
   import the simulation experiments and fitting problems of the examples.
+- **`--skip-slow` deselects the tests marked `slow`.** They run by default,
+  locally and in tox; continuous integration passes the option, so the long
+  end-to-end runs do not pay for every push on every platform.
 """
 
 import matplotlib
+import pytest
 
 matplotlib.use("Agg", force=True)
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Add `--skip-slow`, which continuous integration passes."""
+    parser.addoption(
+        "--skip-slow",
+        action="store_true",
+        default=False,
+        help="deselect the tests marked `slow`, which run by default",
+    )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """Deselect the tests marked `slow` with `--skip-slow`."""
+    if not config.getoption("--skip-slow"):
+        return
+    slow = [item for item in items if item.get_closest_marker("slow")]
+    if slow:
+        config.hook.pytest_deselected(items=slow)
+        items[:] = [item for item in items if not item.get_closest_marker("slow")]

@@ -27,7 +27,7 @@ jobs:
     # a tag is not tested again, see the job `tested`
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -55,8 +55,10 @@ jobs:
         sync: --extra dev --no-editable
         save-cache: "true"
     - name: Test
-      # the slowest tests are listed at the end of the log
-      run: uv run --no-sync pytest --durations=20
+      # in parallel on every core (`addopts` of pyproject.toml), without the
+      # tests marked `slow`, which run locally; the slowest tests are listed at
+      # the end of the log
+      run: uv run --no-sync pytest --skip-slow --durations=15
 
   install:
     # the package as `pip install sbmlsim` installs it, without extras: the
