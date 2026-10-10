@@ -95,6 +95,8 @@ print(res["[X]"].values[-3:])
 
 `run_experiments(reduced_selections=True)` records for every task only the variables its data refer to, which speeds up large experiments; `reduced_selections=False` records every variable of the model and the ones the data of the task refer to.
 
+One failing experiment does not stop a run. An error in the definition of an experiment (its models, datasets, simulations, tasks, data, figures or fit mappings, or a key which is no valid SId) is logged with its traceback when the runner is created, and the experiment is not run; an error while an experiment runs ends that experiment; a failing figure is skipped and the other figures are written. The run ends with a summary of the failures in the log, every `ExperimentResult` records them (`error`, `failed_figures` and `failed`) and the report lists them. `run_experiments(raise_on_failure=True)` raises one `ExperimentRunError` after every experiment ran, `ExperimentRunner(on_error="raise")` raises the error of a definition at once, which is what a fit does, and `SimulationExperiment.run` called directly raises its error. A figure which failed, or which a failed experiment did not write, leaves no file of an earlier run in the output directory, so no figure there looks like one of this run.
+
 ## Reports
 
 `ExperimentReport` renders the results of one or several experiments into an HTML (or markdown) report with the figures, the models and the simulations of every experiment:

@@ -157,6 +157,8 @@ class FitMappings:
             experiment_classes=list(experiment_classes),
             base_path=base_path,
             data_path=data_path,
+            # a fit needs every experiment, its definition errors are raised
+            on_error="raise",
         )
         self.keys: dict[str, list[str]] = {
             experiment_id: list(experiment._fit_mappings)

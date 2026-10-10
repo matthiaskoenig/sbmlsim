@@ -63,11 +63,13 @@ class PKExperiment(SimulationExperiment):
 
 
 def _runner(experiment_class: type[SimulationExperiment]) -> ExperimentRunner:
+    # the definition of the experiment is tested, its errors are raised
     return ExperimentRunner(
         experiment_classes=[experiment_class],
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
 
 

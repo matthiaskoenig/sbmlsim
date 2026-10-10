@@ -83,9 +83,16 @@ class ReportResults:
         rel_path = Path(".")
         exp_id = experiment.sid
 
-        # model links
+        # model links; the definition of a failed experiment may be what failed
+        try:
+            experiment_models = experiment.models()
+        except Exception:
+            if exp_result.error is None:
+                raise
+            logger.debug("No models in the report of the failed '%s'", exp_id)
+            experiment_models = {}
         models: dict[str, Path] = {}
-        for model_key, model in experiment.models().items():
+        for model_key, model in experiment_models.items():
             model_path: Path
             if isinstance(model, (Path, str)):
                 model_path = Path(model)
@@ -106,28 +113,24 @@ class ReportResults:
             code = f_code.read()
         code_rel_path = _relative_path(Path(code_path), abs_path)
 
+        # a failed experiment may have failed before it wrote its datasets
         datasets = {
-            key: rel_path / f"{exp_id}_{key}.tsv" for key in experiment._datasets
+            key: rel_path / f"{exp_id}_{key}.tsv"
+            for key in experiment._datasets
+            if exp_result.error is None or (abs_path / f"{exp_id}_{key}.tsv").exists()
         }
 
-        # the figures of the experiment and the custom matplotlib ones. The
-        # keys come from the figures and not from the rendered matplotlib
-        # objects, so a run which only wrote the interactive pages is reported
-        keys = [
-            key
-            for key in dict.fromkeys(
-                [*experiment._figures, *experiment._mpl_figure_keys]
-            )
-            if key not in exp_result.failed_figures
-        ]
+        # the figures this run wrote: a figure which failed in this run, or which
+        # a failed experiment did not get to, has no tile and is not counted
         figures = {}
-        for key in keys:
+        for key, formats in exp_result.figures.items():
             stem = f"{exp_id}_{key}"
             figures[key] = {
                 "path": str(rel_path / stem),
                 # which of the two backends wrote something for this figure
-                "static": (abs_path / f"{stem}.svg").exists(),
-                "interactive": (abs_path / f"{stem}.html").exists(),
+                "static": "svg" in formats,
+                "interactive": "html" in formats,
+                "formats": list(formats),
             }
 
         self.data[exp_id] = {
@@ -273,7 +276,10 @@ class ExperimentReport:
                 latex_figures[exp_id] = []
                 for fig_id, fig in exp_context["figures"].items():
                     png_path = output_path / exp_id / f"{fig['path']}.png"
-                    if not png_path.exists():
+                    if (
+                        "png" not in fig.get("formats", ["png"])
+                        or not png_path.exists()
+                    ):
                         logger.warning(
                             "Figure '%s' of '%s' is not in the LaTeX report, it "
                             "has no png image; add 'png' to the figure formats.",

@@ -247,3 +247,166 @@ def test_a_direct_run_can_log_a_failing_figure(tmp_path: Path) -> None:
     result = experiment.run(runner.simulator, output_path=tmp_path, on_error="log")
     assert "figures_mpl()" in result.failed_figures
     assert not result.error
+
+
+class BrokenFigures(_Base):
+    """An experiment whose definition of the figures raises."""
+
+    def figures(self) -> dict:
+        raise KeyError("no such figure")
+
+
+class BadKey(_Base):
+    """An experiment with a key which is no SId."""
+
+    def simulations(self) -> dict:
+        return {"sim": Simulation(end=20, steps=20), "sim-1": Simulation(end=5)}
+
+
+class BrokenDataset(_Base):
+    """An experiment whose dataset cannot be read."""
+
+    def datasets(self) -> dict:
+        raise ValueError("no such table")
+
+
+@pytest.mark.parametrize(
+    ("broken", "message"),
+    [
+        (BrokenFigures, "no such figure"),
+        (BadKey, "sim-1"),
+        (BrokenDataset, "no such table"),
+    ],
+)
+def test_an_experiment_which_fails_to_initialize_does_not_stop_the_others(
+    broken: type[SimulationExperiment],
+    message: str,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The definition of one experiment raises, the others run (#270)."""
+    with caplog.at_level(logging.INFO):
+        runner = _runner(broken, GoodExperiment)
+        results = runner.run_experiments(output_path=tmp_path)
+
+    name = broken.__name__
+    assert [r.experiment.sid for r in results] == [name, "GoodExperiment"]
+    assert message in (results[0].error or "")
+    assert not results[1].failed
+    assert (tmp_path / "GoodExperiment" / "GoodExperiment_fig_ok.svg").exists()
+    assert not (tmp_path / name / f"{name}_fig_ok.svg").exists()
+    assert name not in runner.experiments
+    errors = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert any(r.exc_info for r in errors)
+    assert any("1 of 2 experiments failed" in r.getMessage() for r in errors)
+
+
+def test_a_runner_can_raise_for_an_experiment_which_fails_to_initialize() -> None:
+    """A fit builds its runner with `on_error="raise"` and sees the error."""
+    with pytest.raises(KeyError, match="no such figure"):
+        ExperimentRunner(
+            experiment_classes=[BrokenFigures, GoodExperiment],
+            simulator=Simulator(),
+            base_path=Path("."),
+            data_path=Path("."),
+            on_error="raise",
+        )
+
+
+def test_a_failed_initialization_is_reported_and_raised(tmp_path: Path) -> None:
+    """The report lists it, `raise_on_failure` raises for it after the run."""
+    with pytest.raises(ExperimentRunError, match="no such figure") as info:
+        run_experiments(
+            [BrokenFigures, GoodExperiment], tmp_path, raise_on_failure=True
+        )
+    assert [r.failed for r in info.value.results] == [True, False]
+    index = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "BrokenFigures" in index
+    assert "no such figure" in index
+    page = tmp_path / "BrokenFigures" / "BrokenFigures.html"
+    assert "The experiment failed" in page.read_text(encoding="utf-8")
+
+
+def _stale(path: Path) -> Path:
+    """A figure file which an earlier run left behind."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("<svg>an earlier run</svg>", encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("broken", [BrokenTask, BadKey])
+def test_a_failed_experiment_has_no_figures_of_an_earlier_run(
+    broken: type[SimulationExperiment], tmp_path: Path
+) -> None:
+    """A stale figure is removed and the report counts no figure for it."""
+    name = broken.__name__
+    stale = _stale(tmp_path / name / f"{name}_fig_ok.svg")
+    results = _runner(broken, GoodExperiment).run_experiments(output_path=tmp_path)
+    assert results[0].error
+    assert results[0].figures == {}
+    assert not stale.exists()
+
+    ExperimentReport(results).create_report(output_path=tmp_path)
+    index = (tmp_path / "index.html").read_text(encoding="utf-8")
+    card = index.split(f'href="{name}/{name}.html"')[1].split('href="Good')[0]
+    assert "0 figure(s)" in card
+    assert "fig_ok" not in card
+    page = (tmp_path / name / f"{name}.html").read_text(encoding="utf-8")
+    figures = page.split('<section id="figures">')[1].split("</section>")[0]
+    assert "Figures (0)" in figures
+    assert "fig_ok" not in figures
+
+
+def test_a_failed_figure_has_no_file_of_an_earlier_run(tmp_path: Path) -> None:
+    """The stale file of a figure which fails in this run is removed."""
+
+    class BadCurve(_Base):
+        def figures(self) -> dict:
+            ok, bad = _figure("fig_ok"), _bad_figure()
+            ok.experiment = bad.experiment = self
+            return {"fig_ok": ok, "fig_bad": bad}
+
+    stale = _stale(tmp_path / "BadCurve" / "BadCurve_fig_bad.svg")
+    (result,) = _runner(BadCurve).run_experiments(output_path=tmp_path)
+    assert set(result.failed_figures) == {"fig_bad"}
+    assert result.figures == {"fig_ok": ["svg"]}
+    assert not stale.exists()
+
+
+def test_a_figure_failing_in_its_second_format_keeps_no_file(tmp_path: Path) -> None:
+    """The formats saved before the error of a figure are removed as well."""
+    (result,) = _runner(GoodExperiment).run_experiments(
+        output_path=tmp_path, figure_formats=["svg", "nosuchformat"]
+    )
+    assert "fig_ok" in result.failed_figures
+    assert result.figures == {}
+    assert not (tmp_path / "GoodExperiment" / "GoodExperiment_fig_ok.svg").exists()
+
+
+def test_a_figure_failing_only_as_page_keeps_its_image(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The report shows the image of a figure whose interactive page failed."""
+    pytest.importorskip("plotly")
+    from sbmlsim.plot import serialization_plotly
+
+    def broken(*args: Any, **kwargs: Any) -> dict:
+        raise RuntimeError("no page")
+
+    monkeypatch.setattr(serialization_plotly, "figures_to_html", broken)
+    out = tmp_path / "GoodExperiment"
+    stale = _stale(out / "GoodExperiment_fig_ok.html")
+    (result,) = _runner(GoodExperiment).run_experiments(
+        output_path=tmp_path, figure_formats=["svg", "html"]
+    )
+    assert "no page" in result.failed_figures["fig_ok"]
+    assert result.figures == {"fig_ok": ["svg"]}
+    assert (out / "GoodExperiment_fig_ok.svg").exists()
+    assert not stale.exists()
+
+    ExperimentReport([result]).create_report(output_path=tmp_path)
+    page = (out / "GoodExperiment.html").read_text(encoding="utf-8")
+    figures = page.split('<section id="figures">')[1].split("</section>")[0]
+    assert "Figures (1)" in figures
+    assert 'src="GoodExperiment_fig_ok.svg"' in figures
+    assert "GoodExperiment_fig_ok.html" not in figures

@@ -58,12 +58,13 @@ class FitMappingExperiment(SimulationExperiment):
 
 
 def _runner(experiment_class: type[SimulationExperiment]) -> ExperimentRunner:
-    """Get a runner of a single experiment class."""
+    """Get a runner of a single experiment class, which raises its errors."""
     return ExperimentRunner(
         experiment_classes=[experiment_class],
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
 
 

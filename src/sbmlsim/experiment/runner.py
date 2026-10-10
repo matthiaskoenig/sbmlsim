@@ -8,13 +8,15 @@ This includes
 - creating outputs
 """
 
+import dataclasses
 import logging
 from collections.abc import Iterable
 from pathlib import Path
-from typing import cast
+from typing import Any, Literal, cast
 
 from sbmlsim.console import console
 from sbmlsim.experiment.experiment import (
+    STATIC_FORMAT,
     ExperimentResult,
     ExperimentRunError,
     SimulationExperiment,
@@ -73,12 +75,25 @@ class ExperimentRunner:
         data_path: Path | Iterable[Path] | None,
         simulator: Simulator | None = None,
         ureg: UnitRegistry | None = None,  # FIXME: is this needed on ExperimentRunner?
-        **kwargs,
-    ):
+        on_error: Literal["raise", "log"] = "log",
+        **kwargs: Any,
+    ) -> None:
         """Initialize the runner.
 
-        FIXME: document arguments for the solver.
-
+        Args:
+            experiment_classes: the simulation experiments.
+            base_path: base path of the simulation experiments.
+            data_path: path or paths of the datasets of the simulation experiments.
+            simulator: the simulator of the tasks.
+            ureg: the unit registry of the experiments.
+            on_error: what an error in the definition of an experiment does (its
+                models, datasets, simulations, tasks, data, figures, fit mappings
+                and their checks). `"log"` (the default) logs it with its
+                traceback and goes on with the next experiment: the experiment
+                is in `failed` and not in `experiments`, and `run_experiments`
+                reports it as failed without running it. `"raise"` raises it,
+                which is what a fit uses.
+            **kwargs: settings of the experiments, `SimulationExperiment.settings`.
         """
         # single UnitRegistry per runner
         if not ureg:
@@ -89,8 +104,14 @@ class ExperimentRunner:
         self.base_path = base_path
         self.data_path = data_path
         self.experiments: dict[str, SimulationExperiment] = {}
+        #: the experiments whose definition raised, by sid, as the result of a
+        #: failed experiment without an output path
+        self.failed: dict[str, ExperimentResult] = {}
+        self.on_error: Literal["raise", "log"] = on_error
         self.models: dict[ModelKey, RoadrunnerSBMLModel] = {}
         self.simulator: Simulator | None = None
+        # the sids of the experiments in the order of their classes
+        self._order: list[str] = []
 
         classes: list[type[SimulationExperiment]] = (
             list(experiment_classes)
@@ -143,27 +164,52 @@ class ExperimentRunner:
                 **kwargs,
             )
 
-            # resolve models for experiment
-            _models = {}
-            for model_id, source in experiment.models().items():
-                abstract_model = (
-                    source
-                    if isinstance(source, AbstractModel)
-                    else AbstractModel(source=source)
+            sid = experiment.sid
+            if sid not in self._order:
+                self._order.append(sid)
+            # an experiment of the same sid replaces an earlier one
+            self.experiments.pop(sid, None)
+            self.failed.pop(sid, None)
+            try:
+                self._initialize_experiment(experiment)
+            except Exception as err:
+                if self.on_error == "raise":
+                    raise
+                logger.exception(
+                    "The experiment '%s' cannot be initialized and is not run", sid
                 )
-                key = model_key(abstract_model)
-                if key not in self.models:
-                    # not cached yet, cache the model for lookup
-                    self.models[key] = RoadrunnerSBMLModel.from_abstract_model(
-                        abstract_model=abstract_model, ureg=self.ureg
-                    )
-                _models[model_id] = self.models[key]
+                self.failed[sid] = ExperimentResult(
+                    experiment=experiment,
+                    output_path=None,
+                    error=f"{type(err).__name__}: {err}",
+                )
+                continue
+            self.experiments[sid] = experiment
 
-            # set resolved models in experiment
-            experiment._models = _models
-            # only after model loading the unit registry is filled
-            experiment.initialize()
-            self.experiments[experiment.sid] = experiment
+    def _initialize_experiment(self, experiment: SimulationExperiment) -> None:
+        """Resolve the models of an experiment and initialize it.
+
+        The models are loaded once per runner, see `model_key`.
+        """
+        _models = {}
+        for model_id, source in experiment.models().items():
+            abstract_model = (
+                source
+                if isinstance(source, AbstractModel)
+                else AbstractModel(source=source)
+            )
+            key = model_key(abstract_model)
+            if key not in self.models:
+                # not cached yet, cache the model for lookup
+                self.models[key] = RoadrunnerSBMLModel.from_abstract_model(
+                    abstract_model=abstract_model, ureg=self.ureg
+                )
+            _models[model_id] = self.models[key]
+
+        # set resolved models in experiment
+        experiment._models = _models
+        # only after model loading the unit registry is filled
+        experiment.initialize()
 
     @timeit
     def run_experiments(
@@ -202,15 +248,19 @@ class ExperimentRunner:
         if not output_path.exists():
             output_path.mkdir(parents=True)
 
+        formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
         exp_results = []
-        experiment: SimulationExperiment
-        for sid, experiment in self.experiments.items():
+        for sid in self._order:
             console.rule(style="white")
+            if sid in self.failed:
+                # the definition raised, the experiment is reported, not run
+                exp_results.append(self._failed_result(sid, output_path / sid, formats))
+                continue
             logger.info("Running SimulationExperiment: '%s'", sid)
-
-            # ExperimentResult used to create report
-            try:
-                result = experiment.run(
+            # ExperimentResult used to create report; an error of the experiment
+            # or of a figure is logged and recorded in it
+            exp_results.append(
+                self.experiments[sid].run(
                     simulator=self.simulator,
                     output_path=output_path / sid,
                     show_figures=show_figures,
@@ -220,22 +270,35 @@ class ExperimentRunner:
                     keep_results=keep_results,
                     on_error="log",
                 )
-            except Exception as err:
-                logger.exception("The experiment '%s' failed", sid)
-                try:
-                    (output_path / sid).mkdir(parents=True, exist_ok=True)
-                except OSError:
-                    logger.exception("Cannot create the directory of '%s'", sid)
-                result = ExperimentResult(
-                    experiment=experiment,
-                    output_path=output_path / sid,
-                    error=f"{type(err).__name__}: {err}",
-                )
-            exp_results.append(result)
+            )
         self._log_summary(exp_results)
         if raise_on_failure and any(r.failed for r in exp_results):
             raise ExperimentRunError(exp_results)
         return exp_results
+
+    def _failed_result(
+        self, sid: str, output_path: Path, formats: list[str]
+    ) -> ExperimentResult:
+        """Get the result of an experiment whose definition raised.
+
+        Its directory is created for its report, and the files of its figures
+        which an earlier run left there are removed, so that no figure looks
+        like one of this run.
+
+        Args:
+            sid: the experiment.
+            output_path: the directory of the experiment.
+            formats: the figure formats of the run.
+        """
+        result = dataclasses.replace(self.failed[sid], output_path=output_path)
+        try:
+            output_path.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.exception("Cannot create the directory of '%s'", sid)
+            return result
+        experiment = result.experiment
+        experiment._remove_figure_files(output_path, experiment._figures, formats)
+        return result
 
     @staticmethod
     def _log_summary(results: list[ExperimentResult]) -> None:
