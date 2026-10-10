@@ -9,13 +9,15 @@ with a dot, the parameter of a PK observable, e.g. `hctz.cmax`.
 A formula is compiled to a numpy function once and cached, a `CompiledFormula`
 is not pickled: a plan keeps the formula as a string.
 
-The formulas of observables and of data extend the math by four reductions
-over the time of one simulation, see `reduce_formula` and `evaluate_reduced`:
-`max(x)` and `min(x)` with a single argument (with two or more they are the
-elementwise functions of PEtab), `mean(x)`, the time weighted mean, and
-`at(x, t)`, the value at a time. A value is an array whose last axis is the
-time of a simulation, so a scan of many simulations reduces every simulation
-on its own.
+The formulas of observables extend the math by four reductions over the time
+of one simulation, see `reduce_formula` and `evaluate_reduced`: `max(x)` and
+`min(x)` with a single argument (with two or more they are the elementwise
+functions of PEtab), `mean(x)`, the time weighted mean, and `at(x, t)`, the
+value at a time. A value is an array whose last axis is the time of a
+simulation, so a scan of many simulations reduces every simulation on its
+own. The formulas of data share `reduce_formula` and have only `max` and
+`min`, which reduce a labelled array along its dimension of the time or of
+the rows of a dataset by name, see `sbmlsim.data.evaluate_function`.
 """
 
 from __future__ import annotations
@@ -322,7 +324,7 @@ def evaluate_reduced(
     A value is a number, a numpy array or a quantity of pint. The last axis of
     an array is the time of a simulation and the axes before it are the
     simulations, e.g. `(n_points, n_rows)` padded with `NaN` in a worker or
-    `(*dims, time)` of the data of a scan. A number, or an array whose last
+    `(*dims, time)` of a scan. A number, or an array whose last
     axis has one element, is a value per simulation, which is constant in
     time. A reduction keeps its axis with one element, so its value broadcasts
     against the timecourses, and keeps the unit of its argument:
@@ -341,7 +343,8 @@ def evaluate_reduced(
         formula: the formula.
         values: the values of its identifiers.
         time: the time points of the timecourses, of their shape; `None` where
-            there are no times, e.g. for data, which allows `max` and `min`.
+            there are no times, e.g. for the units of a formula, which allows
+            `max` and `min` of a timecourse.
 
     Returns:
         The value of the formula.
@@ -419,7 +422,7 @@ def _no_time(function: str, formula: str) -> ValueError:
     """Get the error of a reduction which needs the times and has none."""
     return ValueError(
         f"'{function}' in the formula '{formula}' needs the time points of the "
-        f"simulation, which data has not; it is a reduction of the Formula "
+        f"simulation, which were not given; it is a reduction of the Formula "
         f"observables of a scan."
     )
 

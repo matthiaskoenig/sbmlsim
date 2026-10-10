@@ -73,8 +73,6 @@ def test_the_selections_cover_the_fit_mappings() -> None:
     """
     runner = _runner(FitMappingExperiment)
     experiment = runner.experiments["FitMappingExperiment"]
-
-    assert "[Y]" in experiment._selections_of_model("m")
     experiment.run(runner.simulator, reduced_selections=True)
 
     variables = set(experiment.results["task"].ds.data_vars)
@@ -83,11 +81,32 @@ def test_the_selections_cover_the_fit_mappings() -> None:
     assert "[Z]" not in variables
 
 
-def test_the_selections_of_another_model_are_not_added() -> None:
-    """The selections of a model are the data of its own tasks."""
-    runner = _runner(FitMappingExperiment)
-    experiment = runner.experiments["FitMappingExperiment"]
-    assert experiment._selections_of_model("other") == {"time"}
+class TwoTaskExperiment(FitMappingExperiment):
+    """Two tasks of one model whose data read different selections."""
+
+    def tasks(self) -> dict:
+        return {
+            "task": Task(model="m", simulation="sim"),
+            "task2": Task(model="m", simulation="sim"),
+        }
+
+    def data(self) -> dict:
+        return {
+            "X": Data(index="[X]", task="task"),
+            "Y2": Data(index="[Y]", task="task2"),
+        }
+
+    def fit_mappings(self) -> dict:
+        return {}
+
+
+def test_the_selections_of_another_task_are_not_added() -> None:
+    """The selections of a task are the data of the task, not of the model."""
+    runner = _runner(TwoTaskExperiment)
+    experiment = runner.experiments["TwoTaskExperiment"]
+    experiment.run(runner.simulator)
+    assert set(experiment.results["task"].ds.data_vars) == {"[X]"}
+    assert set(experiment.results["task2"].ds.data_vars) == {"[Y]"}
 
 
 # ---------------------------------------------------------------------------
@@ -265,8 +284,7 @@ def test_a_curve_of_one_point_of_a_scan_is_drawn(tmp_path: Path) -> None:
 def test_the_data_of_a_scan_has_the_time_last() -> None:
     """A Data of a task is the variable of the result, the time last.
 
-    A changed target which is no selection is a coordinate over its
-    dimension.
+    The values a dimension sets are `<dimension>.<target>` over the dimension.
     """
     runner = _runner(ScanExperiment)
     experiment = runner.experiments["ScanExperiment"]
@@ -277,8 +295,9 @@ def test_the_data_of_a_scan_has_the_time_last() -> None:
     assert y.attrs["units"] == "dimensionless"
     time = Data("time", task="task").get_data(experiment, to_units="second")
     np.testing.assert_allclose(time.values, np.linspace(0, 10, 11))
-    x = Data("X", task="task").get_data(experiment)
+    x = Data("d.X", task="task").get_data(experiment)
     np.testing.assert_allclose(x.values, [1.0, 2.0, 3.0])
+    np.testing.assert_allclose(y["d.X"].values, [1.0, 2.0, 3.0])
 
 
 class RegistryExperiment(FitMappingExperiment):

@@ -7,10 +7,12 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
+import numpy as np
 from matplotlib import pyplot as plt
 
-from sbmlsim.data import Data, DataSet
+from sbmlsim.data import Data, DataSet, check_sel
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
@@ -20,7 +22,7 @@ from sbmlsim.plot.serialization_matplotlib import (
     MatplotlibFigureSerializer,
 )
 from sbmlsim.result import ScanResult
-from sbmlsim.result.scan import TIME
+from sbmlsim.result.scan import POINT, TIME
 from sbmlsim.serialization import ObjectJSONEncoder
 from sbmlsim.simulation import Scan, Simulation
 from sbmlsim.simulation.observables import PK, Observable
@@ -381,6 +383,18 @@ class SimulationExperiment:
                     f"tasks must be of type Task, but "
                     f"task '{key}' has type: '{type(task)}'"
                 )
+            if task.simulation_id not in self._simulations:
+                raise ValueError(
+                    f"The task '{key}' of the experiment '{self.sid}' runs the "
+                    f"simulation '{task.simulation_id}', which is no simulation of "
+                    f"the experiment: {sorted(self._simulations)}."
+                )
+            if task.model_id not in self._models:
+                raise ValueError(
+                    f"The task '{key}' of the experiment '{self.sid}' runs the "
+                    f"model '{task.model_id}', which is no model of the "
+                    f"experiment: {sorted(self._models)}."
+                )
 
         for key, data in self._data.items():
             if not isinstance(data, Data):
@@ -477,15 +491,14 @@ class SimulationExperiment:
     ) -> None:
         """Run the tasks of the experiment, the tasks of a model one after another.
 
-        The selections of a task are the variables its data refers to, every
-        variable of the model without `reduced_selections`, set on the model
-        right before the task runs. The changes of a
+        The selections of a task are the selections its data read (the data
+        of `data()`, of the fit mappings and of the figures), without
+        `reduced_selections` every selection of the model and the ones its
+        data read; they are set on the model right before the task runs. A
+        task whose data read observables runs with the observables they need
+        and keeps them next to its selections in one run. The changes of a
         model are defaults of the pre-initialization changes of every
-        simulation of it, see `Simulator.compile`. A task whose data read
-        observables runs with the observables they need and keeps them and the
-        selections its data read, every selection of the model without
-        `reduced_selections`; a task without runs with the selections of the
-        model.
+        simulation of it, see `Simulator.compile`.
 
         Raises:
             ValueError: without a simulator.
@@ -510,7 +523,7 @@ class SimulationExperiment:
                 scan = self._simulations[task.simulation_id]
                 observed, selections = self._task_outputs(task_key)
                 if not reduced_selections:
-                    selections = every
+                    selections = [*every, *(s for s in selections if s not in every)]
                 if not observed:
                     # the selections of the data of this task, not the ones of
                     # the other tasks of the model
@@ -590,8 +603,9 @@ class SimulationExperiment:
             a dimension) or `"selection"`.
 
         Raises:
-            ValueError: if the data reads a task which does not exist, or an
-                index which is none of these.
+            ValueError: if the data reads a task which does not exist, a `PK`
+                observable without a parameter, or an index which is none of
+                these.
         """
         task = self._tasks.get(str(d.task_id))
         if task is None:
@@ -603,6 +617,12 @@ class SimulationExperiment:
         if index == TIME:
             return "time"
         if index in self._observables:
+            if isinstance(self._observables[index], PK):
+                raise ValueError(
+                    f"{d} of the experiment '{self.sid}' reads the PK observable "
+                    f"'{index}', which has no value of its own: read a parameter "
+                    f"of it as '{index}.<parameter>', e.g. '{index}.cmax'."
+                )
             return "observable"
         head, _, parameter = index.partition(".")
         if parameter and isinstance(self._observables.get(head), PK):
@@ -625,13 +645,22 @@ class SimulationExperiment:
         return "selection"
 
     def _check_task_data(self) -> None:
-        """Check the index of every task data before anything is simulated.
+        """Check every task data before anything is simulated.
+
+        The index, see `_index_kind`, and the dimensions and labels of `sel`
+        against the scan of the task, see `check_sel`; the time of a task is
+        selected by its values, which are known when the task ran.
 
         Raises:
-            ValueError: see `_index_kind`.
+            ValueError: see `_index_kind` and `check_sel`.
         """
         for d in self._task_data():
             self._index_kind(d)
+            if d.sel:
+                simulation = self._simulations[
+                    self._tasks[str(d.task_id)].simulation_id
+                ]
+                check_sel(d, d.sel, _labels(simulation))
 
     def _task_outputs(self, task_key: str) -> tuple[list[str], list[str]]:
         """Get the observable outputs and the selections the data of a task read.
@@ -670,22 +699,6 @@ class SimulationExperiment:
                     symbol if symbol in self._observables else symbol.partition(".")[0]
                 )
         return [o for name, o in self._observables.items() if name in needed]
-
-    def _selections_of_model(self, model_id: str) -> set[str]:
-        """Get the selections a model has to be simulated with.
-
-        Args:
-            model_id: the model the tasks are run on.
-
-        Returns:
-            `time` and the selections the data of the tasks of the model read;
-            observables and coordinates are no selections.
-        """
-        selections = {TIME}
-        for task_key, task in self._tasks.items():
-            if task.model_id == model_id:
-                selections.update(self._task_outputs(task_key)[1])
-        return selections
 
     def evaluate_fit_mappings(self):
         """Evaluate fit mappings."""
@@ -895,3 +908,19 @@ def _coordinates(simulation: Simulation | Scan) -> set[str]:
         names.update(f"{dimension.id}.{name}" for name in dimension.coordinates)
         names.update(dimension.coordinates)
     return names
+
+
+def _labels(simulation: Simulation | Scan) -> dict[str, list[Any] | None]:
+    """Get the labels of the dimensions the result of a simulation has.
+
+    The labels of every dimension of a scan, and the time (`time`, or
+    `_point` of a ragged result), whose labels are not checked, see
+    `check_sel`.
+    """
+    labels: dict[str, list[Any] | None] = {}
+    if isinstance(simulation, Scan):
+        for dimension in simulation.dimensions:
+            labels[dimension.id] = np.asarray(dimension.labels).tolist()
+    labels[TIME] = None
+    labels[POINT] = None
+    return labels

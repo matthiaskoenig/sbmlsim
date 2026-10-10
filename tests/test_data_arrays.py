@@ -74,11 +74,14 @@ def test_task_data_keeps_the_dimensions_and_coordinates(
     assert y.dims == ("d", "time") and y.shape == (3, 11)
     assert y.name == "grid__Y"
     assert y["d"].values.tolist() == ["lo", "mid", "hi"]
-    np.testing.assert_allclose(y["X"].values, [1.0, 2.0, 30.0])
+    np.testing.assert_allclose(y["d.X"].values, [1.0, 2.0, 30.0])
+    assert "X" not in y.coords
     assert y.attrs["units"] is not None
-    x = Data("X", task="grid").get_data(experiment)
+    x = Data("d.X", task="grid").get_data(experiment)
     assert x.dims == ("d",)
     np.testing.assert_allclose(x.values, [1.0, 2.0, 30.0])
+    with pytest.raises(KeyError, match=r"Data\('d\.X'\)"):
+        Data("X", task="grid").get_data(experiment)
     labels = Data("d", task="grid").get_data(experiment)
     assert (
         labels.values.tolist() == ["lo", "mid", "hi"] and labels.attrs["units"] is None

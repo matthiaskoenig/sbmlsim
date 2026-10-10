@@ -56,6 +56,7 @@ class RepressilatorExperiment(SimulationExperiment):
 
 - **models** are paths, SBML strings or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
 - **simulations** are `Simulation` or `Scan` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md); the changes of a model are changes before the initialization of every simulation of it, unless the simulation sets the target itself.
+- **observables** (not used here) are the `Formula`, `PK` and `Custom` observables the data of the tasks read, see [Observables and scans](#observables-and-scans).
 - **tasks** apply a simulation to a model; the results of the experiment are keyed by task.
 - **data** are `Data` objects referencing a task or a dataset, see [Data](data.md).
 - **figures** are `Figure` objects with plots and curves, see [Plots and reports](plotting.md).
@@ -63,7 +64,7 @@ class RepressilatorExperiment(SimulationExperiment):
 
 ## Observables and scans
 
-`observables()` declares the observables of the experiment, the `Formula`, `PK` and `Custom` of [Observables](observables.md), by their id; it is defined after `simulations()` and before `tasks()`. A `Data` of a task reads an observable by its id (`Data("pk.cmax", task="task_doses")` for a parameter of a `PK` observable), and every task computes the observables its data read, in one run with the selections they read; the data of `data()`, of the fit mappings and of the figures count. The index of every task data is checked when the experiment is initialized: an index which is neither `time`, an observable, a coordinate of the scan of the task nor a selection of its model raises before anything is simulated. The data of a task is a labelled array with the dimensions of its scan, see [Data](data.md); a curve draws one line, so the point of a scan it shows is selected with `Data(sel=...)`. `examples/experiment_scans.py` reads the PK parameters of midazolam over three doses.
+`observables()` declares the observables of the experiment, the `Formula`, `PK` and `Custom` of [Observables](observables.md), by their id; it is defined after `simulations()` and before `tasks()`. A `Data` of a task reads an observable by its id (`Data("pk.cmax", task="task_doses")` for a parameter of a `PK` observable), and every task computes the observables its data read, in one run with the selections they read; the data of `data()`, of the fit mappings and of the figures count. The index of every task data is checked when the experiment is initialized: an index which is neither `time`, an observable, a coordinate of the scan of the task nor a selection of its model raises before anything is simulated, as do a `PK` observable read without a parameter and a dimension or label of `sel` which the scan of the task has not. The data of a task is a labelled array with the dimensions of its scan, see [Data](data.md); a curve draws one line, so the point of a scan it shows is selected with `Data(sel=...)`. `examples/experiment_scans.py` reads the PK parameters of midazolam over three doses.
 
 ## Running an experiment
 
@@ -92,7 +93,7 @@ res = experiment.results["task_tc"]
 print(res["[X]"].values[-3:])
 ```
 
-`run_experiments(reduced_selections=True)` records only the variables the data of the experiment refer to, which speeds up large experiments; `reduced_selections=False` records everything.
+`run_experiments(reduced_selections=True)` records for every task only the variables its data refer to, which speeds up large experiments; `reduced_selections=False` records every variable of the model and the ones the data of the task refer to.
 
 ## Reports
 

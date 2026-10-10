@@ -11,6 +11,7 @@ from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
+from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import (
     PK,
     Change,
@@ -94,7 +95,8 @@ def test_the_data_of_an_observable_is_a_labelled_array(
 ) -> None:
     cmax = Data("pk.cmax", task="task_scan").get_data(experiment)
     assert cmax.dims == ("dose",)
-    np.testing.assert_allclose(cmax["PODOSE"].values, [50.0, 100.0, 200.0])
+    np.testing.assert_allclose(cmax["dose.PODOSE"].values, [50.0, 100.0, 200.0])
+    assert "PODOSE" not in cmax.coords
     assert np.all(np.diff(cmax.values) > 0)
     assert cmax.attrs["units"]
     middle = Data("cmax", task="task_scan", sel={"dose": 1}).get_data(experiment)
@@ -108,6 +110,74 @@ def test_an_unknown_index_raises_at_initialize() -> None:
 
     with pytest.raises(ValueError, match=r"'nope'.*observable.*task_sim.*model 'm'"):
         _runner(Unknown)
+
+
+def test_a_bare_pk_id_raises_at_initialize() -> None:
+    class BarePK(PKExperiment):
+        def data(self) -> dict:
+            return {"x": Data("pk", task="task_sim")}
+
+    with pytest.raises(ValueError, match=r"'pk'.*pk\.<parameter>.*pk\.cmax"):
+        _runner(BarePK)
+
+
+def test_an_unknown_simulation_of_a_task_raises_at_initialize() -> None:
+    class UnknownSimulation(PKExperiment):
+        def tasks(self) -> dict:
+            return {"task_sim": Task(model="m", simulation="nope")}
+
+        def data(self) -> dict:
+            return {}
+
+    with pytest.raises(
+        ValueError, match=r"task 'task_sim'.*simulation 'nope'.*\['scan', 'sim'\]"
+    ):
+        _runner(UnknownSimulation)
+
+
+def test_an_unknown_model_of_a_task_raises_at_initialize() -> None:
+    class UnknownModel(PKExperiment):
+        def tasks(self) -> dict:
+            return {"task_sim": Task(model="nope", simulation="sim")}
+
+        def data(self) -> dict:
+            return {}
+
+    with pytest.raises(ValueError, match=r"task 'task_sim'.*model 'nope'.*\['m'\]"):
+        _runner(UnknownModel)
+
+
+def test_an_unknown_dimension_of_sel_raises_at_initialize() -> None:
+    class DimensionTypo(PKExperiment):
+        def data(self) -> dict:
+            return {"x": Data("cmax", task="task_scan", sel={"dsoe": 1})}
+
+    with pytest.raises(ValueError, match=r"dimension 'dsoe'.*\['dose'"):
+        _runner(DimensionTypo)
+
+
+def test_an_unknown_label_of_sel_raises_at_initialize() -> None:
+    class LabelTypo(PKExperiment):
+        def figures(self) -> dict:
+            figure = Figure(experiment=self, sid="fig", num_rows=1, num_cols=1)
+            plot = figure.create_plots(xaxis=Axis("time"), yaxis=Axis("C"))[0]
+            plot.curve(
+                x=Data("time", task="task_scan", sel={"dose": 7}),
+                y=Data("[C]", task="task_scan", sel={"dose": 7}),
+            )
+            return {"fig": figure}
+
+    with pytest.raises(ValueError, match=r"\[7\] of the dimension 'dose'.*\[0, 1, 2\]"):
+        _runner(LabelTypo)
+
+
+def test_a_selection_of_the_time_is_not_checked_at_initialize() -> None:
+    class TimeSel(PKExperiment):
+        def data(self) -> dict:
+            return {"x": Data("[C]", task="task_scan", sel={"time": 0.0, "dose": 1})}
+
+    experiment = _runner(TimeSel).experiments["TimeSel"]
+    assert "x" in experiment._data
 
 
 def test_a_parameter_of_an_observable_which_is_no_pk_raises() -> None:
@@ -159,6 +229,8 @@ def test_a_task_of_values_per_simulation_runs_with_time_registered() -> None:
     experiment.run(runner.simulator)
     result = experiment.results["task_scan"]
     assert set(result.ds.data_vars) == {"cmax"} and "time" not in result.ds.dims
+    with pytest.raises(KeyError, match=r"no time.*values per simulation"):
+        Data("time", task="task_scan").get_data(experiment)
 
 
 class FigureData(PKExperiment):
@@ -247,3 +319,121 @@ def test_a_target_the_dimension_does_not_change_raises() -> None:
     experiment.run(runner.simulator)
     with pytest.raises(KeyError, match="'init'"):
         Data("init.nope", task="task_scan").get_data(experiment)
+
+
+def test_a_plain_name_which_is_only_the_values_of_a_dimension_raises(
+    experiment: SimulationExperiment,
+) -> None:
+    with pytest.raises(
+        KeyError, match=r"'PODOSE'.*Data\('dose\.PODOSE'\).*timecourse.*regist"
+    ):
+        Data("PODOSE", task="task_scan").get_data(experiment)
+    values = Data("dose.PODOSE", task="task_scan").get_data(experiment)
+    assert values.dims == ("dose",) and values.name == "task_scan__dose.PODOSE"
+    assert list(values.coords) == ["dose", "dose.PODOSE"]
+
+
+class TwoScanTasks(PKExperiment):
+    """Two tasks of one scan, one of which reads the scanned dose as a selection."""
+
+    def tasks(self) -> dict:
+        return {
+            "task_scan": Task(model="m", simulation="scan"),
+            "task_scan2": Task(model="m", simulation="scan"),
+        }
+
+    def data(self) -> dict:
+        return {
+            "cmax_scan": Data("cmax", task="task_scan"),
+            "cmax_scan2": Data("cmax", task="task_scan2"),
+            "dose_scan2": Data("PODOSE", task="task_scan2"),
+        }
+
+
+@pytest.mark.parametrize("reduced", [True, False])
+def test_every_array_of_a_task_names_the_values_of_a_dimension_alike(
+    reduced: bool,
+) -> None:
+    runner = _runner(TwoScanTasks)
+    experiment = runner.experiments["TwoScanTasks"]
+    experiment.run(runner.simulator, reduced_selections=reduced)
+    for task in ("task_scan", "task_scan2"):
+        cmax = Data("cmax", task=task).get_data(experiment)
+        assert "dose.PODOSE" in cmax.coords and "PODOSE" not in cmax.coords
+        np.testing.assert_allclose(cmax["dose.PODOSE"].values, [50.0, 100.0, 200.0])
+        values = Data("dose.PODOSE", task=task).get_data(experiment)
+        np.testing.assert_allclose(values.values, [50.0, 100.0, 200.0])
+    curve = Data("PODOSE", task="task_scan2").get_data(experiment)
+    assert curve.dims == ("dose", "time") and "dose.PODOSE" in curve.coords
+
+
+class AddedParameterScan(PKExperiment):
+    """A scan of a parameter added to the model, which is no default selection."""
+
+    def models(self) -> dict:
+        return {"m": AbstractModel(source=sbml_pk(), parameters={"kadd": 1.0})}
+
+    def simulations(self) -> dict:
+        simulation = Simulation(end=48, steps=96)
+        k = Dimension("k", values={"kadd": np.array([1.0, 2.0, 4.0])})
+        return {"sim": simulation, "scan": Scan(simulation, [k])}
+
+    def data(self) -> dict:
+        return {"kadd_scan": Data("kadd", task="task_scan")}
+
+
+@pytest.mark.parametrize("reduced", [True, False])
+def test_a_task_selects_what_its_data_read_also_without_reduced_selections(
+    reduced: bool,
+) -> None:
+    runner = _runner(AddedParameterScan)
+    experiment = runner.experiments["AddedParameterScan"]
+    model = experiment._models["m"]
+    model.set_selections(None)
+    assert "kadd" not in (model.selections or [])
+    experiment.run(runner.simulator, reduced_selections=reduced)
+    timecourse = Data("kadd", task="task_scan").get_data(experiment)
+    assert timecourse.dims == ("k", "time")
+    np.testing.assert_allclose(timecourse.values[:, -1], [1.0, 2.0, 4.0])
+    values = Data("k.kadd", task="task_scan").get_data(experiment)
+    np.testing.assert_allclose(values.values, [1.0, 2.0, 4.0])
+
+
+class DocsObservableExperiment(SimulationExperiment):
+    """The experiment of the observables block of docs/data.md."""
+
+    def models(self) -> dict:
+        return {"model": REPRESSILATOR_SBML}
+
+    def simulations(self) -> dict:
+        return {
+            "scan": Scan(
+                Simulation(end=100, steps=100),
+                [Dimension("x0", values={"X": np.array([10.0, 20.0, 40.0])})],
+            )
+        }
+
+    def observables(self) -> dict[str, Observable]:
+        return {"xmax": Formula("xmax", "max([X])")}
+
+    def tasks(self) -> dict:
+        return {"task_scan": Task(model="model", simulation="scan")}
+
+    def data(self) -> dict:
+        return {
+            "data_xmax": Data("xmax", task="task_scan"),
+            "x": Data("[X]", task="task_scan"),
+        }
+
+
+@pytest.mark.parametrize("reduced", [True, False])
+def test_the_values_of_the_docs_block_have_one_name(reduced: bool) -> None:
+    runner = _runner(DocsObservableExperiment)
+    experiment = runner.experiments["DocsObservableExperiment"]
+    experiment.run(runner.simulator, reduced_selections=reduced)
+    xmax = Data("xmax", task="task_scan").get_data(experiment)
+    np.testing.assert_allclose(xmax["x0.X"].values, [10.0, 20.0, 40.0])
+    x0 = Data("x0.X", task="task_scan").get_data(experiment)
+    np.testing.assert_allclose(x0.values, [10.0, 20.0, 40.0])
+    x = Data("[X]", task="task_scan", sel={"x0": 2}).get_data(experiment)
+    assert float(x.max()) == float(xmax.sel(x0=2))

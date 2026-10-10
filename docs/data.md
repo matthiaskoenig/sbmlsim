@@ -49,7 +49,7 @@ print(x.sid, x.dtype, y.selection)
 print(y_data.sid, y_data.dtype)
 ```
 
-A species in brackets is a concentration, without brackets an amount; `Data.selection` is the roadrunner selection recorded for it. In an experiment the `data()` method returns the `Data` objects, and every variable used in a figure or a fit must be declared there, since the selections of the simulation are reduced to them.
+A species in brackets is a concentration, without brackets an amount; `Data.selection` is the roadrunner selection recorded for it. In an experiment the selections of every task are reduced to the data which reads it in `data()`, the figures and the fit mappings; `data()` registers the data which nothing else reads, e.g. data an analysis reads after the run.
 
 ## Functions of data
 
@@ -125,11 +125,11 @@ print(x.attrs["units"], x.values[:3])
 
 ## Selecting points
 
-The data of a task has the dimensions of its scan: a timecourse is over `(*dims, time)`, or `(*dims, _point)` for a ragged result whose simulations keep their own time points padded with `NaN`, a value per simulation is over `(*dims)`, and the values a dimension sets are `Data("<dimension>.<target>")` over the dimension, while the plain name of a symbol is its timecourse, also when the scan changes it. `sel` selects labels: `Data("[X]", task="task_scan", sel={"dose": "high"})` keeps one point and drops the dimension, `sel={"dose": ["low", "high"]}` keeps the dimension with two labels. A dimension of the scan which the data has not, e.g. the dimension of a scan for the time on a common grid, is skipped, so the same `sel` serves the time and the values of a curve; a dimension or label which does not exist raises with the ones which do. The data of a dataset is a column over the dimension `row`, and `sel={"group": "b"}` keeps the rows whose column `group` has the value. A function broadcasts its data by the names of their dimensions, and `max` and `min` of a single argument reduce along the time of a timecourse, or along the rows of a dataset.
+The data of a task has the dimensions of its scan: a timecourse is over `(*dims, time)`, or `(*dims, _point)` for a ragged result whose simulations keep their own time points padded with `NaN`, a value per simulation is over `(*dims)`, and the values a dimension sets are `Data("<dimension>.<target>")` over the dimension, while the plain name of a symbol is its timecourse, also when the scan changes it. Every array of a task carries the values of a dimension as the coordinate `<dimension>.<target>`, whatever else the task keeps; the plain name of a changed target whose timecourse the task did not keep raises and names `<dimension>.<target>`, and data of the experiment which reads the timecourse keeps it. `sel` selects labels: `Data("[X]", task="task_scan", sel={"x0": 2})` of the scan below keeps one point and drops the dimension, `sel={"x0": [0, 2]}` keeps the dimension with two labels. A dimension of the scan which the data has not, e.g. the dimension of a scan for the time on a common grid, is skipped, so the same `sel` serves the time and the values of a curve; a dimension or label of the scan which does not exist raises with the ones which do when the experiment is initialized. The data of a dataset is a column over the dimension `row`, and `sel={"group": "b"}` keeps the rows whose column `group` has the value. A function broadcasts its data by the names of their dimensions, and `max` and `min` of a single argument reduce along the time of a timecourse, or along the rows of a dataset.
 
 ## Data of observables
 
-An experiment declares observables with `observables()`, the `Formula`, `PK` and `Custom` of [Observables](observables.md), and a `Data` of a task reads one by its id, the parameter of a `PK` observable as `<id>.<parameter>`. A task computes the observables its data read, in one run with the selections it reads:
+An experiment declares observables with `observables()`, the `Formula`, `PK` and `Custom` of [Observables](observables.md), and a `Data` of a task reads one by its id, the parameter of a `PK` observable as `<id>.<parameter>`. A task computes the observables its data read, in one run with the selections it reads. The values a dimension sets are `Data("x0.X")`, and every array of the task names them so among its coordinates, e.g. `xmax["x0.X"]`:
 
 ```python
 import numpy as np
@@ -141,7 +141,6 @@ class ObservableExperiment(DataExperiment):
     @override
     def simulations(self) -> dict[str, Simulation | Scan]:
         return {
-            "tc": Simulation(end=100, steps=100),
             "scan": Scan(
                 Simulation(end=100, steps=100),
                 [Dimension("x0", values={"X": np.array([10.0, 20.0, 40.0])})],
@@ -154,10 +153,7 @@ class ObservableExperiment(DataExperiment):
 
     @override
     def tasks(self) -> dict[str, Task]:
-        return {
-            "task_tc": Task(model="model", simulation="tc"),
-            "task_scan": Task(model="model", simulation="scan"),
-        }
+        return {"task_scan": Task(model="model", simulation="scan")}
 
     @override
     def data(self) -> dict[str, Data]:
@@ -175,8 +171,10 @@ results = ExperimentRunner(
 ).run_experiments(output_path=Path.cwd() / "results")
 experiment = results[0].experiment
 
+x0 = Data("x0.X", task="task_scan").get_data(experiment)
+print(x0.dims, x0.values)
 xmax = Data("xmax", task="task_scan").get_data(experiment)
-print(xmax.dims, xmax["X"].values, xmax.values.round(3))
+print(xmax.dims, xmax["x0.X"].values, xmax.values.round(3))
 x = Data("[X]", task="task_scan", sel={"x0": 2}).get_data(experiment)
 print(x.dims, float(x.max()) == float(xmax.sel(x0=2)))
 ```
