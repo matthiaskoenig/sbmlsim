@@ -294,6 +294,8 @@ footer { color: var(--fg-soft); font-size: 12.5px; padding: 8px 24px 32px; max-w
   function cellValue(row, index, kind) {
     const text = row.cells[index] ? row.cells[index].textContent.trim() : "";
     if (kind !== "num") return text.toLowerCase();
+    // the AIC of a perfect fit is -inf, a cell without a value sorts last
+    if (text === "-inf") return Number.NEGATIVE_INFINITY;
     const value = parseFloat(text);
     return Number.isNaN(value) ? Number.POSITIVE_INFINITY : value;
   }

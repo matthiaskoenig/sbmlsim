@@ -29,10 +29,11 @@ def test_bic_of_a_smaller_model() -> None:
     ) == pytest.approx(np.log(100))
 
 
-def test_bic_requires_a_positive_mse() -> None:
-    """A perfect fit has no information criterion."""
-    with pytest.raises(ValueError, match="positive MSE"):
-        bic_from_mse(mse=0.0, n=10, k=2)
+def test_bic_requires_a_non_negative_mse() -> None:
+    """A perfect fit has the best possible BIC, a negative MSE is an error."""
+    assert bic_from_mse(mse=0.0, n=10, k=2) == float("-inf")
+    with pytest.raises(ValueError, match="non-negative MSE"):
+        bic_from_mse(mse=-1.0, n=10, k=2)
     with pytest.raises(ValueError, match="positive number of points"):
         bic_from_mse(mse=1.0, n=0, k=2)
 

@@ -50,7 +50,13 @@ from sbmlsim.fit.petab_v2.extension import (
     SCIML_EXTENSION_ID,
     SbmlsimExtension,
 )
-from sbmlsim.fit.petab_v2.gaps import Gap, GapKind, gaps_dict, gaps_of_problem
+from sbmlsim.fit.petab_v2.gaps import (
+    Gap,
+    GapKind,
+    gap_mappings,
+    gaps_dict,
+    gaps_of_problem,
+)
 from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 from sbmlsim.fit.petab_v2.symbols import (
     condition_target,
@@ -249,8 +255,6 @@ class PetabExporter:
         self.kinds: set[MappingKind] = (
             kinds if kinds is not None else set(EVALUATED_KINDS)
         )
-        self.gaps: list[Gap] = gaps_of_problem(problem)
-
         #: indices of the fit mappings which are written
         self.indices: list[int] = [
             k
@@ -263,6 +267,8 @@ class PetabExporter:
                 f"'{sorted(kind.value for kind in self.kinds)}', there is nothing "
                 f"to export."
             )
+        #: the gaps of the written mappings
+        self.gaps: list[Gap] = gaps_of_problem(problem, self.indices)
 
         # the ids the export creates, filled by `to_problem`
         self.model_ids: dict[int, str] = {}
@@ -354,17 +360,26 @@ class PetabExporter:
         return dict(ids)
 
     def check(self) -> None:
-        """Check that the problem can be written.
+        """Check that the written mappings of the problem can be written.
 
         Raises:
             ValueError: for a gap which has no representation in PEtab v2, i.e.
-                an observable which is a python function or a mapping over
-                something else than time; or for a selector without its own
-                id, see `_check_unnamed_versions`.
+                an observable which is a python function, a timecourse over
+                something else than the time, a value per simulation or values
+                over a dimension of a scan (`scalar-observable`) or a task which
+                is a scan (`scan-task`), naming the mappings of the last two; or
+                for a selector without its own id, see
+                `_check_unnamed_versions`.
         """
         unsupported = [gap for gap in self.gaps if gap.kind == GapKind.UNSUPPORTED]
         if unsupported:
-            details = "\n".join(f"  - {gap.id}: {gap.detail}" for gap in unsupported)
+            mappings = gap_mappings(self.problem, self.indices)
+            lines = []
+            for gap in unsupported:
+                lines.append(f"  - {gap.id}: {gap.detail}")
+                if gap.id in mappings:
+                    lines.append(f"    mappings: {', '.join(mappings[gap.id])}")
+            details = "\n".join(lines)
             raise ValueError(
                 f"'{self.problem.opid}': the problem uses features which PEtab v2 "
                 f"cannot express:\n{details}"

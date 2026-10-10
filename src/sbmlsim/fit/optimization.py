@@ -6,6 +6,7 @@ import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -51,17 +52,23 @@ from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult
+from sbmlsim.result.scan import TIME
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
-from sbmlsim.simulation import Simulation
+from sbmlsim.simulation import ObservableKind, Scan, Simulation
+from sbmlsim.simulation.scan import DimensionKind
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import SteadyStateError, execute
+from sbmlsim.simulator.observables import ObservableGraph, compile_observables
 from sbmlsim.simulator.plan import (
     STEADY_STATE,
     OutputMode,
     Plan,
     SteadyStatePlan,
     compile_simulation,
+    target_values,
 )
+from sbmlsim.simulator.simulator import scan_point_plans, scan_point_values
+from sbmlsim.simulator.worker import observe, point_plan
 from sbmlsim.units import DimensionalityError, Q, Quantity
 from sbmlsim.utils import timeit
 
@@ -187,6 +194,130 @@ def _noise_selections(
         logger.warning("%s: the noise model cannot be evaluated: %s", name, err)
         return ()
     return tuple(s for s in symbols if model.has_selection(s))
+
+
+#: the relative tolerance within which a reference x of a mapping over a
+#: dimension matches an end value of the dimension, the rounding of a unit
+#: conversion of the reference into the unit of the model
+END_RTOL = 1e-9
+
+
+class ObservationKind(StrEnum):
+    """What the observable of a fit mapping is, see `OptimizationProblem.initialize`.
+
+    The kind is decided from the dimensions of the observable after its `sel`:
+    a timecourse over the time (or another selection), a value per
+    simulation of a plain simulation or of a scan with every dimension
+    selected, or values over the one dimension of a scan which is left, which
+    are matched to the reference data by the values of the dimension.
+    """
+
+    TIMECOURSE = "timecourse"
+    SCALAR = "scalar"
+    DIMENSION = "dimension"
+
+
+@dataclass(frozen=True)
+class GroupResult:
+    """The simulation of a group of fit mappings which reads observables.
+
+    Attributes:
+        time: the time points of every simulated point of the group, `(n_points,
+            n_rows)`, padded with `NaN`.
+        outputs: the observables and selections the mappings of the group read,
+            a timecourse `(n_points, n_rows)`, a value per simulation
+            `(n_points,)`, see `sbmlsim.simulator.worker.observe`.
+    """
+
+    time: np.ndarray
+    outputs: dict[str, np.ndarray]
+
+
+@dataclass(frozen=True)
+class _Observation:
+    """The observable of a fit mapping, see `OptimizationProblem._observation_of`.
+
+    Attributes:
+        kind: the kind of the observable.
+        x: the x of the observable, `None` for a value per simulation.
+        y: the y of the observable, a selection, an observable output or the
+            name of an observable model.
+        x_unit: the unit of x in the model, `None` for a value per simulation.
+        y_unit: the unit of y.
+        dim: the dimension of the values over a dimension, else `None`.
+        observed: whether y is an output of the observables of the
+            experiment, which the simulation of its group evaluates.
+        positions: the index of every point of the scan of the task the
+            observable reads along every dimension, a row per point; `None`
+            for a plain simulation.
+        dim_values: the values of the target of x at the points, in the unit
+            of the target in the model, for the values over a dimension.
+    """
+
+    kind: ObservationKind
+    x: str | None
+    y: str
+    x_unit: str | None
+    y_unit: str
+    dim: str | None = None
+    observed: bool = False
+    positions: np.ndarray | None = None
+    dim_values: np.ndarray | None = None
+
+
+@dataclass(frozen=True)
+class _Points:
+    """The values of the points of a scan group, see `scan_point_values`.
+
+    Attributes:
+        values: target -> the value of every point.
+        timed: time -> target -> the value of every point.
+        size: the number of points.
+    """
+
+    values: dict[str, np.ndarray]
+    timed: dict[float, dict[str, np.ndarray]]
+    size: int
+
+    def plan(self, plan: Plan, k: int) -> Plan:
+        """Get the plan of the `k`-th point, see `point_plan`."""
+        return point_plan(plan, self.values, self.timed, k)
+
+
+def _left_dimensions(scan: Scan | None, sel: dict[str, Any]) -> list[str]:
+    """Get the dimensions of a scan which a selection does not fix to one label."""
+    if scan is None:
+        return []
+    return [
+        d.id
+        for d in scan.dimensions
+        if d.id not in sel or isinstance(sel[d.id], list | tuple | np.ndarray)
+    ]
+
+
+def _scan_positions(scan: Scan, sel: dict[str, Any]) -> np.ndarray:
+    """Get the points of a scan which a selection selects, in C order.
+
+    Returns:
+        The index of every point along every dimension, a row per point; a
+        dimension selected by labels has the points of the labels in their
+        order, a dimension which is not selected all its points.
+    """
+    if not scan.dimensions:
+        return np.zeros((1, 0), dtype=int)
+    axes: list[np.ndarray] = []
+    for dimension in scan.dimensions:
+        labels = np.asarray(dimension.labels).tolist()
+        if dimension.id not in sel:
+            axes.append(np.arange(len(labels)))
+            continue
+        label = sel[dimension.id]
+        wanted = (
+            list(label) if isinstance(label, list | tuple | np.ndarray) else [label]
+        )
+        axes.append(np.array([labels.index(w) for w in wanted], dtype=int))
+    grid = np.meshgrid(*axes, indexing="ij")
+    return np.stack([g.ravel() for g in grid], axis=1)
 
 
 @dataclass(frozen=True)
@@ -372,8 +503,21 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.mapping_kinds: list[MappingKind] = []
         # the collection of `mapping_collections` every mapping comes from
         self.collection_indices: list[int] = []
-        self.xid_observable: list[str] = []
+        #: the x of the observable of every mapping: the time (or another
+        #: selection) of a timecourse, `<dimension>.<target>` of values over a
+        #: dimension, `None` for a value per simulation
+        self.xid_observable: list[str | None] = []
         self.yid_observable: list[str] = []
+        #: the unit of the x of every mapping in the model, `None` for a value
+        #: per simulation
+        self.x_units: list[str | None] = []
+        #: the unit of the y of every mapping in the model
+        self.y_units: list[str] = []
+        #: the kind of the observable of every mapping, see `ObservationKind`
+        self.observation_kinds: list[ObservationKind] = []
+        #: the dimension of every mapping of values over a dimension, `None`
+        #: for the other kinds
+        self.observation_dims: list[str | None] = []
         self.x_references: list[Any] = []
         self.y_references: list[Any] = []
         self.y_errors: list[Any] = []
@@ -402,8 +546,27 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.defined_changes: list[dict[str, Any]] = []
         #: the plan of every simulation group, see `_compile_plans`
         self.plans: list[Plan] = []
-        #: the simulation of every task, see `_simulation_of`
-        self._simulation_cache: dict[tuple[str, str, str], Simulation] = {}
+        #: the scan of the task of every mapping, `None` for a simulation
+        self.scans: list[Scan | None] = []
+        #: the simulation and the scan of every task, see `_simulation_of`
+        self._simulation_cache: dict[
+            tuple[str, str, str], tuple[Simulation, Scan | None]
+        ] = {}
+        #: the points of the scan of every mapping, see `_Observation`
+        self._positions: list[np.ndarray | None] = []
+        #: the values of the dimension of every mapping of values over a
+        #: dimension, at the points of its group, see `_Observation`
+        self._dimension_values: list[np.ndarray | None] = []
+        #: whether the y of every mapping is an output of the observables of
+        #: its experiment
+        self._observed: list[bool] = []
+        #: the values of the points of every group of a scan, which apply to
+        #: its plan, and their number, `None` for a plain simulation, see
+        #: `_compile_plans`
+        self._group_points: list[_Points | None] = []
+        #: the observables of every group which reads one, `None` for a group
+        #: which reads selections only, see `_compile_plans`
+        self._group_graphs: list[ObservableGraph | None] = []
         #: target, index into the parameter vector and factor into the unit
         #: of the target in the model, of every parameter of a group
         self._group_targets: list[list[tuple[str, int, float]]] = []
@@ -594,6 +757,17 @@ class OptimizationProblem(ObjectJSONEncoder):
         of the fit use the same problem, and resolving the data twice repeats
         the work and every message about the data.
 
+        Every fit mapping is one of three kinds, see `ObservationKind`,
+        decided from the dimensions of its observable after its `sel`
+        (`observation_kinds`, `observation_dims`): a timecourse, whose
+        reference x are times; a value per simulation, whose reference has
+        no x (`x_references` is `NaN`) and every row of which compares with
+        the one simulated value; or values over one dimension of a scan,
+        whose reference x are values of the target of the dimension, which
+        the values of the dimension must cover. The groups, the plans of the
+        points of a scan and the observables are built here, also in every
+        worker of a parallel fit, which initializes the pickled definition.
+
         Args:
             settings: settings of the fit, they decide how the residuals and
                 the weights are calculated.
@@ -601,6 +775,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Raises:
             TypeError: if the settings are not a `FitSettings`.
+            ValueError: if a mapping is none of the kinds (see
+                `_observation_of`), a baseline residual is asked for a mapping
+                which is no timecourse, or the reference x of a mapping over a
+                dimension are outside of the values of the dimension.
         """
         if not isinstance(settings, FitSettings):
             raise TypeError(
@@ -705,44 +883,78 @@ class OptimizationProblem(ObjectJSONEncoder):
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
                 model: RoadrunnerSBMLModel = sim_experiment._models[task.model_id]
-                simulation = self._simulation_of(
-                    sid, task.model_id, task.simulation_id, sim_experiment, model
+                simulation, scan = self._simulation_of(
+                    f"{sid}.{mapping_id}",
+                    task.model_id,
+                    task.simulation_id,
+                    sim_experiment,
+                    model,
                 )
+                observation = self._observation_of(
+                    f"{sid}.{mapping_id}",
+                    mapping,
+                    sim_experiment,
+                    model,
+                    simulation,
+                    scan,
+                )
+                scalar = observation.kind is ObservationKind.SCALAR
+                timecourse = observation.kind is ObservationKind.TIMECOURSE
+                baseline = self.residual in [
+                    ResidualType.ABSOLUTE_TO_BASELINE,
+                    ResidualType.NORMALIZED_TO_BASELINE,
+                ]
+                if baseline and not timecourse:
+                    compared = (
+                        "a value per simulation"
+                        if scalar
+                        else f"values over the dimension '{observation.dim}'"
+                    )
+                    raise ValueError(
+                        f"{sid}.{mapping_id}: the baseline residuals "
+                        f"'{self.residual.name}' need a timecourse, whose first "
+                        f"point is the baseline, but the mapping compares "
+                        f"{compared}; choose a residual without a baseline."
+                    )
 
                 # observable units
-                obs_xid = mapping.observable.x.selection
+                obs_xid = observation.x
+                obs_yid = observation.y
+                obs_x_unit = observation.x_unit
+                obs_y_unit = observation.y_unit
                 observable_model = mapping.observable_model
-                if observable_model is None:
-                    obs_yid = mapping.observable.y.selection
-                    selections_set.add(obs_yid)
-                    obs_y_unit = model.uinfo[obs_yid]
-                else:
+                if observable_model is not None:
                     # the observable is a formula of selections, its `y` is a
                     # name
-                    obs_yid = mapping.observable.y.index
                     _check_symbols(model, observable_model, f"{sid}.{mapping_id}")
                     selections_set.update(observable_model.symbols)
-                    obs_y_unit = observable_model.unit
-                selections_set.add(obs_xid)
-                obs_x_unit = model.uinfo[obs_xid]
+                elif not observation.observed:
+                    selections_set.add(obs_yid)
+                if timecourse and obs_xid is not None:
+                    selections_set.add(obs_xid)
 
                 # prepare data
-                data_ref = mapping.reference.get_data()
-                if data_ref.x is None or data_ref.y is None:
+                try:
+                    data_ref = mapping.reference.get_data()
+                except ValueError as err:
+                    # e.g. a selection of rows which no row of the dataset has
+                    raise ValueError(f"{sid}.{mapping_id}: {err}") from err
+                if data_ref.y is None or (data_ref.x is None and not scalar):
                     raise ValueError(
                         f"{sid}.{mapping_id}: reference data requires x and y data."
                     )
-                try:
-                    data_ref.x = data_ref.x.to(obs_x_unit)
-                except DimensionalityError as e:
-                    logger.error(
-                        "%s.%s: Unit conversion fails for '%s' to '%s",
-                        sid,
-                        mapping_id,
-                        data_ref.x,
-                        obs_x_unit,
-                    )
-                    raise e
+                if data_ref.x is not None and not scalar:
+                    try:
+                        data_ref.x = data_ref.x.to(obs_x_unit)
+                    except DimensionalityError as e:
+                        logger.error(
+                            "%s.%s: Unit conversion fails for '%s' to '%s",
+                            sid,
+                            mapping_id,
+                            data_ref.x,
+                            obs_x_unit,
+                        )
+                        raise e
                 try:
                     data_ref.y = data_ref.y.to(obs_y_unit)
                 except DimensionalityError as e:
@@ -754,13 +966,24 @@ class OptimizationProblem(ObjectJSONEncoder):
                         obs_y_unit,
                     )
                     raise e
-                x_ref = data_ref.x.magnitude
                 y_ref = data_ref.y.magnitude
+                # a value per simulation has no x, every row of the reference
+                # compares with the one simulated value
+                if scalar and data_ref.x is not None:
+                    logger.debug(
+                        "%s.%s: the x of the reference is not used, a value per "
+                        "simulation compares every row with the one simulated "
+                        "value.",
+                        sid,
+                        mapping_id,
+                    )
+                x_ref = (
+                    np.full(np.shape(y_ref), np.nan)
+                    if scalar or data_ref.x is None
+                    else data_ref.x.magnitude
+                )
 
-                if self.residual in [
-                    ResidualType.ABSOLUTE_TO_BASELINE,
-                    ResidualType.NORMALIZED_TO_BASELINE,
-                ]:
+                if baseline:
                     # Changes to baseline, which is the first point
                     y_ref = y_ref - y_ref[0]
 
@@ -837,6 +1060,13 @@ class OptimizationProblem(ObjectJSONEncoder):
                 noise_selections = _noise_selections(
                     model, noise, f"{sid}.{mapping_id}"
                 )
+                if noise_selections and not timecourse:
+                    raise ValueError(
+                        f"{sid}.{mapping_id}: the noise model reads the "
+                        f"selections {list(noise_selections)}, which are "
+                        f"timecourses and have no value at the data of a mapping "
+                        f"of the kind '{observation.kind.value}'."
+                    )
                 selections_set.update(noise_selections)
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
@@ -851,6 +1081,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                     if data is None:
                         # no error data on the mapping
                         continue
+                    if data_key == "x_ref" and scalar:
+                        # a value per simulation has no x
+                        continue
                     if data_key == "x_ref" and obs_xid == "time":
                         data = data[~np.isposinf(data)]
                     if np.any(~np.isfinite(data)):
@@ -858,6 +1091,26 @@ class OptimizationProblem(ObjectJSONEncoder):
                             f"{mapping_collection}.{mapping_id}: NaN or INF in "
                             f"'{data_key}': '{data}'"
                         )
+
+                if observation.dim_values is not None:
+                    # the values of the dimension are matched to the x of the
+                    # reference, which they must cover like the time does; an
+                    # end value is matched within the rounding of a unit
+                    # conversion, e.g. 1.001 g are 1000.9999999999999 mg
+                    values = observation.dim_values
+                    low, high = float(values.min()), float(values.max())
+                    at_end = np.isclose(x_ref, low, rtol=END_RTOL, atol=0.0) | (
+                        np.isclose(x_ref, high, rtol=END_RTOL, atol=0.0)
+                    )
+                    outside = x_ref[((x_ref < low) | (x_ref > high)) & ~at_end]
+                    if outside.size:
+                        raise ValueError(
+                            f"{sid}.{mapping_id}: the data has the x values "
+                            f"{outside.tolist()}, which are outside of the values "
+                            f"{values.tolist()} of '{obs_xid}' along the dimension "
+                            f"'{observation.dim}' of the scan of its task."
+                        )
+                    x_ref = np.clip(x_ref, low, high)
 
                 # --- WEIGHTS ---
 
@@ -936,7 +1189,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.mapping_kinds.append(mapping_collection.kind)
                 self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
+                self.x_units.append(obs_x_unit)
                 self.yid_observable.append(obs_yid)
+                self.y_units.append(obs_y_unit)
+                self.observation_kinds.append(observation.kind)
+                self.observation_dims.append(observation.dim)
+                self.scans.append(scan)
+                self._positions.append(observation.positions)
+                self._dimension_values.append(observation.dim_values)
+                self._observed.append(observation.observed)
                 self.x_references.append(x_ref)
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
@@ -1131,14 +1392,24 @@ class OptimizationProblem(ObjectJSONEncoder):
         """Group the fit mappings which are simulated together.
 
         Several fit mappings read different observables of the same simulation,
-        e.g. the plasma concentration and the amount in urine of one dosing.
-        The simulation of such a group runs once per evaluation of the
-        residuals with the selections of all its mappings, which is where the
-        time of a fit goes.
+        e.g. the plasma concentration and the amount in urine of one dosing,
+        or the concentration and its cmax. The simulation of such a group runs
+        once per evaluation of the residuals with the selections and
+        observables of all its mappings, which is where the time of a fit
+        goes. The mappings of a scan task are grouped by the points of the
+        scan their selection selects: the mappings of one point, or of the
+        points along one dimension, share them, while another selection of
+        the same task is another group.
         """
-        groups: dict[tuple[int, int], list[int]] = {}
+        groups: dict[
+            tuple[int, int, tuple[tuple[int, ...], ...] | None], list[int]
+        ] = {}
         for k in range(len(self.mapping_keys)):
-            key = (id(self.models[k]), id(self.simulations[k]))
+            positions = self._positions[k]
+            points = (
+                None if positions is None else tuple(map(tuple, positions.tolist()))
+            )
+            key = (id(self.models[k]), id(self.simulations[k]), points)
             groups.setdefault(key, []).append(k)
         self.mapping_groups = list(groups.values())
 
@@ -1151,48 +1422,285 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     def _simulation_of(
         self,
-        sid: str,
+        name: str,
         model_id: str,
         simulation_id: str,
         experiment: SimulationExperiment,
         model: RoadrunnerSBMLModel,
-    ) -> Simulation:
+    ) -> tuple[Simulation, Scan | None]:
         """Get the simulation of a task with the changes of its model.
 
         The simulation is created once per experiment, model and simulation,
         so the fit mappings of a task share it and are simulated together,
-        see `_group_mappings`.
+        see `_group_mappings`. The simulation of a scan task is the
+        simulation of the scan, whose points apply the values of the
+        dimensions to its plan, see `_compile_plans`; a scan without
+        dimensions is its simulation.
+
+        Args:
+            name: `<experiment>.<mapping>` of the mapping which reads the
+                task, for the error.
+            model_id: the id of the model of the task.
+            simulation_id: the id of the simulation of the task.
+            experiment: the simulation experiment of the task.
+            model: the loaded model of the task.
+
+        Returns:
+            The simulation with the changes of the model as defaults of its
+            pre-initialization changes, and the scan of a scan task (`None`
+            for a simulation and a scan without dimensions).
 
         Raises:
-            ValueError: if the simulation is a scan.
+            ValueError: if the simulation is a scan with a dimension which
+                does not set values, i.e. of simulations or of models.
         """
-        key = (sid, model_id, simulation_id)
+        key = (type(experiment).__name__, model_id, simulation_id)
         if key in self._simulation_cache:
             return self._simulation_cache[key]
-        simulation = experiment._simulations[simulation_id]
-        if not isinstance(simulation, Simulation):
+        definition = experiment._simulations[simulation_id]
+        scan: Scan | None = None
+        if isinstance(definition, Scan):
+            for dimension in definition.dimensions:
+                if dimension.kind is not DimensionKind.VALUES:
+                    raise ValueError(
+                        f"{name}: the simulation '{simulation_id}' of the task is a "
+                        f"scan with the dimension '{dimension.id}' of "
+                        f"{dimension.kind.value}; a fit simulates the points of a "
+                        f"scan whose dimensions all set values."
+                    )
+            scan = definition if definition.dimensions else None
+            definition = definition.simulation
+        simulation = definition.with_preinit_defaults(model.changes)
+        self._simulation_cache[key] = (simulation, scan)
+        return simulation, scan
+
+    def _observation_of(
+        self,
+        name: str,
+        mapping: FitMapping,
+        experiment: SimulationExperiment,
+        model: RoadrunnerSBMLModel,
+        simulation: Simulation,
+        scan: Scan | None,
+    ) -> _Observation:
+        """Classify the observable of a fit mapping, see `ObservationKind`.
+
+        The kind follows from the x of the observable and from the dimensions
+        of the scan of its task which its `sel` leaves: no x is a value per
+        simulation and no dimension may be left, the time (or another
+        selection) is a timecourse and no dimension may be left, and
+        `<dimension>.<target>` (a target the dimension changes) is values over
+        that dimension, which must be the only one left. The y must be a
+        timecourse (a selection or a timecourse observable) for a timecourse
+        and a value per simulation (e.g. a parameter of a `PK` observable)
+        otherwise; the kinds and units of the observables come from the
+        observables the y needs, compiled on the plan of the first point,
+        whose dosing decides the parameters of a `PK` observable.
+
+        Args:
+            name: `<experiment>.<mapping>`, for the errors.
+            mapping: the fit mapping.
+            experiment: the simulation experiment of the mapping.
+            model: the loaded model of the task.
+            simulation: the simulation of the task, see `_simulation_of`.
+            scan: the scan of the task, `None` for a simulation.
+
+        Returns:
+            The observable of the mapping.
+
+        Raises:
+            ValueError: if the selection names no dimension of the scan; the
+                x is none of the above; the selection leaves other dimensions
+                than the kind allows; the y is a coordinate of the scan or of
+                the other kind; the observables do not fit the model; or the
+                values of the dimension are not strictly monotonic.
+        """
+        observable = mapping.observable
+        task_id = observable.task_id
+        sel = observable.sel
+        dims = [] if scan is None else [d.id for d in scan.dimensions]
+        unknown = [dim for dim in sel if dim not in dims]
+        if unknown:
             raise ValueError(
-                f"Only a `Simulation` is supported in fitting, but the simulation "
-                f"'{simulation_id}' of '{sid}' is a '{type(simulation).__name__}'."
+                f"{name}: the observable of the task '{task_id}' selects {unknown}, "
+                f"but a fit selects the points of a scan by its dimensions "
+                f"{dims}."
             )
-        simulation = simulation.with_preinit_defaults(model.changes)
-        self._simulation_cache[key] = simulation
-        return simulation
+        positions = None if scan is None else _scan_positions(scan, sel)
+        left = _left_dimensions(scan, sel)
+
+        # the y: a selection, an observable output or an observable model
+        observed = False
+        observable_model = mapping.observable_model
+        if observable_model is not None:
+            y = observable.y.index
+            y_kind = ObservableKind.TIMECOURSE
+            y_unit = observable_model.unit
+        else:
+            y = observable.y.selection
+            index_kind = experiment._index_kind(observable.y)
+            if index_kind == "coordinate":
+                raise ValueError(
+                    f"{name}: the y '{y}' of the observable is a coordinate of the "
+                    f"scan of the task '{task_id}', which is set and not "
+                    f"simulated; compare a selection or an observable."
+                )
+            if index_kind == "observable":
+                observed = True
+                plan = compile_simulation(simulation, model.symbols, model.uinfo)
+                if scan is not None and positions is not None:
+                    plan = scan_point_plans(scan, model, plan, positions[:1])[0]
+                try:
+                    graph = compile_observables(
+                        experiment._needed_observables([y]),
+                        model,
+                        keep=[y],
+                        plans=[plan],
+                    )
+                except ValueError as err:
+                    raise ValueError(f"{name}: {err}") from err
+                y_kind = graph.kinds[y]
+                y_unit = graph.units[y]
+            else:
+                y_kind = ObservableKind.TIMECOURSE
+                y_unit = model.uinfo[y]
+
+        # the x and the dimensions it leaves
+        kind: ObservationKind
+        dim: str | None = None
+        target = ""
+        x: str | None = None
+        if observable.x is None:
+            kind = ObservationKind.SCALAR
+        else:
+            x = observable.x.selection
+            index_kind = experiment._index_kind(observable.x)
+            head, _, target = x.partition(".")
+            if index_kind in ("time", "selection"):
+                kind = ObservationKind.TIMECOURSE
+            elif (
+                index_kind == "coordinate"
+                and scan is not None
+                and head in dims
+                and target in scan.dimensions[dims.index(head)].values
+            ):
+                kind = ObservationKind.DIMENSION
+                dim = head
+            else:
+                raise ValueError(
+                    f"{name}: the x '{x}' of the observable is neither the time, "
+                    f"a selection of the model nor '<dimension>.<target>' of a "
+                    f"dimension of the scan of the task '{task_id}' {dims} and a "
+                    f"target the dimension changes."
+                )
+        expected = [] if dim is None else [dim]
+        if left != expected:
+            compared = {
+                ObservationKind.SCALAR: "a value per simulation (without x)",
+                ObservationKind.TIMECOURSE: f"a timecourse over '{x}'",
+                ObservationKind.DIMENSION: f"values over the dimension '{dim}'",
+            }[kind]
+            extra = [d for d in left if d not in expected]
+            fix = (
+                f"select one label of {extra} with sel=, e.g. "
+                f"sel={{'{extra[0]}': <label>}}, or name the one dimension "
+                f"which is left as x, '<dimension>.<target>'"
+                if extra
+                else f"select several labels of '{dim}' with sel= or none"
+            )
+            raise ValueError(
+                f"{name}: the observable '{y}' of the task '{task_id}' has the "
+                f"dimensions {left} after its selection, but {compared} has "
+                f"{expected or 'none'}: {fix}."
+            )
+        if (
+            kind is ObservationKind.TIMECOURSE
+            and y_kind is not ObservableKind.TIMECOURSE
+        ):
+            raise ValueError(
+                f"{name}: the observable '{y}' is a value per simulation, which a "
+                f"timecourse over '{x}' cannot compare: leave out x (xid=None) to "
+                f"compare it as a value per simulation, or name a dimension of a "
+                f"scan as x, '<dimension>.<target>'."
+            )
+        if (
+            kind is not ObservationKind.TIMECOURSE
+            and y_kind is not ObservableKind.SCALAR
+        ):
+            raise ValueError(
+                f"{name}: the observable '{y}' is a timecourse, which a mapping of "
+                f"the kind '{kind.value}' cannot compare: name the time as x "
+                f"(xid='time'), or compare a value per simulation, e.g. a "
+                f"parameter of a PK observable."
+            )
+
+        x_unit: str | None = None
+        dim_values: np.ndarray | None = None
+        if kind is ObservationKind.TIMECOURSE and x is not None:
+            x_unit = model.uinfo[x]
+        elif (
+            kind is ObservationKind.DIMENSION
+            and scan is not None
+            and positions is not None
+        ):
+            axis = dims.index(str(dim))
+            x_unit = model.uinfo[target]
+            try:
+                vector = target_values(
+                    target,
+                    scan.dimensions[axis].values[target],
+                    model.symbols,
+                    model.uinfo,
+                )
+            except ValueError as err:
+                raise ValueError(f"{name}: {err}") from err
+            dim_values = vector[positions[:, axis]]
+            steps = np.diff(dim_values)
+            if steps.size and not (np.all(steps > 0) or np.all(steps < 0)):
+                raise ValueError(
+                    f"{name}: the values {dim_values.tolist()} of '{x}' along the "
+                    f"dimension '{dim}' are not strictly monotonic, which the "
+                    f"matching of the data by its x needs; select the labels in "
+                    f"the order of their values with sel=."
+                )
+        return _Observation(
+            kind=kind,
+            x=x,
+            y=y,
+            x_unit=x_unit,
+            y_unit=y_unit,
+            dim=dim,
+            observed=observed,
+            positions=positions,
+            dim_values=dim_values,
+        )
 
     def _compile_plans(self) -> None:
         """Compile the simulation of every group into a plan.
 
-        A group whose mappings all observe the time outputs the times of their
-        data, so an evaluation simulates exactly where the data is. The
-        factors convert the values of the parameters into the units of their
-        targets once, so an evaluation multiplies instead of calling pint.
+        A group whose mappings read selections only and all observe the time
+        outputs the times of their data, so an evaluation simulates exactly
+        where the data is; this is the fit of the timecourses of a plain
+        simulation. A group of a scan task keeps the values of its points,
+        which an evaluation applies to the plan after the fitted values, so
+        the values of a dimension win over a fitted value of their target. A
+        group whose mappings read observables compiles them once, with the
+        selections its mappings read kept next to them, and keeps the output
+        of its simulation: a cmax needs the dense output, not the times of
+        the data. The factors convert the values of the parameters into the
+        units of their targets once, so an evaluation multiplies instead of
+        calling pint.
 
         Raises:
-            ValueError: if a time of the data is outside of its simulation.
+            ValueError: if a time of the data is outside of its simulation,
+                or the observables or the values of the points do not fit the
+                model.
         """
         mapping = self.parameter_mapping_initialized
         self.plans = []
         self._group_targets = []
+        self._group_points = []
+        self._group_graphs = []
         factors: dict[tuple[str, str], float] = {}
         external = {k for k, p in enumerate(self.parameters) if p.is_external}
         self._rows = [None] * len(self.mapping_keys)
@@ -1200,7 +1708,22 @@ class OptimizationProblem(ObjectJSONEncoder):
             k0 = group[0]
             model: RoadrunnerSBMLModel = self.models[k0]
             plan = compile_simulation(self.simulations[k0], model.symbols, model.uinfo)
-            if all(self.xid_observable[k] == "time" for k in group):
+            points = None
+            scan = self.scans[k0]
+            positions = self._positions[k0]
+            if scan is not None and positions is not None:
+                values, timed = scan_point_values(scan, model, plan, positions)
+                points = _Points(values=values, timed=timed, size=len(positions))
+            graph = (
+                self._group_graph(k_group, plan, points)
+                if any(self._observed[k] for k in group)
+                else None
+            )
+            self._group_points.append(points)
+            self._group_graphs.append(graph)
+            if graph is not None:
+                self._check_times(k_group, plan)
+            elif all(self.xid_observable[k] == "time" for k in group):
                 data_times = np.unique(
                     np.concatenate(
                         [np.asarray(self.x_references[k], float) for k in group]
@@ -1244,6 +1767,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             for target, index in mapping.indices_for(k_group).items():
                 if index in external:
                     continue
+                self._warn_dimension_target(k_group, scan, target, index)
                 factor = 1.0
                 unit = model.uinfo.get(target)
                 punit = self.punits[index]
@@ -1255,6 +1779,122 @@ class OptimizationProblem(ObjectJSONEncoder):
                     factor = factors[key]
                 targets.append((target, index, factor))
             self._group_targets.append(targets)
+
+    def _warn_dimension_target(
+        self, k_group: int, scan: Scan | None, target: str, index: int
+    ) -> None:
+        """Warn about a fitted parameter whose target a dimension of the group sets.
+
+        The points of a scan apply the values of its dimensions after the
+        fitted values, so a dimension without `at` which sets the target of a
+        fitted parameter wins and the parameter has no effect in the group. A
+        dimension with `at` sets the target from its time on, before it the
+        fitted value holds.
+        """
+        if scan is None:
+            return
+        for dimension in scan.dimensions:
+            if dimension.at is None and target in dimension.values:
+                logger.warning(
+                    "'%s': the parameter '%s' is fitted in '%s', whose scan sets "
+                    "its target '%s' in the dimension '%s'; the values of the "
+                    "dimension win, so the parameter has no effect there.",
+                    self.opid,
+                    self.parameters[index].pid,
+                    self.parameter_mapping_initialized.group_names[k_group],
+                    target,
+                    dimension.id,
+                )
+
+    def _group_graph(
+        self,
+        k_group: int,
+        plan: Plan,
+        points: _Points | None,
+    ) -> ObservableGraph:
+        """Compile the observables a group reads.
+
+        The graph keeps the observable outputs of its mappings and the
+        selections they read next to them: the y of a timecourse of a
+        selection, an x which is not the time, the symbols of an observable
+        model and of a noise model. The parameters of a `PK` observable are
+        decided by the dosing of the first point of the group.
+
+        Args:
+            k_group: index of the simulation group.
+            plan: the compiled plan of the group.
+            points: the values of the points of a scan group, `None` for a
+                simulation.
+
+        Returns:
+            The graph.
+
+        Raises:
+            ValueError: if the observables do not fit the model.
+        """
+        group = self.mapping_groups[k_group]
+        k0 = group[0]
+        model: RoadrunnerSBMLModel = self.models[k0]
+        experiment = self.runner_initialized.experiments[self.experiment_keys[k0]]
+        outputs = [self.yid_observable[k] for k in group if self._observed[k]]
+        selections: list[str] = []
+        for k in group:
+            observable = self.observable_models[k]
+            if observable is not None:
+                selections.extend(observable.symbols)
+            elif not self._observed[k]:
+                selections.append(self.yid_observable[k])
+            x = self.xid_observable[k]
+            if self.observation_kinds[k] is ObservationKind.TIMECOURSE and x:
+                selections.append(x)
+            selections.extend(self.noise_selections[k])
+        keep = [name for name in dict.fromkeys([*outputs, *selections]) if name != TIME]
+        first = plan if points is None else points.plan(plan, 0)
+        try:
+            return compile_observables(
+                experiment._needed_observables(outputs),
+                model,
+                keep=keep,
+                plans=[first],
+            )
+        except ValueError as err:
+            raise ValueError(
+                f"'{self.opid}': the observables of "
+                f"'{self.parameter_mapping_initialized.group_names[k_group]}' do "
+                f"not fit the model: {err}"
+            ) from err
+
+    def _check_times(self, k_group: int, plan: Plan) -> None:
+        """Check that the times of the timecourses of a group are simulated.
+
+        A group which reads observables outputs the times of its simulation,
+        the data of its timecourses over the time is interpolated on them;
+        the steady state after the end (a time `inf`) is not simulated.
+
+        Raises:
+            ValueError: if a time of the data is outside of the output of the
+                simulation.
+        """
+        output = plan.output_times()
+        start, end = (
+            (plan.start + plan.time_shift, plan.end + plan.time_shift)
+            if output is None
+            else (min(output), max(output))
+        )
+        for k in self.mapping_groups[k_group]:
+            if self.observation_kinds[k] is not ObservationKind.TIMECOURSE:
+                continue
+            if self.xid_observable[k] != TIME:
+                continue
+            times = np.asarray(self.x_references[k], dtype=float)
+            outside = times[~((times >= start) & (times <= end))]
+            if outside.size:
+                raise ValueError(
+                    f"'{self.opid}': the data of '{self.experiment_keys[k]}."
+                    f"{self.mapping_keys[k]}' has the times {outside.tolist()}, "
+                    f"which are outside of the output of its simulation "
+                    f"[{start}, {end}]."
+                )
 
     def _derived_targets(self, k_group: int) -> set[str]:
         """Get the targets the hybridizations of a simulation group set."""
@@ -1723,7 +2363,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         quantities: Sequence[Quantity],
         evaluated: set[int],
         x: np.ndarray,
-    ) -> dict[int, TimecourseResult | None]:
+    ) -> dict[int, TimecourseResult | GroupResult | None]:
         """Simulate the groups of fit mappings for the given parameters.
 
         The mappings of a group share a simulation, so it runs once with the
@@ -1734,6 +2374,14 @@ class OptimizationProblem(ObjectJSONEncoder):
         values replace the values of the plan of the group, which is not
         changed, see `Plan.with_values`.
 
+        A group which reads selections only runs its plan, with the values of
+        its point applied for a point of a scan, and gives the
+        `TimecourseResult`. A group which reads observables runs the plan of
+        every point (the fitted values first, then the values of the point)
+        and evaluates its observables on their solutions like the workers of
+        `Simulator.run`, see `sbmlsim.simulator.worker.observe`, which gives
+        a `GroupResult`.
+
         Args:
             simulator: simulator of the problem.
             quantities: the quantity of every parameter, in the order of the
@@ -1743,18 +2391,26 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Returns:
             The result of the simulation of every evaluated mapping, `None` if
-            its integration failed.
+            the integration of a point or its observables failed.
         """
-        results: dict[int, TimecourseResult | None] = {}
+        results: dict[int, TimecourseResult | GroupResult | None] = {}
         for k_group, group in enumerate(self.mapping_groups):
             indices = [k for k in group if k in evaluated]
             if not indices:
                 continue
 
             k0 = indices[0]
-            plan = self.evaluated_plan(k_group, x, quantities)
+            graph = self._group_graphs[k_group]
 
-            result: TimecourseResult | None
+            result: TimecourseResult | GroupResult | None
+            if graph is not None:
+                result = self._simulate_points(k_group, graph, x, quantities)
+                for k in indices:
+                    results[k] = result
+                continue
+            # a simulation, or the one point of a scan which a group without
+            # observables reads, see `_observation_of`
+            plan = self.evaluated_plan(k_group, x, quantities)
             try:
                 result = execute(
                     plan,
@@ -1762,12 +2418,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     sorted({s for k in group for s in self.selections[k]}),
                 )
             except (RuntimeError, SteadyStateError) as err:
-                logger.error(
-                    "RuntimeError in ODE integration ('%s = %s'): \n%s",
-                    self.pids,
-                    x,
-                    err,
-                )
+                self._log_integration_error(x, err)
                 result = None
 
             for k in indices:
@@ -1775,29 +2426,89 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         return results
 
+    def _log_integration_error(self, x: np.ndarray, err: Exception) -> None:
+        """Log an integration which failed for the parameters `x`."""
+        logger.error(
+            "RuntimeError in ODE integration ('%s = %s'): \n%s", self.pids, x, err
+        )
+
+    def _simulate_points(
+        self,
+        k_group: int,
+        graph: ObservableGraph,
+        x: np.ndarray,
+        quantities: Sequence[Quantity],
+    ) -> GroupResult | None:
+        """Simulate the points of a group which reads observables.
+
+        Args:
+            k_group: index of the simulation group.
+            graph: the observables of the group.
+            x: parameter values in the units of the parameters.
+            quantities: the quantity of every parameter, for the derived
+                changes; empty without them.
+
+        Returns:
+            The time and the outputs of every point, `None` if the integration
+            of a point or its observables failed.
+        """
+        points = self._group_points[k_group]
+        plans = [
+            self.evaluated_plan(k_group, x, quantities, point=i)
+            for i in range(1 if points is None else points.size)
+        ]
+        model = self.models[self.mapping_groups[k_group][0]]
+        selections = (TIME, *graph.selections)
+        solutions: list[np.ndarray] = []
+        try:
+            for point in plans:
+                solutions.append(execute(point, model, selections).values)
+        except (RuntimeError, SteadyStateError) as err:
+            self._log_integration_error(x, err)
+            return None
+        time, outputs, failures = observe(graph, selections, solutions, plans)
+        if failures:
+            _, message, _ = failures[0]
+            logger.error(
+                "The observables failed for ('%s = %s'): \n%s", self.pids, x, message
+            )
+            return None
+        return GroupResult(time=time, outputs=outputs)
+
     def evaluated_plan(
         self,
         k_group: int,
         x: np.ndarray,
         quantities: Sequence[Quantity] | None = None,
+        point: int = 0,
     ) -> Plan:
         """Get the plan a group is simulated with for the given parameters.
+
+        The values of the parameters are applied first; for a group of a scan
+        the values of the point follow, so a dimension wins over a fitted
+        value of its target; the derived changes come last and read the
+        values of the point, e.g. a covariate of a population dimension.
 
         Args:
             k_group: index of the simulation group.
             x: parameter values in the units of the parameters.
             quantities: the quantity of every parameter, built from `x` if a
                 group has derived changes and they are not given.
+            point: the point of a group of a scan, in the order of its
+                points; a group of a simulation has one.
 
         Returns:
-            The plan of the group with the values of the parameters and the
-            derived changes in the units of the model.
+            The plan of the group with the values of the parameters, of the
+            point and the derived changes in the units of the model.
         """
         values: dict[str, float] = {
             target: float(x[index]) * factor
             for target, index, factor in self._group_targets[k_group]
         }
         plan = self.plans[k_group].with_values(values)
+        points = self._group_points[k_group]
+        if points is not None:
+            plan = points.plan(plan, point)
         if self.group_derived[k_group]:
             if not quantities:
                 _, quantities = self._simulator_and_quantities(np.asarray(x))
@@ -1816,7 +2527,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Args:
             k_group: index of the simulation group.
-            plan: the plan of the group with the values of the parameters.
+            plan: the plan of the group with the values of the parameters and,
+                for a group of a scan, of the point, which the derived changes
+                read, see `evaluated_plan`.
             quantities: the quantity of every parameter, in the order of the
                 parameter vector.
 
@@ -1833,11 +2546,17 @@ class OptimizationProblem(ObjectJSONEncoder):
             for key, value in changes.items()
         }
 
-    def _interpolate(self, k: int, result: TimecourseResult) -> np.ndarray:
+    def _interpolate(
+        self, k: int, result: TimecourseResult | GroupResult
+    ) -> np.ndarray:
         """Get the simulation of a fit mapping at its reference data.
 
-        An observable model is evaluated on its selections at the data, with
-        the placeholder values of every data point.
+        A timecourse is interpolated at the times (or the other x) of the
+        data. A value per simulation is the prediction of every row of the
+        reference. Values over a dimension are interpolated linearly along the
+        values of the dimension at the x of the data, which the values cover,
+        see `initialize`. An observable model is evaluated on its selections
+        at the data, with the placeholder values of every data point.
 
         Args:
             k: index of the fit mapping.
@@ -1849,6 +2568,19 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if the reference data is outside of the simulation.
         """
+        if isinstance(result, GroupResult):
+            kind = self.observation_kinds[k]
+            if kind is ObservationKind.SCALAR:
+                value = float(self._output(k, result)[0])
+                return np.full(len(self.y_references[k]), value)
+            if kind is ObservationKind.DIMENSION:
+                values = self._values_of_dimension(k)
+                order = np.argsort(values)
+                return np.interp(
+                    np.asarray(self.x_references[k], dtype=float),
+                    values[order],
+                    self._output(k, result)[order],
+                )
         observable = self.observable_models[k]
         if observable is None:
             return self._at_data(k, result, self.yid_observable[k])
@@ -1858,7 +2590,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
     def _observed_curve(
-        self, k: int, result: TimecourseResult
+        self, k: int, result: TimecourseResult | GroupResult
     ) -> tuple[np.ndarray, np.ndarray]:
         """Get the simulated curve of the observable of a fit mapping.
 
@@ -1869,23 +2601,97 @@ class OptimizationProblem(ObjectJSONEncoder):
         Returns:
             The x and the y of the observable at every output of the
             simulation. An observable model with placeholders has values at
-            the data only, which are its points.
+            the data only, which are its points. A value per simulation is
+            `([nan], [value])`, values over a dimension are the values of the
+            dimension and the observable at them, in the order of the points.
         """
-        x = np.asarray(result[self.xid_observable[k]], dtype=float)
+        if isinstance(result, GroupResult):
+            kind = self.observation_kinds[k]
+            if kind is ObservationKind.SCALAR:
+                return np.array([np.nan]), self._output(k, result)[:1]
+            if kind is ObservationKind.DIMENSION:
+                return self._values_of_dimension(k).copy(), self._output(k, result)
+        x = self._column(result, self._xid(k))
         observable = self.observable_models[k]
         if observable is None:
-            return x, np.asarray(result[self.yid_observable[k]], dtype=float)
+            return x, self._column(result, self.yid_observable[k])
         if observable.placeholders:
             return (
                 np.asarray(self.x_references[k], dtype=float),
                 self._interpolate(k, result),
             )
         return x, observable.evaluate(
-            {s: np.asarray(result[s], dtype=float) for s in observable.symbols},
+            {s: self._column(result, s) for s in observable.symbols},
             size=x.size,
         )
 
-    def _at_data(self, k: int, result: TimecourseResult, selection: str) -> np.ndarray:
+    def _output(self, k: int, result: GroupResult) -> np.ndarray:
+        """Get the output of a group which a mapping reads, at every point.
+
+        Raises:
+            KeyError: if the group has no output of the y of the mapping.
+        """
+        name = self.yid_observable[k]
+        if name not in result.outputs:
+            raise KeyError(
+                f"'{self.opid}': the simulation of the fit mapping "
+                f"'{self.experiment_keys[k]}.{self.mapping_keys[k]}' has no output "
+                f"'{name}', its outputs are {sorted(result.outputs)}."
+            )
+        return np.asarray(result.outputs[name], dtype=float)
+
+    def _values_of_dimension(self, k: int) -> np.ndarray:
+        """Get the values of the dimension of a mapping over a dimension.
+
+        Raises:
+            ValueError: for a mapping of another kind.
+        """
+        values = self._dimension_values[k]
+        if values is None:
+            raise ValueError(
+                f"'{self.opid}': the fit mapping '{self.experiment_keys[k]}."
+                f"{self.mapping_keys[k]}' is no mapping over a dimension."
+            )
+        return values
+
+    def _xid(self, k: int) -> str:
+        """Get the x of the observable of a timecourse mapping.
+
+        Raises:
+            ValueError: for a mapping of a value per simulation, which has no
+                x.
+        """
+        xid = self.xid_observable[k]
+        if xid is None:
+            raise ValueError(
+                f"'{self.opid}': the fit mapping '{self.experiment_keys[k]}."
+                f"{self.mapping_keys[k]}' compares a value per simulation, which "
+                f"has no x."
+            )
+        return xid
+
+    @staticmethod
+    def _column(result: TimecourseResult | GroupResult, name: str) -> np.ndarray:
+        """Get a timecourse of the simulation of a group, without padding.
+
+        Args:
+            result: result of the simulation of the group; a `GroupResult` of
+                one point, i.e. of a timecourse mapping.
+            name: the time, a selection or an observable output.
+
+        Returns:
+            The values at every output of the simulation.
+        """
+        if isinstance(result, TimecourseResult):
+            return np.asarray(result[name], dtype=float)
+        time = result.time[0]
+        valid = ~np.isnan(time)
+        values = time if name == TIME else result.outputs[name][0]
+        return np.asarray(values[valid], dtype=float)
+
+    def _at_data(
+        self, k: int, result: TimecourseResult | GroupResult, selection: str
+    ) -> np.ndarray:
         """Get a selection of the simulation of a fit mapping at its data.
 
         Args:
@@ -1900,15 +2706,25 @@ class OptimizationProblem(ObjectJSONEncoder):
             ValueError: if the reference data is outside of the simulation.
         """
         rows = self._rows[k] if k < len(self._rows) else None
-        if rows is not None:
+        if isinstance(result, GroupResult):
+            # the group reads observables and outputs the times of its
+            # simulation
+            f = interpolate.interp1d(
+                x=self._column(result, self._xid(k)),
+                y=self._column(result, selection),
+                copy=False,
+                assume_sorted=True,
+            )
+        elif rows is not None:
             # the simulation outputs the times of the data
             return np.asarray(result[selection][rows], dtype=float)
-        f = interpolate.interp1d(
-            x=result[self.xid_observable[k]],
-            y=result[selection],
-            copy=False,
-            assume_sorted=True,
-        )
+        else:
+            f = interpolate.interp1d(
+                x=result[self._xid(k)],
+                y=result[selection],
+                copy=False,
+                assume_sorted=True,
+            )
         try:
             return np.asarray(f(self.x_references[k]), dtype=float)
         except ValueError:
@@ -1952,7 +2768,8 @@ class OptimizationProblem(ObjectJSONEncoder):
     ) -> dict[int, np.ndarray]:
         """Get the simulation of fit mappings at their reference data.
 
-        See `evaluations`, whose predictions these are.
+        See `evaluations`, whose predictions these are; a prediction without a
+        value is `NaN`.
 
         Args:
             x: values of the parameters in the units of the model.
@@ -1975,7 +2792,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         The predictions are the values of the observable as they are
         simulated, i.e. the baseline of a curve is not subtracted, whatever
-        the residual of the settings is.
+        the residual of the settings is. A prediction without a value, e.g. a
+        PK parameter of a point without a terminal phase, stays `NaN` here, so
+        that a likelihood sees it, while `residuals` gives the failure residual
+        for it, which keeps an optimizer going.
 
         Args:
             x: values of the parameters in the units of the model, i.e. on the
@@ -2030,6 +2850,44 @@ class OptimizationProblem(ObjectJSONEncoder):
                 },
             )
         return evaluations
+
+    def _not_finite(
+        self,
+        k: int,
+        result: TimecourseResult | GroupResult,
+        prediction: np.ndarray,
+        x: np.ndarray,
+    ) -> bool:
+        """Check whether the prediction of a mapping with observables failed.
+
+        An observable which cannot be evaluated for the parameters, e.g. the
+        half-life of a PK observable without a terminal phase, is `NaN` and
+        no error of the simulation; its mapping takes the failure residuals
+        like a failed integration, so the optimizer continues. A timecourse
+        of a simulation without observables is not checked, as before.
+
+        Args:
+            k: index of the fit mapping.
+            result: result of the simulation of the mapping.
+            prediction: the prediction of the mapping at its data.
+            x: parameter values in the units of the parameters, for the log.
+
+        Returns:
+            Whether the mapping reads a group with observables and its
+            prediction has a value which is not finite.
+        """
+        if not isinstance(result, GroupResult) or np.all(np.isfinite(prediction)):
+            return False
+        logger.warning(
+            "%s.%s: the prediction is not finite for ('%s = %s'), the residuals "
+            "are the residuals of a failed simulation: %s",
+            self.experiment_keys[k],
+            self.mapping_keys[k],
+            self.pids,
+            x,
+            prediction,
+        )
+        return True
 
     def _interrupted_result(
         self, err: Exception, x0log: np.ndarray
@@ -2095,7 +2953,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             simulator=simulator, quantities=quantities, evaluated=evaluated, x=x
         )
 
-        result: TimecourseResult | None = None
+        result: TimecourseResult | GroupResult | None = None
         for k, mapping_key in enumerate(self.mapping_keys):
             if k not in evaluated:
                 continue
@@ -2111,11 +2969,13 @@ class OptimizationProblem(ObjectJSONEncoder):
                     # subtract simulation baseline
                     y_obsip = y_obsip - y_obsip[0]
 
+            if result is None or self._not_finite(k, result, y_obsip, x):
+                # the integration or an observable failed, setting high
+                # residuals & cost
+                res_abs = 5.0 * self.y_references[k]  # total error
+            else:
                 # calculate absolute residuals (f(x_{i}) - y_{i})
                 res_abs = y_obsip - self.y_references[k]
-            else:
-                # the integration failed, setting high residuals & cost
-                res_abs = 5.0 * self.y_references[k]  # total error
 
             # with np.errstate(divide="ignore", invalid="ignore"):
             res_norm = res_abs / np.mean(self.y_references[k])

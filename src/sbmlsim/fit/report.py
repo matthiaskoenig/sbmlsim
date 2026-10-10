@@ -21,7 +21,8 @@ import webbrowser
 from collections.abc import Iterable, Sequence
 from functools import cached_property
 from pathlib import Path
-from typing import Any, ClassVar
+from tokenize import TokenError
+from typing import Any, ClassVar, Literal
 
 import matplotlib
 import numpy as np
@@ -30,6 +31,7 @@ from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from pint.errors import PintError
 
 from sbmlsim import __version__
 from sbmlsim.fit import display
@@ -48,16 +50,22 @@ from sbmlsim.fit.objects import (
     MappingKind,
     describe_array,
 )
-from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
+from sbmlsim.fit.options import FitSettings, ResidualType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.report.templates import template_environment
+from sbmlsim.units import ureg
 from sbmlsim.utils import paths_text
 
 logger = logging.getLogger(__name__)
+
+#: the residuals which are dimensionless, unlike the data they are drawn with
+_NORMALIZED_RESIDUALS = frozenset(
+    {ResidualType.NORMALIZED, ResidualType.NORMALIZED_TO_BASELINE}
+)
 
 #: colors of the studies, i.e. of the simulation experiments of the problem, in
 #: the order they appear in it. The data points of the goodness of fit and the
@@ -796,14 +804,15 @@ class FitReport:
         # one card per fit mapping, with the metrics of the last parameter set
         mapping_rows: list[dict[str, Any]] = mapping_metrics.to_dict(orient="records")
         metrics_by_mapping = {
-            (row["parameter_set"], row["mapping"]): row for row in mapping_rows
+            (row["parameter_set"], row["experiment"], row["mapping"]): row
+            for row in mapping_rows
         }
         reference = psets[-1].sid
         captions = ["Data and simulation", "Residuals and weighted residuals"]
         mappings: list[dict[str, Any]] = []
         for k, mapping_id in enumerate(self.problem.mapping_keys):
             sid = self.problem.experiment_keys[k]
-            row = metrics_by_mapping.get((reference, mapping_id))
+            row = metrics_by_mapping.get((reference, sid, mapping_id))
             plots = self._plots(
                 plots_dir, [f"{sid}_{mapping_id}", f"fit_{sid}_{mapping_id}"]
             )
@@ -817,8 +826,8 @@ class FitReport:
                     "kind": self.problem.mapping_kinds[k].value,
                     "metrics": {
                         "n": int(row["n"]) if row else "-",
-                        "RMSE": f"{row['RMSE']:.4g}" if row else "-",
-                        "R²": f"{row['R2']:.4g}" if row else "-",
+                        "RMSE": _cell(row["RMSE"], ".4g") if row else "-",
+                        "R²": _cell(row["R2"], ".4g") if row else "-",
                     },
                     "plots": plots,
                 }
@@ -1322,6 +1331,19 @@ class FitReport:
             return 1.0 / factor, factor
         return float(np.min(positive)) / factor, float(np.max(positive)) * factor
 
+    @staticmethod
+    def _set_log_scale(ax: Axes, axis: Literal["x", "y"] = "y") -> None:
+        """Set a logarithmic scale on an axis of a panel with positive data.
+
+        A panel without positive values, e.g. the weighted residuals of a
+        perfect fit, has no logarithm and stays linear.
+        """
+        if axis == "x":
+            if np.isfinite(ax.dataLim.minposx):
+                ax.set_xscale("log")
+        elif np.isfinite(ax.dataLim.minposy):
+            ax.set_yscale("log")
+
     def _set_legend(self, ax: Axes) -> None:
         """Add a legend without duplicate entries."""
         handles, labels = ax.get_legend_handles_labels()
@@ -1351,6 +1373,108 @@ class FitReport:
                 fontsize="small",
             )
 
+    def _is_scalar(self, k: int) -> bool:
+        """Whether mapping `k` compares one value per simulation."""
+        return self.problem.observation_kinds[k] is ObservationKind.SCALAR
+
+    def _x_positions(self, k: int) -> np.ndarray:
+        """Get the x positions of the reference points of mapping `k` in a figure.
+
+        The reference points of a value per simulation have no x, they are drawn
+        next to each other at `0..n-1`.
+        """
+        x_ref = np.asarray(self.problem.x_references[k], dtype=float)
+        if self._is_scalar(k):
+            return np.arange(x_ref.size, dtype=float)
+        return x_ref
+
+    @staticmethod
+    def _with_unit(label: str, unit: str | None) -> str:
+        """Get `<label> [<unit>]` with the unit in its short form, e.g. `mg/l`.
+
+        The label stands alone without a unit and for a dimensionless one; a
+        unit which the registry does not parse is written as it is.
+        """
+        if not unit:
+            return label
+        try:
+            text = f"{ureg.Unit(unit):~P}"
+        except (PintError, TokenError, ValueError):
+            text = unit
+        return f"{label} [{text}]" if text else label
+
+    def _x_label(self, k: int) -> str:
+        """Get the label of the x axis of mapping `k`.
+
+        `<x> [<unit>]` of a timecourse, `<target> [<unit>]` of values over a
+        dimension and the mapping for a value per simulation, which has no
+        quantity on x.
+        """
+        x_id = self.problem.xid_observable[k]
+        if self._is_scalar(k) or x_id is None:
+            return self.problem.mapping_keys[k]
+        if self.problem.observation_kinds[k] is ObservationKind.DIMENSION:
+            x_id = x_id.split(".", 1)[-1]
+        return self._with_unit(x_id, self.problem.x_units[k])
+
+    def _y_label(self, k: int) -> str:
+        """Get the label `<y> [<unit>]` of the y axis of mapping `k`."""
+        return self._with_unit(self.problem.yid_observable[k], self.problem.y_units[k])
+
+    def _simulation_offset(self, ks: int) -> float:
+        """Get the x offset of parameter set `ks` from the rows of a value per simulation.
+
+        The simulated value is drawn next to every row of the data rather than
+        on top of it; the offsets of all parameter sets stay within half the
+        distance of two rows.
+        """
+        return 0.5 * (ks + 1) / (len(self.parameter_sets) + 1)
+
+    def _set_x_limits(self, ax: Axes, k: int, x_obs: Sequence[np.ndarray]) -> None:
+        """Set the x limits of mapping `k`.
+
+        The limits of a timecourse are the data, of values over a dimension the
+        data and the simulated curves, and of a value per simulation the rows
+        and the simulated values next to them, with room for the legend on the
+        right. A single x, e.g. values over a dimension of one value, is drawn
+        at a quarter of the width with the room for the legend on the right.
+        """
+        x_pos = self._x_positions(k)
+        if self._is_scalar(k):
+            ax.set_xlim(-0.6, x_pos.size + 1.0)
+            ax.set_xticks([])
+            return
+        if self.problem.observation_kinds[k] is ObservationKind.DIMENSION:
+            values = np.concatenate(
+                [x_pos, *[np.asarray(x, dtype=float) for x in x_obs]]
+            )
+        else:
+            values = np.asarray(x_pos, dtype=float)
+        # a measurement at infinity, a steady state, has no place on the axis
+        values = values[np.isfinite(values)]
+        if values.size == 0:
+            return
+        low, high = float(np.min(values)), float(np.max(values))
+        if high == low:
+            delta = abs(high) or 1.0
+            ax.set_xlim(left=low - 0.1 * delta, right=high + 0.3 * delta)
+            return
+        delta = high - low
+        ax.set_xlim(left=low - 0.1 * delta, right=high + 0.1 * delta)
+
+    @staticmethod
+    def _set_log_y_limits(ax: Axes, y_ref: np.ndarray) -> None:
+        """Set the y limits of a logarithmic panel of the data and the simulation.
+
+        The bottom is 0.3 times the smallest reference value, the top 1.5 times
+        the largest value of the panel, the error bars included, so the
+        markers of the data stay inside the panel also when the data spans less
+        than a decade.
+        """
+        bottom = FitReport._log_limits(y_ref, factor=1.0 / 0.3)[0]
+        top = FitReport._log_limits(y_ref, [ax.dataLim.y1], factor=1.5)[1]
+        ax.set_ylim(bottom=bottom, top=top)
+
     def plot_fit(self, output_dir: Path) -> None:
         """Plot the data and the simulation of every parameter set per mapping."""
         res_data = {pset.sid: self.residual_data(pset) for pset in self.parameter_sets}
@@ -1361,18 +1485,18 @@ class FitReport:
             )
 
             sid = self.problem.experiment_keys[k]
-            x_ref = self.problem.x_references[k]
+            x_ref = self._x_positions(k)
             y_ref = self.problem.y_references[k]
             y_ref_err = self.problem.y_errors[k]
             y_ref_err_type = self.problem.y_errors_type[k]
-            x_id = self.problem.xid_observable[k]
-            y_id = self.problem.yid_observable[k]
+            scalar = self._is_scalar(k)
+            dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
 
             for ax in [ax1, ax2]:
                 if self.show_titles:
                     ax.set_title(self.mapping_title(k))
-                ax.set_ylabel(y_id)
-                ax.set_xlabel(x_id)
+                ax.set_ylabel(self._y_label(k))
+                ax.set_xlabel(self._x_label(k))
 
                 # reference data, the same for all parameter sets
                 if y_ref_err is None:
@@ -1390,31 +1514,45 @@ class FitReport:
                         y_ref,
                         yerr=y_ref_err,
                         marker="s",
+                        linestyle="",
                         color="black",
                         label=f"reference_data ± {y_ref_err_type}",
                         markersize=10,
                     )
 
                 # simulation of every parameter set
-                for pset in self.parameter_sets:
+                for ks, pset in enumerate(self.parameter_sets):
                     data = res_data[pset.sid]
+                    if scalar:
+                        # the one simulated value, next to every row of the data
+                        ax.plot(
+                            x_ref + self._simulation_offset(ks),
+                            np.full(x_ref.size, float(data["y_obs"][k][0])),
+                            "-",
+                            marker=self.set_marker(pset),
+                            color=self.color(pset),
+                            label=pset.sid,
+                        )
+                        continue
+                    # the points of a scan are the simulated values over a
+                    # dimension, a dimension of one value has no line
                     ax.plot(
                         data["x_obs"][k],
                         data["y_obs"][k],
                         "-",
+                        marker=self.set_marker(pset) if dimension else None,
                         color=self.color(pset),
                         label=pset.sid,
                     )
 
-                xdelta = np.max(x_ref) - np.min(x_ref)
-                ax.set_xlim(
-                    left=np.min(x_ref) - 0.1 * xdelta,
-                    right=np.max(x_ref) + 0.1 * xdelta,
+                self._set_x_limits(
+                    ax, k, [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
                 )
                 self._set_legend(ax)
 
-            ax2.set_yscale("log")
-            ax2.set_ylim(bottom=self._log_limits(y_ref, factor=1.0 / 0.3)[0])
+            self._set_log_scale(ax2, "y")
+            if ax2.get_yscale() == "log":
+                self._set_log_y_limits(ax2, y_ref)
 
             self._save_mpl_figure(
                 fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
@@ -1435,17 +1573,25 @@ class FitReport:
             )
 
             sid = self.problem.experiment_keys[k]
-            x_ref = self.problem.x_references[k]
+            x_ref = self._x_positions(k)
             y_ref = self.problem.y_references[k]
             y_ref_err = self.problem.y_errors[k]
-            x_id = self.problem.xid_observable[k]
-            y_id = self.problem.yid_observable[k]
+            scalar = self._is_scalar(k)
+            dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
+            normalized = self.problem.residual in _NORMALIZED_RESIDUALS
+            residual_kind = "normalized residuals" if normalized else "residuals"
 
             for ax in (ax1, ax3):
                 ax.axhline(y=0, color="black")
-                ax.set_ylabel(y_id)
+            # normalized residuals are dimensionless and share the axis of the data
+            ax1.set_ylabel(
+                f"{self._y_label(k)}, {residual_kind} [-]"
+                if normalized
+                else self._y_label(k)
+            )
+            ax3.set_ylabel("Weighted residuals$^2$ $(w \\cdot r)^2$")
             for ax in (ax3, ax4):
-                ax.set_xlabel(x_id)
+                ax.set_xlabel(self._x_label(k))
 
             for ax in (ax1, ax2):
                 if self.show_titles:
@@ -1461,50 +1607,62 @@ class FitReport:
                         y_ref,
                         yerr=y_ref_err,
                         marker="s",
+                        linestyle="",
                         color="black",
                         label="reference_data",
                     )
 
-                for pset in self.parameter_sets:
+                for ks, pset in enumerate(self.parameter_sets):
                     data = res_data[pset.sid]
                     color = self.color(pset)
+                    # the prediction of a value per simulation next to its row
+                    x_pred = x_ref + self._simulation_offset(ks) if scalar else x_ref
+                    if not scalar:
+                        ax.plot(
+                            data["x_obs"][k],
+                            data["y_obs"][k],
+                            "-",
+                            marker=self.set_marker(pset) if dimension else None,
+                            color=color,
+                            label=pset.sid,
+                        )
                     ax.plot(
-                        data["x_obs"][k],
-                        data["y_obs"][k],
-                        "-",
+                        x_pred,
+                        data["y_obsip"][k],
+                        "o",
                         color=color,
-                        label=pset.sid,
+                        alpha=0.6,
+                        label=pset.sid if scalar else None,
                     )
-                    ax.plot(x_ref, data["y_obsip"][k], "o", color=color, alpha=0.6)
                     ax.plot(
-                        x_ref,
+                        x_pred,
                         data["residuals"][k],
                         "v",
                         color=color,
                         alpha=0.6,
-                        label=f"{pset.sid} residuals",
+                        label=f"{pset.sid} {residual_kind}",
                     )
 
             for ax in (ax3, ax4):
-                for pset in self.parameter_sets:
+                for ks, pset in enumerate(self.parameter_sets):
                     res_weighted2 = np.power(
                         res_data[pset.sid]["residuals_weighted"][k], 2
                     )
                     ax.plot(
-                        x_ref,
+                        x_ref + self._simulation_offset(ks) if scalar else x_ref,
                         res_weighted2,
                         "o",
                         color=self.color(pset),
                         label=f"{pset.sid} $(w \\cdot r)^2$",
                     )
-                ax.set_xlim(ax1.get_xlim())
 
+            x_obs = [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
             for ax in (ax1, ax2, ax3, ax4):
-                ax.set_xlim(right=1.1 * np.max(x_ref))
+                self._set_x_limits(ax, k, x_obs)
                 self._set_legend(ax)
 
             for ax in (ax2, ax4):
-                ax.set_yscale("log")
+                self._set_log_scale(ax, "y")
 
             self._save_mpl_figure(
                 fig=fig,
@@ -1976,7 +2134,10 @@ class FitReport:
         ax1.set_yticklabels(ticklabels, ha="right", fontdict={"fontsize": 8})
         ax1.grid(True, axis="x")
         ax1.set_xlabel("Cost")
-        ax1.set_xscale("log")
+        self._set_log_scale(ax1, "x")
+        if ax1.get_xscale() == "linear":
+            # a cost is not negative, e.g. the zero cost of a perfect fit
+            ax1.set_xlim(left=0.0, right=max(float(ax1.dataLim.x1), 1.0) * 1.05)
         self._set_legend(ax1)
 
         # the weights of the curves do not depend on the parameters
@@ -2025,7 +2186,7 @@ class FitReport:
         ax.set_xlabel(
             "Weighted residuals^2\n$(w_{k} \\cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
         )
-        ax.set_xscale("log")
+        self._set_log_scale(ax, "x")
         self._set_legend(ax)
         self._save_mpl_figure(fig=fig, path=path)
 
@@ -2134,6 +2295,6 @@ class FitReport:
 
         ax.set_xlabel("Optimization step")
         ax.set_ylabel("Cost")
-        ax.set_yscale("log")
+        self._set_log_scale(ax, "y")
 
         self._save_mpl_figure(fig, path=path)

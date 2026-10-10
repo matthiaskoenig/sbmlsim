@@ -19,7 +19,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/timecourse.py` | simulations of the repressilator: the steps of the integrator, changes before the initialization and a change at a time on an equidistant grid |
 | `examples/scan.py` | parameter scans of dimension 0, 1 and 2, including a scan over a distribution of parameter values |
 | `examples/observables.py` | observables of a scan: a formula of the mass concentration, the PK analysis of pkpdutils and a custom function of midazolam over three doses |
-| `examples/experiment_scans.py` | scans and observables in a simulation experiment: the PK parameters of midazolam over three doses as labelled arrays, read by the labels of the doses, drawn as curves per dose, cmax over the dose and a band over Latin hypercube draws |
+| `examples/experiment_scans.py` | scans and observables in a simulation experiment: the PK parameters of midazolam over three doses as labelled arrays, read by the labels of the doses, drawn as curves per dose, cmax over the dose with synthetic data and a band over Latin hypercube draws, and a short fit of the maximal velocity of the metabolism to the cmax over the doses |
 | `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | a local design and lognormal draws of all parameters of the repressilator, with their mean and range |

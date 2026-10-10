@@ -5,6 +5,7 @@ import pickle
 import sys
 from collections import OrderedDict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -12,11 +13,13 @@ import pytest
 from sbmlsim import parallel
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.simulation import Change, Simulation
+from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulation.observables import Custom, Formula
+from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.observables import compile_observables, identity_graph
-from sbmlsim.simulator.plan import compile_simulation
+from sbmlsim.simulator.plan import Plan, compile_simulation
+from sbmlsim.simulator.simulator import scan_point_plans
 from sbmlsim.simulator.worker import (
     MAX_ERRORS,
     Chunk,
@@ -24,10 +27,11 @@ from sbmlsim.simulator.worker import (
     ModelSpec,
     OnError,
     ScanPointError,
+    observe,
     run_chunk,
     run_chunk_in_worker,
 )
-from tests.simulator.models import BLOWUP, fails_for_large_k1, sbml
+from tests.simulator.models import BLOWUP, fails_for_large_k1, sbml, sbml_pk
 
 posix = pytest.mark.skipif(
     sys.platform == "win32", reason="the streams of C are flushed with POSIX ctypes"
@@ -433,3 +437,55 @@ def test_the_scalars_of_a_chunk_are_filled(model: RoadrunnerSBMLModel) -> None:
     a = result.values[:, :, 1]
     np.testing.assert_allclose(result.scalars[:, 0], a.max(axis=1))
     np.testing.assert_allclose(result.scalars[:, 1], a[:, -1])
+
+
+def _large_cmax(time: np.ndarray, values: dict[str, Any]) -> float:
+    """A custom observable which fails for a point whose concentration peaks high."""
+    if values["[C]"].max() > 100.0:
+        raise ValueError("cmax is too large")
+    return 0.0
+
+
+def _pk_points(doses: list[float]) -> tuple[RoadrunnerSBMLModel, list[Plan], list[Any]]:
+    simulator = Simulator()
+    model = simulator.load(sbml_pk())
+    simulation = Simulation(end=24, steps=48, changes=[Change(0, {"PODOSE": 0.0})])
+    plan = simulator.compile(model, simulation)
+    scan = Scan(simulation, [Dimension("dose", values={"PODOSE": np.array(doses)})])
+    plans = scan_point_plans(scan, model, plan, np.arange(len(doses))[:, None])
+    solutions = [execute(p, model, ["time", "[C]"]).values for p in plans]
+    return model, plans, solutions
+
+
+def test_observe_evaluates_the_graph_on_the_solutions() -> None:
+    model, plans, solutions = _pk_points([100.0, 400.0])
+    graph = compile_observables(
+        [Formula("cmax", "max([C])")], model, keep=["cmax", "[C]"], plans=plans
+    )
+    time, outputs, failures = observe(graph, ("time", "[C]"), solutions, plans)
+    assert failures == []
+    assert time.shape == (2, solutions[0].shape[0])
+    assert outputs["[C]"].shape == (2, solutions[0].shape[0])
+    np.testing.assert_allclose(
+        outputs["cmax"], [solution[:, 1].max() for solution in solutions]
+    )
+
+
+def test_observe_reports_a_failing_point_and_keeps_the_others() -> None:
+    model, plans, solutions = _pk_points([100.0, 4000.0, 200.0])
+    graph = compile_observables(
+        [
+            Custom("bad", _large_cmax, "dimensionless", symbols=["[C]"]),
+            Formula("cmax", "max([C])"),
+        ],
+        model,
+        keep=["bad", "cmax"],
+        plans=plans,
+    )
+    time, outputs, failures = observe(graph, ("time", "[C]"), solutions, plans)
+    assert [position for position, _, _ in failures] == [1]
+    assert "too large" in failures[0][1]
+    assert time.shape[0] == 2
+    np.testing.assert_allclose(
+        outputs["cmax"], [solutions[0][:, 1].max(), solutions[2][:, 1].max()]
+    )

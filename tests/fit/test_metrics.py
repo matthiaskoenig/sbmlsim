@@ -50,14 +50,20 @@ def test_aic() -> None:
 @pytest.mark.parametrize(
     ("kwargs", "match"),
     [
-        ({"mse": 0.0, "n": 3, "k": 1}, "positive MSE"),
+        ({"mse": -1.0, "n": 3, "k": 1}, "non-negative MSE"),
         ({"mse": 1.0, "n": 0, "k": 1}, "positive number of points"),
     ],
 )
 def test_aic_invalid(kwargs: dict, match: str) -> None:
-    """The AIC needs a positive MSE and data points."""
+    """The AIC needs a non-negative MSE and data points."""
     with pytest.raises(ValueError, match=match):
         aic_from_mse(**kwargs)
+
+
+def test_aic_of_a_perfect_fit() -> None:
+    """A perfect fit has the best possible AIC, minus infinity."""
+    assert aic_from_mse(mse=0.0, n=3, k=1) == float("-inf")
+    assert aic([0.0, 0.0, 0.0], k=1) == float("-inf")
 
 
 def test_r_squared() -> None:
@@ -69,9 +75,16 @@ def test_r_squared() -> None:
     assert r_squared([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]) < 0.0
 
 
-def test_r_squared_without_variance() -> None:
-    """R² is undefined for data without variance."""
+def test_r_squared_without_variance(caplog: pytest.LogCaptureFixture) -> None:
+    """R² is undefined for data without variance, which is worth a warning."""
     assert np.isnan(r_squared([2.0, 2.0], [1.0, 3.0]))
+    assert "without variance" in caplog.text
+
+
+def test_r_squared_of_one_point(caplog: pytest.LogCaptureFixture) -> None:
+    """R² of one point, e.g. a value per simulation of one group, is NaN silently."""
+    assert np.isnan(r_squared([2.0], [1.0]))
+    assert caplog.records == []
 
 
 def test_r_squared_length_mismatch() -> None:
@@ -215,7 +228,7 @@ def test_normalized_and_weighted_residuals(
     dp = metrics.datapoints_df()
 
     # the normalized residual is the residual over the mean of its curve
-    for _mapping, of_mapping in dp.groupby("mapping"):
+    for _mapping, of_mapping in dp.groupby(["experiment", "mapping"]):
         assert np.allclose(of_mapping.NRES, of_mapping.IRES / of_mapping.DV.mean())
 
     # the weighted residuals are what the cost sums, on the training data
