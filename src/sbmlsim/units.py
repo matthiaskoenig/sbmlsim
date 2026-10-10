@@ -45,15 +45,16 @@ def _create_registry() -> UnitRegistry:
     The units of a model are not defined in it: a model stores the expression
     of every unit definition (`Units.udef_to_str`), so two models which use
     one id for different units never share a definition.
+
+    The registry defines no international unit (`IU`): it is specific to a
+    substance, so a model or a user defines the one they need under a name of
+    the substance, e.g. `ureg.define("IU_insulin = 0.0347 * mg")`, or as a
+    count.
     """
     registry = pint.UnitRegistry(on_redefinition="ignore")
     registry.define("none = count")
     registry.define("item = count")
     registry.define("percent = 0.01*count")
-    # FIXME: the international unit is specific to a substance, these are the
-    # ones of insulin
-    registry.define("IU = 0.0347 * mg")
-    registry.define("IU_per_ml = 0.0347 * mg/ml")
     return registry
 
 

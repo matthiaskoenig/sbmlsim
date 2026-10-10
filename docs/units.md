@@ -13,6 +13,17 @@ dose = Q(10, "mmole")
 print(dose, dose.to("mole"))
 ```
 
+Besides the units of pint the registry defines `none` and `item` as counts and `percent`. It defines no international unit (`IU`): an international unit is specific to a substance, an `IU` of insulin is no `IU` of the anti-Xa activity of heparin, so one definition for every substance would convert data of one substance with the factor of another. A model which needs an international unit defines it as a unit definition of its own, and a user defines it in the registry under a name of the substance or as a count:
+
+```python
+from sbmlsim.units import ureg
+
+ureg.define("IU_insulin = 0.0347 * mg")
+print(Q(10, "IU_insulin/ml").to("mg/ml"))
+```
+
+A unit string with an `IU` which nothing defines raises: `Q` raises the `UndefinedUnitError` of pint, and a `DataSet` the `ValueError` which names the column.
+
 ## Units of a model
 
 The units are read into a `UnitsInformation`, a mapping from identifier to unit:

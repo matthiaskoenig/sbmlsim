@@ -756,6 +756,9 @@ def _unify_units(
     other = df.loc[carries, unit_key].unique()
     units = np.concatenate([[target], other[other != target]])
     if len(units) == 1:
+        # the unit is read, so a unit the registry does not define raises here
+        # and not when the data is used
+        _parse_unit(value_key, target, units, ureg)
         return str(target)
 
     # every unit is read once, so an error names the unit which is wrong

@@ -357,3 +357,12 @@ def test_from_df_unit_errors_name_the_column_and_units(
     df = pd.DataFrame({column: values, f"{column}_unit": units})
     with pytest.raises(ValueError, match=match):
         DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+
+
+def test_from_df_an_international_unit_is_not_defined() -> None:
+    """Data in IU is not read as a mass of insulin by the package registry (#263)."""
+    from sbmlsim.units import ureg
+
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": ["IU/ml", "IU/ml"]})
+    with pytest.raises(ValueError, match=r"'value'.*'IU/ml'.*not defined"):
+        DataSet.from_df(df, ureg=ureg)

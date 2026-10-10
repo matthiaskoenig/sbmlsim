@@ -48,6 +48,21 @@ def test_package_registry() -> None:
     assert ureg("percent").to("dimensionless").magnitude == 0.01
 
 
+@pytest.mark.parametrize("unit", ["IU", "IU/ml", "IU_per_ml"])
+def test_the_package_registry_has_no_international_unit(unit: str) -> None:
+    """An international unit is specific to a substance, the registry has none (#263).
+
+    An `IU` of the registry was a mass of insulin, so data in `IU/ml` of any
+    other substance was read as a mass concentration of insulin.
+    """
+    from pint.errors import UndefinedUnitError
+
+    from sbmlsim import Q
+
+    with pytest.raises(UndefinedUnitError):
+        Q(1, unit)
+
+
 def check_uinfo(uinfo: UnitsInformation) -> None:
     """Check UnitsInformation."""
     assert uinfo
