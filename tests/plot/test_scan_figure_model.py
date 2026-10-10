@@ -203,3 +203,24 @@ def test_the_data_of_a_band_counts_for_the_selections() -> None:
     experiment = runner.experiments["BandOnly"]
     experiment.run(runner.simulator)
     assert "[C]" in experiment.results["task_draws"].ds.data_vars
+
+
+def test_the_limit_of_a_second_dimension_counts_the_selected_points() -> None:
+    def two_of_five(plot) -> None:
+        plot.curve(
+            x=Data("time", task="task_grid5"),
+            y=Data("[C]", task="task_grid5", sel={"rate": [0, 1]}),
+            over=("dose", "rate"),
+        )
+
+    _runner(_with_figure(two_of_five))
+
+    def all_five(plot) -> None:
+        plot.curve(
+            x=Data("time", task="task_grid5"),
+            y=Data("[C]", task="task_grid5"),
+            over=("dose", "rate"),
+        )
+
+    with pytest.raises(ValueError, match="at most 4"):
+        _runner(_with_figure(all_five))

@@ -764,7 +764,17 @@ class SimulationExperiment:
             )
             known = labels.get(over[1])
             if known is not None:
-                point_linestyles(len(known))
+                # the points which remain after the `sel` of the data, of y
+                # if x and y select differently
+                selected = [
+                    d.sel[over[1]]
+                    for d in (others[0], x)
+                    if d is not None and d.is_task() and over[1] in d.sel
+                ]
+                if selected and isinstance(selected[0], list | tuple | np.ndarray):
+                    point_linestyles(len(selected[0]))
+                else:
+                    point_linestyles(len(known))
 
     def _index_kind(self, d: Data) -> str:
         """Classify the index of task data.
