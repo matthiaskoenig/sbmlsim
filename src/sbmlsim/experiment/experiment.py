@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +17,7 @@ from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.plot import Figure
+from sbmlsim.plot.points import point_linestyles
 from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
     MatplotlibFigureSerializer,
@@ -140,6 +141,7 @@ class SimulationExperiment:
             self._check_keys()
             self._check_types()
             self._check_task_data()
+            self._check_figures()
         except Exception as err:
             logger.error("Problem initializing '%s'", self.__class__.__name__)
             raise err
@@ -585,6 +587,8 @@ class SimulationExperiment:
                             yield d
                 for area in plot.areas:
                     yield from (area.x, area.yfrom, area.yto)
+                for band in plot.bands:
+                    yield from (band.x, band.y)
 
     def _task_data(self) -> Iterator[Data]:
         """Iterate the data of the experiment which comes from a task.
@@ -630,6 +634,137 @@ class SimulationExperiment:
         sources.extend(self._figure_data())
         for d in sources:
             yield from walk(d)
+
+    def _scan_dims(self, d: Data) -> set[str] | None:
+        """Get the dimensions of the scan of task data after its `sel`.
+
+        A variable or an observable of a scan has every dimension of the scan,
+        a coordinate its own dimension, the time none on a common grid and
+        every dimension of a ragged scan; a dimension selected by one label is
+        gone. Dataset and function data are not known before they are drawn.
+
+        Returns:
+            The dimensions, `None` for dataset and function data.
+        """
+        if not d.is_task():
+            return None
+        simulation = self._simulations[self._tasks[str(d.task_id)].simulation_id]
+        if not isinstance(simulation, Scan):
+            return set()
+        dims = [dimension.id for dimension in simulation.dimensions]
+        kind = self._index_kind(d)
+        if kind == "coordinate":
+            head = d.selection.partition(".")[0]
+            found = (
+                {head}
+                if head in dims
+                else {
+                    dimension.id
+                    for dimension in simulation.dimensions
+                    if d.selection in dimension.coordinates
+                }
+            )
+        elif kind == "time":
+            found = set(dims) if _ragged(simulation) else set()
+        else:
+            found = set(dims)
+        single = {
+            dim
+            for dim, label in d.sel.items()
+            if not isinstance(label, list | tuple | np.ndarray)
+        }
+        return found - single
+
+    def _check_figures(self) -> None:
+        """Check the curves and bands of the figures before anything is simulated.
+
+        Every dimension of a scan which the task data of a curve has must be
+        its axis (the one dimension of x which is not in `over`), in `over`,
+        or selected by one label; a band reduces `across` and needs a common
+        grid. Dataset and function data are checked when they are drawn.
+
+        Raises:
+            ValueError: for a dimension which is not named, an `over` or
+                `across` dimension the data has not, more points of a second
+                `over` dimension than line styles, or a band of a ragged scan.
+        """
+        for key, figure in self._figures.items():
+            for plot in figure.get_plots():
+                for curve in plot.curves:
+                    self._check_lines(
+                        key,
+                        curve.sid,
+                        curve.over,
+                        None,
+                        curve.x,
+                        [curve.y, curve.xerr, curve.yerr],
+                    )
+                for band in plot.bands:
+                    self._check_lines(
+                        key, band.sid, band.over, band.across, band.x, [band.y]
+                    )
+
+    def _check_lines(
+        self,
+        figure: str,
+        sid: str | None,
+        over: tuple[str, ...],
+        across: str | None,
+        x: Data,
+        others: Sequence[Data | None],
+    ) -> None:
+        """Check the dimensions of a curve or band, see `_check_figures`."""
+        what = "band" if across is not None else "curve"
+        xs = self._scan_dims(x)
+        ys = [self._scan_dims(d) for d in others if d is not None]
+        if xs is None or any(dims is None for dims in ys):
+            return
+        found = set(xs).union(*[dims for dims in ys if dims is not None])
+        missing = [dim for dim in over if dim not in found]
+        if missing:
+            raise ValueError(
+                f"The {what} '{sid}' of the figure '{figure}' draws a line per point of "
+                f"{missing}, which its data has not: {sorted(found)}."
+            )
+        if across is not None:
+            y = others[0]
+            simulation = (
+                self._simulations[self._tasks[str(y.task_id)].simulation_id]
+                if y is not None and y.is_task()
+                else None
+            )
+            if isinstance(simulation, Scan) and _ragged(simulation):
+                raise ValueError(
+                    f"The band '{sid}' of the figure '{figure}' reduces '{across}' of a "
+                    f"ragged scan, whose simulations keep their own time points; run "
+                    f"the scan on a common grid (a simulation with steps or times)."
+                )
+            if across not in found:
+                raise ValueError(
+                    f"The band '{sid}' of the figure '{figure}' reduces the dimension "
+                    f"'{across}', which its data has not: {sorted(found)}."
+                )
+        axis = xs - set(over) - {across}
+        if len(axis) > 1:
+            raise ValueError(
+                f"x of the {what} '{sid}' of the figure '{figure}' has the dimensions "
+                f"{sorted(axis)} of the scan; name them in over= or select a label "
+                f"with Data(sel=...)."
+            )
+        for dim in sorted(found - set(over) - axis - {across}):
+            raise ValueError(
+                f"y of {what} '{sid}' of the figure '{figure}' has the dimension "
+                f"'{dim}'; name it with over='{dim}' or select a label with "
+                f"Data(sel=...)."
+            )
+        if len(over) == 2:
+            task_data = next(d for d in [x, *others] if d is not None and d.is_task())
+            labels = _labels(
+                self._simulations[self._tasks[str(task_data.task_id)].simulation_id]
+            )
+            known = labels.get(over[1])
+            if known is not None:
+                point_linestyles(len(known))
 
     def _index_kind(self, d: Data) -> str:
         """Classify the index of task data.
@@ -927,6 +1062,17 @@ class ExperimentResult:
         return {
             "output_path": self.output_path,
         }
+
+
+def _ragged(simulation: Scan) -> bool:
+    """Check whether the result of a scan keeps the time points of every simulation.
+
+    A scan with dimensions whose simulations output the steps of the
+    integrator (neither `steps` nor `times`) is ragged.
+    """
+    return bool(simulation.dimensions) and any(
+        s.steps is None and s.times is None for s in simulation.simulations()
+    )
 
 
 def _coordinates(simulation: Simulation | Scan) -> set[str]:
