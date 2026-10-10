@@ -379,3 +379,34 @@ def test_a_run_keeps_selections_next_to_observables(pk_sbml: str) -> None:
     np.testing.assert_allclose(res["cmax"].values, res["[C]"].max("time").values)
     model = Simulator().load(pk_sbml)
     assert res.units["[C]"] == (model.uinfo.get("[C]", "") or "")
+
+
+def test_a_selected_changed_target_keeps_its_timecourse_and_its_values() -> None:
+    simulator = Simulator()
+    model = simulator.load(sbml_pk())
+    simulation = Simulation(
+        end=48, steps=96, changes=[Change(0, {"PODOSE": Q(100, "mg")})]
+    )
+    scan = Scan(
+        simulation, [Dimension("dose", values={"PODOSE": Q([50.0, 100.0], "mg")})]
+    )
+    peak = [Formula("cmax", "max([C])")]
+    for observables, keep in ((None, None), (peak, ["cmax", "PODOSE"])):
+        if observables is None:
+            model.set_selections(["time", "PODOSE", "[C]"])
+        res = simulator.run(model, scan, observables, keep=keep)
+        assert res["PODOSE"].dims == ("dose", "time")
+        assert res["PODOSE"].values[0, 0] == 50.0
+        assert res["dose.PODOSE"].dims == ("dose",)
+        assert res.units["dose.PODOSE"] == "milligram"
+
+
+def test_an_observable_id_must_not_be_a_dimension_id() -> None:
+    simulator = Simulator()
+    model = simulator.load(sbml_pk())
+    scan = Scan(
+        Simulation(end=1, steps=2),
+        [Dimension("dose", values={"PODOSE": Q([1.0, 2.0], "mg")})],
+    )
+    with pytest.raises(ValueError, match="id of a dimension"):
+        simulator.run(model, scan, [PK("dose", "[C]", dose="PODOSE", route="oral")])

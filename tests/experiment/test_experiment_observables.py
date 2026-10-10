@@ -57,7 +57,7 @@ class PKExperiment(SimulationExperiment):
         return {
             "cmax_scan": Data("cmax", task="task_scan"),
             "pk_cmax_scan": Data("pk.cmax", task="task_scan"),
-            "dose_scan": Data("PODOSE", task="task_scan"),
+            "dose_scan": Data("dose.PODOSE", task="task_scan"),
         }
 
 
@@ -190,22 +190,60 @@ def test_the_json_has_the_observables(experiment: SimulationExperiment) -> None:
 
 
 class SharedTarget(PKExperiment):
-    """A plain task reads PODOSE, the scan over PODOSE without observables."""
+    """HCTZ-like: PODOSE is registered for every task of a shared model."""
 
     def data(self) -> dict:
-        return {
-            "plain": Data("PODOSE", task="task_sim"),
-            "scan_time": Data("time", task="task_scan"),
-            "scan_c": Data("[C]", task="task_scan"),
-            "scan_dose": Data("PODOSE", task="task_scan"),
-        }
+        self.add_selections_data(["time", "PODOSE"])
+        return {"scan_dose": Data("dose.PODOSE", task="task_scan")}
 
 
 @pytest.mark.parametrize("reduced", [True, False])
-def test_a_changed_target_is_a_coordinate_of_its_own_scan(reduced: bool) -> None:
+def test_the_plain_name_of_a_changed_target_is_its_timecourse(reduced: bool) -> None:
     runner = _runner(SharedTarget)
     experiment = runner.experiments["SharedTarget"]
     experiment.run(runner.simulator, reduced_selections=reduced)
     scan = experiment.results["task_scan"]
-    assert scan["PODOSE"].dims == ("dose",)
+    assert scan["PODOSE"].dims == ("dose", "time")
+    assert scan["dose.PODOSE"].dims == ("dose",)
     assert experiment.results["task_sim"]["PODOSE"].dims == ("time",)
+    values = Data("dose.PODOSE", task="task_scan").get_data(experiment)
+    assert values.dims == ("dose",) and values.attrs["units"]
+    np.testing.assert_allclose(values.values, [50.0, 100.0, 200.0])
+    curve = Data("PODOSE", task="task_scan").get_data(experiment)
+    assert curve.dims == ("dose", "time")
+    # the dose is a timecourse which falls from the value the scan sets
+    np.testing.assert_allclose(curve.values[:, 0], [50.0, 100.0, 200.0])
+    assert np.all(curve.values[:, -1] < curve.values[:, 0])
+
+
+class SpeciesScan(PKExperiment):
+    """A scan over the initial concentration of a species."""
+
+    def simulations(self) -> dict:
+        simulation = Simulation(end=48, steps=96)
+        init = Dimension("init", values={"[C]": Q([1.0, 2.0, 4.0], "mg/litre")})
+        return {"sim": simulation, "scan": Scan(simulation, [init])}
+
+    def data(self) -> dict:
+        self.add_selections_data(["time", "[C]"], task_ids=["task_scan"])
+        return {"values": Data("init.[C]", task="task_scan")}
+
+
+def test_a_scanned_species_is_a_timecourse_and_its_values_are_qualified() -> None:
+    runner = _runner(SpeciesScan)
+    experiment = runner.experiments["SpeciesScan"]
+    experiment.run(runner.simulator)
+    timecourse = Data("[C]", task="task_scan").get_data(experiment)
+    assert timecourse.dims == ("init", "time")
+    assert np.all(timecourse.values[:, -1] < timecourse.values[:, 0])
+    values = Data("init.[C]", task="task_scan").get_data(experiment)
+    assert values.dims == ("init",)
+    np.testing.assert_allclose(values.values, [1.0, 2.0, 4.0])
+
+
+def test_a_target_the_dimension_does_not_change_raises() -> None:
+    runner = _runner(SpeciesScan)
+    experiment = runner.experiments["SpeciesScan"]
+    experiment.run(runner.simulator)
+    with pytest.raises(KeyError, match="'init'"):
+        Data("init.nope", task="task_scan").get_data(experiment)

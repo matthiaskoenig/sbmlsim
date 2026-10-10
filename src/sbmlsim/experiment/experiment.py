@@ -479,8 +479,7 @@ class SimulationExperiment:
 
         The selections of a task are the variables its data refers to, every
         variable of the model without `reduced_selections`, set on the model
-        right before the task runs; the coordinates of its own scan are never
-        among them. The changes of a
+        right before the task runs. The changes of a
         model are defaults of the pre-initialization changes of every
         simulation of it, see `Simulator.compile`. A task whose data read
         observables runs with the observables they need and keeps them and the
@@ -509,13 +508,12 @@ class SimulationExperiment:
             for task_key in task_keys:
                 task = self._tasks[task_key]
                 scan = self._simulations[task.simulation_id]
-                coordinates = _coordinates(scan)
                 observed, selections = self._task_outputs(task_key)
                 if not reduced_selections:
-                    selections = [s for s in every if s not in coordinates]
+                    selections = every
                 if not observed:
-                    # a changed target is a coordinate of the result of its own
-                    # scan and never a timecourse, whatever other tasks read
+                    # the selections of the data of this task, not the ones of
+                    # the other tasks of the model
                     model.set_selections(sorted({TIME, *selections}))
                     self._results[task_key] = simulator.run(model, scan)
                     continue
@@ -587,8 +585,9 @@ class SimulationExperiment:
 
         Returns:
             `"time"`, `"observable"` (an observable or a parameter of a `PK`
-            observable), `"coordinate"` (a dimension of the scan of the task, a
-            target it changes or a coordinate of a dimension) or `"selection"`.
+            observable), `"coordinate"` (a dimension of the scan of the task,
+            `<dimension>.<target>` of a target it changes or a coordinate of
+            a dimension) or `"selection"`.
 
         Raises:
             ValueError: if the data reads a task which does not exist, or an
@@ -882,14 +881,17 @@ class ExperimentResult:
 def _coordinates(simulation: Simulation | Scan) -> set[str]:
     """Get the names the result of a scan has as coordinates of its dimensions.
 
-    The dimension ids, the targets the dimensions change and the coordinates
-    of the dimensions; a simulation has none.
+    The dimension ids, `<dimension>.<target>` of the targets and
+    `<dimension>.<coordinate>` of the coordinates a dimension has, and the
+    plain names of its coordinates; a plain target is the timecourse of the
+    symbol, so it is no coordinate, and a simulation has none.
     """
     if not isinstance(simulation, Scan):
         return set()
     names: set[str] = set()
     for dimension in simulation.dimensions:
         names.add(dimension.id)
-        names.update(dimension.values)
+        names.update(f"{dimension.id}.{target}" for target in dimension.values)
+        names.update(f"{dimension.id}.{name}" for name in dimension.coordinates)
         names.update(dimension.coordinates)
     return names

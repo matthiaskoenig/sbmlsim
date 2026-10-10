@@ -428,8 +428,8 @@ class Data:
         - a task: the variable or coordinate of its `ScanResult` with its
           coordinates, a timecourse over `(*dims, time)` or `(*dims, _point)`
           for a ragged result padded with `NaN`, a value per simulation over
-          `(*dims)`; `time` is the time, a changed target or a coordinate of a
-          dimension is over its dimension, a dimension id gives its labels;
+          `(*dims)`; `time` is the time, `<dimension>.<target>` of a changed target or
+          a coordinate of a dimension is over its dimension, a dimension id gives its labels;
         - a dataset: the column over the dimension `row`, whose coordinate is
           the index of the dataset;
         - a function: its formula on its variables and parameters, see
@@ -522,15 +522,16 @@ class Data:
                 f"The result of the task '{self.task_id}' is no ScanResult: "
                 f"{type(result)}."
             )
-        if self.selection not in result:
+        name = self._qualified_name(result)
+        if name not in result:
             raise KeyError(
                 f"'{self.selection}' is not in the result of the task "
                 f"'{self.task_id}', its variables are {result.variables}: add "
                 f"it to the selections of the experiment."
             )
-        array = result[self.selection]
+        array = result[name]
         numeric = array.dtype.kind in "fiub"
-        unit = result.units.get(self.selection) if numeric else None
+        unit = result.units.get(name) if numeric else None
         if unit == "":
             unit = "dimensionless"
         if unit is None and numeric:
@@ -542,6 +543,35 @@ class Data:
         return xr.DataArray(
             array.values, dims=array.dims, coords=array.coords, attrs={"units": unit}
         )
+
+    def _qualified_name(self, result: ScanResult) -> str:
+        """Get the name in the result of the data, resolving `<dimension>.<target>`.
+
+        The values a dimension sets to a target are stored as
+        `<dimension>.<target>` when the target is also a variable of the result,
+        else as the plain `<target>` along the dimension.
+
+        Raises:
+            KeyError: if the index names a dimension and a target it does not
+                change.
+        """
+        index = self.selection
+        if index in result:
+            return index
+        dimension, _, target = index.partition(".")
+        if target and dimension in result.ds.dims:
+            if target in result and result[target].dims == (dimension,):
+                return target
+            changed = [
+                str(t)
+                for t in result.ds.coords
+                if t != dimension and result.ds[t].dims == (dimension,)
+            ]
+            raise KeyError(
+                f"'{index}' is not in the result of the task '{self.task_id}': "
+                f"the dimension '{dimension}' has the values {sorted(changed)}."
+            )
+        return index
 
     def _function_array(self, experiment: SimulationExperiment) -> xr.DataArray:
         """Evaluate the function on its variables and parameters, see `get_data`."""

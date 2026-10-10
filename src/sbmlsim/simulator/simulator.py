@@ -372,14 +372,23 @@ class Simulator:
                 f"observables of the run: a dimension and a variable of the "
                 f"result share no name, choose other ids."
             )
-        # the guard of the rule that an observable id is no changed target,
-        # reached only for a target which is no selection of the model
+        # an observable id is no changed target (its values would be read as
+        # the observable) and no dimension id (a PK observable `<id>` has the
+        # outputs `<id>.<parameter>`, which would meet the qualified values
+        # `<dimension>.<target>` of the dimension)
+        ids = {o.id for o in observables or ()}
         targets = {t for dimension in scan.dimensions for t in dimension.values}
-        changed = sorted(targets & set(graph.outputs)) if observables else []
+        changed = sorted(targets & ids)
         if changed:
             raise ValueError(
-                f"The observables {changed} are targets the scan changes, which "
-                f"are coordinates of the result; choose other ids."
+                f"The observables {changed} are targets the scan changes; "
+                f"choose other ids."
+            )
+        same = sorted(set(scan.dims) & ids)
+        if same:
+            raise ValueError(
+                f"The observables {same} have the id of a dimension of the "
+                f"scan; choose other ids."
             )
         _check_coordinates(scan, set(graph.outputs))
         grid, interpolate = _grid(plans, time, first)
@@ -621,7 +630,9 @@ class _Compiled:
         """Write the arrays of the chunks into the result, see `ScanResult`.
 
         A changed target is a coordinate along the first dimension which
-        changes it, unless a selection of the same name is a variable.
+        changes it, unless a selection of the same name is a variable: the
+        variable keeps the name (its timecourse) and the values of the
+        dimension are stored as `<dimension>.<target>`.
         """
         n, shape = self.size, self.scan.shape
         names = self.graph.timecourses
@@ -665,16 +676,21 @@ class _Compiled:
             # labels carry no unit
             units[dimension.id] = ""
             for target, values in dimension.values.items():
-                if target in data_vars or target in coords:
-                    # a selection of the same name, the variable stays; or a
-                    # target an earlier dimension changes
+                if target in data_vars:
+                    # a selection of the same name: the variable keeps the
+                    # name, the values are qualified by the dimension
+                    name = f"{dimension.id}.{target}"
+                elif target in coords:
+                    # a target an earlier dimension changes
                     continue
-                if isinstance(values, Quantity):
-                    coords[target] = (dimension.id, np.array(values.magnitude))
-                    units[target] = str(values.units)
                 else:
-                    coords[target] = (dimension.id, np.array(values))
-                    units[target] = first.uinfo.get(target, "") or ""
+                    name = target
+                if isinstance(values, Quantity):
+                    coords[name] = (dimension.id, np.array(values.magnitude))
+                    units[name] = str(values.units)
+                else:
+                    coords[name] = (dimension.id, np.array(values))
+                    units[name] = first.uinfo.get(target, "") or ""
             for name, values in dimension.coordinates.items():
                 if name in data_vars or name in coords:
                     continue
