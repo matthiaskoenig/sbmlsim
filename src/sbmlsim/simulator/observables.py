@@ -307,7 +307,8 @@ def compile_observables(
             the model, see `identity_graph`.
         model: the loaded model, whose selections and units they read.
         keep: the outputs of the result, every output by default; the id of a
-            PK observable keeps all its parameters.
+            PK observable keeps all its parameters, a selection of the model is
+            kept as a timecourse of its own name next to the observables.
         plans: the plans of the run, each with the values of a point, whose
             dosing decides the parameters of the PK observables.
 
@@ -385,11 +386,19 @@ def compile_observables(
         else:
             raise TypeError(f"{observable!r} is no observable (Formula, PK, Custom).")
         compiled[name] = node
-    every = tuple(o for name in definitions for o in outputs[name])
+    kept_selections = _kept_selections(
+        keep, [o for name in definitions for o in outputs[name]], model
+    )
+    for selection in kept_selections:
+        kinds[selection] = TIMECOURSE
+        units[selection] = uinfo.get(selection, "") or ""
+        selections[selection] = None
+    every = (*(o for name in definitions for o in outputs[name]), *kept_selections)
     kept = _keep(keep, every, outputs)
     needed = _needed(kept, definitions)
     nodes = tuple(node for name, node in compiled.items() if name in needed)
     read = {s for name in needed for s in definitions[name].reads}
+    read.update(kept_selections)
     doses = tuple(
         node.dose.target
         for node in nodes
@@ -703,13 +712,33 @@ def _keep(
         names = groups.get(key) or ([key] if key in outputs else None)
         if names is None:
             raise ValueError(
-                f"'keep' names '{key}', which is no observable of the run: "
-                f"{list(outputs)}."
+                f"'keep' names '{key}', which is neither an observable of the run "
+                f"nor a selection of the model: {list(outputs)}."
             )
         kept.update(dict.fromkeys(names))
     if not kept:
         raise ValueError("'keep' keeps nothing; name at least one observable.")
     return tuple(kept)
+
+
+def _kept_selections(
+    keep: Sequence[str] | None,
+    outputs: Sequence[str],
+    model: RoadrunnerSBMLModel,
+) -> tuple[str, ...]:
+    """Get the selections of the model which `keep` names next to the observables.
+
+    A kept selection is an output of the graph, a timecourse of its own name,
+    as in a run without observables; an observable shares no name with a
+    selection, so the name is unambiguous.
+    """
+    if keep is None or isinstance(keep, str):
+        return ()
+    return tuple(
+        dict.fromkeys(
+            k for k in keep if k not in outputs and k != TIME and model.has_selection(k)
+        )
+    )
 
 
 def _needed(kept: Sequence[str], definitions: Mapping[str, Observable]) -> set[str]:

@@ -119,6 +119,8 @@ print(sorted(res.ds.data_vars)[:3], "time" in res.ds.dims)
 
 `keep` is the control of the memory of a large scan: 1e5 points with 481 time points and two timecourses are 0.8 GB, the same points with ten values per simulation 8 MB. A result whose kept observables are all values per simulation has no time dimension.
 
+`keep` may also name selections of the model next to the observables, e.g. `keep=["cmax", "[C]"]`: a kept selection is a timecourse of its own name in the unit of the model, as in a run without observables, so one run gives the values per simulation and the timecourses a figure draws.
+
 ## Errors
 
 With `on_error="flag"` every observable of a point which fails is `NaN` and the variable `status` marks the point, see [Parameter scans](scans.md); `nca` gives such a point the flags `NCAFlag.NO_DATA` of pkpdutils. The observables are evaluated on a chunk of points at once; after a failure the points are evaluated one at a time, so a point fails exactly when its own simulation or its own observables fail, whichever observable it is. With `on_error="raise"` the first failing point in the order of the scan is raised, an observable failure of an earlier point before a failure of the simulation of a later one.

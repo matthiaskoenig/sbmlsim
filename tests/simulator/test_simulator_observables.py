@@ -367,3 +367,15 @@ def test_a_pk_parameter_of_a_ragged_scan_does_not_depend_on_the_chunks(
     monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w: 1)
     many = Simulator(n_workers=1).run(pk_sbml, scan, observables)
     xr.testing.assert_equal(many.ds, one.ds)
+
+
+def test_a_run_keeps_selections_next_to_observables(pk_sbml: str) -> None:
+    res = Simulator().run(
+        pk_sbml, dose_scan(), [Formula("cmax", "max([C])")], keep=["cmax", "[C]"]
+    )
+    assert set(res.ds.data_vars) == {"cmax", "[C]"}
+    assert res["[C]"].dims == ("dose", "time")
+    assert res["cmax"].dims == ("dose",)
+    np.testing.assert_allclose(res["cmax"].values, res["[C]"].max("time").values)
+    model = Simulator().load(pk_sbml)
+    assert res.units["[C]"] == (model.uinfo.get("[C]", "") or "")
