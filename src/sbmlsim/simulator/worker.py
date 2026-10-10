@@ -362,18 +362,84 @@ def _on_grid(grid: np.ndarray | None, rows: np.ndarray) -> np.ndarray:
 
 
 def _stack(
-    chunk: Chunk, solutions: Sequence[np.ndarray]
+    selections: Sequence[str], solutions: Sequence[np.ndarray]
 ) -> tuple[np.ndarray, dict[str, np.ndarray]]:
     """Stack native solutions into the time and the columns `(point, row)`.
 
     The solutions are padded with `NaN` to the longest of them.
     """
     rows = max(solution.shape[0] for solution in solutions)
-    stacked = np.full((len(solutions), rows, len(chunk.selections)), np.nan)
+    stacked = np.full((len(solutions), rows, len(selections)), np.nan)
     for r, solution in enumerate(solutions):
         stacked[r, : solution.shape[0]] = solution
-    columns = {name: stacked[:, :, j] for j, name in enumerate(chunk.selections) if j}
+    columns = {name: stacked[:, :, j] for j, name in enumerate(selections) if j}
     return stacked[:, :, 0], columns
+
+
+def observe(
+    graph: ObservableGraph,
+    selections: Sequence[str],
+    solutions: Sequence[np.ndarray],
+    plans: Sequence[Plan],
+) -> tuple[np.ndarray, dict[str, np.ndarray], list[tuple[int, str, BaseException]]]:
+    """Evaluate the observables on the native solutions of points.
+
+    The graph is evaluated on all solutions at once. If an observable fails
+    the points are evaluated one at a time, each alone on its native solution
+    without padding, so a point fails exactly when its own evaluation fails,
+    whatever the other points are; the outputs of the points which succeed are
+    stacked again, padded with `NaN` to the longest of them.
+
+    Args:
+        graph: the observables.
+        selections: the columns of the solutions, the time first.
+        solutions: the native solutions of the points.
+        plans: their plans.
+
+    Returns:
+        The time points `(n_points, n_rows)` padded with `NaN`, the kept
+        outputs (a timecourse `(n_points, n_rows)`, a value per simulation
+        `(n_points,)`) of the points which are left, in their order, and the
+        points whose observable failed (the position in `solutions`) with
+        their message and error.
+    """
+    if not solutions:
+        return np.empty((0, 0)), {}, []
+    time, columns = _stack(selections, solutions)
+    try:
+        return time, graph.evaluate(time, columns, plans), []
+    except ObservableError:
+        pass
+    singles: list[tuple[np.ndarray, dict[str, np.ndarray]]] = []
+    failed: list[tuple[int, str, BaseException]] = []
+    for k, (solution, plan) in enumerate(zip(solutions, plans, strict=True)):
+        single_time, single_columns = _stack(selections, [solution])
+        try:
+            outputs = graph.evaluate(single_time, single_columns, [plan])
+        except ObservableError as err:
+            failed.append((k, err.message, err))
+            continue
+        singles.append((single_time, outputs))
+    if not singles:
+        return np.empty((0, 0)), {}, failed
+    n_rows = max(single_time.shape[1] for single_time, _ in singles)
+    time = np.full((len(singles), n_rows), np.nan)
+    stacked = {
+        name: np.full(
+            (len(singles), n_rows) if graph.kinds[name] is TIMECOURSE else len(singles),
+            np.nan,
+        )
+        for name in graph.keep
+    }
+    for r, (single_time, outputs) in enumerate(singles):
+        rows = single_time.shape[1]
+        time[r, :rows] = single_time[0]
+        for name, value in outputs.items():
+            if value.ndim == 2:
+                stacked[name][r, :rows] = value[0]
+            else:
+                stacked[name][r] = value[0]
+    return time, stacked, failed
 
 
 def _observe(
@@ -386,11 +452,7 @@ def _observe(
 ]:
     """Evaluate the observables on the native solutions of the points which ran.
 
-    The graph is evaluated on the whole chunk. If an observable fails the
-    points are evaluated one at a time, each alone on its native solution
-    without padding, so a point fails exactly when its own evaluation fails,
-    whatever the other points of the chunk are; the outputs of the points
-    which succeed are stacked again, padded with `NaN` to the longest of them.
+    See `observe`, which does the work.
 
     Args:
         chunk: the chunk.
@@ -403,45 +465,11 @@ def _observe(
         `(n_points, n_rows)` padded with `NaN`, the kept outputs and the
         points whose observable failed with their message and error.
     """
-    if not points:
-        return [], np.empty((0, 0)), {}, []
-    time, columns = _stack(chunk, solutions)
-    try:
-        return list(points), time, chunk.graph.evaluate(time, columns, plans), []
-    except ObservableError:
-        pass
-    kept: list[int] = []
-    singles: list[tuple[np.ndarray, dict[str, np.ndarray]]] = []
-    failed: list[tuple[int, str, BaseException]] = []
-    for k, solution, plan in zip(points, solutions, plans, strict=True):
-        single_time, single_columns = _stack(chunk, [solution])
-        try:
-            outputs = chunk.graph.evaluate(single_time, single_columns, [plan])
-        except ObservableError as err:
-            failed.append((k, err.message, err))
-            continue
-        kept.append(k)
-        singles.append((single_time, outputs))
-    if not kept:
-        return [], np.empty((0, 0)), {}, failed
-    n_rows = max(single_time.shape[1] for single_time, _ in singles)
-    time = np.full((len(kept), n_rows), np.nan)
-    stacked = {
-        name: np.full(
-            (len(kept), n_rows) if chunk.graph.kinds[name] is TIMECOURSE else len(kept),
-            np.nan,
-        )
-        for name in chunk.graph.keep
-    }
-    for r, (single_time, outputs) in enumerate(singles):
-        rows = single_time.shape[1]
-        time[r, :rows] = single_time[0]
-        for name, value in outputs.items():
-            if value.ndim == 2:
-                stacked[name][r, :rows] = value[0]
-            else:
-                stacked[name][r] = value[0]
-    return kept, time, stacked, failed
+    time, outputs, failures = observe(chunk.graph, chunk.selections, solutions, plans)
+    lost = {k for k, _, _ in failures}
+    kept = [p for k, p in enumerate(points) if k not in lost]
+    failed = [(points[k], message, err) for k, message, err in failures]
+    return kept, time, outputs, failed
 
 
 def _timecourses(

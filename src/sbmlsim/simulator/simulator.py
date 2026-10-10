@@ -729,6 +729,46 @@ class _Compiled:
         return ScanResult(xr.Dataset(data_vars, coords=coords, attrs=attrs))
 
 
+def scan_point_plans(
+    scan: Scan, model: RoadrunnerSBMLModel, plan: Plan, positions: np.ndarray
+) -> list[Plan]:
+    """Get the plans of points of a scan of value dimensions on a compiled plan.
+
+    The fit simulates the points of a scan with the values it fits applied to
+    the plan first, so the values of a dimension win over a fitted value of
+    the same target, as in a run of the scan.
+
+    Args:
+        scan: the scan, whose dimensions all set values.
+        model: the loaded model, whose units the values are converted to.
+        plan: the compiled plan of `scan.simulation` on the model, with any
+            values applied already.
+        positions: the index of every point along every dimension, a row per
+            point.
+
+    Returns:
+        The plan of every point, in the order of `positions`.
+
+    Raises:
+        ValueError: for a dimension of simulations or models, or values which
+            do not fit the model.
+    """
+    for dimension in scan.dimensions:
+        if dimension.kind is not DimensionKind.VALUES:
+            raise ValueError(
+                f"The dimension '{dimension.id}' of the scan is a dimension of "
+                f"{dimension.kind.value}; the points of a fit come from a scan whose "
+                f"dimensions all set values."
+            )
+    positions = np.asarray(positions, dtype=int).reshape(-1, len(scan.dimensions))
+    vectors = _vectors(scan, model, "")
+    at_times = _at_times(scan, scan.simulation, model, plan)
+    values, timed = _values_of(
+        scan, positions, vectors, at_times, np.arange(len(positions))
+    )
+    return [point_plan(plan, values, timed, k) for k in range(len(positions))]
+
+
 def _positions(scan: Scan) -> np.ndarray:
     """Get the index of every point along every dimension, a row per point."""
     if not scan.dimensions:
