@@ -107,6 +107,28 @@ class SelectedPointStudy(MixedStudy):
         return mappings
 
 
+class EmptyScanStudy(MixedStudy):
+    """The simulation of 100 mg as a scan without dimensions."""
+
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        return {"single": Scan(dosed(), []), "doses": dose_scan()}
+
+
+class EmptyRowsStudy(ScalarStudy):
+    """A selection of rows which no row of the study table has."""
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        return {
+            "fm_empty": FitMapping(
+                self,
+                reference=FitData(
+                    self, dataset="tab", xid=None, yid="cmax", sel={"cmax": -1.0}
+                ),
+                observable=FitData(self, task="task_single", xid=None, yid="pk.cmax"),
+            )
+        }
+
+
 class LabelsStudy(DoseStudy):
     """The cmax of 50 and 200 mg against points of the scan selected by labels."""
 
@@ -449,6 +471,32 @@ def test_the_derived_changes_read_the_values_of_a_point(tmp_path: Path) -> None:
     np.testing.assert_allclose(data["y_obs"][0], expected["pk.cmax"].values, rtol=1e-5)
 
 
+def test_a_parameter_whose_target_a_dimension_sets_warns(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The values of the dimension win, the fitted value has no effect."""
+    ke = FitParameter(
+        pid="ke", lower_bound=0.01, upper_bound=1.0, start_value=0.3, unit="1/hr"
+    )
+    problem = _problem(RateStudy, ["fm_rate"], tmp_path, parameter=ke)
+    [record] = [r for r in caplog.records if "no effect" in r.getMessage()]
+    assert record.levelname == "WARNING"
+    message = record.getMessage()
+    assert "'ke'" in message and "'rate'" in message
+    assert "RateStudy" in message
+    # the cost does not depend on the parameter
+    assert problem.cost_least_square(np.array([0.05])) == pytest.approx(
+        problem.cost_least_square(np.array([0.9]))
+    )
+
+
+def test_a_parameter_of_another_target_does_not_warn(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _problem(RateStudy, ["fm_rate"], tmp_path)
+    assert not [r for r in caplog.records if "no effect" in r.getMessage()]
+
+
 def test_a_reference_at_an_end_of_a_dimension_matches_after_rounding(
     tmp_path: Path,
 ) -> None:
@@ -488,6 +536,23 @@ def test_a_value_per_simulation_of_a_selected_point_fits_like_the_simulation(
         assert scan.cost_least_square(np.array([v])) == pytest.approx(
             plain.cost_least_square(np.array([v])), rel=1e-10, abs=1e-14
         )
+
+
+def test_a_scan_without_dimensions_fits_like_its_simulation(tmp_path: Path) -> None:
+    plain = _problem(MixedStudy, ["fm_cmax", "fm_tc"], tmp_path)
+    scan = _problem(EmptyScanStudy, ["fm_cmax", "fm_tc"], tmp_path)
+    assert scan.observation_kinds == ["scalar", "timecourse"]
+    assert scan.scans == [None, None]
+    for v in (5.0, TRUE_V, 30.0):
+        assert scan.cost_least_square(np.array([v])) == pytest.approx(
+            plain.cost_least_square(np.array([v])), rel=1e-10, abs=1e-14
+        )
+
+
+def test_an_empty_selection_of_rows_names_the_mapping(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="no row") as err:
+        _problem(EmptyRowsStudy, ["fm_empty"], tmp_path)
+    assert str(err.value).startswith("EmptyRowsStudy.fm_empty: ")
 
 
 def test_labels_select_the_points_of_a_dimension(tmp_path: Path) -> None:

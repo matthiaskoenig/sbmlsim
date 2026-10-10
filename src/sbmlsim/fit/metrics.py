@@ -135,7 +135,8 @@ def aic_from_mse(mse: float, n: int, k: int) -> float:
     The AIC is calculated for a least squares fit with normally distributed
     residuals, i.e., `AIC = n * ln(MSE) + 2 * k` up to an additive constant.
     Only differences of the AIC between models fitted on the same data are
-    meaningful.
+    meaningful. A perfect fit, an MSE of 0, has the AIC `-inf`, the best
+    possible value.
 
     Args:
         mse: mean squared error of the fit.
@@ -143,16 +144,18 @@ def aic_from_mse(mse: float, n: int, k: int) -> float:
         k: number of fitted parameters.
 
     Returns:
-        Akaike information criterion.
+        Akaike information criterion, `-inf` for an MSE of 0.
 
     Raises:
-        ValueError: if the mean squared error or the number of data points is
-            not positive.
+        ValueError: if the mean squared error is negative or the number of data
+            points is not positive.
     """
-    if mse <= 0.0:
-        raise ValueError(f"AIC requires a positive MSE, but '{mse}' given.")
+    if mse < 0.0:
+        raise ValueError(f"AIC requires a non-negative MSE, but '{mse}' given.")
     if n <= 0:
         raise ValueError(f"AIC requires a positive number of points, but '{n}' given.")
+    if mse == 0.0:
+        return float("-inf")
     return float(n * np.log(mse) + 2 * k)
 
 
@@ -188,16 +191,18 @@ def bic_from_mse(mse: float, n: int, k: int) -> float:
         k: number of fitted parameters.
 
     Returns:
-        Bayesian information criterion.
+        Bayesian information criterion, `-inf` for an MSE of 0, a perfect fit.
 
     Raises:
-        ValueError: if the mean squared error or the number of data points is
-            not positive.
+        ValueError: if the mean squared error is negative or the number of data
+            points is not positive.
     """
-    if mse <= 0.0:
-        raise ValueError(f"BIC requires a positive MSE, but '{mse}' given.")
+    if mse < 0.0:
+        raise ValueError(f"BIC requires a non-negative MSE, but '{mse}' given.")
     if n <= 0:
         raise ValueError(f"BIC requires a positive number of points, but '{n}' given.")
+    if mse == 0.0:
+        return float("-inf")
     return float(n * np.log(mse) + k * np.log(n))
 
 
@@ -209,12 +214,17 @@ def r_squared(y_observed: ArrayLike, y_predicted: ArrayLike) -> float:
     so R² is not the square of a correlation and can be negative: a negative R²
     means the prediction is worse than the mean of the data.
 
+    R² of fewer than two data points is `nan` without a message, e.g. a value
+    per simulation against the one row of a study group; a warning is logged for
+    several data points without variance.
+
     Args:
         y_observed: measured values.
         y_predicted: predicted values.
 
     Returns:
-        Coefficient of determination, `nan` if the data has no variance.
+        Coefficient of determination, `nan` for fewer than two data points or
+        data without variance.
 
     Raises:
         ValueError: if the data and the prediction have different lengths.
@@ -226,6 +236,8 @@ def r_squared(y_observed: ArrayLike, y_predicted: ArrayLike) -> float:
             f"R² requires as many predictions as data points, but got "
             f"'{y_pred.size}' for '{y_obs.size}'."
         )
+    if y_obs.size < 2:
+        return float("nan")
     sst = float(np.sum(np.square(y_obs - np.mean(y_obs))))
     if sst == 0.0:
         logger.warning("R² is undefined for data without variance.")
@@ -354,11 +366,13 @@ class FitMetrics:
 
         data: list[dict[str, Any]] = []
         for k, mapping in enumerate(self.problem.mapping_keys):
-            of_mapping = dp[dp.mapping == mapping]
+            # the mappings of two experiments may have the same key
+            experiment = self.problem.experiment_keys[k]
+            of_mapping = dp[(dp.experiment == experiment) & (dp.mapping == mapping)]
             mse_value = mse(of_mapping.IRES)
             data.append(
                 {
-                    "experiment": self.problem.experiment_keys[k],
+                    "experiment": experiment,
                     "mapping": mapping,
                     "kind": self.problem.mapping_kinds[k].value,
                     "n": len(of_mapping),

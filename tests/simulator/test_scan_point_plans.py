@@ -53,3 +53,19 @@ def test_a_dimension_of_simulations_raises() -> None:
         scan_point_plans(
             scan, model, simulator.compile(model, simulation), np.array([[0]])
         )
+
+
+def test_the_point_of_a_scan_without_dimensions_is_its_simulation() -> None:
+    simulator = Simulator()
+    model = simulator.load(sbml_pk())
+    simulation = Simulation(
+        end=24, steps=48, changes=[Change(0, {"PODOSE": Q(100, "mg")})]
+    )
+    plan = simulator.compile(model, simulation)
+    [point] = scan_point_plans(
+        Scan(simulation, []), model, plan, np.zeros((1, 0), dtype=int)
+    )
+    np.testing.assert_allclose(
+        execute(point, model, ["time", "[C]"])["[C]"],
+        execute(plan, model, ["time", "[C]"])["[C]"],
+    )

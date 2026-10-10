@@ -734,9 +734,12 @@ def scan_point_plans(
 ) -> list[Plan]:
     """Get the plans of points of a scan of value dimensions on a compiled plan.
 
-    The fit simulates the points of a scan with the values it fits applied to
-    the plan first, so the values of a dimension win over a fitted value of
-    the same target, as in a run of the scan.
+    The plan of a point is the plan with the values and times of the point,
+    `scan_point_values`, applied by `point_plan`, the function the workers of a
+    run apply them with. The fit computes the values once per simulation group
+    and applies them to the plan of every evaluation, which carries the fitted
+    values first, so the values of a dimension win over a fitted value of the
+    same target, as in a run of the scan.
 
     Args:
         scan: the scan, whose dimensions all set values.
@@ -744,28 +747,32 @@ def scan_point_plans(
         plan: the compiled plan of `scan.simulation` on the model, with any
             values applied already.
         positions: the index of every point along every dimension, a row per
-            point.
+            point; the one point of a scan without dimensions is a row of
+            length 0.
 
     Returns:
         The plan of every point, in the order of `positions`.
 
     Raises:
-        ValueError: for a dimension of simulations or models, or values which
-            do not fit the model.
+        ValueError: for a dimension of simulations or models, values which do
+            not fit the model, a time of a dimension with `at` outside of the
+            simulation, or two dimensions which set one target at one time.
     """
-    positions = np.asarray(positions, dtype=int).reshape(-1, len(scan.dimensions))
-    values, timed = scan_point_values(scan, model, plan, positions)
-    return [point_plan(plan, values, timed, k) for k in range(len(positions))]
+    rows = _point_rows(scan, positions)
+    values, timed = scan_point_values(scan, model, plan, rows)
+    return [point_plan(plan, values, timed, k) for k in range(len(rows))]
 
 
 def scan_point_values(
     scan: Scan, model: RoadrunnerSBMLModel, plan: Plan, positions: np.ndarray
 ) -> tuple[dict[str, np.ndarray], dict[float, dict[str, np.ndarray]]]:
-    """Get the values of points of a scan of value dimensions in model units.
+    """Get the values and times of points of a scan of value dimensions.
 
-    `point_plan(plan, values, timed, k)` applies them to a plan, see
-    `scan_point_plans`; the fit computes them once and applies them to the
-    plan of every evaluation.
+    The values are in the units of the model and the times in its time unit,
+    computed as a run of the scan computes them. `point_plan(plan, values,
+    timed, k)` applies them to a plan, see `scan_point_plans`; the fit computes
+    them once per simulation group and applies them to the plan of every
+    evaluation.
 
     Args:
         scan: the scan, whose dimensions all set values.
@@ -773,15 +780,17 @@ def scan_point_values(
         plan: the compiled plan of `scan.simulation` on the model, whose time
             span the times of the dimensions with `at` must lie in.
         positions: the index of every point along every dimension, a row per
-            point.
+            point; the one point of a scan without dimensions is a row of
+            length 0.
 
     Returns:
         target -> the value of every point, and time -> target -> the value of
         every point for the dimensions with `at`.
 
     Raises:
-        ValueError: for a dimension of simulations or models, or values which
-            do not fit the model.
+        ValueError: for a dimension of simulations or models, values which do
+            not fit the model, a time of a dimension with `at` outside of the
+            simulation, or two dimensions which set one target at one time.
     """
     for dimension in scan.dimensions:
         if dimension.kind is not DimensionKind.VALUES:
@@ -790,10 +799,18 @@ def scan_point_values(
                 f"{dimension.kind.value}; the points of a fit come from a scan whose "
                 f"dimensions all set values."
             )
-    positions = np.asarray(positions, dtype=int).reshape(-1, len(scan.dimensions))
+    rows = _point_rows(scan, positions)
     vectors = _vectors(scan, model, "")
     at_times = _at_times(scan, scan.simulation, model, plan)
-    return _values_of(scan, positions, vectors, at_times, np.arange(len(positions)))
+    return _values_of(scan, rows, vectors, at_times, np.arange(len(rows)))
+
+
+def _point_rows(scan: Scan, positions: np.ndarray) -> np.ndarray:
+    """Get positions of points as a row per point and a column per dimension."""
+    positions = np.asarray(positions, dtype=int)
+    if positions.ndim == 2:
+        return positions.reshape(len(positions), len(scan.dimensions))
+    return positions.reshape(-1, len(scan.dimensions))
 
 
 def _positions(scan: Scan) -> np.ndarray:

@@ -77,3 +77,12 @@ def test_the_count_of_a_selection(experiment: SelExperiment) -> None:
         ).count
         == 8
     )
+
+
+def test_the_text_shows_the_x_and_the_selection(experiment: SelExperiment) -> None:
+    fd = FitData(experiment, dataset="tab", xid=None, yid="cmax", sel={"group": "b"})
+    text = str(fd)
+    assert "xid=None" in text
+    assert "yid=cmax" in text
+    assert "sel={'group': 'b'}" in text
+    assert "xid=dose" in str(FitData(experiment, dataset="tab", xid="dose", yid="cmax"))

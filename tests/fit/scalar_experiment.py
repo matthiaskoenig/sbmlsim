@@ -126,6 +126,13 @@ class RowsStudy(ScalarStudy):
         }
 
 
+class IndividualsStudy(RowsStudy):
+    """The individuals of `RowsStudy` under the key of the cmax of `ScalarStudy`."""
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        return {"fm_cmax": super().fit_mappings()["fm_rows"]}
+
+
 class DoseStudy(PKStudy):
     """The cmax of three doses against the scan over the doses."""
 
@@ -147,6 +154,29 @@ class DoseStudy(PKStudy):
                 ),
                 observable=FitData(
                     self, task="task_doses", xid="dose.PODOSE", yid="pk.cmax"
+                ),
+            )
+        }
+
+
+class OneDoseStudy(DoseStudy):
+    """The cmax of 100 mg against the one point of 100 mg of the scan."""
+
+    REF_DOSES: ClassVar[list[float]] = [100.0]
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        return {
+            "fm_one": FitMapping(
+                self,
+                reference=FitData(
+                    self, dataset="tab_doses", xid="dose", yid="cmax", yid_sd="cmax_sd"
+                ),
+                observable=FitData(
+                    self,
+                    task="task_doses",
+                    xid="dose.PODOSE",
+                    yid="pk.cmax",
+                    sel={"dose": [1]},
                 ),
             )
         }

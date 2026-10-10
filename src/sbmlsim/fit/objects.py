@@ -1156,10 +1156,13 @@ class FitData:
         return int(counts_unique[0])
 
     def __str__(self) -> str:
-        """Get string."""
+        """Get the source, the x and y and the selection of the data."""
+        xid = self.x.index if self.x is not None else None
         return (
-            f"FitData(experiment={self.experiment.__class__.__name__} dset_id={self.dset_id} "
-            f"task_id={self.task_id} function={self.function})"
+            f"FitData(experiment={self.experiment.__class__.__name__} "
+            f"dset_id={self.dset_id} task_id={self.task_id} "
+            f"function={self.function} xid={xid} yid={self.y.index} "
+            f"sel={self.sel})"
         )
 
     def is_task(self) -> bool:

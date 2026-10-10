@@ -67,7 +67,7 @@ from sbmlsim.simulator.plan import (
     compile_simulation,
     target_values,
 )
-from sbmlsim.simulator.simulator import scan_point_values
+from sbmlsim.simulator.simulator import scan_point_plans, scan_point_values
 from sbmlsim.simulator.worker import observe, point_plan
 from sbmlsim.units import DimensionalityError, Q, Quantity
 from sbmlsim.utils import timeit
@@ -511,6 +511,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: the unit of the x of every mapping in the model, `None` for a value
         #: per simulation
         self.x_units: list[str | None] = []
+        #: the unit of the y of every mapping in the model
+        self.y_units: list[str] = []
         #: the kind of the observable of every mapping, see `ObservationKind`
         self.observation_kinds: list[ObservationKind] = []
         #: the dimension of every mapping of values over a dimension, `None`
@@ -932,7 +934,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                     selections_set.add(obs_xid)
 
                 # prepare data
-                data_ref = mapping.reference.get_data()
+                try:
+                    data_ref = mapping.reference.get_data()
+                except ValueError as err:
+                    # e.g. a selection of rows which no row of the dataset has
+                    raise ValueError(f"{sid}.{mapping_id}: {err}") from err
                 if data_ref.y is None or (data_ref.x is None and not scalar):
                     raise ValueError(
                         f"{sid}.{mapping_id}: reference data requires x and y data."
@@ -963,6 +969,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                 y_ref = data_ref.y.magnitude
                 # a value per simulation has no x, every row of the reference
                 # compares with the one simulated value
+                if scalar and data_ref.x is not None:
+                    logger.debug(
+                        "%s.%s: the x of the reference is not used, a value per "
+                        "simulation compares every row with the one simulated "
+                        "value.",
+                        sid,
+                        mapping_id,
+                    )
                 x_ref = (
                     np.full(np.shape(y_ref), np.nan)
                     if scalar or data_ref.x is None
@@ -1177,6 +1191,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.xid_observable.append(obs_xid)
                 self.x_units.append(obs_x_unit)
                 self.yid_observable.append(obs_yid)
+                self.y_units.append(obs_y_unit)
                 self.observation_kinds.append(observation.kind)
                 self.observation_dims.append(observation.dim)
                 self.scans.append(scan)
@@ -1419,7 +1434,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         so the fit mappings of a task share it and are simulated together,
         see `_group_mappings`. The simulation of a scan task is the
         simulation of the scan, whose points apply the values of the
-        dimensions to its plan, see `_compile_plans`.
+        dimensions to its plan, see `_compile_plans`; a scan without
+        dimensions is its simulation.
 
         Args:
             name: `<experiment>.<mapping>` of the mapping which reads the
@@ -1432,7 +1448,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         Returns:
             The simulation with the changes of the model as defaults of its
             pre-initialization changes, and the scan of a scan task (`None`
-            for a simulation).
+            for a simulation and a scan without dimensions).
 
         Raises:
             ValueError: if the simulation is a scan with a dimension which
@@ -1452,7 +1468,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         f"{dimension.kind.value}; a fit simulates the points of a "
                         f"scan whose dimensions all set values."
                     )
-            scan = definition
+            scan = definition if definition.dimensions else None
             definition = definition.simulation
         simulation = definition.with_preinit_defaults(model.changes)
         self._simulation_cache[key] = (simulation, scan)
@@ -1533,8 +1549,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 observed = True
                 plan = compile_simulation(simulation, model.symbols, model.uinfo)
                 if scan is not None and positions is not None:
-                    values, timed = scan_point_values(scan, model, plan, positions[:1])
-                    plan = point_plan(plan, values, timed, 0)
+                    plan = scan_point_plans(scan, model, plan, positions[:1])[0]
                 try:
                     graph = compile_observables(
                         experiment._needed_observables([y]),
@@ -1752,6 +1767,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             for target, index in mapping.indices_for(k_group).items():
                 if index in external:
                     continue
+                self._warn_dimension_target(k_group, scan, target, index)
                 factor = 1.0
                 unit = model.uinfo.get(target)
                 punit = self.punits[index]
@@ -1763,6 +1779,32 @@ class OptimizationProblem(ObjectJSONEncoder):
                     factor = factors[key]
                 targets.append((target, index, factor))
             self._group_targets.append(targets)
+
+    def _warn_dimension_target(
+        self, k_group: int, scan: Scan | None, target: str, index: int
+    ) -> None:
+        """Warn about a fitted parameter whose target a dimension of the group sets.
+
+        The points of a scan apply the values of its dimensions after the
+        fitted values, so a dimension without `at` which sets the target of a
+        fitted parameter wins and the parameter has no effect in the group. A
+        dimension with `at` sets the target from its time on, before it the
+        fitted value holds.
+        """
+        if scan is None:
+            return
+        for dimension in scan.dimensions:
+            if dimension.at is None and target in dimension.values:
+                logger.warning(
+                    "'%s': the parameter '%s' is fitted in '%s', whose scan sets "
+                    "its target '%s' in the dimension '%s'; the values of the "
+                    "dimension win, so the parameter has no effect there.",
+                    self.opid,
+                    self.parameters[index].pid,
+                    self.parameter_mapping_initialized.group_names[k_group],
+                    target,
+                    dimension.id,
+                )
 
     def _group_graph(
         self,
@@ -2485,7 +2527,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Args:
             k_group: index of the simulation group.
-            plan: the plan of the group with the values of the parameters.
+            plan: the plan of the group with the values of the parameters and,
+                for a group of a scan, of the point, which the derived changes
+                read, see `evaluated_plan`.
             quantities: the quantity of every parameter, in the order of the
                 parameter vector.
 
@@ -2724,7 +2768,8 @@ class OptimizationProblem(ObjectJSONEncoder):
     ) -> dict[int, np.ndarray]:
         """Get the simulation of fit mappings at their reference data.
 
-        See `evaluations`, whose predictions these are.
+        See `evaluations`, whose predictions these are; a prediction without a
+        value is `NaN`.
 
         Args:
             x: values of the parameters in the units of the model.
@@ -2747,7 +2792,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         The predictions are the values of the observable as they are
         simulated, i.e. the baseline of a curve is not subtracted, whatever
-        the residual of the settings is.
+        the residual of the settings is. A prediction without a value, e.g. a
+        PK parameter of a point without a terminal phase, stays `NaN` here, so
+        that a likelihood sees it, while `residuals` gives the failure residual
+        for it, which keeps an optimizer going.
 
         Args:
             x: values of the parameters in the units of the model, i.e. on the
