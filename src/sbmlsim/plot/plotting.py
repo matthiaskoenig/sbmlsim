@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
@@ -855,6 +855,26 @@ class AbstractCurve(BasePlotObject):
         self.yaxis_position: YAxisPosition | None = yaxis_position
 
 
+def _dimensions(
+    over: str | Sequence[str] | None, kind: str, ident: str | None
+) -> tuple[str, ...]:
+    """Get the dimensions a curve or band draws one line per point of.
+
+    Args:
+        over: the dimensions, one or several.
+        kind: what draws them, `curve` or `band`, for the error.
+        ident: the id of the curve or band, else its name, for the error.
+
+    Raises:
+        ValueError: if a dimension is named twice.
+    """
+    names = (over,) if isinstance(over, str) else tuple(over or ())
+    if len(set(names)) != len(names):
+        what = f"The {kind} '{ident}'" if ident else f"A {kind}"
+        raise ValueError(f"{what} names a dimension twice in over: {names}.")
+    return names
+
+
 class Curve(AbstractCurve):
     """Curve object."""
 
@@ -870,6 +890,7 @@ class Curve(AbstractCurve):
         type: CurveType = CurveType.POINTS,
         style: Style | None = None,
         yaxis_position: YAxisPosition | None = None,
+        over: str | Sequence[str] | None = None,
         **kwargs: Any,
     ):
         """Initialize Curve.
@@ -885,7 +906,13 @@ class Curve(AbstractCurve):
             type: type of the curve
             style: style of the curve (matplotlib kwargs are ignored if set)
             yaxis_position: position of the yaxis for the curve
+            over: the dimensions of a scan with one line per point, see
+                `sbmlsim.plot.points`
             **kwargs: matplotlib styling arguments, `label` sets the name
+
+        Raises:
+            ValueError: if a dimension is named twice in `over`, or a curve
+                which is not of points names one.
         """
         super().__init__(
             sid=sid,
@@ -906,6 +933,12 @@ class Curve(AbstractCurve):
             self.name = kwargs["label"]
 
         self.type: CurveType = type
+        self.over: tuple[str, ...] = _dimensions(over, "curve", sid or self.name)
+        if self.over and type != CurveType.POINTS:
+            raise ValueError(
+                f"The curve '{sid or self.name}' is a bar curve, which draws no line "
+                f"per point of {list(self.over)}; draw points or select a label."
+            )
 
         # parse additional arguments and create style
         if style:
@@ -924,7 +957,7 @@ class Curve(AbstractCurve):
         """Get representation string."""
         return (
             f"Curve(sid={self.sid} name={self.name} type={self.type} order={self.order} "
-            f"x={self.x is not None} y={self.y is not None}"
+            f"x={self.x is not None} y={self.y is not None} over={self.over} "
             f"xerr={self.xerr is not None} yerr={self.yerr is not None})"
         )
 
@@ -939,6 +972,7 @@ class Curve(AbstractCurve):
             f"\ty={self.y}",
             f"\txerr={self.xerr}",
             f"\tyerr={self.yerr}",
+            f"\tover={self.over}",
             f"\torder={self.order}",
             f"\tyaxis_position={self.yaxis_position}",
             ")",
@@ -985,6 +1019,7 @@ class Curve(AbstractCurve):
             "y": self.y.sid if self.y else None,
             "xerr": self.xerr.sid if self.xerr else None,
             "yerr": self.yerr.sid if self.yerr else None,
+            "over": list(self.over),
             "yaxis_position": self.yaxis_position,
             "style": self.style,
             "order": self.order,
@@ -1040,7 +1075,7 @@ class ShadedArea(AbstractCurve):
         """Get representation string."""
         return (
             f"ShadedArea(sid={self.sid} name={self.name} order={self.order} "
-            f"x={self.x is not None} yfrom={self.yfrom is not None}"
+            f"x={self.x is not None} yfrom={self.yfrom is not None} "
             f"yto={self.yto is not None})"
         )
 
@@ -1077,6 +1112,107 @@ class ShadedArea(AbstractCurve):
         }
 
 
+class Band(AbstractCurve):
+    """The median and a quantile band of data over a dimension of draws.
+
+    The dimension `across` of y is reduced to the two quantiles, ignoring
+    `NaN`, and the median, when the figure is drawn, see
+    `sbmlsim.plot.points.band_lines`; `over` gives one band per point of
+    other dimensions, in the colours of a curve over them.
+    """
+
+    def __init__(
+        self,
+        x: Data,
+        y: Data,
+        across: str,
+        quantiles: tuple[float, float] = (0.05, 0.95),
+        median: bool = True,
+        over: str | Sequence[str] | None = None,
+        sid: str | None = None,
+        name: str | None = None,
+        color: str | None = None,
+        alpha: float = 0.3,
+        order: int | None = None,
+        yaxis_position: YAxisPosition | None = None,
+    ):
+        """Initialize a band.
+
+        Args:
+            x: x data.
+            y: y data, with the dimension `across`.
+            across: the dimension of the draws, which is reduced.
+            quantiles: the lower and the upper quantile, `0 <= low < high <= 1`.
+            median: draw the median as a line.
+            over: the dimensions with one band per point.
+            sid: identifier of the band.
+            name: label of the band, the name of y by default.
+            color: colour of the band; by default the colour of the colour
+                cycle at the position of the band among the bands of its plot
+                (`C0`, `C1`, ...).
+            alpha: opacity of the area.
+            order: order of the band in the plot.
+            yaxis_position: position of the y axis of the band.
+
+        Raises:
+            ValueError: if the quantiles are not increasing within `[0, 1]`,
+                `across` is in `over`, or `over` names more than one dimension.
+        """
+        super().__init__(
+            sid=sid,
+            name=name if name else y.name,
+            x=x,
+            order=order,
+            yaxis_position=yaxis_position,
+        )
+        low, high = (float(q) for q in quantiles)
+        if not 0.0 <= low < high <= 1.0:
+            raise ValueError(
+                f"The quantiles of a band are increasing within [0, 1], not {quantiles}."
+            )
+        self.x: Data = x
+        self.y: Data = y
+        self.across: str = across
+        self.quantiles: tuple[float, float] = (low, high)
+        self.median: bool = median
+        label = sid or self.name
+        self.over: tuple[str, ...] = _dimensions(over, "band", label)
+        if across in self.over:
+            raise ValueError(
+                f"The band '{label}' reduces '{across}', which is also in over."
+            )
+        if len(self.over) > 1:
+            raise ValueError(
+                f"A band is drawn per point of one dimension, not of {self.over}."
+            )
+        self.color: str | None = color
+        self.alpha: float = alpha
+
+    def __repr__(self) -> str:
+        """Get representation string."""
+        return (
+            f"Band(sid={self.sid} name={self.name} across={self.across} "
+            f"over={self.over})"
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the band to a dictionary."""
+        return {
+            "sid": self.sid,
+            "name": self.name,
+            "x": self.x.sid,
+            "y": self.y.sid,
+            "across": self.across,
+            "quantiles": list(self.quantiles),
+            "median": self.median,
+            "over": list(self.over),
+            "color": self.color,
+            "alpha": self.alpha,
+            "yaxis_position": self.yaxis_position,
+            "order": self.order,
+        }
+
+
 class Plot(BasePlotObject):
     """Plot panel.
 
@@ -1093,6 +1229,7 @@ class Plot(BasePlotObject):
         yaxis_right: Axis | None = None,
         curves: list[Curve] | None = None,
         areas: list[ShadedArea] | None = None,
+        bands: list[Band] | None = None,
         legend: bool = True,
         facecolor: ColorType | None = None,
         title_visible: bool = True,
@@ -1109,6 +1246,7 @@ class Plot(BasePlotObject):
             yaxis_right: right y-Axis
             curves: list of curves for the plots
             areas: list of shaded areas for the plots
+            bands: list of bands for the plots
             legend: boolean flag to show or hide legend
             facecolor: color of the plot.
             title_visible: boolean flag to show the title
@@ -1144,6 +1282,7 @@ class Plot(BasePlotObject):
         self._yaxis_right: Axis | None = None
         self._curves: list[Curve] = []
         self._areas: list[ShadedArea] = []
+        self._bands: list[Band] = []
         self._figure: Figure | None = None
 
         self.xaxis = xaxis
@@ -1151,6 +1290,7 @@ class Plot(BasePlotObject):
         self.yaxis_right = yaxis_right
         self.curves = curves
         self.areas = areas
+        self.bands = bands
 
         self.legend: bool = legend
         self.facecolor: ColorType = facecolor
@@ -1182,6 +1322,7 @@ class Plot(BasePlotObject):
             yaxis_right=copy.copy(self.yaxis_right),
             curves=self.curves,
             areas=self.areas,
+            bands=self.bands,
             legend=self.legend,
             facecolor=self.facecolor,
             title_visible=self.title_visible,
@@ -1206,6 +1347,7 @@ class Plot(BasePlotObject):
             "title_visible": self.title_visible,
             "curves": self.curves,
             "areas": self.areas,
+            "bands": self.bands,
         }
 
     @property
@@ -1360,7 +1502,9 @@ class Plot(BasePlotObject):
         """
         if abstract_curve.order is None:
             orders = [
-                ac.order for ac in [*self.curves, *self.areas] if ac.order is not None
+                ac.order
+                for ac in [*self.curves, *self.areas, *self.bands]
+                if ac.order is not None
             ]
             if not orders:
                 abstract_curve.order = 0
@@ -1395,6 +1539,18 @@ class Plot(BasePlotObject):
         self._set_order(area)
         self.areas.append(area)
 
+    def add_band(self, band: Band) -> None:
+        """Add a Band via the helper function.
+
+        Args:
+            band: Band to add.
+        """
+        if band.sid is None:
+            band.sid = f"{self.sid}_band{len(self.bands)}"
+
+        self._set_order(band)
+        self.bands.append(band)
+
     @property
     def curves(self) -> list[Curve]:
         """Get curves."""
@@ -1421,6 +1577,58 @@ class Plot(BasePlotObject):
             for area in value:
                 self.add_area(area)
 
+    @property
+    def bands(self) -> list[Band]:
+        """Get bands."""
+        return self._bands
+
+    @bands.setter
+    def bands(self, value: list[Band] | None) -> None:
+        """Set bands."""
+        self._bands = []
+        if value is not None:
+            for band in value:
+                self.add_band(band)
+
+    def band(
+        self,
+        x: Data,
+        y: Data,
+        across: str,
+        quantiles: tuple[float, float] = (0.05, 0.95),
+        median: bool = True,
+        over: str | Sequence[str] | None = None,
+        name: str | None = None,
+        color: str | None = None,
+        alpha: float = 0.3,
+        yaxis_position: YAxisPosition | None = None,
+        sid: str | None = None,
+        order: int | None = None,
+    ) -> Band:
+        """Create a band of the median and the quantiles of y over `across` and add it.
+
+        The arguments are those of `Band`.
+
+        Returns:
+            The band.
+        """
+        band = Band(
+            x=x,
+            y=y,
+            across=across,
+            quantiles=quantiles,
+            median=median,
+            over=over,
+            sid=sid,
+            name=name,
+            color=color,
+            alpha=alpha,
+            order=order,
+            yaxis_position=yaxis_position,
+        )
+        self.add_band(band)
+        return band
+
     def curve(
         self,
         x: Data,
@@ -1430,6 +1638,7 @@ class Plot(BasePlotObject):
         type: CurveType = CurveType.POINTS,
         style: Style | None = None,
         yaxis_position: YAxisPosition | None = None,
+        over: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> None:
         """Create curve and add to plot.
@@ -1442,6 +1651,7 @@ class Plot(BasePlotObject):
             type: type of curve (default points)
             style: style for curve
             yaxis_position: position of yaxis for this curve
+            over: the dimensions of a scan with one line per point
             **kwargs: matplotlib styling kwargs
         """
         curve = Curve(
@@ -1452,6 +1662,7 @@ class Plot(BasePlotObject):
             type=type,
             style=style,
             yaxis_position=yaxis_position,
+            over=over,
             **kwargs,
         )
         self.add_curve(curve)
@@ -1472,6 +1683,7 @@ class Plot(BasePlotObject):
         style: Style | None = None,
         yaxis_position: YAxisPosition | None = None,
         sel: Mapping[str, Any] | None = None,
+        over: str | Sequence[str] | None = None,
         **kwargs: Any,
     ) -> None:
         """Add a data curve to the plot.
@@ -1495,6 +1707,7 @@ class Plot(BasePlotObject):
             yaxis_position: position of yaxis for this curve
             sel: labels of the dimensions of a task, or column values of the
                 rows of a dataset, for every `Data` of the curve, see `Data`
+            over: the dimensions of a scan with one line per point
             **kwargs: matplotlib styling kwargs
 
         Raises:
@@ -1596,6 +1809,7 @@ class Plot(BasePlotObject):
             type=type,
             style=style,
             yaxis_position=yaxis_position,
+            over=over,
             **kwargs,
         )
 

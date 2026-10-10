@@ -1,5 +1,14 @@
 """Plotting in sbmlsim."""
 
-from .plotting import Axis, ColorType, Curve, Figure, MarkerType, Plot, SubPlot
+from .plotting import Axis, Band, ColorType, Curve, Figure, MarkerType, Plot, SubPlot
 
-__all__ = ["Axis", "ColorType", "Curve", "Figure", "MarkerType", "Plot", "SubPlot"]
+__all__ = [
+    "Axis",
+    "Band",
+    "ColorType",
+    "Curve",
+    "Figure",
+    "MarkerType",
+    "Plot",
+    "SubPlot",
+]

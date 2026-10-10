@@ -269,11 +269,8 @@ class OnePointFigureExperiment(ScanFigureExperiment):
 
 
 def test_a_curve_of_a_scan_without_a_selection_raises() -> None:
-    runner = _runner(ScanFigureExperiment)
-    experiment = runner.experiments["ScanFigureExperiment"]
-    experiment.run(runner.simulator)
-    with pytest.raises(ValueError, match=r"'d'.*Data\(sel=\.\.\.\)"):
-        experiment.create_mpl_figures()
+    with pytest.raises(ValueError, match=r"name it with over='d'"):
+        _runner(ScanFigureExperiment)
 
 
 def test_a_curve_of_one_point_of_a_scan_is_drawn(tmp_path: Path) -> None:

@@ -88,6 +88,7 @@ nav = [
     ] },
     { "sbmlsim.plot" = [
       { "plotting" = "api/plot.plotting.md" },
+      { "points" = "api/plot.points.md" },
       { "serialization_matplotlib" = "api/plot.serialization_matplotlib.md" },
     ] },
     { "sbmlsim.report" = [
