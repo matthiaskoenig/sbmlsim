@@ -297,3 +297,18 @@ def test_from_df_offset_units_raise() -> None:
     df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": ["kelvin", "degC"]})
     with pytest.raises(ValueError, match=r"offset"):
         DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+
+
+@pytest.mark.parametrize("junk", ["xyz", "mM"])
+def test_from_df_ignores_the_unit_of_an_empty_row(junk: str) -> None:
+    """A row with neither a value nor an sd or se does not need a convertible unit."""
+    df = pd.DataFrame(
+        {
+            "value": [1000.0, float("nan"), 2.0],
+            "value_sd": [float("nan")] * 3,
+            "value_unit": ["mg", junk, "g"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["value"] == "mg"
+    assert dset["value"].dropna().tolist() == pytest.approx([1000.0, 2000.0])

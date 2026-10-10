@@ -717,14 +717,21 @@ def _unify_units(
     """
     has_unit = df[unit_key].notna()
     present = has_unit & df[value_key].notna()
-    rows = present if present.any() else has_unit
+    # a row which carries a number (a value, an sd or an se) needs its unit, the unit
+    # of an empty row is ignored
+    numbers = df[value_key].notna()
+    for key in error_keys:
+        if key in df.columns:
+            numbers = numbers | df[key].notna()
+    carries = has_unit & numbers
+    rows = present if present.any() else (carries if carries.any() else has_unit)
     units = df.loc[rows, unit_key].unique()
     if len(units) == 0:
         return None
     target = units[0]
-    # the units of all rows with a unit are converted, also of those without a value
-    units = df.loc[has_unit, unit_key].unique()
-    units = np.concatenate([[target], units[units != target]])
+    # the units of all rows with a number are converted, also of those without a value
+    other = df.loc[carries, unit_key].unique()
+    units = np.concatenate([[target], other[other != target]])
     if len(units) == 1:
         return str(target)
 
@@ -752,8 +759,8 @@ def _unify_units(
         target,
     )
     for unit, factor in factors.items():
-        # all rows of the unit, also those without a value, so their sd and se follow
-        mask = has_unit & (df[unit_key] == unit)
+        # all rows of the unit which carry a number, so an sd without a value follows
+        mask = carries & (df[unit_key] == unit)
         for key in [value_key, *error_keys]:
             if key in df.columns:
                 df[key] = df[key].astype(float)
