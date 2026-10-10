@@ -753,6 +753,36 @@ def scan_point_plans(
         ValueError: for a dimension of simulations or models, or values which
             do not fit the model.
     """
+    positions = np.asarray(positions, dtype=int).reshape(-1, len(scan.dimensions))
+    values, timed = scan_point_values(scan, model, plan, positions)
+    return [point_plan(plan, values, timed, k) for k in range(len(positions))]
+
+
+def scan_point_values(
+    scan: Scan, model: RoadrunnerSBMLModel, plan: Plan, positions: np.ndarray
+) -> tuple[dict[str, np.ndarray], dict[float, dict[str, np.ndarray]]]:
+    """Get the values of points of a scan of value dimensions in model units.
+
+    `point_plan(plan, values, timed, k)` applies them to a plan, see
+    `scan_point_plans`; the fit computes them once and applies them to the
+    plan of every evaluation.
+
+    Args:
+        scan: the scan, whose dimensions all set values.
+        model: the loaded model, whose units the values are converted to.
+        plan: the compiled plan of `scan.simulation` on the model, whose time
+            span the times of the dimensions with `at` must lie in.
+        positions: the index of every point along every dimension, a row per
+            point.
+
+    Returns:
+        target -> the value of every point, and time -> target -> the value of
+        every point for the dimensions with `at`.
+
+    Raises:
+        ValueError: for a dimension of simulations or models, or values which
+            do not fit the model.
+    """
     for dimension in scan.dimensions:
         if dimension.kind is not DimensionKind.VALUES:
             raise ValueError(
@@ -763,10 +793,7 @@ def scan_point_plans(
     positions = np.asarray(positions, dtype=int).reshape(-1, len(scan.dimensions))
     vectors = _vectors(scan, model, "")
     at_times = _at_times(scan, scan.simulation, model, plan)
-    values, timed = _values_of(
-        scan, positions, vectors, at_times, np.arange(len(positions))
-    )
-    return [point_plan(plan, values, timed, k) for k in range(len(positions))]
+    return _values_of(scan, positions, vectors, at_times, np.arange(len(positions)))
 
 
 def _positions(scan: Scan) -> np.ndarray:
