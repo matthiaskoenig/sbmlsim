@@ -13,6 +13,14 @@
 {% endfor %}
 
 ## Figures
+{% if error %}
+
+**The experiment failed:** {{ error }}
+{% endif %}
+{% for fig_id, fig_error in failed_figures.items() %}
+
+**The figure {{ fig_id }} failed:** {{ fig_error }}
+{% endfor %}
 {% for fig_id, fig in figures.items() %}
 
 ### {{ fig_id }}

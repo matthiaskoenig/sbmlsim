@@ -63,11 +63,13 @@ class PKExperiment(SimulationExperiment):
 
 
 def _runner(experiment_class: type[SimulationExperiment]) -> ExperimentRunner:
+    # the definition of the experiment is tested, its errors are raised
     return ExperimentRunner(
         experiment_classes=[experiment_class],
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
 
 
@@ -329,7 +331,7 @@ def test_a_plain_name_which_is_only_the_values_of_a_dimension_raises(
     ):
         Data("PODOSE", task="task_scan").get_data(experiment)
     values = Data("dose.PODOSE", task="task_scan").get_data(experiment)
-    assert values.dims == ("dose",) and values.name == "task_scan__dose.PODOSE"
+    assert values.dims == ("dose",) and values.name == "task_scan__dose__PODOSE"
     assert list(values.coords) == ["dose", "dose.PODOSE"]
 
 

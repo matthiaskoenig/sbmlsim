@@ -1,5 +1,6 @@
 """Testing DataSet and Data functionality."""
 
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -105,13 +106,13 @@ def test_load_pkdb_dataframe_missing(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("index", "selection", "sid"),
     [
-        ("[X]", "[X]", "task__X"),
+        ("[X]", "[X]", "task__conc__X"),
         ("X", "X", "task__X"),
         ("time", "time", "task__time"),
     ],
 )
 def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> None:
-    """A Data selects what its index names, its sid drops the brackets."""
+    """A Data selects what its index names, its sid marks a concentration."""
     data = Data(index, task="task")
     assert data.selection == selection
     assert data.sid == sid
@@ -120,16 +121,16 @@ def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> 
 @pytest.mark.parametrize(
     ("data", "selection", "sid", "name", "index"),
     [
-        (Data("[X]", task="task"), "[X]", "task__X", "X", "X"),
-        (Data("X[1]", task="task"), "X[1]", "task__X[1]", "X[1]", "X[1]"),
-        (Data("[X]", dataset="dset"), "[X]", "dset__X", "X", "X"),
+        (Data("[X]", task="task"), "[X]", "task__conc__X", "X", "X"),
+        (Data("X[1]", task="task"), "X[1]", "task__X_x5b_1_x5d_", "X[1]", "X[1]"),
+        (Data("[X]", dataset="dset"), "[X]", "dset__conc__X", "X", "X"),
         (Data("mean", dataset="dset"), "mean", "dset__mean", "mean", "mean"),
         (Data("[X]", task="task", sid="given"), "[X]", "given", "X", "X"),
         # a function is named by its single variable, else by its own index
         (
             Data("[F]", function="Y/2", variables={"Y": Data("[Y]", task="task")}),
             "[F]",
-            "F",
+            "conc__F",
             "Y",
             "F",
         ),
@@ -140,7 +141,7 @@ def test_the_selection_and_sid_of_data(index: str, selection: str, sid: str) -> 
                 variables={"Y": Data("Y", task="task"), "Z": Data("Z", task="task")},
             ),
             "[F]",
-            "F",
+            "conc__F",
             "F",
             "F",
         ),
@@ -155,3 +156,204 @@ def test_the_identifiers_of_data(
     assert data.name == name
     assert data.index == index
     assert data.to_dict()["index"] == index
+    assert data.to_dict()["selection"] == selection
+
+
+@pytest.mark.parametrize(
+    ("index", "sid"),
+    [
+        ("X'", "task__X_x27_"),
+        ("eigenReal(X)", "task__eigenReal_x28_X_x29_"),
+        ("[X']", "task__conc__X_x27_"),
+        ("cc(J, X)", "task__cc_x28_J_x2c__x20_X_x29_"),
+        ("pk.cmax", "task__pk__cmax"),
+        ("Xμ", "task__X_x3bc_"),
+    ],
+)
+def test_the_sid_of_data_encodes_what_is_no_letter_digit_or_underscore(
+    index: str, sid: str
+) -> None:
+    """A selection of roadrunner gives a valid SId, a dot gives `__` (#269)."""
+    data = Data(index, task="task")
+    assert data.sid == sid
+    assert re.fullmatch(r"[a-zA-Z_][a-zA-Z0-9_]*", data.sid)
+    assert data.selection == index
+
+
+def test_from_df_ignores_unit_of_missing_value(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A row without a value has no unit, which is no second unit of the column (#275)."""
+    df = pd.DataFrame(
+        {
+            "time": [0.0, 1.0, 2.0],
+            "time_unit": ["hr", "hr", "hr"],
+            "meanperiod": [float("nan"), 2.0, 3.0],
+            "meanperiod_unit": [float("nan"), "hr", "hr"],
+        }
+    )
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert [r for r in caplog.records if r.levelname == "ERROR"] == []
+    assert dset.uinfo["meanperiod"] == "hr"
+
+
+def test_from_df_missing_first_unit_is_not_nan() -> None:
+    """The unit of a column is never nan, also when the first row has none (#275)."""
+    df = pd.DataFrame(
+        {
+            "value": [float("nan"), 2.0],
+            "value_unit": [float("nan"), "mM"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["value"] == "mM"
+
+
+def test_slices_own_their_units() -> None:
+    """The unit conversion of a slice changes no other slice nor the parent (#267)."""
+    ureg = UnitRegistry(on_redefinition="ignore")
+    df = pd.DataFrame(
+        {
+            "group": ["a", "a", "b", "b"],
+            "value": [1.0, 2.0, 3.0, 4.0],
+            "value_unit": ["mM"] * 4,
+        }
+    )
+    dset = DataSet.from_df(df, ureg=ureg)
+    a = dset[dset.group == "a"]
+    b = dset[dset.group == "b"]
+    a.unit_conversion("value", 1000 * ureg.Quantity(1.0, "dimensionless"))
+    assert dset.uinfo["value"] == "mM"
+    assert b.uinfo["value"] == "mM"
+    assert a.uinfo is not dset.uinfo
+    assert a.uinfo.ureg is dset.uinfo.ureg
+    assert dset["value"].uinfo is not dset.uinfo
+    c = dset.copy()
+    assert c.uinfo is not dset.uinfo
+    c.unit_conversion("value", 1000 * ureg.Quantity(1.0, "dimensionless"))
+    assert dset.uinfo["value"] == "mM"
+
+
+def test_from_df_converts_rows_to_the_first_unit(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Rows with other units of the same dimension are converted, with their sd."""
+    df = pd.DataFrame(
+        {
+            "value": [1.0, 2000.0, float("nan"), 3000.0],
+            "value_sd": [0.1, 100.0, float("nan"), 500.0],
+            "value_unit": ["g", "mg", "mg", "mg"],
+        }
+    )
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert [r for r in caplog.records if r.levelname == "ERROR"] == []
+    assert dset.uinfo["value"] == "g"
+    assert dset["value"].dropna().tolist() == pytest.approx([1.0, 2.0, 3.0])
+    assert dset["value_sd"].dropna().tolist() == pytest.approx([0.1, 0.1, 0.5])
+    assert set(dset["value_unit"]) == {"g"}
+
+
+def test_from_df_unit_column_converts_rows_to_the_first_unit() -> None:
+    """The single unit column is converted the same way."""
+    df = pd.DataFrame(
+        {
+            "mean": [float("nan"), 1000.0, 2.0],
+            "sd": [float("nan"), 100.0, 0.5],
+            "unit": ["g", "mg", "g"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["mean"] == "mg"
+    assert dset["mean"].dropna().tolist() == pytest.approx([1000.0, 2000.0])
+    assert dset["mean_sd"].dropna().tolist() == pytest.approx([100.0, 500.0])
+
+
+def test_from_df_incompatible_units_raise() -> None:
+    """Units of other dimensions in one column are an error naming them."""
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": ["mM", "mg"]})
+    with pytest.raises(ValueError, match=r"value.*mM.*mg"):
+        DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+
+
+def test_from_df_column_without_units(caplog: pytest.LogCaptureFixture) -> None:
+    """A column with no unit at all is an error and has no unit."""
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": [float("nan")] * 2})
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert any("units are missing" in r.getMessage() for r in caplog.records)
+    assert "value" not in dset.uinfo
+
+
+def test_from_df_unit_column_ignores_missing_value() -> None:
+    """The unit column gives the first unit of the rows with a value, never nan."""
+    df = pd.DataFrame({"value": [float("nan"), 2.0], "unit": [float("nan"), "mM"]})
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["value"] == "mM"
+
+
+def test_from_df_does_not_change_the_data_frame() -> None:
+    """The caller's data frame keeps its values, dtypes and columns."""
+    df = pd.DataFrame({"value": [1, 2000], "value_unit": ["g", "mg"]})
+    before = df.copy()
+    DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    pd.testing.assert_frame_equal(df, before)
+
+
+def test_from_df_converts_sd_of_row_without_value() -> None:
+    """The sd of a row without a value follows the unit of its row."""
+    df = pd.DataFrame(
+        {
+            "value": [1.0, float("nan")],
+            "value_sd": [0.1, 500.0],
+            "value_unit": ["g", "mg"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset["value_sd"].tolist() == pytest.approx([0.1, 0.5])
+
+
+def test_from_df_offset_units_raise() -> None:
+    """Units with an offset cannot be converted by a factor."""
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": ["kelvin", "degC"]})
+    with pytest.raises(ValueError, match=r"offset"):
+        DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+
+
+@pytest.mark.parametrize("junk", ["xyz", "mM"])
+def test_from_df_ignores_the_unit_of_an_empty_row(junk: str) -> None:
+    """A row with neither a value nor an sd or se does not need a convertible unit."""
+    df = pd.DataFrame(
+        {
+            "value": [1000.0, float("nan"), 2.0],
+            "value_sd": [float("nan")] * 3,
+            "value_unit": ["mg", junk, "g"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["value"] == "mg"
+    assert dset["value"].dropna().tolist() == pytest.approx([1000.0, 2000.0])
+
+
+@pytest.mark.parametrize(
+    ("column", "values", "units", "match"),
+    [
+        # an undefined unit, after or as the first unit
+        ("value", [1.0, 2.0], ["mg", "xyz"], r"'value'.*'xyz'.*not defined"),
+        ("value", [1.0, 2.0], ["xyz", "mg"], r"'value'.*'xyz'.*not defined"),
+        # a unit with a factor
+        ("value", [1.0, 2.0], ["mg", "100*mg"], r"'value'.*'100\*mg'.*factor"),
+        # values which are no numbers in a column which is converted
+        ("time", ["-24|-16", "0"], ["hr", "min"], r"'time'.*\['hr', 'min'\].*number"),
+        # a unit which is no string
+        ("value", [1.0, 2.0], ["mg", 5], r"'value'.*\['mg', 5\].*5.*no string"),
+    ],
+)
+def test_from_df_unit_errors_name_the_column_and_units(
+    column: str, values: list, units: list, match: str
+) -> None:
+    """Every unit error of a column is a ValueError naming the column and units."""
+    df = pd.DataFrame({column: values, f"{column}_unit": units})
+    with pytest.raises(ValueError, match=match):
+        DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))

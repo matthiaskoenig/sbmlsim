@@ -4,7 +4,7 @@ A `SimulationExperiment` is the reproducible description of an experiment: the m
 
 ## Defining an experiment
 
-An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, observables, tasks, data, fit mappings and figures.
+An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. A key is a valid SId (`[a-zA-Z_][a-zA-Z0-9_]*`, no `-`, `.` or space) and unique in the experiment; the keys which are not are named in one error when the experiment is initialized. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, observables, tasks, data, fit mappings and figures.
 
 ```python
 from pathlib import Path
@@ -94,6 +94,8 @@ print(res["[X]"].values[-3:])
 ```
 
 `run_experiments(reduced_selections=True)` records for every task only the variables its data refer to, which speeds up large experiments; `reduced_selections=False` records every variable of the model and the ones the data of the task refer to.
+
+One failing experiment does not stop a run. An error in the definition of an experiment (its models, datasets, simulations, tasks, data, figures or fit mappings, or a key which is no valid SId) is logged with its traceback when the runner is created, and the experiment is not run; an error while an experiment runs ends that experiment; a failing figure is skipped and the other figures are written. The run ends with a summary of the failures in the log, every `ExperimentResult` records them (`error`, `failed_figures` and `failed`) and the report lists them. `run_experiments(raise_on_failure=True)` raises one `ExperimentRunError` after every experiment ran, `ExperimentRunner(on_error="raise")` raises the error of a definition at once, which is what a fit does, and `SimulationExperiment.run` called directly raises its error. A figure which failed, or which a failed experiment did not write, leaves no file of an earlier run in the output directory, so no figure there looks like one of this run.
 
 ## Reports
 

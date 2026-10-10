@@ -26,6 +26,15 @@ print(dset.uinfo["time"], dset.uinfo["mean"])
 print(dset)
 ```
 
+The unit of a column is the unit of its first row with a value. The unit of a row which carries no number (no value, sd or se) is ignored, and a column without any unit has no unit. Rows with another unit of the same dimension are converted to the unit of the column, their values, sd and se, and their unit column is rewritten; the data frame passed in is not changed. A column whose rows cannot be brought to one unit raises a `ValueError` which names the column and its units: a unit of another dimension or with an offset (`degC` next to `kelvin`), a unit which is undefined, has a factor (`100*mg`) or is no string, and values which are no numbers.
+
+```python
+mixed = pd.DataFrame({"dose": [1.0, 500.0], "dose_unit": ["g", "mg"]})
+print(DataSet.from_df(mixed, ureg=ureg)["dose"].tolist())
+```
+
+A slice, a column or a copy of a dataset owns a copy of its units, so a `unit_conversion` of one changes no other.
+
 The units of the dataset are a `UnitsInformation` like the units of a model, see [Units](units.md). A column is read as a quantity and converted:
 
 ```python
@@ -49,7 +58,7 @@ print(x.sid, x.dtype, y.selection)
 print(y_data.sid, y_data.dtype)
 ```
 
-A species in brackets is a concentration, without brackets an amount; `Data.selection` is the roadrunner selection recorded for it. In an experiment the selections of every task are reduced to the data which reads it in `data()`, the figures and the fit mappings; `data()` registers the data which nothing else reads, e.g. data an analysis reads after the run.
+A species in brackets is a concentration, without brackets an amount; `Data.selection` is the roadrunner selection recorded for it. The id of a data, `Data.sid`, is `<task or dataset>__<index>` for an amount and `<task or dataset>__conc__<index>` for a concentration, so both are kept; a dot of the index becomes `__` (`pk.cmax` gives `<task>__pk__cmax`) and any other character which is no letter, digit or underscore `_x<hex>_` (the rate of change `X'` gives `<task>__X_x27_`), so the id is a valid SId. In an experiment the selections of every task are reduced to the data which reads it in `data()`, the figures and the fit mappings; `data()` registers the data which nothing else reads, e.g. data an analysis reads after the run.
 
 ## Functions of data
 

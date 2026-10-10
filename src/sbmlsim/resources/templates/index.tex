@@ -1,4 +1,10 @@
 {% for exp_id, paths in latex_figures.items() %}
+{% if data[exp_id].error %}
+    % The experiment {{ exp_id }} failed: {{ data[exp_id].error | replace("\n", " ") }}
+{% endif %}
+{% for fig_id, error in data[exp_id].failed_figures.items() %}
+    % The figure {{ fig_id }} of {{ exp_id }} failed: {{ error | replace("\n", " ") }}
+{% endfor %}
 
     \paragraph{{ '{' }}{{ exp_id }}{{ '}' }}
     {% for fig_path in paths %}

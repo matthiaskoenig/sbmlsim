@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+import re
+from collections.abc import Iterable, Mapping
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 import numpy as np
 import pandas as pd
+import pint
 import xarray as xr
+from pint.facets.plain import PlainUnit
 
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT, TIME
@@ -367,7 +370,12 @@ class Data:
                 formula.
             parameters: the numbers the function reads, by the identifier in
                 the formula.
-            sid: id of the data, `<task or dataset>__<index>` if not given.
+            sid: id of the data, if not given `<task or dataset>__<index>` for
+                an amount and `<task or dataset>__conc__<index>` for a
+                concentration (`"[S]"`), with `__` for a dot of the index
+                (`pk.cmax` is `<task>__pk__cmax`) and `_x<hex>_` for every
+                other character which is no letter, digit or underscore (the
+                rate of change `X'` is `<task>__X_x27_`), so it is a valid SId.
             sel: labels of dimensions to select, `{dim: label}` keeps one point
                 and drops the dimension, `{dim: [labels]}` keeps the dimension;
                 for a dataset the values of columns whose rows are kept, see
@@ -413,13 +421,16 @@ class Data:
         """Get id."""
         sid: str
         if self._sid:
-            sid = self._sid
-        elif self.task_id:
-            sid = f"{self.task_id}__{self.index}"
+            return self._sid
+        name = _sid_part(self.index)
+        if self.selection != self.index:
+            name = f"conc__{name}"
+        if self.task_id:
+            sid = f"{self.task_id}__{name}"
         elif self.dset_id:
-            sid = f"{self.dset_id}__{self.index}"
-        elif self.function:
-            sid = self.index
+            sid = f"{self.dset_id}__{name}"
+        else:
+            sid = name
 
         return sid
 
@@ -475,6 +486,8 @@ class Data:
         return {
             "type": self.dtype,
             "index": self.index,
+            # the selection tells an amount `S` and a concentration `[S]` apart
+            "selection": self.selection,
             "unit": self.unit,
             "task": self.task_id,
             "dataset": self.dset_id,
@@ -684,6 +697,143 @@ class Data:
         return _select(array, self.sel, self, array)
 
 
+#: a character which a generated sid encodes
+_NOT_IN_SID = re.compile(r"[^a-zA-Z0-9_]")
+
+
+def _sid_part(index: str) -> str:
+    """Encode an index for a sid: a dot as `__`, any other character as `_x<hex>_`.
+
+    Every character which is no letter, digit or underscore is encoded, so a
+    selection of roadrunner (`X'`, `eigenReal(X)`, `X[1]`) gives a valid SId.
+    """
+    return _NOT_IN_SID.sub(
+        lambda m: "__" if m.group() == "." else f"_x{ord(m.group()):x}_", index
+    )
+
+
+def _own_units[T: DataSet | DataSeries](result: T) -> T:
+    """Give a new DataSet or DataSeries a copy of its units information."""
+    uinfo = getattr(result, "uinfo", None)
+    if isinstance(uinfo, UnitsInformation):
+        result.uinfo = UnitsInformation(dict(uinfo.udict), ureg=uinfo.ureg)
+    return result
+
+
+def _unify_units(
+    df: pd.DataFrame,
+    value_key: str,
+    unit_key: str,
+    ureg: UnitRegistry,
+    error_keys: list[str],
+) -> str | None:
+    """Convert the rows of a column to the unit of its first row with a value.
+
+    The rows without a value or without a unit are ignored (a column without any
+    value uses the rows which have a unit). Rows with another unit are converted in
+    place, the value, the error columns `error_keys` and the unit column, and the
+    unit of the first row is returned (None if no row has a unit).
+
+    :raises ValueError: naming the column and its units, if a unit cannot be read
+        (no string, undefined or with a factor) or converted into the first unit by
+        a factor, or if a column which is converted has values which are no numbers
+    """
+    has_unit = df[unit_key].notna()
+    present = has_unit & df[value_key].notna()
+    # a row which carries a number (a value, an sd or an se) needs its unit, the unit
+    # of an empty row is ignored
+    numbers = df[value_key].notna()
+    for key in error_keys:
+        if key in df.columns:
+            numbers = numbers | df[key].notna()
+    carries = has_unit & numbers
+    rows = present if present.any() else (carries if carries.any() else has_unit)
+    units = df.loc[rows, unit_key].unique()
+    if len(units) == 0:
+        return None
+    target = units[0]
+    # the units of all rows with a number are converted, also of those without a value
+    other = df.loc[carries, unit_key].unique()
+    units = np.concatenate([[target], other[other != target]])
+    if len(units) == 1:
+        return str(target)
+
+    # every unit is read once, so an error names the unit which is wrong
+    parsed = {unit: _parse_unit(value_key, unit, units, ureg) for unit in units}
+    factors: dict[str, float] = {}
+    for unit in units[1:]:
+        try:
+            zero = float(ureg.Quantity(0.0, parsed[unit]).to(parsed[target]).magnitude)
+            factors[unit] = float(
+                ureg.Quantity(1.0, parsed[unit]).to(parsed[target]).magnitude
+            )
+        except pint.errors.PintError as err:
+            dimensions = {u: str(parsed[u].dimensionality) for u in units}
+            raise ValueError(
+                f"Column '{value_key}' has the units {list(units)}, which cannot "
+                f"be converted into '{target}' (dimensions {dimensions}): {err}"
+            ) from err
+        if zero != 0.0:
+            raise ValueError(
+                f"Column '{value_key}' has the units {list(units)}, the unit "
+                f"'{unit}' has an offset to '{target}' (e.g. degC) and cannot be "
+                "converted by a factor, use one unit for the column"
+            )
+    logger.info(
+        "Column '%s' has the units %s, the rows are converted to '%s'",
+        value_key,
+        list(units),
+        target,
+    )
+    keys = [key for key in [value_key, *error_keys] if key in df.columns]
+    for key in keys:
+        try:
+            df[key] = df[key].astype(float)
+        except (TypeError, ValueError) as err:
+            raise ValueError(
+                f"Column '{key}' has the units {list(units)}, which are converted "
+                f"to '{target}', but values which are no numbers: {err}"
+            ) from err
+    for unit, factor in factors.items():
+        # all rows of the unit which carry a number, so an sd without a value follows
+        mask = carries & (df[unit_key] == unit)
+        for key in keys:
+            df.loc[mask, key] = df.loc[mask, key] * factor
+    df.loc[has_unit, unit_key] = target
+    return str(target)
+
+
+def _parse_unit(
+    value_key: str, unit: object, units: Iterable[object], ureg: UnitRegistry
+) -> PlainUnit:
+    """Read a unit of a column.
+
+    Args:
+        value_key: the column.
+        unit: the unit of some of its rows.
+        units: all units of the column, for the message.
+        ureg: the unit registry.
+
+    Raises:
+        ValueError: naming the column, its units and the unit, if the unit is
+            no string or not a unit of the registry.
+    """
+    if not isinstance(unit, str):
+        raise ValueError(
+            f"Column '{value_key}' has the units {list(units)}, the unit "
+            f"{unit!r} is no string"
+        )
+    try:
+        return ureg.Quantity(1.0, unit).units
+    # pint raises errors of many kinds for a unit it cannot read: its own, a
+    # ValueError for a factor, a TypeError or the TokenError of its parser
+    except Exception as err:
+        raise ValueError(
+            f"Column '{value_key}' has the units {list(units)}, the unit '{unit}' "
+            f"cannot be read: {err}"
+        ) from err
+
+
 class DataSeries(pd.Series):
     """DataSet - a pd.Series with additional unit information."""
 
@@ -697,6 +847,15 @@ class DataSeries(pd.Series):
     @property
     def _constructor_expanddim(self):
         return DataSet
+
+    def __finalize__(  # ty: ignore[override-of-final-method]
+        self, other: object, method: str | None = None, **kwargs: Any
+    ) -> Self:
+        """Finalize and give the new object its own unit information."""
+        # pandas hands the metadata on by reference and only __finalize__ (final in
+        # the typing of pandas, not enforced) sees the new object with its metadata;
+        # the results of concat and merge have no uinfo at all
+        return _own_units(super().__finalize__(other, method=method, **kwargs))
 
 
 class DataSet(pd.DataFrame):
@@ -712,6 +871,15 @@ class DataSet(pd.DataFrame):
     @property
     def _constructor(self):
         return DataSet
+
+    def __finalize__(  # ty: ignore[override-of-final-method]
+        self, other: object, method: str | None = None, **kwargs: Any
+    ) -> Self:
+        """Finalize and give the new object its own unit information."""
+        # pandas hands the metadata on by reference and only __finalize__ (final in
+        # the typing of pandas, not enforced) sees the new object with its metadata;
+        # the results of concat and merge have no uinfo at all
+        return _own_units(super().__finalize__(other, method=method, **kwargs))
 
     def get_quantity(self, key: str):
         """Return quantity for given key.
@@ -743,10 +911,23 @@ class DataSet(pd.DataFrame):
         2. units annotations based on 'unit' column which is applied on
            'mean', 'value', 'sd' and 'se' columns
 
+        The unit of a column is the unit of its first row with a value; the unit
+        of a row without a number (no value, sd or se) is ignored, and a column
+        without any unit has no unit. Rows with another unit of the same
+        dimension are converted to it, their values, sd and se, and their unit
+        column is rewritten. The data frame of the caller is not changed.
+
         :param df: pandas.DataFrame
-        :param uinfo: optional units information
+        :param ureg: the unit registry
+        :param udict: optional units of columns
 
         :return: dataset
+
+        :raises ValueError: naming the column and its units, if a unit of a column
+            with several units cannot be read (no string, undefined or with a
+            factor), cannot be converted by a factor (another dimension or an
+            offset such as degC), or if such a column has values which are no
+            numbers
         """
         if not isinstance(ureg, UnitRegistry):
             raise ValueError(
@@ -754,6 +935,9 @@ class DataSet(pd.DataFrame):
             )
         if df.empty:
             raise ValueError(f"DataFrame cannot be empty, check DataFrame: {df}")
+
+        # the caller's data frame is not changed
+        df = df.copy()
 
         if udict is None:
             udict = {}
@@ -764,21 +948,25 @@ class DataSet(pd.DataFrame):
         for key in df.columns:
             # handle '*_unit columns'
             if key.endswith("_unit"):
-                # parse the item and unit in dict
-                units = df[key].unique()
-                if len(units) > 1:
-                    logger.error(
-                        "Column '%s' units are not unique: '%s' in \n%s", key, units, df
-                    )
-                elif len(units) == 0:
-                    logger.error("Column '%s' units are missing: '%s'", key, units)
+                # parse the item and unit in dict; a row without a value has no
+                # unit, which is not a unit of the column
                 item_key = key[0:-5]
                 if item_key not in df.columns:
                     logger.error(
                         "Missing * column '%s' for unit column: '%s'", item_key, key
                     )
+                    continue
+                unit = _unify_units(
+                    df,
+                    item_key,
+                    key,
+                    ureg,
+                    [f"{item_key}_sd", f"{item_key}_se"],
+                )
+                if unit is None:
+                    logger.error("Column '%s' units are missing", key)
                 else:
-                    all_udict[item_key] = units[0]
+                    all_udict[item_key] = unit
 
             elif key == "unit":
                 # add unit to "mean" and "value"
@@ -786,13 +974,14 @@ class DataSet(pd.DataFrame):
                     if (key in df.columns) and f"{key}_unit" not in df.columns:
                         # FIXME: probably not a good idea to add columns while iterating over them
                         df[f"{key}_unit"] = df.unit
-                        unit_keys = df.unit.unique()
-                        if len(df.unit.unique()) > 1:
-                            logger.error(
-                                "More than one unit in 'unit' column will create issues in unit conversion, filter data to reduce units: '%s'",
-                                df.unit.unique(),
-                            )
-                        udict[key] = unit_keys[0]
+                        error_keys = [f"{key}_sd", f"{key}_se"]
+                        if key == "mean":
+                            error_keys += ["sd", "se"]
+                        unit = _unify_units(df, key, f"{key}_unit", ureg, error_keys)
+                        if unit is None:
+                            logger.error("Column 'unit' has no unit for '%s'", key)
+                        else:
+                            udict[key] = unit
 
                         # rename the sd and se columns to mean_sd and mean_se
                         if key == "mean":

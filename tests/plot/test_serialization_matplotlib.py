@@ -220,6 +220,7 @@ def _render(plot: Plot) -> Axes:
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
     experiment = runner.experiments["_CurveExperiment"]
     experiment.run(runner.simulator, show_figures=False)
