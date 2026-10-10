@@ -14,7 +14,7 @@ that what a specific export loses is known before it is written.
 """
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -396,7 +396,9 @@ GAPS: tuple[Gap, ...] = (
 GAPS_BY_ID: dict[str, Gap] = {gap.id: gap for gap in GAPS}
 
 
-def _has_a_simulation_of_several_kinds(problem: "OptimizationProblem") -> bool:
+def _has_a_simulation_of_several_kinds(
+    problem: "OptimizationProblem", exported: Sequence[int]
+) -> bool:
     """Check whether an exported simulation mixes the kinds of its mappings.
 
     `PetabExporter` writes one PEtab experiment per collection, and
@@ -407,14 +409,16 @@ def _has_a_simulation_of_several_kinds(problem: "OptimizationProblem") -> bool:
 
     Args:
         problem: the initialized problem which is exported.
+        exported: the indices of the mappings which are exported.
 
     Returns:
-        `True` if a simulation of an exported mapping is shared by mappings
-        of more than one of the kinds `sbmlsim.fit.objects.EVALUATED_KINDS`
-        writes, `False` otherwise.
+        `True` if a simulation of an exported mapping is shared by exported
+        mappings of more than one of the kinds
+        `sbmlsim.fit.objects.EVALUATED_KINDS`, `False` otherwise.
     """
     groups: dict[tuple[int, int], set[MappingKind]] = {}
-    for k, kind in enumerate(problem.mapping_kinds):
+    for k in exported:
+        kind = problem.mapping_kinds[k]
         if kind not in EVALUATED_KINDS:
             # not written by the exporter, see `PetabExporter.indices`
             continue
@@ -423,11 +427,22 @@ def _has_a_simulation_of_several_kinds(problem: "OptimizationProblem") -> bool:
     return any(len(kinds) > 1 for kinds in groups.values())
 
 
-def gap_mappings(problem: "OptimizationProblem") -> dict[str, list[str]]:
+def _exported(
+    problem: "OptimizationProblem", indices: Sequence[int] | None
+) -> Sequence[int]:
+    """Get the indices of the exported mappings, every mapping by default."""
+    return range(len(problem.mapping_keys)) if indices is None else indices
+
+
+def gap_mappings(
+    problem: "OptimizationProblem", indices: Sequence[int] | None = None
+) -> dict[str, list[str]]:
     """Get the fit mappings which hit the gaps of scalar observables and scans.
 
     Args:
         problem: the initialized problem which is exported.
+        indices: the indices of the mappings which are exported, e.g. those of
+            the kinds of `PetabExporter.kinds`; every mapping if `None`.
 
     Returns:
         Gap id (`scalar-observable`, `scan-task`) -> the mappings which hit it
@@ -435,7 +450,8 @@ def gap_mappings(problem: "OptimizationProblem") -> dict[str, list[str]]:
         a mapping is not a key.
     """
     found: dict[str, list[str]] = {}
-    for k, kind in enumerate(problem.observation_kinds):
+    for k in _exported(problem, indices):
+        kind = problem.observation_kinds[k]
         name = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
         if kind != "timecourse":
             found.setdefault("scalar-observable", []).append(name)
@@ -444,7 +460,9 @@ def gap_mappings(problem: "OptimizationProblem") -> dict[str, list[str]]:
     return found
 
 
-def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
+def gaps_of_problem(
+    problem: "OptimizationProblem", indices: Sequence[int] | None = None
+) -> list[Gap]:
     """Report the gaps an optimization problem runs into.
 
     The problem must be initialized, i.e., its mappings are resolved; the gaps
@@ -452,6 +470,9 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
 
     Args:
         problem: the problem which is exported.
+        indices: the indices of the mappings which are exported, e.g. those of
+            the kinds of `PetabExporter.kinds`, whose kinds, observables and
+            tasks decide the gaps of the mappings; every mapping if `None`.
 
     Returns:
         The gaps which apply to this problem, in the order of `GAPS`.
@@ -469,9 +490,10 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
     if len(set(problem.experiment_keys)) > 1:
         hits.add("selections")
 
-    if len(set(problem.mapping_kinds)) > 1:
+    exported = _exported(problem, indices)
+    if len({problem.mapping_kinds[k] for k in exported}) > 1:
         hits.add("mapping-kind")
-    if _has_a_simulation_of_several_kinds(problem):
+    if _has_a_simulation_of_several_kinds(problem, exported):
         hits.add("experiment-split")
     if problem.residual in {
         ResidualType.ABSOLUTE_TO_BASELINE,
@@ -486,7 +508,8 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
     fitted = {p.pid for p in problem.parameters} | {
         p.target_id for p in problem.parameters
     }
-    for noise in problem.noise_models:
+    for k in exported:
+        noise = problem.noise_models[k]
         if noise is None:
             continue
         hits.add("noise-model")
@@ -513,7 +536,8 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
 
     # the x of a timecourse only: a value per simulation has no x and a
     # dimension mapping has the dimension as its x, both are scalar observables
-    for k, xid in enumerate(problem.xid_observable):
+    for k in exported:
+        xid = problem.xid_observable[k]
         if problem.observation_kinds[k] == "timecourse" and xid != "time":
             logger.warning(
                 "'%s': the x of the mapping '%s' is '%s' and not the time of the "
@@ -523,7 +547,7 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
                 xid,
             )
             hits.add("x-observable")
-    hits.update(gap_mappings(problem))
+    hits.update(gap_mappings(problem, exported))
 
     return [gap for gap in GAPS if gap.id in hits]
 
