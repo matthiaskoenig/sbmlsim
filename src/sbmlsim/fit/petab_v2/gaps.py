@@ -330,6 +330,21 @@ GAPS: tuple[Gap, ...] = (
         "export raises",
     ),
     Gap(
+        id="scalar-observable",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="a fit mapping compares a value per simulation or values over a "
+        "dimension of a scan with data",
+        petab="a measurement is a value of an observable at a time of a condition",
+        detail="the export raises for such a mapping",
+    ),
+    Gap(
+        id="scan-task",
+        kind=GapKind.UNSUPPORTED,
+        sbmlsim="the task of a fit mapping is a scan",
+        petab="a condition sets fixed values, an experiment has no dimensions",
+        detail="the export raises for such a mapping",
+    ),
+    Gap(
         id="selections",
         kind=GapKind.LOSSY,
         sbmlsim="a fit is a set of `SimulationExperiment` classes, and the "
@@ -408,6 +423,27 @@ def _has_a_simulation_of_several_kinds(problem: "OptimizationProblem") -> bool:
     return any(len(kinds) > 1 for kinds in groups.values())
 
 
+def gap_mappings(problem: "OptimizationProblem") -> dict[str, list[str]]:
+    """Get the fit mappings which hit the gaps of scalar observables and scans.
+
+    Args:
+        problem: the initialized problem which is exported.
+
+    Returns:
+        Gap id (`scalar-observable`, `scan-task`) -> the mappings which hit it
+        as `<experiment>.<mapping>`, in the order of the problem; a gap without
+        a mapping is not a key.
+    """
+    found: dict[str, list[str]] = {}
+    for k, kind in enumerate(problem.observation_kinds):
+        name = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
+        if kind != "timecourse":
+            found.setdefault("scalar-observable", []).append(name)
+        if problem.scans[k] is not None:
+            found.setdefault("scan-task", []).append(name)
+    return found
+
+
 def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
     """Report the gaps an optimization problem runs into.
 
@@ -475,8 +511,10 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
         if layer_types & EVALUATION_MODE_LAYERS:
             hits.add("sciml-training-mode")
 
+    # the x of a timecourse only: a value per simulation has no x and a
+    # dimension mapping has the dimension as its x, both are scalar observables
     for k, xid in enumerate(problem.xid_observable):
-        if xid != "time":
+        if problem.observation_kinds[k] == "timecourse" and xid != "time":
             logger.warning(
                 "'%s': the x of the mapping '%s' is '%s' and not the time of the "
                 "simulation, which PEtab cannot express.",
@@ -485,6 +523,7 @@ def gaps_of_problem(problem: "OptimizationProblem") -> list[Gap]:
                 xid,
             )
             hits.add("x-observable")
+    hits.update(gap_mappings(problem))
 
     return [gap for gap in GAPS if gap.id in hits]
 

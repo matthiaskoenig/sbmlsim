@@ -50,7 +50,13 @@ from sbmlsim.fit.petab_v2.extension import (
     SCIML_EXTENSION_ID,
     SbmlsimExtension,
 )
-from sbmlsim.fit.petab_v2.gaps import Gap, GapKind, gaps_dict, gaps_of_problem
+from sbmlsim.fit.petab_v2.gaps import (
+    Gap,
+    GapKind,
+    gap_mappings,
+    gaps_dict,
+    gaps_of_problem,
+)
 from sbmlsim.fit.petab_v2.likelihood import noise_model_of
 from sbmlsim.fit.petab_v2.symbols import (
     condition_target,
@@ -364,7 +370,13 @@ class PetabExporter:
         """
         unsupported = [gap for gap in self.gaps if gap.kind == GapKind.UNSUPPORTED]
         if unsupported:
-            details = "\n".join(f"  - {gap.id}: {gap.detail}" for gap in unsupported)
+            mappings = gap_mappings(self.problem)
+            lines = []
+            for gap in unsupported:
+                lines.append(f"  - {gap.id}: {gap.detail}")
+                if gap.id in mappings:
+                    lines.append(f"    mappings: {', '.join(mappings[gap.id])}")
+            details = "\n".join(lines)
             raise ValueError(
                 f"'{self.problem.opid}': the problem uses features which PEtab v2 "
                 f"cannot express:\n{details}"
