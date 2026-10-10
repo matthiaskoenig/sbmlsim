@@ -65,6 +65,10 @@ class FisherInformation:
         cost: cost of the parameter set.
         n: number of data points of the fit.
         alpha: confidence level of the intervals.
+        units: the unit of every parameter in the order of the matrix, a unit
+            of pint with the unit ids of the model resolved, `None` for the
+            unit of the model; empty for an information which does not know
+            them.
         targets: the target of the model every parameter is written to, in the
             order of the matrix (`FitParameter.target_id`); empty for an
             information which does not know them, then the pids are the targets.
@@ -369,7 +373,8 @@ def fisher_information(
         n=int(residuals.size),
         alpha=alpha,
         rank_tolerance=rank_tolerance,
-        units=[p.unit for p in problem.parameters],
+        # units of pint, a unit id of a model resolved
+        units=list(problem.parameter_units.values()),
         scales=list(problem.scales_initialized),
         targets=[p.target_id for p in problem.parameters],
     )

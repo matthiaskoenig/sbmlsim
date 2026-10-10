@@ -75,7 +75,8 @@ class _Quantities:
     `Q` takes the units of pint and the ones the registry adds, not the unit
     ids of a model: `RoadrunnerSBMLModel.Q` and `SimulationExperiment.Q`
     resolve those, see `UnitsInformation.quantity`. The class methods of the
-    quantities of the registry are the ones of `Q`, e.g. `Q.from_list`.
+    quantities of the registry are the ones of `Q`, e.g. `Q.from_list`, and
+    `isinstance(x, Q)` checks for a quantity of the registry.
     """
 
     def __call__(self, value: Any, units: str | PlainUnit | None = None) -> Quantity:
@@ -103,6 +104,10 @@ class _Quantities:
         if name.startswith("__"):
             raise AttributeError(name)
         return getattr(ureg.Quantity, name)
+
+    def __instancecheck__(self, instance: Any) -> bool:
+        """Check whether an object is a quantity of the registry, `isinstance(x, Q)`."""
+        return isinstance(instance, ureg.Quantity)
 
     def __repr__(self) -> str:
         """Get the name of the quantities."""
@@ -141,7 +146,8 @@ def replace_unit_ids(unit: str, unit_ids: Mapping[str, str]) -> str:
 
     The expression is put in brackets, so a power or a quotient applies to all
     of it: `mg_per_min^2/kg` with `mg_per_min = mg/min` is
-    `(mg/min)^2/kg`. Only whole identifiers are replaced, see
+    `(mg/min)^2/kg`; a unit which is one unit id is its expression,
+    `mg_per_min` is `mg/min`. Only whole identifiers are replaced, see
     `unit_identifiers`, and only once: the expression of a unit id is a unit of
     pint, whose names are not replaced again. A unit id wins over a unit of
     pint of the same name.
@@ -155,12 +161,14 @@ def replace_unit_ids(unit: str, unit_ids: Mapping[str, str]) -> str:
     """
     if not unit_ids:
         return unit
+    if unit.strip() in unit_ids:
+        # the expression of a dimensionless unit definition is empty
+        return unit_ids[unit.strip()] or "dimensionless"
 
     def replace(match: re.Match[str]) -> str:
         token = match.group()
         if token not in unit_ids:
             return token
-        # the expression of a dimensionless unit definition is empty
         return f"({unit_ids[token] or 'dimensionless'})"
 
     return _UNIT_TOKEN.sub(replace, unit)
@@ -259,8 +267,9 @@ class UnitsInformation(MutableMapping):
     def resolve_unit(self, unit: str) -> str:
         """Get a unit with every unit id of the model replaced by its expression.
 
-        See `replace_unit_ids`, e.g. `mg_per_min/kg` is `(mg/min)/kg` for a
-        model whose unit definition `mg_per_min` is a milligram per minute.
+        See `replace_unit_ids`, e.g. `mg_per_min/kg` is `(mg/min)/kg` and
+        `mg_per_min` is `mg/min` for a model whose unit definition
+        `mg_per_min` is a milligram per minute.
 
         Args:
             unit: a unit of pint and of the unit ids of the model.

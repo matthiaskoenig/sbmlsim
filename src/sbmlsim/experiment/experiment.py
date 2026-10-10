@@ -34,7 +34,6 @@ from sbmlsim.units import (
     Quantity,
     UnitRegistry,
     UnitsInformation,
-    replace_unit_ids,
     unit_identifiers,
 )
 from sbmlsim.units import ureg as package_ureg
@@ -204,18 +203,18 @@ class SimulationExperiment:
                     f"of a model work in `simulations()` and later."
                 )
             return units[model].quantity(value, unit)
-        if not unit:
-            return self.ureg.Quantity(value, unit)
+        # the unit ids of the models which the unit has, in the units of the
+        # experiment, which resolve the unit as the units of a model do
+        common = UnitsInformation(
+            {}, self.ureg, unit_ids=self._unit_ids(unit, units) if unit else None
+        )
         try:
-            return self.ureg.Quantity(
-                value, replace_unit_ids(unit, self._unit_ids(unit, units))
-            )
+            return common.quantity(value, unit)
         except UndefinedUnitError as err:
             if units:
                 err.add_note(
-                    f"The unit '{unit}' is neither a unit of pint nor a unit id "
-                    f"of the models {sorted(units)} of the experiment "
-                    f"'{self.sid}'."
+                    f"The loaded models of the experiment '{self.sid}' are "
+                    f"{sorted(units)}."
                 )
             else:
                 err.add_note(

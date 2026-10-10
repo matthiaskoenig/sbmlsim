@@ -97,7 +97,7 @@ import json
 import logging
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -519,7 +519,9 @@ class IdentifiabilityResult:
 
     Attributes:
         opid: id of the optimization problem.
-        parameter_set: parameters the profiles were computed around.
+        parameter_set: parameters the profiles were computed around, in the
+            units of pint of the problem, see
+            `OptimizationProblem.parameter_units`.
         parameters: fit parameters of the problem, with their bounds and units.
         settings: settings of the analysis.
         fit_settings: settings of the fit, which define the cost.
@@ -1147,7 +1149,11 @@ def profile_likelihood(
     }
     result = IdentifiabilityResult(
         opid=problem.opid,
-        parameter_set=parameter_set,
+        # the units of pint, with the unit ids of the models resolved, which a
+        # design of the profiles reads, see `profile_parameters`
+        parameter_set=replace(
+            parameter_set, units={**parameter_set.units, **problem.parameter_units}
+        ),
         parameters=problem.parameters,
         settings=profile_settings,
         fit_settings=settings,

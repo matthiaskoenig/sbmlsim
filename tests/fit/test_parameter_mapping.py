@@ -475,10 +475,29 @@ def test_a_unit_id_is_resolved_in_the_models_a_parameter_reaches() -> None:
     one = _units(per_x="1/min")
     other = _units(per_x="1/hr")
     mapping = ParameterMapping(parameters, {}, GROUPS, KEYS, units=[one, one])
-    assert mapping.parameter_units == ["(1/min)"]
-    with pytest.raises(ValueError, match=r"'per_x'.*'Vd'.*'\(1/min\)'.*'\(1/hr\)'"):
+    assert mapping.parameter_units == ["1/min"]
+    with pytest.raises(ValueError, match=r"'per_x'.*'Vd'.*'1/min'.*'1/hr'"):
         ParameterMapping(parameters, {}, GROUPS, KEYS, units=[one, other])
     # a version is resolved only in the models of the simulations it reaches
     version = _version("Ka_a", "per_x")
     mapping = ParameterMapping([version], {0: {2}}, GROUPS, KEYS, units=[other, one])
-    assert mapping.parameter_units == ["(1/min)"]
+    assert mapping.parameter_units == ["1/min"]
+
+
+@pytest.mark.parametrize(
+    "unit, error",
+    [
+        ("xyz", "UndefinedUnitError"),
+        ("1e-3*mg", "ValueError"),
+        ("mg)", "DefinitionSyntaxError"),
+    ],
+)
+def test_a_unit_of_a_version_which_cannot_be_read_names_the_versions(
+    unit: str, error: str
+) -> None:
+    """Every error of pint for a unit of a version names the parameters."""
+    parameters = [_version("Ka_a", "mg"), _version("Ka_b", unit)]
+    with pytest.raises(Exception) as info:
+        ParameterMapping(parameters, {0: {0, 1}, 1: {2}}, GROUPS, KEYS)
+    assert type(info.value).__name__ == error
+    assert "'Ka_a' or 'Ka_b'" in "\n".join(info.value.__notes__)

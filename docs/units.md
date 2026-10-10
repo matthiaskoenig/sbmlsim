@@ -22,7 +22,7 @@ ureg.define("IU_insulin = 0.0347 * mg")
 print(Q(10, "IU_insulin/ml").to("mg/ml"))
 ```
 
-A unit string with an `IU` which nothing defines raises: `Q` raises the `UndefinedUnitError` of pint, and a `DataSet` the `ValueError` which names the column.
+A unit string with an `IU` which nothing defines raises, as every unit which cannot be read: `Q` raises the `UndefinedUnitError` of pint, and `DataSet.from_df` raises the `ValueError` which names the column when the data is imported. Every unit of a `DataSet` column is read on import, also the one unit of a column whose rows all have it, so data in a unit the registry does not define, e.g. `IU/l` or `µIU/ml`, fails on import and not when it is used; define the unit in the registry before the data is read.
 
 ## Units of a model
 
@@ -78,7 +78,7 @@ class Dosing(SimulationExperiment):
 
 With `model=` a unit id is the one of that model; without, a unit id must have the same expression in every model of the experiment which has it, else a `ValueError` names the models, their expressions and `model=`. Before the models are loaded `self.Q` takes the units of pint, and a unit id raises an `UndefinedUnitError` whose note says that the models are not loaded.
 
-The unit of a `FitParameter` may have the unit ids of the model of its target as well, e.g. `unit="per_min"`: the fit converts the value with the units of that model, and the versions of a target agree on their unit when their units are one unit, e.g. `mg_per_min` of the model and `mg/min`.
+The unit of a `FitParameter` may have the unit ids of the model of its target as well, e.g. `unit="per_min"`: the fit converts the value with the units of that model, and the versions of a target agree on their unit when their units are one unit, e.g. `mg_per_min` of the model and `mg/min`. The parameter keeps the unit it was defined with, which the tables of a fit show and a PEtab export writes, while the values of a fit, i.e. its parameter sets, its result, the Fisher information and the profiles, carry the unit of pint (`OptimizationProblem.parameter_units`, `1/min` for `per_min`), so the designs of a fit (`fit_parameters`, `profile_parameters`, `fit_repeats`, see [Sampling](sampling.md)) draw quantities without the model.
 
 ## Changes with units
 

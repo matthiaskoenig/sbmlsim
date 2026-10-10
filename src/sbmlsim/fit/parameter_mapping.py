@@ -24,7 +24,6 @@ import numpy as np
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.units import (
     DimensionalityError,
-    UndefinedUnitError,
     UnitRegistry,
     UnitsInformation,
 )
@@ -47,15 +46,19 @@ def _same_unit(a: str, b: str, ureg: UnitRegistry, parameters: str) -> bool:
         and `min^-1`.
 
     Raises:
-        UndefinedUnitError: if a unit is no unit of pint.
+        Exception: the error of pint if a unit cannot be read, e.g. the
+            `UndefinedUnitError` of a unit pint does not define, with a note
+            which names the parameters.
     """
     try:
         quantity_a = ureg.Quantity(1.0, a)
         quantity_b = ureg.Quantity(1.0, b)
-    except UndefinedUnitError as err:
+    # pint raises errors of many kinds for a unit it cannot read: its own, a
+    # ValueError for a factor, a TypeError or the TokenError of its parser
+    except Exception as err:
         err.add_note(
-            f"The unit of {parameters} is neither a unit of pint nor a unit id "
-            f"of the model of its target."
+            f"The unit of {parameters} cannot be read, it is neither a unit of "
+            f"pint nor a unit id of the model of its target."
         )
         raise
     try:
@@ -143,8 +146,9 @@ class ParameterMapping:
                 means different units in the models of the simulations it
                 reaches, or if the versions of a target disagree on their
                 unit.
-            UndefinedUnitError: if the unit of a parameter is neither a unit
-                of pint nor a unit id of a model it reaches.
+            UndefinedUnitError: if a unit of a parameter which is compared is
+                neither a unit of pint nor a unit id of a model it reaches;
+                pint raises errors of other kinds for a unit it cannot read.
         """
         self.parameters = list(parameters)
         self.groups = [list(group) for group in groups]

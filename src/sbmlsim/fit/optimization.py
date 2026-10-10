@@ -2001,7 +2001,31 @@ class OptimizationProblem(ObjectJSONEncoder):
             Parameter set of the values the models start from.
         """
         return ParameterSet.from_model(
-            parameters=self.parameters, x=self.xmodel, sid=sid
+            parameters=self.parameters,
+            x=self.xmodel,
+            sid=sid,
+            units=self.parameter_units,
+        )
+
+    @property
+    def parameter_units(self) -> dict[str, str | None]:
+        """Get the unit of every parameter in the units of pint, by parameter id.
+
+        A unit id of the model of the target of a parameter is replaced by its
+        expression, see `ParameterMapping.parameter_units`, so the units are
+        the ones of the values of the parameter sets, the Fisher information
+        and the designs of `sbmlsim.simulation.sampling`, which have no model.
+        `None` is the unit of the model.
+
+        Raises:
+            ValueError: if the problem was not initialized.
+        """
+        return dict(
+            zip(
+                self.pids,
+                self.parameter_mapping_initialized.parameter_units,
+                strict=True,
+            )
         )
 
     def set_simulator(self, simulator: Simulator | None) -> None:

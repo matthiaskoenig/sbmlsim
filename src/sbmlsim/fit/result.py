@@ -123,6 +123,7 @@ class OptimizationResult(ObjectJSONEncoder):
         sid: str | None = None,
         opid: str | None = None,
         settings: FitSettings | dict[str, Any] | None = None,
+        units: Mapping[str, str | None] | None = None,
     ):
         """Initialize optimization result.
 
@@ -137,6 +138,9 @@ class OptimizationResult(ObjectJSONEncoder):
             sid: identifier of the result, created from the time by default.
             opid: id of the optimization problem the result belongs to.
             settings: settings the fit was run with.
+            units: the unit of every parameter in the units of pint by
+                parameter id, see `OptimizationProblem.parameter_units`; the
+                units of the parameters by default.
         """
         super().__init__()
         self.opid = opid
@@ -150,6 +154,12 @@ class OptimizationResult(ObjectJSONEncoder):
             if isinstance(p, dict):
                 p = FitParameter(**p)
             self.parameters.append(p)
+
+        #: the unit of every parameter in the units of pint, with the unit ids
+        #: of the models resolved, the units of the parameter sets
+        self.units: dict[str, str | None] = {
+            p.pid: (units or {}).get(p.pid, p.unit) for p in self.parameters
+        }
 
         self.fits: list[OptimizeResult] = []
         for fit in fits:
@@ -180,6 +190,7 @@ class OptimizationResult(ObjectJSONEncoder):
         sid: str,
         opid: str | None = None,
         settings: FitSettings | None = None,
+        units: Mapping[str, str | None] | None = None,
     ) -> Path:
         """Store a single optimization run as JSON.
 
@@ -194,6 +205,7 @@ class OptimizationResult(ObjectJSONEncoder):
             sid: id of the run, the name of its file.
             opid: id of the optimization problem.
             settings: settings of the fit.
+            units: the units of pint of the parameters, see `__init__`.
 
         Returns:
             Path of the file the run was written to.
@@ -207,6 +219,7 @@ class OptimizationResult(ObjectJSONEncoder):
             sid=sid,
             opid=opid,
             settings=settings,
+            units=units,
         ).to_json(path=path)
         return path
 
@@ -264,7 +277,7 @@ class OptimizationResult(ObjectJSONEncoder):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         d: dict[str, Any] = {}
-        for key in ["sid", "opid", "parameters", "fits", "trajectories"]:
+        for key in ["sid", "opid", "parameters", "fits", "trajectories", "units"]:
             d[key] = self.__dict__[key]
         d["settings"] = self.settings.to_dict() if self.settings else None
         return d
@@ -331,6 +344,7 @@ class OptimizationResult(ObjectJSONEncoder):
             sid=sid if sid else f"{self.sid}_{k}",
             cost=float(row.cost),
             provenance=f"optimization '{self.opid}', run '{int(row.run)}'",
+            units=self.units,
         )
 
     def parameter_sets(self, size: int = 1) -> ParameterSets:
@@ -378,6 +392,7 @@ class OptimizationResult(ObjectJSONEncoder):
             trajectories=trajectories,
             opid=opt_results[0].opid,
             settings=opt_results[0].settings,
+            units=opt_results[0].units,
         )
 
     @property
@@ -531,7 +546,7 @@ class OptimizationResult(ObjectJSONEncoder):
         for k, p in enumerate(self.parameters):
             if p.pid not in grouped:
                 info.append(
-                    f"\t'{p.pid}': Q({xopt[k]}, '{p.unit}'),  "
+                    f"\t'{p.pid}': Q({xopt[k]}, '{self.units[p.pid]}'),  "
                     f"# [{p.lower_bound} - {p.upper_bound}]"
                 )
         for label, ks in by_label.items():

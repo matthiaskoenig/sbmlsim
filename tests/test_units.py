@@ -320,9 +320,11 @@ def test_q_takes_pint_units_and_names_the_quantities_of_a_model() -> None:
     from sbmlsim import Q, units
 
     assert sbmlsim.Q is units.Q
-    # the class methods of the quantities
+    # the class methods of the quantities and the check of an instance
     doses = Q.from_list([Q(1.0, "mg"), Q(2.0, "mg")])
     assert list(doses.to("g").magnitude) == pytest.approx([1e-3, 2e-3])
+    assert isinstance(doses, Q)  # ty: ignore[invalid-argument-type]
+    assert not isinstance(1.0, Q)  # ty: ignore[invalid-argument-type]
     _uinfo(mg_per_min=(MILLIGRAM, PER_MINUTE))
     with pytest.raises(UndefinedUnitError) as info:
         Q(0, "mg_per_min")
@@ -373,7 +375,8 @@ def test_a_unit_id_is_replaced_as_a_whole_identifier() -> None:
     assert uinfo.quantity(1.0, "mg").to("g").magnitude == pytest.approx(1.0)
     assert uinfo.quantity(1.0, "mg/min").to("g/min").magnitude == pytest.approx(1.0)
     # neither inside `mg_per_min` nor inside its expression `mg/min`
-    assert uinfo.resolve_unit("mg_per_min") == "(mg/min)"
+    assert uinfo.resolve_unit("mg_per_min") == "mg/min"
+    assert uinfo.resolve_unit("mg_per_min/kg") == "(mg/min)/kg"
     assert uinfo.quantity(1.0, "mg_per_min").to("mg/min").magnitude == pytest.approx(
         1.0
     )
@@ -405,6 +408,23 @@ def test_a_unit_id_with_a_factor_is_a_quantity() -> None:
     assert uinfo.quantity(1.0, "u_factor_q/ml").to("g/ml").magnitude == pytest.approx(
         7.0
     )
+
+
+def test_a_unit_id_with_a_factor_of_two_models_is_a_quantity_of_each() -> None:
+    """A second model's factor unit of the same id, defined as `<id>_<n>`, resolves."""
+    from sbmlsim.model import RoadrunnerSBMLModel
+
+    a = RoadrunnerSBMLModel(
+        source=_sbml_with_units(u_collision=((libsbml.UNIT_KIND_GRAM, 5.0, 0, 1),))
+    )
+    b = RoadrunnerSBMLModel(
+        source=_sbml_with_units(u_collision=((libsbml.UNIT_KIND_GRAM, 11.0, 0, 1),))
+    )
+    names = {a.uinfo.unit_ids["u_collision"], b.uinfo.unit_ids["u_collision"]}
+    assert names == {"u_collision", "u_collision_2"}
+    assert a.Q(1.0, "u_collision").to("g").magnitude == pytest.approx(5.0)
+    assert b.Q(1.0, "u_collision").to("g").magnitude == pytest.approx(11.0)
+    assert b.Q(2.0, "u_collision/ml").to("g/ml").magnitude == pytest.approx(22.0)
 
 
 def test_a_model_defines_its_own_international_unit() -> None:

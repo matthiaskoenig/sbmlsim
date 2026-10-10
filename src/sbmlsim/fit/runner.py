@@ -786,6 +786,7 @@ def _run_optimization_parallel(
         sid=problem.opid,
         opid=problem.opid,
         settings=settings,
+        units=problem.parameter_units,
     )
 
 
@@ -818,6 +819,7 @@ def _store_run(
             sid=sid,
             opid=problem.opid,
             settings=settings,
+            units=problem.parameter_units,
         )
     except Exception as err:
         logger.error(
@@ -894,4 +896,5 @@ def _run_optimization_serial(
         sid=problem.opid,
         opid=problem.opid,
         settings=settings,
+        units=problem.parameter_units,
     )
