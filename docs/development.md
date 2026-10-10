@@ -20,13 +20,13 @@ A pull request can only be merged once the four required checks are green:
 | check   | workflow      | content                                                              |
 | ------- | ------------- | -------------------------------------------------------------------- |
 | `tests` | `ci-cd.yml`   | the test matrix, linux with python 3.13 and 3.14, macos and windows with 3.14, and the plain install |
-| `ruff`  | `lint.yml`    | `ruff check` and `ruff format --check`                                |
+| `ruff`  | `lint.yml`    | `ruff check` and `ruff format --check`, with the ruff of `uv.lock`    |
 | `ty`    | `lint.yml`    | `ty check`                                                            |
 | `docs`  | `docs.yml`    | the zensical build including the api reference and the agent files    |
 
-`tests` aggregates the test matrix and the job `plain install` into a single job, so the name of the required check stays the same when the matrix changes. `plain install` installs the package without extras, as `pip install sbmlsim` does, and runs `scripts/plain_install.py`, a scan whose result is written as netCDF and read back: the test matrix has the extras of `dev`, which would hide a dependency the package needs and does not declare.
+`tests` aggregates the test matrix and the job `plain install` into a single job, so the name of the required check stays the same when the matrix changes. `plain install` installs the package without extras, as `pip install sbmlsim` does, and runs `scripts/plain_install.py`, a scan whose result is written as netCDF and read back: the test matrix has the extras of `dev`, which would hide a dependency the package needs and does not declare. It is the one job which does not use the lock, see [Dependencies](#dependencies).
 
-Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync` with the extras of the job. The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
+Every job sets up its environment with the action `.github/actions/setup`: uv with its cache, the python of the job, the libpython roadrunner needs on linux, and `uv sync --locked` with the extras of the job, i.e. the versions of `uv.lock`, see [Dependencies](#dependencies). The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit.
 
 Further rules of a pull request:
 
@@ -64,7 +64,7 @@ git clone https://github.com/matthiaskoenig/sbmlsim.git
 cd sbmlsim
 ```
 
-A single sync creates the virtual environment in `.venv`, installs `sbmlsim` into it in editable mode and adds the complete tooling:
+A single sync creates the virtual environment in `.venv`, installs `sbmlsim` into it in editable mode and adds the complete tooling, in the versions of `uv.lock`:
 
 ```bash
 uv sync --extra dev
@@ -89,6 +89,16 @@ uv run pre-commit run --all-files  # check the current state of the repository
 ```
 
 From now on every commit is checked with ruff (lint and format) and ty, i.e., the same checks that run in continuous integration. On a commit only the changed files are looked at, `--all-files` checks the whole repository and is what a newly added hook should be tried with.
+
+## Dependencies
+
+The environment is resolved from `uv.lock`, which is committed. It pins every package of the environment, i.e. the dependencies, the `sciml` extra and the tools of `dev` (ruff, ty, pytest, zensical, ...), for linux, macOS and windows, so a local `uv sync` and continuous integration install the same versions and a result can be reproduced. Every job which syncs through the action `.github/actions/setup` runs against the lock, i.e. the test matrix, `ty`, the documentation, the test suites and the submission of a release and the pin of the SBML Test Suite, and the `ruff` check installs the ruff version of the lock (`version-file: uv.lock`), so continuous integration and `uv run ruff` agree.
+
+Three things do not use the lock on purpose. The job `plain install` resolves from `pyproject.toml` as `pip install sbmlsim` does, i.e. the newest releases within the bounds, so a release of a dependency which breaks sbmlsim shows up there before the lock is moved to it. The tox environments resolve from `pyproject.toml` as well. The release builds and checks the package with `uvx hatch` and `uvx twine`. The lower bounds in `pyproject.toml` are what a user of the library installs against, the lock only records the versions the development runs with.
+
+After changing a dependency in `pyproject.toml` run `uv lock`: the action syncs with `uv sync --locked`, which fails when `pyproject.toml` and the lock disagree, so the change and the `uv lock` which records it go into the same pull request. `uv lock --upgrade` moves every package of the lock to its newest release, `uv lock --upgrade-package <name>` a single one.
+
+Dependabot keeps the lock current: once a week it opens one pull request which bumps the packages of the lock together, with the prefix `build`. Its `versioning-strategy: lockfile-only` only changes `uv.lock`, the lower bounds in `pyproject.toml` are never raised by it and change by hand. The revisions of the ruff and ty hooks in `.pre-commit-config.yaml` are the versions of the lock, which dependabot does not update: when such a pull request moves ruff or ty, raise the revision of the hook to the same version.
 
 ## Testing
 

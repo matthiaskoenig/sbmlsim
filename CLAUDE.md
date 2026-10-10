@@ -9,9 +9,11 @@ This file provides guidance when working with code in this repository.
 ## Commands
 
 ```bash
-# environment (uv based)
+# environment (uv based), the versions of the committed uv.lock
 uv sync --extra dev
 uv run pre-commit install
+uv lock                                            # after every change of a dependency in pyproject.toml
+uv lock --upgrade                                  # move the lock to the newest releases
 
 # tests
 pytest                                             # all tests, in parallel with pytest-xdist
@@ -39,7 +41,7 @@ python -m examples.timecourse
 python -m examples.sensitivity.sensitivity_example
 ```
 
-`develop` is the default branch and takes every change through a pull request; direct pushes are rejected by the rulesets in `.github/rulesets/` (applied with `.github/rulesets/apply.sh`), which require the `tests`, `ruff`, `ty` and `docs` checks (`ruff` and `ty` are the jobs of `lint.yml`). Every job of the workflows sets up uv, python and the environment with the action `.github/actions/setup` and runs the commands a developer runs, without tox; a push to `develop` is never cancelled, since a release waits for the run of its commit. `main` only tracks the latest release and is fast-forwarded by the `sync-main` job of the release workflow, never by hand.
+`develop` is the default branch and takes every change through a pull request; direct pushes are rejected by the rulesets in `.github/rulesets/` (applied with `.github/rulesets/apply.sh`), which require the `tests`, `ruff`, `ty` and `docs` checks (`ruff` and `ty` are the jobs of `lint.yml`). Every job of the workflows sets up uv, python and the environment with the action `.github/actions/setup`, which syncs from the lock (`uv sync --locked`), and runs the commands a developer runs, without tox; a push to `develop` is never cancelled, since a release waits for the run of its commit. `main` only tracks the latest release and is fast-forwarded by the `sync-main` job of the release workflow, never by hand.
 
 Release steps are in `docs/development.md` (there is no separate `RELEASE.md`): the release is prepared on a branch, `uvx bump-my-version bump [major|minor|patch]` updates `src/sbmlsim/__init__.py` and `CITATION.cff` and commits without tagging (`tag = false`, a squash merge would rewrite the commit), and the tag is created on `develop` after the pull request was merged, which triggers the PyPI release workflow; it does not run the test matrix again, its job `tested on develop` waits for the run of the push of the same commit to `develop`, which is why the runs of `develop` are never cancelled.
 
@@ -79,4 +81,5 @@ Documentation is [Zensical](https://zensical.org/): markdown sources in `docs/`,
 - A pool comes from `sbmlsim.parallel`: `parallel.pool(n)` is kept per process and size, `parallel.start_pool(n)` is stopped by its caller (the fit), both use `parallel.process_context()` (`scripts/petab_benchmark.py` still creates `process_context().Pool(...)`), never the default context: a start method set with `multiprocessing.set_start_method` is used, else the default of the platform except `fork`, which becomes `forkserver` (python 3.13 on linux warns when a process which runs threads forks, and a worker of pytest-xdist runs threads). The fixture `_no_fork_of_threads` in `tests/conftest.py` fails a test which forks such a process, since python clears that warning after raising it and `filterwarnings = error` cannot turn it into a failure. python 3.13 fixes the start method of the process to `fork` once a `spawn` or `forkserver` process was started, which is why a start method which equals the default of the platform counts as no choice. The autouse fixture `_no_pool_left` in `tests/conftest.py` stops the kept pools after every test, so a test leaves no workers behind.
 - Library code does not call `plt.show()`; figures are returned or saved, `show_figures` defaults to `False`.
 - Markdown carries no hard line wraps: a paragraph, a list item or a table row is a single line and the wrapping is left to the editor. Code fences, headings and the rows of badges keep their line structure.
+- `uv.lock` is committed and pins the environment for linux, macOS and windows: the local `uv sync`/`uv run`, every job which syncs through `.github/actions/setup` (`uv sync --locked`, which fails when `pyproject.toml` and the lock disagree, so a change of a dependency comes with its `uv lock`) and the ruff of the `ruff` check (`version-file: uv.lock`). Not locked on purpose: the `plain install` job (`pyproject.toml` as a user installs it, the newest releases within the bounds), the tox environments and the `uvx` tools of the release. Dependabot moves the lock weekly in one grouped pull request (`build` prefix, `versioning-strategy: lockfile-only`, so the lower bounds in `pyproject.toml` only change by hand); the revisions of the ruff and ty hooks in `.pre-commit-config.yaml` follow the locked versions and are raised by hand.
 - Release notes go in `release-notes/` as part of a release commit.
