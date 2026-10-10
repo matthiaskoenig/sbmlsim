@@ -125,4 +125,58 @@ print(x.attrs["units"], x.values[:3])
 
 ## Selecting points
 
-The data of a task has the dimensions of its scan: a timecourse is over `(*dims, time)`, or `(*dims, _point)` for a ragged result whose simulations keep their own time points padded with `NaN`, a value per simulation is over `(*dims)`, and a changed target is over its dimension. `sel` selects labels: `Data("[X]", task="task_scan", sel={"dose": "high"})` keeps one point and drops the dimension, `sel={"dose": ["low", "high"]}` keeps the dimension with two labels. A dimension of the scan which the data has not, e.g. the dimension of a scan for the time on a common grid, is skipped, so the same `sel` serves the time and the values of a curve; a dimension or label which does not exist raises with the ones which do. The data of a dataset is a column over the dimension `row`, and `sel={"group": "b"}` keeps the rows whose column `group` has the value. A function broadcasts its data by the names of their dimensions, and `max` and `min` of a single argument reduce along the time of a timecourse, or along the rows of a dataset.
+The data of a task has the dimensions of its scan: a timecourse is over `(*dims, time)`, or `(*dims, _point)` for a ragged result whose simulations keep their own time points padded with `NaN`, a value per simulation is over `(*dims)`, and the values a dimension sets are `Data("<dimension>.<target>")` over the dimension, while the plain name of a symbol is its timecourse, also when the scan changes it. `sel` selects labels: `Data("[X]", task="task_scan", sel={"dose": "high"})` keeps one point and drops the dimension, `sel={"dose": ["low", "high"]}` keeps the dimension with two labels. A dimension of the scan which the data has not, e.g. the dimension of a scan for the time on a common grid, is skipped, so the same `sel` serves the time and the values of a curve; a dimension or label which does not exist raises with the ones which do. The data of a dataset is a column over the dimension `row`, and `sel={"group": "b"}` keeps the rows whose column `group` has the value. A function broadcasts its data by the names of their dimensions, and `max` and `min` of a single argument reduce along the time of a timecourse, or along the rows of a dataset.
+
+## Data of observables
+
+An experiment declares observables with `observables()`, the `Formula`, `PK` and `Custom` of [Observables](observables.md), and a `Data` of a task reads one by its id, the parameter of a `PK` observable as `<id>.<parameter>`. A task computes the observables its data read, in one run with the selections it reads:
+
+```python
+import numpy as np
+
+from sbmlsim.simulation import Dimension, Formula, Observable, Scan
+
+
+class ObservableExperiment(DataExperiment):
+    @override
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        return {
+            "tc": Simulation(end=100, steps=100),
+            "scan": Scan(
+                Simulation(end=100, steps=100),
+                [Dimension("x0", values={"X": np.array([10.0, 20.0, 40.0])})],
+            ),
+        }
+
+    @override
+    def observables(self) -> dict[str, Observable]:
+        return {"xmax": Formula("xmax", "max([X])")}
+
+    @override
+    def tasks(self) -> dict[str, Task]:
+        return {
+            "task_tc": Task(model="model", simulation="tc"),
+            "task_scan": Task(model="model", simulation="scan"),
+        }
+
+    @override
+    def data(self) -> dict[str, Data]:
+        return {
+            "data_xmax": Data("xmax", task="task_scan"),
+            "x": Data("[X]", task="task_scan"),
+        }
+
+
+results = ExperimentRunner(
+    [ObservableExperiment],
+    simulator=Simulator(),
+    base_path=Path.cwd(),
+    data_path=Path.cwd(),
+).run_experiments(output_path=Path.cwd() / "results")
+experiment = results[0].experiment
+
+xmax = Data("xmax", task="task_scan").get_data(experiment)
+print(xmax.dims, xmax["X"].values, xmax.values.round(3))
+x = Data("[X]", task="task_scan", sel={"x0": 2}).get_data(experiment)
+print(x.dims, float(x.max()) == float(xmax.sel(x0=2)))
+```

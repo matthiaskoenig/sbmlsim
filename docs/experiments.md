@@ -4,7 +4,7 @@ A `SimulationExperiment` is the reproducible description of an experiment: the m
 
 ## Defining an experiment
 
-An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, tasks, data, fit mappings and figures.
+An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, observables, tasks, data, fit mappings and figures.
 
 ```python
 from pathlib import Path
@@ -60,6 +60,10 @@ class RepressilatorExperiment(SimulationExperiment):
 - **data** are `Data` objects referencing a task or a dataset, see [Data](data.md).
 - **figures** are `Figure` objects with plots and curves, see [Plots and reports](plotting.md).
 - **datasets** (not used here) are `DataSet` objects with experimental data, see [Data](data.md).
+
+## Observables and scans
+
+`observables()` declares the observables of the experiment, the `Formula`, `PK` and `Custom` of [Observables](observables.md), by their id; it is defined after `simulations()` and before `tasks()`. A `Data` of a task reads an observable by its id (`Data("pk.cmax", task="task_doses")` for a parameter of a `PK` observable), and every task computes the observables its data read, in one run with the selections they read; the data of `data()`, of the fit mappings and of the figures count. The index of every task data is checked when the experiment is initialized: an index which is neither `time`, an observable, a coordinate of the scan of the task nor a selection of its model raises before anything is simulated. The data of a task is a labelled array with the dimensions of its scan, see [Data](data.md); a curve draws one line, so the point of a scan it shows is selected with `Data(sel=...)`. `examples/experiment_scans.py` reads the PK parameters of midazolam over three doses.
 
 ## Running an experiment
 
