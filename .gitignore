@@ -19,9 +19,6 @@ coverage.xml
 # rendered documentation, built by the `documentation` workflow
 site/
 
-# the lock file is not committed, sbmlsim is a library and pins nothing
-uv.lock
-
 # cached roadrunner model state
 *.xml.dat
 *.state

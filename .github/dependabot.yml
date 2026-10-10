@@ -1,4 +1,4 @@
-# Keep the GitHub Actions used in the workflows up to date.
+# Keep the GitHub Actions used in the workflows and the locked python dependencies up to date.
 # See https://docs.github.com/code-security/dependabot/dependabot-version-updates
 version: 2
 updates:
@@ -14,3 +14,20 @@ updates:
     open-pull-requests-limit: 5
     commit-message:
       prefix: "ci"
+
+  # the locked python dependencies (uv.lock), bumped together
+  - package-ecosystem: "uv"
+    directory: "/"
+    # only uv.lock is updated: the default would raise the lower bounds in
+    # pyproject.toml, which are what a user of the library installs against,
+    # so they are only ever changed by hand
+    versioning-strategy: lockfile-only
+    schedule:
+      interval: "weekly"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "build"
