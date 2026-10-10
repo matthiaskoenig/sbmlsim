@@ -90,6 +90,12 @@ SYMBOL_BY_MARKER: dict[MarkerType, str] = {
 #: the dash of plotly of every line style of `sbmlsim.plot.points.LINE_STYLES`
 DASH_BY_LINESTYLE = {"-": "solid", "--": "dash", ":": "dot", "-.": "dashdot"}
 
+#: how much of its cell a panel keeps when it needs room for a colour bar
+_PANEL_SHRINK = 0.72
+
+#: the paper width a colour bar and its title take, for the legend beside them
+_BAR_TITLE = 0.45
+
 #: the width of the lines of the quantiles of a band
 _BAND_EDGE_WIDTH = 0.6
 
@@ -103,6 +109,22 @@ def _rgba(color: str, alpha: float) -> str:
 def _colorscale(colormap: Colormap) -> list[list[Any]]:
     """Sample a colour map of matplotlib into a colour scale of plotly."""
     return [[float(f), to_hex(colormap(float(f)))] for f in np.linspace(0.0, 1.0, 11)]
+
+
+def _legend_trace(name: str, color: str, dash: str, style: Style | None) -> Any:
+    """Get a trace without data which only gives a legend entry."""
+    import plotly.graph_objects as go
+
+    return go.Scatter(
+        x=[None],
+        y=[None],
+        mode=_mode(style),
+        line={**_line_options(style), "color": color, "dash": dash},
+        marker={**_marker_options(style), "color": color},
+        name=name,
+        showlegend=True,
+        hoverinfo="skip",
+    )
 
 
 def _colorbar_trace(styles: PointStyle, color: str | None) -> Any:
@@ -244,10 +266,22 @@ class PlotlyFigureSerializer:
         )
 
         subplot: SubPlot
+        bars: list[tuple[Any, int, int, bool]] = []
         for subplot in figure.subplots:
             if subplot.row is None or subplot.col is None:
                 raise ValueError(f"SubPlot requires row and col: {subplot}")
+            before = len(fig.data)
             cls._add_subplot(fig, experiment, subplot)
+            bars.extend(
+                (trace, subplot.row, subplot.col, bool(subplot.plot.yaxis_right))
+                for trace in fig.data[before:]
+                if trace.marker.showscale
+            )
+        legend: dict[str, Any] = {"traceorder": "normal"}
+        if bars:
+            right = cls._place_colorbars(fig, figure, bars)
+            # the legend is right of the last bar and its title
+            legend.update(x=right + _BAR_TITLE, xanchor="left")
 
         fig.update_layout(
             title={"text": figure.name} if figure.name else None,
@@ -255,9 +289,51 @@ class PlotlyFigureSerializer:
             height=int(figure.height * Figure.fig_dpi),
             template="plotly_white",
             hovermode="closest",
-            legend={"traceorder": "normal"},
+            legend=legend,
         )
         return fig
+
+    @classmethod
+    def _place_colorbars(
+        cls, fig: Any, figure: Figure, bars: list[tuple[Any, int, int, bool]]
+    ) -> float:
+        """Put the colour bar of every panel right of the panel.
+
+        The panels shrink to the left of their cell to make room, and a bar is
+        as high as its panel, right of the tick labels of a right y axis.
+
+        Returns:
+            The paper position of the right edge of the right most bar.
+        """
+        cells = figure.num_cols
+        for row in range(1, figure.num_rows + 1):
+            for col in range(1, figure.num_cols + 1):
+                axes = fig.get_subplot(row, col)
+                if axes is None:
+                    continue
+                left = (col - 1) / cells
+                a, b = axes.xaxis.domain
+                axes.xaxis.domain = [
+                    left + (a - left) * _PANEL_SHRINK,
+                    left + (b - left) * _PANEL_SHRINK,
+                ]
+        right = 0.0
+        for trace, row, col, has_right in bars:
+            axes = fig.get_subplot(row, col)
+            x_end = axes.xaxis.domain[1]
+            low, high = axes.yaxis.domain
+            x = x_end + (0.07 if has_right else 0.01) / cells + 0.005
+            right = max(right, x)
+            trace.marker.colorbar.update(
+                x=x,
+                xanchor="left",
+                y=(low + high) / 2,
+                yanchor="middle",
+                len=high - low,
+                lenmode="fraction",
+                thickness=15,
+            )
+        return right
 
     @classmethod
     def _add_subplot(cls, fig: Any, experiment: Any, subplot: SubPlot) -> None:
@@ -424,7 +500,7 @@ class PlotlyFigureSerializer:
                     y=line.y,
                     name=prefix + ", ".join(point),
                     legendgroup=sid,
-                    showlegend=not styles.colorbar,
+                    showlegend=not styles.colorbar and styles.linestyles is None,
                     mode=_mode(style),
                     line=line_style,
                     marker=marker,
@@ -432,6 +508,16 @@ class PlotlyFigureSerializer:
                     error_y=_error_options(line.yerr),
                 )
             )
+        if styles.linestyles is not None:
+            # two dimensions: the lines have no entries, proxies name the colours
+            # of the first dimension and the dashes of the second, as matplotlib
+            if not styles.colorbar:
+                for c, text in zip(styles.colors, styles.labels[0], strict=True):
+                    traces.append(_legend_trace(f"{prefix}{text}", c, "solid", style))
+            for ls, text in zip(styles.linestyles, styles.labels[1], strict=True):
+                traces.append(
+                    _legend_trace(text, "#666666", DASH_BY_LINESTYLE[ls], style)
+                )
         if styles.colorbar:
             traces.append(_colorbar_trace(styles, color))
         return traces
@@ -490,9 +576,9 @@ class PlotlyFigureSerializer:
                     line=edge,
                     fill="tonexty",
                     fillcolor=_rgba(color, band.alpha),
-                    name="" if band.median else name,
+                    name=name,
                     legendgroup=sid,
-                    showlegend=show and not band.median,
+                    showlegend=False,
                     hoverinfo="skip",
                 )
             )

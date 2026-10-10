@@ -72,15 +72,47 @@ def test_eleven_points_and_more_get_a_colour_bar(
     assert not bar.showlegend
 
 
-def test_two_dimensions_dash(experiment: SimulationExperiment) -> None:
+def test_two_dimensions_legend_like_matplotlib(
+    experiment: SimulationExperiment,
+) -> None:
     traces = _traces(experiment, lambda p: _curve(p, "task_grid2", ("dose", "rate")))
-    assert len(traces) == 6
-    assert [t.line.dash for t in traces] == ["solid", "dash"] * 3
-    assert [t.name for t in traces][:2] == [
-        "C, PODOSE = 50 mg, ke = 0.1 1/hr",
-        "C, PODOSE = 50 mg, ke = 0.3 1/hr",
+    lines = [t for t in traces if t.x[0] is not None]
+    assert len(lines) == 6 and not any(t.showlegend for t in lines)
+    assert [t.line.dash for t in lines] == ["solid", "dash"] * 3
+    entries = [t for t in traces if t.showlegend]
+    assert [t.name for t in entries] == [
+        "C, PODOSE = 50 mg",
+        "C, PODOSE = 100 mg",
+        "C, PODOSE = 200 mg",
+        "ke = 0.1 1/hr",
+        "ke = 0.3 1/hr",
     ]
-    assert all(t.legendgroup for t in traces)
+    assert [t.line.dash for t in entries[3:]] == ["solid", "dash"]
+
+
+def test_many_doses_and_two_dimensions_have_dash_entries_and_a_bar(
+    experiment: SimulationExperiment,
+) -> None:
+    traces = _traces(experiment, lambda p: _curve(p, "task_many2", ("dose", "rate")))
+    assert [t.name for t in traces if t.showlegend] == [
+        "ke = 0.1 1/hr",
+        "ke = 0.3 1/hr",
+    ]
+    assert sum(1 for t in traces if t.marker.showscale) == 1
+
+
+def test_a_colour_bar_per_panel(experiment: SimulationExperiment) -> None:
+    figure = Figure(experiment=experiment, sid="fig", num_rows=1, num_cols=2)
+    for plot in figure.create_plots(
+        xaxis=Axis("time", unit="hr"), yaxis=Axis("C", unit="mg/l")
+    ):
+        _curve(plot, "task_many", "dose")
+    fig = PlotlyFigureSerializer.to_figure(experiment, figure)
+    bars = [t.marker.colorbar for t in fig.data if t.marker.showscale]
+    assert len(bars) == 2 and bars[0].x != bars[1].x
+    for bar, col in zip(bars, (1, 2), strict=True):
+        end = fig.get_subplot(1, col).xaxis.domain[1]
+        assert end < bar.x < 1
 
 
 def test_a_band(experiment: SimulationExperiment) -> None:
@@ -94,8 +126,10 @@ def test_a_band(experiment: SimulationExperiment) -> None:
         ),
     )
     assert [t.fill for t in traces].count("tonexty") == 1
-    (median,) = [t for t in traces if t.name == "C median"]
+    (median,) = [t for t in traces if t.name == "C median" and t.showlegend]
     assert median.showlegend
+    (upper,) = [t for t in traces if t.fill == "tonexty"]
+    assert not upper.showlegend and upper.name == "C median"
     (rng,) = [t for t in traces if t.name == "5-95 %"]
     assert rng.showlegend and rng.x == (None,)
     assert sum(1 for t in traces if t.showlegend) == 2
