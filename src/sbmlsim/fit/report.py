@@ -51,7 +51,7 @@ from sbmlsim.fit.objects import (
     describe_array,
 )
 from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
-from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.options import FitSettings, ResidualType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
@@ -61,6 +61,11 @@ from sbmlsim.units import ureg
 from sbmlsim.utils import paths_text
 
 logger = logging.getLogger(__name__)
+
+#: the residuals which are dimensionless, unlike the data they are drawn with
+_NORMALIZED_RESIDUALS = frozenset(
+    {ResidualType.NORMALIZED, ResidualType.NORMALIZED_TO_BASELINE}
+)
 
 #: colors of the studies, i.e. of the simulation experiments of the problem, in
 #: the order they appear in it. The data points of the goodness of fit and the
@@ -1443,9 +1448,13 @@ class FitReport:
             values = np.concatenate(
                 [x_pos, *[np.asarray(x, dtype=float) for x in x_obs]]
             )
-            low, high = float(np.nanmin(values)), float(np.nanmax(values))
         else:
-            low, high = float(np.min(x_pos)), float(np.max(x_pos))
+            values = np.asarray(x_pos, dtype=float)
+        # a measurement at infinity, a steady state, has no place on the axis
+        values = values[np.isfinite(values)]
+        if values.size == 0:
+            return
+        low, high = float(np.min(values)), float(np.max(values))
         if high == low:
             delta = abs(high) or 1.0
             ax.set_xlim(left=low - 0.1 * delta, right=high + 0.3 * delta)
@@ -1541,8 +1550,9 @@ class FitReport:
                 )
                 self._set_legend(ax)
 
-            ax2.set_yscale("log")
-            self._set_log_y_limits(ax2, y_ref)
+            self._set_log_scale(ax2, "y")
+            if ax2.get_yscale() == "log":
+                self._set_log_y_limits(ax2, y_ref)
 
             self._save_mpl_figure(
                 fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
@@ -1567,10 +1577,18 @@ class FitReport:
             y_ref = self.problem.y_references[k]
             y_ref_err = self.problem.y_errors[k]
             scalar = self._is_scalar(k)
+            dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
+            normalized = self.problem.residual in _NORMALIZED_RESIDUALS
+            residual_kind = "normalized residuals" if normalized else "residuals"
 
             for ax in (ax1, ax3):
                 ax.axhline(y=0, color="black")
-            ax1.set_ylabel(self._y_label(k))
+            # normalized residuals are dimensionless and share the axis of the data
+            ax1.set_ylabel(
+                f"{self._y_label(k)}, {residual_kind} [-]"
+                if normalized
+                else self._y_label(k)
+            )
             ax3.set_ylabel("Weighted residuals$^2$ $(w \\cdot r)^2$")
             for ax in (ax3, ax4):
                 ax.set_xlabel(self._x_label(k))
@@ -1604,6 +1622,7 @@ class FitReport:
                             data["x_obs"][k],
                             data["y_obs"][k],
                             "-",
+                            marker=self.set_marker(pset) if dimension else None,
                             color=color,
                             label=pset.sid,
                         )
@@ -1621,7 +1640,7 @@ class FitReport:
                         "v",
                         color=color,
                         alpha=0.6,
-                        label=f"{pset.sid} residuals",
+                        label=f"{pset.sid} {residual_kind}",
                     )
 
             for ax in (ax3, ax4):
@@ -2116,6 +2135,9 @@ class FitReport:
         ax1.grid(True, axis="x")
         ax1.set_xlabel("Cost")
         self._set_log_scale(ax1, "x")
+        if ax1.get_xscale() == "linear":
+            # a cost is not negative, e.g. the zero cost of a perfect fit
+            ax1.set_xlim(left=0.0, right=max(float(ax1.dataLim.x1), 1.0) * 1.05)
         self._set_legend(ax1)
 
         # the weights of the curves do not depend on the parameters

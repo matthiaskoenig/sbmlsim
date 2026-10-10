@@ -2,6 +2,7 @@
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,13 +12,14 @@ from matplotlib.figure import Figure
 
 from sbmlsim.fit import FitMappingCollection, FitParameter, FitSettings, ParameterSet
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.options import ParameterScaleType, ResidualType
 from sbmlsim.fit.report import FitReport
 from tests.fit.scalar_experiment import (
     CMAX,
     TRUE_V,
     DoseStudy,
     IndividualsStudy,
+    MixedStudy,
     OneDoseStudy,
     RowsStudy,
     ScalarStudy,
@@ -210,3 +212,117 @@ def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
             left, right = ax.get_xlim()
             assert left < 100.0 < right
     assert figures["OneDoseStudy_fm_one"].axes[0].get_xlabel() == "PODOSE [mg]"
+
+
+def test_a_mapping_without_positive_values_has_a_linear_log_panel(
+    tmp_path: Path, figures: dict[str, Figure], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The log panel of the data figure stays linear, without a warning."""
+    problem = _problem(
+        [FitMappingCollection(experiment=RowsStudy, mappings=["fm_rows"])], tmp_path
+    )
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        ParameterSet(sid="near", values={"V": TRUE_V}),
+    )
+    original = FitReport.residual_data
+
+    def negative(self: FitReport, pset: ParameterSet) -> dict[str, Any]:
+        data = original(self, pset)
+        data["y_obs"] = [-np.abs(y) for y in data["y_obs"]]
+        return data
+
+    monkeypatch.setattr(FitReport, "residual_data", negative)
+    monkeypatch.setattr(
+        problem, "y_references", [-np.abs(y) for y in problem.y_references]
+    )
+    report.plot_fit(tmp_path)
+    assert [ax.get_yscale() for ax in figures["RowsStudy_fm_rows"].axes] == [
+        "linear",
+        "linear",
+    ]
+
+
+def test_the_cost_axis_of_a_perfect_fit_starts_at_zero(
+    tmp_path: Path, figures: dict[str, Figure]
+) -> None:
+    """A cost of zero has no logarithm, its linear axis has no negative costs."""
+    problem = _problem(
+        [FitMappingCollection(experiment=ScalarStudy, mappings=["fm_cmax"])], tmp_path
+    )
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        ParameterSet(sid="true", values={"V": TRUE_V}),
+    )
+    report.plot_cost_bar(tmp_path / "cost.png")
+    ax = figures["cost"].axes[0]
+    assert ax.get_xscale() == "linear"
+    left, right = ax.get_xlim()
+    assert left == 0.0 and right > 0.0
+
+
+def test_the_residual_figure_of_a_dimension_draws_what_the_legend_lists(
+    tmp_path: Path, figures: dict[str, Figure]
+) -> None:
+    """The line of a dimension of one value has the marker which shows it."""
+    problem = _problem(
+        [FitMappingCollection(experiment=OneDoseStudy, mappings=["fm_one"])], tmp_path
+    )
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        ParameterSet(sid="near", values={"V": 1.2 * TRUE_V}),
+    )
+    report.plot_fit_residual(tmp_path)
+    for ax in figures["fit_OneDoseStudy_fm_one"].axes[:2]:
+        [line] = [line for line in ax.get_lines() if line.get_label() == "near"][:1]
+        assert line.get_marker() not in (None, "None", "")
+
+
+def test_normalized_residuals_are_marked_in_the_residual_figure(
+    tmp_path: Path, figures: dict[str, Figure]
+) -> None:
+    """Dimensionless residuals do not read as a quantity of the data unit."""
+    problem = _problem(
+        [FitMappingCollection(experiment=MixedStudy, mappings=["fm_tc"])], tmp_path
+    )
+    for residual, normalized in (
+        (ResidualType.ABSOLUTE, False),
+        (ResidualType.NORMALIZED, True),
+    ):
+        report = FitReport(
+            problem,
+            FitSettings(parameter_scale=ParameterScaleType.LINEAR, residual=residual),
+            ParameterSet(sid="near", values={"V": 1.2 * TRUE_V}),
+        )
+        figures.clear()
+        report.plot_fit_residual(tmp_path)
+        ax = figures["fit_MixedStudy_fm_tc"].axes[0]
+        _, labels = ax.get_legend_handles_labels()
+        assert ("near normalized residuals" in labels) is normalized
+        assert ("near residuals" in labels) is not normalized
+        assert ("residuals [-]" in ax.get_ylabel()) is normalized
+
+
+def test_the_x_limits_ignore_a_measurement_at_infinity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A steady state after the end is not a position on the axis."""
+    problem = _problem(
+        [FitMappingCollection(experiment=MixedStudy, mappings=["fm_tc"])], tmp_path
+    )
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        ParameterSet(sid="near", values={"V": TRUE_V}),
+    )
+    monkeypatch.setattr(
+        FitReport, "_x_positions", lambda self, k: np.array([0.0, 2.0, np.inf])
+    )
+    fig, ax = plt.subplots()
+    report._set_x_limits(ax, 0, [np.array([0.0, 2.0])])
+    left, right = ax.get_xlim()
+    plt.close(fig)
+    assert np.isfinite(left) and np.isfinite(right) and left < 0.0 and right > 2.0

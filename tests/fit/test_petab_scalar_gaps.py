@@ -131,3 +131,21 @@ def test_the_gaps_of_an_export_are_the_ones_of_its_kinds(tmp_path: Path) -> None
     training.check()
     with pytest.raises(ValueError, match=r"ScalarStudy\.fm_cmax"):
         PetabExporter(problem).check()
+
+
+def test_the_selections_gap_counts_the_exported_experiments(tmp_path: Path) -> None:
+    """An export of the training data of one experiment has no selections gap."""
+    problem = _problem_of(
+        [
+            FitMappingCollection(experiment=MixedStudy, mappings=["fm_tc"]),
+            FitMappingCollection(
+                experiment=ScalarStudy,
+                mappings=["fm_cmax"],
+                kind=MappingKind.VALIDATION,
+            ),
+        ],
+        tmp_path,
+    )
+    training = PetabExporter(problem, kinds={MappingKind.TRAINING})
+    assert "selections" not in {gap.id for gap in training.gaps}
+    assert "selections" in {gap.id for gap in PetabExporter(problem).gaps}

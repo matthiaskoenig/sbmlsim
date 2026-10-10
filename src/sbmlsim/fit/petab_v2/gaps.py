@@ -487,10 +487,9 @@ def gaps_of_problem(
         )
 
     hits: set[str] = {"units", "fit-settings", "output-times"}
-    if len(set(problem.experiment_keys)) > 1:
-        hits.add("selections")
-
     exported = _exported(problem, indices)
+    if len({problem.experiment_keys[k] for k in exported}) > 1:
+        hits.add("selections")
     if len({problem.mapping_kinds[k] for k in exported}) > 1:
         hits.add("mapping-kind")
     if _has_a_simulation_of_several_kinds(problem, exported):
