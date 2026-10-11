@@ -12,7 +12,7 @@ from sbmlsim.simulator.executor import (
     execute_with_before_changes,
 )
 from sbmlsim.simulator.plan import compile_simulation
-from tests.simulator.models import sbml
+from tests.simulator.models import sbml, sbml_pk
 
 SEL = ["time", "[A]", "[B]", "X", "C", "k1"]
 
@@ -300,8 +300,14 @@ def test_an_event_fires_once_after_a_change() -> None:
     np.testing.assert_allclose(res["Y"], [0, 1, 1])
 
 
-def test_an_event_at_the_time_of_a_change_fires_after_it() -> None:
-    """An event and a change at one time: the change first, then the event (case 0030)."""
+@pytest.mark.parametrize("times", [[0, 5, 10, 15], None])
+def test_an_event_at_the_time_of_a_change_fires_after_it(
+    times: list[float] | None,
+) -> None:
+    """An event and a change at one time: the change first, then the event (case 0030).
+
+    The steps of the integrator (`times=None`) end before the event as well.
+    """
     model = RoadrunnerSBMLModel(
         source=sbml(
             "model ev_time\n  compartment C = 4\n  species S in C = 3\n  S' = 1\n"
@@ -313,14 +319,15 @@ def test_an_event_at_the_time_of_a_change_fires_after_it() -> None:
             end=15,
             preinit_changes={"[S]": 2.0},
             changes=[Change(10, {"[S]": "C + [S]", "C": 8.0})],
-            times=[0, 5, 10, 15],
+            times=times,
         ),
         model.symbols,
         model.uinfo,
     )
     res = execute(plan, model, ["time", "C", "[S]", "S"])
-    np.testing.assert_allclose(res["C"], [4, 4, 16, 16])
-    np.testing.assert_allclose(res["S"], [8, 28, 128, 208], rtol=1e-6)
+    rows = np.isin(res.time, [0, 10, 15])
+    np.testing.assert_allclose(np.asarray(res["C"])[rows], [4, 16, 16])
+    np.testing.assert_allclose(np.asarray(res["S"])[rows], [8, 128, 208], rtol=1e-6)
 
 
 #: an event which counts the crossings of `X` above 1
@@ -456,3 +463,111 @@ def test_a_plan_without_changes_has_no_states_before_them() -> None:
     _, before = execute_with_before_changes(plan, model, SEL)
     assert before.values.shape == (0, len(SEL))
     assert plan.at_change([0.0, 1.0]).tolist() == [-1, -1]
+
+
+#: the oral dose of the PK model, in mg
+PK_DOSE = Change(0, {"PODOSE": 100.0})
+#: the selections of the PK model
+PK_SEL = ["time", "[C]", "Aurine", "Aelim"]
+
+
+def run_on(
+    model: RoadrunnerSBMLModel, sim: Simulation, selections: list[str]
+) -> TimecourseResult:
+    """Run a simulation of a model."""
+    plan = compile_simulation(sim, model.symbols, model.uinfo)
+    return execute(plan, model, selections)
+
+
+def test_a_change_to_its_own_value_changes_nothing() -> None:
+    """The steps of the integrator continue from the state at the time of a change.
+
+    roadrunner ends the last step of a segment after its end; the change at
+    24 h of `ka` to its own value was applied to the state of that later time
+    and moved the concentration after it by -1.4 %. CVODE starts again at a
+    change, which moves the solution by its error, 1.4e-5 here, as with
+    exact output times.
+    """
+    model = RoadrunnerSBMLModel(source=sbml_pk(urine=True))
+    steps = run_on(
+        model, Simulation(end=48, changes=[PK_DOSE, Change(24, {"ka": 1.0})]), PK_SEL
+    )
+    # the first steps are closer than the resolution of the time
+    rows = steps.time >= 1.0
+    exact = run_on(
+        model,
+        Simulation(end=48, changes=[PK_DOSE], times=steps.time[rows].tolist()),
+        PK_SEL,
+    )
+    np.testing.assert_array_equal(exact.time, steps.time[rows])
+    np.testing.assert_allclose(steps.values[rows], exact.values, rtol=5e-5)
+
+
+def test_the_steps_end_in_the_state_at_the_end() -> None:
+    """The last output of the steps is the state at the end, not an interpolation."""
+    model = RoadrunnerSBMLModel(source=sbml_pk(urine=True))
+    steps = run_on(model, Simulation(end=24, changes=[PK_DOSE]), PK_SEL)
+    exact = run_on(model, Simulation(end=24, changes=[PK_DOSE], times=[0, 24]), PK_SEL)
+    assert steps.time[-1] == 24.0
+    np.testing.assert_allclose(steps.values[-1], exact.values[-1], rtol=1e-9)
+
+
+def test_the_states_before_the_changes_of_the_steps_are_exact() -> None:
+    """The state before a change of the steps is the one of exact output times."""
+    model = RoadrunnerSBMLModel(source=sbml_pk(urine=True))
+    changes = [PK_DOSE, Change(24, {"Aurine": 0.0})]
+    states = []
+    for times in (None, [0, 24, 48]):
+        plan = compile_simulation(
+            Simulation(end=48, changes=changes, times=times), model.symbols, model.uinfo
+        )
+        _, before = execute_with_before_changes(plan, model, PK_SEL)
+        states.append(before.values)
+    np.testing.assert_allclose(states[0], states[1], rtol=1e-9)
+
+
+#: a decay whose event counts the crossing of `S` below 1, at the time ln(10)
+DECAY = """
+model decay
+  var S = 10
+  var Y = 0
+  k = 1
+  S' = -k * S
+  E: at (S < 1): Y = Y + 1
+end
+"""
+#: the time of the event of the decay
+DECAY_EVENT = float(np.log(10.0))
+
+
+def test_an_event_after_the_end_of_a_segment_fires_at_its_time() -> None:
+    """An event in the last step of roadrunner past a change fires after the change.
+
+    The last step of the segment before the change at 2.25 ends after the
+    event at ln(10); roadrunner fired it at the change, and the decay
+    continued from the state at the event.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(DECAY))
+    result = run_on(
+        model, Simulation(end=4, changes=[Change(2.25, {"k": 1.0})]), ["time", "S", "Y"]
+    )
+    fired = np.asarray(result["Y"]) > 0
+    assert result.time[np.argmax(fired)] == pytest.approx(DECAY_EVENT, rel=1e-6)
+    assert np.asarray(result["Y"])[-1] == 1.0
+    assert result["S"][-1] == pytest.approx(10.0 * np.exp(-4.0), rel=1e-5)
+
+
+def test_a_simulation_leaves_no_event_of_roadrunner_pending() -> None:
+    """The next simulation of the model does not fire an event of the last one.
+
+    The last step of the simulation to 2.25 ends after the event at ln(10),
+    which roadrunner kept and fired at the start of the next simulation, in
+    an output row of its own.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(DECAY))
+    run_on(model, Simulation(end=2.25), ["time", "S", "Y"])
+    second = run_on(model, Simulation(end=1), ["time", "S", "Y"])
+    fresh = run_on(
+        RoadrunnerSBMLModel(source=sbml(DECAY)), Simulation(end=1), ["time", "S", "Y"]
+    )
+    np.testing.assert_array_equal(second.values, fresh.values)

@@ -4,7 +4,7 @@ A `Simulation` describes what is simulated: the interval, the changes applied to
 
 ## A simulation
 
-`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose; `Simulator.run` returns a `ScanResult`:
+`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose, which end in the state at the end and start again at the time of every change (see [The semantics](#the-semantics)); `Simulator.run` returns a `ScanResult`:
 
 ```python
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -120,6 +120,7 @@ A model which does not reach a steady state by `SteadyState(max_time=...)` raise
 | steady state | with a `SteadyState`, the model is integrated until the rates of change vanish |
 | a change at a time | every value is evaluated with the state at that time, then all values are set at once; a compartment keeps the concentration of the concentration species in it and the amount of the amount species |
 | events | the events of the model whose trigger became true fire after the change |
+| integration | the interval is split at the times of the changes, and every segment ends in its state at its end, which the change at that time is applied to, also with the steps of the integrator as the output; an event of the model fires at its time |
 | output | an output time which is the time of a change is the state after the change; a fit compares its data there with the state before it, see [Parameter fitting](fitting.md#data-at-the-time-of-a-change) |
 
 ## Selections and integrator settings

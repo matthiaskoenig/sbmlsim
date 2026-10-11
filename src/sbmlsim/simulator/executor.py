@@ -12,10 +12,12 @@ The semantics are the ones of PEtab v2:
    compartment keeps the concentration of the concentration species in it.
 4. After a change at a time after the start, the events whose triggers the
    change made true fire, which roadrunner does not see.
-5. A segment is integrated with the output of the plan. A time of a change
-   appears once in the output, with the state after the change. The state
-   before a change after the start is the end of the segment before it,
-   which `execute_with_before_changes` gives next to the output, see
+5. A segment is integrated with the output of the plan and ends in its
+   state at its end, which the next change is applied to; for the steps of
+   the integrator see `_steps`. A time of a change appears once in the
+   output, with the state after the change. The state before a change after
+   the start is the end of the segment before it, which
+   `execute_with_before_changes` gives next to the output, see
    `sbmlsim.fit.options.FitSettings.data_at_change`.
 6. A model which does not read the time (`ModelSymbols.time_dependent`) is
    integrated in local time: every segment starts at the time 0 of
@@ -45,6 +47,7 @@ from sbmlsim.simulator.plan import (
     PlanEvent,
     SteadyStatePlan,
     preinit_targets,
+    time_tolerance,
 )
 
 logger = logging.getLogger(__name__)
@@ -56,6 +59,25 @@ VARIABLE_STEP_SIZE = "variable_step_size"
 
 class SteadyStateError(RuntimeError):
     """A presimulation did not reach a steady state."""
+
+
+class _PastTheEnd(Exception):
+    """roadrunner integrated a segment with the steps of the integrator past its end.
+
+    An event of the model in the last step of roadrunner after the end of the
+    segment fired or is pending, see `_steps`; `_execute` runs the plan again
+    and integrates the segment with exact output at the times of its steps.
+
+    Attributes:
+        segment: the index of the segment.
+        times: the output times of the segment in the time of roadrunner, its
+            start, its steps before the end and its end.
+    """
+
+    def __init__(self, segment: int, times: np.ndarray) -> None:
+        super().__init__(f"The segment {segment} was integrated past its end.")
+        self.segment = segment
+        self.times = times
 
 
 def execute(
@@ -141,20 +163,29 @@ def _execute(
             plan.start,
         )
         model.warned_start = True
-    model.initialize(preinit_targets(plan))
-    if list(r.timeCourseSelections) != columns:
-        r.timeCourseSelections = columns
-
     integrator: roadrunner.Integrator = r.getIntegrator()
     variable_step_size = bool(integrator.getValue(VARIABLE_STEP_SIZE))
-    before: list[np.ndarray] | None = [] if keep_before else None
-    try:
-        if plan.steady_state is not None:
-            steady_state(model, plan.steady_state)
-        values = _simulate(plan, model, r, columns, local, before)
-    finally:
-        integrator.setValue(VARIABLE_STEP_SIZE, variable_step_size)
-        model.simulated()
+    # the segments of the steps of the integrator which are integrated with
+    # exact output at the times of their steps, see `_PastTheEnd`
+    exact: dict[int, np.ndarray] = {}
+    while True:
+        model.initialize(preinit_targets(plan))
+        if list(r.timeCourseSelections) != columns:
+            r.timeCourseSelections = columns
+        before: list[np.ndarray] | None = [] if keep_before else None
+        try:
+            if plan.steady_state is not None:
+                steady_state(model, plan.steady_state)
+            values = _simulate(plan, model, r, columns, local, before, exact)
+        except _PastTheEnd as err:
+            if err.segment in exact:
+                raise RuntimeError(str(err)) from err
+            exact[err.segment] = err.times
+            continue
+        finally:
+            integrator.setValue(VARIABLE_STEP_SIZE, variable_step_size)
+            model.simulated()
+        break
 
     if plan.time_shift != 0.0:
         values[:, 0] += plan.time_shift
@@ -174,6 +205,7 @@ def _simulate(
     columns: list[str],
     local: bool,
     before: list[np.ndarray] | None = None,
+    exact: dict[int, np.ndarray] | None = None,
 ) -> np.ndarray:
     """Integrate the segments of a plan, see the module.
 
@@ -186,15 +218,24 @@ def _simulate(
             time) instead of its absolute time.
         before: the list the state before every change after the start is
             appended to, in the order of the changes; `None` to keep none.
+        exact: the output times in the time of roadrunner of the segments of
+            the steps of the integrator which are integrated with exact
+            output, by the index of the segment, see `_PastTheEnd`.
 
     Returns:
         The values, a row per output time and a column per selection.
+
+    Raises:
+        _PastTheEnd: if roadrunner integrated a segment of the steps of the
+            integrator past its end.
     """
     events = {event.time: event for event in plan.events}
     points = sorted({plan.start, plan.end, *events})
     model_events = plan.symbols.events
     integrator: roadrunner.Integrator = r.getIntegrator()
     times = np.asarray(plan.times, dtype=float)
+    tolerance = time_tolerance(plan.start, plan.end)
+    exact = exact or {}
 
     blocks: list[np.ndarray] = []
     for k in range(len(points) - 1):
@@ -224,9 +265,12 @@ def _simulate(
             float(np.nextafter(end, -np.inf)) if model_events and not last else end
         )
         if plan.output is OutputMode.INTEGRATOR:
-            integrator.setValue(VARIABLE_STEP_SIZE, True)
-            block = np.array(r.simulate(start, end_stop), dtype=float)
+            block = _steps(r, start, end_stop, tolerance, k, exact.get(k))
             block[:, 0] += offset
+            if last:
+                # the end of the simulation, not the end of the segment in the
+                # time of roadrunner shifted back
+                block[-1, 0] = b
             end_state = block[-1].copy()
             if not last:
                 # the state at `b` is the one before the change at `b`
@@ -274,6 +318,66 @@ def _simulate(
     if not blocks:
         return np.empty((0, len(columns)))
     return np.concatenate(blocks, axis=0)
+
+
+def _steps(
+    r: roadrunner.RoadRunner,
+    start: float,
+    end: float,
+    tolerance: float,
+    segment: int,
+    times: np.ndarray | None,
+) -> np.ndarray:
+    """Integrate a segment with the steps of the integrator.
+
+    roadrunner integrates with the steps of CVODE up to the step after the
+    end and interpolates its last row linearly to the end, the model is left
+    in the state of the later time. The integrator is therefore called once
+    more with exact output at the end, which interpolates the state at the
+    end from the last step of CVODE without integrating: the last row and
+    the model are the state at the end. roadrunner also fires an event of
+    the model it finds in that step after the end, or keeps it pending and
+    fires it in its next integration, also of the next simulation; the call
+    at the end fires such a pending event, and a segment past whose end an
+    event fired is integrated again with exact output at the times of its
+    steps, see `_PastTheEnd`.
+
+    Args:
+        r: the roadrunner instance, in the state at the start.
+        start: the start of the segment in the time of roadrunner.
+        end: its end in the time of roadrunner.
+        tolerance: the resolution of the time, a step closer to the end is an
+            event of the model which roadrunner fired at the end.
+        segment: the index of the segment.
+        times: the output times of a segment which is integrated with exact
+            output, see `_PastTheEnd`; `None` for the steps of the integrator.
+
+    Returns:
+        The values in the time of roadrunner, a row per step, the first at
+        the start and the last at the end.
+
+    Raises:
+        _PastTheEnd: if roadrunner integrated past the end.
+    """
+    integrator: roadrunner.Integrator = r.getIntegrator()
+    if times is not None:
+        integrator.setValue(VARIABLE_STEP_SIZE, False)
+        return np.array(r.simulate(times=times.tolist()), dtype=float)
+    integrator.setValue(VARIABLE_STEP_SIZE, True)
+    block = np.array(r.simulate(start, end), dtype=float)
+    integrator.setValue(VARIABLE_STEP_SIZE, False)
+    try:
+        reached = float(integrator.integrate(end, 0.0))
+    except RuntimeError:
+        reached = np.nan
+    steps = block[1:-1, 0]
+    if reached != end or (steps.size and steps[-1] > end - tolerance):
+        raise _PastTheEnd(
+            segment, np.unique([start, *steps[steps <= end - tolerance], end])
+        )
+    block[-1] = r.getSelectedValues()
+    block[-1, 0] = end
+    return block
 
 
 def _state(r: roadrunner.RoadRunner, columns: list[str], time: float) -> np.ndarray:

@@ -43,9 +43,15 @@ DOSE = Change(0, {"PODOSE": Q(100, "mg")})
 #: the urine is emptied at the end of the first collection interval
 RESET = Change(24, {"Aurine": Q(0, "mg")})
 TIMES = [12.0, 24.0, 36.0, 48.0]
-#: the relative tolerance of a state of the steps of the integrator: roadrunner
-#: interpolates the last step of a segment linearly to its end
-STEPS_RTOL = 1e-4
+#: the times of data just before the reset, after the last step of the
+#: integrator before it
+LATE = [12.0, 23.95, 36.0, 48.0]
+#: the relative tolerance of a state of the steps of the integrator, e.g. at
+#: the end of a segment, against the state at exact output times
+STEPS_RTOL = 1e-6
+#: the relative tolerance of data between two steps of the integrator, which
+#: a group which keeps its output interpolates linearly
+INTERPOLATED_RTOL = 5e-4
 #: the amounts eliminated at which the concentration is compared
 ELIMINATED = [20.0, 50.0, 90.0, 99.0]
 #: the file of the model in the base path of a problem
@@ -90,6 +96,9 @@ def _truth() -> dict[str, Any]:
     second = simulator.simulate(
         model, Simulation(end=48, times=TIMES[2:], changes=[DOSE, RESET])
     )
+    late = simulator.simulate(
+        model, Simulation(end=48, times=LATE, changes=[DOSE, RESET])
+    )
     run = simulator.run(
         model,
         Simulation(end=48, changes=[DOSE, RESET]),
@@ -98,6 +107,7 @@ def _truth() -> dict[str, Any]:
     )
     return {
         "urine": np.concatenate([first["Aurine"], second["Aurine"]]),
+        "late": np.asarray(late["Aurine"], dtype=float),
         "cmax": float(run["pk.cmax"].values),
         "auc": float(run["pk.auc_last"].values),
         "urine_max": float(run["urine_max"].values),
@@ -125,6 +135,11 @@ class UrineStudy(SimulationExperiment):
         return {
             "urine": DataSet.from_df(
                 urine, udict={"time": "hr", "Aurine": "mg"}, ureg=self.ureg
+            ),
+            "late": DataSet.from_df(
+                pd.DataFrame({"time": LATE, "Aurine": TRUTH["late"]}),
+                udict={"time": "hr", "Aurine": "mg"},
+                ureg=self.ureg,
             ),
             "twice": DataSet.from_df(
                 urine.assign(Aurine=2 * urine["Aurine"]),
@@ -164,6 +179,18 @@ class UrineStudy(SimulationExperiment):
                 pd.DataFrame(
                     {
                         "time": TIMES[1:],
+                        "Aurine": [0.0, TRUTH["urine"][2], TRUTH["urine"][3]],
+                    }
+                ),
+                udict={"time": "hr", "Aurine": "mg"},
+                ureg=self.ureg,
+            ),
+            # the second collection, its start just before the reset, closer
+            # than the resolution of the time
+            "second_early": DataSet.from_df(
+                pd.DataFrame(
+                    {
+                        "time": [24.0 - NOISE, *TIMES[2:]],
                         "Aurine": [0.0, TRUTH["urine"][2], TRUTH["urine"][3]],
                     }
                 ),
@@ -245,6 +272,13 @@ class UrineStudy(SimulationExperiment):
                     self, task="task_collected", xid="time", yid="Aurine"
                 ),
             ),
+            "fm_late": FitMapping(
+                self,
+                reference=FitData(self, dataset="late", xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="Aurine"
+                ),
+            ),
             "fm_twice": FitMapping(
                 self,
                 reference=FitData(self, dataset="twice", xid="time", yid="Aurine"),
@@ -275,6 +309,15 @@ class UrineStudy(SimulationExperiment):
             "fm_second": FitMapping(
                 self,
                 reference=FitData(self, dataset="second", xid="time", yid="Aurine"),
+                observable=FitData(
+                    self, task="task_collected", xid="time", yid="Aurine"
+                ),
+            ),
+            "fm_second_early": FitMapping(
+                self,
+                reference=FitData(
+                    self, dataset="second_early", xid="time", yid="Aurine"
+                ),
                 observable=FitData(
                     self, task="task_collected", xid="time", yid="Aurine"
                 ),
@@ -432,6 +475,85 @@ def test_the_results_of_a_run_keep_the_state_after_the_change() -> None:
 
 
 DENSE = ["fm_urine", "fm_twice", "fm_cmax", "fm_auc", "fm_urine_max"]
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_the_simulation_continues_from_the_state_at_the_reset(
+    tmp_path: Path, dense: bool
+) -> None:
+    """The urine after the reset is the amount collected from 24 h on.
+
+    The steps of the integrator of a group with observables end the segment
+    before the reset in its state at 24 h, so the second collection starts
+    there.
+    """
+    mappings = ["fm_urine", "fm_cmax"] if dense else ["fm_urine"]
+    prediction = _predictions(_problem(mappings, tmp_path))["fm_urine"]
+    np.testing.assert_allclose(
+        prediction, TRUTH["urine"], rtol=INTERPOLATED_RTOL if dense else 1e-5
+    )
+
+
+@pytest.mark.parametrize("data_at_change", list(DataAtChangeType))
+def test_data_just_before_a_change_is_interpolated_up_to_the_state_before(
+    tmp_path: Path, data_at_change: DataAtChangeType
+) -> None:
+    """Data between the last step before the reset and the reset sees the urine before it.
+
+    The steps of the integrator of a group with observables reach the reset at
+    24 h from a step before 23.95 h; the data there is interpolated between
+    that step and the state before the reset, not the emptied urine after it.
+    """
+    time = TRUTH["after"]["time"].values
+    assert time[time < 24.0].max() < LATE[1]
+    problem = _problem(["fm_late", "fm_cmax"], tmp_path, data_at_change)
+    prediction = _predictions(problem)["fm_late"]
+    np.testing.assert_allclose(prediction, TRUTH["late"], rtol=INTERPOLATED_RTOL)
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_a_first_point_just_before_a_change_takes_the_state_after(
+    tmp_path: Path, dense: bool
+) -> None:
+    """The start of a curve closer to the reset than the resolution is at the reset.
+
+    It is the time of the reset, whose state after it the first point of a
+    curve takes, also where the output of a group with observables jumps.
+    """
+    mappings = ["fm_second_early", "fm_cmax"] if dense else ["fm_second_early"]
+    prediction = _predictions(_problem(mappings, tmp_path))["fm_second_early"]
+    assert prediction[0] == pytest.approx(0.0, abs=1e-8)
+    np.testing.assert_allclose(
+        prediction[1:],
+        TRUTH["urine"][2:],
+        rtol=INTERPOLATED_RTOL if dense else 1e-5,
+    )
+
+
+@pytest.mark.parametrize("dense", [False, True])
+@pytest.mark.parametrize("data_at_change", list(DataAtChangeType))
+def test_the_curve_of_a_mapping_jumps_at_a_change(
+    tmp_path: Path, dense: bool, data_at_change: DataAtChangeType
+) -> None:
+    """The curve of the figure of a mapping has the states before and after the reset.
+
+    The prediction at the reset lies on the curve: the state before it with
+    `before`, the state after it with `after`.
+    """
+    mappings = ["fm_urine", "fm_cmax"] if dense else ["fm_urine"]
+    problem = _problem(mappings, tmp_path, data_at_change)
+    k = problem.mapping_keys.index("fm_urine")
+    data = problem.residuals(np.array([TRUE_KE]), complete_data=True)
+    assert isinstance(data, dict)
+    x, y = np.asarray(data["x_obs"][k]), np.asarray(data["y_obs"][k])
+    prediction = np.asarray(data["y_obsip"][k])
+    assert np.all(np.diff(x) >= 0)
+    at = np.flatnonzero(x == 24.0)
+    assert at.size == 2
+    assert y[at[0]] == pytest.approx(TRUTH["urine"][1], rel=1e-5)
+    assert y[at[1]] == pytest.approx(0.0, abs=1e-8)
+    expected = 0 if data_at_change is DataAtChangeType.BEFORE else 1
+    assert prediction[1] == y[at[expected]]
 
 
 def test_a_group_with_observables_sees_the_state_before(tmp_path: Path) -> None:
