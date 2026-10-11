@@ -1,5 +1,7 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -8,8 +10,11 @@ from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.simulator.executor import (
     SteadyStateError,
+    _exact_times,
+    _to_the_end,
     execute,
-    execute_with_before_changes,
+    execute_with_changes,
+    steady_state,
 )
 from sbmlsim.simulator.plan import compile_simulation
 from tests.simulator.models import sbml, sbml_pk
@@ -375,7 +380,8 @@ def run_before(
     """Run a simulation of the probe model with the states before the changes."""
     model = model or RoadrunnerSBMLModel(source=sbml())
     plan = compile_simulation(sim, model.symbols, model.uinfo)
-    return execute_with_before_changes(plan, model, SEL)
+    result, before, _ = execute_with_changes(plan, model, SEL)
+    return result, before
 
 
 def test_the_states_before_the_changes_after_the_start() -> None:
@@ -421,7 +427,7 @@ def test_the_state_before_a_change_is_before_the_event_it_triggers() -> None:
         end=2, times=[0, 1, 2], changes=[Change(1, {"X": 2.0}), Change(2, {"X": 0.0})]
     )
     plan = compile_simulation(simulation, model.symbols, model.uinfo)
-    result, before = execute_with_before_changes(plan, model, ["time", "X", "Y"])
+    result, before, _ = execute_with_changes(plan, model, ["time", "X", "Y"])
     assert np.asarray(result["X"]).tolist() == [0.0, 2.0, 0.0]
     assert np.asarray(result["Y"]).tolist() == [0.0, 1.0, 1.0]
     assert np.asarray(before["X"]).tolist() == [0.0, 2.0]
@@ -442,7 +448,7 @@ def test_the_states_before_the_changes_next_to_the_output(
     simulation = Simulation(end=2, changes=CHANGES, times=times, time_shift=3)
     plan = compile_simulation(simulation, model.symbols, model.uinfo)
     assert plan.change_times == (1.0, 2.0)
-    result, before = execute_with_before_changes(plan, model, SEL)
+    result, before, _ = execute_with_changes(plan, model, SEL)
     np.testing.assert_array_equal(result.values, execute(plan, model, SEL).values)
     np.testing.assert_allclose(before.time, [4.0, 5.0])
     first = run(Simulation(end=1, changes=CHANGES[:1], times=times and times[:2]))
@@ -454,13 +460,63 @@ def test_the_states_before_the_changes_next_to_the_output(
     assert before["X"][1] == pytest.approx(12.0)
 
 
+@pytest.mark.parametrize("times", [None, [0, 0.5, 1.5, 2]])
+def test_the_states_after_the_changes_next_to_the_output(
+    times: list[float] | None,
+) -> None:
+    """The state after a change is the start of the segment after it.
+
+    The output has it at the time of the change if it has the time, the
+    steps of the integrator always; an output without the time drops it.
+    """
+    model = RoadrunnerSBMLModel(source=sbml())
+    simulation = Simulation(end=2, changes=CHANGES, times=times)
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    result, before, after = execute_with_changes(plan, model, SEL)
+    np.testing.assert_array_equal(after.time, [1.0, 2.0])
+    assert after["[A]"][0] == pytest.approx(before["[A]"][0] + 10.0)
+    assert after["X"][1] == 0.0
+    if times is None:
+        rows = np.searchsorted(result.time, after.time)
+        np.testing.assert_array_equal(result.values[rows], after.values)
+    else:
+        assert not np.isin(1.0, result.time)
+
+
+class _FailingIntegrator:
+    """An integrator which fails at the end."""
+
+    def setValue(self, key: str, value: object) -> None:
+        """Ignore a setting."""
+
+    def integrate(self, start: float, step: float) -> float:
+        """Fail."""
+        raise RuntimeError("CV_TOO_MUCH_WORK")
+
+
+class _FailingRoadRunner:
+    """A roadrunner instance whose integrator fails at the end."""
+
+    def getIntegrator(self) -> _FailingIntegrator:
+        """Get the integrator."""
+        return _FailingIntegrator()
+
+
+def test_a_failure_of_the_integrator_at_the_end_raises() -> None:
+    """The integrator fails at the end: an error, or an event after the end."""
+    r = _FailingRoadRunner()
+    with pytest.raises(RuntimeError, match="CV_TOO_MUCH_WORK"):
+        _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
+    assert not _to_the_end(r, 1.0, events=True)  # ty: ignore[invalid-argument-type]
+
+
 def test_a_plan_without_changes_has_no_states_before_them() -> None:
     """Without a change after the start, there is no state before one."""
     model = RoadrunnerSBMLModel(source=sbml())
     plan = compile_simulation(
         Simulation(end=1, changes=CHANGES[:1], times=[0, 1]), model.symbols, model.uinfo
     )
-    _, before = execute_with_before_changes(plan, model, SEL)
+    _, before, _ = execute_with_changes(plan, model, SEL)
     assert before.values.shape == (0, len(SEL))
     assert plan.at_change([0.0, 1.0]).tolist() == [-1, -1]
 
@@ -521,7 +577,7 @@ def test_the_states_before_the_changes_of_the_steps_are_exact() -> None:
         plan = compile_simulation(
             Simulation(end=48, changes=changes, times=times), model.symbols, model.uinfo
         )
-        _, before = execute_with_before_changes(plan, model, PK_SEL)
+        _, before, _ = execute_with_changes(plan, model, PK_SEL)
         states.append(before.values)
     np.testing.assert_allclose(states[0], states[1], rtol=1e-9)
 
@@ -571,3 +627,171 @@ def test_a_simulation_leaves_no_event_of_roadrunner_pending() -> None:
         RoadrunnerSBMLModel(source=sbml(DECAY)), Simulation(end=1), ["time", "S", "Y"]
     )
     np.testing.assert_array_equal(second.values, fresh.values)
+
+
+def test_the_last_output_of_the_steps_is_at_the_end() -> None:
+    """The last output of the steps is at the end, also in local time.
+
+    The last segment from 0.2 to 0.9 starts at the time 0 of roadrunner, its
+    end shifted back is `(0.9 - 0.2) + 0.2 = 0.8999999999999999`; the output
+    at the end is the state after the change at the end.
+    """
+    model = RoadrunnerSBMLModel(source=sbml())
+    assert not model.symbols.time_dependent
+    result = run_on(
+        model,
+        Simulation(end=0.9, changes=[Change(0.2, {"X": 1.0}), Change(0.9, {"X": 0.0})]),
+        SEL,
+    )
+    assert (0.9 - 0.2) + 0.2 != 0.9
+    assert result.time[-1] == 0.9
+    assert result["X"][-1] == 0.0
+
+
+#: a sawtooth: `X` grows with the rate `k` and an event resets it at 1 and
+#: counts the resets in `Y`
+SAWTOOTH = """
+model sawtooth
+  var X = 0
+  var Y = 0
+  k = 1
+  X' = k
+  E: at (X >= 1): X = 0, Y = Y + 1
+end
+"""
+
+
+def _count_runs(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Count the integrations of a plan, see `executor._simulate`."""
+    from sbmlsim.simulator import executor
+
+    runs: list[int] = []
+    simulate = executor._simulate
+
+    def counted(*args: object, **kwargs: object) -> np.ndarray:
+        runs.append(1)
+        return simulate(*args, **kwargs)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(executor, "_simulate", counted)
+    return runs
+
+
+def test_segments_past_their_end_are_integrated_again_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The plan runs twice however many segments roadrunner integrated past their end.
+
+    A change of `k` to its own value 0.002 before every reset: the last step
+    of roadrunner before every change ends after the reset. The rest of the
+    plan from the first such segment on runs again with exact output.
+    """
+    runs = _count_runs(monkeypatch)
+    model = RoadrunnerSBMLModel(source=sbml(SAWTOOTH))
+    times = [j - 0.002 for j in range(1, 11)]
+    result = run_on(
+        model,
+        Simulation(end=10.5, changes=[Change(times, {"k": 1.0})]),
+        ["time", "X", "Y"],
+    )
+    assert len(runs) == 2
+    at = np.isin(result.time, times)
+    np.testing.assert_allclose(np.asarray(result["X"])[at], 0.998, rtol=1e-6)
+    np.testing.assert_array_equal(np.asarray(result["Y"])[at], np.arange(10))
+    assert result["Y"][-1] == 10.0
+
+
+def test_a_model_without_events_is_integrated_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A segment shorter than the resolution of the time is no event past its end."""
+    runs = _count_runs(monkeypatch)
+    model = RoadrunnerSBMLModel(source=sbml())
+    run_on(
+        model,
+        Simulation(
+            end=2, changes=[Change(1, {"X": 1.0}), Change(1 + 1e-12, {"X": 2.0})]
+        ),
+        SEL,
+    )
+    assert len(runs) == 1
+
+
+def test_an_exact_segment_keeps_the_states_before_and_after_an_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A segment integrated again with exact output keeps an event inside as two rows.
+
+    The segment up to the change at 1.998 has the reset at 1 inside, and its
+    last step ends after the reset at 2: it is integrated again with exact
+    output, which has the state before the reset at 1 and the state after it,
+    as the steps of the integrator have them.
+    """
+    runs = _count_runs(monkeypatch)
+    model = RoadrunnerSBMLModel(source=sbml(SAWTOOTH))
+    result = run_on(
+        model,
+        Simulation(end=2.5, changes=[Change(1.998, {"k": 1.0})]),
+        ["time", "X", "Y"],
+    )
+    assert len(runs) == 2
+    time, x = result.time, np.asarray(result["X"])
+    jump = np.flatnonzero(
+        (x[:-1] > 0.999) & (x[1:] < 1e-3) & (np.abs(time[:-1] - 1) < 1e-6)
+    )
+    assert len(jump) == 1
+    assert time[jump[0] + 1] == pytest.approx(1.0, abs=1e-6)
+    assert np.asarray(result["Y"])[-1] == 2.0
+
+
+def test_the_exact_times_of_a_segment_keep_the_events() -> None:
+    """Steps closer than the resolution of the time are an event, before and after it.
+
+    A step closer to the end than the resolution is an event roadrunner fired
+    at the end and is left out.
+    """
+    times = _exact_times(
+        0.0,
+        np.array([0.5, 1.0, 1.0, 1.0 + 1e-12, 1.7, 1.98, 1.995]),
+        2.0,
+        0.01,
+    )
+    np.testing.assert_allclose(times, [0.0, 0.5, 0.99, 1.01, 1.7, 1.98, 2.0])
+
+
+def test_a_steady_state_ends_at_the_end_of_its_last_horizon() -> None:
+    """The presimulation ends in the state at the end of its last horizon."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    plan = compile_simulation(
+        Simulation(end=1, presimulation=SteadyState()), model.symbols, model.uinfo
+    )
+    assert plan.steady_state is not None
+    model.initialize([])
+    time = steady_state(model, plan.steady_state)
+    model.simulated()
+    assert model.r_loaded.model.getTime() == time
+
+
+#: a model which reads the time, integrated in absolute time
+CLOCK = """
+model clock
+  var X = 0
+  X' = 1 + 0 * time
+end
+"""
+
+
+@pytest.mark.parametrize(
+    "simulation",
+    [
+        Simulation(start=-3, end=-1),
+        Simulation(start=-3, end=1, changes=[Change(-1, {"X": 0.0})]),
+    ],
+)
+def test_the_steps_of_a_negative_end_warn_nothing(simulation: Simulation) -> None:
+    """roadrunner warns that it did not reach a negative end, which it reached."""
+    model = RoadrunnerSBMLModel(source=sbml(CLOCK))
+    assert model.symbols.time_dependent
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        result = run_on(model, simulation, ["time", "X"])
+    assert result.time[-1] == simulation.end

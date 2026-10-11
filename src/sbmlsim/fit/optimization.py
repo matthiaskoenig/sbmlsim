@@ -61,7 +61,7 @@ from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import (
     SteadyStateError,
     execute,
-    execute_with_before_changes,
+    execute_with_changes,
 )
 from sbmlsim.simulator.observables import (
     CustomNode,
@@ -250,13 +250,16 @@ class GroupResult:
             curve of a mapping read. Empty for a group without a change after
             the start or a timecourse over the time, see
             `OptimizationProblem._before_graph`.
-        changes: the times of the changes of `before` in the time of the
-            output.
+        after: the same timecourses with the state after every change, which
+            an output without the time of a change does not have.
+        changes: the times of the changes of `before` and `after` in the time
+            of the output.
     """
 
     time: np.ndarray
     outputs: dict[str, np.ndarray]
     before: dict[str, np.ndarray] = field(default_factory=dict)
+    after: dict[str, np.ndarray] = field(default_factory=dict)
     changes: np.ndarray = field(default_factory=lambda: np.empty(0))
 
 
@@ -270,31 +273,34 @@ class DataTimesResult:
         before: the states before the changes after the start, a row per
             change of `Plan.change_times`, for the data which takes the state
             before a change (`FitSettings.data_at_change`) and the curve of a
-            mapping, which jumps at a change; `None` if no output time of the
-            group is the time of a change after the start.
+            mapping, which jumps at a change; `None` if no change after the
+            start is within the output times of the group.
+        after: the states after the changes, likewise, which the output does
+            not have at a change between its times.
     """
 
     output: TimecourseResult
     before: TimecourseResult | None = None
+    after: TimecourseResult | None = None
 
 
-def _with_states_before(
+def _with_states_at_changes(
     solution: np.ndarray, states: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Set the state before every change at its time in the output of a simulation.
+    """Set the state before or after every change at its time in an output.
 
     The output has the state after a change at its time, if it has the time;
-    a row at the time of a change is replaced by the state before it, else
-    the state is inserted, so the times stay sorted and every other row stays.
+    a row at the time of a change is replaced by the given state, else the
+    state is inserted, so the times stay sorted and every other row stays.
 
     Args:
         solution: the output of a simulation, a row per time, the time first.
-        states: the states before the changes after the start, a row per
-            change in the order of the changes, the time first, see
-            `sbmlsim.simulator.executor.execute_with_before_changes`.
+        states: the states before or after the changes after the start, a
+            row per change in the order of the changes, the time first, see
+            `sbmlsim.simulator.executor.execute_with_changes`.
 
     Returns:
-        The output with the states before the changes, and the row of every
+        The output with the states at the changes, and the row of every
         change in it.
     """
     time = solution[:, 0]
@@ -314,32 +320,47 @@ def _with_jumps(
     time: np.ndarray,
     columns: Sequence[np.ndarray],
     changes: np.ndarray,
-    states: Sequence[np.ndarray],
+    before: Sequence[np.ndarray],
+    after: Sequence[np.ndarray],
 ) -> tuple[np.ndarray, list[np.ndarray]]:
-    """Insert the state before every change before the row of its time.
+    """Insert the states before and after every change at its time.
 
-    The output of a simulation has the state after a change at its time; with
-    the state before it in a row of the same time before it, a curve draws the
-    jump at the change and an interpolation up to the change ends in the state
-    before it, see `_interpolate_after_jumps`. A change whose time the output
-    does not have gets no row.
+    The output of a simulation has the state after a change at its time if it
+    has the time: the state before it is inserted in a row of the same time
+    before it. A change between two times of the output gets a row of the
+    state before it and one of the state after it. A curve then draws the
+    jump at the change, and an interpolation up to the change ends in the
+    state before it and one from the change starts in the state after it, see
+    `_interpolate_after_jumps`. A change outside of the times of the output
+    gets no row.
 
     Args:
         time: the time of the output, sorted.
         columns: timecourses of the output.
         changes: the times of the changes, sorted.
-        states: the timecourses before the changes, a value per change.
+        before: the timecourses before the changes, a value per change.
+        after: the timecourses after the changes, a value per change.
 
     Returns:
-        The time and the timecourses with the states before the changes.
+        The time and the timecourses with the states at the changes.
     """
     position = np.searchsorted(time, changes, side="left")
     present = position < time.size
     present[present] = time[position[present]] == changes[present]
-    rows = position[present]
-    return np.insert(time, rows, time[rows]), [
-        np.insert(column, rows, np.asarray(state, dtype=float)[present])
-        for column, state in zip(columns, states, strict=True)
+    between = ~present & (changes > time[0]) & (changes < time[-1])
+    # the rows to insert, in the order of the changes; rows inserted at one
+    # position keep their order
+    rows: list[int] = []
+    inserted: list[list[float]] = [[] for _ in range(len(columns) + 1)]
+    for c in np.flatnonzero(present | between):
+        for states in (before, after) if between[c] else (before,):
+            rows.append(int(position[c]))
+            inserted[0].append(float(changes[c]))
+            for values, state in zip(inserted[1:], states, strict=True):
+                values.append(float(state[c]))
+    return np.insert(time, rows, inserted[0]), [
+        np.insert(column, rows, values)
+        for column, values in zip(columns, inserted[1:], strict=True)
     ]
 
 
@@ -736,8 +757,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: resolution of the time) the time of the change with
         #: `DataAtChangeType.BEFORE`; `None` for the other mappings
         self._x_at_data: list[np.ndarray | None] = []
-        #: whether a group runs with the states before its changes, see
-        #: `_simulate_groups`
+        #: whether a group runs with the states before and after its changes,
+        #: see `_simulate_groups`
         self._group_before: list[bool] = []
         #: the timecourses the timecourses over the time of every group which
         #: keeps its output read, evaluated on its output with the states
@@ -1905,12 +1926,13 @@ class OptimizationProblem(ObjectJSONEncoder):
         (`FitSettings.data_at_change`, `_first_after`). The output of a plan
         has the state after a change at its time, as a run has it; an output
         time of the data at a change is the time of the change. A group with
-        an output time at a change gets the states before the changes next to
-        its output (`execute_with_before_changes`), a group which keeps its
-        output and has a change after the start evaluates the timecourses its
-        timecourses over the time read on them, see `_before_graph`: the data
-        before a change is interpolated toward the state before it and the
-        curve of a mapping jumps at a change.
+        a change within its output times gets the states before and after
+        the changes next to its output (`execute_with_changes`), a group
+        which keeps its output and has a change after the start evaluates the
+        timecourses its timecourses over the time read on them, see
+        `_before_graph`: the data up to a change is interpolated toward the
+        state before it, the data from a change from the state after it, and
+        the curve of a mapping jumps at a change.
 
         Raises:
             ValueError: if a time of the data is outside of its simulation,
@@ -2008,10 +2030,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                         self._before_change[k] = before_change
                         takes_before |= bool(np.any(before_change >= 0))
                     position += size
-                # the states before the changes for the data which takes them
-                # and for the curve of a mapping, which jumps at a change
-                at_output = bool(np.isin(first.change_times, times).any())
-                self._group_before.append(takes_before or at_output)
+                # the states at the changes for the data which takes the state
+                # before a change and for the curve of a mapping, which jumps
+                # at a change within its output times
+                finite = times[np.isfinite(times)]
+                changes = np.asarray(first.change_times, dtype=float)
+                within = bool(
+                    finite.size
+                    and np.any((changes >= finite[0]) & (changes <= finite[-1]))
+                )
+                self._group_before.append(takes_before or within)
                 steady = bool(np.isposinf(times[-1]))
                 times = times[np.isfinite(times)]
                 outside = times[(times < plan.start) | (times > plan.end)]
@@ -2846,10 +2874,10 @@ class OptimizationProblem(ObjectJSONEncoder):
             selections = sorted({s for k in group for s in self.selections[k]})
             try:
                 if self._group_before[k_group]:
-                    output, before = execute_with_before_changes(
+                    output, before, after = execute_with_changes(
                         plan, self.models[k0], selections
                     )
-                    result = DataTimesResult(output=output, before=before)
+                    result = DataTimesResult(output=output, before=before, after=after)
                 else:
                     result = DataTimesResult(
                         output=execute(plan, self.models[k0], selections)
@@ -2900,13 +2928,14 @@ class OptimizationProblem(ObjectJSONEncoder):
         before_graph = self._group_before_graphs[k_group]
         solutions: list[np.ndarray] = []
         states = np.empty((0, len(selections)))
+        states_after = np.empty((0, len(selections)))
         try:
             for i, point in enumerate(plans):
                 if i == 0 and before_graph is not None:
-                    result, before = execute_with_before_changes(
+                    result, before, after = execute_with_changes(
                         point, model, selections
                     )
-                    states = before.values
+                    states, states_after = before.values, after.values
                 else:
                     result = execute(point, model, selections)
                 solutions.append(result.values)
@@ -2923,24 +2952,43 @@ class OptimizationProblem(ObjectJSONEncoder):
         if before_graph is None:
             return GroupResult(time=time, outputs=outputs)
         # the timecourses at the times of the changes on the output with the
-        # states before the changes, with the values per simulation of the
-        # output as a run has it
-        output, rows = _with_states_before(solutions[0], states)
-        columns = {
-            name: output[np.newaxis, :, j] for j, name in enumerate(selections) if j
-        }
-        for name in self._group_before_scalars[k_group]:
-            columns[name] = np.asarray(outputs[name][:1], dtype=float)[:, np.newaxis]
-        try:
-            left = before_graph.evaluate(output[np.newaxis, :, 0], columns, plans[:1])
-        except ObservableError as err:
-            logger.error(
-                "The observables failed for ('%s = %s'): \n%s", self.pids, x, err
+        # states before the changes, and with the states after them if the
+        # output does not have the time of every change, with the values per
+        # simulation of the output as a run has it
+        valid = time[0][~np.isnan(time[0])]
+        missing = not np.all(np.isin(states[:, 0], valid))
+        values: list[dict[str, np.ndarray]] = []
+        for at_changes in (states, states_after) if missing else (states,):
+            output, rows = _with_states_at_changes(solutions[0], at_changes)
+            columns = {
+                name: output[np.newaxis, :, j] for j, name in enumerate(selections) if j
+            }
+            for name in self._group_before_scalars[k_group]:
+                columns[name] = np.asarray(outputs[name][:1], dtype=float)[
+                    :, np.newaxis
+                ]
+            try:
+                evaluated = before_graph.evaluate(
+                    output[np.newaxis, :, 0], columns, plans[:1]
+                )
+            except ObservableError as err:
+                logger.error(
+                    "The observables failed for ('%s = %s'): \n%s", self.pids, x, err
+                )
+                return None
+            values.append(
+                {name: evaluated[name][0, rows] for name in before_graph.keep}
             )
-            return None
-        before = {name: left[name][0, rows] for name in before_graph.keep}
+        if not missing:
+            # the output has the state after every change at its time
+            rows = np.searchsorted(valid, states[:, 0])
+            values.append({name: outputs[name][0, rows] for name in before_graph.keep})
         return GroupResult(
-            time=time, outputs=outputs, before=before, changes=states[:, 0].copy()
+            time=time,
+            outputs=outputs,
+            before=values[0],
+            after=values[1],
+            changes=states[:, 0].copy(),
         )
 
     def evaluated_plan(
@@ -3169,11 +3217,13 @@ class OptimizationProblem(ObjectJSONEncoder):
     ) -> tuple[np.ndarray, list[np.ndarray]]:
         """Get timecourses of the simulation of a group over the time, with its jumps.
 
-        The output has the state after a change at its time. A result with the
-        states before its changes has the state before a change in a row of
-        the same time before it, see `_with_jumps`: a curve draws the jump and
-        the data before a change is interpolated toward the state before it,
-        see `_interpolate_after_jumps`.
+        The output has the state after a change at its time if it has the
+        time. A result with the states at its changes has the state before a
+        change in a row of the same time before it, and the state after it in
+        a row after that if the output does not have the time, see
+        `_with_jumps`: a curve draws the jump, and the data up to a change is
+        interpolated toward the state before it and from it from the state
+        after it, see `_interpolate_after_jumps`.
 
         Args:
             result: result of the simulation of the group; a `GroupResult` of
@@ -3186,16 +3236,18 @@ class OptimizationProblem(ObjectJSONEncoder):
         time = self._column(result, TIME)
         columns = [self._column(result, name) for name in names]
         if isinstance(result, DataTimesResult):
-            if result.before is None:
+            if result.before is None or result.after is None:
                 return time, columns
             changes = np.asarray(result.before[TIME], dtype=float)
-            states = [np.asarray(result.before[name], dtype=float) for name in names]
+            before = [np.asarray(result.before[name], dtype=float) for name in names]
+            after = [np.asarray(result.after[name], dtype=float) for name in names]
         else:
             if not result.changes.size or any(n not in result.before for n in names):
                 return time, columns
             changes = result.changes
-            states = [result.before[name] for name in names]
-        return _with_jumps(time, columns, changes, states)
+            before = [result.before[name] for name in names]
+            after = [result.after[name] for name in names]
+        return _with_jumps(time, columns, changes, before, after)
 
     def _at_data(
         self, k: int, result: DataTimesResult | GroupResult, selection: str

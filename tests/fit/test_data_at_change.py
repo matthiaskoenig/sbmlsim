@@ -372,6 +372,11 @@ class UrineStudy(SimulationExperiment):
                 reference=FitData(self, dataset="urine", xid="time", yid="Aurine"),
                 observable=FitData(self, task="task_coarse", xid="time", yid="Aurine"),
             ),
+            "fm_coarse_late": FitMapping(
+                self,
+                reference=FitData(self, dataset="late", xid="time", yid="Aurine"),
+                observable=FitData(self, task="task_coarse", xid="time", yid="Aurine"),
+            ),
             "fm_noisy": FitMapping(
                 self,
                 reference=FitData(self, dataset="noisy", xid="time", yid="Aurine"),
@@ -589,6 +594,37 @@ def test_a_grid_without_the_time_of_the_change(tmp_path: Path) -> None:
         before["fm_coarse"][[0, 2, 3]], after["fm_coarse"][[0, 2, 3]]
     )
     assert before["fm_coarse_max"] == pytest.approx(after["fm_coarse_max"], rel=1e-12)
+    # the state after the reset at its time, which the output does not have
+    assert after["fm_coarse"][1] == pytest.approx(0.0, abs=1e-8)
+
+
+@pytest.mark.parametrize("data_at_change", list(DataAtChangeType))
+def test_a_grid_without_the_time_of_the_change_jumps(
+    tmp_path: Path, data_at_change: DataAtChangeType
+) -> None:
+    """The curve of a grid without the time of the reset jumps at the reset.
+
+    The data at 23.95 h between the output at 20.6 h and the reset is
+    interpolated toward the urine before the reset.
+    """
+    mappings = ["fm_coarse", "fm_coarse_late", "fm_coarse_max"]
+    problem = _problem(mappings, tmp_path, data_at_change)
+    grid = np.asarray(problem.plans[0].times)
+    assert 24.0 not in grid
+    k = problem.mapping_keys.index("fm_coarse")
+    data = problem.residuals(np.array([TRUE_KE]), complete_data=True)
+    assert isinstance(data, dict)
+    x, y = np.asarray(data["x_obs"][k]), np.asarray(data["y_obs"][k])
+    assert np.all(np.diff(x) >= 0)
+    at = np.flatnonzero(x == 24.0)
+    assert at.size == 2
+    assert y[at[0]] == pytest.approx(TRUTH["urine"][1], rel=1e-5)
+    assert y[at[1]] == pytest.approx(0.0, abs=1e-8)
+    # the output before the reset and the state before it
+    previous = int(np.flatnonzero(x < 24.0)[-1])
+    expected = np.interp(LATE[1], [x[previous], 24.0], [y[previous], y[at[0]]])
+    late = _predictions(problem)["fm_coarse_late"]
+    assert late[1] == pytest.approx(expected, rel=1e-12)
 
 
 @pytest.mark.parametrize("dense", [False, True])
