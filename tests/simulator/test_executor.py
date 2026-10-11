@@ -1293,6 +1293,38 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
     assert np.all(np.diff(result.time) >= 0.0)
 
 
+def test_a_dose_a_few_units_in_the_last_place_before_a_change_fires_once() -> None:
+    """A dose between the stop before a change and the change fires once.
+
+    roadrunner integrated the stop four units in the last place before the
+    change at 1.6 + 3 units to one unit after it, where the dose at 1.6
+    fired, and the triggers before the change, evaluated at the stop, fired
+    it a second time after the change; doses from 1 to 3.
+    """
+    wrong = []
+    for te in np.round(np.linspace(1.0, 3.0, 41), 6)[::4]:
+        te = float(te)
+        model = RoadrunnerSBMLModel(
+            source=sbml(
+                f"model d\n  var A = 0\n  var Y = 0\n  k = 0.1\n  A' = -k * A\n"
+                f"  E: at (time >= {te!r}): A = A + 10, Y = Y + 1\nend"
+            )
+        )
+        for ulps in (1, 3):
+            c = _ulps_after(te, ulps)
+            for times in (None, [0.0, c, c + 1.0]):
+                result = run_on(
+                    model,
+                    Simulation(
+                        end=c + 1.0, changes=[Change(c, {"k": 0.2})], times=times
+                    ),
+                    ["time", "A", "Y"],
+                )
+                if result["Y"][-1] != 1.0 or np.any(np.diff(result.time) < 0.0):
+                    wrong.append((te, ulps, times is None))
+    assert not wrong
+
+
 @pytest.mark.parametrize("times", [None, [0.0, 0.3, 1.0]])
 def test_a_dose_at_a_change_and_a_change_of_a_grid_one_unit_after_it(
     times: list[float] | None,

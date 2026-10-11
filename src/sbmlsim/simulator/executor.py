@@ -248,7 +248,7 @@ def _simulate(
 
     blocks: list[np.ndarray] = []
     # whether the last segment is not integrated, and the time of roadrunner
-    # the model is at after it: where its integration stopped, the start of a
+    # the model is at after it: where its integration ended, the start of a
     # segment which is not integrated, the start before the first segment
     held, stopped = False, plan.start
     for k in range(len(points) - 1):
@@ -283,7 +283,6 @@ def _simulate(
         end_stop = _stop(start, end) if model_events else end
         # a segment too short for CVODE keeps the state at its start
         held = not _integrable(start, end_stop)
-        stopped = start if held else end_stop
         if held:
             if plan.output is OutputMode.INTEGRATOR:
                 block = _held(r, np.array([a, b]))
@@ -347,6 +346,10 @@ def _simulate(
                 state = result[-1].copy()
                 state[0] = b
                 block = np.vstack([block, state])
+        # the time the model is at: roadrunner may integrate an exact output
+        # time to one unit in the last place after it and fire an event there,
+        # see `_simulate_times`; a segment which is not integrated is at its start
+        stopped = start if held else float(r.model.getTime())
         blocks.append(block)
 
     # the last segment in the time of roadrunner
