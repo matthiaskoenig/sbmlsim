@@ -9,11 +9,15 @@ machine epsilon (`CVODEIntegrator::integrate` of libroadrunner 2.10). A first
 step of CVODE after an event which ends within `roottol` of it is not
 reported, a second one is, after the row at `root + roottol`, so the times are
 not sorted. `roottol` is a `static const` of the function, which the first call
-of the process fixes to `100 * 32 * eps * (|t0| + |h|)` of that call: after a
-first integration over `0..10000`, of any model, the rows of every event are
-7.1e-9 before and after it, more than the resolution of the time of a
-simulation over `0..2.5`, and a worker of a pool, whose first integration is
-its own, has other rows than the process which runs the scan.
+of the process fixes to `100 * 32 * eps * (|t0| + |h|)` of that call, `t0` and
+`h` the start and the step of the first integration of the process, of any
+model: the steps of the integrator over `0..10000`, whose first call
+integrates the whole interval, fix it to 7.1e-9, roadrunner's default
+`simulate(0, 10000)`, 51 output times 200 apart, to 1.42e-10. After the first
+of them the rows of every event are 7.1e-9 before and after it, more than
+the resolution of the time of a simulation over `0..2.5`, and a worker of a
+pool, whose first integration is its own, has other rows than the process
+which runs the scan.
 
 `root_tolerance` runs a probe once per process, before the first model
 sbmlsim loads (`RoadrunnerSBMLModel`) and when a worker of a pool starts
@@ -33,6 +37,21 @@ shorter than that `roottol`, which roadrunner does not report, and the rows of
 an event which CVODE finds in that step, which roadrunner applies without
 rows; a worker of a pool has both, so the rows differ by them and the values
 on a grid by the interpolation across them. The probe warns once.
+
+A roadrunner whose `roottol` is no constant of the process, which the probe
+cannot measure or which reports both rows of an event at its time degrades
+without an error and without a warning: the probe gives a `roottol` of 0 and
+the rows of an event stay at the times roadrunner reports them, which a time
+of a grid sees as a chain of jumps closer than the resolution of the time,
+see `sbmlsim.result.timecourse.grid_weights`. The behavior of libroadrunner
+2.10 which sbmlsim depends on is pinned by the tests a new release of
+roadrunner has to pass: `tests/model/test_roottol.py` (the pin, the
+measurement and the warning), `tests/simulator/test_event_rows.py` (the rows
+of events after a first integration with roadrunner, in fresh processes),
+`tests/simulator/test_executor.py` (the events at the end of a segment and
+of a simulation, the folded rows, the rounding of the output times by
+roadrunner and the runs again past the end) and
+`tests/fit/test_data_at_change.py` (the data at an event).
 """
 
 from __future__ import annotations
@@ -63,6 +82,10 @@ PROBE_EVENT = 2.0**-10
 #: the end of the integration of the probe, the largest `roottol` it measures
 #: is a little less
 PROBE_END = 2.0**10
+
+#: the end of the second integration of the probe, a `roottol` which is no
+#: constant of the process differs between the two
+PROBE_SHORT_END = 2.0**5
 
 #: a state `sbmlsim_roottol_x` which grows with rate 1 and an event at
 #: `PROBE_EVENT` which resets it to 0; roadrunner adds an attribute of the name
@@ -122,36 +145,47 @@ def root_tolerance() -> RootTolerance:
 
     The probe fixes `roottol` to `PINNED` if it is the first integration of
     the process, see the module, and measures it as half the time between the
-    two rows of its event. If roadrunner integrated before, the measured
+    two rows of its event, in two integrations to `PROBE_END` and to
+    `PROBE_SHORT_END`. If roadrunner integrated before, the measured
     `roottol` is larger and a warning names the consequence and the remedy,
     once per process. A process which forks keeps the `roottol` of roadrunner
     and the measurement.
 
     Returns:
-        The root tolerance; `0` if the probe has no rows of its event, so
-        `at_event_times` leaves the rows of an event as roadrunner reports
-        them.
+        The root tolerance; `0` if the probe fails, has no rows of its event,
+        or measures two values, a `roottol` which is no constant of the
+        process, so `at_event_times` leaves the rows of an event as
+        roadrunner reports them.
     """
-    r = roadrunner.RoadRunner(PROBE_SBML)
-    integrator: roadrunner.Integrator = r.getIntegrator()
-    integrator.integrate(0.0, PIN_SPAN)
-    r.resetAll()
-    integrator.setValue("variable_step_size", True)
-    r.timeCourseSelections = ["time", "sbmlsim_roottol_x"]
-    rows = np.array(r.simulate(0.0, PROBE_END), dtype=float)
-    # the state after the event, `sbmlsim_roottol_x` reset to 0, after the start
-    after = np.flatnonzero(rows[1:, 1] == 0.0) + 1
-    if after.size == 0 or rows[after[0] - 1, 1] <= 0.0:
-        logger.warning(
+    try:
+        gaps = _probe()
+    except Exception as err:  # every failure of the probe degrades, see the module
+        logger.debug(
+            "The probe of the root tolerance of roadrunner failed, the rows of an "
+            "event of a model are left at the times roadrunner reports them: %s",
+            err,
+        )
+        return RootTolerance(value=0.0, precision=0.0)
+    if None in gaps:
+        logger.debug(
             "The probe of the root tolerance of roadrunner has no rows of its "
             "event, the rows of an event of a model are left at the times "
             "roadrunner reports them."
         )
         return RootTolerance(value=0.0, precision=0.0)
-    gap = float(rows[after[0], 0] - rows[after[0] - 1, 0])
-    tolerance = RootTolerance(
-        value=gap / 2.0, precision=float(np.spacing(PROBE_EVENT + gap))
-    )
+    gap, short = (float(g) for g in gaps if g is not None)
+    precision = float(np.spacing(PROBE_EVENT + gap))
+    if abs(gap - short) > 4.0 * precision:
+        logger.debug(
+            "roadrunner reports the rows of the event of the probe %s and %s "
+            "apart in two integrations, its root tolerance is no constant of the "
+            "process: the rows of an event of a model are left at the times "
+            "roadrunner reports them.",
+            gap,
+            short,
+        )
+        return RootTolerance(value=0.0, precision=0.0)
+    tolerance = RootTolerance(value=gap / 2.0, precision=precision)
     logger.debug("The root tolerance of roadrunner is %s.", tolerance.value)
     if tolerance.value > PINNED:
         logger.warning(
@@ -168,6 +202,33 @@ def root_tolerance() -> RootTolerance:
             tolerance.value,
         )
     return tolerance
+
+
+def _probe() -> tuple[float | None, float | None]:
+    """Pin `roottol` and measure the gap of the rows of the event of the probe.
+
+    Returns:
+        The times between the two rows of the event in an integration with
+        the steps of the integrator to `PROBE_END` and to `PROBE_SHORT_END`,
+        `None` for an integration without the rows of the event.
+    """
+    r = roadrunner.RoadRunner(PROBE_SBML)
+    integrator: roadrunner.Integrator = r.getIntegrator()
+    integrator.integrate(0.0, PIN_SPAN)
+    integrator.setValue("variable_step_size", True)
+    r.timeCourseSelections = ["time", "sbmlsim_roottol_x"]
+    gaps: list[float | None] = []
+    for end in (PROBE_END, PROBE_SHORT_END):
+        r.resetAll()
+        rows = np.array(r.simulate(0.0, end), dtype=float)
+        # the state after the event, `sbmlsim_roottol_x` reset to 0, after the
+        # start, and the state before it
+        after = np.flatnonzero(rows[1:, 1] == 0.0) + 1
+        if after.size == 0 or rows[after[0] - 1, 1] <= 0.0:
+            gaps.append(None)
+        else:
+            gaps.append(float(rows[after[0], 0] - rows[after[0] - 1, 0]))
+    return gaps[0], gaps[1]
 
 
 def at_event_times(time: np.ndarray, tolerance: RootTolerance) -> np.ndarray:

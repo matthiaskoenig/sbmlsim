@@ -134,3 +134,50 @@ def test_the_probe_fixes_the_root_tolerance_if_it_integrates_first(
     assert warnings == (1 if first else 0), result.stderr
     if first:
         assert "load a model before integrating with roadrunner" in result.stderr
+
+
+#: the gaps of the rows of the event of the probe of a roadrunner without the
+#: `static` root tolerance of libroadrunner 2.10: no rows of the event, both
+#: rows at the time of the event, or a root tolerance per integration
+DEGRADED = {
+    "no rows": (None, None),
+    "rows at the event": (0.0, 0.0),
+    "per integration": (2 * 3200 * EPSILON * 2.0**10, 2 * 3200 * EPSILON * 2.0**5),
+}
+
+
+@pytest.mark.parametrize("gaps", [*DEGRADED, "failure"])
+def test_the_probe_degrades_on_another_roadrunner(
+    gaps: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A probe which cannot measure or pin `roottol` gives 0, without a warning.
+
+    The rows of an event stay at the times roadrunner reports them, here at
+    the time of the event, which the probe of the process pinned.
+    """
+    from sbmlsim.model import roottol
+    from sbmlsim.simulation import Simulation
+    from sbmlsim.simulator import Simulator
+
+    def probe() -> tuple[float | None, float | None]:
+        if gaps == "failure":
+            raise RuntimeError("roadrunner cannot simulate the probe")
+        return DEGRADED[gaps]
+
+    monkeypatch.setattr(roottol, "_probe", probe)
+    root_tolerance.cache_clear()
+    try:
+        with caplog.at_level("DEBUG", logger="sbmlsim.model.roottol"):
+            tolerance = root_tolerance()
+        assert tolerance.value == 0.0
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+        if gaps != "rows at the event":
+            assert "left at the times roadrunner reports them" in caplog.text
+        simulator = Simulator(n_workers=1)
+        result = simulator.simulate(simulator.load(sbml(SAWTOOTH)), Simulation(end=2.5))
+        time, x = result.time, np.asarray(result["X"])
+        after = int(np.flatnonzero((time > 0.5) & (x == 0.0))[0])
+        assert time[after - 1] == time[after] == pytest.approx(1.0, abs=1e-12)
+        assert x[after - 1] == pytest.approx(1.0, abs=1e-9)
+    finally:
+        root_tolerance.cache_clear()
