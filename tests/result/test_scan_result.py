@@ -417,3 +417,122 @@ def test_the_fit_keeps_the_time_of_a_change() -> None:
     assert out[0] == pytest.approx(1.0, abs=1e-6)
     assert out[1] == 5.0
     assert out[2] == 0.0
+
+
+#: a change at 1, the first step of the integrator after it closer than the
+#: tolerance, and an event of the model at 2 which CVODE locates after 2
+JUMPS_TIME = np.array([0.0, 1.0, 1.0, 1.0 + 1e-12, 1.5, 2.0 + 1e-13, 2.0 + 1e-13, 3.0])
+JUMPS_VALUES = np.array([0.0, 1.0, 5.0, 5.0 + 1e-12, 4.0, 3.0, 0.0, 1.0])
+
+
+@pytest.mark.parametrize(
+    ("grid", "expected"),
+    [
+        # before the change toward the state before it, also within the
+        # tolerance before it
+        (0.5, 0.5),
+        (1.0 - 1e-10, 1.0 - 1e-10),
+        # the time of the change: the state after it, not the step after it
+        (1.0, 5.0),
+        # at most the tolerance before an event: the state after it
+        (2.0, 0.0),
+        (2.0 + 1e-13, 0.0),
+        (2.5, 0.5),
+    ],
+)
+def test_the_weights_at_a_change_and_an_event(grid: float, expected: float) -> None:
+    """A time before a change is before it, the time of a change sees the state after it."""
+    weights = grid_weights(JUMPS_TIME, np.array([grid]), 1e-9, np.array([1.0]))
+    assert apply_weights(weights, JUMPS_VALUES)[0] == pytest.approx(expected, abs=1e-9)
+
+
+def test_a_time_twice_in_the_grid_sees_the_states_before_and_after() -> None:
+    """The first of two equal times of the grid sees the state before the jump."""
+    grid = np.array([1.0, 1.0, 2.0 + 1e-13, 2.0 + 1e-13])
+    out = apply_weights(
+        grid_weights(JUMPS_TIME, grid, 1e-9, np.array([1.0])), JUMPS_VALUES
+    )
+    np.testing.assert_allclose(out, [1.0, 5.0, 3.0, 0.0])
+    # a grid of the time points of a timecourse gives every row of it
+    out = apply_weights(
+        grid_weights(JUMPS_TIME, JUMPS_TIME, 1e-9, np.array([1.0])), JUMPS_VALUES
+    )
+    np.testing.assert_array_equal(out, JUMPS_VALUES)
+    # a mask of the times which take the state before the jump at them
+    left = np.array([True, False])
+    out = apply_weights(
+        grid_weights(JUMPS_TIME, np.array([1.0, 1.0]), 1e-9, np.array([1.0]), left),
+        JUMPS_VALUES,
+    )
+    np.testing.assert_array_equal(out, [1.0, 5.0])
+
+
+def test_a_time_inside_a_chain_of_jumps_sees_the_state_after_the_chain() -> None:
+    """A change and an event closer than the tolerance are one chain.
+
+    A change at `2 - 1e-14` and a dose event at 2, which CVODE locates a
+    little after 2, followed by a step of the integrator: a time inside the
+    chain sees the state after the dose, not the step after it; the time of
+    the change the state after the change.
+    """
+    c = 2.0 - 1e-14
+    e = 2.0 + 3e-13
+    time = np.array([1.0, c, c, e, e, e + 8e-12, 3.0])
+    values = np.array([1.0, 1.0, 2.0, 2.0, 12.0, 12.0 - 1e-11, 11.0])
+    grid = np.array([c - 1e-10, c, 2.0, e, e + 1e-12])
+    out = apply_weights(grid_weights(time, grid, 1e-9, np.array([c])), values)
+    np.testing.assert_allclose(out, [1.0, 2.0, 12.0, 12.0, 12.0 - 1e-12], atol=1e-11)
+
+
+def test_the_union_of_the_time_points_keeps_a_time_twice() -> None:
+    """The union of a ragged result has a time twice which a simulation has twice."""
+    time = np.array([[0.0, 1.0, 1.0, 3.0], [0.0, 2.0, 3.0, np.nan]])
+    y = np.array([[0.0, 1.0, 5.0, 7.0], [0.0, 4.0, 6.0, np.nan]])
+    res = ScanResult(
+        xr.Dataset(
+            {"time": (("d", "_point"), time), "y": (("d", "_point"), y)},
+            coords={"d": [0, 1]},
+            attrs={
+                "dims": ["d"],
+                "units": {"y": "mM", "time": "min"},
+                "changes": [1.0],
+            },
+        )
+    )
+    np.testing.assert_array_equal(res.time_points(), [0.0, 1.0, 1.0, 2.0, 3.0])
+    summary = res.summary(statistics=["max"])
+    np.testing.assert_allclose(
+        summary["y"].sel(statistic="max").values, [0.0, 2.0, 5.0, 6.0, 7.0]
+    )
+
+
+def test_a_grid_with_a_time_twice_round_trips(tmp_path: Path) -> None:
+    """A result whose time is twice at a change is written and read with its changes."""
+    ds = xr.Dataset(
+        {"y": (("d", "time"), np.array([[0.0, 1.0, 5.0, 6.0], [0.0, 2.0, 7.0, 9.0]]))},
+        coords={"d": [0, 1], "time": [0.0, 1.0, 1.0, 2.0]},
+        attrs={"dims": ["d"], "units": {"y": "mM", "time": "min"}, "changes": [1.0]},
+    )
+    res = ScanResult(ds)
+    res.to_netcdf(tmp_path / "res.nc")
+    back = ScanResult.from_netcdf(tmp_path / "res.nc")
+    np.testing.assert_array_equal(back["time"].values, [0.0, 1.0, 1.0, 2.0])
+    np.testing.assert_array_equal(back["y"].values, res["y"].values)
+    assert back.ds.attrs["changes"] == [1.0]
+    np.testing.assert_allclose(
+        back.interpolate([0.5, 1.0, 1.5])["y"].values,
+        [[0.5, 5.0, 5.5], [1.0, 7.0, 8.0]],
+    )
+
+
+def test_the_timecourses_of_pkpdutils_have_the_state_after_a_change() -> None:
+    """pkpdutils takes a time once: the state after a change at its time."""
+    ds = xr.Dataset(
+        {"y": (("d", "time"), np.array([[1.0, 0.5, 2.0, 1.0], [2.0, 1.0, 4.0, 2.0]]))},
+        coords={"d": [0, 1], "time": [0.0, 1.0, 1.0, 2.0]},
+        attrs={"dims": ["d"], "units": {"y": "mg/l", "time": "hr"}, "changes": [1.0]},
+    )
+    timecourses = ScanResult(ds).to_timecourses("y")
+    np.testing.assert_array_equal(
+        np.asarray(timecourses.ds["time"].values).ravel()[:3], [0.0, 1.0, 2.0]
+    )

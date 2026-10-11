@@ -59,7 +59,14 @@ from sbmlsim import parallel
 from sbmlsim.console import console
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.result.scan import POINT, STATUS, TIME, ScanResult, time_magnitudes
+from sbmlsim.result.scan import (
+    CHANGES,
+    POINT,
+    STATUS,
+    TIME,
+    ScanResult,
+    time_magnitudes,
+)
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.observables import Observable
@@ -227,9 +234,12 @@ class Simulator:
                 `sbmlsim.simulation.observables`; they are evaluated on the
                 native solution of every simulation, also with `time`.
             time: a grid of times every timecourse is interpolated onto,
-                numbers in the time unit of the model or a quantity; without
-                it the result keeps the output times of the simulations, a
-                dimension `time` if they agree and `_point` otherwise.
+                numbers in the time unit of the model or a quantity, see
+                `sbmlsim.result.timecourse.grid_weights`; without it the
+                result keeps the output times of the simulations, a time of
+                a change twice, the states before and after it, a dimension
+                `time` if they agree, up to the changes at them, and
+                `_point` otherwise.
             keep: the observables of the result, every one by default; the id
                 of a PK observable keeps all its parameters; without
                 observables the selections of the result. The others are
@@ -391,7 +401,7 @@ class Simulator:
                 f"scan; choose other ids."
             )
         _check_coordinates(scan, set(graph.outputs))
-        grid, interpolate = _grid(plans, time, first)
+        grid, interpolate = _grid(plans, at_times, time, first)
         return _Compiled(
             scan=scan,
             models=models,
@@ -601,6 +611,18 @@ class _Compiled:
         chunks.sort(key=lambda chunk: int(chunk.indices[0]))
         return chunks
 
+    def change_times(self) -> list[float]:
+        """Get the times of the changes after the start in the time of the result.
+
+        The changes of every simulation and of the dimensions with `at`, see
+        `ScanResult.interpolate`.
+        """
+        times: set[float] = set()
+        for key, plan in self.plans.items():
+            at = [t for t in self.at_times[key] if t is not None and t > plan.start]
+            times.update(t + plan.time_shift for t in (*plan.change_times, *at))
+        return sorted(times)
+
     def point_text(self, index: int) -> str:
         """Get the labels and the values of a point, for a message."""
         if not self.scan.dimensions:
@@ -707,6 +729,7 @@ class _Compiled:
             "units": units,
             "scan": self.scan.to_dict(),
             "integrator_settings": _settings(settings),
+            CHANGES: self.change_times(),
         }
         if self.observables:
             attrs["observables"] = [o.to_dict() for o in self.observables]
@@ -990,10 +1013,18 @@ def _vectors(
 
 def _grid(
     plans: Mapping[tuple[int, int], Plan],
+    at_times: Mapping[tuple[int, int], Sequence[float | None]],
     time: ArrayLike | Quantity | None,
     model: RoadrunnerSBMLModel,
 ) -> tuple[np.ndarray | None, bool]:
     """Get the grid of the result and whether the workers interpolate onto it.
+
+    Without `time` the simulations of a scan with the same output times have
+    them as the grid, an output time at a change twice, see
+    `Plan.output_times`. Simulations whose output times differ only in the
+    changes at them are interpolated onto their times, a time as often as
+    the simulation with the most rows at it has it, which gives the rows of
+    every simulation, see `sbmlsim.result.timecourse.grid_weights`.
 
     Raises:
         ValueError: if `time` is empty, or a quantity and the model has no unit
@@ -1004,12 +1035,28 @@ def _grid(
         if grid.size == 0:
             raise ValueError("The grid of times 'time' is empty.")
         return grid, True
-    outputs = {plan.output_times() for plan in plans.values()}
+    outputs = {
+        plan.output_times(at for at in at_times[key] if at is not None)
+        for key, plan in plans.items()
+    }
     if len(outputs) == 1:
         (times,) = outputs
         if times is not None:
             return np.asarray(times, dtype=float), False
-    return None, False
+    given = [times for times in outputs if times is not None]
+    if (
+        len(given) != len(outputs)
+        or len({tuple(dict.fromkeys(times)) for times in given}) != 1
+        # the steady state after the end is no time point of an interpolation
+        or any(times and np.isinf(times[-1]) for times in given)
+    ):
+        return None, False
+    counts: dict[float, int] = {}
+    for times in given:
+        for t in times:
+            counts[t] = max(counts.get(t, 0), times.count(t))
+    grid = [t for t, count in counts.items() for _ in range(count)]
+    return np.asarray(grid, dtype=float), True
 
 
 @contextmanager

@@ -127,20 +127,39 @@ class GridWeights(NamedTuple):
 
 
 def grid_weights(
-    time: np.ndarray, grid: np.ndarray, tolerance: float = 0.0
+    time: np.ndarray,
+    grid: np.ndarray,
+    tolerance: float = 0.0,
+    changes: np.ndarray | None = None,
+    left: np.ndarray | None = None,
 ) -> GridWeights:
     """Get the indices and weights which interpolate `time` onto `grid` once.
 
-    Two time points at most `tolerance` apart are a jump: an event of the
-    model, whose states before and after it the steps of the integrator have
-    at the time of the event (`sbmlsim.model.roottol`), followed by the first
-    steps of CVODE after it, or a duplicated final time, the state after a
-    change at the end. A time of the grid at a jump sees the state after it:
-    a time inside it, at one of its points or at most `tolerance` before it,
-    since CVODE locates an event a little after its time, at the end of the
-    interval in which it finds the root of the trigger. The fit interpolates
-    its data by the same rule, see
-    `sbmlsim.fit.optimization._interpolate_after_jumps`.
+    The output of a simulation has two time points at the time of a change
+    after the start, the states before and after the change, and two at the
+    time of an event of the model, the states before and after the event
+    (`sbmlsim.model.roottol`): a jump. Time points at most `tolerance` apart
+    are a chain of jumps, e.g. a change and an event closer than the
+    resolution of the time, followed by the first steps of CVODE after the
+    last jump; two time points of an event which are a little apart, as the
+    exact output of `sbmlsim.simulator.executor` has them, are a jump as
+    well. A time of the grid sees:
+
+    - before a jump, the value interpolated toward the state before it;
+    - at the time of a jump or of a change, the state after the changes and
+      events at that time, not a step of the integrator after it which is
+      closer than the tolerance;
+    - inside a chain, the state after its last jump;
+    - at most `tolerance` before a jump which is no change, the state after
+      it: CVODE locates an event a little after its time, at the end of the
+      interval in which it finds the root of the trigger; a time before a
+      change is before it.
+
+    A time of the grid in `left` sees the state before the jump at it
+    instead, e.g. a data point of a fit which takes the state before a
+    change; by default the first of two equal times of the grid, so a grid of
+    the time points of a timecourse gives every row of it. The fit
+    interpolates its data by the same rule.
 
     Args:
         time: the time points, sorted; the ones which are not finite are no
@@ -149,35 +168,75 @@ def grid_weights(
         tolerance: the resolution of the time of the simulation, see
             `sbmlsim.simulator.plan.time_tolerance`; `0` takes only a time
             point which appears twice as a jump.
+        changes: the times of the changes after the start in the time of the
+            time points, `None` for none.
+        left: whether a time of the grid takes the state before a jump at
+            it, a mask of the grid; `None` for the first of two equal times.
 
     Returns:
         The indices and weights.
     """
+    grid = np.asarray(grid, dtype=float)
     finite = np.flatnonzero(np.isfinite(time))
     t = time[finite]
     if t.size == 0:
         zeros = np.zeros(grid.size, dtype=int)
         return GridWeights(zeros, zeros, np.zeros(grid.size), np.zeros(grid.size, bool))
+    n = t.size
     valid = (grid >= t[0]) & (grid <= t[-1])
-    low = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, max(t.size - 2, 0))
-    up = np.minimum(low + 1, t.size - 1)
-    span = t[up] - t[low]
-    jump = (span <= tolerance) & (up > low)
+    if left is None:
+        left = np.zeros(grid.size, dtype=bool)
+        left[:-1] = grid[:-1] == grid[1:]
+    changes = np.empty(0) if changes is None else np.asarray(changes, dtype=float)
+    rows = np.arange(n)
+    # the chains: time points at most the tolerance apart, with the first and
+    # the last point of the chain of every time point
+    split = np.diff(t) > tolerance
+    chain = np.concatenate([[0], np.cumsum(split)])
+    first = np.flatnonzero(np.concatenate([[True], split]))[chain]
+    last = np.flatnonzero(np.concatenate([split, [True]]))[chain]
+    # the jumps: a time point which appears twice; the state after the last
+    # jump of a chain, or after the chain of an event a little apart
+    twice = np.zeros(n, dtype=bool)
+    twice[1:] = t[1:] == t[:-1]
+    last_jump = np.full(chain[-1] + 1, -1)
+    np.maximum.at(last_jump, chain[twice], rows[twice])
+    end = np.where(last_jump[chain] >= 0, last_jump[chain], last)
+
+    # the last time point at or before every time of the grid
+    i = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, n - 1)
+    upper = np.minimum(i + 1, n - 1)
+    span = t[upper] - t[i]
     with np.errstate(divide="ignore", invalid="ignore"):
-        weight = np.where(jump, 1.0, (grid - t[low]) / np.where(jump, 1.0, span))
-    weight = np.where(up > low, weight, 0.0)
-    # a time at most the tolerance before the first point of a jump
-    after = np.minimum(up + 1, t.size - 1)
+        weight = np.where(span > 0.0, (grid - t[i]) / span, 0.0)
+    at = t[i] == grid
+    own = at & (twice[i] | np.isin(t[i], changes))
+    inside = ~own & (end[i] > i)
+    following = upper
     ahead = (
-        ~jump
-        & (after > up)
-        & (t[after] - t[up] <= tolerance)
-        & (t[up] - grid <= tolerance)
+        ~own
+        & ~inside
+        & (following > i)
+        & (first[following] == following)
+        & (last[following] > following)
+        & (t[following] - grid <= tolerance)
+        & ~np.isin(t[following], changes)
     )
-    low = np.where(ahead, up, low)
-    up = np.where(ahead, after, up)
-    weight = np.where(ahead, 1.0, weight)
-    return GridWeights(finite[low], finite[up], weight, valid)
+    to = np.where(own, i, np.where(inside, end[i], end[following]))
+    after = ~left & (own | inside | ahead)
+    # the state before the jump at a time of the grid: the first point of a
+    # time which appears twice, or of the chain the time is inside
+    before = left & ((at & twice[i]) | inside)
+    to = np.where(
+        before,
+        np.where(at & twice[i], np.searchsorted(t, grid, side="left"), first[i]),
+        to,
+    )
+    fixed = after | before
+    lower = np.where(fixed, to, i)
+    upper = np.where(fixed, to, upper)
+    weight = np.where(fixed, 0.0, weight)
+    return GridWeights(finite[lower], finite[upper], weight, valid)
 
 
 def apply_weights(w: GridWeights, values: np.ndarray) -> np.ndarray:
@@ -193,23 +252,29 @@ def apply_weights(w: GridWeights, values: np.ndarray) -> np.ndarray:
 
 
 def interpolate(
-    time: np.ndarray, values: np.ndarray, grid: np.ndarray, tolerance: float = 0.0
+    time: np.ndarray,
+    values: np.ndarray,
+    grid: np.ndarray,
+    tolerance: float = 0.0,
+    changes: np.ndarray | None = None,
 ) -> np.ndarray:
     """Interpolate a timecourse linearly onto a grid of times.
 
-    The time points of a simulation increase and a time of a change appears
-    once, with the state after the change, so the value at the time of a
-    change is the value after it, also at a duplicated time, and so is the
-    value at an event of the model, whose states before and after it are
-    closer than the `tolerance` (`grid_weights`). The padding (`NaN`) and the
-    steady state after the end (`inf`) are no time points of the
-    interpolation.
+    The time points of a simulation increase, a time of a change after the
+    start appears twice, with the states before and after the change, and so
+    does an event of the model. A time of the grid before a change is
+    interpolated toward the state before it and the time of a change sees
+    the state after it, the first of two equal times of the grid the state
+    before it, see `grid_weights`. The padding (`NaN`) and the steady state
+    after the end (`inf`) are no time points of the interpolation.
 
     Args:
         time: the time points.
         values: the values, a row per time point, one or two dimensional.
         grid: the times of the result.
-        tolerance: two time points at most this apart are a jump, see
+        tolerance: time points at most this apart are a jump, see
+            `grid_weights`.
+        changes: the times of the changes after the start, see
             `grid_weights`.
 
     Returns:
@@ -217,6 +282,49 @@ def interpolate(
         the finite time points and for a timecourse without any.
     """
     weights = grid_weights(
-        np.asarray(time, dtype=float), np.asarray(grid, dtype=float), tolerance
+        np.asarray(time, dtype=float),
+        np.asarray(grid, dtype=float),
+        tolerance,
+        changes,
     )
     return np.moveaxis(apply_weights(weights, np.moveaxis(values, 0, -1)), -1, 0)
+
+
+def without_states_before(
+    time: np.ndarray, values: np.ndarray, changes: Sequence[np.ndarray]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Leave out the state before every change after the start.
+
+    The output of a simulation has the state before and the state after a
+    change at its time; a timecourse of samples, e.g. of pkpdutils, has a
+    time once, the state after the change. The first of the two rows at the
+    time of a change is left out, the two rows of an event of the model stay.
+
+    Args:
+        time: the time points `(n, n_rows)`, padded with `NaN`.
+        values: the timecourses, of the shape of `time`.
+        changes: the times of the changes after the start of every
+            timecourse, in the time of the time points.
+
+    Returns:
+        The time points and the timecourses without the states before the
+        changes, padded with `NaN`, which is the padding of every time point
+        which is not finite as well.
+    """
+    keep = np.isfinite(time)
+    for r, at in enumerate(changes):
+        if len(at) == 0:
+            continue
+        row = time[r]
+        first = np.ones(row.size, dtype=bool)
+        first[1:] = row[1:] != row[:-1]
+        twice = np.zeros(row.size, dtype=bool)
+        twice[:-1] = row[:-1] == row[1:]
+        keep[r] &= ~(first & twice & np.isin(row, at))
+    counts = keep.sum(axis=1)
+    out_time = np.full((time.shape[0], int(counts.max(initial=0))), np.nan)
+    out_values = np.full(out_time.shape, np.nan)
+    for r in range(time.shape[0]):
+        out_time[r, : counts[r]] = time[r, keep[r]]
+        out_values[r, : counts[r]] = values[r, keep[r]]
+    return out_time, out_values

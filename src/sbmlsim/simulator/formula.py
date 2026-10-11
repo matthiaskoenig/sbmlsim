@@ -321,6 +321,7 @@ def evaluate_reduced(
     values: Mapping[str, Any],
     time: np.ndarray | None = None,
     tolerance: float | np.ndarray = 0.0,
+    changes: Sequence[np.ndarray] | None = None,
 ) -> Any:
     """Evaluate a formula with reductions over the time of every simulation.
 
@@ -335,11 +336,14 @@ def evaluate_reduced(
     - `max(x)`, `min(x)`: the largest and the smallest value, ignoring `NaN`;
     - `mean(x)`: the trapezoidal integral divided by the time between the
       first and the last time point, the value itself for a single time point;
+      the two time points of the states before and after a change at its time
+      are an interval without time, which adds nothing;
     - `at(x, t)`: the value at the time `t`, a number or a value per
       simulation, interpolated linearly; the value after a change or an event
-      of the model at its time (two time points at most `tolerance` apart are
-      a jump, see `sbmlsim.result.timecourse.grid_weights`) and `NaN` outside
-      of the time points.
+      of the model at its time, toward the state before a change at a time
+      before it (time points at most `tolerance` apart are a jump, see
+      `sbmlsim.result.timecourse.grid_weights`) and `NaN` outside of the time
+      points.
 
     The times which are not finite, the padding (`NaN`) and the steady state
     after the end (`inf`), are no time points of a reduction.
@@ -354,6 +358,9 @@ def evaluate_reduced(
             an array of the shape of the simulations, e.g. `(n_points,)`, see
             `sbmlsim.simulator.plan.time_tolerance`; `at` takes two time points
             at most this apart as a jump.
+        changes: the times of the changes after the start of every
+            simulation, in the order of the simulations flattened, see
+            `grid_weights`; `None` for none.
 
     Returns:
         The value of the formula.
@@ -368,7 +375,7 @@ def evaluate_reduced(
         x = _apply(reduction.arguments[0], scope, formula)
         if reduction.function == "at":
             when = _apply(reduction.arguments[1], scope, formula)
-            scope[reduction.symbol] = _at(x, when, time, tolerance, formula)
+            scope[reduction.symbol] = _at(x, when, time, tolerance, formula, changes)
         elif reduction.function == "mean":
             scope[reduction.symbol] = _mean(x, time, formula)
         else:
@@ -474,6 +481,7 @@ def _at(
     time: np.ndarray | None,
     tolerance: float | np.ndarray,
     formula: str,
+    changes: Sequence[np.ndarray] | None = None,
 ) -> Any:
     """Reduce to the value at a time, see `evaluate_reduced`."""
     magnitude, units = _split(x)
@@ -489,10 +497,17 @@ def _at(
     tolerances = np.broadcast_to(
         np.asarray(tolerance, dtype=float)[..., None], (*shape[:-1], 1)
     ).reshape(-1)
+    if changes is not None and len(changes) != rows.shape[0]:
+        changes = None
     out = np.array(
         [
             apply_weights(
-                grid_weights(times[k], targets[k : k + 1], float(tolerances[k])),
+                grid_weights(
+                    times[k],
+                    targets[k : k + 1],
+                    float(tolerances[k]),
+                    None if changes is None else changes[k],
+                ),
                 rows[k],
             )[0]
             for k in range(rows.shape[0])

@@ -146,3 +146,20 @@ def test_an_identifier_with_a_dot_is_one_symbol() -> None:
     compiled = compile_formula("hctz.auc_inf_obs / hctz.cmax + 1.5")
     assert compiled.symbols == ("hctz.auc_inf_obs", "hctz.cmax")
     assert compiled.evaluate([10.0, 2.0]) == pytest.approx(6.5)
+
+
+def test_at_before_a_change_is_before_it() -> None:
+    """A time within the resolution before a change is interpolated toward the state before it.
+
+    The first step of the integrator after the change at 1 is closer than the
+    resolution; without the times of the changes the two states of the
+    change look like an event of the model, whose state after it such a time
+    sees.
+    """
+    t = np.array([[0.0, 1.0, 1.0, 1.0 + 1e-12, 2.0]])
+    x = np.array([[0.0, 1.0, 5.0, 5.0, 4.0]])
+    before = evaluate_reduced("at(x, 1 - 1e-10)", {"x": x}, t, 1e-9, [np.array([1.0])])
+    assert before[0, 0] == pytest.approx(1.0, abs=1e-9)
+    assert evaluate_reduced("at(x, 1 - 1e-10)", {"x": x}, t, 1e-9)[0, 0] == 5.0
+    at = evaluate_reduced("at(x, 1)", {"x": x}, t, 1e-9, [np.array([1.0])])
+    assert at[0, 0] == 5.0

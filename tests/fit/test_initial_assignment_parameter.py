@@ -90,8 +90,11 @@ def test_fit_parameter_reaches_initial_assignment(
 
 
 def test_fit_simulates_at_the_data(problem: OptimizationProblem) -> None:
-    """The plan of the fit outputs the times of the data, no interpolation."""
-    assert problem.plans[0].times == (0.0, 0.5, 1.5)
+    """The plan of the fit outputs the times of the data, no interpolation.
+
+    And the time of the change within them, at which the curve jumps.
+    """
+    assert problem.plans[0].times == (0.0, 0.5, 1.0, 1.5)
 
 
 class ShiftedExperiment(IAExperiment):

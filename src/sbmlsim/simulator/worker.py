@@ -324,14 +324,15 @@ def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
             solutions.append(result.values)
             plans.append(plan)
         else:
-            solutions.append(
-                _on_grid(chunk.time, result.values[:, columns].T, chunk.plan)
-            )
+            solutions.append(_on_grid(chunk.time, result.values[:, columns].T, plan))
     if observed:
+        plan_of = dict(zip(points, plans, strict=True))
         points, time, outputs, failed = _observe(chunk, points, solutions, plans)
         failures.extend(failed)
         n_rows = time.shape[1]
-        rows: Iterable[np.ndarray] = _timecourses(chunk, time, outputs)
+        rows: Iterable[np.ndarray] = _timecourses(
+            chunk, time, outputs, [plan_of[k] for k in points]
+        )
         scalars = np.empty((len(points), len(chunk.graph.scalars)))
         if points:
             for c, name in enumerate(chunk.graph.scalars):
@@ -354,15 +355,23 @@ def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
 def _on_grid(grid: np.ndarray | None, rows: np.ndarray, plan: Plan) -> np.ndarray:
     """Interpolate timecourses `(column, row)` with the time first onto a grid.
 
-    Two times closer than the resolution of the time of the plan are a jump,
-    e.g. an event of the model, whose state after it a time of the grid at
-    the event sees, as the data of a fit does (`grid_weights`). Without a grid
-    the timecourses are returned as they are.
+    The output has the states before and after a change at its time, and an
+    event of the model; time points closer than the resolution of the time of
+    the plan are one jump. A time of the grid before a change is interpolated
+    toward the state before it, the time of a change sees the state after it,
+    as the data of a fit does, see `grid_weights`. Without a grid the
+    timecourses are returned as they are.
+
+    Args:
+        grid: the times of the grid, `None` for none.
+        rows: the timecourses, the time first.
+        plan: the plan of the point, with its changes.
     """
     if grid is None:
         return rows
     tolerance = time_tolerance(plan.start, plan.end)
-    rows = apply_weights(grid_weights(rows[0], grid, tolerance), rows)
+    changes = np.asarray(plan.change_times, dtype=float) + plan.time_shift
+    rows = apply_weights(grid_weights(rows[0], grid, tolerance, changes), rows)
     rows[0] = grid
     return rows
 
@@ -479,17 +488,21 @@ def _observe(
 
 
 def _timecourses(
-    chunk: Chunk, time: np.ndarray, outputs: Mapping[str, np.ndarray]
+    chunk: Chunk,
+    time: np.ndarray,
+    outputs: Mapping[str, np.ndarray],
+    plans: Sequence[Plan],
 ) -> Iterator[np.ndarray]:
     """Get the time and the kept timecourses of every point, see `_pack`.
 
     The points are interpolated onto the grid of the chunk one at a time, as
     `_pack` writes them, so the interpolated outputs are not held twice.
+    `plans` are the plans of the points, with their changes.
     """
     names = chunk.graph.timecourses
     for r in range(time.shape[0]):
         rows = np.stack([time[r], *(outputs[name][r] for name in names)])
-        yield _on_grid(chunk.time, rows, chunk.plan)
+        yield _on_grid(chunk.time, rows, plans[r])
 
 
 def _pack(

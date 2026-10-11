@@ -54,12 +54,9 @@ def compare_examples(results: dict[str, xr.Dataset], output_path: Path) -> None:
         output_path: directory the reports and figures are written into.
     """
     for key, ds_sbmlsim in results.items():
+        # JWS Online and `sbmlsim` report the time of a change twice, the
+        # states before and after it
         df_jws = pd.read_csv(DIFF_DIR / "jws" / f"{key}.tsv", sep="\t")
-        # JWS Online reports the time of a change twice, before and after it;
-        # `sbmlsim` reports the state after the change
-        df_jws = df_jws.drop_duplicates(
-            subset=df_jws.columns[0], keep="last"
-        ).reset_index(drop=True)
 
         comparison = DataSetsComparison(
             dfs_dict={"sbmlsim": ds_sbmlsim, "jws": df_jws},

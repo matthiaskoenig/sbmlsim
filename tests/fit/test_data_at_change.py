@@ -49,6 +49,8 @@ DOSE = Change(0, {"PODOSE": Q(100, "mg")})
 #: the urine is emptied at the end of the first collection interval
 RESET = Change(24, {"Aurine": Q(0, "mg")})
 TIMES = [12.0, 24.0, 36.0, 48.0]
+#: the grid of output times of the simulation `coarse`, without the reset
+COARSE = np.linspace(0.0, 48.0, 8)
 #: the times of data just before the reset, after the last step of the
 #: integrator before it
 LATE = [12.0, 23.95, 36.0, 48.0]
@@ -111,8 +113,15 @@ def _truth() -> dict[str, Any]:
         list(OBSERVABLES.values()),
         keep=["pk.cmax", "pk.auc_last", "urine_max", "Aurine", "Aelim", "[C]"],
     )
+    coarse = simulator.run(
+        model,
+        Simulation(end=48, steps=7, changes=[DOSE, RESET]),
+        list(OBSERVABLES.values()),
+        keep=["urine_max"],
+    )
     return {
         "urine": np.concatenate([first["Aurine"], second["Aurine"]]),
+        "coarse_max": float(coarse["urine_max"].values),
         "late": np.asarray(late["Aurine"], dtype=float),
         "cmax": float(run["pk.cmax"].values),
         "auc": float(run["pk.auc_last"].values),
@@ -378,6 +387,20 @@ class UrineStudy(SimulationExperiment):
                 reference=FitData(self, dataset="urine", xid="time", yid="Aurine"),
                 observable=FitData(self, task="task_coarse", xid="time", yid="Aurine"),
             ),
+            "fm_coarse_ratio": FitMapping(
+                self,
+                reference=FitData(self, dataset="ratio", xid="time", yid="r"),
+                observable=FitData(
+                    self, task="task_coarse", xid="time", yid="urine_ratio"
+                ),
+            ),
+            "fm_coarse_share": FitMapping(
+                self,
+                reference=FitData(self, dataset="ratio", xid="time", yid="r"),
+                observable=FitData(
+                    self, task="task_coarse", xid="time", yid="urine_share"
+                ),
+            ),
             "fm_coarse_late": FitMapping(
                 self,
                 reference=FitData(self, dataset="late", xid="time", yid="Aurine"),
@@ -477,12 +500,14 @@ def test_after_compares_with_the_emptied_urine(tmp_path: Path) -> None:
     )
 
 
-def test_the_results_of_a_run_keep_the_state_after_the_change() -> None:
-    """A run is not a fit: its output at the time of the reset is `0`."""
+def test_the_results_of_a_run_have_the_states_before_and_after_the_change() -> None:
+    """The output of a run at the time of the reset: the urine before it, then `0`."""
     run = TRUTH["after"]
     time = run["time"].values
-    assert np.count_nonzero(time == 24.0) == 1
-    assert run["Aurine"].values[time == 24.0][0] == pytest.approx(0.0, abs=1e-8)
+    assert np.count_nonzero(time == 24.0) == 2
+    np.testing.assert_allclose(
+        run["Aurine"].values[time == 24.0], [TRUTH["urine"][1], 0.0], rtol=STEPS_RTOL
+    )
 
 
 DENSE = ["fm_urine", "fm_twice", "fm_cmax", "fm_auc", "fm_urine_max"]
@@ -649,9 +674,14 @@ def test_a_group_with_observables_sees_the_state_before(tmp_path: Path) -> None:
 
 
 def test_a_grid_without_the_time_of_the_change(tmp_path: Path) -> None:
-    """The output of the simulation does not have the time of the reset."""
+    """The output of the simulation does not have the time of the reset.
+
+    The fit adds it for the timecourse, the value per simulation is the one
+    of a run of the grid, which misses the urine before the reset.
+    """
     problem = _problem(["fm_coarse", "fm_coarse_max"], tmp_path)
-    assert 24.0 not in problem.plans[0].times
+    assert 24.0 not in COARSE
+    assert 24.0 in problem.plans[0].times
     before = _predictions(problem)
     after = _predictions(
         _problem(["fm_coarse", "fm_coarse_max"], tmp_path, DataAtChangeType.AFTER)
@@ -661,6 +691,8 @@ def test_a_grid_without_the_time_of_the_change(tmp_path: Path) -> None:
         before["fm_coarse"][[0, 2, 3]], after["fm_coarse"][[0, 2, 3]]
     )
     assert before["fm_coarse_max"] == pytest.approx(after["fm_coarse_max"], rel=1e-12)
+    assert before["fm_coarse_max"][0] == pytest.approx(TRUTH["coarse_max"], rel=1e-12)
+    assert TRUTH["coarse_max"] < TRUTH["urine"][1]
     # the state after the reset at its time, which the output does not have
     assert after["fm_coarse"][1] == pytest.approx(0.0, abs=1e-8)
 
@@ -676,8 +708,7 @@ def test_a_grid_without_the_time_of_the_change_jumps(
     """
     mappings = ["fm_coarse", "fm_coarse_late", "fm_coarse_max"]
     problem = _problem(mappings, tmp_path, data_at_change)
-    grid = np.asarray(problem.plans[0].times)
-    assert 24.0 not in grid
+    assert 24.0 not in COARSE
     k = problem.mapping_keys.index("fm_coarse")
     data = problem.residuals(np.array([TRUE_KE]), complete_data=True)
     assert isinstance(data, dict)
@@ -786,8 +817,8 @@ def test_the_observables_are_computed_on_the_timecourse_of_a_run(
     ):
         assert before[key] == pytest.approx(after[key], rel=1e-12)
         assert before[key][0] == pytest.approx(TRUTH[name], rel=1e-6)
-    # the maximum of the dense output misses the state before the reset
-    assert TRUTH["urine_max"] < TRUTH["urine"][1]
+    # the maximum of the output of a run is the urine before the reset
+    assert TRUTH["urine_max"] == pytest.approx(TRUTH["urine"][1], rel=STEPS_RTOL)
     assert after["fm_urine"][1] == pytest.approx(0.0, abs=1e-8)
     assert after["fm_twice"][1] == pytest.approx(0.0, abs=1e-8)
 
@@ -902,20 +933,25 @@ def test_a_timecourse_reads_the_values_per_simulation_of_the_run(
 ) -> None:
     """A value per simulation which a timecourse reads is the one of the run.
 
-    `Aurine / urine_max` at the reset is the collected amount over the maximum
-    of the dense output of the run, which misses the state before the reset,
-    so the ratio is above one. A reduction inside the formula of the
-    timecourse, `Aurine / max(Aurine)`, is evaluated on the output with the
-    state before the reset, whose maximum is that state: the ratio is one.
+    The output of the steps of the integrator has the state before the
+    reset, the maximum of the urine: `Aurine / urine_max` at the reset is
+    one. The grid without the reset misses it, its maximum is below the
+    collected amount, so the ratio is above one on the output with the time
+    of the reset, which the fit adds; a reduction inside the formula of the
+    timecourse, `Aurine / max(Aurine)`, is evaluated on that output, whose
+    maximum is the state before the reset: the ratio is one.
     """
     problem = _problem(["fm_ratio", "fm_share", "fm_cmax"], tmp_path)
     predictions = _predictions(problem)
-    ratio = predictions["fm_ratio"][1]
+    assert predictions["fm_ratio"][1] == pytest.approx(1.0, rel=STEPS_RTOL)
+    assert predictions["fm_share"][1] == pytest.approx(1.0, rel=1e-12)
+    coarse = _predictions(_problem(["fm_coarse_ratio", "fm_coarse_share"], tmp_path))
+    ratio = coarse["fm_coarse_ratio"][1]
     assert ratio == pytest.approx(
-        TRUTH["urine"][1] / TRUTH["urine_max"], rel=STEPS_RTOL
+        TRUTH["urine"][1] / TRUTH["coarse_max"], rel=STEPS_RTOL
     )
     assert ratio > 1.0
-    assert predictions["fm_share"][1] == pytest.approx(1.0, rel=1e-12)
+    assert coarse["fm_coarse_share"][1] == pytest.approx(1.0, rel=1e-12)
 
 
 def test_the_settings_compare_the_data_before_a_change_by_default() -> None:

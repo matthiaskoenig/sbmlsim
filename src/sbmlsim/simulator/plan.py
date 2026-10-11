@@ -15,7 +15,7 @@ process, see `sbmlsim.simulator.formula`.
 from __future__ import annotations
 
 import functools
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any
@@ -309,8 +309,15 @@ class Plan:
             events.sort(key=lambda event: event.time)
         return replace(self, events=tuple(events))
 
-    def output_times(self) -> tuple[float, ...] | None:
+    def output_times(self, changes: Iterable[float] = ()) -> tuple[float, ...] | None:
         """Get the times of the result of the plan.
+
+        An output time at a change after the start appears twice, the state
+        before the change and the state after it.
+
+        Args:
+            changes: the times of further changes, e.g. of a dimension of a
+                scan with `at`, in the time of the plan.
 
         Returns:
             The output times shifted by `time_shift`, with `inf` last for the
@@ -319,7 +326,12 @@ class Plan:
         """
         if self.output is not OutputMode.TIMES:
             return None
-        times = tuple(t + self.time_shift for t in self.times)
+        at = {*self.change_times, *(t for t in changes if t > self.start)}
+        times = tuple(
+            t + self.time_shift
+            for time in self.times
+            for t in ((time, time) if time in at else (time,))
+        )
         if self.steady_state_output is not None:
             times = (*times, float(np.inf))
         return times

@@ -61,7 +61,8 @@ def test_model_changes_merge_into_preinit(tmp_path: Path) -> None:
     assert res["[A]"].values[0] == 3.0
 
     res = exp.results["t_dosing"]
-    np.testing.assert_allclose(res["X"].values, [13.0, 14.0, 14.0])
+    # the states before and after the change at 1
+    np.testing.assert_allclose(res["X"].values, [13.0, 13.0, 14.0, 14.0])
 
     # the change of the model is a pre-initialization change, the change of
     # the simulation at a later time does not replace it

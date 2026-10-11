@@ -229,9 +229,9 @@ class DataAtChangeType(StrEnum):
     """The state a data point at the time of a change is compared with.
 
     At the time of a `Change` a simulation has two states, the one before the
-    change and the one after it. The results of a run keep the state after
-    it, the semantics of PEtab v2. A measurement at that time is mostly taken
-    before: cumulative urine data which ends at a collection reset, i.e. a
+    change and the one after it, which the output of a run has both, in two
+    rows of that time; PEtab v2 compares a measurement at that time with the
+    state after it. A measurement at that time is mostly taken before: cumulative urine data which ends at a collection reset, i.e. a
     change which empties the urine, is the amount collected until then, not
     `0`, and a sample at the time of a dose is a pre-dose sample.
 

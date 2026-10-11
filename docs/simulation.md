@@ -4,7 +4,7 @@ A `Simulation` describes what is simulated: the interval, the changes applied to
 
 ## A simulation
 
-`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose, which end in the state at the end, start again at the time of every change and have an event of the model as two time points at the time of the event, the states before and after it (see [The semantics](#the-semantics)); `Simulator.run` returns a `ScanResult`:
+`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose, which end in the state at the end, have a change after the start as two time points at the time of the change, the states before and after it, and an event of the model as two time points at the time of the event, the states before and after it (see [The semantics](#the-semantics)); `Simulator.run` returns a `ScanResult`:
 
 ```python
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -26,6 +26,18 @@ The variables are accessed with the selection ids of roadrunner: `X` for the amo
 res = simulator.run(model, Simulation(end=100, steps=100))
 res = simulator.run(model, Simulation(end=100, times=[0, 1, 5, 10, 50, 100]))
 print(res["time"].values)
+```
+
+An output time which is the time of a change after the start appears twice, the state before the change and the state after it, so a figure draws the jump of the change vertically and a time before the change is interpolated toward the state before it; a change between two output times has no time point:
+
+```python
+from sbmlsim.simulation import Change
+
+res = simulator.run(
+    model,
+    Simulation(end=100, times=[0, 50, 100], changes=[Change(50, {"[X]": 0.0})]),
+)
+print(res["time"].values)  # [  0.  50.  50. 100.]
 ```
 
 Output times which differ by less than the resolution of the time are one output time, so digitized times such as `3.99999999999999` and `4.0` are simulated once, at the smaller one. The tolerance is `1e-9` times the larger of the absolute start, the absolute end and the length of the interval, and a chain of times whose consecutive distances are within it is merged, into its smallest time inside the simulation. A cluster is not anchored to the time of a change: a cluster around a change time is its smallest member, i.e. before the change. A fit merges the times of its data the same way and compares every data point with the merged output time.
@@ -121,7 +133,7 @@ A model which does not reach a steady state by `SteadyState(max_time=...)` raise
 | a change at a time | every value is evaluated with the state at that time, then all values are set at once; a compartment keeps the concentration of the concentration species in it and the amount of the amount species |
 | events | the events of the model whose trigger became true fire after the change |
 | integration | the interval is split at the times of the changes, and every segment ends in its state at its end, which the change at that time is applied to, also with the steps of the integrator as the output; an event of the model fires at its time, except that with the steps of the integrator roadrunner fires an event with a delay at the end of the step after its time |
-| output | an output time which is the time of a change is the state after the change; a fit compares its data there with the state before it, see [Parameter fitting](fitting.md#data-at-the-time-of-a-change) |
+| output | an output time which is the time of a change after the start, the change at the end included, has two time points, the state before the change and the state after it, in that order; the steps of the integrator have every change. A time of a grid (`time=`, `ScanResult.interpolate`) before the change is interpolated toward the state before it, the time of the change sees the state after it, as does a time inside a chain of a change and an event closer than the resolution of the time, the state after the whole chain; a fit compares its data at a change with the state before it, see [Parameter fitting](fitting.md#data-at-the-time-of-a-change). An event of the model at the time of a change fires after the change, also at the end; roadrunner integrates an output time from the one before it, which can round up to the time of the change, where a time between keeps the integration before it |
 | events in the output | with the steps of the integrator an event of the model is two time points at the time of the event, the states before and after it. libroadrunner 2.10 reports them before and after the event by a tolerance which the first integration of the process fixes (7.1e-9 after a first integration over `0..10000`), and folds the time point after an event closer to the end of a segment than that into its last one; sbmlsim runs a probe before the first model of a process and in every worker of a pool, which makes that tolerance negligible, measures it, gives both time points the time of the event and restores the ones of an event near the end, see [`model.roottol`](api/model.roottol.md). In a process in which roadrunner integrated before sbmlsim loaded a model (in a worker: when the main module integrates as it is imported), the steps inside a segment lack the first step of the integrator after an event if it is shorter than that tolerance, and the time points of an event which the integrator finds in that step, which a worker of a pool has; sbmlsim warns once. Load a model with sbmlsim before integrating with roadrunner directly |
 
 ## Selections and integrator settings

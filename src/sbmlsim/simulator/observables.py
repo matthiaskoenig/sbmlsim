@@ -169,13 +169,16 @@ class ObservableGraph:
             ObservableError: if an observable fails for a point or for all.
         """
         values: dict[str, np.ndarray] = {TIME: time, **columns}
-        # the resolution of the time of every point, for `at`
+        # the resolution of the time and the changes of every point, for `at`
         tolerance: float | np.ndarray = (
             np.array([time_tolerance(p.start, p.end) for p in plans]) if plans else 0.0
         )
+        changes = [
+            np.asarray(p.change_times, dtype=float) + p.time_shift for p in plans
+        ]
         for node in self.nodes:
             if isinstance(node, FormulaNode):
-                values[node.id] = _formula(node, time, values, tolerance)
+                values[node.id] = _formula(node, time, values, tolerance, changes)
             elif isinstance(node, CustomNode):
                 values[node.id] = _custom(node, time, values, self.kinds)
             else:
@@ -200,12 +203,13 @@ def _formula(
     time: np.ndarray,
     values: Mapping[str, np.ndarray],
     tolerance: float | np.ndarray,
+    changes: Sequence[np.ndarray] | None = None,
 ) -> np.ndarray:
     """Evaluate a formula; a floating point error gives `inf` or `NaN`.
 
     The padding of a timecourse is `NaN`, the steady state (`inf`) is kept.
-    `tolerance` is the resolution of the time of every point, see
-    `evaluate_reduced`.
+    `tolerance` is the resolution of the time of every point and `changes`
+    the times of its changes, see `evaluate_reduced`.
 
     Raises:
         ObservableError: if the formula fails, for every point.
@@ -213,7 +217,10 @@ def _formula(
     try:
         with np.errstate(all="ignore"):
             value = np.asarray(
-                evaluate_reduced(node.formula, values, time, tolerance), dtype=float
+                evaluate_reduced(
+                    node.formula, values, time, tolerance, changes or None
+                ),
+                dtype=float,
             )
             shape = (time.shape[0], 1) if node.kind is SCALAR else time.shape
             value = np.broadcast_to(value, shape).copy()

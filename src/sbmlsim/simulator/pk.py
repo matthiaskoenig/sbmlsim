@@ -32,6 +32,7 @@ from typing import Any
 import numpy as np
 
 from sbmlsim.result.scan import FLAGS
+from sbmlsim.result.timecourse import without_states_before
 from sbmlsim.simulation.observables import PK
 from sbmlsim.simulator.plan import Plan
 
@@ -331,9 +332,13 @@ def evaluate_pk(
         The output id of every parameter -> its values `(n_points, 1)`, `NaN`
         where pkpdutils gives no value for a point.
     """
+    # pkpdutils takes a time once: the state after a change at its time
+    time, values = without_states_before(
+        time,
+        values,
+        [np.asarray(p.change_times, dtype=float) + p.time_shift for p in plans],
+    )
     finite = np.isfinite(time)
-    time = np.where(finite, time, np.nan)
-    values = np.where(finite, values, np.nan)
     n = time.shape[0]
     out = {output: np.full((n, 1), np.nan) for output in node.outputs}
     empty = (np.empty(0), np.empty(0))

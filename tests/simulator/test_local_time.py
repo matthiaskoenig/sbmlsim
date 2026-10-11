@@ -76,19 +76,23 @@ def test_local_time_equals_absolute_time(sim: Simulation) -> None:
 
 
 def test_the_output_times_are_the_absolute_times() -> None:
-    """Exact output times come back as they were asked for."""
+    """Exact output times come back as they were asked for.
+
+    The time of the change twice, the states before and after it.
+    """
     times = [0.0, 9.999, 10.0, 10.5, 25.0]
     sim = Simulation(end=25, changes=[Change(10, {"[A]": 2.0})], times=times)
     res = _run(RoadrunnerSBMLModel(source=sbml()), sim, True, SEL)
-    assert list(res["time"]) == times
-    assert res["[A]"][2] == pytest.approx(2.0)
+    assert list(res["time"]) == [0.0, 9.999, 10.0, 10.0, 10.5, 25.0]
+    assert res["[A]"][2] != pytest.approx(2.0)
+    assert res["[A]"][3] == pytest.approx(2.0)
 
 
 def test_a_change_formula_reads_the_absolute_time() -> None:
     """`time` in the formula of a change is the time of the change."""
     sim = Simulation(end=20, changes=[Change(10, {"[A]": "time"})], times=[10, 20])
     res = _run(RoadrunnerSBMLModel(source=sbml()), sim, True, SEL)
-    assert res["[A]"][0] == pytest.approx(10.0)
+    assert res["[A]"][1] == pytest.approx(10.0)
 
 
 def test_an_event_fires_in_local_time() -> None:
@@ -98,8 +102,10 @@ def test_an_event_fires_in_local_time() -> None:
     local = _run(RoadrunnerSBMLModel(source=sbml(EVENT)), sim, True, sel)
     absolute = _run(RoadrunnerSBMLModel(source=sbml(EVENT)), sim, False, sel)
     np.testing.assert_allclose(local["[A]"], absolute["[A]"], rtol=1e-5, atol=1e-8)
-    # the change to 0.1 made the trigger true: A is reset to 1 at the change
-    assert local["[A]"][200] == pytest.approx(1.0)
+    # the change to 0.1 made the trigger true: A is reset to 1 at the change,
+    # the state after it
+    assert local["time"][200:202].tolist() == [20.0, 20.0]
+    assert local["[A]"][201] == pytest.approx(1.0)
 
 
 def test_a_pending_delayed_event_fires_at_its_time() -> None:

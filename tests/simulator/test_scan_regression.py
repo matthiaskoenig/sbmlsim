@@ -31,6 +31,11 @@ RTOL = 1e-6
 
 
 def _compare(res: ScanResult, recorded: dict[str, Any], step: int = 1) -> None:
+    if not res.ragged and "time" in res.ds.dims:
+        # 0.8.5 had the time of a change once, with the state after it; the
+        # output has the state before it as well, the first of the two rows
+        time = res["time"].values
+        res = res.isel(time=np.append(time[1:] != time[:-1], True))
     for key, values in recorded.items():
         expected = np.asarray(values, dtype=float)
         if key == "time" and not res.ragged:
