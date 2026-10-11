@@ -262,9 +262,10 @@ def _initialize_worker() -> None:
     discards a SIGINT which arrived since, and it is unblocked again.
 
     The probe of the root tolerance of roadrunner is the first integration of
-    the worker, see `sbmlsim.model.roottol`; it costs the compilation of a
-    small model, paid with the start of the worker rather than with the first
-    model it loads.
+    the worker, see `sbmlsim.model.roottol`, unless the main module, which the
+    worker imported before, integrates when it is imported; it costs the
+    compilation of a small model, paid with the start of the worker rather
+    than with the first model it loads.
     """
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":

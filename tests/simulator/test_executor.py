@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.roottol import EPSILON
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.simulator.executor import (
@@ -801,45 +802,53 @@ def test_the_exact_times_of_two_close_events_are_sorted() -> None:
     assert np.all(np.diff(times) >= 0.0)
 
 
-@pytest.mark.parametrize(("before", "at_end"), [(1.5, False), (2.5, True)])
-def test_an_event_whose_state_after_it_roadrunner_interpolated_to_the_end(
-    monkeypatch: pytest.MonkeyPatch, before: float, at_end: bool
+@pytest.mark.parametrize(
+    ("model_time", "offset", "rows"),
+    [
+        (1.9999995, 1e-6, 5),  # the row before a root of a trigger, `roottol` before
+        (1.9999995, EPSILON, 5),  # an event at the end of a step of CVODE
+        (2.0000004, 1e-6, 4),  # the model after the end: no event at the end
+        (1.9999995, 3e-6, 4),  # another distance: a step of CVODE
+    ],
+)
+def test_the_row_after_an_event_which_roadrunner_folded_into_the_end(
+    model_time: float, offset: float, rows: int
 ) -> None:
-    """The state before an event `2 * roottol` closer to the end is past the end.
+    """An event less than `roottol` before the end gets its two rows back.
 
-    roadrunner reports the state before an event at `root - roottol`; if the
-    row of the state after it at `root + roottol` is after the end, roadrunner
-    interpolates it to the end, and the state before the event is the last
-    step, which `at_event_times` cannot give the time of the event. With a
-    `roottol` larger than the resolution of the time, the event is within the
-    resolution of the end, which roadrunner fired before it.
+    roadrunner interpolated the row after the event, `roottol` after it, into
+    its last row; the model is at the time of the event in the state after it.
     """
     from sbmlsim.model.roottol import RootTolerance
-    from sbmlsim.simulator import executor
+    from sbmlsim.simulator.executor import _event_at_the_end
 
-    roottol, end, tolerance = 1e-6, 2.0, 1e-8
-    steps = np.array(
-        [[0.0, 0.0], [1.0, 1.0], [end - before * roottol, 2.0], [end, 2.0]]
-    )
+    end, before = 2.0, model_time - offset
+
+    class Model:
+        def getTime(self) -> float:
+            return model_time
 
     class Instance:
-        def getSelectedValues(self) -> list[float]:
-            return [end, 2.0]
+        model = Model()
 
-    monkeypatch.setattr(executor, "_variable_steps", lambda r, a, b: steps.copy())
-    monkeypatch.setattr(executor, "_to_the_end", lambda r, b, events: True)
-    monkeypatch.setattr(
-        executor, "root_tolerance", lambda: RootTolerance(roottol, 1e-19)
-    )
-    block, reached = executor._steps(
+        def getSelectedValues(self) -> list[float]:
+            return [model_time, 0.0]
+
+    block = np.array([[0.0, 0.0], [1.0, 1.0], [before, 2.0], [end, 0.7]])
+    out = _event_at_the_end(
         Instance(),  # ty: ignore[invalid-argument-type]
-        0.0,
+        block.copy(),
         end,
-        tolerance,
-        True,
+        RootTolerance(1e-6, 1e-19),
+        1e-8,
     )
-    assert reached is at_end
-    np.testing.assert_array_equal(block[:-1, 0], steps[:-1, 0])
+    assert out.shape[0] == rows
+    if rows == 5:
+        np.testing.assert_array_equal(
+            out, [[0, 0], [1, 1], [model_time, 2], [model_time, 0], [end, 0.7]]
+        )
+    else:
+        np.testing.assert_array_equal(out, block)
 
 
 #: two events of the time less than two resolutions of the time of a simulation

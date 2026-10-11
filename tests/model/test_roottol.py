@@ -5,6 +5,7 @@ and `root + roottol`, where `roottol` is fixed by the first integration of the
 process, see `sbmlsim.model.roottol`.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -15,7 +16,7 @@ import roadrunner
 
 from sbmlsim.model.roottol import (
     EPSILON,
-    PIN_SPAN,
+    PINNED,
     RootTolerance,
     at_event_times,
     root_tolerance,
@@ -97,29 +98,39 @@ def test_the_probe_measures_the_root_tolerance_of_the_process() -> None:
 def test_the_probe_fixes_the_root_tolerance_if_it_integrates_first(
     first: str, expected: float
 ) -> None:
-    """In a fresh process the probe fixes `roottol` to 6.2e-31, measured as 0.
+    """In a fresh process the probe fixes `roottol` to `PINNED`, measured as 0.
 
     After a first integration of roadrunner over `0..10000` the probe
-    measures the `roottol` of that integration.
+    measures the `roottol` of that integration and warns once, with the
+    remedy.
     """
     code = (
-        "import sys, roadrunner\n"
+        "import logging, sys, roadrunner\n"
         "from sbmlsim.model.roottol import root_tolerance\n"
         "from tests.simulator.models import sbml\n"
+        "logging.basicConfig()\n"
         "if sys.argv[1]:\n"
         '    r = roadrunner.RoadRunner(sbml("model m\\n  S = 1\\n  S\' = -S\\nend"))\n'
         "    r.getIntegrator().setValue('variable_step_size', True)\n"
         "    r.simulate(0, float(sys.argv[1]))\n"
         "print(repr(root_tolerance().value))\n"
+        "root_tolerance()\n"
     )
+    root = Path(__file__).resolve().parents[2]
     result = subprocess.run(
         [sys.executable, "-c", code, first],
         capture_output=True,
         text=True,
         check=False,
-        cwd=Path(__file__).resolve().parents[2],
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root)},
+        timeout=600,
     )
     assert result.returncode == 0, result.stderr
     value = float(result.stdout.strip().splitlines()[-1])
     assert value == pytest.approx(expected, rel=1e-9, abs=0.0)
-    assert 100 * 32 * EPSILON * PIN_SPAN < 1e-30
+    assert value <= PINNED if not first else value > PINNED
+    warnings = result.stderr.count("roadrunner integrated in this process before")
+    assert warnings == (1 if first else 0), result.stderr
+    if first:
+        assert "load a model before integrating with roadrunner" in result.stderr

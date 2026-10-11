@@ -17,15 +17,19 @@ its own, has other rows than the process which runs the scan.
 
 `root_tolerance` runs a probe once per process, before the first model
 sbmlsim loads (`RoadrunnerSBMLModel`) and when a worker of a pool starts
-(`sbmlsim.parallel`): a model with one event, whose first integration spans
-`PIN_SPAN`, so `roottol` is 6.2e-31 in every process in which sbmlsim
-integrates first, the two rows of an event have the time of the event and the
-first step of CVODE after it is reported. The probe then
+(`sbmlsim.parallel`), unless the main module, which a worker imports first,
+integrates when it is imported: a model with one event, whose first
+integration spans `PIN_SPAN`, so `roottol` is 6.2e-31 in every process in
+which sbmlsim integrates first, the two rows of an event have the time of the
+event and the first step of CVODE after it is reported. The probe then
 measures `roottol` from the rows of its event, also where an integration
 before fixed it, and `at_event_times` gives the two rows of every event the
-time of the event. In a process in which roadrunner integrated before sbmlsim
+time of the event; the executor gives an event less than `roottol` before the
+end of a segment, whose row after it roadrunner folds into its last row, its
+two rows as well. In a process in which roadrunner integrated before sbmlsim
 loaded a model, a first step of CVODE after an event which is shorter than
-that `roottol` stays missing, which a worker of a pool has.
+that `roottol` stays missing, which a worker of a pool has, so the results
+agree within the tolerances of the integrator; the probe warns once.
 """
 
 from __future__ import annotations
@@ -46,6 +50,9 @@ EPSILON = float(np.finfo(float).eps)
 #: the span of the first integration of the probe, which fixes `roottol` to
 #: `100 * 32 * eps * PIN_SPAN` if it is the first integration of the process
 PIN_SPAN = 2.0**-60
+
+#: the `roottol` the probe fixes if it is the first integration of the process
+PINNED = 100.0 * 32.0 * EPSILON * PIN_SPAN
 
 #: the time of the event of the probe, a power of two
 PROBE_EVENT = 2.0**-10
@@ -110,10 +117,12 @@ class RootTolerance:
 def root_tolerance() -> RootTolerance:
     """Get the `roottol` of roadrunner in the process, measured once by a probe.
 
-    The probe fixes `roottol` to `100 * 32 * eps * PIN_SPAN` if it is the first
-    integration of the process, see the module, and measures it as half the
-    time between the two rows of its event. A process which forks keeps the
-    `roottol` of roadrunner and the measurement.
+    The probe fixes `roottol` to `PINNED` if it is the first integration of
+    the process, see the module, and measures it as half the time between the
+    two rows of its event. If roadrunner integrated before, the measured
+    `roottol` is larger and a warning names the consequence and the remedy,
+    once per process. A process which forks keeps the `roottol` of roadrunner
+    and the measurement.
 
     Returns:
         The root tolerance; `0` if the probe has no rows of its event, so
@@ -141,6 +150,19 @@ def root_tolerance() -> RootTolerance:
         value=gap / 2.0, precision=float(np.spacing(PROBE_EVENT + gap))
     )
     logger.debug("The root tolerance of roadrunner is %s.", tolerance.value)
+    if tolerance.value > PINNED:
+        logger.warning(
+            "roadrunner integrated in this process before sbmlsim loaded a model "
+            "(or before a worker of sbmlsim started, if the main module integrates "
+            "when it is imported): the rows of an event in the steps of the "
+            "integrator are %.3g before and after it, sbmlsim gives them the time "
+            "of the event, but a first step of the integrator after an event which "
+            "is shorter than that is missing, which a worker of a pool has, so a "
+            "run can differ from a run with workers within the tolerances of the "
+            "integrator. Import sbmlsim and load a model before integrating with "
+            "roadrunner directly.",
+            tolerance.value,
+        )
     return tolerance
 
 
