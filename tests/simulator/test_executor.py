@@ -1064,6 +1064,134 @@ def test_a_change_at_the_end_has_the_states_before_and_after_it(
     assert np.asarray(result["X"])[-2:].tolist() == pytest.approx([2.0, 0.0])
 
 
+#: an event of the model at the end of a simulation, the column and its states
+#: before and after the event: the second reset of the sawtooth at 2, which
+#: CVODE locates a few ulps after 2, and a dose by a trigger of the time
+END_EVENTS = {
+    "reset": (SAWTOOTH, 2.0, "X", 1.0, 0.0),
+    "dose": (DOSE_EVENT, 2.0, "A", 0.0, 10.0),
+}
+
+
+@pytest.mark.parametrize("case", END_EVENTS)
+def test_an_event_at_the_end_has_the_states_before_and_after_it(case: str) -> None:
+    """The steps of the integrator have an event at the end as two rows.
+
+    The states before and after the event, as an event inside and a change at
+    the end have them. An output of times has one row at the end, the state
+    after the event, which a time of a grid at an event sees.
+    """
+    sbml_model, end, column, before, after = END_EVENTS[case]
+    model = RoadrunnerSBMLModel(source=sbml(sbml_model))
+    steps = run_on(model, Simulation(end=end), ["time", column])
+    assert steps.time[-2:].tolist() == [end, end]
+    assert steps.time[-3] < end
+    assert np.asarray(steps[column])[-2:].tolist() == pytest.approx(
+        [before, after], abs=1e-9
+    )
+    times = run_on(
+        model, Simulation(end=end, times=[0, end / 4, end]), ["time", column]
+    )
+    assert times.time.tolist() == [0.0, end / 4, end]
+    assert times[column][-1] == pytest.approx(after, abs=1e-9)
+
+
+@pytest.mark.parametrize("times", [None, [0, 1, 2]])
+def test_an_event_at_a_change_at_the_end_fires_after_the_change(
+    times: list[float] | None,
+) -> None:
+    """The dose at the end adds to the value the change at the end sets.
+
+    The output has the state before both and the state after both; a dose
+    before the change would have been overwritten by it.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(DOSE_EVENT))
+    result = run_on(
+        model,
+        Simulation(end=2, changes=[Change(2, {"A": 5.0})], times=times),
+        ["time", "A"],
+    )
+    assert result.time[-2:].tolist() == [2.0, 2.0]
+    assert result.time[-3] < 2.0
+    assert np.asarray(result["A"])[-2:].tolist() == [0.0, 15.0]
+
+
+@pytest.mark.parametrize("times", [None, [0, 1, 2]])
+def test_an_event_of_the_dynamics_at_a_change_at_the_end_fires(
+    times: list[float] | None,
+) -> None:
+    """The second reset of the sawtooth at the end fires after a change there.
+
+    No change makes its trigger true, CVODE locates it a few ulps after the
+    end, which is at the end.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(SAWTOOTH))
+    result = run_on(
+        model,
+        Simulation(end=2, changes=[Change(2, {"k": 2.0})], times=times),
+        ["time", "X", "Y", "k"],
+    )
+    assert result.time[-2:].tolist() == [2.0, 2.0]
+    np.testing.assert_allclose(
+        result.values[-2:, 1:], [[1.0, 1.0, 1.0], [0.0, 2.0, 2.0]], atol=1e-9
+    )
+
+
+@pytest.mark.parametrize("delta", [1e-12, 1e-7])
+def test_an_event_after_the_end_fires_once_before_the_steady_state(
+    delta: float,
+) -> None:
+    """The steady state after the end starts after the events at the end.
+
+    The event at the end, within the resolution of the time after it, and an
+    event after it which the integration after the end found, fired once: the
+    steady state starts at the time of the model, not at the end again.
+    """
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            f"model m\n  var Y = 0\n  X = 1\n  X' = -X\n"
+            f"  E: at (time >= 2 + {delta!r}): Y = Y + 1\nend"
+        )
+    )
+    result = run_on(model, Simulation(end=2, times=[0, 2, np.inf]), ["time", "Y"])
+    assert result.time.tolist() == [0.0, 2.0, np.inf]
+    assert np.asarray(result["Y"]).tolist() == [0.0, 1.0 if delta < 1e-9 else 0.0, 1.0]
+
+
+#: an event of the time within the resolution of the time before the end 2.5
+LATE_EVENT = """
+model late
+  var X = 0
+  var Y = 0
+  k = 1
+  X' = k
+  E: at (time >= {time!r}): X = 0, Y = Y + 1
+end
+"""
+
+
+@pytest.mark.parametrize("delta", [1e-9, 2e-9])
+@pytest.mark.parametrize("change", [False, True])
+def test_an_event_within_the_resolution_before_the_end_is_in_the_chain_at_it(
+    delta: float, change: bool
+) -> None:
+    """An event closer to the end of a segment than the resolution is at its end.
+
+    The steps of the integrator end closer to the end than the resolution,
+    the segment gets exact output without them: the rows at the end, also the
+    state before the change at the end, are the state after the event, the
+    chain of the event and the end, as `grid_weights` sees it.
+    """
+    assert delta < time_tolerance(0.0, 2.5)
+    model = RoadrunnerSBMLModel(source=sbml(LATE_EVENT.format(time=2.5 - delta)))
+    changes = [Change(2.5, {"k": 2.0})] if change else []
+    result = run_on(model, Simulation(end=2.5, changes=changes), ["time", "X", "Y"])
+    near = result.time > 2.5 - 1e-6
+    assert result.time[near].tolist() == ([2.5, 2.5] if change else [2.5])
+    np.testing.assert_allclose(np.asarray(result["X"])[near], delta, rtol=1e-3)
+    assert np.all(np.asarray(result["Y"])[near] == 1.0)
+
+
 def test_the_state_before_a_change_is_before_the_event_at_its_time() -> None:
     """An event of the model at the time of a change fires after the change.
 

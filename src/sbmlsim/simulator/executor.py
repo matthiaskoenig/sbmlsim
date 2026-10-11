@@ -21,9 +21,21 @@ The semantics are the ones of PEtab v2:
    time in the output, the state before the change, which ends the segment
    before it, and the state after it, which starts the next one: the steps
    of the integrator at every change, an output of times at its times which
-   are changes. A segment which ends at a change stops one unit in the last
-   place before it for a model with events, see `_simulate_times`.
-6. A model which does not read the time (`ModelSymbols.time_dependent`) is
+   are changes. A segment of a model with events stops one unit in the last
+   place before its end, see `_simulate_times`, so an event of the model at
+   the time of a change fires after the change and an event at the end
+   after the state before it.
+6. An event of the model within the resolution of the time after the end is
+   at the end, see `_event_at_the_end`: the steps of the integrator have it
+   as two rows, the states before and after it, an output time at the end
+   the state after it, as a time of a grid at an event, and it fires after
+   a change at the end. The steady state after the end starts after it. An
+   event within the resolution before the end is in the chain at the end,
+   whose rows are the state after it, as at a change. An event whose
+   trigger becomes true within the rounding of the state one unit in the
+   last place before the end, e.g. `X >= 1` of `X' = 1` from 0 at the end 1,
+   fires before it, and the end has the state after it.
+7. A model which does not read the time (`ModelSymbols.time_dependent`) is
    integrated in local time: every segment starts at the time 0 of
    roadrunner and its output is shifted back, so the first step of CVODE
    after a change is never below the resolution of the time. A model which
@@ -110,7 +122,8 @@ def execute(
     """Run a plan on a loaded model.
 
     The output has two rows at the time of a change after the start, the
-    state before the change and the state after it, see the module.
+    state before the change and the state after it, and the steps of the
+    integrator have two at an event of the model at the end, see the module.
 
     Args:
         plan: the plan, compiled against the model.
@@ -223,9 +236,10 @@ def _simulate(
     blocks: list[np.ndarray] = []
     for k in range(len(points) - 1):
         a, b = points[k], points[k + 1]
-        last = k == len(points) - 2
-        # the segment ends at a change, whose state before it is its last row
-        before_change = not last or b in events
+        # the segment ends at a change, whose state before it is its last row:
+        # every segment but the last, since the changes are within the
+        # simulation, and the last one at a change at the end
+        before_change = b in events
         if a in events:
             if model_events and (a > plan.start or plan.steady_state is not None):
                 # the triggers at the end of the integration before the change,
@@ -244,11 +258,11 @@ def _simulate(
         offset = a if local else 0.0
         start, end = a - offset, b - offset
         # an event of the model at the time of the next change fires after
-        # the change (PEtab v2, reinitialization): the integration stops just
-        # before it, where roadrunner does not fire it, see `_fire_events`
-        end_stop = (
-            float(np.nextafter(end, -np.inf)) if model_events and before_change else end
-        )
+        # the change (PEtab v2, reinitialization), and an event at the end has
+        # the state before it as a row: the integration stops just before the
+        # end of the segment, where roadrunner does not fire it, see
+        # `_fire_events` and `_event_at_the_end`
+        end_stop = float(np.nextafter(end, -np.inf)) if model_events else end
         if plan.output is OutputMode.INTEGRATOR:
             output = exact.get(k)
             if output is None:
@@ -322,9 +336,34 @@ def _simulate(
             else:
                 blocks[-1][-1, :] = after
 
+    if (
+        model_events
+        and blocks
+        and blocks[-1].shape[0]
+        and blocks[-1][-1, 0] == plan.end
+    ):
+        # the last segment in the time of roadrunner
+        offset = points[-2] if local else 0.0
+        end = plan.end - offset
+        changed = plan.end in events
+        state = _event_at_the_end(
+            r, end if changed else float(np.nextafter(end, -np.inf)), end, tolerance
+        )
+        if state is not None:
+            state[0] = plan.end
+            if changed or plan.output is OutputMode.TIMES:
+                # the state after the change and the events at the end, the
+                # state after the events at an output time at the end
+                blocks[-1][-1, :] = state
+            else:
+                blocks[-1] = np.vstack([blocks[-1], state])
+
     if plan.steady_state_output is not None:
-        # the steady state after the end, PEtab's measurement at `inf`
-        steady_state(model, plan.steady_state_output, start=0.0 if local else plan.end)
+        # the steady state after the end, PEtab's measurement at `inf`, from
+        # the time of the model, after the events at the end: an event of the
+        # time it fired does not fire again
+        start = 0.0 if local else float(r.model.getTime())
+        steady_state(model, plan.steady_state_output, start=start)
         row = _state(r, columns, np.inf)
         blocks.append(row[np.newaxis, :])
 
@@ -391,6 +430,44 @@ def _steps(
         return np.vstack([block, state]), True
     block[-1] = state
     return block, True
+
+
+def _event_at_the_end(
+    r: roadrunner.RoadRunner, start: float, end: float, tolerance: float
+) -> np.ndarray | None:
+    """Get the state after the events of the model at the end of a simulation.
+
+    CVODE locates an event a little after its time, an event at the end of a
+    simulation after the end, where an integration up to the end does not
+    find it: a state trigger at the end, and a trigger of the time at the end
+    in the steps of the integrator. An event within the resolution of the
+    time after the end is at the end, as a time of a grid sees it, see
+    `sbmlsim.result.timecourse.grid_weights`. The model is integrated with
+    the steps of the integrator from `start` to the resolution after the end,
+    which gives the two rows of every event the time of the event, see
+    `_steps`.
+
+    Args:
+        r: the roadrunner instance in the state at `start`.
+        start: the start of the integration in the time of roadrunner, one
+            unit in the last place before the end, where the last segment
+            stopped, or the end after a change at the end.
+        end: the end of the simulation in the time of roadrunner.
+        tolerance: the resolution of the time.
+
+    Returns:
+        The state after the last event within the resolution after the end,
+        at the time of the event, `None` without one.
+    """
+    block, _ = _steps(r, start, end + tolerance, tolerance, True)
+    # roadrunner's last row is no row of an event
+    rows = block[:-1]
+    pairs = np.flatnonzero(
+        (rows[1:, 0] == rows[:-1, 0]) & (rows[1:, 0] <= end + tolerance)
+    )
+    if pairs.size == 0:
+        return None
+    return rows[pairs[-1] + 1].copy()
 
 
 def _events_at_the_end(

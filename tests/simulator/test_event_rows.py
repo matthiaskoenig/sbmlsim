@@ -4,10 +4,12 @@ libroadrunner 2.10 reports an event of the model in the steps of the
 integrator as two rows, the state before it at `root - roottol` and the state
 after it at `root + roottol`, where `roottol` is a `static const` of
 `CVODEIntegrator::integrate` which the first integration of the process fixes
-to `100 * 32 * eps * (|t0| + |h|)`. The tests run in a fresh process, since
-`roottol` cannot be reset within one: the first integration of the process is
-one over `0..10000` of an unrelated model, either with roadrunner before
-sbmlsim loaded a model or with sbmlsim.
+to `100 * 32 * eps * (|t0| + |h|)`. The script runs in two fresh processes at
+once, since `roottol` cannot be reset within one: the first integration of
+the process is one over `0..10000` of an unrelated model, either with
+roadrunner before sbmlsim loaded a model or with sbmlsim. Every check is a
+subtest of one test, so the processes run once per session, also with the
+workers of pytest-xdist.
 """
 
 import json
@@ -124,6 +126,11 @@ def main(first: str, directory: Path) -> dict:
         "late_rows": rows(paths["late"], steps, ["X"]),
         "two_rows": rows(paths["two"], steps, ["X", "Y"]),
     }
+    # the second reset of the sawtooth and the dose at the end
+    for name, variable in (("sawtooth", "X"), ("dose", "A")):
+        for output, times in (("steps", None), ("times", [0.0, 1.0, 2.0])):
+            end = Simulation(end=2.0, times=times)
+            out[f"end_{name}_{output}"] = rows(paths[name], end, [variable])
     ones = {"k": [1.0, 1.0]}
     scans(paths["sawtooth"], steps, ones, [0.5, 1.0, 1.5], ["X"], out, "")
     scans(paths["late"], steps, ones, [1.0, LATE_TIME, 2.5], ["X", "Y"], out, "late_")
@@ -155,38 +162,38 @@ for _name, _time in (
 ):
     SCRIPT = SCRIPT.replace(_name, repr(_time))
 
-#: the results of the script by the first integration of its process
-_RESULTS: dict[str, dict[str, Any]] = {}
+#: the first integrations of the processes of the script
+FIRSTS = ("roadrunner", "sbmlsim")
 
 
-def _run(first: str, directory: Path) -> dict[str, Any]:
-    """Run the script in a fresh process, see the module."""
-    result = subprocess.run(
-        [sys.executable, "-c", SCRIPT, first, str(directory)],
-        capture_output=True,
-        text=True,
-        check=False,
-        cwd=ROOT,
-        env={**os.environ, "PYTHONPATH": str(ROOT)},
-        timeout=TIMEOUT,
-    )
-    assert result.returncode == 0, result.stderr
-    return json.loads(result.stdout.strip().splitlines()[-1])
-
-
-def _results(first: str, tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
-    """Get the results of the script, run once per first integration."""
-    if first not in _RESULTS:
-        _RESULTS[first] = _run(first, tmp_path_factory.mktemp(first)) | {"first": first}
-    return _RESULTS[first]
-
-
-@pytest.fixture(scope="module", params=["roadrunner", "sbmlsim"])
-def after_a_long_first_integration(
-    request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory
-) -> dict[str, Any]:
-    """The results of the models after a first integration over `0..10000`."""
-    return _results(request.param, tmp_path_factory)
+def _run(directory: Path) -> dict[str, dict[str, Any]]:
+    """Run the script in a fresh process per first integration, at once."""
+    processes = {}
+    for first in FIRSTS:
+        folder = directory / first
+        folder.mkdir()
+        processes[first] = subprocess.Popen(
+            [sys.executable, "-c", SCRIPT, first, str(folder)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=ROOT,
+            env={**os.environ, "PYTHONPATH": str(ROOT)},
+        )
+    results: dict[str, dict[str, Any]] = {}
+    try:
+        for first, process in processes.items():
+            stdout, stderr = process.communicate(timeout=TIMEOUT)
+            assert process.returncode == 0, stderr
+            results[first] = json.loads(stdout.strip().splitlines()[-1]) | {
+                "first": first
+            }
+    finally:
+        for process in processes.values():
+            if process.poll() is None:
+                process.kill()
+                process.communicate()
+    return results
 
 
 def _event(time: np.ndarray, x: np.ndarray) -> np.ndarray:
@@ -195,17 +202,17 @@ def _event(time: np.ndarray, x: np.ndarray) -> np.ndarray:
     return np.array([after - 1, after])
 
 
-@pytest.mark.parametrize(
-    ("key", "variable", "at"),
-    [
-        ("rows", "X", 1.0),
-        ("late_rows", "X", LATE_TIME),
-        ("two_rows", "X", TWO_TIMES[0]),
-        ("two_rows", "Y", TWO_TIMES[1]),
-    ],
-)
-def test_the_rows_of_an_event_have_the_time_of_the_event(
-    after_a_long_first_integration: dict[str, Any], key: str, variable: str, at: float
+#: the rows of a reset: the result, the variable and the time of the reset
+ROWS = [
+    ("rows", "X", 1.0),
+    ("late_rows", "X", LATE_TIME),
+    ("two_rows", "X", TWO_TIMES[0]),
+    ("two_rows", "Y", TWO_TIMES[1]),
+]
+
+
+def check_rows_of_an_event(
+    out: dict[str, Any], key: str, variable: str, at: float
 ) -> None:
     """The states before and after a reset are two rows of one time.
 
@@ -215,13 +222,31 @@ def test_the_rows_of_an_event_have_the_time_of_the_event(
     late resets are closer to the end than `roottol`: roadrunner folded the
     row after a reset into its last row and left the row before it alone.
     """
-    out = after_a_long_first_integration[key]
-    time, x = np.asarray(out["time"]), np.asarray(out[variable])
+    time, x = np.asarray(out[key]["time"]), np.asarray(out[key][variable])
     rows = _event(time, x)
     assert time[rows[0]] == time[rows[1]]
     assert abs(time[rows[0]] - at) < 1e-12
     np.testing.assert_allclose(x[rows], [at, 0.0], rtol=1e-9)
     assert np.all(np.diff(time) >= 0.0)
+
+
+#: the states before and after the event at the end 2 of a simulation
+END = {"sawtooth": ("X", 1.0, 0.0), "dose": ("A", 0.0, 10.0)}
+
+
+def check_an_event_at_the_end(out: dict[str, Any], name: str) -> None:
+    """The steps have the second reset and the dose at the end as two rows.
+
+    An output of times has the state after it at the end.
+    """
+    variable, before, after = END[name]
+    steps = out[f"end_{name}_steps"]
+    assert steps["time"][-2:] == [2.0, 2.0]
+    assert steps["time"][-3] < 2.0
+    np.testing.assert_allclose(steps[variable][-2:], [before, after], atol=1e-9)
+    times = out[f"end_{name}_times"]
+    assert times["time"] == [0.0, 1.0, 2.0]
+    np.testing.assert_allclose(times[variable][-1], after, atol=1e-9)
 
 
 #: the values on the grids of the scans: the sawtooth, the late reset, the
@@ -238,10 +263,7 @@ EXPECTED = {
 }
 
 
-@pytest.mark.parametrize("key", list(EXPECTED))
-def test_a_time_at_an_event_sees_the_state_after_it_in_a_run(
-    after_a_long_first_integration: dict[str, Any], key: str
-) -> None:
+def check_a_time_at_an_event_in_a_run(out: dict[str, Any], key: str) -> None:
     """A time at an event sees the state after it, and a dose at a change fires once.
 
     roadrunner applied the dose at 2 `roottol` after its row before it, after
@@ -249,7 +271,6 @@ def test_a_time_at_an_event_sees_the_state_after_it_in_a_run(
     the end did not see it, and the event fired a second time after the
     change.
     """
-    out = after_a_long_first_integration
     for n in (1, 2):
         for variable, expected in EXPECTED[key].items():
             np.testing.assert_allclose(
@@ -260,18 +281,13 @@ def test_a_time_at_an_event_sees_the_state_after_it_in_a_run(
             )
 
 
-def test_a_time_at_an_event_sees_the_state_after_it_in_a_fit(
-    after_a_long_first_integration: dict[str, Any],
-) -> None:
-    out = after_a_long_first_integration
+def check_a_time_at_an_event_in_a_fit(out: dict[str, Any]) -> None:
+    """A time of the data at an event sees the state after it in a fit."""
     for task in ("task_steps", "task_past"):
         np.testing.assert_allclose(out[task], [0.5, 0.0, 0.5], atol=1e-6)
 
 
-@pytest.mark.parametrize("key", list(EXPECTED))
-def test_the_result_does_not_depend_on_the_number_of_workers(
-    after_a_long_first_integration: dict[str, Any], key: str
-) -> None:
+def check_the_number_of_workers(out: dict[str, Any], key: str) -> None:
     """A scan with two workers has the results of a scan in one process.
 
     A worker's first integration is its own. After a first integration with
@@ -283,7 +299,6 @@ def test_the_result_does_not_depend_on_the_number_of_workers(
     the sawtooth on its grid, which is linear between the steps. The events
     near the end continue with new steps, which are the ones of a worker.
     """
-    out = after_a_long_first_integration
     one, two = out[f"{key}native1"], out[f"{key}native2"]
     exact = out["first"] == "sbmlsim" or key != ""
     for variable in EXPECTED[key]:
@@ -303,15 +318,12 @@ def test_the_result_does_not_depend_on_the_number_of_workers(
             )
 
 
-@pytest.mark.parametrize("key", list(EXPECTED))
-def test_the_result_does_not_depend_on_the_first_integration_of_the_process(
-    tmp_path_factory: pytest.TempPathFactory, key: str
+def check_the_first_integration(
+    rr: dict[str, Any], sb: dict[str, Any], key: str
 ) -> None:
     """A process in which roadrunner integrated first has the results of one
     in which sbmlsim did, but for the step of CVODE after the reset of the
-    sawtooth, see `test_the_result_does_not_depend_on_the_number_of_workers`."""
-    rr = _results("roadrunner", tmp_path_factory)
-    sb = _results("sbmlsim", tmp_path_factory)
+    sawtooth, see `check_the_number_of_workers`."""
     for n in (1, 2):
         for variable in EXPECTED[key]:
             if key == "":
@@ -328,3 +340,27 @@ def test_the_result_does_not_depend_on_the_first_integration_of_the_process(
                 np.testing.assert_array_equal(
                     rr[f"{key}grid{n}"][variable], sb[f"{key}grid{n}"][variable]
                 )
+
+
+def test_the_rows_of_events_do_not_depend_on_the_history_of_the_process(
+    tmp_path: Path, subtests: pytest.Subtests
+) -> None:
+    """The checks of the rows of events after a long first integration."""
+    results = _run(tmp_path)
+    for first, out in results.items():
+        for key, variable, at in ROWS:
+            with subtests.test("the rows of an event", first=first, key=key, at=at):
+                check_rows_of_an_event(out, key, variable, at)
+        for name in END:
+            with subtests.test("an event at the end", first=first, name=name):
+                check_an_event_at_the_end(out, name)
+        for key in EXPECTED:
+            with subtests.test("a time at an event in a run", first=first, key=key):
+                check_a_time_at_an_event_in_a_run(out, key)
+            with subtests.test("the number of workers", first=first, key=key):
+                check_the_number_of_workers(out, key)
+        with subtests.test("a time at an event in a fit", first=first):
+            check_a_time_at_an_event_in_a_fit(out)
+    for key in EXPECTED:
+        with subtests.test("the first integration", key=key):
+            check_the_first_integration(results["roadrunner"], results["sbmlsim"], key)
