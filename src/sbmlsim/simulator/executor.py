@@ -22,13 +22,14 @@ The semantics are the ones of PEtab v2:
    before it, and the state after it, which starts the next one: the steps
    of the integrator at every change, an output of times at its times which
    are changes. A segment of a model with events stops just before its end,
-   a unit in the last place of the scale of its times and at least four
-   machine epsilons, see `_stop` and `_simulate_times`, so an event of the
-   model at the time of a change fires after the change and an event at the
-   end after the state before it. A segment too short for CVODE, a few units
-   in the last place in absolute time, is not integrated: its state is the
-   one at its start and the events of the time in it fire at its end, as
-   after a change, see `_integrable`.
+   a unit in the last place of the larger magnitude of its start and end
+   and at least four machine epsilons, see `_stop` and `_simulate_times`, so
+   an event of the model at the time of a change fires after the change and
+   an event at the end after the state before it. A segment too short for
+   CVODE, a few units in the last place in absolute time, is not
+   integrated: its state is the one at its start, and the triggers before
+   the next change are evaluated at the time the model is at, its start, so
+   an event of the time in it fires once, after it, see `_integrable`.
 6. An event of the model within the resolution of the time after the end is
    at the end, see `_event_at_the_end`: the steps of the integrator have it
    as two rows, the states before and after it, an output time at the end
@@ -243,12 +244,13 @@ def _simulate(
     model_events = plan.symbols.events
     times = np.asarray(plan.times, dtype=float)
     tolerance = time_tolerance(plan.start, plan.end)
-    span = max(abs(plan.start), abs(plan.end), plan.end - plan.start)
     exact = exact or {}
 
     blocks: list[np.ndarray] = []
-    # whether the last segment is integrated, and the time it stopped at
-    held, stopped = False, 0.0
+    # whether the last segment is not integrated, and the time of roadrunner
+    # the model is at after it: where its integration stopped, the start of a
+    # segment which is not integrated, the start before the first segment
+    held, stopped = False, plan.start
     for k in range(len(points) - 1):
         a, b = points[k], points[k + 1]
         # the segment ends at a change, whose state before it is its last row:
@@ -257,11 +259,12 @@ def _simulate(
         before_change = b in events
         if a in events:
             if model_events and (a > plan.start or plan.steady_state is not None):
-                # the triggers at the end of the integration before the change,
-                # the one of the steady state for the change at the start
-                triggers = _triggers(
-                    model_events, r, a if local else float(r.model.getTime())
-                )
+                # the triggers at the time the model is at before the change:
+                # where the segment before it stopped, also a segment which is
+                # not integrated, so an event of the time fires once, and the
+                # end of the steady state for the change at the start
+                before = float(r.model.getTime()) if a == plan.start else stopped
+                triggers = _triggers(model_events, r, a if local else before)
                 _apply(events[a], r, plan)
                 _fire_events(model_events, triggers, r, a, model)
             else:
@@ -277,13 +280,10 @@ def _simulate(
         # the state before it as a row: the integration stops just before the
         # end of the segment, where roadrunner does not fire it, see
         # `_fire_events` and `_event_at_the_end`
-        # the scale of the times roadrunner integrates: the segment in local
-        # time, the simulation in absolute time
-        scale = end if local else span
-        end_stop = _stop(end, scale) if model_events else end
+        end_stop = _stop(start, end) if model_events else end
         # a segment too short for CVODE keeps the state at its start
-        held = not _integrable(start, end_stop, scale)
-        stopped = max(start, end_stop) if held else end_stop
+        held = not _integrable(start, end_stop)
+        stopped = start if held else end_stop
         if held:
             if plan.output is OutputMode.INTEGRATOR:
                 block = _held(r, np.array([a, b]))
@@ -467,50 +467,48 @@ def _steps(
     return block, True
 
 
-def _stop(end: float, scale: float) -> float:
+def _stop(start: float, end: float) -> float:
     """Get the time just before the end of a segment where its integration stops.
 
-    It is one unit in the last place of the scale of the times roadrunner
-    integrates before the end, which CVODE resolves: its rounding of the time
-    is the machine epsilon times their magnitude. That is one unit in the
-    last place of the end of a segment in local time, which starts at 0, and
-    of the largest magnitude of the simulation in absolute time, as
-    `merge_times` scales its resolution; one unit in the last place of an
-    end at 0 would be a subnormal number, at which CVODE fails, e.g. for a
-    trigger of the time at 0. It is at least `STOP`, so roadrunner reports
-    an event at the end with its rows when it integrates from the stop.
+    It is one unit in the last place of the times of the segment before its
+    end, of the larger of the magnitudes of its start and its end in the
+    time of roadrunner, which CVODE resolves: its rounding of the time is the
+    machine epsilon times that magnitude. It is at least `STOP`, so the stop
+    before an end at 0 is no subnormal number, at which CVODE fails, e.g. for
+    a trigger of the time at 0, and roadrunner reports an event at the end
+    with its rows when it integrates from the stop.
 
     Args:
-        end: the end of the segment in the time of roadrunner.
-        scale: the scale of the times, `max(|start|, |end|, end - start)` of
-            the segment in local time or of the simulation in absolute time.
+        start: the start of the segment in the time of roadrunner.
+        end: its end in the time of roadrunner.
 
     Returns:
         The stop, a normal number before the end.
     """
-    return end - max(float(np.spacing(scale)), STOP)
+    return end - max(float(np.spacing(max(abs(start), abs(end)))), STOP)
 
 
-def _integrable(start: float, stop: float, scale: float) -> bool:
+def _integrable(start: float, stop: float) -> bool:
     """Whether CVODE integrates from the start of a segment to its stop.
 
     CVODE rejects an output time closer to the start than twice its rounding
     of the time, the machine epsilon times the larger magnitude
-    (`CV_TOO_CLOSE`), and roadrunner a stop at the start: a segment shorter
-    than a few units in the last place of the scale of its times, e.g. the
-    last one after a change two units in the last place before the end, is
-    not integrated, its state is the one at its start, which differs from
-    the integrated one by less than the rounding of its time.
+    (`CV_TOO_CLOSE`), and roadrunner a stop at the start: such a segment, of
+    a few units in the last place in absolute time, e.g. between two changes
+    a few units in the last place apart, is not integrated. Its state is the
+    one at its start, which differs from the integrated one by the rate times
+    its duration, and the events of the time in it fire after it, see
+    `_simulate`.
 
     Args:
         start: the start of the segment in the time of roadrunner.
         stop: where its integration stops, see `_stop`.
-        scale: the scale of the times, see `_stop`.
 
     Returns:
-        Whether the segment is integrated.
+        Whether the segment is integrated, the condition of CVODE.
     """
-    return stop - start >= 4.0 * float(np.spacing(max(scale, abs(start), abs(stop))))
+    distance = stop - start
+    return distance > 0.0 and distance >= 2.0 * (EPSILON * max(abs(start), abs(stop)))
 
 
 def _held(r: roadrunner.RoadRunner, times: np.ndarray) -> np.ndarray:

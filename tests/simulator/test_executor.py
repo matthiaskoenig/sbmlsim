@@ -1252,6 +1252,117 @@ def test_a_change_a_few_units_in_the_last_place_before_the_end(
     assert result["A"][-1] == pytest.approx(0.0 if at == "before" else 10.0)
 
 
+def _ulps_after(time: float, ulps: int) -> float:
+    """Get the time a number of units in the last place after a time."""
+    for _ in range(ulps):
+        time = float(np.nextafter(time, np.inf))
+    return time
+
+
+@pytest.mark.parametrize("times", [False, True])
+@pytest.mark.parametrize("at", ["first", "between", "second"])
+@pytest.mark.parametrize("ulps", [1, 3, 9])
+@pytest.mark.parametrize("c1", [1.0, 0.0, -1.0])
+def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
+    c1: float, ulps: int, at: str, times: bool
+) -> None:
+    """A dose at the first, between or at the second of two close changes fires once.
+
+    The segment between the changes is too short for CVODE and not
+    integrated; the triggers before the second change were evaluated at the
+    time the integration stopped before the first one, so the dose fired at
+    the first change fired again at the second.
+    """
+    c2 = _ulps_after(c1, ulps)
+    te = {"first": c1, "between": _ulps_after(c1, 1), "second": c2}[at]
+    start, end = c1 - 1.0, c1 + 1.0
+    model = RoadrunnerSBMLModel(source=sbml(DOSE_AT))
+    result = run_on(
+        model,
+        Simulation(
+            start=start,
+            end=end,
+            preinit_changes={"te": te},
+            changes=[Change(c1, {"A": 2.0}), Change(c2, {"k": 0.2})],
+            times=[start, c1, end] if times else None,
+        ),
+        ["time", "A", "Y"],
+    )
+    assert result["Y"][-1] == 1.0
+    assert result["A"][-1] == pytest.approx(12.0 * np.exp(-0.2 * (end - c2)), rel=1e-5)
+    assert np.all(np.diff(result.time) >= 0.0)
+
+
+@pytest.mark.parametrize("times", [None, [0.0, 0.3, 1.0]])
+def test_a_dose_at_a_change_and_a_change_of_a_grid_one_unit_after_it(
+    times: list[float] | None,
+) -> None:
+    """A grid of changes from `np.arange` has 0.30000000000000004 next to 0.3.
+
+    The dose at the change at 0.3 fired twice, at 0.3 and at the change of
+    the grid one unit in the last place after it.
+    """
+    grid = np.arange(0.0, 1.0, 0.1)
+    assert grid[3] == _ulps_after(0.3, 1)
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            "model dose\n  var A = 1\n  var Y = 0\n  te = 0.3\n  k = 0.5\n"
+            "  r = 0\n  A' = -k * A + r\n"
+            "  E: at (time >= te): A = A + 10, Y = Y + 1\nend"
+        )
+    )
+    dose = Change(0.3, {"k": 0.4})
+    reference = run_on(
+        model, Simulation(end=1.0, changes=[dose], times=[0.0, 1.0]), ["time", "A"]
+    )
+    result = run_on(
+        model,
+        Simulation(
+            end=1.0,
+            changes=[dose, Change(list(grid[1:]), {"r": "r + 0"})],
+            times=times,
+        ),
+        ["time", "A", "Y"],
+    )
+    assert result["Y"][-1] == 1.0
+    assert result["A"][-1] == pytest.approx(reference["A"][-1], rel=1e-5)
+
+
+@pytest.mark.parametrize("at", ["start", "change"])
+@pytest.mark.parametrize("start", [-2.0, 1.0])
+def test_a_change_a_few_units_in_the_last_place_after_the_start(
+    start: float, at: str
+) -> None:
+    """A first segment too short for CVODE: the doses are the ones of an integrated one.
+
+    The triggers before the change were evaluated at the time 0 of the
+    reset: a dose at the change from the start -2 was dropped, a dose at the
+    start 1, which roadrunner does not fire at the start, fired.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(DOSE_AT))
+    results = []
+    for ulps in (1, 3, 40):
+        c1 = _ulps_after(start, ulps)
+        te = start if at == "start" else c1
+        results.append(
+            run_on(
+                model,
+                Simulation(
+                    start=start,
+                    end=start + 2.0,
+                    preinit_changes={"te": te},
+                    changes=[Change(c1, {"k": 0.2})],
+                ),
+                ["time", "A", "Y"],
+            )
+        )
+    # the change 40 units in the last place after the start is integrated
+    assert results[-1]["Y"][-1] == (0.0 if at == "start" else 1.0)
+    for result in results[:-1]:
+        assert result["Y"][-1] == results[-1]["Y"][-1]
+        assert result["A"][-1] == pytest.approx(results[-1]["A"][-1], rel=1e-9)
+
+
 #: an event of the time within the resolution of the time before the end 2.5
 LATE_EVENT = """
 model late
