@@ -214,14 +214,48 @@ def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
     assert figures["OneDoseStudy_fm_one"].axes[0].get_xlabel() == "PODOSE [mg]"
 
 
+def _legend_rows(fig: Figure) -> list[list[str]]:
+    """Get the labels of the one legend of a figure in its rows, as they are read.
+
+    The blank entries which fill a row are left out.
+    """
+    fig.canvas.draw()
+    [legend] = fig.legends
+    # the centers of the texts of a row differ by a little, mathtext is taller
+    entries = []
+    for text in legend.get_texts():
+        if text.get_text():
+            extent = text.get_window_extent()
+            center = 0.5 * (extent.y0 + extent.y1)
+            entries.append((-center, extent.x0, extent.height, text.get_text()))
+    rows: list[list[tuple[float, str]]] = []
+    top = -np.inf
+    for y, x, height, label in sorted(entries):
+        if not rows or y - top > 0.5 * height:
+            rows.append([])
+            top = y
+        rows[-1].append((x, label))
+    return [[label for _, label in sorted(row)] for row in rows]
+
+
+def _inside(inner: Any, outer: Any) -> bool:
+    """Check whether a box lies inside another one."""
+    return bool(
+        outer.x0 <= inner.x0
+        and inner.x1 <= outer.x1
+        and outer.y0 <= inner.y0
+        and inner.y1 <= outer.y1
+    )
+
+
 def test_the_figures_of_a_mapping_have_one_title_and_one_legend(
     tmp_path: Path, figures: dict[str, Figure]
 ) -> None:
     """The title is above the panels and the legend below them, never inside.
 
     A title per panel overlaps the next one for a long key, a legend inside
-    a panel covers the data. The legend has the data first and the entries
-    of every parameter set together.
+    a panel covers the data. The legend has the data first and every
+    parameter set in a row of its own.
     """
     problem = _problem(
         [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
@@ -241,28 +275,89 @@ def test_the_figures_of_a_mapping_have_one_title_and_one_legend(
         assert fig.get_suptitle() == "DoseStudy fm_dose"
         assert all(ax.get_title() == "" for ax in fig.axes)
         assert all(ax.get_legend() is None for ax in fig.axes)
-        [legend] = fig.legends
-        labels = [text.get_text() for text in legend.get_texts()]
-        assert labels[0].startswith("reference_data")
-        sets = [label.split(" ")[0] for label in labels[1:]]
-        assert sets == sorted(sets, key=["true", "near"].index)
-    assert [
-        text.get_text()
-        for text in figures["fit_DoseStudy_fm_dose"].legends[0].get_texts()
-    ] == [
-        "reference_data",
-        "true",
-        "true residuals",
-        "true $(w \\cdot r)^2$",
-        "near",
-        "near residuals",
-        "near $(w \\cdot r)^2$",
+    # a set has one entry, the sets fill the rows
+    assert _legend_rows(figures["DoseStudy_fm_dose"]) == [
+        ["reference_data ± SD", "true"],
+        ["near"],
+    ]
+    assert _legend_rows(figures["fit_DoseStudy_fm_dose"]) == [
+        ["reference_data"],
+        ["true", "true residuals", "true $(w \\cdot r)^2$"],
+        ["near", "near residuals", "near $(w \\cdot r)^2$"],
     ]
 
     figures.clear()
     report.show_titles = False
     report.plot_fit(tmp_path)
     assert figures["DoseStudy_fm_dose"].get_suptitle() == ""
+
+
+@pytest.mark.parametrize("n_sets", [1, 2, 4])
+@pytest.mark.parametrize("length", [8, 60, 120])
+def test_the_legend_of_a_mapping_fits_into_its_figure(
+    tmp_path: Path, figures: dict[str, Figure], n_sets: int, length: int
+) -> None:
+    """The legend is inside the figure and clear of the panels for long set ids.
+
+    Two or three columns of long ids are wider than the figure: the legend
+    takes fewer columns, and a figure is widened for an id which is wider
+    than it in one column. The entries of a set stay together.
+    """
+    problem = _problem(
+        [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
+    )
+    sids = [f"set{j}_".ljust(length, "x") for j in range(n_sets)]
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        [
+            ParameterSet(sid=sid, values={"V": TRUE_V * (1.0 + 0.05 * j)})
+            for j, sid in enumerate(sids)
+        ],
+    )
+    report.plot_fit(tmp_path)
+    report.plot_fit_residual(tmp_path)
+    for name in ("DoseStudy_fm_dose", "fit_DoseStudy_fm_dose"):
+        fig = figures[name]
+        rows = _legend_rows(fig)
+        [legend] = fig.legends
+        extent = legend.get_window_extent()
+        assert _inside(extent, fig.bbox), name
+        assert not any(ax.get_window_extent().overlaps(extent) for ax in fig.axes)
+        assert _inside(fig.texts[0].get_window_extent(), fig.bbox)
+        assert rows[0][0].startswith("reference_data")
+        read = [label for row in rows for label in row]
+        for sid in sids:
+            at = [k for k, label in enumerate(read) if label.split(" ")[0] == sid]
+            assert at == list(range(at[0], at[0] + len(at))), (name, read)
+    # three entries per set: every set starts a row
+    rows = _legend_rows(figures["fit_DoseStudy_fm_dose"])
+    assert [row[0].split(" ")[0] for row in rows[1:] if row[0] in sids] == sids
+
+
+def test_a_long_title_of_a_mapping_is_wrapped_between_its_words(
+    tmp_path: Path, figures: dict[str, Figure], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An identifier stays whole, a figure is widened for one wider than it."""
+    problem = _problem(
+        [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
+    )
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        ParameterSet(sid="true", values={"V": TRUE_V}),
+    )
+    identifier = "fm_" + "-".join(["dose"] * 40)
+    monkeypatch.setattr(
+        FitReport, "mapping_title", lambda self, k: f"DoseStudy {identifier} [kind]"
+    )
+    report.plot_fit(tmp_path)
+    fig = figures["DoseStudy_fm_dose"]
+    assert fig.get_suptitle().split("\n") == ["DoseStudy", identifier, "[kind]"]
+    fig.canvas.draw()
+    assert fig.get_figwidth() > 10.0
+    assert _inside(fig.texts[0].get_window_extent(), fig.bbox)
+    assert _inside(fig.legends[0].get_window_extent(), fig.bbox)
 
 
 def test_the_log_panels_of_a_mapping_leave_out_zeros(

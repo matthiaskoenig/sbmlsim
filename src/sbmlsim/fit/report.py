@@ -178,7 +178,9 @@ class FitReport:
             fisher: Fisher information of the parameters, adds its table of
                 errors and intervals and the correlation of the parameters to
                 the identifiability section.
-            show_titles: add titles to the panels.
+            show_titles: add titles to the figures: the title of a fit
+                mapping above the panels of its figures, the title of a
+                figure or of its panel for the other figures.
             image_format: format of the figures.
             mapping_figures: draw the two figures of every fit mapping, i.e.
                 the data with the simulation and the residuals. They are one
@@ -1400,10 +1402,41 @@ class FitReport:
         """Set the title of a figure of a fit mapping, once over its panels.
 
         A title per panel overlaps the one of the panel next to it for a long
-        experiment and mapping key; a very long one is wrapped.
+        experiment and mapping key. A long title is wrapped between its
+        words, never inside an identifier, and a figure is widened for a word
+        which is wider than it, see `_widen_to_fit`.
         """
-        if self.show_titles:
-            fig.suptitle(textwrap.fill(self.mapping_title(k), width=80))
+        if not self.show_titles:
+            return
+        title = fig.suptitle(
+            textwrap.fill(
+                self.mapping_title(k),
+                width=80,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+        )
+        self._widen_to_fit(fig, title.get_window_extent().width)
+
+    @staticmethod
+    def _layout_pad(fig: Figure) -> float:
+        """Get the width a figure keeps free at its sides in pixels.
+
+        Twice the padding of the constrained layout on each side.
+        """
+        engine = fig.get_layout_engine()
+        pad = engine.get().get("w_pad", 3.0 / 72.0) if engine is not None else 0.0
+        return 4.0 * float(pad) * fig.dpi
+
+    @classmethod
+    def _widen_to_fit(cls, fig: Figure, width: float) -> None:
+        """Widen a figure so that an artist of a width in pixels fits into it.
+
+        The panels get the width, a figure which is wide enough stays as it is.
+        """
+        needed = width + cls._layout_pad(fig)
+        if needed > fig.bbox.width:
+            fig.set_figwidth(needed / fig.dpi)
 
     def _set_legend(self, ax: Axes) -> None:
         """Add a legend without duplicate entries."""
@@ -1444,35 +1477,87 @@ class FitReport:
 
         A legend inside a panel covers the data, the simulation or the
         residuals of a crowded panel wherever it is placed. The reference data
-        comes first and then the entries of every parameter set together, in
-        two columns.
+        comes first and the entries of every parameter set stay next to each
+        other, see `_legend_rows`, in as many columns as a set has entries (at
+        least two) or in fewer where these are wider than the figure, e.g. for
+        long ids; a legend which is wider than the figure in one column widens
+        it. The figure grows by the height of the legend, so the panels keep
+        their size.
         """
         unique = self._legend_entries(axes)
         if not unique:
             return
-        sids = [pset.sid for pset in self.parameter_sets]
+        groups = self._legend_groups(unique)
+        available = fig.bbox.width - self._layout_pad(fig)
+        for ncols in range(max(2, *(len(group) for group in groups)), 0, -1):
+            rows = self._legend_rows(groups, ncols)
+            # matplotlib fills the columns of a legend one after the other
+            cells = [row[c] for c in range(ncols) for row in rows]
+            legend = fig.legend(
+                [handle for handle, _ in cells],
+                [label for _, label in cells],
+                loc="outside lower center",
+                ncols=ncols,
+                fontsize="small",
+            )
+            extent = legend.get_window_extent()
+            if extent.width <= available or ncols == 1:
+                break
+            legend.remove()
+        self._widen_to_fit(fig, extent.width)
+        fig.set_figheight(fig.get_figheight() + extent.height / fig.dpi)
 
-        def rank(label: str) -> int:
-            """Get the position of the group of an entry, the data first."""
+    def _legend_groups(self, entries: dict[str, Any]) -> list[list[tuple[Any, str]]]:
+        """Group the entries of a legend: the reference data, then every set.
+
+        An entry belongs to the parameter set whose id its label is or starts
+        with, the longest such id, since an id may start with another one.
+        Entries of neither come last.
+        """
+        sids = [pset.sid for pset in self.parameter_sets]
+        groups: list[list[tuple[Any, str]]] = [[] for _ in range(len(sids) + 2)]
+        for label, handle in entries.items():
             if label.startswith("reference_data"):
-                return 0
-            # the longest id which the label starts with, an id may start
-            # with another one
+                groups[0].append((handle, label))
+                continue
             matches = [
                 (len(sid), k)
                 for k, sid in enumerate(sids)
                 if label == sid or label.startswith(f"{sid} ")
             ]
-            return 1 + max(matches)[1] if matches else 1 + len(sids)
+            group = 1 + max(matches)[1] if matches else len(sids) + 1
+            groups[group].append((handle, label))
+        return [group for group in groups if group]
 
-        labels = sorted(unique, key=rank)
-        fig.legend(
-            [unique[label] for label in labels],
-            labels,
-            loc="outside lower center",
-            ncols=min(2, len(labels)),
-            fontsize="small",
-        )
+    @staticmethod
+    def _legend_rows(
+        groups: Sequence[Sequence[tuple[Any, str]]], ncols: int
+    ) -> list[list[tuple[Any, str]]]:
+        """Lay the groups of a legend out in rows of `ncols` entries.
+
+        The entries of a group stay together: a group which does not fit into
+        what is left of a row starts the next one, a group of more entries
+        than a row has fills rows one after the other. The gaps are blank
+        entries.
+        """
+        rows: list[list[tuple[Any, str]]] = []
+        row: list[tuple[Any, str]] = []
+        for group in groups:
+            if row and len(row) + len(group) > ncols:
+                rows.append(row)
+                row = []
+            for entry in group:
+                row.append(entry)
+                if len(row) == ncols:
+                    rows.append(row)
+                    row = []
+        if row:
+            rows.append(row)
+        return [
+            row
+            + [(Line2D([], [], linestyle="none"), "") for _ in range(ncols - len(row))]
+            for row in rows
+        ]
 
     def _is_scalar(self, k: int) -> bool:
         """Whether mapping `k` compares one value per simulation."""
