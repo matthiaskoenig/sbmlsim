@@ -802,53 +802,96 @@ def test_the_exact_times_of_two_close_events_are_sorted() -> None:
     assert np.all(np.diff(times) >= 0.0)
 
 
+class _Folded:
+    """A roadrunner instance which roadrunner left at a time in a state."""
+
+    def __init__(self, time: float, state: list[float]) -> None:
+        self.time, self.state = time, state
+        self.model = self
+
+    def getTime(self) -> float:
+        return self.time
+
+    def getSelectedValues(self) -> list[float]:
+        return self.state
+
+
 @pytest.mark.parametrize(
-    ("model_time", "offset", "rows"),
+    ("end", "model_time", "offset", "folded"),
     [
-        (1.9999995, 1e-6, 5),  # the row before a root of a trigger, `roottol` before
-        (1.9999995, EPSILON, 5),  # an event at the end of a step of CVODE
-        (2.0000004, 1e-6, 4),  # the model after the end: no event at the end
-        (1.9999995, 3e-6, 4),  # another distance: a step of CVODE
+        (2.0, 1.9999995, 1e-6, True),  # the root of a trigger, `roottol` before
+        (2.0, 1.9999995, EPSILON, True),  # an event at the end of a step of CVODE
+        (5.0, 4.4999995, 0.0, True),  # from 4 on the epsilon rounds away
+        (10.0, 9.9999995, 0.0, True),
+        (2.0, 2.0000004, 1e-6, True),  # an event after the end
+        (2.0, 2.0000004, 1.0000004, False),  # a step of CVODE past the end
+        (2.0, 1.9999995, 3e-6, False),  # another distance: a step of CVODE
     ],
 )
-def test_the_row_after_an_event_which_roadrunner_folded_into_the_end(
-    model_time: float, offset: float, rows: int
+def test_an_event_whose_row_after_it_roadrunner_folded_into_the_end(
+    end: float, model_time: float, offset: float, folded: bool
 ) -> None:
-    """An event less than `roottol` before the end gets its two rows back.
-
-    roadrunner interpolated the row after the event, `roottol` after it, into
-    its last row; the model is at the time of the event in the state after it.
-    """
+    """roadrunner left the model at the event, `roottol` after its row before it."""
     from sbmlsim.model.roottol import RootTolerance
-    from sbmlsim.simulator.executor import _event_at_the_end
+    from sbmlsim.simulator.executor import _folded_event
 
-    end, before = 2.0, model_time - offset
-
-    class Model:
-        def getTime(self) -> float:
-            return model_time
-
-    class Instance:
-        model = Model()
-
-        def getSelectedValues(self) -> list[float]:
-            return [model_time, 0.0]
-
-    block = np.array([[0.0, 0.0], [1.0, 1.0], [before, 2.0], [end, 0.7]])
-    out = _event_at_the_end(
-        Instance(),  # ty: ignore[invalid-argument-type]
-        block.copy(),
+    block = np.array(
+        [[0.0, 0.0], [1.0, 1.0], [model_time - offset, 2.0], [end + 1e-16, 0.7]]
+    )
+    event = _folded_event(
+        _Folded(model_time, [model_time, 0.0]),  # ty: ignore[invalid-argument-type]
+        block,
         end,
         RootTolerance(1e-6, 1e-19),
         1e-8,
     )
-    assert out.shape[0] == rows
-    if rows == 5:
-        np.testing.assert_array_equal(
-            out, [[0, 0], [1, 1], [model_time, 2], [model_time, 0], [end, 0.7]]
-        )
-    else:
-        np.testing.assert_array_equal(out, block)
+    assert event == (model_time if folded else None)
+
+
+def test_an_event_after_the_end_which_roadrunner_applied_is_past_the_end(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An event at a change fires after it: the segment gets exact output.
+
+    roadrunner applied the event, `roottol` after its row before it, and the
+    row before it is no step of CVODE, so it is left out of the steps.
+    """
+    from sbmlsim.model.roottol import RootTolerance
+    from sbmlsim.simulator import executor
+
+    monkeypatch.setattr(executor, "root_tolerance", lambda: RootTolerance(1e-6, 1e-19))
+    end = float(np.nextafter(2.0, -np.inf))
+    block = np.array([[0.0, 0.0], [1.0, 1.0], [2.0 + 1e-13 - 1e-6, 2.0], [end, 0.7]])
+    out, inside = executor._events_at_the_end(
+        _Folded(2.0 + 1e-13, [2.0 + 1e-13, 0.0]),  # ty: ignore[invalid-argument-type]
+        block.copy(),
+        end,
+        1e-8,
+    )
+    assert not inside
+    np.testing.assert_array_equal(out, block[[0, 1, 3]])
+
+
+def test_an_event_within_the_resolution_before_the_end_gets_its_row_after_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The state of the model is the row after the event, the steps do not go on."""
+    from sbmlsim.model.roottol import RootTolerance
+    from sbmlsim.simulator import executor
+
+    monkeypatch.setattr(executor, "root_tolerance", lambda: RootTolerance(1e-6, 1e-19))
+    event = 2.0 - 5e-9
+    block = np.array([[0.0, 0.0], [1.0, 1.0], [event - 1e-6, 2.0], [2.0, 0.7]])
+    out, inside = executor._events_at_the_end(
+        _Folded(event, [event, 0.0]),  # ty: ignore[invalid-argument-type]
+        block,
+        2.0,
+        1e-8,
+    )
+    assert inside
+    np.testing.assert_array_equal(
+        out, [[0, 0], [1, 1], [event, 2], [event, 0], [2.0, 0.7]]
+    )
 
 
 #: two events of the time less than two resolutions of the time of a simulation

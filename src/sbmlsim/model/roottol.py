@@ -24,12 +24,15 @@ which sbmlsim integrates first, the two rows of an event have the time of the
 event and the first step of CVODE after it is reported. The probe then
 measures `roottol` from the rows of its event, also where an integration
 before fixed it, and `at_event_times` gives the two rows of every event the
-time of the event; the executor gives an event less than `roottol` before the
-end of a segment, whose row after it roadrunner folds into its last row, its
-two rows as well. In a process in which roadrunner integrated before sbmlsim
-loaded a model, a first step of CVODE after an event which is shorter than
-that `roottol` stays missing, which a worker of a pool has, so the results
-agree within the tolerances of the integrator; the probe warns once.
+time of the event; the executor restores the rows of an event less than
+`roottol` before or after the end of a segment, whose row after it roadrunner
+folds into its last row, see `sbmlsim.simulator.executor._events_at_the_end`.
+In a process in which roadrunner integrated before sbmlsim loaded a model, the
+steps inside a segment lack the first step of CVODE after an event if it is
+shorter than that `roottol`, which roadrunner does not report, and the rows of
+an event which CVODE finds in that step, which roadrunner applies without
+rows; a worker of a pool has both, so the rows differ by them and the values
+on a grid by the interpolation across them. The probe warns once.
 """
 
 from __future__ import annotations
@@ -154,13 +157,14 @@ def root_tolerance() -> RootTolerance:
         logger.warning(
             "roadrunner integrated in this process before sbmlsim loaded a model "
             "(or before a worker of sbmlsim started, if the main module integrates "
-            "when it is imported): the rows of an event in the steps of the "
-            "integrator are %.3g before and after it, sbmlsim gives them the time "
-            "of the event, but a first step of the integrator after an event which "
-            "is shorter than that is missing, which a worker of a pool has, so a "
-            "run can differ from a run with workers within the tolerances of the "
-            "integrator. Import sbmlsim and load a model before integrating with "
-            "roadrunner directly.",
+            "when it is imported): roadrunner reports the rows of an event in the "
+            "steps of the integrator %.3g before and after it, sbmlsim gives them "
+            "the time of the event, but the first step of the integrator after an "
+            "event is missing if it is shorter than that, and so are the rows of an "
+            "event in that step, which a worker of a pool has: the rows of a run "
+            "differ from the ones of a run with workers by them, and the values on "
+            "a grid by the interpolation across them. Import sbmlsim and load a "
+            "model before integrating with roadrunner directly.",
             tolerance.value,
         )
     return tolerance

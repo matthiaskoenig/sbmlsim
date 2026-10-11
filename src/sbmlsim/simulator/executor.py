@@ -414,7 +414,7 @@ def _steps(
     the states before and after it, `roottol` before and after its time,
     which the first integration of the process fixes; both rows get the time
     of the event, see `sbmlsim.model.roottol`, also for an event less than
-    `roottol` before the end, see `_event_at_the_end`.
+    `roottol` before or after the end, see `_events_at_the_end`.
 
     Args:
         r: the roadrunner instance, in the state at the start.
@@ -432,9 +432,9 @@ def _steps(
     """
     block = _variable_steps(r, start, end)
     if events:
-        measured = root_tolerance()
-        block[:, 0] = at_event_times(block[:, 0], measured)
-        block = _event_at_the_end(r, block, end, measured, tolerance)
+        block, inside = _events_at_the_end(r, block, end, tolerance)
+        if not inside:
+            return block, False
     if not _to_the_end(r, end, events):
         return block, False
     steps = block[1:-1, 0]
@@ -457,44 +457,98 @@ def _steps(
     return block, True
 
 
-def _event_at_the_end(
+def _events_at_the_end(
+    r: roadrunner.RoadRunner, block: np.ndarray, end: float, tolerance: float
+) -> tuple[np.ndarray, bool]:
+    """Give the events of the steps their times, also the ones near the end.
+
+    The two rows of an event inside the steps get its time, see
+    `at_event_times`. roadrunner reports the state after an event `roottol`
+    after its time; for an event less than `roottol` before the end, or less
+    than `roottol` after it, that row is after the end and roadrunner folds it
+    into its last row, and the row before the event is left alone `roottol`
+    before it, see `_folded_event`. The model is then left at the time of the
+    event in the state after it:
+
+    - an event before the end: the row before it gets its time, and the steps
+      continue from the event, whose first row is the state after it, so a
+      further event before the end gets its rows as well; an event within
+      the resolution of the end gets the state of the model as its row after
+      it, and the segment is past its end as it is when roadrunner reports
+      both rows, see `_steps`;
+    - an event at or after the end: roadrunner applied it before the change
+      at the end, the segment is past its end, and the row before the event,
+      at roadrunner's offset rather than at a step, is left out of its steps.
+
+    Args:
+        r: the roadrunner instance after the steps of the integrator.
+        block: the steps.
+        end: the end in the time of roadrunner.
+        tolerance: the resolution of the time.
+
+    Returns:
+        The steps with the times of their events, and whether no event after
+        the end was applied.
+    """
+    roottol = root_tolerance()
+    block[:, 0] = at_event_times(block[:, 0], roottol)
+    done: list[np.ndarray] = []
+    last = -np.inf
+    while (event := _folded_event(r, block, end, roottol, tolerance)) is not None:
+        if event >= end:
+            return np.concatenate([*done, np.delete(block, -2, axis=0)]), False
+        if event <= last:
+            break
+        last = event
+        block[-2, 0] = event
+        if end - event <= tolerance:
+            after = np.array(r.getSelectedValues(), dtype=float)
+            after[0] = event
+            block = np.insert(block, block.shape[0] - 1, after, axis=0)
+            break
+        done.append(block[:-1])
+        block = _variable_steps(r, event, end)
+        block[:, 0] = at_event_times(block[:, 0], roottol)
+    if done:
+        block = np.concatenate([*done, block])
+    return block, True
+
+
+def _folded_event(
     r: roadrunner.RoadRunner,
     block: np.ndarray,
     end: float,
     roottol: RootTolerance,
     tolerance: float,
-) -> np.ndarray:
-    """Give an event whose row after it roadrunner folded into the end its two rows.
+) -> float | None:
+    """Get the time of an event whose row after it roadrunner folded into the end.
 
-    roadrunner reports the state after an event `roottol` after its time. For
-    an event less than `roottol` before the end that row is after the end,
-    roadrunner interpolates it into its last row, and the row before the
-    event, the state at its time, is left `roottol` before it without a row
-    after it, which `at_event_times` cannot pair. The model is then left at
-    the time of the event in the state after it: the row before the event
-    gets that time and the state of the model is inserted as the row after
-    it, so the event is a jump at its time as inside the segment. An event
-    at the end of a step of CVODE has its row before it at the end of the
-    step less the machine epsilon.
+    The last row is the one roadrunner interpolated to the end, the model is
+    at the time of the event, and the row before the last is the state at
+    that time before the event, `roottol` before it for the root of a
+    trigger, or at most the machine epsilon for an event at the end of a step
+    of CVODE, which rounds to the time of the event from 4 on. Any other last
+    step leaves the model at the end of the last step of CVODE, after the
+    end, at least a step of CVODE after the row before the last.
 
     Args:
         r: the roadrunner instance after the steps of the integrator, before
             `_to_the_end`.
-        block: the steps, their events at their times, see `at_event_times`.
+        block: the steps, their events inside at their times.
         end: the end in the time of roadrunner.
         roottol: the root tolerance of roadrunner in the process.
         tolerance: the resolution of the time: the last row is the one
             roadrunner interpolated to the end if it is closer to the end.
 
     Returns:
-        The steps, with the row after such an event before the last row.
+        The time of the event, before, at or after the end, or `None`.
     """
     if block.shape[0] < 3 or block[-1, 0] < end - tolerance:
-        return block
+        return None
     time = float(r.model.getTime())
     before = float(block[-2, 0])
-    if not before < time < end:
-        return block
+    if time < before:
+        return None
     gap = time - before
     slack = 4.0 * (
         float(np.spacing(abs(time)))
@@ -502,11 +556,8 @@ def _event_at_the_end(
         + roottol.precision
     )
     if abs(gap - roottol.value) > slack and gap > EPSILON + slack:
-        return block
-    after = np.array(r.getSelectedValues(), dtype=float)
-    after[0] = time
-    block[-2, 0] = time
-    return np.insert(block, block.shape[0] - 1, after, axis=0)
+        return None
+    return time
 
 
 def _variable_steps(r: roadrunner.RoadRunner, start: float, end: float) -> np.ndarray:

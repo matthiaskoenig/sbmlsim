@@ -17,7 +17,11 @@ def _python(code: str, path: Path | None = None) -> subprocess.CompletedProcess[
     if path is not None:
         code = f"import sys; sys.path.insert(0, {str(path)!r})\n{code}"
     return subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=False
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
     )
 
 
