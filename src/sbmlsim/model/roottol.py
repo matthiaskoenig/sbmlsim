@@ -231,6 +231,29 @@ def _probe() -> tuple[float | None, float | None]:
     return gaps[0], gaps[1]
 
 
+def slack(
+    earlier: np.ndarray | float, later: np.ndarray | float, tolerance: RootTolerance
+) -> np.ndarray:
+    """Get the rounding of the time between two rows of an event.
+
+    Four units in the last place of either time and the precision of the
+    measurement of `roottol`: the times of the rows of an event are
+    `root -/+ roottol` rounded, and a row at the end of a step of CVODE the
+    end of the step less the machine epsilon.
+
+    Args:
+        earlier: the times of the rows before the events.
+        later: the times of the rows after them.
+        tolerance: the root tolerance of roadrunner in the process.
+
+    Returns:
+        The rounding of the time between the rows.
+    """
+    return 4.0 * (
+        np.spacing(np.abs(earlier)) + np.spacing(np.abs(later)) + tolerance.precision
+    )
+
+
 def at_event_times(time: np.ndarray, tolerance: RootTolerance) -> np.ndarray:
     """Give the two rows of every event of the model the time of the event.
 
@@ -257,11 +280,10 @@ def at_event_times(time: np.ndarray, tolerance: RootTolerance) -> np.ndarray:
         return t
     value = tolerance.value
     gap = t[1:] - t[:-1]
-    slack = 4.0 * (
-        np.spacing(np.abs(t[:-1])) + np.spacing(np.abs(t[1:])) + tolerance.precision
-    )
+    rounding = slack(t[:-1], t[1:], tolerance)
     pairs = np.flatnonzero(
-        (np.abs(gap - 2.0 * value) <= slack) | (np.abs(gap - value) <= EPSILON + slack)
+        (np.abs(gap - 2.0 * value) <= rounding)
+        | (np.abs(gap - value) <= EPSILON + rounding)
     )
     if pairs.size == 0:
         return t

@@ -21,10 +21,14 @@ The semantics are the ones of PEtab v2:
    time in the output, the state before the change, which ends the segment
    before it, and the state after it, which starts the next one: the steps
    of the integrator at every change, an output of times at its times which
-   are changes. A segment of a model with events stops one unit in the last
-   place before its end, see `_simulate_times`, so an event of the model at
-   the time of a change fires after the change and an event at the end
-   after the state before it.
+   are changes. A segment of a model with events stops just before its end,
+   a unit in the last place of the scale of its times and at least four
+   machine epsilons, see `_stop` and `_simulate_times`, so an event of the
+   model at the time of a change fires after the change and an event at the
+   end after the state before it. A segment too short for CVODE, a few units
+   in the last place in absolute time, is not integrated: its state is the
+   one at its start and the events of the time in it fire at its end, as
+   after a change, see `_integrable`.
 6. An event of the model within the resolution of the time after the end is
    at the end, see `_event_at_the_end`: the steps of the integrator have it
    as two rows, the states before and after it, an output time at the end
@@ -64,6 +68,7 @@ from sbmlsim.model.roottol import (
     RootTolerance,
     at_event_times,
     root_tolerance,
+    slack,
 )
 from sbmlsim.model.symbols import EventSymbols, TargetKind
 from sbmlsim.result.timecourse import TimecourseResult
@@ -82,6 +87,13 @@ logger = logging.getLogger(__name__)
 #: the setting of the integrator which switches between the output of its
 #: steps and exact output times
 VARIABLE_STEP_SIZE = "variable_step_size"
+
+#: the least time between the stop of an integration before the end of a
+#: segment and the end: roadrunner applies an event which CVODE finds less
+#: than twice the machine epsilon after the start of a call of the integrator
+#: without its rows (`CVODEIntegrator::integrate` of libroadrunner 2.10), and
+#: an event at the end is found from the stop, see `_event_at_the_end`
+STOP = 4.0 * EPSILON
 
 
 class SteadyStateError(RuntimeError):
@@ -231,9 +243,12 @@ def _simulate(
     model_events = plan.symbols.events
     times = np.asarray(plan.times, dtype=float)
     tolerance = time_tolerance(plan.start, plan.end)
+    span = max(abs(plan.start), abs(plan.end), plan.end - plan.start)
     exact = exact or {}
 
     blocks: list[np.ndarray] = []
+    # whether the last segment is integrated, and the time it stopped at
+    held, stopped = False, 0.0
     for k in range(len(points) - 1):
         a, b = points[k], points[k + 1]
         # the segment ends at a change, whose state before it is its last row:
@@ -262,8 +277,25 @@ def _simulate(
         # the state before it as a row: the integration stops just before the
         # end of the segment, where roadrunner does not fire it, see
         # `_fire_events` and `_event_at_the_end`
-        end_stop = float(np.nextafter(end, -np.inf)) if model_events else end
-        if plan.output is OutputMode.INTEGRATOR:
+        # the scale of the times roadrunner integrates: the segment in local
+        # time, the simulation in absolute time
+        scale = end if local else span
+        end_stop = _stop(end, scale) if model_events else end
+        # a segment too short for CVODE keeps the state at its start
+        held = not _integrable(start, end_stop, scale)
+        stopped = max(start, end_stop) if held else end_stop
+        if held:
+            if plan.output is OutputMode.INTEGRATOR:
+                block = _held(r, np.array([a, b]))
+            else:
+                wanted = times[
+                    (times >= a) & ((times < b) if before_change else (times <= b))
+                ]
+                if before_change and np.any(times == b):
+                    # the state before the change at `b`
+                    wanted = np.append(wanted, b)
+                block = _held(r, wanted)
+        elif plan.output is OutputMode.INTEGRATOR:
             output = exact.get(k)
             if output is None:
                 # after the second segment past its end the state at the start
@@ -317,41 +349,44 @@ def _simulate(
                 block = np.vstack([block, state])
         blocks.append(block)
 
-    if plan.end in events:
+    # the last segment in the time of roadrunner
+    offset = points[-2] if local else 0.0
+    end = plan.end - offset
+    changed = plan.end in events
+    at_end = bool(blocks) and blocks[-1].shape[0] > 0 and blocks[-1][-1, 0] == plan.end
+    after = False
+    if changed or (held and model_events):
         # a change at the end is applied after the integration, the output at
         # the end has the state before it and the state after it and the
-        # events it triggers
+        # events it triggers; the events of the time in a last segment which
+        # is not integrated fire at its end, as after a change
+        fired = 0
         if model_events and plan.end > plan.start:
-            triggers = _triggers(
-                model_events, r, plan.end if local else float(r.model.getTime())
-            )
+            triggers = _triggers(model_events, r, end if local else stopped)
+            if changed:
+                _apply(events[plan.end], r, plan)
+            fired = _fire_events(model_events, triggers, r, plan.end, model)
+        elif changed:
             _apply(events[plan.end], r, plan)
-            _fire_events(model_events, triggers, r, plan.end, model)
-        else:
-            _apply(events[plan.end], r, plan)
-        if blocks and blocks[-1].shape[0] and blocks[-1][-1, 0] == plan.end:
-            after = _state(r, columns, plan.end)
-            if plan.end > plan.start:
-                blocks[-1] = np.vstack([blocks[-1], after])
+        if at_end and (changed or fired):
+            state = _state(r, columns, plan.end)
+            if plan.end > plan.start and (
+                changed or plan.output is OutputMode.INTEGRATOR
+            ):
+                blocks[-1] = np.vstack([blocks[-1], state])
             else:
-                blocks[-1][-1, :] = after
+                blocks[-1][-1, :] = state
+            after = True
 
-    if (
-        model_events
-        and blocks
-        and blocks[-1].shape[0]
-        and blocks[-1][-1, 0] == plan.end
-    ):
-        # the last segment in the time of roadrunner
-        offset = points[-2] if local else 0.0
-        end = plan.end - offset
-        changed = plan.end in events
+    if model_events and at_end:
+        # the events at the end, from the stop before it, or from the end after
+        # a change there or a last segment which is not integrated
         state = _event_at_the_end(
-            r, end if changed else float(np.nextafter(end, -np.inf)), end, tolerance
+            r, end if changed or held else stopped, end, tolerance
         )
         if state is not None:
             state[0] = plan.end
-            if changed or plan.output is OutputMode.TIMES:
+            if after or plan.output is OutputMode.TIMES:
                 # the state after the change and the events at the end, the
                 # state after the events at an output time at the end
                 blocks[-1][-1, :] = state
@@ -432,6 +467,68 @@ def _steps(
     return block, True
 
 
+def _stop(end: float, scale: float) -> float:
+    """Get the time just before the end of a segment where its integration stops.
+
+    It is one unit in the last place of the scale of the times roadrunner
+    integrates before the end, which CVODE resolves: its rounding of the time
+    is the machine epsilon times their magnitude. That is one unit in the
+    last place of the end of a segment in local time, which starts at 0, and
+    of the largest magnitude of the simulation in absolute time, as
+    `merge_times` scales its resolution; one unit in the last place of an
+    end at 0 would be a subnormal number, at which CVODE fails, e.g. for a
+    trigger of the time at 0. It is at least `STOP`, so roadrunner reports
+    an event at the end with its rows when it integrates from the stop.
+
+    Args:
+        end: the end of the segment in the time of roadrunner.
+        scale: the scale of the times, `max(|start|, |end|, end - start)` of
+            the segment in local time or of the simulation in absolute time.
+
+    Returns:
+        The stop, a normal number before the end.
+    """
+    return end - max(float(np.spacing(scale)), STOP)
+
+
+def _integrable(start: float, stop: float, scale: float) -> bool:
+    """Whether CVODE integrates from the start of a segment to its stop.
+
+    CVODE rejects an output time closer to the start than twice its rounding
+    of the time, the machine epsilon times the larger magnitude
+    (`CV_TOO_CLOSE`), and roadrunner a stop at the start: a segment shorter
+    than a few units in the last place of the scale of its times, e.g. the
+    last one after a change two units in the last place before the end, is
+    not integrated, its state is the one at its start, which differs from
+    the integrated one by less than the rounding of its time.
+
+    Args:
+        start: the start of the segment in the time of roadrunner.
+        stop: where its integration stops, see `_stop`.
+        scale: the scale of the times, see `_stop`.
+
+    Returns:
+        Whether the segment is integrated.
+    """
+    return stop - start >= 4.0 * float(np.spacing(max(scale, abs(start), abs(stop))))
+
+
+def _held(r: roadrunner.RoadRunner, times: np.ndarray) -> np.ndarray:
+    """Get the rows of a segment which is not integrated, see `_integrable`.
+
+    Args:
+        r: the roadrunner instance, in the state at the start of the segment.
+        times: the times of the rows.
+
+    Returns:
+        The values, a row per time, each the state at the start.
+    """
+    state = np.asarray(r.getSelectedValues(), dtype=float)
+    values = np.tile(state, (times.size, 1))
+    values[:, 0] = times
+    return values
+
+
 def _event_at_the_end(
     r: roadrunner.RoadRunner, start: float, end: float, tolerance: float
 ) -> np.ndarray | None:
@@ -460,14 +557,19 @@ def _event_at_the_end(
         at the time of the event, `None` without one.
     """
     block, _ = _steps(r, start, end + tolerance, tolerance, True)
-    # roadrunner's last row is no row of an event
-    rows = block[:-1]
+    # roadrunner's last row is no row of an event; the two rows of an event
+    # have one time, within the rounding of `at_event_times`, also where the
+    # root tolerance is not known and roadrunner reports them a few units in
+    # the last place apart; a step of CVODE is longer, at least a hundred
+    # times the machine epsilon times the time
+    time = block[:-1, 0]
+    rounding = EPSILON + slack(time[:-1], time[1:], root_tolerance())
     pairs = np.flatnonzero(
-        (rows[1:, 0] == rows[:-1, 0]) & (rows[1:, 0] <= end + tolerance)
+        (np.abs(time[1:] - time[:-1]) <= rounding) & (time[1:] <= end + tolerance)
     )
     if pairs.size == 0:
         return None
-    return rows[pairs[-1] + 1].copy()
+    return block[pairs[-1] + 1].copy()
 
 
 def _events_at_the_end(
@@ -583,12 +685,8 @@ def _folded_event(
     if time < before:
         return None
     gap = time - before
-    slack = 4.0 * (
-        float(np.spacing(abs(time)))
-        + float(np.spacing(abs(before)))
-        + roottol.precision
-    )
-    if abs(gap - roottol.value) > slack and gap > EPSILON + slack:
+    rounding = float(slack(before, time, roottol))
+    if abs(gap - roottol.value) > rounding and gap > EPSILON + rounding:
         return None
     return time
 
@@ -852,7 +950,7 @@ def _fire_events(
     r: roadrunner.RoadRunner,
     time: float,
     model: RoadrunnerSBMLModel,
-) -> None:
+) -> int:
     """Fire the events whose triggers a change made true.
 
     roadrunner does not see a trigger which becomes true by a value which is
@@ -868,7 +966,11 @@ def _fire_events(
         r: the roadrunner instance, in the state after the change.
         time: the time of the change.
         model: the model, for the messages.
+
+    Returns:
+        The number of the events which fired.
     """
+    count = 0
     for _ in range(MAX_EVENT_ROUNDS):
         after = _triggers(events, r, time)
         fired = [
@@ -877,7 +979,7 @@ def _fire_events(
             if old is False and new is True
         ]
         if not fired:
-            return
+            return count
         values: list[tuple[str, float]] = []
         for event in fired:
             if event.delayed:
@@ -903,6 +1005,7 @@ def _fire_events(
                     err,
                 )
                 continue
+            count += 1
             for target, formula in formulas:
                 values.append(
                     (
@@ -925,6 +1028,7 @@ def _fire_events(
         time,
         MAX_EVENT_ROUNDS,
     )
+    return count
 
 
 def steady_state(

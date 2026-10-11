@@ -1158,6 +1158,100 @@ def test_an_event_after_the_end_fires_once_before_the_steady_state(
     assert np.asarray(result["Y"]).tolist() == [0.0, 1.0 if delta < 1e-9 else 0.0, 1.0]
 
 
+#: a dose by an event of the time at `te`, a model in absolute time, which a
+#: PK simulation from a negative start often has at 0
+DOSE_AT = """
+model dose
+  var A = 1
+  var Y = 0
+  te = 0
+  k = 0.5
+  A' = -k * A
+  E: at (time >= te): A = A + 10, Y = Y + 1
+end
+"""
+
+#: `A` at 0 from 1 at -4, before the dose
+A_AT_0 = float(np.exp(-0.5 * 4.0))
+
+
+@pytest.mark.parametrize("times", [None, [-4.0, -2.0, 0.0]])
+def test_a_dose_at_the_end_0_from_a_negative_start(times: list[float] | None) -> None:
+    """The integration stops a normal time before an end at 0.
+
+    The stop one unit in the last place before 0 was a subnormal number,
+    from which CVODE failed to integrate across the dose at 0
+    (CV_CONV_FAILURE).
+    """
+    model = RoadrunnerSBMLModel(source=sbml(DOSE_AT))
+    assert model.symbols.time_dependent
+    result = run_on(model, Simulation(start=-4, end=0, times=times), ["time", "A", "Y"])
+    at = result.time == 0.0
+    expected = [A_AT_0, A_AT_0 + 10.0] if times is None else [A_AT_0 + 10.0]
+    np.testing.assert_allclose(np.asarray(result["A"])[at], expected, rtol=1e-4)
+    assert result["Y"][-1] == 1.0
+
+
+@pytest.mark.parametrize("times", [None, [-4.0, -2.0, 0.0, 4.0]])
+@pytest.mark.parametrize("end", [4.0, 0.0])
+def test_a_dose_at_a_change_at_0_from_a_negative_start(
+    times: list[float] | None, end: float
+) -> None:
+    """A change at 0 with the dose at 0: the dose fires once, after the change.
+
+    The segment before the change stopped at a subnormal time: CVODE failed
+    for a change at 0 inside the simulation, and a change at the end 0 gave
+    `NaN` before it and the dose twice.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(DOSE_AT))
+    output = None if times is None else [t for t in times if t <= end]
+    result = run_on(
+        model,
+        Simulation(start=-4, end=end, changes=[Change(0.0, {"A": 2.0})], times=output),
+        ["time", "A", "Y"],
+    )
+    at = result.time == 0.0
+    np.testing.assert_allclose(np.asarray(result["A"])[at], [A_AT_0, 12.0], rtol=1e-4)
+    assert np.asarray(result["Y"])[at].tolist() == [0.0, 1.0]
+    assert result["Y"][-1] == 1.0
+
+
+@pytest.mark.parametrize("times", [False, True])
+@pytest.mark.parametrize("at", ["before", "change", "end"])
+@pytest.mark.parametrize("ulps", [1, 2, 4, 9])
+@pytest.mark.parametrize("end", [2.0, 0.0])
+def test_a_change_a_few_units_in_the_last_place_before_the_end(
+    end: float, ulps: int, at: str, times: bool
+) -> None:
+    """A segment too short for CVODE keeps its state, its events of the time fire.
+
+    A change a few units in the last place before the end of a model in
+    absolute time failed in CVODE (CV_TOO_CLOSE); a dose at the change fires
+    once, a dose at the end after the change, a dose before them before.
+    """
+    start = end - 2.0
+    c = end
+    for _ in range(ulps):
+        c = float(np.nextafter(c, -np.inf))
+    te = {"before": start + 1.0, "change": c, "end": end}[at]
+    model = RoadrunnerSBMLModel(source=sbml(DOSE_AT))
+    result = run_on(
+        model,
+        Simulation(
+            start=start,
+            end=end,
+            preinit_changes={"te": te},
+            changes=[Change(c, {"A": 0.0})],
+            times=[start, start + 1.0, end] if times else None,
+        ),
+        ["time", "A", "Y"],
+    )
+    assert result.time[-1] == end
+    assert np.all(np.diff(result.time) >= 0.0)
+    assert result["Y"][-1] == 1.0
+    assert result["A"][-1] == pytest.approx(0.0 if at == "before" else 10.0)
+
+
 #: an event of the time within the resolution of the time before the end 2.5
 LATE_EVENT = """
 model late

@@ -69,6 +69,11 @@ DOSE = (
     "model dose\\n  var A = 0\\n  k = 0.1\\n  amount = 10\\n  A' = -k * A\\n"
     "  E: at (time >= 2.0): A = A + amount\\nend"
 )
+# a dose at 0 of a simulation from a negative start
+ZERO = (
+    "model zero\\n  var A = 1\\n  var Y = 0\\n  k = 0.5\\n  A' = -k * A\\n"
+    "  E: at (time >= 0): A = A + 10, Y = Y + 1\\nend"
+)
 # the dose at a change in a short simulation, with a second state
 SHORT = (
     "model short\\n  var A = 0\\n  var B = 1\\n  k = 0.1\\n  amount = 10\\n"
@@ -126,6 +131,15 @@ def main(first: str, directory: Path) -> dict:
         "late_rows": rows(paths["late"], steps, ["X"]),
         "two_rows": rows(paths["two"], steps, ["X", "Y"]),
     }
+    zero = directory / "zero.xml"
+    zero.write_text(sbml(ZERO))
+    for name, simulation in (
+        ("end", Simulation(start=-4, end=0)),
+        ("end_times", Simulation(start=-4, end=0, times=[-4, -2, 0])),
+        ("change", Simulation(start=-4, end=4, changes=[Change(0, {"A": 2.0})])),
+        ("change_end", Simulation(start=-4, end=0, changes=[Change(0, {"A": 2.0})])),
+    ):
+        out[f"zero_{name}"] = rows(zero, simulation, ["A", "Y"])
     # the second reset of the sawtooth and the dose at the end
     for name, variable in (("sawtooth", "X"), ("dose", "A")):
         for output, times in (("steps", None), ("times", [0.0, 1.0, 2.0])):
@@ -249,6 +263,31 @@ def check_an_event_at_the_end(out: dict[str, Any], name: str) -> None:
     np.testing.assert_allclose(times[variable][-1], after, atol=1e-9)
 
 
+#: `A` at 0 of the model `ZERO`, before the dose
+A_AT_0 = float(np.exp(-2.0))
+
+#: the states at 0 of the model `ZERO`: before and after the dose at the end 0,
+#: an output time at the end 0, a change at 0 and a change at the end 0
+ZERO_ROWS = {
+    "end": [A_AT_0, A_AT_0 + 10.0],
+    "end_times": [A_AT_0 + 10.0],
+    "change": [A_AT_0, 12.0],
+    "change_end": [A_AT_0, 12.0],
+}
+
+
+def check_a_dose_at_0(out: dict[str, Any], name: str) -> None:
+    """A dose at 0 from a negative start fires once, after a change at 0.
+
+    The integration stopped one unit in the last place before 0, a subnormal
+    time, at which CVODE failed or gave `NaN`.
+    """
+    rows = out[f"zero_{name}"]
+    time, a = np.asarray(rows["time"]), np.asarray(rows["A"])
+    np.testing.assert_allclose(a[time == 0.0], ZERO_ROWS[name], rtol=1e-4)
+    assert rows["Y"][-1] == 1.0
+
+
 #: the values on the grids of the scans: the sawtooth, the late reset, the
 #: two resets and the dose at the change at 2, once, then decaying with 0.2
 EXPECTED = {
@@ -354,6 +393,9 @@ def test_the_rows_of_events_do_not_depend_on_the_history_of_the_process(
         for name in END:
             with subtests.test("an event at the end", first=first, name=name):
                 check_an_event_at_the_end(out, name)
+        for name in ZERO_ROWS:
+            with subtests.test("a dose at 0", first=first, name=name):
+                check_a_dose_at_0(out, name)
         for key in EXPECTED:
             with subtests.test("a time at an event in a run", first=first, key=key):
                 check_a_time_at_an_event_in_a_run(out, key)

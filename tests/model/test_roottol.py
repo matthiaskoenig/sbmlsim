@@ -179,5 +179,71 @@ def test_the_probe_degrades_on_another_roadrunner(
         after = int(np.flatnonzero((time > 0.5) & (x == 0.0))[0])
         assert time[after - 1] == time[after] == pytest.approx(1.0, abs=1e-12)
         assert x[after - 1] == pytest.approx(1.0, abs=1e-9)
+        # an event at the end has its two rows, an output time at the end the
+        # state after it
+        dose = simulator.load(sbml(DOSE_AT_THE_END))
+        steps = simulator.simulate(dose, Simulation(end=2))
+        assert steps.time[-2:].tolist() == [2.0, 2.0]
+        np.testing.assert_allclose(np.asarray(steps["A"])[-2:], [0.0, 10.0])
+        times = simulator.simulate(dose, Simulation(end=2, times=[0, 1, 2]))
+        assert times["A"][-1] == pytest.approx(10.0)
     finally:
         root_tolerance.cache_clear()
+
+
+#: a dose by a trigger of the time at the end 2 of a simulation
+DOSE_AT_THE_END = """
+model dose
+  var A = 0
+  A' = -0.1 * A
+  E: at (time >= 2.0): A = A + 10
+end
+"""
+
+
+@pytest.mark.parametrize("apart", [0, 1, 4])
+def test_the_rows_of_an_event_at_the_end_are_one_time_within_their_rounding(
+    apart: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The two rows of an event at the end are paired within the rounding of a time.
+
+    roadrunner reports them a few units in the last place apart where the
+    root tolerance is not known, `at_event_times` leaves them so; a step of
+    CVODE is at least a hundred times the machine epsilon times the time.
+    """
+    from sbmlsim.simulator import executor
+
+    event = 2.0 + 1e-13
+    after = event
+    for _ in range(apart):
+        after = float(np.nextafter(after, np.inf))
+    block = np.array(
+        [[2.0 - 4 * EPSILON, 0.0], [event, 0.0], [after, 10.0], [2.0 + 2e-9, 10.0]]
+    )
+    monkeypatch.setattr(executor, "_steps", lambda *args: (block.copy(), True))
+    monkeypatch.setattr(
+        executor, "root_tolerance", lambda: RootTolerance(value=0.0, precision=0.0)
+    )
+    state = executor._event_at_the_end(
+        None,  # ty: ignore[invalid-argument-type]
+        2.0 - 4 * EPSILON,
+        2.0,
+        2e-9,
+    )
+    assert state is not None
+    assert state.tolist() == [after, 10.0]
+    # a step of CVODE after the stop is no event
+    block = np.array(
+        [
+            [2.0 - 4 * EPSILON, 0.0],
+            [2.0 + 100 * EPSILON * 2.0, 1e-13],
+            [2.0 + 2e-9, 2e-9],
+        ]
+    )
+    state = executor._event_at_the_end(
+        None,  # ty: ignore[invalid-argument-type]
+        2.0 - 4 * EPSILON,
+        2.0,
+        2e-9,
+    )
+    assert state is None
