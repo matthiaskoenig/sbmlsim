@@ -27,7 +27,7 @@ from __future__ import annotations
 import itertools
 import logging
 import math
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +43,7 @@ from sbmlsim.plot.plotting import (
     Curve,
     CurveType,
     Figure,
+    FigureSettings,
     LineType,
     MarkerType,
     ShadedArea,
@@ -91,6 +92,11 @@ SYMBOL_BY_MARKER: dict[MarkerType, str] = {
     MarkerType.VDASH: "line-ns",
 }
 
+
+#: the pixels per inch of a page: a page is the size of its figure in inches
+#: times 72 pixels, whatever the `fig_dpi` of the settings, which is the
+#: resolution of the static images; a browser zooms a page instead
+PAGE_PIXELS_PER_INCH = 72
 
 #: the dash of plotly of every line style of `sbmlsim.plot.points.LINE_STYLES`
 DASH_BY_LINESTYLE = {"-": "solid", "--": "dash", ":": "dot", "-.": "dashdot"}
@@ -311,12 +317,25 @@ class PlotlyFigureSerializer:
     """Render a `Figure` of the figure model as a plotly figure."""
 
     @classmethod
-    def to_figure(cls, experiment: Any, figure: Figure) -> Any:
+    def to_figure(
+        cls,
+        experiment: Any,
+        figure: Figure,
+        settings: FigureSettings | Mapping[str, Any] | None = None,
+    ) -> Any:
         """Convert a figure of the model into a plotly figure.
 
+        The page is the size of the figure in inches times
+        `PAGE_PIXELS_PER_INCH` pixels; `fig_dpi` of the settings is the
+        resolution of the static images and does not change the page.
+
         Args:
-            experiment: the experiment whose results the curves read.
+            experiment: the experiment whose results the curves read, whose
+                `figure_settings` override the settings of the run.
             figure: the figure to render.
+            settings: the settings of the run, a `FigureSettings` or overrides
+                of the defaults, which the settings of the experiment and of
+                the figure override, see `Figure.resolved_settings`.
 
         Returns:
             The `plotly.graph_objects.Figure`.
@@ -354,10 +373,12 @@ class PlotlyFigureSerializer:
                 if trace.marker.showscale
             )
 
+        resolved = figure.resolved_settings(experiment, run=settings)
+        width, height = figure.size(resolved)
         fig.update_layout(
             title={"text": figure.name} if figure.name else None,
-            width=int(figure.width * Figure.fig_dpi),
-            height=int(figure.height * Figure.fig_dpi),
+            width=int(width * PAGE_PIXELS_PER_INCH),
+            height=int(height * PAGE_PIXELS_PER_INCH),
             template="plotly_white",
             hovermode="closest",
             legend={"traceorder": "normal"},
@@ -424,7 +445,8 @@ class PlotlyFigureSerializer:
         right_margin = _MARGIN
         if names:
             right_margin = max(_MARGIN, int(_GAP + legend + _LEGEND_SYMBOL))
-        width = int(figure.width * Figure.fig_dpi)
+        # the width of the page, which `to_figure` set from the settings
+        width = int(fig.layout.width)
         plot = width - _MARGIN - right_margin
 
         # the room of the bars of every panel and column, in pixels
@@ -829,6 +851,7 @@ def figures_to_html(
     experiment: Any,
     output_path: Path,
     figures: dict[str, Figure] | None = None,
+    settings: FigureSettings | Mapping[str, Any] | None = None,
 ) -> dict[str, Path]:
     """Write the figures of an experiment as interactive HTML pages.
 
@@ -839,6 +862,7 @@ def figures_to_html(
         experiment: the experiment whose figures are written.
         output_path: directory of the pages, created if it is missing.
         figures: the figures to write, those of the experiment by default.
+        settings: the settings of the run, see `PlotlyFigureSerializer.to_figure`.
 
     Returns:
         The path of the page of every figure, by its key.
@@ -848,7 +872,7 @@ def figures_to_html(
 
     paths: dict[str, Path] = {}
     for key, figure in figures.items():
-        plotly_figure = PlotlyFigureSerializer.to_figure(experiment, figure)
+        plotly_figure = PlotlyFigureSerializer.to_figure(experiment, figure, settings)
         path = output_path / f"{experiment.sid}_{key}.html"
         plotly_figure.write_html(path, include_plotlyjs="directory")
         paths[key] = path

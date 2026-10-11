@@ -7,16 +7,19 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal
+from types import MappingProxyType
+from typing import Any, ClassVar, Literal
 
 import numpy as np
 from matplotlib import pyplot as plt
+from pint.errors import UndefinedUnitError
+from pint.facets.plain import PlainUnit
 
 from sbmlsim.data import Data, DataSet, check_sel
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.plot import Figure
+from sbmlsim.plot import Figure, FigureSettings
 from sbmlsim.plot.points import point_linestyles
 from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
@@ -29,7 +32,12 @@ from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulation.observables import PK, Observable
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
-from sbmlsim.units import UnitRegistry
+from sbmlsim.units import (
+    Quantity,
+    UnitRegistry,
+    UnitsInformation,
+    unit_identifiers,
+)
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import timeit
 
@@ -49,6 +57,16 @@ class SimulationExperiment:
 
     Consists of models, datasets, simulations, tasks, results, processing, figures
     """
+
+    #: the settings of the figures of the experiment, overrides of the settings
+    #: of the run by the names of the fields of `FigureSettings`, which the
+    #: settings of a figure override in turn (`Figure(settings=...)`). A
+    #: subclass assigns a read-only mapping of its own, e.g.
+    #: `figure_settings = MappingProxyType({"legend_fontsize": 10})`, which its
+    #: subclasses inherit;
+    #: `MappingProxyType({**Base.figure_settings, "fig_dpi": 300})` extends the
+    #: one of a base. Checked at `initialize`.
+    figure_settings: ClassVar[Mapping[str, Any]] = MappingProxyType({})
 
     def __init__(
         self,
@@ -138,6 +156,7 @@ class SimulationExperiment:
             self._check_types()
             self._check_task_data()
             self._check_figures()
+            FigureSettings.check(self.figure_settings, f"the experiment '{self.sid}'")
         except Exception as err:
             # a note and no log entry: the runner logs the error of an experiment
             # once, with its traceback, which shows the note
@@ -158,6 +177,122 @@ class SimulationExperiment:
             f"{'figures':20} {list(self._figures.keys())}",
         ]
         return "\n".join(info)
+
+    def Q(
+        self,
+        value: Any,
+        unit: str | PlainUnit | None = None,
+        model: str | None = None,
+    ) -> Quantity:
+        """Create a quantity in a unit of pint and of the unit ids of the models.
+
+        The runner loads the models of an experiment before `initialize`, so
+        the unit ids of a model are known in `simulations()` and later, e.g.
+        `self.Q(10, "mg_per_min")`; a unit id is replaced by its expression,
+        see `UnitsInformation.quantity`. Before the models are loaded `Q`
+        takes the units of pint. `sbmlsim.Q` takes the units of pint only. A
+        unit of pint, e.g. the `units` of a quantity, is taken as it is.
+
+        Args:
+            value: the magnitude, a number or an array.
+            unit: the unit, a string or a unit of pint, dimensionless without
+                one.
+            model: the id of the model whose unit ids the unit has. Without
+                it a unit id must have the same expression in every model of
+                the experiment which has it.
+
+        Returns:
+            The quantity.
+
+        Raises:
+            ValueError: for a `model` which is no loaded model of the
+                experiment, and without `model` for a unit id which models of
+                the experiment define differently.
+            UndefinedUnitError: for a unit which is neither a unit of pint nor
+                a unit id of the models.
+        """
+        units = self._model_unit_information()
+        if model is not None:
+            if model not in units:
+                raise ValueError(
+                    f"'{model}' is not loaded as a model of the experiment "
+                    f"'{self.sid}', its loaded models are {sorted(units)}. The "
+                    f"runner loads the models before `initialize`, the unit ids "
+                    f"of a model work in `simulations()` and later."
+                )
+            return units[model].quantity(value, unit)
+        # the unit ids of the models which the unit has, in the units of the
+        # experiment, which resolve the unit as the units of a model do
+        common = UnitsInformation(
+            {},
+            self.ureg,
+            unit_ids=self._unit_ids(unit, units) if isinstance(unit, str) else None,
+        )
+        try:
+            return common.quantity(value, unit)
+        except UndefinedUnitError as err:
+            if units:
+                err.add_note(
+                    f"The loaded models of the experiment '{self.sid}' are "
+                    f"{sorted(units)}."
+                )
+            else:
+                err.add_note(
+                    f"The models of the experiment '{self.sid}' are not loaded "
+                    f"and `Q` takes the units of pint. The runner loads the "
+                    f"models before `initialize`, the unit ids of a model work "
+                    f"in `simulations()` and later."
+                )
+            raise
+
+    def _model_unit_information(self) -> dict[str, UnitsInformation]:
+        """Get the units of the loaded models of the experiment, by model id."""
+        units: dict[str, UnitsInformation] = {}
+        for model_id, model in self._models.items():
+            # a model of an experiment which the runner did not load is the
+            # abstract model, without units
+            uinfo = getattr(model, "uinfo", None)
+            if isinstance(uinfo, UnitsInformation):
+                units[model_id] = uinfo
+        return units
+
+    def _unit_ids(
+        self, unit: str, units: Mapping[str, UnitsInformation]
+    ) -> dict[str, str]:
+        """Get the expressions of the unit ids of a unit in the models.
+
+        Args:
+            unit: the unit.
+            units: the units of the models by model id.
+
+        Returns:
+            The expression of every identifier of the unit which is a unit id
+            of a model.
+
+        Raises:
+            ValueError: if models define a unit id of the unit differently.
+        """
+        unit_ids: dict[str, str] = {}
+        for uid in unit_identifiers(unit):
+            expressions = {
+                model_id: uinfo.unit_ids[uid]
+                for model_id, uinfo in units.items()
+                if uid in uinfo.unit_ids
+            }
+            if len(set(expressions.values())) > 1:
+                defined = ", ".join(
+                    f"'{model_id}': '{expression}'"
+                    for model_id, expression in expressions.items()
+                )
+                raise ValueError(
+                    f"The unit id '{uid}' of the unit '{unit}' differs between "
+                    f"the models of the experiment '{self.sid}' ({defined}): "
+                    f"give the model whose unit it is, `Q(value, unit, "
+                    f"model=...)`."
+                )
+            if expressions:
+                unit_ids[uid] = next(iter(expressions.values()))
+        return unit_ids
 
     def models(self) -> dict[str, AbstractModel | Path]:
         """Define model definitions.
@@ -229,6 +364,11 @@ class SimulationExperiment:
 
         Most figures do not require access to concrete data, but only abstract
         data concepts.
+
+        A figure is styled with the settings of the experiment,
+        `FigureSettings.resolve(experiment=self.figure_settings)`, e.g. its
+        `fig_titlesize`; the settings of a run (`figure_settings=` of `run`)
+        do not reach this method.
         """
         return {}
 
@@ -444,6 +584,7 @@ class SimulationExperiment:
         reduced_selections: bool = True,
         keep_results: bool = True,
         on_error: Literal["raise", "log"] = "raise",
+        figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> "ExperimentResult":
         """Execute given experiment and store results.
 
@@ -469,10 +610,19 @@ class SimulationExperiment:
                 `ExperimentRunner` uses: a failing figure is skipped and the
                 others are written (`ExperimentResult.failed_figures`), an error
                 of the experiment ends its run (`ExperimentResult.error`).
+            figure_settings: the settings of the figures of the run, a
+                `FigureSettings` or overrides of its defaults, which the
+                `figure_settings` of the experiment and the settings of a
+                figure override.
 
         Returns:
             The result of the experiment, which the report is created from.
+
+        Raises:
+            ValueError: if a key of `figure_settings` is no setting, also with
+                `on_error="log"`.
         """
+        settings = FigureSettings.resolve(run=figure_settings)
         # the format decides which backend draws a figure: matplotlib draws
         # the static images, plotly the interactive pages
         formats = figure_formats if figure_formats is not None else [STATIC_FORMAT]
@@ -516,7 +666,7 @@ class SimulationExperiment:
             # output path which does not show them would close them again
             if show_figures or (output_path and static_formats):
                 mpl_figures = self.create_mpl_figures(
-                    on_error=on_error, failed=failed_figures
+                    on_error=on_error, failed=failed_figures, figure_settings=settings
                 )
                 if show_figures:
                     self.show_mpl_figures(mpl_figures=mpl_figures)
@@ -541,7 +691,10 @@ class SimulationExperiment:
 
             if output_path and interactive:
                 pages = self.save_interactive_figures(
-                    output_path, on_error=on_error, failed=failed_figures
+                    output_path,
+                    on_error=on_error,
+                    failed=failed_figures,
+                    figure_settings=settings,
                 )
                 for key in pages:
                     written.setdefault(key, []).append(INTERACTIVE_FORMAT)
@@ -1037,6 +1190,7 @@ class SimulationExperiment:
         self,
         on_error: Literal["raise", "log"] = "raise",
         failed: dict[str, str] | None = None,
+        figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> dict[str, FigureMPL | Figure]:
         """Create matplotlib figures.
 
@@ -1044,6 +1198,7 @@ class SimulationExperiment:
             on_error: `"raise"` raises the error of a figure, `"log"` logs it,
                 skips the figure and goes on with the next.
             failed: collects the failed figures as `{key: error}`.
+            figure_settings: the settings of the run, see `run`.
 
         Returns:
             The figures by their key, without the failed ones.
@@ -1051,7 +1206,9 @@ class SimulationExperiment:
         mpl_figures = {}
         for fig_key, fig in self._figures.items():
             try:
-                mpl_figures[fig_key] = MatplotlibFigureSerializer.to_figure(self, fig)
+                mpl_figures[fig_key] = MatplotlibFigureSerializer.to_figure(
+                    self, fig, settings=figure_settings
+                )
             except Exception as err:
                 self._figure_failed(fig_key, err, on_error, failed)
 
@@ -1160,6 +1317,7 @@ class SimulationExperiment:
         results_path: Path,
         on_error: Literal["raise", "log"] = "raise",
         failed: dict[str, str] | None = None,
+        figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     ) -> dict[str, Path]:
         """Write the figures as interactive pages.
 
@@ -1177,6 +1335,7 @@ class SimulationExperiment:
             on_error: `"raise"` raises the error of a figure, `"log"` logs it
                 and goes on with the next figure.
             failed: collects the failed figures as `{key: error}`.
+            figure_settings: the settings of the run, see `run`.
 
         Returns:
             The path of the page of every figure, empty without plotly.
@@ -1195,7 +1354,11 @@ class SimulationExperiment:
         paths: dict[str, Path] = {}
         for key, figure in self._figures.items():
             try:
-                paths.update(figures_to_html(self, results_path, {key: figure}))
+                paths.update(
+                    figures_to_html(
+                        self, results_path, {key: figure}, settings=figure_settings
+                    )
+                )
             except Exception as err:
                 # no partial page of a figure which is reported as failed
                 self._figure_path(results_path, key, INTERACTIVE_FORMAT).unlink(

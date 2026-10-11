@@ -19,9 +19,53 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
+
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.units import (
+    DimensionalityError,
+    UnitRegistry,
+    UnitsInformation,
+)
+from sbmlsim.units import ureg as package_ureg
 
 logger = logging.getLogger(__name__)
+
+
+def _same_unit(a: str, b: str, ureg: UnitRegistry, parameters: str) -> bool:
+    """Check whether two units are one unit.
+
+    Args:
+        a: a unit of pint.
+        b: another unit of pint.
+        ureg: the registry of the units.
+        parameters: the parameters of the units, for the message.
+
+    Returns:
+        Whether a value in `a` is the same value in `b`, e.g. for `1/min`
+        and `min^-1`.
+
+    Raises:
+        Exception: the error of pint if a unit cannot be read, e.g. the
+            `UndefinedUnitError` of a unit pint does not define, with a note
+            which names the parameters.
+    """
+    try:
+        quantity_a = ureg.Quantity(1.0, a)
+        quantity_b = ureg.Quantity(1.0, b)
+    # pint raises errors of many kinds for a unit it cannot read: its own, a
+    # ValueError for a factor, a TypeError or the TokenError of its parser
+    except Exception as err:
+        err.add_note(
+            f"The unit of {parameters} cannot be read, it is neither a unit of "
+            f"pint nor a unit id of the model of its target."
+        )
+        raise
+    try:
+        factor = quantity_a.to(quantity_b.units).magnitude
+    except DimensionalityError:
+        return False
+    return bool(np.isclose(factor, 1.0))
 
 
 def has_renamed_targets(parameters: Sequence[FitParameter]) -> bool:
@@ -76,6 +120,7 @@ class ParameterMapping:
         groups: Sequence[Sequence[int]],
         mapping_keys: Sequence[str],
         group_names: Sequence[str] | None = None,
+        units: Sequence[UnitsInformation] | None = None,
     ) -> None:
         """Resolve and validate the binding.
 
@@ -90,11 +135,20 @@ class ParameterMapping:
             mapping_keys: id of every fit mapping, for the messages.
             group_names: name of every simulation group, for the coverage. The
                 index of the group is used when they are not given.
+            units: the units of the model of every simulation group, which
+                resolve the unit ids of a model in the unit of a parameter,
+                see `parameter_units`. Without them the unit of a parameter
+                is a unit of pint.
 
         Raises:
             ValueError: if two parameters write one target in one simulation,
-                if a selector splits a simulation, or if the versions of a
-                target disagree on their unit.
+                if a selector splits a simulation, if the unit of a parameter
+                means different units in the models of the simulations it
+                reaches, or if the versions of a target disagree on their
+                unit.
+            UndefinedUnitError: if a unit of a parameter which is compared is
+                neither a unit of pint nor a unit id of a model it reaches;
+                pint raises errors of other kinds for a unit it cannot read.
         """
         self.parameters = list(parameters)
         self.groups = [list(group) for group in groups]
@@ -104,7 +158,6 @@ class ParameterMapping:
             else [str(k) for k in range(len(self.groups))]
         )
 
-        self._check_units()
         #: index of the parameter which writes a target, per group
         self._by_group: list[dict[str, int]] = [
             self._resolve_group(k, group, mapping_indices, mapping_keys)
@@ -115,6 +168,17 @@ class ParameterMapping:
             for index in targets.values():
                 self._covered.setdefault(index, set()).add(k)
 
+        # the registry the units of the parameters are compared in
+        ureg = units[0].ureg if units else package_ureg
+        #: the unit of every parameter in the units of pint, a unit id of the
+        #: model of its target replaced by its expression, see
+        #: `UnitsInformation.resolve_unit`; `None` for a parameter in the unit
+        #: of the model
+        self.parameter_units: list[str | None] = [
+            self._resolve_unit(index, units, ureg)
+            for index in range(len(self.parameters))
+        ]
+        self._check_units(ureg)
         self._warn_about_uncovered_versions()
 
     def _warn_about_uncovered_versions(self) -> None:
@@ -134,26 +198,82 @@ class ParameterMapping:
                     parameter.target_id,
                 )
 
-    def _check_units(self) -> None:
+    def _resolve_unit(
+        self,
+        index: int,
+        units: Sequence[UnitsInformation] | None,
+        ureg: UnitRegistry,
+    ) -> str | None:
+        """Resolve the unit of a parameter in the models of the simulations it reaches.
+
+        A parameter which reaches no simulation is resolved in the models of
+        all simulations: it is in the parameter vector all the same.
+
+        Args:
+            index: index of the parameter.
+            units: the units of the model of every group, see `__init__`.
+            ureg: the registry the units are compared in.
+
+        Returns:
+            The unit in the units of pint, `None` for a parameter without a
+            unit.
+
+        Raises:
+            ValueError: if the unit means different units in the models.
+        """
+        parameter = self.parameters[index]
+        unit = parameter.unit
+        if unit is None or not units:
+            return unit
+        # every resolved unit with the name of the first group it is resolved in
+        resolved: dict[str, str] = {}
+        for k in sorted(self._covered.get(index, set())) or range(len(self.groups)):
+            resolved.setdefault(units[k].resolve_unit(unit), self.group_names[k])
+        if not resolved:
+            return unit
+        first, *others = resolved
+        for other in others:
+            if not _same_unit(first, other, ureg, f"'{parameter.pid}'"):
+                raise ValueError(
+                    f"The unit '{unit}' of '{parameter.pid}' means '{first}' in "
+                    f"'{resolved[first]}' and '{other}' in '{resolved[other]}': "
+                    f"a unit id is resolved in the models of the simulations a "
+                    f"parameter reaches, so it must mean one unit in all of them."
+                )
+        return first
+
+    def _check_units(self, ureg: UnitRegistry) -> None:
         """Check that the versions of a target are given in one unit.
+
+        The units are compared as units, e.g. `1/min` and `min^-1` or a unit
+        id of the model and its expression are one unit.
+
+        Args:
+            ureg: the registry the units are compared in.
 
         Raises:
             ValueError: if two parameters of one target have different units.
         """
-        units: dict[str, tuple[str, str | None]] = {}
-        for parameter in self.parameters:
+        first: dict[str, int] = {}
+        for index, parameter in enumerate(self.parameters):
             target = parameter.target_id
-            if target in units:
-                pid, unit = units[target]
-                if unit != parameter.unit:
-                    raise ValueError(
-                        f"The versions of '{target}' disagree on their unit: "
-                        f"'{pid}' is '{unit}' and '{parameter.pid}' is "
-                        f"'{parameter.unit}'. The unit is how the value reaches "
-                        f"the model, so it is one unit for one entity."
-                    )
-            else:
-                units[target] = (parameter.pid, parameter.unit)
+            if target not in first:
+                first[target] = index
+                continue
+            other = self.parameters[first[target]]
+            a = self.parameter_units[first[target]]
+            b = self.parameter_units[index]
+            if a != b and (
+                a is None
+                or b is None
+                or not _same_unit(a, b, ureg, f"'{other.pid}' or '{parameter.pid}'")
+            ):
+                raise ValueError(
+                    f"The versions of '{target}' disagree on their unit: "
+                    f"'{other.pid}' is '{other.unit}' and '{parameter.pid}' is "
+                    f"'{parameter.unit}'. The unit is how the value reaches "
+                    f"the model, so it is one unit for one entity."
+                )
 
     def _resolve_group(
         self,

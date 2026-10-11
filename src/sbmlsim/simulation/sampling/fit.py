@@ -311,6 +311,13 @@ def profile_parameters(
     names = _targets(pids, defaults, targets)
     seed = _seed(seed)
     rng = np.random.default_rng(seed)
+    # the units of pint of the problem, a unit of a parameter may be a unit id
+    # of its model, which a design does not know
+    units = {
+        pid: identifiability.parameter_set.units.get(pid)
+        or (parameters[pid].unit if pid in parameters else None)
+        for pid in pids
+    }
     columns: dict[str, Any] = {}
     scale_names: list[str] = []
     for pid, target in zip(pids, names, strict=True):
@@ -329,8 +336,7 @@ def profile_parameters(
         cdf /= cdf[-1]
         draws = np.interp(rng.random(n), cdf, x)
         columns[target] = _column(
-            np.asarray(scale.from_scale(draws), dtype=float),
-            parameter.unit if parameter is not None else None,
+            np.asarray(scale.from_scale(draws), dtype=float), units.get(pid)
         )
     values = identifiability.parameter_set.values
     record = Design(
@@ -347,7 +353,7 @@ def profile_parameters(
         references={
             target: {
                 "value": float(values[pid]),
-                "unit": (parameters[pid].unit if pid in parameters else None) or "",
+                "unit": units.get(pid) or "",
             }
             for pid, target in zip(pids, names, strict=True)
             if pid in values

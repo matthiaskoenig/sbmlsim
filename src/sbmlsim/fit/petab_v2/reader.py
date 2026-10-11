@@ -1462,6 +1462,7 @@ class PetabReader:
             x=x,
             sid="nominal",
             provenance=f"nominal values of the PEtab problem '{self.name}'",
+            units=problem.parameter_units,
         )
 
     def _scale_of(

@@ -98,6 +98,20 @@ def test_sets_to_df() -> None:
     assert list(df.fit) == [1.5, 2.5]
 
 
+def test_sets_to_df_with_the_units_to_show() -> None:
+    """The units to show replace the ones of the sets, which disagree."""
+    psets = ParameterSets(
+        [
+            ParameterSet.from_fit_parameters(
+                PARAMETERS, [1.0, 2.0], sid="model", units={"p2": "1/min"}
+            ),
+            ParameterSet.from_fit_parameters(PARAMETERS, [1.5, 2.5], sid="fit"),
+        ]
+    )
+    assert list(psets.to_df().unit) == ["mM", "1/hr|1/min"]
+    assert list(psets.to_df(units={"p2": "per_min"}).unit) == ["mM", "per_min"]
+
+
 def test_missing_set() -> None:
     """An unknown identifier is reported."""
     psets = ParameterSets([ParameterSet(sid="s", values={"p1": 1.0})])

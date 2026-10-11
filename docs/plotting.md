@@ -104,9 +104,49 @@ A `Figure` says what is drawn and not how, so it is rendered by more than one ba
 
 The split follows the measurements. plotly is five times faster because it never rasterises: a page carries its data and the browser draws it, so writing it is 3 ms and the rest is resolving the data, which both backends do. The other direction does not hold - plotly writes PNG and SVG through a headless browser, which is 301 ms per figure at best and needs a Chrome on the machine, so the static images stay with matplotlib. Both read the same `Figure`, so the image and the page cannot disagree about what they show.
 
-`MatplotlibFigureSerializer.to_figure` renders a single figure from a run experiment; `Figure.fig_dpi`, `Figure.axes_labelsize` and the other class attributes of `Figure` are the global matplotlib settings of the rendering. `PlotlyFigureSerializer.to_figure` is its counterpart, and `SimulationExperiment.save_interactive_figures` writes the pages with the javascript of plotly next to them, so a report loads nothing from the network.
+`MatplotlibFigureSerializer.to_figure` renders a single figure from a run experiment, `PlotlyFigureSerializer.to_figure` is its counterpart, and `SimulationExperiment.save_interactive_figures` writes the pages with the javascript of plotly next to them, so a report loads nothing from the network.
 
 plotly is not a dependency of `sbmlsim`, it is in the `dev` extra: a run which asks for `html` without it reports that and writes no page. A figure of `figures_mpl()` is a matplotlib figure already and has no interactive version.
+
+### Settings
+
+The resolution, the panel size, the fonts and the legend of a figure are the fields of `FigureSettings`: `fig_dpi`, `fig_facecolor`, `fig_subplots_wspace`, `fig_subplots_hspace`, `panel_width`, `panel_height`, `fig_titlesize`, `fig_titleweight`, `axes_titlesize`, `axes_titleweight`, `axes_labelsize`, `axes_labelweight`, `xtick_labelsize`, `ytick_labelsize`, `legend_fontsize`, `legend_position` and `legend_loc`. They cascade, the more specific level wins:
+
+- the defaults of `FigureSettings`,
+- the run: `figure_settings=` of `SimulationExperiment.run`, `ExperimentRunner.run_experiments` and `run_experiments`, a `FigureSettings` or a mapping of overrides of the defaults, for every figure of the run, e.g. the resolution of a publication,
+- the experiment: the class attribute `figure_settings` of a `SimulationExperiment`, a read-only mapping of overrides (`MappingProxyType`, which also keeps the `RUF012` rule of ruff quiet), empty by default. A subclass inherits it, so the base experiment of a model sets the settings of all its experiments; a subclass which assigns its own replaces it, `MappingProxyType({**Base.figure_settings, "fig_dpi": 300})` extends it,
+- the figure: `Figure(..., settings={...})`, a mapping of overrides for one figure.
+
+```python
+from types import MappingProxyType
+
+from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.plot import Figure, FigureSettings
+
+
+class ModelExperiment(SimulationExperiment):
+    """The base of the experiments of a model."""
+
+    figure_settings = MappingProxyType({"legend_fontsize": 10, "axes_labelsize": 16})
+
+
+fig = Figure(experiment=None, sid="fig1", num_cols=2, settings={"axes_labelsize": 14})
+settings = FigureSettings.resolve(
+    run={"fig_dpi": 300, "legend_fontsize": 12},
+    experiment=ModelExperiment.figure_settings,
+    figure=fig.settings,
+)
+print(settings.fig_dpi, settings.legend_fontsize, settings.axes_labelsize)  # 300 10 14
+print(fig.size(settings))  # (14.0, 5.0)
+print(fig.size(FigureSettings(panel_width=4.0)))  # (8.0, 5.0)
+fig.settings = {**fig.settings, "legend_position": "outside"}
+print(dict(fig.settings))  # {'axes_labelsize': 14, 'legend_position': 'outside'}
+# runner.run_experiments(output_path, figure_settings={"fig_dpi": 300})
+```
+
+A serializer resolves the settings of a figure the same way, `Figure.resolved_settings(experiment, run=...)`. An unknown key raises a `ValueError` which names the settings: the one of a run when the run starts, the one of an experiment at `initialize` and the one of a figure when the figure is created. A figure without an explicit `width` or `height` is `num_cols * panel_width` wide and `num_rows * panel_height` high in the settings it is rendered with. `figure.width` and `figure.height` are the explicit size and `None` without it, also in the JSON of an experiment, and `figure.size(figure.resolved_settings(experiment))` is the size in inches it is rendered with. `fig_dpi` is the resolution of a static image, which is cropped to its content (`bbox_inches="tight"`), so its pixels are those of the drawn content rather than of the whole figure. An interactive page has a fixed 72 pixels per inch (`PAGE_PIXELS_PER_INCH` of `sbmlsim.plot.serialization_plotly`), so it is `width * 72` by `height * 72` pixels whatever `fig_dpi` is: a run at 300 dpi for a publication has pages of the same size as a run at the default. A figure therefore looks the same whether its experiment runs alone or after others.
+
+The settings were class attributes of `Figure` (`Figure.fig_dpi = 300`), which changed every later figure of the process, also those of other experiments. Setting or reading one on `Figure` or on a figure, or defining one in the body of a subclass of `Figure`, raises an `AttributeError` which says where it goes: `Figure.legend_fontsize = 10` at the top of the module of a model becomes `figure_settings = MappingProxyType({"legend_fontsize": 10})` of its base experiment, `Figure.fig_dpi = 300` before a run becomes `figure_settings={"fig_dpi": 300}` of the run, a setting on a figure which exists, `fig.legend_position = "outside"`, becomes `fig.settings = {**fig.settings, "legend_position": "outside"}` (or `Figure(..., settings={"legend_position": "outside"})` where it is created), and the read of a default becomes `FigureSettings().fig_titlesize`. A figure of `figures_mpl()` is styled with the settings of its experiment, `FigureSettings.resolve(experiment=self.figure_settings).fig_titlesize`; the settings of the run do not reach `figures_mpl()`.
 
 ## Reports
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -31,7 +31,10 @@ class ParameterSet:
     Attributes:
         sid: identifier of the set, used as its label in a report.
         values: value of every parameter by parameter id.
-        units: unit of every parameter by parameter id, the model unit if `None`.
+        units: unit of every parameter by parameter id, a unit of pint, the
+            model unit if `None`. A set of a problem has the unit of a
+            parameter with the unit ids of the model resolved, see
+            `OptimizationProblem.parameter_units`.
         cost: cost of the set, if it comes from an optimization.
         provenance: where the set comes from, e.g. the id of an optimization.
     """
@@ -83,6 +86,7 @@ class ParameterSet:
         sid: str,
         cost: float | None = None,
         provenance: str | None = None,
+        units: Mapping[str, str | None] | None = None,
     ) -> ParameterSet:
         """Create a parameter set from the parameters of a problem and a vector.
 
@@ -92,6 +96,9 @@ class ParameterSet:
             sid: identifier of the set.
             cost: cost of the set.
             provenance: where the set comes from.
+            units: the unit of a parameter by parameter id, which replaces the
+                unit of the parameter, e.g. the resolved units of
+                `OptimizationProblem.parameter_units`.
 
         Returns:
             The parameter set.
@@ -109,21 +116,36 @@ class ParameterSet:
             values={
                 p.pid: float(value) for p, value in zip(parameters, x, strict=True)
             },
-            units={p.pid: p.unit for p in parameters},
+            units={p.pid: (units or {}).get(p.pid, p.unit) for p in parameters},
             cost=cost,
             provenance=provenance,
         )
 
     @staticmethod
     def from_model(
-        parameters: Iterable[FitParameter], x: np.ndarray, sid: str = "model"
+        parameters: Iterable[FitParameter],
+        x: np.ndarray,
+        sid: str = "model",
+        units: Mapping[str, str | None] | None = None,
     ) -> ParameterSet:
-        """Create the parameter set of the initial values of the model."""
+        """Create the parameter set of the initial values of the model.
+
+        Args:
+            parameters: fit parameters, they provide the ids and the units.
+            x: values in the order of the parameters.
+            sid: identifier of the set.
+            units: the unit of a parameter by parameter id, see
+                `from_fit_parameters`.
+
+        Returns:
+            The parameter set.
+        """
         return ParameterSet.from_fit_parameters(
             parameters=parameters,
             x=x,
             sid=sid,
             provenance="initial values of the model",
+            units=units,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -220,8 +242,18 @@ class ParameterSets:
             raise ValueError("At least one ParameterSet is required.")
         return psets
 
-    def to_df(self) -> pd.DataFrame:
-        """Get a DataFrame with one row per parameter and one column per set."""
+    def to_df(self, units: Mapping[str, str | None] | None = None) -> pd.DataFrame:
+        """Get a DataFrame with one row per parameter and one column per set.
+
+        Args:
+            units: the unit to show for a parameter by parameter id, e.g. the
+                unit as the user defined it, which a report shows. A parameter
+                which is not in it has the unit of the sets, `a|b` when the
+                sets disagree.
+
+        Returns:
+            The table with the columns `parameter`, `unit` and one per set.
+        """
         pids: list[str] = []
         for pset in self.sets:
             pids.extend(pid for pid in pset.values if pid not in pids)
@@ -229,12 +261,17 @@ class ParameterSets:
         data: list[dict[str, Any]] = []
         for pid in pids:
             row: dict[str, Any] = {"parameter": pid}
-            units = {pset.units.get(pid) for pset in self.sets if pid in pset.values}
-            row["unit"] = (
-                next(iter(units))
-                if len(units) == 1
-                else "|".join(str(unit) for unit in sorted(units, key=str))
-            )
+            if units is not None and pid in units:
+                row["unit"] = units[pid]
+            else:
+                set_units = {
+                    pset.units.get(pid) for pset in self.sets if pid in pset.values
+                }
+                row["unit"] = (
+                    next(iter(set_units))
+                    if len(set_units) == 1
+                    else "|".join(str(unit) for unit in sorted(set_units, key=str))
+                )
             for pset in self.sets:
                 row[pset.sid] = pset.values.get(pid, np.nan)
             data.append(row)

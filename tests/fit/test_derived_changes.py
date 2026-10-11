@@ -116,6 +116,25 @@ def test_the_hook_reads_the_changes_of_the_fit(
     assert changes["Ka_dis_hctz"] == pytest.approx(factor.magnitude * nominal)
 
 
+def test_a_parameter_in_a_unit_id_of_the_model_reaches_the_hook(
+    definition_hctz_iv: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """A unit of a parameter with unit ids of the model is converted by its expression (#268).
+
+    `per_min_l` of the HCTZ model is `1/(l * min)`, so `per_min_l*min` is `1/l`
+    and the value reaches the hook in the `1/ml` of the model.
+    """
+    problem = _problem(
+        definition_hctz_iv,
+        [FitParameter(TARGET, 1e-4, 1e-10, 1.0, unit="per_min_l*min")],
+        hybridizations=[Scaling(target="Ka_dis_hctz", factor=TARGET)],
+    )
+    problem.initialize(fit_settings)
+    nominal = float(problem.models[0].r["Ka_dis_hctz"])
+    changes = _preinit(problem, 0, np.array([1e-4]))
+    assert changes["Ka_dis_hctz"] == pytest.approx(1e-7 * nominal)
+
+
 def test_a_condition_the_problem_does_not_simulate_is_logged(
     definition_hctz_iv: FitDefinition,
     fit_settings: FitSettings,

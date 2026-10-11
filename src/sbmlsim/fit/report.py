@@ -257,6 +257,19 @@ class FitReport:
         """First parameter set, the reference the others are compared against."""
         return self.parameter_sets[0]
 
+    @property
+    def display_units(self) -> dict[str, str]:
+        """Get the unit every table of the report shows for a parameter, by id.
+
+        It is the unit as the user defined it (`FitParameter.unit`), e.g. the
+        unit id `per_min` of the model, and `model` for the unit of the model.
+        The values carry the units of pint, e.g. `1/min`, see
+        `OptimizationProblem.parameter_units`, and so does the code
+        `Q(value, unit)` of the optimal parameters of the text report, which
+        runs with `sbmlsim.Q`.
+        """
+        return {p.pid: p.unit or "model" for p in self.problem.parameters}
+
     def mapping_title(self, k: int) -> str:
         """Get the title of the plots of a fit mapping.
 
@@ -442,7 +455,7 @@ class FitReport:
         if self.fisher:
             fisher_json = results_dir / "fisher.json"
             fisher_json.write_text(json.dumps(self.fisher.to_dict(), indent=2))
-            self.fisher.summary_df.to_csv(
+            self._fisher_summary_df().to_csv(
                 results_dir / "fisher.tsv", sep="\t", index=False
             )
         if self.identifiability:
@@ -485,7 +498,7 @@ class FitReport:
         Reports the values of every set and the parameters which ended up close
         to one of their bounds.
         """
-        table = self.parameter_sets.to_df()
+        table = self.parameter_sets.to_df(units=self.display_units)
         # the elements of a network are one line per array and set
         grouped = {p.pid for _, members in self._grouping[1] for p in members}
         table = table[~table["parameter"].isin(grouped)]
@@ -752,7 +765,7 @@ class FitReport:
                 ],
                 "lower": f"{p.lower_bound:.4g}",
                 "upper": f"{p.upper_bound:.4g}",
-                "unit": p.unit or "model",
+                "unit": self.display_units[p.pid],
             }
             for p in single
         ]
@@ -1076,13 +1089,32 @@ class FitReport:
         """
         return {group.label: group.ids for group, _ in self._grouping[1]}
 
+    def _fisher_summary_df(self) -> pd.DataFrame:
+        """Get the table of the Fisher information with the units of the report.
+
+        The unit of a parameter is the one of `display_units`, the table of
+        `FisherInformation.summary_df` has the units of pint of its values.
+
+        Raises:
+            ValueError: if the report has no Fisher information.
+        """
+        if self.fisher is None:
+            raise ValueError("The report has no Fisher information.")
+        df = self.fisher.summary_df
+        units = self.display_units
+        df["unit"] = [
+            units.get(pid, unit)
+            for pid, unit in zip(df["parameter"], df["unit"], strict=True)
+        ]
+        return df
+
     def _fisher_context(self) -> dict[str, Any] | None:
         """Collect what the Fisher information of the report shows."""
         fim = self.fisher
         if fim is None:
             return None
 
-        df = fim.summary_df
+        df = self._fisher_summary_df()
         eigenvalues = fim.eigenvalues
         info: dict[str, Any] = {
             "parameter set": fim.sid,

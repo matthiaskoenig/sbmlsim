@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import warnings
-from collections.abc import Iterator, MutableMapping
+from collections.abc import Iterator, Mapping, MutableMapping
 from pathlib import Path
+from typing import Any, ClassVar
 
 import libsbml
 import numpy as np
@@ -18,13 +20,10 @@ from sbmlutils.io import read_sbml
 # Disable Pint's old fallback behavior (must come before importing Pint)
 os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
-
-from typing import ClassVar
-
 import pint
 from pint import UnitRegistry
 from pint.errors import DimensionalityError, UndefinedUnitError
-from pint.facets.plain import PlainQuantity
+from pint.facets.plain import PlainQuantity, PlainUnit
 
 #: type of the quantities of a unit registry; `pint.Quantity` is a subclass, the
 #: registry itself creates `PlainQuantity` instances
@@ -44,24 +43,168 @@ def _create_registry() -> UnitRegistry:
 
     The units of a model are not defined in it: a model stores the expression
     of every unit definition (`Units.udef_to_str`), so two models which use
-    one id for different units never share a definition.
+    one id for different units never share a definition. The exception is a
+    unit definition with a factor which is no prefix, see
+    `UnitsInformation.model_uid_dict`.
+
+    The registry defines no international unit (`IU`): it is specific to a
+    substance, so a model or a user defines the one they need under a name of
+    the substance, e.g. `ureg.define("IU_insulin = 0.0347 * mg")`, or as a
+    count.
     """
     registry = pint.UnitRegistry(on_redefinition="ignore")
     registry.define("none = count")
     registry.define("item = count")
     registry.define("percent = 0.01*count")
-    # FIXME: the international unit is specific to a substance, these are the
-    # ones of insulin
-    registry.define("IU = 0.0347 * mg")
-    registry.define("IU_per_ml = 0.0347 * mg/ml")
     return registry
 
 
 #: the unit registry of the package, every model, experiment and fit uses it
 ureg: UnitRegistry = _create_registry()
 
-#: the quantities of the registry of the package, `Q(10, "mg")`
-Q = ureg.Quantity
+#: the note of an error of `Q` for a unit pint does not define
+_Q_NOTE = (
+    "`sbmlsim.Q` takes the units of pint. A unit id of an SBML model, e.g. "
+    "`mg_per_min`, is resolved by `model.Q(value, unit)` of the "
+    "`RoadrunnerSBMLModel` or by `experiment.Q(value, unit)` of the "
+    "`SimulationExperiment`, whose models the runner loads before `initialize`."
+)
+
+#: the note of an error for an international unit which nothing defines
+_INTERNATIONAL_UNIT_NOTE = (
+    "The unit registry of sbmlsim defines no international unit (`IU`) since "
+    "#263: an international unit is specific to a substance. Define the one the "
+    "code or the data needs before it is used, under a name of the substance, "
+    'e.g. `sbmlsim.units.ureg.define("IU_insulin = 0.0347 * mg")`, or as a '
+    'count, `sbmlsim.units.ureg.define("IU = count")`.'
+)
+
+
+def international_unit_note(err: Exception) -> str | None:
+    """Get the note how to define an international unit for an error of one.
+
+    Args:
+        err: the error of reading a unit.
+
+    Returns:
+        The note for an `UndefinedUnitError` of a name which is `IU`, ends in
+        `IU` (`µIU`, `mIU`) or starts with `IU_` (`IU_per_ml`), else `None`.
+    """
+    if not isinstance(err, UndefinedUnitError):
+        return None
+    names = err.unit_names
+    for name in (names,) if isinstance(names, str) else names:
+        if name.endswith("IU") or name.startswith("IU_"):
+            return _INTERNATIONAL_UNIT_NOTE
+    return None
+
+
+class _Quantities:
+    """The quantities of the registry of the package, `Q(10, "mg")`.
+
+    `Q` takes the units of pint and the ones the registry adds, not the unit
+    ids of a model: `RoadrunnerSBMLModel.Q` and `SimulationExperiment.Q`
+    resolve those, see `UnitsInformation.quantity`. The class methods of the
+    quantities of the registry are the ones of `Q`, e.g. `Q.from_list`, and
+    `isinstance(x, Q)` checks for a quantity of the registry.
+    """
+
+    def __call__(self, value: Any, units: str | PlainUnit | None = None) -> Quantity:
+        """Create a quantity of the registry of the package.
+
+        Args:
+            value: the magnitude, a number or an array.
+            units: the unit, dimensionless without one.
+
+        Returns:
+            The quantity.
+
+        Raises:
+            UndefinedUnitError: for a unit pint does not define, with a note
+                which names the quantities of a model and of an experiment,
+                and for an international unit how to define one.
+        """
+        try:
+            return ureg.Quantity(value, units)
+        except UndefinedUnitError as err:
+            if note := international_unit_note(err):
+                err.add_note(note)
+            err.add_note(_Q_NOTE)
+            raise
+
+    def __getattr__(self, name: str) -> Any:
+        """Get an attribute of the quantities of the registry, e.g. `from_list`."""
+        if name.startswith("__"):
+            raise AttributeError(name)
+        return getattr(ureg.Quantity, name)
+
+    def __instancecheck__(self, instance: Any) -> bool:
+        """Check whether an object is a quantity of the registry, `isinstance(x, Q)`."""
+        return isinstance(instance, ureg.Quantity)
+
+    def __repr__(self) -> str:
+        """Get the name of the quantities."""
+        return "sbmlsim.units.Q"
+
+
+#: the quantities of the registry of the package, `Q(10, "mg")`, see
+#: `_Quantities`
+Q = _Quantities()
+
+
+#: a token of a unit string: a number, whose exponent is part of it, or a word
+_UNIT_TOKEN = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?|\w+")
+
+#: an identifier, the form of a unit id of SBML
+_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def unit_identifiers(unit: str) -> list[str]:
+    """Get the identifiers of a unit string in their order.
+
+    An identifier is a whole word of the string: `mg` is no identifier of
+    `mg_per_min/kg`, and the `e` of the number `1e-3` none of `1e-3*mg`.
+
+    Args:
+        unit: the unit string.
+
+    Returns:
+        The identifiers, e.g. `["mg_per_min", "kg"]` of `mg_per_min/kg`.
+    """
+    return [t for t in _UNIT_TOKEN.findall(unit) if _IDENTIFIER.fullmatch(t)]
+
+
+def replace_unit_ids(unit: str, unit_ids: Mapping[str, str]) -> str:
+    """Replace every identifier of a unit string which is a unit id by its expression.
+
+    The expression is put in brackets, so a power or a quotient applies to all
+    of it: `mg_per_min^2/kg` with `mg_per_min = mg/min` is
+    `(mg/min)^2/kg`; a unit which is one unit id is its expression,
+    `mg_per_min` is `mg/min`. Only whole identifiers are replaced, see
+    `unit_identifiers`, and only once: the expression of a unit id is a unit of
+    pint, whose names are not replaced again. A unit id wins over a unit of
+    pint of the same name.
+
+    Args:
+        unit: the unit string.
+        unit_ids: unit id -> expression of pint.
+
+    Returns:
+        The unit string with the expressions of its unit ids.
+    """
+    if not unit_ids:
+        return unit
+    if unit.strip() in unit_ids:
+        # the expression of a dimensionless unit definition is empty
+        return unit_ids[unit.strip()] or "dimensionless"
+
+    def replace(match: re.Match[str]) -> str:
+        token = match.group()
+        if token not in unit_ids:
+            return token
+        return f"({unit_ids[token] or 'dimensionless'})"
+
+    return _UNIT_TOKEN.sub(replace, unit)
 
 
 def _package_registry() -> UnitRegistry:
@@ -72,17 +215,53 @@ def _package_registry() -> UnitRegistry:
 class UnitsInformation(MutableMapping):
     """Storage of units information.
 
-    Used for models or datasets.
+    Used for models or datasets. The units information of a model also has
+    the unit ids of the model, which `quantity` resolves.
     """
 
-    def __init__(self, udict: UdictType, ureg: UnitRegistry, *args, **kwargs):
+    def __init__(
+        self,
+        udict: UdictType,
+        ureg: UnitRegistry,
+        *args: Any,
+        unit_ids: Mapping[str, str] | None = None,
+        **kwargs: str,
+    ) -> None:
         """Initialize UnitsInformation.
 
         Behaves like a dict which allows to lookup units by id.
+
+        Args:
+            udict: the unit of every identifier, an expression of pint.
+            ureg: the unit registry of the expressions.
+            *args: further units, as the arguments of a dict.
+            unit_ids: the unit ids of the model and their expressions of pint,
+                see `model_uid_dict`; none for the units of a dataset.
+            **kwargs: further units, as the arguments of a dict.
         """
         self.udict: UdictType = udict
         self.ureg: UnitRegistry = ureg
+        #: unit id of the model -> expression of pint, see `quantity`
+        self.unit_ids: dict[str, str] = dict(unit_ids) if unit_ids else {}
         self.update(dict(*args, **kwargs))
+
+    def copy(self) -> UnitsInformation:
+        """Get a copy with its own dicts and the registry of the original."""
+        return UnitsInformation(dict(self.udict), self.ureg, unit_ids=self.unit_ids)
+
+    def __copy__(self) -> UnitsInformation:
+        """Get a copy, see `copy`."""
+        return self.copy()
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> UnitsInformation:
+        """Get a deep copy, see `copy`.
+
+        The dicts hold strings, the registry is shared: quantities of two
+        registries cannot be combined.
+        """
+        clone = self.copy()
+        memo[id(self)] = clone
+        return clone
 
     def __getitem__(self, key: str) -> str:
         """Get item."""
@@ -117,6 +296,55 @@ class UnitsInformation(MutableMapping):
     def Q_(self):
         """Get quantity for generating quantities."""
         return self.ureg.Quantity
+
+    def resolve_unit(self, unit: str) -> str:
+        """Get a unit with every unit id of the model replaced by its expression.
+
+        See `replace_unit_ids`, e.g. `mg_per_min/kg` is `(mg/min)/kg` and
+        `mg_per_min` is `mg/min` for a model whose unit definition
+        `mg_per_min` is a milligram per minute.
+
+        Args:
+            unit: a unit of pint and of the unit ids of the model.
+
+        Returns:
+            The unit in the units of pint.
+        """
+        return replace_unit_ids(unit, self.unit_ids)
+
+    def quantity(self, value: Any, unit: str | PlainUnit | None = None) -> Quantity:
+        """Create a quantity in a unit of pint and of the unit ids of the model.
+
+        Every identifier of a unit string which is a unit id of the model is
+        its expression, see `resolve_unit`, so `mg_per_min/kg` is a unit as
+        well as `mg/min/kg`; a unit id wins over a unit of pint of the same
+        name, the model defines what its id means. A unit of pint, e.g. the
+        `units` of a quantity, is taken as it is.
+
+        Args:
+            value: the magnitude, a number or an array.
+            unit: the unit, a string or a unit of pint, dimensionless without
+                one.
+
+        Returns:
+            The quantity of the registry of the units information.
+
+        Raises:
+            UndefinedUnitError: for a unit which is neither a unit of pint nor
+                a unit id of the model.
+        """
+        try:
+            return self.ureg.Quantity(
+                value, self.resolve_unit(unit) if isinstance(unit, str) else unit
+            )
+        except UndefinedUnitError as err:
+            err.add_note(
+                f"The unit '{unit}' is neither a unit of pint nor a unit id of "
+                f"the model."
+            )
+            if note := international_unit_note(err):
+                err.add_note(note)
+            raise
 
     @staticmethod
     def from_sbml(
@@ -169,7 +397,11 @@ class UnitsInformation(MutableMapping):
         The expression is a unit pint parses: the id itself for a unit kind of
         SBML pint knows and for a unit definition whose id pint parses as the
         same unit, the expression of the unit definition (`Units.udef_to_str`)
-        otherwise. Nothing is defined in the registry.
+        otherwise. The registry gets a definition only for a unit definition
+        with a factor which is no prefix, e.g. the 133.322 of a mmHg, which
+        pint cannot parse: `_define` defines it under its id, or under a
+        collision free name when the registry has the id as another unit, and
+        the definition holds for the whole process, also for `sbmlsim.Q`.
 
         Args:
             model: the model.
@@ -264,6 +496,9 @@ class UnitsInformation(MutableMapping):
         doc: libsbml.SBMLDocument, ureg: UnitRegistry | None = None
     ) -> UnitsInformation:
         """Get pint UnitsInformation for model in document.
+
+        The units information has the unit ids of the model, see
+        `model_uid_dict`, which `UnitsInformation.quantity` resolves.
 
         An entity without units, i.e. the time without time units, a species
         without the units of its substance or its compartment, or an entity
@@ -392,7 +627,7 @@ class UnitsInformation(MutableMapping):
                 len(missing),
             )
 
-        return UnitsInformation(udict=udict, ureg=ureg)
+        return UnitsInformation(udict=udict, ureg=ureg, unit_ids=uid_dict)
 
     @staticmethod
     def normalize_changes(

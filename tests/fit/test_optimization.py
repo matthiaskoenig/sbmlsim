@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+from pint.errors import UndefinedUnitError
 
 from sbmlsim.fit import FitParameter, FitSettings
 from sbmlsim.fit.cli import FitDefinition
@@ -63,3 +64,52 @@ def test_a_parameter_whose_target_is_not_an_entity(
         r"is not an entity of the model .*'sciml:<id>'",
     ):
         problem.initialize(fit_settings)
+
+
+def test_the_unit_of_a_parameter_is_a_unit_id_of_its_model(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """A unit id of the model converts as its expression (#268).
+
+    `per_min` of the HCTZ model is `1/min`; the model has `Ka_dis_hctz` in
+    `1/hr`, so the value of the parameter is converted by the factor 60.
+    """
+    costs: dict[str, float] = {}
+    for k, unit in enumerate(["per_min", "1/min", "1/hr"]):
+        ka = FitParameter(
+            pid="Ka_dis_hctz",
+            start_value=1.0,
+            lower_bound=1e-4,
+            upper_bound=100,
+            unit=unit,
+        )
+        definition = replace(
+            definition_hctz_pk, parameters=[ka, *definition_hctz_pk.parameters[1:]]
+        )
+        problem = definition.problem(opid=f"hctz_unit_{k}")
+        problem.initialize(fit_settings)
+        costs[unit] = problem.cost_least_square(problem.to_scale(problem.x0))
+
+    assert costs["per_min"] == pytest.approx(costs["1/min"], rel=1e-12)
+    assert costs["per_min"] != pytest.approx(costs["1/hr"])
+
+
+def test_a_unit_of_a_parameter_which_is_no_unit_names_the_parameter(
+    definition_hctz_pk: FitDefinition, fit_settings: FitSettings
+) -> None:
+    """A unit which is neither of pint nor of the model is an error of pint with a note."""
+    ka = FitParameter(
+        pid="Ka_dis_hctz",
+        start_value=1.0,
+        lower_bound=1e-4,
+        upper_bound=10,
+        unit="per_mn",
+    )
+    definition = replace(
+        definition_hctz_pk, parameters=[ka, *definition_hctz_pk.parameters[1:]]
+    )
+    problem = definition.problem(opid="hctz_no_unit")
+    with pytest.raises(UndefinedUnitError) as info:
+        problem.initialize(fit_settings)
+    notes = "\n".join(info.value.__notes__)
+    assert "'Ka_dis_hctz' in 'per_mn' writes 'Ka_dis_hctz'" in notes

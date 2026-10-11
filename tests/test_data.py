@@ -357,3 +357,31 @@ def test_from_df_unit_errors_name_the_column_and_units(
     df = pd.DataFrame({column: values, f"{column}_unit": units})
     with pytest.raises(ValueError, match=match):
         DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+
+
+@pytest.mark.parametrize("unit", ["IU/ml", "µIU/ml", "mIU/l", "mg/IU", "IU_per_ml"])
+def test_from_df_an_international_unit_is_not_defined(unit: str) -> None:
+    """Data in IU is not read as a mass of insulin by the package registry (#263).
+
+    The error says how to define an international unit.
+    """
+    from sbmlsim.units import ureg
+
+    df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": [unit, unit]})
+    with pytest.raises(ValueError, match=rf"'value'.*'{unit}'.*not defined") as info:
+        DataSet.from_df(df, ureg=ureg)
+    message = str(info.value)
+    assert "no international unit" in message
+    assert "#263" in message
+    assert 'ureg.define("IU_insulin = 0.0347 * mg")' in message
+    assert 'ureg.define("IU = count")' in message
+
+
+def test_from_df_another_unit_has_no_note_of_an_international_unit() -> None:
+    """Only an undefined international unit gets the note."""
+    from sbmlsim.units import ureg
+
+    df = pd.DataFrame({"value": [1.0], "value_unit": ["cpm"]})
+    with pytest.raises(ValueError, match=r"'cpm'.*not defined") as info:
+        DataSet.from_df(df, ureg=ureg)
+    assert "international unit" not in str(info.value)

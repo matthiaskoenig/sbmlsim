@@ -338,6 +338,7 @@ def nominal_parameters(problem: OptimizationProblem) -> ParameterSet:
         x=x,
         sid="nominal",
         provenance="nominal values of the problem",
+        units=problem.parameter_units,
     )
 
 

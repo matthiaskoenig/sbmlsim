@@ -1,6 +1,7 @@
 """Reusable functionality for multiple simulation experiments."""
 
 from pathlib import Path
+from types import MappingProxyType
 from typing import ClassVar, NamedTuple, override
 
 import pandas as pd
@@ -42,6 +43,9 @@ class HCTZSimulationExperiment(SimulationExperiment):
     label_hctz_excretion_urine = "HCTZ excretion\nurine"
 
     color_hctz = "black"
+
+    #: the settings of the figures of every study, see `FigureSettings`
+    figure_settings = MappingProxyType({"legend_fontsize": 10})
 
     Mr: ClassVar[MolecularWeights] = MolecularWeights(
         hctz=Q(297.7, "g/mole"),

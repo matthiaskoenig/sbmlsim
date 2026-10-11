@@ -4,12 +4,13 @@ import logging
 import weakref
 from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
+from pint.facets.plain import PlainUnit
 from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
 from sbmlsim.model import AbstractModel
@@ -20,7 +21,7 @@ from sbmlsim.model.tolerances import (
     StateTolerance,
     state_tolerances,
 )
-from sbmlsim.units import UnitRegistry, UnitsInformation
+from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.units import ureg as package_ureg
 from sbmlsim.utils import md5_for_path
 
@@ -398,6 +399,29 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         md5 = md5_for_path(sbml_path)
         return Path(f"{sbml_path}_rr{roadrunner.__version__}_{md5}.state")
+
+    def Q(self, value: Any, unit: str | PlainUnit | None = None) -> Quantity:
+        """Create a quantity in a unit of pint and of the unit ids of the model.
+
+        A unit id of the model is its expression, e.g. `mg_per_min/kg` is a
+        milligram per minute and kilogram for a model whose unit definition
+        `mg_per_min` is a milligram per minute, see
+        `UnitsInformation.quantity`. `sbmlsim.Q` takes the units of pint only.
+        A unit of pint, e.g. the `units` of a quantity, is taken as it is.
+
+        Args:
+            value: the magnitude, a number or an array.
+            unit: the unit, a string or a unit of pint, dimensionless without
+                one.
+
+        Returns:
+            The quantity.
+
+        Raises:
+            UndefinedUnitError: for a unit which is neither a unit of pint nor
+                a unit id of the model.
+        """
+        return self.uinfo.quantity(value, unit)
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
         """Parse units from SBML model."""

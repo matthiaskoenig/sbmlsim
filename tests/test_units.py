@@ -48,6 +48,43 @@ def test_package_registry() -> None:
     assert ureg("percent").to("dimensionless").magnitude == 0.01
 
 
+@pytest.mark.parametrize("unit", ["IU", "IU/ml", "IU_per_ml", "µIU/ml", "mg/IU"])
+def test_the_package_registry_has_no_international_unit(unit: str) -> None:
+    """An international unit is specific to a substance, the registry has none (#263).
+
+    An `IU` of the registry was a mass of insulin, so data in `IU/ml` of any
+    other substance was read as a mass concentration of insulin. The error says
+    how to define one, and that a model resolves its own unit ids.
+    """
+    from pint.errors import UndefinedUnitError
+
+    from sbmlsim import Q
+
+    with pytest.raises(UndefinedUnitError) as info:
+        Q(1, unit)
+    notes = "\n".join(info.value.__notes__)
+    assert "no international unit" in notes
+    assert "#263" in notes
+    assert 'ureg.define("IU_insulin = 0.0347 * mg")' in notes
+    assert 'ureg.define("IU = count")' in notes
+    assert "model.Q" in notes
+
+
+def test_only_an_international_unit_has_the_note_of_one() -> None:
+    """The note of an international unit is not added to another undefined unit."""
+    from pint.errors import UndefinedUnitError
+
+    from sbmlsim import Q
+
+    with pytest.raises(UndefinedUnitError) as info:
+        Q(1, "cpm")
+    assert "international unit" not in "\n".join(info.value.__notes__)
+    # a quantity of a model without a unit definition `IU` has it
+    with pytest.raises(UndefinedUnitError) as info:
+        UnitsInformation.from_sbml(LOTKA_VOLTERRA_SBML).quantity(5.0, "mIU/ml")
+    assert "no international unit" in "\n".join(info.value.__notes__)
+
+
 def check_uinfo(uinfo: UnitsInformation) -> None:
     """Check UnitsInformation."""
     assert uinfo
@@ -261,3 +298,216 @@ def test_a_unit_with_a_factor_of_two_models_is_defined_per_model() -> None:
     )
     assert Q(21, "g").to(u_a["p"]).magnitude == pytest.approx(3.0)
     assert Q(21, "g").to(u_b["p"]).magnitude == pytest.approx(7.0)
+
+
+#: the units of the unit definitions of the tests, `(kind, multiplier, scale,
+#: exponent)`
+MILLIGRAM = (libsbml.UNIT_KIND_GRAM, 1.0, -3, 1)
+GRAM = (libsbml.UNIT_KIND_GRAM, 1.0, 0, 1)
+KILOGRAM = (libsbml.UNIT_KIND_GRAM, 1.0, 3, 1)
+MINUTE = (libsbml.UNIT_KIND_SECOND, 60.0, 0, 1)
+PER_MINUTE = (libsbml.UNIT_KIND_SECOND, 60.0, 0, -1)
+SECOND = (libsbml.UNIT_KIND_SECOND, 1.0, 0, 1)
+COUNT = (libsbml.UNIT_KIND_ITEM, 1.0, 0, 1)
+
+
+def _sbml_with_units(**definitions: tuple[tuple[int, float, int, int], ...]) -> str:
+    """Get the SBML of a model with the unit definitions, a parameter in each."""
+    # the level and version of the unit definitions of `_udef`
+    doc = libsbml.SBMLDocument(3, 1)
+    model = doc.createModel()
+    model.setId(f"m_{'_'.join(definitions)}")
+    for uid, units in definitions.items():
+        udef = _udef(*units)
+        udef.setId(uid)
+        assert model.addUnitDefinition(udef) == libsbml.LIBSBML_OPERATION_SUCCESS
+        p = model.createParameter()
+        p.setId(f"p_{uid}")
+        p.setValue(1.0)
+        p.setConstant(True)
+        p.setUnits(uid)
+    return libsbml.writeSBMLToString(doc)
+
+
+def _uinfo(**definitions: tuple[tuple[int, float, int, int], ...]) -> UnitsInformation:
+    """Get the units of a model with the unit definitions."""
+    return UnitsInformation.from_sbml(_sbml_with_units(**definitions))
+
+
+def test_q_takes_pint_units_and_names_the_quantities_of_a_model() -> None:
+    """`Q` does not know the unit ids of a model, its error names the ones which do (#268)."""
+    from pint.errors import UndefinedUnitError
+
+    import sbmlsim
+    from sbmlsim import Q, units
+
+    assert sbmlsim.Q is units.Q
+    # the class methods of the quantities and the check of an instance
+    doses = Q.from_list([Q(1.0, "mg"), Q(2.0, "mg")])
+    assert list(doses.to("g").magnitude) == pytest.approx([1e-3, 2e-3])
+    assert isinstance(doses, Q)  # ty: ignore[invalid-argument-type]
+    assert not isinstance(1.0, Q)  # ty: ignore[invalid-argument-type]
+    _uinfo(mg_per_min=(MILLIGRAM, PER_MINUTE))
+    with pytest.raises(UndefinedUnitError) as info:
+        Q(0, "mg_per_min")
+    notes = "\n".join(info.value.__notes__)
+    assert "model.Q" in notes
+    assert "experiment.Q" in notes
+
+
+def test_the_unit_ids_of_a_model_are_kept() -> None:
+    """The units information of a model has the expression of every unit id."""
+    uinfo = _uinfo(mg_per_min=(MILLIGRAM, PER_MINUTE))
+    assert uinfo.unit_ids["mg_per_min"] == "mg/min"
+    assert uinfo["p_mg_per_min"] == "mg/min"
+
+
+@pytest.mark.parametrize(
+    "unit, pint_unit",
+    [
+        ("mg_per_min", "mg/min"),
+        # a unit id with units of pint
+        ("mg_per_min/kg", "mg/min/kg"),
+        ("kg*mg_per_min", "kg*mg/min"),
+        ("1/min_unit", "1/min"),
+        # the expression is one factor, the power applies to all of it
+        ("mg_per_min^2", "mg^2/min^2"),
+        ("mg_per_min**-1", "min/mg"),
+        # units of pint only
+        ("mg/min", "mg/min"),
+        ("µg/min", "µg/min"),
+    ],
+)
+def test_a_quantity_of_a_model_resolves_its_unit_ids(unit: str, pint_unit: str) -> None:
+    """Every identifier of a unit string which is a unit id is its expression."""
+    from sbmlsim import Q
+
+    uinfo = _uinfo(mg_per_min=(MILLIGRAM, PER_MINUTE), min_unit=(MINUTE,))
+    quantity = uinfo.quantity(2.0, unit)
+    assert quantity._REGISTRY is uinfo.ureg
+    assert quantity.to(pint_unit).magnitude == pytest.approx(2.0)
+    assert quantity.dimensionality == Q(1.0, pint_unit).dimensionality
+
+
+def test_a_unit_id_is_replaced_as_a_whole_identifier() -> None:
+    """An id inside a longer identifier or in an expression is not replaced."""
+    # the model means a gram by `mg`, its unit id wins over the unit of pint
+    uinfo = _uinfo(mg=(GRAM,), mg_per_min=(MILLIGRAM, PER_MINUTE))
+    assert uinfo.unit_ids["mg"] == "g"
+    assert uinfo.quantity(1.0, "mg").to("g").magnitude == pytest.approx(1.0)
+    assert uinfo.quantity(1.0, "mg/min").to("g/min").magnitude == pytest.approx(1.0)
+    # neither inside `mg_per_min` nor inside its expression `mg/min`
+    assert uinfo.resolve_unit("mg_per_min") == "mg/min"
+    assert uinfo.resolve_unit("mg_per_min/kg") == "(mg/min)/kg"
+    assert uinfo.quantity(1.0, "mg_per_min").to("mg/min").magnitude == pytest.approx(
+        1.0
+    )
+
+
+def test_the_exponent_of_a_number_is_no_unit_id() -> None:
+    """The `e` of `1e-3` is part of the number, a unit id `e` is not replaced in it."""
+    from sbmlsim.units import replace_unit_ids, unit_identifiers
+
+    assert unit_identifiers("1e-3*mg_per_min/kg^2.5E+1") == ["mg_per_min", "kg"]
+    assert replace_unit_ids("1e-3*e/e2^1e1", {"e": "s", "e2": "min"}) == (
+        "1e-3*(s)/(min)^1e1"
+    )
+    uinfo = _uinfo(e=(SECOND,))
+    assert uinfo.resolve_unit("1e-3*e^2") == "1e-3*(s)^2"
+
+
+def test_a_dimensionless_unit_id_is_a_quantity() -> None:
+    """The expression of a dimensionless unit definition is empty, its id resolves."""
+    uinfo = _uinfo(ratio=((libsbml.UNIT_KIND_DIMENSIONLESS, 1.0, 0, 1),))
+    assert uinfo.unit_ids["ratio"] == ""
+    assert uinfo.quantity(2.0, "ratio/min").to("1/min").magnitude == pytest.approx(2.0)
+
+
+def test_a_unit_id_with_a_factor_is_a_quantity() -> None:
+    """A unit pint writes only with a factor is defined in the registry and resolves."""
+    uinfo = _uinfo(u_factor_q=((libsbml.UNIT_KIND_GRAM, 7.0, 0, 1),))
+    assert uinfo.quantity(1.0, "u_factor_q").to("g").magnitude == pytest.approx(7.0)
+    assert uinfo.quantity(1.0, "u_factor_q/ml").to("g/ml").magnitude == pytest.approx(
+        7.0
+    )
+
+
+def test_a_unit_id_with_a_factor_of_two_models_is_a_quantity_of_each() -> None:
+    """A second model's factor unit of the same id, defined as `<id>_<n>`, resolves."""
+    from sbmlsim.model import RoadrunnerSBMLModel
+
+    a = RoadrunnerSBMLModel(
+        source=_sbml_with_units(u_collision=((libsbml.UNIT_KIND_GRAM, 5.0, 0, 1),))
+    )
+    b = RoadrunnerSBMLModel(
+        source=_sbml_with_units(u_collision=((libsbml.UNIT_KIND_GRAM, 11.0, 0, 1),))
+    )
+    names = {a.uinfo.unit_ids["u_collision"], b.uinfo.unit_ids["u_collision"]}
+    assert names == {"u_collision", "u_collision_2"}
+    assert a.Q(1.0, "u_collision").to("g").magnitude == pytest.approx(5.0)
+    assert b.Q(1.0, "u_collision").to("g").magnitude == pytest.approx(11.0)
+    assert b.Q(2.0, "u_collision/ml").to("g/ml").magnitude == pytest.approx(22.0)
+
+
+def test_a_model_defines_its_own_international_unit() -> None:
+    """A model with a unit definition `IU` resolves it, the package registry has none."""
+    from pint.errors import UndefinedUnitError
+
+    uinfo = _uinfo(IU=(COUNT,))
+    assert uinfo.quantity(5.0, "IU/ml").to("1/ml").magnitude == pytest.approx(5.0)
+    with pytest.raises(UndefinedUnitError):
+        UnitsInformation.from_sbml(LOTKA_VOLTERRA_SBML).quantity(5.0, "IU/ml")
+
+
+def test_a_unit_which_is_no_unit_id_raises_the_error_of_pint() -> None:
+    """A unit of neither pint nor the model raises `UndefinedUnitError`."""
+    from pint.errors import UndefinedUnitError
+
+    uinfo = _uinfo(mg_per_min=(MILLIGRAM, PER_MINUTE))
+    with pytest.raises(UndefinedUnitError):
+        uinfo.quantity(1.0, "mg_per_hr")
+
+
+def test_a_copy_of_the_units_information_owns_its_dicts() -> None:
+    """A copy has the unit ids, its own dicts and the registry of the original."""
+    import copy
+
+    uinfo = _uinfo(mg_per_min=(MILLIGRAM, PER_MINUTE))
+    for clone in [uinfo.copy(), copy.copy(uinfo), copy.deepcopy(uinfo)]:
+        assert clone.unit_ids == uinfo.unit_ids
+        assert clone.unit_ids is not uinfo.unit_ids
+        assert dict(clone) == dict(uinfo)
+        assert clone.udict is not uinfo.udict
+        assert clone.ureg is uinfo.ureg
+        clone.unit_ids["mg_per_min"] = "g/min"
+        clone["p_mg_per_min"] = "g/min"
+        assert uinfo.unit_ids["mg_per_min"] == "mg/min"
+        assert uinfo["p_mg_per_min"] == "mg/min"
+
+
+def test_a_model_creates_quantities_of_its_unit_ids() -> None:
+    """`RoadrunnerSBMLModel.Q` is the quantity of the units of its model."""
+    from sbmlsim.model import RoadrunnerSBMLModel
+
+    model = RoadrunnerSBMLModel(
+        source=_sbml_with_units(mg_per_min=(MILLIGRAM, PER_MINUTE), kg=(KILOGRAM,))
+    )
+    dose = model.Q(2.0, "mg_per_min/kg")
+    assert dose.to("mg/min/kg").magnitude == pytest.approx(2.0)
+    assert model.Q(3.0, "mg").to("g").magnitude == pytest.approx(0.003)
+
+
+def test_a_quantity_of_a_model_takes_a_unit_of_pint() -> None:
+    """A unit of pint, e.g. the units of a quantity, is taken as it is, as by `Q`."""
+    from sbmlsim import Q
+    from sbmlsim.model import RoadrunnerSBMLModel
+    from sbmlsim.units import ureg
+
+    source = _sbml_with_units(mg_per_min=(MILLIGRAM, PER_MINUTE))
+    uinfo = UnitsInformation.from_sbml(source)
+    model = RoadrunnerSBMLModel(source=source)
+    rate = model.Q(2.0, "mg_per_min")
+    for unit in [ureg.mg, Q(1.0, "mg/min").units, rate.units]:
+        for quantity in [uinfo.quantity(3.0, unit), model.Q(3.0, unit)]:
+            assert quantity.units == unit
+            assert quantity.magnitude == 3.0

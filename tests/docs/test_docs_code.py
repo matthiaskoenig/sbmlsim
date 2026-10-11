@@ -21,6 +21,7 @@ PAGES = [
     "sampling.md",
     "models.md",
     "units.md",
+    "plotting.md",
     "data.md",
     "observables.md",
     "sensitivity.md",

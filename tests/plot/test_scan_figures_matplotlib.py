@@ -16,7 +16,7 @@ from matplotlib.transforms import Bbox
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.plot import Axis, Figure, Plot
+from sbmlsim.plot import Axis, Figure, FigureSettings, Plot
 from sbmlsim.plot.plotting import CurveType, YAxisPosition
 from sbmlsim.plot.points import point_colormap
 from sbmlsim.plot.serialization_matplotlib import MatplotlibFigureSerializer
@@ -240,9 +240,13 @@ def _figure(
     right: bool = False,
     outside: bool = False,
 ) -> FigureMPL:
-    figure = Figure(experiment=experiment, sid="fig", num_rows=1, num_cols=1)
-    if outside:
-        figure.legend_position = "outside"
+    figure = Figure(
+        experiment=experiment,
+        sid="fig",
+        num_rows=1,
+        num_cols=1,
+        settings={"legend_position": "outside"} if outside else None,
+    )
     plot = figure.create_plots(
         xaxis=Axis("time", unit="hr"),
         yaxis=Axis("C", unit="mg/l"),
@@ -633,7 +637,7 @@ def test_colour_bars_widen_the_figure_and_keep_the_panels(
     _curve(plots[1], "task_doses", "dose")
     fig = MatplotlibFigureSerializer.to_figure(experiment, figure)
     left, right, *_bars = fig.axes
-    assert fig.get_figwidth() > figure.width
+    assert fig.get_figwidth() > 2 * FigureSettings().panel_width
     assert left.get_position().width == pytest.approx(right.get_position().width)
 
 
