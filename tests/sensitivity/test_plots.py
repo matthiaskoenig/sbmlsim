@@ -13,12 +13,16 @@ from matplotlib.axis import Axis
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import LineCollection, QuadMesh
 from matplotlib.colors import to_rgba
+from matplotlib.container import BarContainer
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 from matplotlib.text import Text
 
-from sbmlsim.sensitivity import plot_heatmap, plot_indices, plot_morris
+from sbmlsim.sensitivity import local, plot_heatmap, plot_indices, plot_morris
 from sbmlsim.sensitivity.result import PARAMETER, SensitivityResult
+from sbmlsim.simulation import Change, Formula, Scan, Simulation, sampling
+from sbmlsim.simulator import Simulator
+from tests.simulator.models import sbml
 
 
 def _sobol() -> SensitivityResult:
@@ -501,3 +505,64 @@ def test_a_parameter_without_indices_is_marked() -> None:
     (ax,) = figure.axes
     assert [t.get_text() for t in ax.texts] == ["n/a"]
     assert ax.get_xlim()[1] > len(result.parameters) - 1 + 0.2
+
+
+def test_a_plot_at_the_time_of_a_change_shows_the_state_after_it() -> None:
+    """The time of a change selects the state after it, as a time of a grid does.
+
+    The output has the states before and after the reset of `A` at 5, the
+    plots raised that `time` had two labels.
+    """
+    simulator = Simulator(n_workers=1)
+    model = simulator.load(
+        sbml("model d\n  var A = 0\n  k = 0.2\n  p = 1\n  A' = p - k*A\nend")
+    )
+    simulation = Simulation(
+        end=10, times=[0, 2.5, 5, 7.5, 10], changes=[Change(5, {"A": 1.0})]
+    )
+    design = sampling.local(["k", "p"], 0.01, model=model)
+    scan = simulator.run(model, Scan(simulation, [design]), [Formula("a", "A")])
+    result = local(scan)
+    assert result["a.normalized"]["time"].values.tolist() == [0, 2.5, 5, 5, 7.5, 10]
+    before, after = (
+        result["a.normalized"].isel(time=2),
+        result["a.normalized"].isel(time=3),
+    )
+    assert not np.allclose(before.values, after.values)
+    at = result.sel(time=5.0)
+    np.testing.assert_array_equal(at["a.normalized"].values, after.values)
+    stacked = at.index("normalized")
+    np.testing.assert_array_equal(stacked.sel(observable="a").values, after.values)
+    mesh = _mesh(plot_heatmap(at, "normalized", cutoff=0))
+    assert np.asarray(mesh.get_array()).size == 2
+
+
+def test_the_indices_at_the_time_of_a_change_are_the_ones_after_it() -> None:
+    """A plot of a timecourse selects the state after a change at its time."""
+    time = [0.0, 5.0, 5.0, 10.0]
+    data = {
+        f"y.{key}": ((PARAMETER, "time"), np.full((2, 4), 0.01))
+        for key in ("S1_conf", "ST_conf")
+    }
+    for key, scale in (("S1", 1.0), ("ST", 2.0)):
+        values = np.array([[0.1, 0.2, 0.3, 0.4], [0.05, 0.1, 0.15, 0.2]]) * scale
+        data[f"y.{key}"] = ((PARAMETER, "time"), values)
+    result = SensitivityResult(
+        xr.Dataset(
+            data,
+            coords={PARAMETER: ["a", "b"], "time": time},
+            attrs={"units": dict.fromkeys(data, ""), "method": "sobol"},
+        )
+    )
+
+    def heights(figure: Figure) -> list[float]:
+        return sorted(
+            float(bar.get_height())
+            for container in figure.axes[0].containers
+            if isinstance(container, BarContainer)
+            for bar in container
+        )
+
+    after = heights(plot_indices(result.isel(time=2), "y"))
+    assert heights(plot_indices(result, "y", time=5.0)) == after
+    np.testing.assert_allclose(after, [0.15, 0.3, 0.3, 0.6])

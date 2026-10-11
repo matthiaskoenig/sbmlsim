@@ -61,6 +61,38 @@ def _keep_parameter(indexers: dict[str, Any]) -> dict[str, Any]:
     return indexers
 
 
+def at_one_time[T: (xr.Dataset, xr.DataArray)](
+    data: T, indexers: dict[str, Any]
+) -> tuple[T, dict[str, Any]]:
+    """Select a single time which the data has twice as its state after the change.
+
+    The time of a change after the start appears twice in a timecourse, the
+    states before and after the change; a single time selects the state after
+    it, as a time of a grid does (`sbmlsim.result.timecourse.grid_weights`).
+
+    Args:
+        data: the data.
+        indexers: the labels to select, by dimension.
+
+    Returns:
+        The data at the time, if it has it twice, and the other indexers; else
+        the data and the indexers.
+    """
+    label = indexers.get(TIME)
+    if (
+        label is None
+        or isinstance(label, slice)
+        or np.ndim(label) != 0
+        or TIME not in data.dims
+    ):
+        return data, indexers
+    at = np.flatnonzero(data[TIME].values == label)
+    if at.size < 2:
+        return data, indexers
+    rest = {dim: value for dim, value in indexers.items() if dim != TIME}
+    return data.isel({TIME: int(at[-1])}), rest
+
+
 class SensitivityResult:
     """The indices of a sensitivity analysis, see the module.
 
@@ -116,7 +148,8 @@ class SensitivityResult:
     ) -> xr.DataArray:
         """Stack an index of the scalar observables into `(parameter, observable, ...)`.
 
-        A timecourse is stacked at one time point, e.g. `sel(time=10).index(...)`.
+        A timecourse is stacked at one time point, e.g. `sel(time=10).index(...)`,
+        which is the state after a change at the time 10, see `sel`.
 
         Args:
             name: the index, e.g. `ST`.
@@ -174,9 +207,12 @@ class SensitivityResult:
         """Select labels, see `xarray.Dataset.sel`.
 
         A single label of `parameter` keeps the dimension, which a result has:
-        `sel(parameter="k1")` is `sel(parameter=["k1"])`.
+        `sel(parameter="k1")` is `sel(parameter=["k1"])`. A single time of a
+        change after the start, which a timecourse has twice, selects the
+        state after the change, see `at_one_time`; `isel` selects either.
         """
-        return SensitivityResult(self.ds.sel(**_keep_parameter(indexers)))
+        ds, rest = at_one_time(self.ds, indexers)
+        return SensitivityResult(ds.sel(**_keep_parameter(rest)))
 
     def isel(self, **indexers: Any) -> SensitivityResult:
         """Select positions, see `xarray.Dataset.isel`.

@@ -35,6 +35,7 @@ from sbmlsim.sensitivity.result import (
     DIMENSIONLESS_INDICES,
     PARAMETER,
     SensitivityResult,
+    at_one_time,
 )
 
 SIGNED_INDICES = ("raw", "normalized", "mu")
@@ -398,7 +399,8 @@ def _selected(
 
     Args:
         data: the indices.
-        selection: the labels to select, by dimension.
+        selection: the labels to select, by dimension; the time of a change,
+            which a timecourse has twice, selects the state after it.
         keep: the dimensions which the plot draws.
 
     Returns:
@@ -408,8 +410,9 @@ def _selected(
         ValueError: if a dimension or a label does not exist, or if a dimension
             outside `keep` has more than one label.
     """
-    selected = data
-    for dim, label in selection.items():
+    # the time of a change, which a timecourse has twice: the state after it
+    selected, rest = at_one_time(data, dict(selection))
+    for dim, label in rest.items():
         if dim not in selected.dims:
             available = [str(d) for d in data.dims if str(d) not in keep]
             raise ValueError(
