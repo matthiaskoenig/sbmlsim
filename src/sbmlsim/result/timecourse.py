@@ -134,10 +134,11 @@ def grid_weights(
     Two time points at most `tolerance` apart are a jump: an event of the
     model, whose states before and after it the steps of the integrator have
     at almost one time, or a duplicated final time, the state after a change
-    at the end. A time of the grid inside a jump or at its end sees the state
-    after it, a time of its first point the state of that point; the fit
-    interpolates its data by the same rule, see
-    `sbmlsim.fit.optimization._interpolate_after_jumps`.
+    at the end. A time of the grid at a jump sees the state after it: a time
+    inside it, at one of its points or at most `tolerance` before it, since
+    roadrunner locates an event only to the tolerance of its roots, on
+    either side of its time. The fit interpolates its data by the same rule,
+    see `sbmlsim.fit.optimization._interpolate_after_jumps`.
 
     Args:
         time: the time points, sorted; the ones which are not finite are no
@@ -159,11 +160,21 @@ def grid_weights(
     low = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, max(t.size - 2, 0))
     up = np.minimum(low + 1, t.size - 1)
     span = t[up] - t[low]
-    jump = span <= tolerance
-    after = ((grid > t[low]) | (grid >= t[up])).astype(float)
+    jump = (span <= tolerance) & (up > low)
     with np.errstate(divide="ignore", invalid="ignore"):
-        weight = np.where(jump, after, (grid - t[low]) / np.where(jump, 1.0, span))
+        weight = np.where(jump, 1.0, (grid - t[low]) / np.where(jump, 1.0, span))
     weight = np.where(up > low, weight, 0.0)
+    # a time at most the tolerance before the first point of a jump
+    after = np.minimum(up + 1, t.size - 1)
+    ahead = (
+        ~jump
+        & (after > up)
+        & (t[after] - t[up] <= tolerance)
+        & (t[up] - grid <= tolerance)
+    )
+    low = np.where(ahead, up, low)
+    up = np.where(ahead, after, up)
+    weight = np.where(ahead, 1.0, weight)
     return GridWeights(finite[low], finite[up], weight, valid)
 
 

@@ -369,7 +369,11 @@ def _with_jumps(
 
 
 def _interpolate_after_jumps(
-    x: np.ndarray, time: np.ndarray, values: np.ndarray, tolerance: float = 0.0
+    x: np.ndarray,
+    time: np.ndarray,
+    values: np.ndarray,
+    tolerance: float = 0.0,
+    changes: np.ndarray | None = None,
 ) -> np.ndarray:
     """Interpolate a timecourse linearly, a jump at a change or an event included.
 
@@ -378,8 +382,13 @@ def _interpolate_after_jumps(
     or an event of the model, which the steps of the integrator have at one
     time or at times closer than the tolerance of a root of roadrunner. A
     time before a jump is interpolated toward the state before it, a time
-    inside it and after it sees the state after it; a time of the timecourse
-    sees its state, the last one of a time it has twice.
+    inside it, at one of its points and after it sees the state after it, the
+    rule of `sbmlsim.result.timecourse.grid_weights`. So does a time at most
+    the resolution before an event of the model, which roadrunner locates
+    only to the tolerance of its roots, on either side of its time. A change
+    has its exact time: a time before it is before it, and its time sees its
+    state after it, not the one of a step of the integrator after it which
+    is closer than the resolution.
 
     Args:
         x: the times to interpolate at.
@@ -387,6 +396,7 @@ def _interpolate_after_jumps(
         values: the timecourse.
         tolerance: the resolution of the time, see
             `sbmlsim.simulator.plan.time_tolerance`.
+        changes: the times of the changes whose jumps the timecourse has.
 
     Returns:
         The values at `x`.
@@ -400,13 +410,28 @@ def _interpolate_after_jumps(
             f"The times {x[(x < time[0]) | (x > time[-1])].tolist()} are outside "
             f"of the timecourse [{time[0]}, {time[-1]}]."
         )
+    changes = np.empty(0) if changes is None else np.asarray(changes, dtype=float)
     i = np.clip(np.searchsorted(time, x, side="right") - 1, 0, time.size - 1)
     j = np.minimum(i + 1, time.size - 1)
     span = time[j] - time[i]
     jump = span <= tolerance
-    # a time inside a jump sees the state after it, a time of the timecourse
-    # its own state
-    weight = np.divide(x - time[i], span, out=(x > time[i]).astype(float), where=~jump)
+    # the time of a change sees the state after it, its own point, also where
+    # the first step of the integrator after it is shorter than the resolution
+    own = np.isin(time[i], changes) & (x == time[i])
+    weight = np.divide(x - time[i], span, out=np.where(own, 0.0, 1.0), where=~jump)
+    # a time at most the resolution before the first point of a jump which is
+    # an event of the model
+    k = np.minimum(j + 1, time.size - 1)
+    ahead = (
+        ~jump
+        & (k > j)
+        & (time[k] - time[j] <= tolerance)
+        & (time[j] - x <= tolerance)
+        & ~np.isin(time[j], changes)
+    )
+    i = np.where(ahead, j, i)
+    j = np.where(ahead, k, j)
+    weight = np.where(ahead, 1.0, weight)
     return values[i] + weight * (values[j] - values[i])
 
 
@@ -3301,6 +3326,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         time,
                         column,
                         result.tolerance,
+                        result.changes,
                     )
                 else:
                     f = interpolate.interp1d(

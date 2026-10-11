@@ -365,16 +365,21 @@ def test_the_weights_take_the_value_after_an_event_of_the_model() -> None:
     """Two times closer than the tolerance are a jump, as the fit has it.
 
     The steps of the integrator have the states before and after an event at
-    times a little apart, at the event at 1 and at the end.
+    times a little apart, at the event at 1 and at the end. A time at a jump
+    sees the state after it: inside it, at one of its points and at most the
+    tolerance before it, since roadrunner locates an event only to the
+    tolerance of its roots, before or after its time.
     """
     from sbmlsim.fit.optimization import _interpolate_after_jumps
 
     tolerance = 1e-9
     time = np.array([0.0, 1.0 - 1e-12, 1.0 + 1e-12, 1.5, 2.0 - 1e-12, 2.0])
     values = np.array([0.0, 1.0, 0.0, 0.5, 1.0, 0.0])
-    grid = np.array([0.0, 0.5, 1.0 - 1e-12, 1.0, 1.0 + 1e-12, 1.25, 2.0 - 1e-12, 2.0])
+    grid = np.array(
+        [0.0, 0.5, 1.0 - 1e-10, 1.0 - 1e-12, 1.0, 1.0 + 1e-12, 1.25, 2.0 - 1e-12, 2.0]
+    )
     out = apply_weights(grid_weights(time, grid, tolerance), values)
-    np.testing.assert_allclose(out, [0.0, 0.5, 1.0, 0.0, 0.0, 0.25, 1.0, 0.0])
+    np.testing.assert_allclose(out, [0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.25, 0.0, 0.0])
     np.testing.assert_allclose(
         out, _interpolate_after_jumps(grid, time, values, tolerance)
     )
@@ -383,6 +388,33 @@ def test_the_weights_take_the_value_after_an_event_of_the_model() -> None:
     )
     # without the tolerance the times are interpolated, the event at 1 is half
     # way between the states before and after it
-    assert apply_weights(grid_weights(time, grid), values)[3] == pytest.approx(
+    assert apply_weights(grid_weights(time, grid), values)[4] == pytest.approx(
         0.5, abs=1e-3
     )
+    # a time further before the jump than the tolerance is before it
+    early = np.array([1.0 - 1e-8])
+    assert apply_weights(grid_weights(time, early, tolerance), values)[0] == (
+        pytest.approx(1.0, abs=1e-6)
+    )
+    assert _interpolate_after_jumps(early, time, values, tolerance)[0] == (
+        pytest.approx(1.0, abs=1e-6)
+    )
+
+
+def test_the_fit_keeps_the_time_of_a_change() -> None:
+    """A time before a change is before it, its time sees its state after it.
+
+    The states before and after a change at 1 at one time, the first step of
+    the integrator after it closer than the tolerance; an event of the model
+    at 2, a time a little before it sees the state after it.
+    """
+    from sbmlsim.fit.optimization import _interpolate_after_jumps
+
+    tolerance = 1e-9
+    time = np.array([0.0, 1.0, 1.0, 1.0 + 1e-12, 1.5, 2.0 + 1e-12, 2.0 + 2e-12, 3.0])
+    values = np.array([0.0, 1.0, 5.0, 5.0 + 1e-12, 4.0, 3.0, 0.0, 1.0])
+    x = np.array([1.0 - 1e-10, 1.0, 2.0])
+    out = _interpolate_after_jumps(x, time, values, tolerance, np.array([1.0]))
+    assert out[0] == pytest.approx(1.0, abs=1e-6)
+    assert out[1] == 5.0
+    assert out[2] == 0.0

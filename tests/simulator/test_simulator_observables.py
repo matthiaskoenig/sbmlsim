@@ -413,12 +413,15 @@ def test_an_observable_id_must_not_be_a_dimension_id() -> None:
 
 
 @pytest.mark.parametrize(
+    "trigger", ["at (X >= 1)", "at (time >= 1.0000000001)"], ids=["reset", "late"]
+)
+@pytest.mark.parametrize(
     "changes",
     [[], [Change(1.998, {"k": 1.0})]],
     ids=["steps", "exact output of a segment past its end"],
 )
 def test_a_time_at_an_event_of_the_model_sees_the_state_after_it(
-    changes: list[Change],
+    changes: list[Change], trigger: str
 ) -> None:
     """A grid, `at` and `interpolate` take the reset of the sawtooth as the fit does.
 
@@ -426,7 +429,9 @@ def test_a_time_at_an_event_of_the_model_sees_the_state_after_it(
     at 1 at times a little apart, the second case integrates the segment up
     to the change at 1.998 again with exact output (its last step ends after
     the reset at 2), whose times before and after the reset are a resolution
-    apart. A time at the reset sees the state after it, not a value between.
+    apart. A time at the reset sees the state after it, not a value between,
+    also where roadrunner locates the reset a little after the time, as for
+    the late reset, which is closer to 1 than the resolution of the time.
     """
     from sbmlsim.fit.optimization import _interpolate_after_jumps
     from sbmlsim.simulator.plan import time_tolerance
@@ -438,8 +443,9 @@ def test_a_time_at_an_event_of_the_model_sees_the_state_after_it(
     )
     observables = [Formula("x", "X"), Formula("x1", "at(x, 1)")]
     grid = np.array([0.5, 1.0, 1.5])
-    native = Simulator().run(sbml(SAWTOOTH), scan, observables)
-    gridded = Simulator().run(sbml(SAWTOOTH), scan, observables, time=grid)
+    model = sbml(SAWTOOTH.replace("at (X >= 1)", trigger))
+    native = Simulator().run(model, scan, observables)
+    gridded = Simulator().run(model, scan, observables, time=grid)
     np.testing.assert_allclose(native["x1"].values, 0.0, atol=1e-8)
     np.testing.assert_allclose(gridded["x"].values, [[0.5, 0.0, 0.5]] * 2, atol=1e-6)
     np.testing.assert_allclose(

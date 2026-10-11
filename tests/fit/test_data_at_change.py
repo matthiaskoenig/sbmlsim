@@ -1088,19 +1088,27 @@ class SawtoothStudy(SimulationExperiment):
         return mappings
 
 
+#: the reset of the sawtooth at 1, closer to it than the resolution of the time
+#: of a simulation to 2.5 but after it
+LATE_RESET = "at (time >= 1.0000000001)"
+
+
+@pytest.mark.parametrize("trigger", ["at (X >= 1)", LATE_RESET])
 @pytest.mark.parametrize("task", ["task_steps", "task_past"])
 def test_data_at_an_event_of_the_model_sees_the_state_after_it(
-    tmp_path: Path, task: str
+    tmp_path: Path, task: str, trigger: str
 ) -> None:
     """Data at the time of an event of the model takes the state after the event.
 
     The steps of the integrator have the states before and after the reset
     at 1 at times closer than the resolution of the time, also in a segment
     integrated again with exact output; data at 1 is not their midpoint.
+    roadrunner locates the reset only to the tolerance of its roots, its
+    states can be a little after the data at 1, as they are for the late
+    reset, which data at 1 sees as well.
     """
-    (tmp_path / SAWTOOTH_FILE).write_text(
-        sbml(SAWTOOTH.replace("k = 1", "k = 1\n  p = 1"))
-    )
+    model = SAWTOOTH.replace("k = 1", "k = 1\n  p = 1").replace("at (X >= 1)", trigger)
+    (tmp_path / SAWTOOTH_FILE).write_text(sbml(model))
     problem = OptimizationProblem(
         "sawtooth",
         [
