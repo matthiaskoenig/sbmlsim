@@ -40,9 +40,12 @@ SCIML_EXTRA = "pip install sbmlsim[sciml]"
 #: `check_extensions`
 KNOWN_EXTENSIONS: frozenset[str] = frozenset({EXTENSION_ID})
 
-#: version of the extension, raised when the block changes. 0.3.0 holds the
-#: `Simulation` of an experiment, the versions before its timecourses
-EXTENSION_VERSION = "0.3.0"
+#: version of the extension, raised when the block changes. 0.4.0 carries the
+#: setting `data_at_change` in `settings`; the settings of an earlier version
+#: do not have it and are read with `after`, the comparison they were written
+#: for (`FitSettings.from_dict`). 0.3.0 holds the `Simulation` of an
+#: experiment, the versions before its timecourses
+EXTENSION_VERSION = "0.4.0"
 
 
 class SbmlsimExtension(ExtensionConfig):

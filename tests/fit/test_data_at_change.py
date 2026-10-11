@@ -11,9 +11,12 @@ import logging
 from pathlib import Path
 from typing import Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
+import yaml
+from matplotlib.figure import Figure
 
 from sbmlsim import Q
 from sbmlsim.data import DataSet
@@ -28,9 +31,11 @@ from sbmlsim.fit import (
 from sbmlsim.fit.objects import ObservableModel
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
-from sbmlsim.fit.petab_v2 import to_petab
+from sbmlsim.fit.parameters import ParameterSet
+from sbmlsim.fit.petab_v2 import EXTENSION_VERSION, to_petab
 from sbmlsim.fit.petab_v2.gaps import gaps_of_problem, measurements_at_changes
 from sbmlsim.fit.petab_v2.reader import PetabReader, from_petab
+from sbmlsim.fit.report import FitReport
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import PK, Change, Formula, Observable, Simulation
 from sbmlsim.simulator import Simulator
@@ -537,6 +542,23 @@ def test_a_first_point_just_before_a_change_takes_the_state_after(
 
 
 @pytest.mark.parametrize("dense", [False, True])
+def test_after_takes_a_time_just_before_a_change_as_it_is(
+    tmp_path: Path, dense: bool
+) -> None:
+    """`after` compares a time closer to the reset than the resolution as PEtab does.
+
+    The time is before the reset, its state is the urine collected until the
+    reset, not the emptied urine after it.
+    """
+    mappings = ["fm_second_early", "fm_cmax"] if dense else ["fm_second_early"]
+    problem = _problem(mappings, tmp_path, DataAtChangeType.AFTER)
+    prediction = _predictions(problem)["fm_second_early"]
+    assert prediction[0] == pytest.approx(
+        TRUTH["urine"][1], rel=INTERPOLATED_RTOL if dense else 1e-5
+    )
+
+
+@pytest.mark.parametrize("dense", [False, True])
 @pytest.mark.parametrize("data_at_change", list(DataAtChangeType))
 def test_the_curve_of_a_mapping_jumps_at_a_change(
     tmp_path: Path, dense: bool, data_at_change: DataAtChangeType
@@ -560,6 +582,50 @@ def test_the_curve_of_a_mapping_jumps_at_a_change(
     assert y[at[1]] == pytest.approx(0.0, abs=1e-8)
     expected = 0 if data_at_change is DataAtChangeType.BEFORE else 1
     assert prediction[1] == y[at[expected]]
+
+
+@pytest.mark.parametrize("dense", [False, True])
+def test_the_log_panel_of_a_curve_has_a_gap_at_zero(
+    tmp_path: Path, dense: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The emptied urine after the reset is no vertical line to the bottom.
+
+    A logarithmic axis clips the `0` of the curve after the reset (and at the
+    start of a dense output), the curve has a gap there; the linear panel
+    keeps the jump to `0`.
+    """
+    figures: dict[str, Figure] = {}
+    monkeypatch.setattr(
+        FitReport,
+        "_save_mpl_figure",
+        lambda self, fig, path: figures.__setitem__(path.stem, fig),
+    )
+    mappings = ["fm_urine", "fm_cmax"] if dense else ["fm_urine"]
+    problem = _problem(mappings, tmp_path)
+    report = FitReport(
+        problem,
+        problem.settings_initialized,
+        ParameterSet(sid="true", values={"ke": TRUE_KE}),
+    )
+    report.plot_fit(tmp_path)
+    report.plot_fit_residual(tmp_path)
+    try:
+        for name in ("UrineStudy_fm_urine", "fit_UrineStudy_fm_urine"):
+            linear, log = figures[name].axes[:2]
+            assert log.get_yscale() == "log"
+            [curve] = [
+                line for line in linear.get_lines() if line.get_label() == "true"
+            ]
+            [masked] = [line for line in log.get_lines() if line.get_label() == "true"]
+            y = np.asarray(curve.get_ydata(), dtype=float)
+            y_log = np.asarray(masked.get_ydata(), dtype=float)
+            zero = y <= 0.0
+            assert zero.any()
+            assert np.isnan(y_log[zero]).all()
+            np.testing.assert_array_equal(y_log[~zero], y[~zero])
+    finally:
+        for fig in figures.values():
+            plt.close(fig)
 
 
 def test_a_group_with_observables_sees_the_state_before(tmp_path: Path) -> None:
@@ -928,6 +994,30 @@ def test_the_round_trip_keeps_the_data_at_a_change(
     x = np.array([TRUE_KE])
     np.testing.assert_allclose(
         read.predictions(x)[0], problem.predictions(x)[0], rtol=1e-6
+    )
+
+
+def test_an_extension_before_0_4_0_compares_the_data_after_a_change(
+    tmp_path: Path,
+) -> None:
+    """Version 0.4.0 carries `data_at_change`, the settings before it are `after`."""
+    problem = _problem(["fm_urine"], tmp_path)
+    yaml_file = to_petab(
+        problem, tmp_path / "petab", settings=problem.settings_initialized
+    )
+    config = yaml.safe_load(yaml_file.read_text())
+    block = config["extensions"]["sbmlsim"]
+    assert block["version"] == EXTENSION_VERSION == "0.4.0"
+    assert block["settings"]["data_at_change"] == DataAtChangeType.BEFORE.value
+    assert PetabReader.from_yaml(yaml_file).settings.data_at_change is (
+        DataAtChangeType.BEFORE
+    )
+
+    block["version"] = "0.3.0"
+    del block["settings"]["data_at_change"]
+    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False))
+    assert PetabReader.from_yaml(yaml_file).settings.data_at_change is (
+        DataAtChangeType.AFTER
     )
 
 

@@ -381,7 +381,9 @@ class PetabReader:
 
         Without the extension a data point at the time of a change is
         compared with the state after the change, the semantics of PEtab
-        (`DataAtChangeType.AFTER`).
+        (`DataAtChangeType.AFTER`), and so it is with an extension of a
+        version before 0.4.0, whose settings have no `data_at_change`, see
+        `FitSettings.from_dict`.
         """
         if self.extension is None or not self.extension.settings:
             logger.info(

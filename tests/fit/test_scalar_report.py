@@ -214,6 +214,97 @@ def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
     assert figures["OneDoseStudy_fm_one"].axes[0].get_xlabel() == "PODOSE [mg]"
 
 
+def test_the_figures_of_a_mapping_have_one_title_and_one_legend(
+    tmp_path: Path, figures: dict[str, Figure]
+) -> None:
+    """The title is above the panels and the legend below them, never inside.
+
+    A title per panel overlaps the next one for a long key, a legend inside
+    a panel covers the data. The legend has the data first and the entries
+    of every parameter set together.
+    """
+    problem = _problem(
+        [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
+    )
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        [
+            ParameterSet(sid="true", values={"V": TRUE_V}),
+            ParameterSet(sid="near", values={"V": 1.05 * TRUE_V}),
+        ],
+    )
+    report.plot_fit(tmp_path)
+    report.plot_fit_residual(tmp_path)
+    for name in ("DoseStudy_fm_dose", "fit_DoseStudy_fm_dose"):
+        fig = figures[name]
+        assert fig.get_suptitle() == "DoseStudy fm_dose"
+        assert all(ax.get_title() == "" for ax in fig.axes)
+        assert all(ax.get_legend() is None for ax in fig.axes)
+        [legend] = fig.legends
+        labels = [text.get_text() for text in legend.get_texts()]
+        assert labels[0].startswith("reference_data")
+        sets = [label.split(" ")[0] for label in labels[1:]]
+        assert sets == sorted(sets, key=["true", "near"].index)
+    assert [
+        text.get_text()
+        for text in figures["fit_DoseStudy_fm_dose"].legends[0].get_texts()
+    ] == [
+        "reference_data",
+        "true",
+        "true residuals",
+        "true $(w \\cdot r)^2$",
+        "near",
+        "near residuals",
+        "near $(w \\cdot r)^2$",
+    ]
+
+    figures.clear()
+    report.show_titles = False
+    report.plot_fit(tmp_path)
+    assert figures["DoseStudy_fm_dose"].get_suptitle() == ""
+
+
+def test_the_log_panels_of_a_mapping_leave_out_zeros(
+    tmp_path: Path, figures: dict[str, Figure]
+) -> None:
+    """The zero residuals of a perfect fit and negative ones are not in a log panel.
+
+    A logarithmic axis clips them to the bottom of the panel, a line drops
+    there; the error bars stay, also where they reach zero.
+    """
+    problem = _problem(
+        [FitMappingCollection(experiment=DoseStudy, mappings=["fm_dose"])], tmp_path
+    )
+    report = FitReport(
+        problem,
+        FitSettings(parameter_scale=ParameterScaleType.LINEAR),
+        [
+            ParameterSet(sid="true", values={"V": TRUE_V}),
+            ParameterSet(sid="near", values={"V": 1.05 * TRUE_V}),
+        ],
+    )
+    report.plot_fit_residual(tmp_path)
+    axes = figures["fit_DoseStudy_fm_dose"].axes
+    for linear, log in ((axes[0], axes[1]), (axes[2], axes[3])):
+        assert (linear.get_yscale(), log.get_yscale()) == ("linear", "log")
+        lines = {line.get_label(): line for line in linear.get_lines()}
+        for masked in log.get_lines():
+            y_log = np.asarray(masked.get_ydata(), dtype=float)
+            assert not np.any(y_log <= 0.0)
+            label = str(masked.get_label())
+            if label.startswith("_"):
+                continue
+            y = np.asarray(lines[label].get_ydata(), dtype=float)
+            np.testing.assert_array_equal(np.where(y > 0, y, np.nan), y_log)
+    # the zero residuals of the true parameters
+    [residuals] = [
+        line for line in axes[1].get_lines() if line.get_label() == "true residuals"
+    ]
+    assert np.isnan(np.asarray(residuals.get_ydata(), dtype=float)).all()
+    assert axes[1].collections, "the error bars of the data"
+
+
 def test_a_mapping_without_positive_values_has_a_linear_log_panel(
     tmp_path: Path, figures: dict[str, Figure], monkeypatch: pytest.MonkeyPatch
 ) -> None:

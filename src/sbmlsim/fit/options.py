@@ -235,9 +235,12 @@ class DataAtChangeType(StrEnum):
     change which empties the urine, is the amount collected until then, not
     `0`, and a sample at the time of a dose is a pre-dose sample.
 
-    A time is at the time of a change if they differ by at most the
-    resolution of the time of the simulation, see
-    `sbmlsim.simulator.plan.time_tolerance`. A change at the start of the
+    With `before` a time is at the time of a change if they differ by at most
+    the resolution of the time of the simulation, on either side of the
+    change, see `sbmlsim.simulator.plan.time_tolerance`. `after` takes the
+    time of a data point as it is, as PEtab does: a time a little before a
+    change, e.g. `23.9999999999` for a reset at `24`, is before the change
+    and is compared with the state before it. A change at the start of the
     simulation is the initial condition of the experiment and no change of
     its output: data at the start sees the state after the changes at the
     start, whatever the setting.
