@@ -225,6 +225,48 @@ class WeightingPointsType(Enum):
     ERROR_WEIGHTING = 2
 
 
+class DataAtChangeType(StrEnum):
+    """The state a data point at the time of a change is compared with.
+
+    At the time of a `Change` a simulation has two states, the one before the
+    change and the one after it, which the output of a run has both, in two
+    rows of that time; PEtab v2 compares a measurement at that time with the
+    state after it. A measurement at that time is mostly taken before:
+    cumulative urine data which ends at a collection reset, i.e. a change
+    which empties the urine, is the amount collected until then, not `0`,
+    and a sample at the time of a dose is a pre-dose sample.
+
+    With `before` a time is at the time of a change if they differ by at most
+    the resolution of the time of the simulation, on either side of the
+    change, see `sbmlsim.simulator.plan.time_tolerance`. `after` takes the
+    time of a data point as it is, as PEtab does: a time a little before a
+    change, e.g. `23.9999999999` for a reset at `24`, is before the change
+    and is compared with the state before it. A change at the start of the
+    simulation is the initial condition of the experiment and no change of
+    its output: data at the start sees the state after the changes at the
+    start, whatever the setting.
+
+    `before` (default) : a data point at the time of a change after the
+    start is compared with the state before the change, also at the end of
+    the simulation, except the first point of a curve, i.e. the data point
+    or points with the smallest time of a fit mapping (replicates included)
+    which has data at a later time, which is compared with the state after
+    the change: it is the start of a collection, e.g. a cumulative amount
+    which starts at `0` at a reset after the start. A curve of a single time
+    is no start of a collection, e.g. a total amount at the end of a
+    collection or a pre-dose trough, and is compared with the state before
+    the change. The observables of a simulation, e.g. the parameters of a
+    `PK` observable, are computed on its timecourse as a run has it.
+
+    `after` : a data point at the time of a change is compared with the state
+    after it, the semantics of PEtab v2, which a PEtab problem without the
+    `sbmlsim` extension has.
+    """
+
+    BEFORE = "before"
+    AFTER = "after"
+
+
 @dataclass(frozen=True)
 class FitSettings:
     """Settings of a parameter fit.
@@ -250,6 +292,10 @@ class FitSettings:
             choose it. A small positive value avoids the CVODE warning
             "t + h = t", which the estimate of the first step gives at a late
             time when the state starts from 0, e.g. a dose after a reset.
+        data_at_change: whether a data point at the time of a change after the
+            start is compared with the state before the change (the default,
+            except the first point of a curve) or after it, see
+            `DataAtChangeType`; a string is converted.
     """
 
     residual: ResidualType = ResidualType.ABSOLUTE
@@ -263,15 +309,29 @@ class FitSettings:
     relative_tolerance: float = 1e-6
     absolute_tolerance: float | AbsoluteTolerance = 1e-10
     initial_time_step: float = 0.0
+    data_at_change: DataAtChangeType = DataAtChangeType.BEFORE
 
     def __post_init__(self) -> None:
-        """Normalize the weighting of the curves and the absolute tolerance."""
+        """Normalize the weighting, the absolute tolerance and the data at a change.
+
+        Raises:
+            ValueError: if `data_at_change` is neither `before` nor `after`.
+        """
         if not isinstance(self.weighting_curves, tuple):
             curves: Iterable[WeightingCurvesType] = self.weighting_curves
             object.__setattr__(self, "weighting_curves", tuple(curves))
         object.__setattr__(
             self, "absolute_tolerance", AbsoluteTolerance.of(self.absolute_tolerance)
         )
+        try:
+            data_at_change = DataAtChangeType(self.data_at_change)
+        except ValueError:
+            raise ValueError(
+                f"'data_at_change' is one of "
+                f"{[member.value for member in DataAtChangeType]}, but "
+                f"'{self.data_at_change}' is given."
+            ) from None
+        object.__setattr__(self, "data_at_change", data_at_change)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON serializable values."""
@@ -287,6 +347,7 @@ class FitSettings:
                 self.absolute_tolerance
             ).to_dict(),
             "initial_time_step": self.initial_time_step,
+            "data_at_change": self.data_at_change.value,
         }
 
     @staticmethod
@@ -316,6 +377,9 @@ class FitSettings:
                 d.get("absolute_tolerance", 1e-6)
             ),
             initial_time_step=d.get("initial_time_step", 0.0),
+            # stored settings of 0.8.5 and earlier compared the data at a change
+            # with the state after it
+            data_at_change=d.get("data_at_change", DataAtChangeType.AFTER.value),
         )
 
     def __str__(self) -> str:

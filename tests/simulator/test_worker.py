@@ -80,7 +80,8 @@ def test_every_point_is_its_simulation(model: RoadrunnerSBMLModel) -> None:
         timed={1.0: {"k1": np.array([0.1, 3.0])}},
     )
     result = run_chunk(chunk, model)
-    assert result.values.shape == (2, 5, 4)
+    # the time 1 of the change twice
+    assert result.values.shape == (2, 6, 4)
     assert result.status.tolist() == [0, 0]
     for k, (b0, k1) in enumerate([(0.0, 0.1), (2.0, 3.0)]):
         simulation = Simulation(

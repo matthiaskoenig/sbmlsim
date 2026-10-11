@@ -56,8 +56,9 @@ def test_changes_at_times(model: RoadrunnerSBMLModel) -> None:
             times=[0, 50, 100, 150],
         ),
     )
-    assert res["time"].values[-1] == 150.0
-    assert res["X"].values[:3].tolist() == [10.0, 10.0, 10.0]
+    # the states before and after the changes at 50 and 100
+    assert res["time"].values.tolist() == [0, 50, 50, 100, 100, 150]
+    assert res["X"].values[[0, 2, 4]].tolist() == [10.0, 10.0, 10.0]
 
 
 def test_presimulation_to_steady_state(model: RoadrunnerSBMLModel) -> None:

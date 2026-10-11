@@ -280,3 +280,49 @@ def test_points_with_different_dosings_are_analysed_on_their_own(
     assert out["c.tau"][1, 0] == pytest.approx(float(direct.ds["tau"].values[0]))
     assert np.isnan(out["c.tau"][0, 0])
     assert out["c.cmax"][0, 0] == pytest.approx(single.max(), rel=1e-12)
+
+
+def test_the_state_before_a_dose_is_left_out(plans: dict[str, Plan]) -> None:
+    """pkpdutils analyses the state after a dose at its time.
+
+    The output has the states before and after the bolus at 24 h at that
+    time; pkpdutils takes a time once, and its first value at the time of a
+    dose as the concentration after the bolus, so the state before it is
+    left out: the parameters are the ones of the timecourse with the state
+    after the dose at its time, as before the output had the state before a
+    change.
+    """
+    node, _ = _compile(
+        PK("c", "[C]", dose="PODOSE", route="iv_bolus"), plans["multiple"]
+    )
+    t = np.linspace(0.0, 48.0, 97)
+    after = 10.0 * np.exp(-KE * t) + np.where(
+        t >= 24.0, 10.0 * np.exp(-KE * (t - 24.0)), 0.0
+    )
+    at = int(np.flatnonzero(t == 24.0)[0])
+    time = np.insert(t, at, 24.0)
+    values = np.insert(after, at, 10.0 * np.exp(-KE * 24.0))
+    out = evaluate_pk(node, time[None, :], values[None, :], [plans["multiple"]])
+    once = evaluate_pk(node, t[None, :], after[None, :], [plans["multiple"]])
+    for parameter in node.outputs:
+        np.testing.assert_array_equal(
+            out[parameter], once[parameter], err_msg=parameter
+        )
+    assert out["c.c0"][0, 0] == pytest.approx(after[at])
+    # pkpdutils on both rows takes the state before the bolus as its c0
+    direct = pk.nca(
+        pk.Timecourses.from_arrays(
+            time[None, :],
+            values[None, :],
+            time_unit="hr",
+            unit="mg/l",
+            dims=("_sim",),
+            dose={
+                "amount": np.array([[100.0, 100.0]]),
+                "time": np.array([[0.0, 24.0]]),
+                "unit": "mg",
+            },
+            route="iv_bolus",
+        )
+    )
+    assert float(direct.ds["c0"].values[0]) == pytest.approx(values[at])

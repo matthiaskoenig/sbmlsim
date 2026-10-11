@@ -253,17 +253,26 @@ def _alive() -> int:
 
 
 def _initialize_worker() -> None:
-    """Initialize a worker: SIGINT is ignored.
+    """Initialize a worker: SIGINT is ignored and roadrunner is probed.
 
     A terminal sends Ctrl-C to every process of the job: a worker which waits
     for a task would die with a traceback and break the pool. The parent
     handles it and stops a pool whose run it interrupts, see `stop`. On POSIX
     the worker started with SIGINT blocked, see `_SigintBlocked`: ignoring it
     discards a SIGINT which arrived since, and it is unblocked again.
+
+    The probe of the root tolerance of roadrunner is the first integration of
+    the worker, see `sbmlsim.model.roottol`, unless the main module, which the
+    worker imported before, integrates when it is imported; it costs the
+    compilation of a small model, paid with the start of the worker rather
+    than with the first model it loads.
     """
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
         signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+    from sbmlsim.model.roottol import root_tolerance
+
+    root_tolerance()
 
 
 def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecutor:

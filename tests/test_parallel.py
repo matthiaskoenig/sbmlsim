@@ -76,7 +76,11 @@ def test_process_context_does_not_fix_the_start_method() -> None:
         "print(method, multiprocessing.get_start_method(allow_none=True))\n"
     )
     out = subprocess.run(
-        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=300,
     )
     method, fixed = out.stdout.split()
     assert method != "fork"

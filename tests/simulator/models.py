@@ -146,13 +146,27 @@ end
 """
 
 
-def sbml_pk(ke: float = 0.2, blowup: bool = False) -> str:
+#: the amount of the PK model with `urine=True` which its elimination
+#: collects, a cumulative amount which a change empties at the end of a
+#: collection interval, and the amount eliminated, which increases
+PK_URINE = """
+  Aurine = 0
+  Aurine' = ke*C*V
+  Aelim = 0
+  Aelim' = ke*C*V
+end
+"""
+
+
+def sbml_pk(ke: float = 0.2, blowup: bool = False, urine: bool = False) -> str:
     """Get the one-compartment model in hours, mg and litres."""
     import libsbml
 
     text = PK_MODEL.format(ke=ke)
     if blowup:
         text = text.removesuffix("end\n") + PK_BLOWUP
+    if urine:
+        text = text.removesuffix("end\n") + PK_URINE
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(text))
     model: libsbml.Model = doc.getModel()
     for uid, kind, scale, multiplier, exponent in (
@@ -175,6 +189,9 @@ def sbml_pk(ke: float = 0.2, blowup: bool = False) -> str:
     model.getSpecies("C").setSubstanceUnits("mg")
     for pid, uid in (("ka", "per_hr"), ("ke", "per_hr"), ("PODOSE", "mg")):
         model.getParameter(pid).setUnits(uid)
+    if urine:
+        model.getParameter("Aurine").setUnits("mg")
+        model.getParameter("Aelim").setUnits("mg")
     return libsbml.writeSBMLToString(doc)
 
 

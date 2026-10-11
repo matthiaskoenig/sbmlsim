@@ -46,7 +46,7 @@ import pandas as pd
 import yaml
 
 from sbmlsim.comparison.diff import within_tolerance
-from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.testsuite import cache
@@ -93,11 +93,13 @@ LLH_RELATIVE_TOLERANCE = 1e-6
 #: the settings a problem is simulated with. The parameters are evaluated and
 #: not searched, so the scale is linear, which every bound allows. The
 #: integrator is tighter than the tolerances of the comparison; tighter still,
-#: CVODE fails in `Isensee_JCB2018` and `Raimundez_PCB2020`
+#: CVODE fails in `Isensee_JCB2018` and `Raimundez_PCB2020`. A measurement at
+#: the time of a change is the state after it (PEtab)
 BENCHMARK_SETTINGS = FitSettings(
     parameter_scale=ParameterScaleType.LINEAR,
     absolute_tolerance=1e-10,
     relative_tolerance=1e-8,
+    data_at_change=DataAtChangeType.AFTER,
 )
 
 #: the columns which identify the simulation of a measurement in PEtab v1,

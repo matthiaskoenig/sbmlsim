@@ -1,6 +1,6 @@
 """Test session configuration.
 
-Three things are set up for the whole test session:
+Four things are set up for the whole test session:
 
 - **matplotlib never opens a window.** The `Agg` backend is selected before
   pyplot is imported anywhere, so a figure created by an example or by a test
@@ -13,12 +13,28 @@ Three things are set up for the whole test session:
 - **`--skip-slow` deselects the tests marked `slow`.** They run by default,
   locally and in tox; continuous integration passes the option, so the long
   end-to-end runs do not pay for every push on every platform.
+- **sbmlsim's probe of roadrunner is the first integration of every process
+  of the tests.** roadrunner fixes the times of the rows of an event with the
+  first integration of the process, see `sbmlsim.model.roottol`; a test
+  which integrates with roadrunner directly before the first model of
+  sbmlsim would make the rows depend on the order of the tests. The tests of
+  a first integration of roadrunner run in a process of their own.
 """
 
 import matplotlib
 import pytest
 
 matplotlib.use("Agg", force=True)
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Run the probe of roadrunner before any test integrates, see the module.
+
+    sbmlsim is imported here, after the backend of matplotlib was selected.
+    """
+    from sbmlsim.model.roottol import root_tolerance
+
+    root_tolerance()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

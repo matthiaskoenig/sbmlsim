@@ -65,7 +65,9 @@ def test_simulator_returns_arrays() -> None:
 
     assert isinstance(result, TimecourseResult)
     assert result.columns == ("time", "[X]", "Y")
-    # the output are the times, the time of the change once and after it
-    assert len(result) == 21
-    np.testing.assert_allclose(result.time, np.arange(21))
-    assert result["Y"][10] == 5.0
+    # the output are the times, the time of the change twice: the states
+    # before and after it
+    assert len(result) == 22
+    np.testing.assert_allclose(result.time, np.insert(np.arange(21), 10, 10))
+    assert result["Y"][10] != 5.0
+    assert result["Y"][11] == 5.0

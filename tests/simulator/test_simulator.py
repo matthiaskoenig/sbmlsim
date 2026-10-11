@@ -21,6 +21,7 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result import ScanResult, TimecourseResult
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import ScanError, Simulator
+from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import BLOWUP, PROBE, TOLERANCE_PROBE, sbml, sbml_minutes
 
@@ -976,3 +977,135 @@ def test_the_tolerances_are_set_once_per_roadrunner_instance(
     calls.clear()
     Simulator(n_workers=1, absolute_tolerance=tolerance).simulate(model, simulation)
     assert calls == []
+
+
+def test_near_identical_output_times_simulate_once() -> None:
+    """Times which collapse in the local time of a segment are merged (#261)."""
+    minutes = RoadrunnerSBMLModel(source=sbml_minutes())
+    minutes.set_selections(["time", "X"])
+    sim = Simulation(
+        start=-1000.0,
+        end=10,
+        changes=[Change(-995.0, {"k1": 2.0})],
+        times=[-1000.0, 3.99999999999999, 4.0, 10],
+    )
+    res = Simulator(n_workers=1).simulate(minutes, sim)
+    assert res["time"].tolist() == [-1000.0, 3.99999999999999, 10.0]
+
+
+#: `X` grows with the rate 1
+LINEAR = "model linear\n  var X = 0\n  X' = 1\nend"
+
+
+def test_a_grid_before_a_change_sees_the_state_before_it() -> None:
+    """A time of a grid before a reset of `X` at 2 is interpolated toward X = 2.
+
+    The output had the time of the reset once, with the state after it, so
+    the time 1 between the last step before the reset and the reset was
+    interpolated toward 0 (0.676 instead of 1); the time of the reset sees
+    the state after it, not the first step of the integrator after it.
+    """
+    simulator = Simulator(n_workers=1)
+    model = simulator.load(sbml(LINEAR))
+    simulation = Simulation(end=4, changes=[Change(2, {"X": 0.0})])
+    grid = np.array([0.5, 1.0, 1.5, 2.0 - 1e-10, 2.0, 3.0])
+    res = simulator.run(model, simulation, time=grid)
+    np.testing.assert_allclose(
+        res["X"].values, [0.5, 1.0, 1.5, 2.0 - 1e-10, 0.0, 1.0], rtol=1e-9
+    )
+    assert res["X"].values[4] == 0.0
+    native = simulator.run(model, simulation)
+    assert native.ds.attrs["changes"] == [2.0]
+    np.testing.assert_array_equal(native.interpolate(grid)["X"].values, res["X"].values)
+
+
+def test_a_grid_inside_a_chain_of_a_change_and_an_event() -> None:
+    """A change at `2 - 1e-14` and a dose event at 2 are one jump at 2.
+
+    The grid time 2 sees the state after the dose, also in a pool.
+    """
+    model = sbml(
+        "model dose\n  var A = 0\n  var B = 1\n  k = 0.1\n  A' = -k * A\n"
+        "  B' = -B\n  E: at (time >= 2.0): A = A + 10\nend"
+    )
+    simulation = Simulation(end=4, changes=[Change(2.0 - 1e-14, {"k": 0.2})])
+    grid = np.array([1.0, 2.0, 3.0])
+    expected = [0.0, 10.0, 10.0 * np.exp(-0.2)]
+    for n_workers in (1, 2):
+        simulator = Simulator(n_workers=n_workers)
+        loaded = simulator.load(model)
+        scan = Scan(simulation, [Dimension("b", values={"B": np.array([1.0, 2.0])})])
+        res = simulator.run(loaded, scan, time=grid)
+        np.testing.assert_allclose(res["A"].values, [expected] * 2, rtol=1e-5)
+
+
+def test_the_time_of_a_change_twice_on_a_common_grid() -> None:
+    """Output times at a change keep the layout of a grid, the time twice.
+
+    A dimension with `at` changes every point at its time; simulations whose
+    changes are at other times of the grid have the time of each twice.
+    """
+    simulator = Simulator(n_workers=1)
+    model = simulator.load(sbml(LINEAR))
+    res = simulator.run(
+        model,
+        Scan(
+            Simulation(end=4, steps=4),
+            [Dimension("reset", values={"X": np.array([0.0, 1.0])}, at=2.0)],
+        ),
+    )
+    assert not res.ragged
+    assert res["time"].values.tolist() == [0.0, 1.0, 2.0, 2.0, 3.0, 4.0]
+    np.testing.assert_allclose(
+        res["X"].values, [[0, 1, 2, 0, 1, 2], [0, 1, 2, 1, 2, 3]], atol=1e-9
+    )
+    res = simulator.run(
+        model,
+        Scan(
+            Simulation(end=4, steps=4),
+            [
+                Dimension(
+                    "reset",
+                    simulations={
+                        "one": Simulation(
+                            end=4, steps=4, changes=[Change(1, {"X": 0.0})]
+                        ),
+                        "three": Simulation(
+                            end=4, steps=4, changes=[Change(3, {"X": 0.0})]
+                        ),
+                    },
+                )
+            ],
+        ),
+    )
+    assert not res.ragged
+    assert res["time"].values.tolist() == [0.0, 1.0, 1.0, 2.0, 3.0, 3.0, 4.0]
+    np.testing.assert_allclose(
+        res["X"].values, [[0, 1, 0, 1, 2, 2, 3], [0, 1, 1, 2, 3, 0, 1]], atol=1e-9
+    )
+
+
+def test_the_common_grid_of_many_output_times_is_built_once_per_output() -> None:
+    """Simulations whose output times differ only in their changes share a grid.
+
+    The grid counts the times of every output once; counting every time in
+    every output took seconds for a scan of regimens with 30000 steps.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(LINEAR))
+    steps, end = 30000, 30.0
+    plans = {
+        (s, 0): compile_simulation(
+            Simulation(end=end, steps=steps, changes=[Change(dose, {"X": 0.0})]),
+            model.symbols,
+            model.uinfo,
+        )
+        for s, dose in enumerate((10.0, 15.0, 20.0))
+    }
+    grid, interpolate = simulator_module._grid(
+        plans, {key: [] for key in plans}, None, model
+    )
+    assert interpolate
+    assert grid is not None
+    times = np.linspace(0.0, end, steps + 1)
+    expected = np.sort(np.concatenate([times, [10.0, 15.0, 20.0]]))
+    np.testing.assert_array_equal(grid, expected)

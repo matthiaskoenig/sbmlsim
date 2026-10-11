@@ -317,7 +317,11 @@ def _replace_reductions(text: str, formula: str, reductions: list[Reduction]) ->
 
 
 def evaluate_reduced(
-    formula: str, values: Mapping[str, Any], time: np.ndarray | None = None
+    formula: str,
+    values: Mapping[str, Any],
+    time: np.ndarray | None = None,
+    tolerance: float | np.ndarray = 0.0,
+    changes: Sequence[np.ndarray] | None = None,
 ) -> Any:
     """Evaluate a formula with reductions over the time of every simulation.
 
@@ -332,9 +336,14 @@ def evaluate_reduced(
     - `max(x)`, `min(x)`: the largest and the smallest value, ignoring `NaN`;
     - `mean(x)`: the trapezoidal integral divided by the time between the
       first and the last time point, the value itself for a single time point;
+      the two time points of the states before and after a change at its time
+      are an interval without time, which adds nothing;
     - `at(x, t)`: the value at the time `t`, a number or a value per
-      simulation, interpolated linearly; the value after a change at its time
-      and `NaN` outside of the time points.
+      simulation, interpolated linearly; the value after a change or an event
+      of the model at its time, toward the state before a change at a time
+      before it (time points at most `tolerance` apart are a jump, see
+      `sbmlsim.result.timecourse.grid_weights`) and `NaN` outside of the time
+      points.
 
     The times which are not finite, the padding (`NaN`) and the steady state
     after the end (`inf`), are no time points of a reduction.
@@ -345,13 +354,21 @@ def evaluate_reduced(
         time: the time points of the timecourses, of their shape; `None` where
             there are no times, e.g. for the units of a formula, which allows
             `max` and `min` of a timecourse.
+        tolerance: the resolution of the time of every simulation, a number or
+            an array of the shape of the simulations, e.g. `(n_points,)`, see
+            `sbmlsim.simulator.plan.time_tolerance`; `at` takes two time points
+            at most this apart as a jump.
+        changes: the times of the changes after the start of every
+            simulation, in the order of the simulations flattened, see
+            `grid_weights`; `None` for none.
 
     Returns:
         The value of the formula.
 
     Raises:
         ValueError: if the formula is not valid, reads an identifier without a
-            value, or reduces a timecourse with `mean` or `at` without `time`.
+            value, reduces a timecourse with `mean` or `at` without `time`,
+            or `changes` are not the ones of every simulation.
     """
     reduced = reduce_formula(formula)
     scope = dict(values)
@@ -359,7 +376,7 @@ def evaluate_reduced(
         x = _apply(reduction.arguments[0], scope, formula)
         if reduction.function == "at":
             when = _apply(reduction.arguments[1], scope, formula)
-            scope[reduction.symbol] = _at(x, when, time, formula)
+            scope[reduction.symbol] = _at(x, when, time, tolerance, formula, changes)
         elif reduction.function == "mean":
             scope[reduction.symbol] = _mean(x, time, formula)
         else:
@@ -459,7 +476,14 @@ def _last(magnitude: np.ndarray, valid: np.ndarray) -> np.ndarray:
     return np.where(valid.any(axis=-1, keepdims=True), value, np.nan)
 
 
-def _at(x: Any, when: Any, time: np.ndarray | None, formula: str) -> Any:
+def _at(
+    x: Any,
+    when: Any,
+    time: np.ndarray | None,
+    tolerance: float | np.ndarray,
+    formula: str,
+    changes: Sequence[np.ndarray] | None = None,
+) -> Any:
     """Reduce to the value at a time, see `evaluate_reduced`."""
     magnitude, units = _split(x)
     if _constant(magnitude):
@@ -471,9 +495,26 @@ def _at(x: Any, when: Any, time: np.ndarray | None, formula: str) -> Any:
     times = np.broadcast_to(np.asarray(time, dtype=float), shape).reshape(-1, shape[-1])
     rows = magnitude.reshape(-1, shape[-1])
     targets = np.broadcast_to(target, (*shape[:-1], 1)).reshape(-1)
+    tolerances = np.broadcast_to(
+        np.asarray(tolerance, dtype=float)[..., None], (*shape[:-1], 1)
+    ).reshape(-1)
+    if changes is not None and len(changes) != rows.shape[0]:
+        raise ValueError(
+            f"'{formula}': the changes of {len(changes)} simulations for the "
+            f"timecourses of {rows.shape[0]}, the changes of every simulation are "
+            f"given or none."
+        )
     out = np.array(
         [
-            apply_weights(grid_weights(times[k], targets[k : k + 1]), rows[k])[0]
+            apply_weights(
+                grid_weights(
+                    times[k],
+                    targets[k : k + 1],
+                    float(tolerances[k]),
+                    None if changes is None else changes[k],
+                ),
+                rows[k],
+            )[0]
             for k in range(rows.shape[0])
         ]
     )

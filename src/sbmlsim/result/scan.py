@@ -13,12 +13,24 @@ A `ScanResult` wraps one `xarray.Dataset`:
   `on_error="flag"`;
 - coordinates: the labels of every dimension, every changed target of a
   dimension of values along its dimension (`<dimension>.<target>` when the
-  target is also a variable of the result, which keeps the plain name), and `time` on a grid;
+  target is also a variable of the result, which keeps the plain name), and
+  `time` on a grid;
 - `attrs`: `dims`, the dimensions of the scan in their order, `units`, the
   unit of every variable and coordinate, `scan` and `integrator_settings`,
-  the provenance, and `errors` for a run with `on_error="flag"`.
+  the provenance, `changes`, the times of the changes after the start of the
+  simulations in the time of the result, and `errors` for a run with
+  `on_error="flag"`.
 
-`nca` and `to_timecourses` hand a PK analysis and a timecourse over to pkpdutils, whose layout `(*dims, time)` the result has.
+The output of a simulation has two time points at the time of a change after
+the start, the state before the change and the state after it, as at an event
+of the model; the time of a grid then appears twice. The idioms of xarray
+which need a unique index raise at such a time, e.g. `ds.interp`, `ds.sel`
+with `method="nearest"` and `ds.reindex`: `ScanResult.interpolate` puts a
+result on other times, `sel(time=t)` at a change selects both rows and
+`isel` one of them.
+
+`nca` and `to_timecourses` hand a PK analysis and a timecourse over to
+pkpdutils, whose layout `(*dims, time)` the result has.
 
 `xarray` does the rest: `res["[X]"].sel(dose=10)`, `res.ds.to_dataframe()`.
 """
@@ -42,6 +54,7 @@ from sbmlsim.result.timecourse import (
     apply_weights,
     grid_weights,
     interpolate,
+    without_states_before,
 )
 from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry
 from sbmlsim.units import ureg as package_ureg
@@ -53,6 +66,8 @@ if TYPE_CHECKING:
 TIME = "time"
 #: the dimension of the output points of the ragged layout
 POINT = "_point"
+#: the attribute of the times of the changes after the start
+CHANGES = "changes"
 #: the dimension of `ScanResult.summary`
 STATISTIC = "statistic"
 #: the statistics of `ScanResult.summary`
@@ -197,6 +212,10 @@ class ScanResult:
     def to_timecourses(self, key: str, **kwargs: Any) -> Timecourses:
         """Get a timecourse of the result as the timecourses of pkpdutils.
 
+        pkpdutils takes a time once: of the states before and after a change
+        at its time (`changes` of the attributes) the timecourse has the
+        state after it, as a `PK` observable analyses it.
+
         Args:
             key: the variable, a timecourse.
             **kwargs: the other arguments of `Timecourses.from_arrays`, e.g.
@@ -220,6 +239,20 @@ class ScanResult:
             if self.ragged
             else self.ds[TIME].values
         )
+        changes = np.asarray(self.ds.attrs.get(CHANGES, []), dtype=float)
+        if changes.size:
+            shape = values.shape
+            flat_time = np.broadcast_to(time, shape).reshape(-1, shape[-1])
+            flat_time, flat_values = without_states_before(
+                flat_time,
+                values.reshape(-1, shape[-1]),
+                [changes] * flat_time.shape[0],
+            )
+            if self.ragged or not np.all(flat_time == flat_time[:1]):
+                time = flat_time.reshape(*shape[:-1], -1)
+            else:
+                time = flat_time[0]
+            values = flat_values.reshape(*shape[:-1], -1)
         coords = {dim: self.ds[dim].values for dim in dims}
         return Timecourses.from_arrays(
             time,
@@ -240,11 +273,28 @@ class ScanResult:
         return ScanResult(self.ds.isel(indexers))
 
     def time_points(self) -> np.ndarray:
-        """Get the times of the grid, or the union of the times of the simulations."""
-        times = np.asarray(self.ds[TIME].values, dtype=float).ravel()
+        """Get the times of the grid, or the union of the times of the simulations.
+
+        A time which a simulation has twice, the states before and after a
+        change or an event of the model at it, is twice in the union, so an
+        interpolation onto the union keeps the jump, see `interpolate`.
+        """
+        times = np.asarray(self.ds[TIME].values, dtype=float)
         if not self.ragged:
-            return times
-        return np.unique(times[np.isfinite(times)])
+            return times.ravel()
+        rows = times.reshape(-1, times.shape[-1])
+        # the occurrence of every time point among the equal ones before it
+        position = np.arange(rows.shape[-1])
+        repeated = np.zeros(rows.shape, dtype=bool)
+        repeated[:, 1:] = rows[:, 1:] == rows[:, :-1]
+        occurrence = position - np.maximum.accumulate(
+            np.where(repeated, 0, position), axis=-1
+        )
+        finite = np.isfinite(rows)
+        pairs = np.unique(
+            np.stack([rows[finite], occurrence[finite].astype(float)]), axis=1
+        )
+        return pairs[0]
 
     def _grid(self, times: ArrayLike | Quantity) -> np.ndarray:
         """Get times as numbers in the time unit of the result.
@@ -258,8 +308,15 @@ class ScanResult:
         """Get the result on a grid of times.
 
         Every simulation is interpolated linearly onto the times, see
-        `sbmlsim.result.timecourse.interpolate`; a time outside of a
-        simulation is `NaN`. The variables without a time stay as they are.
+        `sbmlsim.result.timecourse.grid_weights`; a time outside of a
+        simulation is `NaN`. A simulation has the states before and after a
+        change and an event of the model at its time, and time points closer
+        than the resolution of its time (`sbmlsim.simulator.plan.time_tolerance`
+        of its first and last time) are one jump: a time of the grid before a
+        change is interpolated toward the state before it, the time of a
+        change (`changes` of the attributes) sees the state after it, and the
+        first of two equal times of the grid the state before it. The
+        variables without a time stay as they are.
 
         Args:
             times: the times of the grid, numbers in the time unit of the
@@ -275,6 +332,7 @@ class ScanResult:
         grid = self._grid(times)
         tdim = POINT if self.ragged else TIME
         time_dims = self.ds[TIME].dims
+        changes = np.asarray(self.ds.attrs.get(CHANGES, []), dtype=float)
         variables: dict[str, Any] = {}
         weights: GridWeights | None = None
         for name, array in self.ds.data_vars.items():
@@ -289,13 +347,20 @@ class ScanResult:
                 times_of = np.asarray(self.ds[TIME].values, dtype=float)
                 out = np.full((*values.shape[:-1], grid.size), np.nan)
                 for index in np.ndindex(*values.shape[:-1]):
-                    out[index] = interpolate(times_of[index], values[index], grid)
+                    out[index] = interpolate(
+                        times_of[index],
+                        values[index],
+                        grid,
+                        _resolution(times_of[index]),
+                        changes,
+                    )
             else:
                 order = (*[d for d in array.dims if d != TIME], TIME)
                 values = np.asarray(array.transpose(*order).values, dtype=float)
                 if weights is None:
+                    times_of = np.asarray(self.ds[TIME].values, dtype=float)
                     weights = grid_weights(
-                        np.asarray(self.ds[TIME].values, dtype=float), grid
+                        times_of, grid, _resolution(times_of), changes
                     )
                 out = apply_weights(weights, values)
             variables[str(name)] = ([*order[:-1], TIME], out)
@@ -459,6 +524,25 @@ def time_magnitudes(
             f"The times in '{times.units}' cannot be converted to the unit of "
             f"time '{unit}' of {owner[0].lower()}{owner[1:]}."
         ) from err
+
+
+def _resolution(time: np.ndarray) -> float:
+    """Get the resolution of the time of a simulation from its time points.
+
+    It is `time_tolerance` of the first and the last finite time. Only the
+    steps of the integrator have two time points closer than it, an event of
+    the model, and their first and last time are the start and the end of
+    the simulation, so it is the resolution of its plan; with a `time_shift`
+    it is larger, which takes a step shorter than it as a jump, a change of
+    the value of the order of the resolution.
+    """
+    # the simulator imports the results
+    from sbmlsim.simulator.plan import time_tolerance
+
+    finite = time[np.isfinite(time)]
+    if finite.size == 0:
+        return 0.0
+    return time_tolerance(float(finite[0]), float(finite[-1]))
 
 
 def _json_default(value: Any) -> Any:

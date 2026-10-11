@@ -15,7 +15,7 @@ process, see `sbmlsim.simulator.formula`.
 from __future__ import annotations
 
 import functools
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Any
@@ -30,6 +30,71 @@ from sbmlsim.units import Quantity, UnitsInformation
 
 #: the tolerances of the steady state of an output at the time `inf`
 STEADY_STATE = SteadyState()
+
+TIME_RTOL = 1e-9
+"""Output times closer than `TIME_RTOL` times the time scale are one output time."""
+
+
+def time_tolerance(start: float, end: float) -> float:
+    """Get the resolution of the time of a simulation.
+
+    Two times which differ by less are one time: output times are merged
+    (`merge_times`) and a time is at the time of a change
+    (`Plan.at_change`).
+
+    Args:
+        start: The start of the simulation in the time of the plan.
+        end: The end of the simulation in the time of the plan.
+
+    Returns:
+        `TIME_RTOL * max(abs(start), abs(end), end - start)`.
+    """
+    return TIME_RTOL * max(abs(start), abs(end), end - start)
+
+
+def merge_times(
+    times: Sequence[float] | np.ndarray, start: float, end: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Merge output times which differ by less than the resolution of the time.
+
+    Two times which differ by floating point noise (digitized data, a conversion
+    of the time unit) are one output time. The tolerance is `time_tolerance`
+    in the time of the plan, and a cluster of times whose consecutive distances
+    are within it becomes its smallest time inside `[start, end]`, else its
+    smallest time. A time at `inf` stays a time of its own.
+
+    Args:
+        times: The output times in the time of the plan.
+        start: The start of the simulation in the time of the plan.
+        end: The end of the simulation in the time of the plan.
+
+    Returns:
+        The merged, sorted output times and, for every given time, the index of
+        its merged time.
+    """
+    values = np.asarray(times, dtype=float)
+    if values.size == 0:
+        return values, np.zeros(0, dtype=int)
+    tolerance = time_tolerance(start, end)
+    order = np.argsort(values, kind="stable")
+    ordered = values[order]
+    # inf - inf is nan, which is not within the tolerance: only the first of
+    # several times at inf starts a cluster, the others have no distance
+    with np.errstate(invalid="ignore"):
+        gaps = np.diff(ordered)
+    gaps[np.isnan(gaps)] = 0.0
+    new = np.concatenate([[True], gaps > tolerance])
+    cluster = np.cumsum(new) - 1
+    starts = np.flatnonzero(new)
+    # the smallest time of a cluster which lies in the simulation, else its
+    # smallest time: noise at the start or the end must not leave the interval
+    position = np.arange(ordered.size)
+    inside = (ordered >= start) & (ordered <= end)
+    first = np.minimum.reduceat(np.where(inside, position, ordered.size), starts)
+    merged = ordered[np.where(first < ordered.size, first, starts)]
+    index = np.empty(values.size, dtype=int)
+    index[order] = cluster
+    return merged, index
 
 
 @dataclass(frozen=True)
@@ -119,6 +184,53 @@ class Plan:
     symbols: ModelSymbols = field(repr=False, compare=False)
     steady_state_output: SteadyStatePlan | None = None
 
+    @property
+    def change_times(self) -> tuple[float, ...]:
+        """Get the times of the changes after the start, sorted.
+
+        A change at the start is the initial condition of the simulation and
+        no change of its output; a change at the end is one.
+        """
+        return tuple(event.time for event in self.events if event.time > self.start)
+
+    @property
+    def output_change_times(self) -> np.ndarray:
+        """Get the times of the changes after the start in the time of the output.
+
+        The `change_times` shifted by `time_shift`, the times of the states
+        before and after a change in the result of the executor.
+        """
+        return np.asarray(self.change_times, dtype=float) + self.time_shift
+
+    def at_change(self, times: Sequence[float] | np.ndarray) -> np.ndarray:
+        """Get the change after the start which every time is at.
+
+        A time is at the time of a change if they differ by at most the
+        resolution of the time (`time_tolerance`), so a time which differs
+        from it by floating point noise, on either side, is at the change.
+
+        Args:
+            times: times in the time of the plan, i.e. without `time_shift`.
+
+        Returns:
+            For every time the index of its change in `change_times`, `-1`
+            for a time which is at no change.
+        """
+        values = np.asarray(times, dtype=float)
+        changes = np.asarray(self.change_times, dtype=float)
+        index = np.full(values.shape, -1, dtype=int)
+        if changes.size == 0 or values.size == 0:
+            return index
+        tolerance = time_tolerance(self.start, self.end)
+        # the first change which is not before the time by more than the
+        # tolerance, which the time is at if it is not after it by more
+        first = np.searchsorted(changes, values - tolerance, side="left")
+        inside = first < changes.size
+        near = np.zeros(values.shape, dtype=bool)
+        near[inside] = changes[first[inside]] <= values[inside] + tolerance
+        index[near] = first[near]
+        return index
+
     def with_values(self, values: Mapping[str, float], at: float | None = None) -> Plan:
         """Get the plan with other values of targets.
 
@@ -206,8 +318,15 @@ class Plan:
             events.sort(key=lambda event: event.time)
         return replace(self, events=tuple(events))
 
-    def output_times(self) -> tuple[float, ...] | None:
+    def output_times(self, changes: Iterable[float] = ()) -> tuple[float, ...] | None:
         """Get the times of the result of the plan.
+
+        An output time at a change after the start appears twice, the state
+        before the change and the state after it.
+
+        Args:
+            changes: the times of further changes, e.g. of a dimension of a
+                scan with `at`, in the time of the plan.
 
         Returns:
             The output times shifted by `time_shift`, with `inf` last for the
@@ -216,7 +335,12 @@ class Plan:
         """
         if self.output is not OutputMode.TIMES:
             return None
-        times = tuple(t + self.time_shift for t in self.times)
+        at = {*self.change_times, *(t for t in changes if t > self.start)}
+        times = tuple(
+            t + self.time_shift
+            for time in self.times
+            for t in ((time, time) if time in at else (time,))
+        )
         if self.steady_state_output is not None:
             times = (*times, float(np.inf))
         return times
@@ -441,7 +565,8 @@ def compile_simulation(
                 relative_tolerance=STEADY_STATE.relative_tolerance,
                 max_time=STEADY_STATE.max_time,
             )
-        times = tuple(sorted(converted))
+        merged, _ = merge_times(sorted(converted), start, end)
+        times = tuple(float(t) for t in merged)
         outside = [t for t in times if not start <= t <= end]
         if outside:
             raise ValueError(

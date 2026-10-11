@@ -22,7 +22,12 @@ from typing import TYPE_CHECKING, Any
 from rich.table import Table
 
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
-from sbmlsim.fit.options import ResidualType, WeightingCurvesType, WeightingPointsType
+from sbmlsim.fit.options import (
+    DataAtChangeType,
+    ResidualType,
+    WeightingCurvesType,
+    WeightingPointsType,
+)
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
@@ -157,6 +162,23 @@ GAPS: tuple[Gap, ...] = (
         detail="the grid goes to the extension so that `sbmlsim` simulates as "
         "before; another tool simulates the measurement times, which is the same "
         "fit with fewer output points",
+    ),
+    Gap(
+        id="measurement-at-change",
+        kind=GapKind.EXTENSION,
+        sbmlsim="a data point at the time of a change after the start is compared "
+        "with the state before the change (`FitSettings.data_at_change`, `before` "
+        "by default), e.g. cumulative urine at the end of a collection which a "
+        "change empties, except the first point of a curve with data at a later "
+        "time, the start of a collection",
+        petab="a measurement at the time of a change of the condition is the value "
+        "after the change",
+        detail="the setting goes to the extension, so `sbmlsim` compares these "
+        "measurements as before when it reads the problem, while another tool "
+        "compares them with the state after the change. The export logs the "
+        "measurements which take the state before a change; a fit with "
+        "`data_at_change='after'` or whose data at a change are all first "
+        "points of their curves has no such gap",
     ),
     Gap(
         id="condition-target",
@@ -547,8 +569,50 @@ def gaps_of_problem(
             )
             hits.add("x-observable")
     hits.update(gap_mappings(problem, exported))
+    at_changes = measurements_at_changes(problem, exported)
+    if at_changes:
+        logger.warning(
+            "'%s': the measurements %s are at the time of a change after the "
+            "start of their simulation and are compared with the state before "
+            "the change, a tool which does not read the extension compares them "
+            "with the state after it.",
+            problem.opid,
+            "; ".join(f"{name} at {times}" for name, times in at_changes.items()),
+        )
+        hits.add("measurement-at-change")
 
     return [gap for gap in GAPS if gap.id in hits]
+
+
+def measurements_at_changes(
+    problem: "OptimizationProblem", indices: Sequence[int] | None = None
+) -> dict[str, list[float]]:
+    """Get the measurements a fit compares with the state before a change.
+
+    A measurement at the time of a change after the start takes the state
+    before the change, except the first point of its curve, see
+    `sbmlsim.fit.options.FitSettings.data_at_change`.
+
+    Args:
+        problem: the initialized problem which is exported.
+        indices: the indices of the mappings which are exported; every
+            mapping if `None`.
+
+    Returns:
+        `<experiment>.<mapping>` -> the times of its measurements which take
+        the state before a change, in the order of the problem; empty for a
+        fit which compares the data with the state after a change.
+    """
+    settings = problem.settings_initialized
+    if settings.data_at_change is not DataAtChangeType.BEFORE:
+        return {}
+    found: dict[str, list[float]] = {}
+    for k in _exported(problem, indices):
+        times = problem.times_before_changes(k)
+        if times.size:
+            name = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
+            found[name] = [float(t) for t in times]
+    return found
 
 
 def gaps_table(gaps: Iterable[Gap], title: str | None = None) -> Table:

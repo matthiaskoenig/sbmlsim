@@ -32,7 +32,7 @@ The result has the dimensions of the scan first and the time last, `(dim_n, time
 
 ## Where the values of a scan go
 
-A value replaces its target wherever the simulation sets it, i.e. in the `preinit_changes` and in every `Change`; a target which the simulation does not set is a change before the initialization. Scanning the dose of a multiple dosing therefore scans every dose. A dimension with `at` sets its values as a `Change` at that time instead:
+A value replaces its target wherever the simulation sets it, i.e. in the `preinit_changes` and in every `Change`; a target which the simulation does not set is a change before the initialization. Scanning the dose of a multiple dosing therefore scans every dose. Scanning the rate of an infusion which a later `Change` stops therefore also replaces the stop, so a scan logs a warning for a dimension without `at` whose target the simulation sets to different values (in `changes` at different times, in `preinit_changes` and a change, or in the presimulation), naming the values with their times; a dose repeated with one value does not warn. Use `at` to set the values at one time and keep the other changes of the simulation. A dimension with `at` sets its values as a `Change` at that time instead:
 
 ```python
 dosing = Simulation(end=150, changes=[Change([0, 50, 100], {"X": 10.0})], steps=150)
@@ -98,7 +98,15 @@ print(res["PX"].sel(regimen="multiple").values[-1])
 
 ## The output and the run
 
-When every simulation has the same output times (`times` or `steps`), the result has the dimension `time`. With the steps of the integrator every simulation keeps its own time points: the result has the dimension `_point` and the variable `time`, padded with `NaN`. `time=` interpolates every timecourse onto a grid; the value at the time of a change is the value after it:
+When every simulation has the same output times (`times` or `steps`), the result has the dimension `time`; an output time at a change after the start appears twice in it, the states before and after the change (see [Simulations](simulation.md#the-semantics)). Simulations whose output times differ only in the changes at them, e.g. a dimension of simulations with a dose at different times of the grid, have the times of the grid, a time twice where one of them has a change at it. With the steps of the integrator every simulation keeps its own time points: the result has the dimension `_point` and the variable `time`, padded with `NaN`.
+
+`time=` interpolates every timecourse onto a grid, and `res.interpolate(times)` interpolates a result by the same rule, with the times of the changes of the simulations, which the result keeps in `attrs["changes"]`:
+
+- a time before a change is interpolated toward the state before it;
+- a time at a change sees the state after it;
+- a time which appears twice in the grid sees the state before the change first, then the state after it.
+
+An event of the model is a jump as well, whose states before and after it the steps of the integrator have at the time of the event: a time at it sees the state after it, and so does a time at most the resolution of the time before it, since the integrator locates an event a little after its time. Jumps closer than the resolution of the time, e.g. a change and an event, are one chain, and a time at it or inside it sees the state after the last jump, as the data of a fit does (see [Fitting](fitting.md#data-at-the-time-of-a-change)):
 
 ```python
 res = simulator.run(
@@ -112,6 +120,8 @@ res = simulator.run(
 )
 print(res.ragged, res["time"].values)
 ```
+
+Since the time of a change appears twice in `res.ds`, the idioms of xarray which need a unique index raise there, e.g. `res.ds.interp(time=...)`, `res.ds.sel(time=..., method="nearest")` and `res.ds.reindex(time=...)`: `res.interpolate(times)` puts a result on other times, `res.sel(time=t)` at a change selects both rows and `res.isel(time=k)` one of them. The `sel` of a sensitivity result, `SensitivityResult.sel(time=t)`, selects the state after the change instead, as a time of a grid sees it (see [Sensitivity analysis](sensitivity.md#the-result)).
 
 `Simulator(n_workers=...)` sets the processes: `1` runs in the calling process, a number is the size of the pool, and `None` (the default) uses every CPU for a scan of `sbmlsim.parallel.POOL_THRESHOLD` points or more, i.e. 256, and runs a smaller scan in the calling process. The pool is kept for the process, so the start of the workers is paid by the first pooled run of a process and every worker loads a model once; a short script with a single scan of a cheap model can therefore be faster with `n_workers=1`. The result does not depend on the number of workers. A script which runs a pool must do it behind `if __name__ == "__main__":`, because the workers import the script again. `on_error="flag"` keeps the points which ran when a point fails in the integrator: its values are `NaN` and the variable `status` is `1`.
 
@@ -134,7 +144,7 @@ print(res["px_max"].values)
 
 ## Working with scan results
 
-A `ScanResult` wraps an `xarray.Dataset`, `res.ds`, and keeps the units of its variables and coordinates; `res.quantity(key)` gives the values with their unit, `res.summary(dims)` the statistics over dimensions and `res.interpolate(times)` puts a ragged result on a grid. `res.ds.to_dataframe()` is the table, `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store the result with its units:
+A `ScanResult` wraps an `xarray.Dataset`, `res.ds`, and keeps the units of its variables and coordinates; `res.quantity(key)` gives the values with their unit, `res.summary(dims)` the statistics over dimensions and `res.interpolate(times)` puts a ragged result on a grid. `res.ds.to_dataframe()` is the table, `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store the result with its units. The time of a change after the start appears twice in `res.ds`, the states before and after the change, so `res.interpolate(times)` replaces `res.ds.interp`, see [The output and the run](#the-output-and-the-run):
 
 ```python
 from pathlib import Path

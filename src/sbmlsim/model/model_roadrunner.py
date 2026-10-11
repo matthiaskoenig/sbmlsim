@@ -15,6 +15,7 @@ from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_resources import Source
+from sbmlsim.model.roottol import root_tolerance
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.model.tolerances import (
     AbsoluteTolerance,
@@ -120,6 +121,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         if self.symbols.initial_assignments:
             sbml, self.initial_helpers = _with_initial_helpers(sbml)
 
+        # the probe of roadrunner's root tolerance of events runs before the
+        # first model of the process, as its first integration, see
+        # `sbmlsim.model.roottol`
+        root_tolerance()
         # load model
         self.r: roadrunner.RoadRunner | None = (
             roadrunner.RoadRunner(sbml)

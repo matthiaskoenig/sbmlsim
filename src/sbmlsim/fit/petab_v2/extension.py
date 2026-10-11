@@ -40,9 +40,12 @@ SCIML_EXTRA = "pip install sbmlsim[sciml]"
 #: `check_extensions`
 KNOWN_EXTENSIONS: frozenset[str] = frozenset({EXTENSION_ID})
 
-#: version of the extension, raised when the block changes. 0.3.0 holds the
-#: `Simulation` of an experiment, the versions before its timecourses
-EXTENSION_VERSION = "0.3.0"
+#: version of the extension, raised when the block changes. 0.4.0 carries the
+#: setting `data_at_change` in `settings`; the settings of an earlier version
+#: do not have it and are read with `after`, the comparison they were written
+#: for (`FitSettings.from_dict`). 0.3.0 holds the `Simulation` of an
+#: experiment, the versions before its timecourses
+EXTENSION_VERSION = "0.4.0"
 
 
 class SbmlsimExtension(ExtensionConfig):
@@ -52,11 +55,12 @@ class SbmlsimExtension(ExtensionConfig):
     of a problem must be `required`, and that a tool must reject a problem
     which requires an extension it does not know but may ignore one which is
     not required (PEtab v2, extensions). The settings this extension carries,
-    i.e. the residual, the loss function and the weighting, are the objective
-    `sbmlsim` optimizes, so a problem which is read without them is fitted with
-    a different objective on the same data. It is therefore `required`, and a
-    tool which does not know `sbmlsim` has to say so instead of fitting the
-    problem differently without telling anyone.
+    i.e. the residual, the loss function, the weighting and the state a
+    measurement at the time of a change is compared with (`data_at_change`),
+    are the objective `sbmlsim` optimizes, so a problem which is read without
+    them is fitted with a different objective on the same data. It is
+    therefore `required`, and a tool which does not know `sbmlsim` has to say
+    so instead of fitting the problem differently without telling anyone.
 
     `to_petab(..., required_extension=False)` writes it as not required, which
     is what a problem meant for other tools wants: they read the tables and

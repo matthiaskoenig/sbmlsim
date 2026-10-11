@@ -63,6 +63,8 @@ def test_settings_table() -> None:
         "POINTS",
         "ERROR_WEIGHTING",
         "concentration 1.0e-10",
+        "data at a change",
+        "before",
     ]:
         assert token in text
 

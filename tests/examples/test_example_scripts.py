@@ -37,6 +37,9 @@ SLOW = {
     "examples.hctz_fitting.simulations",
 }
 
+#: seconds an example may take, one which hangs, e.g. on a pool, fails its test
+TIMEOUT = 1800
+
 #: the summary of a run of experiments in which an experiment or a figure failed,
 #: see `sbmlsim.experiment.runner.ExperimentRunner.run_experiments`
 FAILURES = "experiments failed or have failed figures"
@@ -87,6 +90,7 @@ def run_example(
         capture_output=True,
         encoding="utf-8",
         check=False,
+        timeout=TIMEOUT,
     )
     assert result.returncode == 0, result.stderr
     # a run of experiments logs a failing experiment or figure and goes on, its

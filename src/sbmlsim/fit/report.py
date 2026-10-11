@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import textwrap
 import webbrowser
 from collections.abc import Iterable, Sequence
 from functools import cached_property
@@ -177,7 +178,9 @@ class FitReport:
             fisher: Fisher information of the parameters, adds its table of
                 errors and intervals and the correlation of the parameters to
                 the identifiability section.
-            show_titles: add titles to the panels.
+            show_titles: add titles to the figures: the title of a fit
+                mapping above the panels of its figures, the title of a
+                figure or of its panel for the other figures.
             image_format: format of the figures.
             mapping_figures: draw the two figures of every fit mapping, i.e.
                 the data with the simulation and the residuals. They are one
@@ -1376,6 +1379,65 @@ class FitReport:
         elif np.isfinite(ax.dataLim.minposy):
             ax.set_yscale("log")
 
+    @staticmethod
+    def _mask_nonpositive_lines(ax: Axes) -> None:
+        """Leave out the values of the lines of a log panel which are not positive.
+
+        A logarithmic axis clips such a value to a tiny positive one, so a
+        curve which is `0`, e.g. the urine at the start or after a reset of a
+        collection, drops in a vertical line to the bottom of the panel. The
+        curve has a gap there instead: it ends at the last positive value and
+        starts again at the next one. The error bars, which are no lines, stay
+        clipped, so an error bar which reaches `0` goes to the bottom of the
+        panel rather than vanishing, which masking on the axis would do.
+        """
+        if ax.get_yscale() != "log":
+            return
+        for line in ax.get_lines():
+            y = np.asarray(line.get_ydata(), dtype=float)
+            if np.any(y <= 0.0):
+                line.set_ydata(np.where(y > 0.0, y, np.nan))
+
+    def _set_mapping_title(self, fig: Figure, k: int) -> None:
+        """Set the title of a figure of a fit mapping, once over its panels.
+
+        A title per panel overlaps the one of the panel next to it for a long
+        experiment and mapping key. A long title is wrapped between its
+        words, never inside an identifier, and a figure is widened for a word
+        which is wider than it, see `_widen_to_fit`.
+        """
+        if not self.show_titles:
+            return
+        title = fig.suptitle(
+            textwrap.fill(
+                self.mapping_title(k),
+                width=80,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+        )
+        self._widen_to_fit(fig, title.get_window_extent().width)
+
+    @staticmethod
+    def _layout_pad(fig: Figure) -> float:
+        """Get the width a figure keeps free at its sides in pixels.
+
+        Twice the padding of the constrained layout on each side.
+        """
+        engine = fig.get_layout_engine()
+        pad = engine.get().get("w_pad", 3.0 / 72.0) if engine is not None else 0.0
+        return 4.0 * float(pad) * fig.dpi
+
+    @classmethod
+    def _widen_to_fit(cls, fig: Figure, width: float) -> None:
+        """Widen a figure so that an artist of a width in pixels fits into it.
+
+        The panels get the width, a figure which is wide enough stays as it is.
+        """
+        needed = width + cls._layout_pad(fig)
+        if needed > fig.bbox.width:
+            fig.set_figwidth(needed / fig.dpi)
+
     def _set_legend(self, ax: Axes) -> None:
         """Add a legend without duplicate entries."""
         handles, labels = ax.get_legend_handles_labels()
@@ -1384,19 +1446,24 @@ class FitReport:
             ax.legend(unique.values(), unique.keys())
 
     @staticmethod
-    def _set_figure_legend(fig: Figure, axes: Sequence[Axes]) -> None:
-        """Add one legend for all panels of a figure, without duplicates.
-
-        A study is not in every panel, e.g. only one study has outliers, so the
-        entries are collected over the panels and shown once next to them.
-        """
+    def _legend_entries(axes: Sequence[Axes]) -> dict[str, Any]:
+        """Get the entries of the legends of panels by label, without duplicates."""
         handles: list[Any] = []
         labels: list[str] = []
         for ax in axes:
             ax_handles, ax_labels = ax.get_legend_handles_labels()
             handles.extend(ax_handles)
             labels.extend(ax_labels)
-        unique = dict(zip(labels, handles, strict=True))
+        return dict(zip(labels, handles, strict=True))
+
+    @staticmethod
+    def _set_figure_legend(fig: Figure, axes: Sequence[Axes]) -> None:
+        """Add one legend for all panels of a figure, without duplicates.
+
+        A study is not in every panel, e.g. only one study has outliers, so the
+        entries are collected over the panels and shown once next to them.
+        """
+        unique = FitReport._legend_entries(axes)
         if unique:
             fig.legend(
                 unique.values(),
@@ -1404,6 +1471,93 @@ class FitReport:
                 loc="outside right upper",
                 fontsize="small",
             )
+
+    def _set_mapping_legend(self, fig: Figure, axes: Sequence[Axes]) -> None:
+        """Add one legend below the panels of a figure of a fit mapping.
+
+        A legend inside a panel covers the data, the simulation or the
+        residuals of a crowded panel wherever it is placed. The reference data
+        comes first and the entries of every parameter set stay next to each
+        other, see `_legend_rows`, in as many columns as a set has entries (at
+        least two) or in fewer where these are wider than the figure, e.g. for
+        long ids; a legend which is wider than the figure in one column widens
+        it. The figure grows by the height of the legend, so the panels keep
+        their size.
+        """
+        unique = self._legend_entries(axes)
+        if not unique:
+            return
+        groups = self._legend_groups(unique)
+        available = fig.bbox.width - self._layout_pad(fig)
+        for ncols in range(max(2, *(len(group) for group in groups)), 0, -1):
+            rows = self._legend_rows(groups, ncols)
+            # matplotlib fills the columns of a legend one after the other
+            cells = [row[c] for c in range(ncols) for row in rows]
+            legend = fig.legend(
+                [handle for handle, _ in cells],
+                [label for _, label in cells],
+                loc="outside lower center",
+                ncols=ncols,
+                fontsize="small",
+            )
+            extent = legend.get_window_extent()
+            if extent.width <= available or ncols == 1:
+                break
+            legend.remove()
+        self._widen_to_fit(fig, extent.width)
+        fig.set_figheight(fig.get_figheight() + extent.height / fig.dpi)
+
+    def _legend_groups(self, entries: dict[str, Any]) -> list[list[tuple[Any, str]]]:
+        """Group the entries of a legend: the reference data, then every set.
+
+        An entry belongs to the parameter set whose id its label is or starts
+        with, the longest such id, since an id may start with another one.
+        Entries of neither come last.
+        """
+        sids = [pset.sid for pset in self.parameter_sets]
+        groups: list[list[tuple[Any, str]]] = [[] for _ in range(len(sids) + 2)]
+        for label, handle in entries.items():
+            if label.startswith("reference_data"):
+                groups[0].append((handle, label))
+                continue
+            matches = [
+                (len(sid), k)
+                for k, sid in enumerate(sids)
+                if label == sid or label.startswith(f"{sid} ")
+            ]
+            group = 1 + max(matches)[1] if matches else len(sids) + 1
+            groups[group].append((handle, label))
+        return [group for group in groups if group]
+
+    @staticmethod
+    def _legend_rows(
+        groups: Sequence[Sequence[tuple[Any, str]]], ncols: int
+    ) -> list[list[tuple[Any, str]]]:
+        """Lay the groups of a legend out in rows of `ncols` entries.
+
+        The entries of a group stay together: a group which does not fit into
+        what is left of a row starts the next one, a group of more entries
+        than a row has fills rows one after the other. The gaps are blank
+        entries.
+        """
+        rows: list[list[tuple[Any, str]]] = []
+        row: list[tuple[Any, str]] = []
+        for group in groups:
+            if row and len(row) + len(group) > ncols:
+                rows.append(row)
+                row = []
+            for entry in group:
+                row.append(entry)
+                if len(row) == ncols:
+                    rows.append(row)
+                    row = []
+        if row:
+            rows.append(row)
+        return [
+            row
+            + [(Line2D([], [], linestyle="none"), "") for _ in range(ncols - len(row))]
+            for row in rows
+        ]
 
     def _is_scalar(self, k: int) -> bool:
         """Whether mapping `k` compares one value per simulation."""
@@ -1524,9 +1678,8 @@ class FitReport:
             scalar = self._is_scalar(k)
             dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
 
+            self._set_mapping_title(fig, k)
             for ax in [ax1, ax2]:
-                if self.show_titles:
-                    ax.set_title(self.mapping_title(k))
                 ax.set_ylabel(self._y_label(k))
                 ax.set_xlabel(self._x_label(k))
 
@@ -1580,11 +1733,12 @@ class FitReport:
                 self._set_x_limits(
                     ax, k, [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
                 )
-                self._set_legend(ax)
+            self._set_mapping_legend(fig, [ax1, ax2])
 
             self._set_log_scale(ax2, "y")
             if ax2.get_yscale() == "log":
                 self._set_log_y_limits(ax2, y_ref)
+                self._mask_nonpositive_lines(ax2)
 
             self._save_mpl_figure(
                 fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
@@ -1625,9 +1779,8 @@ class FitReport:
             for ax in (ax3, ax4):
                 ax.set_xlabel(self._x_label(k))
 
+            self._set_mapping_title(fig, k)
             for ax in (ax1, ax2):
-                if self.show_titles:
-                    ax.set_title(self.mapping_title(k))
                 plt.setp(ax.get_xticklabels(), visible=False)
 
                 # reference data
@@ -1691,10 +1844,11 @@ class FitReport:
             x_obs = [res_data[p.sid]["x_obs"][k] for p in self.parameter_sets]
             for ax in (ax1, ax2, ax3, ax4):
                 self._set_x_limits(ax, k, x_obs)
-                self._set_legend(ax)
+            self._set_mapping_legend(fig, [ax1, ax2, ax3, ax4])
 
             for ax in (ax2, ax4):
                 self._set_log_scale(ax, "y")
+                self._mask_nonpositive_lines(ax)
 
             self._save_mpl_figure(
                 fig=fig,

@@ -51,6 +51,22 @@ def test_at_interpolates_and_takes_the_value_after_a_change() -> None:
     assert np.isnan(evaluate_reduced("at(x, 5)", {"x": X}, T)).all()
 
 
+def test_at_takes_the_value_after_an_event_of_the_model() -> None:
+    """Two times closer than the resolution of a simulation are a jump.
+
+    The second simulation has the states before and after an event of the
+    model at 1 at times a little apart, which the resolution of the first
+    does not take as a jump.
+    """
+    t = np.array([[0.0, 1.0 - 1e-6, 1.0 + 1e-6, 2.0]] * 2)
+    x = np.array([[0.0, 1.0, 0.0, 1.0]] * 2)
+    np.testing.assert_allclose(
+        evaluate_reduced("at(x, 1)", {"x": x}, t, np.array([1e-9, 1e-5])),
+        [[0.5], [0.0]],
+    )
+    np.testing.assert_allclose(evaluate_reduced("at(x, 1)", {"x": x}, t, 1e-5), 0.0)
+
+
 def test_the_time_of_at_is_a_value_per_simulation() -> None:
     when = np.array([[0.5], [0.0]])
     np.testing.assert_allclose(
@@ -130,3 +146,32 @@ def test_an_identifier_with_a_dot_is_one_symbol() -> None:
     compiled = compile_formula("hctz.auc_inf_obs / hctz.cmax + 1.5")
     assert compiled.symbols == ("hctz.auc_inf_obs", "hctz.cmax")
     assert compiled.evaluate([10.0, 2.0]) == pytest.approx(6.5)
+
+
+def test_at_before_a_change_is_before_it() -> None:
+    """A time within the resolution before a change is interpolated toward the state before it.
+
+    The first step of the integrator after the change at 1 is closer than the
+    resolution; without the times of the changes the two states of the
+    change look like an event of the model, whose state after it such a time
+    sees.
+    """
+    t = np.array([[0.0, 1.0, 1.0, 1.0 + 1e-12, 2.0]])
+    x = np.array([[0.0, 1.0, 5.0, 5.0, 4.0]])
+    before = evaluate_reduced("at(x, 1 - 1e-10)", {"x": x}, t, 1e-9, [np.array([1.0])])
+    assert before[0, 0] == pytest.approx(1.0, abs=1e-9)
+    assert evaluate_reduced("at(x, 1 - 1e-10)", {"x": x}, t, 1e-9)[0, 0] == 5.0
+    at = evaluate_reduced("at(x, 1)", {"x": x}, t, 1e-9, [np.array([1.0])])
+    assert at[0, 0] == 5.0
+
+
+def test_at_raises_for_the_changes_of_other_simulations() -> None:
+    """The changes of every simulation, one per timecourse, or an error.
+
+    The changes of fewer simulations than timecourses were dropped, and `at`
+    took the jumps at them for events of the model.
+    """
+    t = np.array([[0.0, 1.0, 1.0, 2.0], [0.0, 1.0, 1.0, 2.0]])
+    x = np.array([[0.0, 1.0, 5.0, 4.0], [0.0, 1.0, 6.0, 4.0]])
+    with pytest.raises(ValueError, match="the changes of 1 simulations"):
+        evaluate_reduced("at(x, 1)", {"x": x}, t, 1e-9, [np.array([1.0])])

@@ -35,7 +35,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.likelihood import (
     chi2,
     log_likelihood,
@@ -69,11 +69,13 @@ MATH = "math"
 MATH_FILE = "math_tests.yaml"
 
 #: the settings a case is simulated with. The output are the times of the
-#: measurements, the integrator is tighter than the tolerances of the cases
+#: measurements, the integrator is tighter than the tolerances of the cases,
+#: and a measurement at the time of a change is the state after it (PEtab)
 CASE_SETTINGS = FitSettings(
     parameter_scale=ParameterScaleType.LINEAR,
     absolute_tolerance=1e-12,
     relative_tolerance=1e-12,
+    data_at_change=DataAtChangeType.AFTER,
 )
 
 #: relative and absolute tolerance of a math case
