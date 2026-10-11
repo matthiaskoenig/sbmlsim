@@ -41,6 +41,7 @@ def report_and_dir(
         data_path=DATA_PATH,
         base_path=HCTZ_PATH,
         simulator=Simulator(),
+        on_error="raise",
     )
     results = runner.run_experiments(
         output_path=output_path,

@@ -44,7 +44,11 @@ def _results(
     experiment_class: Any, base: Path, data: Path, reduced: bool, tmp_path: Path
 ) -> dict[str, ScanResult]:
     runner = ExperimentRunner(
-        [experiment_class], simulator=Simulator(), base_path=base, data_path=data
+        [experiment_class],
+        simulator=Simulator(),
+        base_path=base,
+        data_path=data,
+        on_error="raise",
     )
     # the values are compared, the figures are not drawn
     runner.run_experiments(

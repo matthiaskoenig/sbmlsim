@@ -807,6 +807,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             experiment_classes=list(exp_classes),
             base_path=self.base_path,
             data_path=self.data_path,
+            # a fit needs every experiment, its definition errors are raised
+            on_error="raise",
         )
 
         # the fit mappings every versioned parameter selects, by the index of

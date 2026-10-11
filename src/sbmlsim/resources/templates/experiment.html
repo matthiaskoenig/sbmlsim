@@ -10,6 +10,8 @@
 <span class="badge">models <b>{{ models | length }}</b></span>
 <span class="badge">datasets <b>{{ datasets | length }}</b></span>
 <span class="badge">figures <b>{{ figures | length }}</b></span>
+{% if error %}<span class="badge failed">experiment <b>failed</b></span>{% endif %}
+{% if failed_figures %}<span class="badge failed">failed figures <b>{{ failed_figures | length }}</b></span>{% endif %}
 {% endblock %}
 
 {% block nav %}
@@ -37,6 +39,9 @@
 
 <section id="overview">
   <h2>Overview</h2>
+  {% if error %}
+  <p class="failed">The experiment failed: {{ error }}</p>
+  {% endif %}
 
   <h3>Models</h3>
   <div class="card">
@@ -69,6 +74,9 @@
 
 <section id="figures">
   <h2>Figures ({{ figures | length }})</h2>
+  {% for fig_id, fig_error in failed_figures.items() %}
+  <p class="failed">The figure {{ fig_id }} failed: {{ fig_error }}</p>
+  {% endfor %}
   {% for fig_id, fig in figures.items() %}
   <div class="card mapping" data-filter="card">
     <header>
@@ -88,7 +96,7 @@
   </div>
   {% endfor %}
   <p class="empty hidden" data-empty>No figure matches the search.</p>
-  {% if not figures %}<p class="empty">The experiment has no figures.</p>{% endif %}
+  {% if not figures %}<p class="empty">{% if error %}The experiment failed before it wrote a figure.{% else %}The experiment has no figures.{% endif %}</p>{% endif %}
 </section>
 
 <section id="code">

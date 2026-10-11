@@ -31,6 +31,7 @@ def experiment() -> SimulationExperiment:
         simulator=Simulator(),
         base_path=Path("."),
         data_path=Path("."),
+        on_error="raise",
     )
     experiment = runner.experiments["ScanFigures"]
     experiment.run(runner.simulator)
