@@ -138,28 +138,28 @@ def grid_weights(
     The output of a simulation has two time points at the time of a change
     after the start, the states before and after the change, and two at the
     time of an event of the model, the states before and after the event
-    (`sbmlsim.model.roottol`): a jump. Time points at most `tolerance` apart
-    are a chain of jumps, e.g. a change and an event closer than the
-    resolution of the time, followed by the first steps of CVODE after the
-    last jump; two time points of an event which are a little apart, as the
-    exact output of `sbmlsim.simulator.executor` has them, are a jump as
-    well. A time of the grid sees:
+    (`sbmlsim.model.roottol`): a jump. Two time points of an event which are
+    a little apart, as the exact output of `sbmlsim.simulator.executor` has
+    them, are a jump as well. A chain of jumps starts at a jump and has the
+    time points after it at most `tolerance` apart, e.g. a change and an
+    event closer than the resolution of the time and the first steps of
+    CVODE after the last jump. A time of the grid sees:
 
-    - before a jump, the value interpolated toward the state before it;
-    - at the time of a jump or of a change, the state after the changes and
-      events at that time, not a step of the integrator after it which is
-      closer than the tolerance;
-    - inside a chain, the state after its last jump;
-    - at most `tolerance` before a jump which is no change, the state after
-      it: CVODE locates an event a little after its time, at the end of the
-      interval in which it finds the root of the trigger; a time before a
-      change is before it.
+    - before a chain, the value interpolated toward the state before it,
+      also within `tolerance` before it if its first jump is a change, and
+      whether or not a step of the integrator is that close to it;
+    - at a change, at an event and inside a chain, the state after the last
+      jump of the chain, not a step of the integrator after it;
+    - at most `tolerance` before a chain whose first jump is an event, the
+      state after the chain: CVODE locates an event a little after its
+      time, at the end of the interval in which it finds the root of the
+      trigger.
 
     A time of the grid in `left` sees the state before the jump at it
-    instead, e.g. a data point of a fit which takes the state before a
-    change; by default the first of two equal times of the grid, so a grid of
-    the time points of a timecourse gives every row of it. The fit
-    interpolates its data by the same rule.
+    instead, the state before the chain, e.g. a data point of a fit which
+    takes the state before a change; by default the first of two equal
+    times of the grid, so a grid of the time points of a timecourse gives
+    every row of it. The fit interpolates its data by the same rule.
 
     Args:
         time: the time points, sorted; the ones which are not finite are no
@@ -189,16 +189,22 @@ def grid_weights(
         left[:-1] = grid[:-1] == grid[1:]
     changes = np.empty(0) if changes is None else np.asarray(changes, dtype=float)
     rows = np.arange(n)
-    # the chains: time points at most the tolerance apart, with the first and
-    # the last point of the chain of every time point
+    # the jumps: a time point which appears twice, its second point
+    twice = np.zeros(n, dtype=bool)
+    twice[1:] = t[1:] == t[:-1]
+    # the chains: time points at most the tolerance apart, which start at
+    # their first jump, the steps of the integrator before it are no part of
+    # them; the first and the last point of the chain of every time point
     split = np.diff(t) > tolerance
+    close = np.concatenate([[0], np.cumsum(split)])
+    first_jump = np.full(close[-1] + 1, n)
+    np.minimum.at(first_jump, close[twice], rows[twice] - 1)
+    split |= rows[1:] == first_jump[close[1:]]
     chain = np.concatenate([[0], np.cumsum(split)])
     first = np.flatnonzero(np.concatenate([[True], split]))[chain]
     last = np.flatnonzero(np.concatenate([split, [True]]))[chain]
-    # the jumps: a time point which appears twice; the state after the last
-    # jump of a chain, or after the chain of an event a little apart
-    twice = np.zeros(n, dtype=bool)
-    twice[1:] = t[1:] == t[:-1]
+    # the state after the last jump of a chain, or after the chain of an
+    # event a little apart
     last_jump = np.full(chain[-1] + 1, -1)
     np.maximum.at(last_jump, chain[twice], rows[twice])
     end = np.where(last_jump[chain] >= 0, last_jump[chain], last)
@@ -222,7 +228,10 @@ def grid_weights(
         & (t[following] - grid <= tolerance)
         & ~np.isin(t[following], changes)
     )
-    to = np.where(own, i, np.where(inside, end[i], end[following]))
+    # at a time point: the state after the last jump of its chain, the time
+    # point itself if it is after it or its chain has no jump
+    at_own = np.where(last_jump[chain[i]] >= 0, np.maximum(end[i], i), i)
+    to = np.where(own, at_own, np.where(inside, end[i], end[following]))
     after = ~left & (own | inside | ahead)
     # the state before the jump at a time of the grid: the first point of a
     # time which appears twice, or of the chain the time is inside

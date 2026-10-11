@@ -282,11 +282,11 @@ def _interpolate_after_jumps(
     """Interpolate a timecourse linearly at the times of data, its jumps included.
 
     The output of a simulation has the states before and after a change at
-    its time, and an event of the model; time points closer than the
-    resolution of the time are one jump. A time before a jump is
-    interpolated toward the state before it, the time of a change sees the
-    state after it, a time inside a jump the state after it and so does a
-    time at most the resolution before an event of the model, which CVODE
+    its time, and an event of the model; jumps closer than the resolution of
+    the time are a chain. A time before a chain is interpolated toward the
+    state before it, a time at a change, at an event or inside a chain sees
+    the state after its last jump, and so does a time at most the resolution
+    before a chain which starts with an event of the model, which CVODE
     locates a little after its time: the rule of
     `sbmlsim.result.timecourse.grid_weights`. A data point which takes the
     state before a change (`FitSettings.data_at_change`) sees the state

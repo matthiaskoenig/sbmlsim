@@ -471,9 +471,10 @@ def test_a_time_inside_a_chain_of_jumps_sees_the_state_after_the_chain() -> None
     """A change and an event closer than the tolerance are one chain.
 
     A change at `2 - 1e-14` and a dose event at 2, which CVODE locates a
-    little after 2, followed by a step of the integrator: a time inside the
-    chain sees the state after the dose, not the step after it; the time of
-    the change the state after the change.
+    little after 2, followed by a step of the integrator: the time of the
+    change and a time inside the chain see the state after the dose, not the
+    step after it; a time within the tolerance before the change the state
+    before it.
     """
     c = 2.0 - 1e-14
     e = 2.0 + 3e-13
@@ -481,7 +482,65 @@ def test_a_time_inside_a_chain_of_jumps_sees_the_state_after_the_chain() -> None
     values = np.array([1.0, 1.0, 2.0, 2.0, 12.0, 12.0 - 1e-11, 11.0])
     grid = np.array([c - 1e-10, c, 2.0, e, e + 1e-12])
     out = apply_weights(grid_weights(time, grid, 1e-9, np.array([c])), values)
-    np.testing.assert_allclose(out, [1.0, 2.0, 12.0, 12.0, 12.0 - 1e-12], atol=1e-11)
+    np.testing.assert_allclose(out, [1.0, 12.0, 12.0, 12.0, 12.0 - 1e-12], atol=1e-11)
+
+
+@pytest.mark.parametrize("step", [False, True])
+def test_a_time_within_the_tolerance_before_a_change_sees_the_state_before_it(
+    step: bool,
+) -> None:
+    """A step of the integrator closer to a change than the tolerance is before it.
+
+    The step started the chain of the change, a time between it and the
+    change saw the state after the change (5) instead of the value toward
+    the state before it (1); a chain starts at its first jump.
+    """
+    time = np.array([0.0, 1.0, 1.0, 2.0])
+    values = np.array([0.0, 1.0, 5.0, 6.0])
+    if step:
+        time = np.insert(time, 1, 1.0 - 5e-10)
+        values = np.insert(values, 1, 1.0 - 5e-10)
+    grid = np.array([1.0 - 1e-10, 1.0, 1.5])
+    out = apply_weights(grid_weights(time, grid, 1e-9, np.array([1.0])), values)
+    np.testing.assert_allclose(out, [1.0 - 1e-10, 5.0, 5.5], rtol=1e-12)
+
+
+def test_a_time_at_a_change_sees_the_state_after_the_event_just_after_it() -> None:
+    """The time of a change in a chain with an event after it sees the state after both.
+
+    A change at 2.5 and an event of the model which CVODE locates 1e-12
+    after it; the time of the change saw the state after the change and
+    before the event (2), a time between them the state after the event.
+    """
+    e = 2.5 + 1e-12
+    time = np.array([2.0, 2.5, 2.5, e, e, 3.0])
+    values = np.array([0.0, 1.0, 2.0, 2.0, 12.0, 11.0])
+    grid = np.array([2.5, 2.5 + 5e-13, e])
+    out = apply_weights(grid_weights(time, grid, 1e-9, np.array([2.5])), values)
+    np.testing.assert_array_equal(out, [12.0, 12.0, 12.0])
+    # the first of two equal times, the state before the chain
+    grid = np.array([2.5, 2.5])
+    out = apply_weights(grid_weights(time, grid, 1e-9, np.array([2.5])), values)
+    np.testing.assert_array_equal(out, [1.0, 12.0])
+
+
+def test_a_step_between_a_time_and_an_event_is_before_the_event() -> None:
+    """A time before a step of the integrator before an event is before the event.
+
+    CVODE locates an event at most a little after its time, a step of the
+    integrator between a time and the event is before the event, and so is
+    the time; a time after the step within the tolerance before the event is
+    at it.
+    """
+    time = np.array([0.0, 1.0 - 5e-10, 1.0, 1.0, 2.0])
+    values = np.array([0.0, 1.0 - 5e-10, 1.0, 0.0, 1.0])
+    grid = np.array([1.0 - 8e-10, 1.0 - 1e-10, 1.0])
+    out = apply_weights(grid_weights(time, grid, 1e-9), values)
+    np.testing.assert_allclose(out, [1.0 - 8e-10, 0.0, 0.0], rtol=1e-12)
+    # without the step, a time within the tolerance before the event is at it
+    without = [0, 2, 3, 4]
+    out = apply_weights(grid_weights(time[without], grid, 1e-9), values[without])
+    np.testing.assert_array_equal(out, [0.0, 0.0, 0.0])
 
 
 def test_the_union_of_the_time_points_keeps_a_time_twice() -> None:
