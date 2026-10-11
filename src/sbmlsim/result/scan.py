@@ -13,7 +13,8 @@ A `ScanResult` wraps one `xarray.Dataset`:
   `on_error="flag"`;
 - coordinates: the labels of every dimension, every changed target of a
   dimension of values along its dimension (`<dimension>.<target>` when the
-  target is also a variable of the result, which keeps the plain name), and `time` on a grid;
+  target is also a variable of the result, which keeps the plain name), and
+  `time` on a grid;
 - `attrs`: `dims`, the dimensions of the scan in their order, `units`, the
   unit of every variable and coordinate, `scan` and `integrator_settings`,
   the provenance, `changes`, the times of the changes after the start of the
@@ -22,9 +23,14 @@ A `ScanResult` wraps one `xarray.Dataset`:
 
 The output of a simulation has two time points at the time of a change after
 the start, the state before the change and the state after it, as at an event
-of the model; the time of a grid then appears twice.
+of the model; the time of a grid then appears twice. The idioms of xarray
+which need a unique index raise at such a time, e.g. `ds.interp`, `ds.sel`
+with `method="nearest"` and `ds.reindex`: `ScanResult.interpolate` puts a
+result on other times, `sel(time=t)` at a change selects both rows and
+`isel` one of them.
 
-`nca` and `to_timecourses` hand a PK analysis and a timecourse over to pkpdutils, whose layout `(*dims, time)` the result has.
+`nca` and `to_timecourses` hand a PK analysis and a timecourse over to
+pkpdutils, whose layout `(*dims, time)` the result has.
 
 `xarray` does the rest: `res["[X]"].sel(dose=10)`, `res.ds.to_dataframe()`.
 """
