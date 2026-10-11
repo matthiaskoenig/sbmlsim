@@ -1101,11 +1101,26 @@ def test_data_at_an_event_of_the_model_sees_the_state_after_it(
     """Data at the time of an event of the model takes the state after the event.
 
     The steps of the integrator have the states before and after the reset
-    at 1 at times closer than the resolution of the time, also in a segment
-    integrated again with exact output; data at 1 is not their midpoint.
-    roadrunner locates the reset only to the tolerance of its roots, its
-    states can be a little after the data at 1, as they are for the late
-    reset, which data at 1 sees as well.
+    at 1 at its time, a segment integrated again with exact output a
+    resolution before and after it; data at 1 is not their midpoint. CVODE
+    locates the reset a little after its time, its states are a little after
+    the data at 1, as they are for the late reset, which data at 1 sees as
+    well.
+    """
+    prediction = sawtooth_prediction(tmp_path, task, trigger)
+    np.testing.assert_allclose(prediction, [0.5, 0.0, 0.5], atol=1e-6)
+
+
+def sawtooth_prediction(tmp_path: Path, task: str, trigger: str) -> np.ndarray:
+    """Get the prediction of the fit of the sawtooth at the data `[0.5, 1, 1.5]`.
+
+    Args:
+        tmp_path: the directory of the model.
+        task: the task of `SawtoothStudy`, `task_steps` or `task_past`.
+        trigger: the trigger of the reset of the sawtooth.
+
+    Returns:
+        The prediction of `X` at the times of the data.
     """
     model = SAWTOOTH.replace("k = 1", "k = 1\n  p = 1").replace("at (X >= 1)", trigger)
     (tmp_path / SAWTOOTH_FILE).write_text(sbml(model))
@@ -1131,5 +1146,4 @@ def test_data_at_an_event_of_the_model_sees_the_state_after_it(
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
     assert problem._group_graphs[0] is not None
     k = problem.mapping_keys.index(f"fm_x_{task}")
-    prediction = problem.predictions(np.array([1.0]), problem.indices())[k]
-    np.testing.assert_allclose(prediction, [0.5, 0.0, 0.5], atol=1e-6)
+    return problem.predictions(np.array([1.0]), problem.indices())[k]

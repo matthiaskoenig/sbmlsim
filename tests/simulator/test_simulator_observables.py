@@ -426,11 +426,11 @@ def test_a_time_at_an_event_of_the_model_sees_the_state_after_it(
     """A grid, `at` and `interpolate` take the reset of the sawtooth as the fit does.
 
     The steps of the integrator have the states before and after the reset
-    at 1 at times a little apart, the second case integrates the segment up
-    to the change at 1.998 again with exact output (its last step ends after
-    the reset at 2), whose times before and after the reset are a resolution
-    apart. A time at the reset sees the state after it, not a value between,
-    also where roadrunner locates the reset a little after the time, as for
+    at 1 at its time, the second case integrates the segment up to the
+    change at 1.998 again with exact output (its last step ends after the
+    reset at 2), a resolution before and after the reset. A time at the
+    reset sees the state after it, not a value between, also where CVODE
+    locates the reset a little after the time, as it always does, and for
     the late reset, which is closer to 1 than the resolution of the time.
     """
     from sbmlsim.fit.optimization import _interpolate_after_jumps

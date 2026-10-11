@@ -57,6 +57,7 @@ nav = [
       { "model" = "api/model.model.md" },
       { "model_roadrunner" = "api/model.model_roadrunner.md" },
       { "model_resources" = "api/model.model_resources.md" },
+      { "roottol" = "api/model.roottol.md" },
       { "symbols" = "api/model.symbols.md" },
       { "provenance" = "api/model.provenance.md" },
     ] },

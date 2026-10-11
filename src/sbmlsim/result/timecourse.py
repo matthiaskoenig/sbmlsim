@@ -133,12 +133,14 @@ def grid_weights(
 
     Two time points at most `tolerance` apart are a jump: an event of the
     model, whose states before and after it the steps of the integrator have
-    at almost one time, or a duplicated final time, the state after a change
-    at the end. A time of the grid at a jump sees the state after it: a time
-    inside it, at one of its points or at most `tolerance` before it, since
-    roadrunner locates an event only to the tolerance of its roots, on
-    either side of its time. The fit interpolates its data by the same rule,
-    see `sbmlsim.fit.optimization._interpolate_after_jumps`.
+    at the time of the event (`sbmlsim.model.roottol`), followed by the first
+    steps of CVODE after it, or a duplicated final time, the state after a
+    change at the end. A time of the grid at a jump sees the state after it:
+    a time inside it, at one of its points or at most `tolerance` before it,
+    since CVODE locates an event a little after its time, at the end of the
+    interval in which it finds the root of the trigger. The fit interpolates
+    its data by the same rule, see
+    `sbmlsim.fit.optimization._interpolate_after_jumps`.
 
     Args:
         time: the time points, sorted; the ones which are not finite are no

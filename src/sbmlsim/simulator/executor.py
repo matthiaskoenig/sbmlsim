@@ -14,11 +14,13 @@ The semantics are the ones of PEtab v2:
    change made true fire, which roadrunner does not see.
 5. A segment is integrated with the output of the plan and ends in its
    state at its end, which the next change is applied to; for the steps of
-   the integrator see `_steps`. A time of a change appears once in the
-   output, with the state after the change. The state before a change after
-   the start is the end of the segment before it, which
-   `execute_with_changes` gives next to the output with the state after it,
-   see
+   the integrator see `_steps`, which has an event of the model as two rows
+   at the time of the event, the states before and after it, whatever the
+   first integration of the process was, see `sbmlsim.model.roottol`. A
+   time of a change appears once in the output, with the state after the
+   change. The state before a change after the start is the end of the
+   segment before it, which `execute_with_changes` gives next to the output
+   with the state after it, see
    `sbmlsim.fit.options.FitSettings.data_at_change`.
 6. A model which does not read the time (`ModelSymbols.time_dependent`) is
    integrated in local time: every segment starts at the time 0 of
@@ -45,6 +47,7 @@ import numpy as np
 import roadrunner
 
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
+from sbmlsim.model.roottol import at_event_times, root_tolerance
 from sbmlsim.model.symbols import EventSymbols, TargetKind
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.formula import compile_formula
@@ -312,8 +315,11 @@ def _simulate(
                         r, start, end_stop, tolerance, bool(model_events)
                     )
                     if not at_end:
+                        # the state before an event whose state after it
+                        # roadrunner interpolated to the end keeps its time,
+                        # `roottol` before the event, see `_steps`
                         output = _exact_times(
-                            start, block[1:-1, 0], end_stop, tolerance
+                            start, np.sort(block[1:-1, 0]), end_stop, tolerance
                         )
                         if load is None:
                             raise _PastTheEnd(k, output)
@@ -399,13 +405,19 @@ def _steps(
     it in its next integration, also of the next simulation: such a segment
     is integrated past its end and gets exact output, see `_PastTheEnd`.
 
+    roadrunner reports an event of the model inside the segment as two rows,
+    the states before and after it, `roottol` before and after its time,
+    which the first integration of the process fixes; both rows get the time
+    of the event, see `sbmlsim.model.roottol`.
+
     Args:
         r: the roadrunner instance, in the state at the start.
         start: the start of the segment in the time of roadrunner.
         end: its end in the time of roadrunner.
         tolerance: the resolution of the time: a step of a model with events
             which is closer to the end is an event which roadrunner fired at
-            the end.
+            the end, and so is the state before an event `2 * roottol` closer,
+            whose state after it roadrunner interpolated to the end.
         events: whether the model has events.
 
     Returns:
@@ -414,10 +426,15 @@ def _steps(
         its end; if not, the last row is the one of roadrunner.
     """
     block = _variable_steps(r, start, end)
+    roottol = 0.0
+    if events:
+        measured = root_tolerance()
+        roottol = measured.value
+        block[:, 0] = at_event_times(block[:, 0], measured)
     if not _to_the_end(r, end, events):
         return block, False
     steps = block[1:-1, 0]
-    if events and steps.size and steps[-1] > end - tolerance:
+    if events and steps.size and steps[-1] > end - tolerance - 2.0 * roottol:
         return block, False
     state = np.array(r.getSelectedValues(), dtype=float)
     state[0] = end
@@ -500,16 +517,16 @@ def _exact_times(
     The times are the start, the steps before the end and the end. A step
     closer to the end than the resolution of the time is an event which
     roadrunner fired at the end and is left out. Steps closer to each other
-    than the resolution are an event of the model, the state before it and
-    the one after it, which roadrunner gives at times which differ by less
-    than its tolerance of a root, or at one time: the segment is integrated
-    to a resolution before the first and after the last of them, where CVODE
-    has not found the event yet and has found it, and the rows have the
-    times of the first and the last, as the steps of the integrator have
-    them, so data at the event sees the state after it. Two events less than
-    two resolutions apart share the time between them, half way: both rows
-    are the state between the events. An event closer to the start than the
-    resolution has no row before it, the start is the state before it.
+    than the resolution are an event of the model, the states before and
+    after it, which `_steps` gives at the time of the event, with the first
+    steps of CVODE after it: the segment is integrated to a resolution
+    before the first and after the last of them, where CVODE has not found
+    the event yet and has found it, and the rows have the times of the first
+    and the last, as the steps of the integrator have them, so data at the
+    event sees the state after it. Two events less than two resolutions
+    apart share the time between them, half way: both rows are the state
+    between the events. An event closer to the start than the resolution has
+    no row before it, the start is the state before it.
 
     Args:
         start: the start of the segment in the time of roadrunner.

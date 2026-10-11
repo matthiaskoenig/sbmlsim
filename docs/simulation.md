@@ -4,7 +4,7 @@ A `Simulation` describes what is simulated: the interval, the changes applied to
 
 ## A simulation
 
-`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose, which end in the state at the end and start again at the time of every change (see [The semantics](#the-semantics)); `Simulator.run` returns a `ScanResult`:
+`Simulation(start, end)` integrates the model from `start` to `end`. Without further settings the output are the steps of the integrator, i.e. the time points the integrator chose, which end in the state at the end, start again at the time of every change and have an event of the model as two time points at the time of the event, the states before and after it (see [The semantics](#the-semantics)); `Simulator.run` returns a `ScanResult`:
 
 ```python
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -122,6 +122,7 @@ A model which does not reach a steady state by `SteadyState(max_time=...)` raise
 | events | the events of the model whose trigger became true fire after the change |
 | integration | the interval is split at the times of the changes, and every segment ends in its state at its end, which the change at that time is applied to, also with the steps of the integrator as the output; an event of the model fires at its time, except that with the steps of the integrator roadrunner fires an event with a delay at the end of the step after its time |
 | output | an output time which is the time of a change is the state after the change; a fit compares its data there with the state before it, see [Parameter fitting](fitting.md#data-at-the-time-of-a-change) |
+| events in the output | with the steps of the integrator an event of the model is two time points at the time of the event, the states before and after it. libroadrunner 2.10 reports them before and after the event by a tolerance which the first integration of the process fixes (7.1e-9 after a first integration over `0..10000`); sbmlsim runs a probe before the first model of a process and in every worker of a pool, which makes that tolerance negligible, measures it and gives both time points the time of the event, see [`model.roottol`](api/model.roottol.md). In a process in which roadrunner integrated before sbmlsim loaded a model, a first step of the integrator after an event which is shorter than that tolerance is missing |
 
 ## Selections and integrator settings
 

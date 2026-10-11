@@ -801,6 +801,47 @@ def test_the_exact_times_of_two_close_events_are_sorted() -> None:
     assert np.all(np.diff(times) >= 0.0)
 
 
+@pytest.mark.parametrize(("before", "at_end"), [(1.5, False), (2.5, True)])
+def test_an_event_whose_state_after_it_roadrunner_interpolated_to_the_end(
+    monkeypatch: pytest.MonkeyPatch, before: float, at_end: bool
+) -> None:
+    """The state before an event `2 * roottol` closer to the end is past the end.
+
+    roadrunner reports the state before an event at `root - roottol`; if the
+    row of the state after it at `root + roottol` is after the end, roadrunner
+    interpolates it to the end, and the state before the event is the last
+    step, which `at_event_times` cannot give the time of the event. With a
+    `roottol` larger than the resolution of the time, the event is within the
+    resolution of the end, which roadrunner fired before it.
+    """
+    from sbmlsim.model.roottol import RootTolerance
+    from sbmlsim.simulator import executor
+
+    roottol, end, tolerance = 1e-6, 2.0, 1e-8
+    steps = np.array(
+        [[0.0, 0.0], [1.0, 1.0], [end - before * roottol, 2.0], [end, 2.0]]
+    )
+
+    class Instance:
+        def getSelectedValues(self) -> list[float]:
+            return [end, 2.0]
+
+    monkeypatch.setattr(executor, "_variable_steps", lambda r, a, b: steps.copy())
+    monkeypatch.setattr(executor, "_to_the_end", lambda r, b, events: True)
+    monkeypatch.setattr(
+        executor, "root_tolerance", lambda: RootTolerance(roottol, 1e-19)
+    )
+    block, reached = executor._steps(
+        Instance(),  # ty: ignore[invalid-argument-type]
+        0.0,
+        end,
+        tolerance,
+        True,
+    )
+    assert reached is at_end
+    np.testing.assert_array_equal(block[:-1, 0], steps[:-1, 0])
+
+
 #: two events of the time less than two resolutions of the time of a simulation
 #: to 2.5 apart, and a reset of `X` at 2, after a change at 1.998
 TWINS = """

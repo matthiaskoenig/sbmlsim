@@ -379,16 +379,16 @@ def _interpolate_after_jumps(
 
     Two times of the timecourse closer than the resolution of the time are a
     jump: the state before and after a change at one time (`_with_jumps`),
-    or an event of the model, which the steps of the integrator have at one
-    time or at times closer than the tolerance of a root of roadrunner. A
-    time before a jump is interpolated toward the state before it, a time
-    inside it, at one of its points and after it sees the state after it, the
-    rule of `sbmlsim.result.timecourse.grid_weights`. So does a time at most
-    the resolution before an event of the model, which roadrunner locates
-    only to the tolerance of its roots, on either side of its time. A change
-    has its exact time: a time before it is before it, and its time sees its
-    state after it, not the one of a step of the integrator after it which
-    is closer than the resolution.
+    or an event of the model, which the steps of the integrator have at the
+    time of the event, see `sbmlsim.model.roottol`. A time before a jump is
+    interpolated toward the state before it, a time inside it, at one of its
+    points and after it sees the state after it, the rule of
+    `sbmlsim.result.timecourse.grid_weights`. So does a time at most the
+    resolution before an event of the model, which CVODE locates a little
+    after its time, at the end of the interval in which it finds the root of
+    the trigger. A change has its exact time: a time before it is before it,
+    and its time sees its state after it, not the one of a step of the
+    integrator after it which is closer than the resolution.
 
     Args:
         x: the times to interpolate at.

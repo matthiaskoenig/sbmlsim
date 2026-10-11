@@ -364,11 +364,10 @@ def test_the_weights_take_the_value_after_a_change(t: list[float]) -> None:
 def test_the_weights_take_the_value_after_an_event_of_the_model() -> None:
     """Two times closer than the tolerance are a jump, as the fit has it.
 
-    The steps of the integrator have the states before and after an event at
-    times a little apart, at the event at 1 and at the end. A time at a jump
-    sees the state after it: inside it, at one of its points and at most the
-    tolerance before it, since roadrunner locates an event only to the
-    tolerance of its roots, before or after its time.
+    The states before and after an event are a little apart here, at the
+    event at 1 and at the end. A time at a jump sees the state after it:
+    inside it, at one of its points and at most the tolerance before it,
+    since CVODE locates an event a little after its time.
     """
     from sbmlsim.fit.optimization import _interpolate_after_jumps
 
