@@ -36,7 +36,7 @@ keywords = [
 dependencies = [
 	# SBML, its formulas and COMBINE archives
 	"sbmlutils>=0.16.0",
-	"pymetadata>=0.8.0",
+	"pymetadata>=0.8.1",
 	"python-libsbml>=5.21.2",
 	# simulation
 	"libroadrunner>=2.10.0",
@@ -56,7 +56,7 @@ dependencies = [
 	# `quotient`, the test of both is the tripwire when the bound is raised
 	"sbmlmath>=0.4.1,<0.5",
 	"pint>=0.26.1",
-	"pydantic>=2.13.5",
+	"pydantic>=2.12",
 	# parameter fitting and sensitivity analysis
 	"petab>=0.9.0",
 	"SALib>=1.6.0",
