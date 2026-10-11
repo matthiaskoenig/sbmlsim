@@ -2861,7 +2861,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             self._log_integration_error(x, err)
             return None
         tolerance = time_tolerance(plans[0].start, plans[0].end)
-        changes = np.asarray(plans[0].change_times, dtype=float) + plans[0].time_shift
+        changes = plans[0].output_change_times
         added = self._group_added[k_group]
         timecourse_graph = self._group_timecourse_graphs[k_group]
         # the output of a run, without the times a group with a timecourse

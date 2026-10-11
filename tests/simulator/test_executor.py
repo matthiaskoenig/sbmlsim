@@ -1192,30 +1192,61 @@ def test_an_event_within_the_resolution_before_the_end_is_in_the_chain_at_it(
     assert np.all(np.asarray(result["Y"])[near] == 1.0)
 
 
-def test_the_state_before_a_change_is_before_the_event_at_its_time() -> None:
+def _states_at_a_change(c: float) -> list[tuple[float, bool, float, float]]:
+    """The states before and after a change at `c` with a dose event at `c`.
+
+    The steps of the integrator and an output of times with the change, the
+    dose of 10 fires after the change.
+    """
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            f"model d\n  var A = 0\n  k = 0.1\n  A' = -k * A\n"
+            f"  E: at (time >= {c!r}): A = A + 10\nend"
+        )
+    )
+    states = []
+    for times in (None, [0.0, c / 3, c, c + 1.0]):
+        result = run_on(
+            model,
+            Simulation(end=c + 1.0, changes=[Change(c, {"k": 0.2})], times=times),
+            ["time", "A"],
+        )
+        at = np.flatnonzero(result.time == c)
+        states.append((c, times is None, *np.asarray(result["A"])[at].tolist()))
+    return states
+
+
+def _wrong(states: list[tuple[float, bool, float, float]]) -> list:
+    """The states at a change which are not 0 before it and 10 after it."""
+    return [row for row in states if row[2] != 0.0 or row[3] != pytest.approx(10.0)]
+
+
+#: times of the change for which roadrunner integrated the last output time
+#: before it to the change, of the steps of the integrator (1, 1.525, 1.775, 2)
+#: and of an output of times (1.69, 1.75, 1.775, 1.98), and two times for which
+#: it did not
+TOUT_ROUNDED = [1.0, 1.525, 1.69, 1.75, 1.775, 1.98, 2.0, 1.005, 2.5]
+
+
+@pytest.mark.parametrize("c", TOUT_ROUNDED)
+def test_the_state_before_a_change_is_before_the_event_at_its_time(c: float) -> None:
     """An event of the model at the time of a change fires after the change.
 
     roadrunner integrates the last output time of a segment from the one
     before it, `tout = t + (end - t)`, which rounds up to the time of the
-    change for some times below half of it: the event fired before the change
-    (10 of 401 times of a change from 1 to 3).
+    change for some times below half of it: the event fired before the change.
     """
-    before = []
+    assert not _wrong(_states_at_a_change(c))
+
+
+@pytest.mark.slow
+def test_the_state_before_a_change_is_before_the_event_at_every_time() -> None:
+    """The rule of `test_the_state_before_a_change_is_before_the_event_at_its_time`.
+
+    401 times of a change from 1 to 3; without the time between of
+    `_simulate_times` 27 states at a change were wrong.
+    """
+    states = []
     for c in np.round(np.linspace(1.0, 3.0, 401), 6):
-        c = float(c)
-        model = RoadrunnerSBMLModel(
-            source=sbml(
-                f"model d\n  var A = 0\n  k = 0.1\n  A' = -k * A\n"
-                f"  E: at (time >= {c!r}): A = A + 10\nend"
-            )
-        )
-        for times in (None, [0.0, c / 3, c, c + 1.0]):
-            result = run_on(
-                model,
-                Simulation(end=c + 1.0, changes=[Change(c, {"k": 0.2})], times=times),
-                ["time", "A"],
-            )
-            at = np.flatnonzero(result.time == c)
-            before.append((c, times is None, *np.asarray(result["A"])[at].tolist()))
-    wrong = [row for row in before if row[2] != 0.0 or row[3] != pytest.approx(10.0)]
-    assert not wrong
+        states.extend(_states_at_a_change(float(c)))
+    assert not _wrong(states)

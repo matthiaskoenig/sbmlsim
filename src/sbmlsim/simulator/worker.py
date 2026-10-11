@@ -370,7 +370,7 @@ def _on_grid(grid: np.ndarray | None, rows: np.ndarray, plan: Plan) -> np.ndarra
     if grid is None:
         return rows
     tolerance = time_tolerance(plan.start, plan.end)
-    changes = np.asarray(plan.change_times, dtype=float) + plan.time_shift
+    changes = plan.output_change_times
     rows = apply_weights(grid_weights(rows[0], grid, tolerance, changes), rows)
     rows[0] = grid
     return rows

@@ -231,9 +231,10 @@ class DataAtChangeType(StrEnum):
     At the time of a `Change` a simulation has two states, the one before the
     change and the one after it, which the output of a run has both, in two
     rows of that time; PEtab v2 compares a measurement at that time with the
-    state after it. A measurement at that time is mostly taken before: cumulative urine data which ends at a collection reset, i.e. a
-    change which empties the urine, is the amount collected until then, not
-    `0`, and a sample at the time of a dose is a pre-dose sample.
+    state after it. A measurement at that time is mostly taken before:
+    cumulative urine data which ends at a collection reset, i.e. a change
+    which empties the urine, is the amount collected until then, not `0`,
+    and a sample at the time of a dose is a pre-dose sample.
 
     With `before` a time is at the time of a change if they differ by at most
     the resolution of the time of the simulation, on either side of the

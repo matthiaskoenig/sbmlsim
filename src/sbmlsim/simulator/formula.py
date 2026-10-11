@@ -367,7 +367,8 @@ def evaluate_reduced(
 
     Raises:
         ValueError: if the formula is not valid, reads an identifier without a
-            value, or reduces a timecourse with `mean` or `at` without `time`.
+            value, reduces a timecourse with `mean` or `at` without `time`,
+            or `changes` are not the ones of every simulation.
     """
     reduced = reduce_formula(formula)
     scope = dict(values)
@@ -498,7 +499,11 @@ def _at(
         np.asarray(tolerance, dtype=float)[..., None], (*shape[:-1], 1)
     ).reshape(-1)
     if changes is not None and len(changes) != rows.shape[0]:
-        changes = None
+        raise ValueError(
+            f"'{formula}': the changes of {len(changes)} simulations for the "
+            f"timecourses of {rows.shape[0]}, the changes of every simulation are "
+            f"given or none."
+        )
     out = np.array(
         [
             apply_weights(

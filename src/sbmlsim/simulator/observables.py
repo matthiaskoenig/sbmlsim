@@ -173,9 +173,7 @@ class ObservableGraph:
         tolerance: float | np.ndarray = (
             np.array([time_tolerance(p.start, p.end) for p in plans]) if plans else 0.0
         )
-        changes = [
-            np.asarray(p.change_times, dtype=float) + p.time_shift for p in plans
-        ]
+        changes = [p.output_change_times for p in plans]
         for node in self.nodes:
             if isinstance(node, FormulaNode):
                 values[node.id] = _formula(node, time, values, tolerance, changes)

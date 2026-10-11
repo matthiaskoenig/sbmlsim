@@ -193,6 +193,15 @@ class Plan:
         """
         return tuple(event.time for event in self.events if event.time > self.start)
 
+    @property
+    def output_change_times(self) -> np.ndarray:
+        """Get the times of the changes after the start in the time of the output.
+
+        The `change_times` shifted by `time_shift`, the times of the states
+        before and after a change in the result of the executor.
+        """
+        return np.asarray(self.change_times, dtype=float) + self.time_shift
+
     def at_change(self, times: Sequence[float] | np.ndarray) -> np.ndarray:
         """Get the change after the start which every time is at.
 

@@ -336,7 +336,7 @@ def evaluate_pk(
     time, values = without_states_before(
         time,
         values,
-        [np.asarray(p.change_times, dtype=float) + p.time_shift for p in plans],
+        [p.output_change_times for p in plans],
     )
     finite = np.isfinite(time)
     n = time.shape[0]

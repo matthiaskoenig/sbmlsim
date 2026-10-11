@@ -595,3 +595,7 @@ def test_the_timecourses_of_pkpdutils_have_the_state_after_a_change() -> None:
     np.testing.assert_array_equal(
         np.asarray(timecourses.ds["time"].values).ravel()[:3], [0.0, 1.0, 2.0]
     )
+    # the kept value at the change is the state after it, not the one before
+    np.testing.assert_array_equal(
+        timecourses.ds["value"].values, [[1.0, 2.0, 1.0], [2.0, 4.0, 2.0]]
+    )

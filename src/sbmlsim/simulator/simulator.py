@@ -621,7 +621,8 @@ class _Compiled:
         times: set[float] = set()
         for key, plan in self.plans.items():
             at = [t for t in self.at_times[key] if t is not None and t > plan.start]
-            times.update(t + plan.time_shift for t in (*plan.change_times, *at))
+            times.update(plan.output_change_times.tolist())
+            times.update(t + plan.time_shift for t in at)
         return sorted(times)
 
     def point_text(self, index: int) -> str:

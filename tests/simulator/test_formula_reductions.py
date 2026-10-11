@@ -163,3 +163,15 @@ def test_at_before_a_change_is_before_it() -> None:
     assert evaluate_reduced("at(x, 1 - 1e-10)", {"x": x}, t, 1e-9)[0, 0] == 5.0
     at = evaluate_reduced("at(x, 1)", {"x": x}, t, 1e-9, [np.array([1.0])])
     assert at[0, 0] == 5.0
+
+
+def test_at_raises_for_the_changes_of_other_simulations() -> None:
+    """The changes of every simulation, one per timecourse, or an error.
+
+    The changes of fewer simulations than timecourses were dropped, and `at`
+    took the jumps at them for events of the model.
+    """
+    t = np.array([[0.0, 1.0, 1.0, 2.0], [0.0, 1.0, 1.0, 2.0]])
+    x = np.array([[0.0, 1.0, 5.0, 4.0], [0.0, 1.0, 6.0, 4.0]])
+    with pytest.raises(ValueError, match="the changes of 1 simulations"):
+        evaluate_reduced("at(x, 1)", {"x": x}, t, 1e-9, [np.array([1.0])])
