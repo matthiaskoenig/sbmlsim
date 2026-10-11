@@ -254,6 +254,9 @@ class GroupResult:
             an output without the time of a change does not have.
         changes: the times of the changes of `before` and `after` in the time
             of the output.
+        tolerance: the resolution of the time of the simulation, two times
+            of the output closer than it are a jump, see
+            `_interpolate_after_jumps`.
     """
 
     time: np.ndarray
@@ -261,6 +264,7 @@ class GroupResult:
     before: dict[str, np.ndarray] = field(default_factory=dict)
     after: dict[str, np.ndarray] = field(default_factory=dict)
     changes: np.ndarray = field(default_factory=lambda: np.empty(0))
+    tolerance: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -365,19 +369,24 @@ def _with_jumps(
 
 
 def _interpolate_after_jumps(
-    x: np.ndarray, time: np.ndarray, values: np.ndarray
+    x: np.ndarray, time: np.ndarray, values: np.ndarray, tolerance: float = 0.0
 ) -> np.ndarray:
-    """Interpolate a timecourse linearly, a jump at a change included.
+    """Interpolate a timecourse linearly, a jump at a change or an event included.
 
-    A time which the timecourse has twice is a jump, the state before and
-    after a change (`_with_jumps`): a time before it is interpolated toward
-    the state before the change, the time itself and a time after it see the
-    state after it.
+    Two times of the timecourse closer than the resolution of the time are a
+    jump: the state before and after a change at one time (`_with_jumps`),
+    or an event of the model, which the steps of the integrator have at one
+    time or at times closer than the tolerance of a root of roadrunner. A
+    time before a jump is interpolated toward the state before it, a time
+    inside it and after it sees the state after it; a time of the timecourse
+    sees its state, the last one of a time it has twice.
 
     Args:
         x: the times to interpolate at.
         time: the time of the timecourse, sorted, a time of a jump twice.
         values: the timecourse.
+        tolerance: the resolution of the time, see
+            `sbmlsim.simulator.plan.time_tolerance`.
 
     Returns:
         The values at `x`.
@@ -394,7 +403,10 @@ def _interpolate_after_jumps(
     i = np.clip(np.searchsorted(time, x, side="right") - 1, 0, time.size - 1)
     j = np.minimum(i + 1, time.size - 1)
     span = time[j] - time[i]
-    weight = np.divide(x - time[i], span, out=np.zeros(x.shape), where=span > 0)
+    jump = span <= tolerance
+    # a time inside a jump sees the state after it, a time of the timecourse
+    # its own state
+    weight = np.divide(x - time[i], span, out=(x > time[i]).astype(float), where=~jump)
     return values[i] + weight * (values[j] - values[i])
 
 
@@ -2949,8 +2961,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 "The observables failed for ('%s = %s'): \n%s", self.pids, x, message
             )
             return None
+        tolerance = time_tolerance(plans[0].start, plans[0].end)
         if before_graph is None:
-            return GroupResult(time=time, outputs=outputs)
+            return GroupResult(time=time, outputs=outputs, tolerance=tolerance)
         # the timecourses at the times of the changes on the output with the
         # states before the changes, and with the states after them if the
         # output does not have the time of every change, with the values per
@@ -2989,6 +3002,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             before=values[0],
             after=values[1],
             changes=states[:, 0].copy(),
+            tolerance=tolerance,
         )
 
     def evaluated_plan(
@@ -3286,6 +3300,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         self.x_references[k] if x_at_data is None else x_at_data,
                         time,
                         column,
+                        result.tolerance,
                     )
                 else:
                     f = interpolate.interp1d(

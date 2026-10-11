@@ -1,6 +1,8 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
+import tempfile
 import warnings
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -676,15 +678,25 @@ def _count_runs(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     return runs
 
 
-def test_segments_past_their_end_are_integrated_again_once(
-    monkeypatch: pytest.MonkeyPatch,
+def test_segments_past_their_end_are_integrated_again_at_most_twice(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """The plan runs twice however many segments roadrunner integrated past their end.
+    """The plan runs three times however many segments roadrunner integrated past their end.
 
     A change of `k` to its own value 0.002 before every reset: the last step
-    of roadrunner before every change ends after the reset. The rest of the
-    plan from the first such segment on runs again with exact output.
+    of roadrunner before every change ends after the reset. The second run
+    finds the second segment past its end, the third one keeps the state at
+    the start of every later segment in a temporary file, which it removes;
+    `saveStateS` of roadrunner 2.10 keeps every state in memory and is not
+    used.
     """
+    import roadrunner
+
+    def leaking(self: object) -> bytes:
+        raise AssertionError("saveStateS keeps every state in memory")
+
+    monkeypatch.setattr(roadrunner.RoadRunner, "saveStateS", leaking)
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     runs = _count_runs(monkeypatch)
     model = RoadrunnerSBMLModel(source=sbml(SAWTOOTH))
     times = [j - 0.002 for j in range(1, 11)]
@@ -693,11 +705,21 @@ def test_segments_past_their_end_are_integrated_again_once(
         Simulation(end=10.5, changes=[Change(times, {"k": 1.0})]),
         ["time", "X", "Y"],
     )
-    assert len(runs) == 2
+    assert len(runs) == 3
+    assert list(tmp_path.iterdir()) == []
     at = np.isin(result.time, times)
     np.testing.assert_allclose(np.asarray(result["X"])[at], 0.998, rtol=1e-6)
     np.testing.assert_array_equal(np.asarray(result["Y"])[at], np.arange(10))
     assert result["Y"][-1] == 10.0
+    # the states of the third run are the ones of exact output times
+    exact = run_on(
+        RoadrunnerSBMLModel(source=sbml(SAWTOOTH)),
+        Simulation(end=10.5, changes=[Change(times, {"k": 1.0})], times=times),
+        ["time", "X", "Y"],
+    )
+    np.testing.assert_allclose(
+        np.asarray(result["X"])[at], np.asarray(exact["X"]), rtol=1e-9
+    )
 
 
 def test_a_model_without_events_is_integrated_once(
@@ -749,13 +771,18 @@ def test_the_exact_times_of_a_segment_keep_the_events() -> None:
     A step closer to the end than the resolution is an event roadrunner fired
     at the end and is left out.
     """
-    times = _exact_times(
+    times, labels = _exact_times(
         0.0,
-        np.array([0.5, 1.0, 1.0, 1.0 + 1e-12, 1.7, 1.98, 1.995]),
+        np.array([0.003, 0.004, 0.5, 1.0, 1.0, 1.0 + 1e-12, 1.7, 1.98, 1.995]),
         2.0,
         0.01,
     )
-    np.testing.assert_allclose(times, [0.0, 0.5, 0.99, 1.01, 1.7, 1.98, 2.0])
+    # the integration a resolution before and after an event, the rows at the
+    # times of the steps; a cluster at the start keeps the state after it
+    np.testing.assert_allclose(times, [0.0, 0.014, 0.5, 0.99, 1.01, 1.7, 1.98, 2.0])
+    np.testing.assert_allclose(
+        labels, [0.0, 0.004, 0.5, 1.0, 1.0 + 1e-12, 1.7, 1.98, 2.0]
+    )
 
 
 def test_a_steady_state_ends_at_the_end_of_its_last_horizon() -> None:

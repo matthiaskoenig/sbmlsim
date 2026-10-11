@@ -33,9 +33,13 @@ an evaluation of the objective of a fit runs.
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 import warnings
-from collections.abc import Sequence
+from collections.abc import Callable, Generator, Sequence
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import roadrunner
@@ -78,24 +82,26 @@ class _PastTheEnd(Exception):
     An event of the model in the last step of roadrunner after the end of the
     segment fired or is pending, see `_steps`, and the state after the
     segment is wrong. `_execute` runs the plan again, which integrates the
-    segment with exact output at the times of its steps (`_exact_times`) and
-    keeps the state at the start of every segment of the steps after it
-    (`RoadRunner.saveStateS`): a later segment past its end starts again from
-    its state at the start (`RoadRunner.loadStateS`) with exact output at the
-    times of its steps. A plan runs at most twice however many of its
-    segments roadrunner integrates past their end; the second run costs a
-    saved state per segment after the first one past its end and a loaded
-    state per later one, only for a model with events.
+    segment with exact output at the times of its steps, see `_exact_times`.
+    If a later segment of that run is past its end as well, the plan runs a
+    third time with both segments with exact output, and keeps the state at
+    the start of every segment of the steps after them in a temporary file
+    (`_saved_state`): a later segment past its end starts again from its
+    state at the start with exact output at the times of its steps. A plan
+    runs at most three times however many of its segments roadrunner
+    integrates past their end, and only a third run keeps states, one save
+    per later segment and one load per later segment past its end.
 
     Attributes:
         segment: the index of the segment.
-        times: its output times in the time of roadrunner.
+        output: its output times in the time of roadrunner, the times it is
+            integrated to and the times of its rows, see `_exact_times`.
     """
 
-    def __init__(self, segment: int, times: np.ndarray) -> None:
+    def __init__(self, segment: int, output: tuple[np.ndarray, np.ndarray]) -> None:
         super().__init__(f"The segment {segment} was integrated past its end.")
         self.segment = segment
-        self.times = times
+        self.output = output
 
 
 def execute(
@@ -187,7 +193,7 @@ def _execute(
     variable_step_size = bool(r.getIntegrator().getValue(VARIABLE_STEP_SIZE))
     # the output times of the segments of the steps of the integrator with
     # exact output, see `_PastTheEnd`
-    exact: dict[int, np.ndarray] = {}
+    exact: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     while True:
         model.initialize(preinit_targets(plan))
         if list(r.timeCourseSelections) != columns:
@@ -199,7 +205,7 @@ def _execute(
             values = _simulate(plan, model, r, columns, local, states, exact)
         except _PastTheEnd as err:
             # a segment with exact output is never past its end
-            exact[err.segment] = err.times
+            exact[err.segment] = err.output
             continue
         finally:
             r.getIntegrator().setValue(VARIABLE_STEP_SIZE, variable_step_size)
@@ -227,7 +233,7 @@ def _simulate(
     columns: list[str],
     local: bool,
     states: _ChangeStates | None = None,
-    exact: dict[int, np.ndarray] | None = None,
+    exact: dict[int, tuple[np.ndarray, np.ndarray]] | None = None,
 ) -> np.ndarray:
     """Integrate the segments of a plan, see the module.
 
@@ -288,23 +294,26 @@ def _simulate(
         )
         if plan.output is OutputMode.INTEGRATOR:
             output = exact.get(k)
-            # the state at the start of a segment after one with exact output,
-            # see `_PastTheEnd`
-            saved = (
-                r.saveStateS() if output is None and exact and k > min(exact) else None
-            )
             if output is None:
-                block, at_end = _steps(
-                    r, start, end_stop, tolerance, bool(model_events)
-                )
-                if not at_end:
-                    output = _exact_times(start, block[1:-1, 0], end_stop, tolerance)
-                    if saved is None:
-                        raise _PastTheEnd(k, output)
-                    r.loadStateS(saved)
+                # after the second segment past its end the state at the start
+                # of every later segment is kept, see `_PastTheEnd`
+                keep = len(exact) > 1 and k > max(exact)
+                with _saved_state(r) if keep else nullcontext(None) as load:
+                    block, at_end = _steps(
+                        r, start, end_stop, tolerance, bool(model_events)
+                    )
+                    if not at_end:
+                        output = _exact_times(
+                            start, block[1:-1, 0], end_stop, tolerance
+                        )
+                        if load is None:
+                            raise _PastTheEnd(k, output)
+                        load()
             if output is not None:
+                times_k, labels = output
                 r.getIntegrator().setValue(VARIABLE_STEP_SIZE, False)
-                block = np.array(r.simulate(times=output.tolist()), dtype=float)
+                block = np.array(r.simulate(times=times_k.tolist()), dtype=float)
+                block[:, 0] = labels
             block[:, 0] += offset
             if last:
                 # the end of the simulation, not the end of the segment in the
@@ -476,7 +485,7 @@ def _to_the_end(r: roadrunner.RoadRunner, end: float, events: bool) -> bool:
 
 def _exact_times(
     start: float, steps: np.ndarray, end: float, tolerance: float
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """Get the output times of a segment with exact output, see `_PastTheEnd`.
 
     The times are the start, the steps before the end and the end. A step
@@ -484,10 +493,11 @@ def _exact_times(
     roadrunner fired at the end and is left out. Steps closer to each other
     than the resolution are an event of the model, the state before it and
     the one after it, which roadrunner gives at times which differ by less
-    than its tolerance of a root, or at one time: they are the times a
-    resolution before the first and after the last of them, so the exact
-    output has the state before the event and the one after it wherever
-    CVODE finds the event between them.
+    than its tolerance of a root, or at one time: the segment is integrated
+    to a resolution before the first and after the last of them, where CVODE
+    has not found the event yet and has found it, and the rows have the
+    times of the first and the last, as the steps of the integrator have
+    them, so data at the event sees the state after it.
 
     Args:
         start: the start of the segment in the time of roadrunner.
@@ -496,24 +506,56 @@ def _exact_times(
         tolerance: the resolution of the time.
 
     Returns:
-        The output times, sorted and distinct.
+        The times the segment is integrated to, distinct and sorted, and the
+        times of the rows, sorted.
     """
     steps = np.asarray(steps, dtype=float)
     steps = steps[steps <= end - tolerance]
-    times = [start]
+    times, labels = [start], [start]
     k = 0
     while k < steps.size:
         last = k
         while last + 1 < steps.size and steps[last + 1] - steps[last] < tolerance:
             last += 1
-        if last > k:
-            times.extend([steps[k] - tolerance, steps[last] + tolerance])
-        else:
+        if last == k:
             times.append(steps[k])
+            labels.append(steps[k])
+        else:
+            for time, label in (
+                (steps[k] - tolerance, steps[k]),
+                (steps[last] + tolerance, steps[last]),
+            ):
+                if start < time < end:
+                    times.append(time)
+                    labels.append(label)
         k = last + 1
     times.append(end)
-    output = np.unique(times)
-    return output[(output >= start) & (output <= end)]
+    labels.append(end)
+    return np.array(times), np.array(labels)
+
+
+@contextmanager
+def _saved_state(r: roadrunner.RoadRunner) -> Generator[Callable[[], None]]:
+    """Keep the state of a roadrunner instance in a temporary file for a block.
+
+    `RoadRunner.saveStateS` of roadrunner 2.10 keeps a copy of every state it
+    saves in memory, its file variant does not. Every block has a file of its
+    own, which exists during the block only.
+
+    Args:
+        r: the roadrunner instance.
+
+    Yields:
+        A function which loads the state into the instance.
+    """
+    descriptor, name = tempfile.mkstemp(prefix="sbmlsim-", suffix=".rrstate")
+    os.close(descriptor)
+    path = Path(name)
+    try:
+        r.saveState(name)
+        yield lambda: r.loadState(name)
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def _state(r: roadrunner.RoadRunner, columns: list[str], time: float) -> np.ndarray:

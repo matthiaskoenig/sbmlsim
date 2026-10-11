@@ -35,7 +35,8 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import PK, Change, Formula, Observable, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
-from tests.simulator.models import sbml_pk
+from tests.simulator.models import sbml, sbml_pk
+from tests.simulator.test_executor import SAWTOOTH
 
 #: the elimination rate of the model, the value of the fitted parameter
 TRUE_KE = 0.2
@@ -935,3 +936,102 @@ def test_a_problem_without_the_extension_has_the_semantics_of_petab() -> None:
     reader = PetabReader.__new__(PetabReader)
     reader.extension = None
     assert reader.settings.data_at_change is DataAtChangeType.AFTER
+
+
+#: the file of the sawtooth model in the base path of a problem
+SAWTOOTH_FILE = "sawtooth.xml"
+
+
+class SawtoothStudy(SimulationExperiment):
+    """A sawtooth `X` which an event of the model resets at 1, 2, ..."""
+
+    def datasets(self) -> dict[str, DataSet]:
+        return {
+            # the data at the reset at 1 is after it
+            "x": DataSet.from_df(
+                pd.DataFrame({"time": [0.5, 1.0, 1.5], "X": [0.5, 0.0, 0.5]}),
+                udict={"time": "s", "X": "dimensionless"},
+                ureg=self.ureg,
+            ),
+            "max": DataSet.from_df(
+                pd.DataFrame({"xmax": [1.0]}),
+                udict={"xmax": "dimensionless"},
+                ureg=self.ureg,
+            ),
+        }
+
+    def models(self) -> dict[str, AbstractModel | Path]:
+        return {"m": AbstractModel(source=Path(self.base_path or ".") / SAWTOOTH_FILE)}
+
+    def simulations(self) -> dict[str, Simulation]:
+        return {
+            "steps": Simulation(end=2.5),
+            # the steps of roadrunner end after the reset at 2 before the
+            # change at 1.998: the segment with the reset at 1 inside is
+            # integrated again with exact output
+            "past": Simulation(end=2.5, changes=[Change(1.998, {"k": 1.0})]),
+        }
+
+    def observables(self) -> dict[str, Observable]:
+        return {"xmax": Formula("xmax", "max(X)")}
+
+    def tasks(self) -> dict[str, Task]:
+        return {
+            "task_steps": Task(model="m", simulation="steps"),
+            "task_past": Task(model="m", simulation="past"),
+        }
+
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        mappings: dict[str, FitMapping] = {}
+        for task in ("task_steps", "task_past"):
+            mappings[f"fm_x_{task}"] = FitMapping(
+                self,
+                reference=FitData(self, dataset="x", xid="time", yid="X"),
+                observable=FitData(self, task=task, xid="time", yid="X"),
+            )
+            # a value per simulation, so the group keeps its output
+            mappings[f"fm_max_{task}"] = FitMapping(
+                self,
+                reference=FitData(self, dataset="max", xid=None, yid="xmax"),
+                observable=FitData(self, task=task, xid=None, yid="xmax"),
+            )
+        return mappings
+
+
+@pytest.mark.parametrize("task", ["task_steps", "task_past"])
+def test_data_at_an_event_of_the_model_sees_the_state_after_it(
+    tmp_path: Path, task: str
+) -> None:
+    """Data at the time of an event of the model takes the state after the event.
+
+    The steps of the integrator have the states before and after the reset
+    at 1 at times closer than the resolution of the time, also in a segment
+    integrated again with exact output; data at 1 is not their midpoint.
+    """
+    (tmp_path / SAWTOOTH_FILE).write_text(
+        sbml(SAWTOOTH.replace("k = 1", "k = 1\n  p = 1"))
+    )
+    problem = OptimizationProblem(
+        "sawtooth",
+        [
+            FitMappingCollection(
+                experiment=SawtoothStudy, mappings=[f"fm_x_{task}", f"fm_max_{task}"]
+            )
+        ],
+        [
+            FitParameter(
+                pid="p",
+                lower_bound=0.1,
+                upper_bound=10.0,
+                start_value=1.0,
+                unit="dimensionless",
+            )
+        ],
+        base_path=tmp_path,
+        data_path=tmp_path,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    assert problem._group_graphs[0] is not None
+    k = problem.mapping_keys.index(f"fm_x_{task}")
+    prediction = problem.predictions(np.array([1.0]), problem.indices())[k]
+    np.testing.assert_allclose(prediction, [0.5, 0.0, 0.5], atol=1e-6)
