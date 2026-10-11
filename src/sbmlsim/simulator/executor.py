@@ -320,9 +320,9 @@ def _simulate(
                         r, start, end_stop, tolerance, bool(model_events)
                     )
                     if not at_end:
-                        # the state before an event after the end, which
-                        # roadrunner reports `roottol` before the event, can
-                        # be before an earlier step
+                        # the steps are sorted once their events have their
+                        # times; a row of roadrunner which `at_event_times`
+                        # cannot pair can be before an earlier step
                         output = _exact_times(
                             start, np.sort(block[1:-1, 0]), end_stop, tolerance
                         )
@@ -491,7 +491,7 @@ def _events_at_the_end(
         the end was applied.
     """
     roottol = root_tolerance()
-    block[:, 0] = at_event_times(block[:, 0], roottol)
+    _at_event_times(block, end, roottol, tolerance)
     done: list[np.ndarray] = []
     last = -np.inf
     while (event := _folded_event(r, block, end, roottol, tolerance)) is not None:
@@ -508,10 +508,30 @@ def _events_at_the_end(
             break
         done.append(block[:-1])
         block = _variable_steps(r, event, end)
-        block[:, 0] = at_event_times(block[:, 0], roottol)
+        _at_event_times(block, end, roottol, tolerance)
     if done:
         block = np.concatenate([*done, block])
     return block, True
+
+
+def _at_event_times(
+    block: np.ndarray, end: float, roottol: RootTolerance, tolerance: float
+) -> None:
+    """Give the two rows of every event inside the steps the time of the event.
+
+    The last row, which roadrunner interpolated to the end, is no row of an
+    event: it is left out, also where it is `roottol` after the row before an
+    event a few ulps after the end, see `_folded_event`. A last row before
+    the end is a step, roadrunner stopped at the most rows of its output.
+
+    Args:
+        block: the steps, their times are changed.
+        end: the end in the time of roadrunner.
+        roottol: the root tolerance of roadrunner in the process.
+        tolerance: the resolution of the time.
+    """
+    rows = block.shape[0] - 1 if block[-1, 0] >= end - tolerance else block.shape[0]
+    block[:rows, 0] = at_event_times(block[:rows, 0], roottol)
 
 
 def _folded_event(

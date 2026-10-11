@@ -34,6 +34,12 @@ LATE_TIME = 2.5 - 3e-9
 #: the times of the resets of `TWO`, both closer to the end 2.5 than `roottol`
 TWO_TIMES = (2.5 - 6.5e-9, 2.5 - 3e-9)
 
+#: the times of the doses of `SHORT` and of the changes, in simulations of one
+#: time unit after them, whose resolution of the time is less than `roottol`;
+#: CVODE locates the dose a few ulps after the end of the segment before the
+#: change, roadrunner's last row is then `roottol` after its row before it
+SHORT_TIMES = {"short_": 1.04, "short2_": 1.015}
+
 SCRIPT = """
 import json
 import sys
@@ -60,6 +66,11 @@ TWO = (
 DOSE = (
     "model dose\\n  var A = 0\\n  k = 0.1\\n  amount = 10\\n  A' = -k * A\\n"
     "  E: at (time >= 2.0): A = A + amount\\nend"
+)
+# the dose at a change in a short simulation, with a second state
+SHORT = (
+    "model short\\n  var A = 0\\n  var B = 1\\n  k = 0.1\\n  amount = 10\\n"
+    "  A' = -k * A\\n  B' = -B\\n  E: at (time >= {c!r}): A = A + amount\\nend"
 )
 
 
@@ -118,6 +129,12 @@ def main(first: str, directory: Path) -> dict:
     scans(paths["late"], steps, ones, [1.0, LATE_TIME, 2.5], ["X", "Y"], out, "late_")
     scans(paths["two"], steps, ones, [1.0, TWO_A, TWO_B, 2.5], ["X", "Y"], out, "two_")
     scans(paths["dose"], dosing, {"amount": [10.0, 10.0]}, [2.0, 3.0, 4.0], ["A"], out, "dose_")
+    for key, c in SHORT_TIMES.items():
+        path = directory / f"{key}.xml"
+        path.write_text(sbml(SHORT.format(c=c)))
+        short = Simulation(end=c + 1.0, changes=[Change(c, {"k": 0.2})])
+        values = {"amount": [10.0, 10.0]}
+        scans(path, short, values, [c, c + 0.5, c + 1.0], ["A"], out, key)
     from tests.fit.test_data_at_change import sawtooth_prediction
 
     for task in ("task_steps", "task_past"):
@@ -130,6 +147,7 @@ def main(first: str, directory: Path) -> dict:
 if __name__ == "__main__":
     print(json.dumps(main(sys.argv[1], Path(sys.argv[2]))))
 """
+SCRIPT = SCRIPT.replace("SHORT_TIMES", repr(SHORT_TIMES))
 for _name, _time in (
     ("LATE_TIME", LATE_TIME),
     ("TWO_A", TWO_TIMES[0]),
@@ -213,6 +231,10 @@ EXPECTED = {
     "late_": {"X": [1.0, 0.0, 3e-9], "Y": [0.0, 1.0, 1.0]},
     "two_": {"X": [1.0, 0.0, 3.5e-9, 6.5e-9], "Y": [1.0, TWO_TIMES[0], 0.0, 3e-9]},
     "dose_": {"A": [10.0, 10.0 * np.exp(-0.2), 10.0 * np.exp(-0.4)]},
+    **{
+        key: {"A": [10.0, 10.0 * np.exp(-0.1), 10.0 * np.exp(-0.2)]}
+        for key in SHORT_TIMES
+    },
 }
 
 

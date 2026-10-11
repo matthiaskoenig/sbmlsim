@@ -848,6 +848,28 @@ def test_an_event_whose_row_after_it_roadrunner_folded_into_the_end(
     assert event == (model_time if folded else None)
 
 
+@pytest.mark.parametrize(("last", "paired"), [(2.0, False), (2.0 - 1e-6, True)])
+def test_the_last_row_of_roadrunner_is_no_row_of_an_event(
+    last: float, paired: bool
+) -> None:
+    """The row roadrunner interpolated to the end is left out of the events.
+
+    CVODE located an event a few ulps after the end; roadrunner's last row is
+    `roottol` after the row before the event. A last row before the end is a
+    step, roadrunner stopped at the most rows of its output.
+    """
+    from sbmlsim.model.roottol import RootTolerance
+    from sbmlsim.simulator.executor import _at_event_times
+
+    roottol = RootTolerance(1e-6, 1e-19)
+    block = np.array([[0.0, 0.0], [1.0, 1.0], [last - 1e-6, 2.0], [last, 0.7]])
+    _at_event_times(block, 2.0, roottol, 1e-8)
+    if paired:
+        assert block[2, 0] == block[3, 0] == last - 1e-6
+    else:
+        np.testing.assert_array_equal(block[:, 0], [0.0, 1.0, 2.0 - 1e-6, 2.0])
+
+
 def test_an_event_after_the_end_which_roadrunner_applied_is_past_the_end(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

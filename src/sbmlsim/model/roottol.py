@@ -179,7 +179,9 @@ def at_event_times(time: np.ndarray, tolerance: RootTolerance) -> np.ndarray:
     to the rounding of the times and of the measurement of `roottol`. Both
     rows get the time of the second less `roottol`, the time of the event, so
     an event is a jump at one time, as a change is, see the module. A row
-    belongs to one event, the rows are taken from the first.
+    belongs to one event, the rows are taken from the first. roadrunner's last
+    row, interpolated to the end, is no row of an event and is left out by the
+    caller, see `sbmlsim.simulator.executor._at_event_times`.
 
     Args:
         time: the times of the rows, in their order.
