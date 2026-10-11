@@ -35,7 +35,7 @@ Four reductions reduce the time of every simulation on its own:
 | --- | --- |
 | `max(x)`, `min(x)` | the largest and the smallest value, ignoring `NaN` |
 | `mean(x)` | the time weighted mean: the trapezoidal integral divided by the time between the first and the last time point, weighted by the time between the points and not by their number |
-| `at(x, t)` | the value at the time `t`, a number, read in the time unit of the model, or a value per simulation in the time unit of the model (e.g. `pk.tmax`), interpolated linearly; at the time of a change the value after it, outside of the simulated times `NaN` |
+| `at(x, t)` | the value at the time `t`, a number, read in the time unit of the model, or a value per simulation in the time unit of the model (e.g. `pk.tmax`), interpolated linearly; at the time of a change or of an event of the model the value after it, outside of the simulated times `NaN` |
 
 A formula which reads only values per simulation is a value per simulation, otherwise a timecourse; a value per simulation in a timecourse is the same at every time, which is how `px / px_max` normalizes every simulation to its own maximum and `ins / at(ins, 0)` to its baseline. `max` and `min` with two or more arguments are the elementwise maximum and minimum of PEtab. The padding of a ragged scan and the steady state after the end are no time points of a reduction.
 

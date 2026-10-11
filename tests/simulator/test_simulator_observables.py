@@ -410,3 +410,48 @@ def test_an_observable_id_must_not_be_a_dimension_id() -> None:
     )
     with pytest.raises(ValueError, match="id of a dimension"):
         simulator.run(model, scan, [PK("dose", "[C]", dose="PODOSE", route="oral")])
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [[], [Change(1.998, {"k": 1.0})]],
+    ids=["steps", "exact output of a segment past its end"],
+)
+def test_a_time_at_an_event_of_the_model_sees_the_state_after_it(
+    changes: list[Change],
+) -> None:
+    """A grid, `at` and `interpolate` take the reset of the sawtooth as the fit does.
+
+    The steps of the integrator have the states before and after the reset
+    at 1 at times a little apart, the second case integrates the segment up
+    to the change at 1.998 again with exact output (its last step ends after
+    the reset at 2), whose times before and after the reset are a resolution
+    apart. A time at the reset sees the state after it, not a value between.
+    """
+    from sbmlsim.fit.optimization import _interpolate_after_jumps
+    from sbmlsim.simulator.plan import time_tolerance
+    from tests.simulator.test_executor import SAWTOOTH
+
+    scan = Scan(
+        Simulation(end=2.5, changes=changes),
+        [Dimension("rate", values={"k": [1.0, 1.0]})],
+    )
+    observables = [Formula("x", "X"), Formula("x1", "at(x, 1)")]
+    grid = np.array([0.5, 1.0, 1.5])
+    native = Simulator().run(sbml(SAWTOOTH), scan, observables)
+    gridded = Simulator().run(sbml(SAWTOOTH), scan, observables, time=grid)
+    np.testing.assert_allclose(native["x1"].values, 0.0, atol=1e-8)
+    np.testing.assert_allclose(gridded["x"].values, [[0.5, 0.0, 0.5]] * 2, atol=1e-6)
+    np.testing.assert_allclose(
+        native.interpolate(grid)["x"].values, gridded["x"].values, atol=1e-12
+    )
+    # the fit at the same times of the native timecourse
+    time = native["time"].values[0]
+    finite = np.isfinite(time)
+    fit = _interpolate_after_jumps(
+        grid,
+        time[finite],
+        native["x"].values[0][finite],
+        time_tolerance(0.0, 2.5),
+    )
+    np.testing.assert_allclose(gridded["x"].values[0], fit, atol=1e-12)

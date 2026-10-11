@@ -98,7 +98,7 @@ print(res["PX"].sel(regimen="multiple").values[-1])
 
 ## The output and the run
 
-When every simulation has the same output times (`times` or `steps`), the result has the dimension `time`. With the steps of the integrator every simulation keeps its own time points: the result has the dimension `_point` and the variable `time`, padded with `NaN`. `time=` interpolates every timecourse onto a grid; the value at the time of a change is the value after it:
+When every simulation has the same output times (`times` or `steps`), the result has the dimension `time`. With the steps of the integrator every simulation keeps its own time points: the result has the dimension `_point` and the variable `time`, padded with `NaN`. `time=` interpolates every timecourse onto a grid; the value at the time of a change is the value after it, and so is the value at an event of the model, whose states before and after it the steps of the integrator have at times closer than the resolution of the time (as the data of a fit sees it, see [Fitting](fitting.md#data-at-the-time-of-a-change)):
 
 ```python
 res = simulator.run(

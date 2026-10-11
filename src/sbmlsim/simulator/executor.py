@@ -194,6 +194,7 @@ def _execute(
     # the output times of the segments of the steps of the integrator with
     # exact output, see `_PastTheEnd`
     exact: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    run = 1
     while True:
         model.initialize(preinit_targets(plan))
         if list(r.timeCourseSelections) != columns:
@@ -206,6 +207,14 @@ def _execute(
         except _PastTheEnd as err:
             # a segment with exact output is never past its end
             exact[err.segment] = err.output
+            run += 1
+            logger.debug(
+                "roadrunner integrated the segment %s of the model '%s' past its "
+                "end, the plan runs again with exact output in it (run %s).",
+                err.segment,
+                model.sid or r.model.getModelName(),
+                run,
+            )
             continue
         finally:
             r.getIntegrator().setValue(VARIABLE_STEP_SIZE, variable_step_size)
@@ -497,7 +506,10 @@ def _exact_times(
     to a resolution before the first and after the last of them, where CVODE
     has not found the event yet and has found it, and the rows have the
     times of the first and the last, as the steps of the integrator have
-    them, so data at the event sees the state after it.
+    them, so data at the event sees the state after it. Two events less than
+    two resolutions apart share the time between them, half way: both rows
+    are the state between the events. An event closer to the start than the
+    resolution has no row before it, the start is the state before it.
 
     Args:
         start: the start of the segment in the time of roadrunner.
@@ -506,8 +518,8 @@ def _exact_times(
         tolerance: the resolution of the time.
 
     Returns:
-        The times the segment is integrated to, distinct and sorted, and the
-        times of the rows, sorted.
+        The times the segment is integrated to, sorted, a time twice between
+        two events, and the times of the rows, sorted.
     """
     steps = np.asarray(steps, dtype=float)
     steps = steps[steps <= end - tolerance]
@@ -521,10 +533,15 @@ def _exact_times(
             times.append(steps[k])
             labels.append(steps[k])
         else:
-            for time, label in (
-                (steps[k] - tolerance, steps[k]),
-                (steps[last] + tolerance, steps[last]),
-            ):
+            # at most half way to the steps next to the event, which are at
+            # least a resolution away
+            before = steps[k] - tolerance
+            if k > 0:
+                before = max(before, (steps[k - 1] + steps[k]) / 2)
+            after = steps[last] + tolerance
+            if last + 1 < steps.size:
+                after = min(after, (steps[last] + steps[last + 1]) / 2)
+            for time, label in ((before, steps[k]), (after, steps[last])):
                 if start < time < end:
                     times.append(time)
                     labels.append(label)

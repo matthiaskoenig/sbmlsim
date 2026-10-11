@@ -259,7 +259,11 @@ class ScanResult:
 
         Every simulation is interpolated linearly onto the times, see
         `sbmlsim.result.timecourse.interpolate`; a time outside of a
-        simulation is `NaN`. The variables without a time stay as they are.
+        simulation is `NaN`. Two times of a simulation closer than the
+        resolution of its time (`sbmlsim.simulator.plan.time_tolerance` of
+        its first and last time) are a jump, e.g. an event of the model, and a
+        time of the grid at it sees the state after it. The variables without
+        a time stay as they are.
 
         Args:
             times: the times of the grid, numbers in the time unit of the
@@ -289,14 +293,18 @@ class ScanResult:
                 times_of = np.asarray(self.ds[TIME].values, dtype=float)
                 out = np.full((*values.shape[:-1], grid.size), np.nan)
                 for index in np.ndindex(*values.shape[:-1]):
-                    out[index] = interpolate(times_of[index], values[index], grid)
+                    out[index] = interpolate(
+                        times_of[index],
+                        values[index],
+                        grid,
+                        _resolution(times_of[index]),
+                    )
             else:
                 order = (*[d for d in array.dims if d != TIME], TIME)
                 values = np.asarray(array.transpose(*order).values, dtype=float)
                 if weights is None:
-                    weights = grid_weights(
-                        np.asarray(self.ds[TIME].values, dtype=float), grid
-                    )
+                    times_of = np.asarray(self.ds[TIME].values, dtype=float)
+                    weights = grid_weights(times_of, grid, _resolution(times_of))
                 out = apply_weights(weights, values)
             variables[str(name)] = ([*order[:-1], TIME], out)
         coords = {
@@ -459,6 +467,25 @@ def time_magnitudes(
             f"The times in '{times.units}' cannot be converted to the unit of "
             f"time '{unit}' of {owner[0].lower()}{owner[1:]}."
         ) from err
+
+
+def _resolution(time: np.ndarray) -> float:
+    """Get the resolution of the time of a simulation from its time points.
+
+    It is `time_tolerance` of the first and the last finite time. Only the
+    steps of the integrator have two time points closer than it, an event of
+    the model, and their first and last time are the start and the end of
+    the simulation, so it is the resolution of its plan; with a `time_shift`
+    it is larger, which takes a step shorter than it as a jump, a change of
+    the value of the order of the resolution.
+    """
+    # the simulator imports the results
+    from sbmlsim.simulator.plan import time_tolerance
+
+    finite = time[np.isfinite(time)]
+    if finite.size == 0:
+        return 0.0
+    return time_tolerance(float(finite[0]), float(finite[-1]))
 
 
 def _json_default(value: Any) -> Any:

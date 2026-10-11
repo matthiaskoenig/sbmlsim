@@ -51,6 +51,22 @@ def test_at_interpolates_and_takes_the_value_after_a_change() -> None:
     assert np.isnan(evaluate_reduced("at(x, 5)", {"x": X}, T)).all()
 
 
+def test_at_takes_the_value_after_an_event_of_the_model() -> None:
+    """Two times closer than the resolution of a simulation are a jump.
+
+    The second simulation has the states before and after an event of the
+    model at 1 at times a little apart, which the resolution of the first
+    does not take as a jump.
+    """
+    t = np.array([[0.0, 1.0 - 1e-6, 1.0 + 1e-6, 2.0]] * 2)
+    x = np.array([[0.0, 1.0, 0.0, 1.0]] * 2)
+    np.testing.assert_allclose(
+        evaluate_reduced("at(x, 1)", {"x": x}, t, np.array([1e-9, 1e-5])),
+        [[0.5], [0.0]],
+    )
+    np.testing.assert_allclose(evaluate_reduced("at(x, 1)", {"x": x}, t, 1e-5), 0.0)
+
+
 def test_the_time_of_at_is_a_value_per_simulation() -> None:
     when = np.array([[0.5], [0.0]])
     np.testing.assert_allclose(

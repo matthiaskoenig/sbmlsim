@@ -1,5 +1,6 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
+import logging
 import tempfile
 import warnings
 from pathlib import Path
@@ -18,7 +19,7 @@ from sbmlsim.simulator.executor import (
     execute_with_changes,
     steady_state,
 )
-from sbmlsim.simulator.plan import compile_simulation
+from sbmlsim.simulator.plan import compile_simulation, time_tolerance
 from tests.simulator.models import sbml, sbml_pk
 
 SEL = ["time", "[A]", "[B]", "X", "C", "k1"]
@@ -783,6 +784,67 @@ def test_the_exact_times_of_a_segment_keep_the_events() -> None:
     np.testing.assert_allclose(
         labels, [0.0, 0.004, 0.5, 1.0, 1.0 + 1e-12, 1.7, 1.98, 2.0]
     )
+
+
+def test_the_exact_times_of_two_close_events_are_sorted() -> None:
+    """Two events less than two resolutions apart share the time between them.
+
+    A resolution after the first event is after the time a resolution before
+    the second one, which roadrunner rejects; both are half way between the
+    events, the state between them.
+    """
+    times, labels = _exact_times(
+        0.0, np.array([0.5, 1.0, 1.0, 1.015, 1.015, 1.5]), 2.0, 0.01
+    )
+    np.testing.assert_allclose(times, [0.0, 0.5, 0.99, 1.0075, 1.0075, 1.025, 1.5, 2.0])
+    np.testing.assert_allclose(labels, [0.0, 0.5, 1.0, 1.0, 1.015, 1.015, 1.5, 2.0])
+    assert np.all(np.diff(times) >= 0.0)
+
+
+#: two events of the time less than two resolutions of the time of a simulation
+#: to 2.5 apart, and a reset of `X` at 2, after a change at 1.998
+TWINS = """
+model twins
+  var X = 0
+  var Y = 0
+  k = 1
+  X' = k
+  E1: at (time >= 1): Y = Y + 1
+  E2: at (time >= {second!r}): Y = Y + 10
+  E3: at (X >= 2): X = 0
+end
+"""
+
+
+def test_two_close_events_in_a_segment_past_its_end(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A segment past its end with two events closer than two resolutions runs again.
+
+    The last step of roadrunner before the change at 1.998 ends after the
+    reset at 2, the segment is integrated again with exact output at its
+    steps, which have the events at 1 and 1.5 resolutions after it.
+    """
+    runs = _count_runs(monkeypatch)
+    end = 2.5
+    second = 1.0 + 1.5 * time_tolerance(0.0, end)
+    model = RoadrunnerSBMLModel(source=sbml(TWINS.format(second=second)))
+    assert model.symbols.time_dependent
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.simulator.executor"):
+        result = run_on(
+            model,
+            Simulation(end=end, changes=[Change(1.998, {"k": 1.0})]),
+            ["time", "X", "Y"],
+        )
+    assert len(runs) == 2
+    assert "the plan runs again with exact output in it (run 2)" in caplog.text
+    near = np.abs(result.time - 1.0) < 1e-6
+    # the states before the first event, between the events and after the second
+    np.testing.assert_array_equal(np.asarray(result["Y"])[near], [0, 1, 1, 11])
+    assert result.time[near][-1] == pytest.approx(second, abs=1e-10)
+    assert np.all(np.diff(result.time) >= 0.0)
+    assert result["Y"][-1] == 11.0
+    assert result["X"][-1] == pytest.approx(0.5, rel=1e-6)
 
 
 def test_a_steady_state_ends_at_the_end_of_its_last_horizon() -> None:

@@ -126,8 +126,30 @@ class GridWeights(NamedTuple):
     valid: np.ndarray
 
 
-def grid_weights(time: np.ndarray, grid: np.ndarray) -> GridWeights:
-    """Get the indices and weights which interpolate `time` onto `grid` once."""
+def grid_weights(
+    time: np.ndarray, grid: np.ndarray, tolerance: float = 0.0
+) -> GridWeights:
+    """Get the indices and weights which interpolate `time` onto `grid` once.
+
+    Two time points at most `tolerance` apart are a jump: an event of the
+    model, whose states before and after it the steps of the integrator have
+    at almost one time, or a duplicated final time, the state after a change
+    at the end. A time of the grid inside a jump or at its end sees the state
+    after it, a time of its first point the state of that point; the fit
+    interpolates its data by the same rule, see
+    `sbmlsim.fit.optimization._interpolate_after_jumps`.
+
+    Args:
+        time: the time points, sorted; the ones which are not finite are no
+            time points.
+        grid: the times of the result.
+        tolerance: the resolution of the time of the simulation, see
+            `sbmlsim.simulator.plan.time_tolerance`; `0` takes only a time
+            point which appears twice as a jump.
+
+    Returns:
+        The indices and weights.
+    """
     finite = np.flatnonzero(np.isfinite(time))
     t = time[finite]
     if t.size == 0:
@@ -136,11 +158,12 @@ def grid_weights(time: np.ndarray, grid: np.ndarray) -> GridWeights:
     valid = (grid >= t[0]) & (grid <= t[-1])
     low = np.clip(np.searchsorted(t, grid, side="right") - 1, 0, max(t.size - 2, 0))
     up = np.minimum(low + 1, t.size - 1)
+    span = t[up] - t[low]
+    jump = span <= tolerance
+    after = ((grid > t[low]) | (grid >= t[up])).astype(float)
     with np.errstate(divide="ignore", invalid="ignore"):
-        span = t[up] - t[low]
-        # a zero span is a duplicated final time: the value after the change
-        weight = np.where(span > 0, (grid - t[low]) / span, 1.0)
-        weight = np.where(up > low, weight, 0.0)
+        weight = np.where(jump, after, (grid - t[low]) / np.where(jump, 1.0, span))
+    weight = np.where(up > low, weight, 0.0)
     return GridWeights(finite[low], finite[up], weight, valid)
 
 
@@ -156,23 +179,31 @@ def apply_weights(w: GridWeights, values: np.ndarray) -> np.ndarray:
     return np.where(w.valid, out, np.nan)
 
 
-def interpolate(time: np.ndarray, values: np.ndarray, grid: np.ndarray) -> np.ndarray:
+def interpolate(
+    time: np.ndarray, values: np.ndarray, grid: np.ndarray, tolerance: float = 0.0
+) -> np.ndarray:
     """Interpolate a timecourse linearly onto a grid of times.
 
     The time points of a simulation increase and a time of a change appears
     once, with the state after the change, so the value at the time of a
-    change is the value after it, also at a duplicated time (`grid_weights`).
-    The padding (`NaN`) and the steady state after the end (`inf`) are no
-    time points of the interpolation.
+    change is the value after it, also at a duplicated time, and so is the
+    value at an event of the model, whose states before and after it are
+    closer than the `tolerance` (`grid_weights`). The padding (`NaN`) and the
+    steady state after the end (`inf`) are no time points of the
+    interpolation.
 
     Args:
         time: the time points.
         values: the values, a row per time point, one or two dimensional.
         grid: the times of the result.
+        tolerance: two time points at most this apart are a jump, see
+            `grid_weights`.
 
     Returns:
         The values at the times of the grid, a row per time; `NaN` outside of
         the finite time points and for a timecourse without any.
     """
-    weights = grid_weights(np.asarray(time, dtype=float), np.asarray(grid, dtype=float))
+    weights = grid_weights(
+        np.asarray(time, dtype=float), np.asarray(grid, dtype=float), tolerance
+    )
     return np.moveaxis(apply_weights(weights, np.moveaxis(values, 0, -1)), -1, 0)

@@ -40,7 +40,7 @@ import numpy as np
 
 from sbmlsim.result.scan import POINT, STATISTIC, STATUS, TIME
 from sbmlsim.simulation.definition import Simulation, Time, _encode
-from sbmlsim.units import Quantity, ureg
+from sbmlsim.units import DimensionalityError, Quantity, ureg
 
 logger = logging.getLogger(__name__)
 
@@ -480,7 +480,10 @@ def _same_value(a: Any, b: Any) -> bool:
 
     A quantity is equal to a quantity of the same dimension after the
     conversion, a formula is equal to the same string, and values which cannot
-    be compared (other dimensions, a quantity and a number) are different.
+    be compared are different: arrays of different shapes (`ValueError`) and
+    the mixes of quantities and numbers pint rejects, e.g. a temperature with
+    an offset and zero (`DimensionalityError` and the other errors of pint,
+    which are `TypeError`).
     """
     try:
         equal = a == b
@@ -489,7 +492,7 @@ def _same_value(a: Any, b: Any) -> bool:
         ):
             return bool(np.all(equal))
         return bool(equal)
-    except Exception:  # pint raises for some mixes of quantities and numbers
+    except (DimensionalityError, TypeError, ValueError):
         return False
 
 

@@ -359,3 +359,30 @@ def test_the_weights_take_the_value_after_a_change(t: list[float]) -> None:
     np.testing.assert_allclose(
         out, np.interp(grid, time, values, left=np.nan, right=np.nan)
     )
+
+
+def test_the_weights_take_the_value_after_an_event_of_the_model() -> None:
+    """Two times closer than the tolerance are a jump, as the fit has it.
+
+    The steps of the integrator have the states before and after an event at
+    times a little apart, at the event at 1 and at the end.
+    """
+    from sbmlsim.fit.optimization import _interpolate_after_jumps
+
+    tolerance = 1e-9
+    time = np.array([0.0, 1.0 - 1e-12, 1.0 + 1e-12, 1.5, 2.0 - 1e-12, 2.0])
+    values = np.array([0.0, 1.0, 0.0, 0.5, 1.0, 0.0])
+    grid = np.array([0.0, 0.5, 1.0 - 1e-12, 1.0, 1.0 + 1e-12, 1.25, 2.0 - 1e-12, 2.0])
+    out = apply_weights(grid_weights(time, grid, tolerance), values)
+    np.testing.assert_allclose(out, [0.0, 0.5, 1.0, 0.0, 0.0, 0.25, 1.0, 0.0])
+    np.testing.assert_allclose(
+        out, _interpolate_after_jumps(grid, time, values, tolerance)
+    )
+    np.testing.assert_allclose(
+        interpolate(time, values[:, None], grid, tolerance)[:, 0], out
+    )
+    # without the tolerance the times are interpolated, the event at 1 is half
+    # way between the states before and after it
+    assert apply_weights(grid_weights(time, grid), values)[3] == pytest.approx(
+        0.5, abs=1e-3
+    )

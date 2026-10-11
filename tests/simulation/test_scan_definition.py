@@ -428,9 +428,25 @@ def test_scan_warns_once_per_dimension_and_target(
         (np.array([1.0, 2.0]), np.array([1.0, 2.0]), True),
         (np.array([1.0, 2.0]), np.array([1.0, 3.0]), False),
         (Q(np.array([1.0, 2.0]), "mg"), Q(np.array([1.0, 2.0]), "mg"), True),
+        # the comparisons which raise
+        (np.array([1.0, 2.0]), np.array([1.0, 2.0, 3.0]), False),
+        (Q(np.array([1.0, 2.0]), "mg"), Q(np.array([1.0, 2.0, 3.0]), "s"), False),
+        (Q(1, "degC"), 0, False),
     ],
 )
 def test_same_value(a: Any, b: Any, same: bool) -> None:
     from sbmlsim.simulation.scan import _same_value
 
     assert _same_value(a, b) is same
+
+
+def test_same_value_raises_an_error_of_another_kind() -> None:
+    """An error which is no failed comparison is raised, not a different value."""
+    from sbmlsim.simulation.scan import _same_value
+
+    class Broken:
+        def __eq__(self, other: object) -> bool:
+            raise RuntimeError("a bug")
+
+    with pytest.raises(RuntimeError, match="a bug"):
+        _same_value(Broken(), 1.0)

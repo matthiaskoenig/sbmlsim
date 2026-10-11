@@ -37,7 +37,7 @@ from sbmlsim.simulation.observables import (
 )
 from sbmlsim.simulator.formula import compile_formula, evaluate_reduced, reduce_formula
 from sbmlsim.simulator.pk import PKNode, compile_pk, evaluate_pk
-from sbmlsim.simulator.plan import Plan
+from sbmlsim.simulator.plan import Plan, time_tolerance
 from sbmlsim.units import Quantity, ureg
 
 SCALAR = ObservableKind.SCALAR
@@ -157,7 +157,9 @@ class ObservableGraph:
             time: the time points `(n_points, n_rows)`, padded with `NaN`.
             columns: the selections, arrays of the shape of `time`.
             plans: the plan of every point, with its values, which gives the
-                doses of the PK observables.
+                doses of the PK observables and the resolution of the time
+                which `at` takes as a jump (`evaluate_reduced`); without
+                plans only a time which appears twice is a jump.
 
         Returns:
             The kept outputs: a timecourse `(n_points, n_rows)`, a value per
@@ -167,9 +169,13 @@ class ObservableGraph:
             ObservableError: if an observable fails for a point or for all.
         """
         values: dict[str, np.ndarray] = {TIME: time, **columns}
+        # the resolution of the time of every point, for `at`
+        tolerance: float | np.ndarray = (
+            np.array([time_tolerance(p.start, p.end) for p in plans]) if plans else 0.0
+        )
         for node in self.nodes:
             if isinstance(node, FormulaNode):
-                values[node.id] = _formula(node, time, values)
+                values[node.id] = _formula(node, time, values, tolerance)
             elif isinstance(node, CustomNode):
                 values[node.id] = _custom(node, time, values, self.kinds)
             else:
@@ -190,11 +196,16 @@ class ObservableGraph:
 
 
 def _formula(
-    node: FormulaNode, time: np.ndarray, values: Mapping[str, np.ndarray]
+    node: FormulaNode,
+    time: np.ndarray,
+    values: Mapping[str, np.ndarray],
+    tolerance: float | np.ndarray,
 ) -> np.ndarray:
     """Evaluate a formula; a floating point error gives `inf` or `NaN`.
 
     The padding of a timecourse is `NaN`, the steady state (`inf`) is kept.
+    `tolerance` is the resolution of the time of every point, see
+    `evaluate_reduced`.
 
     Raises:
         ObservableError: if the formula fails, for every point.
@@ -202,7 +213,7 @@ def _formula(
     try:
         with np.errstate(all="ignore"):
             value = np.asarray(
-                evaluate_reduced(node.formula, values, time), dtype=float
+                evaluate_reduced(node.formula, values, time, tolerance), dtype=float
             )
             shape = (time.shape[0], 1) if node.kind is SCALAR else time.shape
             value = np.broadcast_to(value, shape).copy()

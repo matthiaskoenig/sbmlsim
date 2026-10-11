@@ -45,7 +45,7 @@ from sbmlsim.result.scan import TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.observables import TIMECOURSE, ObservableError, ObservableGraph
-from sbmlsim.simulator.plan import Plan
+from sbmlsim.simulator.plan import Plan, time_tolerance
 
 #: what a run does about a point which fails: raise its error or flag it
 OnError = Literal["raise", "flag"]
@@ -324,7 +324,9 @@ def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
             solutions.append(result.values)
             plans.append(plan)
         else:
-            solutions.append(_on_grid(chunk.time, result.values[:, columns].T))
+            solutions.append(
+                _on_grid(chunk.time, result.values[:, columns].T, chunk.plan)
+            )
     if observed:
         points, time, outputs, failed = _observe(chunk, points, solutions, plans)
         failures.extend(failed)
@@ -349,14 +351,18 @@ def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
     return _pack(chunk, points, n_rows, rows, scalars, status, errors)
 
 
-def _on_grid(grid: np.ndarray | None, rows: np.ndarray) -> np.ndarray:
+def _on_grid(grid: np.ndarray | None, rows: np.ndarray, plan: Plan) -> np.ndarray:
     """Interpolate timecourses `(column, row)` with the time first onto a grid.
 
-    Without a grid the timecourses are returned as they are.
+    Two times closer than the resolution of the time of the plan are a jump,
+    e.g. an event of the model, whose state after it a time of the grid at
+    the event sees, as the data of a fit does (`grid_weights`). Without a grid
+    the timecourses are returned as they are.
     """
     if grid is None:
         return rows
-    rows = apply_weights(grid_weights(rows[0], grid), rows)
+    tolerance = time_tolerance(plan.start, plan.end)
+    rows = apply_weights(grid_weights(rows[0], grid, tolerance), rows)
     rows[0] = grid
     return rows
 
@@ -483,7 +489,7 @@ def _timecourses(
     names = chunk.graph.timecourses
     for r in range(time.shape[0]):
         rows = np.stack([time[r], *(outputs[name][r] for name in names)])
-        yield _on_grid(chunk.time, rows)
+        yield _on_grid(chunk.time, rows, chunk.plan)
 
 
 def _pack(
