@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import math
+from collections import Counter
 from collections.abc import Callable, Generator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from concurrent.futures.process import BrokenProcessPool
@@ -1051,12 +1052,12 @@ def _grid(
         or any(times and np.isinf(times[-1]) for times in given)
     ):
         return None, False
-    counts: dict[float, int] = {}
+    # the times of every output counted once, a time as often as in the
+    # output with the most rows at it
+    counts: Counter[float] = Counter()
     for times in given:
-        for t in times:
-            counts[t] = max(counts.get(t, 0), times.count(t))
-    grid = [t for t, count in counts.items() for _ in range(count)]
-    return np.asarray(grid, dtype=float), True
+        counts |= Counter(times)
+    return np.asarray(sorted(counts.elements()), dtype=float), True
 
 
 @contextmanager

@@ -21,6 +21,7 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result import ScanResult, TimecourseResult
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import ScanError, Simulator
+from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import BLOWUP, PROBE, TOLERANCE_PROBE, sbml, sbml_minutes
 
@@ -1082,3 +1083,29 @@ def test_the_time_of_a_change_twice_on_a_common_grid() -> None:
     np.testing.assert_allclose(
         res["X"].values, [[0, 1, 0, 1, 2, 2, 3], [0, 1, 1, 2, 3, 0, 1]], atol=1e-9
     )
+
+
+def test_the_common_grid_of_many_output_times_is_built_once_per_output() -> None:
+    """Simulations whose output times differ only in their changes share a grid.
+
+    The grid counts the times of every output once; counting every time in
+    every output took seconds for a scan of regimens with 30000 steps.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(LINEAR))
+    steps, end = 30000, 30.0
+    plans = {
+        (s, 0): compile_simulation(
+            Simulation(end=end, steps=steps, changes=[Change(dose, {"X": 0.0})]),
+            model.symbols,
+            model.uinfo,
+        )
+        for s, dose in enumerate((10.0, 15.0, 20.0))
+    }
+    grid, interpolate = simulator_module._grid(
+        plans, {key: [] for key in plans}, None, model
+    )
+    assert interpolate
+    assert grid is not None
+    times = np.linspace(0.0, end, steps + 1)
+    expected = np.sort(np.concatenate([times, [10.0, 15.0, 20.0]]))
+    np.testing.assert_array_equal(grid, expected)
