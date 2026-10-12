@@ -580,6 +580,19 @@ class FitMappingCollection:
             )
         self.fit_parameters: dict[str, list[FitParameter]] = {}
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the collection definition without runtime attributes."""
+        return {
+            "experiment_class": self.experiment_class,
+            "sid": self.sid,
+            "mappings": list(self.mappings),
+            "use_mapping_weights": self.use_mapping_weights,
+            "_weights": list(self.weights),
+            "exclude": self.exclude,
+            "kind": self.kind,
+            "fit_parameters": self.fit_parameters,
+        }
+
     @property
     def weights(self) -> list[float | None]:
         """Weights of fit mappings, None if the weight of the mapping is used."""

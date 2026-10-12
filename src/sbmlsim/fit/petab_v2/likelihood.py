@@ -38,6 +38,7 @@ from sbmlsim.fit.objects import NoiseDistribution, NoiseModel
 from sbmlsim.fit.options import ResidualType
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.log import some_ids
+from sbmlsim.units import UndefinedUnitError, ureg
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import MappingEvaluation, OptimizationProblem
@@ -91,10 +92,12 @@ def log_density(
     residual = _residual(m, y, s, distribution)
     # the density of the measurement and not of its logarithm, i.e. the
     # jacobian `1 / m` of the transformation is part of it
-    scale = s * m if distribution.is_log else s
+    log_scale = np.log(s)
+    if distribution.is_log:
+        log_scale = log_scale + np.log(m)
     if distribution in {NoiseDistribution.NORMAL, NoiseDistribution.LOG_NORMAL}:
-        return -0.5 * np.log(2.0 * np.pi * np.square(scale)) - 0.5 * np.square(residual)
-    return -np.log(2.0 * scale) - np.abs(residual)
+        return -0.5 * np.log(2.0 * np.pi) - log_scale - 0.5 * np.square(residual)
+    return -np.log(2.0) - log_scale - np.abs(residual)
 
 
 def normalized_residuals(
@@ -388,8 +391,9 @@ def _noise_terms(
         ValueError: if a simulation failed or if the noise model of a mapping
             cannot be evaluated.
     """
+    pset = problem.bind_parameter_set(pset)
     if evaluations is None:
-        evaluations = problem.evaluations(pset.x(problem.pids))
+        evaluations = problem.evaluations(pset.x(problem.pids, problem.parameter_units))
     terms = []
     for k in problem.training_indices:
         key = f"{problem.experiment_keys[k]}.{problem.mapping_keys[k]}"
@@ -493,6 +497,50 @@ def chi2(
     return total
 
 
+def _bind_to_definition(
+    problem: OptimizationProblem, pset: ParameterSet
+) -> ParameterSet:
+    """Convert a set into the units of the parameters of an uninitialized problem.
+
+    The units are the ones of the definition, `FitParameter.unit`. A unit
+    with a unit id of the model of its target, e.g. `per_min`, is resolved by
+    the models in `initialize`, see `OptimizationProblem.parameter_units`:
+    before, a set in a unit of pint is taken in the resolved unit of such a
+    parameter, which is the unit the sets of a fit carry and has the values
+    of the unit of the parameter.
+
+    Args:
+        problem: uninitialized optimization problem.
+        pset: parameter set.
+
+    Returns:
+        The set in the units of the parameters.
+
+    Raises:
+        ValueError: if a value cannot be converted into the unit of its
+            parameter.
+    """
+    units = dict(pset.units)
+    for parameter in problem.parameters:
+        unit = units.get(parameter.pid)
+        if parameter.unit is None or unit is None or unit == parameter.unit:
+            continue
+        if _is_unit_of_pint(unit) and not _is_unit_of_pint(parameter.unit):
+            units[parameter.pid] = parameter.unit
+    return ParameterSet(
+        pset.sid, dict(pset.values), units, pset.cost, pset.provenance
+    ).to_units({p.pid: p.unit for p in problem.parameters})
+
+
+def _is_unit_of_pint(unit: str) -> bool:
+    """Check whether pint defines every name of a unit, unlike a unit id of a model."""
+    try:
+        ureg.parse_expression(unit)
+    except UndefinedUnitError:
+        return False
+    return True
+
+
 def log_prior(
     problem: OptimizationProblem, parameters: ParameterSet | None = None
 ) -> dict[str, float]:
@@ -503,9 +551,12 @@ def log_prior(
     parameter with an infinite bound, i.e. the improper flat prior.
 
     Args:
-        problem: initialized optimization problem.
+        problem: optimization problem. An uninitialized problem takes the
+            values in the units of its definition, see
+            `_bind_to_definition`.
         parameters: parameters to evaluate the priors at,
-            `nominal_parameters` by default.
+            `nominal_parameters` by default, which require an initialized
+            problem.
 
     Returns:
         The log prior by the id of the parameter.
@@ -521,6 +572,11 @@ def log_prior(
             f"problem, call `initialize(settings)` first."
         )
     pset = parameters if parameters is not None else nominal_parameters(problem)
+    pset = (
+        problem.bind_parameter_set(pset)
+        if problem.is_initialized
+        else _bind_to_definition(problem, pset)
+    )
     priors: dict[str, float] = {}
     for parameter in problem.parameters:
         value = float(pset.values[parameter.pid])
@@ -811,6 +867,7 @@ def gradient(
             step,
         )
     pset = parameters if parameters is not None else nominal_parameters(problem)
+    pset = problem.bind_parameter_set(pset)
     x = pset.x(problem.pids)
 
     def shifted(pid: str, value: float) -> ParameterSet:

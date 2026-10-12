@@ -1,14 +1,70 @@
 """Tests of the Fisher information of a fit."""
 
 import logging
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from sbmlsim.fit import FitSettings
-from sbmlsim.fit.fisher import fisher_information, jacobian
+from sbmlsim.fit.fisher import FisherInformation, fisher_information, jacobian
 from sbmlsim.fit.metrics import aic, bic, bic_from_mse
 from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.options import ParameterScaleType
+
+
+def test_perfect_identifiable_fit_has_zero_errors_and_exact_intervals() -> None:
+    information = FisherInformation(
+        "perfect",
+        "fit",
+        ["p"],
+        np.array([2.0]),
+        ParameterScaleType.LINEAR,
+        np.array([[1.0]]),
+        cost=0.0,
+        n=10,
+    )
+    df = information.summary_df
+    assert df.se[0] == 0.0
+    assert df.ci_lower[0] == df.ci_upper[0] == 2.0
+
+
+@pytest.mark.parametrize("view", [False, True])
+def test_fisher_reports_reuse_decompositions_and_track_matrix_changes(
+    view: bool,
+) -> None:
+    matrix = np.eye(4)[::2, ::2] if view else np.eye(2)
+    information = FisherInformation(
+        "report",
+        "fit",
+        ["a", "b"],
+        np.array([1.0, 2.0]),
+        ParameterScaleType.LINEAR,
+        matrix,
+        cost=1.0,
+        n=10,
+    )
+    with (
+        patch("numpy.linalg.eigvalsh", wraps=np.linalg.eigvalsh) as eigenvalues,
+        patch("numpy.linalg.pinv", wraps=np.linalg.pinv) as inverse,
+    ):
+        _ = information.summary_df
+        _ = information.correlation
+        assert eigenvalues.call_count == inverse.call_count == 1
+        information.matrix[0, 0] = 2.0
+        np.testing.assert_allclose(
+            information.covariance, information.sigma2 * np.diag([0.5, 1.0])
+        )
+        assert eigenvalues.call_count == inverse.call_count == 2
+        information.rank_tolerance = 0.75
+        assert not information.is_identifiable
+        _ = information.covariance
+        assert eigenvalues.call_count == inverse.call_count == 3
+        information.cost = 2.0
+        np.testing.assert_allclose(
+            information.covariance, information.sigma2 * np.diag([0.5, 1.0])
+        )
+        assert eigenvalues.call_count == inverse.call_count == 3
 
 
 def test_bic_penalizes_more_than_aic() -> None:

@@ -47,13 +47,23 @@ def within_tolerance(
         rel_tol: relative tolerance.
 
     Returns:
-        Booleans of the shape of the input, `True` where the values agree.
+        Booleans of the shape of the input, `True` where both values are finite
+        and agree.
     """
-    # a comparison with an undefined value is not within the tolerance, and
-    # subtracting infinities is how that shows up rather than an error
+    # an undefined or infinite value never agrees, not even with itself;
+    # subtracting infinities gives NaN rather than an error
     with np.errstate(invalid="ignore"):
         difference = np.abs(expected - observed)
-        return difference <= (abs_tol + rel_tol * np.abs(expected))
+        return (
+            np.isfinite(expected)
+            & np.isfinite(observed)
+            & (difference <= (abs_tol + rel_tol * np.abs(expected)))
+        )
+
+
+def _largest(a: pd.DataFrame, b: pd.DataFrame) -> pd.DataFrame:
+    """Get the larger of two values, `NaN` where either of them is `NaN`."""
+    return a.where((a >= b) | a.isna(), b)
 
 
 def get_files_by_extension(
@@ -117,7 +127,10 @@ class DataSetsComparison:
     beginning a matching of column names is performed to find the subset of
     columns which can be compared.
 
-    The simulations must contain a "time" column with identical time points.
+    Rows are compared in their order, independent of their pandas index. The
+    first result is the reference for every other result. With several
+    candidates, the differences show the largest deviation at each value.
+    The simulations must contain a "time" column unless `time_column=False`.
     """
 
     tol_abs = 1e-4  # absolute tolerance for comparison
@@ -148,48 +161,56 @@ class DataSetsComparison:
         """
         self.columns_filter = columns_filter
         frames: dict[str, pd.DataFrame] = {
-            label: to_dataframe(data, label) for label, data in dfs_dict.items()
+            label: to_dataframe(data, label).reset_index(drop=True).copy()
+            for label, data in dfs_dict.items()
         }
+        if len(frames) < 2:
+            raise ValueError("A comparison requires at least two results.")
 
         # check that identical number of rows (mostly timepoints)
-        nrow = 0
+        nrow = len(next(iter(frames.values())))
         for label, df in frames.items():
-            if nrow == 0:
-                nrow = len(df)
-
             if len(df) != nrow:
                 raise ValueError(
                     f"DataFrame have different length (number of rows): "
                     f"{len(df)} != {nrow} ({label})"
                 )
+        if nrow == 0:
+            raise ValueError("A comparison requires at least one row.")
 
         # check that time column exist in data frames
         if time_column:
             for label, df in frames.items():
-                if "time" not in df.columns:
+                if TIME not in df.columns:
                     raise ValueError(f"'time' column must exist in data ({label})")
 
         # handle selections replacements
-        pd.set_option("display.max_columns", None)
         if selections:
             if factors is None:
                 factors = {}
-            # use the first keys for comparison
-            colnames = list(selections.values())[1]
+            # the columns are named as in the second selection
+            colnames = next(iter(selections.values()))
+            if len(selections) > 1:
+                colnames = list(selections.values())[1]
             for key, sel_keys in selections.items():
                 console.log("***", key, "***")
                 df = frames[key]
                 # get subset
-                df_new = df[sel_keys]
+                df_new = df[sel_keys].copy()
                 # apply factors
                 fs = factors.get(key, [1.0] * len(sel_keys))
+                if len(fs) != len(sel_keys) or len(sel_keys) != len(colnames):
+                    raise ValueError(
+                        f"Selections and factors of '{key}' must have "
+                        f"{len(colnames)} entries."
+                    )
                 for k, sel in enumerate(sel_keys):
                     console.log(f"scaling: '{sel}' * {fs[k]}")
-                    df_new.loc[:, sel] *= fs[k]
+                    df_new[sel] = df_new[sel] * float(fs[k])
 
                 # do renaming
                 df_new = df_new.rename(
-                    columns=dict(zip(sel_keys, colnames, strict=False))
+                    columns=dict(zip(sel_keys, colnames, strict=True))
                 )
                 # store updated df
                 console.log(df_new.head())
@@ -197,10 +218,16 @@ class DataSetsComparison:
 
         # get the subset of columns to compare
         columns, self.col_intersection, self.col_union = self._process_columns(frames)
+        if time_column and TIME not in self.col_intersection:
+            raise ValueError(
+                "The 'time' column must be numeric and selected in every result."
+            )
 
         # filtered columns
         if columns_filter:
             columns = [col for col in columns if columns_filter(col)]
+        if not columns:
+            raise ValueError("The results have no numeric columns to compare.")
         self.columns = columns
         logger.info("Comparing: %s", self.columns)
 
@@ -226,14 +253,14 @@ class DataSetsComparison:
         :param dataframes:
         :return:
         """
-        numerics = ["int16", "int32", "int64", "float16", "float32", "float64"]
-
         # set of columns from the individual dataframes
         col_union = None
         col_intersection = None
         for _path, df in dataframes.items():
             # get all numeric columns
-            num_df = df.select_dtypes(include=numerics)
+            num_df = df.select_dtypes(
+                include="number", exclude=["complex", "timedelta"]
+            )
             if len(num_df.columns) < len(df.columns):
                 logger.warning(
                     "Non-numeric columns in DataFrame: %s",
@@ -255,8 +282,11 @@ class DataSetsComparison:
         logger.info("Column Intersection #: %s", len(col_intersection))
 
         columns = list(col_intersection.copy())
-        columns.remove("time")
-        columns = ["time", *sorted(columns)]
+        if TIME in columns:
+            columns.remove(TIME)
+            columns = [TIME, *sorted(columns)]
+        else:
+            columns = sorted(columns)
 
         return columns, col_intersection, col_union
 
@@ -308,8 +338,40 @@ class DataSetsComparison:
 
         """
         c = self.dfs[0]
-        u = self.dfs[1]
+        diff, diff_abs, diff_rel, diff_tol, diff_tol_bool = self._pair_diff(
+            c, self.dfs[1]
+        )
+        for candidate in self.dfs[2:]:
+            other, other_abs, other_rel, other_tol, other_bool = self._pair_diff(
+                c, candidate
+            )
+            # An invalid value remains invalid even when another candidate
+            # matches it. Each diagnostic retains its largest deviation.
+            replace = other_abs.isna() | (diff_abs.notna() & (other_abs > diff_abs))
+            diff = diff.where(~replace, other)
+            diff_abs = _largest(diff_abs, other_abs)
+            diff_rel = _largest(diff_rel, other_rel)
+            diff_tol = _largest(diff_tol, other_tol)
+            diff_tol_bool = diff_tol_bool | other_bool
 
+        return diff, diff_abs, diff_rel, diff_tol, diff_tol_bool
+
+    def _pair_diff(
+        self, c: pd.DataFrame, u: pd.DataFrame
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Compare one candidate with the reference in row order.
+
+        Args:
+            c: the reference.
+            u: the candidate, with the rows and columns of the reference.
+
+        Returns:
+            The difference, its absolute value, the relative difference, the
+            difference beyond the tolerance (positive where the values differ)
+            and the booleans which are `True` where the values differ.
+        """
+        # Integer subtraction can wrap, especially for unsigned data.
+        c, u = c.astype(float), u.astype(float)
         # difference
         diff = c - u
 
@@ -317,8 +379,8 @@ class DataSetsComparison:
         diff_abs = diff.abs()
 
         # relative differences between data frames
-        diff_rel = 2 * diff_abs / (self.dfs[0].abs() + self.dfs[1].abs())
-        diff_rel[diff_rel.isnull()] = 0.0
+        diff_rel = 2 * diff_abs / (c.abs() + u.abs())
+        diff_rel = diff_rel.mask((c == 0) & (u == 0), 0.0)
 
         # difference based on tolerance
         # |c_ij - u_ij| <= (abs_tol + rel_tol * |c_ij|)

@@ -118,6 +118,38 @@ def test_profile_identifiable() -> None:
     assert profile.ci_lower * profile.ci_upper == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(
+    "cost,converged", [(np.inf, False), (np.nan, True), (5.0, False)]
+)
+def test_failed_profiles_do_not_report_confidence_or_identifiability(
+    tmp_path: Path, cost: float, converged: bool
+) -> None:
+    """Failed scan points remain unclassified after report serialization."""
+    result = _linear_result()
+    profile = result.profiles["k"]
+    profile.costs[[0, 2]] = cost
+    profile.converged[[0, 2]] = converged
+    result.evaluate()
+    result.to_json(tmp_path / "profile.json")
+    restored = IdentifiabilityResult.from_json(tmp_path / "profile.json")
+    row = restored.summary_df().set_index("parameter").loc["k"]
+    assert pd.isna(row.ci_lower) and pd.isna(row.ci_upper)
+    assert pd.isna(row.identifiability)
+    assert restored.profiles["k"].identifiability is None
+    assert not row.converged
+    assert restored.profiles["k"].cost_min == 1.0
+
+
+def test_failed_profile_does_not_bridge_across_failed_points() -> None:
+    """Interpolation requires adjacent valid points from the optimum outward."""
+    profile = _profile([0.1, 0.5, 1.0, 2.0, 3.0], [5.0, 1.1, 1.0, 1.1, 5.0], 2)
+    profile.converged[3] = False
+    profile.evaluate(3.0, 0.05, ParameterScaleType.LINEAR)
+    assert profile.ci_lower is not None
+    assert profile.ci_upper is None
+    assert profile.identifiability is None
+
+
 def test_profile_crossing_interpolation() -> None:
     """The crossing is interpolated linearly in the logarithm of the parameter."""
     profile = _profile(values=[1.0, 100.0], costs=[1.0, 3.0], index_optimum=0)
@@ -406,7 +438,9 @@ def test_profile_with_reoptimization(
     )
     profile = result.profiles["KI__HCTZEX_k"]
     assert 1 < len(profile) <= 5
-    assert profile.identifiability is not None
+    # A short optimization may stop at its evaluation budget. Those points
+    # cannot establish a confidence interval or identifiability classification.
+    assert (profile.identifiability is not None) == bool(np.all(profile.converged))
     # the profile is never above the plain scan at the same points, the other
     # parameters can only lower the cost
     assert profile.cost_min <= result.cost + 1e-9

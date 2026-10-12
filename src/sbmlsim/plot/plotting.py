@@ -362,6 +362,17 @@ class Style(BasePlotObject):
         self.marker: Marker | None = marker
         self.fill: Fill | None = fill
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the declared style and its inheritance."""
+        return {
+            "sid": self.sid,
+            "name": self.name,
+            "base_style": self.base_style,
+            "line": self.line,
+            "marker": self.marker,
+            "fill": self.fill,
+        }
+
     def resolve_style(self) -> Style:
         """Resolve all basestyle information.
 
@@ -1849,6 +1860,18 @@ class SubPlot(BasePlotObject):
         self.col = col
         self.row_span = row_span
         self.col_span = col_span
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the plot and its position in the figure."""
+        return {
+            "sid": self.sid,
+            "name": self.name,
+            "plot": self.plot,
+            "row": self.row,
+            "col": self.col,
+            "row_span": self.row_span,
+            "col_span": self.col_span,
+        }
 
     def __str__(self) -> str:
         """Get string."""

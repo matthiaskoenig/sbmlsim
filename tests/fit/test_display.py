@@ -137,14 +137,21 @@ def test_data_table_wide(capsys: pytest.CaptureFixture[str]) -> None:
     assert "value_of_field_11" in out
 
 
-def test_data_table_excluded_row_is_grey() -> None:
+def test_data_table_excluded_row_is_grey(monkeypatch: pytest.MonkeyPatch) -> None:
     """The complete row of an excluded mapping is grey."""
+    # This test inspects terminal colors even when the test runner disables
+    # colors in its own output.
+    monkeypatch.setenv("NO_COLOR", "1")
     df = DATA.copy()
     df.loc[3, "kind"] = MappingKind.EXCLUDED.value
     buffer = StringIO()
-    Console(file=buffer, width=120, force_terminal=True, color_system="standard").print(
-        display.data_table(df)
-    )
+    Console(
+        file=buffer,
+        width=120,
+        force_terminal=True,
+        color_system="standard",
+        no_color=False,
+    ).print(display.data_table(df))
     lines = buffer.getvalue().splitlines()
     grey = next(line for line in lines if "fm4" in line)
     other = next(line for line in lines if "fm1" in line)

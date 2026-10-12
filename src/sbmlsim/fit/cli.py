@@ -540,7 +540,8 @@ def report_cli(
     parameter_sets = load_parameter_sets(options.parameters)
     # built and initialized here, not left to `FitReport`, so the parameters
     # and their coverage are shown before the report is created; `FitReport`
-    # initializing the same problem with the same settings is a no-op
+    # initializes a copy of the definition of its own, so later fits and
+    # edits cannot change the report
     problem = definition.problem(opid=options.subset)
     problem.initialize(definition.settings)
 

@@ -14,11 +14,14 @@ the fit which was written, and falls back on the tables when it is not, which
 is the case for a problem of another tool.
 """
 
+import copy
+import copyreg
 import functools
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar, cast, override
 from urllib.request import url2pathname
 
 import libsbml
@@ -27,7 +30,7 @@ import pandas as pd
 import petab.v2 as petab_v2
 from petab.v1.yaml import load_yaml
 from petab.v2 import Problem as PetabProblem
-from petab.v2.math import petab_math_str
+from petab.v2.math import petab_math_str, sympify_petab
 from pydantic import AnyUrl
 
 from sbmlsim.data import DataSet
@@ -58,6 +61,7 @@ from sbmlsim.fit.petab_v2.extension import (
 )
 from sbmlsim.fit.petab_v2.likelihood import nominal_parameters
 from sbmlsim.fit.petab_v2.symbols import (
+    formula_of_selections,
     is_entity,
     selection_of_formula,
     selection_of_target,
@@ -65,7 +69,9 @@ from sbmlsim.fit.petab_v2.symbols import (
     split_selection,
 )
 from sbmlsim.model import AbstractModel
+from sbmlsim.model.symbols import ModelSymbols
 from sbmlsim.simulation import Change, Simulation, SteadyState
+from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.task import Task
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
 from sbmlsim.units import ureg as package_ureg
@@ -105,6 +111,97 @@ DATASET_PREFIX = "data_"
 def dataset_id(observable_id: str) -> str:
     """Get the id of the dataset which holds the measurements of an observable."""
     return f"{DATASET_PREFIX}{observable_id}"
+
+
+@dataclass
+class _PetabExperimentDefinition:
+    """Serializable tables, model XML and paths, without runtime registries."""
+
+    problem: PetabProblem
+    base_path: Path
+    name: str
+    derived_dir: Path | None
+    sciml: Any
+    model_sources: dict[Path, Path] = field(default_factory=dict)
+    _reader: "PetabReader | None" = field(default=None, repr=False)
+
+    def reader(self) -> "PetabReader":
+        """Construct runtime state once per bound experiment class."""
+        if self._reader is None:
+            self._reader = PetabReader(
+                self.problem,
+                base_path=self.base_path,
+                name=self.name,
+                derived_dir=self.derived_dir,
+                sciml=self.sciml,
+            )
+            self._reader._model_sources.update(self.model_sources)
+        return self._reader
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Keep compiled paths, excluding the reader and its native caches."""
+        state = self.__dict__.copy()
+        reader = state.pop("_reader", None)
+        if reader is not None:
+            state["model_sources"] = dict(reader._model_sources)
+            state["derived_dir"] = reader.derived_dir
+        return state
+
+
+class _PetabExperimentMeta(type):
+    """Identify only bound PEtab classes for definition-based pickling."""
+
+
+class PetabExperiment(SimulationExperiment):
+    """Importable implementation of an experiment backed by PEtab data."""
+
+    _definition: ClassVar[_PetabExperimentDefinition]
+
+    @override
+    def models(self) -> dict[str, AbstractModel | Path]:
+        """Get the model definitions of the bound PEtab problem."""
+        return dict(self._definition.reader().models())
+
+    @override
+    def datasets(self) -> dict[str, DataSet]:
+        """Get the measurements of the bound PEtab problem."""
+        return self._definition.reader().datasets()
+
+    @override
+    def simulations(self) -> dict[str, Simulation]:
+        """Get the simulations of the bound PEtab problem."""
+        return self._definition.reader().simulations()
+
+    @override
+    def tasks(self) -> dict[str, Task]:
+        """Get the tasks of the bound PEtab problem."""
+        return self._definition.reader().tasks()
+
+    @override
+    def fit_mappings(self) -> dict[str, FitMapping]:
+        """Bind measurements and model predictions to this experiment."""
+        return self._definition.reader().fit_mappings(self)
+
+
+def _rebuild_petab_experiment(
+    name: str, definition: _PetabExperimentDefinition
+) -> type[PetabExperiment]:
+    """Bind definition data without registering a generated global name."""
+    return cast(
+        type[PetabExperiment],
+        _PetabExperimentMeta(name, (PetabExperiment,), {"_definition": definition}),
+    )
+
+
+def _reduce_petab_experiment(
+    experiment: _PetabExperimentMeta,
+) -> tuple[Any, tuple[str, _PetabExperimentDefinition]]:
+    """Serialize only PEtab classes, preserving independently bound names."""
+    bound = cast(type[PetabExperiment], experiment)
+    return _rebuild_petab_experiment, (bound.__name__, bound._definition)
+
+
+copyreg.pickle(_PetabExperimentMeta, _reduce_petab_experiment)
 
 
 class PetabReader:
@@ -187,6 +284,8 @@ class PetabReader:
         # a `mmole_per_min` of an SBML model is not a unit pint knows, and a
         # problem without the `sbmlsim` extension has the units of the model,
         # which is what PEtab says its measurements are in
+        #: the units of every model whose units could be read, by its id
+        self._units_by_model: dict[str, UnitsInformation] = {}
         self.uinfo: UnitsInformation | None = self._model_units()
         self.ureg: UnitRegistry = (
             self.uinfo.ureg if self.uinfo is not None else package_ureg
@@ -244,16 +343,27 @@ class PetabReader:
         self._noise_models: dict[str, NoiseModel] = {}
         #: the observable model of every fit mapping, see `observable_model`
         self._observable_models: dict[str, ObservableModel | None] = {}
+        self._warned_simulation_discrepancies: set[tuple[str, str]] = set()
+        #: the symbols of every model with the parameters of the problem, by
+        #: its id, see `_standard_differences`
+        self._symbols_by_model: dict[str, ModelSymbols] = {}
 
         self.sciml = self._read_sciml(extensions)
 
     @staticmethod
-    def from_yaml(yaml_file: Path, name: str | None = None) -> "PetabReader":
+    def from_yaml(
+        yaml_file: Path,
+        name: str | None = None,
+        *,
+        derived_dir: Path | None = None,
+    ) -> "PetabReader":
         """Read the problem of a PEtab YAML file.
 
         Args:
             yaml_file: path of the YAML file of the problem.
             name: name of the simulation experiment class which is created.
+            derived_dir: directory for compiled models, next to the source
+                model by default, see the constructor.
 
         Returns:
             The reader of the problem.
@@ -273,7 +383,12 @@ class PetabReader:
         sciml = extensions.pop(SCIML_EXTENSION_ID, None)
         if sciml is None:
             petab_problem = PetabProblem.from_yaml(yaml_file)
-            return PetabReader(petab_problem, base_path=yaml_file.parent, name=name)
+            return PetabReader(
+                petab_problem,
+                base_path=yaml_file.parent,
+                name=name,
+                derived_dir=derived_dir,
+            )
         # `petab` reads the networks of a problem through PyTorch, which is
         # no dependency, and needs `petab_sciml` for the block, which is the
         # extra: it reads the tables, `SciMLReader` the networks, and a block
@@ -282,7 +397,11 @@ class PetabReader:
             {**config, "extensions": extensions}, base_path=yaml_file.parent
         )
         return PetabReader(
-            petab_problem, base_path=yaml_file.parent, name=name, sciml=sciml
+            petab_problem,
+            base_path=yaml_file.parent,
+            name=name,
+            derived_dir=derived_dir,
+            sciml=sciml,
         )
 
     def _read_sciml(self, extensions: dict[str, Any]) -> "SciMLReader | None":
@@ -424,7 +543,8 @@ class PetabReader:
         defines units of its own, e.g. the `mmole_per_min` of a reaction, so
         the registry has to be the one of the models. The units themselves are
         what a problem without the `sbmlsim` extension says its data is in:
-        PEtab measures in the units of the model.
+        PEtab measures in the units of the model. The units of every model are
+        kept by its id in `_units_by_model`.
 
         Returns:
             The units of the models, `None` if none of them could be read.
@@ -434,6 +554,7 @@ class PetabReader:
             try:
                 ureg = uinfo.ureg if uinfo is not None else None
                 uinfo = UnitsInformation.from_sbml(self._model_path(model), ureg)
+                self._units_by_model[model.model_id] = uinfo
             except Exception as err:
                 logger.warning(
                     "The units of the model '%s' could not be read: %s: %s",
@@ -443,7 +564,9 @@ class PetabReader:
                 )
         return uinfo
 
-    def _unit_of(self, sid: str, default: str | None) -> str | None:
+    def _unit_of(
+        self, sid: str, default: str | None, model_id: str | None = None
+    ) -> str | None:
         """Get the unit of an entity of the model.
 
         PEtab has no units: its measurements are in the units of the model and
@@ -452,6 +575,7 @@ class PetabReader:
         Args:
             sid: identifier of the entity, `time` for the time of the model.
             default: unit if the models do not say.
+            model_id: model whose units are used, all models by default.
 
         Returns:
             The unit of the entity in the models, `default` if it has none. A
@@ -459,10 +583,11 @@ class PetabReader:
             empty unit, which is `dimensionless` here so that it reads as a
             unit and not as a missing one.
         """
-        if self.uinfo is None:
+        uinfo = self.uinfo if model_id is None else self._units_by_model.get(model_id)
+        if uinfo is None:
             return default
         try:
-            unit = str(self.uinfo[sid])
+            unit = str(uinfo[sid])
         except (KeyError, TypeError):
             return default
         return unit if unit else DEFAULT_VALUE_UNIT
@@ -640,7 +765,11 @@ class PetabReader:
         for experiment_id in self.experiment_ids:
             info = self._experiment_info(experiment_id)
             if info.get("simulation") or info.get("timecourses"):
-                simulations[experiment_id] = self._simulation_of_extension(info)
+                simulation = self._simulation_of_extension(info)
+                self._check_standard_simulation(
+                    experiments.get(experiment_id), simulation
+                )
+                simulations[experiment_id] = simulation
             elif experiment_id in experiments:
                 simulations[experiment_id] = self._simulation_of_periods(
                     experiments[experiment_id]
@@ -651,6 +780,172 @@ class PetabReader:
                     start=0.0, end=self._simulation_end(None, 0.0)
                 )
         return simulations
+
+    def _check_standard_simulation(
+        self, experiment: petab_v2.Experiment | None, simulation: Simulation
+    ) -> None:
+        """Warn when standard changes disagree with the extension's semantics.
+
+        Compile only the extension's changes into model units. Output grids,
+        integration settings and the simulation end remain extension metadata.
+        Model changes and fitted parameter bindings are represented separately.
+        The check only warns: a comparison which fails, e.g. at a formula
+        which cannot be read, is reported, and the extension simulation is
+        used all the same.
+        """
+        if experiment is None:
+            return
+        model_id = self._model_of_experiment(experiment.id)
+        uinfo = self._units_by_model.get(model_id)
+        if uinfo is None:
+            logger.warning(
+                "Experiment '%s': standard periods and conditions cannot be "
+                "checked against the sbmlsim extension because model '%s' "
+                "has no readable units.",
+                experiment.id,
+                model_id,
+            )
+            return
+        try:
+            actual, expected, differences = self._standard_differences(
+                experiment, simulation, model_id, uinfo
+            )
+        except Exception as err:
+            signature = (experiment.id, f"{type(err).__name__}: {err}")
+            if signature in self._warned_simulation_discrepancies:
+                return
+            self._warned_simulation_discrepancies.add(signature)
+            logger.warning(
+                "Experiment '%s': standard periods/conditions cannot be compared "
+                "with the sbmlsim extension simulation: %s. The extension "
+                "simulation is used; its normal validation still applies.",
+                experiment.id,
+                signature[1],
+            )
+            return
+        if not differences:
+            return
+        signature = (experiment.id, repr((actual, expected)))
+        if signature in self._warned_simulation_discrepancies:
+            return
+        self._warned_simulation_discrepancies.add(signature)
+        conditions = sorted(
+            {key for period in experiment.periods for key in period.condition_ids}
+        )
+        logger.warning(
+            "Experiment '%s', conditions %s: standard PEtab periods/conditions "
+            "disagree with the sbmlsim extension simulation (%s). The extension "
+            "simulation is used to preserve its units and output. Update both "
+            "representations or remove the experiment's simulation from the "
+            "extension to use the standard periods/conditions.",
+            experiment.id,
+            conditions,
+            ", ".join(sorted(differences)),
+        )
+
+    def _standard_differences(
+        self,
+        experiment: petab_v2.Experiment,
+        simulation: Simulation,
+        model_id: str,
+        uinfo: UnitsInformation,
+    ) -> tuple[
+        list[tuple[float, dict[str, Any]]], list[tuple[float, dict[str, Any]]], set[str]
+    ]:
+        """Compare the standard periods and conditions with the extension.
+
+        The symbols of a model are read once per reader.
+
+        Args:
+            experiment: the experiment of the standard tables.
+            simulation: the simulation of the extension.
+            model_id: the model of the experiment.
+            uinfo: the units of the model.
+
+        Returns:
+            The changes of the standard periods and the changes the extension
+            simulation has at their times, as pairs of the time and the
+            values by target, and the targets which differ, `period times`
+            for differing times.
+        """
+        symbols = self._symbols_by_model.get(model_id)
+        if symbols is None:
+            source = next(
+                m for m in self.petab_problem.models if m.model_id == model_id
+            )
+            symbols = ModelSymbols.from_sbml(self._model_source(source))
+            symbols = replace(
+                symbols, parameters=symbols.parameters | self._parameters.keys()
+            )
+            self._symbols_by_model[model_id] = symbols
+        changes_only = copy.copy(simulation)
+        changes_only.times = None
+        changes_only.steps = None
+        plan = compile_simulation(changes_only, symbols, uinfo)
+        first = {
+            a.target: a.value if a.value is not None else a.formula
+            for a in plan.preinit
+        }
+        # A model's fixed changes are folded into the standard first period.
+        if self.extension is not None:
+            first = {
+                **self.extension.models.get(model_id, {}).get("changes", {}),
+                **first,
+            }
+        events = {
+            event.time: {
+                a.target: a.value if a.value is not None else a.formula
+                for a in event.assignments
+            }
+            for event in plan.events
+        }
+        expected: list[tuple[float, dict[str, Any]]] = []
+        if plan.steady_state is not None:
+            steady = {a.target: a.value for a in plan.steady_state.preinit}
+            expected.append((float("-inf"), {**steady, **first}))
+            expected.append((plan.start + plan.time_shift, events.pop(plan.start, {})))
+        else:
+            expected.append(
+                (plan.start + plan.time_shift, {**first, **events.pop(plan.start, {})})
+            )
+        expected.extend(
+            (time + plan.time_shift, values)
+            for time, values in sorted(events.items())
+            if values
+        )
+        actual: list[tuple[float, dict[str, Any]]] = []
+        for position, period in enumerate(
+            sorted(experiment.periods, key=lambda p: p.time)
+        ):
+            values = self._period_changes(experiment, period, self._conditions)
+            if (
+                values
+                or position == 0
+                or np.isinf(period.time)
+                or (plan.steady_state is not None and len(actual) == 1)
+            ):
+                actual.append((float(period.time), values))
+
+        def equal(left: Any, right: Any) -> bool:
+            if isinstance(left, int | float) and isinstance(right, int | float):
+                return bool(np.isclose(left, right, rtol=1e-12, atol=0))
+            if isinstance(left, str) and isinstance(right, str):
+                model = self._sbml_model(model_id)
+                return sympify_petab(
+                    formula_of_selections(left, model)
+                ) == sympify_petab(formula_of_selections(right, model))
+            return left == right
+
+        differences: set[str] = set()
+        if len(actual) != len(expected):
+            differences.add("period times")
+        for (at, values), (time, changes) in zip(actual, expected, strict=False):
+            if not equal(at, time):
+                differences.add("period times")
+            for target in values.keys() | changes.keys():
+                if not equal(values.get(target), changes.get(target)):
+                    differences.add(target)
+        return actual, expected, differences
 
     def _simulation_of_extension(self, info: dict[str, Any]) -> Simulation:
         """Get the simulation the extension describes, i.e. the exact one.
@@ -714,6 +1009,7 @@ class PetabReader:
                 define.
         """
         versions = self._versions()
+        sbml_model = self._sbml_model(self._model_of_experiment(experiment.id))
         changes: dict[str, Any] = {}
         for condition_id in period.condition_ids:
             condition = conditions.get(condition_id)
@@ -739,7 +1035,6 @@ class PetabReader:
                     continue
                 # the ids of PEtab mean what the model means, a concentration
                 # based species is its concentration
-                sbml_model = self._sbml_model()
                 target = selection_of_target(change.target_id, sbml_model)
                 if _is_number(change.target_value):
                     changes[target] = _to_float(change.target_value)
@@ -801,32 +1096,62 @@ class PetabReader:
 
     def tasks(self) -> dict[str, Task]:
         """Get the tasks, one per experiment of the problem."""
-        model_ids = [model.model_id for model in self.petab_problem.models]
         return {
             f"task_{experiment_id}": Task(
-                model=self._model_of_experiment(experiment_id, model_ids),
+                model=self._model_of_experiment(experiment_id),
                 simulation=experiment_id,
             )
             for experiment_id in self.experiment_ids
         }
 
-    def _model_of_experiment(self, experiment_id: str, model_ids: list[str]) -> str:
+    def _model_of_experiment(self, experiment_id: str) -> str:
         """Get the model an experiment is simulated with.
 
         A PEtab problem with one model simulates everything with it. With
         several models the extension says which one, and a measurement may name
         its model as well.
         """
-        if self.extension is not None:
-            for info in self.extension.observables.values():
-                if info.get("model") and self._experiment_of_observable(info) == (
-                    experiment_id
-                ):
-                    return str(info["model"])
-        for measurement in self.petab_problem.measurements:
-            if measurement.experiment_id == experiment_id and measurement.model_id:
-                return str(measurement.model_id)
-        return model_ids[0]
+        return self._experiment_models[experiment_id]
+
+    @functools.cached_property
+    def _experiment_models(self) -> dict[str, str]:
+        """Resolve each experiment's model without accepting conflicting bindings."""
+        model_ids = [model.model_id for model in self.petab_problem.models]
+        selected: dict[str, set[str]] = {
+            experiment_id: set() for experiment_id in self.experiment_ids
+        }
+        for experiment in self.petab_problem.experiments:
+            selected.setdefault(experiment.id, set())
+        for key, measurements in self._measurements.items():
+            experiment_id = measurements[0].experiment_id or DEFAULT_EXPERIMENT
+            model = self.observable_info(key).get("model")
+            if model:
+                selected[experiment_id].add(str(model))
+            selected[experiment_id].update(
+                str(measurement.model_id)
+                for measurement in measurements
+                if measurement.model_id
+            )
+        resolved: dict[str, str] = {}
+        for experiment_id, models in selected.items():
+            if len(models) > 1:
+                raise ValueError(
+                    f"The experiment '{experiment_id}' uses multiple models "
+                    f"{sorted(models)}; use a separate experiment for each model."
+                )
+            model_id = next(iter(models)) if models else model_ids[0]
+            if model_id not in model_ids:
+                raise ValueError(
+                    f"The experiment '{experiment_id}' uses the undefined model "
+                    f"'{model_id}'."
+                )
+            resolved[experiment_id] = model_id
+        return resolved
+
+    def _model_of_mapping(self, key: str) -> str:
+        """Get the model whose selections and units a fit mapping uses."""
+        experiment_id = self._measurements[key][0].experiment_id or DEFAULT_EXPERIMENT
+        return self._model_of_experiment(experiment_id)
 
     def _experiment_of_observable(self, info: dict[str, Any]) -> str | None:
         """Get the PEtab experiment of an observable of the extension."""
@@ -843,16 +1168,18 @@ class PetabReader:
         """Get the datasets, one per fit mapping, from its measurements."""
         datasets: dict[str, DataSet] = {}
         for key, measurements in self._measurements.items():
-            observable_id = self._observable_ids[key]
             info = self.observable_info(key)
+            model_id = self._model_of_mapping(key)
             # without the extension the data is in the units of the model,
             # which is what PEtab measures in
-            time_unit = info.get("x_unit") or self._unit_of("time", DEFAULT_TIME_UNIT)
+            time_unit = info.get("x_unit") or self._unit_of(
+                "time", DEFAULT_TIME_UNIT, model_id
+            )
             observable_model = self.observable_model(key)
             if observable_model is None:
-                yid = info.get("yid_observable") or self._selection_of(observable_id)
+                yid = info.get("yid_observable") or self._selection_of(key)
                 value_unit = info.get("y_unit") or self._unit_of(
-                    split_selection(yid)[0], DEFAULT_VALUE_UNIT
+                    split_selection(yid)[0], DEFAULT_VALUE_UNIT, model_id
                 )
             else:
                 value_unit = observable_model.unit
@@ -902,7 +1229,7 @@ class PetabReader:
             observable_yid = (
                 observable_id
                 if observable_model is not None
-                else info.get("yid_observable") or self._selection_of(observable_id)
+                else info.get("yid_observable") or self._selection_of(key)
             )
             observable_xid = info.get("xid_observable") or "time"
 
@@ -955,17 +1282,6 @@ class PetabReader:
             self._observable_models[key] = self._read_observable_model(key)
         return self._observable_models[key]
 
-    @functools.cached_property
-    def _observable_formulas(self) -> dict[str, str]:
-        """Get the formula of every observable in the selections of roadrunner."""
-        sbml_model = self._sbml_model()
-        return {
-            observable.id: selections_of_formula(
-                petab_math_str(observable.formula), sbml_model
-            )
-            for observable in self.petab_problem.observables
-        }
-
     def _read_observable_model(self, key: str) -> ObservableModel | None:
         """Read the observable model of a fit mapping, see `observable_model`."""
         observable_id = self.observable_id(key)
@@ -974,7 +1290,7 @@ class PetabReader:
             # the selection of the fit which was written
             return None
         observable = self._observables[observable_id]
-        sbml_model = self._sbml_model()
+        sbml_model = self._sbml_model(self._model_of_mapping(key))
         if is_entity(str(observable.formula), sbml_model):
             return None
 
@@ -993,7 +1309,9 @@ class PetabReader:
             ]
         try:
             return ObservableModel(
-                formula=self._observable_formulas[observable_id],
+                formula=selections_of_formula(
+                    petab_math_str(observable.formula), sbml_model
+                ),
                 placeholders=placeholders,
                 placeholder_values=tuple(rows),
                 unit=info.get("y_unit") or DEFAULT_VALUE_UNIT,
@@ -1089,7 +1407,7 @@ class PetabReader:
             raise ValueError(f"The problem has no observable '{observable_id}'.")
         observable = self._observables[observable_id]
 
-        sbml_model = self._sbml_model()
+        sbml_model = self._sbml_model(self._model_of_mapping(key))
 
         def selections(value: Any) -> float | str:
             # the identifiers of PEtab are what the model means, i.e. a
@@ -1192,7 +1510,7 @@ class PetabReader:
         """
         return bool(parameter.estimate)
 
-    def _selection_of(self, observable_id: str) -> str:
+    def _selection_of(self, key: str) -> str:
         """Get the selection of roadrunner which observes an observable.
 
         Without the `sbmlsim` extension the formula of the observable is what
@@ -1200,7 +1518,8 @@ class PetabReader:
         and the selections of roadrunner do not agree on the amount and the
         concentration of a species, see `sbmlsim.fit.petab_v2.symbols`.
         """
-        sbml_model = self._sbml_model()
+        observable_id = self.observable_id(key)
+        sbml_model = self._sbml_model(self._model_of_mapping(key))
         for observable in self.petab_problem.observables:
             if observable.id != observable_id:
                 continue
@@ -1211,12 +1530,12 @@ class PetabReader:
         """Check whether an identifier is an entity of one of the models."""
         return any(model.has_entity_with_id(sid) for model in self.petab_problem.models)
 
-    def _sbml_model(self) -> Any:
-        """Get the `libsbml.Model` of the problem, `None` if it has several."""
-        models = self.petab_problem.models
-        if len(models) != 1:
-            return None
-        return getattr(models[0], "sbml_model", None)
+    def _sbml_model(self, model_id: str) -> Any:
+        """Get the `libsbml.Model` for the selected model of an experiment."""
+        for model in self.petab_problem.models:
+            if model.model_id == model_id:
+                return getattr(model, "sbml_model", None)
+        raise ValueError(f"The problem has no model '{model_id}'.")
 
     # --- THE SIMULATION EXPERIMENT AND THE OPTIMIZATION PROBLEM ---
 
@@ -1228,33 +1547,16 @@ class PetabReader:
             simulations, the tasks, the datasets and the fit mappings of the
             PEtab problem.
         """
-        reader = self
-
-        def f_models(obj: SimulationExperiment) -> dict[str, AbstractModel]:
-            return reader.models()
-
-        def f_datasets(obj: SimulationExperiment) -> dict[str, DataSet]:
-            return reader.datasets()
-
-        def f_simulations(obj: SimulationExperiment) -> dict[str, Simulation]:
-            return reader.simulations()
-
-        def f_tasks(obj: SimulationExperiment) -> dict[str, Task]:
-            return reader.tasks()
-
-        def f_fit_mappings(obj: SimulationExperiment) -> dict[str, FitMapping]:
-            return reader.fit_mappings(obj)
-
-        return type(
+        return _rebuild_petab_experiment(
             _class_name(self.name),
-            (SimulationExperiment,),
-            {
-                "models": f_models,
-                "datasets": f_datasets,
-                "simulations": f_simulations,
-                "tasks": f_tasks,
-                "fit_mappings": f_fit_mappings,
-            },
+            _PetabExperimentDefinition(
+                problem=self.petab_problem,
+                base_path=self.base_path,
+                name=self.name,
+                derived_dir=self.derived_dir,
+                sciml=None if self.sciml is None else self.sciml.config,
+                _reader=self,
+            ),
         )
 
     def _mapping_keys_of_condition(self, condition_id: str) -> set[str]:
@@ -1331,9 +1633,19 @@ class PetabReader:
         if self.extension is None:
             return {}
         estimated = self._estimated_parameter_ids()
-        sbml_model = self._sbml_model()
         targets: dict[str, set[str]] = {}
         keys: dict[str, set[str]] = {}
+        condition_models: dict[str, set[str]] = {}
+        later_conditions: set[str] = set()
+        for experiment in self.petab_problem.experiments:
+            model_id = self._model_of_experiment(experiment.id)
+            periods = sorted(experiment.periods, key=lambda period: period.time)
+            for k, period in enumerate(periods):
+                for condition_id in period.condition_ids:
+                    condition_models.setdefault(condition_id, set()).add(model_id)
+                    if k > 0:
+                        later_conditions.add(condition_id)
+        timed_parameters: set[str] = set()
         for condition in self.petab_problem.conditions:
             for change in condition.changes:
                 value = str(change.target_value)
@@ -1344,14 +1656,21 @@ class PetabReader:
                     continue
                 # the id means what the model means, a concentration based
                 # species is its concentration
-                targets.setdefault(value, set()).add(
-                    selection_of_target(change.target_id, sbml_model)
-                )
+                if condition.id in later_conditions:
+                    timed_parameters.add(value)
+                for model_id in condition_models.get(condition.id, set()):
+                    targets.setdefault(value, set()).add(
+                        selection_of_target(
+                            change.target_id, self._sbml_model(model_id)
+                        )
+                    )
                 keys.setdefault(value, set()).update(
                     self._mapping_keys_of_condition(condition.id)
                 )
         versions: dict[str, tuple[str, set[str]]] = {}
         for pid, entities in targets.items():
+            if pid in timed_parameters:
+                continue
             if len(entities) > 1:
                 logger.debug(
                     "The estimated parameter '%s' is assigned to %s, the "
@@ -1696,18 +2015,20 @@ def _is_number(value: Any) -> bool:
 
 
 def from_petab(
-    yaml_file: Path, opid: str | None = None
+    yaml_file: Path, opid: str | None = None, *, derived_dir: Path | None = None
 ) -> tuple[OptimizationProblem, FitSettings]:
     """Read a PEtab v2 problem as an optimization problem.
 
     Args:
         yaml_file: path of the YAML file of the PEtab problem.
         opid: id of the optimization problem.
+        derived_dir: directory for compiled models, next to the source model
+            by default.
 
     Returns:
         The problem and the settings of the fit, i.e. what `run_optimization`
         needs. The settings are the defaults if the problem does not carry the
         `sbmlsim` extension.
     """
-    reader = PetabReader.from_yaml(Path(yaml_file))
+    reader = PetabReader.from_yaml(Path(yaml_file), derived_dir=derived_dir)
     return reader.to_optimization_problem(opid=opid), reader.settings

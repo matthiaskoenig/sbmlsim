@@ -940,9 +940,9 @@ def _triggers(
     return values
 
 
-#: the most rounds of events which a change triggers, an event may trigger
-#: another one
-MAX_EVENT_ROUNDS = 100
+#: the most times one event fires after a change, to stop event cycles without
+#: limiting the number of independent simultaneous events
+MAX_EXECUTIONS_PER_EVENT = 100
 
 
 def _fire_events(
@@ -957,9 +957,13 @@ def _fire_events(
     roadrunner does not see a trigger which becomes true by a value which is
     set between two integrations, so the executor fires such events (PEtab
     v2, reinitialization: the events are applied after the changes): the
-    values of the assignments of every triggered event are evaluated, then
-    set, and the events these assignments trigger fire in the next round. An
-    event with a delay is reported and not fired.
+    events execute one at a time in priority order. Priorities and triggers
+    are evaluated again after every event, and a nonpersistent pending event
+    is cancelled if its trigger becomes false. Assignment values are captured
+    at the trigger or evaluated at execution, as the event specifies. An event
+    with a delay is reported and not fired, an event whose priority is no
+    formula the simulator evaluates is reported and fires with the priority 0,
+    the one of an event without a priority.
 
     Args:
         events: the events of the model.
@@ -971,18 +975,37 @@ def _fire_events(
     Returns:
         The number of the events which fired.
     """
+
+    def evaluate(formula: str) -> float:
+        compiled = compile_formula(formula)
+        return compiled.evaluate(
+            [time if s == "time" else r.getValue(s) for s in compiled.symbols]
+        )
+
+    def assignments(event: EventSymbols) -> list[tuple[str, float]]:
+        return [(target, evaluate(formula)) for target, formula in event.assignments]
+
+    def priority(index: int) -> float:
+        formula = events[index].priority
+        if formula is None or index in unprioritized:
+            return 0.0
+        return evaluate(formula)
+
     count = 0
-    for _ in range(MAX_EVENT_ROUNDS):
+    executions = [0] * len(events)
+    pending: dict[int, list[tuple[str, float]] | None] = {}
+    # events whose priority is no formula the simulator evaluates
+    unprioritized: set[int] = set()
+    while True:
         after = _triggers(events, r, time)
-        fired = [
-            event
-            for event, old, new in zip(events, before, after, strict=True)
-            if old is False and new is True
-        ]
-        if not fired:
-            return count
-        values: list[tuple[str, float]] = []
-        for event in fired:
+        for index in list(pending):
+            if not events[index].persistent and after[index] is False:
+                del pending[index]
+        for index, (event, old, new) in enumerate(
+            zip(events, before, after, strict=True)
+        ):
+            if old is not False or new is not True or index in pending:
+                continue
             if event.delayed:
                 logger.warning(
                     "The event '%s' of the model '%s' is triggered by a change at "
@@ -994,7 +1017,12 @@ def _fire_events(
                 )
                 continue
             try:
-                formulas = [(t, compile_formula(f)) for t, f in event.assignments]
+                # Compile all assignments even when their values are deferred.
+                for _, formula in event.assignments:
+                    compile_formula(formula)
+                pending[index] = (
+                    assignments(event) if event.use_values_from_trigger_time else None
+                )
             except ValueError as err:
                 logger.warning(
                     "The event '%s' of the model '%s' is triggered by a change at "
@@ -1006,30 +1034,42 @@ def _fire_events(
                     err,
                 )
                 continue
-            count += 1
-            for target, formula in formulas:
-                values.append(
-                    (
-                        target,
-                        formula.evaluate(
-                            [
-                                time if s == "time" else r.getValue(s)
-                                for s in formula.symbols
-                            ]
-                        ),
+            if event.priority is not None and index not in unprioritized:
+                try:
+                    compile_formula(event.priority)
+                except ValueError as err:
+                    unprioritized.add(index)
+                    logger.warning(
+                        "The event '%s' of the model '%s' is triggered by a change "
+                        "at the time %s, its priority is no formula the simulator "
+                        "evaluates, it fires with the priority 0: %s",
+                        event.eid,
+                        model.sid or r.model.getModelName(),
+                        time,
+                        err,
                     )
-                )
+        if not pending:
+            return count
+        # the first of the highest priority in document order
+        index = max(sorted(pending), key=priority)
+        if executions[index] >= MAX_EXECUTIONS_PER_EVENT:
+            logger.warning(
+                "The event '%s' of the model '%s' fires more than %s times at the "
+                "time %s, the events trigger each other in a cycle.",
+                events[index].eid,
+                model.sid or r.model.getModelName(),
+                MAX_EXECUTIONS_PER_EVENT,
+                time,
+            )
+            return count
+        values = pending.pop(index)
+        if values is None:
+            values = assignments(events[index])
         for target, value in values:
             r.setValue(target, value)
+        count += 1
+        executions[index] += 1
         before = after
-    logger.warning(
-        "The events of the model '%s' at the time %s trigger each other more than "
-        "%s times.",
-        model.sid or r.model.getModelName(),
-        time,
-        MAX_EVENT_ROUNDS,
-    )
-    return count
 
 
 def steady_state(

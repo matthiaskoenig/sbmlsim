@@ -7,6 +7,7 @@ of `sbmlsim.simulation.sampling` read without a model.
 """
 
 import re
+from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,8 @@ from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.parameters import ParameterSets
+from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.petab_v2.likelihood import log_prior
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
@@ -171,3 +173,26 @@ def test_the_tables_of_a_report_show_the_unit_as_defined(
     # the values carry the units of pint
     assert fisher.units[0] == "1/min"
     assert identifiability.parameter_set.units["Ka_dis_hctz"] == "1/min"
+
+
+def test_the_prior_of_an_uninitialized_problem_takes_the_sets_of_a_fit(
+    problem_per_min: OptimizationProblem,
+) -> None:
+    """A set in `1/min` is in the unit of a parameter in `per_min`.
+
+    An uninitialized problem has not resolved the unit ids of its models, the
+    sets of a fit carry the resolved unit of every parameter.
+    """
+    uninitialized = deepcopy(problem_per_min)
+    assert not uninitialized.is_initialized
+    pset = problem_per_min.parameter_set_model()
+    assert pset.units["Ka_dis_hctz"] == "1/min"
+    expected = log_prior(problem_per_min, pset)
+    assert log_prior(uninitialized, pset) == expected
+    # the unit as defined and another unit of pint of the other parameters
+    defined = ParameterSet(
+        "defined",
+        {**pset.values, "GU__HCTZABS_k": 60.0 * pset.values["GU__HCTZABS_k"]},
+        {**pset.units, "Ka_dis_hctz": "per_min", "GU__HCTZABS_k": "1/hr"},
+    )
+    assert log_prior(uninitialized, defined) == pytest.approx(expected)

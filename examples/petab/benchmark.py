@@ -69,15 +69,8 @@ def main() -> None:
     parser.add_argument(
         "--runs", type=int, default=4, help="number of optimization runs"
     )
-    # the simulation experiment of a PEtab problem is created when the problem
-    # is read, and a class which is created cannot be pickled, so the workers
-    # of a parallel fit cannot be given the problem
     parser.add_argument(
-        "--cores",
-        type=int,
-        default=1,
-        choices=[1],
-        help="workers of the fit, a PEtab problem is fitted in one process",
+        "--cores", type=int, default=1, help="workers of the parallel fit"
     )
     parser.add_argument("--seed", type=int, default=1234, help="seed of the fit")
     parser.add_argument(

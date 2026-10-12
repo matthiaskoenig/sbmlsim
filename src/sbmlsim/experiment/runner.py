@@ -24,6 +24,7 @@ from sbmlsim.experiment.experiment import (
     SimulationExperiment,
 )
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model.model_roadrunner import _is_hierarchical
 from sbmlsim.plot import FigureSettings
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import Simulator
@@ -36,15 +37,25 @@ logger = logging.getLogger(__name__)
 
 #: the model of an experiment, i.e. what decides whether two experiments can
 #: share one loaded roadrunner instance
-ModelKey = tuple[str, str, tuple[tuple[str, str], ...], tuple[tuple[str, float], ...]]
+ModelKey = tuple[
+    tuple[str, str | None],
+    str,
+    tuple[tuple[str, str], ...],
+    tuple[tuple[str, float], ...],
+    tuple[str, ...] | None,
+]
 
 
 def model_key(abstract_model: AbstractModel) -> ModelKey:
     """Get the key a loaded model is cached under.
 
-    Two experiments share a loaded model when they name the same source, the
-    same language and the same changes; the changes are part of it because
-    they are applied to the roadrunner instance when it is created. The key is
+    Two experiments share a loaded model when they resolve to the same source,
+    the same language, the same changes, the same added parameters and the
+    same selections; the changes and the selections are part of it because
+    they are applied to the roadrunner instance when it is created. The source
+    of a file is its resolved path, the one of inline SBML its content and, for
+    a hierarchical model, the directory its external models are resolved
+    against, see `RoadrunnerSBMLModel`. The key is
     the description of the model and not the object: an experiment builds its
     own `AbstractModel`, which has no equality of its own, so caching on the
     object would never find anything and every experiment would load and
@@ -59,11 +70,22 @@ def model_key(abstract_model: AbstractModel) -> ModelKey:
     changes = tuple(
         sorted((key, str(value)) for key, value in abstract_model.changes.items())
     )
+    source = abstract_model.source
+    identity: tuple[str, str | None]
+    if source.content is None:
+        identity = (str(source.path), None)
+    elif _is_hierarchical(source.content):
+        directory = (abstract_model.base_path or Path.cwd()).resolve()
+        identity = (source.content, str(directory))
+    else:
+        identity = (source.content, None)
+    selections = abstract_model.selections
     return (
-        str(abstract_model.source.source),
+        identity,
         str(abstract_model.language_type),
         changes,
         tuple(sorted(abstract_model.parameters.items())),
+        tuple(selections) if selections is not None else None,
     )
 
 

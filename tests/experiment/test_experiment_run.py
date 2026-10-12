@@ -6,7 +6,7 @@ import logging
 import sys
 import weakref
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, override
 
 import numpy as np
 import pandas as pd
@@ -589,3 +589,33 @@ def test_the_json_of_an_experiment_needs_no_results(tmp_path: Path) -> None:
 
     assert experiment._results == {}
     assert "task" in json.loads(experiment.to_json())["tasks"]
+
+
+class UnencodableExperiment(FitMappingExperiment):
+    """An experiment with a value in its description which JSON cannot encode."""
+
+    @override
+    def to_dict(self) -> dict[str, Any]:
+        return {**super().to_dict(), "tags": {"a", "b"}}
+
+
+def test_a_value_which_cannot_be_encoded_skips_the_json_of_a_run(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The run is not failed by its serialization and leaves no JSON of it."""
+    runner = _runner(UnencodableExperiment)
+    experiment = runner.experiments["UnencodableExperiment"]
+    path = tmp_path / "UnencodableExperiment.json"
+    path.write_text("{}", encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.experiment.experiment"):
+        result = experiment.run(runner.simulator, output_path=tmp_path)
+
+    assert result.error is None
+    assert not path.exists()
+    warnings = [r.getMessage() for r in caplog.records if "JSON" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "set is not JSON serializable" in warnings[0]
+    with pytest.raises(TypeError, match="set is not JSON serializable"):
+        experiment.to_json(path)
+    assert not path.exists()

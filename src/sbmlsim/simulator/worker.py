@@ -33,7 +33,6 @@ import os
 from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
@@ -87,8 +86,10 @@ class ModelSpec:
     Attributes:
         key: identifies the model, its integrator and the settings of the
             integrator, the key of the model in the cache of a worker.
-        source: the path of the model or the SBML.
-        base_path: the directory a relative path is resolved against.
+        source: the SBML of the model as the parent loaded it, see
+            `RoadrunnerSBMLModel.sbml`, or the path of the file
+            `parallel.shared_payloads` shares it in. It is flattened and the
+            path is absolute, so nothing is resolved against a directory.
         parameters: the parameters added to the model, see `AbstractModel`.
         integrator: the name of the integrator, e.g. `cvode`.
         settings: every setting of the integrator by its name, the absolute
@@ -97,7 +98,6 @@ class ModelSpec:
 
     key: str
     source: str
-    base_path: Path | None
     parameters: tuple[tuple[str, float], ...]
     integrator: str
     settings: tuple[tuple[str, Any], ...]
@@ -112,28 +112,20 @@ class ModelSpec:
         `RoadrunnerSBMLModel(settings=...)` or of `set_integrator_settings`,
         holds in a worker as well.
         """
-        # the key is the content of the model and not its path, a worker
-        # lives as long as its pool and the file may be rewritten meanwhile;
-        # the files a comp model includes are not part of it
-        if model.source.content is not None:
-            source = model.source.content
-            text = source
-        else:
-            source = str(model.source.path)
-            text = Path(source).read_text(encoding="utf-8")
+        # the key is the SBML the parent loaded and not the path of its file:
+        # a worker lives as long as its pool and the file, or a file which a
+        # hierarchical model includes, may be rewritten meanwhile
+        source = model.sbml
         parameters = tuple(
             sorted((str(k), float(v)) for k, v in (model.parameters or {}).items())
         )
         integrator, settings = integrator_state(model)
         digest = hashlib.sha256(
-            repr((text, model.base_path, parameters, integrator, settings)).encode(
-                "utf-8"
-            )
+            repr((source, parameters, integrator, settings)).encode("utf-8")
         ).hexdigest()
         return cls(
             key=digest,
             source=source,
-            base_path=model.base_path,
             parameters=parameters,
             integrator=integrator,
             settings=settings,
@@ -142,9 +134,7 @@ class ModelSpec:
     def load(self) -> RoadrunnerSBMLModel:
         """Load the model with the integrator and its settings."""
         model = RoadrunnerSBMLModel(
-            source=self.source,
-            base_path=self.base_path,
-            parameters=dict(self.parameters) or None,
+            source=self.source, parameters=dict(self.parameters) or None
         )
         r = model.r_loaded
         if r.getIntegrator().getName() != self.integrator:
@@ -280,6 +270,7 @@ def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
         ScanPointError: for the first point which fails, with
             `on_error="raise"`.
     """
+    chunk.plan.check_model(model.symbols, model.uinfo)
     with quiet_roadrunner():
         return _run_chunk(chunk, model)
 
@@ -500,6 +491,8 @@ def _timecourses(
     `plans` are the plans of the points, with their changes.
     """
     names = chunk.graph.timecourses
+    if not names:
+        return
     for r in range(time.shape[0]):
         rows = np.stack([time[r], *(outputs[name][r] for name in names)])
         yield _on_grid(chunk.time, rows, plans[r])
@@ -531,6 +524,18 @@ def _pack(
         errors: the flat index and the error of every point which failed.
     """
     n = len(chunk.indices)
+    timed = bool(chunk.graph.timecourses) or not chunk.graph.nodes
+    if not timed:
+        table = np.full((n, len(chunk.graph.scalars)), np.nan)
+        for k, point_scalars in zip(points, scalars, strict=True):
+            table[k] = point_scalars
+        return ChunkResult(
+            indices=chunk.indices,
+            values=np.empty((n, 0, 0)),
+            scalars=table,
+            status=status,
+            errors=tuple(sorted(errors)[:MAX_ERRORS]),
+        )
     if chunk.time is not None:
         n_rows = chunk.time.size
     values = np.full((n, n_rows, 1 + len(chunk.graph.timecourses)), np.nan)

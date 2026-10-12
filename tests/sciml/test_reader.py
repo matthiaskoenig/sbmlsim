@@ -1,6 +1,7 @@
 """Tests of the reader of PEtab SciML problems."""
 
 import logging
+import pickle
 import shutil
 from pathlib import Path
 from typing import Any
@@ -61,9 +62,7 @@ SPECIES = [("net1_input1", "prey"), ("net1_input2", "predator")]
 
 
 def _read(path: Path) -> PetabReader:
-    reader = PetabReader.from_yaml(path)
-    reader.derived_dir = path.parent / "derived"
-    return reader
+    return PetabReader.from_yaml(path, derived_dir=path.parent / "derived")
 
 
 # --- THE MAPPING TABLE ---
@@ -623,6 +622,37 @@ def _problem(tmp_path: Path, **kwargs: Any) -> Path:
     }
     arguments.update(kwargs)
     return write_problem(tmp_path, **arguments)
+
+
+@pytest.mark.parametrize("convenience", [False, True])
+def test_compiled_import_pickle_preserves_derived_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, convenience: bool
+) -> None:
+    """Convenience imports route generated files and workers reuse compilation."""
+    path = _problem(tmp_path / "input")
+    derived = tmp_path / "derived"
+    if convenience:
+        problem, _ = from_petab(path, derived_dir=derived)
+    else:
+        problem = PetabReader.from_yaml(
+            path, derived_dir=derived
+        ).to_optimization_problem()
+    problem.initialize(SETTINGS)
+    assert (derived / "lv_sciml.xml").exists()
+    assert not (path.parent / "lv_sciml.xml").exists()
+    restored = pickle.loads(pickle.dumps(problem))
+
+    def no_recompile(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("An imported worker must reuse the already compiled model")
+
+    monkeypatch.setattr("sbmlsim.sciml.compiler.compile_network", no_recompile)
+    restored.initialize(SETTINGS)
+    for original, prediction in zip(
+        problem.predictions(np.asarray(problem.x0, dtype=float)),
+        restored.predictions(np.asarray(restored.x0, dtype=float)),
+        strict=True,
+    ):
+        np.testing.assert_allclose(original, prediction)
 
 
 def test_a_format_which_is_not_read(tmp_path: Path) -> None:

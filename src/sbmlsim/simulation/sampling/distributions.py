@@ -120,6 +120,25 @@ class Distribution(ABC):
         """Check whether the location is the reference of the target."""
         return False
 
+    def _magnitudes(self, x: Any, reference: Number | None) -> np.ndarray:
+        """Convert the values of `cdf` into the unit of the distribution.
+
+        Raises:
+            ValueError: if the unit of a quantity does not fit the unit of the
+                distribution.
+        """
+        if isinstance(x, Quantity):
+            unit = self._unit(reference)
+            if unit:
+                try:
+                    x = x.to(unit)
+                except DimensionalityError as err:
+                    raise ValueError(
+                        f"{self!r}: the unit {x.units} does not fit the unit {unit}."
+                    ) from err
+            x = x.magnitude
+        return np.asarray(x, dtype=float)
+
     @abstractmethod
     def _unit(self, reference: Number | None) -> str | None:
         """Get the unit of the values."""
@@ -146,7 +165,8 @@ class Distribution(ABC):
         """Get the probabilities of values, the inverse of `ppf`.
 
         Args:
-            x: the values, numbers in the unit of the distribution.
+            x: the values, numbers in the unit of the distribution or quantities
+                converted into it.
             reference: the reference of the target.
 
         Returns:
@@ -229,7 +249,7 @@ class Uniform(Distribution):
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values."""
         lower, upper = self._bounds(reference)
-        x = np.asarray(x, dtype=float)
+        x = self._magnitudes(x, reference)
         if upper == lower:
             return (x >= lower).astype(float)
         return np.clip((x - lower) / (upper - lower), 0.0, 1.0)
@@ -316,7 +336,7 @@ class LogUniform(Distribution):
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values."""
         lower, upper = self._bounds(reference)
-        x = np.asarray(x, dtype=float)
+        x = self._magnitudes(x, reference)
         if upper == lower:
             return (x >= lower).astype(float)
         positive = x > 0.0
@@ -406,7 +426,7 @@ class Normal(Distribution):
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values."""
         mean, sd = self._parameters(reference)
-        return np.asarray(stats.norm.cdf((np.asarray(x, dtype=float) - mean) / sd))
+        return np.asarray(stats.norm.cdf((self._magnitudes(x, reference) - mean) / sd))
 
     @override
     def to_dict(self) -> dict[str, Any]:
@@ -479,7 +499,7 @@ class LogNormal(Distribution):
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values."""
         median, sigma = self._parameters(reference)
-        x = np.asarray(x, dtype=float)
+        x = self._magnitudes(x, reference)
         positive = x > 0.0
         p = stats.norm.cdf(np.log(np.where(positive, x, 1.0) / median) / sigma)
         return np.where(positive, p, 0.0)
@@ -585,7 +605,9 @@ class Truncated(Distribution):
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values."""
         low, high = self._probabilities(reference)
-        p = (self.distribution.cdf(x, reference) - low) / (high - low)
+        p = (self.distribution.cdf(self._magnitudes(x, reference), reference) - low) / (
+            high - low
+        )
         return np.clip(p, 0.0, 1.0)
 
     @override
@@ -647,9 +669,9 @@ class Empirical(Distribution):
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values, the share of the values up to them."""
         values = np.asarray(self.values, dtype=float)
-        return np.searchsorted(values, np.asarray(x, dtype=float), side="right") / len(
-            values
-        )
+        return np.searchsorted(
+            values, self._magnitudes(x, reference), side="right"
+        ) / len(values)
 
     @override
     def to_dict(self) -> dict[str, Any]:
@@ -688,7 +710,7 @@ class Fixed(Distribution):
     def cdf(self, x: Any, reference: Number | None = None) -> np.ndarray:
         """Get the probabilities of values, 1 from the value on."""
         return (
-            np.asarray(x, dtype=float)
+            self._magnitudes(x, reference)
             >= _magnitude(self.value, self._unit(reference), self)
         ).astype(float)
 

@@ -85,6 +85,47 @@ def test_cdf_inverts_ppf() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "distribution",
+    [
+        Uniform(Q(1.0, "g"), Q(2.0, "g")),
+        LogUniform(Q(1.0, "g"), Q(2.0, "g")),
+        Normal(Q(1.5, "g"), Q(0.1, "g")),
+        LogNormal(Q(1.5, "g"), 0.1),
+        Truncated(Normal(Q(1.5, "g"), Q(0.1, "g")), lower=Q(1.0, "g")),
+        Empirical(Q([1.0, 2.0], "g")),
+        Fixed(Q(1.5, "g")),
+    ],
+)
+def test_cdf_converts_quantity_units(distribution: Distribution) -> None:
+    """The same physical values have the same probability in every unit."""
+    values = Q([1.0, 1.5, 2.0], "g")
+    np.testing.assert_allclose(
+        distribution.cdf(values.to("mg")), distribution.cdf(values)
+    )
+    with pytest.raises(ValueError, match="unit"):
+        distribution.cdf(Q([1.0], "s"))
+
+
+def test_cdf_converts_relative_and_truncated_quantities() -> None:
+    reference = Q(1.5, "g")
+    for distribution in (
+        Uniform(relative=0.5),
+        LogUniform(factor=2.0),
+        Normal(cv=0.1),
+        LogNormal(cv=0.1),
+    ):
+        values = distribution.ppf(np.array([0.1, 0.5, 0.9]), reference)
+        assert isinstance(values, Quantity)
+        np.testing.assert_allclose(
+            distribution.cdf(values.to("mg"), reference), [0.1, 0.5, 0.9]
+        )
+    truncated = Truncated(Normal(1.5, 0.1), lower=Q(1.0, "g"))
+    values = truncated.ppf(np.array([0.1, 0.5, 0.9]))
+    assert isinstance(values, Quantity)
+    np.testing.assert_allclose(truncated.cdf(values.to("mg")), [0.1, 0.5, 0.9])
+
+
 def test_log_uniform_is_uniform_in_log10() -> None:
     values = plain(LogUniform(1e-2, 1e2), U)
     np.testing.assert_allclose(np.log10(values), -2.0 + 4.0 * U)

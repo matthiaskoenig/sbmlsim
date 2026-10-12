@@ -25,7 +25,7 @@ class Source:
         return {
             "source": str(self.source),
             "path": str(self.path) if self.path else None,
-            "content": str(self.content),
+            "content": self.content,
         }
 
     @classmethod

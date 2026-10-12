@@ -34,12 +34,18 @@ class EventSymbols:
             simulator evaluates, e.g. one with a function definition.
         delayed: whether the event has a delay.
         assignments: the selection and the formula of every assignment.
+        priority: the priority formula, or `None` without a priority.
+        use_values_from_trigger_time: evaluate assignments when triggered.
+        persistent: keep the event when its trigger becomes false.
     """
 
     eid: str
     trigger: str | None
     delayed: bool
     assignments: tuple[tuple[str, str], ...]
+    priority: str | None = None
+    use_values_from_trigger_time: bool = True
+    persistent: bool = True
 
 
 class TargetKind(StrEnum):
@@ -369,4 +375,9 @@ def _event_symbols(
         else _selections(trigger.getMath(), concentrations),
         delayed=event.isSetDelay(),
         assignments=tuple(assignments),
+        priority=_selections(event.getPriority().getMath(), concentrations)
+        if event.isSetPriority()
+        else None,
+        use_values_from_trigger_time=event.getUseValuesFromTriggerTime(),
+        persistent=trigger.getPersistent() if trigger is not None else True,
     )

@@ -205,6 +205,29 @@ def test_an_element_of_the_model_is_a_parameter_of_a_fit(model_path: Path) -> No
     assert r["gamma"] != pytest.approx(network.forward(x)[0][0])
 
 
+def test_compiled_relu_preserves_nan_from_finite_overflow(model_path: Path) -> None:
+    """A compiled activation cannot hide undefined values from finite inputs."""
+    architecture = feed_forward(n_hidden=1, activation="relu")
+    network = Network(
+        sid=architecture.sid,
+        model=architecture.model,
+        parameters={
+            "layer1": {"weight": np.array([[1e308, -1e308]]), "bias": np.zeros(1)},
+            "layer2": {"weight": np.ones((1, 1)), "bias": np.zeros(1)},
+        },
+    )
+    inputs = {
+        "net1__input0__0": NetworkInput(formula="2"),
+        "net1__input0__1": NetworkInput(formula="2"),
+    }
+    compiled = compile_network(
+        model_path, [_hybridization(network, inputs=inputs)], compiled_path(model_path)
+    )
+    assert np.isnan(_load(compiled)["gamma"])
+    with np.errstate(over="ignore", invalid="ignore"):
+        assert np.isnan(network.forward(np.array([2.0, 2.0]))[0][0])
+
+
 def test_a_network_in_an_observable(model_path: Path) -> None:
     """The target of an observable is a parameter which is added."""
     network = feed_forward()

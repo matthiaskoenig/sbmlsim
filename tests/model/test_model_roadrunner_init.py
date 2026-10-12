@@ -370,20 +370,38 @@ EXTERNAL_SBML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def test_a_hierarchical_model_resolves_its_files(tmp_path: Path) -> None:
-    """An external model definition is resolved relative to the model."""
+@pytest.mark.parametrize("source", ["file", "inline", "inline default directory"])
+def test_a_hierarchical_model_resolves_its_files(
+    source: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An external model definition is resolved relative to the model.
+
+    The model of a file and inline SBML with a base directory are loaded from
+    another working directory, inline SBML without one from the directory of
+    its files.
+    """
     inner = HIERARCHICAL_SBML.split("<comp:listOfModelDefinitions>")[1]
     inner = inner.split("</comp:listOfModelDefinitions>")[0]
     inner = inner.replace("comp:modelDefinition", "model")
-    (tmp_path / "inner.xml").write_text(
+    directory = tmp_path / "models"
+    directory.mkdir()
+    (directory / "inner.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" '
         f'level="3" version="1">{inner}</sbml>\n',
         encoding="utf-8",
     )
-    path = tmp_path / "top.xml"
+    path = directory / "top.xml"
     path.write_text(EXTERNAL_SBML, encoding="utf-8")
-    model = RoadrunnerSBMLModel(source=path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(directory if source == "inline default directory" else elsewhere)
+    if source == "file":
+        model = RoadrunnerSBMLModel(source=path)
+    elif source == "inline":
+        model = RoadrunnerSBMLModel(source=EXTERNAL_SBML, base_path=directory)
+    else:
+        model = RoadrunnerSBMLModel(source=EXTERNAL_SBML)
     assert model.symbols.initial_assignment_order == ("sub__A1",)
     model.initialize([_a("sub__k", 10.0)])
     assert model.r_loaded["sub__A1"] == pytest.approx(20.0)

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 from scipy.optimize import OptimizeResult
 
 from sbmlsim.fit import FitParameter, FitSettings
@@ -92,6 +93,71 @@ def test_combine(op_hctz_pk: OptimizationProblem, fit_settings: FitSettings) -> 
     assert len(opt_result.fits) == len(opt_results[0].fits) + len(opt_results[1].fits)
     # the combined result keeps the settings of the fits
     assert opt_result.settings == fit_settings
+
+
+def _single_result(
+    parameters: list[FitParameter], x: list[float]
+) -> OptimizationResult:
+    return OptimizationResult(
+        parameters=parameters,
+        fits=[OptimizeResult(x=x, x0=x, cost=1.0, success=True, duration=0.1)],
+        trajectories=[[1.0]],
+    )
+
+
+def test_combining_reordered_parameters_preserves_values(tmp_path: Path) -> None:
+    """Recovered runs preserve parameter values even if their definitions reorder."""
+    a = FitParameter("a", 1.0, 0.1, 100.0, unit="dimensionless")
+    b = FitParameter("b", 1.0, 0.1, 100.0, unit="dimensionless")
+    first = _single_result([a, b], [1.0, 2.0])
+    second = _single_result([b, a], [20.0, 10.0])
+    second.fits[0].cost = 0.5
+    first.to_json(tmp_path / "first.json")
+    second.to_json(tmp_path / "second.json")
+
+    combined = OptimizationResult.from_directory(tmp_path)
+    assert combined.parameter_set().values == {"a": 10.0, "b": 20.0}
+    np.testing.assert_array_equal(combined.fits[1].x0, [10.0, 20.0])
+    np.testing.assert_array_equal(second.fits[0].x, [20.0, 10.0])
+
+
+@pytest.mark.parametrize(
+    "change", ["id", "target", "bounds", "scale", "units", "settings"]
+)
+def test_combining_incompatible_results_raises(change: str) -> None:
+    """A shared parameter label does not make incompatible fits comparable."""
+    first = _single_result(
+        [FitParameter("a", 1.0, 0.1, 100.0, unit="dimensionless")], [1.0]
+    )
+    second = _single_result(
+        [FitParameter("a", 1.0, 0.1, 100.0, unit="dimensionless")], [2.0]
+    )
+    if change == "id":
+        second.parameters[0].pid = "b"
+    elif change == "target":
+        second.parameters[0].target = "b"
+    elif change == "bounds":
+        second.parameters[0].upper_bound = 10.0
+    elif change == "scale":
+        second.parameters[0].scale = ParameterScaleType.LINEAR
+    elif change == "units":
+        second.units["a"] = "mM"
+    else:
+        second.settings = FitSettings()
+    with pytest.raises(ValueError, match="incompatible"):
+        OptimizationResult.combine([first, second])
+
+
+def test_combining_different_labels_and_starts_preserves_results() -> None:
+    """The run label and start value do not change the fitted objective."""
+    first = _single_result(
+        [FitParameter("a", 1.0, 0.1, 100.0, unit="dimensionless")], [1.0]
+    )
+    second = _single_result(
+        [FitParameter("a", 2.0, 0.1, 100.0, unit="dimensionless")], [2.0]
+    )
+    first.opid, second.opid = "first", "second"
+    assert OptimizationResult.combine([first, second]).size == 2
 
 
 def test_the_fit_parameters_of_the_optimum_keep_their_scale_and_selector() -> None:

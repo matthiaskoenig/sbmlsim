@@ -256,7 +256,13 @@ def apply_weights(w: GridWeights, values: np.ndarray) -> np.ndarray:
     """
     if values.shape[-1] == 0:
         return np.full((*values.shape[:-1], w.weight.size), np.nan)
-    out = values[..., w.lower] * (1.0 - w.weight) + values[..., w.upper] * w.weight
+    lower, upper = values[..., w.lower], values[..., w.upper]
+    with np.errstate(invalid="ignore"):
+        out = lower * (1.0 - w.weight) + upper * w.weight
+    # An exact endpoint needs only that endpoint: NaN or infinity in its
+    # unused neighbor must not contaminate the value through multiplication by 0.
+    np.copyto(out, lower, where=w.weight == 0.0)
+    np.copyto(out, upper, where=w.weight == 1.0)
     return np.where(w.valid, out, np.nan)
 
 

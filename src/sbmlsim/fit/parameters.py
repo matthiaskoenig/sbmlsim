@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from sbmlsim.fit.objects import FitParameter
+from sbmlsim.units import DimensionalityError, UndefinedUnitError, ureg
 
 logger = logging.getLogger(__name__)
 
@@ -59,11 +60,15 @@ class ParameterSet:
         values = ", ".join(f"{pid}={value:.5g}" for pid, value in self.values.items())
         return f"{self.__class__.__name__}<{self.sid}: {values}>"
 
-    def x(self, pids: Sequence[str]) -> np.ndarray:
+    def x(
+        self, pids: Sequence[str], units: Mapping[str, str | None] | None = None
+    ) -> np.ndarray:
         """Get the values as a vector in the order of the given parameter ids.
 
         Args:
             pids: parameter ids of the optimization problem.
+            units: units to bind the values to. Missing source units assume
+                these units; explicit units are converted or rejected.
 
         Returns:
             Vector of the values.
@@ -77,7 +82,39 @@ class ParameterSet:
                 f"ParameterSet '{self.sid}' does not contain the parameters "
                 f"'{missing}', it has '{sorted(self.values)}'."
             )
-        return np.array([self.values[pid] for pid in pids], dtype=float)
+        values = np.array([self.values[pid] for pid in pids], dtype=float)
+        if units is not None:
+            for k, pid in enumerate(pids):
+                source = self.units.get(pid)
+                target = units.get(pid)
+                if source is None or source == target:
+                    continue
+                if target is None:
+                    raise ValueError(
+                        f"ParameterSet '{self.sid}': '{pid}' has unit '{source}', "
+                        "but its target unit is unresolved. Specify FitParameter.unit."
+                    )
+                try:
+                    values[k] = ureg.Quantity(values[k], source).to(target).magnitude
+                except (DimensionalityError, UndefinedUnitError) as err:
+                    raise ValueError(
+                        f"ParameterSet '{self.sid}': cannot convert '{pid}' "
+                        f"from '{source}' to '{target}'."
+                    ) from err
+        return values
+
+    def to_units(self, units: Mapping[str, str | None]) -> ParameterSet:
+        """Return a converted copy, retaining labels and provenance."""
+        pids = [pid for pid in self.values if pid in units]
+        values = dict(self.values)
+        values.update(zip(pids, self.x(pids, units), strict=True))
+        return ParameterSet(
+            self.sid,
+            values,
+            {**self.units, **{pid: units[pid] for pid in pids}},
+            self.cost,
+            self.provenance,
+        )
 
     @staticmethod
     def from_fit_parameters(
@@ -242,7 +279,12 @@ class ParameterSets:
             raise ValueError("At least one ParameterSet is required.")
         return psets
 
-    def to_df(self, units: Mapping[str, str | None] | None = None) -> pd.DataFrame:
+    def to_df(
+        self,
+        units: Mapping[str, str | None] | None = None,
+        *,
+        resolved_units: Mapping[str, str | None] | None = None,
+    ) -> pd.DataFrame:
         """Get a DataFrame with one row per parameter and one column per set.
 
         Args:
@@ -250,6 +292,8 @@ class ParameterSets:
                 unit as the user defined it, which a report shows. A parameter
                 which is not in it has the unit of the sets, `a|b` when the
                 sets disagree.
+            resolved_units: units to convert to when display labels are model
+                unit ids, which the global unit registry does not know.
 
         Returns:
             The table with the columns `parameter`, `unit` and one per set.
@@ -273,7 +317,25 @@ class ParameterSets:
                     else "|".join(str(unit) for unit in sorted(set_units, key=str))
                 )
             for pset in self.sets:
-                row[pset.sid] = pset.values.get(pid, np.nan)
+                target = (resolved_units or {}).get(pid, row["unit"])
+                if pid not in pset.values:
+                    row[pset.sid] = np.nan
+                    continue
+                convert = target not in (None, "model") and "|" not in target
+                if convert:
+                    try:
+                        ureg.Unit(target)
+                    except UndefinedUnitError:
+                        known = {s.units.get(pid) for s in self.sets if pid in s.values}
+                        if known - {None, target}:
+                            raise ValueError(
+                                f"Display unit '{target}' requires resolved_units "
+                                f"to convert units of '{pid}'."
+                            ) from None
+                        convert = False
+                row[pset.sid] = (
+                    pset.x([pid], {pid: target})[0] if convert else pset.values[pid]
+                )
             data.append(row)
 
         return pd.DataFrame(data)

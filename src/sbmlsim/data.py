@@ -486,6 +486,7 @@ class Data:
 
         return {
             "type": self.dtype,
+            "sid": self.sid,
             "index": self.index,
             # the selection tells an amount `S` and a concentration `[S]` apart
             "selection": self.selection,
@@ -494,6 +495,7 @@ class Data:
             "dataset": self.dset_id,
             "function": self.function,
             "variables": self.variables if self.variables else None,
+            "parameters": dict(self.parameters),
             "sel": self.sel or None,
         }
 

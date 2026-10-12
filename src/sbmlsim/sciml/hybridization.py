@@ -20,6 +20,7 @@ The condition of a simulation is the id of the simulation in its experiment.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Collection, Mapping
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -279,11 +280,26 @@ def input_shapes(
         shape = tuple(
             max(index[axis] for index in indices) + 1 for axis in range(ndims.pop())
         )
-        missing = sorted(set(np.ndindex(shape)) - indices)
-        if missing:
+        count = math.prod(shape)
+        if count != len(indices):
+            missing: list[tuple[int, ...]] = []
+            # The indices are unique and within the inferred shape. Its
+            # cardinality proves whether they cover it without expanding it.
+            for flat_index in range(len(indices) + 10):
+                coordinates = []
+                rest = flat_index
+                for size in reversed(shape):
+                    rest, coordinate = divmod(rest, size)
+                    coordinates.append(coordinate)
+                index = tuple(reversed(coordinates))
+                if index not in indices:
+                    missing.append(index)
+                    if len(missing) == min(count - len(indices), 10):
+                        break
+            truncated = " (showing the first 10)" if count - len(indices) > 10 else ""
             raise error(
                 f"the input {k} has the shape {shape}, but its elements {missing} "
-                f"are missing"
+                f"are missing{truncated}"
             )
         shapes.append(shape)
     return shapes
@@ -856,6 +872,16 @@ class Hybridization:
                 f"of a compiled network gives them"
             )
         actual = np.array([values[sid] for sid in ids], dtype=float)
+        if not np.all(np.isfinite(actual)):
+            invalid = [
+                sid
+                for sid, value in zip(ids, actual, strict=True)
+                if not np.isfinite(value)
+            ]
+            raise self.error(
+                f"the frozen elements {some_ids(invalid)} have values which are "
+                f"not finite"
+            )
         differ = np.abs(actual - expected) > FROZEN_RTOL * np.maximum(
             np.abs(actual), np.abs(expected)
         )

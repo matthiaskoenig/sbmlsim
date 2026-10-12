@@ -323,11 +323,17 @@ class Network:
             )
         self.check_forward()
         self.check_arrays(self.parameters, complete=False)
-        # the arrays are the ones of the network alone and are not written
-        parameters = copy_parameters(self.parameters)
-        for arrays in parameters.values():
-            for array in arrays.values():
-                array.setflags(write=False)
+        # Bytes provide immutable backing, so callers cannot restore writes
+        # with setflags. Mutable replacements remain ordinary copied arrays.
+        parameters = {
+            layer: {
+                name: np.frombuffer(
+                    np.asarray(array, dtype=float).tobytes(), dtype=float
+                ).reshape(np.shape(array))
+                for name, array in arrays.items()
+            }
+            for layer, arrays in self.parameters.items()
+        }
         object.__setattr__(
             self,
             "parameters",
@@ -620,6 +626,13 @@ class Network:
                     )
         if not complete:
             return
+        self._check_required_arrays(parameters)
+
+    def _check_required_arrays(
+        self, parameters: Mapping[str, Mapping[str, np.ndarray]]
+    ) -> None:
+        """Check that the arrays the forward pass needs are given."""
+        specs = self._array_specs
         for layer in self._used_layers:
             for name, spec in specs[layer].items():
                 if spec.required and name not in parameters.get(layer, {}):
@@ -629,6 +642,19 @@ class Network:
                         f"initialized with random values, the array file or "
                         f"the problem must provide them"
                     )
+
+    def _check_nominal_arrays(self) -> None:
+        """Check metadata without rescanning immutable nominal storage."""
+        for layer, arrays in self.parameters.items():
+            for name, array in arrays.items():
+                shape = self._array_specs[layer][name].shape
+                if array.shape != shape or array.dtype != np.dtype(float):
+                    raise NetworkImportError(
+                        f"Network '{self.sid}', layer '{layer}': the immutable "
+                        f"array '{name}' must have shape {shape} and dtype float64, "
+                        f"got shape {array.shape} and dtype {array.dtype}"
+                    )
+        self._check_required_arrays(self.parameters)
 
     def forward(
         self, *inputs: np.ndarray, parameters: NetworkParameters | None = None
@@ -653,7 +679,10 @@ class Network:
             ValueError: if the inputs do not fit the network.
         """
         arrays = self.parameters if parameters is None else parameters
-        self.check_arrays(arrays)
+        if arrays is self.parameters:
+            self._check_nominal_arrays()
+        else:
+            self.check_arrays(arrays)
         return evaluate(self.model, arrays, inputs, NumpyBackend())
 
     @cached_property

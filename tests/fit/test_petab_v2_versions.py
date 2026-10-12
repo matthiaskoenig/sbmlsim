@@ -9,6 +9,7 @@ what the model means, a concentration based species is its concentration.
 from pathlib import Path
 from typing import Any
 
+import libsbml
 import numpy as np
 import pandas as pd
 import pytest
@@ -44,6 +45,7 @@ def write_problem(
     periods: list[tuple[float, str]],
     conditions: list[tuple[str, str, str]],
     estimated: dict[str, float],
+    with_extension: bool = False,
 ) -> Path:
     """Write a problem of the relaxation with the periods of one experiment.
 
@@ -122,6 +124,10 @@ def write_problem(
             sort_keys=False,
         )
     )
+    if with_extension:
+        config = yaml.safe_load(path.read_text())
+        config["extensions"] = {"sbmlsim": {"version": "0.4.0", "required": True}}
+        path.write_text(yaml.safe_dump(config))
     return path
 
 
@@ -136,13 +142,17 @@ def predictions(path: Path) -> np.ndarray:
     return prediction
 
 
-def test_an_estimated_value_after_a_pre_equilibration(tmp_path: Path) -> None:
+@pytest.mark.parametrize("with_extension", [False, True])
+def test_an_estimated_value_after_a_pre_equilibration(
+    tmp_path: Path, with_extension: bool
+) -> None:
     """The steady state of `k = 0` is `S = 0`, then `S` relaxes to `k_est`."""
     path = write_problem(
         tmp_path,
         periods=[(-np.inf, "pre"), (0.0, "stimulus")],
         conditions=[("pre", "k", "0"), ("stimulus", "k", "k_est")],
         estimated={"k_est": 2.0},
+        with_extension=with_extension,
     )
     t = np.asarray(TIMES)
     np.testing.assert_allclose(
@@ -176,17 +186,102 @@ def test_an_estimated_value_of_a_concentration(tmp_path: Path) -> None:
     np.testing.assert_allclose(predictions(path), 5.0, rtol=1e-6)
 
 
-@pytest.mark.parametrize("time", [3.0])
+@pytest.mark.parametrize("with_extension", [False, True])
 def test_an_estimated_value_at_the_time_of_its_period(
-    tmp_path: Path, time: float
+    tmp_path: Path, with_extension: bool
 ) -> None:
     """The value of a later period applies from its time on, not before."""
     path = write_problem(
         tmp_path,
-        periods=[(0.0, "off"), (time, "stimulus")],
+        periods=[(0.0, "off"), (3.0, "stimulus")],
         conditions=[("off", "k", "0"), ("stimulus", "k", "k_est")],
         estimated={"k_est": 2.0},
+        with_extension=with_extension,
     )
     t = np.asarray(TIMES)
-    expected = np.where(t <= time, 0.0, 2.0 * (1 - np.exp(-(t - time))))
+    expected = np.where(t <= 3.0, 0.0, 2.0 * (1 - np.exp(-(t - 3.0))))
     np.testing.assert_allclose(predictions(path), expected, rtol=1e-6, atol=1e-9)
+
+
+def _write_two_model_problem(tmp_path: Path, with_extension: bool) -> Path:
+    """Write a shared condition for concentration and amount based species."""
+    path = write_problem(
+        tmp_path,
+        periods=[(0.0, "start")],
+        conditions=[("start", "S", "5"), ("start", "k", "5")],
+        estimated={"k_est": 2.0},
+        with_extension=with_extension,
+    )
+    document = libsbml.readSBMLFromFile(str(tmp_path / "model.xml"))
+    document.getModel().getSpecies("S").setHasOnlySubstanceUnits(True)
+    libsbml.writeSBMLToFile(document, str(tmp_path / "amount.xml"))
+    config = yaml.safe_load(path.read_text())
+    config["model_files"]["amount"] = {"location": "amount.xml", "language": "sbml"}
+    path.write_text(yaml.safe_dump(config))
+    measurements = pd.read_csv(tmp_path / "measurements.tsv", sep="\t")
+    measurements["modelId"] = "relax"
+    second = measurements.assign(experimentId="e2", modelId="amount")
+    pd.concat([measurements, second]).to_csv(
+        tmp_path / "measurements.tsv", sep="\t", index=False
+    )
+    pd.DataFrame(
+        [
+            {"experimentId": experiment, "time": 0.0, "conditionId": "start"}
+            for experiment in ("e1", "e2")
+        ]
+    ).to_csv(tmp_path / "experiments.tsv", sep="\t", index=False)
+    return path
+
+
+@pytest.mark.parametrize("with_extension", [False, True])
+@pytest.mark.parametrize("formula, expected", [("S", 5.0), ("2*S", 10.0)])
+def test_shared_conditions_resolve_species_per_model(
+    tmp_path: Path, with_extension: bool, formula: str, expected: float
+) -> None:
+    """A shared condition, observable and noise retain each model's semantics."""
+    path = _write_two_model_problem(tmp_path, with_extension)
+    observables = pd.read_csv(tmp_path / "observables.tsv", sep="\t")
+    observables["observableFormula"] = formula
+    observables["noiseFormula"] = "S"
+    observables.to_csv(tmp_path / "observables.tsv", sep="\t", index=False)
+    reader = PetabReader.from_yaml(path)
+    assert reader.noise_model("s_o_e1").formula == "[S]"
+    assert reader.noise_model("s_o_e2").formula == "S"
+    problem = reader.to_optimization_problem()
+    problem.initialize(SETTINGS)
+    for prediction in problem.predictions(
+        reader.nominal_parameters(problem).x(problem.pids)
+    ).values():
+        np.testing.assert_allclose(prediction, expected, rtol=1e-6)
+
+
+def test_versioned_species_shared_across_models_keep_their_semantics(
+    tmp_path: Path,
+) -> None:
+    """A shared estimated initial value uses each model's species selection."""
+    path = _write_two_model_problem(tmp_path, with_extension=True)
+    pd.DataFrame(
+        [
+            {"conditionId": "start", "targetId": "S", "targetValue": "k_est"},
+            {"conditionId": "start", "targetId": "k", "targetValue": "2"},
+        ]
+    ).to_csv(tmp_path / "conditions.tsv", sep="\t", index=False)
+    reader = PetabReader.from_yaml(path)
+    assert reader._versions() == {}
+    problem = reader.to_optimization_problem()
+    problem.initialize(SETTINGS)
+    for prediction in problem.predictions(
+        reader.nominal_parameters(problem).x(problem.pids)
+    ).values():
+        np.testing.assert_allclose(prediction, 2.0, rtol=1e-6)
+
+
+def test_conflicting_models_in_one_experiment_are_rejected(tmp_path: Path) -> None:
+    """The reader does not silently choose one of conflicting measurement models."""
+    path = _write_two_model_problem(tmp_path, with_extension=False)
+    measurements = pd.read_csv(tmp_path / "measurements.tsv", sep="\t")
+    measurements.loc[0, "modelId"] = "amount"
+    measurements.to_csv(tmp_path / "measurements.tsv", sep="\t", index=False)
+    reader = PetabReader.from_yaml(path)
+    with pytest.raises(ValueError, match="experiment 'e1' uses multiple models"):
+        reader.to_optimization_problem().initialize(SETTINGS)
