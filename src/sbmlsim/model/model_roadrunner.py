@@ -164,9 +164,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: whether the model has an event with a delay, which can still be
         #: pending when a simulation ends, see `discard_pending_events`
         self._delayed_events: bool = any(e.delayed for e in self.symbols.events)
-        #: the time of roadrunner the last simulation reached, see
+        #: the time of roadrunner the last simulation since the load or the
+        #: last regeneration reached, `inf` before any, see
         #: `discard_pending_events`
-        self._reached: float = -np.inf
+        self._reached: float = np.inf
         #: whether the start of a simulation was reported, see `executor`
         self.warned_start: bool = False
         #: the events whose trigger was reported as no formula the simulator
@@ -377,27 +378,38 @@ class RoadrunnerSBMLModel(AbstractModel):
         roadrunner's reset keeps the queue of the events of a model: an event
         with a delay which the simulation before triggered and which had not
         fired when it ended fires in the next simulation at its time, if that
-        simulation reaches it (#305). Such an event is after the time the
-        simulation before reached, so only a simulation which integrates
-        beyond it can see it; for a model with an event with a delay the
-        model is then generated again, which empties the queue, and the
-        selections and the absolute tolerances of sbmlsim are set again (it
-        costs milliseconds for a small model and tenths of a second for a
+        simulation reaches it (#305), also after an initialization without a
+        simulation in between, e.g. the references of a design. Such an event
+        is after the time the last simulation reached, so only a simulation
+        which integrates beyond it can see it; for a model with an event with
+        a delay the model is then generated again, which empties the queue
+        (it costs milliseconds for a small model and tenths of a second for a
         large one). Every point of a scan reaches the same end, so a scan
         regenerates no model, unless it integrates to a steady state.
+
+        roadrunner restores a vector of absolute tolerances after the
+        regeneration species by species with `setIndividualTolerance`, which
+        raises for a species of an assignment rule, and not a number: the
+        tolerance is a number during the regeneration, and the selections and
+        the absolute tolerances of sbmlsim are set again after it. The next
+        initialization resets the new model, which queues its events at t0.
 
         Args:
             horizon: the time of roadrunner the next simulation integrates to,
                 `inf` for an integration to a steady state.
         """
-        if not self._delayed_events or self._reset_pending or horizon <= self._reached:
+        if not self._delayed_events or horizon <= self._reached:
             return
         r = self.r_loaded
         selections = list(r.timeCourseSelections)
+        integrator: roadrunner.Integrator = r.getIntegrator()
+        vector = _floats(integrator.getAbsoluteToleranceVector())
+        integrator.setValue("absolute_tolerance", min(vector, default=1e-12))
         r.regenerateModel(True)
         r.timeCourseSelections = selections
         self._set_absolute_tolerance(self.absolute_tolerance)
-        self._reached = -np.inf
+        self._reset_pending = False
+        self._reached = np.inf
 
     def _replaced(self, key: str, value: float) -> None:
         """Record the value an initialization replaced, see `initialize`.
