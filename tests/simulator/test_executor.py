@@ -205,6 +205,80 @@ def test_steady_state_with_its_preinit() -> None:
     assert res["[A]"][0] == pytest.approx(A_STEADY, rel=1e-5)
 
 
+#: a reaction whose product has a species reference of a rate rule, as case
+#: 01633 of the SBML Test Suite: roadrunner has a rate of change of
+#: `B_ref`, but no name of it in `getRatesOfChangeNamedArray`
+STOICHIOMETRY_RULE = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model id="stoichiometry_rule">
+    <listOfCompartments>
+      <compartment id="C" spatialDimensions="3" size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="A" compartment="C" initialAmount="1" hasOnlySubstanceUnits="true"
+        boundaryCondition="false" constant="false"/>
+      <species id="B" compartment="C" initialAmount="0" hasOnlySubstanceUnits="true"
+        boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+    <listOfParameters>
+      <parameter id="k" value="1" constant="true"/>
+    </listOfParameters>
+    <listOfRules>
+      <rateRule variable="B_ref">
+        <math xmlns="http://www.w3.org/1998/Math/MathML"><cn> 0 </cn></math>
+      </rateRule>
+    </listOfRules>
+    <listOfReactions>
+      <reaction id="J" reversible="false">
+        <listOfReactants>
+          <speciesReference species="A" stoichiometry="1" constant="true"/>
+        </listOfReactants>
+        <listOfProducts>
+          <speciesReference id="B_ref" species="B" stoichiometry="2" constant="false"/>
+        </listOfProducts>
+        <kineticLaw>
+          <math xmlns="http://www.w3.org/1998/Math/MathML">
+            <apply><times/><ci>k</ci><ci>A</ci></apply>
+          </math>
+        </kineticLaw>
+      </reaction>
+    </listOfReactions>
+  </model>
+</sbml>
+"""
+
+
+def test_steady_state_of_a_model_with_a_rate_rule_of_a_stoichiometry() -> None:
+    """The rates of change of a steady state are the ones of every state.
+
+    roadrunner names only the species and the rate rules which are no species
+    reference in `getRatesOfChangeNamedArray`, its values are the ones of
+    every state: a steady state failed with a `ValueError` of numpy (#307,
+    cases 01452, 01563 and 01633 of the SBML Test Suite with a steady state).
+    """
+    model = RoadrunnerSBMLModel(source=STOICHIOMETRY_RULE)
+    plan = compile_simulation(
+        Simulation(end=1, presimulation=SteadyState(), times=[0]),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, ["time", "A", "B"])
+    assert res["A"][0] == pytest.approx(0.0, abs=1e-6)
+    assert res["B"][0] == pytest.approx(2.0, rel=1e-6)
+
+
+def test_steady_state_with_another_integrator() -> None:
+    """A steady state counts the states of the model, not of CVODE.
+
+    The tolerance vector of an integrator other than CVODE is empty, so the
+    states of the steady state, counted by it, did not match the rates.
+    """
+    model = RoadrunnerSBMLModel(source=sbml())
+    model.r_loaded.setIntegrator("rk45")
+    res = run(Simulation(end=1, presimulation=SteadyState(), times=[0]), model)
+    assert res["[A]"][0] == pytest.approx(A_STEADY * 2.0, rel=1e-4)
+
+
 def test_steady_state_not_reached_raises() -> None:
     """A model which does not reach a steady state fails with the time."""
     growth = sbml("model g\n  x' = 1\n  x = 0\nend")

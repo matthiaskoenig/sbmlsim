@@ -810,7 +810,7 @@ class PlotlyFigureSerializer:
                             line={"color": c, "width": 2},
                             # the hover of the median names it, the legend
                             # entry is the one of the area
-                            name=f"{point} median",
+                            name=f"{point} median" if point else "median",
                             legendgroup=sid,
                             showlegend=False,
                         ),

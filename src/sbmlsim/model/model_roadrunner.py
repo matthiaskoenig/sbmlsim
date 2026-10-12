@@ -55,9 +55,18 @@ def reset_all(r: roadrunner.RoadRunner) -> None:
     `resetAll` calls (case 00952 of the SBML Test Suite). The binding is
     called directly.
 
+    The reset queues the events which fire at the time 0 at the integration
+    start time of the integrator and of the model, which every `simulate` sets
+    to its start: after a simulation whose last integration started later,
+    e.g. at the end of a simulation with events, the events at the time 0
+    fired at that time plus their delay, i.e. after the end of the next
+    simulation (#305). Both are set to 0 first.
+
     Args:
         r: the roadrunner instance.
     """
+    r.getIntegrator().setIntegrationStartTime(0.0)
+    r.model.setIntegrationStartTime(0.0)
     _roadrunner.RoadRunner_reset(r, RESET_ALL)
 
 
@@ -152,6 +161,13 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: reference), which a reset restores, see `_loaded_state`
         self._state_of: tuple[weakref.ref[roadrunner.RoadRunner], _State] | None = None
         self._loaded_state()
+        #: whether the model has an event with a delay, which can still be
+        #: pending when a simulation ends, see `discard_pending_events`
+        self._delayed_events: bool = any(e.delayed for e in self.symbols.events)
+        #: the time of roadrunner the last simulation since the load or the
+        #: last regeneration reached, `inf` before any, see
+        #: `discard_pending_events`
+        self._reached: float = np.inf
         #: whether the start of a simulation was reported, see `executor`
         self.warned_start: bool = False
         #: the events whose trigger was reported as no formula the simulator
@@ -291,6 +307,9 @@ class RoadrunnerSBMLModel(AbstractModel):
     def _reset(self) -> None:
         """Set the model to the state it was loaded in, see `initialize`."""
         r = self.r_loaded
+        # the values as loaded of another instance of roadrunner are read
+        # before it is reset, see `_loaded_state`
+        self._loaded_state()
         if self._reset_pending:
             for key, value in self._restore.items():
                 r.setValue(key, value)
@@ -304,8 +323,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Get the values of the model as loaded, read once per instance of roadrunner.
 
         They are read when the model is loaded, before an initialization
-        changes a value, and again for another instance of roadrunner, see
-        `_restore_loaded_state`.
+        changes a value. sbmlsim never replaces its instance of roadrunner
+        (`regenerateModel` keeps it); an instance which replaces `r` from
+        outside is read at its first reset, before it is reset, so it has to
+        be in the state it was loaded in, see `_restore_loaded_state`.
         """
         r = self.r_loaded
         if self._state_of is None or self._state_of[0]() is not r:
@@ -339,19 +360,60 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         r = self.r_loaded
         state = self._loaded_state()
-        current = _state_values(r)
-        differ = (current != state.values) & ~(
-            np.isnan(current) & np.isnan(state.values)
-        )
-        for k in np.flatnonzero(differ & state.settable):
+        for k in _changed(_state_values(r), state):
             r.setValue(state.ids[k], float(state.values[k]))
 
     def simulated(self) -> None:
         """Record that the model was simulated since its last initialization.
 
-        The next `initialize` resets the model, see there.
+        The next `initialize` resets the model, see there, and the time the
+        simulation reached is kept, see `discard_pending_events`.
         """
         self._reset_pending = False
+        self._reached = float(self.r_loaded.model.getTime())
+
+    def discard_pending_events(self, horizon: float) -> None:
+        """Discard the events of the simulation before which are still pending.
+
+        roadrunner's reset keeps the queue of the events of a model: an event
+        with a delay which the simulation before triggered and which had not
+        fired when it ended fires in the next simulation at its time, if that
+        simulation reaches it (#305), also after an initialization without a
+        simulation in between, e.g. the references of a design. Such an event
+        is after the time the last simulation reached, so only a simulation
+        which integrates beyond it can see it; for a model with an event with
+        a delay the model is then generated again, which empties the queue
+        (it costs milliseconds for a small model and tenths of a second for a
+        large one). Every point of a scan reaches the same end, so a scan
+        regenerates no model, unless it integrates to a steady state.
+
+        roadrunner restores a vector of absolute tolerances after the
+        regeneration species by species with `setIndividualTolerance`, which
+        raises for a species of an assignment rule, and not a number: the
+        tolerance is a number during the regeneration, and the selections and
+        the absolute tolerances of sbmlsim are set again after it. The next
+        initialization resets the new model, which queues its events at t0.
+
+        Args:
+            horizon: the time of roadrunner the next simulation integrates to,
+                `inf` for an integration to a steady state.
+        """
+        if not self._delayed_events or horizon <= self._reached:
+            return
+        r = self.r_loaded
+        selections = list(r.timeCourseSelections)
+        integrator: roadrunner.Integrator = r.getIntegrator()
+        vector = _floats(integrator.getAbsoluteToleranceVector())
+        integrator.setValue("absolute_tolerance", min(vector, default=1e-12))
+        try:
+            r.regenerateModel(True)
+        finally:
+            # also after a failed regeneration, which the next simulation
+            # repeats
+            r.timeCourseSelections = selections
+            self._set_absolute_tolerance(self.absolute_tolerance)
+        self._reset_pending = False
+        self._reached = np.inf
 
     def _replaced(self, key: str, value: float) -> None:
         """Record the value an initialization replaced, see `initialize`.
@@ -705,9 +767,16 @@ class RoadrunnerSBMLModel(AbstractModel):
         return self._volumes_of[1]
 
     def state_ids(self) -> list[str]:
-        """Get the ids of the states which the integrator integrates."""
+        """Get the ids of the states which the integrator integrates.
+
+        The states of roadrunner's state vector, the targets of rate rules
+        first, then the independent floating species, in the order of
+        `getRatesOfChange` and of the tolerance vector of CVODE. They are
+        counted by the rates of change, not by the tolerance vector, which is
+        empty for another integrator than CVODE.
+        """
         r = self.r_loaded
-        n = len(r.getIntegrator().getAbsoluteToleranceVector())
+        n = len(r.getRatesOfChange())
         return [r.model.getStateVectorId(k) for k in range(n)]
 
     def _set_absolute_tolerance(self, tolerance: AbsoluteTolerance) -> None:
@@ -880,6 +949,24 @@ class _State:
     ids: list[str]
     values: np.ndarray
     settable: np.ndarray
+
+
+def _changed(current: np.ndarray, state: _State) -> np.ndarray:
+    """Get the indices of the values which differ from the model as loaded.
+
+    A value which is `NaN` as loaded and now, e.g. a compartment without a
+    size, is unchanged, and the variable of an assignment rule, which
+    roadrunner refuses to set, is never one of them.
+
+    Args:
+        current: the values of `_state_values` now.
+        state: the values as loaded.
+
+    Returns:
+        The indices into `state.ids`, in their order.
+    """
+    differ = (current != state.values) & ~(np.isnan(current) & np.isnan(state.values))
+    return np.flatnonzero(differ & state.settable)
 
 
 def _state_ids(r: roadrunner.RoadRunner) -> list[str]:

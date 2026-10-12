@@ -122,6 +122,31 @@ end
 #: of `VOLUME_OF_A_RULE` as loaded in the last bits
 OTHER_BODY_WEIGHT = 70.45995681845807
 
+#: two events which fire at the time 0 with a delay, case 01757 of the SBML
+#: Test Suite: `E1` sets `P1 = 5` at 1.3, `E0` squares it at 2.5, so `P1` is
+#: 25 from 2.5 on
+EVENTS_AT_T0 = """
+model events_at_t0
+  P1 = 3/2
+  E0: at 2.5 after (P1 > 1), t0=false, fromTrigger=false: P1 = P1^2
+  E1: at 1.3 after (P1 > 1), t0=false: P1 = 5
+end
+"""
+
+#: an event with a delay and a floating species of an assignment rule, for
+#: which `RoadRunner.regenerateModel` cannot restore a vector of absolute
+#: tolerances (`setIndividualTolerance` raises for `R`)
+DELAYED_EVENT_RULE = """
+model delayed_event_rule
+  compartment C = 1
+  species A in C = 1
+  species R in C
+  R := 2*A
+  J: A -> ; 0.1*A
+  E: at 1.0 after (time > 0.5): A = A + 1
+end
+"""
+
 #: every kind of species in a compartment whose size follows the body weight
 #: `BW` by an initial assignment: a species of a reaction `F`, of an
 #: assignment rule as a concentration `R` and as an amount `NR`, of a rate rule

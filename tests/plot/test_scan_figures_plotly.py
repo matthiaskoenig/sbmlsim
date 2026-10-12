@@ -168,6 +168,24 @@ def test_a_named_band_with_a_colour_bar_keeps_its_legend_entry(
     assert bar.marker.colorbar.title.text == "PODOSE [mg]"
 
 
+def test_the_median_of_a_band_without_a_name(experiment: SimulationExperiment) -> None:
+    """A band without a name has the entry of its range and a median named `median`."""
+
+    def draw(plot: Plot) -> None:
+        band = plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+        )
+        band.name = None
+
+    traces = _traces(experiment, draw)
+    (entry,) = [t for t in traces if t.showlegend]
+    assert entry.name == "5-95 %"
+    (median,) = [t for t in traces if t.line.width == 2]
+    assert median.name == "median"
+
+
 def test_bands_over_doses(experiment: SimulationExperiment) -> None:
     traces = _traces(
         experiment,

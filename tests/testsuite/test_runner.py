@@ -4,14 +4,16 @@ import json
 import time
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 
 from sbmlsim import parallel
 from sbmlsim.model import AbstractModel
+from sbmlsim.result import TimecourseResult
 from sbmlsim.simulator import Simulator
-from sbmlsim.testsuite import SemanticSuite, run_suite, write_submission
+from sbmlsim.testsuite import SemanticSuite, run_case, run_suite, write_submission
 from sbmlsim.testsuite.cases import SemanticCase
 from sbmlsim.testsuite.runner import CaseResult, CaseStatus, map_cases, simulate_case
 
@@ -68,15 +70,17 @@ MODEL_SBML = """<?xml version="1.0" encoding="UTF-8"?>
 """
 
 
-def _case(path: Path, cid: str, model: str = MODEL_SBML) -> None:
+def _case(path: Path, cid: str, model: str = MODEL_SBML, k1: float = 0.5) -> None:
     """Write a case of the decay of S1 into S2 with its analytic results."""
     directory = path / cid
     directory.mkdir(parents=True)
     (directory / f"{cid}-settings.txt").write_text(SETTINGS)
     (directory / f"{cid}-model.m").write_text(MODEL_M)
-    (directory / f"{cid}-sbml-l3v2.xml").write_text(model)
+    (directory / f"{cid}-sbml-l3v2.xml").write_text(
+        model.replace('value="0.5"', f'value="{k1}"')
+    )
     time = np.linspace(0.0, 2.0, 21)
-    s1 = np.exp(-0.5 * time)
+    s1 = np.exp(-k1 * time)
     rows = "".join(f"{t},{a},{1 - a}\n" for t, a in zip(time, s1, strict=True))
     (directory / f"{cid}-results.csv").write_text("time,S1,S2\n" + rows)
 
@@ -118,6 +122,153 @@ def test_a_case_is_simulated_with_a_simulator_and_its_model(tmp_path: Path) -> N
     assert observed.columns == ("time", "S1", "S2")
     np.testing.assert_allclose(observed.time, np.linspace(0.0, 2.0, 21))
     np.testing.assert_allclose(observed["S1"], np.exp(-0.5 * observed.time), rtol=1e-8)
+
+
+#: the model of case 01757: two events at t0 with delays, `P1` is 1.5, 5 from
+#: 1.3 on and 25 from 2.5 on
+EVENTS_SETTINGS = """start: 0
+duration: 10
+steps: 10
+variables: P1
+absolute: 0.0001
+relative: 0.0001
+amount:
+concentration:
+"""
+
+
+def _events_case(path: Path) -> SemanticCase:
+    """Write a case of two events at t0 with delays, as case 01757."""
+    from tests.simulator.models import EVENTS_AT_T0, sbml
+
+    directory = path / "01757"
+    directory.mkdir(parents=True)
+    (directory / "01757-settings.txt").write_text(EVENTS_SETTINGS)
+    (directory / "01757-model.m").write_text(MODEL_M)
+    (directory / "01757-sbml-l3v2.xml").write_text(sbml(EVENTS_AT_T0))
+    p1 = [1.5, 1.5, 5.0] + [25.0] * 8
+    rows = "".join(f"{t},{v}\n" for t, v in zip(range(11), p1, strict=True))
+    (directory / "01757-results.csv").write_text("time,P1\n" + rows)
+    case = SemanticCase.from_directory(directory)
+    assert case is not None
+    return case
+
+
+def test_a_case_is_simulated_twice_on_its_model(tmp_path: Path) -> None:
+    """The second simulation of the loaded model of a case is the first (#305).
+
+    The events at t0 of the model fire on every simulation of it, so the case
+    passes the repeat check.
+    """
+    result = run_case(_events_case(tmp_path))
+    assert result.status is CaseStatus.PASS, result.message
+
+
+def test_a_second_simulation_which_differs_is_a_repeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A case whose second simulation differs from its first fails with `repeat`."""
+    import sbmlsim.testsuite.runner as runner
+
+    _case(tmp_path, "00001")
+    case = SemanticCase.from_directory(tmp_path / "00001")
+    assert case is not None
+    calls: list[int] = []
+
+    def simulate(*args: object) -> TimecourseResult:
+        result = simulate_case(*args)  # ty: ignore[invalid-argument-type]
+        calls.append(1)
+        if len(calls) == 2:
+            values = np.array(result.values, dtype=float)
+            values[-1, 1] = np.nextafter(values[-1, 1], np.inf)
+            return TimecourseResult(columns=result.columns, values=values)
+        return result
+
+    monkeypatch.setattr(runner, "simulate_case", simulate)
+    result = run_case(case)
+    assert len(calls) == 2
+    assert result.status is CaseStatus.REPEAT
+    assert "second simulation" in result.message
+
+
+def _delayed_event_rule_case(path: Path) -> SemanticCase:
+    """Write a case of an event with a delay and a species of a rule.
+
+    Its expected results are the simulation of a fresh model, the case is
+    about the simulations after it on the loaded model.
+    """
+    from tests.simulator.models import DELAYED_EVENT_RULE, sbml
+
+    directory = path / "00622"
+    directory.mkdir(parents=True)
+    (directory / "00622-settings.txt").write_text(
+        EVENTS_SETTINGS.replace("variables: P1", "variables: A, R")
+    )
+    (directory / "00622-model.m").write_text(MODEL_M)
+    (directory / "00622-sbml-l3v2.xml").write_text(sbml(DELAYED_EVENT_RULE))
+    case = SemanticCase.from_directory(directory)
+    assert case is not None
+    simulator = Simulator(
+        n_workers=1, absolute_tolerance=1e-12, relative_tolerance=1e-12
+    )
+    result = simulate_case(
+        case, simulator, simulator.load(AbstractModel(source=case.model_path))
+    )
+    rows = "".join(f"{t},{a},{r}\n" for t, a, r in np.asarray(result.values))
+    (directory / "00622-results.csv").write_text("time,A,R\n" + rows)
+    return case
+
+
+def test_a_case_is_simulated_after_a_shorter_simulation_and_to_a_steady_state(
+    tmp_path: Path,
+) -> None:
+    """The repeat checks which integrate beyond the simulation before pass (#305).
+
+    A simulation after a shorter one and a steady state regenerate a model
+    with an event with a delay, which raised for a species of a rule.
+    """
+    result = run_case(_delayed_event_rule_case(tmp_path))
+    assert result.status is CaseStatus.PASS, result.message
+
+
+@pytest.mark.parametrize(
+    ("call", "message"),
+    [(4, "after a shorter one"), (6, "steady state")],
+    ids=["after a shorter one", "a steady state"],
+)
+def test_a_simulation_beyond_the_one_before_which_differs_is_a_repeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, call: int, message: str
+) -> None:
+    """A simulation after a shorter one or to a steady state which differs is a `repeat`.
+
+    The simulations of the case: the first, the same again, the shorter one,
+    the full one after it, the steady state of a fresh model and the one of
+    the loaded model.
+    """
+    import sbmlsim.testsuite.runner as runner
+
+    # a decay which reaches its steady state within the duration of the case
+    _case(tmp_path, "00001", k1=50.0)
+    case = SemanticCase.from_directory(tmp_path / "00001")
+    assert case is not None
+    calls: list[int] = []
+    simulate = Simulator.simulate
+
+    def changed(self: Simulator, *args: Any, **kwargs: Any) -> TimecourseResult:
+        calls.append(1)
+        result = simulate(self, *args, **kwargs)
+        if len(calls) == call:
+            values = np.array(result.values, dtype=float)
+            values[-1, 1] = np.nextafter(values[-1, 1], np.inf)
+            return TimecourseResult(columns=result.columns, values=values)
+        return result
+
+    monkeypatch.setattr(runner.Simulator, "simulate", changed)
+    result = run_case(case)
+    # the check stops at the simulation which differs
+    assert len(calls) == call
+    assert result.status is CaseStatus.REPEAT
+    assert message in result.message
 
 
 def _interrupted(case: SemanticCase) -> CaseResult:

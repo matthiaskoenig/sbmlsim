@@ -1,5 +1,6 @@
 """The simulator runs a scan and answers with a ScanResult, here serially."""
 
+import contextlib
 import ctypes
 import gc
 import os
@@ -19,12 +20,14 @@ from sbmlsim import Q
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result import ScanResult, TimecourseResult
-from sbmlsim.simulation import Change, Dimension, Scan, Simulation
+from sbmlsim.simulation import Change, Dimension, Scan, Simulation, SteadyState
 from sbmlsim.simulator import ScanError, Simulator
 from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import (
     BLOWUP,
+    DELAYED_EVENT_RULE,
+    EVENTS_AT_T0,
     OTHER_BODY_WEIGHT,
     PROBE,
     SPECIES_KINDS,
@@ -1049,6 +1052,135 @@ def test_a_failed_point_leaves_nothing_to_the_points_after_it() -> None:
             np.testing.assert_array_equal(
                 res[selection].values[k], alone[selection].values[0]
             )
+
+
+def _events_at_t0() -> RoadrunnerSBMLModel:
+    model = RoadrunnerSBMLModel(source=sbml(EVENTS_AT_T0))
+    model.set_selections(["time", "P1"])
+    return model
+
+
+@pytest.mark.parametrize(
+    "end", [10.0, 1.0], ids=["after the events", "before the delayed events"]
+)
+def test_a_simulation_after_another_fires_the_events_at_t0(end: float) -> None:
+    """Every simulation of a loaded model fires the events at t0 at 0, once (#305).
+
+    roadrunner's reset queues the events at t0 at the start of the last
+    integration of the simulation before, the end of a simulation with events,
+    and keeps the events of the simulation before which are still pending
+    when it ends before them.
+    """
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+    alone = np.asarray(simulator.simulate(_events_at_t0(), simulation)["P1"])
+    assert alone[-1] == 25.0
+    model = _events_at_t0()
+    simulator.simulate(model, Simulation(end=end, steps=10))
+    for _ in range(2):
+        repeated = np.asarray(simulator.simulate(model, simulation)["P1"])
+        np.testing.assert_array_equal(repeated, alone)
+
+
+def test_an_initialization_between_two_simulations_leaves_no_pending_event() -> None:
+    """The pending events are discarded also after an initialization without simulation.
+
+    After a simulation which ends before the delayed events at t0 fired, the
+    references of a design, a direct initialization or one which fails
+    initialize the model without simulating it (#305).
+    """
+    from sbmlsim.simulation.sampling import references
+
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+    alone = np.asarray(simulator.simulate(_events_at_t0(), simulation)["P1"])
+    failing = Simulation(end=10, steps=10, preinit_changes={"P1": "1 / (P1 - 1.5)"})
+    between = {
+        "references": lambda model: references(model, ["P1"]),
+        "initialize": lambda model: model.initialize([]),
+        "a failed initialization": lambda model: simulator.simulate(model, failing),
+    }
+    for name, initialization in between.items():
+        model = _events_at_t0()
+        simulator.simulate(model, Simulation(end=1.0, steps=10))
+        with contextlib.suppress(Exception):
+            initialization(model)
+        repeated = np.asarray(simulator.simulate(model, simulation)["P1"])
+        np.testing.assert_array_equal(repeated, alone, err_msg=name)
+
+
+def _delayed_event_rule() -> RoadrunnerSBMLModel:
+    model = RoadrunnerSBMLModel(source=sbml(DELAYED_EVENT_RULE))
+    model.set_selections(["time", "A", "[R]"])
+    return model
+
+
+def test_a_longer_simulation_of_a_model_with_a_delayed_event_and_a_rule_species() -> (
+    None
+):
+    """A simulation beyond the one before runs on a model with a species of a rule.
+
+    A model with an event with a delay is generated again before such a
+    simulation, and roadrunner restores a vector of absolute tolerances with
+    `setIndividualTolerance`, which raises for a species of an assignment
+    rule (#305).
+    """
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+    alone = np.asarray(simulator.simulate(_delayed_event_rule(), simulation)["A"])
+    model = _delayed_event_rule()
+    simulator.simulate(model, Simulation(end=1.0, steps=10))
+    longer = np.asarray(simulator.simulate(model, simulation)["A"])
+    np.testing.assert_array_equal(longer, alone)
+    steady = Simulation(end=10, steps=10, presimulation=SteadyState())
+    first = np.asarray(simulator.simulate(model, steady)["A"])
+    np.testing.assert_array_equal(
+        np.asarray(simulator.simulate(model, steady)["A"]), first
+    )
+
+
+def test_a_failed_regeneration_keeps_the_tolerances(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A regeneration which raises leaves the absolute tolerances of sbmlsim (#305).
+
+    The tolerance is a number during the regeneration; when it raises, the
+    vector is set again, and the next simulation regenerates the model.
+    """
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+    alone = np.asarray(simulator.simulate(_delayed_event_rule(), simulation)["A"])
+    model = _delayed_event_rule()
+    simulator.simulate(model, Simulation(end=1.0, steps=10))
+    integrator = model.r_loaded.getIntegrator()
+    vector = list(integrator.getAbsoluteToleranceVector())
+
+    def fail(self: roadrunner.RoadRunner, *args: Any) -> None:
+        raise RuntimeError("regeneration failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(roadrunner.RoadRunner, "regenerateModel", fail)
+        with pytest.raises(Exception, match="regeneration failed"):
+            simulator.simulate(model, simulation)
+    assert list(integrator.getAbsoluteToleranceVector()) == vector
+    longer = np.asarray(simulator.simulate(model, simulation)["A"])
+    np.testing.assert_array_equal(longer, alone)
+
+
+def test_every_point_of_a_scan_fires_the_events_at_t0() -> None:
+    """Every point of a scan of a model with events at t0 is the point alone (#305)."""
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+
+    def run(values: list[float]) -> np.ndarray:
+        scan = Scan(simulation, [Dimension("p", values={"P1": values})])
+        return np.asarray(simulator.run(_events_at_t0(), scan)["P1"].values)
+
+    values = [1.5, 2.0, 3.0]
+    points = run(values)
+    assert points[:, -1].tolist() == [25.0, 25.0, 25.0]
+    for k, value in enumerate(values):
+        np.testing.assert_array_equal(points[k], run([value])[0])
 
 
 def test_a_scan_resizes_the_compartment_of_a_species_of_an_assignment_rule() -> None:

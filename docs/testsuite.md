@@ -6,7 +6,7 @@ The [SBML Test Suite](https://github.com/sbmlteam/sbml-test-suite) is the confor
 
 ## What is run
 
-The semantic cases which are timecourse simulations, each once, in the newest SBML encoding it provides:
+The semantic cases which are timecourse simulations, in the newest SBML encoding it provides:
 
 - the **stochastic** cases need many replicates and a comparison of distributions, and the **flux balance** cases need a steady state rather than a simulation, so neither is run,
 - the other encodings of a case, i.e. the same model as SBML L1V2 through L3V2, test the reader and not the simulation; reading is covered by [sbmlutils](https://github.com/matthiaskoenig/sbmlutils),
@@ -20,7 +20,9 @@ A case passes when every point of every compared variable is within the toleranc
 
 with the expected value `c` and the simulated value `u`. The integration itself runs an order of magnitude tighter than the tolerances a case compares with: integrating no more accurately than the comparison demands is how a suite runner passes cases it should not.
 
-A case which does not pass does so in one of four ways, and the report separates them because they say different things: `tolerance` (it was simulated and the results are wrong), `not_read` (the model could not be loaded, e.g. an algebraic rule), `simulation_error` (the integration failed) and `missing_variable` (a compared variable was not produced).
+A case which passes is simulated again on its loaded model, as every point of a scan after the first of its chunk and every simulation of an experiment after the first are, and each of these simulations must equal the first, bitwise (the repeat check, #305): (1) the same simulation again; (2) a simulation of half the duration, then the simulation of the case, which integrates beyond it, so a model with an event with a delay is generated again to discard the pending events of the shorter one; (3) the simulation with a steady state before it, which integrates without end, compared with that simulation of a fresh model (the steady state for at most the duration of the case; both may fail to reach it, then with the same error). libroadrunner executes simultaneous events of the same priority in a random order drawn with `std::rand` of the C library, whose state belongs to the process, so the runner seeds that generator before every simulation of a case (`seed_event_order`): without it the 13 cases with such events (e.g. 00952, 01588) differ in the last bits between the first and the second simulation, and between processes. A regeneration of a model draws from the generator as well, so in (2) and (3) a case with the test tag `RandomEventExecution` is compared with its expected results and within the tolerances of the case instead: 00952, 00962, 00964, 00965, 00966, 01466, 01590, 01591, 01599, 01605, 01626 and 01627 (01589, 01592 and 01593 are not read). Only 01590 needs it: it has an event with a delay, its model is generated again, and it differs by `7.1e-14`. Over the 1789 timecourse cases of 3.5.0, all 1580 which pass pass the repeat check.
+
+A case which does not pass does so in one of five ways, and the report separates them because they say different things: `tolerance` (it was simulated and the results are wrong), `not_read` (the model could not be loaded, e.g. an algebraic rule), `simulation_error` (the integration failed), `missing_variable` (a compared variable was not produced) and `repeat` (the results are right, and a simulation of the loaded model after the first differs from it or fails).
 
 ## Running it
 

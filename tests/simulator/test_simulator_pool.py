@@ -20,7 +20,14 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import ScanError, Simulator
 from sbmlsim.simulator.worker import ModelSpec
-from tests.simulator.models import BLOWUP, PROBE, VOLUME, sbml
+from tests.simulator.models import (
+    BLOWUP,
+    OTHER_BODY_WEIGHT,
+    PROBE,
+    VOLUME,
+    VOLUME_OF_A_RULE,
+    sbml,
+)
 
 SEL = ["time", "[A]", "[B]", "X", "k1"]
 
@@ -110,6 +117,28 @@ def test_serial_runs_on_one_model_give_the_result_of_the_pool() -> None:
     assert _pools() == [2]
     xr.testing.assert_identical(second.ds, first.ds)
     xr.testing.assert_identical(pooled.ds, first.ds)
+
+
+def test_chunks_of_several_points_give_every_point_alone() -> None:
+    """A pool whose chunks hold several points gives every point alone, bitwise (#303).
+
+    Sixteen points on two workers are chunks of two, each the point after a
+    point of another body weight on the model of the worker.
+    """
+    simulation = Simulation(end=10, steps=20)
+    values = [OTHER_BODY_WEIGHT, 75.0] * 8
+
+    def run(body_weights: list[float], workers: int) -> np.ndarray:
+        model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_A_RULE))
+        model.set_selections(["time", "S"])
+        scan = Scan(simulation, [Dimension("bw", values={"BW": body_weights})])
+        return np.asarray(Simulator(n_workers=workers).run(model, scan)["S"].values)
+
+    pooled = run(values, workers=2)
+    assert _pools() == [2]
+    alone = {value: run([value], workers=1)[0] for value in set(values)}
+    for k, value in enumerate(values):
+        np.testing.assert_array_equal(pooled[k], alone[value])
 
 
 def test_a_scan_over_models_in_the_pool(tmp_path: Path) -> None:
