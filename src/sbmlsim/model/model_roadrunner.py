@@ -306,6 +306,9 @@ class RoadrunnerSBMLModel(AbstractModel):
     def _reset(self) -> None:
         """Set the model to the state it was loaded in, see `initialize`."""
         r = self.r_loaded
+        # the values as loaded of another instance of roadrunner are read
+        # before it is reset, see `_loaded_state`
+        self._loaded_state()
         if self._reset_pending:
             for key, value in self._restore.items():
                 r.setValue(key, value)
@@ -319,8 +322,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Get the values of the model as loaded, read once per instance of roadrunner.
 
         They are read when the model is loaded, before an initialization
-        changes a value, and again for another instance of roadrunner, see
-        `_restore_loaded_state`.
+        changes a value. sbmlsim never replaces its instance of roadrunner
+        (`regenerateModel` keeps it); an instance which replaces `r` from
+        outside is read at its first reset, before it is reset, so it has to
+        be in the state it was loaded in, see `_restore_loaded_state`.
         """
         r = self.r_loaded
         if self._state_of is None or self._state_of[0]() is not r:
@@ -354,11 +359,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         r = self.r_loaded
         state = self._loaded_state()
-        current = _state_values(r)
-        differ = (current != state.values) & ~(
-            np.isnan(current) & np.isnan(state.values)
-        )
-        for k in np.flatnonzero(differ & state.settable):
+        for k in _changed(_state_values(r), state):
             r.setValue(state.ids[k], float(state.values[k]))
 
     def simulated(self) -> None:
@@ -925,6 +926,24 @@ class _State:
     ids: list[str]
     values: np.ndarray
     settable: np.ndarray
+
+
+def _changed(current: np.ndarray, state: _State) -> np.ndarray:
+    """Get the indices of the values which differ from the model as loaded.
+
+    A value which is `NaN` as loaded and now, e.g. a compartment without a
+    size, is unchanged, and the variable of an assignment rule, which
+    roadrunner refuses to set, is never one of them.
+
+    Args:
+        current: the values of `_state_values` now.
+        state: the values as loaded.
+
+    Returns:
+        The indices into `state.ids`, in their order.
+    """
+    differ = (current != state.values) & ~(np.isnan(current) & np.isnan(state.values))
+    return np.flatnonzero(differ & state.settable)
 
 
 def _state_ids(r: roadrunner.RoadRunner) -> list[str]:

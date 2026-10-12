@@ -8,9 +8,16 @@ import numpy as np
 import pytest
 
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.model_roadrunner import _changed, _State, reset_all
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulator.plan import Assignment
-from tests.simulator.models import EVENTS_AT_T0, SPECIES_KINDS, sbml
+from tests.simulator.models import (
+    EVENTS_AT_T0,
+    OTHER_BODY_WEIGHT,
+    SPECIES_KINDS,
+    VOLUME_OF_A_RULE,
+    sbml,
+)
 
 
 def _a(
@@ -315,6 +322,37 @@ def test_a_failure_after_a_compartment_leaves_the_model_as_loaded() -> None:
     assert model.r_loaded["[F]"] == pytest.approx(2.0)
     model.initialize([])
     np.testing.assert_array_equal(_values(model), loaded)
+
+
+def test_reset_all_misses_the_model_as_loaded_and_a_reset_restores_it() -> None:
+    """roadrunner's resetAll misses the amount as loaded, the reset of a model not (#303).
+
+    The guard of the tests of #303: after the body weight `OTHER_BODY_WEIGHT`
+    `resetAll` gives `S` in its last bits from the amount as loaded. Should
+    roadrunner restore it itself, the first assertion fails, and the tests of
+    #303 and `_restore_loaded_state` are no longer needed.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_A_RULE))
+    r = model.r_loaded
+    loaded = _values(model)
+    r.setValue("BW", OTHER_BODY_WEIGHT)
+    reset_all(r)
+    assert r["S"] != loaded[model._loaded_state().ids.index("S")]
+    model.initialize([_a("BW", OTHER_BODY_WEIGHT)])
+    model.simulated()
+    model.initialize([])
+    np.testing.assert_array_equal(_values(model), loaded)
+
+
+def test_a_value_is_set_back_only_where_it_changed_and_can_be_set() -> None:
+    """`NaN` as loaded and now is unchanged, an assignment rule is never set (#303)."""
+    state = _State(
+        ids=["a", "size", "rule", "b"],
+        values=np.array([1.0, np.nan, 2.0, 3.0]),
+        settable=np.array([True, True, False, True]),
+    )
+    assert _changed(np.array([1.0, np.nan, 5.0, 4.0]), state).tolist() == [3]
+    assert _changed(np.array([0.0, 1.0, 2.0, 3.0]), state).tolist() == [0, 1]
 
 
 def test_parameter_df_has_no_helpers() -> None:
