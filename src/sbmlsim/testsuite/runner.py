@@ -4,17 +4,24 @@
 compares the results with the expected ones. It answers with a `CaseResult`
 rather than raising: a case whose model cannot be read or whose integration
 fails is a result of the suite like any other, and the report groups the cases
-by exactly these outcomes.
+by exactly these outcomes. A case which passes is simulated a second time on
+its loaded model, as every point of a scan after the first and every
+simulation of an experiment after the first are, and the second simulation
+must equal the first, bitwise (#305).
 """
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
+import sys
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
+
+import numpy as np
 
 from sbmlsim import parallel
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
@@ -51,8 +58,13 @@ class CaseStatus(StrEnum):
     `missing_variable` : the simulation ran and did not produce a variable the
     case compares, e.g. a symbol the simulator does not expose.
 
-    The last three are failures of the simulator and not of its numerics, so a
-    report separates them: they say something different about what is missing.
+    `repeat` : the results are within the tolerances, and a second simulation
+    of the loaded model differs from the first or fails, i.e. a simulation
+    depends on the one before it on the same model.
+
+    `not_read`, `simulation_error` and `missing_variable` are failures of the
+    simulator and not of its numerics, so a report separates them: they say
+    something different about what is missing.
     """
 
     PASS = "pass"
@@ -60,6 +72,7 @@ class CaseStatus(StrEnum):
     NOT_READ = "not_read"
     SIMULATION_ERROR = "simulation_error"
     MISSING_VARIABLE = "missing_variable"
+    REPEAT = "repeat"
 
 
 #: the outcomes which are not a pass
@@ -68,6 +81,7 @@ FAILED_STATUS: tuple[CaseStatus, ...] = (
     CaseStatus.NOT_READ,
     CaseStatus.SIMULATION_ERROR,
     CaseStatus.MISSING_VARIABLE,
+    CaseStatus.REPEAT,
 )
 
 
@@ -141,6 +155,59 @@ def simulate_case(
         start=case.start, end=case.start + case.duration, steps=case.steps
     )
     return simulator.simulate(model, simulation)
+
+
+def seed_event_order(seed: int = 1) -> None:
+    """Seed the random generator which orders simultaneous events.
+
+    libroadrunner executes simultaneous events of the same priority in a
+    random order, drawn with `std::rand` of the C library, whose state
+    belongs to the process: a second simulation of a model with such events
+    draws other numbers than the first and differs in the last bits (cases
+    00952 and 01588), and so does a case after other cases in a process. The
+    generator is seeded before every simulation of a case, so a case gives the
+    same results in every process and the repeat check compares simulations of
+    the same order; a C library which is not found keeps its state.
+
+    Args:
+        seed: the seed of `srand`.
+    """
+    try:
+        libc = ctypes.CDLL("ucrtbase") if sys.platform == "win32" else ctypes.CDLL(None)
+        libc.srand(ctypes.c_uint(seed))
+    except (OSError, AttributeError) as err:
+        logger.debug("The random generator of the C library is not seeded: %s", err)
+
+
+def repeat_difference(first: TimecourseResult, second: TimecourseResult) -> str:
+    """Describe how a second simulation differs from the first, bitwise.
+
+    Args:
+        first: the first simulation.
+        second: the second simulation of the same model.
+
+    Returns:
+        An empty string for equal results, `NaN` equal to `NaN`, else what
+        differs.
+    """
+    a = np.asarray(first.values, dtype=float)
+    b = np.asarray(second.values, dtype=float)
+    if first.columns != second.columns or a.shape != b.shape:
+        return (
+            f"the second simulation of the loaded model has the shape {b.shape} "
+            f"and not {a.shape} of the first"
+        )
+    differ = ~((a == b) | (np.isnan(a) & np.isnan(b)))
+    if not differ.any():
+        return ""
+    worst = int(np.argmax(np.where(differ, np.abs(a - b), -1.0).ravel()))
+    row, col = divmod(worst, a.shape[1])
+    return (
+        f"the second simulation of the loaded model differs from the first in "
+        f"{int(differ.sum())} values, at most {abs(a[row, col] - b[row, col]):.3g} in "
+        f"'{first.columns[col]}' at the time {a[row, 0]:g} "
+        f"({a[row, col]!r} and {b[row, col]!r})"
+    )
 
 
 def map_cases[T](
@@ -246,6 +313,7 @@ def run_case(case: SemanticCase) -> CaseResult:
         return result(CaseStatus.NOT_READ, str(err).strip().splitlines()[0][:300])
 
     try:
+        seed_event_order()
         observed = simulate_case(case, simulator, model)
     except Exception as err:
         logger.debug("'%s': the simulation failed: %s", case.cid, err)
@@ -258,4 +326,20 @@ def run_case(case: SemanticCase) -> CaseResult:
         return result(CaseStatus.MISSING_VARIABLE, comparison.summary, comparison)
     if not comparison.valid:
         return result(CaseStatus.TOLERANCE, comparison.summary, comparison)
+
+    # the repeat check: the path of every point of a scan after the first
+    try:
+        seed_event_order()
+        repeated = simulate_case(case, simulator, model)
+    except Exception as err:
+        logger.debug("'%s': the second simulation failed: %s", case.cid, err)
+        message = str(err).strip().splitlines()[0][:250]
+        return result(
+            CaseStatus.REPEAT,
+            f"the second simulation of the loaded model failed: {message}",
+            comparison,
+        )
+    difference = repeat_difference(observed, repeated)
+    if difference:
+        return result(CaseStatus.REPEAT, difference, comparison)
     return result(CaseStatus.PASS, comparison=comparison)

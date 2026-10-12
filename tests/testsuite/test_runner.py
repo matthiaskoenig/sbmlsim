@@ -10,8 +10,9 @@ import pytest
 
 from sbmlsim import parallel
 from sbmlsim.model import AbstractModel
+from sbmlsim.result import TimecourseResult
 from sbmlsim.simulator import Simulator
-from sbmlsim.testsuite import SemanticSuite, run_suite, write_submission
+from sbmlsim.testsuite import SemanticSuite, run_case, run_suite, write_submission
 from sbmlsim.testsuite.cases import SemanticCase
 from sbmlsim.testsuite.runner import CaseResult, CaseStatus, map_cases, simulate_case
 
@@ -118,6 +119,73 @@ def test_a_case_is_simulated_with_a_simulator_and_its_model(tmp_path: Path) -> N
     assert observed.columns == ("time", "S1", "S2")
     np.testing.assert_allclose(observed.time, np.linspace(0.0, 2.0, 21))
     np.testing.assert_allclose(observed["S1"], np.exp(-0.5 * observed.time), rtol=1e-8)
+
+
+#: the model of case 01757: two events at t0 with delays, `P1` is 1.5, 5 from
+#: 1.3 on and 25 from 2.5 on
+EVENTS_SETTINGS = """start: 0
+duration: 10
+steps: 10
+variables: P1
+absolute: 0.0001
+relative: 0.0001
+amount:
+concentration:
+"""
+
+
+def _events_case(path: Path) -> SemanticCase:
+    """Write a case of two events at t0 with delays, as case 01757."""
+    from tests.simulator.models import EVENTS_AT_T0, sbml
+
+    directory = path / "01757"
+    directory.mkdir(parents=True)
+    (directory / "01757-settings.txt").write_text(EVENTS_SETTINGS)
+    (directory / "01757-model.m").write_text(MODEL_M)
+    (directory / "01757-sbml-l3v2.xml").write_text(sbml(EVENTS_AT_T0))
+    p1 = [1.5, 1.5, 5.0] + [25.0] * 8
+    rows = "".join(f"{t},{v}\n" for t, v in zip(range(11), p1, strict=True))
+    (directory / "01757-results.csv").write_text("time,P1\n" + rows)
+    case = SemanticCase.from_directory(directory)
+    assert case is not None
+    return case
+
+
+def test_a_case_is_simulated_twice_on_its_model(tmp_path: Path) -> None:
+    """The second simulation of the loaded model of a case is the first (#305).
+
+    The events at t0 of the model fire on every simulation of it, so the case
+    passes the repeat check.
+    """
+    result = run_case(_events_case(tmp_path))
+    assert result.status is CaseStatus.PASS, result.message
+
+
+def test_a_second_simulation_which_differs_is_a_repeat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A case whose second simulation differs from its first fails with `repeat`."""
+    import sbmlsim.testsuite.runner as runner
+
+    _case(tmp_path, "00001")
+    case = SemanticCase.from_directory(tmp_path / "00001")
+    assert case is not None
+    calls: list[int] = []
+
+    def simulate(*args: object) -> TimecourseResult:
+        result = simulate_case(*args)  # ty: ignore[invalid-argument-type]
+        calls.append(1)
+        if len(calls) == 2:
+            values = np.array(result.values, dtype=float)
+            values[-1, 1] = np.nextafter(values[-1, 1], np.inf)
+            return TimecourseResult(columns=result.columns, values=values)
+        return result
+
+    monkeypatch.setattr(runner, "simulate_case", simulate)
+    result = run_case(case)
+    assert len(calls) == 2
+    assert result.status is CaseStatus.REPEAT
+    assert "second simulation" in result.message
 
 
 def _interrupted(case: SemanticCase) -> CaseResult:

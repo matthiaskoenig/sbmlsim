@@ -6,7 +6,7 @@ The [SBML Test Suite](https://github.com/sbmlteam/sbml-test-suite) is the confor
 
 ## What is run
 
-The semantic cases which are timecourse simulations, each once, in the newest SBML encoding it provides:
+The semantic cases which are timecourse simulations, in the newest SBML encoding it provides:
 
 - the **stochastic** cases need many replicates and a comparison of distributions, and the **flux balance** cases need a steady state rather than a simulation, so neither is run,
 - the other encodings of a case, i.e. the same model as SBML L1V2 through L3V2, test the reader and not the simulation; reading is covered by [sbmlutils](https://github.com/matthiaskoenig/sbmlutils),
@@ -20,7 +20,9 @@ A case passes when every point of every compared variable is within the toleranc
 
 with the expected value `c` and the simulated value `u`. The integration itself runs an order of magnitude tighter than the tolerances a case compares with: integrating no more accurately than the comparison demands is how a suite runner passes cases it should not.
 
-A case which does not pass does so in one of four ways, and the report separates them because they say different things: `tolerance` (it was simulated and the results are wrong), `not_read` (the model could not be loaded, e.g. an algebraic rule), `simulation_error` (the integration failed) and `missing_variable` (a compared variable was not produced).
+A case which passes is simulated a second time on its loaded model, as every point of a scan after the first of its chunk and every simulation of an experiment after the first are, and the second simulation must equal the first, bitwise (the repeat check, #305). libroadrunner executes simultaneous events of the same priority in a random order drawn with `std::rand` of the C library, whose state belongs to the process, so the runner seeds that generator before every simulation of a case (`seed_event_order`): without it the 13 cases with such events (e.g. 00952, 01588) differ in the last bits between the first and the second simulation, and between processes.
+
+A case which does not pass does so in one of five ways, and the report separates them because they say different things: `tolerance` (it was simulated and the results are wrong), `not_read` (the model could not be loaded, e.g. an algebraic rule), `simulation_error` (the integration failed), `missing_variable` (a compared variable was not produced) and `repeat` (the results are right, and the second simulation of the loaded model differs from the first or fails).
 
 ## Running it
 
