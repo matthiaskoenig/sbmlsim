@@ -9,7 +9,7 @@ import pytest
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulator.plan import Assignment
-from tests.simulator.models import sbml
+from tests.simulator.models import SPECIES_KINDS, sbml
 
 
 def _a(
@@ -243,6 +243,32 @@ def test_initialization_with_compartment_and_concentration_is_not_left_over() ->
     model.initialize([])
     assert model.r_loaded["C"] == pytest.approx(2.0)
     assert model.r_loaded["[A]"] == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [_a("V", 30.0, TargetKind.COMPARTMENT), _a("BW", 150.0)],
+    ids=["compartment", "initial assignment of the compartment"],
+)
+def test_a_compartment_with_a_species_of_an_assignment_rule(
+    assignment: Assignment,
+) -> None:
+    """A species of an assignment rule follows its rule when its compartment changes.
+
+    roadrunner refuses to set a species of an assignment rule (#300). Every
+    other species whose initial value is a concentration keeps its
+    concentration, an amount species its amount.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(SPECIES_KINDS))
+    r = model.r_loaded
+    kept = {"[F]": 2.0, "[RR]": 1.0, "[B]": 4.0, "[I]": 4.0, "N": 6.0}
+    rules = {"[R]": 6.0, "NR": 4.0}
+    for volume, initialization in [(30.0, [assignment]), (15.0, [])]:
+        model.initialize(initialization)
+        assert r["V"] == pytest.approx(volume)
+        assert {s: r[s] for s in kept} == pytest.approx(kept)
+        assert {s: r[s] for s in rules} == pytest.approx(rules)
+        assert r["[N]"] == pytest.approx(6.0 / volume)
 
 
 def test_parameter_df_has_no_helpers() -> None:

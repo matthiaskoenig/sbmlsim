@@ -221,7 +221,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         A compartment keeps the concentration of the species whose initial
         value is a concentration, as at the initialization of SBML, and of a
         species which is set as a concentration, and the amount of every
-        other species.
+        other species; a species of an assignment rule follows its rule.
 
         Args:
             assignments: the pre-initialization assignments of a plan. A
@@ -332,11 +332,14 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         r = self.r_loaded
         symbols = self.symbols
+        # a species of an assignment rule follows its rule, roadrunner refuses
+        # to set it (#300)
         kept = {
             s: r.getValue(f"[{s}]")
             for s, c in symbols.species_compartment.items()
             if c == compartment
             and s not in amounts
+            and s not in symbols.assignment_rules
             and (s in symbols.initial_concentration or s in concentrations)
         }
         for species in kept:

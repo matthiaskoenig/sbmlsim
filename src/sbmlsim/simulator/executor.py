@@ -902,11 +902,15 @@ def _apply(event: PlanEvent, r: roadrunner.RoadRunner, plan: Plan) -> None:
         if kind is not TargetKind.COMPARTMENT:
             continue
         # PEtab: the concentration of a concentration species is kept,
-        # roadrunner keeps the amount of every species
+        # roadrunner keeps the amount of every species; a species of an
+        # assignment rule follows its rule, roadrunner refuses to set it (#300)
         kept = {
             s: r.getValue(f"[{s}]")
             for s, c in symbols.species_compartment.items()
-            if c == target and s not in symbols.only_substance and s not in targets
+            if c == target
+            and s not in symbols.only_substance
+            and s not in symbols.assignment_rules
+            and s not in targets
         }
         r.setValue(target, value)
         for species, concentration in kept.items():
