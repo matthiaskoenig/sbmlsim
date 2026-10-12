@@ -150,7 +150,8 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: whether the start of a simulation was reported, see `executor`
         self.warned_start: bool = False
         #: the events whose trigger was reported as no formula the simulator
-        #: evaluates, once per event, see `executor`
+        #: evaluates, once per event of this instance (a worker of a pool loads
+        #: its own instance and reports it once as well), see `executor`
         self.reported_triggers: set[str] = set()
 
         # set selections

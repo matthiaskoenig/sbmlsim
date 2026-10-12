@@ -926,7 +926,8 @@ def _triggers(
 
     A trigger which is no formula the simulator evaluates, e.g. one with a
     function definition, is not evaluated, so a change does not fire its
-    event; it is reported once per event of a model.
+    event; it is reported once per event of a model instance, so once per
+    worker of a pool, which loads its own instance.
 
     Args:
         events: the events of the model.

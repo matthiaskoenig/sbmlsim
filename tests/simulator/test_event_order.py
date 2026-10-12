@@ -1,6 +1,7 @@
 """External changes preserve the ordering and values of SBML events."""
 
 import logging
+import math
 
 import libsbml
 import pytest
@@ -190,3 +191,56 @@ def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
     assert len(warnings) == 1
     assert "'unknown'" in warnings[0]
     assert "twice(q) > 1" in warnings[0]
+
+
+def _fired(doc: libsbml.SBMLDocument, selections: list[str]) -> dict[str, float]:
+    """Get the values after a change at 1 which sets `q = 5`."""
+    model = RoadrunnerSBMLModel(
+        source=libsbml.writeSBMLToString(doc), selections=["time", *selections]
+    )
+    result = Simulator(n_workers=1).simulate(
+        model, Simulation(end=2, changes=[Change(1, {"q": 5})], times=[0, 1, 2])
+    )
+    assert result["time"].tolist() == [0, 1, 1, 2]
+    return {s: float(result[s][2]) for s in selections}
+
+
+def test_the_constants_of_sbml_in_an_event() -> None:
+    """`pi`, `exponentiale` and `avogadro` are their values, as in roadrunner."""
+    doc = _document("q=0; X=0; Y=0; Z=0;\nE: at (q > 3), t0=false: X=1, Y=1, Z=1;", {})
+    event: libsbml.Event = doc.getModel().getEvent("E")
+    settings = libsbml.L3ParserSettings()
+    settings.setParseAvogadroCsymbol(True)
+    for target, formula in {
+        "X": "2 * pi",
+        "Y": "exponentiale",
+        "Z": "avogadro / 1e23",
+    }.items():
+        event.getEventAssignment(target).setMath(
+            libsbml.parseL3FormulaWithSettings(formula, settings)
+        )
+    event.getTrigger().setMath(libsbml.parseL3Formula("q > pi"))
+    assert "symbols/avogadro" in libsbml.writeSBMLToString(doc)
+    assert _fired(doc, ["X", "Y", "Z"]) == {
+        "X": 2 * math.pi,
+        "Y": math.e,
+        "Z": 6.02214179e23 / 1e23,
+    }
+
+
+def test_a_logarithm_to_a_base_in_an_event() -> None:
+    """The base of a logarithm is its first argument in SBML (#296)."""
+    doc = _document("q=0; X=0; Y=0; Z=0;\nE: at (q > 3), t0=false: X=1, Y=1, Z=1;", {})
+    event: libsbml.Event = doc.getModel().getEvent("E")
+    event.getEventAssignment("X").setMath(libsbml.parseL3Formula("log(2, 8)"))
+    event.getEventAssignment("Y").setMath(libsbml.parseL3Formula("log(q, 25)"))
+    # a base of ten as a real, which libsbml does not write as log10
+    event.getEventAssignment("Z").setMath(
+        libsbml.readMathMLFromString(
+            '<math xmlns="http://www.w3.org/1998/Math/MathML"><apply><log/>'
+            "<logbase><cn> 10 </cn></logbase><cn> 1000 </cn></apply></math>"
+        )
+    )
+    assert _fired(doc, ["X", "Y", "Z"]) == pytest.approx(
+        {"X": 3.0, "Y": 2.0, "Z": 3.0}, rel=1e-15
+    )
