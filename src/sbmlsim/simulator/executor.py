@@ -1138,19 +1138,31 @@ def steady_state(
     """
     r = model.r_loaded
     events = bool(model.symbols.events)
+    states = model.state_ids()
     time = start
     horizon = 1.0
     while True:
         end = start + min(horizon, plan.max_time)
-        _variable_steps(r, time, end)
+        # the rows of the steps are not used: roadrunner stops at its maximum
+        # number of rows before the end of a horizon with many events and
+        # warns, `_to_the_end` integrates the rest of it (case 01627)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Simulation requested end time point",
+                category=UserWarning,
+            )
+            _variable_steps(r, time, end)
         # the state at the end of the horizon, an event of the model which
         # roadrunner keeps pending fires in the presimulation
         _to_the_end(r, end, events)
         time = end
-        # the rates of the species and of the targets of rate rules, `x'`
-        named = r.getRatesOfChangeNamedArray()
-        rates = np.abs(np.asarray(named, dtype=float).ravel())
-        state = np.abs(np.array([r.getValue(name[:-1]) for name in named.colnames]))
+        # the rates of every state of the integrator, the targets of rate
+        # rules and the species; roadrunner's `getRatesOfChangeNamedArray`
+        # has the values of every state but no name of a species reference
+        # of a rate rule, so the states are read by their ids (#307)
+        rates = np.abs(np.asarray(r.getRatesOfChange(), dtype=float).ravel())
+        state = np.abs(np.array([r.getValue(sid) for sid in states], dtype=float))
         if np.all(rates <= plan.absolute_tolerance + plan.relative_tolerance * state):
             return time
         if time - start >= plan.max_time:
