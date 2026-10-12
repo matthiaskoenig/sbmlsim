@@ -141,6 +141,8 @@ def test_a_band(experiment: SimulationExperiment) -> None:
     assert upper.showlegend and upper.name == "C (5-95 %)"
     (median,) = [t for t in traces if t.line.width == 2]
     assert not median.showlegend and median.legendgroup == upper.legendgroup
+    # the hover of the median names it
+    assert median.name == "C median"
     assert sum(1 for t in traces if t.showlegend) == 1
 
 
@@ -160,6 +162,11 @@ def test_bands_over_doses(experiment: SimulationExperiment) -> None:
         "C, PODOSE = 50 mg (5-95 %)",
         "C, PODOSE = 100 mg (5-95 %)",
         "C, PODOSE = 200 mg (5-95 %)",
+    ]
+    assert [t.name for t in traces if t.line.width == 2] == [
+        "C, PODOSE = 50 mg median",
+        "C, PODOSE = 100 mg median",
+        "C, PODOSE = 200 mg median",
     ]
 
 

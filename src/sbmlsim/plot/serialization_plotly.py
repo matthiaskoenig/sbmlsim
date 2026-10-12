@@ -729,7 +729,8 @@ class PlotlyFigureSerializer:
         The legend has one entry per point, its area in its colour labelled
         `<name> (<low>-<high> %)` (`<name>, <point label> (<low>-<high> %)`
         with `over`), or one of the name of a band with a colour bar, in the
-        middle colour of the map, like matplotlib (#302).
+        middle colour of the map, like matplotlib (#302). The median has no
+        entry, its hover names it `<name> median`.
 
         Args:
             experiment: the experiment the data is resolved against.
@@ -760,10 +761,10 @@ class PlotlyFigureSerializer:
         traces: list[tuple[Any, bool]] = []
         for b in bands:
             c = to_hex(styles.colors[b.index[0]] if styles else color)
-            name = band_label(
-                f"{band.name}, {styles.labels[0][b.index[0]]}" if styles else band.name,
-                band.quantiles,
+            point = (
+                f"{band.name}, {styles.labels[0][b.index[0]]}" if styles else band.name
             )
+            name = band_label(point, band.quantiles)
             edge = {
                 "color": _rgba(c, min(1.0, 2 * band.alpha)),
                 "width": _BAND_EDGE_WIDTH,
@@ -807,7 +808,9 @@ class PlotlyFigureSerializer:
                             y=b.median,
                             mode="lines",
                             line={"color": c, "width": 2},
-                            name=name,
+                            # the hover of the median names it, the legend
+                            # entry is the one of the area
+                            name=f"{point} median",
                             legendgroup=sid,
                             showlegend=False,
                         ),
