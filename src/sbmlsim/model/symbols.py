@@ -12,6 +12,7 @@ at all.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from enum import StrEnum
@@ -30,8 +31,10 @@ class EventSymbols:
     Attributes:
         eid: id of the event.
         trigger: the trigger, a formula of selections, see
-            `sbmlsim.simulator.formula`; `None` if it is not a formula the
-            simulator evaluates, e.g. one with a function definition.
+            `sbmlsim.simulator.formula`, `None` without a trigger. A trigger
+            which is no formula the simulator evaluates, e.g. one with a
+            function definition, is reported by the executor and a change
+            does not fire its event.
         delayed: whether the event has a delay.
         assignments: the selection and the formula of every assignment.
         priority: the priority formula, or `None` without a priority.
@@ -331,6 +334,53 @@ def _order(dependencies: dict[str, frozenset[str]]) -> tuple[str, ...]:
 #: an identifier of a formula of libsbml
 _IDENTIFIER = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?![\w\]])")
 
+#: the constants of SBML which the math of PEtab reads as identifiers, by
+#: their name; `avogadro` has the value roadrunner evaluates, the one of SBML
+#: Level 3 Version 1
+_CONSTANTS: dict[str, float] = {
+    "pi": math.pi,
+    "exponentiale": math.e,
+    "avogadro": 6.02214179e23,
+}
+
+#: the prefix of the name which stands for a constant while the math is written
+_CONSTANT = "sbmlsim_constant__"
+
+#: the definition URL of the csymbol of the Avogadro constant
+_AVOGADRO = "http://www.sbml.org/sbml/symbols/avogadro"
+
+
+def _as_petab(node: libsbml.ASTNode) -> None:
+    """Rewrite math of SBML in place into the form the math of PEtab reads.
+
+    A constant of SBML (`pi`, `exponentiale`, `avogadro`), which PEtab reads
+    as an identifier, becomes a name which `_selections` replaces by its
+    value. A logarithm to a base has the base first in SBML (`log(2, x)`) and
+    last in PEtab (`log(x, 2)`), so its children are swapped; `log10(x)` is
+    left as it is. The nodes are recognized by their names and definition
+    URLs, not by their types, see `_names`.
+
+    Args:
+        node: the math, a copy which is changed.
+    """
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        stack.extend(n.getChild(k) for k in range(n.getNumChildren()))
+        if n.getDefinitionURLString() == _AVOGADRO:
+            constant = "avogadro"
+        elif n.isConstant() and not n.isName() and n.getName() in _CONSTANTS:
+            constant = n.getName()
+        else:
+            constant = None
+        if constant is not None:
+            n.setType(libsbml.AST_NAME)
+            n.setName(f"{_CONSTANT}{constant}")
+        elif n.getName() == "log" and n.getNumChildren() == 2 and not n.isLog10():
+            base = n.getChild(0)
+            n.removeChild(0)
+            n.addChild(base)
+
 
 def _selections(
     math: libsbml.ASTNode | None, concentrations: frozenset[str]
@@ -338,7 +388,12 @@ def _selections(
     """Get the math of a model as a formula of selections.
 
     A species whose value is a concentration in the math of the model, i.e. a
-    species without only substance units, is its concentration `[S]`.
+    species without only substance units, is its concentration `[S]`. A
+    number is written without its unit, which libsbml writes after the
+    number (`0.5 dimensionless`, as on every number of a model of
+    sbmlutils), which is no math of PEtab and does not change the value. A
+    constant of SBML is its value, and a logarithm to a base has the base as
+    its second argument, see `_as_petab`.
 
     Args:
         math: the math.
@@ -349,11 +404,19 @@ def _selections(
     """
     if math is None:
         return None
-    formula = libsbml.formulaToL3String(math)
-    return _IDENTIFIER.sub(
-        lambda m: f"[{m.group(1)}]" if m.group(1) in concentrations else m.group(1),
-        formula,
-    )
+    petab: libsbml.ASTNode = math.deepCopy()
+    _as_petab(petab)
+    settings = libsbml.L3ParserSettings()
+    settings.setParseUnits(False)
+    formula = libsbml.formulaToL3StringWithSettings(petab, settings)
+
+    def selection(match: re.Match[str]) -> str:
+        name = match.group(1)
+        if name.startswith(_CONSTANT):
+            return repr(_CONSTANTS[name.removeprefix(_CONSTANT)])
+        return f"[{name}]" if name in concentrations else name
+
+    return _IDENTIFIER.sub(selection, formula)
 
 
 def _event_symbols(

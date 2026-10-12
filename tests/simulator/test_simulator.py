@@ -23,7 +23,14 @@ from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import ScanError, Simulator
 from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import MAX_ERRORS
-from tests.simulator.models import BLOWUP, PROBE, TOLERANCE_PROBE, sbml, sbml_minutes
+from tests.simulator.models import (
+    BLOWUP,
+    PROBE,
+    TOLERANCE_PROBE,
+    VOLUME,
+    sbml,
+    sbml_minutes,
+)
 
 SEL = ["time", "[A]", "[B]", "X", "k1"]
 
@@ -924,6 +931,78 @@ def test_a_degenerate_compartment_is_logged(
         simulator.load(model)
     messages = [r.getMessage() for r in caplog.records if "'U'" in r.getMessage()]
     assert len(messages) == 1
+
+
+@pytest.mark.parametrize("volume", ["C = 2*f", "C := 2*f"])
+def test_the_tolerances_are_the_ones_of_the_model_as_loaded(volume: str) -> None:
+    """The volumes of the simulation before do not set the tolerances (#292).
+
+    roadrunner answers the initial volume of a compartment with an initial
+    assignment or an assignment rule from the current parameters, i.e. from
+    the pre-initialization of the simulation before.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(VOLUME.replace("C = 2*f", volume)))
+    simulator = Simulator(n_workers=1, absolute_tolerance=1e-6)
+    simulator.load(model)
+    loaded = _vector(model)
+    assert loaded == pytest.approx({"A": 1e-6 * 2}, rel=1e-12, abs=0)
+    simulator.run(model, Simulation(end=1, steps=2, preinit_changes={"f": 100.0}))
+    assert list(model.r_loaded.model.getCompartmentInitVolumes()) == [200.0]
+    simulator.load(model)
+    assert _vector(model) == loaded
+    assert list(model.tolerances()["volume"]) == [2.0]
+    # another tolerance is computed from the volumes as loaded as well
+    simulator.set_integrator_settings(absolute_tolerance=1e-7)
+    simulator.load(model)
+    assert _vector(model) == pytest.approx({"A": 1e-7 * 2}, rel=1e-12, abs=0)
+
+
+def test_a_simulation_does_not_depend_on_the_one_before_it() -> None:
+    """The same simulation after one of another volume is the same, bitwise (#292)."""
+    simulation = Simulation(end=10, steps=20, preinit_changes={"f": 3.0})
+    other = Simulation(end=10, steps=20, preinit_changes={"f": 100.0})
+
+    def last(*simulations: Simulation) -> np.ndarray:
+        model = RoadrunnerSBMLModel(source=sbml(VOLUME))
+        model.set_selections(["time", "[A]"])
+        simulator = Simulator(
+            n_workers=1, absolute_tolerance=1e-6, relative_tolerance=1e-6
+        )
+        results = [simulator.run(model, s) for s in simulations]
+        return np.asarray(results[-1]["[A]"].values, dtype=float)
+
+    alone = last(simulation)
+    np.testing.assert_array_equal(last(other, simulation), alone)
+    np.testing.assert_array_equal(last(simulation, simulation), alone)
+
+
+def test_a_compartment_without_a_volume_does_not_set_the_tolerances_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An undefined initial volume, `NaN`, is the same volume at every run."""
+    calls: list[AbsoluteTolerance] = []
+    set_absolute_tolerance = RoadrunnerSBMLModel._set_absolute_tolerance
+
+    def spy(self: RoadrunnerSBMLModel, tolerance: AbsoluteTolerance) -> None:
+        calls.append(tolerance)
+        set_absolute_tolerance(self, tolerance)
+
+    monkeypatch.setattr(RoadrunnerSBMLModel, "_set_absolute_tolerance", spy)
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(
+        sbml(VOLUME.replace("compartment C", "compartment C, U"))
+    )
+    # a membrane of sbmlutils has the size NaN
+    doc.getModel().getCompartment("U").setSize(float("nan"))
+    model = RoadrunnerSBMLModel(source=libsbml.writeSBMLToString(doc))
+    volumes = model.r_loaded.model.getCompartmentInitVolumes()
+    assert np.isnan(volumes[list(model.r_loaded.model.getCompartmentIds()).index("U")])
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=1, steps=2)
+    simulator.run(model, simulation)
+    calls.clear()
+    simulator.run(model, simulation)
+    simulator.run(model, simulation)
+    assert calls == []
 
 
 def test_the_tolerances_are_set_once_per_roadrunner_instance(

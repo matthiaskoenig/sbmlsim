@@ -149,6 +149,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         self._restore: dict[str, float] = {}
         #: whether the start of a simulation was reported, see `executor`
         self.warned_start: bool = False
+        #: the events whose trigger was reported as no formula the simulator
+        #: evaluates, once per event of this instance (a worker of a pool loads
+        #: its own instance and reports it once as well), see `executor`
+        self.reported_triggers: set[str] = set()
 
         # set selections
         # logger.info("set selections")
@@ -162,10 +166,14 @@ class RoadrunnerSBMLModel(AbstractModel):
         self._state_tolerances: list[StateTolerance] = []
         #: what the tolerances of the states were set for: the instance of
         #: roadrunner (a weak reference, which keeps no replaced instance
-        #: alive), the initial volumes of its compartments and the vector of
-        #: CVODE, see `_has_absolute_tolerance`
+        #: alive) and the vector of CVODE, see `_has_absolute_tolerance`
         self._tolerances_of: (
-            tuple[weakref.ref[roadrunner.RoadRunner], list[float], list[float]] | None
+            tuple[weakref.ref[roadrunner.RoadRunner], list[float]] | None
+        ) = None
+        #: the initial volumes of the compartments of the instance of
+        #: roadrunner as loaded, see `_loaded_volumes`
+        self._volumes_of: (
+            tuple[weakref.ref[roadrunner.RoadRunner], dict[str, float]] | None
         ) = None
         #: compartments whose volume was reported as raised to the floor
         self._raised_reported: set[str] = set()
@@ -548,9 +556,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         A setting the integrator has already is not set again, so that a
         simulator which applies its settings before every simulation costs
         nothing: the tolerances of the states are computed again only for
-        another tolerance, another instance of roadrunner, other initial
-        volumes of the compartments or a vector of CVODE which was set
-        elsewhere.
+        another tolerance, another instance of roadrunner or a vector of
+        CVODE which was set elsewhere. They are computed from the initial
+        volumes of the compartments of the model as loaded, so a simulation
+        does not depend on the pre-initialization of the one before it.
 
         Args:
             **kwargs: the settings by their names in roadrunner.
@@ -587,9 +596,10 @@ class RoadrunnerSBMLModel(AbstractModel):
     ) -> bool:
         """Check whether CVODE integrates with the tolerances of a tolerance.
 
-        The tolerances of the states depend on the instance of roadrunner and
-        the initial volumes of the compartments; the vector of CVODE is
-        compared as well, it may have been set on the integrator directly.
+        The tolerances of the states depend on the instance of roadrunner,
+        from whose initial volumes as loaded they are computed, see
+        `_loaded_volumes`; the vector of CVODE is compared as well, it may
+        have been set on the integrator directly.
 
         Args:
             tolerance: the tolerance.
@@ -597,13 +607,40 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         if tolerance != self.absolute_tolerance or self._tolerances_of is None:
             return False
-        r = self.r_loaded
-        instance, volumes, vector = self._tolerances_of
+        instance, vector = self._tolerances_of
         return (
-            instance() is r
-            and _floats(r.model.getCompartmentInitVolumes()) == volumes
+            instance() is self.r_loaded
             and _floats(integrator.getAbsoluteToleranceVector()) == vector
         )
+
+    def _loaded_volumes(self) -> dict[str, float]:
+        """Get the initial volumes of the compartments of the model as loaded.
+
+        roadrunner answers the initial volume of a compartment with an initial
+        assignment or an assignment rule from the current values of the
+        model, i.e. from the pre-initialization of the simulation which ran
+        last. The volumes are therefore read once per instance of roadrunner,
+        when the model sets its first tolerances, which it does when it is
+        loaded, and kept: the tolerances of a simulation do not depend on the
+        simulations before it, and a worker of a pool, which loads the model,
+        has the same tolerances.
+
+        Returns:
+            The initial volume by the id of the compartment.
+        """
+        r = self.r_loaded
+        if self._volumes_of is None or self._volumes_of[0]() is not r:
+            self._volumes_of = (
+                weakref.ref(r),
+                dict(
+                    zip(
+                        r.model.getCompartmentIds(),
+                        _floats(r.model.getCompartmentInitVolumes()),
+                        strict=True,
+                    )
+                ),
+            )
+        return self._volumes_of[1]
 
     def state_ids(self) -> list[str]:
         """Get the ids of the states which the integrator integrates."""
@@ -618,16 +655,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         the tolerances are set as the vector of CVODE, in the order of
         `state_ids`. `setIndividualTolerance` is not used: it indexes a species
         by its index among the floating species and a rate rule after them,
-        while CVODE integrates the rate rules first.
+        while CVODE integrates the rate rules first. The reference volumes are
+        the initial volumes of the model as loaded, see `_loaded_volumes`.
         """
         r = self.r_loaded
-        volumes = dict(
-            zip(
-                r.model.getCompartmentIds(),
-                (float(v) for v in r.model.getCompartmentInitVolumes()),
-                strict=True,
-            )
-        )
+        volumes = self._loaded_volumes()
         states = state_tolerances(self.state_ids(), self.symbols, volumes, tolerance)
         for state in states:
             if (
@@ -652,7 +684,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         self._state_tolerances = states
         self._tolerances_of = (
             weakref.ref(r),
-            _floats(r.model.getCompartmentInitVolumes()),
             _floats(integrator.getAbsoluteToleranceVector()),
         )
 

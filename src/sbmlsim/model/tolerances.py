@@ -11,10 +11,13 @@ which roadrunner scales by the initial value or by the volume of a state:
 | `OTHER` | every other state, i.e. the targets of rate rules | `other` |
 
 The numbers are in the units of the model of the state, so they need no units.
-`V` is the reference volume of the compartment: its initial volume, raised to
-`VOLUME_FLOOR` times the largest finite positive initial volume of the model
-when it is smaller, not finite or not positive, so that a degenerate
-compartment does not collapse the tolerance of its species.
+`V` is the reference volume of the compartment: its initial volume in the
+model as loaded, raised to `VOLUME_FLOOR` times the largest finite positive
+initial volume of the model when it is smaller, not finite or not positive,
+so that a degenerate compartment does not collapse the tolerance of its
+species. A volume which the pre-initialization of a simulation changes does
+not change the tolerances, so a simulation does not depend on the one before
+it on the same model.
 """
 
 from __future__ import annotations

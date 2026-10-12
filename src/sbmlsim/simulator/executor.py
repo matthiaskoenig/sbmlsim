@@ -264,7 +264,7 @@ def _simulate(
                 # not integrated, so an event of the time fires once, and the
                 # end of the steady state for the change at the start
                 before = float(r.model.getTime()) if a == plan.start else stopped
-                triggers = _triggers(model_events, r, a if local else before)
+                triggers = _triggers(model_events, r, a if local else before, model)
                 _apply(events[a], r, plan)
                 _fire_events(model_events, triggers, r, a, model)
             else:
@@ -365,7 +365,7 @@ def _simulate(
         # is not integrated fire at its end, as after a change
         fired = 0
         if model_events and plan.end > plan.start:
-            triggers = _triggers(model_events, r, end if local else stopped)
+            triggers = _triggers(model_events, r, end if local else stopped, model)
             if changed:
                 _apply(events[plan.end], r, plan)
             fired = _fire_events(model_events, triggers, r, plan.end, model)
@@ -917,9 +917,27 @@ def _apply(event: PlanEvent, r: roadrunner.RoadRunner, plan: Plan) -> None:
 
 
 def _triggers(
-    events: Sequence[EventSymbols], r: roadrunner.RoadRunner, time: float
+    events: Sequence[EventSymbols],
+    r: roadrunner.RoadRunner,
+    time: float,
+    model: RoadrunnerSBMLModel,
 ) -> list[bool | None]:
-    """Evaluate the triggers of the events, `None` for one which is not evaluated."""
+    """Evaluate the triggers of the events, `None` for one which is not evaluated.
+
+    A trigger which is no formula the simulator evaluates, e.g. one with a
+    function definition, is not evaluated, so a change does not fire its
+    event; it is reported once per event of a model instance, so once per
+    worker of a pool, which loads its own instance.
+
+    Args:
+        events: the events of the model.
+        r: the roadrunner instance.
+        time: the time of the model.
+        model: the model, for the messages.
+
+    Returns:
+        The value of every trigger.
+    """
     values: list[bool | None] = []
     for event in events:
         if event.trigger is None:
@@ -927,8 +945,19 @@ def _triggers(
             continue
         try:
             formula = compile_formula(event.trigger)
-        except ValueError:
+        except ValueError as err:
             values.append(None)
+            if event.eid not in model.reported_triggers:
+                model.reported_triggers.add(event.eid)
+                logger.warning(
+                    "The trigger '%s' of the event '%s' of the model '%s' is no "
+                    "formula the simulator evaluates, a change of a simulation "
+                    "does not fire the event: %s",
+                    event.trigger,
+                    event.eid,
+                    model.sid or r.model.getModelName(),
+                    err,
+                )
             continue
         values.append(
             bool(
@@ -963,7 +992,9 @@ def _fire_events(
     at the trigger or evaluated at execution, as the event specifies. An event
     with a delay is reported and not fired, an event whose priority is no
     formula the simulator evaluates is reported and fires with the priority 0,
-    the one of an event without a priority.
+    the one of an event without a priority, and an event whose trigger or
+    assignments are no formulas the simulator evaluates is reported and not
+    fired, see `_triggers`.
 
     Args:
         events: the events of the model.
@@ -997,7 +1028,7 @@ def _fire_events(
     # events whose priority is no formula the simulator evaluates
     unprioritized: set[int] = set()
     while True:
-        after = _triggers(events, r, time)
+        after = _triggers(events, r, time, model)
         for index in list(pending):
             if not events[index].persistent and after[index] is False:
                 del pending[index]
