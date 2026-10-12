@@ -3,6 +3,7 @@
 import logging
 import weakref
 from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -147,6 +148,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: the values an initialization changed since the last reset, the
         #: amount of a species, see `initialize`
         self._restore: dict[str, float] = {}
+        #: the values of the instance of roadrunner as loaded (a weak
+        #: reference), which a reset restores, see `_loaded_state`
+        self._state_of: tuple[weakref.ref[roadrunner.RoadRunner], _State] | None = None
+        self._loaded_state()
         #: whether the start of a simulation was reported, see `executor`
         self.warned_start: bool = False
         #: the events whose trigger was reported as no formula the simulator
@@ -291,8 +296,55 @@ class RoadrunnerSBMLModel(AbstractModel):
                 r.setValue(key, value)
         else:
             reset_all(r)
+            self._restore_loaded_state()
             self._reset_pending = True
         self._restore = {}
+
+    def _loaded_state(self) -> "_State":
+        """Get the values of the model as loaded, read once per instance of roadrunner.
+
+        They are read when the model is loaded, before an initialization
+        changes a value, and again for another instance of roadrunner, see
+        `_restore_loaded_state`.
+        """
+        r = self.r_loaded
+        if self._state_of is None or self._state_of[0]() is not r:
+            rules = set(r.getAssignmentRuleIds())
+            ids = _state_ids(r)
+            self._state_of = (
+                weakref.ref(r),
+                _State(
+                    ids=ids,
+                    values=_state_values(r),
+                    settable=np.array([sid not in rules for sid in ids], dtype=bool),
+                ),
+            )
+        return self._state_of[1]
+
+    def _restore_loaded_state(self) -> None:
+        """Set the values back which a reset of roadrunner misses in the last bits.
+
+        roadrunner's resetAll evaluates the initial values of a model with the
+        current values of the parameters, i.e. with the values the simulation
+        before set, e.g. the initial volume of a compartment whose initial
+        assignment reads an assignment rule of the body weight, and the amount
+        of a concentration species in it differs from the amount as loaded in
+        the last bits. A simulation would then depend on the simulation before
+        it on the same model, a point of a scan on the points of its chunk,
+        and a serial run would differ from a pool (#303). Every parameter,
+        compartment and species which is not the variable of an assignment
+        rule gets its value of the model as loaded where it differs, the
+        parameters and the compartments first and the amounts of the species
+        last, which a compartment does not change.
+        """
+        r = self.r_loaded
+        state = self._loaded_state()
+        current = _state_values(r)
+        differ = (current != state.values) & ~(
+            np.isnan(current) & np.isnan(state.values)
+        )
+        for k in np.flatnonzero(differ & state.settable):
+            r.setValue(state.ids[k], float(state.values[k]))
 
     def simulated(self) -> None:
         """Record that the model was simulated since its last initialization.
@@ -812,6 +864,46 @@ def _setting_names(integrator: roadrunner.Integrator) -> frozenset[str]:
         names = frozenset(integrator.getSettings())
         _SETTING_NAMES[name] = names
     return names
+
+
+@dataclass(frozen=True)
+class _State:
+    """The values of a model, see `RoadrunnerSBMLModel._loaded_state`.
+
+    Attributes:
+        ids: the global parameters, compartments, boundary and floating
+            species, in this order, see `_state_ids`.
+        values: their values, the amounts of the species.
+        settable: whether a value is not the variable of an assignment rule.
+    """
+
+    ids: list[str]
+    values: np.ndarray
+    settable: np.ndarray
+
+
+def _state_ids(r: roadrunner.RoadRunner) -> list[str]:
+    """Get the ids of the values of `_state_values`."""
+    m = r.model
+    return [
+        *m.getGlobalParameterIds(),
+        *m.getCompartmentIds(),
+        *m.getBoundarySpeciesIds(),
+        *m.getFloatingSpeciesIds(),
+    ]
+
+
+def _state_values(r: roadrunner.RoadRunner) -> np.ndarray:
+    """Get the values of the parameters, compartments and the amounts of the species."""
+    m = r.model
+    return np.concatenate(
+        [
+            np.asarray(m.getGlobalParameterValues(), dtype=float),
+            np.asarray(m.getCompartmentVolumes(), dtype=float),
+            np.asarray(m.getBoundarySpeciesAmounts(), dtype=float),
+            np.asarray(m.getFloatingSpeciesAmounts(), dtype=float),
+        ]
+    )
 
 
 def _floats(values: Sequence[float] | np.ndarray) -> list[float]:

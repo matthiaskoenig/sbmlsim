@@ -25,10 +25,12 @@ from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import (
     BLOWUP,
+    OTHER_BODY_WEIGHT,
     PROBE,
     SPECIES_KINDS,
     TOLERANCE_PROBE,
     VOLUME,
+    VOLUME_OF_A_RULE,
     sbml,
     sbml_minutes,
 )
@@ -975,6 +977,78 @@ def test_a_simulation_does_not_depend_on_the_one_before_it() -> None:
     alone = last(simulation)
     np.testing.assert_array_equal(last(other, simulation), alone)
     np.testing.assert_array_equal(last(simulation, simulation), alone)
+
+
+def test_a_simulation_does_not_depend_on_the_body_weight_before_it() -> None:
+    """A simulation after one of another body weight is the same, bitwise (#303).
+
+    roadrunner's resetAll evaluates the initial assignment of the volume of
+    `S` with the body weight of the simulation before, and the amount of `S`
+    differs from the amount as loaded in the last bits; a reset restores the
+    values of the model as loaded.
+    """
+    simulation = Simulation(end=10, steps=20)
+    other = Simulation(end=10, steps=20, preinit_changes={"BW": OTHER_BODY_WEIGHT})
+
+    def last(*simulations: Simulation) -> np.ndarray:
+        model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_A_RULE))
+        model.set_selections(["time", "S", "[S]"])
+        simulator = Simulator(n_workers=1)
+        results = [simulator.run(model, s) for s in simulations]
+        return np.column_stack(
+            [np.asarray(results[-1][k].values, dtype=float) for k in ("S", "[S]")]
+        )
+
+    alone = last(simulation)
+    np.testing.assert_array_equal(last(other, simulation), alone)
+    np.testing.assert_array_equal(last(simulation, other, simulation), alone)
+
+
+def test_a_point_of_a_scan_is_the_point_alone() -> None:
+    """A point of a scan after a point of another body weight is the point alone (#303).
+
+    The serial run of a scan and every worker of a pool run the points of a
+    chunk on one model, so a point which depends on the one before it
+    depends on the chunking.
+    """
+    simulation = Simulation(end=10, steps=20)
+
+    def run(values: list[float]) -> np.ndarray:
+        model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_A_RULE))
+        model.set_selections(["time", "S"])
+        scan = Scan(simulation, [Dimension("bw", values={"BW": values})])
+        return np.asarray(Simulator(n_workers=1).run(model, scan)["S"].values)
+
+    np.testing.assert_array_equal(run([OTHER_BODY_WEIGHT, 75.0])[1], run([75.0])[0])
+
+
+def test_a_failed_point_leaves_nothing_to_the_points_after_it() -> None:
+    """A point which fails in its initialization does not change the later points (#300).
+
+    The first point sets the compartment `V` with the concentrations it keeps
+    and the body weight, then the formula of its pre-initialization divides
+    by zero. The points after it on the same loaded model are the points
+    alone, bitwise.
+    """
+    simulation = Simulation(end=10, steps=20, preinit_changes={"k": "1.5 / (BW - 100)"})
+    selections = ["V", "BW", "F", "[F]", "[R]", "N", "k"]
+
+    def run(points: list[tuple[float, float]]) -> ScanResult:
+        model = RoadrunnerSBMLModel(source=sbml(SPECIES_KINDS))
+        model.set_selections(["time", *selections])
+        values = {"V": [v for v, _ in points], "BW": [bw for _, bw in points]}
+        scan = Scan(simulation, [Dimension("p", values=values)])
+        return Simulator(n_workers=1).run(model, scan, on_error="flag")
+
+    points = [(20.0, 100.0), (30.0, 150.0), (10.0, 60.0)]
+    res = run(points)
+    assert res["status"].values.tolist() == [1, 0, 0]
+    for k in (1, 2):
+        alone = run([points[k]])
+        for selection in selections:
+            np.testing.assert_array_equal(
+                res[selection].values[k], alone[selection].values[0]
+            )
 
 
 def test_a_scan_resizes_the_compartment_of_a_species_of_an_assignment_rule() -> None:
