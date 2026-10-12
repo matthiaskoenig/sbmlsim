@@ -267,6 +267,18 @@ def test_steady_state_of_a_model_with_a_rate_rule_of_a_stoichiometry() -> None:
     assert res["B"][0] == pytest.approx(2.0, rel=1e-6)
 
 
+def test_steady_state_with_another_integrator() -> None:
+    """A steady state counts the states of the model, not of CVODE.
+
+    The tolerance vector of an integrator other than CVODE is empty, so the
+    states of the steady state, counted by it, did not match the rates.
+    """
+    model = RoadrunnerSBMLModel(source=sbml())
+    model.r_loaded.setIntegrator("rk45")
+    res = run(Simulation(end=1, presimulation=SteadyState(), times=[0]), model)
+    assert res["[A]"][0] == pytest.approx(A_STEADY * 2.0, rel=1e-4)
+
+
 def test_steady_state_not_reached_raises() -> None:
     """A model which does not reach a steady state fails with the time."""
     growth = sbml("model g\n  x' = 1\n  x = 0\nend")

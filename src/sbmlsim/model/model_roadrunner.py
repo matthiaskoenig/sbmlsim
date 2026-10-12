@@ -405,9 +405,13 @@ class RoadrunnerSBMLModel(AbstractModel):
         integrator: roadrunner.Integrator = r.getIntegrator()
         vector = _floats(integrator.getAbsoluteToleranceVector())
         integrator.setValue("absolute_tolerance", min(vector, default=1e-12))
-        r.regenerateModel(True)
-        r.timeCourseSelections = selections
-        self._set_absolute_tolerance(self.absolute_tolerance)
+        try:
+            r.regenerateModel(True)
+        finally:
+            # also after a failed regeneration, which the next simulation
+            # repeats
+            r.timeCourseSelections = selections
+            self._set_absolute_tolerance(self.absolute_tolerance)
         self._reset_pending = False
         self._reached = np.inf
 
@@ -763,9 +767,16 @@ class RoadrunnerSBMLModel(AbstractModel):
         return self._volumes_of[1]
 
     def state_ids(self) -> list[str]:
-        """Get the ids of the states which the integrator integrates."""
+        """Get the ids of the states which the integrator integrates.
+
+        The states of roadrunner's state vector, the targets of rate rules
+        first, then the independent floating species, in the order of
+        `getRatesOfChange` and of the tolerance vector of CVODE. They are
+        counted by the rates of change, not by the tolerance vector, which is
+        empty for another integrator than CVODE.
+        """
         r = self.r_loaded
-        n = len(r.getIntegrator().getAbsoluteToleranceVector())
+        n = len(r.getRatesOfChange())
         return [r.model.getStateVectorId(k) for k in range(n)]
 
     def _set_absolute_tolerance(self, tolerance: AbsoluteTolerance) -> None:

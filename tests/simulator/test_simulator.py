@@ -1139,6 +1139,34 @@ def test_a_longer_simulation_of_a_model_with_a_delayed_event_and_a_rule_species(
     )
 
 
+def test_a_failed_regeneration_keeps_the_tolerances(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A regeneration which raises leaves the absolute tolerances of sbmlsim (#305).
+
+    The tolerance is a number during the regeneration; when it raises, the
+    vector is set again, and the next simulation regenerates the model.
+    """
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+    alone = np.asarray(simulator.simulate(_delayed_event_rule(), simulation)["A"])
+    model = _delayed_event_rule()
+    simulator.simulate(model, Simulation(end=1.0, steps=10))
+    integrator = model.r_loaded.getIntegrator()
+    vector = list(integrator.getAbsoluteToleranceVector())
+
+    def fail(self: roadrunner.RoadRunner, *args: Any) -> None:
+        raise RuntimeError("regeneration failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(roadrunner.RoadRunner, "regenerateModel", fail)
+        with pytest.raises(Exception, match="regeneration failed"):
+            simulator.simulate(model, simulation)
+    assert list(integrator.getAbsoluteToleranceVector()) == vector
+    longer = np.asarray(simulator.simulate(model, simulation)["A"])
+    np.testing.assert_array_equal(longer, alone)
+
+
 def test_every_point_of_a_scan_fires_the_events_at_t0() -> None:
     """Every point of a scan of a model with events at t0 is the point alone (#305)."""
     simulator = Simulator(n_workers=1)
