@@ -223,9 +223,10 @@ def test_compiled_relu_preserves_nan_from_finite_overflow(model_path: Path) -> N
     compiled = compile_network(
         model_path, [_hybridization(network, inputs=inputs)], compiled_path(model_path)
     )
+    # the forward pass of numpy is no reference here: a BLAS with fused
+    # multiply-add sums the two overflowing products to inf rather than NaN
+    # (windows), `test_activations_preserve_nan` covers its activations
     assert np.isnan(_load(compiled)["gamma"])
-    with np.errstate(over="ignore", invalid="ignore"):
-        assert np.isnan(network.forward(np.array([2.0, 2.0]))[0][0])
 
 
 def test_a_network_in_an_observable(model_path: Path) -> None:
