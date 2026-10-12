@@ -4,10 +4,12 @@
 compares the results with the expected ones. It answers with a `CaseResult`
 rather than raising: a case whose model cannot be read or whose integration
 fails is a result of the suite like any other, and the report groups the cases
-by exactly these outcomes. A case which passes is simulated a second time on
-its loaded model, as every point of a scan after the first and every
-simulation of an experiment after the first are, and the second simulation
-must equal the first, bitwise (#305).
+by exactly these outcomes. A case which passes is simulated again on its
+loaded model, as every point of a scan after the first and every simulation
+of an experiment after the first are, and these simulations must equal the
+first, bitwise (#305): the same simulation again, the simulation after a
+shorter one, and a steady state before it, compared with that of a fresh
+model, see `repeat_check`.
 """
 
 from __future__ import annotations
@@ -24,9 +26,10 @@ from enum import StrEnum
 import numpy as np
 
 from sbmlsim import parallel
+from sbmlsim.comparison.diff import within_tolerance
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.result import TimecourseResult
-from sbmlsim.simulation import Simulation
+from sbmlsim.simulation import Simulation, SteadyState
 from sbmlsim.simulator import Simulator
 from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import CaseComparison, compare_case
@@ -58,9 +61,9 @@ class CaseStatus(StrEnum):
     `missing_variable` : the simulation ran and did not produce a variable the
     case compares, e.g. a symbol the simulator does not expose.
 
-    `repeat` : the results are within the tolerances, and a second simulation
-    of the loaded model differs from the first or fails, i.e. a simulation
-    depends on the one before it on the same model.
+    `repeat` : the results are within the tolerances, and a simulation of the
+    loaded model after it differs from the first or fails, i.e. a simulation
+    depends on the ones before it on the same model, see `repeat_check`.
 
     `not_read`, `simulation_error` and `missing_variable` are failures of the
     simulator and not of its numerics, so a report separates them: they say
@@ -132,8 +135,39 @@ class CaseResult:
         return f"{self.cid}: {self.status.value}{f' ({self.message})' if self.message else ''}"
 
 
+#: the test tag of the cases whose simultaneous events of the same priority
+#: are executed in a random order, see `repeat_check`
+RANDOM_EVENT_EXECUTION = "RandomEventExecution"
+
+
+def case_simulation(
+    case: SemanticCase, fraction: float = 1.0, steady_state: bool = False
+) -> Simulation:
+    """Get the simulation of a case, as its settings ask.
+
+    Args:
+        case: the case.
+        fraction: the part of its duration, with as many of its steps.
+        steady_state: integrate to a steady state before it, for at most the
+            duration of the case; one which is not reached raises.
+
+    Returns:
+        The simulation.
+    """
+    steps = max(1, round(case.steps * fraction))
+    return Simulation(
+        start=case.start,
+        end=case.start + case.duration * fraction,
+        steps=steps,
+        presimulation=SteadyState(max_time=case.duration) if steady_state else None,
+    )
+
+
 def simulate_case(
-    case: SemanticCase, simulator: Simulator, model: RoadrunnerSBMLModel
+    case: SemanticCase,
+    simulator: Simulator,
+    model: RoadrunnerSBMLModel,
+    simulation: Simulation | None = None,
 ) -> TimecourseResult:
     """Simulate a case with the selections and the output of its settings.
 
@@ -141,6 +175,8 @@ def simulate_case(
         case: the case.
         simulator: the simulator with the tolerances of the test suite.
         model: the model of the case, loaded by the simulator.
+        simulation: the simulation, the one of the settings of the case by
+            default, see `case_simulation`.
 
     Returns:
         The values of the selections of the case at its output times, a `time`
@@ -151,10 +187,7 @@ def simulate_case(
     # method: roadrunner exposes the symbols of a model as attributes of the
     # instance, a model with a species or a parameter named `reset` hides the
     # method of that name (case 00952), see `model_roadrunner.reset_all`
-    simulation = Simulation(
-        start=case.start, end=case.start + case.duration, steps=case.steps
-    )
-    return simulator.simulate(model, simulation)
+    return simulator.simulate(model, simulation or case_simulation(case))
 
 
 def seed_event_order(seed: int = 1) -> None:
@@ -179,12 +212,17 @@ def seed_event_order(seed: int = 1) -> None:
         logger.debug("The random generator of the C library is not seeded: %s", err)
 
 
-def repeat_difference(first: TimecourseResult, second: TimecourseResult) -> str:
-    """Describe how a second simulation differs from the first, bitwise.
+def repeat_difference(
+    first: TimecourseResult,
+    second: TimecourseResult,
+    what: str = "the second simulation of the loaded model",
+) -> str:
+    """Describe how a later simulation differs from the first, bitwise.
 
     Args:
         first: the first simulation.
-        second: the second simulation of the same model.
+        second: the later simulation.
+        what: what the later simulation is, for the description.
 
     Returns:
         An empty string for equal results, `NaN` equal to `NaN`, else what
@@ -193,21 +231,105 @@ def repeat_difference(first: TimecourseResult, second: TimecourseResult) -> str:
     a = np.asarray(first.values, dtype=float)
     b = np.asarray(second.values, dtype=float)
     if first.columns != second.columns or a.shape != b.shape:
-        return (
-            f"the second simulation of the loaded model has the shape {b.shape} "
-            f"and not {a.shape} of the first"
-        )
+        return f"{what} has the shape {b.shape} and not {a.shape} of the first"
     differ = ~((a == b) | (np.isnan(a) & np.isnan(b)))
     if not differ.any():
         return ""
     worst = int(np.argmax(np.where(differ, np.abs(a - b), -1.0).ravel()))
     row, col = divmod(worst, a.shape[1])
     return (
-        f"the second simulation of the loaded model differs from the first in "
-        f"{int(differ.sum())} values, at most {abs(a[row, col] - b[row, col]):.3g} in "
-        f"'{first.columns[col]}' at the time {a[row, 0]:g} "
-        f"({a[row, col]!r} and {b[row, col]!r})"
+        f"{what} differs from the first in {int(differ.sum())} values, at most "
+        f"{abs(a[row, col] - b[row, col]):.3g} in '{first.columns[col]}' at the "
+        f"time {a[row, 0]:g} ({a[row, col]!r} and {b[row, col]!r})"
     )
+
+
+def _steady_state(
+    case: SemanticCase, simulator: Simulator, model: RoadrunnerSBMLModel
+) -> TimecourseResult | str:
+    """Simulate a case after a steady state, the results or why it failed."""
+    seed_event_order()
+    try:
+        return simulate_case(
+            case, simulator, model, case_simulation(case, steady_state=True)
+        )
+    except Exception as err:
+        return type(err).__name__
+
+
+def repeat_check(
+    case: SemanticCase,
+    simulator: Simulator,
+    model: RoadrunnerSBMLModel,
+    first: TimecourseResult,
+) -> str:
+    """Simulate a case again on its loaded model and describe what differs.
+
+    Every point of a scan after the first of its chunk and every simulation of
+    an experiment after the first runs on a model which was simulated before
+    (#292, #303, #305). After the first simulation of a case, which passed:
+
+    1. the same simulation again;
+    2. a simulation of half the duration, then the simulation of the case,
+       which integrates beyond it, so the pending events of the shorter one
+       are discarded (a model with an event with a delay is generated again);
+    3. the simulation with a steady state before it, which integrates without
+       end, compared with that simulation of a fresh model; both may fail to
+       reach a steady state, then with the same error.
+
+    Each must equal the first, bitwise. The C random generator is seeded
+    before every simulation, see `seed_event_order`. A regeneration draws from
+    it as well, so a case of random event execution (the test tag
+    `RandomEventExecution`) is compared with its expected results in 2 and
+    within the tolerances of the case in 3 instead.
+
+    Args:
+        case: the case.
+        simulator: the simulator of the case.
+        model: the loaded model, simulated once.
+        first: the first simulation.
+
+    Returns:
+        An empty string, or what differs.
+    """
+    random = RANDOM_EVENT_EXECUTION in case.test_tags
+
+    seed_event_order()
+    second = simulate_case(case, simulator, model)
+    difference = repeat_difference(first, second)
+    if difference:
+        return difference
+
+    simulate_case(case, simulator, model, case_simulation(case, fraction=0.5))
+    seed_event_order()
+    third = simulate_case(case, simulator, model)
+    difference = repeat_difference(
+        first, third, "a simulation of the loaded model after a shorter one"
+    )
+    if difference and not (random and compare_case(case, third).valid):
+        return difference
+
+    fresh = simulator.load(AbstractModel(source=case.model_path))
+    expected = _steady_state(case, simulator, fresh)
+    observed = _steady_state(case, simulator, model)
+    what = "a steady state after the simulations of the loaded model"
+    if isinstance(expected, str) or isinstance(observed, str):
+        if expected != observed:
+            ref = expected if isinstance(expected, str) else "results"
+            got = observed if isinstance(observed, str) else "results"
+            return f"{what} gives {got}, a steady state of a fresh model {ref}"
+        return ""
+    difference = repeat_difference(expected, observed, what)
+    if difference and random and expected.values.shape == observed.values.shape:
+        agree = within_tolerance(
+            np.asarray(expected.values),
+            np.asarray(observed.values),
+            case.absolute_tolerance,
+            case.relative_tolerance,
+        )
+        if np.all(agree):
+            return ""
+    return difference
 
 
 def map_cases[T](
@@ -329,17 +451,15 @@ def run_case(case: SemanticCase) -> CaseResult:
 
     # the repeat check: the path of every point of a scan after the first
     try:
-        seed_event_order()
-        repeated = simulate_case(case, simulator, model)
+        difference = repeat_check(case, simulator, model, observed)
     except Exception as err:
-        logger.debug("'%s': the second simulation failed: %s", case.cid, err)
+        logger.debug("'%s': a repeated simulation failed: %s", case.cid, err)
         message = str(err).strip().splitlines()[0][:250]
         return result(
             CaseStatus.REPEAT,
-            f"the second simulation of the loaded model failed: {message}",
+            f"a simulation of the loaded model after the first failed: {message}",
             comparison,
         )
-    difference = repeat_difference(observed, repeated)
     if difference:
         return result(CaseStatus.REPEAT, difference, comparison)
     return result(CaseStatus.PASS, comparison=comparison)
