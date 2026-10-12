@@ -30,8 +30,10 @@ class EventSymbols:
     Attributes:
         eid: id of the event.
         trigger: the trigger, a formula of selections, see
-            `sbmlsim.simulator.formula`; `None` if it is not a formula the
-            simulator evaluates, e.g. one with a function definition.
+            `sbmlsim.simulator.formula`, `None` without a trigger. A trigger
+            which is no formula the simulator evaluates, e.g. one with a
+            function definition, is reported by the executor and a change
+            does not fire its event.
         delayed: whether the event has a delay.
         assignments: the selection and the formula of every assignment.
         priority: the priority formula, or `None` without a priority.
@@ -338,7 +340,10 @@ def _selections(
     """Get the math of a model as a formula of selections.
 
     A species whose value is a concentration in the math of the model, i.e. a
-    species without only substance units, is its concentration `[S]`.
+    species without only substance units, is its concentration `[S]`. A
+    number is written without its unit, which libsbml writes after the
+    number (`0.5 dimensionless`, as on every number of a model of
+    sbmlutils), which is no math of PEtab and does not change the value.
 
     Args:
         math: the math.
@@ -349,7 +354,9 @@ def _selections(
     """
     if math is None:
         return None
-    formula = libsbml.formulaToL3String(math)
+    settings = libsbml.L3ParserSettings()
+    settings.setParseUnits(False)
+    formula = libsbml.formulaToL3StringWithSettings(math, settings)
     return _IDENTIFIER.sub(
         lambda m: f"[{m.group(1)}]" if m.group(1) in concentrations else m.group(1),
         formula,

@@ -1,5 +1,6 @@
 """The symbols of a model which a simulation can change."""
 
+import libsbml
 import pytest
 
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
@@ -57,3 +58,26 @@ def test_dependencies_with_sciml_imported() -> None:
     symbols = ModelSymbols.from_sbml(sbml())
     assert symbols.initial_assignment_dependencies is not None
     assert symbols.initial_assignment_dependencies["B"] == frozenset({"b0"})
+
+
+def test_the_math_of_an_event_has_no_units() -> None:
+    """A number with a unit is the number in a formula of the simulator (#293).
+
+    sbmlutils writes a unit on every number, libsbml writes it after the
+    number, e.g. `0.5 dimensionless`, which is no math of PEtab.
+    """
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(
+        sbml(
+            "model units\n  q = 0; X = 0\n"
+            "  E: at (q > 1), t0=false, priority=1: X = 1\nend"
+        )
+    )
+    event: libsbml.Event = doc.getModel().getEvent("E")
+    event.getTrigger().setMath(libsbml.parseL3Formula("q > 0.5 dimensionless"))
+    event.getPriority().setMath(libsbml.parseL3Formula("2 dimensionless"))
+    event.getEventAssignment("X").setMath(libsbml.parseL3Formula("1e-3 mole + q"))
+    assert "dimensionless" in libsbml.writeSBMLToString(doc)
+    (symbols,) = ModelSymbols.from_sbml(libsbml.writeSBMLToString(doc)).events
+    assert symbols.trigger == "q > 0.5"
+    assert symbols.priority == "2"
+    assert symbols.assignments == (("X", "1e-3 + q"),)

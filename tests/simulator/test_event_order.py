@@ -135,3 +135,58 @@ def test_a_priority_the_simulator_cannot_evaluate_counts_as_zero(
     warnings = [r.getMessage() for r in caplog.records if "priority" in r.getMessage()]
     assert len(warnings) == 1
     assert "'unknown'" in warnings[0]
+
+
+#: the event of necrosis of the model of the liver of pvl in pkdb_models: an
+#: assignment rule which a change sets triggers it
+NECROSIS = (
+    "atp = 4; threshold = 1; alt = 1.5; alt_ext = 0;\n"
+    "necrosis := piecewise(1, atp < threshold, 0);\n"
+    "necrosis_event: at (necrosis > 0.5), t0=false: alt_ext = alt, alt = 0;"
+)
+
+
+def test_a_change_fires_an_event_with_numbers_with_units() -> None:
+    """The numbers of the math of sbmlutils carry units (#293)."""
+    doc = _document(NECROSIS, {})
+    event: libsbml.Event = doc.getModel().getEvent("necrosis_event")
+    event.getTrigger().setMath(libsbml.parseL3Formula("necrosis > 0.5 dimensionless"))
+    event.getEventAssignment("alt").setMath(libsbml.parseL3Formula("0 mole"))
+    model = RoadrunnerSBMLModel(
+        source=libsbml.writeSBMLToString(doc),
+        selections=["time", "necrosis", "alt", "alt_ext"],
+    )
+    result = Simulator(n_workers=1).simulate(
+        model,
+        Simulation(end=2, changes=[Change(1, {"threshold": 1000})], times=[0, 1, 2]),
+    )
+    assert result["necrosis"].tolist() == [0, 0, 1, 1]
+    assert result["alt"].tolist() == [1.5, 1.5, 0, 0]
+    assert result["alt_ext"].tolist() == [0, 0, 1.5, 1.5]
+
+
+def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A change cannot fire the event, the warning names it, once per model."""
+    doc = _document(
+        "q=0; X=0;\n"
+        "unknown: at (twice(q) > 1), t0=true: X=1;\n"
+        "known: at (q > 0), t0=true: X=10;",
+        {},
+        functions="function twice(x)\n  2*x\nend",
+    )
+    model = RoadrunnerSBMLModel(
+        source=libsbml.writeSBMLToString(doc), selections=["time", "X"]
+    )
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(
+        end=3, changes=[Change(1, {"q": 1}), Change(2, {"q": 2})], times=[0, 1, 2, 3]
+    )
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+        simulator.simulate(model, simulation)
+        simulator.simulate(model, simulation)
+    warnings = [r.getMessage() for r in caplog.records if "trigger" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "'unknown'" in warnings[0]
+    assert "twice(q) > 1" in warnings[0]

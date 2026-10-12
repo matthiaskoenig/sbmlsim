@@ -149,6 +149,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         self._restore: dict[str, float] = {}
         #: whether the start of a simulation was reported, see `executor`
         self.warned_start: bool = False
+        #: the events whose trigger was reported as no formula the simulator
+        #: evaluates, once per event, see `executor`
+        self.reported_triggers: set[str] = set()
 
         # set selections
         # logger.info("set selections")
