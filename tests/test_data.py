@@ -342,8 +342,12 @@ def test_from_df_ignores_the_unit_of_an_empty_row(junk: str) -> None:
         # an undefined unit, after or as the first unit
         ("value", [1.0, 2.0], ["mg", "xyz"], r"'value'.*'xyz'.*not defined"),
         ("value", [1.0, 2.0], ["xyz", "mg"], r"'value'.*'xyz'.*not defined"),
-        # a unit with a factor
-        ("value", [1.0, 2.0], ["mg", "100*mg"], r"'value'.*'100\*mg'.*factor"),
+        # no unit expression, a factor which is not positive
+        ("value", [1.0, 2.0], ["mg", "mg + g"], r"'value'.*'mg \+ g'.*cannot be read"),
+        ("value", [1.0, 2.0], ["(0*mg)", "mg"], r"'value'.*'\(0\*mg\)'.*factor 0"),
+        ("value", [1.0, 2.0], ["mg", "(-2*mg)"], r"'value'.*'\(-2\*mg\)'.*factor -2"),
+        ("value", [1.0, 2.0], ["(10*degC)"] * 2, r"'value'.*'\(10\*degC\)'.*offset"),
+        ("value", [1.0, 2.0], ["(10*xyz)/hr"] * 2, r"'value'.*'xyz'.*not defined"),
         # values which are no numbers in a column which is converted
         ("time", ["-24|-16", "0"], ["hr", "min"], r"'time'.*\['hr', 'min'\].*number"),
         # a unit which is no string
@@ -385,3 +389,62 @@ def test_from_df_another_unit_has_no_note_of_an_international_unit() -> None:
     with pytest.raises(ValueError, match=r"'cpm'.*not defined") as info:
         DataSet.from_df(df, ureg=ureg)
     assert "international unit" not in str(info.value)
+
+
+@pytest.mark.parametrize(
+    ("unit", "factor", "plain"),
+    [
+        # the units of PK-DB with a factor: creatinine Bauer1982, lisinopril
+        # Shionoiri1990, icg Meijer1988, torasemide Barr1990, talinolol
+        # Gramatte1996, a count of cells
+        ("ml/min/(1.73*m^2)", 1 / 1.73, "ml/min/m^2"),
+        ("micromol/(0.5*hr)", 2.0, "micromol/hr"),
+        ("(10*ml)/hr", 10.0, "ml/hr"),
+        ("µg/(30*cm*min)", 1 / 30, "µg/cm/min"),
+        ("10^9/l", 1e9, "1/l"),
+    ],
+)
+def test_from_df_a_unit_with_a_factor_is_read(
+    unit: str, factor: float, plain: str
+) -> None:
+    """The factor of a unit is a number of the values, with their sd and se (#294)."""
+    from sbmlsim.units import ureg
+
+    df = pd.DataFrame(
+        {"mean": [8.6, 4.0], "sd": [1.3, float("nan")], "unit": [unit, unit]}
+    )
+    before = df.copy()
+    dset = DataSet.from_df(df, ureg=ureg)
+    pd.testing.assert_frame_equal(df, before)
+    assert dset["mean"].tolist() == pytest.approx([8.6 * factor, 4.0 * factor])
+    assert dset["mean_sd"].tolist()[0] == pytest.approx(1.3 * factor)
+    assert dset.get_quantity("mean").to(plain).magnitude.tolist() == pytest.approx(
+        [8.6 * factor, 4.0 * factor]
+    )
+    assert set(dset["mean_unit"]) == {dset.uinfo["mean"]}
+    assert ureg.Quantity(1.0, dset.uinfo["mean"]) == ureg.Quantity(1.0, plain)
+
+
+def test_from_df_a_unit_with_a_factor_among_other_units() -> None:
+    """A factor is converted as another unit of the column (#294)."""
+    from sbmlsim.units import ureg
+
+    first = DataSet.from_df(
+        pd.DataFrame(
+            {"value": [1.0, 2.0, 3.0], "value_unit": ["ml/hr", "(10*ml)/hr", "l/hr"]}
+        ),
+        ureg=ureg,
+    )
+    # the unit of the column is the first unit, as without a factor
+    assert first.uinfo["value"] == "ml/hr"
+    assert first["value"].tolist() == pytest.approx([1.0, 20.0, 3000.0])
+    factor_first = DataSet.from_df(
+        pd.DataFrame(
+            {"value": [1.0, 2.0, 3.0], "value_unit": ["(10*ml)/hr", "ml/hr", "l/hr"]}
+        ),
+        ureg=ureg,
+    )
+    assert factor_first["value"].tolist() == pytest.approx([10.0, 2.0, 3000.0])
+    assert factor_first.get_quantity("value").to("ml/hr").magnitude.tolist() == (
+        pytest.approx([10.0, 2.0, 3000.0])
+    )
