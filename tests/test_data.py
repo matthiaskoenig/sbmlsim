@@ -448,3 +448,85 @@ def test_from_df_a_unit_with_a_factor_among_other_units() -> None:
     assert factor_first.get_quantity("value").to("ml/hr").magnitude.tolist() == (
         pytest.approx([10.0, 2.0, 3000.0])
     )
+
+
+def test_from_df_a_factor_scales_the_range_of_a_row() -> None:
+    """The range of a row is in the unit of the row, cv is relative (#294)."""
+    from sbmlsim.units import ureg
+
+    df = pd.DataFrame(
+        {
+            "median": [8.6],
+            "min": [6.0],
+            "max": [12.0],
+            "cv": [10.0],
+            "unit": ["micromol/(0.5*hr)"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=ureg)
+    assert dset["median"].tolist() == pytest.approx([17.2])
+    assert dset["min"].tolist() == pytest.approx([12.0])
+    assert dset["max"].tolist() == pytest.approx([24.0])
+    assert dset["cv"].tolist() == [10.0]
+    units = DataSet.from_df(
+        pd.DataFrame(
+            {
+                "value": [8.6],
+                "value_min": [6.0],
+                "value_max": [12.0],
+                "value_unit": ["micromol/(0.5*hr)"],
+            }
+        ),
+        ureg=ureg,
+    )
+    assert units["value"].tolist() == pytest.approx([17.2])
+    assert units["value_min"].tolist() == pytest.approx([12.0])
+    assert units["value_max"].tolist() == pytest.approx([24.0])
+
+
+def test_from_df_the_range_of_a_row_is_converted_once() -> None:
+    """The numbers of a row of a unit column are converted together, once (#294).
+
+    `min`, `max`, `sd` and `se` are shared by the mean, the value and the
+    median of a row, which all get the unit of the column.
+    """
+    df = pd.DataFrame(
+        {
+            "mean": [1.0, 2000.0, float("nan")],
+            "median": [1.0, 2000.0, float("nan")],
+            "value": [float("nan"), float("nan"), 3000.0],
+            "sd": [0.1, 100.0, float("nan")],
+            "min": [0.5, 1500.0, float("nan")],
+            "max": [1.5, 2500.0, float("nan")],
+            "cv": [5.0, 5.0, float("nan")],
+            "unit": ["g", "mg", "mg"],
+        }
+    )
+    dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert dset.uinfo["mean"] == dset.uinfo["median"] == dset.uinfo["value"] == "g"
+    assert dset["mean"].tolist() == pytest.approx([1.0, 2.0, float("nan")], nan_ok=True)
+    assert dset["median"].tolist() == pytest.approx(
+        [1.0, 2.0, float("nan")], nan_ok=True
+    )
+    assert dset["value"].tolist() == pytest.approx(
+        [float("nan"), float("nan"), 3.0], nan_ok=True
+    )
+    assert dset["mean_sd"].tolist() == pytest.approx(
+        [0.1, 0.1, float("nan")], nan_ok=True
+    )
+    assert dset["min"].tolist() == pytest.approx([0.5, 1.5, float("nan")], nan_ok=True)
+    assert dset["max"].tolist() == pytest.approx([1.5, 2.5, float("nan")], nan_ok=True)
+    assert dset["cv"].tolist() == pytest.approx([5.0, 5.0, float("nan")], nan_ok=True)
+    units = DataSet.from_df(
+        pd.DataFrame(
+            {
+                "value": [1.0, 2000.0],
+                "value_min": [0.5, 1500.0],
+                "value_max": [1.5, 2500.0],
+                "value_unit": ["g", "mg"],
+            }
+        ),
+        ureg=UnitRegistry(on_redefinition="ignore"),
+    )
+    assert units["value_min"].tolist() == pytest.approx([0.5, 1.5])
+    assert units["value_max"].tolist() == pytest.approx([1.5, 2.5])

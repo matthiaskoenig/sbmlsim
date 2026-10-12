@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
@@ -725,31 +725,38 @@ def _own_units[T: DataSet | DataSeries](result: T) -> T:
 
 def _unify_units(
     df: pd.DataFrame,
-    value_key: str,
+    value_keys: Sequence[str],
     unit_key: str,
     ureg: UnitRegistry,
-    error_keys: list[str],
+    error_keys: Sequence[str],
+    name: str,
 ) -> str | None:
-    """Convert the rows of a column to the unit of its first row with a value.
+    """Convert the rows of a unit column to the unit of its first row with a value.
 
-    The rows without a value or without a unit are ignored (a column without any
-    value uses the rows which have a unit). Rows with another unit are converted in
-    place, the value, the error columns `error_keys` and the unit column, and the
-    unit of the first row is returned (None if no row has a unit). A numeric factor
-    of a unit (`ml/min/(1.73*m^2)`, `micromol/(0.5*hr)`, as PK-DB writes them) is a
-    number of the values: the rows of such a unit are multiplied by it, and if the
-    unit of the first row has one, the column gets the unit without the factor.
+    The unit column `unit_key` is the unit of the numbers of a row: the values
+    `value_keys` and the columns `error_keys` (sd, se, min, max). The rows without
+    a value or without a unit are ignored (a column without any value uses the rows
+    which have a unit). Rows with another unit are converted in place, all their
+    numbers at once and the unit column, and the unit of the first row is returned
+    (None if no row has a unit). A numeric factor of a unit (`ml/min/(1.73*m^2)`,
+    `micromol/(0.5*hr)`, as PK-DB writes them) is a number of the values: the rows
+    of such a unit are multiplied by it, and if the unit of the first row has one,
+    the column gets the unit without the factor.
 
-    :raises ValueError: naming the column and its units, if a unit cannot be read
-        (no string, undefined, a factor which is no positive number) or converted
-        into the first unit by a factor, or if a column which is converted has
-        values which are no numbers
+    :raises ValueError: naming the column `name` and its units, if a unit cannot be
+        read (no string, undefined, a factor which is no positive number) or
+        converted into the first unit by a factor, or if a column which is
+        converted has values which are no numbers
     """
+    value_keys = [key for key in value_keys if key in df.columns]
     has_unit = df[unit_key].notna()
-    present = has_unit & df[value_key].notna()
-    # a row which carries a number (a value, an sd or an se) needs its unit, the unit
-    # of an empty row is ignored
-    numbers = df[value_key].notna()
+    values = pd.Series(False, index=df.index)
+    for key in value_keys:
+        values = values | df[key].notna()
+    present = has_unit & values
+    # a row which carries a number (a value, an sd, an se, a min or a max) needs its
+    # unit, the unit of an empty row is ignored
+    numbers = values
     for key in error_keys:
         if key in df.columns:
             numbers = numbers | df[key].notna()
@@ -766,7 +773,7 @@ def _unify_units(
     # every unit is read once, so an error names the unit which is wrong; the
     # unit is read also if it is the only one, so a unit the registry does not
     # define raises here and not when the data is used
-    parsed = {unit: _parse_unit(value_key, unit, units, ureg) for unit in units}
+    parsed = {unit: _parse_unit(name, unit, units, ureg) for unit in units}
     target_factor, target_unit = parsed[target]
     # the unit of the column: the first unit, without its factor if it has one
     column_unit = str(target) if target_factor == 1.0 else _unit_string(target_unit)
@@ -784,12 +791,12 @@ def _unify_units(
         except pint.errors.PintError as err:
             dimensions = {u: str(parsed[u][1].dimensionality) for u in units}
             raise ValueError(
-                f"Column '{value_key}' has the units {list(units)}, which cannot "
+                f"Column '{name}' has the units {list(units)}, which cannot "
                 f"be converted into '{target}' (dimensions {dimensions}): {err}"
             ) from err
         if zero != 0.0:
             raise ValueError(
-                f"Column '{value_key}' has the units {list(units)}, the unit "
+                f"Column '{name}' has the units {list(units)}, the unit "
                 f"'{unit}' has an offset to '{target}' (e.g. degC) and cannot be "
                 "converted by a factor, use one unit for the column"
             )
@@ -798,11 +805,11 @@ def _unify_units(
 
     logger.info(
         "Column '%s' has the units %s, the rows are converted to '%s'",
-        value_key,
+        name,
         list(units),
         column_unit,
     )
-    keys = [key for key in [value_key, *error_keys] if key in df.columns]
+    keys = [key for key in [*value_keys, *error_keys] if key in df.columns]
     for key in keys:
         try:
             df[key] = df[key].astype(float)
@@ -860,8 +867,10 @@ def _parse_unit(
     # pint raises errors of many kinds for a unit it cannot read: its own, a
     # ValueError for a factor, a TypeError or the TokenError of its parser
     except Exception as err:
-        # the ValueError of `parse_units` for an expression with a factor, e.g.
-        # not the TypeError of `mg + g`, which is no unit expression
+        # only a unit expression with a factor is read below: pint's
+        # `parse_units` raises a ValueError on its scaling factor, while other
+        # errors stay errors, e.g. the TypeError of `mg + g`, which is no unit
+        # expression
         if not (isinstance(err, ValueError) and "scaling factor" in str(err)):
             raise _unit_error(value_key, unit, units, err) from err
     try:
@@ -962,16 +971,23 @@ class DataSet(pd.DataFrame):
 
         The DataFrame can have various formats which should be handled.
         Standard formats are
-        1. units annotations based on '*_unit' columns, with additional '*_sd'
-           or '*_se' units
+        1. units annotations based on '*_unit' columns, which apply to the
+           column and its '*_sd', '*_se', '*_min' and '*_max' columns
         2. units annotations based on 'unit' column which is applied on
-           'mean', 'value', 'sd' and 'se' columns
+           'mean', 'value' and 'median', their '*_sd', '*_se', '*_min' and
+           '*_max' columns, and 'sd', 'se', 'min' and 'max' ('cv' is relative)
 
         The unit of a column is the unit of its first row with a value; the unit
-        of a row without a number (no value, sd or se) is ignored, and a column
-        without any unit has no unit. Rows with another unit of the same
-        dimension are converted to it, their values, sd and se, and their unit
-        column is rewritten. The data frame of the caller is not changed.
+        of a row without a number (no value, sd, se, min or max) is ignored, and a
+        column without any unit has no unit. Rows with another unit of the same
+        dimension are converted to it, all their numbers, and their unit column is
+        rewritten; the rows of a 'unit' column are converted in one pass, so mean,
+        value and median get one unit and the numbers they share are converted
+        once. A unit with a numeric factor, as PK-DB writes it
+        (`ml/min/(1.73*m^2)`, `micromol/(0.5*hr)`), is read as a number of the
+        values: the numbers of its rows are multiplied by the factor, and a column
+        whose first unit has a factor gets the unit without it. The data frame of
+        the caller is not changed.
 
         :param df: pandas.DataFrame
         :param ureg: the unit registry
@@ -979,11 +995,11 @@ class DataSet(pd.DataFrame):
 
         :return: dataset
 
-        :raises ValueError: naming the column and its units, if a unit of a column
-            with several units cannot be read (no string, undefined or with a
-            factor), cannot be converted by a factor (another dimension or an
-            offset such as degC), or if such a column has values which are no
-            numbers
+        :raises ValueError: naming the column and its units, if a unit cannot be
+            read (no string, undefined, a factor which is no positive number or a
+            factor of a unit with an offset), cannot be converted by a factor
+            (another dimension or an offset such as degC), or if a column which is
+            converted has values which are no numbers
         """
         if not isinstance(ureg, UnitRegistry):
             raise ValueError(
@@ -1014,10 +1030,11 @@ class DataSet(pd.DataFrame):
                     continue
                 unit = _unify_units(
                     df,
-                    item_key,
+                    [item_key],
                     key,
                     ureg,
-                    [f"{item_key}_sd", f"{item_key}_se"],
+                    [f"{item_key}_{e}" for e in ("sd", "se", "min", "max")],
+                    name=item_key,
                 )
                 if unit is None:
                     logger.error("Column '%s' units are missing", key)
@@ -1025,42 +1042,63 @@ class DataSet(pd.DataFrame):
                     all_udict[item_key] = unit
 
             elif key == "unit":
-                # add unit to "mean" and "value"
-                for key in ["mean", "value", "median"]:
-                    if (key in df.columns) and f"{key}_unit" not in df.columns:
-                        # FIXME: probably not a good idea to add columns while iterating over them
-                        df[f"{key}_unit"] = df.unit
-                        error_keys = [f"{key}_sd", f"{key}_se"]
-                        if key == "mean":
-                            error_keys += ["sd", "se"]
-                        unit = _unify_units(df, key, f"{key}_unit", ureg, error_keys)
-                        if unit is None:
-                            logger.error("Column 'unit' has no unit for '%s'", key)
-                        else:
-                            udict[key] = unit
+                # the unit of a row is the unit of all of its numbers: the mean,
+                # the value and the median, their sd and se, and the range min and
+                # max of the row (cv is relative). The rows are converted in one
+                # pass, so a number the statistics of a row share is converted
+                # once, and the statistics get one unit.
+                stats = [
+                    k
+                    for k in ("mean", "value", "median")
+                    if k in df.columns and f"{k}_unit" not in df.columns
+                ]
+                unit = None
+                if stats:
+                    unit = _unify_units(
+                        df,
+                        stats,
+                        "unit",
+                        ureg,
+                        [
+                            *(f"{k}_{e}" for k in stats for e in ("sd", "se")),
+                            *(f"{k}_{e}" for k in stats for e in ("min", "max")),
+                            "sd",
+                            "se",
+                            "min",
+                            "max",
+                        ],
+                        name="unit",
+                    )
+                for key in stats:
+                    # FIXME: probably not a good idea to add columns while iterating over them
+                    df[f"{key}_unit"] = df.unit
+                    if unit is None:
+                        logger.error("Column 'unit' has no unit for '%s'", key)
+                    else:
+                        udict[key] = unit
 
-                        # rename the sd and se columns to mean_sd and mean_se
-                        if key == "mean":
-                            for err_key in ["sd", "se"]:
-                                if (
-                                    err_key not in df.columns
-                                    and f"mean_{err_key}" in df.columns
-                                ):
-                                    df[err_key] = df[f"mean_{err_key}"]
+                    # rename the sd and se columns to mean_sd and mean_se
+                    if key == "mean":
+                        for err_key in ["sd", "se"]:
+                            if (
+                                err_key not in df.columns
+                                and f"mean_{err_key}" in df.columns
+                            ):
+                                df[err_key] = df[f"mean_{err_key}"]
 
-                                if f"mean_{err_key}" in df.columns:
-                                    # remove existing mean_sd column
-                                    del df[f"mean_{err_key}"]
-                                    logger.warning(
-                                        "Removing existing column: 'mean_%s' from DataSet. Column should be named: '%s'",
-                                        err_key,
-                                        err_key,
-                                    )
-
-                                df.rename(
-                                    columns={f"{err_key}": f"mean_{err_key}"},
-                                    inplace=True,
+                            if f"mean_{err_key}" in df.columns:
+                                # remove existing mean_sd column
+                                del df[f"mean_{err_key}"]
+                                logger.warning(
+                                    "Removing existing column: 'mean_%s' from DataSet. Column should be named: '%s'",
+                                    err_key,
+                                    err_key,
                                 )
+
+                            df.rename(
+                                columns={f"{err_key}": f"mean_{err_key}"},
+                                inplace=True,
+                            )
 
                 # remove unit column
                 del df["unit"]
