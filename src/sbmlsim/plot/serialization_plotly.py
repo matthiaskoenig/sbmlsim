@@ -55,6 +55,7 @@ from sbmlsim.plot.points import (
     BandLine,
     Line,
     PointStyle,
+    band_label,
     band_lines,
     curve_lines,
     cycle_color,
@@ -518,7 +519,6 @@ class PlotlyFigureSerializer:
         xaxis = plot.xaxis if plot.xaxis else Axis()
         yaxis = plot.yaxis if plot.yaxis else Axis()
 
-        ranges: set[str] = set()
         drawn: list[tuple[Any, bool, bool]] = []
         for abstract_curve in sorted(
             [*plot.curves, *plot.areas, *plot.bands],
@@ -532,7 +532,7 @@ class PlotlyFigureSerializer:
                     plot.bands.index(abstract_curve)
                 )
                 traces = cls._band_traces(
-                    experiment, abstract_curve, xaxis.unit, yunit, color, ranges
+                    experiment, abstract_curve, xaxis.unit, yunit, color
                 )
             else:
                 area = isinstance(abstract_curve, ShadedArea)
@@ -723,13 +723,13 @@ class PlotlyFigureSerializer:
         xunit: str | None,
         yunit: str | None,
         color: str,
-        ranges: set[str],
     ) -> list[tuple[Any, bool]]:
         """Convert a band into traces: per point the quantiles and the median.
 
-        The legend has one entry per point (the median, else the upper
-        quantile), or one of the name of a band with a colour bar, and a grey
-        entry of the quantile range once per panel and range, like matplotlib.
+        The legend has one entry per point, its area in its colour labelled
+        `<name> (<low>-<high> %)` (`<name>, <point label> (<low>-<high> %)`
+        with `over`), or one of the name of a band with a colour bar, in the
+        middle colour of the map, like matplotlib (#302).
 
         Args:
             experiment: the experiment the data is resolved against.
@@ -737,8 +737,6 @@ class PlotlyFigureSerializer:
             xunit: the unit of the x axis.
             yunit: the unit of the y axis of the band.
             color: the colour of a band without `over`.
-            ranges: the quantile ranges of the panel with a legend entry, which
-                this one is added to.
 
         Returns:
             The traces, each with whether it belongs to the area, which is
@@ -752,7 +750,6 @@ class PlotlyFigureSerializer:
         bands: list[BandLine] = band_lines(
             sid, band.over, band.across, band.quantiles, x, y
         )
-        low, high = (f"{100 * q:g}" for q in band.quantiles)
         styles = None
         if band.over:
             task = band.y.task_id
@@ -763,10 +760,10 @@ class PlotlyFigureSerializer:
         traces: list[tuple[Any, bool]] = []
         for b in bands:
             c = to_hex(styles.colors[b.index[0]] if styles else color)
-            if styles:
-                name = f"{band.name}, {styles.labels[0][b.index[0]]}"
-            else:
-                name = f"{band.name} median" if band.median else band.name
+            name = band_label(
+                f"{band.name}, {styles.labels[0][b.index[0]]}" if styles else band.name,
+                band.quantiles,
+            )
             edge = {
                 "color": _rgba(c, min(1.0, 2 * band.alpha)),
                 "width": _BAND_EDGE_WIDTH,
@@ -796,7 +793,7 @@ class PlotlyFigureSerializer:
                         fillcolor=_rgba(c, band.alpha),
                         name=name,
                         legendgroup=sid,
-                        showlegend=show and not band.median,
+                        showlegend=show,
                         hoverinfo="skip",
                     ),
                     True,
@@ -812,30 +809,27 @@ class PlotlyFigureSerializer:
                             line={"color": c, "width": 2},
                             name=name,
                             legendgroup=sid,
-                            showlegend=show,
+                            showlegend=False,
                         ),
                         False,
                     )
                 )
         if styles is not None and styles.colorbar and band.name:
-            traces.append(
-                (
-                    _legend_trace(band.name, styles.middle, "solid", None, group=sid),
-                    False,
-                )
-            )
-        quantiles = f"{low}-{high} %"
-        if quantiles not in ranges:
-            ranges.add(quantiles)
+            middle = to_hex(styles.middle)
             traces.append(
                 (
                     go.Scatter(
                         x=[None],
                         y=[None],
                         mode="lines",
-                        line={"color": _rgba("0.5", max(band.alpha, 0.3)), "width": 8},
-                        name=quantiles,
-                        legendgroup=f"{sid}__range",
+                        line={
+                            "color": _rgba(middle, min(1.0, 2 * band.alpha)),
+                            "width": _BAND_EDGE_WIDTH,
+                        },
+                        fill="toself",
+                        fillcolor=_rgba(middle, band.alpha),
+                        name=band_label(band.name, band.quantiles),
+                        legendgroup=sid,
                         showlegend=True,
                         hoverinfo="skip",
                     ),

@@ -221,7 +221,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         A compartment keeps the concentration of the species whose initial
         value is a concentration, as at the initialization of SBML, and of a
         species which is set as a concentration, and the amount of every
-        other species.
+        other species; a species of an assignment rule follows its rule.
 
         Args:
             assignments: the pre-initialization assignments of a plan. A
@@ -301,10 +301,14 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         self._reset_pending = False
 
-    def _record(self, key: str) -> None:
-        """Record the value an initialization replaces, see `initialize`."""
-        if key not in self._restore:
-            self._restore[key] = float(self.r_loaded.getValue(key))
+    def _replaced(self, key: str, value: float) -> None:
+        """Record the value an initialization replaced, see `initialize`.
+
+        A value is recorded once it is replaced, never before: a value which
+        roadrunner refuses to set would be restored by the next
+        initialization, which would fail on it as well (#300).
+        """
+        self._restore.setdefault(key, value)
 
     def _set(self, selection: str, value: float) -> None:
         """Set a value in an initialization and record the value it replaces.
@@ -312,8 +316,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         A species is recorded by its amount, which does not depend on the
         compartment, so the records restore in any order.
         """
-        self._record(self.symbols.entity(selection))
-        self.r_loaded.setValue(selection, value)
+        r = self.r_loaded
+        entity = self.symbols.entity(selection)
+        replaced = float(r.getValue(entity))
+        r.setValue(selection, value)
+        self._replaced(entity, replaced)
 
     def _set_compartment(
         self,
@@ -332,18 +339,21 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         r = self.r_loaded
         symbols = self.symbols
+        # a species of an assignment rule follows its rule, roadrunner refuses
+        # to set it (#300)
         kept = {
             s: r.getValue(f"[{s}]")
             for s, c in symbols.species_compartment.items()
             if c == compartment
             and s not in amounts
+            and s not in symbols.assignment_rules
             and (s in symbols.initial_concentration or s in concentrations)
         }
-        for species in kept:
-            self._record(species)
+        replaced = {species: float(r.getValue(species)) for species in kept}
         self._set(compartment, value)
         for species, concentration in kept.items():
             r.setValue(f"[{species}]", concentration)
+            self._replaced(species, replaced[species])
 
     @staticmethod
     def from_abstract_model(

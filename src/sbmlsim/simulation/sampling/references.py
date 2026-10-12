@@ -85,7 +85,8 @@ def parameters_of(
 
     Args:
         model: the model, loaded or a source.
-        species: list the species as well (their amounts).
+        species: list the species as well (their amounts), except the
+            species of an assignment rule, which a change cannot set.
         exclude: an id, ids, or a function which is true for an id, to leave out.
         exclude_zero: leave out a target whose reference is below `ZERO` in
             magnitude, which a relative change does not change.
@@ -100,7 +101,10 @@ def parameters_of(
     sbml_model: libsbml.Model = doc.getModel()
     ids = [p.getId() for p in sbml_model.getListOfParameters() if p.getConstant()]
     if species:
-        ids.extend(s.getId() for s in sbml_model.getListOfSpecies())
+        rules = loaded.symbols.assignment_rules
+        ids.extend(
+            s.getId() for s in sbml_model.getListOfSpecies() if s.getId() not in rules
+        )
     helpers = set(loaded.parameters)
     excluded: Callable[[str], bool]
     if exclude is None:

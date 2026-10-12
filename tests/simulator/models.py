@@ -100,6 +100,33 @@ model volume
 end
 """
 
+#: every kind of species in a compartment whose size follows the body weight
+#: `BW` by an initial assignment: a species of a reaction `F`, of an
+#: assignment rule as a concentration `R` and as an amount `NR`, of a rate rule
+#: `RR`, of an initial assignment `I`, a boundary species `B` and an amount
+#: species `N`; roadrunner refuses to set a species of an assignment rule
+#: (#300)
+SPECIES_KINDS = """
+model species_kinds
+  BW = 75
+  compartment V
+  V = 0.2*BW
+  species F in V = 2
+  species R in V
+  R := 3*F
+  species RR in V = 1
+  RR' = 0.1
+  species $B in V = 4
+  species I in V
+  I = 2*F
+  substanceOnly species N in V = 6
+  substanceOnly species NR in V
+  NR := 2*F
+  k = 0.1
+  J: F -> ; k*F
+end
+"""
+
 
 #: a species which grows as `S' = k S^2` and goes to infinity at the time
 #: `1 / (k S0)`: the integration up to the time 1 fails for `k = 2` and works

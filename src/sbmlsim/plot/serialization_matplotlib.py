@@ -36,6 +36,7 @@ from sbmlsim.plot.points import (
     BandLine,
     Line,
     PointStyle,
+    band_label,
     band_lines,
     curve_lines,
     cycle_color,
@@ -463,15 +464,15 @@ class MatplotlibFigureSerializer:
         band: Band,
         bands: list[BandLine],
         color: str,
-        ranges: set[str],
     ) -> PointStyle | None:
         """Draw the quantile areas and medians of a band, one per point of `over`.
 
         The boundaries of the area are thin lines, which the placement of a
         legend takes into account, unlike an area. The legend has one entry
-        per point (the median, else the upper boundary), or one of the name of
-        a band with a colour bar, and a grey entry of the quantile range once
-        per panel and range.
+        per point, its area in its colour labelled `<name> (<low>-<high> %)`
+        (`<name>, <point label> (<low>-<high> %)` with `over`), or one of the
+        name of a band with a colour bar, in the middle colour of the map
+        (#302).
 
         Args:
             ax: the axes the band is drawn on.
@@ -479,13 +480,10 @@ class MatplotlibFigureSerializer:
             band: the band.
             bands: its quantiles and medians, one per point of `over`.
             color: the colour of a band without `over`.
-            ranges: the quantile ranges of the panel with a legend entry, which
-                this one is added to.
 
         Returns:
             The style of the points if they get a colour bar, else `None`.
         """
-        low, high = (f"{100 * q:g}" for q in band.quantiles)
         styles = None
         if band.over:
             task = band.y.task_id
@@ -495,34 +493,37 @@ class MatplotlibFigureSerializer:
         show = styles is None or not styles.colorbar
         for b in bands:
             c = styles.colors[b.index[0]] if styles else color
-            if styles:
-                label = f"{band.name}, {styles.labels[0][b.index[0]]}"
-            else:
-                label = f"{band.name} median" if band.median else band.name
-            label = label if show else "_nolegend_"
-            ax.fill_between(b.x, b.low, b.high, color=c, alpha=band.alpha, linewidth=0)
+            name = (
+                f"{band.name}, {styles.labels[0][b.index[0]]}" if styles else band.name
+            )
+            ax.fill_between(
+                b.x,
+                b.low,
+                b.high,
+                color=c,
+                alpha=band.alpha,
+                linewidth=0,
+                label=band_label(name, band.quantiles) if show else "_nolegend_",
+            )
             edge: dict[str, Any] = {
                 "color": c,
                 "linewidth": 0.6,
                 "alpha": min(1.0, 2 * band.alpha),
+                "label": "_nolegend_",
             }
-            ax.plot(b.x, b.low, label="_nolegend_", **edge)
-            ax.plot(b.x, b.high, label="_nolegend_" if band.median else label, **edge)
+            ax.plot(b.x, b.low, **edge)
+            ax.plot(b.x, b.high, **edge)
             if band.median:
-                ax.plot(b.x, b.median, color=c, linewidth=2.0, label=label)
+                ax.plot(b.x, b.median, color=c, linewidth=2.0, label="_nolegend_")
         if styles is not None and styles.colorbar and band.name:
-            ax.plot([], [], color=styles.middle, linewidth=2.0, label=band.name)
-        quantiles = f"{low}-{high} %"
-        if quantiles not in ranges:
-            ranges.add(quantiles)
             ax.fill_between(
                 [],
                 [],
                 [],
-                color="0.5",
+                color=styles.middle,
                 alpha=band.alpha,
                 linewidth=0,
-                label=quantiles,
+                label=band_label(band.name, band.quantiles),
             )
         return styles if styles is not None and styles.colorbar else None
 
@@ -630,13 +631,12 @@ class MatplotlibFigureSerializer:
             # memory for stacked bars
             stacks: dict[str, Any] = {}
             # the colour bars of the panel are placed after every panel got
-            # its labels; the quantile ranges with a legend entry
+            # its labels
             panel = _Panel(
                 plot=plot, axes=axes, first=cidx, last=cidx + subplot.col_span - 1
             )
             panels.append(panel)
             pending = panel.pending
-            ranges: set[str] = set()
 
             # plot ordered curves
             abstract_curves: list[AbstractCurve] = sorted(
@@ -708,7 +708,6 @@ class MatplotlibFigureSerializer:
                         band,
                         bands,
                         band.color or cycle_color(plot.bands.index(band)),
-                        ranges,
                     )
                     if styles is not None:
                         pending.append(styles)

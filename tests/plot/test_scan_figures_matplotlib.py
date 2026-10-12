@@ -9,9 +9,10 @@ import pytest
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.collections import QuadMesh
-from matplotlib.colors import LogNorm, to_hex
+from matplotlib.colors import LogNorm, to_hex, to_rgba
 from matplotlib.figure import Figure as FigureMPL
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 from matplotlib.transforms import Bbox
 
 from sbmlsim.data import Data
@@ -58,6 +59,12 @@ def _axes(
 def _labels(ax: Axes) -> list[str]:
     legend = ax.get_legend()
     return [] if legend is None else [t.get_text() for t in legend.get_texts()]
+
+
+def _rgb(color: Any) -> str:
+    """The colour of an area, an RGBA of one or more rows, as hex without alpha."""
+    r, g, b, _ = np.asarray(color, dtype=float).reshape(-1, 4)[0]
+    return to_hex((float(r), float(g), float(b)))
 
 
 def _data_lines(ax: Axes) -> list[Line2D]:
@@ -198,13 +205,13 @@ def test_a_band_with_its_median(experiment: SimulationExperiment) -> None:
             name="C",
         ),
     )
-    assert len(ax.collections) == 2  # the area and the empty one of the legend
+    assert len(ax.collections) == 1  # the area, which is the legend entry
     _low, _high, median = _data_lines(ax)
     y = Data("[C]", task="task_draws").get_data(experiment, to_units="mg/l")
     np.testing.assert_allclose(
         np.asarray(median.get_ydata()), np.nanmedian(y.values, axis=0)
     )
-    assert sorted(_labels(ax)) == ["5-95 %", "C median"]
+    assert _labels(ax) == ["C (5-95 %)"]
 
 
 def test_a_band_per_dose(experiment: SimulationExperiment) -> None:
@@ -218,7 +225,7 @@ def test_a_band_per_dose(experiment: SimulationExperiment) -> None:
             name="C",
         ),
     )
-    assert len(ax.collections) == 4  # three areas and the one of the legend
+    assert len(ax.collections) == 3  # three areas
 
 
 def test_a_bar_curve_over_a_dimension_raises(experiment: SimulationExperiment) -> None:
@@ -260,7 +267,7 @@ def _figure(
     return fig
 
 
-def test_a_band_per_dose_has_an_entry_per_point_and_one_for_the_range(
+def test_a_band_per_dose_has_an_entry_per_point(
     experiment: SimulationExperiment,
 ) -> None:
     _, ax = _axes(
@@ -273,15 +280,14 @@ def test_a_band_per_dose_has_an_entry_per_point_and_one_for_the_range(
             name="C",
         ),
     )
-    assert sorted(_labels(ax)) == [
-        "5-95 %",
-        "C, PODOSE = 100 mg",
-        "C, PODOSE = 200 mg",
-        "C, PODOSE = 50 mg",
+    assert _labels(ax) == [
+        "C, PODOSE = 50 mg (5-95 %)",
+        "C, PODOSE = 100 mg (5-95 %)",
+        "C, PODOSE = 200 mg (5-95 %)",
     ]
 
 
-def test_a_band_without_median_names_the_upper_line(
+def test_a_band_without_median_names_its_area(
     experiment: SimulationExperiment,
 ) -> None:
     _, ax = _axes(
@@ -295,24 +301,17 @@ def test_a_band_without_median_names_the_upper_line(
             median=False,
         ),
     )
-    assert sorted(_labels(ax)) == [
-        "5-95 %",
-        "C, PODOSE = 100 mg",
-        "C, PODOSE = 200 mg",
-        "C, PODOSE = 50 mg",
+    assert _labels(ax) == [
+        "C, PODOSE = 50 mg (5-95 %)",
+        "C, PODOSE = 100 mg (5-95 %)",
+        "C, PODOSE = 200 mg (5-95 %)",
     ]
-    named = [ln for ln in ax.get_lines() if not str(ln.get_label()).startswith("_")]
-    assert len(named) == 3
-    for line in named:
-        peak = float(np.max(np.asarray(line.get_ydata(), dtype=float)))
-        same = [
-            o
-            for o in ax.get_lines()
-            if o.get_color() == line.get_color() and o is not line
-        ]
-        assert all(
-            float(np.max(np.asarray(o.get_ydata(), dtype=float))) <= peak for o in same
-        )
+    assert all(str(line.get_label()).startswith("_") for line in ax.get_lines())
+    legend = ax.get_legend()
+    assert legend is not None
+    areas = [_rgb(c.get_facecolor()) for c in ax.collections]
+    handles = [h for h in legend.legend_handles if isinstance(h, Patch)]
+    assert [_rgb(h.get_facecolor()) for h in handles] == areas
 
 
 def test_a_band_on_the_right_axis(experiment: SimulationExperiment) -> None:
@@ -521,7 +520,12 @@ def test_a_named_band_with_a_colour_bar_keeps_its_legend_entry(
             name="C",
         ),
     )
-    assert sorted(_labels(ax)) == ["5-95 %", "C"]
+    assert _labels(ax) == ["C (5-95 %)"]
+    legend = ax.get_legend()
+    assert legend is not None
+    (handle,) = legend.legend_handles
+    assert isinstance(handle, Patch)
+    assert to_hex(handle.get_facecolor()) == to_hex(point_colormap(None)(0.5))
     assert fig.axes[1].get_ylabel() == "PODOSE [mg]"
 
 
@@ -610,20 +614,59 @@ def test_bands_without_a_colour_take_the_colour_cycle(
     experiment: SimulationExperiment,
 ) -> None:
     _, ax = _axes(experiment, _two_bands)
-    medians = {
-        str(line.get_label()): to_hex(line.get_color())
-        for line in ax.get_lines()
-        if str(line.get_label()).endswith("median")
+    areas = {
+        str(area.get_label()): _rgb(area.get_facecolor()) for area in ax.collections
     }
-    assert medians == {"a median": to_hex("C0"), "b median": to_hex("C1")}
-    assert _labels(ax) == ["a median", "5-95 %", "b median", "25-75 %"]
+    assert areas == {"a (5-95 %)": to_hex("C0"), "b (25-75 %)": to_hex("C1")}
+    medians = [
+        to_hex(ln.get_color()) for ln in ax.get_lines() if ln.get_linewidth() == 2
+    ]
+    assert medians == [to_hex("C0"), to_hex("C1")]
+    assert _labels(ax) == ["a (5-95 %)", "b (25-75 %)"]
 
 
-def test_the_range_entry_appears_once_per_range(
+def test_two_bands_of_one_range_have_an_entry_each(
     experiment: SimulationExperiment,
 ) -> None:
     _, ax = _axes(experiment, lambda p: _two_bands(p, quantiles=(0.05, 0.95)))
-    assert _labels(ax) == ["a median", "5-95 %", "b median"]
+    assert _labels(ax) == ["a (5-95 %)", "b (5-95 %)"]
+
+
+def _bands_of_two_colours(plot: Plot, median: bool) -> None:
+    """A black band of 0-100 %, a blue one of 5-95 % and a black curve (#302)."""
+    for name, color, quantiles in [
+        ("a", "black", (0.0, 1.0)),
+        ("b", "blue", (0.05, 0.95)),
+    ]:
+        plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+            quantiles=quantiles,
+            median=median,
+            name=name,
+            color=color,
+        )
+    _curve(plot, "task_doses", (), sel={"dose": 0}, label="sim", color="black")
+
+
+@pytest.mark.parametrize("median", [True, False], ids=["median", "no median"])
+def test_the_legend_has_one_entry_per_band_with_its_area_in_its_colour(
+    experiment: SimulationExperiment, median: bool
+) -> None:
+    """A band has one legend entry, its area in its colour, with its quantiles (#302)."""
+    _, ax = _axes(experiment, lambda p: _bands_of_two_colours(p, median))
+    legend = ax.get_legend()
+    assert legend is not None
+    assert _labels(ax) == ["a (0-100 %)", "b (5-95 %)", "sim"]
+    a, b, _ = legend.legend_handles
+    assert isinstance(a, Patch) and isinstance(b, Patch)
+    assert to_hex(a.get_facecolor(), keep_alpha=True) == to_hex(
+        to_rgba("black", 0.3), keep_alpha=True
+    )
+    assert to_hex(b.get_facecolor(), keep_alpha=True) == to_hex(
+        to_rgba("blue", 0.3), keep_alpha=True
+    )
 
 
 def test_colour_bars_widen_the_figure_and_keep_the_panels(

@@ -26,6 +26,7 @@ from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import (
     BLOWUP,
     PROBE,
+    SPECIES_KINDS,
     TOLERANCE_PROBE,
     VOLUME,
     sbml,
@@ -974,6 +975,38 @@ def test_a_simulation_does_not_depend_on_the_one_before_it() -> None:
     alone = last(simulation)
     np.testing.assert_array_equal(last(other, simulation), alone)
     np.testing.assert_array_equal(last(simulation, simulation), alone)
+
+
+def test_a_scan_resizes_the_compartment_of_a_species_of_an_assignment_rule() -> None:
+    """A scan of the size of a compartment with a species of an assignment rule runs.
+
+    The compartment `V = 0.2 BW` follows the scanned body weight, `R = 3 [F]`
+    is the species of an assignment rule in it, which roadrunner refuses to
+    set (#300). The points and a simulation after them run on one loaded
+    model, `[F]` decays as `2 exp(-k t / V)`.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(SPECIES_KINDS))
+    model.set_selections(["time", "V", "[F]", "[R]"])
+    simulator = Simulator(
+        n_workers=1, absolute_tolerance=1e-10, relative_tolerance=1e-10
+    )
+    simulation = Simulation(end=10, steps=10)
+    body_weights = np.array([50.0, 150.0])
+    scan = Scan(simulation, [Dimension("bw", values={"BW": body_weights})])
+    res = simulator.run(model, scan)
+    volumes = 0.2 * body_weights
+    np.testing.assert_allclose(res["V"].isel(time=-1).values, volumes)
+    concentrations = 2.0 * np.exp(-0.1 * 10 / volumes)
+    np.testing.assert_allclose(
+        res["[F]"].isel(time=-1).values, concentrations, rtol=1e-6
+    )
+    np.testing.assert_allclose(
+        res["[R]"].isel(time=-1).values, 3 * concentrations, rtol=1e-6
+    )
+    plain = simulator.run(model, simulation)
+    np.testing.assert_allclose(
+        plain["[R]"].isel(time=-1).values, 3 * 2.0 * np.exp(-0.1 * 10 / 15), rtol=1e-6
+    )
 
 
 def test_a_compartment_without_a_volume_does_not_set_the_tolerances_again(

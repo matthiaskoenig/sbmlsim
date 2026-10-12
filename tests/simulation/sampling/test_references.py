@@ -4,10 +4,10 @@ import pytest
 
 from sbmlsim import Q
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.simulation import Simulation
+from sbmlsim.simulation import Scan, Simulation, sampling
 from sbmlsim.simulation.sampling import parameters_of, references
 from sbmlsim.simulator import Simulator
-from tests.simulator.models import sbml, sbml_minutes
+from tests.simulator.models import SPECIES_KINDS, sbml, sbml_minutes
 
 
 def test_the_references_are_the_values_after_the_preinitialization() -> None:
@@ -49,6 +49,20 @@ def test_the_parameters_of_a_model() -> None:
     zero = RoadrunnerSBMLModel(source=sbml(), changes={"k2": 0.0})
     assert "k2" not in parameters_of(zero)
     assert "k2" in parameters_of(zero, exclude_zero=False)
+
+
+def test_a_species_of_an_assignment_rule_is_no_parameter() -> None:
+    """The species of an assignment rule are not listed, a change cannot set them (#300).
+
+    A design of all parameters and species then runs.
+    """
+    simulator = Simulator(n_workers=1)
+    model = simulator.load(sbml(SPECIES_KINDS))
+    targets = parameters_of(model, species=True)
+    assert targets == ["B", "BW", "F", "I", "N", "RR", "k"]
+    design = sampling.local(targets, delta=0.1, model=model)
+    result = simulator.run(model, Scan(Simulation(end=1, steps=2), [design]))
+    assert result.ds.sizes["local"] == 2 * len(targets) + 1
 
 
 def test_a_model_path_is_loaded() -> None:

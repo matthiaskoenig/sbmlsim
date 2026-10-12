@@ -20,7 +20,7 @@ from sbmlsim.simulator.executor import (
     steady_state,
 )
 from sbmlsim.simulator.plan import compile_simulation, time_tolerance
-from tests.simulator.models import sbml, sbml_pk
+from tests.simulator.models import SPECIES_KINDS, sbml, sbml_pk
 
 SEL = ["time", "[A]", "[B]", "X", "C", "k1"]
 
@@ -110,6 +110,32 @@ def test_compartment_change_keeps_concentrations_and_amounts() -> None:
     assert res["[A]"][-1] == pytest.approx(ref["[A]"][0])
     assert res["X"][-1] == pytest.approx(ref["X"][0])
     assert res["C"][-1] == pytest.approx(4.0)
+
+
+def test_compartment_change_with_a_species_of_an_assignment_rule() -> None:
+    """A species of an assignment rule follows its rule when its compartment changes.
+
+    roadrunner refuses to set a species of an assignment rule (#300). Every
+    other concentration species keeps its concentration, an amount species
+    its amount.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(SPECIES_KINDS))
+    selections = ["time", "V", "[F]", "[R]", "NR", "[RR]", "[B]", "[I]", "N"]
+    plan = compile_simulation(
+        Simulation(end=2, changes=[Change(1, {"V": 30.0})], times=[1]),
+        model.symbols,
+        model.uinfo,
+    )
+    res = execute(plan, model, selections)
+    assert res.time.tolist() == [1.0, 1.0]
+    before = {s: res[s][0] for s in selections}
+    after = {s: res[s][1] for s in selections}
+    assert before["V"] == pytest.approx(15.0)
+    assert after["V"] == pytest.approx(30.0)
+    kept = ["[F]", "[RR]", "[B]", "[I]", "N"]
+    assert {s: after[s] for s in kept} == pytest.approx({s: before[s] for s in kept})
+    assert after["[R]"] == pytest.approx(3 * after["[F]"])
+    assert after["NR"] == pytest.approx(2 * after["[F]"])
 
 
 def test_compartment_and_species_in_one_change() -> None:
