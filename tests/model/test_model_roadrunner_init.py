@@ -271,6 +271,26 @@ def test_a_compartment_with_a_species_of_an_assignment_rule(
         assert r["[N]"] == pytest.approx(6.0 / volume)
 
 
+def test_a_value_which_was_not_set_is_not_restored() -> None:
+    """An initialization which fails does not break the next one of the model.
+
+    The next initialization of a model which was not simulated restores the
+    values the last one replaced. A value is recorded once it is replaced, so
+    a value roadrunner refuses to set, here a species of an assignment rule
+    (which a plan never sets), is not restored (#300).
+    """
+    model = RoadrunnerSBMLModel(source=sbml(SPECIES_KINDS))
+    with pytest.raises(RuntimeError, match="assignment rule"):
+        model.initialize(
+            [_a("BW", 150.0), _a("[R]", 1.0, TargetKind.SPECIES_CONCENTRATION)]
+        )
+    model.initialize([])
+    r = model.r_loaded
+    assert r["BW"] == pytest.approx(75.0)
+    assert r["V"] == pytest.approx(15.0)
+    assert r["[R]"] == pytest.approx(6.0)
+
+
 def test_parameter_df_has_no_helpers() -> None:
     """The helpers of the initial assignments are not parameters of the model."""
     model = RoadrunnerSBMLModel(source=sbml())
