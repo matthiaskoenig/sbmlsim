@@ -49,13 +49,15 @@ class Task:
         """Get representation."""
         return f"Task(model={self.model_id} simulation={self.simulation_id})"
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, str | None]:
         """Convert to dictionary.
 
         Returns:
             Dictionary with model and simulation keys.
         """
         return {
+            "sid": self.sid,
+            "name": self.name,
             "model": self.model_id,
             "simulation": self.simulation_id,
         }

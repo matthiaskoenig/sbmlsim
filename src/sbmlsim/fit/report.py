@@ -20,6 +20,7 @@ import logging
 import textwrap
 import webbrowser
 from collections.abc import Iterable, Sequence
+from copy import deepcopy
 from functools import cached_property
 from pathlib import Path
 from tokenize import TokenError
@@ -162,9 +163,9 @@ class FitReport:
     ) -> None:
         """Construct the report.
 
-        The problem is initialized with the settings, which resolves the data of
-        the fit mappings. A problem which is already initialized with the same
-        settings is left alone.
+        A copy of the problem definition is initialized with the settings. Its
+        runtime and parameter sets belong to the report, so later fits or edits
+        to the original inputs cannot change the report.
 
         Args:
             problem: definition of the optimization problem.
@@ -190,24 +191,29 @@ class FitReport:
                 only read for its tables and its overview figures is created
                 without them, and its mapping cards carry their metrics alone.
         """
-        self.problem = problem
+        # Copy the definition, which excludes native models, then build a runtime
+        # owned by this report. Later fits and reports cannot change its settings.
+        self.problem = deepcopy(problem)
         self.settings = settings
-        self.parameter_sets = ParameterSets.of(parameter_sets)
-        self.opt_result = opt_result
-        self.identifiability = identifiability
-        self.fisher = fisher
+        self.parameter_sets = deepcopy(ParameterSets.of(parameter_sets))
+        self.opt_result = deepcopy(opt_result)
+        self.identifiability = deepcopy(identifiability)
+        self.fisher = deepcopy(fisher)
         self.show_titles = show_titles
         self.image_format = image_format
         self.mapping_figures = mapping_figures
 
-        # resolves the data, a no-op if the problem is already initialized
-        problem.initialize(settings)
+        # Resolve data in the runtime owned by this report.
+        self.problem.initialize(settings)
+        self.parameter_sets = ParameterSets(
+            [self.problem.bind_parameter_set(pset) for pset in self.parameter_sets]
+        )
 
         # residual data of the mappings, by parameter set
-        self._res_data: dict[str, dict[str, list[Any]]] = {}
+        self._res_data: dict[tuple[Any, ...], dict[str, list[Any]]] = {}
 
         # data points with their kind and predictions, by parameter set
-        self._points: dict[str, pd.DataFrame] = {}
+        self._points: dict[tuple[Any, ...], pd.DataFrame] = {}
 
     @staticmethod
     def from_optimization_result(
@@ -233,20 +239,18 @@ class FitReport:
             The report of the fit.
         """
         settings = opt_result.settings_stored
-        problem.initialize(settings)
-
-        sets: list[ParameterSet] = []
-        if with_model:
-            sets.append(problem.parameter_set_model())
-        sets.extend(opt_result.parameter_sets(size=size))
-
-        return FitReport(
+        report = FitReport(
             problem=problem,
             settings=settings,
-            parameter_sets=ParameterSets(sets),
+            parameter_sets=opt_result.parameter_sets(size=size),
             opt_result=opt_result,
             **kwargs,
         )
+        if with_model:
+            report.parameter_sets = ParameterSets(
+                [report.problem.parameter_set_model(), *report.parameter_sets]
+            )
+        return report
 
     def __str__(self) -> str:
         """Get string representation."""
@@ -315,18 +319,74 @@ class FitReport:
 
     def x(self, pset: ParameterSet) -> np.ndarray:
         """Get the values of a set in the parameter order of the problem."""
-        return pset.x(self.problem.pids)
+        return self._bound(pset).x(self.problem.pids)
+
+    def _stored(self, pset: ParameterSet) -> ParameterSet | None:
+        """Get the set of the report a parameter set stands for.
+
+        A set stands for a set of the report when it is that set, or when it
+        has its id, its values and its units in the units of the problem,
+        e.g. the set the report was created with, which the report keeps in
+        the units of the problem. Any other set, also one with the id of a
+        set of the report, e.g. `model` or `fit`, is evaluated as it is,
+        without the cache of the report.
+
+        Args:
+            pset: parameter set.
+
+        Returns:
+            The set of the report, `None` for another set.
+        """
+        for stored in self.parameter_sets:
+            if stored is pset:
+                return stored
+        bound = self.problem.bind_parameter_set(pset)
+        for stored in self.parameter_sets:
+            if (stored.sid, stored.values, stored.units) == (
+                bound.sid,
+                bound.values,
+                bound.units,
+            ):
+                return stored
+        return None
+
+    def _bound(self, pset: ParameterSet) -> ParameterSet:
+        """Get a parameter set in the units of the problem."""
+        stored = self._stored(pset)
+        return stored if stored is not None else self.problem.bind_parameter_set(pset)
+
+    def _evaluation_key(self, stored: ParameterSet) -> tuple[Any, ...]:
+        """Identify the values of a set of the report, which may be edited.
+
+        The caches keep the current evaluation of every set of the report:
+        the evaluation of an earlier value of the set is dropped.
+        """
+        key = (stored.sid, *stored.x(self.problem.pids))
+        sids = {s.sid for s in self.parameter_sets}
+        for cache in (self._res_data, self._points):
+            for previous in list(cache):
+                if previous[0] not in sids or (
+                    previous[0] == stored.sid and previous != key
+                ):
+                    del cache[previous]
+        return key
 
     def metrics(self, pset: ParameterSet) -> FitMetrics:
         """Get the metrics of a parameter set on the problem.
 
         Args:
-            pset: parameter set of the report.
+            pset: parameter set, a set of the report is evaluated once, see
+                `residual_data`.
 
         Returns:
             The metrics of the set, see `sbmlsim.fit.metrics`.
         """
-        return FitMetrics(problem=self.problem, parameter_set=pset)
+        stored = self._stored(pset)
+        return FitMetrics(
+            problem=self.problem,
+            parameter_set=deepcopy(stored if stored is not None else pset),
+            evaluation=self._residual_evaluation(pset),
+        )
 
     def metrics_df(self) -> pd.DataFrame:
         """Get the metrics of every parameter set, per kind of fit mapping.
@@ -360,14 +420,32 @@ class FitReport:
     def residual_data(self, pset: ParameterSet) -> dict[str, list[Any]]:
         """Get the complete residual data of the mappings for a parameter set.
 
-        Every evaluation simulates all fit mappings, so the results are cached
-        for the plots and tables which use the same set.
+        Every evaluation simulates all fit mappings, so the results of a set
+        of the report are cached for the plots and tables which use it. Any
+        other set is evaluated as it is, see `_stored`.
         """
-        if pset.sid not in self._res_data:
-            self._res_data[pset.sid] = self.problem.residuals(  # ty: ignore[invalid-assignment]
-                xlog=self.problem.to_scale(self.x(pset)), complete_data=True
-            )
-        return self._res_data[pset.sid]
+        return deepcopy(self._residual_evaluation(pset))
+
+    def _residual_evaluation(self, pset: ParameterSet) -> dict[str, list[Any]]:
+        """Share one internal evaluation; public readers receive copies."""
+        stored = self._stored(pset)
+        if stored is None:
+            return self._evaluate(self.problem.bind_parameter_set(pset))
+        key = self._evaluation_key(stored)
+        if key not in self._res_data:
+            self._res_data[key] = self._evaluate(stored)
+        return self._res_data[key]
+
+    def _evaluate(self, pset: ParameterSet) -> dict[str, list[Any]]:
+        """Evaluate a set in the units of the problem, its arrays are read only."""
+        evaluation: dict[str, list[Any]] = self.problem.residuals(  # ty: ignore[invalid-assignment]
+            xlog=self.problem.to_scale(pset.x(self.problem.pids)), complete_data=True
+        )
+        for values in evaluation.values():
+            for value in values:
+                if isinstance(value, np.ndarray):
+                    value.setflags(write=False)
+        return evaluation
 
     def points(self, pset: ParameterSet) -> pd.DataFrame:
         """Get the data points of a parameter set with their kind.
@@ -375,11 +453,17 @@ class FitReport:
         The table of `FitMetrics.datapoints_df`, i.e. one row per data point
         with the measurement `DV`, the prediction `IPRED` and the `kind` of the
         fit mapping it belongs to. It is the source of the goodness of fit and
-        the Bland-Altman plots and is cached, a data point costs a simulation.
+        the Bland-Altman plots and is cached for a set of the report, a data
+        point costs a simulation; any other set is evaluated as it is, see
+        `_stored`.
         """
-        if pset.sid not in self._points:
-            self._points[pset.sid] = self.metrics(pset).datapoints_df()
-        return self._points[pset.sid]
+        stored = self._stored(pset)
+        if stored is None:
+            return self.metrics(pset).datapoints_df()
+        key = self._evaluation_key(stored)
+        if key not in self._points:
+            self._points[key] = self.metrics(stored).datapoints_df()
+        return self._points[key].copy(deep=True)
 
     def point_kinds(self) -> list[str]:
         """Get the kinds of fit mapping the data points are shown in.
@@ -501,7 +585,9 @@ class FitReport:
         Reports the values of every set and the parameters which ended up close
         to one of their bounds.
         """
-        table = self.parameter_sets.to_df(units=self.display_units)
+        table = self.parameter_sets.to_df(
+            units=self.display_units, resolved_units=self.problem.parameter_units
+        )
         # the elements of a network are one line per array and set
         grouped = {p.pid for _, members in self._grouping[1] for p in members}
         table = table[~table["parameter"].isin(grouped)]

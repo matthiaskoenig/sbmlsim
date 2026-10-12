@@ -16,7 +16,6 @@ from sbmlsim.fit import FitData, FitMapping, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType, ResidualType
 from sbmlsim.fit.runner import run_optimization
-from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import Change, Custom, Dimension, Observable, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.worker import SUNDIALS_LOGS
@@ -27,6 +26,7 @@ from tests.fit.scalar_experiment import (
     DOSES,
     OBSERVABLES,
     TRUE_V,
+    BlowupStudy,
     DoseStudy,
     MixedStudy,
     OutsideStudy,
@@ -284,13 +284,6 @@ class GramStudy(DoseStudy):
         df = pd.DataFrame({"dose": grams, "cmax": cmax, "cmax_sd": 0.05 * cmax})
         units = {"dose": "g", "cmax": CMAX_UNIT}
         return {"tab_doses": DataSet.from_df(df, udict=units, ureg=self.ureg)}
-
-
-class BlowupStudy(ScalarStudy):
-    """The cmax of a model whose integration fails for `kb = 1`."""
-
-    def models(self) -> dict[str, AbstractModel | Path]:
-        return {"m": AbstractModel(source=sbml_pk(blowup=True))}
 
 
 def test_a_value_per_simulation_is_fitted(tmp_path: Path) -> None:

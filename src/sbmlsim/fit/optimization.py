@@ -4,7 +4,8 @@ import inspect
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from copy import copy, deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
@@ -110,13 +111,20 @@ def apply_loss_function(
     """
     if loss_function == LossFunctionType.LINEAR:
         return residuals
+    if loss_function == LossFunctionType.SOFT_L1:
+        # Rationalize sqrt(1 + r^2) - 1 and avoid squaring r: small
+        # residuals retain their gradient and large finite ones do not overflow.
+        # An infinite residual stays infinite, the limit of sign(r) sqrt(2 |r|),
+        # and a NaN stays NaN.
+        transformed = np.array(residuals, dtype=float)
+        finite = np.isfinite(transformed)
+        transformed[finite] *= np.sqrt(2.0 / (np.hypot(1.0, transformed[finite]) + 1.0))
+        return transformed
 
     # z = r^2 >= 0, so all loss functions are well defined
     z = np.square(residuals)
     rho: np.ndarray
-    if loss_function == LossFunctionType.SOFT_L1:
-        rho = 2.0 * (np.sqrt(1.0 + z) - 1.0)
-    elif loss_function == LossFunctionType.CAUCHY:
+    if loss_function == LossFunctionType.CAUCHY:
         rho = np.log1p(z)
     elif loss_function == LossFunctionType.ARCTAN:
         rho = np.arctan(z)
@@ -141,7 +149,50 @@ RESULT_KEYS: tuple[str, ...] = (
     "duration",
     "optimality",
     "nfev",
+    "algorithm",
+    "optimizer_kwargs",
 )
+
+
+def _option_metadata(value: Any) -> Any:
+    """Record optimizer options without serializing executable objects."""
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        return {str(k): _option_metadata(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_option_metadata(v) for v in value]
+    if isinstance(value, np.random.Generator):
+        return {"generator_state": _option_metadata(value.bit_generator.state)}
+    if callable(value):
+        return {
+            "callable": f"{getattr(value, '__module__', type(value).__module__)}."
+            f"{getattr(value, '__qualname__', type(value).__qualname__)}"
+        }
+    return {"type": f"{type(value).__module__}.{type(value).__qualname__}"}
+
+
+def _optimizer_metadata(
+    algorithm: OptimizationAlgorithmType, kwargs: dict[str, Any]
+) -> dict[str, Any]:
+    """Record supplied options and the defaults of the installed optimizer."""
+    if algorithm is OptimizationAlgorithmType.LEAST_SQUARE:
+        optimizer = scipy.optimize.least_squares
+    elif algorithm is OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
+        optimizer = scipy.optimize.differential_evolution
+    else:
+        return _option_metadata(kwargs)
+    defaults = {
+        key: parameter.default
+        for key, parameter in inspect.signature(optimizer).parameters.items()
+        if parameter.default is not inspect.Parameter.empty
+        and key not in {"x0", "bounds"}
+    }
+    return _option_metadata({**defaults, **kwargs})
 
 
 def minimal_result(
@@ -530,7 +581,11 @@ class OptimizationProblem(ObjectJSONEncoder):
             raise ValueError(
                 f"'{opid}': duplicate fit parameters are not allowed: '{sorted(pids)}'."
             )
-        self.parameters = fit_parameters
+        # the problem owns its parameters: the start values, which `x0` sets,
+        # and the other fields of one problem change neither the parameters
+        # it was given nor another problem of the same definition; the values
+        # of a parameter are immutable, a selector and a prior are shared
+        self.parameters = [copy(p) for p in fit_parameters]
 
         # parameter information
         self.pids = [p.pid for p in self.parameters]
@@ -542,7 +597,6 @@ class OptimizationProblem(ObjectJSONEncoder):
         lb = [p.lower_bound for p in self.parameters]
         ub = [p.upper_bound for p in self.parameters]
         self.bounds = [lb, ub]
-        self.x0 = [p.start_value for p in self.parameters]
 
         # paths
         self.base_path = base_path
@@ -559,8 +613,22 @@ class OptimizationProblem(ObjectJSONEncoder):
         self._best: tuple[np.ndarray, float] | None = None
         # deadline of the running optimization, set by `_optimize_single`
         self._deadline: float | None = None
+        self._last_evaluation_failed = False
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self._reset_mappings()
+
+    @property
+    def x0(self) -> list[float | None]:
+        """Current start values of the parameter definitions."""
+        return [p.start_value for p in self.parameters]
+
+    @x0.setter
+    def x0(self, values: Sequence[float | None]) -> None:
+        """Update start values without retaining a competing vector."""
+        if len(values) != len(self.parameters):
+            raise ValueError("One start value per fit parameter is required.")
+        for parameter, value in zip(self.parameters, values, strict=True):
+            parameter.start_value = value
 
     def __getstate__(self) -> dict[str, Any]:
         """Pickle the definition of the problem, not its resolved data.
@@ -898,9 +966,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         Resolves the data of the fit mappings, converts it to the units of the
         model, calculates the weights and attaches a simulator. The problem is
-        only initialized once for a given set of settings: a fit and the report
-        of the fit use the same problem, and resolving the data twice repeats
-        the work and every message about the data.
+        only initialized once for a given set of settings. New runtime state is
+        committed after initialization succeeds. Reports copy the definition
+        and initialize their own runtime, preserving the original fit session.
 
         Every fit mapping is one of three kinds, see `ObservationKind`,
         decided from the dimensions of its observable after its `sel`
@@ -933,6 +1001,18 @@ class OptimizationProblem(ObjectJSONEncoder):
             logger.debug("%s: already initialized, skipping", self.opid)
             return
 
+        # Build new runtime state without changing a usable existing problem.
+        # Native models stay in the old runtime; initialization creates new ones.
+        candidate = object.__new__(type(self))
+        candidate.__dict__ = self.__dict__.copy()
+        candidate.xmodel = self.xmodel.copy()
+        candidate.mapping_collections = deepcopy(self.mapping_collections)
+        candidate._initialize_inplace(settings)
+        self.__dict__.clear()
+        self.__dict__.update(candidate.__dict__)
+
+    def _initialize_inplace(self, settings: FitSettings) -> None:
+        """Build an isolated candidate runtime, committed only after success."""
         self.settings = settings
         #: the space the optimizer searches every parameter in
         self.scales: list[ParameterScaleType] = [
@@ -1194,6 +1274,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
                 x_ref = x_ref[nonnan_mask]
                 y_ref = y_ref[nonnan_mask]
+                # only the training data enters the cost, the normalized
+                # residuals of other data with a zero mean are not finite
+                if (
+                    mapping_collection.kind is MappingKind.TRAINING
+                    and self.residual
+                    in {ResidualType.NORMALIZED, ResidualType.NORMALIZED_TO_BASELINE}
+                    and (y_ref.size == 0 or np.mean(y_ref) == 0.0)
+                ):
+                    raise ValueError(
+                        f"{sid}.{mapping_id}: normalized residuals require "
+                        "training data with a nonzero mean."
+                    )
                 if observable_model is not None:
                     observable_model = observable_model.select(nonnan_mask)
                 noise = mapping.noise
@@ -2017,31 +2109,13 @@ class OptimizationProblem(ObjectJSONEncoder):
                 if index in external:
                     continue
                 self._warn_dimension_target(k_group, scan, target, index)
-                factor = 1.0
-                unit = model.uinfo.get(target)
                 # the unit of the parameter with the unit ids of the model
-                # resolved
+                # resolved; one conversion per pair of units, not per group
                 punit = mapping.parameter_units[index]
-                if unit and punit:
-                    # one conversion per pair of units, not per group
-                    key = (punit, str(unit))
-                    if key not in factors:
-                        try:
-                            factors[key] = float(
-                                model.uinfo.ureg.Quantity(1.0, punit).to(unit).magnitude
-                            )
-                        except (UndefinedUnitError, DimensionalityError) as err:
-                            parameter = self.parameters[index]
-                            err.add_note(
-                                f"'{self.opid}': the parameter '{parameter.pid}' "
-                                f"in '{parameter.unit}' writes '{target}' in "
-                                f"'{unit}', the unit of the model. The unit of a "
-                                f"parameter is a unit of pint and of the unit ids "
-                                f"of the model of its target."
-                            )
-                            raise
-                    factor = factors[key]
-                targets.append((target, index, factor))
+                key = (str(punit), str(model.uinfo.get(target)))
+                if key not in factors:
+                    factors[key] = self._unit_factor(index, model, punit)
+                targets.append((target, index, factors[key]))
             self._group_targets.append(targets)
 
     def _first_after(self, k: int, plan: Plan, at_change: np.ndarray) -> np.ndarray:
@@ -2285,6 +2359,55 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         self.group_derived = resolve_derived_changes(self)
 
+    def _unit_factor(
+        self,
+        index: int,
+        model: RoadrunnerSBMLModel,
+        unit: str | None,
+        to_model: bool = True,
+    ) -> float:
+        """Get the factor between the unit of a parameter and its target in a model.
+
+        A value is converted only when both the parameter and its target have
+        a unit: a parameter without a unit is in the unit of the model, and a
+        target without one, e.g. an entity of an SBML model without unit
+        annotations, takes the value of the parameter as it is.
+
+        Args:
+            index: index of the parameter.
+            model: the model of the target.
+            unit: the unit of the parameter with the unit ids of the model
+                resolved, see `ParameterMapping.parameter_units`.
+            to_model: the factor from the unit of the parameter to the unit of
+                the model, else from the unit of the model to the unit of the
+                parameter.
+
+        Returns:
+            The factor a value is multiplied with, `1` without a conversion.
+
+        Raises:
+            UndefinedUnitError: if a unit is not a unit of pint.
+            DimensionalityError: if the units have different dimensions.
+        """
+        parameter = self.parameters[index]
+        target = parameter.target_id
+        model_unit = model.uinfo.get(target)
+        if not unit or not model_unit:
+            return 1.0
+        source, destination = (unit, model_unit) if to_model else (model_unit, unit)
+        try:
+            return float(
+                model.uinfo.ureg.Quantity(1.0, source).to(destination).magnitude
+            )
+        except (UndefinedUnitError, DimensionalityError) as err:
+            err.add_note(
+                f"'{self.opid}': the parameter '{parameter.pid}' in "
+                f"'{parameter.unit}' writes '{target}' in '{model_unit}', the "
+                f"unit of the model. The unit of a parameter is a unit of pint "
+                f"and of the unit ids of the model of its target."
+            )
+            raise
+
     def _store_model_parameters(self) -> None:
         """Store the initial values of the fitted parameters in the models.
 
@@ -2297,6 +2420,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 parameter which is not an entity of the model has no start
                 value, or if the target of a parameter is not an entity of
                 the model.
+            UndefinedUnitError: if the unit of a parameter is not a unit of
+                pint and of the unit ids of the model, see `_unit_factor`.
+            DimensionalityError: if the unit of a parameter and the unit of
+                its target have different dimensions.
         """
         # `models` holds the model of every fit mapping, a model is read once
         models = list({id(model): model for model in self.models}.values())
@@ -2326,9 +2453,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                     ) from err
                 if target in model.changes:
                     change = model.changes[target]
-                    # model changes have units
+                    # the changes of a loaded model are in the units of the model
                     pid_value = (
                         change.magnitude if isinstance(change, Quantity) else change
+                    )
+                if parameter.unit is not None:
+                    pid_value *= self._unit_factor(
+                        k,
+                        model,
+                        model.uinfo.resolve_unit(parameter.unit),
+                        to_model=False,
                     )
                 if k_model == 0:
                     self.xmodel[k] = pid_value
@@ -2359,6 +2493,24 @@ class OptimizationProblem(ObjectJSONEncoder):
             sid=sid,
             units=self.parameter_units,
         )
+
+    def bind_parameter_set(self, parameter_set: ParameterSet) -> ParameterSet:
+        """Convert a set to fit units, resolving declared model unit aliases."""
+        units = self.parameter_units
+        source_units = dict(parameter_set.units)
+        for parameter in self.parameters:
+            if (
+                parameter.unit is not None
+                and source_units.get(parameter.pid) == parameter.unit
+            ):
+                source_units[parameter.pid] = units[parameter.pid]
+        return ParameterSet(
+            parameter_set.sid,
+            dict(parameter_set.values),
+            source_units,
+            parameter_set.cost,
+            parameter_set.provenance,
+        ).to_units(units)
 
     @property
     def parameter_units(self) -> dict[str, str | None]:
@@ -2527,7 +2679,8 @@ class OptimizationProblem(ObjectJSONEncoder):
 
     @staticmethod
     def check_optimizer_arguments(
-        algorithm: OptimizationAlgorithmType, arguments: Iterable[str]
+        algorithm: OptimizationAlgorithmType,
+        arguments: Iterable[str] | Mapping[str, Any],
     ) -> None:
         """Check that the optimizer of the algorithm accepts the arguments.
 
@@ -2552,6 +2705,19 @@ class OptimizationProblem(ObjectJSONEncoder):
         else:
             # the run reports an algorithm which is not supported
             return
+        if (
+            isinstance(arguments, Mapping)
+            and (
+                arguments.get("loss", "linear") != "linear"
+                or arguments.get("f_scale", 1.0) != 1.0
+            )
+            and algorithm is OptimizationAlgorithmType.LEAST_SQUARE
+        ):
+            raise ValueError(
+                "Optimizer 'loss' and 'f_scale' cannot change the fit objective. "
+                "Configure the loss with FitSettings.loss_function instead."
+            )
+        arguments = tuple(arguments)
         accepted = set(inspect.signature(optimizer).parameters) - {
             "fun",
             "func",
@@ -2598,6 +2764,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         if run_seed is not None:
             kwargs["rng"] = run_seed
+        metadata = _optimizer_metadata(algorithm, kwargs)
+        algorithm_name = (
+            algorithm.name
+            if isinstance(algorithm, OptimizationAlgorithmType)
+            else str(algorithm)
+        )
         logger.debug("[%s/%s] x0=%s", run + 1, size, x0)
         try:
             fit, trajectory = self._optimize_single(
@@ -2613,14 +2785,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                 type(err).__name__,
                 err,
             )
-            return (
-                RuntimeErrorOptimizeResult(
-                    x=np.asarray(x0, dtype=float) if x0 is not None else None,
-                    x0=np.asarray(x0, dtype=float) if x0 is not None else None,
-                    message=f"{type(err).__name__}: {err}",
-                ),
-                [],
+            failed = RuntimeErrorOptimizeResult(
+                x=np.asarray(x0, dtype=float) if x0 is not None else None,
+                x0=np.asarray(x0, dtype=float) if x0 is not None else None,
+                message=f"{type(err).__name__}: {err}",
             )
+            failed.algorithm = algorithm_name
+            failed.optimizer_kwargs = metadata
+            return failed, []
+        fit.algorithm = algorithm_name
+        fit.optimizer_kwargs = metadata
         logger.debug("	%s [s]", format(fit.duration, "8.4f"))
         return fit, trajectory
 
@@ -2669,20 +2843,24 @@ class OptimizationProblem(ObjectJSONEncoder):
             ValueError: if the algorithm is not supported or start values are
                 required and missing.
         """
-        # FIXME: this should not be necessary, handle outside
+        self.check_optimizer_arguments(algorithm, kwargs)
         if x0 is None:
-            if any(value is None for value in self.x0):
+            if algorithm == OptimizationAlgorithmType.LEAST_SQUARE and any(
+                value is None for value in self.x0
+            ):
                 raise ValueError(
                     f"{self.opid}: an optimization without start values requires a "
                     f"'start_value' on every FitParameter: '{self.parameters}'."
                 )
-            x0 = np.array(self.x0, dtype=float)
+            if all(value is not None for value in self.x0):
+                x0 = np.array(self.x0, dtype=float)
 
         # the optimizer searches the scaled space, see `ParameterScaleType`
-        x0log: np.ndarray = self.to_scale(x0)
+        x0log = None if x0 is None else self.to_scale(x0)
         self._validate_parameters(algorithm)
 
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
+            assert x0log is not None
             # scipy least square optimizer
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
             ts = time.time()
@@ -2701,6 +2879,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     opt_result = scipy.optimize.least_squares(
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
+                self._validate_optimum(opt_result)
             except (RuntimeError, FitTimeout) as err:
                 logger.error(
                     "%s in ODE integration (optimize) for '%s = %s': \n%s",
@@ -2713,7 +2892,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
-            opt_result.x = self.from_scale(opt_result.x)
+            if opt_result.x is not None:
+                opt_result.x = self.from_scale(opt_result.x)
             return minimal_result(opt_result), list(self._trajectory)
 
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
@@ -2731,6 +2911,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 opt_result = scipy.optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
+                opt_result.cost = self._validate_optimum(opt_result)
             except (RuntimeError, FitTimeout) as err:
                 logger.error(
                     "%s in ODE integration (optimize) for '%s = %s': \n%s",
@@ -2743,13 +2924,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             te = time.time()
             opt_result.x0 = x0  # store start value
             opt_result.duration = te - ts
-            if not isinstance(opt_result, RuntimeErrorOptimizeResult):
-                # differential evolution reports `fun`, the cost is evaluated.
-                # An interrupted run already carries the best cost of its
-                # trajectory, evaluating it again would hit the deadline once
-                # more
-                opt_result.cost = self.cost_least_square(np.asarray(opt_result.x))
-            opt_result.x = self.from_scale(opt_result.x)
+            if opt_result.x is not None:
+                opt_result.x = self.from_scale(opt_result.x)
             return minimal_result(opt_result), list(self._trajectory)
 
         raise ValueError(f"optimizer is not supported: {algorithm}")
@@ -3315,15 +3491,14 @@ class OptimizationProblem(ObjectJSONEncoder):
         prediction: np.ndarray,
         x: np.ndarray,
     ) -> bool:
-        """Check whether the prediction of a mapping of a group with output failed.
+        """Check whether the prediction of a mapping failed.
 
         An observable which cannot be evaluated for the parameters, e.g. the
         half-life of a PK observable without a terminal phase, is `NaN` and
         no error of the simulation; its mapping takes the failure residuals
-        like a failed integration, so the optimizer continues. Every group
-        which keeps the output of its simulation is checked, i.e. one with
-        observables or with a timecourse over another selection; a group
-        which outputs the times of its data is not checked.
+        like a failed integration, so the optimizer continues. Predictions of
+        groups which output only the data times are checked as well, since an
+        observable model can produce a non-finite prediction there.
 
         Args:
             k: index of the fit mapping.
@@ -3332,10 +3507,9 @@ class OptimizationProblem(ObjectJSONEncoder):
             x: parameter values in the units of the parameters, for the log.
 
         Returns:
-            Whether the mapping reads a group which keeps its output and its
-            prediction has a value which is not finite.
+            Whether its prediction has a value which is not finite.
         """
-        if not isinstance(result, GroupResult) or np.all(np.isfinite(prediction)):
+        if np.all(np.isfinite(prediction)):
             return False
         logger.warning(
             "%s.%s: the prediction is not finite for ('%s = %s'), the residuals "
@@ -3349,7 +3523,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         return True
 
     def _interrupted_result(
-        self, err: Exception, x0log: np.ndarray
+        self, err: Exception, x0log: np.ndarray | None
     ) -> RuntimeErrorOptimizeResult:
         """Get the result of a run which did not finish.
 
@@ -3366,7 +3540,28 @@ class OptimizationProblem(ObjectJSONEncoder):
     def cost_least_square(self, xlog: np.ndarray) -> float:
         """Get least square costs for parameters."""
         res_weighted: np.ndarray = self.residuals(xlog)  # ty: ignore[invalid-assignment]
+        if self._last_evaluation_failed:
+            return float("inf")
         return float(0.5 * np.sum(np.square(res_weighted)))
+
+    def _validate_optimum(self, result: scipy.optimize.OptimizeResult) -> float:
+        """Check the final parameters before reporting optimizer convergence.
+
+        A finite failure residual lets least squares continue, but a constant
+        penalty can satisfy its convergence criteria without a valid simulation.
+        The check runs without the deadline of the run: an optimum which the
+        optimizer reached within the timeout is no interrupted run.
+        """
+        self._deadline = None
+        cost = self.cost_least_square(np.asarray(result.x, dtype=float))
+        if not np.isfinite(cost):
+            result.success = False
+            result.status = -2
+            result.cost = float("inf")
+            result.message = (
+                "Final parameters produce a failed simulation or non-finite cost."
+            )
+        return cost
 
     def residuals(
         self, xlog: np.ndarray, complete_data: bool = False
@@ -3393,6 +3588,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"'{self.opid}': the optimization did not finish in its budget."
             )
         x = self.from_scale(xlog)
+        self._last_evaluation_failed = False
 
         # FIXME: handle parts better
         parts = []
@@ -3431,13 +3627,21 @@ class OptimizationProblem(ObjectJSONEncoder):
             if result is None or self._not_finite(k, result, y_obsip, x):
                 # the integration or an observable failed, setting high
                 # residuals & cost
-                res_abs = 5.0 * self.y_references[k]  # total error
+                if self.mapping_kinds[k] is MappingKind.TRAINING:
+                    self._last_evaluation_failed = True
+                reference = self.y_references[k]
+                # Zero measurements, including a constant baseline-subtracted
+                # curve, must never turn an integration failure into zero cost.
+                floor = float(np.max(np.abs(reference))) if reference.size else 0.0
+                if floor == 0.0:
+                    floor = 1.0
+                res_abs = 5.0 * np.where(reference != 0.0, reference, floor)
             else:
                 # calculate absolute residuals (f(x_{i}) - y_{i})
                 res_abs = y_obsip - self.y_references[k]
 
-            # with np.errstate(divide="ignore", invalid="ignore"):
-            res_norm = res_abs / np.mean(self.y_references[k])
+            mean = np.mean(self.y_references[k])
+            res_norm = res_abs / mean if mean != 0.0 else np.full_like(res_abs, np.nan)
 
             # select correct residuals
             residuals: np.ndarray
@@ -3495,8 +3699,10 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # the cost of the step, the trace plot is the only thing which uses it
         cost = float(0.5 * np.sum(np.power(res_all, 2)))
+        if self._last_evaluation_failed or not np.isfinite(cost):
+            cost = float("inf")
         self._trajectory.append(cost)
-        if self._best is None or cost < self._best[1]:
+        if np.isfinite(cost) and (self._best is None or cost < self._best[1]):
             # the parameters of the best step, kept for a run which is
             # interrupted; storing them for every step is what a trajectory
             # used to do and no report reads them

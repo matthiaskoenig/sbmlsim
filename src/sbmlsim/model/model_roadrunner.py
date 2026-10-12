@@ -110,7 +110,13 @@ class RoadrunnerSBMLModel(AbstractModel):
         # the model is flattened here, the symbols are the ones it simulates
         hierarchical = _is_hierarchical(sbml)
         if hierarchical:
-            sbml = _flatten(sbml, path=self.source.path)
+            sbml = _flatten(sbml, path=self.source.path, base_path=self.base_path)
+        #: the SBML of the model as sbmlsim hands it to roadrunner, flattened,
+        #: before the added parameters and the helpers of the initial
+        #: assignments: the units of the model are read from it and a worker
+        #: loads it, so it derives the symbols and the units the parent has,
+        #: see `sbmlsim.simulator.worker.ModelSpec`
+        self.sbml: str = sbml
         if self.parameters:
             sbml = _with_parameters(sbml, self.parameters)
         self.symbols: ModelSymbols = ModelSymbols.from_sbml(sbml)
@@ -340,16 +346,19 @@ class RoadrunnerSBMLModel(AbstractModel):
     ):
         """Create from AbstractModel."""
         logger.debug("RoadrunnerSBMLModel from AbstractModel")
+        source = abstract_model.source.content
+        if source is None:
+            source = abstract_model.source.path
+        if source is None:
+            raise ValueError("The model description has no resolved source.")
         return RoadrunnerSBMLModel(
-            source=abstract_model.source.content
-            if abstract_model.source.content is not None
-            else abstract_model.source.source,
+            source=source,
             changes=abstract_model.changes,
             parameters=abstract_model.parameters,
             sid=abstract_model.sid,
             name=abstract_model.name,
             base_path=abstract_model.base_path,
-            selections=selections,
+            selections=abstract_model.selections if selections is None else selections,
             ureg=ureg,
             settings=settings,
         )
@@ -429,16 +438,12 @@ class RoadrunnerSBMLModel(AbstractModel):
         return self.uinfo.quantity(value, unit)
 
     def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
-        """Parse units from SBML model."""
-        uinfo: UnitsInformation
-        if self.source.content is not None:
-            uinfo = UnitsInformation.from_sbml(sbml=self.source.content, ureg=ureg)
-        elif self.source.path is not None:
-            uinfo = UnitsInformation.from_sbml(sbml=self.source.path, ureg=ureg)
-        else:
-            raise ValueError(f"Model source has no content and no path: {self.source}")
+        """Parse the units of the model from its SBML, see `sbml`.
 
-        return uinfo
+        A hierarchical model has the units of its flattened SBML, which include
+        the ones of its submodels.
+        """
+        return UnitsInformation.from_sbml(sbml=self.sbml, ureg=ureg)
 
     @classmethod
     def set_timecourse_selections(
@@ -822,15 +827,18 @@ def _is_hierarchical(sbml: str) -> bool:
     return bool(doc.isPackageEnabled("comp"))
 
 
-def _flatten(sbml: str, path: Path | None) -> str:
+def _flatten(sbml: str, path: Path | None, base_path: Path | None = None) -> str:
     """Flatten a hierarchical model.
 
     The model is read from its file if it has one, so that libsbml resolves
-    its external model definitions relative to the file.
+    its external model definitions relative to the file. Inline SBML resolves
+    external models relative to its base directory.
 
     Args:
         sbml: the SBML of the model.
         path: the file of the model, `None` for the SBML as a string.
+        base_path: the resource directory of inline SBML, the current working
+            directory by default.
 
     Returns:
         The SBML of the flattened model.
@@ -843,6 +851,11 @@ def _flatten(sbml: str, path: Path | None) -> str:
         if path is not None
         else libsbml.readSBMLFromString(sbml)
     )
+    if path is None:
+        # libsbml accepts native absolute paths as location URIs, as used by
+        # readSBMLFromFile. It does not decode escaped spaces in file:// URIs.
+        location = (base_path or Path.cwd()).resolve() / "__sbmlsim_inline__.xml"
+        doc.setLocationURI(str(location))
     properties = libsbml.ConversionProperties()
     properties.addOption("flatten comp", True)
     properties.addOption("performValidation", False)

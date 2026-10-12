@@ -28,6 +28,7 @@ itself never starts a pool, a task which runs in a worker runs serially.
 from __future__ import annotations
 
 import atexit
+import hashlib
 import logging
 import multiprocessing
 import os
@@ -35,11 +36,14 @@ import signal
 import sys
 import threading
 from collections import OrderedDict
-from collections.abc import Callable, Hashable, Sequence
+from collections.abc import Callable, Generator, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+from contextlib import contextmanager
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import cast, override
 
 if sys.platform != "win32":
@@ -92,6 +96,35 @@ _POOLS: dict[int, ProcessPoolExecutor] = {}
 
 #: the objects of a worker process, see `worker_cache`
 _CACHE: OrderedDict[Hashable, object] = OrderedDict()
+
+
+@contextmanager
+def shared_payloads(sources: Sequence[str]) -> Generator[list[str]]:
+    """Share immutable snapshots with local workers without repeated IPC copies.
+
+    The caller keeps this context until submitted work has finished or its
+    workers have stopped. The temporary directory is private to this process.
+    Equal snapshots share one file, independently of integrator settings.
+
+    Args:
+        sources: the snapshots, e.g. the SBML of the models of a run.
+
+    Yields:
+        The path of the file of every snapshot, in the order of `sources`; the
+        files are removed when the context exits, also after an error.
+    """
+    with TemporaryDirectory(prefix="sbmlsim_models_") as directory:
+        paths: list[str] = []
+        written: set[str] = set()
+        for source in sources:
+            content = source.encode("utf-8")
+            digest = hashlib.sha256(content).hexdigest()
+            path = Path(directory) / f"{digest}.xml"
+            if digest not in written:
+                path.write_bytes(content)
+                written.add(digest)
+            paths.append(str(path))
+        yield paths
 
 
 def process_context() -> BaseContext:

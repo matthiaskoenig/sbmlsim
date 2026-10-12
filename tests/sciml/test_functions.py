@@ -61,6 +61,14 @@ def test_function(
     compare_function(target, kwargs, x)
 
 
+@pytest.mark.parametrize("target", ["relu", "relu6", "hardtanh", "hardsigmoid"])
+def test_activations_preserve_nan(
+    compare_function: Callable[..., None], target: str
+) -> None:
+    """Undefined values remain undefined, as they do in PyTorch."""
+    compare_function(target, {}, np.array([np.nan, -1.0, 0.0, 1.0]))
+
+
 def test_log_sigmoid(compare_function: Callable[..., None]) -> None:
     """`log_sigmoid` of the YAML is `logsigmoid` of PyTorch."""
     compare_function("log_sigmoid", {}, VALUES, torch_name="logsigmoid")

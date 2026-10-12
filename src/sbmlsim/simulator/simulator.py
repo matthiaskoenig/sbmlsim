@@ -41,7 +41,7 @@ from collections.abc import Callable, Generator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -208,6 +208,7 @@ class Simulator:
             if isinstance(simulation, Plan)
             else self.compile(loaded, simulation)
         )
+        plan.check_model(loaded.symbols, loaded.uinfo)
         return execute(plan, loaded, loaded.selections or [TIME])
 
     def run(
@@ -466,30 +467,61 @@ class Simulator:
             RuntimeError: if a worker of the pool dies.
         """
         specs = [ModelSpec.of(model) for model in compiled.models]
+        with parallel.shared_payloads([spec.source for spec in specs]) as paths:
+            shared = [
+                replace(spec, source=path)
+                for spec, path in zip(specs, paths, strict=True)
+            ]
+            return self._run_pool_chunks(compiled, chunks, workers, advance, shared)
+
+    def _run_pool_chunks(
+        self,
+        compiled: _Compiled,
+        chunks: Sequence[Chunk],
+        workers: int,
+        advance: Callable[[int], None],
+        specs: Sequence[ModelSpec],
+    ) -> list[ChunkResult]:
+        """Run bounded pending work while its shared snapshots remain available."""
         executor = parallel.pool(workers)
         results: list[ChunkResult] = []
         failed: ScanPointError | None = None
         futures: dict[Future[ChunkResult], Chunk] = {}
+        pending: set[Future[ChunkResult]] = set()
+        remaining = iter(chunks)
+        finished = False
         try:
-            for chunk in chunks:
-                future = executor.submit(run_chunk_in_worker, specs[chunk.model], chunk)
-                futures[future] = chunk
-            pending = set(futures)
-            while pending:
+            while not finished or pending:
+                while not finished and len(pending) < 2 * workers:
+                    chunk = next(remaining, None)
+                    if chunk is None or (
+                        failed is not None and int(chunk.indices[0]) > failed.index
+                    ):
+                        finished = True
+                        break
+                    future = executor.submit(
+                        run_chunk_in_worker, specs[chunk.model], chunk
+                    )
+                    futures[future] = chunk
+                    pending.add(future)
+                if not pending:
+                    break
                 done, pending = wait(pending, return_when=FIRST_COMPLETED)
                 for future in done:
+                    futures.pop(future)
                     try:
                         result = future.result()
                     except ScanPointError as err:
                         failed = _first(failed, err)
                         # `wait` reports a cancelled future only once the pool
                         # reaches it, so it leaves pending here
-                        pending = {
-                            other
-                            for other in pending
-                            if int(futures[other].indices[0]) < failed.index
-                            or not other.cancel()
-                        }
+                        for other in list(pending):
+                            if (
+                                int(futures[other].indices[0]) > failed.index
+                                and other.cancel()
+                            ):
+                                pending.remove(other)
+                                futures.pop(other)
                         continue
                     results.append(result)
                     advance(len(result.indices))
@@ -499,9 +531,9 @@ class Simulator:
                 f"A worker of the pool died while it ran the scan: {err}"
             ) from err
         except Exception:
-            # the pool is fine, the chunks which did not start are dropped
-            for future in futures:
-                future.cancel()
+            # An unexpected error can leave workers about to read a snapshot;
+            # stop them before the shared files are removed.
+            parallel.stop(executor)
             raise
         except BaseException:
             # e.g. Ctrl-C: the workers still run their chunks, the pool stops
@@ -523,6 +555,15 @@ def _check_coordinates(scan: Scan, outputs: set[str]) -> None:
     for dimension in scan.dimensions:
         for target in dimension.values:
             taken.setdefault(target, "a changed target")
+            if target in outputs or target in RESERVED:
+                qualified = f"{dimension.id}.{target}"
+                if qualified in scan.dims or qualified in outputs:
+                    raise ValueError(
+                        f"The coordinate '{qualified}' of the changed target "
+                        f"'{target}' would hide a dimension or an output of the "
+                        f"same name; rename the dimension '{dimension.id}'."
+                    )
+                taken.setdefault(qualified, "a changed target")
     owner: dict[str, str] = {}
     for dimension in scan.dimensions:
         for name in dimension.coordinates:
@@ -661,18 +702,24 @@ class _Compiled:
         n, shape = self.size, self.scan.shape
         names = self.graph.timecourses
         scalars = self.graph.scalars
+        # A scalar result has no time axis. Do not assemble discarded time
+        # buffers, including when every point failed.
+        timed = bool(names) or not self.observables
         n_rows = (
-            self.grid.size
+            0
+            if not timed
+            else self.grid.size
             if self.grid is not None
             else max((r.values.shape[1] for r in results), default=0)
         )
-        cube = np.full((1 + len(names), n, n_rows), np.nan)
+        cube = np.full((1 + len(names), n, n_rows), np.nan) if timed else None
         table = np.full((len(scalars), n), np.nan)
         status = np.zeros(n, dtype=np.int8)
         errors: list[tuple[int, str]] = []
         for result in results:
             rows = result.values.shape[1]
-            cube[:, result.indices, :rows] = np.moveaxis(result.values, 2, 0)
+            if cube is not None:
+                cube[:, result.indices, :rows] = np.moveaxis(result.values, 2, 0)
             table[:, result.indices] = result.scalars.T
             status[result.indices] = result.status
             errors.extend(result.errors)
@@ -682,15 +729,15 @@ class _Compiled:
         tdim = TIME if self.grid is not None else POINT
         units: dict[str, str] = {}
         data_vars: dict[str, Any] = {}
-        # a run without observables keeps the time also without a selection
-        timed = bool(names) or not self.observables
-        if timed:
+        # a run without observables keeps the time also without a selection,
+        # a run with timecourses always has the cube
+        if cube is not None:
             units[TIME] = first.uinfo.get(TIME, "") or ""
             if self.grid is None:
                 data_vars[TIME] = ([*dims, POINT], cube[0].reshape(*shape, n_rows))
-        for j, name in enumerate(names, 1):
-            data_vars[name] = ([*dims, tdim], cube[j].reshape(*shape, n_rows))
-            units[name] = self.graph.units[name]
+            for j, name in enumerate(names, 1):
+                data_vars[name] = ([*dims, tdim], cube[j].reshape(*shape, n_rows))
+                units[name] = self.graph.units[name]
         for j, name in enumerate(scalars):
             data_vars[name] = (dims, table[j].reshape(shape))
             units[name] = self.graph.units[name]
@@ -700,9 +747,9 @@ class _Compiled:
             # labels carry no unit
             units[dimension.id] = ""
             for target, values in dimension.values.items():
-                if target in data_vars:
-                    # a selection of the same name: the variable keeps the
-                    # name, the values are qualified by the dimension
+                if target in data_vars or target in RESERVED:
+                    # Outputs and reserved names keep their names; changed
+                    # targets use the dimension as a prefix.
                     name = f"{dimension.id}.{target}"
                 elif target in coords:
                     # a target an earlier dimension changes

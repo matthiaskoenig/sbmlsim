@@ -1,5 +1,7 @@
 """Test the metrics of a fit."""
 
+from unittest.mock import patch
+
 import numpy as np
 import pytest
 
@@ -14,6 +16,23 @@ from sbmlsim.fit.metrics import (
     sse,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
+
+
+def test_metrics_report_simulates_once_and_tracks_changed_parameters(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Report tables share predictions without a stale persistent cache."""
+    op_hctz_pk.initialize(fit_settings)
+    metrics = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model())
+    with patch.object(
+        op_hctz_pk, "_simulate_groups", wraps=op_hctz_pk._simulate_groups
+    ) as simulations:
+        original = metrics.report()
+        assert simulations.call_count == 1
+        metrics.parameter_set.values[op_hctz_pk.pids[0]] *= 1.5
+        changed = metrics.report()
+        assert simulations.call_count == 2
+        assert original != changed
 
 
 def test_sse_mse_rmse() -> None:

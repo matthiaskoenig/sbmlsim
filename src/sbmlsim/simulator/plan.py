@@ -15,18 +15,78 @@ process, see `sbmlsim.simulator.formula`.
 from __future__ import annotations
 
 import functools
+import weakref
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from tokenize import TokenError
 from typing import Any
 
 import numpy as np
-from pint.errors import DimensionalityError, UndefinedUnitError
+from pint import UnitRegistry
+from pint.errors import DimensionalityError, PintError, UndefinedUnitError
 
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulation.definition import Simulation, SteadyState, Time
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.units import Quantity, UnitsInformation
+
+#: the unit of every entity of a model as `(id, base unit, scale)`, sorted by
+#: id, see `model_units`: the base unit and the scale of the unit to it, the
+#: unit itself without a scale for a unit pint does not normalize, and `None`
+#: twice for an entity without a unit
+UnitsContract = tuple[tuple[str, str | None, float | None], ...]
+
+#: registry -> unit -> its base unit and scale, see `_base_unit`; the units of
+#: a registry are released with the registry
+_BASE_UNITS: weakref.WeakKeyDictionary[
+    UnitRegistry, dict[str, tuple[str, float | None]]
+] = weakref.WeakKeyDictionary()
+
+
+def _base_unit(registry: UnitRegistry, unit: str) -> tuple[str, float | None]:
+    """Get the base unit of a unit and its scale to it, once per registry.
+
+    The unit is parsed as an expression, so a factor of the unit, e.g. the year
+    in seconds of `item/(31557600.0*s)`, is part of its scale. A unit which
+    pint does not normalize is its own base unit, without a scale.
+
+    Args:
+        registry: the registry of the unit.
+        unit: the unit.
+
+    Returns:
+        The base unit and the scale of the unit to it.
+    """
+    units = _BASE_UNITS.setdefault(registry, {})
+    if unit not in units:
+        try:
+            quantity = registry.Quantity(registry.parse_expression(unit))
+            base = quantity.to_base_units()
+            units[unit] = (str(base.units), float(base.magnitude))
+        except (PintError, TokenError, ArithmeticError, ValueError):
+            units[unit] = (unit, None)
+    return units[unit]
+
+
+def model_units(uinfo: UnitsInformation) -> UnitsContract:
+    """Get the base unit and the scale of the unit of every entity of a model.
+
+    The contract keeps no registry, so a plan which carries it pickles.
+
+    Args:
+        uinfo: the units of the model.
+
+    Returns:
+        The units of the model, see `UnitsContract`.
+    """
+    return tuple(
+        (str(key), None, None)
+        if unit is None
+        else (str(key), *_base_unit(uinfo.ureg, unit))
+        for key, unit in sorted(uinfo.items())
+    )
+
 
 #: the tolerances of the steady state of an output at the time `inf`
 STEADY_STATE = SteadyState()
@@ -183,6 +243,31 @@ class Plan:
     time_shift: float
     symbols: ModelSymbols = field(repr=False, compare=False)
     steady_state_output: SteadyStatePlan | None = None
+    units: UnitsContract | None = field(default=None, repr=False)
+
+    def check_model(self, symbols: ModelSymbols, uinfo: UnitsInformation) -> None:
+        """Reject execution against different symbols or numerical units.
+
+        A manually constructed plan without a unit contract still checks its
+        symbols. Plans returned by compilation always check both.
+
+        Args:
+            symbols: the symbols of the model which runs the plan.
+            uinfo: the units of the model which runs the plan.
+
+        Raises:
+            ValueError: if the plan was compiled for other symbols or units.
+        """
+        if self.symbols != symbols:
+            raise ValueError(
+                "The plan was compiled for different model symbols; "
+                "compile the simulation against the model being executed."
+            )
+        if self.units is not None and self.units != model_units(uinfo):
+            raise ValueError(
+                "The plan was compiled for different model units; "
+                "compile the simulation against the model being executed."
+            )
 
     @property
     def change_times(self) -> tuple[float, ...]:
@@ -585,6 +670,7 @@ def compile_simulation(
         time_shift=convert.time(simulation.time_shift),
         symbols=symbols,
         steady_state_output=steady_output,
+        units=model_units(uinfo),
     )
 
 

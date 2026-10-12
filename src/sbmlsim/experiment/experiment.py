@@ -701,8 +701,7 @@ class SimulationExperiment:
 
             # only perform serialization after data evaluation (to access units)
             if output_path:
-                # serialization
-                self.to_json(output_path / f"{self.sid}.json")
+                self._write_json(output_path / f"{self.sid}.json")
             completed = True
 
         except Exception as err:
@@ -1125,15 +1124,41 @@ class SimulationExperiment:
     def to_json(self, path: Path | None = None, indent: int = 2):
         """Convert experiment to JSON for exchange.
 
+        The experiment is encoded before the file is written, so a value which
+        cannot be encoded leaves no truncated file.
+
         :param path: path for file, if None JSON str is returned
         :return:
+        :raises TypeError: for a value which `ObjectJSONEncoder` cannot encode
         """
-        d = self.to_dict()
+        text = json.dumps(self.to_dict(), cls=ObjectJSONEncoder, indent=indent)
         if path is None:
-            return json.dumps(d, cls=ObjectJSONEncoder, indent=indent)
-        with open(path, "w", encoding="utf-8") as f_json:
-            json.dump(d, fp=f_json, cls=ObjectJSONEncoder, indent=indent)
+            return text
+        path.write_text(text, encoding="utf-8")
         return None
+
+    def _write_json(self, path: Path) -> None:
+        """Write the JSON of the experiment in a run, see `to_json`.
+
+        A value of the experiment which cannot be encoded is reported and the
+        file is not written, a file of an earlier run is removed: the
+        serialization is a description of the experiment and does not fail
+        its run.
+
+        Args:
+            path: the file of the JSON.
+        """
+        try:
+            self.to_json(path)
+        except TypeError as err:
+            path.unlink(missing_ok=True)
+            logger.warning(
+                "The experiment '%s' is not written as JSON to '%s', it has a "
+                "value which cannot be encoded: %s",
+                self.sid,
+                path,
+                err,
+            )
 
     def to_dict(self):
         """Convert to dictionary.

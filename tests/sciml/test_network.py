@@ -2,6 +2,7 @@
 
 import copy
 import pickle
+import warnings
 from collections.abc import Callable, Mapping
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
@@ -452,6 +453,37 @@ def test_a_network_does_not_change() -> None:
     with pytest.raises(ValueError, match="read-only"):
         network.parameters["layer1"]["weight"][0, 0] = 5.0
     assert network.parameters["layer1"]["weight"][0, 0] == 1.0
+
+
+def test_nominal_arrays_cannot_be_made_writeable() -> None:
+    """Validation remains true because the backing storage is immutable."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    for arrays in network.parameters.values():
+        for array in arrays.values():
+            with pytest.raises(ValueError, match="WRITEABLE"):
+                array.setflags(write=True)
+    assert network.model is not None
+
+
+def test_forward_rechecks_supplied_mutable_parameters() -> None:
+    """Nominal validation does not exempt mutable parameter replacements."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    x = np.ones(2)
+    parameters = network.with_values({})
+    network.forward(x)
+    network.forward(x, parameters=parameters)
+    parameters["layer1"]["weight"][0, 0] = np.nan
+    with pytest.raises(NetworkImportError, match="not finite"):
+        network.forward(x, parameters=parameters)
+
+
+def test_nominal_array_metadata_is_still_validated() -> None:
+    """Immutable storage does not make the public ndarray metadata immutable."""
+    network = Network(sid="net1", model=_model(), parameters=_parameters())
+    with warnings.catch_warnings(action="ignore", category=DeprecationWarning):
+        network.parameters["layer1"]["weight"].shape = (6,)  # ty: ignore[deprecated]
+    with pytest.raises(NetworkImportError, match="must have shape"):
+        network.forward(np.ones(2))
 
 
 def test_the_arrays_of_a_network_are_its_own() -> None:

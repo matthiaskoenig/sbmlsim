@@ -22,6 +22,7 @@ likelihood calls non-identifiable is a parameter whose cost is flat away from
 the optimum, which is what the profile is for.
 """
 
+import hashlib
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -92,6 +93,31 @@ class FisherInformation:
     #: the warning of a rank deficient information is logged for the first of
     #: them and not once per reader
     _warned: bool = field(default=False, init=False, repr=False, compare=False)
+    _matrix_fingerprint: tuple[tuple[int, ...], str, float, bytes] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _cached_eigenvalues: np.ndarray | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _cached_inverse: np.ndarray | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+
+    def _refresh_matrix_cache(self) -> None:
+        """Reuse matrix decompositions while retaining the mutable matrix API."""
+        # Hashing avoids retaining a second full matrix just to detect public
+        # in-place edits. Non-contiguous inputs need only a temporary copy.
+        fingerprint = (
+            self.matrix.shape,
+            self.matrix.dtype.str,
+            self.rank_tolerance,
+            hashlib.sha256(memoryview(np.ascontiguousarray(self.matrix))).digest(),
+        )
+        if fingerprint != self._matrix_fingerprint:
+            self._matrix_fingerprint = fingerprint
+            self._cached_eigenvalues = None
+            self._cached_inverse = None
+            self._warned = False
 
     def __post_init__(self) -> None:
         """Check the scales of the parameters.
@@ -162,8 +188,10 @@ class FisherInformation:
         are real and not negative up to rounding. A small eigenvalue is a
         direction in parameter space the data does not constrain.
         """
-        values = np.linalg.eigvalsh(self.matrix)
-        return np.asarray(sorted(values, reverse=True), dtype=float)
+        self._refresh_matrix_cache()
+        if self._cached_eigenvalues is None:
+            self._cached_eigenvalues = np.sort(np.linalg.eigvalsh(self.matrix))[::-1]
+        return self._cached_eigenvalues.copy()
 
     @property
     def condition_number(self) -> float:
@@ -200,6 +228,7 @@ class FisherInformation:
         unconstrained directions are arbitrary; `is_identifiable` says whether
         it can be read. The warning about it is logged once per information.
         """
+        self._refresh_matrix_cache()
         if not self.is_identifiable and not self._warned:
             self._warned = True
             logger.warning(
@@ -209,13 +238,18 @@ class FisherInformation:
                 self.rank,
                 self.k,
             )
-        return np.asarray(self.sigma2 * np.linalg.pinv(self.matrix), dtype=float)
+        if self._cached_inverse is None:
+            self._cached_inverse = np.linalg.pinv(self.matrix)
+        return np.asarray(self.sigma2 * self._cached_inverse, dtype=float)
 
     @property
     def standard_errors(self) -> np.ndarray:
         """Get the standard error of every parameter in the scaled space."""
         variances = np.diag(self.covariance)
-        return np.sqrt(np.where(variances > 0.0, variances, np.nan))
+        # A perfect identifiable fit has zero estimated variance. A zero on
+        # the diagonal of a deficient pseudo-inverse may be unconstrained.
+        valid = variances >= 0.0 if self.is_identifiable else variances > 0.0
+        return np.sqrt(np.where(valid, variances, np.nan))
 
     @property
     def correlation(self) -> pd.DataFrame:
@@ -355,7 +389,7 @@ def fisher_information(
         directions the data does not constrain.
     """
     problem.initialize(settings)
-    values = np.asarray(parameter_set.x(problem.pids), dtype=float)
+    values = problem.bind_parameter_set(parameter_set).x(problem.pids)
     x = problem.to_scale(values)
 
     residuals = np.asarray(problem.residuals(x), dtype=float)

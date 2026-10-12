@@ -20,7 +20,7 @@ from __future__ import annotations
 import functools
 import inspect
 import typing
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -141,6 +141,18 @@ def _effective_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
         for key, value in kwargs.items()
         if key not in IGNORED_KWARGS and not (key == "dtype" and value is None)
     }
+
+
+def _argument_names(value: Any) -> Iterator[str]:
+    """Find possible references, conservatively retaining string literals."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, (list, tuple)):
+        for element in value:
+            yield from _argument_names(element)
+    elif isinstance(value, Mapping):
+        for element in value.values():
+            yield from _argument_names(element)
 
 
 def _call_function(
@@ -346,13 +358,22 @@ def evaluate(
         )
 
     state: dict[str, np.ndarray] = {}
+    last_use: dict[str, int] = {}
+    for position, node in enumerate(model.forward):
+        for name in _argument_names((node.args, node.kwargs)):
+            last_use[name] = position
+    release_after: dict[int, list[str]] = {}
+    for name, position in last_use.items():
+        release_after.setdefault(position, []).append(name)
     arrays: list[np.ndarray] = []
     remaining = iter(inputs)
-    for node in model.forward:
+    for position, node in enumerate(model.forward):
         try:
             if node.op == PLACEHOLDER:
                 state[node.name] = backend.asarray(next(remaining))
                 arrays.append(state[node.name])
+                if last_use.get(node.name, -1) <= position:
+                    state.pop(node.name)
                 continue
             if node.op == OUTPUT:
                 return _outputs(node, state, arrays)
@@ -369,5 +390,10 @@ def evaluate(
 
         value = np.asarray(value)
         state[node.name] = value if on_node is None else on_node(node, value)
+        del value
+        for name in release_after.get(position, ()):
+            state.pop(name, None)
+        if last_use.get(node.name, -1) <= position:
+            state.pop(node.name, None)
 
     raise ValueError(f"Network '{network}': the forward pass has no output node")

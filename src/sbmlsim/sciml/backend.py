@@ -107,7 +107,8 @@ class Backend(ABC):
             above: the result where `x > threshold`.
 
         Returns:
-            `above` where `x > threshold` and `below` elsewhere.
+            `above` where `x > threshold`, `NaN` where `x` is `NaN` and `below`
+            elsewhere.
         """
 
     @abstractmethod
@@ -187,8 +188,10 @@ class NumpyBackend(Backend):
         below: np.ndarray | float,
         above: np.ndarray | float,
     ) -> np.ndarray:
-        """Choose between two values by a condition on `x`."""
-        return np.where(x > threshold, above, below)
+        """Choose between two values by a condition on `x`, as float64."""
+        result = np.asarray(np.where(x > threshold, above, below), dtype=float)
+        np.copyto(result, np.nan, where=np.isnan(x))
+        return result
 
     def stabilizer(self, x: np.ndarray, axis: int) -> np.ndarray:
         """Get the maximum along the axis."""
@@ -271,8 +274,18 @@ class SympyBackend(Backend):
         limit = _exact(threshold)
 
         def piecewise(value: Any, low: Any, high: Any) -> sympy.Basic:
+            value = sympy.sympify(value)
+            if value is sympy.nan:
+                return sympy.nan
+            if value.is_number:
+                return sympy.Piecewise(
+                    (_exact(high), value > limit), (_exact(low), True)
+                )
             return sympy.Piecewise(
-                (_exact(high), sympy.sympify(value) > limit), (_exact(low), True)
+                (value, sympy.Ne(value, value, evaluate=False)),
+                (_exact(high), value > limit),
+                (_exact(low), True),
+                evaluate=False,
             )
 
         return np.asarray(_elementwise(piecewise, 3)(x, below, above), dtype=object)

@@ -35,7 +35,7 @@ Note the sign: the residuals of `OptimizationProblem.residuals` are
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -259,14 +259,27 @@ class FitMetrics:
         population_parameter_set: parameters shared by all fit mappings, they
             give PRED. Without them PRED is IPRED, which is the case of a
             deterministic fit of a single parameter set.
+        evaluation: a keyword only argument and no field, the complete
+            residual data of the problem at the parameter set, i.e.
+            `OptimizationProblem.residuals` with `complete_data=True`, which
+            the metrics use instead of simulating the set again, e.g. the
+            evaluation a report keeps of its sets.
     """
 
     problem: OptimizationProblem
     parameter_set: ParameterSet
     population_parameter_set: ParameterSet | None = None
+    evaluation: InitVar[dict[str, list[Any]] | None] = field(default=None, kw_only=True)
+    # the evaluation with the values of the parameter set it is the one of
+    _evaluation: tuple[bytes, dict[str, list[Any]]] | None = field(
+        default=None, init=False, repr=False
+    )
 
-    def __post_init__(self) -> None:
-        """Check that the problem was initialized.
+    def __post_init__(self, evaluation: dict[str, list[Any]] | None) -> None:
+        """Check that the problem was initialized and keep the evaluation.
+
+        Args:
+            evaluation: the complete residual data at the parameter set.
 
         Raises:
             ValueError: if the problem is not initialized.
@@ -276,6 +289,11 @@ class FitMetrics:
                 f"The metrics require an initialized OptimizationProblem, "
                 f"'{self.problem.opid}' is not initialized."
             )
+        if evaluation is not None:
+            values = self.problem.bind_parameter_set(self.parameter_set).x(
+                self.problem.pids
+            )
+            self._evaluation = (values.tobytes(), evaluation)
 
     @property
     def n_parameters(self) -> int:
@@ -284,8 +302,11 @@ class FitMetrics:
 
     def _residual_data(self, pset: ParameterSet) -> dict[str, list[Any]]:
         """Get the complete residual data of every mapping for a parameter set."""
+        values = self.problem.bind_parameter_set(pset).x(self.problem.pids)
+        if self._evaluation is not None and self._evaluation[0] == values.tobytes():
+            return self._evaluation[1]
         return self.problem.residuals(  # ty: ignore[invalid-return-type]
-            xlog=self.problem.to_scale(pset.x(self.problem.pids)),
+            xlog=self.problem.to_scale(values),
             complete_data=True,
         )
 
@@ -362,8 +383,10 @@ class FitMetrics:
             DataFrame with one row per fit mapping and the columns `experiment`,
             `mapping`, `kind`, `n`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w` and `R2`.
         """
-        dp = self.datapoints_df()
+        return self._mappings_df(self.datapoints_df())
 
+    def _mappings_df(self, dp: pd.DataFrame) -> pd.DataFrame:
+        """Compute mapping metrics from one evaluation's data points."""
         data: list[dict[str, Any]] = []
         for k, mapping in enumerate(self.problem.mapping_keys):
             # the mappings of two experiments may have the same key
@@ -431,7 +454,12 @@ class FitMetrics:
         Raises:
             ValueError: if the problem has no data points of the kind.
         """
-        dp = self.datapoints_df()
+        return self._summary(self.datapoints_df(), kind)
+
+    def _summary(
+        self, dp: pd.DataFrame, kind: MappingKind | None = None
+    ) -> dict[str, Any]:
+        """Compute summary metrics from one evaluation's data points."""
         if kind is not None:
             dp = dp[dp.kind == kind.value]
         if len(dp) == 0:
@@ -443,6 +471,9 @@ class FitMetrics:
         # the training data
         kinds = list(self.problem.mapping_counts())
         is_training = kind is MappingKind.TRAINING or kinds == [MappingKind.TRAINING]
+        cost = float("nan")
+        if is_training:
+            cost = 0.5 * sse(dp.IWRES) if np.isfinite(dp.IPRED).all() else float("inf")
 
         mse_value = mse(dp.IRES)
         return {
@@ -450,7 +481,7 @@ class FitMetrics:
             "kind": kind.value if kind else "all",
             "n": len(dp),
             "k": self.n_parameters,
-            "cost": self.cost() if is_training else float("nan"),
+            "cost": cost,
             "MSE": mse_value,
             "RMSE": rmse_from_mse(mse_value),
             "NRMSE": rmse(dp.NRES),
@@ -473,26 +504,36 @@ class FitMetrics:
         Returns:
             DataFrame with one row per kind, see `summary`.
         """
+        return self._summary_df(self.datapoints_df())
+
+    def _summary_df(self, dp: pd.DataFrame) -> pd.DataFrame:
+        """Compute the summaries from one evaluation's data points."""
         kinds = [
             kind for kind in self.problem.mapping_counts() if kind in EVALUATED_KINDS
         ]
-        return pd.DataFrame([self.summary(kind=kind) for kind in kinds])
+        return pd.DataFrame([self._summary(dp, kind=kind) for kind in kinds])
 
     def cost(self) -> float:
         """Get the cost of the parameter set, i.e., the objective of the fit."""
-        return self.problem.cost_least_square(
-            self.problem.to_scale(self.parameter_set.x(self.problem.pids))
+        values = self.problem.bind_parameter_set(self.parameter_set).x(
+            self.problem.pids
         )
+        if self._evaluation is not None and self._evaluation[0] == values.tobytes():
+            return float(
+                self._summary(self.datapoints_df(), MappingKind.TRAINING)["cost"]
+            )
+        return self.problem.cost_least_square(self.problem.to_scale(values))
 
     def report(self) -> str:
         """Get the metrics as text, per kind of fit mapping and per mapping."""
+        dp = self.datapoints_df()
         info = [
             "-" * 80,
             f"Metrics: {self.parameter_set.sid}",
             "-" * 80,
-            self.summary_df().to_string(index=False),
+            self._summary_df(dp).to_string(index=False),
             "",
-            self.mappings_df().to_string(index=False),
+            self._mappings_df(dp).to_string(index=False),
             "-" * 80,
         ]
         return "\n".join(info)

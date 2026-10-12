@@ -6,11 +6,14 @@ is the case this covers: 25 mg every 12 hours, eleven doses, and the data is
 reported from the last dose, so the simulation starts at a negative time.
 """
 
+from pathlib import Path
 from types import SimpleNamespace
 
+import libsbml
 import numpy as np
 import petab.v2 as petab_v2
 import pytest
+from petab.v2.models.sbml_model import SbmlModel
 
 from sbmlsim import Q
 from sbmlsim.fit.petab_v2.export import PetabExporter, _table
@@ -141,7 +144,9 @@ def test_petab_accepts_the_experiment(dosing_simulation: Simulation) -> None:
     assert len(set(times)) == N_DOSES
 
 
-def test_the_protocol_is_read_back(dosing_simulation: Simulation) -> None:
+def test_the_protocol_is_read_back(
+    dosing_simulation: Simulation, tmp_path: Path
+) -> None:
     """The reader rebuilds the protocol from the periods of the experiment.
 
     This is the problem of another tool, i.e. without the `sbmlsim` extension:
@@ -168,10 +173,36 @@ def test_the_protocol_is_read_back(dosing_simulation: Simulation) -> None:
             )
         )
 
-    reader = PetabReader.__new__(PetabReader)
-    reader.petab_problem = problem
-    reader.extension = None
-    reader.sciml = None
+    document = libsbml.SBMLDocument(3, 2)
+    model = document.createModel()
+    model.setId("dosing")
+    compartment = model.createCompartment()
+    compartment.setId("Vurine")
+    compartment.setConstant(True)
+    compartment.setSize(1.0)
+    species = model.createSpecies()
+    species.setId("Aurine_hctz")
+    species.setCompartment("Vurine")
+    species.setHasOnlySubstanceUnits(True)
+    species.setBoundaryCondition(False)
+    species.setConstant(False)
+    species.setInitialAmount(0.0)
+    for sid in ("PODOSE_hctz", "Cve_hctz"):
+        parameter = model.createParameter()
+        parameter.setId(sid)
+        parameter.setConstant(True)
+        parameter.setValue(0.0)
+    model_path = tmp_path / "dosing.xml"
+    assert libsbml.writeSBMLToFile(document, str(model_path))
+    problem.models.append(
+        SbmlModel(
+            sbml_model=model,
+            sbml_document=document,
+            model_id="dosing",
+            rel_path=model_path,
+        )
+    )
+    reader = PetabReader(problem)
     simulation = reader._simulation_of_periods(problem.experiments[0])
 
     # the simulation starts at the first dose and not at zero

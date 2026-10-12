@@ -421,7 +421,9 @@ def test_a_mapping_without_positive_values_has_a_linear_log_panel(
 
     monkeypatch.setattr(FitReport, "residual_data", negative)
     monkeypatch.setattr(
-        problem, "y_references", [-np.abs(y) for y in problem.y_references]
+        report.problem,
+        "y_references",
+        [-np.abs(y) for y in report.problem.y_references],
     )
     report.plot_fit(tmp_path)
     assert [ax.get_yscale() for ax in figures["RowsStudy_fm_rows"].axes] == [

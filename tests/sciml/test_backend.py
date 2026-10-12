@@ -69,6 +69,7 @@ def test_the_selection_by_a_condition() -> None:
     np.testing.assert_array_equal(backend.select(x, 0.0, -5.0, 5.0), [-5.0, -5.0, 5.0])
     np.testing.assert_array_equal(backend.select(x, 0.0, 0.0, x), [0.0, 0.0, 1.0])
     np.testing.assert_array_equal(backend.select(x, 0.0, 2 * x, x), [-2.0, 0.0, 1.0])
+    assert np.isnan(backend.select(np.array(np.nan), 0.0, 0, 1))
 
 
 def test_an_overflow_is_not_a_warning() -> None:
@@ -136,14 +137,17 @@ def test_a_condition_is_a_piecewise() -> None:
     backend = SympyBackend()
     a = sympy.Symbol("a")
     (y,) = backend.select(np.array([a], dtype=object), 0.0, 0.0, np.array([a]))
-    assert y == sympy.Piecewise((a, a > 0), (0, True))
+    invalid = sympy.Ne(a, a, evaluate=False)
+    assert y == sympy.Piecewise((a, invalid), (a, a > 0), (0, True), evaluate=False)
     assert y.subs(a, 2.0) == 2.0
     assert y.subs(a, 0.0) == 0
     assert y.subs(a, -2.0) == 0
     # a number which is an integer is written as one, the others as they are
     assert y.atoms(sympy.Float) == set()
     (z,) = backend.select(np.array([a], dtype=object), 0.5, -1.25, 6.0)
-    assert z == sympy.Piecewise((6, a > 0.5), (-1.25, True))
+    assert z == sympy.Piecewise(
+        (a, invalid), (6, a > 0.5), (-1.25, True), evaluate=False
+    )
 
 
 def test_a_condition_on_a_number() -> None:

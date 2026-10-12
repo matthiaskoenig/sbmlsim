@@ -109,7 +109,29 @@ def test_sets_to_df_with_the_units_to_show() -> None:
         ]
     )
     assert list(psets.to_df().unit) == ["mM", "1/hr|1/min"]
-    assert list(psets.to_df(units={"p2": "per_min"}).unit) == ["mM", "per_min"]
+    with pytest.raises(ValueError, match="resolved_units"):
+        psets.to_df(units={"p2": "per_min"})
+    df = psets.to_df(units={"p2": "per_min"}, resolved_units={"p2": "1/min"})
+    assert list(df.unit) == ["mM", "per_min"]
+    assert df.loc[df.parameter == "p2", "fit"].iloc[0] == pytest.approx(2.5 / 60)
+
+
+def test_parameter_binding_converts_units_and_retains_metadata() -> None:
+    original = ParameterSet("s", {"V": 10000}, {"V": "ml"}, 2.0, "fit")
+    converted = original.to_units({"V": "l"})
+    assert converted.values == {"V": 10.0}
+    assert converted.units == {"V": "l"}
+    assert converted.cost == original.cost and converted.provenance == "fit"
+    assert original.values == {"V": 10000.0}
+    table = ParameterSets([original]).to_df(units={"V": "l"})
+    assert table.s.iloc[0] == 10.0
+    with pytest.raises(ValueError, match="resolved_units"):
+        ParameterSets([original]).to_df(units={"V": "unknown_model_unit"})
+    with pytest.raises(ValueError, match="cannot convert"):
+        original.x(["V"], {"V": "s"})
+    with pytest.raises(ValueError, match="unresolved"):
+        original.x(["V"], {"V": None})
+    assert ParameterSet("implicit", {"V": 10}).x(["V"], {"V": "l"})[0] == 10.0
 
 
 def test_missing_set() -> None:

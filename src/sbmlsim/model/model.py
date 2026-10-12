@@ -102,6 +102,8 @@ class AbstractModel:
             "language": self.language_type,
             "language_type": self.language_type,
             "source": self.source.to_dict(),
+            "base_path": str(self.base_path) if self.base_path is not None else None,
             "changes": self.changes,
+            "selections": self.selections,
             "parameters": self.parameters,
         }

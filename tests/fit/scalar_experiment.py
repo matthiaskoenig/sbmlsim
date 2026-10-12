@@ -109,6 +109,16 @@ class ScalarStudy(PKStudy):
         }
 
 
+class BlowupStudy(ScalarStudy):
+    """The cmax of a model whose integration fails for `kb = 1`.
+
+    `kb` and `B` have no unit in the model.
+    """
+
+    def models(self) -> dict[str, AbstractModel | Path]:
+        return {"m": AbstractModel(source=sbml_pk(blowup=True))}
+
+
 class RowsStudy(ScalarStudy):
     """Three individuals of 100 mg against the one simulated cmax."""
 

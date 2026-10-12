@@ -17,9 +17,9 @@ the example makes one run) and improves the cost, which `--max-nfev`, the
 evaluations of the cost, limits: the default is a demonstration and stops early.
 The report carries the Fisher information of the fit, which has no full rank
 for 54 parameters on 20 data points and warns about it.
-A problem which is read from PEtab builds its simulation experiment at
-runtime, which the workers of a parallel fit cannot import, so the fit runs in
-one process. The results are written into `results/lotka_volterra` of the
+The one run needs no pool and runs in the calling process; a problem which is
+read from PEtab runs a parallel fit as well, since its simulation experiment is
+pickled as its PEtab definition and built again in every worker. The results are written into `results/lotka_volterra` of the
 working directory, with the model which carries the network, `lv_sciml.xml`,
 and the fitted problem in `petab/`.
 """
@@ -107,7 +107,6 @@ def main() -> None:
         settings=FIT_SETTINGS,
         size=1,
         sampling=SamplingType.START,
-        serial=True,
         show_progress=False,
         diff_step=1e-4,
         x_scale="jac",

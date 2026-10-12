@@ -201,25 +201,27 @@ def _density(
     profile: ParameterProfile,
     parameter: FitParameter | None,
     scale: ParameterScaleType,
-    cost_min: float,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Get the points and the density of a profile in the space of its scale.
 
-    The points which did not converge are dropped. A profile stops at the
-    first point at or above the threshold, so a closed side (one with a
-    confidence bound, whose outermost point is not at the bound of the
-    parameter) is extended by its quadratic tail: the cost beyond the outermost
-    point follows `cost_min + b (x - x_opt)^2` through the optimum and that
-    point, out to a rise of `TAIL_RISE` or to the bound of the parameter (a side
-    which reaches the bound gets no tail). An
-    open side is extended to the (finite) bound with the density of its
-    outermost point.
+    The density is `exp(-(cost - cost_min))` with the smallest cost of the
+    profile, so every profile is normalized by itself. The points which did not
+    converge are dropped. A profile stops at the first point at or above the
+    threshold, so a closed side (one with a confidence bound, whose outermost
+    point is not at the bound of the parameter) is extended by its quadratic
+    tail: the cost beyond the outermost point follows `c_opt + b (x - x_opt)^2`
+    through the optimum of the profile and that point, out to a rise of
+    `TAIL_RISE` or to the bound of the parameter (a side which reaches the bound
+    gets no tail). An open side is extended to the (finite) bound with the
+    density of its outermost point.
 
     Raises:
         ValueError: if the optimum did not converge or fewer than two points
             are left.
     """
-    if not profile.converged[profile.index_optimum]:
+    if not profile.converged[profile.index_optimum] or not np.isfinite(
+        profile.costs[profile.index_optimum]
+    ):
         raise ValueError(
             f"The profile of '{profile.pid}' has no converged optimum, the "
             f"likelihood of the parameter cannot be drawn from it."
@@ -233,6 +235,9 @@ def _density(
             f"The profile of '{profile.pid}' has fewer than two converged points."
         )
     x = np.asarray(scale.to_scale(values), dtype=float)
+    # Each marginal is normalized independently. A much better minimum in
+    # another profile must not underflow this profile's whole density.
+    cost_min = float(np.min(costs))
     density = np.exp(-(costs - cost_min))
     x_opt, c_opt = x[i_opt], costs[i_opt]
     for lower in (True, False):
@@ -273,6 +278,48 @@ def _density(
     return x, density
 
 
+def _draw_profile(x: np.ndarray, density: np.ndarray, u: np.ndarray) -> np.ndarray:
+    """Draw from a piecewise linear density by inverting its integral.
+
+    Args:
+        x: the increasing points of the density.
+        density: the density at the points, not normalized.
+        u: the probabilities of the unit interval to draw at.
+
+    Returns:
+        The points at the probabilities, exact within every interval.
+
+    Raises:
+        ValueError: if the density has no finite positive mass or the points
+            decrease.
+    """
+    widths = np.diff(x)
+    masses = widths * 0.5 * (density[1:] + density[:-1])
+    cdf = np.r_[0.0, np.cumsum(masses)]
+    total = float(cdf[-1])
+    if not np.isfinite(total) or total <= 0.0 or np.any(widths < 0.0):
+        raise ValueError(
+            "The profile density requires finite positive total probability."
+        )
+    probabilities = np.minimum(u * total, np.nextafter(total, 0.0))
+    positions = np.clip(
+        np.searchsorted(cdf, probabilities, side="right") - 1, 0, len(widths) - 1
+    )
+    # CDF plateaus have no mass; searchsorted skips them. Scaling each
+    # interval to its larger endpoint avoids squaring a tiny density.
+    left, right = density[positions], density[positions + 1]
+    peak = np.maximum(left, right)
+    left, right = left / peak, right / peak
+    fraction = (probabilities - cdf[positions]) / masses[positions]
+    area = np.clip(fraction, 0.0, 1.0) * 0.5 * (left + right)
+    root = np.sqrt(np.maximum(left**2 + 2.0 * (right - left) * area, 0.0))
+    denominator = left + root
+    offset = np.divide(
+        2.0 * area, denominator, out=np.zeros_like(area), where=denominator > 0.0
+    )
+    return x[positions] + widths[positions] * np.clip(offset, 0.0, 1.0)
+
+
 def profile_parameters(
     identifiability: IdentifiabilityResult,
     n: int,
@@ -284,11 +331,12 @@ def profile_parameters(
     """Draw every parameter from the likelihood of its profile.
 
     The density of a parameter is `exp(-(cost - cost_min))` along its profile,
-    interpolated in the space of the `parameter_scale`, so asymmetric and open
-    profiles are followed. A side which stays below the threshold reaches the
-    bound of the parameter, a closed side (the profile stops at the threshold)
-    is continued by its quadratic tail, see `TAIL_RISE`. The parameters are independent, since the profiles
-    carry no joint information.
+    with the smallest cost of the profile, linear between its points in the
+    space of the `parameter_scale`, so asymmetric and open profiles are
+    followed. A side which stays below the threshold reaches the bound of the
+    parameter, a closed side (the profile stops at the threshold) is continued
+    by its quadratic tail, see `TAIL_RISE`. The parameters are independent,
+    since the profiles carry no joint information.
 
     Args:
         identifiability: the profile likelihood of a fit.
@@ -328,13 +376,8 @@ def profile_parameters(
             else identifiability.fit_settings.parameter_scale
         )
         scale_names.append(scale.name)
-        x, density = _density(
-            identifiability.profiles[pid], parameter, scale, identifiability.cost_min
-        )
-        steps = np.diff(x) * 0.5 * (density[1:] + density[:-1])
-        cdf = np.r_[0.0, np.cumsum(steps)]
-        cdf /= cdf[-1]
-        draws = np.interp(rng.random(n), cdf, x)
+        x, density = _density(identifiability.profiles[pid], parameter, scale)
+        draws = _draw_profile(x, density, rng.random(n))
         columns[target] = _column(
             np.asarray(scale.from_scale(draws), dtype=float), units.get(pid)
         )
@@ -392,11 +435,10 @@ def fit_repeats(
     pids = list(sets[0].values)
     fitted = {p.pid: p.target_id for p in result.parameters}
     names = _targets(pids, [fitted.get(pid, pid) for pid in pids], targets)
+    values = np.asarray([s.x(pids, sets[0].units) for s in sets], dtype=float)
     columns = {
-        target: _column(
-            np.array([s.values[pid] for s in sets], dtype=float), sets[0].units.get(pid)
-        )
-        for pid, target in zip(pids, names, strict=True)
+        target: _column(values[:, k], sets[0].units.get(pid))
+        for k, (pid, target) in enumerate(zip(pids, names, strict=True))
     }
     record = Design(
         method="fit_repeats",

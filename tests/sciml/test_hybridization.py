@@ -1,6 +1,7 @@
 """Tests of the hybridization of a network and a model."""
 
 import pickle
+import tracemalloc
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -74,6 +75,27 @@ def _hybridization(pattern: NetworkPattern | str = RHS, **kwargs: Any) -> Hybrid
 def _values(hybridization: Hybridization, **values: float) -> dict[str, float]:
     """Get the values of a fit: the elements at their nominal values, alpha."""
     return {**nominal_values(hybridization.network), "alpha": 1.3, **values}
+
+
+@pytest.mark.parametrize(
+    "input_id",
+    [
+        "net1__input0__100000",
+        "net1__input0__100000_100000",
+        "net1__input0__1000000000000000000000000",
+    ],
+)
+def test_sparse_input_indices_fail_without_expanding_the_shape(input_id: str) -> None:
+    """Malformed input indices do not allocate all missing elements."""
+    tracemalloc.start()
+    try:
+        with pytest.raises(NetworkHybridizationError) as raised:
+            _hybridization(inputs={input_id: NetworkInput(formula="1")})
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 2 * 1024**2
+    assert len(str(raised.value)) < 1000
 
 
 # --- AN INPUT ---
@@ -490,6 +512,34 @@ def test_an_output_which_is_not_finite() -> None:
         np.errstate(over="ignore"),
     ):
         hybridization.derived_changes(_values(hybridization, alpha=1e6), "e1")
+
+
+def test_an_activation_cannot_hide_an_undefined_intermediate_value() -> None:
+    """Finite weights and inputs can overflow, which must invalidate the output."""
+    architecture = feed_forward(n_hidden=1, activation="relu")
+    network = replace(
+        architecture,
+        parameters={
+            "layer1": {"weight": np.array([[1e308, -1e308]]), "bias": np.zeros(1)},
+            "layer2": {"weight": np.ones((1, 1)), "bias": np.zeros(1)},
+        },
+    )
+    hybridization = _hybridization(
+        network=network, pattern=PRE, inputs=_inputs("2", "2")
+    )
+    with (
+        np.errstate(over="ignore", invalid="ignore"),
+        pytest.raises(NetworkHybridizationError, match="not a finite number"),
+    ):
+        hybridization.derived_changes(_values(hybridization), "e1")
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+def test_compiled_network_rejects_nonfinite_frozen_weights(value: float) -> None:
+    """A nonfinite model weight cannot match the frozen nominal value."""
+    hybridization = _hybridization(pattern=RHS, frozen={"net1__layer1__bias__0"})
+    with pytest.raises(NetworkHybridizationError, match="not finite"):
+        hybridization.derived_changes({"net1__layer1__bias__0": value}, "e1")
 
 
 def test_the_derived_changes_of_a_compiled_network() -> None:

@@ -40,6 +40,128 @@ def test_data_frames_are_compared() -> None:
     assert comparison.columns == ["time", "X"]
 
 
+def test_every_result_is_compared_with_the_reference() -> None:
+    """A later result cannot hide behind an earlier matching result."""
+    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [1.0, 2.0]})
+    comparison = DataSetsComparison(
+        {
+            "reference": reference,
+            "matching": reference.copy(),
+            "different": reference.assign(X=[99.0, 99.0]),
+        }
+    )
+    assert not comparison.is_equal()
+    np.testing.assert_array_equal(comparison.diff_abs.X, [98.0, 97.0])
+    np.testing.assert_array_equal(comparison.diff_tol_bool.X, [True, True])
+    assert "FALSE" in comparison.report_str()
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        plt.close(comparison.plot_diff())
+
+
+def test_multiple_results_show_the_largest_difference_per_value() -> None:
+    """Different candidates can have the largest deviation at different rows."""
+    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [10.0, 10.0]})
+    comparison = DataSetsComparison(
+        {
+            "reference": reference,
+            "first": reference.assign(X=[8.0, 11.0]),
+            "second": reference.assign(X=[9.0, 14.0]),
+        }
+    )
+    np.testing.assert_array_equal(comparison.diff.X, [2.0, -4.0])
+    np.testing.assert_array_equal(comparison.diff_abs.X, [2.0, 4.0])
+    np.testing.assert_allclose(comparison.diff_rel.X, [4.0 / 18.0, 8.0 / 24.0])
+    assert not comparison.is_equal()
+
+
+def test_row_labels_do_not_change_a_result_comparison() -> None:
+    """The numeric rows are compared in order, independent of pandas labels."""
+    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [1.0, 2.0]})
+    other = reference.set_axis([10, 11])
+    assert DataSetsComparison({"reference": reference, "other": other}).is_equal()
+    assert other.index.tolist() == [10, 11]
+
+
+def test_unsigned_results_do_not_wrap_their_differences() -> None:
+    """Subtraction compares values rather than wrapping unsigned integers."""
+    reference = pd.DataFrame({"time": [0.0], "X": np.array([0], dtype=np.uint8)})
+    candidate = reference.assign(X=np.array([255], dtype=np.uint8))
+    comparison = DataSetsComparison({"reference": reference, "candidate": candidate})
+    assert not comparison.is_equal()
+    np.testing.assert_array_equal(comparison.diff.X, [-255.0])
+
+
+def test_multiple_equal_results_agree() -> None:
+    """Checking more than two matching results preserves equality."""
+    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [1.0, 2.0]})
+    assert DataSetsComparison({str(k): reference.copy() for k in range(4)}).is_equal()
+
+
+def test_an_invalid_later_result_is_not_hidden() -> None:
+    """A finite result cannot hide a candidate's undefined values."""
+    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [1.0, 2.0]})
+    comparison = DataSetsComparison(
+        {
+            "reference": reference,
+            "invalid": reference.assign(X=[np.nan, 2.0]),
+            "matching": reference.copy(),
+        }
+    )
+    assert not comparison.is_equal()
+    assert comparison.diff_tol_bool.X.tolist() == [True, False]
+
+
+@pytest.mark.parametrize("value", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize("reference_is_invalid", [False, True])
+def test_nonfinite_values_never_prove_equality(
+    value: float, reference_is_invalid: bool
+) -> None:
+    """An infinite tolerance cannot turn an invalid reference into agreement."""
+    first = pd.DataFrame({"time": [0.0], "X": [value]})
+    second = first.assign(X=[1.0])
+    if not reference_is_invalid:
+        first, second = second, first
+    comparison = DataSetsComparison({"reference": first, "candidate": second})
+    assert not comparison.is_equal()
+    assert comparison.diff_tol_bool.X.tolist() == [True]
+
+
+def test_results_without_time_can_be_compared() -> None:
+    """Scalar tables need no time column when it is explicitly optional."""
+    reference = pd.DataFrame({"X": [1.0, 2.0]})
+    comparison = DataSetsComparison(
+        {"reference": reference, "other": reference.copy()}, time_column=False
+    )
+    assert comparison.is_equal()
+    assert comparison.columns == ["X"]
+    plt.close(comparison.report())
+
+
+def test_a_column_of_durations_is_not_compared() -> None:
+    """A timedelta column is no number, the other columns are compared."""
+    reference = pd.DataFrame(
+        {
+            "time": [0.0, 1.0],
+            "X": [1.0, 2.0],
+            "duration": pd.to_timedelta([1, 2], unit="s"),
+        }
+    )
+    comparison = DataSetsComparison(
+        {"reference": reference, "candidate": reference.copy()}
+    )
+    assert comparison.columns == ["time", "X"]
+    assert comparison.is_equal()
+
+
+@pytest.mark.parametrize("rows", [0, 1])
+def test_a_comparison_requires_two_results(rows: int) -> None:
+    """A missing candidate gives a useful error before differences are computed."""
+    reference = pd.DataFrame({"time": [0.0] * rows, "X": [1.0] * rows})
+    with pytest.raises(ValueError, match="at least two"):
+        DataSetsComparison({"reference": reference})
+
+
 def test_a_dataset_is_compared_with_a_data_frame(model: RoadrunnerSBMLModel) -> None:
     """The dataset of a result on a grid has the time as a column."""
     simulation = Simulation(end=10, steps=10)
@@ -118,6 +240,20 @@ def test_the_frames_of_the_caller_are_not_changed() -> None:
     assert list(frames) == ["a", "b"]
     for key, df in frames.items():
         pd.testing.assert_frame_equal(df, copies[key])
+
+
+def test_integer_columns_can_be_scaled_by_fractional_factors() -> None:
+    """A fractional conversion changes the dtype without changing the input."""
+    a = pd.DataFrame({"time": [0, 1], "X": [1, 2]})
+    b = pd.DataFrame({"time": [0, 1], "Y": [2, 4]})
+    comparison = DataSetsComparison(
+        {"a": a, "b": b},
+        selections={"a": ["time", "X"], "b": ["time", "Y"]},
+        factors={"a": [1.0, 0.5], "b": [1.0, 0.25]},
+    )
+    assert comparison.is_equal()
+    assert a.X.tolist() == [1, 2]
+    assert a.X.dtype == np.dtype("int64")
 
 
 @pytest.mark.parametrize("other", [[1.0, 2.0, 3.0], [1.0, 2.5, 3.0]])

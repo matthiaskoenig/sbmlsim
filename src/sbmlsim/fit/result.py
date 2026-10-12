@@ -4,6 +4,7 @@ import datetime
 import logging
 import uuid
 from collections.abc import Collection, Iterable, Mapping, Sequence
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -153,7 +154,7 @@ class OptimizationResult(ObjectJSONEncoder):
         for p in parameters:
             if isinstance(p, dict):
                 p = FitParameter(**p)
-            self.parameters.append(p)
+            self.parameters.append(deepcopy(p))
 
         #: the unit of every parameter in the units of pint, with the unit ids
         #: of the models resolved, the units of the parameter sets
@@ -165,6 +166,7 @@ class OptimizationResult(ObjectJSONEncoder):
         for fit in fits:
             if isinstance(fit, dict):
                 fit = OptimizeResult(**fit)
+            fit = deepcopy(fit)
             # JSON has no arrays, the parameter vectors are lists after a round trip
             for key in ["x", "x0"]:
                 value = fit.get(key)
@@ -365,26 +367,55 @@ class OptimizationResult(ObjectJSONEncoder):
         """Combine results from multiple parameter fitting experiments.
 
         Raises:
-            ValueError: if no results are given.
+            ValueError: if no results are given or their parameter definitions,
+                settings or units are incompatible.
         """
-        # FIXME: check that the parameters are fitting
         if not opt_results:
             raise ValueError("No OptimizationResults to combine.")
         parameters = opt_results[0].parameters
-        pids = {p.pid for p in parameters}
+        pids = [p.pid for p in parameters]
+        reference = opt_results[0]
 
         fits = []
         trajectories = []
         for opt_res in opt_results:
-            pids_next = {p.pid for p in opt_res.parameters}
-            if pids != pids_next:
-                logger.error(
-                    "Parameters of OptimizationResults do not match: %s != %s",
-                    pids,
-                    pids_next,
+            by_pid = {p.pid: p for p in opt_res.parameters}
+            if len(by_pid) != len(opt_res.parameters) or set(pids) != set(by_pid):
+                raise ValueError(
+                    f"OptimizationResults have incompatible parameters: "
+                    f"{pids} != {[p.pid for p in opt_res.parameters]}."
                 )
-
-            fits.extend(opt_res.fits)
+            if (
+                opt_res.settings != reference.settings
+                or opt_res.units != reference.units
+            ):
+                raise ValueError(
+                    "OptimizationResults have incompatible settings or units."
+                )
+            for p in parameters:
+                other = by_pid[p.pid]
+                # Start values and result labels may differ between repeats;
+                # the meaning and search space of a parameter must agree.
+                definition = p.to_dict()
+                other_definition = other.to_dict()
+                definition.pop("start_value")
+                other_definition.pop("start_value")
+                definition["target"] = p.target_id
+                other_definition["target"] = other.target_id
+                if definition != other_definition or p.mappings != other.mappings:
+                    raise ValueError(
+                        f"OptimizationResults have incompatible definitions "
+                        f"of parameter '{p.pid}'."
+                    )
+            positions = {p.pid: k for k, p in enumerate(opt_res.parameters)}
+            order = [positions[pid] for pid in pids]
+            for fit in opt_res.fits:
+                copied = OptimizeResult(fit)
+                for key in ("x", "x0"):
+                    values = copied.get(key)
+                    if values is not None:
+                        copied[key] = np.asarray(values, dtype=float)[order].copy()
+                fits.append(copied)
             trajectories.extend(opt_res.trajectories)
         return OptimizationResult(
             parameters=parameters,

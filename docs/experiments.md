@@ -118,6 +118,8 @@ Every experiment is serialized to JSON when it is run, `<ExperimentId>.json` bel
 print(experiment.to_json()[:300])
 ```
 
+The definition includes the selections and resource directories of the models, the ids and names of the tasks and the parameters of the data formulas. A NumPy scalar stays a JSON number. Paths, quantities, enums, arrays, dataclasses and objects with a `to_dict()` method are written as such, any other value raises a `TypeError` rather than being written as a string or with the internal attributes of its object. A custom object of a definition provides `to_dict()` with the fields which describe its behaviour.
+
 ## Where to look
 
 The [examples](https://github.com/matthiaskoenig/sbmlsim/tree/develop/examples) contain complete experiments: `examples/initial_assignment` for a model with changes and two simulations, `examples/curve_types` for the curve types of the plots, `examples/glucose` for an experiment with datasets and a dose response scan, and `examples/hctz_fitting` for pharmacokinetics experiments with data from two studies and the parameter fitting problems built on them.

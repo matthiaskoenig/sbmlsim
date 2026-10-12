@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import stats
 
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition
@@ -67,6 +68,28 @@ def test_log_density_log_laplace() -> None:
     assert expected == pytest.approx(-1.5040773967762742, rel=1e-15)
     density = log_density([2.0], [3.0], 0.5, NoiseDistribution.LOG_LAPLACE)
     assert density == pytest.approx([expected], rel=1e-14)
+
+
+@pytest.mark.parametrize("distribution", list(NoiseDistribution))
+@pytest.mark.parametrize("sigma", [1e-200, 1e200])
+@pytest.mark.parametrize("measurement", [1.0, 1e-200, 1e200])
+def test_log_density_stays_finite_at_extreme_valid_scales(
+    distribution: NoiseDistribution, sigma: float, measurement: float
+) -> None:
+    """Valid noise cannot overflow its normalization when the prediction matches."""
+    reference = (
+        stats.norm
+        if distribution in {NoiseDistribution.NORMAL, NoiseDistribution.LOG_NORMAL}
+        else stats.laplace
+    )
+    value = np.log(measurement) if distribution.is_log else measurement
+    expected = reference.logpdf(value, loc=value, scale=sigma)
+    if distribution.is_log:
+        expected -= np.log(measurement)
+    with np.errstate(over="raise", under="raise", divide="raise", invalid="raise"):
+        actual = log_density([measurement], [measurement], sigma, distribution)
+    assert np.isfinite(actual).all()
+    assert actual == pytest.approx([expected], rel=1e-14)
 
 
 @pytest.mark.parametrize("distribution", list(NoiseDistribution))

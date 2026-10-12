@@ -113,7 +113,11 @@ from sbmlsim.fit import display, runner
 from sbmlsim.fit.derived import group_parameters, hook_summaries
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.optimization import FitTimeout, OptimizationProblem
-from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.options import (
+    FitSettings,
+    OptimizationAlgorithmType,
+    ParameterScaleType,
+)
 from sbmlsim.fit.parameters import ParameterSet
 
 logger = logging.getLogger(__name__)
@@ -192,7 +196,9 @@ class ProfileSettings:
             parameters, but its intervals are too narrow for coupled
             parameters.
         optimizer_kwargs: arguments of `scipy.optimize.least_squares` for the
-            optimization of the other parameters.
+            optimization of the other parameters, without `loss` and
+            `f_scale`: the loss is the one of the fit,
+            `FitSettings.loss_function`.
     """
 
     alpha: float = 0.95
@@ -324,7 +330,8 @@ class ParameterProfile:
             profile stays below the threshold down to the bound.
         ci_upper: upper bound of the confidence interval, `None` if the
             profile stays below the threshold up to the bound.
-        identifiability: classification of the parameter, set by `evaluate`.
+        identifiability: classification of the parameter, set by `evaluate`,
+            `None` if a point failed or did not converge.
     """
 
     pid: str
@@ -381,8 +388,8 @@ class ParameterProfile:
     @property
     def cost_min(self) -> float:
         """Get the lowest cost of the profile, of the converged points."""
-        costs = self.costs[self.converged]
-        return float(np.min(costs)) if len(costs) else self.cost_optimum
+        costs = self.costs[self.converged & np.isfinite(self.costs)]
+        return float(np.min(costs)) if len(costs) else float("inf")
 
     def side(self, direction: int) -> tuple[np.ndarray, np.ndarray]:
         """Get the points on one side of the optimum, from the optimum outward.
@@ -420,6 +427,14 @@ class ParameterProfile:
             does not reach the threshold on that side.
         """
         values, costs = self.side(direction)
+        valid = self.converged & np.isfinite(self.costs)
+        k_opt = self.index_optimum
+        valid = valid[: k_opt + 1][::-1] if direction < 0 else valid[k_opt:]
+        failed = np.flatnonzero(~valid)
+        if failed.size:
+            # A failed point is not a crossing and cannot be bridged by later
+            # points, even when they happened to converge.
+            values, costs = values[: failed[0]], costs[: failed[0]]
         above = np.nonzero(costs >= threshold)[0]
         if len(above) == 0:
             return None
@@ -464,6 +479,12 @@ class ParameterProfile:
         """
         self.ci_lower = self.crossing(threshold, direction=-1, scale=scale)
         self.ci_upper = self.crossing(threshold, direction=+1, scale=scale)
+
+        if not np.all(self.converged & np.isfinite(self.costs)):
+            # Missing scan results give no evidence of identifiability or of a
+            # flat profile. Keep any proven interval endpoint, but no class.
+            self.identifiability = None
+            return
 
         flat_lower = self.rise(-1) <= flatness_cost
         flat_upper = self.rise(+1) <= flatness_cost
@@ -659,7 +680,9 @@ class IdentifiabilityResult:
                     ),
                     "n_points": len(profile),
                     "cost_min": profile.cost_min,
-                    "converged": bool(np.all(profile.converged)),
+                    "converged": bool(
+                        np.all(profile.converged & np.isfinite(profile.costs))
+                    ),
                 }
             )
         return pd.DataFrame(rows)
@@ -818,7 +841,8 @@ def _evaluate_point(
 
     try:
         if not settings.reoptimize or not np.any(free):
-            return theta, problem.cost_least_square(theta), True
+            cost = problem.cost_least_square(theta)
+            return theta, cost, bool(np.isfinite(cost))
 
         lower, upper = _scaled_bounds(problem)
 
@@ -837,6 +861,10 @@ def _evaluate_point(
             bounds=(lower[free], upper[free]),
             **settings.optimizer_kwargs,
         )
+        theta_opt = theta.copy()
+        theta_opt[free] = opt_result.x
+        cost = problem.cost_least_square(theta_opt)
+        return theta_opt, cost, bool(opt_result.success and np.isfinite(cost))
     except (RuntimeError, FitTimeout, ValueError) as err:
         logger.error(
             "'%s': the scan of '%s' failed at '%s': %s",
@@ -846,10 +874,6 @@ def _evaluate_point(
             err,
         )
         return theta, float("inf"), False
-
-    theta_opt = theta.copy()
-    theta_opt[free] = opt_result.x
-    return theta_opt, float(opt_result.cost), bool(opt_result.success)
 
 
 def _scan_direction(
@@ -1013,10 +1037,17 @@ def profile_likelihood(
 
     Raises:
         KeyError: if a parameter id is not a parameter of the problem.
-        ValueError: if the parameter set is outside of the bounds of the problem
-            or if there is no parameter to profile.
+        ValueError: if the parameter set is outside of the bounds of the problem,
+            if there is no parameter to profile, or if the arguments of the
+            optimizer change the loss, which is `FitSettings.loss_function`.
+        TypeError: if an argument of the optimizer is not an argument of
+            `scipy.optimize.least_squares`.
     """
     profile_settings = profile_settings or ProfileSettings()
+    # the other parameters are optimized as a fit optimizes them
+    problem.check_optimizer_arguments(
+        OptimizationAlgorithmType.LEAST_SQUARE, profile_settings.optimizer_kwargs
+    )
     problem.initialize(settings)
 
     if pids is None:
@@ -1049,6 +1080,7 @@ def profile_likelihood(
             f"the problem '{problem.pids}'."
         )
 
+    parameter_set = problem.bind_parameter_set(parameter_set)
     x = parameter_set.x(problem.pids)
     lower, upper = _scaled_bounds(problem)
     negative = {

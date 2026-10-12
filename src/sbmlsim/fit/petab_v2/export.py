@@ -514,8 +514,19 @@ class PetabExporter:
             The path of the file, relative to the problem.
 
         Raises:
-            ValueError: if the file named after the model id is taken, too.
+            ValueError: if the source is not a filename, or the file named
+                after the model id is taken, too.
         """
+        if (
+            name.is_absolute()
+            or len(name.parts) != 1
+            or "\\" in str(name)
+            or name.name in {"", ".", ".."}
+        ):
+            raise ValueError(
+                f"'{self.problem.opid}': the source '{name}' of model '{sid}' "
+                "must be a filename inside the export directory."
+            )
         for path in (name, Path(f"{sid}.xml")):
             if files.setdefault(path, content) == content:
                 return path
@@ -1288,6 +1299,25 @@ def to_petab(
     # `to_files` writes every model from its libsbml document, a derived model
     # as its source, see `_add_models`
     _set_table_paths(petab_problem)
+    paths = [petab_problem.config.filepath]
+    paths.extend(getattr(model, "rel_path", None) for model in petab_problem.models)
+    for attribute in TABLE_FILES:
+        paths.extend(table.rel_path for table in getattr(petab_problem, attribute))
+    if exporter.sciml is not None:
+        config = exporter.sciml.config()
+        paths.extend(config.array_files)
+        paths.extend(config.hybridization_files)
+        paths.extend(network.location for network in config.neural_networks.values())
+    root = output_dir.resolve()
+    for path in paths:
+        if path is None:
+            continue
+        destination = output_dir / Path(str(path))
+        if not destination.resolve().is_relative_to(root):
+            raise ValueError(
+                f"The export destination '{destination}' is outside the export "
+                f"directory '{output_dir}', including through a symbolic link."
+            )
     petab_problem.to_files(base_path=output_dir)
     if exporter.sciml is not None:
         exporter.sciml.write(output_dir)

@@ -1,6 +1,7 @@
 """Tests of the interpreter of the forward pass."""
 
 import inspect
+import weakref
 
 import numpy as np
 import pytest
@@ -118,6 +119,30 @@ def test_the_hook_replaces_the_value_of_a_node() -> None:
     (y,) = evaluate(model, ARRAYS, [np.zeros(2)], NumpyBackend(), on_node)
     assert seen == ["layer1", "scale"]
     np.testing.assert_array_equal(y, [2.0, 2.0, 2.0])
+
+
+def test_intermediate_activations_are_released_after_their_last_consumer() -> None:
+    """A deep chain retains only the current activation and its input."""
+    nodes = [X]
+    previous = "x"
+    for k in range(30):
+        name = f"tanh_{k}"
+        nodes.append(_node(name, "call_function", "tanh", [previous]))
+        previous = name
+    nodes.append(_node("output", "output", "output", [previous]))
+    activations: list[weakref.ReferenceType[np.ndarray]] = []
+
+    def on_node(node: Node, value: np.ndarray) -> np.ndarray:
+        activations.append(weakref.ref(value))
+        assert sum(reference() is not None for reference in activations) <= 2
+        return value
+
+    (output,) = evaluate(_model(*nodes), {}, [np.ones(1000)], NumpyBackend(), on_node)
+    assert sum(reference() is not None for reference in activations) == 1
+    expected = np.ones(1000)
+    for _ in range(30):
+        expected = np.tanh(expected)
+    np.testing.assert_array_equal(output, expected)
 
 
 @pytest.mark.parametrize("n_inputs", [0, 2])

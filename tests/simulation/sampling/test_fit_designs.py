@@ -122,6 +122,48 @@ def test_profile_parameters_follow_the_likelihood_of_the_profile() -> None:
     assert logs.min() >= -3.0 and logs.max() <= 3.0
 
 
+def test_coarse_profile_draws_follow_the_interpolated_density() -> None:
+    """A coarse peaked profile retains its mass and variance when sampled."""
+    profile = _profile(np.array([0.0, 1.0, 2.0]), np.array([2.0, 0.0, 2.0]), 0.0, 2.0)
+    result = _identifiability(profile, (0.0, 2.0), ParameterScaleType.LINEAR)
+    draws = np.asarray(profile_parameters(result, 50000, seed=0).values["k1"])
+    edge = np.exp(-2.0)
+    mass = (0.75 + 0.25 * edge) / (1.0 + edge)
+    variance = (1.0 + 3.0 * edge) / (6.0 * (1.0 + edge))
+    assert np.mean((draws > 0.5) & (draws < 1.5)) == pytest.approx(mass, abs=0.01)
+    assert np.var(draws) == pytest.approx(variance, abs=0.01)
+
+
+def test_profile_draws_do_not_depend_on_other_profiles_minima() -> None:
+    """An improved profile cannot underflow the draws of another parameter."""
+    profile = _profile(
+        np.array([0.0, 1.0, 2.0]), np.array([1001.0, 1000.0, 1001.0]), None, None
+    )
+    result = _identifiability(profile, (0.0, 2.0), ParameterScaleType.LINEAR)
+    result.cost = 1000.0
+    expected = np.asarray(profile_parameters(result, 1000, seed=1).values["k1"])
+    other = _profile(
+        np.array([0.0, 1.0, 2.0]), np.array([1000.0, 0.0, 1000.0]), None, None
+    )
+    other.pid = "k2"
+    result.profiles["k2"] = other
+    result.parameters.append(FitParameter("k2", 1.0, 0.0, 2.0))
+    result.parameter_set.values["k2"] = 1.0
+    draws = np.asarray(profile_parameters(result, 1000, seed=1).values["k1"])
+    assert np.isfinite(draws).all()
+    np.testing.assert_array_equal(draws, expected)
+
+
+def test_profile_zero_density_endpoints_remain_finite() -> None:
+    profile = _profile(
+        np.array([0.0, 1.0, 2.0]), np.array([1000.0, 0.0, 1000.0]), 0.0, 2.0
+    )
+    result = _identifiability(profile, (0.0, 2.0), ParameterScaleType.LINEAR)
+    draws = np.asarray(profile_parameters(result, 5000, seed=0).values["k1"])
+    assert np.isfinite(draws).all()
+    assert np.var(draws) == pytest.approx(1.0 / 6.0, abs=0.01)
+
+
 def test_a_flat_side_reaches_the_bound() -> None:
     # flat above the optimum: the likelihood stays high up to the upper bound
     x = np.linspace(-0.5, 0.5, 101)
