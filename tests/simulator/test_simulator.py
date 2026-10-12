@@ -1022,6 +1022,35 @@ def test_a_point_of_a_scan_is_the_point_alone() -> None:
     np.testing.assert_array_equal(run([OTHER_BODY_WEIGHT, 75.0])[1], run([75.0])[0])
 
 
+def test_a_failed_point_leaves_nothing_to_the_points_after_it() -> None:
+    """A point which fails in its initialization does not change the later points (#300).
+
+    The first point sets the compartment `V` with the concentrations it keeps
+    and the body weight, then the formula of its pre-initialization divides
+    by zero. The points after it on the same loaded model are the points
+    alone, bitwise.
+    """
+    simulation = Simulation(end=10, steps=20, preinit_changes={"k": "1.5 / (BW - 100)"})
+    selections = ["V", "BW", "F", "[F]", "[R]", "N", "k"]
+
+    def run(points: list[tuple[float, float]]) -> ScanResult:
+        model = RoadrunnerSBMLModel(source=sbml(SPECIES_KINDS))
+        model.set_selections(["time", *selections])
+        values = {"V": [v for v, _ in points], "BW": [bw for _, bw in points]}
+        scan = Scan(simulation, [Dimension("p", values=values)])
+        return Simulator(n_workers=1).run(model, scan, on_error="flag")
+
+    points = [(20.0, 100.0), (30.0, 150.0), (10.0, 60.0)]
+    res = run(points)
+    assert res["status"].values.tolist() == [1, 0, 0]
+    for k in (1, 2):
+        alone = run([points[k]])
+        for selection in selections:
+            np.testing.assert_array_equal(
+                res[selection].values[k], alone[selection].values[0]
+            )
+
+
 def test_a_scan_resizes_the_compartment_of_a_species_of_an_assignment_rule() -> None:
     """A scan of the size of a compartment with a species of an assignment rule runs.
 

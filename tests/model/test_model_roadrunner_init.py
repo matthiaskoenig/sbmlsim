@@ -4,6 +4,7 @@ import timeit
 from collections.abc import Callable
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -130,8 +131,6 @@ end
 
 
 def _p1(model: RoadrunnerSBMLModel) -> list[float]:
-    import numpy as np
-
     r = model.r_loaded
     r.timeCourseSelections = ["time", "P1"]
     values = np.array(r.simulate(0, 5, 6))[:, 1].tolist()
@@ -289,6 +288,42 @@ def test_a_value_which_was_not_set_is_not_restored() -> None:
     assert r["BW"] == pytest.approx(75.0)
     assert r["V"] == pytest.approx(15.0)
     assert r["[R]"] == pytest.approx(6.0)
+
+
+def _values(model: RoadrunnerSBMLModel) -> np.ndarray:
+    """The parameters, compartments and amounts of the species of a model."""
+    m = model.r_loaded.model
+    return np.concatenate(
+        [
+            m.getGlobalParameterValues(),
+            m.getCompartmentVolumes(),
+            m.getBoundarySpeciesAmounts(),
+            m.getFloatingSpeciesAmounts(),
+        ]
+    )
+
+
+def test_a_failure_after_a_compartment_leaves_the_model_as_loaded() -> None:
+    """An initialization which fails after a compartment leaves nothing behind (#300).
+
+    The compartment is set first, with the concentrations it keeps, then
+    roadrunner refuses the species of an assignment rule (which a plan never
+    sets). The next initialization restores every value the failed one
+    replaced, bitwise.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(SPECIES_KINDS))
+    loaded = _values(model)
+    with pytest.raises(RuntimeError, match="assignment rule"):
+        model.initialize(
+            [
+                _a("V", 30.0, TargetKind.COMPARTMENT),
+                _a("[R]", 1.0, TargetKind.SPECIES_CONCENTRATION),
+            ]
+        )
+    assert model.r_loaded["V"] == pytest.approx(30.0)
+    assert model.r_loaded["[F]"] == pytest.approx(2.0)
+    model.initialize([])
+    np.testing.assert_array_equal(_values(model), loaded)
 
 
 def test_parameter_df_has_no_helpers() -> None:
