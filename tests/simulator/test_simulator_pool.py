@@ -20,7 +20,7 @@ from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import ScanError, Simulator
 from sbmlsim.simulator.worker import ModelSpec
-from tests.simulator.models import BLOWUP, PROBE, sbml
+from tests.simulator.models import BLOWUP, PROBE, VOLUME, sbml
 
 SEL = ["time", "[A]", "[B]", "X", "k1"]
 
@@ -92,6 +92,24 @@ def test_the_result_does_not_depend_on_the_workers(
     assert sizes == [[points] * (12 // points)]
     assert _pools() == ([n_workers] if n_workers > 1 else [])
     xr.testing.assert_identical(pooled.ds, serial.ds)
+
+
+def test_serial_runs_on_one_model_give_the_result_of_the_pool() -> None:
+    """A run after a run of other volumes is the result of the pool, bitwise (#292)."""
+    model = RoadrunnerSBMLModel(source=sbml(VOLUME))
+    model.set_selections(["time", "[A]"])
+    scan = Scan(
+        Simulation(end=10, steps=20),
+        [Dimension("scale", values={"f": [3.0, 100.0]})],
+    )
+    settings: dict[str, Any] = {"absolute_tolerance": 1e-6, "relative_tolerance": 1e-6}
+    serial = Simulator(n_workers=1, **settings)
+    first = serial.run(model, scan)
+    second = serial.run(model, scan)
+    pooled = Simulator(n_workers=2, **settings).run(model, scan)
+    assert _pools() == [2]
+    xr.testing.assert_identical(second.ds, first.ds)
+    xr.testing.assert_identical(pooled.ds, first.ds)
 
 
 def test_a_scan_over_models_in_the_pool(tmp_path: Path) -> None:

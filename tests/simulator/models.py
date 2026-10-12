@@ -86,6 +86,21 @@ end
 """
 
 
+#: a concentration species in a compartment whose volume follows the
+#: parameter `f` by an initial assignment, as the organs of a model follow
+#: its body weight; the absolute tolerance of `A` is the concentration
+#: tolerance times the volume
+VOLUME = """
+model volume
+  compartment C
+  f = 1
+  C = 2*f
+  species A in C = 1
+  J: A -> ; A
+end
+"""
+
+
 #: a species which grows as `S' = k S^2` and goes to infinity at the time
 #: `1 / (k S0)`: the integration up to the time 1 fails for `k = 2` and works
 #: for `k = 0.1`
