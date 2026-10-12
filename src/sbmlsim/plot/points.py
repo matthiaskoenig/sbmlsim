@@ -15,7 +15,8 @@ value, through the norm of the colour bar (logarithmic for positive values
 spanning more than a factor of `LOG_RATIO`); a dimension which does not change
 one target is coloured by position, with the labels on a discrete colour bar. A
 band reduces a dimension of draws to two quantiles and the median, computed
-when the figure is drawn; it needs a common grid of times.
+when the figure is drawn; it needs a common grid of times, and its legend
+entry is its area, `<name> (<low>-<high> %)`.
 """
 
 from __future__ import annotations
@@ -174,6 +175,22 @@ def curve_lines(
             )
         )
     return lines
+
+
+def band_label(name: str | None, quantiles: tuple[float, float]) -> str:
+    """Get the legend label of a band, its name and its quantiles in percent.
+
+    Args:
+        name: the name of the band, of a point of it with `over`; none or
+            empty for a band without a name.
+        quantiles: the lower and the upper quantile.
+
+    Returns:
+        `<name> (<low>-<high> %)`, e.g. `C (5-95 %)`, or `<low>-<high> %`
+        without a name.
+    """
+    low, high = (f"{100 * q:g}" for q in quantiles)
+    return f"{name} ({low}-{high} %)" if name else f"{low}-{high} %"
 
 
 def band_lines(

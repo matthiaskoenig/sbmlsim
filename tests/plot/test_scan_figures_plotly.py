@@ -137,13 +137,11 @@ def test_a_band(experiment: SimulationExperiment) -> None:
         ),
     )
     assert [t.fill for t in traces].count("tonexty") == 1
-    (median,) = [t for t in traces if t.name == "C median" and t.showlegend]
-    assert median.showlegend
     (upper,) = [t for t in traces if t.fill == "tonexty"]
-    assert not upper.showlegend and upper.name == "C median"
-    (rng,) = [t for t in traces if t.name == "5-95 %"]
-    assert rng.showlegend and rng.x == (None,)
-    assert sum(1 for t in traces if t.showlegend) == 2
+    assert upper.showlegend and upper.name == "C (5-95 %)"
+    (median,) = [t for t in traces if t.line.width == 2]
+    assert not median.showlegend and median.legendgroup == upper.legendgroup
+    assert sum(1 for t in traces if t.showlegend) == 1
 
 
 def test_bands_over_doses(experiment: SimulationExperiment) -> None:
@@ -158,11 +156,10 @@ def test_bands_over_doses(experiment: SimulationExperiment) -> None:
         ),
     )
     assert [t.fill for t in traces].count("tonexty") == 3
-    names = [t.name for t in traces if t.showlegend]
-    assert names[:3] == [
-        "C, PODOSE = 50 mg",
-        "C, PODOSE = 100 mg",
-        "C, PODOSE = 200 mg",
+    assert [t.name for t in traces if t.showlegend] == [
+        "C, PODOSE = 50 mg (5-95 %)",
+        "C, PODOSE = 100 mg (5-95 %)",
+        "C, PODOSE = 200 mg (5-95 %)",
     ]
 
 
@@ -184,7 +181,7 @@ def test_a_band_on_the_right_axis(experiment: SimulationExperiment) -> None:
     assert len(drawn) == 3 and {t.yaxis for t in drawn} == {"y2"}
 
 
-def test_a_band_without_median_names_the_upper_line(
+def test_a_band_without_median_names_its_area(
     experiment: SimulationExperiment,
 ) -> None:
     traces = _traces(
@@ -199,12 +196,11 @@ def test_a_band_without_median_names_the_upper_line(
         ),
     )
     assert [t.name for t in traces if t.showlegend] == [
-        "C, PODOSE = 50 mg",
-        "C, PODOSE = 100 mg",
-        "C, PODOSE = 200 mg",
-        "5-95 %",
+        "C, PODOSE = 50 mg (5-95 %)",
+        "C, PODOSE = 100 mg (5-95 %)",
+        "C, PODOSE = 200 mg (5-95 %)",
     ]
-    assert all(t.fill == "tonexty" for t in traces if t.showlegend and t.fill)
+    assert all(t.fill == "tonexty" for t in traces if t.showlegend)
 
 
 def _bars(fig: Any) -> list[Any]:
@@ -389,29 +385,52 @@ def test_bands_without_a_colour_take_the_colour_cycle(
     experiment: SimulationExperiment,
 ) -> None:
     traces = _traces(experiment, _two_bands)
-    medians = {
-        t.name: t.line.color
-        for t in traces
-        if t.showlegend and t.name.endswith("median")
+    areas = {t.name: t.fillcolor for t in traces if t.showlegend}
+    assert areas == {
+        "a (5-95 %)": "rgba(31, 119, 180, 0.3)",
+        "b (25-75 %)": "rgba(255, 127, 14, 0.3)",
     }
-    assert medians == {"a median": to_hex("C0"), "b median": to_hex("C1")}
-    assert [t.name for t in traces if t.showlegend] == [
-        "a median",
-        "5-95 %",
-        "b median",
-        "25-75 %",
-    ]
+    medians = [t.line.color for t in traces if t.line.width == 2]
+    assert medians == [to_hex("C0"), to_hex("C1")]
 
 
-def test_the_range_entry_appears_once_per_range(
+def test_two_bands_of_one_range_have_an_entry_each(
     experiment: SimulationExperiment,
 ) -> None:
     traces = _traces(experiment, lambda p: _two_bands(p, quantiles=(0.05, 0.95)))
-    assert [t.name for t in traces if t.showlegend] == [
-        "a median",
-        "5-95 %",
-        "b median",
-    ]
+    assert [t.name for t in traces if t.showlegend] == ["a (5-95 %)", "b (5-95 %)"]
+
+
+def _bands_of_two_colours(plot: Plot, median: bool) -> None:
+    """A black band of 0-100 %, a blue one of 5-95 % and a black curve (#302)."""
+    for name, color, quantiles in [
+        ("a", "black", (0.0, 1.0)),
+        ("b", "blue", (0.05, 0.95)),
+    ]:
+        plot.band(
+            Data("time", task="task_draws"),
+            Data("[C]", task="task_draws"),
+            across="draw",
+            quantiles=quantiles,
+            median=median,
+            name=name,
+            color=color,
+        )
+    _curve(plot, "task_doses", (), sel={"dose": 0}, label="sim", color="black")
+
+
+@pytest.mark.parametrize("median", [True, False], ids=["median", "no median"])
+def test_the_legend_has_one_entry_per_band_with_its_area_in_its_colour(
+    experiment: SimulationExperiment, median: bool
+) -> None:
+    """A band has one legend entry, its area in its colour, with its quantiles (#302)."""
+    traces = _traces(experiment, lambda p: _bands_of_two_colours(p, median))
+    shown = [t for t in traces if t.showlegend]
+    assert [t.name for t in shown] == ["a (0-100 %)", "b (5-95 %)", "sim"]
+    a, b, _ = shown
+    assert a.fill == b.fill == "tonexty"
+    assert a.fillcolor == "rgba(0, 0, 0, 0.3)"
+    assert b.fillcolor == "rgba(0, 0, 255, 0.3)"
 
 
 def test_the_legend_shows_an_entry_of_several_panels_once(
@@ -448,12 +467,8 @@ def test_the_bands_of_two_panels_keep_their_own_legend_groups(
         )
     fig = PlotlyFigureSerializer.to_figure(experiment, figure)
     groups = {
-        name: {t.legendgroup for t in fig.data if t.name in (name, f"{name} median")}
+        name: {t.legendgroup for t in fig.data if t.name == f"{name} (5-95 %)"}
         for name in ("a", "b")
     }
     assert groups == {"a": {"band_a"}, "b": {"band_b"}}
-    ranges = [t for t in fig.data if t.name == "5-95 %" and t.showlegend]
-    assert len(ranges) == 1
-    assert ranges[0].legendgroup not in ("band_a", "band_b")
-    medians = [t for t in fig.data if (t.name or "").endswith("median")]
-    assert {t.legendgroup for t in medians} == {"band_a", "band_b"}
+    assert [t.name for t in fig.data if t.showlegend] == ["a (5-95 %)", "b (5-95 %)"]
