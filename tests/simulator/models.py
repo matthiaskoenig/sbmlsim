@@ -100,6 +100,28 @@ model volume
 end
 """
 
+#: a concentration species in a compartment whose initial assignment reads an
+#: assignment rule of the body weight, as the extracellular fluid of the HCTZ
+#: model of pkdb_models: roadrunner's resetAll computes the amount of `S` in
+#: the last bits from the body weight set before the reset (`BW = 70.46`:
+#: 95.2875 instead of 95.28750000000002, #303)
+VOLUME_OF_A_RULE = """
+model volume_of_a_rule
+  BW = 75
+  f_TBW = 0.55
+  f_ECF = 0.33
+  ECF := f_ECF*f_TBW*BW
+  compartment V
+  V = 0.05*ECF
+  species S in V = 140
+  J: S -> ; 0.1*S
+end
+"""
+
+#: a body weight after which roadrunner's resetAll misses the amount of `S`
+#: of `VOLUME_OF_A_RULE` as loaded in the last bits
+OTHER_BODY_WEIGHT = 70.45995681845807
+
 #: every kind of species in a compartment whose size follows the body weight
 #: `BW` by an initial assignment: a species of a reaction `F`, of an
 #: assignment rule as a concentration `R` and as an amount `NR`, of a rate rule
