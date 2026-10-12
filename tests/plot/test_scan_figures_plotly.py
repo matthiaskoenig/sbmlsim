@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from matplotlib.colors import LogNorm, to_hex
+from matplotlib.colors import LogNorm, to_hex, to_rgb
 
 from sbmlsim.data import Data
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
@@ -144,6 +144,28 @@ def test_a_band(experiment: SimulationExperiment) -> None:
     # the hover of the median names it
     assert median.name == "C median"
     assert sum(1 for t in traces if t.showlegend) == 1
+
+
+def test_a_named_band_with_a_colour_bar_keeps_its_legend_entry(
+    experiment: SimulationExperiment,
+) -> None:
+    """The entry of a band with a colour bar is its area in the middle colour (#302)."""
+    traces = _traces(
+        experiment,
+        lambda p: p.band(
+            Data("time", task="task_many_draws"),
+            Data("[C]", task="task_many_draws"),
+            across="draw",
+            over="dose",
+            name="C",
+        ),
+    )
+    (entry,) = [t for t in traces if t.showlegend]
+    assert entry.name == "C (5-95 %)" and entry.fill == "toself"
+    r, g, b = (round(255 * c) for c in to_rgb(point_colormap(None)(0.5)))
+    assert entry.fillcolor == f"rgba({r}, {g}, {b}, 0.3)"
+    (bar,) = [t for t in traces if t.marker.showscale]
+    assert bar.marker.colorbar.title.text == "PODOSE [mg]"
 
 
 def test_bands_over_doses(experiment: SimulationExperiment) -> None:

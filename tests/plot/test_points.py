@@ -12,6 +12,7 @@ from sbmlsim import Q
 from sbmlsim.plot.points import (
     LINE_STYLES,
     Line,
+    band_label,
     band_lines,
     curve_lines,
     format_value,
@@ -147,6 +148,24 @@ def test_a_band_per_point_of_another_dimension() -> None:
     bands = band_lines("b", ("dose",), "draw", (0.05, 0.95), _time(), y)
     assert [band.point for band in bands] == [("lo",), ("hi",)]
     np.testing.assert_allclose(bands[1].median, np.median(values[1], axis=0))
+
+
+@pytest.mark.parametrize(
+    ("name", "quantiles", "label"),
+    [
+        ("C", (0.05, 0.95), "C (5-95 %)"),
+        ("C, PODOSE = 50 mg", (0.0, 1.0), "C, PODOSE = 50 mg (0-100 %)"),
+        ("C", (0.025, 0.975), "C (2.5-97.5 %)"),
+        # a band is named after its y by default, a label without a name
+        # is the quantile range alone
+        (None, (0.25, 0.75), "25-75 %"),
+        ("", (0.25, 0.75), "25-75 %"),
+    ],
+)
+def test_the_label_of_a_band(
+    name: str | None, quantiles: tuple[float, float], label: str
+) -> None:
+    assert band_label(name, quantiles) == label
 
 
 def test_a_band_of_a_ragged_result_raises() -> None:
