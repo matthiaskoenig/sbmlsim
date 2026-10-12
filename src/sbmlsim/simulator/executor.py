@@ -179,7 +179,14 @@ def execute(
     # exact output, see `_PastTheEnd`
     exact: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     run = 1
+    # the time the simulation integrates to, see `discard_pending_events`
+    horizon = (
+        np.inf
+        if plan.steady_state is not None or plan.steady_state_output is not None
+        else plan.end + time_tolerance(plan.start, plan.end)
+    )
     while True:
+        model.discard_pending_events(horizon)
         model.initialize(preinit_targets(plan))
         if list(r.timeCourseSelections) != columns:
             r.timeCourseSelections = columns

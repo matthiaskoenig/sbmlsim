@@ -55,9 +55,18 @@ def reset_all(r: roadrunner.RoadRunner) -> None:
     `resetAll` calls (case 00952 of the SBML Test Suite). The binding is
     called directly.
 
+    The reset queues the events which fire at the time 0 at the integration
+    start time of the integrator and of the model, which every `simulate` sets
+    to its start: after a simulation whose last integration started later,
+    e.g. at the end of a simulation with events, the events at the time 0
+    fired at that time plus their delay, i.e. after the end of the next
+    simulation (#305). Both are set to 0 first.
+
     Args:
         r: the roadrunner instance.
     """
+    r.getIntegrator().setIntegrationStartTime(0.0)
+    r.model.setIntegrationStartTime(0.0)
     _roadrunner.RoadRunner_reset(r, RESET_ALL)
 
 
@@ -152,6 +161,12 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: reference), which a reset restores, see `_loaded_state`
         self._state_of: tuple[weakref.ref[roadrunner.RoadRunner], _State] | None = None
         self._loaded_state()
+        #: whether the model has an event with a delay, which can still be
+        #: pending when a simulation ends, see `discard_pending_events`
+        self._delayed_events: bool = any(e.delayed for e in self.symbols.events)
+        #: the time of roadrunner the last simulation reached, see
+        #: `discard_pending_events`
+        self._reached: float = -np.inf
         #: whether the start of a simulation was reported, see `executor`
         self.warned_start: bool = False
         #: the events whose trigger was reported as no formula the simulator
@@ -349,9 +364,39 @@ class RoadrunnerSBMLModel(AbstractModel):
     def simulated(self) -> None:
         """Record that the model was simulated since its last initialization.
 
-        The next `initialize` resets the model, see there.
+        The next `initialize` resets the model, see there, and the time the
+        simulation reached is kept, see `discard_pending_events`.
         """
         self._reset_pending = False
+        self._reached = float(self.r_loaded.model.getTime())
+
+    def discard_pending_events(self, horizon: float) -> None:
+        """Discard the events of the simulation before which are still pending.
+
+        roadrunner's reset keeps the queue of the events of a model: an event
+        with a delay which the simulation before triggered and which had not
+        fired when it ended fires in the next simulation at its time, if that
+        simulation reaches it (#305). Such an event is after the time the
+        simulation before reached, so only a simulation which integrates
+        beyond it can see it; for a model with an event with a delay the
+        model is then generated again, which empties the queue, and the
+        selections and the absolute tolerances of sbmlsim are set again (it
+        costs milliseconds for a small model and tenths of a second for a
+        large one). Every point of a scan reaches the same end, so a scan
+        regenerates no model, unless it integrates to a steady state.
+
+        Args:
+            horizon: the time of roadrunner the next simulation integrates to,
+                `inf` for an integration to a steady state.
+        """
+        if not self._delayed_events or self._reset_pending or horizon <= self._reached:
+            return
+        r = self.r_loaded
+        selections = list(r.timeCourseSelections)
+        r.regenerateModel(True)
+        r.timeCourseSelections = selections
+        self._set_absolute_tolerance(self.absolute_tolerance)
+        self._reached = -np.inf
 
     def _replaced(self, key: str, value: float) -> None:
         """Record the value an initialization replaced, see `initialize`.

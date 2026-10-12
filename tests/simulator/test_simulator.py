@@ -25,6 +25,7 @@ from sbmlsim.simulator.plan import compile_simulation
 from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import (
     BLOWUP,
+    EVENTS_AT_T0,
     OTHER_BODY_WEIGHT,
     PROBE,
     SPECIES_KINDS,
@@ -1049,6 +1050,50 @@ def test_a_failed_point_leaves_nothing_to_the_points_after_it() -> None:
             np.testing.assert_array_equal(
                 res[selection].values[k], alone[selection].values[0]
             )
+
+
+def _events_at_t0() -> RoadrunnerSBMLModel:
+    model = RoadrunnerSBMLModel(source=sbml(EVENTS_AT_T0))
+    model.set_selections(["time", "P1"])
+    return model
+
+
+@pytest.mark.parametrize(
+    "end", [10.0, 1.0], ids=["after the events", "before the delayed events"]
+)
+def test_a_simulation_after_another_fires_the_events_at_t0(end: float) -> None:
+    """Every simulation of a loaded model fires the events at t0 at 0, once (#305).
+
+    roadrunner's reset queues the events at t0 at the start of the last
+    integration of the simulation before, the end of a simulation with events,
+    and keeps the events of the simulation before which are still pending
+    when it ends before them.
+    """
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+    alone = np.asarray(simulator.simulate(_events_at_t0(), simulation)["P1"])
+    assert alone[-1] == 25.0
+    model = _events_at_t0()
+    simulator.simulate(model, Simulation(end=end, steps=10))
+    for _ in range(2):
+        repeated = np.asarray(simulator.simulate(model, simulation)["P1"])
+        np.testing.assert_array_equal(repeated, alone)
+
+
+def test_every_point_of_a_scan_fires_the_events_at_t0() -> None:
+    """Every point of a scan of a model with events at t0 is the point alone (#305)."""
+    simulator = Simulator(n_workers=1)
+    simulation = Simulation(end=10, steps=10)
+
+    def run(values: list[float]) -> np.ndarray:
+        scan = Scan(simulation, [Dimension("p", values={"P1": values})])
+        return np.asarray(simulator.run(_events_at_t0(), scan)["P1"].values)
+
+    values = [1.5, 2.0, 3.0]
+    points = run(values)
+    assert points[:, -1].tolist() == [25.0, 25.0, 25.0]
+    for k, value in enumerate(values):
+        np.testing.assert_array_equal(points[k], run([value])[0])
 
 
 def test_a_scan_resizes_the_compartment_of_a_species_of_an_assignment_rule() -> None:

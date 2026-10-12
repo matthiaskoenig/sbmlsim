@@ -10,7 +10,7 @@ import pytest
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.simulator.plan import Assignment
-from tests.simulator.models import SPECIES_KINDS, sbml
+from tests.simulator.models import EVENTS_AT_T0, SPECIES_KINDS, sbml
 
 
 def _a(
@@ -121,15 +121,6 @@ def test_initialize_is_fast() -> None:
     assert initialization < regeneration / 10
 
 
-T0_EVENT = """
-model events_at_t0
-  P1 = 3/2
-  E0: at 2.5 after (P1 > 1), t0=false, fromTrigger=false: P1 = P1^2
-  E1: at 1.3 after (P1 > 1), t0=false: P1 = 5
-end
-"""
-
-
 def _p1(model: RoadrunnerSBMLModel) -> list[float]:
     r = model.r_loaded
     r.timeCourseSelections = ["time", "P1"]
@@ -145,7 +136,7 @@ def test_events_at_t0_fire_once() -> None:
     loaded model counts as one (case 01757 of the SBML Test Suite).
     """
     expected = [1.5, 1.5, 5.0, 25.0, 25.0, 25.0]
-    model = RoadrunnerSBMLModel(source=sbml(T0_EVENT))
+    model = RoadrunnerSBMLModel(source=sbml(EVENTS_AT_T0))
     model.initialize([])
     assert _p1(model) == pytest.approx(expected)
     model.initialize([])
