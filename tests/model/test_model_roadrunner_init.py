@@ -16,6 +16,7 @@ from tests.simulator.models import (
     OTHER_BODY_WEIGHT,
     SPECIES_KINDS,
     VOLUME_OF_A_RULE,
+    VOLUME_OF_THE_REST,
     sbml,
 )
 
@@ -324,6 +325,51 @@ def test_a_failure_after_a_compartment_leaves_the_model_as_loaded() -> None:
     np.testing.assert_array_equal(_values(model), loaded)
 
 
+#: values of `FVpa` and `[S]` of `VOLUME_OF_THE_REST` whose initialization
+#: left the amount of `S` off the amount as loaded in the last bits after a
+#: reset without a simulation (#322)
+VOLUME_AND_CONCENTRATION = ((0.0611, 3.67), (0.0144, 3.64), (0.04, 4.96))
+
+
+@pytest.mark.parametrize("fraction, concentration", VOLUME_AND_CONCENTRATION)
+def test_a_reset_after_an_initialization_leaves_the_model_as_loaded(
+    fraction: float, concentration: float
+) -> None:
+    """A reset without a simulation gives every value as loaded, bitwise (#322).
+
+    The initialization sets a parameter of the volume of `S` and then the
+    concentration of `S`. roadrunner reads and writes the amount of `S`
+    through the current volume (#318), so the amount the initialization
+    replaced, read under the changed volume and set back under the volume as
+    loaded, was off the amount as loaded in the last bits. The values as
+    loaded are set back instead, as after a reset with a simulation.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_THE_REST))
+    loaded = _values(model)
+    for _ in range(2):
+        model.initialize(
+            [
+                _a("FVpa", fraction),
+                _a("[S]", concentration, TargetKind.SPECIES_CONCENTRATION),
+            ]
+        )
+        model.reset()
+        np.testing.assert_array_equal(_values(model), loaded)
+    # a failed initialization, which the next one sets back
+    with pytest.raises(ZeroDivisionError):
+        model.initialize(
+            [
+                _a("FVpa", fraction),
+                _a("[S]", concentration, TargetKind.SPECIES_CONCENTRATION),
+                Assignment(
+                    target="Fblood", kind=TargetKind.PARAMETER, formula="1 / (BW - 75)"
+                ),
+            ]
+        )
+    model.initialize([])
+    np.testing.assert_array_equal(_values(model), loaded)
+
+
 def test_reset_all_misses_the_model_as_loaded_and_a_reset_restores_it() -> None:
     """roadrunner's resetAll misses the amount as loaded, the reset of a model not (#303).
 
@@ -350,9 +396,40 @@ def test_a_value_is_set_back_only_where_it_changed_and_can_be_set() -> None:
         ids=["a", "size", "rule", "b"],
         values=np.array([1.0, np.nan, 2.0, 3.0]),
         settable=np.array([True, True, False, True]),
+        first_species=4,
+        concentrations=np.array([]),
     )
     assert _changed(np.array([1.0, np.nan, 5.0, 4.0]), state).tolist() == [3]
     assert _changed(np.array([0.0, 1.0, 2.0, 3.0]), state).tolist() == [0, 1]
+
+
+def test_the_values_as_loaded_do_not_follow_a_simulation() -> None:
+    """The values as loaded are the ones before any initialization (#315)."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    r = model.r_loaded
+    loaded = {s: float(r[s]) for s in ("k1", "C", "A", "[A]", "X", "[X]", "pinit")}
+    model.initialize([_a("f", 5.0), _a("k1", 2.0)])
+    model.simulated()
+    assert (r["k1"], r["pinit"]) == (2.0, 10.0)
+    assert {s: model.loaded_value(s) for s in loaded} == loaded
+    for selection in ("nope", "[k1]", "init(k1)"):
+        with pytest.raises(KeyError):
+            model.loaded_value(selection)
+
+
+def test_a_reset_leaves_the_model_as_loaded() -> None:
+    """`reset` sets back the values of the last initialization, once per simulation."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    r = model.r_loaded
+    before = _values(model)
+    model.initialize([_a("f", 5.0), _a("k1", 2.0)])
+    model.reset()
+    np.testing.assert_array_equal(_values(model), before)
+    model.initialize([_a("k1", 3.0)])
+    model.simulated()
+    assert r["k1"] == 3.0
+    model.reset()
+    np.testing.assert_array_equal(_values(model), before)
 
 
 def test_parameter_df_has_no_helpers() -> None:
