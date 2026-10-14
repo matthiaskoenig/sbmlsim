@@ -23,6 +23,7 @@ import pandas as pd
 import xarray as xr
 from matplotlib import colormaps
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import Colormap, ListedColormap, Normalize
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
@@ -346,20 +347,69 @@ def _heatmap(
         if title
         else None
     )
+
+    def rotate() -> None:
+        """Rotate the observables by 45 degrees."""
+        for tick in ax.get_xticklabels():
+            tick.set_rotation(45)
+            tick.set_horizontalalignment("right")
+            tick.set_rotation_mode("anchor")
+
+    # an observable wider than its cell is rotated before the first layout,
+    # which collapses the axes for a label much wider than the figure (#314)
+    renderer = FigureCanvasAgg(figure).get_renderer()
+    widest = max(t.get_window_extent(renderer).width for t in ax.get_xticklabels())
+    rotated = widest / figure.dpi > cell_width - 0.1
+    if rotated:
+        rotate()
+    _room_for_labels(figure, ax, cells)
     figure.draw_without_rendering()
     _fit(figure, ax, cells, heading)
     # the rotation follows the width of a cell in the final, possibly capped figure
     widest = max(t.get_window_extent().width for t in ax.get_xticklabels())
     final_width = ax.get_window_extent().width / figure.dpi / n_cols
-    if widest / figure.dpi > final_width - 0.1:
-        for tick in ax.get_xticklabels():
-            tick.set_rotation(45)
-            tick.set_horizontalalignment("right")
-            tick.set_rotation_mode("anchor")
+    if not rotated and widest / figure.dpi > final_width - 0.1:
+        rotate()
+        _room_for_labels(figure, ax, cells)
         _fit(figure, ax, cells, heading)
     if path:
         figure.savefig(path, dpi=dpi, bbox_inches="tight")
     return figure
+
+
+def _room_for_labels(figure: Figure, ax: Axes, cells: tuple[float, float]) -> None:
+    """Make the figure of a heatmap large enough for its labels before a layout (#314).
+
+    Constrained layout gives the labels their room out of the figure; labels
+    larger than the margins of the figure collapsed the axes, and the layout
+    was not applied (`axes sizes collapsed to zero`). The figure is made as
+    large as its cells and margins with the widest parameter, the widest
+    observable beyond its cell and the tallest observable (rotated or not),
+    measured on the texts; `_fit` sizes it afterwards.
+
+    Args:
+        figure: the figure with constrained layout.
+        ax: the axes of the heatmap, with its tick labels.
+        cells: the width and the height of the cells in inches.
+    """
+    renderer = FigureCanvasAgg(figure).get_renderer()
+
+    def extents(texts: Sequence[Text]) -> tuple[float, float]:
+        """Get the width and the height of the largest texts in inches."""
+        boxes = [t.get_window_extent(renderer) for t in texts]
+        return (
+            max((b.width for b in boxes), default=0.0) / figure.dpi,
+            max((b.height for b in boxes), default=0.0) / figure.dpi,
+        )
+
+    parameters, _ = extents(ax.get_yticklabels())
+    observables, tallest = extents(ax.get_xticklabels())
+    beyond = max(0.0, observables - cells[0] / max(len(ax.get_xticks()), 1))
+    width, height = figure.get_size_inches()
+    figure.set_size_inches(
+        max(width, cells[0] + 3.0 + parameters + beyond),
+        max(height, cells[1] + 2.0 + tallest),
+    )
 
 
 def _fit(

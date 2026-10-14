@@ -1,6 +1,7 @@
 """The plots of a sensitivity result."""
 
 import re
+import warnings
 from itertools import pairwise
 from pathlib import Path
 
@@ -566,3 +567,63 @@ def test_the_indices_at_the_time_of_a_change_are_the_ones_after_it() -> None:
     after = heights(plot_indices(result.isel(time=2), "y"))
     assert heights(plot_indices(result, "y", time=5.0)) == after
     np.testing.assert_allclose(after, [0.15, 0.3, 0.3, 0.6])
+
+
+@pytest.mark.parametrize(
+    "index, columns",
+    [
+        (
+            [
+                "BW0: bodyweight",
+                "Emax_SAT_glp1: Emax for GLP-1 agonist on fat loss (rate of fat change)",
+            ],
+            ["min BW", "min BW change", "min BW ratio"],
+        ),
+        (
+            ["k1", "k2"],
+            ["the minimum of the change of the body weight over the whole study", "y"],
+        ),
+    ],
+)
+def test_a_heatmap_of_long_labels_has_room_for_them(
+    index: list[str], columns: list[str]
+) -> None:
+    """A heatmap of labels wider than its first figure lays them out (#314).
+
+    The figure was as wide as its cells and a margin, constrained layout
+    collapsed the axes for longer labels and warned (14 warnings for the
+    heatmap of the dulaglutide model of pkdb_models).
+    """
+    import pandas as pd
+
+    from sbmlsim.sensitivity import plots
+
+    df = pd.DataFrame(
+        [[0.86, 5.46, -0.14][: len(columns)], [0.0, 0.82, 0.0][: len(columns)]],
+        index=index,
+        columns=columns,
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        figure = plots._heatmap(
+            df,
+            label="normalized",
+            cutoff=0.05,
+            cluster_rows=False,
+            title=None,
+            cmap="seismic",
+            vcenter=0.0,
+            vmin=-2.0,
+            vmax=2.0,
+            path=None,
+            dpi=72,
+        )
+    figure.draw_without_rendering()
+    ax = figure.axes[0]
+    box = ax.get_window_extent()
+    cells = box.width / figure.dpi / len(columns), box.height / figure.dpi / len(index)
+    height = max(plots.CELL_SIZE[1], plots.MIN_CELLS_HEIGHT / len(index))
+    assert cells == pytest.approx((plots.CELL_SIZE[0], height), rel=1e-2)
+    for text in [*ax.get_yticklabels(), *ax.get_xticklabels()]:
+        extent = text.get_window_extent()
+        assert extent.x0 >= 0 and extent.x1 <= figure.bbox.width, text.get_text()
