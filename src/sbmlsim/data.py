@@ -827,6 +827,27 @@ def _unify_units(
     return column_unit
 
 
+def _missing_unit(
+    df: pd.DataFrame, keys: Sequence[str], message: str, *args: object
+) -> None:
+    """Report the missing unit of columns, an error only if they have a number.
+
+    A column without any number has nothing a unit would apply to, e.g. the
+    time of a table of PK-DB which does not report it, written as an empty
+    `time` and an empty `time_unit` in every row (#310): it gets no unit and
+    is logged as a debug message.
+
+    Args:
+        df: the data.
+        keys: the columns the unit applies to, those which are missing are
+            ignored.
+        message: the message, with lazy `%s` arguments.
+        args: the arguments of the message.
+    """
+    numbers = any(df[key].notna().any() for key in keys if key in df.columns)
+    logger.log(logging.ERROR if numbers else logging.DEBUG, message, *args)
+
+
 def _unit_string(unit: PlainUnit) -> str:
     """Get the string of a unit as a dataset keeps it, e.g. `milliliter/hour`."""
     return str(unit).replace("**", "^").replace(" ", "")
@@ -979,7 +1000,10 @@ class DataSet(pd.DataFrame):
 
         The unit of a column is the unit of its first row with a value; the unit
         of a row without a number (no value, sd, se, min or max) is ignored, and a
-        column without any unit has no unit. Rows with another unit of the same
+        column without any unit has no unit, which is logged as an error if the
+        column or its sd, se, min or max has a number and as a debug message
+        otherwise, e.g. for the empty time of a table which does not report it
+        (#310). Rows with another unit of the same
         dimension are converted to it, all their numbers, and their unit column is
         rewritten; the rows of a 'unit' column are converted in one pass, so mean,
         value and median get one unit and the numbers they share are converted
@@ -1028,16 +1052,17 @@ class DataSet(pd.DataFrame):
                         "Missing * column '%s' for unit column: '%s'", item_key, key
                     )
                     continue
+                error_keys = [f"{item_key}_{e}" for e in ("sd", "se", "min", "max")]
                 unit = _unify_units(
-                    df,
-                    [item_key],
-                    key,
-                    ureg,
-                    [f"{item_key}_{e}" for e in ("sd", "se", "min", "max")],
-                    name=item_key,
+                    df, [item_key], key, ureg, error_keys, name=item_key
                 )
                 if unit is None:
-                    logger.error("Column '%s' units are missing", key)
+                    _missing_unit(
+                        df,
+                        [item_key, *error_keys],
+                        "Column '%s' units are missing",
+                        key,
+                    )
                 else:
                     all_udict[item_key] = unit
 
@@ -1073,7 +1098,13 @@ class DataSet(pd.DataFrame):
                     # FIXME: probably not a good idea to add columns while iterating over them
                     df[f"{key}_unit"] = df.unit
                     if unit is None:
-                        logger.error("Column 'unit' has no unit for '%s'", key)
+                        errors = ("sd", "se", "min", "max")
+                        _missing_unit(
+                            df,
+                            [key, *(f"{key}_{e}" for e in errors), *errors],
+                            "Column 'unit' has no unit for '%s'",
+                            key,
+                        )
                     else:
                         udict[key] = unit
 
