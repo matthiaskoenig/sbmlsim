@@ -19,6 +19,7 @@ from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitData, FitMapping, FitSettings
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import PK, Change, Dimension, Observable, Scan, Simulation
+from sbmlsim.simulation.sampling import local
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 from sbmlsim.units import UnitRegistry
@@ -107,6 +108,20 @@ class ScalarStudy(PKStudy):
                 observable=FitData(self, task="task_single", xid=None, yid="pk.cmax"),
             )
         }
+
+
+class LocalScanStudy(ScalarStudy):
+    """`ScalarStudy` with a local design of a simulation of another volume.
+
+    The design reads its references after the pre-initialization of its
+    simulation, as the study experiments of the midazolam model of pkdb_models
+    do (#315).
+    """
+
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        other = Simulation(end=48, steps=480, preinit_changes={"V": 2 * TRUE_V})
+        design = local(["V"], model=self._models["m"], simulation=other)
+        return {**super().simulations(), "local": Scan(other, [design])}
 
 
 class BlowupStudy(ScalarStudy):

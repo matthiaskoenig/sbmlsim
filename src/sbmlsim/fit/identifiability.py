@@ -105,8 +105,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import scipy.optimize
-from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from scipy.stats import chi2
 
 from sbmlsim.fit import display, runner
@@ -1314,7 +1314,7 @@ def _plot_profile_axis(
 
 def plot_profiles(
     result: IdentifiabilityResult, path: Path | None = None, ncols: int = 3
-) -> Any:
+) -> Figure:
     """Plot the profiles of all parameters, one panel per parameter.
 
     Args:
@@ -1323,19 +1323,15 @@ def plot_profiles(
         ncols: number of panels per row.
 
     Returns:
-        The figure.
+        The figure, which pyplot does not hold, so it depends on no backend
+        of pyplot (#317).
     """
     pids = list(result.profiles)
     n = len(pids)
     ncols = max(1, min(ncols, n))
     nrows = int(np.ceil(n / ncols))
-    fig, axes = plt.subplots(
-        nrows=nrows,
-        ncols=ncols,
-        figsize=(4.5 * ncols, 3.6 * nrows),
-        layout="constrained",
-        squeeze=False,
-    )
+    fig = Figure(figsize=(4.5 * ncols, 3.6 * nrows), layout="constrained")
+    axes = fig.subplots(nrows=nrows, ncols=ncols, squeeze=False)
     for k, pid in enumerate(pids):
         _plot_profile_axis(axes[k // ncols][k % ncols], result, pid)
     for k in range(n, nrows * ncols):
@@ -1347,13 +1343,12 @@ def plot_profiles(
     )
     if path is not None:
         fig.savefig(path)
-        plt.close(fig)
     return fig
 
 
 def plot_profile(
     result: IdentifiabilityResult, pid: str, path: Path | None = None
-) -> Any:
+) -> Figure:
     """Plot the profile of a parameter with the paths of the other parameters.
 
     The upper panel is the profile, the lower panel the other parameters along
@@ -1368,17 +1363,13 @@ def plot_profile(
         path: file to save the figure to, the figure is returned otherwise.
 
     Returns:
-        The figure.
+        The figure, which pyplot does not hold, see `plot_profiles`.
     """
     profile = result.profiles[pid]
     index = result.pids.index(pid)
-    fig, (ax_profile, ax_paths) = plt.subplots(
-        nrows=2,
-        ncols=1,
-        figsize=(6.0, 7.0),
-        layout="constrained",
-        sharex=True,
-        height_ratios=[1.4, 1.0],
+    fig = Figure(figsize=(6.0, 7.0), layout="constrained")
+    ax_profile, ax_paths = fig.subplots(
+        nrows=2, ncols=1, sharex=True, height_ratios=[1.4, 1.0]
     )
     _plot_profile_axis(ax_profile, result, pid)
     ax_profile.legend(fontsize="x-small")
@@ -1414,7 +1405,6 @@ def plot_profile(
         ax_paths.legend(fontsize="x-small", title="other parameters")
     if path is not None:
         fig.savefig(path)
-        plt.close(fig)
     return fig
 
 

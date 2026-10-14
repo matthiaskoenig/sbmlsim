@@ -4,6 +4,7 @@ import logging
 import weakref
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -68,6 +69,37 @@ def reset_all(r: roadrunner.RoadRunner) -> None:
     r.getIntegrator().setIntegrationStartTime(0.0)
     r.model.setIntegrationStartTime(0.0)
     _roadrunner.RoadRunner_reset(r, RESET_ALL)
+
+
+def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
+    """Load an instance of roadrunner, its model always compiled (#313).
+
+    roadrunner 2.10 takes the compiled model of a new instance from its cache
+    in the process when another instance of the same SBML is alive, and the
+    data of such a model has no piecewise triggers (`createModelData(...,
+    0)` in `LLVMModelGenerator::createModel`): CVODE's root finding does not
+    stop at the switch of a piecewise of the model, and the instance
+    integrates a few 1e-9 apart from a compiled one. Which instance is alive
+    differs between the first experiment of a run, the later ones, a serial
+    run and the workers of a pool, so a model is compiled whenever it is
+    loaded (`LoadSBMLOptions.RECOMPILE`), which also keeps it out of the
+    cache. The compilation is paid once per loaded model, i.e. once per
+    model of an `ExperimentRunner` and of a worker of a pool, and an instance
+    no longer shares its code with another one: 1.2 s and 41 MB per
+    instance for the acetaminophen model of pkdb_models (403 kB of SBML),
+    against 0.044 s and 16 MB from the cache; 0.2 s for dapagliflozin.
+
+    Args:
+        source: the path of an SBML file or the SBML itself.
+
+    Returns:
+        The instance.
+    """
+    options = roadrunner.LoadSBMLOptions()
+    options.modelGeneratorOpt = (
+        options.modelGeneratorOpt | roadrunner.LoadSBMLOptions.RECOMPILE
+    )
+    return roadrunner.RoadRunner(str(source), options)
 
 
 logger = logging.getLogger(__name__)
@@ -143,7 +175,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         root_tolerance()
         # load model
         self.r: roadrunner.RoadRunner | None = (
-            roadrunner.RoadRunner(sbml)
+            load_roadrunner(sbml)
             if hierarchical
             or self.initial_helpers
             or self.parameters
@@ -154,9 +186,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: whether the instance was reset or loaded and not simulated since,
         #: see `initialize`
         self._reset_pending: bool = True
-        #: the values an initialization changed since the last reset, the
-        #: amount of a species, see `initialize`
-        self._restore: dict[str, float] = {}
         #: the values of the instance of roadrunner as loaded (a weak
         #: reference), which a reset restores, see `_loaded_state`
         self._state_of: tuple[weakref.ref[roadrunner.RoadRunner], _State] | None = None
@@ -235,9 +264,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         reset, a loaded model counts as one, and a simulation fires them once:
         a second reset without a simulation in between fires them twice (case
         01757 of the SBML Test Suite). A model which was not simulated since
-        its last reset is therefore not reset again, the values an earlier
-        initialization set are restored instead; `simulated` records a
-        simulation.
+        its last reset is therefore not reset again, the values as loaded are
+        set back instead (the values of an earlier initialization included),
+        see `_reset`; `simulated` records a simulation.
 
         A compartment keeps the concentration of the species whose initial
         value is a concentration, as at the initialization of SBML, and of a
@@ -305,19 +334,73 @@ class RoadrunnerSBMLModel(AbstractModel):
             changed.add(entity)
 
     def _reset(self) -> None:
-        """Set the model to the state it was loaded in, see `initialize`."""
+        """Set the model to the state it was loaded in, bitwise, see `initialize`.
+
+        After a simulation roadrunner resets the model and the values which
+        its reset misses are set back (`_restore_loaded_state`); the
+        parameters and the compartments as loaded are set before the reset as
+        well, which evaluates the initial values with them (#318). A model
+        which was not simulated since its last reset, i.e. initialized at
+        most, is not reset again (the events at the time 0), every value
+        which differs from the model as loaded is set back instead (#322):
+        the amount of a species, which roadrunner reads and writes through
+        the current volume of its compartment, is the amount as loaded, also
+        when an initialization changed the volume and the species.
+        """
         r = self.r_loaded
         # the values as loaded of another instance of roadrunner are read
         # before it is reset, see `_loaded_state`
         self._loaded_state()
-        if self._reset_pending:
-            for key, value in self._restore.items():
-                r.setValue(key, value)
-        else:
+        if not self._reset_pending:
+            # the reset evaluates the initial values with the current
+            # parameters and compartments, which are the ones as loaded first
+            # (#318)
+            self._restore_loaded_state(species=False)
             reset_all(r)
-            self._restore_loaded_state()
             self._reset_pending = True
-        self._restore = {}
+        self._restore_loaded_state()
+
+    def reset(self) -> None:
+        """Set the model to the state it was loaded in, bitwise, without a simulation.
+
+        A simulation leaves the model with the values of its
+        pre-initialization and its state at its end until the next
+        initialization, see `initialize`; a reader of the model, e.g. the
+        references of a design, resets it after it read what it needs, so
+        that nothing which reads the model later sees them (#315). Every
+        parameter, compartment and species amount which is not the variable
+        of an assignment rule is the one of the model as loaded afterwards,
+        see `_reset`; roadrunner resets the model once per simulation, see
+        `initialize`.
+        """
+        self._reset()
+
+    def loaded_value(self, selection: str) -> float:
+        """Get the value of a parameter, a compartment or a species of the model as loaded.
+
+        The current value of the model depends on the simulations before it,
+        see `reset`, the value as loaded does not (#315).
+
+        Args:
+            selection: the id of a parameter, a compartment or a species (its
+                amount), or `[S]`, the concentration of the species `S`.
+
+        Returns:
+            The value as loaded.
+
+        Raises:
+            KeyError: if the selection is none of these.
+        """
+        state = self._loaded_state()
+        index = state.index
+        if selection.startswith("[") and selection.endswith("]"):
+            k = index.get(selection[1:-1], -1)
+            if k < state.first_species:
+                raise KeyError(selection)
+            return float(state.concentrations[k - state.first_species])
+        if selection not in index:
+            raise KeyError(selection)
+        return float(state.values[index[selection]])
 
     def _loaded_state(self) -> "_State":
         """Get the values of the model as loaded, read once per instance of roadrunner.
@@ -338,11 +421,23 @@ class RoadrunnerSBMLModel(AbstractModel):
                     ids=ids,
                     values=_state_values(r),
                     settable=np.array([sid not in rules for sid in ids], dtype=bool),
+                    first_species=len(r.model.getGlobalParameterIds())
+                    + len(r.model.getCompartmentIds()),
+                    concentrations=np.concatenate(
+                        [
+                            np.asarray(
+                                r.model.getBoundarySpeciesConcentrations(), dtype=float
+                            ),
+                            np.asarray(
+                                r.model.getFloatingSpeciesConcentrations(), dtype=float
+                            ),
+                        ]
+                    ),
                 ),
             )
         return self._state_of[1]
 
-    def _restore_loaded_state(self) -> None:
+    def _restore_loaded_state(self, species: bool = True) -> None:
         """Set the values back which a reset of roadrunner misses in the last bits.
 
         roadrunner's resetAll evaluates the initial values of a model with the
@@ -357,10 +452,28 @@ class RoadrunnerSBMLModel(AbstractModel):
         rule gets its value of the model as loaded where it differs, the
         parameters and the compartments first and the amounts of the species
         last, which a compartment does not change.
+
+        `_reset` restores the parameters and the compartments before the
+        reset as well (`species=False`), so that the reset evaluates the
+        initial values as at the load: roadrunner keeps the amount of a
+        concentration species and reads and writes it through the current
+        volume of its compartment (`(amount / volume) * volume`), so an
+        amount which a reset computed from the volume of the simulation
+        before can read as the amount as loaded under the volume as loaded,
+        where the restore after the reset does not see it, and differ from it
+        in the last bits under the volume of the next simulation, which also
+        a set of the amount cannot avoid (#318).
+
+        Args:
+            species: restore the amounts of the species as well.
         """
         r = self.r_loaded
         state = self._loaded_state()
-        for k in _changed(_state_values(r), state):
+        current = _state_values(r)
+        changed = _changed(current, state)
+        if not species:
+            changed = changed[changed < state.first_species]
+        for k in changed:
             r.setValue(state.ids[k], float(state.values[k]))
 
     def simulated(self) -> None:
@@ -415,26 +528,16 @@ class RoadrunnerSBMLModel(AbstractModel):
         self._reset_pending = False
         self._reached = np.inf
 
-    def _replaced(self, key: str, value: float) -> None:
-        """Record the value an initialization replaced, see `initialize`.
-
-        A value is recorded once it is replaced, never before: a value which
-        roadrunner refuses to set would be restored by the next
-        initialization, which would fail on it as well (#300).
-        """
-        self._restore.setdefault(key, value)
-
     def _set(self, selection: str, value: float) -> None:
-        """Set a value in an initialization and record the value it replaces.
+        """Set a value in an initialization.
 
-        A species is recorded by its amount, which does not depend on the
-        compartment, so the records restore in any order.
+        The next initialization sets every value back which differs from the
+        model as loaded, see `_reset`, so no value needs to be recorded: a
+        value which roadrunner refuses to set did not change, and an amount
+        which an initialization read under a changed volume is not set back
+        under another one (#300, #322).
         """
-        r = self.r_loaded
-        entity = self.symbols.entity(selection)
-        replaced = float(r.getValue(entity))
-        r.setValue(selection, value)
-        self._replaced(entity, replaced)
+        self.r_loaded.setValue(selection, value)
 
     def _set_compartment(
         self,
@@ -463,11 +566,9 @@ class RoadrunnerSBMLModel(AbstractModel):
             and s not in symbols.assignment_rules
             and (s in symbols.initial_concentration or s in concentrations)
         }
-        replaced = {species: float(r.getValue(species)) for species in kept}
         self._set(compartment, value)
         for species, concentration in kept.items():
             r.setValue(f"[{species}]", concentration)
-            self._replaced(species, replaced[species])
 
     @staticmethod
     def from_abstract_model(
@@ -514,7 +615,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             sbml_path: Path = source.path
             # state_path: Path = RoadrunnerSBMLModel.get_state_path(sbml_path=sbml_path)
 
-            r = roadrunner.RoadRunner(str(sbml_path))
+            r = load_roadrunner(sbml_path)
             # FIXME: see https://github.com/sys-bio/roadrunner/issues/963
             # if state_path.exists():
             #     logger.debug(f"Load model from state: '{state_path}'")
@@ -533,7 +634,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             #     logger.info(f"Save state: '{state_path}'")
 
         elif source.is_content():
-            r = roadrunner.RoadRunner(str(source.content))
+            r = load_roadrunner(str(source.content))
 
         return r
 
@@ -944,11 +1045,22 @@ class _State:
             species, in this order, see `_state_ids`.
         values: their values, the amounts of the species.
         settable: whether a value is not the variable of an assignment rule.
+        first_species: the index of the first species, the number of the
+            parameters and the compartments.
+        concentrations: the concentrations of the boundary and the floating
+            species, in the order of their ids.
     """
 
     ids: list[str]
     values: np.ndarray
     settable: np.ndarray
+    first_species: int
+    concentrations: np.ndarray
+
+    @cached_property
+    def index(self) -> dict[str, int]:
+        """Get the index of every id in `ids`."""
+        return {sid: k for k, sid in enumerate(self.ids)}
 
 
 def _changed(current: np.ndarray, state: _State) -> np.ndarray:

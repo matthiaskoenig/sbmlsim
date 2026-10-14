@@ -478,8 +478,15 @@ def model_values(
 ) -> dict[str, float]:
     """Get the values of the entities of a model which are symbols.
 
+    The values are the ones of the model as loaded, with its changes
+    (`RoadrunnerSBMLModel.loaded_value`): the current values are the ones a
+    simulation before left, e.g. one in `simulations()` of an experiment, as
+    for the start values of a fit (#315). A symbol which is no parameter,
+    compartment or species, e.g. a reaction, has the value roadrunner
+    gives for the current state.
+
     Args:
-        model: the model as it was loaded, with its changes.
+        model: the model, with its changes.
         symbols: ids, of which some are entities of the model.
 
     Returns:
@@ -502,6 +509,11 @@ def model_values(
                 change.magnitude if isinstance(change, Quantity) else change
             )
             continue
+        try:
+            values[symbol] = model.loaded_value(symbol)
+            continue
+        except KeyError:
+            pass
         try:
             values[symbol] = float(model.r[symbol])
         except (RuntimeError, TypeError, ValueError) as err:

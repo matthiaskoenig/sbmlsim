@@ -1,11 +1,13 @@
 """The pools of sbmlsim."""
 
+import json
 import multiprocessing
 import os
 import signal
 import subprocess
 import sys
 import threading
+import time
 from collections import OrderedDict
 from collections.abc import Callable
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -400,3 +402,118 @@ def test_ctrl_c_while_the_workers_start(method: str, tmp_path: Path) -> None:
     assert stderr == ""
     assert stdout.split() == ["INTERRUPTED", "DONE"]
     assert process.returncode == 0
+
+
+#: a script which starts a pool of two workers, writes the processes of the
+#: pool into a file and kills itself with a signal, see
+#: `test_the_processes_of_a_pool_end_with_its_main_process`
+DYING_SCRIPT = """
+import json
+import multiprocessing
+import multiprocessing.forkserver
+import multiprocessing.resource_tracker
+import os
+import resource
+import signal
+import sys
+import time
+
+from sbmlsim import parallel
+
+if __name__ == "__main__":
+    method, name, path = sys.argv[1:4]
+    multiprocessing.set_start_method(method)
+    executor = parallel.pool(2)
+    # two tasks at once start the second worker
+    for future in [executor.submit(time.sleep, 0.5) for _ in range(2)]:
+        future.result()
+    pids = sorted(p.pid for p in executor._processes.values())
+    for pid in (
+        multiprocessing.forkserver._forkserver._forkserver_pid,
+        multiprocessing.resource_tracker._resource_tracker._pid,
+    ):
+        if pid is not None:
+            pids.append(pid)
+    with open(path, "w") as f:
+        json.dump(pids, f)
+    # no core dump of the abort
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    os.kill(os.getpid(), getattr(signal, name))
+    time.sleep(60)
+"""
+
+
+def _running(pid: int) -> bool:
+    """Check whether a process runs; a zombie, which has ended, does not."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    stat = Path(f"/proc/{pid}/stat")
+    if not stat.parent.exists():
+        return True
+    try:
+        return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return False
+
+
+def _start_time(pid: int) -> str | None:
+    """Get the start time of a process on linux, which tells a reused pid apart."""
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the signals of POSIX")
+@pytest.mark.parametrize("method", ["fork", "forkserver", "spawn"])
+@pytest.mark.parametrize("name", ["SIGKILL", "SIGABRT"])
+def test_the_processes_of_a_pool_end_with_its_main_process(
+    method: str, name: str, tmp_path: Path
+) -> None:
+    """The workers, the forkserver and the resource tracker end when the main process dies (#316).
+
+    A killed or crashed main process left them alive and idle, reparented to
+    init, with the memory of the models of the workers. The workers watch
+    the main process, the forkserver and the resource tracker end when the
+    last process which uses them ended. Whatever is left after 30 s is killed.
+    Under `fork` a later worker inherits the pipes of the earlier ones, they
+    end one after the other from the last one.
+    """
+    script = tmp_path / "dying.py"
+    script.write_text(DYING_SCRIPT)
+    path = tmp_path / "pids.json"
+    with (tmp_path / "output.txt").open("w") as output:
+        process = subprocess.Popen(
+            [sys.executable, str(script), method, name, str(path)],
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            env={**os.environ, "PYTHONPATH": str(REPO / "src")},
+        )
+        try:
+            process.wait(timeout=300)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+    output = (tmp_path / "output.txt").read_text()
+    assert path.exists(), output
+    pids = json.loads(path.read_text())
+    started = {pid: _start_time(pid) for pid in pids}
+    try:
+        left = pids
+        deadline = time.monotonic() + 30.0
+        while left and time.monotonic() < deadline:
+            time.sleep(0.1)
+            left = [pid for pid in pids if _running(pid)]
+    finally:
+        for pid in pids:
+            # a pid which another process reused is not killed
+            if _running(pid) and _start_time(pid) == started[pid]:
+                os.kill(pid, signal.SIGKILL)
+    assert process.returncode == -getattr(signal, name), output
+    # the two workers, the resource tracker and under forkserver the forkserver;
+    # a pool started by fork needs no tracker
+    assert len(pids) >= (2 if method == "fork" else 3)
+    assert left == [], output

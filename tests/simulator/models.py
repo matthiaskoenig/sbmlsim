@@ -122,6 +122,43 @@ end
 #: of `VOLUME_OF_A_RULE` as loaded in the last bits
 OTHER_BODY_WEIGHT = 70.45995681845807
 
+#: a rate which switches at a time by a piecewise, a trigger of CVODE's root
+#: finding which roadrunner 2.10 drops from an instance it takes from its
+#: cache in the process (#313)
+PIECEWISE_SWITCH = """
+model piecewise_switch
+  compartment C = 1
+  species A in C = 10
+  k := piecewise(2, time < 3.3, 0.5)
+  J: A -> ; k*A
+end
+"""
+
+#: a concentration species in the blood of the rest of the body, whose volume
+#: is an assignment rule of the volume fractions of the organs, as in the
+#: acetaminophen model of pkdb_models: roadrunner stores the amount of `S` and
+#: reads and writes it through the current volume of `V`, so the amount a
+#: reset computes with the fractions of the simulation before differs in the
+#: last bits where the restore cannot see it (#318)
+VOLUME_OF_THE_REST = """
+model volume_of_the_rest
+  BW = 75
+  FVgu = 0.0171; FVki = 0.0044; FVli = 0.021; FVlu = 0.0076
+  FVsp = 0.0026; FVpa = 0.01; FVve = 0.0514; FVar = 0.0257
+  Fblood = 0.02
+  FVre := 1 - (FVgu + FVki + FVli + FVlu + FVsp + FVpa + FVve + FVar)
+  Vre := BW*FVre
+  compartment V
+  V := Vre*Fblood
+  species S in V = 0.75
+  J: S -> ; 0.1*S
+end
+"""
+
+#: values of `FVpa` of `VOLUME_OF_THE_REST` after which a point with
+#: `FVpa = 0.005` differed from the point alone in the last bits (#318)
+FRACTIONS_BEFORE = (0.015, 0.06105694180095081, 0.030671477163201098)
+
 #: two events which fire at the time 0 with a delay, case 01757 of the SBML
 #: Test Suite: `E1` sets `P1 = 5` at 1.3, `E0` squares it at 2.5, so `P1` is
 #: 25 from 2.5 on

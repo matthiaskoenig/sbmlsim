@@ -473,3 +473,24 @@ def test_the_summary_of_a_hook_and_the_groups() -> None:
     assert single == [a, c]
     assert groups == [(ParameterGroup("net.l.w", ("b", "z")), [b])]
     assert describe(scaling)["summary"]["name"] == "scaling"
+
+
+def test_the_values_of_the_model_are_the_values_as_loaded() -> None:
+    """A simulation before does not change the values a hook reads (#315, #322)."""
+    from sbmlsim.fit.derived import model_values
+    from sbmlsim.model import RoadrunnerSBMLModel
+    from sbmlsim.simulation import Simulation
+    from sbmlsim.simulator import Simulator
+    from tests.simulator.models import sbml
+
+    model = RoadrunnerSBMLModel(source=sbml())
+    Simulator(n_workers=1).run(
+        model, Simulation(end=1, steps=2, preinit_changes={"k1": 2.0, "f": 5.0})
+    )
+    assert model.r_loaded["k1"] == 2.0
+    assert model_values(model, {"k1", "f", "pinit", "J1", "nope"}) == {
+        "k1": 0.8,
+        "f": 2.0,
+        "pinit": 4.0,
+        "J1": pytest.approx(float(model.r_loaded["J1"])),
+    }

@@ -166,8 +166,6 @@ def figures(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Figure]]:
 
     monkeypatch.setattr(FitReport, "_save_mpl_figure", save)
     yield saved
-    for fig in saved.values():
-        plt.close(fig)
 
 
 def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
@@ -219,7 +217,7 @@ def _legend_rows(fig: Figure) -> list[list[str]]:
 
     The blank entries which fill a row are left out.
     """
-    fig.canvas.draw()
+    fig.draw_without_rendering()
     [legend] = fig.legends
     # the centers of the texts of a row differ by a little, mathtext is taller
     entries = []
@@ -354,7 +352,7 @@ def test_a_long_title_of_a_mapping_is_wrapped_between_its_words(
     report.plot_fit(tmp_path)
     fig = figures["DoseStudy_fm_dose"]
     assert fig.get_suptitle().split("\n") == ["DoseStudy", identifier, "[kind]"]
-    fig.canvas.draw()
+    fig.draw_without_rendering()
     assert fig.get_figwidth() > 10.0
     assert _inside(fig.texts[0].get_window_extent(), fig.bbox)
     assert _inside(fig.legends[0].get_window_extent(), fig.bbox)

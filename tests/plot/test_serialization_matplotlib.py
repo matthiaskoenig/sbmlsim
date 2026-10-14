@@ -408,3 +408,13 @@ def test_the_gap_below_the_title_of_the_figure_does_not_grow_with_its_height() -
     gaps = [gap(rows) for rows in (1, 2, 6)]
     assert max(gaps) - min(gaps) < 0.02, gaps
     assert max(gaps) < 0.3, gaps
+
+
+def test_the_fixture_no_pyplot_fails_on_a_resolution_of_the_backend(
+    no_pyplot: None,
+) -> None:
+    """Reading the backend from `rcParams` resolves it, which `no_pyplot` reports (#317)."""
+    with pytest.raises(AssertionError, match="backend of pyplot was resolved"):
+        _ = {**matplotlib.rcParams}
+    with pytest.raises(AssertionError, match="created with pyplot"):
+        plt.subplots()
