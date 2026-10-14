@@ -294,9 +294,16 @@ def _end_with_the_parent() -> None:
     stayed alive, idle, with the memory of its models, and kept the
     forkserver and the resource tracker alive, which end with the last
     process which uses them. A thread of the worker waits for the sentinel of
-    its parent, which every start method provides (the end of a pipe whose
-    other end only the parent holds, a handle of the process on Windows),
-    and ends the worker at once when it is ready, i.e. when the parent ended.
+    its parent, which every start method provides (the read end of a pipe
+    whose write end the parent holds, a handle of the process on Windows),
+    and ends the worker when it is ready, i.e. when the parent ended: an idle
+    worker at once, a busy one when the call of roadrunner it is in returns,
+    since roadrunner holds the GIL while it integrates (a long or stuck
+    integration keeps the worker until it ends). Under `fork` every later
+    worker and every child which the parent forks without exec inherit the
+    write end: the workers still end one after the other, from the last
+    one, but a child which the parent forked outside sbmlsim keeps them alive
+    as long as it lives.
     """
     parent = multiprocessing.parent_process()
     if parent is None:

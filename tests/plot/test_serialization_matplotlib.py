@@ -370,3 +370,13 @@ def test_the_title_of_the_figure_is_above_the_titles_of_the_plots(
     plot_title = mpl_figure.axes[0].title.get_window_extent(renderer)
     plt.close(mpl_figure)
     assert plot_title.y1 <= title.y0
+
+
+def test_the_fixture_no_pyplot_fails_on_a_resolution_of_the_backend(
+    no_pyplot: None,
+) -> None:
+    """Reading the backend from `rcParams` resolves it, which `no_pyplot` reports (#317)."""
+    with pytest.raises(AssertionError, match="backend of pyplot was resolved"):
+        _ = {**matplotlib.rcParams}
+    with pytest.raises(AssertionError, match="created with pyplot"):
+        plt.subplots()

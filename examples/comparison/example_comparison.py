@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
 
 from examples.comparison.simulate import Condition, SimulateSBML
 from examples.comparison.simulate_roadrunner import SimulateRoadrunnerSBML
@@ -86,7 +85,6 @@ def compare_simulators(
                 dpi=150,
                 bbox_inches="tight",
             )
-            plt.close(fig)
             comparisons[condition.sid][key] = comparison
 
     return comparisons

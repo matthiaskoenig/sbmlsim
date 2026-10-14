@@ -8,6 +8,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import matplotlib.pyplot
+import matplotlib.rcsetup
 import pytest
 import roadrunner
 
@@ -112,20 +113,34 @@ def start_methods(monkeypatch: pytest.MonkeyPatch) -> Callable[[str | None, str]
 
 
 @pytest.fixture
-def no_pyplot(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fail a test in which sbmlsim draws a figure with pyplot (#317).
+def no_pyplot(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Fail a test in which sbmlsim draws a figure with pyplot or resolves its backend (#317).
 
     A figure of pyplot takes the backend of pyplot, which is interactive when
     a display is there (TkAgg): its objects of Tk are released by the garbage
     collector in whatever thread it runs, e.g. a thread of a pool, and Tk
     aborts the process. A figure which is written to a file is a
-    `matplotlib.figure.Figure` without pyplot.
+    `matplotlib.figure.Figure` without pyplot. Reading `rcParams["backend"]`
+    resolves the backend (e.g. `{**plt.rcParams}`), which the backend of the
+    session, selected for the tests, would hide: the fixture puts the
+    sentinel of an unresolved backend back for the test, and a resolution
+    raises.
     """
 
     def figure(*args: object, **kwargs: object) -> None:
         raise AssertionError("a figure was created with pyplot")
 
+    def switch_backend(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the backend of pyplot was resolved")
+
     monkeypatch.setattr(matplotlib.pyplot, "figure", figure)
+    monkeypatch.setattr(matplotlib.pyplot, "switch_backend", switch_backend)
+    backend = matplotlib.rcParams._get("backend")
+    matplotlib.rcParams._set("backend", matplotlib.rcsetup._auto_backend_sentinel)
+    try:
+        yield
+    finally:
+        matplotlib.rcParams._set("backend", backend)
 
 
 @pytest.fixture

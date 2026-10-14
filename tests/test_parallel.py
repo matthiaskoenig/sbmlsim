@@ -458,8 +458,16 @@ def _running(pid: int) -> bool:
         return False
 
 
+def _start_time(pid: int) -> str | None:
+    """Get the start time of a process on linux, which tells a reused pid apart."""
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="the signals of POSIX")
-@pytest.mark.parametrize("method", ["forkserver", "spawn"])
+@pytest.mark.parametrize("method", ["fork", "forkserver", "spawn"])
 @pytest.mark.parametrize("name", ["SIGKILL", "SIGABRT"])
 def test_the_processes_of_a_pool_end_with_its_main_process(
     method: str, name: str, tmp_path: Path
@@ -470,6 +478,8 @@ def test_the_processes_of_a_pool_end_with_its_main_process(
     init, with the memory of the models of the workers. The workers watch
     the main process, the forkserver and the resource tracker end when the
     last process which uses them ended. Whatever is left after 30 s is killed.
+    Under `fork` a later worker inherits the pipes of the earlier ones, they
+    end one after the other from the last one.
     """
     script = tmp_path / "dying.py"
     script.write_text(DYING_SCRIPT)
@@ -487,7 +497,10 @@ def test_the_processes_of_a_pool_end_with_its_main_process(
             if process.poll() is None:
                 process.kill()
                 process.wait()
+    output = (tmp_path / "output.txt").read_text()
+    assert path.exists(), output
     pids = json.loads(path.read_text())
+    started = {pid: _start_time(pid) for pid in pids}
     try:
         left = pids
         deadline = time.monotonic() + 30.0
@@ -496,8 +509,11 @@ def test_the_processes_of_a_pool_end_with_its_main_process(
             left = [pid for pid in pids if _running(pid)]
     finally:
         for pid in pids:
-            if _running(pid):
+            # a pid which another process reused is not killed
+            if _running(pid) and _start_time(pid) == started[pid]:
                 os.kill(pid, signal.SIGKILL)
-    assert process.returncode == -getattr(signal, name)
-    assert len(pids) >= 3
-    assert left == []
+    assert process.returncode == -getattr(signal, name), output
+    # the two workers, the resource tracker and under forkserver the forkserver;
+    # a pool started by fork needs no tracker
+    assert len(pids) >= (2 if method == "fork" else 3)
+    assert left == [], output
