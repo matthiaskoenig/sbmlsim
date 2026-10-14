@@ -519,3 +519,42 @@ def test_the_bands_of_two_panels_keep_their_own_legend_groups(
     }
     assert groups == {"a": {"band_a"}, "b": {"band_b"}}
     assert [t.name for t in fig.data if t.showlegend] == ["a (5-95 %)", "b (5-95 %)"]
+
+
+def test_an_outside_legend_widens_no_gap_of_the_grid(
+    experiment: SimulationExperiment,
+) -> None:
+    """Plotly draws the one legend of the figure right of the grid (ruling 67).
+
+    `legend_position` places the legend of a plot of matplotlib; the legend of
+    plotly is one legend of the figure, right of every panel, so the grid of a
+    figure with legends outside is the grid with legends inside.
+    """
+
+    def grid(outside: bool) -> Any:
+        figure = Figure(
+            experiment=experiment,
+            sid="grid",
+            num_rows=2,
+            num_cols=3,
+            settings={"legend_position": "outside"} if outside else None,
+        )
+        for k, plot in enumerate(
+            figure.create_plots(
+                xaxis=Axis("time", unit="hr"), yaxis=Axis("C", unit="mg/l")
+            )
+        ):
+            plot.legend = k % 3 == 2
+            _curve(plot, "task_doses", "dose")
+        return PlotlyFigureSerializer.to_figure(experiment, figure)
+
+    inside, outside = grid(False), grid(True)
+    assert outside.layout.width == inside.layout.width
+    for row in (1, 2):
+        for col in (1, 2, 3):
+            assert (
+                outside.get_subplot(row, col).xaxis.domain
+                == inside.get_subplot(row, col).xaxis.domain
+            )
+    entries = [t.name for t in outside.data if t.showlegend is not False and t.name]
+    assert len(entries) == len(set(entries)) > 0

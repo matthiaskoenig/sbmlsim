@@ -372,6 +372,44 @@ def test_the_title_of_the_figure_is_above_the_titles_of_the_plots(
     assert plot_title.y1 <= title.y0
 
 
+def test_the_gap_below_the_title_of_the_figure_does_not_grow_with_its_height() -> None:
+    """The plots of a tall figure begin right below its title (#312).
+
+    The top of the plots was capped at the fraction of matplotlib (0.88), so
+    the gap between the titles grew with the height: 3.6 in above the plots
+    of a figure of six rows.
+    """
+
+    def gap(rows: int) -> float:
+        figure = Figure(
+            experiment=None,
+            sid="fig",
+            name="Title of the figure",
+            num_rows=rows,
+            num_cols=1,
+            subplots=[
+                SubPlot(plot=Plot(sid=f"p{k}", name="Title of the plot"), row=k, col=1)
+                for k in range(1, rows + 1)
+            ],
+        )
+        mpl_figure = MatplotlibFigureSerializer.to_figure(
+            experiment=None, figure=figure
+        )
+        renderer = FigureCanvasAgg(mpl_figure).get_renderer()
+        title = next(
+            text
+            for text in mpl_figure.findobj(Text)
+            if text.get_text() == mpl_figure.get_suptitle()
+        ).get_window_extent(renderer)
+        plot_title = mpl_figure.axes[0].title.get_window_extent(renderer)
+        assert plot_title.y1 <= title.y0
+        return (title.y0 - plot_title.y1) / mpl_figure.dpi
+
+    gaps = [gap(rows) for rows in (1, 2, 6)]
+    assert max(gaps) - min(gaps) < 0.02, gaps
+    assert max(gaps) < 0.3, gaps
+
+
 def test_the_fixture_no_pyplot_fails_on_a_resolution_of_the_backend(
     no_pyplot: None,
 ) -> None:
