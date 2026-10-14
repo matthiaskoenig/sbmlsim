@@ -286,6 +286,60 @@ def test_from_df_column_without_units(caplog: pytest.LogCaptureFixture) -> None:
     assert "value" not in dset.uinfo
 
 
+def test_from_df_empty_column_without_units_is_no_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A column without any number and without any unit has no unit, silently (#310).
+
+    PK-DB writes the time of a scatter table without a reported time as an
+    empty `time` and an empty `time_unit` in every row.
+    """
+    nan = float("nan")
+    df = pd.DataFrame(
+        {
+            "x": [1.0, 2.0],
+            "x_unit": ["mg/l", "mg/l"],
+            "y": [3.0, 4.0],
+            "y_unit": ["s", "s"],
+            "time": [nan, nan],
+            "time_unit": [nan, nan],
+        }
+    )
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert [r.getMessage() for r in caplog.records if r.levelname != "DEBUG"] == []
+    assert dict(dset.uinfo.udict) == {"x": "mg/l", "y": "s"}
+    assert dset["time"].isna().all()
+
+
+def test_from_df_empty_statistics_without_units_are_no_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The `unit` column of statistics without any number is no error either (#310)."""
+    nan = float("nan")
+    df = pd.DataFrame(
+        {"x": [1.0, 2.0], "mean": [nan, nan], "sd": [nan, nan], "unit": [nan, nan]}
+    )
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert [r.getMessage() for r in caplog.records if r.levelname != "DEBUG"] == []
+    assert "mean" not in dset.uinfo
+
+
+def test_from_df_errors_without_units(caplog: pytest.LogCaptureFixture) -> None:
+    """An sd without a unit is an error, also when its column has no value."""
+    nan = float("nan")
+    df = pd.DataFrame(
+        {"value": [nan, nan], "value_sd": [0.1, 0.2], "value_unit": [nan, nan]}
+    )
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert any(
+        r.levelname == "ERROR" and "units are missing" in r.getMessage()
+        for r in caplog.records
+    )
+
+
 def test_from_df_unit_column_ignores_missing_value() -> None:
     """The unit column gives the first unit of the rows with a value, never nan."""
     df = pd.DataFrame({"value": [float("nan"), 2.0], "unit": [float("nan"), "mM"]})
