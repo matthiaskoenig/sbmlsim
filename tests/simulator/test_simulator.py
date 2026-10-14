@@ -28,12 +28,15 @@ from tests.simulator.models import (
     BLOWUP,
     DELAYED_EVENT_RULE,
     EVENTS_AT_T0,
+    FRACTIONS_BEFORE,
     OTHER_BODY_WEIGHT,
+    PIECEWISE_SWITCH,
     PROBE,
     SPECIES_KINDS,
     TOLERANCE_PROBE,
     VOLUME,
     VOLUME_OF_A_RULE,
+    VOLUME_OF_THE_REST,
     sbml,
     sbml_minutes,
 )
@@ -1023,6 +1026,85 @@ def test_a_point_of_a_scan_is_the_point_alone() -> None:
         return np.asarray(Simulator(n_workers=1).run(model, scan)["S"].values)
 
     np.testing.assert_array_equal(run([OTHER_BODY_WEIGHT, 75.0])[1], run([75.0])[0])
+
+
+@pytest.mark.parametrize("before", FRACTIONS_BEFORE)
+def test_a_point_does_not_depend_on_the_volume_of_a_rule_before_it(
+    before: float,
+) -> None:
+    """A point after a point of other volume fractions is the point alone (#318).
+
+    roadrunner's resetAll computes the amount of the concentration species
+    `S` from the fractions of the point before, and roadrunner reads and
+    writes the amount through the current volume of its compartment, so the
+    amount as loaded which the restore of #303 sees under the volume as loaded
+    differs in the last bits under the volume of the next point. The
+    parameters and the compartments as loaded are set back before the reset.
+    """
+    simulation = Simulation(end=10, steps=20)
+
+    def run(values: list[float]) -> np.ndarray:
+        model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_THE_REST))
+        model.set_selections(["time", "S", "[S]"])
+        scan = Scan(simulation, [Dimension("d", values={"FVpa": values})])
+        result = Simulator(n_workers=1).run(model, scan)
+        return np.stack([np.asarray(result[k].values) for k in ("S", "[S]")])
+
+    np.testing.assert_array_equal(run([before, 0.005])[:, 1], run([0.005])[:, 0])
+
+
+def _piecewise_switch(alive: bool, source: str | Path) -> np.ndarray:
+    """Get the simulation of `PIECEWISE_SWITCH`, with another instance alive or alone."""
+    gc.collect()
+    other = RoadrunnerSBMLModel(source=source) if alive else None
+    model = RoadrunnerSBMLModel(source=source)
+    model.set_selections(["time", "A"])
+    result = Simulator(n_workers=1).run(model, Simulation(end=10, steps=20))
+    del other
+    return np.asarray(result["A"].values)
+
+
+@pytest.mark.parametrize("from_file", [False, True])
+def test_a_simulation_does_not_depend_on_another_instance_of_its_model(
+    from_file: bool, tmp_path: Path
+) -> None:
+    """A model loaded while another instance of it is alive simulates the same (#313).
+
+    roadrunner 2.10 takes the compiled model of a new instance from its cache
+    in the process when another instance of the same SBML is alive, and gives
+    such an instance no piecewise triggers, so CVODE does not stop at the
+    switch of `k`. Every model is compiled, the SBML itself and a file
+    without initial assignments, which roadrunner loads from its path (the
+    flat models of pkdb_models).
+    """
+    source: str | Path = sbml(PIECEWISE_SWITCH)
+    if from_file:
+        source = tmp_path / "piecewise_switch.xml"
+        source.write_text(sbml(PIECEWISE_SWITCH))
+    np.testing.assert_array_equal(
+        _piecewise_switch(True, source), _piecewise_switch(False, source)
+    )
+
+
+def test_a_serial_run_is_a_pool_run_with_another_instance_alive() -> None:
+    """A pool, whose workers compile their models, equals a serial run (#313).
+
+    The model of the serial run is loaded while another instance is alive,
+    as the model of every experiment after the first one of a run.
+    """
+    other = RoadrunnerSBMLModel(source=sbml(PIECEWISE_SWITCH))
+    model = RoadrunnerSBMLModel(source=sbml(PIECEWISE_SWITCH))
+    del other
+    model.set_selections(["time", "A"])
+    scan = Scan(
+        Simulation(end=10, steps=20),
+        [Dimension("d", values={"[A]": np.linspace(5.0, 15.0, 4)})],
+    )
+    serial = Simulator(n_workers=1).run(model, scan)
+    pool = Simulator(n_workers=2).run(model, scan)
+    np.testing.assert_array_equal(
+        np.asarray(serial["A"].values), np.asarray(pool["A"].values)
+    )
 
 
 def test_a_failed_point_leaves_nothing_to_the_points_after_it() -> None:
