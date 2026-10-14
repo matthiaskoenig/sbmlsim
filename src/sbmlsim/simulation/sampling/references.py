@@ -64,8 +64,8 @@ def references(
     """
     loaded = _loaded(model)
     plan = Simulator().compile(loaded, simulation or Simulation(end=1.0))
-    loaded.initialize(preinit_targets(plan))
     try:
+        loaded.initialize(preinit_targets(plan))
         values: dict[str, Number] = {}
         for target in targets:
             if not loaded.has_selection(target):

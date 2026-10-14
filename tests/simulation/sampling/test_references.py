@@ -1,5 +1,6 @@
 """The references of the targets of a design."""
 
+import numpy as np
 import pytest
 
 from sbmlsim import Q
@@ -7,7 +8,12 @@ from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Scan, Simulation, sampling
 from sbmlsim.simulation.sampling import parameters_of, references
 from sbmlsim.simulator import Simulator
-from tests.simulator.models import SPECIES_KINDS, sbml, sbml_minutes
+from tests.simulator.models import (
+    SPECIES_KINDS,
+    VOLUME_OF_THE_REST,
+    sbml,
+    sbml_minutes,
+)
 
 
 def test_the_references_are_the_values_after_the_preinitialization() -> None:
@@ -83,3 +89,34 @@ def test_the_references_leave_the_model_as_loaded() -> None:
     assert (r["k1"], r["f"], r["pinit"]) == (0.8, 2.0, 4.0)
     parameters_of(model, simulation=Simulation(end=1, preinit_changes={"k1": 3.0}))
     assert r["k1"] == 0.8
+
+
+@pytest.mark.parametrize(
+    "fraction, concentration", [(0.0611, 3.67), (0.0144, 3.64), (0.04, 4.96)]
+)
+def test_a_simulation_after_the_references_is_the_simulation_alone(
+    fraction: float, concentration: float
+) -> None:
+    """The references of a volume and a concentration leave no trace (#322).
+
+    The references are read after the pre-initialization of a simulation
+    which sets a parameter of the volume of `S` and the concentration of
+    `S`; the simulation after them on the same model equals the simulation
+    on a fresh model, bitwise.
+    """
+    simulation = Simulation(end=10, steps=20, preinit_changes={"FVpa": 0.005})
+
+    def run(model: RoadrunnerSBMLModel) -> np.ndarray:
+        model.set_selections(["time", "S", "[S]"])
+        result = Simulator(n_workers=1).run(model, simulation)
+        return np.stack([np.asarray(result[k].values) for k in ("S", "[S]")])
+
+    model = RoadrunnerSBMLModel(source=sbml(VOLUME_OF_THE_REST))
+    references(
+        model,
+        ["S"],
+        Simulation(end=1, preinit_changes={"FVpa": fraction, "[S]": concentration}),
+    )
+    np.testing.assert_array_equal(
+        run(model), run(RoadrunnerSBMLModel(source=sbml(VOLUME_OF_THE_REST)))
+    )
