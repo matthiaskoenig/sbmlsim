@@ -761,3 +761,116 @@ def test_the_combined_legend_covers_no_bar_of_the_left_axis(
         assert not box.overlaps(bar.get_window_extent())
     # the legend is placed off invisible copies of the bars on its own axes
     assert len([p for p in ax2.patches if not p.get_visible()]) == len(ax1.patches)
+
+
+def _grid(
+    experiment: SimulationExperiment,
+    legends: set[tuple[int, int]],
+    outside: bool = True,
+) -> FigureMPL:
+    """A figure of two rows and three columns, the legend on the given panels."""
+    figure = Figure(
+        experiment=experiment,
+        sid="grid",
+        num_rows=2,
+        num_cols=3,
+        settings={"legend_position": "outside"} if outside else None,
+    )
+    plots = figure.create_plots(
+        xaxis=Axis("time", unit="hr"), yaxis=Axis("C", unit="mg/l"), legend=True
+    )
+    for k, plot in enumerate(plots):
+        plot.legend = divmod(k, 3) in legends
+        _curve(plot, "task_doses", "dose")
+    fig = MatplotlibFigureSerializer.to_figure(experiment, figure)
+    FigureCanvasAgg(fig).draw()
+    return fig
+
+
+def _panels(fig: FigureMPL) -> list[tuple[float, float]]:
+    """The left and the right edge of the panels in inches, row by row."""
+    width = fig.get_figwidth()
+    return [
+        (ax.get_position().x0 * width, ax.get_position().x1 * width) for ax in fig.axes
+    ]
+
+
+def _room(fig: FigureMPL, ax: Axes) -> float:
+    """The room an outside legend of a panel takes, the gap and the legend, in inches."""
+    legend = ax.get_legend()
+    assert legend is not None
+    return 0.12 + legend.get_window_extent(_renderer(fig)).width / fig.dpi
+
+
+def test_an_outside_legend_widens_only_the_gap_right_of_its_column(
+    experiment: SimulationExperiment,
+) -> None:
+    """One legend outside widens the gap right of its column and no other (ruling 67).
+
+    `legend_position="outside"` added the width of a panel to every gap of the
+    grid, so a figure of many panels became very wide (the band figures of the
+    acetaminophen model of pkdb_models: 72 inches). The panels keep their size.
+    """
+    plain = _grid(experiment, set(), outside=False)
+    fig = _grid(experiment, {(0, 0)})
+    room = _room(fig, fig.axes[0])
+    assert fig.get_figwidth() == pytest.approx(plain.get_figwidth() + room)
+    before, after = _panels(plain), _panels(fig)
+    for (a0, a1), (b0, b1) in zip(before, after, strict=True):
+        assert b1 - b0 == pytest.approx(a1 - a0)
+    # the panels of the first column stay, the others move by the room
+    for k, ((a0, _), (b0, _)) in enumerate(zip(before, after, strict=True)):
+        assert b0 == pytest.approx(a0 + (room if k % 3 else 0.0))
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    extent = legend.get_window_extent(_renderer(fig))
+    panel = fig.axes[0].get_window_extent()
+    assert extent.x0 == pytest.approx(panel.x1 + 0.12 * fig.dpi, abs=1.0)
+    assert extent.y1 == pytest.approx(panel.y1, abs=1.0)
+    assert extent.x1 <= _tight(fig, fig.axes[1]).x0
+
+
+def test_one_legend_per_row_widens_the_figure_by_its_legend(
+    experiment: SimulationExperiment,
+) -> None:
+    """A legend on the last plot of every row is right of the grid, inside the figure."""
+    plain = _grid(experiment, set(), outside=False)
+    fig = _grid(experiment, {(0, 2), (1, 2)})
+    room = max(_room(fig, fig.axes[2]), _room(fig, fig.axes[5]))
+    assert fig.get_figwidth() == pytest.approx(plain.get_figwidth() + room)
+    for (a0, a1), (b0, b1) in zip(_panels(plain), _panels(fig), strict=True):
+        assert (b0, b1) == pytest.approx((a0, a1))
+    for ax in (fig.axes[2], fig.axes[5]):
+        legend = ax.get_legend()
+        assert legend is not None
+        extent = legend.get_window_extent(_renderer(fig))
+        assert extent.x0 >= ax.get_window_extent().x1
+        assert extent.x1 <= fig.bbox.x1
+    assert [ax.get_legend() is None for ax in fig.axes] == [
+        True,
+        True,
+        False,
+        True,
+        True,
+        False,
+    ]
+
+
+def test_an_outside_legend_is_right_of_the_right_axis(
+    experiment: SimulationExperiment,
+) -> None:
+    """The legend of a panel with a right y axis and no colour bar leaves the axis alone."""
+    fig = _figure(
+        experiment,
+        lambda p: _curve(p, "task_doses", "dose", yaxis_position=YAxisPosition.RIGHT),
+        right=True,
+        outside=True,
+    )
+    ax1, ax2 = fig.axes
+    legend = ax1.get_legend()
+    assert legend is not None
+    axis = ax2.yaxis.get_tightbbox(_renderer(fig))
+    assert axis is not None
+    extent = legend.get_window_extent(_renderer(fig))
+    assert extent.x0 == pytest.approx(axis.x1 + 0.12 * fig.dpi, abs=1.0)
+    assert extent.x1 <= fig.bbox.x1
