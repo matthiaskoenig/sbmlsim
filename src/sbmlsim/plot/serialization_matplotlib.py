@@ -18,6 +18,7 @@ from matplotlib.figure import Figure as FigureMPL
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
+from matplotlib.text import Text
 from matplotlib.ticker import FuncFormatter, NullFormatter
 
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
@@ -65,6 +66,8 @@ class _Panel:
         axes: its axes, the left one first and the right one if it has one.
         first: the first column of the grid the panel spans, from 0.
         last: the last column of the grid the panel spans.
+        top: the first row of the grid the panel spans, from 0.
+        bottom: the last row of the grid the panel spans.
         pending: the styles of its colour bars, in the order of its curves.
         legend: its legend outside, right of it, which is placed with the
             colour bars, see `MatplotlibFigureSerializer._place_right`.
@@ -74,6 +77,8 @@ class _Panel:
     axes: list[AxesMPL]
     first: int
     last: int
+    top: int
+    bottom: int
     pending: list[PointStyle] = field(default_factory=list)
     legend: Legend | None = None
 
@@ -305,9 +310,10 @@ class MatplotlibFigureSerializer:
     def _place_right(
         cls,
         fig: FigureMPL,
-        num_cols: int,
+        grid: tuple[int, int],
         panels: list[_Panel],
         settings: FigureSettings,
+        title: Text | None = None,
     ) -> None:
         """Place the colour bars and the outside legend of every panel right of it.
 
@@ -316,13 +322,24 @@ class MatplotlibFigureSerializer:
         the drawn bar, and for a legend outside a gap and the legend, measured
         on the drawn legend. Every column of the grid gets the room its widest
         panel needs and the figure is that much wider, so the panels keep
-        their size and the columns their alignment, and nothing overlaps: a
-        legend outside widens the gap right of its column and no other gap,
-        e.g. one legend per row on the last plot of every row widens the
-        figure by its legend alone. The title of a wider figure stays centered
-        over its panels.
+        their size and the columns their alignment: a legend outside widens
+        the gap right of its column and no other gap, e.g. one legend per row
+        on the last plot of every row widens the figure by its legend alone.
+        A legend outside hangs from the top of its panel; the row of a panel
+        whose legend is taller than the panel gets the room by which it
+        overflows the panel below it, and the figure is that much taller, so
+        nothing overlaps. The title of a wider figure is centered over its
+        panels and keeps its distance to the top of a taller one.
+
+        Args:
+            fig: the figure.
+            grid: the number of rows and of columns of the grid.
+            panels: the drawn panels.
+            settings: the settings of the figure.
+            title: the title of the figure, if it has one.
         """
-        width, dpi = fig.get_figwidth(), fig.dpi
+        num_rows, num_cols = grid
+        width, height, dpi = fig.get_figwidth(), fig.get_figheight(), fig.dpi
         boxes = [panel.axes[0].get_position() for panel in panels]
         rooms: list[list[float]] = []
         bars: list[list[Colorbar]] = []
@@ -365,38 +382,46 @@ class MatplotlibFigureSerializer:
         columns = [0.0] * num_cols
         for panel, panel_rooms, legend in zip(panels, rooms, legends, strict=True):
             columns[panel.last] = max(columns[panel.last], need(panel_rooms, legend))
-        if not any(columns):
+        # the overflow of a legend below its panel, in inches
+        rows = [0.0] * num_rows
+        for panel, box in zip(panels, boxes, strict=True):
+            if panel.legend is not None:
+                overflow = (
+                    panel.legend.get_window_extent().height / dpi - box.height * height
+                )
+                rows[panel.bottom] = max(rows[panel.bottom], overflow)
+        if not any(columns) and not any(rows):
             return
-        wider = width + sum(columns)
-        fig.set_size_inches(wider, fig.get_figheight())
+        wider, taller = width + sum(columns), height + sum(rows)
+        fig.set_size_inches(wider, taller)
         for panel, box, panel_rooms, panel_bars in zip(
             panels, boxes, rooms, bars, strict=True
         ):
             x0 = box.x0 * width + sum(columns[: panel.first])
             x1 = box.x1 * width + sum(columns[: panel.last])
+            # the distance of the top to the top of the figure and the height
+            # of the panel stay, the rows above it may have grown
+            top = (1.0 - box.y1) * height + sum(rows[: panel.top])
+            y1 = 1.0 - top / taller
+            y0 = y1 - box.height * height / taller
             for ax in panel.axes:
-                ax.set_position((x0 / wider, box.y0, (x1 - x0) / wider, box.height))
+                ax.set_position((x0 / wider, y0, (x1 - x0) / wider, y1 - y0))
             if not panel_rooms:
                 continue
             x = x1 + panel_rooms[0]
             for bar, room in zip(panel_bars, panel_rooms[1:], strict=True):
                 x += COLORBAR_GAP
-                bar.ax.set_position(
-                    (x / wider, box.y0, COLORBAR_WIDTH / wider, box.height)
-                )
+                bar.ax.set_position((x / wider, y0, COLORBAR_WIDTH / wider, y1 - y0))
                 x += COLORBAR_WIDTH + room
             if panel.legend is not None:
                 panel.legend.set_bbox_to_anchor(
-                    ((x + COLORBAR_GAP) / wider, box.y1), transform=fig.transFigure
+                    ((x + COLORBAR_GAP) / wider, y1), transform=fig.transFigure
                 )
-        # the title of the figure stays centered over the panels
-        title = fig.get_suptitle()
-        if title:
+        if title is not None:
             left = min(ax.get_position().x0 for panel in panels for ax in panel.axes)
             right = max(ax.get_position().x1 for panel in panels for ax in panel.axes)
-            for text in fig.texts:
-                if text.get_text() == title:
-                    text.set_x(0.5 * (left + right))
+            title.set_x(0.5 * (left + right))
+            title.set_y(1.0 - (1.0 - title.get_position()[1]) * height / taller)
 
     @classmethod
     def _legend(cls, fig: FigureMPL, settings: FigureSettings, panel: _Panel) -> None:
@@ -580,8 +605,9 @@ class MatplotlibFigureSerializer:
             facecolor=resolved.fig_facecolor,
         )
 
+        title: Text | None = None
         if figure.name:
-            fig.suptitle(
+            title = fig.suptitle(
                 figure.name,
                 fontsize=resolved.fig_titlesize,
                 fontweight=resolved.fig_titleweight,
@@ -651,7 +677,12 @@ class MatplotlibFigureSerializer:
             # the colour bars of the panel are placed after every panel got
             # its labels
             panel = _Panel(
-                plot=plot, axes=axes, first=cidx, last=cidx + subplot.col_span - 1
+                plot=plot,
+                axes=axes,
+                first=cidx,
+                last=cidx + subplot.col_span - 1,
+                top=ridx,
+                bottom=ridx + subplot.row_span - 1,
             )
             panels.append(panel)
             pending = panel.pending
@@ -887,7 +918,9 @@ class MatplotlibFigureSerializer:
         for panel in panels:
             if panel.plot.legend:
                 cls._legend(fig, resolved, panel)
-        cls._place_right(fig, figure.num_cols, panels, resolved)
+        cls._place_right(
+            fig, (figure.num_rows, figure.num_cols), panels, resolved, title
+        )
 
         return fig
 

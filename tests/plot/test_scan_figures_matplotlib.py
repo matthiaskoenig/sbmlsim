@@ -874,3 +874,72 @@ def test_an_outside_legend_is_right_of_the_right_axis(
     extent = legend.get_window_extent(_renderer(fig))
     assert extent.x0 == pytest.approx(axis.x1 + 0.12 * fig.dpi, abs=1.0)
     assert extent.x1 <= fig.bbox.x1
+
+
+def test_a_legend_taller_than_its_panel_gets_the_room_below_its_row(
+    experiment: SimulationExperiment,
+) -> None:
+    """A legend outside which is taller than its panel overlaps no panel below it.
+
+    The row of the panel gets the room by which the legend overflows the
+    panel and the figure is that much taller, as a column gets the room of
+    its legend; the panels keep their size.
+    """
+
+    def grid(legend: bool) -> FigureMPL:
+        figure = Figure(
+            experiment=experiment,
+            sid="tall",
+            name="A figure with a tall legend",
+            num_rows=2,
+            num_cols=2,
+            settings={"legend_position": "outside", "panel_height": 3.0},
+        )
+        for k, plot in enumerate(
+            figure.create_plots(
+                xaxis=Axis("time", unit="hr"), yaxis=Axis("C", unit="mg/l")
+            )
+        ):
+            plot.name = f"panel {k}"
+            plot.legend = legend and k == 0
+            for j in range(6):
+                _curve(plot, "task_doses", "dose", label=f"C{j}")
+        fig = MatplotlibFigureSerializer.to_figure(experiment, figure)
+        FigureCanvasAgg(fig).draw()
+        return fig
+
+    plain, fig = grid(False), grid(True)
+    legend = fig.axes[0].get_legend()
+    assert legend is not None
+    extent = legend.get_window_extent(_renderer(fig))
+    panel = fig.axes[0].get_window_extent()
+    assert extent.height > panel.height
+    # the legend ends above the panel below it, with its title
+    assert extent.y0 >= _tight(fig, fig.axes[2]).y1
+    # the panels keep their size, the figure is taller by the overflow
+    for a, b in zip(plain.axes, fig.axes[: len(plain.axes)], strict=True):
+        assert b.get_window_extent().height == pytest.approx(
+            a.get_window_extent().height, abs=0.5
+        )
+    grown = fig.get_figheight() - plain.get_figheight()
+    assert grown == pytest.approx((extent.height - panel.height) / fig.dpi, abs=0.02)
+    assert extent.y0 >= 0.0
+
+
+def test_the_title_is_centered_over_the_panels_of_a_figure_widened_by_a_colour_bar(
+    experiment: SimulationExperiment,
+) -> None:
+    """The title of a figure which a colour bar made wider is centered over its panels."""
+    figure = Figure(
+        experiment=experiment, sid="bar", name="Title", num_rows=1, num_cols=2
+    )
+    plots = figure.create_plots(
+        xaxis=Axis("time", unit="hr"), yaxis=Axis("C", unit="mg/l"), legend=False
+    )
+    _curve(plots[0], "task_doses", "dose")
+    _curve(plots[1], "task_many", "dose")
+    fig = MatplotlibFigureSerializer.to_figure(experiment, figure)
+    assert fig.get_figwidth() > 14.0
+    left, right = fig.axes[0].get_position().x0, fig.axes[1].get_position().x1
+    title = next(t for t in fig.texts if t.get_text() == "Title")
+    assert title.get_position()[0] == pytest.approx(0.5 * (left + right))

@@ -357,12 +357,14 @@ def _heatmap(
 
     # an observable wider than its cell is rotated before the first layout,
     # which collapses the axes for a label much wider than the figure (#314)
-    renderer = FigureCanvasAgg(figure).get_renderer()
-    widest = max(t.get_window_extent(renderer).width for t in ax.get_xticklabels())
+    canvas = FigureCanvasAgg(figure)
+    widest = max(
+        t.get_window_extent(canvas.get_renderer()).width for t in ax.get_xticklabels()
+    )
     rotated = widest / figure.dpi > cell_width - 0.1
     if rotated:
         rotate()
-    _room_for_labels(figure, ax, cells)
+    _room_for_labels(figure, ax, cells, canvas)
     figure.draw_without_rendering()
     _fit(figure, ax, cells, heading)
     # the rotation follows the width of a cell in the final, possibly capped figure
@@ -370,14 +372,16 @@ def _heatmap(
     final_width = ax.get_window_extent().width / figure.dpi / n_cols
     if not rotated and widest / figure.dpi > final_width - 0.1:
         rotate()
-        _room_for_labels(figure, ax, cells)
+        _room_for_labels(figure, ax, cells, canvas)
         _fit(figure, ax, cells, heading)
     if path:
         figure.savefig(path, dpi=dpi, bbox_inches="tight")
     return figure
 
 
-def _room_for_labels(figure: Figure, ax: Axes, cells: tuple[float, float]) -> None:
+def _room_for_labels(
+    figure: Figure, ax: Axes, cells: tuple[float, float], canvas: FigureCanvasAgg
+) -> None:
     """Make the figure of a heatmap large enough for its labels before a layout (#314).
 
     Constrained layout gives the labels their room out of the figure; labels
@@ -391,8 +395,9 @@ def _room_for_labels(figure: Figure, ax: Axes, cells: tuple[float, float]) -> No
         figure: the figure with constrained layout.
         ax: the axes of the heatmap, with its tick labels.
         cells: the width and the height of the cells in inches.
+        canvas: the canvas of the figure, whose renderer measures the texts.
     """
-    renderer = FigureCanvasAgg(figure).get_renderer()
+    renderer = canvas.get_renderer()
 
     def extents(texts: Sequence[Text]) -> tuple[float, float]:
         """Get the width and the height of the largest texts in inches."""
