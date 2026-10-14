@@ -1053,26 +1053,37 @@ def test_a_point_does_not_depend_on_the_volume_of_a_rule_before_it(
     np.testing.assert_array_equal(run([before, 0.005])[:, 1], run([0.005])[:, 0])
 
 
-def _piecewise_switch(alive: bool) -> np.ndarray:
+def _piecewise_switch(alive: bool, source: str | Path) -> np.ndarray:
     """Get the simulation of `PIECEWISE_SWITCH`, with another instance alive or alone."""
     gc.collect()
-    other = RoadrunnerSBMLModel(source=sbml(PIECEWISE_SWITCH)) if alive else None
-    model = RoadrunnerSBMLModel(source=sbml(PIECEWISE_SWITCH))
+    other = RoadrunnerSBMLModel(source=source) if alive else None
+    model = RoadrunnerSBMLModel(source=source)
     model.set_selections(["time", "A"])
     result = Simulator(n_workers=1).run(model, Simulation(end=10, steps=20))
     del other
     return np.asarray(result["A"].values)
 
 
-def test_a_simulation_does_not_depend_on_another_instance_of_its_model() -> None:
+@pytest.mark.parametrize("from_file", [False, True])
+def test_a_simulation_does_not_depend_on_another_instance_of_its_model(
+    from_file: bool, tmp_path: Path
+) -> None:
     """A model loaded while another instance of it is alive simulates the same (#313).
 
     roadrunner 2.10 takes the compiled model of a new instance from its cache
     in the process when another instance of the same SBML is alive, and gives
     such an instance no piecewise triggers, so CVODE does not stop at the
-    switch of `k`. Every model is compiled.
+    switch of `k`. Every model is compiled, the SBML itself and a file
+    without initial assignments, which roadrunner loads from its path (the
+    flat models of pkdb_models).
     """
-    np.testing.assert_array_equal(_piecewise_switch(True), _piecewise_switch(False))
+    source: str | Path = sbml(PIECEWISE_SWITCH)
+    if from_file:
+        source = tmp_path / "piecewise_switch.xml"
+        source.write_text(sbml(PIECEWISE_SWITCH))
+    np.testing.assert_array_equal(
+        _piecewise_switch(True, source), _piecewise_switch(False, source)
+    )
 
 
 def test_a_serial_run_is_a_pool_run_with_another_instance_alive() -> None:
