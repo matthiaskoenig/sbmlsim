@@ -1878,6 +1878,11 @@ class SubPlot(BasePlotObject):
         return f"<Subplot[{self.row},{self.col}]>"
 
 
+#: the scopes of a legend, see `FigureSettings.legend_scope`: a legend per
+#: plot or one per row of the grid
+LEGEND_SCOPES: tuple[str, ...] = ("plot", "row")
+
+
 @dataclass(frozen=True)
 class FigureSettings:
     """The settings a figure is rendered with.
@@ -1919,6 +1924,12 @@ class FigureSettings:
         legend_position: `"inside"` a plot or `"outside"` right of it.
         legend_loc: the location of a legend inside a plot, a location of
             matplotlib, e.g. `"best"` or `"upper left"`.
+        legend_scope: which plots a legend collects, `LEGEND_SCOPES`:
+            `"plot"` a legend per plot, placed by `legend_position` and
+            `legend_loc`; `"row"` one legend per row of the grid, right of
+            the grid, with the entries of the plots of the row, an entry
+            which reads and looks the same once (#327). The `legend` of a
+            plot decides whether its entries enter the legend of its row.
     """
 
     fig_dpi: float = 72
@@ -1938,6 +1949,19 @@ class FigureSettings:
     legend_fontsize: float = 13
     legend_position: str = "inside"
     legend_loc: str = "best"
+    legend_scope: str = "plot"
+
+    def __post_init__(self) -> None:
+        """Check the settings which take one of some values.
+
+        Raises:
+            ValueError: if `legend_scope` is none of `LEGEND_SCOPES`.
+        """
+        if self.legend_scope not in LEGEND_SCOPES:
+            raise ValueError(
+                f"The legend_scope of a figure is one of {list(LEGEND_SCOPES)}, "
+                f"not {self.legend_scope!r}."
+            )
 
     @classmethod
     def names(cls) -> tuple[str, ...]:
