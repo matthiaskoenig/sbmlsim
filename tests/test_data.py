@@ -282,8 +282,24 @@ def test_from_df_column_without_units(caplog: pytest.LogCaptureFixture) -> None:
     df = pd.DataFrame({"value": [1.0, 2.0], "value_unit": [float("nan")] * 2})
     with caplog.at_level("DEBUG", logger="sbmlsim.data"):
         dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
-    assert any("units are missing" in r.getMessage() for r in caplog.records)
+    assert any(
+        r.levelname == "ERROR" and "units are missing" in r.getMessage()
+        for r in caplog.records
+    )
     assert "value" not in dset.uinfo
+
+
+def test_from_df_statistics_without_units(caplog: pytest.LogCaptureFixture) -> None:
+    """Statistics with numbers and an empty `unit` column are an error."""
+    nan = float("nan")
+    df = pd.DataFrame({"mean": [1.0, 2.0], "sd": [0.1, nan], "unit": [nan, nan]})
+    with caplog.at_level("DEBUG", logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert any(
+        r.levelname == "ERROR" and "has no unit for 'mean'" in r.getMessage()
+        for r in caplog.records
+    )
+    assert "mean" not in dset.uinfo
 
 
 def test_from_df_empty_column_without_units_is_no_error(

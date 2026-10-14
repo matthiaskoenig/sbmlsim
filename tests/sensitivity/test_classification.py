@@ -81,6 +81,7 @@ def test_uncertainty_classification_returns_enum():
         (-2.0, UncertaintyClassification.HIGH),
         (-10.0, UncertaintyClassification.HIGH),
         (math.inf, UncertaintyClassification.HIGH),
+        (-math.inf, UncertaintyClassification.HIGH),
     ],
 )
 def test_uncertainty_classification_of_a_negative_value(value, expected):

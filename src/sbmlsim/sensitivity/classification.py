@@ -94,7 +94,8 @@ def uncertainty_classification(u: float) -> UncertaintyClassification | None:
         u: the uncertainty.
 
     Returns:
-        The class, `None` for an undefined value (`NaN`).
+        The class, `None` for an undefined value (`NaN`); an infinite value,
+        e.g. of an output whose median is 0, is `HIGH`.
 
     References:
         International Programme on Chemical Safety (IPCS). Characterization and application of physiologically based pharmacokinetic models in risk assessment.
