@@ -7,6 +7,7 @@ import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import matplotlib.pyplot
 import pytest
 import roadrunner
 
@@ -108,6 +109,23 @@ def start_methods(monkeypatch: pytest.MonkeyPatch) -> Callable[[str | None, str]
         )
 
     return pretend
+
+
+@pytest.fixture
+def no_pyplot(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail a test in which sbmlsim draws a figure with pyplot (#317).
+
+    A figure of pyplot takes the backend of pyplot, which is interactive when
+    a display is there (TkAgg): its objects of Tk are released by the garbage
+    collector in whatever thread it runs, e.g. a thread of a pool, and Tk
+    aborts the process. A figure which is written to a file is a
+    `matplotlib.figure.Figure` without pyplot.
+    """
+
+    def figure(*args: object, **kwargs: object) -> None:
+        raise AssertionError("a figure was created with pyplot")
+
+    monkeypatch.setattr(matplotlib.pyplot, "figure", figure)
 
 
 @pytest.fixture

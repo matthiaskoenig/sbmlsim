@@ -40,6 +40,7 @@ from collections.abc import Callable, Generator, Hashable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
+from multiprocessing.connection import wait
 from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from pathlib import Path
@@ -285,8 +286,36 @@ def _alive() -> int:
     return os.getpid()
 
 
+def _end_with_the_parent() -> None:
+    """End the worker when the process which started its pool ends (#316).
+
+    A worker waits for its next task on a queue which other workers keep
+    open, so it does not notice a parent which was killed or crashed: it
+    stayed alive, idle, with the memory of its models, and kept the
+    forkserver and the resource tracker alive, which end with the last
+    process which uses them. A thread of the worker waits for the sentinel of
+    its parent, which every start method provides (the end of a pipe whose
+    other end only the parent holds, a handle of the process on Windows),
+    and ends the worker at once when it is ready, i.e. when the parent ended.
+    """
+    parent = multiprocessing.parent_process()
+    if parent is None:
+        return
+    sentinel = parent.sentinel
+
+    def watch() -> None:
+        """Wait for the parent and end the worker."""
+        wait([sentinel])
+        os._exit(1)
+
+    threading.Thread(target=watch, name="sbmlsim-parent", daemon=True).start()
+
+
 def _initialize_worker() -> None:
-    """Initialize a worker: SIGINT is ignored and roadrunner is probed.
+    """Initialize a worker: it ends with its parent, SIGINT is ignored and roadrunner is probed.
+
+    A worker ends when the process which started its pool ends, also when it
+    was killed, see `_end_with_the_parent`.
 
     A terminal sends Ctrl-C to every process of the job: a worker which waits
     for a task would die with a traceback and break the pool. The parent
@@ -300,6 +329,7 @@ def _initialize_worker() -> None:
     compilation of a small model, paid with the start of the worker rather
     than with the first model it loads.
     """
+    _end_with_the_parent()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
         signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})

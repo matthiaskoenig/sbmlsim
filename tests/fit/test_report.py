@@ -417,13 +417,17 @@ def test_the_key_metrics_of_several_sets(
 
 
 def test_the_figures_of_every_mapping(
-    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+    tmp_path: Path,
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    no_pyplot: None,
 ) -> None:
     """A report draws the two figures of every fit mapping by default.
 
     They are almost the whole cost of a report, so the tests which only read
     its tables create it with `mapping_figures=False`; this is the test that
-    the default still draws them and that the cards carry them.
+    the default still draws them and that the cards carry them. No figure is
+    drawn with pyplot, whose backend may be interactive (#317).
     """
     op_hctz_iv.initialize(fit_settings)
     report = FitReport(

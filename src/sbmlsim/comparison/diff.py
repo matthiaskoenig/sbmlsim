@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import xarray as xr
-from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
 
 from sbmlsim.console import console
 from sbmlsim.result.scan import POINT, TIME
@@ -474,7 +474,10 @@ class DataSetsComparison:
         diff_abs = diff_abs.transpose()
 
         # plot all overview
-        f1, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 12), dpi=300)
+        # a figure which pyplot does not hold, so it depends on no backend of
+        # pyplot (#317)
+        f1 = Figure(figsize=(12, 12), dpi=300)
+        (ax1, ax2), (ax3, ax4) = f1.subplots(2, 2)
         f1.subplots_adjust(wspace=0.35)
         f1.suptitle(self.title, fontsize=14, fontweight="bold")
 

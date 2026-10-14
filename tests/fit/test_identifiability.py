@@ -3,7 +3,6 @@
 import re
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -234,7 +233,6 @@ def test_the_profiles_of_a_parameter_on_the_linear_scale(tmp_path: Path) -> None
     assert np.isfinite(lower) and np.isfinite(upper)
     assert lower < -4.0 and upper > 0.5
     assert ax_k.get_xlim() == pytest.approx((0.1 / 1.5, 10.0 * 1.5))
-    plt.close(figure)
 
     plot_profiles(result, path=tmp_path / "profiles.svg")
     plot_profile(result, pid="w", path=tmp_path / "profile_w.svg")
@@ -244,12 +242,14 @@ def test_the_profiles_of_a_parameter_on_the_linear_scale(tmp_path: Path) -> None
     # the paths are differences for linear and ratios for logarithmic ones
     figure = plot_profile(result, pid="k")
     (line,) = figure.axes[1].get_lines()[:1]
-    np.testing.assert_allclose(line.get_ydata(), [-0.5, 0.0, 1.0])
-    plt.close(figure)
+    np.testing.assert_allclose(
+        np.asarray(line.get_ydata(), dtype=float), [-0.5, 0.0, 1.0]
+    )
     figure = plot_profile(result, pid="w")
     (line,) = figure.axes[1].get_lines()[:1]
-    np.testing.assert_allclose(line.get_ydata(), np.log10([0.8, 0.9, 1.0, 1.1, 1.3]))
-    plt.close(figure)
+    np.testing.assert_allclose(
+        np.asarray(line.get_ydata(), dtype=float), np.log10([0.8, 0.9, 1.0, 1.1, 1.3])
+    )
 
 
 def test_profile_non_identifiable_lower() -> None:
@@ -658,3 +658,14 @@ def test_parameter_set_of_result() -> None:
     assert result.n_identifiable == 1
     assert not result.better_optimum
     assert result.summary_df().loc[0, "identifiability"] == "identifiable"
+
+
+def test_the_profile_figures_do_not_use_pyplot(tmp_path: Path, no_pyplot: None) -> None:
+    """The figures of the profiles depend on no backend of pyplot (#317)."""
+    result = _linear_result()
+    plot_profiles(result, path=tmp_path / "profiles.png")
+    plot_profile(result, pid="k", path=tmp_path / "profile_k.png")
+    figure = plot_profiles(result)
+    assert figure.canvas.manager is None
+    assert (tmp_path / "profiles.png").exists()
+    assert (tmp_path / "profile_k.png").exists()

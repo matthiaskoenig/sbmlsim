@@ -8,7 +8,7 @@ from json import JSONEncoder
 from pathlib import Path
 from typing import Any, overload, override
 
-from matplotlib.pyplot import Figure as MPLFigure
+from matplotlib.figure import Figure as MPLFigure
 from numpy import generic, ndarray
 
 from sbmlsim.units import Quantity

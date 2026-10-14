@@ -5,7 +5,6 @@ import warnings
 import numpy as np
 import pandas as pd
 import pytest
-from matplotlib import pyplot as plt
 
 from sbmlsim.comparison.diff import DataSetsComparison, to_dataframe
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -56,7 +55,7 @@ def test_every_result_is_compared_with_the_reference() -> None:
     assert "FALSE" in comparison.report_str()
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        plt.close(comparison.plot_diff())
+        comparison.plot_diff()
 
 
 def test_multiple_results_show_the_largest_difference_per_value() -> None:
@@ -135,7 +134,7 @@ def test_results_without_time_can_be_compared() -> None:
     )
     assert comparison.is_equal()
     assert comparison.columns == ["X"]
-    plt.close(comparison.report())
+    comparison.report()
 
 
 def test_a_column_of_durations_is_not_compared() -> None:
@@ -265,5 +264,15 @@ def test_the_report_warns_nothing(other: list[float]) -> None:
     comparison = DataSetsComparison({"a": df, "b": df.assign(X=other)})
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        figure = comparison.report()
-    plt.close(figure)
+        comparison.report()
+
+
+def test_the_figure_of_a_comparison_does_not_use_pyplot(no_pyplot: None) -> None:
+    """The figure of the differences depends on no backend of pyplot (#317)."""
+    reference = pd.DataFrame({"time": [0.0, 1.0], "X": [1.0, 2.0]})
+    comparison = DataSetsComparison(
+        {"reference": reference, "different": reference.assign(X=[1.5, 2.5])}
+    )
+    figure = comparison.plot_diff()
+    assert figure.canvas.manager is None
+    figure.savefig("diff.png")
