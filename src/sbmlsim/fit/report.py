@@ -29,7 +29,7 @@ from typing import Any, ClassVar, Literal
 import matplotlib
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
+from matplotlib.artist import setp
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
@@ -1384,20 +1384,25 @@ class FitReport:
     def _create_figures(
         self, plots_dir: Path, mpl_parameters: dict[str, Any] | None = None
     ) -> None:
-        """Create all figures of the report."""
-        rc_params_copy = {**plt.rcParams}
-        matplotlib.rcdefaults()
+        """Create all figures of the report.
 
+        The figures are drawn with the defaults of matplotlib and the
+        parameters, and the parameters of the process are restored afterwards
+        (`rc_context`, which leaves the backend alone: reading the backend
+        from `rcParams` resolves it, to an interactive one with a display).
+        """
         parameters: dict[str, Any] = {
             "axes.titlesize": 14,
             "axes.labelsize": 12,
             "axes.labelweight": "normal",
         }
         parameters.update(mpl_parameters or {})
-        # the keys of RcParams are typed as literals since matplotlib 3.11
-        plt.rcParams.update(parameters)  # ty: ignore[no-matching-overload]
 
-        try:
+        with matplotlib.rc_context():
+            matplotlib.rcdefaults()
+            # the keys of RcParams are typed as literals since matplotlib 3.11
+            matplotlib.rcParams.update(parameters)  # ty: ignore[no-matching-overload]
+
             if self.opt_result:
                 self.plot_traces(path=plots_dir / f"traces.{self.image_format}")
                 if self.opt_result.size > 1:
@@ -1423,20 +1428,20 @@ class FitReport:
                 self.plot_fit_residual(output_dir=plots_dir)
             if self.identifiability:
                 plot_all(self.identifiability, plots_dir, self.image_format)
-        finally:
-            # restore parameters
-            plt.rcParams.update(rc_params_copy)
 
     def _create_mpl_figure(
-        self, width: float = 5.0, height: float = 5.0, layout: str = "constrained"
+        self,
+        width: float = 5.0,
+        height: float = 5.0,
+        layout: Literal["constrained", "compressed", "tight"] = "constrained",
     ) -> tuple[Figure, Axes]:
-        """Create matplotlib figure."""
-        return plt.subplots(nrows=1, ncols=1, figsize=(width, height), layout=layout)
+        """Create a figure of one axes, which pyplot does not hold (#317)."""
+        fig = Figure(figsize=(width, height), layout=layout)
+        return fig, fig.subplots(nrows=1, ncols=1)
 
     def _save_mpl_figure(self, fig: Figure, path: Path) -> None:
         """Save matplotlib figure to path."""
         fig.savefig(path)
-        plt.close(fig)
 
     @staticmethod
     def _log_limits(*data: Any, factor: float = 10.0) -> tuple[float, float]:
@@ -1752,9 +1757,8 @@ class FitReport:
         res_data = {pset.sid: self.residual_data(pset) for pset in self.parameter_sets}
 
         for k, mapping_id in enumerate(self.problem.mapping_keys):
-            fig, [ax1, ax2] = plt.subplots(
-                nrows=1, ncols=2, figsize=(10, 5), layout="constrained"
-            )
+            fig = Figure(figsize=(10, 5), layout="constrained")
+            ax1, ax2 = fig.subplots(nrows=1, ncols=2)
 
             sid = self.problem.experiment_keys[k]
             x_ref = self._x_positions(k)
@@ -1840,9 +1844,8 @@ class FitReport:
         res_data = {pset.sid: self.residual_data(pset) for pset in self.parameter_sets}
 
         for k, mapping_id in enumerate(self.problem.mapping_keys):
-            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(
-                nrows=2, ncols=2, figsize=(10, 10), layout="constrained"
-            )
+            fig = Figure(figsize=(10, 10), layout="constrained")
+            (ax1, ax2), (ax3, ax4) = fig.subplots(nrows=2, ncols=2)
 
             sid = self.problem.experiment_keys[k]
             x_ref = self._x_positions(k)
@@ -1867,7 +1870,7 @@ class FitReport:
 
             self._set_mapping_title(fig, k)
             for ax in (ax1, ax2):
-                plt.setp(ax.get_xticklabels(), visible=False)
+                setp(ax.get_xticklabels(), visible=False)
 
                 # reference data
                 if y_ref_err is None:
@@ -2026,13 +2029,10 @@ class FitReport:
         does not have to give.
         """
         kinds = self.point_kinds()
-        fig, axes = plt.subplots(
-            nrows=1,
-            ncols=len(kinds),
-            figsize=(height * len(kinds) + LEGEND_WIDTH, height),
-            layout="constrained",
-            squeeze=False,
+        fig = Figure(
+            figsize=(height * len(kinds) + LEGEND_WIDTH, height), layout="constrained"
         )
+        axes = fig.subplots(nrows=1, ncols=len(kinds), squeeze=False)
         return fig, list(axes[0]), kinds
 
     def _band_color(self, pset: ParameterSet) -> str:
@@ -2377,10 +2377,8 @@ class FitReport:
         costs = {pset.sid: self._cost_df(pset) for pset in self.parameter_sets}
         costs_ref = costs[self.reference_set.sid]
 
-        fig: Figure
-        fig, (ax1, ax2) = plt.subplots(
-            nrows=1, ncols=2, figsize=(8, 6), layout="constrained"
-        )
+        fig = Figure(figsize=(8, 6), layout="constrained")
+        ax1, ax2 = fig.subplots(nrows=1, ncols=2)
         if self.show_titles:
             fig.suptitle("Curve costs and weights")
 
@@ -2415,7 +2413,7 @@ class FitReport:
         # the weights of the curves do not depend on the parameters
         ax2.barh(position, costs_ref.weight_curve, color="tab:blue", alpha=0.8)
         ax2.set_yticks(position)
-        plt.setp(ax2.get_yticklabels(), visible=False)
+        setp(ax2.get_yticklabels(), visible=False)
         ax2.grid(True, axis="x")
         ax2.set_xlabel("Weight curve: $w_{k}$")
 

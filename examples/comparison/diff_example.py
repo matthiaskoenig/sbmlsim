@@ -16,7 +16,6 @@ from pathlib import Path
 
 import pandas as pd
 import xarray as xr
-from matplotlib import pyplot as plt
 
 from sbmlsim.comparison.diff import DataSetsComparison, get_files_by_extension
 from sbmlsim.resources import REPRESSILATOR_SBML
@@ -64,7 +63,6 @@ def compare_examples(results: dict[str, xr.Dataset], output_path: Path) -> None:
         )
         fig = comparison.report()
         fig.savefig(output_path / f"{key}_diff.png", dpi=150, bbox_inches="tight")
-        plt.close(fig)
 
         report_path = output_path / f"{key}_diff.tsv"
         report_path.write_text(comparison.report_str(), encoding="utf-8")

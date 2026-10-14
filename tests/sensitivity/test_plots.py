@@ -195,7 +195,7 @@ def test_unknown_selections() -> None:
 
 def test_plot_morris_labels_inside_frame() -> None:
     figure = plot_morris(_morris(), "y")
-    figure.canvas.draw()
+    figure.draw_without_rendering()
     ax = figure.axes[0]
     frame = ax.get_window_extent()
     for note in ax.texts:
