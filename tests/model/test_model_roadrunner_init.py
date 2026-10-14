@@ -350,9 +350,40 @@ def test_a_value_is_set_back_only_where_it_changed_and_can_be_set() -> None:
         ids=["a", "size", "rule", "b"],
         values=np.array([1.0, np.nan, 2.0, 3.0]),
         settable=np.array([True, True, False, True]),
+        species=4,
+        concentrations=np.array([]),
     )
     assert _changed(np.array([1.0, np.nan, 5.0, 4.0]), state).tolist() == [3]
     assert _changed(np.array([0.0, 1.0, 2.0, 3.0]), state).tolist() == [0, 1]
+
+
+def test_the_values_as_loaded_do_not_follow_a_simulation() -> None:
+    """The values as loaded are the ones before any initialization (#315)."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    r = model.r_loaded
+    loaded = {s: float(r[s]) for s in ("k1", "C", "A", "[A]", "X", "[X]", "pinit")}
+    model.initialize([_a("f", 5.0), _a("k1", 2.0)])
+    model.simulated()
+    assert (r["k1"], r["pinit"]) == (2.0, 10.0)
+    assert {s: model.loaded_value(s) for s in loaded} == loaded
+    for selection in ("nope", "[k1]", "init(k1)"):
+        with pytest.raises(KeyError):
+            model.loaded_value(selection)
+
+
+def test_a_reset_leaves_the_model_as_loaded() -> None:
+    """`reset` sets back the values of the last initialization, once per simulation."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    r = model.r_loaded
+    before = _values(model)
+    model.initialize([_a("f", 5.0), _a("k1", 2.0)])
+    model.reset()
+    np.testing.assert_array_equal(_values(model), before)
+    model.initialize([_a("k1", 3.0)])
+    model.simulated()
+    assert r["k1"] == 3.0
+    model.reset()
+    np.testing.assert_array_equal(_values(model), before)
 
 
 def test_parameter_df_has_no_helpers() -> None:

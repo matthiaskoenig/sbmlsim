@@ -44,8 +44,10 @@ def references(
     """Get the value every target has after the pre-initialization.
 
     The simulation is compiled with the changes of the model as defaults and
-    the model is initialized with its plan, which every simulation of the
-    model does anyway, so the model is left initialized.
+    the model is initialized with its plan, as every simulation of the model
+    is; the model is reset after the values are read, so it keeps no value of
+    the pre-initialization, which e.g. the start values of a fit would read
+    (#315).
 
     Args:
         model: the model, loaded or a source.
@@ -63,13 +65,16 @@ def references(
     loaded = _loaded(model)
     plan = Simulator().compile(loaded, simulation or Simulation(end=1.0))
     loaded.initialize(preinit_targets(plan))
-    values: dict[str, Number] = {}
-    for target in targets:
-        if not loaded.has_selection(target):
-            raise ValueError(f"'{target}' is no target of the model.")
-        value = float(loaded.r_loaded.getValue(target))
-        unit = loaded.uinfo.get(target, "") or ""
-        values[target] = ureg.Quantity(value, unit) if unit else value
+    try:
+        values: dict[str, Number] = {}
+        for target in targets:
+            if not loaded.has_selection(target):
+                raise ValueError(f"'{target}' is no target of the model.")
+            value = float(loaded.r_loaded.getValue(target))
+            unit = loaded.uinfo.get(target, "") or ""
+            values[target] = ureg.Quantity(value, unit) if unit else value
+    finally:
+        loaded.reset()
     return values
 
 

@@ -21,7 +21,14 @@ from sbmlsim.fit.options import (
 from sbmlsim.fit.petab_v2.likelihood import gradient, log_likelihood, log_prior
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
-from tests.fit.scalar_experiment import BlowupStudy, ScalarStudy
+from sbmlsim.simulation import Simulation
+from sbmlsim.simulator import Simulator
+from tests.fit.scalar_experiment import (
+    TRUE_V,
+    BlowupStudy,
+    LocalScanStudy,
+    ScalarStudy,
+)
 
 
 @pytest.fixture
@@ -286,3 +293,37 @@ def test_unsupported_algorithm_remains_a_failed_run(
     assert "optimizer is not supported" in fit.message
     assert fit.algorithm == str(algorithm)
     assert fit.optimizer_kwargs == {}
+
+
+def test_the_start_values_are_the_values_of_the_model_as_loaded(
+    tmp_path: Path,
+) -> None:
+    """A design of an experiment does not set the start values of a fit (#315).
+
+    The local design of `LocalScanStudy` reads its references after the
+    pre-initialization of a simulation of twice the volume, on the model
+    which the problem reads `xmodel` from.
+    """
+    problem = OptimizationProblem(
+        "xmodel",
+        [FitMappingCollection(experiment=LocalScanStudy, mappings=["fm_cmax"])],
+        [FitParameter("V", 5.0, 1.0, 100.0, unit="l")],
+        base_path=tmp_path,
+        data_path=tmp_path,
+    )
+    problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
+    np.testing.assert_array_equal(problem.xmodel, [TRUE_V])
+
+
+def test_the_start_values_are_read_from_the_model_as_loaded(
+    scalar_problem: OptimizationProblem,
+) -> None:
+    """A simulation which left the model pre-initialized does not change `xmodel` (#315)."""
+    problem = scalar_problem
+    model = problem.models[0]
+    Simulator(n_workers=1).run(
+        model, Simulation(end=1, steps=2, preinit_changes={"V": 3 * TRUE_V})
+    )
+    assert model.r_loaded["V"] == 3 * TRUE_V
+    problem._store_model_parameters()
+    np.testing.assert_array_equal(problem.xmodel, [TRUE_V])

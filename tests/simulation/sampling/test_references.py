@@ -67,3 +67,19 @@ def test_a_species_of_an_assignment_rule_is_no_parameter() -> None:
 
 def test_a_model_path_is_loaded() -> None:
     assert references(sbml(), ["k1"]) == {"k1": 0.8}
+
+
+def test_the_references_leave_the_model_as_loaded() -> None:
+    """The references of a design leave no pre-initialization in the model (#315).
+
+    A fit reads the start values of its parameters from the model.
+    """
+    model = Simulator().load(sbml())
+    refs = references(
+        model, ["k1", "pinit"], Simulation(end=1, preinit_changes={"f": 5.0, "k1": 2.0})
+    )
+    assert refs == {"k1": 2.0, "pinit": 10.0}
+    r = model.r_loaded
+    assert (r["k1"], r["f"], r["pinit"]) == (0.8, 2.0, 4.0)
+    parameters_of(model, simulation=Simulation(end=1, preinit_changes={"k1": 3.0}))
+    assert r["k1"] == 0.8

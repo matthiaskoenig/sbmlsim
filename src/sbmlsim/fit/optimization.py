@@ -2411,9 +2411,11 @@ class OptimizationProblem(ObjectJSONEncoder):
     def _store_model_parameters(self) -> None:
         """Store the initial values of the fitted parameters in the models.
 
-        The values are read from the first model, a model which starts from
-        different values is reported. A parameter which is not an entity of
-        the model starts from its start value.
+        The values are read from the first model as loaded, a model which
+        starts from different values is reported: the current values of a
+        model are the ones the simulation before it left, e.g. the references
+        of a design of an experiment (#315). A parameter which is not an
+        entity of the model starts from its start value.
 
         Raises:
             ValueError: if a model is not loaded in roadrunner, if a
@@ -2443,8 +2445,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                     self.xmodel[k] = parameter.start_value
                     continue
                 try:
-                    pid_value = model.r[target]
-                except RuntimeError as err:
+                    pid_value = model.loaded_value(target)
+                except KeyError as err:
                     raise ValueError(
                         f"'{self.opid}': FitParameter '{parameter.pid}' writes "
                         f"'{target}', which is not an entity of the model "
