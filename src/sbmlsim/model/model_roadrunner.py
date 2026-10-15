@@ -90,12 +90,15 @@ def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
     against 0.044 s and 16 MB from the cache; 0.2 s for dapagliflozin.
 
     The model is compiled with roadrunner's default JIT, MCJIT. LLJIT
-    compiles up to 6 times faster (the dulaglutide model of pkdb_models
-    10 s against 1.5 s), but roadrunner 2.10 crashes with it (a segmentation
+    compiles the dulaglutide model of pkdb_models 6.9 times faster (1.5 s
+    against 10.4 s), but roadrunner 2.10 crashes with it (a segmentation
     fault in the compiled code of a model) in runs which compile a model
-    again while an earlier instance of it is alive: in 2 of 6 fits of the
-    dulaglutide model and in 1 to 3 of 40 runs of its experiments, at every
-    optimization level of LLJIT, never with MCJIT (#331).
+    again while an earlier instance of it is alive: in 3 of 8 fits of the
+    dulaglutide model at the optimization level NONE (the fits were not
+    run at the other levels), and in 1 to 3 of 40 processes of a loop over
+    its experiments at the levels NONE, LESS and AGGRESSIVE (DEFAULT was not
+    run). MCJIT did not crash, in 0 of 6 fits and 0 of 20 processes of the
+    loop (#331).
 
     Args:
         source: the path of an SBML file or the SBML itself.
@@ -237,8 +240,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         self._raised_reported: set[str] = set()
         #: the instance of roadrunner (a weak reference) and the ids of its
         #: SBML, see `sbml_ids`
-        self._sbml_ids_of: tuple[weakref.ref[roadrunner.RoadRunner], SBMLIds] | None
-        self._sbml_ids_of = None
+        self._sbml_ids_of: tuple[weakref.ref[roadrunner.RoadRunner], SBMLIds] | None = (
+            None
+        )
         self.set_integrator_settings(
             **{"absolute_tolerance": AbsoluteTolerance(), **(settings or {})}
         )
@@ -885,11 +889,15 @@ class RoadrunnerSBMLModel(AbstractModel):
         They are read from the SBML of the instance of roadrunner
         (`getSBML()`, i.e. with the added parameters and the helpers of the
         initial assignments) once per instance and kept: serializing and
-        parsing the SBML again on every call took 30 ms on the
-        acetaminophen model of pkdb_models (403 kB of SBML), whose experiments
-        call `sampling.parameters_of` for 133 simulations (#332). sbmlsim never
-        changes the SBML of its instance (`regenerateModel` keeps it); an
-        instance which replaces `r` is read again.
+        parsing the SBML again on every call took 4.8 s of the 8.6 s of the
+        initialization of the experiments of the acetaminophen model of
+        pkdb_models (403 kB of SBML), which call `sampling.parameters_of`
+        for 133 simulations (#332). An instance which replaces `r` is read
+        again. sbmlsim never changes the structure of its instance
+        (`regenerateModel` keeps the SBML); an edit of the instance itself,
+        e.g. `r.addParameter(...)` or `r.removeSpecies(...)`, is not tracked,
+        and the ids stay those of the instance as first read until `r` is
+        replaced.
 
         Returns:
             The ids, in the order of the SBML.
