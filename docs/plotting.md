@@ -110,7 +110,7 @@ plotly is not a dependency of `sbmlsim`, it is in the `dev` extra: a run which a
 
 ### Settings
 
-The resolution, the panel size, the fonts and the legend of a figure are the fields of `FigureSettings`: `fig_dpi`, `fig_facecolor`, `fig_subplots_wspace`, `fig_subplots_hspace`, `panel_width`, `panel_height`, `fig_titlesize`, `fig_titleweight`, `axes_titlesize`, `axes_titleweight`, `axes_labelsize`, `axes_labelweight`, `xtick_labelsize`, `ytick_labelsize`, `legend_fontsize`, `legend_position` and `legend_loc`. They cascade, the more specific level wins:
+The resolution, the panel size, the fonts and the legend of a figure are the fields of `FigureSettings`: `fig_dpi`, `fig_facecolor`, `fig_subplots_wspace`, `fig_subplots_hspace`, `panel_width`, `panel_height`, `fig_titlesize`, `fig_titleweight`, `axes_titlesize`, `axes_titleweight`, `axes_labelsize`, `axes_labelweight`, `xtick_labelsize`, `ytick_labelsize`, `legend_fontsize`, `legend_position`, `legend_loc` and `legend_scope`. They cascade, the more specific level wins:
 
 - the defaults of `FigureSettings`,
 - the run: `figure_settings=` of `SimulationExperiment.run`, `ExperimentRunner.run_experiments` and `run_experiments`, a `FigureSettings` or a mapping of overrides of the defaults, for every figure of the run, e.g. the resolution of a publication,
@@ -148,7 +148,28 @@ A serializer resolves the settings of a figure the same way, `Figure.resolved_se
 
 #### Legends outside the plots
 
-`legend_position="outside"` draws the legend of a plot right of it, right of the ticks and the title of its right y axis and of its colour bars, with its top at the top of the plot. The column of the plot gets the room of its widest legend and the figure is that much wider, so the panels keep their size: a legend widens the gap right of its column and no other gap, and a column without a legend gets no room. A legend which is taller than its plot gives the row of the plot the room by which it overflows the plot, below the row, and the figure is that much taller, so nothing overlaps. One legend per row is the legend of the last plot of every row, `Plot(legend=False)` on the others, which widens the figure by the legend alone; it suits a figure whose plots of a row have the same entries, e.g. the bands of the tasks of a study over several outputs. The title of a figure which legends or colour bars made wider is centered over its panels, not over the figure with its legends. The margin of matplotlib right of the panels (the fraction `1 - figure.subplot.right` of the width the figure had) stays right of the last legend: a widened figure keeps the margins it had, and a figure saved with `bbox_inches="tight"`, as the experiments save theirs, is cropped to its content. The interactive figures of plotly have one legend of the figure right of all panels, which shows an entry of several panels once, whatever `legend_position` says.
+`legend_position="outside"` draws the legend of a plot right of it, right of the ticks and the title of its right y axis and of its colour bars, with its top at the top of the plot. The column of the plot gets the room of its widest legend and the figure is that much wider, so the panels keep their size: a legend widens the gap right of its column and no other gap, and a column without a legend gets no room. A legend which is taller than its plot gives the row of the plot the room by which it overflows the plot, below the row, and the figure is that much taller, so nothing overlaps. A figure whose plots of a row have the same entries, e.g. the bands of the tasks of a study over several outputs, wants one legend per row with the entries of all plots of the row, `legend_scope="row"`, see below. The title of a figure which legends or colour bars made wider is centered over its panels, not over the figure with its legends. The margin of matplotlib right of the panels (the fraction `1 - figure.subplot.right` of the width the figure had) stays right of the last legend: a widened figure keeps the margins it had, and a figure saved with `bbox_inches="tight"`, as the experiments save theirs, is cropped to its content. The interactive figures of plotly have one legend of the figure right of all panels, which shows an entry of several panels once, whatever `legend_position` says.
+
+#### One legend per row
+
+`legend_scope` says which plots a legend collects: `"plot"` (the default) a legend per plot, placed by `legend_position` and `legend_loc`, and `"row"` one legend per row of the grid (#327). A figure whose plots of a row draw the same tasks, e.g. the bands of the tasks of a study over several outputs or the doses of a dose dependency, needs one legend per row rather than a legend per plot:
+
+```python
+from sbmlsim.plot import Figure
+
+fig = Figure(
+    experiment=None,
+    sid="fig_doses",
+    num_rows=2,
+    num_cols=3,
+    settings={"legend_scope": "row"},
+)
+print(fig.resolved_settings(None).legend_scope)  # row
+```
+
+The legend of a row has the entries of all plots of the row, in the order of the plots and of their entries, and an entry which reads and looks the same as an earlier one (its label, its colours, its line, its marker, its hatch and its error bars), e.g. the simulation which every plot draws, once; entries with the same label which look different stay apart. A plot which spans rows belongs to its first row. The legends of the rows are right of the grid, one below the other with the top of each at the top of its row, also when the last cell of a row is empty or has no plot: right of the right y axes and the colour bars of every plot of the last column. The last column gets the room of the widest legend and nothing else grows; a legend which is taller than its row gives the row the room by which it overflows, below the row, as a legend of a plot does. The `legend` of a plot decides whether its entries enter the legend of its row; `legend_position` and `legend_loc` do not apply, the legend of a row is always right of the grid. A figure which keeps the scope `"plot"` does not change.
+
+The interactive figures of plotly have one legend of the figure, which shows an entry of several plots once; the scope `"row"` gives every row a legend of its own instead (`legend`, `legend2`, ...), right of the plot area at the top of the row, which scrolls when it is taller than its row and leaves out the entries of a plot whose `legend` is false. With the scope `"plot"` the one legend shows the entries of every plot, as before.
 
 The settings were class attributes of `Figure` (`Figure.fig_dpi = 300`), which changed every later figure of the process, also those of other experiments. Setting or reading one on `Figure` or on a figure, or defining one in the body of a subclass of `Figure`, raises an `AttributeError` which says where it goes: `Figure.legend_fontsize = 10` at the top of the module of a model becomes `figure_settings = MappingProxyType({"legend_fontsize": 10})` of its base experiment, `Figure.fig_dpi = 300` before a run becomes `figure_settings={"fig_dpi": 300}` of the run, a setting on a figure which exists, `fig.legend_position = "outside"`, becomes `fig.settings = {**fig.settings, "legend_position": "outside"}` (or `Figure(..., settings={"legend_position": "outside"})` where it is created), and the read of a default becomes `FigureSettings().fig_titlesize`. A figure of `figures_mpl()` is styled with the settings of its experiment, `FigureSettings.resolve(experiment=self.figure_settings).fig_titlesize`; the settings of the run do not reach `figures_mpl()`.
 

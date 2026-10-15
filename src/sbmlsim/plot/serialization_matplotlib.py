@@ -11,13 +11,15 @@ import numpy as np
 from matplotlib import rcParams
 from matplotlib.axes import Axes as AxesMPL
 from matplotlib.cm import ScalarMappable
-from matplotlib.collections import LineCollection, PolyCollection
+from matplotlib.collections import Collection, LineCollection, PolyCollection
 from matplotlib.colorbar import Colorbar
-from matplotlib.colors import LogNorm, to_hex
+from matplotlib.colors import LogNorm, to_hex, to_rgba_array
+from matplotlib.container import BarContainer, ErrorbarContainer
 from matplotlib.figure import Figure as FigureMPL
+from matplotlib.gridspec import GridSpec
 from matplotlib.legend import Legend
 from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch, Rectangle
 from matplotlib.text import Text
 from matplotlib.ticker import FuncFormatter, NullFormatter
 
@@ -69,8 +71,6 @@ class _Panel:
         top: the first row of the grid the panel spans, from 0.
         bottom: the last row of the grid the panel spans.
         pending: the styles of its colour bars, in the order of its curves.
-        legend: its legend outside, right of it, which is placed with the
-            colour bars, see `MatplotlibFigureSerializer._place_right`.
     """
 
     plot: Plot
@@ -80,7 +80,113 @@ class _Panel:
     top: int
     bottom: int
     pending: list[PointStyle] = field(default_factory=list)
-    legend: Legend | None = None
+
+
+@dataclass
+class _Slot:
+    """A legend outside, placed right of its panel or right of the grid.
+
+    Attributes:
+        legend: the legend.
+        panel: the panel the legend is right of, after its right y axis and
+            its colour bars; `None` for the legend of a row, which is right of
+            the grid, after the right y axes and the colour bars of every
+            panel of the last column.
+        top: the top of the legend in figure coordinates before the figure
+            grows, the top of its panel or of its row.
+        height: the height the legend has before it overflows, in figure
+            coordinates, of its panel or of its row.
+        top_row: the row the legend hangs from, which moves down by the
+            overflow of the rows above it.
+        bottom_row: the row below which the overflow of the legend goes.
+    """
+
+    legend: Legend
+    panel: _Panel | None
+    top: float
+    height: float
+    top_row: int
+    bottom_row: int
+
+
+def _entries(panel: _Panel) -> tuple[list[Any], list[str]]:
+    """Get the legend entries of a panel, of its left axes and then of its right ones."""
+    handles: list[Any] = []
+    labels: list[str] = []
+    for ax in panel.axes:
+        more_handles, more_labels = ax.get_legend_handles_labels()
+        handles += more_handles
+        labels += more_labels
+    return handles, labels
+
+
+def _colors(values: Any) -> tuple[tuple[float, ...], ...]:
+    """Get colours as a tuple of RGBA tuples, which compares and hashes."""
+    return tuple(tuple(float(v) for v in rgba) for rgba in to_rgba_array(values))
+
+
+def _entry_key(handle: Any, label: str) -> tuple[Any, ...]:
+    """Get what an entry of a legend reads and looks like, see `_row_legends`.
+
+    Two entries with the same key are one entry of the legend of a row: the
+    label and the style of the handle (colours, line, marker, hatch, error
+    bars), as the legend of plotly merges its entries. A handle of an unknown
+    kind is never merged.
+    """
+    if isinstance(handle, ErrorbarContainer):
+        line, _, bars = handle.lines
+        return (
+            label,
+            "errorbar",
+            _entry_key(line, label) if line is not None else None,
+            handle.has_xerr,
+            handle.has_yerr,
+            tuple(_colors(bar.get_color()) for bar in bars),
+        )
+    if isinstance(handle, BarContainer):
+        return (
+            label,
+            "bar",
+            *(_entry_key(handle.patches[0], label)[1:] if handle.patches else ()),
+        )
+    if isinstance(handle, Line2D):
+        return (
+            label,
+            "line",
+            _colors(handle.get_color()),
+            handle.get_linestyle(),
+            handle.get_linewidth(),
+            handle.get_drawstyle(),
+            str(handle.get_marker()),
+            handle.get_markersize(),
+            _colors(handle.get_markerfacecolor()),
+            _colors(handle.get_markeredgecolor()),
+            handle.get_alpha(),
+        )
+    if isinstance(handle, Patch):
+        return (
+            label,
+            "patch",
+            _colors(handle.get_facecolor()),
+            _colors(handle.get_edgecolor()),
+            handle.get_hatch(),
+            handle.get_linewidth(),
+            handle.get_linestyle(),
+            handle.get_alpha(),
+        )
+    if isinstance(handle, Collection):
+        return (
+            label,
+            type(handle).__name__,
+            _colors(handle.get_facecolor()),
+            _colors(handle.get_edgecolor()),
+            handle.get_hatch(),
+            tuple(float(w) for w in np.atleast_1d(handle.get_linewidth())),
+            # the dashes of the edges, a list of (offset, dashes) of matplotlib
+            repr(handle.get_linestyle()),
+            handle.get_alpha(),
+        )
+    return (label, id(handle))
 
 
 class MatplotlibFigureSerializer:
@@ -314,6 +420,8 @@ class MatplotlibFigureSerializer:
         panels: list[_Panel],
         settings: FigureSettings,
         title: Text | None = None,
+        slots: list[_Slot] | None = None,
+        grid_right: float = 0.0,
     ) -> None:
         """Place the colour bars and the outside legend of every panel right of it.
 
@@ -329,7 +437,11 @@ class MatplotlibFigureSerializer:
         whose legend is taller than the panel gets the room by which it
         overflows the panel below it, and the figure is that much taller, so
         nothing overlaps. The title of a wider figure is centered over its
-        panels and keeps its distance to the top of a taller one.
+        panels and keeps its distance to the top of a taller one. The legends
+        of the rows are right of the grid, from the top of their row, all at
+        the same distance right of the right y axes and the colour bars of the
+        panels of the last column, which gets the room of the widest of them
+        (#327).
 
         Args:
             fig: the figure.
@@ -337,8 +449,16 @@ class MatplotlibFigureSerializer:
             panels: the drawn panels.
             settings: the settings of the figure.
             title: the title of the figure, if it has one.
+            slots: the legends outside, see `_Slot`.
+            grid_right: the right edge of the last column of the grid in
+                figure coordinates, which the legends of the rows are right
+                of when no panel is in the last column.
         """
         num_rows, num_cols = grid
+        last = num_cols - 1
+        slots = slots or []
+        # the legends of the rows, right of the grid
+        grid_legends = [slot for slot in slots if slot.panel is None]
         width, height, dpi = fig.get_figwidth(), fig.get_figheight(), fig.dpi
         boxes = [panel.axes[0].get_position() for panel in panels]
         rooms: list[list[float]] = []
@@ -347,12 +467,13 @@ class MatplotlibFigureSerializer:
         for panel, box in zip(panels, boxes, strict=True):
             panel_rooms: list[float] = []
             panel_bars: list[Colorbar] = []
-            legends.append(
-                panel.legend.get_window_extent().width / dpi
-                if panel.legend is not None
-                else 0.0
-            )
-            if panel.pending or panel.legend is not None:
+            widths = [
+                slot.legend.get_window_extent().width / dpi
+                for slot in slots
+                if slot.panel is panel
+            ]
+            legends.append(max(widths, default=0.0))
+            if panel.pending or widths or (grid_legends and panel.last == last):
                 # the ticks and the title of a right y axis, in inches
                 right = 0.0
                 for ax in panel.axes[1:]:
@@ -382,18 +503,39 @@ class MatplotlibFigureSerializer:
         columns = [0.0] * num_cols
         for panel, panel_rooms, legend in zip(panels, rooms, legends, strict=True):
             columns[panel.last] = max(columns[panel.last], need(panel_rooms, legend))
-        # the overflow of a legend below its panel, in inches
-        rows = [0.0] * num_rows
-        for panel, box in zip(panels, boxes, strict=True):
-            if panel.legend is not None:
-                overflow = (
-                    panel.legend.get_window_extent().height / dpi - box.height * height
+        if grid_legends:
+            # the legends of the rows after the right y axes and the colour
+            # bars of every panel of the last column
+            columns[last] = max(
+                columns[last],
+                max(
+                    (
+                        need(panel_rooms, 0.0)
+                        for panel, panel_rooms in zip(panels, rooms, strict=True)
+                        if panel.last == last
+                    ),
+                    default=0.0,
                 )
-                rows[panel.bottom] = max(rows[panel.bottom], overflow)
+                + COLORBAR_GAP
+                + max(
+                    slot.legend.get_window_extent().width / dpi for slot in grid_legends
+                ),
+            )
+        # the overflow of a legend below its panel or its row, in inches
+        rows = [0.0] * num_rows
+        for slot in slots:
+            overflow = (
+                slot.legend.get_window_extent().height / dpi - slot.height * height
+            )
+            rows[slot.bottom_row] = max(rows[slot.bottom_row], overflow)
         if not any(columns) and not any(rows):
             return
         wider, taller = width + sum(columns), height + sum(rows)
         fig.set_size_inches(wider, taller)
+        # the right edge of the colour bars of a panel, in inches
+        edges: dict[int, float] = {}
+        # the right edge of the grid, the last column and its colour bars
+        grid_edge = grid_right * width + sum(columns[:last])
         for panel, box, panel_rooms, panel_bars in zip(
             panels, boxes, rooms, bars, strict=True
         ):
@@ -413,10 +555,16 @@ class MatplotlibFigureSerializer:
                 x += COLORBAR_GAP
                 bar.ax.set_position((x / wider, y0, COLORBAR_WIDTH / wider, y1 - y0))
                 x += COLORBAR_WIDTH + room
-            if panel.legend is not None:
-                panel.legend.set_bbox_to_anchor(
-                    ((x + COLORBAR_GAP) / wider, y1), transform=fig.transFigure
-                )
+            edges[id(panel)] = x
+            if panel.last == last:
+                grid_edge = max(grid_edge, x)
+        for slot in slots:
+            x = grid_edge if slot.panel is None else edges[id(slot.panel)]
+            top = (1.0 - slot.top) * height + sum(rows[: slot.top_row])
+            slot.legend.set_bbox_to_anchor(
+                ((x + COLORBAR_GAP) / wider, 1.0 - top / taller),
+                transform=fig.transFigure,
+            )
         if title is not None:
             left = min(ax.get_position().x0 for panel in panels for ax in panel.axes)
             right = max(ax.get_position().x1 for panel in panels for ax in panel.axes)
@@ -424,8 +572,10 @@ class MatplotlibFigureSerializer:
             title.set_y(1.0 - (1.0 - title.get_position()[1]) * height / taller)
 
     @classmethod
-    def _legend(cls, fig: FigureMPL, settings: FigureSettings, panel: _Panel) -> None:
-        """Draw the legend of a panel.
+    def _legend(
+        cls, fig: FigureMPL, settings: FigureSettings, panel: _Panel
+    ) -> Legend | None:
+        """Draw the legend of a panel, return it if it is outside.
 
         Outside, one legend of both axes is right of the panel, right of the
         ticks and the title of its right y axis and of its last colour bar,
@@ -436,18 +586,14 @@ class MatplotlibFigureSerializer:
         placement sees.
         """
         ax1, *others = panel.axes
-        handles, labels = ax1.get_legend_handles_labels()
-        for ax in others:
-            more_handles, more_labels = ax.get_legend_handles_labels()
-            handles += more_handles
-            labels += more_labels
+        handles, labels = _entries(panel)
         if not handles:
-            return
+            return None
         if settings.legend_position == "outside":
             # anchored right of the axes until `_place_right` places it, the
             # gap to the panel is `COLORBAR_GAP` and its top the top of the
             # panel (no pad of matplotlib)
-            panel.legend = ax1.legend(
+            return ax1.legend(
                 handles,
                 labels,
                 fontsize=settings.legend_fontsize,
@@ -455,7 +601,6 @@ class MatplotlibFigureSerializer:
                 bbox_to_anchor=(1.0, 1.0),
                 borderaxespad=0.0,
             )
-            return
         ax = others[-1] if others else ax1
         for artist in [*ax1.lines, *ax1.collections, *ax1.patches] if others else []:
             if isinstance(artist, Line2D):
@@ -499,6 +644,65 @@ class MatplotlibFigureSerializer:
             fontsize=settings.legend_fontsize,
             loc=settings.legend_loc,  # ty: ignore[invalid-argument-type] -- str setting, matplotlib expects its Literal
         )
+        return None
+
+    @classmethod
+    def _row_legends(
+        cls,
+        fig: FigureMPL,
+        cells: GridSpec,
+        panels: list[_Panel],
+        settings: FigureSettings,
+    ) -> list[_Slot]:
+        """Draw one legend per row, right of the grid (#327).
+
+        The legend of a row has the entries of the plots of the row (a plot
+        which spans rows belongs to its first row), in the order of the plots
+        and of their entries; a plot whose `legend` is false has none in it,
+        and an entry which reads and looks the same as an earlier one, e.g.
+        the simulation of every plot, is shown once (`_entry_key`). The legend
+        hangs from the top of its row, also when the last cell of the row is
+        empty, and is placed right of the grid by `_place_right`.
+
+        Args:
+            fig: the figure.
+            cells: the grid of the panels.
+            panels: the drawn panels.
+            settings: the settings of the figure.
+
+        Returns:
+            The legends, to be placed by `_place_right`.
+        """
+        slots: list[_Slot] = []
+        for row in range(cells.nrows):
+            members = sorted(
+                (panel for panel in panels if panel.plot.legend and panel.top == row),
+                key=lambda panel: panel.first,
+            )
+            seen: set[tuple[Any, ...]] = set()
+            handles: list[Any] = []
+            labels: list[str] = []
+            for member in members:
+                for handle, label in zip(*_entries(member), strict=True):
+                    key = _entry_key(handle, label)
+                    if key not in seen:
+                        seen.add(key)
+                        handles.append(handle)
+                        labels.append(label)
+            if not handles:
+                continue
+            # a legend of the figure, anchored until `_place_right` places it
+            legend = fig.legend(
+                handles,
+                labels,
+                fontsize=settings.legend_fontsize,
+                loc="upper left",
+                bbox_to_anchor=(1.0, 1.0),
+                borderaxespad=0.0,
+            )
+            box = cells[row, cells.ncols - 1].get_position(fig)
+            slots.append(_Slot(legend, None, box.y1, box.height, row, row))
+        return slots
 
     @classmethod
     def _draw_bands(
@@ -915,11 +1119,29 @@ class MatplotlibFigureSerializer:
 
         # the legends, then the colour bars and the legends outside, once every
         # axes has its ticks and labels
-        for panel in panels:
-            if panel.plot.legend:
-                cls._legend(fig, resolved, panel)
+        slots: list[_Slot] = []
+        if resolved.legend_scope == "row":
+            slots = cls._row_legends(fig, gs, panels, resolved)
+        else:
+            for panel in panels:
+                if not panel.plot.legend:
+                    continue
+                legend = cls._legend(fig, resolved, panel)
+                if legend is not None:
+                    box = panel.axes[0].get_position()
+                    slots.append(
+                        _Slot(
+                            legend, panel, box.y1, box.height, panel.top, panel.bottom
+                        )
+                    )
         cls._place_right(
-            fig, (figure.num_rows, figure.num_cols), panels, resolved, title
+            fig,
+            (figure.num_rows, figure.num_cols),
+            panels,
+            resolved,
+            title,
+            slots,
+            grid_right=gs[0, figure.num_cols - 1].get_position(fig).x1,
         )
 
         return fig

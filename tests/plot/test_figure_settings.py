@@ -24,7 +24,8 @@ from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
-#: the settings of today and their defaults, which were class attributes of `Figure`
+#: the settings of today and their defaults, which were class attributes of
+#: `Figure`, and `legend_scope` (0.9.6), which was none
 DEFAULTS: dict[str, Any] = {
     "fig_dpi": 72,
     "fig_facecolor": "white",
@@ -43,6 +44,7 @@ DEFAULTS: dict[str, Any] = {
     "legend_fontsize": 13,
     "legend_position": "inside",
     "legend_loc": "best",
+    "legend_scope": "plot",
 }
 
 
@@ -555,3 +557,14 @@ def test_the_migration_of_a_figure_which_exists_works() -> None:
     figure.settings = {**figure.settings, "legend_position": "outside"}
     resolved = figure.resolved_settings()
     assert (resolved.legend_fontsize, resolved.legend_position) == (9.5, "outside")
+
+
+def test_the_scope_of_the_legends_is_a_plot_or_a_row() -> None:
+    """A legend per plot or per row; another value raises (#327)."""
+    for scope in ("plot", "row"):
+        assert (
+            FigureSettings.resolve(figure={"legend_scope": scope}).legend_scope == scope
+        )
+    for scope in ("rows", "figure"):
+        with pytest.raises(ValueError, match=r"legend_scope.*\['plot', 'row'\]"):
+            FigureSettings.resolve(figure={"legend_scope": scope})

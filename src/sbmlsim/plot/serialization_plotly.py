@@ -145,6 +145,11 @@ def _colorscale(colormap: Colormap) -> list[list[Any]]:
     return [[float(f), to_hex(colormap(float(f)))] for f in np.linspace(0.0, 1.0, 21)]
 
 
+def _legend_id(row: int) -> str:
+    """Get the id of the legend of a row of plotly, `legend` of the first row."""
+    return "legend" if row == 1 else f"legend{row}"
+
+
 def _legend_trace(
     name: str, color: str, dash: str, style: Style | None, group: str | None = None
 ) -> Any:
@@ -360,6 +365,7 @@ class PlotlyFigureSerializer:
 
         subplot: SubPlot
         bars: list[tuple[Any, int, int, bool]] = []
+        resolved = figure.resolved_settings(experiment, run=settings)
         # the legend lists the entries in the order of the curves, whatever
         # the order the traces are drawn in
         ranks = itertools.count(1)
@@ -373,8 +379,14 @@ class PlotlyFigureSerializer:
                 for trace in fig.data[before:]
                 if trace.marker.showscale
             )
+            if resolved.legend_scope == "row":
+                # the legend of a row has the entries of the plots of the row
+                # whose legend is shown (#327)
+                for trace in fig.data[before:]:
+                    if not subplot.plot.legend:
+                        trace.showlegend = False
+                    trace.legend = _legend_id(subplot.row)
 
-        resolved = figure.resolved_settings(experiment, run=settings)
         width, height = figure.size(resolved)
         fig.update_layout(
             title={"text": figure.name} if figure.name else None,
@@ -385,17 +397,43 @@ class PlotlyFigureSerializer:
             legend={"traceorder": "normal"},
         )
         cls._merge_legend_entries(fig)
+        if resolved.legend_scope == "row":
+            cls._row_legends(fig, figure)
         if bars:
             cls._place_colorbars(fig, figure, bars)
         return fig
 
     @staticmethod
-    def _merge_legend_entries(fig: Any) -> None:
-        """Show an entry of the one legend of the figure once.
+    def _row_legends(fig: Any, figure: Figure) -> None:
+        """Place the legend of every row right of the grid, from the top of the row (#327).
 
-        Entries which read and look the same, e.g. the simulation of every
-        panel, are one entry, the first in the legend, and switch the traces
-        of all of them.
+        plotly has a legend per row (`legend`, `legend2`, ...), right of the
+        plot area at the top of the row; a legend which is taller than its row
+        scrolls (`maxheight`), the interactive page needs no room below it.
+        """
+        for row in range(1, figure.num_rows + 1):
+            low, high = fig.get_subplot(row, 1).yaxis.domain
+            fig.update_layout(
+                {
+                    _legend_id(row): {
+                        "traceorder": "normal",
+                        "x": 1.02,
+                        "xanchor": "left",
+                        "y": high,
+                        "yanchor": "top",
+                        "maxheight": high - low,
+                    }
+                }
+            )
+
+    @staticmethod
+    def _merge_legend_entries(fig: Any) -> None:
+        """Show an entry of a legend once.
+
+        Entries of a legend which read and look the same, e.g. the simulation
+        of every panel, are one entry, the first in the legend, and switch the
+        traces of all of them; the figure has one legend, or one per row
+        (`FigureSettings.legend_scope`).
         """
         first: dict[tuple[Any, ...], str] = {}
         traces = sorted(fig.data, key=lambda t: t.legendrank or 0)
@@ -403,6 +441,7 @@ class PlotlyFigureSerializer:
             if not trace.name or trace.showlegend is False:
                 continue
             key = (
+                trace.legend,
                 trace.name,
                 trace.mode,
                 trace.fill,
@@ -500,8 +539,10 @@ class PlotlyFigureSerializer:
         fig.update_layout(
             width=int(total + _MARGIN + right_margin),
             margin={"l": _MARGIN, "r": right_margin},
-            legend={"x": right + _GAP / total, "xanchor": "left"},
         )
+        # the legend, or the legend of every row, right of every bar
+        for legend in sorted({t.legend or "legend" for t in fig.data} | {"legend"}):
+            fig.update_layout({legend: {"x": right + _GAP / total, "xanchor": "left"}})
 
     @classmethod
     def _add_subplot(
