@@ -1,10 +1,12 @@
 """The references of the targets of a design."""
 
+import libsbml
 import numpy as np
 import pytest
 
 from sbmlsim import Q
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.model_roadrunner import load_roadrunner
 from sbmlsim.simulation import Scan, Simulation, sampling
 from sbmlsim.simulation.sampling import parameters_of, references
 from sbmlsim.simulator import Simulator
@@ -13,6 +15,7 @@ from tests.simulator.models import (
     VOLUME_OF_THE_REST,
     sbml,
     sbml_minutes,
+    sbml_pk,
 )
 
 
@@ -55,6 +58,37 @@ def test_the_parameters_of_a_model() -> None:
     zero = RoadrunnerSBMLModel(source=sbml(), changes={"k2": 0.0})
     assert "k2" not in parameters_of(zero)
     assert "k2" in parameters_of(zero, exclude_zero=False)
+
+
+def test_the_ids_of_the_sbml_are_read_once_per_instance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The SBML of an instance of roadrunner is parsed once, not per call (#332)."""
+    model = Simulator().load(sbml())
+    parsed: list[str] = []
+    read = libsbml.readSBMLFromString
+
+    def counted(text: str) -> libsbml.SBMLDocument:
+        parsed.append(text)
+        return read(text)
+
+    monkeypatch.setattr(libsbml, "readSBMLFromString", counted)
+    first = parameters_of(model, species=True)
+    for _ in range(3):
+        assert parameters_of(model, species=True) == first
+    assert len(parsed) == 1
+    assert model.sbml_ids() is model.sbml_ids()
+
+
+def test_the_ids_of_the_sbml_follow_a_replaced_instance() -> None:
+    """An instance of roadrunner which replaces `r` is read again (#332)."""
+    model = Simulator().load(sbml())
+    assert "k1" in model.sbml_ids().constant_parameters
+    assert "ke" not in parameters_of(model)
+    model.r = load_roadrunner(sbml_pk())
+    assert "ke" in model.sbml_ids().constant_parameters
+    assert "k1" not in model.sbml_ids().constant_parameters
+    assert "ke" in parameters_of(model, exclude_zero=False)
 
 
 def test_a_species_of_an_assignment_rule_is_no_parameter() -> None:

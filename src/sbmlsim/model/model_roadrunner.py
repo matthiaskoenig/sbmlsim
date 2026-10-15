@@ -227,6 +227,10 @@ class RoadrunnerSBMLModel(AbstractModel):
         ) = None
         #: compartments whose volume was reported as raised to the floor
         self._raised_reported: set[str] = set()
+        #: the instance of roadrunner (a weak reference) and the ids of its
+        #: SBML, see `sbml_ids`
+        self._sbml_ids_of: tuple[weakref.ref[roadrunner.RoadRunner], SBMLIds] | None
+        self._sbml_ids_of = None
         self.set_integrator_settings(
             **{"absolute_tolerance": AbsoluteTolerance(), **(settings or {})}
         )
@@ -867,6 +871,38 @@ class RoadrunnerSBMLModel(AbstractModel):
             )
         return self._volumes_of[1]
 
+    def sbml_ids(self) -> "SBMLIds":
+        """Get the constant parameters and the species of the SBML roadrunner simulates.
+
+        They are read from the SBML of the instance of roadrunner
+        (`getSBML()`, i.e. with the added parameters and the helpers of the
+        initial assignments) once per instance and kept: serializing and
+        parsing the SBML again on every call took 30 ms on the
+        acetaminophen model of pkdb_models (403 kB of SBML), whose experiments
+        call `sampling.parameters_of` for 133 simulations (#332). sbmlsim never
+        changes the SBML of its instance (`regenerateModel` keeps it); an
+        instance which replaces `r` is read again.
+
+        Returns:
+            The ids, in the order of the SBML.
+        """
+        r = self.r_loaded
+        if self._sbml_ids_of is None or self._sbml_ids_of[0]() is not r:
+            doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getSBML())
+            sbml_model: libsbml.Model = doc.getModel()
+            self._sbml_ids_of = (
+                weakref.ref(r),
+                SBMLIds(
+                    constant_parameters=tuple(
+                        p.getId()
+                        for p in sbml_model.getListOfParameters()
+                        if p.getConstant()
+                    ),
+                    species=tuple(s.getId() for s in sbml_model.getListOfSpecies()),
+                ),
+            )
+        return self._sbml_ids_of[1]
+
     def state_ids(self) -> list[str]:
         """Get the ids of the states which the integrator integrates.
 
@@ -1020,6 +1056,19 @@ class RoadrunnerSBMLModel(AbstractModel):
                 ]
             ),
         )
+
+
+@dataclass(frozen=True)
+class SBMLIds:
+    """The ids of the SBML of a model, see `RoadrunnerSBMLModel.sbml_ids`.
+
+    Attributes:
+        constant_parameters: the parameters which are constant.
+        species: the species.
+    """
+
+    constant_parameters: tuple[str, ...]
+    species: tuple[str, ...]
 
 
 #: the names of the settings of an integrator by its name, see `_setting_names`

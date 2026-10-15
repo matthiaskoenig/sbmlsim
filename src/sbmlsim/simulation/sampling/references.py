@@ -11,8 +11,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
 
-import libsbml
-
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.sampling.distributions import Number
@@ -102,14 +100,11 @@ def parameters_of(
         The ids, sorted, without the helper parameters sbmlsim adds.
     """
     loaded = _loaded(model)
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(loaded.r_loaded.getSBML())
-    sbml_model: libsbml.Model = doc.getModel()
-    ids = [p.getId() for p in sbml_model.getListOfParameters() if p.getConstant()]
+    sbml_ids = loaded.sbml_ids()
+    ids = list(sbml_ids.constant_parameters)
     if species:
         rules = loaded.symbols.assignment_rules
-        ids.extend(
-            s.getId() for s in sbml_model.getListOfSpecies() if s.getId() not in rules
-        )
+        ids.extend(sid for sid in sbml_ids.species if sid not in rules)
     helpers = set(loaded.parameters)
     excluded: Callable[[str], bool]
     if exclude is None:
