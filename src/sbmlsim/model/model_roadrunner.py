@@ -89,6 +89,18 @@ def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
     instance for the acetaminophen model of pkdb_models (403 kB of SBML),
     against 0.044 s and 16 MB from the cache; 0.2 s for dapagliflozin.
 
+    The model is compiled with roadrunner's default JIT, MCJIT. LLJIT
+    compiles the dulaglutide model of pkdb_models 6.9 times faster (1.5 s
+    against 10.4 s), but roadrunner 2.10 crashes with it (a segmentation
+    fault in the compiled code of a model) in runs which compile a model
+    again while an earlier instance of it is alive: in 3 of 8 fits of the
+    dulaglutide model at the optimization level NONE (the levels LESS,
+    DEFAULT and AGGRESSIVE were fitted once each, without a crash, and not
+    in a loop), and in 1 to 3 of 40 processes of a loop over
+    its experiments at the levels NONE, LESS and AGGRESSIVE (DEFAULT was not
+    run). MCJIT did not crash, in 0 of 6 fits and 0 of 20 processes of the
+    loop (#331).
+
     Args:
         source: the path of an SBML file or the SBML itself.
 
@@ -227,6 +239,11 @@ class RoadrunnerSBMLModel(AbstractModel):
         ) = None
         #: compartments whose volume was reported as raised to the floor
         self._raised_reported: set[str] = set()
+        #: the instance of roadrunner (a weak reference) and the ids of its
+        #: SBML, see `sbml_ids`
+        self._sbml_ids_of: tuple[weakref.ref[roadrunner.RoadRunner], SBMLIds] | None = (
+            None
+        )
         self.set_integrator_settings(
             **{"absolute_tolerance": AbsoluteTolerance(), **(settings or {})}
         )
@@ -867,6 +884,42 @@ class RoadrunnerSBMLModel(AbstractModel):
             )
         return self._volumes_of[1]
 
+    def sbml_ids(self) -> "SBMLIds":
+        """Get the constant parameters and the species of the SBML roadrunner simulates.
+
+        They are read from the SBML of the instance of roadrunner
+        (`getSBML()`, i.e. with the added parameters and the helpers of the
+        initial assignments) once per instance and kept: serializing and
+        parsing the SBML again on every call took 4.8 s of the 8.6 s of the
+        initialization of the experiments of the acetaminophen model of
+        pkdb_models (403 kB of SBML), which call `sampling.parameters_of`
+        for 133 simulations (#332). An instance which replaces `r` is read
+        again. sbmlsim never changes the structure of its instance
+        (`regenerateModel` keeps the SBML); an edit of the instance itself,
+        e.g. `r.addParameter(...)` or `r.removeSpecies(...)`, is not tracked,
+        and the ids stay those of the instance as first read until `r` is
+        replaced.
+
+        Returns:
+            The ids, in the order of the SBML.
+        """
+        r = self.r_loaded
+        if self._sbml_ids_of is None or self._sbml_ids_of[0]() is not r:
+            doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getSBML())
+            sbml_model: libsbml.Model = doc.getModel()
+            self._sbml_ids_of = (
+                weakref.ref(r),
+                SBMLIds(
+                    constant_parameters=tuple(
+                        p.getId()
+                        for p in sbml_model.getListOfParameters()
+                        if p.getConstant()
+                    ),
+                    species=tuple(s.getId() for s in sbml_model.getListOfSpecies()),
+                ),
+            )
+        return self._sbml_ids_of[1]
+
     def state_ids(self) -> list[str]:
         """Get the ids of the states which the integrator integrates.
 
@@ -1020,6 +1073,19 @@ class RoadrunnerSBMLModel(AbstractModel):
                 ]
             ),
         )
+
+
+@dataclass(frozen=True)
+class SBMLIds:
+    """The ids of the SBML of a model, see `RoadrunnerSBMLModel.sbml_ids`.
+
+    Attributes:
+        constant_parameters: the parameters which are constant.
+        species: the species.
+    """
+
+    constant_parameters: tuple[str, ...]
+    species: tuple[str, ...]
 
 
 #: the names of the settings of an integrator by its name, see `_setting_names`

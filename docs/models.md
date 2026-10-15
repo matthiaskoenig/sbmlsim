@@ -82,3 +82,10 @@ The parameters and species of the model with their current values and units are 
 print(RoadrunnerSBMLModel.parameter_df(model.r).head())
 print(RoadrunnerSBMLModel.species_df(model.r).head())
 ```
+
+The ids of the constant parameters and of the species of the SBML which roadrunner simulates (with the parameters added to the model) are read once per instance of roadrunner and kept, so that a design over all parameters (`sampling.parameters_of`) does not parse the SBML again for every simulation:
+
+```python
+ids = model.sbml_ids()
+print(ids.constant_parameters[:5], ids.species[:5])
+```
