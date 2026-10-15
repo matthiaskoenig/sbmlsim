@@ -89,6 +89,14 @@ def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
     instance for the acetaminophen model of pkdb_models (403 kB of SBML),
     against 0.044 s and 16 MB from the cache; 0.2 s for dapagliflozin.
 
+    The model is compiled with roadrunner's default JIT, MCJIT. LLJIT
+    compiles up to 6 times faster (the dulaglutide model of pkdb_models
+    10 s against 1.5 s), but roadrunner 2.10 crashes with it (a segmentation
+    fault in the compiled code of a model) in runs which compile a model
+    again while an earlier instance of it is alive: in 2 of 6 fits of the
+    dulaglutide model and in 1 to 3 of 40 runs of its experiments, at every
+    optimization level of LLJIT, never with MCJIT (#331).
+
     Args:
         source: the path of an SBML file or the SBML itself.
 
