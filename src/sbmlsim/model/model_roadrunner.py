@@ -94,8 +94,9 @@ def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
     against 10.4 s), but roadrunner 2.10 crashes with it (a segmentation
     fault in the compiled code of a model) in runs which compile a model
     again while an earlier instance of it is alive: in 3 of 8 fits of the
-    dulaglutide model at the optimization level NONE (the fits were not
-    run at the other levels), and in 1 to 3 of 40 processes of a loop over
+    dulaglutide model at the optimization level NONE (the levels LESS,
+    DEFAULT and AGGRESSIVE were fitted once each, without a crash, and not
+    in a loop), and in 1 to 3 of 40 processes of a loop over
     its experiments at the levels NONE, LESS and AGGRESSIVE (DEFAULT was not
     run). MCJIT did not crash, in 0 of 6 fits and 0 of 20 processes of the
     loop (#331).
