@@ -541,11 +541,15 @@ class MatplotlibFigureSerializer:
         ):
             x0 = box.x0 * width + sum(columns[: panel.first])
             x1 = box.x1 * width + sum(columns[: panel.last])
-            # the distance of the top to the top of the figure and the height
-            # of the panel stay, the rows above it may have grown
+            # the distance of the top to the top of the figure stays, the rows
+            # above it may have grown, and the height of the panel grows by the
+            # room which the legends add below the rows it spans
             top = (1.0 - box.y1) * height + sum(rows[: panel.top])
             y1 = 1.0 - top / taller
-            y0 = y1 - box.height * height / taller
+            y0 = (
+                y1
+                - (box.height * height + sum(rows[panel.top : panel.bottom])) / taller
+            )
             for ax in panel.axes:
                 ax.set_position((x0 / wider, y0, (x1 - x0) / wider, y1 - y0))
             if not panel_rooms:

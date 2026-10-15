@@ -364,3 +364,132 @@ def test_plotly_without_a_scope_is_unchanged(experiment: SimulationExperiment) -
     fig = _plotly(experiment, _grid(experiment, scope=None, hidden=((1, 1),)))
     assert _shown(fig) == {"legend": ENTRIES}
     assert {t.legend for t in fig.data} == {None}
+
+
+def _axis(row: int, col: int, cols: int = 3) -> str:
+    """The id of the x axis of the plotly subplot of a cell of the grid."""
+    k = (row - 1) * cols + col
+    return "x" if k == 1 else f"x{k}"
+
+
+def test_plotly_traces_of_a_plot_without_legend_are_switched_by_the_row_entry(
+    experiment: SimulationExperiment,
+) -> None:
+    """A hidden plot has no entry, its curve is in the group of the entry of its row."""
+    fig = _plotly(experiment, _grid(experiment, hidden=((2, 1),)))
+
+    def group(row: int, col: int, name: str) -> list[str | None]:
+        return [
+            t.legendgroup
+            for t in fig.data
+            if t.xaxis == _axis(row, col) and t.name == name
+        ]
+
+    hidden = group(2, 1, "simulation")
+    assert hidden and all(g is not None for g in hidden)
+    assert set(hidden) == set(group(2, 2, "simulation"))
+    # the first row is untouched: its entry is not the one of the second row
+    assert set(group(1, 1, "simulation")).isdisjoint(hidden)
+    assert not any(t.showlegend for t in fig.data if t.xaxis == _axis(2, 1))
+
+
+def test_plotly_row_legends_are_right_of_the_colour_bars(
+    experiment: SimulationExperiment,
+) -> None:
+    """The legends of all rows are at the same place, right of every colour bar."""
+    figure = _grid(experiment)
+    figure.subplots[2].plot.curve(
+        x=Data("time", task="task_many"), y=Data("[C]", task="task_many"), over="dose"
+    )
+    fig = _plotly(experiment, figure)
+    bars = [t.marker.colorbar for t in fig.data if t.marker.showscale]
+    assert bars
+    right = max(bar.x + bar.thickness / fig.layout.width for bar in bars)
+    assert fig.layout.legend.x > right
+    assert fig.layout.legend2.x == fig.layout.legend.x
+    assert fig.layout.legend.xanchor == fig.layout.legend2.xanchor == "left"
+
+
+ROW_HIDDEN = ((2, 1), (2, 2), (2, 3))
+
+
+def test_a_row_without_entries_has_no_legend_and_no_room(
+    experiment: SimulationExperiment,
+) -> None:
+    """A row whose plots have no legend gets none, the figure is as wide as with one row legend."""
+    fig = _render(experiment, _grid(experiment, hidden=ROW_HIDDEN))
+    assert len(fig.legends) == 1
+    assert _texts(fig.legends[0]) == ENTRIES
+    legend = fig.legends[0].get_window_extent().width / fig.dpi
+    assert fig.get_figwidth() == pytest.approx(
+        _render(
+            experiment,
+            _grid(
+                experiment,
+                scope=None,
+                hidden=((1, 1), (1, 2), (1, 3), *ROW_HIDDEN),
+            ),
+        ).get_figwidth()
+        + COLORBAR_GAP
+        + legend
+    )
+    plotted = _plotly(experiment, _grid(experiment, hidden=ROW_HIDDEN))
+    assert _shown(plotted) == {"legend": ENTRIES}
+
+
+def test_plotly_a_plot_which_spans_rows_has_the_legend_of_its_first_row(
+    experiment: SimulationExperiment,
+) -> None:
+    """The traces of a plot spanning both rows are in the legend of the first row."""
+    figure = Figure(
+        experiment=experiment,
+        sid="span",
+        num_rows=2,
+        num_cols=2,
+        settings={"legend_scope": "row"},
+    )
+    plots = [
+        figure.add_subplot(Plot(sid=sid), row=row, col=col, row_span=span)
+        for sid, row, col, span in [("a", 1, 1, 2), ("b", 1, 2, 1), ("c", 2, 2, 1)]
+    ]
+    _dose(plots[0], 0, label="span", color="tab:blue")
+    _dose(plots[1], 1, label="upper", color="black")
+    _dose(plots[2], 2, label="lower", color="tab:red")
+    fig = _plotly(experiment, figure)
+    assert _shown(fig) == {"legend": ["span", "upper"], "legend2": ["lower"]}
+    assert {t.legend for t in fig.data if t.name == "span"} == {"legend"}
+
+
+@pytest.mark.parametrize("scope", ["plot", "row"])
+def test_a_plot_which_spans_rows_stretches_over_the_room_below_a_tall_legend(
+    experiment: SimulationExperiment, scope: str
+) -> None:
+    """A tall legend pushes the rows below it down, the plot spanning them stretches."""
+    figure = Figure(
+        experiment=experiment,
+        sid="span",
+        num_rows=2,
+        num_cols=2,
+        settings={
+            "legend_scope": scope,
+            "legend_position": "outside",
+            "panel_height": 2.0,
+        },
+    )
+    a = figure.add_subplot(Plot(sid="a"), row=1, col=1, row_span=2)
+    b = figure.add_subplot(Plot(sid="b"), row=1, col=2)
+    c = figure.add_subplot(Plot(sid="c"), row=2, col=2)
+    _dose(a, 0, label="spanning", color="black")
+    for k in range(10):
+        _dose(b, 1, label=f"task {k}", color=f"C{k}")
+    _dose(c, 2, label="lower", color="tab:red")
+    fig = _render(experiment, figure)
+    spanning, upper, lower = _panels(fig)
+    assert spanning.get_window_extent().y1 == pytest.approx(
+        upper.get_window_extent().y1, abs=1.0
+    )
+    assert spanning.get_window_extent().y0 == pytest.approx(
+        lower.get_window_extent().y0, abs=1.0
+    )
+    # the legend of the upper plot overflowed its row, so the gap between the rows grew
+    assert upper.get_window_extent().y0 - lower.get_window_extent().y1 > 0.5 * fig.dpi

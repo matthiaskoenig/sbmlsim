@@ -27,7 +27,7 @@ from __future__ import annotations
 import itertools
 import logging
 import math
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -369,6 +369,10 @@ class PlotlyFigureSerializer:
         # the legend lists the entries in the order of the curves, whatever
         # the order the traces are drawn in
         ranks = itertools.count(1)
+        # the traces of the plots without legend in the scope "row", which
+        # have no entry but are switched by the entry of the row which reads
+        # and looks the same (#327)
+        hidden: list[int] = []
         for subplot in figure.subplots:
             if subplot.row is None or subplot.col is None:
                 raise ValueError(f"SubPlot requires row and col: {subplot}")
@@ -382,8 +386,11 @@ class PlotlyFigureSerializer:
             if resolved.legend_scope == "row":
                 # the legend of a row has the entries of the plots of the row
                 # whose legend is shown (#327)
-                for trace in fig.data[before:]:
+                for k in range(before, len(fig.data)):
+                    trace = fig.data[k]
                     if not subplot.plot.legend:
+                        if trace.showlegend is not False:
+                            hidden.append(k)
                         trace.showlegend = False
                     trace.legend = _legend_id(subplot.row)
 
@@ -396,12 +403,41 @@ class PlotlyFigureSerializer:
             hovermode="closest",
             legend={"traceorder": "normal"},
         )
-        cls._merge_legend_entries(fig)
+        cls._merge_legend_entries(fig, hidden)
         if resolved.legend_scope == "row":
             cls._row_legends(fig, figure)
         if bars:
             cls._place_colorbars(fig, figure, bars)
+        else:
+            cls._place_legends(fig, figure)
         return fig
+
+    @staticmethod
+    def _place_legends(fig: Any, figure: Figure) -> None:
+        """Put the legends right of the last column of panels.
+
+        plotly reserves room right of the last column for the second y axis of
+        its panels, so that the default position of a legend, right of the plot
+        area, is far from the panels. A legend is right of the last column, of
+        the ticks and the title of its right y axis if a plot of the column has
+        one, at the gap `_GAP` of the legends right of a colour bar.
+        """
+        last = figure.num_cols
+        right = max(
+            fig.get_subplot(row, last).xaxis.domain[1]
+            for row in range(1, figure.num_rows + 1)
+            if fig.get_subplot(row, last) is not None
+        )
+        room = _GAP
+        if any(
+            subplot.plot.yaxis_right
+            for subplot in figure.subplots
+            if subplot.col == last
+        ):
+            room += _RIGHT_AXIS
+        plot = int(fig.layout.width) - 2 * _MARGIN
+        for legend in sorted({t.legend or "legend" for t in fig.data} | {"legend"}):
+            fig.update_layout({legend: {"x": right + room / plot, "xanchor": "left"}})
 
     @staticmethod
     def _row_legends(fig: Any, figure: Figure) -> None:
@@ -417,8 +453,6 @@ class PlotlyFigureSerializer:
                 {
                     _legend_id(row): {
                         "traceorder": "normal",
-                        "x": 1.02,
-                        "xanchor": "left",
                         "y": high,
                         "yanchor": "top",
                         "maxheight": high - low,
@@ -427,20 +461,20 @@ class PlotlyFigureSerializer:
             )
 
     @staticmethod
-    def _merge_legend_entries(fig: Any) -> None:
+    def _merge_legend_entries(fig: Any, hidden: Sequence[int] = ()) -> None:
         """Show an entry of a legend once.
 
         Entries of a legend which read and look the same, e.g. the simulation
         of every panel, are one entry, the first in the legend, and switch the
         traces of all of them; the figure has one legend, or one per row
-        (`FigureSettings.legend_scope`).
+        (`FigureSettings.legend_scope`). A trace of `hidden`, the indices of
+        the traces of a plot without legend, has no entry but joins the group of
+        the entry of its legend which reads and looks the same, so that the
+        entry switches it as well.
         """
-        first: dict[tuple[Any, ...], str] = {}
-        traces = sorted(fig.data, key=lambda t: t.legendrank or 0)
-        for k, trace in enumerate(traces):
-            if not trace.name or trace.showlegend is False:
-                continue
-            key = (
+
+        def entry(trace: Any) -> tuple[Any, ...]:
+            return (
                 trace.legend,
                 trace.name,
                 trace.mode,
@@ -452,6 +486,14 @@ class PlotlyFigureSerializer:
                 trace.marker.symbol,
                 trace.marker.color if isinstance(trace.marker.color, str) else None,
             )
+
+        first: dict[tuple[Any, ...], str] = {}
+        silent = [fig.data[k] for k in hidden]
+        traces = sorted(fig.data, key=lambda t: t.legendrank or 0)
+        for k, trace in enumerate(traces):
+            if not trace.name or trace.showlegend is False:
+                continue
+            key = entry(trace)
             if key not in first:
                 if trace.legendgroup is None:
                     trace.legendgroup = f"_entry{k}"
@@ -459,6 +501,17 @@ class PlotlyFigureSerializer:
                 continue
             trace.showlegend = False
             group, target = trace.legendgroup, first[key]
+            if group is None:
+                trace.legendgroup = target
+            elif group != target:
+                for other in fig.data:
+                    if other.legendgroup == group:
+                        other.legendgroup = target
+        for trace in sorted(silent, key=lambda t: t.legendrank or 0):
+            target = first.get(entry(trace))
+            if not trace.name or target is None:
+                continue
+            group = trace.legendgroup
             if group is None:
                 trace.legendgroup = target
             elif group != target:
