@@ -2,7 +2,9 @@
 
 The HTML has MathML for the formulas (`latex2mathml`) and needs no network, the
 Typst source is compiled to PDF with the `typst` package (`compile_pdf`), the
-LaTeX is a fragment to paste into a document or a standalone document.
+LaTeX is a fragment to paste into a document or a standalone document. Typst
+and LaTeX read the references from the files of `write_bibliography` next to
+them, `references.bib` and, for Typst, the style `references.csl`.
 Tables, figures and equations are numbered in document order per kind and
 referenced by their label.
 """
@@ -31,6 +33,7 @@ from sbmlsim.report.document import (
     Table,
     Text,
 )
+from sbmlsim.report.references import BIBLIOGRAPHY_FILE, STYLE_FILE
 
 __all__ = [
     "HTMLRenderer",
@@ -190,8 +193,22 @@ class _Renderer:
         raise NotImplementedError
 
 
+def _mathml(latex: str, display: str = "inline") -> str:
+    """MathML of a LaTeX formula for HTML.
+
+    The namespace of MathML is left out: HTML puts a `math` element into it,
+    and a page which names no URL is evidently one which needs no network.
+    """
+    mathml = latex2mathml.converter.convert(latex, display=display)
+    return mathml.replace(' xmlns="http://www.w3.org/1998/Math/MathML"', "", 1)
+
+
 class HTMLRenderer(_Renderer):
-    """Render as HTML with MathML."""
+    """Render as HTML with MathML.
+
+    `render` writes a page of its own, `fragment` the content of a document to
+    embed into another page, e.g. the report of a fit.
+    """
 
     def __init__(self) -> None:
         """Create a renderer."""
@@ -200,10 +217,7 @@ class HTMLRenderer(_Renderer):
 
     @override
     def render(self, document: Document) -> str:
-        self._index(document.blocks)
-        self._cites = {}
-        body = "\n".join(self._block(b) for b in document.blocks)
-        body += self._references(document)
+        body = self.fragment(document)
         title = escape_html(document.title)
         return (
             "<!DOCTYPE html>\n"
@@ -212,6 +226,24 @@ class HTMLRenderer(_Renderer):
             f"<style>\n{_CSS}</style>\n</head>\n<body>\n"
             f"<h1>{title}</h1>\n{body}\n</body>\n</html>\n"
         )
+
+    def fragment(self, document: Document) -> str:
+        """Render the blocks and the references of a document without a page.
+
+        The blocks are numbered and referenced across the whole document, so
+        a reference into another section resolves; the title is left to the
+        page the fragment is embedded in. The style of the page applies.
+
+        Args:
+            document: the document.
+
+        Returns:
+            The HTML of the sections and of the list of references.
+        """
+        self._index(document.blocks)
+        self._cites = {}
+        body = "\n".join(self._block(b) for b in document.blocks)
+        return body + self._references(document)
 
     def _references(self, document: Document) -> str:
         """List of the references in the order of their first citation."""
@@ -237,7 +269,7 @@ class HTMLRenderer(_Renderer):
                 return f"<p>{self._inlines(block.content)}</p>"
             case Equation():
                 ident = f' id="{escape_html(block.label)}"' if block.label else ""
-                mathml = latex2mathml.converter.convert(block.latex, display="block")
+                mathml = _mathml(block.latex, display="block")
                 return (
                     f'<div class="equation"{ident}>{mathml}'
                     f'<span class="eqno">({number})</span></div>'
@@ -297,7 +329,7 @@ class HTMLRenderer(_Renderer):
             case Code():
                 return f"<code>{escape_html(span.text)}</code>"
             case Math():
-                return latex2mathml.converter.convert(span.latex)
+                return _mathml(span.latex)
             case Cite():
                 links = []
                 for key in span.keys:
@@ -331,7 +363,7 @@ class TypstRenderer(_Renderer):
         self._index(document.blocks)
         body = "\n\n".join(self._block(b) for b in document.blocks)
         if document.references:
-            body += '\n\n#bibliography("references.bib", style: "ieee")'
+            body += f'\n\n#bibliography("{BIBLIOGRAPHY_FILE}", style: "{STYLE_FILE}")'
         return (
             '#set page(paper: "a4", margin: 2cm)\n'
             "#set text(size: 10pt)\n"

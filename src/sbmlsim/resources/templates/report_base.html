@@ -325,7 +325,8 @@ footer { color: var(--fg-soft); font-size: 12.5px; padding: 8px 24px 32px; max-w
   }
 
   // ---- the section the page is scrolled to -----------------------------
-  const links = Array.from(document.querySelectorAll("nav.sections a"));
+  // a tab (data-tab) is not a section, its page marks the tab which is shown
+  const links = Array.from(document.querySelectorAll("nav.sections a:not([data-tab])"));
   const sections = links.map((link) => document.querySelector(link.getAttribute("href")));
   function scrollspy() {
     let current = 0;

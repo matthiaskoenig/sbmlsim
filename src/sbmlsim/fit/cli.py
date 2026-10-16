@@ -21,13 +21,15 @@ if __name__ == "__main__":
 ```
 
 `fit_cli` runs a fit and reports it, `report_cli` reports parameters which were
-stored earlier without optimizing again.
+stored earlier without optimizing again, with the records of the fit next to
+them (`load_fit_records`).
 """
 
 from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -369,6 +371,70 @@ def load_parameter_sets(paths: Sequence[Path]) -> ParameterSets:
     return ParameterSets(sets)
 
 
+@dataclass(frozen=True)
+class FitRecords:
+    """The records of a fit which a report of its parameters is built from.
+
+    Attributes:
+        opt_result: the result of the optimization, `optimization_result.json`,
+            with the settings, the runs and the provenance of the fit.
+        identifiability: the profiles of the parameters, `identifiability.json`.
+        fisher: the Fisher information of the parameters, `fisher.json`.
+    """
+
+    opt_result: OptimizationResult | None = None
+    identifiability: IdentifiabilityResult | None = None
+    fisher: FisherInformation | None = None
+
+    @property
+    def names(self) -> list[str]:
+        """Names of the files the records were read from."""
+        return [
+            name
+            for name, record in [
+                ("optimization_result.json", self.opt_result),
+                ("identifiability.json", self.identifiability),
+                ("fisher.json", self.fisher),
+            ]
+            if record is not None
+        ]
+
+
+def load_fit_records(directory: Path) -> FitRecords:
+    """Load the records of a fit from the folder of its report.
+
+    A report writes them next to its `parameters.json`; a file which is not
+    there is a record the fit does not have, e.g. a fit without an
+    identifiability analysis.
+
+    Args:
+        directory: the folder of the report of the fit.
+
+    Returns:
+        The records which are in the folder.
+    """
+    opt_path = directory / "optimization_result.json"
+    identifiability_path = directory / "identifiability.json"
+    fisher_path = directory / "fisher.json"
+    return FitRecords(
+        opt_result=(
+            OptimizationResult.from_json(opt_path) if opt_path.exists() else None
+        ),
+        identifiability=(
+            IdentifiabilityResult.from_json(identifiability_path)
+            if identifiability_path.exists()
+            else None
+        ),
+        fisher=(
+            FisherInformation.from_dict(
+                json.loads(fisher_path.read_text(encoding="utf-8"))
+            )
+            if fisher_path.exists()
+            else None
+        ),
+    )
+
+
 def _definition(definitions: dict[str, FitDefinition], key: str) -> FitDefinition:
     """Get the definition for a key."""
     return definitions[key]
@@ -533,6 +599,9 @@ def report_cli(
 
     The parameters come from the `parameters.json` a fit wrote. Several files
     are combined into a single report, which compares their parameter sets.
+    The records of the fit next to the first file (`load_fit_records`) give the
+    report the methods, the provenance, the runs and the identifiability of
+    the fit.
 
     Args:
         definitions: fit problems by name, the name is the `--subset` argument.
@@ -575,6 +644,7 @@ def report_cli(
     # edits cannot change the report
     problem = definition.problem(opid=options.subset)
     problem.initialize(definition.settings)
+    records = load_fit_records(options.parameters[0].parent)
 
     display.section("Report", icon=display.ICON_REPORT)
     display.key_values(
@@ -582,6 +652,7 @@ def report_cli(
             "problem": options.subset,
             "parameters": ", ".join(str(p) for p in options.parameters),
             "sets": ", ".join(pset.sid for pset in parameter_sets),
+            "records": ", ".join(records.names) if records.names else "none",
             "output": options.output_dir,
         }
     )
@@ -601,6 +672,9 @@ def report_cli(
         problem=problem,
         settings=definition.settings,
         parameter_sets=parameter_sets,
+        opt_result=records.opt_result,
+        identifiability=records.identifiability,
+        fisher=records.fisher,
         show_titles=False,
         mapping_figures=not options.no_mapping_figures,
     )

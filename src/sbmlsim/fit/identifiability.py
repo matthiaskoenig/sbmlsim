@@ -1409,7 +1409,10 @@ def plot_profile(
 
 
 def plot_all(
-    result: IdentifiabilityResult, output_dir: Path, image_format: str = "svg"
+    result: IdentifiabilityResult,
+    output_dir: Path,
+    image_format: str = "svg",
+    png_dpi: float | str | None = None,
 ) -> list[Path]:
     """Write the overview figure and the figure of every profile.
 
@@ -1417,13 +1420,20 @@ def plot_all(
         result: result of the analysis.
         output_dir: directory of the figures.
         image_format: format of the figures.
+        png_dpi: resolution of a PNG copy of the overview figure, which is
+            written if the format is another one, e.g. for LaTeX, which
+            includes no SVG; no copy by default.
 
     Returns:
-        The paths of the figures, the overview first.
+        The paths of the figures, the overview first; a PNG copy is not one
+        of them.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     paths = [output_dir / f"profiles.{image_format}"]
-    plot_profiles(result, path=paths[0])
+    fig = plot_profiles(result)
+    fig.savefig(paths[0])
+    if png_dpi is not None and image_format != "png":
+        fig.savefig(paths[0].with_suffix(".png"), dpi=png_dpi)
     for pid in result.profiles:
         path = output_dir / f"profile_{pid}.{image_format}"
         plot_profile(result, pid, path=path)

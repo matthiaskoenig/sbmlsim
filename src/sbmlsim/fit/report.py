@@ -10,6 +10,17 @@ results of two fits against each other.
 The plots which describe an optimization run rather than a parameter set, i.e.,
 the traces of the optimizers and the waterfall plot, are only created when the
 `OptimizationResult` of the run is passed as well.
+
+`FitReport.create` writes the report into a folder: the tables, the figures,
+the text report and `index.html`, a page of two tabs. The tab "Report" is the
+report document of the fit (`sbmlsim.fit.report_document`), i.e. its methods
+with their formulas, its results and its references, followed by the overview,
+the results and the identifiability of the fit; the tab "Fit mappings" is a
+card per fit mapping. The same document is written as Typst (`report.typ`),
+compiled to `report.pdf`, and as LaTeX (`report.tex`, a fragment, and
+`report_standalone.tex`) with its references (`references.bib`, and
+`references.csl`, the style of the Typst bibliography). A PDF which cannot be
+compiled is stated in the HTML, the other outputs are written.
 """
 
 from __future__ import annotations
@@ -45,6 +56,7 @@ from sbmlsim.fit.derived import (
 )
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
+from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.metrics import FitMetrics
 from sbmlsim.fit.objects import (
     EVALUATED_KINDS,
@@ -56,8 +68,17 @@ from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ResidualType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.report_document import FIGURES, fit_document
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
+from sbmlsim.report.document import Document
+from sbmlsim.report.references import write_bibliography
+from sbmlsim.report.render import (
+    HTMLRenderer,
+    LaTeXRenderer,
+    TypstRenderer,
+    compile_pdf,
+)
 from sbmlsim.report.templates import template_environment
 from sbmlsim.units import ureg
 from sbmlsim.utils import paths_text
@@ -101,6 +122,20 @@ BAND_ALPHA: float = 0.12
 #: the figures which cover a full row of the report, i.e. the goodness of fit
 #: and the Bland-Altman plot with their panel per kind and their metrics
 WIDE_PLOTS: frozenset[str] = frozenset({"goodness_of_fit", "bland_altman"})
+
+#: resolution of the PNG copies of the figures of the report document, which
+#: LaTeX includes, unless the matplotlib parameters of the report set
+#: `savefig.dpi`
+PNG_DPI: float = 300.0
+
+#: the files of the report document in a report folder, as they are linked
+DOCUMENT_FILES: tuple[tuple[str, str], ...] = (
+    ("report.pdf", "PDF"),
+    ("report.typ", "Typst"),
+    ("report.tex", "LaTeX"),
+    ("report_standalone.tex", "LaTeX document"),
+    ("references.bib", "BibTeX"),
+)
 
 #: width in inches of the legend next to the panels of a wide plot
 LEGEND_WIDTH: float = 3.0
@@ -160,6 +195,7 @@ class FitReport:
         show_titles: bool = True,
         image_format: str = "svg",
         mapping_figures: bool = True,
+        context: ReportContext | None = None,
     ) -> None:
         """Construct the report.
 
@@ -190,6 +226,9 @@ class FitReport:
                 the time for a problem with 35 mappings. A report which is
                 only read for its tables and its overview figures is created
                 without them, and its mapping cards carry their metrics alone.
+            context: what the report document says about the fit beyond the
+                fit, e.g. its title and its description; sbmlsim reports a fit
+                with an empty context.
         """
         # Copy the definition, which excludes native models, then build a runtime
         # owned by this report. Later fits and reports cannot change its settings.
@@ -202,6 +241,9 @@ class FitReport:
         self.show_titles = show_titles
         self.image_format = image_format
         self.mapping_figures = mapping_figures
+        self.context = context if context is not None else ReportContext()
+        # resolution of the PNG copies of the figures, see `_create_figures`
+        self._png_dpi: float | str = PNG_DPI
 
         # Resolve data in the runtime owned by this report.
         self.problem.initialize(settings)
@@ -496,8 +538,11 @@ class FitReport:
     ) -> Path:
         """Create the complete report.
 
-        Writes the figures, the text report, the parameter sets and the HTML
-        report into `output_dir / name`.
+        Writes the figures, the text report, the parameter sets, the report
+        document as Typst, PDF and LaTeX with its references and the HTML
+        report into `output_dir / name`. A PDF which Typst cannot compile is
+        logged and stated in the HTML report; `report.typ` is kept and the
+        other outputs are written.
 
         Args:
             output_dir: base directory of the reports.
@@ -553,7 +598,12 @@ class FitReport:
 
         self._write_text_report(path=results_dir / "report.txt")
         self._create_figures(plots_dir=plots_dir, mpl_parameters=mpl_parameters)
-        self.html_report(path=results_dir / "index.html")
+        # the document shows the figures which exist, so it follows them
+        document = self.document(plots_dir)
+        pdf_error = self._write_document(document, results_dir)
+        self.html_report(
+            path=results_dir / "index.html", document=document, pdf_error=pdf_error
+        )
 
         report_path = results_dir / "index.html"
         display.link("report", report_path)
@@ -561,6 +611,54 @@ class FitReport:
             webbrowser.open(report_path.resolve().as_uri(), new=2)
 
         return results_dir
+
+    def document(self, plots_dir: Path) -> Document:
+        """Get the report document of the fit, its methods and its results.
+
+        Args:
+            plots_dir: the folder of the plots of the report; a figure of the
+                document is shown if its file is in the folder.
+
+        Returns:
+            The document of `fit_document` with the context of the report.
+        """
+        return fit_document(self, self.context, plots_dir)
+
+    @staticmethod
+    def _write_document(document: Document, results_dir: Path) -> str | None:
+        """Write the report document as Typst, PDF and LaTeX.
+
+        Args:
+            document: the report document.
+            results_dir: the folder of the report.
+
+        Returns:
+            The reason the PDF could not be compiled, `None` if it was.
+        """
+        typ_path = results_dir / "report.typ"
+        typ_path.write_text(TypstRenderer().render(document), encoding="utf-8")
+        latex = LaTeXRenderer()
+        (results_dir / "report.tex").write_text(
+            latex.render(document), encoding="utf-8"
+        )
+        (results_dir / "report_standalone.tex").write_text(
+            latex.render_standalone(document), encoding="utf-8"
+        )
+        write_bibliography(document.references, results_dir)
+
+        # the PDF of an earlier report in the folder is not the PDF of this one
+        pdf_path = results_dir / "report.pdf"
+        pdf_path.unlink(missing_ok=True)
+        try:
+            compile_pdf(typ_path, pdf_path)
+        except RuntimeError as err:
+            logger.warning(
+                "The PDF of the report could not be created, '%s' is kept: %s",
+                typ_path.name,
+                err,
+            )
+            return str(err)
+        return None
 
     def _write_text_report(self, path: Path) -> None:
         """Write the text report of the problem, the parameters and the runs."""
@@ -823,17 +921,29 @@ class FitReport:
                 )
         return rows
 
-    def html_context(self, results_dir: Path, name: str) -> dict[str, Any]:
+    def html_context(
+        self,
+        results_dir: Path,
+        name: str,
+        document: Document | None = None,
+        pdf_error: str | None = None,
+    ) -> dict[str, Any]:
         """Collect everything the HTML report shows.
 
         Args:
             results_dir: directory of the report, the files are relative to it.
             name: name of the report.
+            document: the report document of the tab "Report", the `document`
+                of the plots of `results_dir` by default.
+            pdf_error: the reason the PDF of the document could not be
+                compiled, if it could not.
 
         Returns:
             The context of the `fit_report.html` template.
         """
         plots_dir = results_dir / "plots"
+        if document is None:
+            document = self.document(plots_dir)
         counts = self.problem.mapping_counts()
         # the data the model does not describe is not resolved, so it has no
         # rows, no metrics and no figures: it is not part of the report
@@ -998,6 +1108,16 @@ class FitReport:
             ]
 
         return {
+            # the HTML of the document is marked safe in the template; its
+            # renderer escapes every text of the document
+            "report_html": HTMLRenderer().fragment(document),
+            "document_title": document.title,
+            "pdf_error": pdf_error,
+            "downloads": [
+                {"href": file, "label": label}
+                for file, label in DOCUMENT_FILES
+                if (results_dir / file).exists()
+            ],
             "title": f"{name} | sbmlsim fit report",
             "fit_id": name,
             "opid": self.problem.opid,
@@ -1362,19 +1482,32 @@ class FitReport:
             info["optimization"] = f"{self.opt_result.size} runs"
         return info
 
-    def html_report(self, path: Path, name: str | None = None) -> None:
+    def html_report(
+        self,
+        path: Path,
+        name: str | None = None,
+        document: Document | None = None,
+        pdf_error: str | None = None,
+    ) -> None:
         """Create the interactive HTML report of the fit.
 
-        The report is a single page with three sections: the overview of the
-        fit, its results and the single fit mappings. It is rendered from the
-        `fit_report.html` template and needs no network access.
+        The report is a single page with two tabs. "Report" is the report
+        document with the methods and the results, followed by the overview of
+        the fit, its results and its identifiability; "Fit mappings" are the
+        single fit mappings. It is rendered from the `fit_report.html`
+        template and needs no network access.
 
         Args:
             path: file to write.
             name: name of the report, the directory of `path` by default.
+            document: the report document, see `html_context`.
+            pdf_error: the reason the PDF could not be compiled, if it could not.
         """
         context = self.html_context(
-            results_dir=path.parent, name=name if name else path.parent.name
+            results_dir=path.parent,
+            name=name if name else path.parent.name,
+            document=document,
+            pdf_error=pdf_error,
         )
         template = template_environment().get_template("fit_report.html")
         with open(path, "w", encoding="utf-8") as f_html:
@@ -1392,6 +1525,11 @@ class FitReport:
         parameters, and the parameters of the process are restored afterwards
         (`rc_context`, which leaves the backend alone: reading the backend
         from `rcParams` resolves it, to an interactive one with a display).
+
+        The figures of the report document (`FIGURES`) are saved as PNG as
+        well if the format of the report is another one, since LaTeX includes
+        PNG and no SVG; their resolution is `savefig.dpi` of the parameters,
+        `PNG_DPI` by default.
         """
         parameters: dict[str, Any] = {
             "axes.titlesize": 14,
@@ -1399,6 +1537,7 @@ class FitReport:
             "axes.labelweight": "normal",
         }
         parameters.update(mpl_parameters or {})
+        self._png_dpi = parameters.get("savefig.dpi", PNG_DPI)
 
         with matplotlib.rc_context():
             matplotlib.rcdefaults()
@@ -1429,7 +1568,12 @@ class FitReport:
                 self.plot_fit(output_dir=plots_dir)
                 self.plot_fit_residual(output_dir=plots_dir)
             if self.identifiability:
-                plot_all(self.identifiability, plots_dir, self.image_format)
+                plot_all(
+                    self.identifiability,
+                    plots_dir,
+                    self.image_format,
+                    png_dpi=self._png_dpi,
+                )
 
     def _create_mpl_figure(
         self,
@@ -1442,8 +1586,14 @@ class FitReport:
         return fig, fig.subplots(nrows=1, ncols=1)
 
     def _save_mpl_figure(self, fig: Figure, path: Path) -> None:
-        """Save matplotlib figure to path."""
+        """Save matplotlib figure to path.
+
+        A figure of the report document (`FIGURES`) in another format than
+        PNG is saved as PNG next to it as well, which LaTeX includes.
+        """
         fig.savefig(path)
+        if path.stem in FIGURES and path.suffix.lower() != ".png":
+            fig.savefig(path.with_suffix(".png"), dpi=self._png_dpi)
 
     @staticmethod
     def _log_limits(*data: Any, factor: float = 10.0) -> tuple[float, float]:

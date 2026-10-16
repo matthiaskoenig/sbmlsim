@@ -8,11 +8,53 @@
 
 {% block badges %}{% for badge in badges %}<span class="badge">{{ badge.label }} <b>{{ badge.value }}</b></span>{% endfor %}{% endblock %}
 
+{#
+  Two tabs: "Report" is the report document (methods, results, references)
+  followed by the overview, the results and the identifiability of the fit,
+  "Fit mappings" a card per fit mapping. A tab is a link with `data-tab`, its
+  panel a `.tab-panel` with `data-panel`; the page opens on the report, or on
+  the tab of the element its address names.
+#}
+{% block head %}
+<style>
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.warn.card { border-color: var(--outlier); }
+
+/* the report document: a text to read, numbered tables, equations, figures;
+   its card has the width of the other cards, its lines a width to read */
+.document { padding: 24px 32px; line-height: 1.6; overflow-x: auto; }
+.document > * { max-width: 960px; }
+.document .doc-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; margin-bottom: 12px; }
+.document .doc-title { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: -.01em; }
+.document .downloads { margin-left: auto; color: var(--fg-soft); font-size: 13px; }
+.document section { margin-bottom: 28px; }
+.document section section { margin-bottom: 18px; }
+.document h3 { margin: 24px 0 8px; color: var(--fg); font-size: 15.5px; font-weight: 650;
+               text-transform: none; letter-spacing: 0; }
+.document h4 { margin: 18px 0 6px; font-size: 14.5px; font-weight: 600; }
+.document p { margin: 8px 0; }
+.document table { width: auto; min-width: 60%; margin: 18px 0; }
+.document caption { caption-side: top; text-align: left; color: var(--fg-soft);
+                    font-size: 13px; line-height: 1.5; padding-bottom: 8px; }
+.document th, .document td { padding: 5px 16px 5px 0; }
+.document .equation { display: flex; gap: 16px; align-items: center; margin: 14px 0; overflow-x: auto; }
+.document .equation math { flex: 1; }
+.document .eqno { color: var(--fg-soft); }
+.document figure { margin: 20px 0; }
+.document figure img { width: auto; max-width: 100%; }
+.document #references ol { margin: 0; padding-left: 1.8em; font-size: 13.5px; }
+.document #references li { margin-bottom: 4px; }
+@media (max-width: 700px) {
+  .document { padding: 16px; }
+  .document .downloads { margin-left: 0; }
+}
+</style>
+{% endblock %}
+
 {% block nav %}
-    <a href="#overview">Overview</a>
-    <a href="#results">Results</a>
-    {% if identifiability or fisher %}<a href="#identifiability">Identifiability</a>{% endif %}
-    <a href="#mappings">Fit mappings</a>
+    <a href="#report" data-tab="report" class="active">Report</a>
+    <a href="#mappings" data-tab="mappings">Fit mappings</a>
 {% endblock %}
 
 {% block chips %}
@@ -24,6 +66,18 @@
 {% block footer %}{% for file in files %}<a href="{{ file.href }}">{{ file.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}{% endblock %}
 
 {% block content %}
+<div id="report" class="tab-panel active" data-panel="report">
+{% if pdf_error %}
+<p class="card warn">The PDF could not be created: {{ pdf_error }}. The Typst source <code>report.typ</code> is kept, every other output was written.</p>
+{% endif %}
+<article class="card document">
+  <header class="doc-head">
+    <p class="doc-title">{{ document_title }}</p>
+    {% if downloads %}<span class="downloads">{% for file in downloads %}<a href="{{ file.href }}">{{ file.label }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</span>{% endif %}
+  </header>
+  {{ report_html | safe }}
+</article>
+
 <section id="overview">
   <h2>Overview</h2>
 
@@ -348,8 +402,9 @@
 {% if fisher or identifiability %}
 </section>
 {% endif %}
+</div>
 
-<section id="mappings">
+<section id="mappings" class="tab-panel" data-panel="mappings">
   <h2>Fit mappings ({{ mappings | length }})</h2>
   {% for mapping in mappings %}
   <div class="card mapping" data-kind="{{ mapping.kind }}" data-filter="card">
@@ -373,4 +428,36 @@
   {% endfor %}
   <p class="empty hidden" data-empty>No fit mapping matches the search.</p>
 </section>
+
+<script>
+(function () {
+  "use strict";
+  // ---- the tabs: a link with data-tab shows the panel of that name ------
+  const tabs = Array.from(document.querySelectorAll("nav.sections a[data-tab]"));
+  const panels = Array.from(document.querySelectorAll(".tab-panel"));
+  function show(name) {
+    for (const tab of tabs) tab.classList.toggle("active", tab.dataset.tab === name);
+    for (const panel of panels) panel.classList.toggle("active", panel.dataset.panel === name);
+  }
+  // the tab of the element an address names, e.g. a table of the report
+  function tabOf(hash) {
+    const target = hash.length > 1 ? document.getElementById(decodeURIComponent(hash.slice(1))) : null;
+    const panel = target ? target.closest(".tab-panel") : null;
+    return panel ? panel.dataset.panel : null;
+  }
+  for (const tab of tabs) {
+    tab.addEventListener("click", (event) => {
+      event.preventDefault();
+      show(tab.dataset.tab);
+      history.replaceState(null, "", "#" + tab.dataset.tab);
+      window.scrollTo(0, 0);
+    });
+  }
+  window.addEventListener("hashchange", () => {
+    const name = tabOf(location.hash);
+    if (name) show(name);
+  });
+  show(tabOf(location.hash) || "report");
+})();
+</script>
 {% endblock %}

@@ -186,6 +186,43 @@ def test_report_cli(
     )
     assert (results_dir / "index.html").exists()
     assert (results_dir / "metrics.tsv").exists()
+    # without the records of a fit next to the parameters the report has none
+    for name in ["optimization_result.json", "identifiability.json", "fisher.json"]:
+        assert not (results_dir / name).exists(), name
+
+
+def test_report_cli_reads_the_records_of_the_fit(
+    tmp_path: Path, report_dir: Path
+) -> None:
+    """A report of the parameters of a fit carries its records.
+
+    The result of the optimization, the profiles and the Fisher information
+    next to the `parameters.json` give the report its methods, its provenance
+    and its identifiability.
+    """
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    results_dir = report_cli(
+        FIT_DEFINITIONS,
+        args=[
+            "--no-mapping-figures",
+            str(report_dir / "parameters.json"),
+            "--subset=PK",
+            "--name=record",
+            f"--output_dir={tmp_path}",
+        ],
+    )
+    for name in ["optimization_result.json", "identifiability.json", "fisher.json"]:
+        assert (results_dir / name).exists(), name
+    assert (results_dir / "plots" / "traces.svg").exists()
+    assert (results_dir / "plots" / "profiles.svg").exists()
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    # the provenance of the fit, its seed and its identifiability
+    assert "1234" in html
+    assert "not recorded" not in html
+    assert "Profile likelihood" in html and "Fisher information" in html
+    assert (results_dir / "report.pdf").exists()
 
 
 @pytest.mark.parametrize("f_cli", [fit_cli, report_cli])

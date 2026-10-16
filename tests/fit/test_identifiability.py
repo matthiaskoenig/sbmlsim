@@ -639,7 +639,10 @@ def test_identifiability_cli_without_fisher(
     assert (results_dir / "identifiability.json").exists()
     assert not (results_dir / "fisher.json").exists()
     html = (results_dir / "index.html").read_text(encoding="utf-8")
-    assert "Fisher information" not in html
+    # the methods compare the profiles with the Fisher information, but the
+    # document and the page have no Fisher information of the fit
+    assert "Gauss-Newton" not in html
+    assert "Fisher information" not in html[html.index('<section id="overview">') :]
 
 
 def test_parameter_set_of_result() -> None:

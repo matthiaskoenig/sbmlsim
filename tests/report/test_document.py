@@ -18,7 +18,7 @@ from sbmlsim.report.document import (
     Text,
     p,
 )
-from sbmlsim.report.references import bibliography, to_bibtex
+from sbmlsim.report.references import bibliography, write_bibliography
 from sbmlsim.report.render import (
     HTMLRenderer,
     LaTeXRenderer,
@@ -99,7 +99,7 @@ def test_typst_compiles(tmp_path: Path) -> None:
         blocks=(*doc.blocks, p("cited", Cite(("Raue2009",)))),
     )
     doc = replace(doc, references=bibliography(doc))
-    (tmp_path / "references.bib").write_text(to_bibtex(doc.references))
+    write_bibliography(doc.references, tmp_path)
     typ = tmp_path / "report.typ"
     typ.write_text(TypstRenderer().render(doc))
     pdf = compile_pdf(typ)

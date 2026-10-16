@@ -1811,6 +1811,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pypdf"
+version = "6.21.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/40/08cc87810195e5ee37a6917d4b19abc907c8def3a7ce265a81c7f5073304/pypdf-6.21.0.tar.gz", hash = "sha256:c16174c8653abafbe4d023b3c9227d226938d9579ffb5a73b4fac7756c0895a6", size = 7088285, upload-time = "2026-10-16T10:23:18.47Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f4/64/5cea5792cae22892a4ddba8ed9f7424c77b4cb49fdca5016bd62145c12c6/pypdf-6.21.0-py3-none-any.whl", hash = "sha256:3aec619699dacb1b73f57e87d9adaa4424814517b2cc028de20adba5a37af4c4", size = 405135, upload-time = "2026-10-16T10:23:16.38Z" },
+]
+
+[[package]]
 name = "pyproject-api"
 version = "1.11.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2254,6 +2263,7 @@ dev = [
     { name = "petab-sciml" },
     { name = "plotly" },
     { name = "pre-commit" },
+    { name = "pypdf" },
     { name = "pytest" },
     { name = "pytest-xdist" },
     { name = "ruff" },
@@ -2290,6 +2300,7 @@ requires-dist = [
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.6.2" },
     { name = "pydantic", specifier = ">=2.12" },
     { name = "pymetadata", specifier = ">=0.8.1" },
+    { name = "pypdf", marker = "extra == 'dev'", specifier = ">=6.21.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8.0" },
     { name = "python-libsbml", specifier = ">=5.21.2" },

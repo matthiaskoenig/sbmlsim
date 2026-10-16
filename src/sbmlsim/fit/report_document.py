@@ -19,7 +19,7 @@ from __future__ import annotations
 import math
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
@@ -34,7 +34,6 @@ from sbmlsim.fit.methods import (
 )
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.parameters import ParameterSet
-from sbmlsim.fit.report import FitReport
 from sbmlsim.report.document import (
     Block,
     Code,
@@ -49,6 +48,10 @@ from sbmlsim.report.document import (
     p,
 )
 from sbmlsim.report.references import bibliography
+
+if TYPE_CHECKING:
+    # the report builds its document, it imports this module
+    from sbmlsim.fit.report import FitReport
 
 __all__ = ["FIGURES", "fit_document", "results_section"]
 
@@ -446,8 +449,8 @@ def _figures(report: FitReport, plots_dir: Path, fit_id: str) -> Section | None:
         name = f"{key}.{report.image_format}"
         if not (Path(plots_dir) / name).exists():
             continue
-        caption: list[Inline] = [Text(f"{FitReport.PLOT_CAPTIONS[key]}, fit {fit_id}.")]
-        hint = FitReport.PLOT_HINTS.get(key, "")
+        caption: list[Inline] = [Text(f"{report.PLOT_CAPTIONS[key]}, fit {fit_id}.")]
+        hint = report.PLOT_HINTS.get(key, "")
         if hint:
             caption.extend([Text(" "), *_markup(hint)])
         blocks.append(
