@@ -11,6 +11,7 @@ builds the problems once.
 """
 
 import copy
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -28,6 +29,7 @@ from sbmlsim.fit.options import (
     WeightingCurvesType,
     WeightingPointsType,
 )
+from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
 
 
@@ -182,3 +184,30 @@ def fitted(
     """
     problem, result = _fitted_template
     return problem, copy.deepcopy(result)
+
+
+@pytest.fixture(scope="session")
+def fitted_report(tmp_path_factory: pytest.TempPathFactory) -> tuple[FitReport, Path]:
+    """Create the report of a quick fit of a single run for the whole session.
+
+    One run of one evaluation with the seed 1234, without an identifiability
+    analysis and without the figures of the fit mappings: the report has no
+    waterfall plot, no profiles and no Fisher information. The report is
+    created, so its plots exist in the returned directory. A test must not
+    change the report; it copies it to change it.
+    """
+    output_dir = tmp_path_factory.mktemp("fitted_report")
+    runs = run_fit(
+        FIT_DEFINITIONS["PK"],
+        size=1,
+        n_cores=1,
+        seed=1234,
+        output_dir=output_dir,
+        max_nfev=1,
+    )
+    (run,) = runs.values()
+    report = FitReport.from_optimization_result(
+        problem=run.problem, opt_result=run.result, mapping_figures=False
+    )
+    results_dir = report.create(output_dir=output_dir / "report")
+    return report, results_dir / "plots"

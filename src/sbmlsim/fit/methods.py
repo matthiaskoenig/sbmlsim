@@ -690,13 +690,21 @@ def _runs(problem: OptimizationProblem, result: OptimizationResult) -> list[Para
         blocks.append(_start_values(problem, provenance))
     else:
         blocks.append(_differential_evolution(kwargs, n, provenance))
-    blocks.append(
-        p(
-            "The convergence of the runs was assessed from the traces of their "
-            "cost and the waterfall plot of their final costs, and the parameter "
-            "set with the lowest cost was used."
+    if n > 1:
+        blocks.append(
+            p(
+                "The convergence of the runs was assessed from the traces of their "
+                "cost and the waterfall plot of their final costs, and the "
+                "parameter set with the lowest cost was used."
+            )
         )
-    )
+    else:
+        blocks.append(
+            p(
+                "The convergence of the run was assessed from the trace of its "
+                "cost, and its parameter set was used."
+            )
+        )
     return blocks
 
 
@@ -1190,6 +1198,11 @@ def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
     return blocks
 
 
+#: the number of characters of a checksum in the table of the checksums, which
+#: identify a file; a full SHA-256 of 64 characters does not fit on a page
+CHECKSUM_CHARS = 12
+
+
 def _label(text: str) -> str:
     """Get a label of the characters every format accepts."""
     return re.sub(r"[^A-Za-z0-9_.:-]", "-", text)
@@ -1270,12 +1283,15 @@ def _provenance(result: OptimizationResult | None) -> Section:
             Table(
                 caption=(
                     p(
-                        f"SHA-256 checksums of the models and data of the fit {result.sid}."
+                        f"SHA-256 checksums of the models and data of the fit "
+                        f"{result.sid}, their first {CHECKSUM_CHARS} characters; "
+                        "the full checksums are in the provenance of the result "
+                        "(optimization_result.json)."
                     )
                 ).content,
                 header=("File", "SHA-256"),
                 rows=tuple(
-                    (Code(path), Code(digest))
+                    (Code(path), Code(f"{digest[:CHECKSUM_CHARS]}..."))
                     for path, digest in provenance.files.items()
                 ),
                 label=label,
