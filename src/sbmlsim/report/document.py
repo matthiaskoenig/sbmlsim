@@ -11,6 +11,10 @@ are numbered in document order and referenced by their label.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from sbmlsim.report.references import Reference
 
 __all__ = [
     "Block",
@@ -150,10 +154,16 @@ Block = Paragraph | Equation | Table | Figure | Section
 
 @dataclass(frozen=True)
 class Document:
-    """Document with a title and blocks."""
+    """Document with a title, blocks and the references they cite.
+
+    `references` are the cited references in the order of their first citation
+    (`sbmlsim.report.references.bibliography`); the renderers write the list of
+    references only when there are any.
+    """
 
     title: str
     blocks: tuple[Block, ...]
+    references: tuple[Reference, ...] = ()
 
 
 def p(*parts: str | Inline, key: str = "") -> Paragraph:

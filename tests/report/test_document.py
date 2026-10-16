@@ -1,5 +1,6 @@
 """Tests of the document model and its renderers."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from sbmlsim.report.document import (
     Text,
     p,
 )
+from sbmlsim.report.references import bibliography, to_bibtex
 from sbmlsim.report.render import (
     HTMLRenderer,
     LaTeXRenderer,
@@ -91,8 +93,15 @@ def test_typst_compiles(tmp_path: Path) -> None:
     (tmp_path / "plots" / "waterfall.svg").write_text(
         '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>'
     )
+    doc = _doc()
+    doc = replace(
+        doc,
+        blocks=(*doc.blocks, p("cited", Cite(("Raue2009",)))),
+    )
+    doc = replace(doc, references=bibliography(doc))
+    (tmp_path / "references.bib").write_text(to_bibtex(doc.references))
     typ = tmp_path / "report.typ"
-    typ.write_text(TypstRenderer().render(_doc()))
+    typ.write_text(TypstRenderer().render(doc))
     pdf = compile_pdf(typ)
     assert pdf.read_bytes().startswith(b"%PDF")
 
