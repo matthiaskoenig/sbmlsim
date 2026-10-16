@@ -893,32 +893,6 @@ class FitReport:
             if (plots_dir / f"{name}.{self.image_format}").exists()
         ]
 
-    def _tolerances(self) -> list[dict[str, str]]:
-        """Get the absolute tolerance of every state of the models of the fit.
-
-        Returns:
-            A row per state and model with the model, whether it is integrated
-            in local or absolute time, the state, its kind, the reference
-            volume of a concentration species and the absolute tolerance.
-        """
-        rows: list[dict[str, str]] = []
-        for model in {id(m): m for m in self.problem.models}.values():
-            time = "absolute" if model.symbols.time_dependent else "local"
-            for _, row in model.tolerances().iterrows():
-                rows.append(
-                    {
-                        "model": model.sid or "",
-                        "time": time,
-                        "sid": str(row["sid"]),
-                        "kind": str(row["kind"]),
-                        "volume": (
-                            "" if pd.isna(row["volume"]) else f"{row['volume']:.3g}"
-                        ),
-                        "absolute tolerance": f"{row['absolute_tolerance']:.2e}",
-                    }
-                )
-        return rows
-
     def html_context(
         self,
         results_dir: Path,
@@ -1139,7 +1113,6 @@ class FitReport:
                 )
                 for key, value in self.settings.to_dict().items()
             },
-            "tolerances": self._tolerances(),
             "data_summary": data_summary,
             "data_total": {"counts": totals, "total": sum(totals)},
             "hints": dict(self.HINTS),
@@ -1187,11 +1160,12 @@ class FitReport:
                 [
                     "goodness_of_fit",
                     "bland_altman",
-                    "cost_bar",
                     "residual_boxplot",
                     "cost_scatter",
                 ],
             ),
+            # the figure of the fit mappings is in their tab, with their table
+            "mapping_plots": self._plots(plots_dir, ["cost_bar"]),
             "mappings": mappings,
             "run_columns": run_columns,
             "runs": runs,

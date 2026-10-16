@@ -11,7 +11,8 @@
 {#
   Two tabs: "Report" is the report document (methods, results, references)
   followed by the overview, the results and the identifiability of the fit,
-  "Fit mappings" a card per fit mapping. A tab is a link with `data-tab`, its
+  "Fit mappings" the cost and weight of every fit mapping, their contribution
+  and a card per fit mapping. A tab is a link with `data-tab`, its
   panel a `.tab-panel` with `data-panel`; the page opens on the report, or on
   the tab of the element its address names.
 #}
@@ -170,18 +171,6 @@
     </table>
   </div>
 
-  <h3>Absolute tolerances</h3>
-  <div class="card">
-    <table data-filter="row">
-      <thead><tr><th data-sort="text">model</th><th data-sort="text">time</th><th data-sort="text">state</th><th data-sort="text">kind</th><th class="num" data-sort="num">reference volume</th><th class="num" data-sort="num">absolute tolerance</th></tr></thead>
-      <tbody>
-      {% for row in tolerances %}
-      <tr><td>{{ row.model }}</td><td>{{ row.time }}</td><td class="mono">{{ row.sid }}</td><td>{{ row.kind }}</td><td class="num">{{ row.volume }}</td><td class="num">{{ row["absolute tolerance"] }}</td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
   <h3>Data</h3>
   <div class="card">
     <table>
@@ -245,29 +234,6 @@
     {% endfor %}
   </div>
   {% endif %}
-
-  <h3>Contribution of the fit mappings</h3>
-  <div class="card">
-    <table data-filter="row">
-      <thead><tr>{% for column in mapping_metrics_columns %}
-        <th class="{{ 'num' if column in numeric_columns }}"
-            data-sort="{{ 'num' if column in numeric_columns else 'text' }}">{{ column }}{% if hints.get(column) %}<span class="hint" tabindex="0" data-tip="{{ hints[column] }}">?</span>{% endif %}</th>
-      {% endfor %}</tr></thead>
-      <tbody>
-      {% for row in mapping_metrics %}
-      <tr data-kind="{{ row.kind }}">
-        <td>{{ row.parameter_set }}</td><td>{{ row.experiment }}</td>
-        <td class="mono">{{ row.mapping }}</td>
-        <td><span class="tag {{ row.kind }}">{{ row.kind }}</span></td>
-        <td class="num">{{ row.n }}</td>
-        <td class="num mono">{{ row.mse }}</td><td class="num mono">{{ row.rmse }}</td>
-        <td class="num mono">{{ row.nrmse }}</td><td class="num mono">{{ row.rmse_w }}</td>
-        <td class="num mono">{{ row.r2 }}</td>
-      </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
 
   {% if runs %}
   <h3>Optimization runs ({{ runs | length }})</h3>
@@ -406,6 +372,43 @@
 
 <section id="mappings" class="tab-panel" data-panel="mappings">
   <h2>Fit mappings ({{ mappings | length }})</h2>
+
+  {% if mapping_plots %}
+  <h3>Cost and weight of the fit mappings</h3>
+  <div class="grid">
+    {% for plot in mapping_plots %}
+    <div class="card wide"><figure>
+      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
+      <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
+    </figure></div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h3>Contribution of the fit mappings</h3>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>{% for column in mapping_metrics_columns %}
+        <th class="{{ 'num' if column in numeric_columns }}"
+            data-sort="{{ 'num' if column in numeric_columns else 'text' }}">{{ column }}{% if hints.get(column) %}<span class="hint" tabindex="0" data-tip="{{ hints[column] }}">?</span>{% endif %}</th>
+      {% endfor %}</tr></thead>
+      <tbody>
+      {% for row in mapping_metrics %}
+      <tr data-kind="{{ row.kind }}">
+        <td>{{ row.parameter_set }}</td><td>{{ row.experiment }}</td>
+        <td class="mono">{{ row.mapping }}</td>
+        <td><span class="tag {{ row.kind }}">{{ row.kind }}</span></td>
+        <td class="num">{{ row.n }}</td>
+        <td class="num mono">{{ row.mse }}</td><td class="num mono">{{ row.rmse }}</td>
+        <td class="num mono">{{ row.nrmse }}</td><td class="num mono">{{ row.rmse_w }}</td>
+        <td class="num mono">{{ row.r2 }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Data and simulation of the fit mappings</h3>
   {% for mapping in mappings %}
   <div class="card mapping" data-kind="{{ mapping.kind }}" data-filter="card">
     <header>
