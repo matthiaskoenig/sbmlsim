@@ -44,10 +44,11 @@ def test_cited_in_order_and_versioned() -> None:
     )
     assert cited_keys(doc) == ["Raue2009", "Koenig2026_sbmlsim"]
     refs = bibliography(doc, versions={"sbmlsim": "0.10.0"})
-    assert refs[1].fields["version"] == "0.10.0"
-    assert "@software{Koenig2026_sbmlsim" in to_bibtex(
-        refs
-    ) or "@misc{Koenig2026_sbmlsim" in to_bibtex(refs)
+    assert refs[1].fields["note"] == "Version 0.10.0"
+    bib = to_bibtex(refs)
+    assert "@misc{Koenig2026_sbmlsim" in bib
+    assert "  note = {Version 0.10.0}," in bib
+    assert "package" not in bib
 
 
 def test_unknown_key_raises() -> None:
