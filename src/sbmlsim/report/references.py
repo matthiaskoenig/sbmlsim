@@ -49,7 +49,8 @@ class Reference:
         key: citation key.
         entry_type: BibTeX entry type, e.g. `article` or `software`.
         fields: fields of the entry, braces of the value removed at the outer
-            level only.
+            level only; `package` is read by `bibliography` and not written
+            by `to_bibtex`.
     """
 
     key: str
@@ -61,7 +62,8 @@ class Reference:
 
         Returns:
             "Authors (year). Title. Journal/Publisher. doi:..." with the
-            volume, number and pages of an article and the version of software.
+            volume, number and pages of an article and the note (the version)
+            of software.
         """
         f = {name: _plain(value) for name, value in self.fields.items()}
         head = _authors(f.get("author", ""))
@@ -78,8 +80,8 @@ class Reference:
             if f.get("pages"):
                 volume += f":{f['pages']}"
             source = f"{source} {volume}".strip()
-        elif "version" in f:
-            source = f"{source} version {f['version']}".strip()
+        elif "note" in f:
+            source = f"{source} {f['note']}".strip()
         if source:
             parts.append(source)
         if "doi" in f:
@@ -204,7 +206,7 @@ def bibliography(
     Args:
         document: the document.
         versions: installed versions by package name; an entry with the field
-            `package` gets the field `version` of its package.
+            `package` gets the field `note` "Version x" of its package.
 
     Returns:
         The cited references in the order of their first citation.
@@ -222,7 +224,9 @@ def bibliography(
         package = ref.fields.get("package")
         if package and package in versions:
             ref = Reference(
-                ref.key, ref.entry_type, {**ref.fields, "version": versions[package]}
+                ref.key,
+                ref.entry_type,
+                {**ref.fields, "note": f"Version {versions[package]}"},
             )
         out.append(ref)
     return tuple(out)
@@ -235,11 +239,16 @@ def to_bibtex(references: Iterable[Reference]) -> str:
         references: the references.
 
     Returns:
-        The entries, readable by `load_references`.
+        The entries, readable by `load_references`, without the field
+        `package`.
     """
     entries = []
     for ref in references:
         lines = [f"@{ref.entry_type}{{{ref.key},"]
-        lines += [f"  {name} = {{{value}}}," for name, value in ref.fields.items()]
+        lines += [
+            f"  {name} = {{{value}}},"
+            for name, value in ref.fields.items()
+            if name != "package"
+        ]
         entries.append("\n".join([*lines, "}"]))
     return "\n\n".join(entries) + "\n" if entries else ""
