@@ -381,10 +381,10 @@ class TypstRenderer(_Renderer):
             case Math():
                 return f"${span.typst.strip()}$"
             case Cite():
-                return " ".join(f"@{key}" for key in span.keys)
+                return " ".join(f"#cite(<{key}>)" for key in span.keys)
             case Ref():
                 self._target(span.label)
-                return f"@{span.label}"
+                return f"#ref(<{span.label}>)"
         raise TypeError(f"unknown span {span!r}")
 
 
