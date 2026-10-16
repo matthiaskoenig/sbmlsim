@@ -477,6 +477,7 @@ def report_from_records(
     *,
     opid: str,
     parameters: Sequence[Path] | ParameterSets | None = None,
+    records: FitRecords | None = None,
     context: ReportContext | None = None,
     mapping_figures: bool = True,
     show_titles: bool = False,
@@ -505,6 +506,8 @@ def report_from_records(
         parameters: the parameter sets to report, or the JSON files of them,
             `parameters.json` of the folder by default. Several sets are
             combined into a single report, which compares them.
+        records: the records of the fit, read from the folder by default; a
+            caller which read them already, e.g. for the context, passes them.
         context: what the report says about the fit beyond the fit, e.g. its
             title; an empty context by default.
         mapping_figures: draw the two figures of every fit mapping.
@@ -513,7 +516,8 @@ def report_from_records(
     Returns:
         The report, initialized and ready for `FitReport.create`.
     """
-    records = load_fit_records(directory)
+    if records is None:
+        records = load_fit_records(directory)
     if parameters is None:
         parameter_sets = load_parameter_sets([directory / "parameters.json"])
     elif isinstance(parameters, ParameterSets):
@@ -742,7 +746,7 @@ def report_cli(
     prog: str | None = None,
     description: str = "Report of a fit for stored parameters.",
     context: (
-        ReportContext | Callable[[str, FitDefinition], ReportContext] | None
+        ReportContext | Callable[[str, FitDefinition, FitRecords], ReportContext] | None
     ) = None,
 ) -> Path:
     """Report stored parameters from the command line, without optimizing.
@@ -760,8 +764,8 @@ def report_cli(
         description: description of the program in the help.
         context: what the report says about the fit beyond the fit, e.g. the
             title of the model of a caller: a `ReportContext`, or a callable
-            which gets the subset and its definition and returns it. An empty
-            context by default.
+            which gets the subset, its definition and the records of the fit
+            and returns it. An empty context by default.
 
     Returns:
         Path of the directory the report was written to.
@@ -793,15 +797,17 @@ def report_cli(
     definition = _definition(definitions, options.subset)
     # no fit is run here, the parameter sets come from the given files; the
     # parameters and their coverage are shown before the report is created
+    records = load_fit_records(options.parameters[0].parent)
     report = report_from_records(
         definition,
         options.parameters[0].parent,
         opid=options.subset,
         parameters=options.parameters,
+        records=records,
         context=(
             context
             if context is None or isinstance(context, ReportContext)
-            else context(options.subset, definition)
+            else context(options.subset, definition, records)
         ),
         mapping_figures=not options.no_mapping_figures,
     )

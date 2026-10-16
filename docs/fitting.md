@@ -428,7 +428,7 @@ report = report_from_records(
 report.create(output_dir=Path("results/report"), name="PK_LSQ_ALL")
 ```
 
-`parameters` reports other parameter sets than the `parameters.json` of the folder. `report_cli(context=...)` gives the report of the command line a `ReportContext`, or a callable which gets the subset and its definition and returns one, so a caller such as pkpdsim passes the context of its model.
+`parameters` reports other parameter sets than the `parameters.json` of the folder, `records` passes records which the caller read already. `report_cli(context=...)` gives the report of the command line a `ReportContext`, or a callable which gets the subset, its definition and the records of the fit (`FitRecords`) and returns one, so a caller such as pkpdsim passes the context of its model, e.g. with what the provenance of the record states.
 
 `FitParameter.description` describes a parameter in the methods, e.g. `"first order absorption rate"`; without it the report uses the name of the parameter in the SBML model. `FitDefinition.description` says what the fit is for; nothing in sbmlsim feeds it into the report, a caller such as pkpdsim carries it into the `ReportContext`. What the report says beyond the fit is a `ReportContext` (`sbmlsim.fit.methods`), plain data which a caller such as pkpdsim provides to `FitReport(context=...)`: the `title` of the document, the `description` of the fit (the first sentence of the methods), `parameter_descriptions` by parameter id (preferred over `FitParameter.description`) and further `notes`. A report without a context uses the id of the fit as its title.
 
