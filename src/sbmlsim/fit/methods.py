@@ -23,7 +23,7 @@ from typing import Any
 import libsbml
 
 from sbmlsim.fit.derived import hook_summaries
-from sbmlsim.fit.fisher import DEFAULT_STEP, FisherInformation
+from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import Identifiability, IdentifiabilityResult
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -348,23 +348,27 @@ KIND_NAME: dict[MappingKind, str] = {
     MappingKind.OUTLIER: "outliers",
 }
 
-#: the classification of a profile
+#: the classification of a profile; `{max_points}` is the largest number of
+#: points of a scan in one direction
 IDENTIFIABILITY_TEXT: dict[Identifiability, str] = {
     Identifiability.IDENTIFIABLE: (
-        "identifiable if its profile crosses the threshold on both sides of the "
-        "optimum, i.e. its confidence interval is finite"
+        "identifiable if its profile reaches the threshold within the scan on "
+        "both sides of the optimum, i.e. its confidence interval is finite"
     ),
     Identifiability.NON_IDENTIFIABLE_LOWER: (
         "practically non-identifiable towards the lower bound if its profile "
-        "stays below the threshold down to the lower bound"
+        "reaches the threshold above the optimum but not below it within the "
+        "scan, which ends at the lower bound or after {max_points} points"
     ),
     Identifiability.NON_IDENTIFIABLE_UPPER: (
         "practically non-identifiable towards the upper bound if its profile "
-        "stays below the threshold up to the upper bound"
+        "reaches the threshold below the optimum but not above it within the "
+        "scan, which ends at the upper bound or after {max_points} points"
     ),
     Identifiability.NON_IDENTIFIABLE: (
-        "practically non-identifiable if its profile stays below the threshold "
-        "on both sides and is not flat"
+        "practically non-identifiable if its profile reaches the threshold on "
+        "neither side within the scans, which end at the bounds or after "
+        "{max_points} points, and is not flat"
     ),
     Identifiability.STRUCTURAL: (
         "structurally non-identifiable if its profile is flat on both sides"
@@ -378,7 +382,9 @@ def _math(x: float) -> Math:
         return Math(r"\infty" if x > 0 else r"-\infty", "oo" if x > 0 else "-oo")
     if x == 0.0 or 1e-3 <= abs(x) < 1e5 or math.isnan(x):
         return Math(f"{x:.6g}", f"{x:.6g}")
-    mantissa, exponent = f"{x:.3g}".split("e")
+    # the exponent form of every decade, three significant digits
+    digits, exponent = f"{x:.2e}".split("e")
+    mantissa = f"{float(digits):g}"
     power = int(exponent)
     if mantissa in ("1", "-1"):
         sign = "-" if mantissa == "-1" else ""
@@ -958,15 +964,15 @@ def _metrics(problem: OptimizationProblem, settings: FitSettings) -> Section:
             " and Schwarz ",
             Cite(("Schwarz1978",)),
             " with the number ",
-            Math("k", "k"),
+            Math("n_p", "n_p"),
             " of fitted parameters are those of a least squares fit with normally "
             "distributed residuals, up to an additive constant, so only "
             "differences between models fitted to the same data are meaningful:",
         ),
         Equation(
-            r"\mathrm{AIC} = n \ln(\mathrm{MSE}) + 2k, \quad "
-            r"\mathrm{BIC} = n \ln(\mathrm{MSE}) + k \ln(n)",
-            '"AIC" = n ln("MSE") + 2 k, quad "BIC" = n ln("MSE") + k ln(n)',
+            r"\mathrm{AIC} = n \ln(\mathrm{MSE}) + 2 n_p, \quad "
+            r"\mathrm{BIC} = n \ln(\mathrm{MSE}) + n_p \ln(n)",
+            '"AIC" = n ln("MSE") + 2 n_p, quad "BIC" = n ln("MSE") + n_p ln(n)',
         ),
     ]
     if settings.residual in BASELINE_RESIDUALS:
@@ -1100,7 +1106,11 @@ def _profiles(result: IdentifiabilityResult) -> list[Block]:
                 "is ",
                 *_join(
                     [
-                        [_text(IDENTIFIABILITY_TEXT, kind, "identifiability")]
+                        [
+                            _text(IDENTIFIABILITY_TEXT, kind, "identifiability").format(
+                                max_points=ps.max_points
+                            )
+                        ]
                         for kind in Identifiability
                     ],
                     sep="; ",
@@ -1123,7 +1133,7 @@ def _profiles(result: IdentifiabilityResult) -> list[Block]:
 
 def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
     """Write the Fisher information."""
-    step = _math(DEFAULT_STEP)
+    step = _math(fisher.step)
     blocks: list[Block] = [
         p(
             "The Fisher information "
@@ -1131,20 +1141,31 @@ def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
             "is the Gauss-Newton approximation of the curvature of the objective "
             "at the optimum, from the Jacobian ",
             Math("J", "J"),
-            " of the weighted residuals of the training data, computed by central "
-            "finite differences in the space of the optimizer with the step ",
+            " of the weighted residuals of the training data with respect to the "
+            "parameters ",
+            Math(r"\vec{p}", "arrow(p)"),
+            " in the space of the optimizer, computed by central finite differences "
+            "with the step ",
             Math(
-                rf"h = \epsilon \max(|\theta|, 1),\ \epsilon = {step.latex}",
-                f"h = epsilon max(|theta|, 1), space epsilon = {step.typst}",
+                rf"h_j = \epsilon \max(|p_j|, 1),\ \epsilon = {step.latex}",
+                f"h_j = epsilon max(|p_j|, 1), space epsilon = {step.typst}",
             ),
+            " of the parameter ",
+            Math("p_j", "p_j"),
             ":",
         ),
         Equation(
             r"I = J^\top J, \quad \mathrm{cov} = \sigma^2 I^{-1}, \quad "
-            r"\sigma^2 = \frac{2 F}{n - k}",
-            'I = J^top J, quad "cov" = sigma^2 I^(-1), quad sigma^2 = (2 F) / (n - k)',
+            r"\sigma^2 = \frac{2 F}{n - n_p}",
+            'I = J^top J, quad "cov" = sigma^2 I^(-1), quad '
+            "sigma^2 = (2 F) / (n - n_p)",
         ),
         p(
+            "with the number ",
+            Math("n", "n"),
+            " of data points of the training data and the number ",
+            Math("n_p", "n_p"),
+            " of parameters. "
             f"The information has rank {fisher.rank} of {fisher.k}, the number of "
             "its eigenvalues above ",
             _number(fisher.rank_tolerance),
@@ -1154,8 +1175,8 @@ def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
             "the pseudo-inverse. The Wald "
             "intervals are ",
             Math(
-                r"\hat{\theta}_j \pm t_{(1+\alpha)/2,\, n-k}\, \mathrm{SE}_j",
-                'hat(theta)_j plus.minus t_((1+alpha)/2, n-k) "SE"_j',
+                r"\hat{p}_j \pm t_{(1+\alpha)/2,\, n-n_p}\, \mathrm{SE}_j",
+                'hat(p)_j plus.minus t_((1+alpha)/2, n-n_p) "SE"_j',
             ),
             " with the standard errors ",
             Math(
