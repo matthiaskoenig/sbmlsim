@@ -249,6 +249,7 @@ def run_fit(
     timeout: float | None = None,
     output_dir: Path | None = None,
     arguments: Mapping[str, Any] | None = None,
+    fixed_values: Mapping[str, float] | None = None,
     **kwargs: Any,
 ) -> dict[str, FitRun]:
     """Run the fit of a definition.
@@ -271,6 +272,8 @@ def run_fit(
         arguments: further arguments to record in the provenance of the fit,
             e.g. the command line of the caller; they come after the arguments
             of `run_fit` and replace one of the same name.
+        fixed_values: values of the model which the fit keeps fixed, e.g. the
+            fitted values of an earlier fit, recorded in the provenance.
         kwargs: additional arguments of the optimizer, they replace the
             defaults of `ALGORITHM_KWARGS`.
 
@@ -321,6 +324,7 @@ def run_fit(
             base_path=Path(definition.base_path),
             files=problem.files(),
             start_values={p.pid: p.start_value for p in problem.parameters},
+            fixed_values=fixed_values,
         )
         result = run_optimization(
             problem=problem,

@@ -78,6 +78,7 @@ def test_a_fit_stores_its_provenance(
         n_cores=1,
         seed=1234,
         output_dir=tmp_path,
+        fixed_values={"x": 1.5},
         max_nfev=1,
     )
     (run,) = runs.values()
@@ -88,6 +89,7 @@ def test_a_fit_stores_its_provenance(
     assert len(provenance.run_seeds) == 2
     assert provenance.files, "the models and the data have checksums"
     assert provenance.start_values
+    assert provenance.fixed_values == {"x": 1.5}
     paths = sorted((tmp_path / run.problem.opid / "runs").glob("*.json"))
     assert len(paths) == 2
     for path in paths:
