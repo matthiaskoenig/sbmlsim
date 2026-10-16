@@ -228,6 +228,7 @@ def test_fisher_from_dict_round_trip(
     problem = op_hctz_pk
     problem.initialize(fit_settings)
     fisher = fisher_information(problem, fit_settings, problem.parameter_set_model())
+    fisher.rank_tolerance = 1e-3
 
     again = FisherInformation.from_dict(json.loads(json.dumps(fisher.to_dict())))
     assert again.pids == fisher.pids
@@ -244,3 +245,7 @@ def test_fisher_from_dict_round_trip(
     )
     np.testing.assert_allclose(again.values, fisher.values)
     np.testing.assert_allclose(again.matrix, fisher.matrix)
+    assert again.rank_tolerance == 1e-3
+    assert again.rank == fisher.rank
+    assert again.condition_number == fisher.condition_number
+    np.testing.assert_allclose(again.standard_errors, fisher.standard_errors)
