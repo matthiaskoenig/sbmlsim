@@ -10,6 +10,18 @@ results of two fits against each other.
 The plots which describe an optimization run rather than a parameter set, i.e.,
 the traces of the optimizers and the waterfall plot, are only created when the
 `OptimizationResult` of the run is passed as well.
+
+`FitReport.create` writes the report into a folder: the tables, the figures,
+the text report and `index.html`, a page of two tabs. The tab "Report" is the
+report document of the fit (`sbmlsim.fit.report_document`), i.e. its methods
+with their formulas, its results and its references, followed by the overview,
+the results and the identifiability of the fit; the tab "Fit mappings" is the
+figures of the cost and weight and of the residuals of every fit mapping, the
+table of the metrics of every fit mapping and a card per fit mapping. The same document is written as Typst (`report.typ`),
+compiled to `report.pdf`, and as LaTeX (`report.tex`, a fragment, and
+`report_standalone.tex`) with its references (`references.bib`, and
+`references.csl`, the style of the Typst bibliography). A PDF which cannot be
+compiled is stated in the HTML, the other outputs are written.
 """
 
 from __future__ import annotations
@@ -45,7 +57,8 @@ from sbmlsim.fit.derived import (
 )
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
-from sbmlsim.fit.metrics import FitMetrics
+from sbmlsim.fit.methods import ReportContext
+from sbmlsim.fit.metrics import FitMetrics, fold_counts
 from sbmlsim.fit.objects import (
     EVALUATED_KINDS,
     FitParameter,
@@ -56,8 +69,17 @@ from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ResidualType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.report_document import FIGURES, fit_document
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
+from sbmlsim.report.document import Document
+from sbmlsim.report.references import write_bibliography
+from sbmlsim.report.render import (
+    HTMLRenderer,
+    LaTeXRenderer,
+    TypstRenderer,
+    compile_pdf,
+)
 from sbmlsim.report.templates import template_environment
 from sbmlsim.units import ureg
 from sbmlsim.utils import paths_text
@@ -98,9 +120,42 @@ LIMITS_STYLE: dict[str, Any] = {"linestyle": "--", "linewidth": 1.2}
 #: opacity of the filled area between the limits of agreement
 BAND_ALPHA: float = 0.12
 
+#: style of the lines of twofold of the goodness of fit, `f = 2y` and
+#: `f = y/2`, the criterion of `within_2fold`, in a color of their own, apart
+#: from the black limits of agreement and the gray band, which they lie close
+#: to for a fit of a typical scatter
+TWOFOLD_STYLE: dict[str, Any] = {
+    "linestyle": ":",
+    "linewidth": 2.0,
+    "color": "darkred",
+}
+
+#: the header of a column of the metrics whose name is not what a table shows
+METRIC_HEADERS: dict[str, str] = {"within_2fold": "2-fold [%]"}
+
 #: the figures which cover a full row of the report, i.e. the goodness of fit
 #: and the Bland-Altman plot with their panel per kind and their metrics
 WIDE_PLOTS: frozenset[str] = frozenset({"goodness_of_fit", "bland_altman"})
+
+#: resolution of the PNG copies of the figures of the report document, which
+#: LaTeX includes, unless the matplotlib parameters of the report set
+#: `savefig.dpi`
+PNG_DPI: float = 300.0
+
+#: the files of the report document in a report folder, as they are linked
+DOCUMENT_FILES: tuple[tuple[str, str], ...] = (
+    ("report.pdf", "PDF"),
+    ("report.typ", "Typst"),
+    ("report.tex", "LaTeX"),
+    ("report_standalone.tex", "LaTeX document"),
+    ("references.bib", "BibTeX"),
+)
+
+#: height in inches of a row of the figures with a row per curve, i.e. of the
+#: costs and of the residuals of the fit mappings
+ROW_HEIGHT: float = 0.17
+#: width in inches of a character of the label of a row, of 8 points
+ROW_LABEL_CHAR: float = 0.065
 
 #: width in inches of the legend next to the panels of a wide plot
 LEGEND_WIDTH: float = 3.0
@@ -123,6 +178,11 @@ SET_COLORS: tuple[str, ...] = (
     "tab:purple",
     "tab:brown",
 )
+
+
+def _percent(value: Any) -> str:
+    """Format a percentage of the metrics, `-` for one which is not defined."""
+    return _cell(value, ".1f")
 
 
 def _cell(value: Any, spec: str) -> str:
@@ -160,6 +220,7 @@ class FitReport:
         show_titles: bool = True,
         image_format: str = "svg",
         mapping_figures: bool = True,
+        context: ReportContext | None = None,
     ) -> None:
         """Construct the report.
 
@@ -190,6 +251,9 @@ class FitReport:
                 the time for a problem with 35 mappings. A report which is
                 only read for its tables and its overview figures is created
                 without them, and its mapping cards carry their metrics alone.
+            context: what the report document says about the fit beyond the
+                fit, e.g. its title and its description; sbmlsim reports a fit
+                with an empty context.
         """
         # Copy the definition, which excludes native models, then build a runtime
         # owned by this report. Later fits and reports cannot change its settings.
@@ -202,6 +266,9 @@ class FitReport:
         self.show_titles = show_titles
         self.image_format = image_format
         self.mapping_figures = mapping_figures
+        self.context = context if context is not None else ReportContext()
+        # resolution of the PNG copies of the figures, see `_create_figures`
+        self._png_dpi: float | str = PNG_DPI
 
         # Resolve data in the runtime owned by this report.
         self.problem.initialize(settings)
@@ -496,8 +563,11 @@ class FitReport:
     ) -> Path:
         """Create the complete report.
 
-        Writes the figures, the text report, the parameter sets and the HTML
-        report into `output_dir / name`.
+        Writes the figures, the text report, the parameter sets, the report
+        document as Typst, PDF and LaTeX with its references and the HTML
+        report into `output_dir / name`. A PDF which Typst cannot compile is
+        logged and stated in the HTML report; `report.typ` is kept and the
+        other outputs are written.
 
         Args:
             output_dir: base directory of the reports.
@@ -553,7 +623,12 @@ class FitReport:
 
         self._write_text_report(path=results_dir / "report.txt")
         self._create_figures(plots_dir=plots_dir, mpl_parameters=mpl_parameters)
-        self.html_report(path=results_dir / "index.html")
+        # the document shows the figures which exist, so it follows them
+        document = self.document(plots_dir)
+        pdf_error = self._write_document(document, results_dir)
+        self.html_report(
+            path=results_dir / "index.html", document=document, pdf_error=pdf_error
+        )
 
         report_path = results_dir / "index.html"
         display.link("report", report_path)
@@ -561,6 +636,54 @@ class FitReport:
             webbrowser.open(report_path.resolve().as_uri(), new=2)
 
         return results_dir
+
+    def document(self, plots_dir: Path) -> Document:
+        """Get the report document of the fit, its methods and its results.
+
+        Args:
+            plots_dir: the folder of the plots of the report; a figure of the
+                document is shown if its file is in the folder.
+
+        Returns:
+            The document of `fit_document` with the context of the report.
+        """
+        return fit_document(self, self.context, plots_dir)
+
+    @staticmethod
+    def _write_document(document: Document, results_dir: Path) -> str | None:
+        """Write the report document as Typst, PDF and LaTeX.
+
+        Args:
+            document: the report document.
+            results_dir: the folder of the report.
+
+        Returns:
+            The reason the PDF could not be compiled, `None` if it was.
+        """
+        typ_path = results_dir / "report.typ"
+        typ_path.write_text(TypstRenderer().render(document), encoding="utf-8")
+        latex = LaTeXRenderer()
+        (results_dir / "report.tex").write_text(
+            latex.render(document), encoding="utf-8"
+        )
+        (results_dir / "report_standalone.tex").write_text(
+            latex.render_standalone(document), encoding="utf-8"
+        )
+        write_bibliography(document.references, results_dir)
+
+        # the PDF of an earlier report in the folder is not the PDF of this one
+        pdf_path = results_dir / "report.pdf"
+        pdf_path.unlink(missing_ok=True)
+        try:
+            compile_pdf(typ_path, pdf_path)
+        except RuntimeError as err:
+            logger.warning(
+                "The PDF of the report could not be created, '%s' is kept: %s",
+                typ_path.name,
+                err,
+            )
+            return str(err)
+        return None
 
     def _write_text_report(self, path: Path) -> None:
         """Write the text report of the problem, the parameters and the runs."""
@@ -663,6 +786,12 @@ class FitReport:
             "square of a correlation and is negative when the prediction is "
             "worse than the mean of the data."
         ),
+        "within_2fold": (
+            "Percentage of the data points whose prediction lies within twofold "
+            "of the data, 0.5 <= prediction/data <= 2. Only the data points "
+            "with a positive value and prediction have a ratio and are counted; "
+            "- if no point has one."
+        ),
         "AIC": (
             "Akaike information criterion, n*ln(MSE) + 2*k, up to a constant. "
             "Only differences between models fitted on the same data are "
@@ -673,7 +802,10 @@ class FitReport:
             "same constant as the AIC. It charges a parameter more than the "
             "AIC from eight data points on, so it prefers the smaller model."
         ),
-        "value": "Value of the parameter in the units of the model.",
+        "value": (
+            "Value of the parameter in the unit of its fit parameter, the unit "
+            "of the table of the parameters."
+        ),
         "scale": "Space the optimizer searches the parameter in.",
         "se": (
             "Standard error of the parameter, the square root of the diagonal "
@@ -708,8 +840,8 @@ class FitReport:
         "waterfall": "Cost of the optimization runs, ordered",
         "goodness_of_fit": (
             "Prediction against the measured data points, per kind of fit "
-            "mapping, with the agreement of the training data and the metrics "
-            "of the panel"
+            "mapping, with the agreement of the training data, the lines of "
+            "twofold and the metrics of the panel"
         ),
         "bland_altman": (
             "Agreement of prediction and measurement as a ratio, per kind of "
@@ -748,10 +880,16 @@ class FitReport:
             "deviation from it is a systematic error of the model. The band is "
             "the agreement of the training data, i.e. the same band the "
             "Bland-Altman plot draws, here as lines parallel to the diagonal. "
+            "The dark red dotted lines are twofold, prediction = 2 x "
+            "measurement and prediction = measurement / 2; the caption states "
+            "the points between them of every kind. A point which is zero or "
+            "negative is not drawn on the logarithmic axes and not counted, "
+            "the title of a panel then states the points drawn of all. "
             "The validation panel shows how the fit describes data it was not "
             "fitted on, the outlier panel the data the fit dropped. The box "
-            "of a panel carries its R², its normalized RMSE and the RMSE of "
-            "the residuals of the cost."
+            "of a panel carries its R², its normalized RMSE, the RMSE of "
+            "the residuals of the cost and the percentage of its points "
+            "within twofold."
         ),
         "bland_altman": (
             "The ratio of prediction and measurement over the geometric mean "
@@ -781,6 +919,70 @@ class FitReport:
         ),
     }
 
+    def twofold_statement(self) -> str:
+        """Get the data points within twofold per kind, with their denominator.
+
+        The points of every kind the goodness of fit has a panel of, counted
+        as `within_2fold` counts them, i.e. over the points with a positive
+        value and prediction, which are the points the logarithmic axes draw,
+        e.g. `Within twofold of the data are 479 of the 523 training data
+        points (91.6%) and 212 of the 243 validation data points (87.2%); only
+        the data points with a positive value and prediction are counted`. A
+        kind without a point with a ratio is left out. With several parameter
+        sets the counts of every set follow `for <id>`.
+
+        Returns:
+            The statement without a full stop, empty if no kind has a point
+            with a ratio.
+        """
+        statements: list[str] = []
+        for pset in self.parameter_sets:
+            points = self.points(pset)
+            parts = []
+            for kind in self.point_kinds():
+                of_kind = self._of_kind(points, kind)
+                inside, n_ratio = fold_counts(of_kind.DV, of_kind.IPRED)
+                if n_ratio:
+                    parts.append(
+                        f"{inside} of the {n_ratio} {kind} data points "
+                        f"({100.0 * inside / n_ratio:.1f}%)"
+                    )
+            if not parts:
+                continue
+            listed = (
+                parts[0]
+                if len(parts) == 1
+                else ", ".join(parts[:-1]) + " and " + parts[-1]
+            )
+            prefix = f"for {pset.sid} " if len(self.parameter_sets) > 1 else ""
+            statements.append(f"{prefix}{listed}")
+        if not statements:
+            return ""
+        return (
+            f"Within twofold of the data are {'; '.join(statements)}; only the "
+            "data points with a positive value and prediction are counted"
+        )
+
+    def plot_caption(self, name: str) -> str:
+        """Get the caption of a figure of the report.
+
+        The caption of `PLOT_CAPTIONS`; the goodness of fit states the
+        percentage of the data points within twofold of every kind as well,
+        see `twofold_statement`.
+
+        Args:
+            name: name of the figure, e.g. `goodness_of_fit`.
+
+        Returns:
+            The caption, without a full stop.
+        """
+        caption = self.PLOT_CAPTIONS.get(name, name)
+        if name == "goodness_of_fit":
+            statement = self.twofold_statement()
+            if statement:
+                caption = f"{caption}. {statement}"
+        return caption
+
     def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, Any]]:
         """Get the plots of the given names which were created.
 
@@ -789,7 +991,7 @@ class FitReport:
         return [
             {
                 "src": f"plots/{name}.{self.image_format}",
-                "caption": self.PLOT_CAPTIONS.get(name, name),
+                "caption": self.plot_caption(name),
                 "hint": self.PLOT_HINTS.get(name, ""),
                 "wide": name in WIDE_PLOTS,
             }
@@ -797,43 +999,29 @@ class FitReport:
             if (plots_dir / f"{name}.{self.image_format}").exists()
         ]
 
-    def _tolerances(self) -> list[dict[str, str]]:
-        """Get the absolute tolerance of every state of the models of the fit.
-
-        Returns:
-            A row per state and model with the model, whether it is integrated
-            in local or absolute time, the state, its kind, the reference
-            volume of a concentration species and the absolute tolerance.
-        """
-        rows: list[dict[str, str]] = []
-        for model in {id(m): m for m in self.problem.models}.values():
-            time = "absolute" if model.symbols.time_dependent else "local"
-            for _, row in model.tolerances().iterrows():
-                rows.append(
-                    {
-                        "model": model.sid or "",
-                        "time": time,
-                        "sid": str(row["sid"]),
-                        "kind": str(row["kind"]),
-                        "volume": (
-                            "" if pd.isna(row["volume"]) else f"{row['volume']:.3g}"
-                        ),
-                        "absolute tolerance": f"{row['absolute_tolerance']:.2e}",
-                    }
-                )
-        return rows
-
-    def html_context(self, results_dir: Path, name: str) -> dict[str, Any]:
+    def html_context(
+        self,
+        results_dir: Path,
+        name: str,
+        document: Document | None = None,
+        pdf_error: str | None = None,
+    ) -> dict[str, Any]:
         """Collect everything the HTML report shows.
 
         Args:
             results_dir: directory of the report, the files are relative to it.
             name: name of the report.
+            document: the report document of the tab "Report", the `document`
+                of the plots of `results_dir` by default.
+            pdf_error: the reason the PDF of the document could not be
+                compiled, if it could not.
 
         Returns:
             The context of the `fit_report.html` template.
         """
         plots_dir = results_dir / "plots"
+        if document is None:
+            document = self.document(plots_dir)
         counts = self.problem.mapping_counts()
         # the data the model does not describe is not resolved, so it has no
         # rows, no metrics and no figures: it is not part of the report
@@ -932,6 +1120,11 @@ class FitReport:
                         "n": int(row["n"]) if row else "-",
                         "RMSE": _cell(row["RMSE"], ".4g") if row else "-",
                         "R²": _cell(row["R2"], ".4g") if row else "-",
+                        "2-fold": (
+                            f"{_percent(row['within_2fold'])}%"
+                            if row and np.isfinite(row["within_2fold"])
+                            else "-"
+                        ),
                     },
                     "plots": plots,
                 }
@@ -998,6 +1191,16 @@ class FitReport:
             ]
 
         return {
+            # the HTML of the document is marked safe in the template; its
+            # renderer escapes every text of the document
+            "report_html": HTMLRenderer().fragment(document),
+            "document_title": document.title,
+            "pdf_error": pdf_error,
+            "downloads": [
+                {"href": file, "label": label}
+                for file, label in DOCUMENT_FILES
+                if (results_dir / file).exists()
+            ],
             "title": f"{name} | sbmlsim fit report",
             "fit_id": name,
             "opid": self.problem.opid,
@@ -1021,18 +1224,30 @@ class FitReport:
                 )
                 for key, value in self.settings.to_dict().items()
             },
-            "tolerances": self._tolerances(),
             "data_summary": data_summary,
             "data_total": {"counts": totals, "total": sum(totals)},
-            "hints": dict(self.HINTS),
+            # the hints by column and by the header a table shows
+            "hints": {
+                **self.HINTS,
+                **{
+                    header: self.HINTS[column]
+                    for column, header in METRIC_HEADERS.items()
+                },
+            },
             "metrics_columns": [
-                {"name": column, "hint": self.HINTS.get(column)}
+                {
+                    "name": METRIC_HEADERS.get(column, column),
+                    "hint": self.HINTS.get(column),
+                }
                 for column in metrics.columns
             ],
             # a metric which is not defined, e.g. the cost of the validation
             # data, is `-`
             "metrics": [
-                [_cell(value, ".6g") for value in row.values()]
+                [
+                    _percent(value) if column == "within_2fold" else _cell(value, ".6g")
+                    for column, value in row.items()
+                ]
                 for row in metrics.to_dict(orient="records")
             ],
             "mapping_metrics_columns": [
@@ -1046,8 +1261,17 @@ class FitReport:
                 "NRMSE",
                 "RMSE_w",
                 "R2",
+                METRIC_HEADERS["within_2fold"],
             ],
-            "numeric_columns": ["n", "MSE", "RMSE", "NRMSE", "RMSE_w", "R2"],
+            "numeric_columns": [
+                "n",
+                "MSE",
+                "RMSE",
+                "NRMSE",
+                "RMSE_w",
+                "R2",
+                METRIC_HEADERS["within_2fold"],
+            ],
             "mapping_metrics": [
                 {
                     "parameter_set": row["parameter_set"],
@@ -1060,6 +1284,7 @@ class FitReport:
                     "nrmse": _cell(row["NRMSE"], ".4g"),
                     "rmse_w": _cell(row["RMSE_w"], ".4g"),
                     "r2": _cell(row["R2"], ".4g"),
+                    "within_2fold": _percent(row["within_2fold"]),
                 }
                 for row in mapping_rows
             ],
@@ -1069,11 +1294,12 @@ class FitReport:
                 [
                     "goodness_of_fit",
                     "bland_altman",
-                    "cost_bar",
-                    "residual_boxplot",
                     "cost_scatter",
                 ],
             ),
+            # the figures with a row per fit mapping are in the tab of the
+            # mappings, with the table of their metrics
+            "mapping_plots": self._plots(plots_dir, ["cost_bar", "residual_boxplot"]),
             "mappings": mappings,
             "run_columns": run_columns,
             "runs": runs,
@@ -1362,19 +1588,34 @@ class FitReport:
             info["optimization"] = f"{self.opt_result.size} runs"
         return info
 
-    def html_report(self, path: Path, name: str | None = None) -> None:
+    def html_report(
+        self,
+        path: Path,
+        name: str | None = None,
+        document: Document | None = None,
+        pdf_error: str | None = None,
+    ) -> None:
         """Create the interactive HTML report of the fit.
 
-        The report is a single page with three sections: the overview of the
-        fit, its results and the single fit mappings. It is rendered from the
-        `fit_report.html` template and needs no network access.
+        The report is a single page with two tabs. "Report" is the report
+        document with the methods and the results, followed by the overview of
+        the fit, its results and its identifiability; "Fit mappings" is the
+        figures of the cost and weight and of the residuals of every fit
+        mapping, the table of the metrics of every fit mapping and a card per
+        fit mapping. It is rendered from the `fit_report.html`
+        template and needs no network access.
 
         Args:
             path: file to write.
             name: name of the report, the directory of `path` by default.
+            document: the report document, see `html_context`.
+            pdf_error: the reason the PDF could not be compiled, if it could not.
         """
         context = self.html_context(
-            results_dir=path.parent, name=name if name else path.parent.name
+            results_dir=path.parent,
+            name=name if name else path.parent.name,
+            document=document,
+            pdf_error=pdf_error,
         )
         template = template_environment().get_template("fit_report.html")
         with open(path, "w", encoding="utf-8") as f_html:
@@ -1392,6 +1633,11 @@ class FitReport:
         parameters, and the parameters of the process are restored afterwards
         (`rc_context`, which leaves the backend alone: reading the backend
         from `rcParams` resolves it, to an interactive one with a display).
+
+        The figures of the report document (`FIGURES`) are saved as PNG as
+        well if the format of the report is another one, since LaTeX includes
+        PNG and no SVG; their resolution is `savefig.dpi` of the parameters,
+        `PNG_DPI` by default.
         """
         parameters: dict[str, Any] = {
             "axes.titlesize": 14,
@@ -1399,6 +1645,7 @@ class FitReport:
             "axes.labelweight": "normal",
         }
         parameters.update(mpl_parameters or {})
+        self._png_dpi = parameters.get("savefig.dpi", PNG_DPI)
 
         with matplotlib.rc_context():
             matplotlib.rcdefaults()
@@ -1429,7 +1676,12 @@ class FitReport:
                 self.plot_fit(output_dir=plots_dir)
                 self.plot_fit_residual(output_dir=plots_dir)
             if self.identifiability:
-                plot_all(self.identifiability, plots_dir, self.image_format)
+                plot_all(
+                    self.identifiability,
+                    plots_dir,
+                    self.image_format,
+                    png_dpi=self._png_dpi,
+                )
 
     def _create_mpl_figure(
         self,
@@ -1442,8 +1694,14 @@ class FitReport:
         return fig, fig.subplots(nrows=1, ncols=1)
 
     def _save_mpl_figure(self, fig: Figure, path: Path) -> None:
-        """Save matplotlib figure to path."""
+        """Save matplotlib figure to path.
+
+        A figure of the report document (`FIGURES`) in another format than
+        PNG is saved as PNG next to it as well, which LaTeX includes.
+        """
         fig.savefig(path)
+        if path.stem in FIGURES and path.suffix.lower() != ".png":
+            fig.savefig(path.with_suffix(".png"), dpi=self._png_dpi)
 
     @staticmethod
     def _log_limits(*data: Any, factor: float = 10.0) -> tuple[float, float]:
@@ -1555,8 +1813,21 @@ class FitReport:
 
         A study is not in every panel, e.g. only one study has outliers, so the
         entries are collected over the panels and shown once next to them.
+        The points of the studies come first and the lines, i.e. the band and
+        the lines of twofold, last, also when a study has points only in the
+        last panel, which labels the lines.
         """
-        unique = FitReport._legend_entries(axes)
+        entries = FitReport._legend_entries(axes)
+
+        def is_line(handle: Any) -> bool:
+            return isinstance(handle, Line2D) and handle.get_marker() in (
+                None,
+                "",
+                "None",
+                "none",
+            )
+
+        unique = dict(sorted(entries.items(), key=lambda entry: is_line(entry[1])))
         if unique:
             fig.legend(
                 unique.values(),
@@ -2060,7 +2331,8 @@ class FitReport:
 
         The goodness of fit shows how well the predictions describe the data
         of the kind: `R²`, the scale free `NRMSE` and the `RMSE_w` of the cost
-        of `FitMetrics.summary`; the absolute RMSE is not shown, the data
+        of `FitMetrics.summary` and the percentage of the points within
+        twofold, `within_2fold`; the absolute RMSE is not shown, the data
         spans orders of magnitude and it only reads the largest curves. The
         Bland-Altman plot shows the agreement of the
         points of the panel itself: the bias and the SD of `log10(f(x)/y)` as
@@ -2080,10 +2352,12 @@ class FitReport:
             prefix = f"{pset.sid}: " if len(self.parameter_sets) > 1 else ""
             if plot == "goodness_of_fit":
                 summary = self.metrics(pset).summary(kind=MappingKind(kind))
+                within = summary["within_2fold"]
                 lines.append(
                     f"{prefix}R² = {summary['R2']:.3f}, "
                     f"NRMSE = {summary['NRMSE']:.3g}, "
-                    f"RMSE$_w$ = {summary['RMSE_w']:.3g}"
+                    f"RMSE$_w$ = {summary['RMSE_w']:.3g}, "
+                    f"2-fold = {f'{within:.1f}%' if np.isfinite(within) else '-'}"
                 )
             elif plot == "bland_altman":
                 dp = self._of_kind(self.points(pset), kind)
@@ -2129,6 +2403,12 @@ class FitReport:
         lines parallel to the identity: a point inside the band is a prediction
         the fit agrees to. It is the same band the Bland-Altman plot draws, in
         the same styles, so the two figures are read the same way.
+
+        The dark red dotted lines are twofold, `f = 2y` and `f = y/2`: the
+        percentage of the points between them is `within_2fold` of the
+        metrics, which the box of a panel states, and the caption states the
+        points with their denominator, see `twofold_statement`. The title of a
+        panel states the points drawn, see `_panel_title`.
         """
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
         fig, axes, kinds = self._panels()
@@ -2176,6 +2456,13 @@ class FitReport:
                 label=self._band_labels(self.reference_set)[0] if is_last else None,
                 **IDENTITY_STYLE,
             )
+            for factor in (2.0, 0.5):
+                ax.plot(
+                    edge,
+                    edge * factor,
+                    label="2-fold" if is_last and factor > 1 else None,
+                    **TWOFOLD_STYLE,
+                )
 
             for pset in self.parameter_sets:
                 dp = self._of_kind(points[pset.sid], kind)
@@ -2192,8 +2479,11 @@ class FitReport:
                         **kwargs,
                     )
 
-            n_points = len(self._of_kind(points[self.reference_set.sid], kind))
-            ax.set_title(f"{kind} (n={n_points})")
+            ax.set_title(
+                self._panel_title(
+                    kind, [points[pset.sid] for pset in self.parameter_sets]
+                )
+            )
             ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
             ax.set_xscale("log")
             ax.set_yscale("log")
@@ -2207,6 +2497,32 @@ class FitReport:
         if self.show_titles:
             fig.suptitle("Goodness of fit")
         self._save_mpl_figure(fig=fig, path=path)
+
+    @classmethod
+    def _panel_title(cls, kind: str, points: Sequence[pd.DataFrame]) -> str:
+        """Get the title of a panel of the data points, with the points drawn.
+
+        The axes of the goodness of fit and of the Bland-Altman plot are
+        logarithmic, so a data point which is zero or negative, in its value or
+        its prediction, has no ratio and is not drawn. The title states the
+        points drawn, of the set with the most of them, and of how many points
+        of the reference set, e.g. `training (n=523 of 530)`; these are the
+        points `within_2fold` counts.
+
+        Args:
+            kind: kind of fit mapping of the panel.
+            points: the data points of every parameter set, see `points`, the
+                reference set first.
+
+        Returns:
+            The title of the panel.
+        """
+        n_points = len(cls._of_kind(points[0], kind))
+        n_shown = max(
+            int(np.sum(cls._log_ratio(cls._of_kind(df, kind))[2])) for df in points
+        )
+        label = f"n={n_shown}" if n_shown == n_points else f"n={n_shown} of {n_points}"
+        return f"{kind} ({label})"
 
     @staticmethod
     def _log_ratio(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -2293,11 +2609,9 @@ class FitReport:
         fig, axes, kinds = self._panels()
 
         for ax, kind in zip(axes, kinds, strict=True):
-            n_shown = 0
             for pset in self.parameter_sets:
                 dp = self._of_kind(points[pset.sid], kind)
                 mean, difference, mask = self._log_ratio(dp)
-                n_shown = max(n_shown, difference.size)
                 if difference.size == 0:
                     continue
 
@@ -2355,13 +2669,11 @@ class FitReport:
                 label=self._band_labels(self.reference_set)[0] if is_last else None,
                 **IDENTITY_STYLE,
             )
-            # a data point which is zero or negative has no ratio, so a panel
-            # can show fewer points than the metrics of the kind count
-            n_points = len(self._of_kind(points[self.reference_set.sid], kind))
-            label = (
-                f"n={n_shown}" if n_shown == n_points else f"n={n_shown} of {n_points}"
+            ax.set_title(
+                self._panel_title(
+                    kind, [points[pset.sid] for pset in self.parameter_sets]
+                )
             )
-            ax.set_title(f"{kind} ({label})")
             ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
             ax.set_xscale("log")
             ax.grid()
@@ -2375,14 +2687,14 @@ class FitReport:
         self._save_mpl_figure(fig=fig, path=path)
 
     def plot_cost_bar(self, path: Path) -> None:
-        """Plot the cost and the weight of every curve, per set."""
+        """Plot the cost and the weight of every curve, per set.
+
+        A curve is a row, in the order of the fit mappings from the top; the
+        figure grows with the number of curves and the length of their labels,
+        so that every label is readable, e.g. the 164 curves of a large fit.
+        """
         costs = {pset.sid: self._cost_df(pset) for pset in self.parameter_sets}
         costs_ref = costs[self.reference_set.sid]
-
-        fig = Figure(figsize=(8, 6), layout="constrained")
-        ax1, ax2 = fig.subplots(nrows=1, ncols=2)
-        if self.show_titles:
-            fig.suptitle("Curve costs and weights")
 
         n_sets = len(self.parameter_sets)
         height = 0.8 / n_sets
@@ -2391,6 +2703,15 @@ class FitReport:
             f"{costs_ref.experiment[k]}|{costs_ref.mapping[k]}"
             for k in range(len(costs_ref))
         ]
+        fig = Figure(
+            figsize=self._rows_size(ticklabels, width=8.0, panels=5.0),
+            layout="constrained",
+        )
+        ax1, ax2 = fig.subplots(
+            nrows=1, ncols=2, sharey=True, gridspec_kw={"width_ratios": [2, 1]}
+        )
+        if self.show_titles:
+            fig.suptitle("Curve costs and weights")
 
         for ks, pset in enumerate(self.parameter_sets):
             ax1.barh(
@@ -2404,36 +2725,67 @@ class FitReport:
 
         ax1.set_yticks(position + 0.4 - height / 2)
         ax1.set_yticklabels(ticklabels, ha="right", fontdict={"fontsize": 8})
+        # the first fit mapping at the top, as in the table of the mappings
+        ax1.set_ylim(len(ticklabels) - 0.5, -0.5)
         ax1.grid(True, axis="x")
         ax1.set_xlabel("Cost")
         self._set_log_scale(ax1, "x")
         if ax1.get_xscale() == "linear":
             # a cost is not negative, e.g. the zero cost of a perfect fit
             ax1.set_xlim(left=0.0, right=max(float(ax1.dataLim.x1), 1.0) * 1.05)
-        self._set_legend(ax1)
+        # above the panels, a legend inside would cover the bars of the curves
+        handles, labels = ax1.get_legend_handles_labels()
+        fig.legend(handles, labels, loc="outside upper center", ncols=min(n_sets, 3))
 
         # the weights of the curves do not depend on the parameters
         ax2.barh(position, costs_ref.weight_curve, color="tab:blue", alpha=0.8)
-        ax2.set_yticks(position)
-        setp(ax2.get_yticklabels(), visible=False)
+        ax2.tick_params(axis="y", labelleft=False)
         ax2.grid(True, axis="x")
         ax2.set_xlabel("Weight curve: $w_{k}$")
 
         self._save_mpl_figure(fig=fig, path=path)
 
-    def plot_residual_boxplot(self, path: Path) -> None:
-        """Plot the distribution of the squared weighted residuals per curve."""
-        costs_ref = self._cost_df(self.reference_set)
+    @staticmethod
+    def _rows_size(
+        labels: Sequence[str], width: float, panels: float
+    ) -> tuple[float, float]:
+        """Get the size of a figure with a row per curve and its label.
 
-        fig, ax = self._create_mpl_figure(width=6.0, height=6.0)
-        if self.show_titles:
-            ax.set_title("Residual contribution")
+        The figure grows with the number of curves and the length of their
+        labels of 8 points, so that every label is readable, e.g. the 164
+        curves of a large fit.
+
+        Args:
+            labels: the labels of the rows.
+            width: the smallest width in inches, the height is at least 6.
+            panels: the width in inches of the panels next to the labels.
+
+        Returns:
+            The width and the height in inches.
+        """
+        longest = max((len(label) for label in labels), default=0)
+        return (
+            max(width, panels + ROW_LABEL_CHAR * longest),
+            max(6.0, 1.5 + ROW_HEIGHT * len(labels)),
+        )
+
+    def plot_residual_boxplot(self, path: Path) -> None:
+        """Plot the distribution of the squared weighted residuals per curve.
+
+        A curve is a row, in the order of the fit mappings from the top.
+        """
+        costs_ref = self._cost_df(self.reference_set)
 
         n_mappings = len(self.problem.mapping_keys)
         ticklabels = [
             f"{costs_ref.experiment[k]}|{costs_ref.mapping[k]}"
             for k in range(len(costs_ref))
         ]
+        fig, ax = self._create_mpl_figure(
+            *self._rows_size(ticklabels, width=6.0, panels=3.5)
+        )
+        if self.show_titles:
+            ax.set_title("Residual contribution")
 
         n_sets = len(self.parameter_sets)
         for ks, pset in enumerate(self.parameter_sets):
@@ -2454,12 +2806,22 @@ class FitReport:
 
         ax.set_yticks(list(range(1, n_mappings + 1)))
         ax.set_yticklabels(ticklabels, ha="right", fontdict={"fontsize": 8})
+        ax.set_ylim(n_mappings + 0.5, 0.5)
         ax.grid(True, axis="x")
         ax.set_xlabel(
             "Weighted residuals^2\n$(w_{k} \\cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
         )
         self._set_log_scale(ax, "x")
-        self._set_legend(ax)
+        # above the panel as in the figure of the costs, a legend inside would
+        # cover the residuals of the curves
+        handles, labels = ax.get_legend_handles_labels()
+        unique = dict(zip(labels, handles, strict=True))
+        fig.legend(
+            list(unique.values()),
+            list(unique),
+            loc="outside upper center",
+            ncols=min(n_sets, 3),
+        )
         self._save_mpl_figure(fig=fig, path=path)
 
     def plot_cost_scatter(self, path: Path) -> None:

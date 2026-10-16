@@ -2,6 +2,8 @@
 
 `sbmlsim` builds on the standards of the [COMBINE](https://co.mbine.org) community and on the simulation and analysis libraries of the scientific python ecosystem. These are the publications behind them; cite them when you describe a simulation experiment, and cite `sbmlsim` itself as described in [Home](index.md#how-to-cite).
 
+The methods report of a fit, see [Report of a fit](fitting.md#report-of-a-fit), cites from the bundled `src/sbmlsim/resources/references.bib`, with the style `references.csl`. The `references.bib` written next to a report holds the cited entries only, and a software is cited with the version the fit ran with.
+
 ## Simulation
 
 **libRoadRunner.** The SBML simulation engine all simulations run on.

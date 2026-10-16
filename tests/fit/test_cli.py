@@ -1,6 +1,9 @@
 """Test the general fit runner and its command line tools."""
 
 import dataclasses
+import json
+import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -10,11 +13,15 @@ from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import (
     ALGORITHMS,
     FitDefinition,
+    FitRecords,
     fit_cli,
+    load_fit_records,
     load_parameter_sets,
     report_cli,
+    report_from_records,
     run_fit,
 )
+from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import OptimizationStrategy
@@ -186,6 +193,193 @@ def test_report_cli(
     )
     assert (results_dir / "index.html").exists()
     assert (results_dir / "metrics.tsv").exists()
+    # without the records of a fit next to the parameters the report has none
+    for name in ["optimization_result.json", "identifiability.json", "fisher.json"]:
+        assert not (results_dir / name).exists(), name
+
+
+def test_report_cli_reads_the_records_of_the_fit(
+    tmp_path: Path, report_dir: Path
+) -> None:
+    """A report of the parameters of a fit carries its records.
+
+    The result of the optimization, the profiles and the Fisher information
+    next to the `parameters.json` give the report its methods, its provenance
+    and its identifiability.
+    """
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    results_dir = report_cli(
+        FIT_DEFINITIONS,
+        args=[
+            "--no-mapping-figures",
+            str(report_dir / "parameters.json"),
+            "--subset=PK",
+            "--name=record",
+            f"--output_dir={tmp_path}",
+        ],
+    )
+    for name in ["optimization_result.json", "identifiability.json", "fisher.json"]:
+        assert (results_dir / name).exists(), name
+    assert (results_dir / "plots" / "traces.svg").exists()
+    assert (results_dir / "plots" / "profiles.svg").exists()
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    # the provenance of the fit, its seed and its identifiability
+    assert "1234" in html
+    assert "not recorded" not in html
+    assert "Profile likelihood" in html and "Fisher information" in html
+    assert (results_dir / "report.pdf").exists()
+
+
+def test_report_cli_describes_the_fit_with_its_stored_settings(
+    tmp_path: Path, report_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A report of a record has the settings the fit ran with, not the definition.
+
+    The definition may have changed since the fit ran: the methods describe
+    the settings of the record and a warning names the difference.
+    """
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    records = tmp_path / "records"
+    records.mkdir()
+    shutil.copy(report_dir / "parameters.json", records)
+    stored = json.loads((report_dir / "optimization_result.json").read_text())
+    assert stored["settings"]["loss_function"] == "LINEAR"
+    stored["settings"]["loss_function"] = "SOFT_L1"
+    (records / "optimization_result.json").write_text(json.dumps(stored))
+
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.cli"):
+        results_dir = report_cli(
+            FIT_DEFINITIONS,
+            args=[
+                "--no-mapping-figures",
+                str(records / "parameters.json"),
+                "--subset=PK",
+                "--name=stored",
+                f"--output_dir={tmp_path}",
+            ],
+        )
+    typ = (results_dir / "report.typ").read_text(encoding="utf-8")
+    assert "soft L1 loss" in typ
+    assert "The loss function is linear" not in typ
+    assert "settings of the record" in caplog.text
+    assert "loss_function" in caplog.text
+
+
+def test_report_from_records(
+    report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """The report of a fit is built from the records of its folder.
+
+    The parameters, the result of the optimization, the profiles and the
+    Fisher information of the folder are in the report, its problem has the
+    given id and its context is the given context.
+    """
+    from sbmlsim.fit.report import FitReport
+
+    context = ReportContext(title="Model: fit PK", notes=("A note.",))
+    report = report_from_records(
+        definition_hctz_pk, report_dir, opid="PK", context=context
+    )
+    assert isinstance(report, FitReport)
+    assert report.problem.opid == "PK"
+    assert report.context == context
+    assert report.opt_result is not None
+    assert report.identifiability is not None
+    assert report.fisher is not None
+    stored = load_parameter_sets([report_dir / "parameters.json"])
+    assert [p.sid for p in report.parameter_sets] == [p.sid for p in stored]
+    assert report.settings == report.opt_result.settings
+    assert report.show_titles is False
+    assert report.mapping_figures is True
+
+
+def test_report_from_records_of_other_parameters(
+    tmp_path: Path, report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """The parameters of a report from records may come from other files."""
+    path = tmp_path / "other.json"
+    sets = load_parameter_sets([report_dir / "parameters.json"])
+    sets[0].sid = "other"
+    sets.to_json(path=path)
+    report = report_from_records(
+        definition_hctz_pk,
+        report_dir,
+        opid="PK",
+        parameters=[path],
+        mapping_figures=False,
+    )
+    assert [p.sid for p in report.parameter_sets] == ["other"]
+    assert report.mapping_figures is False
+    assert report.context == ReportContext()
+
+
+def test_report_from_records_with_loaded_records(
+    report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """Records which the caller read already are not read again."""
+    records = load_fit_records(report_dir)
+    records = dataclasses.replace(records, identifiability=None)
+    report = report_from_records(
+        definition_hctz_pk, report_dir, opid="PK", records=records
+    )
+    assert report.opt_result is not None
+    assert report.identifiability is None
+
+
+def test_report_from_records_without_records(
+    tmp_path: Path, report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """A folder with `parameters.json` alone gives a report without records."""
+    shutil.copy(report_dir / "parameters.json", tmp_path)
+    report = report_from_records(definition_hctz_pk, tmp_path, opid="PK")
+    assert report.opt_result is None
+    assert report.identifiability is None
+    assert report.fisher is None
+    assert report.settings == definition_hctz_pk.settings
+
+
+@pytest.mark.parametrize("callable_context", [True, False])
+def test_report_cli_passes_the_context(
+    tmp_path: Path, report_dir: Path, callable_context: bool
+) -> None:
+    """A caller passes the context of the report, as data or per subset."""
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    records = load_fit_records(report_dir)
+    assert records.opt_result is not None
+
+    seen: list[tuple[str, FitDefinition, str | None]] = []
+
+    def context_of(
+        subset: str, definition: FitDefinition, records: FitRecords
+    ) -> ReportContext:
+        sid = records.opt_result.sid if records.opt_result is not None else None
+        seen.append((subset, definition, sid))
+        return ReportContext(title=f"Model: fit {subset}", notes=("A note.",))
+
+    results_dir = report_cli(
+        FIT_DEFINITIONS,
+        args=[
+            "--no-mapping-figures",
+            str(report_dir / "parameters.json"),
+            "--subset=PK",
+            "--name=context",
+            f"--output_dir={tmp_path}",
+        ],
+        context=(
+            context_of
+            if callable_context
+            else context_of("PK", FIT_DEFINITIONS["PK"], records)
+        ),
+    )
+    # the callable gets the subset, its definition and the records of the fit
+    assert seen == [("PK", FIT_DEFINITIONS["PK"], records.opt_result.sid)]
+    typ = (results_dir / "report.typ").read_text(encoding="utf-8")
+    assert "Model: fit PK" in typ
+    assert "A note." in typ
 
 
 @pytest.mark.parametrize("f_cli", [fit_cli, report_cli])

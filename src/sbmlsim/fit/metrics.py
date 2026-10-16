@@ -26,7 +26,11 @@ The data of a fit spans orders of magnitude, so the absolute metrics `MSE`,
 curve of small values is missed by a factor of 20 at an absolute error which is
 still tiny. `NRMSE`, the root mean square of `NRES`, is the scale free metric
 which reads the same for every curve, and `RMSE_w` is the root mean square of
-`IWRES`, i.e., what the fit minimizes.
+`IWRES`, i.e., what the fit minimizes. `within_2fold` is the percentage of the
+data points whose prediction lies within twofold of the data, the criterion of
+pharmacokinetic predictions, which reads the same for every curve as well; it
+counts only the data points with a positive value and prediction, the others
+have no ratio.
 
 Note the sign: the residuals of `OptimizationProblem.residuals` are
 `prediction - data`, the residuals here are `data - prediction`.
@@ -245,6 +249,74 @@ def r_squared(y_observed: ArrayLike, y_predicted: ArrayLike) -> float:
     return 1.0 - sse(y_obs - y_pred) / sst
 
 
+def fold_counts(
+    y_observed: ArrayLike, y_predicted: ArrayLike, fold: float = 2.0
+) -> tuple[int, int]:
+    """Count the data points whose prediction is within a fold factor.
+
+    A data point is within the fold factor if `1/fold <= f / y <= fold` for its
+    value `y` and its prediction `f`, the bounds included. Only the data points
+    with a positive and finite value and prediction have a ratio, the others
+    are left out, i.e. the count is of the `n_+` points with a ratio.
+
+    Args:
+        y_observed: measured values.
+        y_predicted: predicted values.
+        fold: the fold factor, larger than 1.
+
+    Returns:
+        The number of points within the fold factor and the number `n_+` of
+        the points with a ratio, the denominator of `within_fold`.
+
+    Raises:
+        ValueError: if the data and the prediction have different lengths or
+            the fold factor is not larger than 1.
+    """
+    if not fold > 1.0:
+        raise ValueError(f"The fold factor must be larger than 1, but '{fold}' given.")
+    y_obs = _as_array(y_observed)
+    y_pred = _as_array(y_predicted)
+    if y_obs.size != y_pred.size:
+        raise ValueError(
+            f"The fold criterion requires as many predictions as data points, "
+            f"but got '{y_pred.size}' for '{y_obs.size}'."
+        )
+    mask = np.isfinite(y_obs) & np.isfinite(y_pred) & (y_obs > 0) & (y_pred > 0)
+    y_obs, y_pred = y_obs[mask], y_pred[mask]
+    # the bounds as products, so that twofold is exact in floating point
+    inside = (y_pred >= y_obs / fold) & (y_pred <= y_obs * fold)
+    return int(np.sum(inside)), int(np.sum(mask))
+
+
+def within_fold(
+    y_observed: ArrayLike, y_predicted: ArrayLike, fold: float = 2.0
+) -> float:
+    """Percentage of the data points whose prediction is within a fold factor.
+
+    The percentage of the points of `fold_counts`, i.e. of the `n_+` points
+    with a positive and finite value and prediction, whose ratio `f / y` is
+    within `1/fold` and `fold`, the bounds included. The criterion of the
+    predictions of pharmacokinetics is twofold, the default.
+
+    Args:
+        y_observed: measured values.
+        y_predicted: predicted values.
+        fold: the fold factor, larger than 1.
+
+    Returns:
+        Percentage (0 to 100) of the points with a ratio within the fold
+        factor, `nan` if no point has a ratio.
+
+    Raises:
+        ValueError: if the data and the prediction have different lengths or
+            the fold factor is not larger than 1.
+    """
+    inside, n_ratio = fold_counts(y_observed, y_predicted, fold=fold)
+    if n_ratio == 0:
+        return float("nan")
+    return 100.0 * inside / n_ratio
+
+
 @dataclass
 class FitMetrics:
     """Metrics of a parameter set on an optimization problem.
@@ -381,7 +453,8 @@ class FitMetrics:
 
         Returns:
             DataFrame with one row per fit mapping and the columns `experiment`,
-            `mapping`, `kind`, `n`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w` and `R2`.
+            `mapping`, `kind`, `n`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2` and
+            `within_2fold`, the percentage of the points within twofold.
         """
         return self._mappings_df(self.datapoints_df())
 
@@ -404,6 +477,7 @@ class FitMetrics:
                     "NRMSE": rmse(of_mapping.NRES),
                     "RMSE_w": rmse(of_mapping.IWRES),
                     "R2": r_squared(of_mapping.DV, of_mapping.IPRED),
+                    "within_2fold": within_fold(of_mapping.DV, of_mapping.IPRED),
                 }
             )
 
@@ -420,6 +494,7 @@ class FitMetrics:
                     "NRMSE",
                     "RMSE_w",
                     "R2",
+                    "within_2fold",
                 ]
             ),
         )
@@ -436,7 +511,10 @@ class FitMetrics:
         curve, so every curve counts the same whatever its magnitude, and
         `RMSE_w` is the root mean square of the residuals of the cost, so a
         parameter set can have a larger RMSE and smaller weighted residuals
-        than another one, which is what the weighting is for.
+        than another one, which is what the weighting is for. `within_2fold`
+        is the percentage of the data points with a positive value and
+        prediction whose prediction is within twofold of the data, see
+        `within_fold`, `nan` if no point has a ratio.
 
         `cost` is the objective the optimization minimizes. It is defined on the
         training data alone, so it is only reported for the training data and is
@@ -449,7 +527,8 @@ class FitMetrics:
         Returns:
             Dictionary with the id of the parameter set, the `kind`, the number
             of data points `n`, the number of parameters `k`, the `cost`,
-            `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`, `AIC` and `BIC`.
+            `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`, `within_2fold`, `AIC` and
+            `BIC`.
 
         Raises:
             ValueError: if the problem has no data points of the kind.
@@ -487,6 +566,7 @@ class FitMetrics:
             "NRMSE": rmse(dp.NRES),
             "RMSE_w": rmse(dp.IWRES),
             "R2": r_squared(dp.DV, dp.IPRED),
+            "within_2fold": within_fold(dp.DV, dp.IPRED),
             "AIC": aic_from_mse(mse=mse_value, n=len(dp), k=self.n_parameters),
             "BIC": bic_from_mse(mse=mse_value, n=len(dp), k=self.n_parameters),
         }
