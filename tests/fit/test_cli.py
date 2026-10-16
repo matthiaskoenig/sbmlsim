@@ -13,7 +13,9 @@ from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import (
     ALGORITHMS,
     FitDefinition,
+    FitRecords,
     fit_cli,
+    load_fit_records,
     load_parameter_sets,
     report_cli,
     report_from_records,
@@ -314,6 +316,19 @@ def test_report_from_records_of_other_parameters(
     assert report.context == ReportContext()
 
 
+def test_report_from_records_with_loaded_records(
+    report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """Records which the caller read already are not read again."""
+    records = load_fit_records(report_dir)
+    records = dataclasses.replace(records, identifiability=None)
+    report = report_from_records(
+        definition_hctz_pk, report_dir, opid="PK", records=records
+    )
+    assert report.opt_result is not None
+    assert report.identifiability is None
+
+
 def test_report_from_records_without_records(
     tmp_path: Path, report_dir: Path, definition_hctz_pk: FitDefinition
 ) -> None:
@@ -333,10 +348,16 @@ def test_report_cli_passes_the_context(
     """A caller passes the context of the report, as data or per subset."""
     from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 
-    seen: list[tuple[str, FitDefinition]] = []
+    records = load_fit_records(report_dir)
+    assert records.opt_result is not None
 
-    def context_of(subset: str, definition: FitDefinition) -> ReportContext:
-        seen.append((subset, definition))
+    seen: list[tuple[str, FitDefinition, str | None]] = []
+
+    def context_of(
+        subset: str, definition: FitDefinition, records: FitRecords
+    ) -> ReportContext:
+        sid = records.opt_result.sid if records.opt_result is not None else None
+        seen.append((subset, definition, sid))
         return ReportContext(title=f"Model: fit {subset}", notes=("A note.",))
 
     results_dir = report_cli(
@@ -348,11 +369,14 @@ def test_report_cli_passes_the_context(
             "--name=context",
             f"--output_dir={tmp_path}",
         ],
-        context=context_of
-        if callable_context
-        else context_of("PK", FIT_DEFINITIONS["PK"]),
+        context=(
+            context_of
+            if callable_context
+            else context_of("PK", FIT_DEFINITIONS["PK"], records)
+        ),
     )
-    assert seen == [("PK", FIT_DEFINITIONS["PK"])]
+    # the callable gets the subset, its definition and the records of the fit
+    assert seen == [("PK", FIT_DEFINITIONS["PK"], records.opt_result.sid)]
     typ = (results_dir / "report.typ").read_text(encoding="utf-8")
     assert "Model: fit PK" in typ
     assert "A note." in typ
