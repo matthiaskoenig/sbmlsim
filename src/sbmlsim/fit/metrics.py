@@ -249,17 +249,15 @@ def r_squared(y_observed: ArrayLike, y_predicted: ArrayLike) -> float:
     return 1.0 - sse(y_obs - y_pred) / sst
 
 
-def within_fold(
+def fold_counts(
     y_observed: ArrayLike, y_predicted: ArrayLike, fold: float = 2.0
-) -> float:
-    """Percentage of the data points whose prediction is within a fold factor.
+) -> tuple[int, int]:
+    """Count the data points whose prediction is within a fold factor.
 
     A data point is within the fold factor if `1/fold <= f / y <= fold` for its
     value `y` and its prediction `f`, the bounds included. Only the data points
     with a positive and finite value and prediction have a ratio, the others
-    are left out, i.e. the percentage is over the `n_+` points with a ratio.
-    The criterion of the predictions of pharmacokinetics is twofold, the
-    default.
+    are left out, i.e. the count is of the `n_+` points with a ratio.
 
     Args:
         y_observed: measured values.
@@ -267,8 +265,8 @@ def within_fold(
         fold: the fold factor, larger than 1.
 
     Returns:
-        Percentage (0 to 100) of the points with a ratio within the fold
-        factor, `nan` if no point has a ratio.
+        The number of points within the fold factor and the number `n_+` of
+        the points with a ratio, the denominator of `within_fold`.
 
     Raises:
         ValueError: if the data and the prediction have different lengths or
@@ -284,12 +282,39 @@ def within_fold(
             f"but got '{y_pred.size}' for '{y_obs.size}'."
         )
     mask = np.isfinite(y_obs) & np.isfinite(y_pred) & (y_obs > 0) & (y_pred > 0)
-    if not mask.any():
-        return float("nan")
     y_obs, y_pred = y_obs[mask], y_pred[mask]
     # the bounds as products, so that twofold is exact in floating point
     inside = (y_pred >= y_obs / fold) & (y_pred <= y_obs * fold)
-    return 100.0 * float(np.mean(inside))
+    return int(np.sum(inside)), int(np.sum(mask))
+
+
+def within_fold(
+    y_observed: ArrayLike, y_predicted: ArrayLike, fold: float = 2.0
+) -> float:
+    """Percentage of the data points whose prediction is within a fold factor.
+
+    The percentage of the points of `fold_counts`, i.e. of the `n_+` points
+    with a positive and finite value and prediction, whose ratio `f / y` is
+    within `1/fold` and `fold`, the bounds included. The criterion of the
+    predictions of pharmacokinetics is twofold, the default.
+
+    Args:
+        y_observed: measured values.
+        y_predicted: predicted values.
+        fold: the fold factor, larger than 1.
+
+    Returns:
+        Percentage (0 to 100) of the points with a ratio within the fold
+        factor, `nan` if no point has a ratio.
+
+    Raises:
+        ValueError: if the data and the prediction have different lengths or
+            the fold factor is not larger than 1.
+    """
+    inside, n_ratio = fold_counts(y_observed, y_predicted, fold=fold)
+    if n_ratio == 0:
+        return float("nan")
+    return 100.0 * inside / n_ratio
 
 
 @dataclass

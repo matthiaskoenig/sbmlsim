@@ -459,7 +459,7 @@ def _figures(report: FitReport, plots_dir: Path, fit_id: str) -> Section | None:
         if key == "goodness_of_fit":
             statement = report.twofold_statement()
             if statement:
-                caption.append(Text(f" {statement[0].upper()}{statement[1:]}."))
+                caption.append(Text(f" {statement}."))
         hint = report.PLOT_HINTS.get(key, "")
         if hint:
             caption.extend([Text(" "), *_markup(hint)])

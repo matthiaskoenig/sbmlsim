@@ -105,8 +105,11 @@ def test_the_sections_of_the_results(fitted_report: Reported) -> None:
     # the goodness of fit states the percentage of the points within twofold
     (gof,) = [f for f in figures if f.label == f"fig:goodness_of_fit:{fit_id}"]
     text = "".join(getattr(span, "text", "") for span in gof.caption)
+    statement = report.twofold_statement()
+    assert statement.startswith("Within twofold of the data are ")
+    assert f" {statement}." in text
     training = report.metrics(report.reference_set).summary(kind=MappingKind.TRAINING)
-    assert f"{training['within_2fold']:.1f}% of the training" in text
+    assert f"training data points ({training['within_2fold']:.1f}%)" in text
 
     doc = fit_document(report, ReportContext(), plots_dir)
     assert doc.title == fit_id
