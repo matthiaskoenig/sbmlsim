@@ -137,6 +137,12 @@ DOCUMENT_FILES: tuple[tuple[str, str], ...] = (
     ("references.bib", "BibTeX"),
 )
 
+#: height in inches of a row of the figures with a row per curve, i.e. of the
+#: costs and of the residuals of the fit mappings
+ROW_HEIGHT: float = 0.17
+#: width in inches of a character of the label of a row, of 8 points
+ROW_LABEL_CHAR: float = 0.065
+
 #: width in inches of the legend next to the panels of a wide plot
 LEGEND_WIDTH: float = 3.0
 
@@ -2499,14 +2505,14 @@ class FitReport:
         self._save_mpl_figure(fig=fig, path=path)
 
     def plot_cost_bar(self, path: Path) -> None:
-        """Plot the cost and the weight of every curve, per set."""
+        """Plot the cost and the weight of every curve, per set.
+
+        A curve is a row, in the order of the fit mappings from the top; the
+        figure grows with the number of curves and the length of their labels,
+        so that every label is readable, e.g. the 164 curves of a large fit.
+        """
         costs = {pset.sid: self._cost_df(pset) for pset in self.parameter_sets}
         costs_ref = costs[self.reference_set.sid]
-
-        fig = Figure(figsize=(8, 6), layout="constrained")
-        ax1, ax2 = fig.subplots(nrows=1, ncols=2)
-        if self.show_titles:
-            fig.suptitle("Curve costs and weights")
 
         n_sets = len(self.parameter_sets)
         height = 0.8 / n_sets
@@ -2515,6 +2521,15 @@ class FitReport:
             f"{costs_ref.experiment[k]}|{costs_ref.mapping[k]}"
             for k in range(len(costs_ref))
         ]
+        fig = Figure(
+            figsize=self._rows_size(ticklabels, width=8.0, panels=5.0),
+            layout="constrained",
+        )
+        ax1, ax2 = fig.subplots(
+            nrows=1, ncols=2, sharey=True, gridspec_kw={"width_ratios": [2, 1]}
+        )
+        if self.show_titles:
+            fig.suptitle("Curve costs and weights")
 
         for ks, pset in enumerate(self.parameter_sets):
             ax1.barh(
@@ -2528,36 +2543,67 @@ class FitReport:
 
         ax1.set_yticks(position + 0.4 - height / 2)
         ax1.set_yticklabels(ticklabels, ha="right", fontdict={"fontsize": 8})
+        # the first fit mapping at the top, as in the table of the mappings
+        ax1.set_ylim(len(ticklabels) - 0.5, -0.5)
         ax1.grid(True, axis="x")
         ax1.set_xlabel("Cost")
         self._set_log_scale(ax1, "x")
         if ax1.get_xscale() == "linear":
             # a cost is not negative, e.g. the zero cost of a perfect fit
             ax1.set_xlim(left=0.0, right=max(float(ax1.dataLim.x1), 1.0) * 1.05)
-        self._set_legend(ax1)
+        # above the panels, a legend inside would cover the bars of the curves
+        handles, labels = ax1.get_legend_handles_labels()
+        fig.legend(handles, labels, loc="outside upper center", ncols=min(n_sets, 3))
 
         # the weights of the curves do not depend on the parameters
         ax2.barh(position, costs_ref.weight_curve, color="tab:blue", alpha=0.8)
-        ax2.set_yticks(position)
-        setp(ax2.get_yticklabels(), visible=False)
+        ax2.tick_params(axis="y", labelleft=False)
         ax2.grid(True, axis="x")
         ax2.set_xlabel("Weight curve: $w_{k}$")
 
         self._save_mpl_figure(fig=fig, path=path)
 
-    def plot_residual_boxplot(self, path: Path) -> None:
-        """Plot the distribution of the squared weighted residuals per curve."""
-        costs_ref = self._cost_df(self.reference_set)
+    @staticmethod
+    def _rows_size(
+        labels: Sequence[str], width: float, panels: float
+    ) -> tuple[float, float]:
+        """Get the size of a figure with a row per curve and its label.
 
-        fig, ax = self._create_mpl_figure(width=6.0, height=6.0)
-        if self.show_titles:
-            ax.set_title("Residual contribution")
+        The figure grows with the number of curves and the length of their
+        labels of 8 points, so that every label is readable, e.g. the 164
+        curves of a large fit.
+
+        Args:
+            labels: the labels of the rows.
+            width: the smallest width in inches, the height is at least 6.
+            panels: the width in inches of the panels next to the labels.
+
+        Returns:
+            The width and the height in inches.
+        """
+        longest = max((len(label) for label in labels), default=0)
+        return (
+            max(width, panels + ROW_LABEL_CHAR * longest),
+            max(6.0, 1.5 + ROW_HEIGHT * len(labels)),
+        )
+
+    def plot_residual_boxplot(self, path: Path) -> None:
+        """Plot the distribution of the squared weighted residuals per curve.
+
+        A curve is a row, in the order of the fit mappings from the top.
+        """
+        costs_ref = self._cost_df(self.reference_set)
 
         n_mappings = len(self.problem.mapping_keys)
         ticklabels = [
             f"{costs_ref.experiment[k]}|{costs_ref.mapping[k]}"
             for k in range(len(costs_ref))
         ]
+        fig, ax = self._create_mpl_figure(
+            *self._rows_size(ticklabels, width=6.0, panels=3.5)
+        )
+        if self.show_titles:
+            ax.set_title("Residual contribution")
 
         n_sets = len(self.parameter_sets)
         for ks, pset in enumerate(self.parameter_sets):
@@ -2578,6 +2624,7 @@ class FitReport:
 
         ax.set_yticks(list(range(1, n_mappings + 1)))
         ax.set_yticklabels(ticklabels, ha="right", fontdict={"fontsize": 8})
+        ax.set_ylim(n_mappings + 0.5, 0.5)
         ax.grid(True, axis="x")
         ax.set_xlabel(
             "Weighted residuals^2\n$(w_{k} \\cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
