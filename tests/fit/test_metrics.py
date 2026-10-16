@@ -1,5 +1,6 @@
 """Test the metrics of a fit."""
 
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -14,6 +15,7 @@ from sbmlsim.fit.metrics import (
     rmse,
     rmse_from_mse,
     sse,
+    within_fold,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
 
@@ -112,6 +114,34 @@ def test_r_squared_length_mismatch() -> None:
         r_squared([1.0, 2.0], [1.0])
 
 
+def test_within_twofold() -> None:
+    """The percentage of the positive points whose prediction is within twofold.
+
+    The ratios 0.4 and 2.1 are outside, 0.5, 1 and 2 inside, the bounds count.
+    A point with a non-positive data value or prediction has no ratio and is
+    left out, so 3 of the 5 points with a ratio are inside.
+    """
+    data = [1.0, 2.0, 4.0, 0.5, 10.0, 3.0, 0.0, -1.0]
+    predicted = [0.4, 1.0, 4.0, 1.0, 21.0, -3.0, 1.0, -2.0]
+    assert within_fold(data, predicted) == pytest.approx(60.0)
+    # the default is twofold, a threefold criterion takes in 0.4 and 2.1
+    assert within_fold(data, predicted, fold=2.0) == pytest.approx(60.0)
+    assert within_fold(data, predicted, fold=3.0) == pytest.approx(100.0)
+    # every point inside, and none
+    assert within_fold([1.0, 2.0], [2.0, 1.0]) == pytest.approx(100.0)
+    assert within_fold([1.0, 2.0], [3.0, 0.5]) == pytest.approx(0.0)
+
+
+def test_within_twofold_without_a_ratio() -> None:
+    """Without a point with positive data and prediction the criterion is NaN."""
+    assert np.isnan(within_fold([0.0, -1.0, 2.0], [1.0, 1.0, 0.0]))
+    assert np.isnan(within_fold([], []))
+    with pytest.raises(ValueError, match="as many predictions"):
+        within_fold([1.0, 2.0], [1.0])
+    with pytest.raises(ValueError, match="fold factor"):
+        within_fold([1.0], [1.0], fold=1.0)
+
+
 def test_metrics_require_initialized_problem(
     op_hctz_pk: OptimizationProblem,
 ) -> None:
@@ -195,6 +225,7 @@ def test_metrics_mappings_and_summary(
         "NRMSE",
         "RMSE_w",
         "R2",
+        "within_2fold",
     ]
     assert len(mappings) == len(op_hctz_iv.mapping_keys)
     assert (mappings.n > 0).all()
@@ -212,6 +243,7 @@ def test_metrics_mappings_and_summary(
         "NRMSE",
         "RMSE_w",
         "R2",
+        "within_2fold",
         "AIC",
         "BIC",
     }
@@ -228,6 +260,20 @@ def test_metrics_mappings_and_summary(
     assert summary["AIC"] == pytest.approx(
         aic_from_mse(mse=summary["MSE"], n=summary["n"], k=summary["k"])
     )
+
+    # the twofold criterion of the same data points and predictions
+    datapoints = metrics.datapoints_df()
+    assert summary["within_2fold"] == pytest.approx(
+        within_fold(datapoints.DV, datapoints.IPRED)
+    )
+    assert 0.0 <= summary["within_2fold"] <= 100.0
+    for _, row in mappings.iterrows():
+        of_mapping = datapoints[
+            (datapoints.experiment == row["experiment"])
+            & (datapoints.mapping == row["mapping"])
+        ]
+        expected = within_fold(of_mapping.DV, of_mapping.IPRED)
+        assert row["within_2fold"] == pytest.approx(expected, nan_ok=True)
 
     # the cost is the objective of the optimization
     assert summary["cost"] == pytest.approx(
@@ -263,3 +309,14 @@ def test_normalized_and_weighted_residuals(
     outliers = metrics.summary(kind=MappingKind.OUTLIER)
     assert outliers["RMSE"] < summary["RMSE"]
     assert outliers["NRMSE"] > 5 * summary["NRMSE"]
+
+
+def test_the_documentation_describes_the_twofold_criterion() -> None:
+    """The metrics part of the documentation of fitting names the criterion."""
+    page = (Path(__file__).parents[2] / "docs" / "fitting.md").read_text(
+        encoding="utf-8"
+    )
+    metrics = page.split("\n## Metrics\n", 1)[1].split("\n## ", 1)[0]
+    assert "within_2fold" in metrics
+    assert "within twofold" in metrics
+    assert "within_fold" in metrics

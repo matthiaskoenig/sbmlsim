@@ -15,6 +15,7 @@ from sbmlsim.fit.identifiability import (
     ProfileSettings,
 )
 from sbmlsim.fit.methods import ReportContext
+from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.report_document import fit_document, results_section
@@ -101,6 +102,11 @@ def test_the_sections_of_the_results(fitted_report: Reported) -> None:
     ]
     for figure in figures:
         assert (plots_dir.parent / figure.path).exists()
+    # the goodness of fit states the percentage of the points within twofold
+    (gof,) = [f for f in figures if f.label == f"fig:goodness_of_fit:{fit_id}"]
+    text = "".join(getattr(span, "text", "") for span in gof.caption)
+    training = report.metrics(report.reference_set).summary(kind=MappingKind.TRAINING)
+    assert f"{training['within_2fold']:.1f}% of the training" in text
 
     doc = fit_document(report, ReportContext(), plots_dir)
     assert doc.title == fit_id
@@ -152,11 +158,17 @@ def test_the_tables(fitted_report: Reported) -> None:
         "NRMSE",
         "RMSE_w",
         "R²",
+        "2-fold [%]",
         "AIC",
         "BIC",
     )
     kinds = [row[0] for row in metrics.rows]
     assert kinds[0] == "training"
+    # the percentage of the data points within twofold, to one decimal
+    within = report.metrics_df()
+    within = within[within.parameter_set == best.sid].set_index("kind")
+    column = metrics.header.index("2-fold [%]")
+    assert metrics.rows[0][column] == f"{within.loc['training', 'within_2fold']:.1f}"
     # the cost is defined on the training data only
     assert all(row[2] == "-" for row in metrics.rows[1:])
     assert metrics.rows[0][2] != "-"

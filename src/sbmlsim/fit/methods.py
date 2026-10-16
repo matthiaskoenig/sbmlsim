@@ -982,6 +982,26 @@ def _metrics(problem: OptimizationProblem, settings: FitSettings) -> Section:
             r"\mathrm{BIC} = n \ln(\mathrm{MSE}) + n_p \ln(n)",
             '"AIC" = n ln("MSE") + 2 n_p, quad "BIC" = n ln("MSE") + n_p ln(n)',
         ),
+        p(
+            "The percentage of the data points whose prediction ",
+            Math(
+                r"f_i = f(x_i, \hat{\vec{p}})",
+                "f_i = f(x_i, hat(arrow(p)))",
+            ),
+            " lies within twofold of the data is taken over the ",
+            Math("n_+", "n_(+)"),
+            " data points with positive data ",
+            Math("y_i > 0", "y_i > 0"),
+            " and a positive prediction ",
+            Math("f_i > 0", "f_i > 0"),
+            "; the others have no ratio and are not counted, and a kind of data "
+            "without such a point has no percentage:",
+        ),
+        Equation(
+            r"P_2 = \frac{100}{n_+} \left|\left\{ i : \frac{1}{2} \le "
+            r"\frac{f_i}{y_i} \le 2 \right\}\right|",
+            "P_2 = 100 / n_(+) abs(\\{ i : 1/2 <= f_i / y_i <= 2 \\})",
+        ),
     ]
     if settings.residual in BASELINE_RESIDUALS:
         blocks.append(
@@ -993,7 +1013,11 @@ def _metrics(problem: OptimizationProblem, settings: FitSettings) -> Section:
     blocks.append(
         p(
             "The goodness of fit plot shows the predictions against the data on "
-            "logarithmic axes. The Bland-Altman plot ",
+            "logarithmic axes, with the lines of twofold ",
+            Math("f = 2y", "f = 2y"),
+            " and ",
+            Math("f = y/2", "f = y/2"),
+            ". The Bland-Altman plot ",
             Cite(("Bland1986",)),
             " shows the ratio of prediction and data as ",
             Math(r"d_i = \log_{10}(f_i / y_i)", "d_i = log_10(f_i / y_i)"),
