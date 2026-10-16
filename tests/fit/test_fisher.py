@@ -217,3 +217,40 @@ def test_the_information_is_json_serializable(
     assert data["pids"] == problem.pids
     assert data["scale"] == fim.scale.name
     assert len(data["matrix"]) == fim.k
+
+
+@pytest.mark.parametrize(
+    ("scale", "values", "errors", "expected"),
+    [
+        # linear: se / |value|
+        (ParameterScaleType.LINEAR, [2.0, 0.5], [0.2, 0.1], [0.1, 0.2]),
+        # natural logarithm: se of ln(p)
+        (ParameterScaleType.LOG, [2.0, 1e-4], [0.2, 0.1], [0.2, 0.1]),
+        # decadic logarithm: ln(10) se of log10(p), whatever the value; the
+        # value 1.15 (log10 0.06) and 1.85e-4 gave 134 % and 2.7 % before
+        (
+            ParameterScaleType.LOG10,
+            [1.15, 1.85e-4],
+            [0.0825, 0.104],
+            [np.log(10) * 0.0825, np.log(10) * 0.104],
+        ),
+    ],
+)
+def test_the_cv_is_the_relative_error_of_the_parameter(
+    scale: ParameterScaleType,
+    values: list[float],
+    errors: list[float],
+    expected: list[float],
+) -> None:
+    """The cv does not depend on the unit or the magnitude of a parameter."""
+    # a diagonal information with sigma2 = 1 has the errors 1/sqrt(diagonal)
+    n, cost = 12, 5.0
+    matrix = np.diag(1 / np.square(errors))
+    information = FisherInformation(
+        "cv", "fit", ["a", "b"], np.array(values), scale, matrix, cost=cost, n=n
+    )
+    np.testing.assert_allclose(information.standard_errors, errors)
+    np.testing.assert_allclose(information.relative_errors, expected)
+    np.testing.assert_allclose(
+        information.summary_df.cv.to_numpy(), 100 * np.asarray(expected)
+    )

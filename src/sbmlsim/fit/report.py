@@ -680,8 +680,10 @@ class FitReport:
             "of the covariance, in the space the optimizer searches."
         ),
         "cv": (
-            "The standard error relative to the value, in percent, in the "
-            "space the optimizer searches."
+            "The standard error relative to the value, in percent: the "
+            "coefficient of variation of the parameter in the units of the "
+            "model (to first order, also for a parameter searched as a "
+            "logarithm)."
         ),
         "ci_lower": "Lower bound of the confidence interval.",
         "ci_upper": "Upper bound of the confidence interval.",

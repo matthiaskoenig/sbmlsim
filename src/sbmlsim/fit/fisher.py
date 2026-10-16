@@ -294,6 +294,30 @@ class FisherInformation:
         return len(set(self.parameter_scales)) > 1
 
     @property
+    def relative_errors(self) -> np.ndarray:
+        """Get the standard error of every parameter relative to its value.
+
+        The coefficient of variation of the parameter in the units of the
+        model, to first order: `se / |value|` for a parameter searched on the
+        linear scale, the standard error of `ln(p)` for one searched as a
+        natural logarithm and `ln(10)` times the standard error of `log10(p)`
+        for a decadic logarithm. It does not depend on the unit of the
+        parameter (the error of a logarithm divided by the logarithm of the
+        value did, and was near infinite for a value near 1).
+        """
+        errors = self.standard_errors
+        relative = np.full(self.k, np.nan)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for i, scale in enumerate(self.parameter_scales):
+                if scale is ParameterScaleType.LOG10:
+                    relative[i] = np.log(10) * errors[i]
+                elif scale is ParameterScaleType.LOG:
+                    relative[i] = errors[i]
+                else:
+                    relative[i] = np.abs(errors[i] / self.values[i])
+        return relative
+
+    @property
     def summary_df(self) -> pd.DataFrame:
         """Get the parameters with their errors and intervals as a table.
 
@@ -303,9 +327,7 @@ class FisherInformation:
         """
         lower, upper = self.confidence_intervals()
         errors = self.standard_errors
-        with np.errstate(divide="ignore", invalid="ignore"):
-            # the error relative to the value, in the scaled space
-            cv = np.abs(errors / self.to_scale(self.values)) * 100.0
+        cv = self.relative_errors * 100.0
         units = self.units or [None] * self.k
         columns: dict[str, Any] = {"parameter": self.pids, "value": self.values}
         if self.has_mixed_scales:
