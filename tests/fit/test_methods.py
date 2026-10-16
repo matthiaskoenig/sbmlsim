@@ -9,7 +9,7 @@ import pytest
 
 from sbmlsim.fit import methods
 from sbmlsim.fit.derived import HookSummary
-from sbmlsim.fit.fisher import FisherInformation
+from sbmlsim.fit.fisher import DEFAULT_STEP, FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, ProfileSettings
 from sbmlsim.fit.methods import (
     ReportContext,
@@ -31,7 +31,7 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.report.document import Document, Section
+from sbmlsim.report.document import Document, Section, p
 from sbmlsim.report.references import (
     bibliography,
     cited_keys,
@@ -115,7 +115,9 @@ def _identifiability(
     )
 
 
-def _fisher(problem: OptimizationProblem) -> FisherInformation:
+def _fisher(
+    problem: OptimizationProblem, step: float = DEFAULT_STEP
+) -> FisherInformation:
     """Get a Fisher information of rank 2 of the three parameters."""
     k = len(problem.pids)
     matrix = np.diag([10.0**-j for j in range(k)])
@@ -129,6 +131,7 @@ def _fisher(problem: OptimizationProblem) -> FisherInformation:
         matrix=matrix,
         cost=1.0,
         n=40,
+        step=step,
     )
 
 
@@ -312,7 +315,7 @@ def test_identifiability(fitted: Fitted) -> None:
     section = _section(
         fitted,
         identifiability=_identifiability(problem),
-        fisher=_fisher(problem),
+        fisher=_fisher(problem, step=5e-4),
     )
     assert _keys(section) == [
         "methods:parameters",
@@ -329,6 +332,13 @@ def test_identifiability(fitted: Fitted) -> None:
     assert "structurally non-identifiable" in html
     assert "Gauss-Newton" in html
     assert "rank 2 of 3" in html
+    assert "reaches the threshold above the optimum but not below it" in html
+    assert "ends at the lower bound or after 50 points" in html
+    typst = TypstRenderer().render(Document("t", (section,)))
+    assert "epsilon = 5 dot 10^(-4)$" in typst
+    # one symbol for the parameters and one for their number
+    assert "theta" not in typst and "n - k" not in typst and "n-k" not in typst
+    assert "2 n_p" in typst and "(2 F) / (n - n_p)" in typst
 
     scan = _html(
         _section(fitted, identifiability=_identifiability(problem, reoptimize=False))
@@ -401,3 +411,33 @@ def test_hybridizations(fitted: Fitted, monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(problem, "hybridizations", [_Hook()])
     html = _html(_section(fitted))
     assert "the hybridizations <code>net</code> (rate: 2 layers)" in html
+
+
+@pytest.mark.parametrize(
+    ("value", "typst"),
+    [
+        (0, "0"),
+        (0.0, "0"),
+        (1e-12, "$10^(-12)$"),
+        (2.5e-7, "$2.5 dot 10^(-7)$"),
+        (-2.5e-7, "$-2.5 dot 10^(-7)$"),
+        (-1e-6, "$-10^(-6)$"),
+        (1e-4, "$10^(-4)$"),
+        (5e-4, "$5 dot 10^(-4)$"),
+        (-5e-4, "$-5 dot 10^(-4)$"),
+        (9.99e-4, "$9.99 dot 10^(-4)$"),
+        (1e-3, "0.001"),
+        (0.05, "0.05"),
+        (-0.5, "-0.5"),
+        (2, "2"),
+        (12345, "12345"),
+        (99999, "99999"),
+        (1e5, "$10^(5)$"),
+        (123456789, "$1.23 dot 10^(8)$"),
+        (1e8, "$10^(8)$"),
+        (-3e6, "$-3 dot 10^(6)$"),
+        (float("inf"), "$oo$"),
+    ],
+)
+def test_numbers_of_every_decade(value: float, typst: str) -> None:
+    assert TypstRenderer().block(p(methods._number(value))) == typst

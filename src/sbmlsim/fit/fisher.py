@@ -69,6 +69,10 @@ class FisherInformation:
         cost: cost of the parameter set.
         n: number of data points of the fit.
         alpha: confidence level of the intervals.
+        rank_tolerance: eigenvalues below this fraction of the largest one are
+            a direction the data does not constrain.
+        step: relative step of the finite differences of the jacobian the
+            matrix was computed with, see `jacobian`.
         units: the unit of every parameter in the order of the matrix, a unit
             of pint with the unit ids of the model resolved, `None` for the
             unit of the model; empty for an information which does not know
@@ -88,6 +92,7 @@ class FisherInformation:
     n: int
     alpha: float = 0.95
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE
+    step: float = DEFAULT_STEP
     units: list[str | None] = field(default_factory=list)
     scales: list[ParameterScaleType] = field(default_factory=list)
     targets: list[str] = field(default_factory=list)
@@ -346,6 +351,8 @@ class FisherInformation:
             n=d["n"],
             alpha=d.get("alpha", 0.95),
             rank_tolerance=d.get("rank_tolerance", DEFAULT_RANK_TOLERANCE),
+            # a record before the step was stored has the default step
+            step=d.get("step", DEFAULT_STEP),
             units=list(d.get("units", [])),
             scales=[ParameterScaleType[name] for name in d.get("scales", [])],
             targets=list(d.get("targets", [])),
@@ -365,6 +372,7 @@ class FisherInformation:
             "n": self.n,
             "alpha": self.alpha,
             "rank_tolerance": self.rank_tolerance,
+            "step": self.step,
             "units": list(self.units),
             "targets": list(self.targets),
         }
@@ -438,6 +446,7 @@ def fisher_information(
         n=int(residuals.size),
         alpha=alpha,
         rank_tolerance=rank_tolerance,
+        step=step,
         # units of pint, a unit id of a model resolved
         units=list(problem.parameter_units.values()),
         scales=list(problem.scales_initialized),
