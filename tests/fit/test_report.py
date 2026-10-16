@@ -360,7 +360,7 @@ def test_the_goodness_of_fit_and_altman_plots(
     wide = {plot["src"]: plot["wide"] for plot in context["result_plots"]}
     assert wide["plots/goodness_of_fit.svg"]
     assert wide["plots/bland_altman.svg"]
-    assert not wide["plots/cost_bar.svg"]
+    assert not wide["plots/residual_boxplot.svg"]
     assert 'class="card wide"' in html
 
 
@@ -804,10 +804,10 @@ def test_the_report_of_the_fisher_information(
     assert "<td>dimensionless</td>" in section or "<td>1/" in section
 
 
-def test_the_report_lists_the_tolerances_of_the_states(
-    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+def test_the_settings_state_the_absolute_tolerance(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The settings section lists the absolute tolerance of every state."""
+    """The settings name the absolute tolerance, the report lists no states."""
     op_hctz_pk.initialize(fit_settings)
     report = FitReport(
         problem=op_hctz_pk,
@@ -815,13 +815,9 @@ def test_the_report_lists_the_tolerances_of_the_states(
         parameter_sets=op_hctz_pk.parameter_set_model(),
         mapping_figures=False,
     )
-    context = report.html_context(tmp_path, "report")
-    rows = context["tolerances"]
-    assert rows
-    assert {"model", "time", "sid", "kind", "volume", "absolute tolerance"} == set(
-        rows[0]
-    )
+    context = report.html_context(Path("nowhere"), "report")
     assert "concentration" in context["settings"]["absolute tolerance"]
+    assert "tolerances" not in context
 
 
 # ---------------------------------------------------------------------------
@@ -1013,3 +1009,51 @@ def test_the_context_of_a_report(tmp_path: Path, fitted) -> None:
     assert "Methods: Pharmacokinetics of HCTZ" in html
     assert "The absorption and the elimination of HCTZ." in html
     assert "Pharmacokinetics of HCTZ" in (out / "report.typ").read_text()
+
+
+def _tabs(html: str) -> tuple[str, str]:
+    """Get the panels of the tabs Report and Fit mappings of a report page."""
+    report = html.index('<div id="report" class="tab-panel')
+    mappings = html.index('<section id="mappings" class="tab-panel')
+    end = html.index("</section>", html.rindex('class="card mapping"'))
+    return html[report:mappings], html[mappings:end]
+
+
+def test_the_report_tab_has_no_absolute_tolerances(report_dir: Path) -> None:
+    """The overview has no table of the tolerances, the methods state them."""
+    html = _html_of(report_dir)
+    report, _ = _tabs(html)
+    assert "Absolute tolerances" not in html
+    assert "reference volume" not in html
+    # the methods and the settings name the absolute tolerance of the fit
+    assert "the absolute tolerance" in report
+    assert "<td>absolute tolerance</td>" in report
+
+
+def test_the_costs_of_the_mappings_are_in_their_tab(report_dir: Path) -> None:
+    """The cost of every mapping and their contribution are in the mappings tab.
+
+    They come before the cards of the mappings, filter with the chips and the
+    search as before, and the report tab and its document have neither.
+    """
+    html = _html_of(report_dir)
+    report, mappings = _tabs(html)
+    for token in [
+        "Cost and weight of the fit mappings",
+        "plots/cost_bar.svg",
+        "Contribution of the fit mappings",
+    ]:
+        assert token not in report, token
+        assert token in mappings, token
+    cards = mappings.index('class="card mapping"')
+    assert mappings.index("plots/cost_bar.svg") < cards
+    assert mappings.index("Contribution of the fit mappings") < cards
+    # the rows of the contribution filter by kind and by the search
+    contribution = mappings[mappings.index("Contribution of the fit mappings") : cards]
+    assert '<table data-filter="row">' in contribution
+    assert '<tr data-kind="training">' in contribution
+    # the other figures of the results stay in the report tab
+    assert "plots/residual_boxplot.svg" in report
+    # no document format refers to the moved figure
+    for name in ["report.typ", "report.tex", "report_standalone.tex"]:
+        assert "cost_bar" not in (report_dir / name).read_text(), name
