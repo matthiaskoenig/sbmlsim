@@ -254,3 +254,30 @@ def test_the_cv_is_the_relative_error_of_the_parameter(
     np.testing.assert_allclose(
         information.summary_df.cv.to_numpy(), 100 * np.asarray(expected)
     )
+
+
+def test_fisher_from_dict_round_trip(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The information read back from its record is the information."""
+    import json
+
+    problem = op_hctz_pk
+    problem.initialize(fit_settings)
+    fisher = fisher_information(problem, fit_settings, problem.parameter_set_model())
+
+    again = FisherInformation.from_dict(json.loads(json.dumps(fisher.to_dict())))
+    assert again.pids == fisher.pids
+    assert again.scale == fisher.scale
+    assert again.parameter_scales == fisher.parameter_scales
+    assert again.units == fisher.units
+    assert again.targets == fisher.targets
+    assert (again.opid, again.sid, again.n, again.alpha, again.cost) == (
+        fisher.opid,
+        fisher.sid,
+        fisher.n,
+        fisher.alpha,
+        fisher.cost,
+    )
+    np.testing.assert_allclose(again.values, fisher.values)
+    np.testing.assert_allclose(again.matrix, fisher.matrix)

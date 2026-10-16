@@ -22,8 +22,11 @@ likelihood calls non-identifiable is a parameter whose cost is flat away from
 the optimum, which is what the profile is for.
 """
 
+from __future__ import annotations
+
 import hashlib
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -342,6 +345,32 @@ class FisherInformation:
             }
         )
         return pd.DataFrame(columns)
+
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> FisherInformation:
+        """Create from a dictionary, the inverse of `to_dict`.
+
+        Args:
+            d: dictionary of `to_dict`, e.g. read from the `fisher.json` of a
+                fit record.
+
+        Returns:
+            The Fisher information with the arrays restored.
+        """
+        return cls(
+            opid=d["opid"],
+            sid=d["sid"],
+            pids=list(d["pids"]),
+            values=np.asarray(d["values"], dtype=float),
+            scale=ParameterScaleType[d["scale"]],
+            matrix=np.asarray(d["matrix"], dtype=float),
+            cost=d["cost"],
+            n=d["n"],
+            alpha=d.get("alpha", 0.95),
+            units=list(d.get("units", [])),
+            scales=[ParameterScaleType[name] for name in d.get("scales", [])],
+            targets=list(d.get("targets", [])),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON serializable values."""

@@ -101,6 +101,7 @@ class FitDefinition:
         hybridizations: the derived changes of the problem, see
             `sbmlsim.fit.derived`, e.g. the hybridizations of its neural
             networks.
+        description: description of the fit problem for the reports of a fit.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -109,6 +110,7 @@ class FitDefinition:
     data_path: Path | Sequence[Path]
     settings: FitSettings = field(default_factory=FitSettings)
     hybridizations: Sequence[DerivedChanges] = ()
+    description: str = ""
 
     def collections(
         self, study_ids: Sequence[str] | None = None

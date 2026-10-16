@@ -833,6 +833,7 @@ class FitParameter:
         mappings: Any = None,
         scale: ParameterScaleType | str | None = None,
         prior: Prior | Mapping[str, Any] | None = None,
+        description: str | None = None,
     ):
         """Initialize FitParameter.
 
@@ -866,6 +867,10 @@ class FitParameter:
             prior: the prior of the parameter or its dictionary, see `Prior`.
                 `None` is the uniform prior over the bounds. The objective of
                 a fit does not use it, `log_prior` evaluates it.
+            description: description of the parameter for the reports of a
+                fit. It is documentation and does not take part in the
+                equality; `None` has the reports use the name of the entity in
+                the model.
 
         Raises:
             ValueError: if the bounds or the start value are inconsistent, if
@@ -925,6 +930,7 @@ class FitParameter:
                 distribution=prior["distribution"], parameters=prior["parameters"]
             )
         self.prior: Prior | None = prior
+        self.description: str | None = description
         if unit is None:
             logger.warning(
                 "No unit provided for FitParameter '%s', assuming model units.",
@@ -1004,6 +1010,7 @@ class FitParameter:
             "target": self.target,
             "scale": None if self.scale is None else self.scale.name,
             "prior": None if self.prior is None else self.prior.to_dict(),
+            "description": self.description,
         }
 
     @staticmethod

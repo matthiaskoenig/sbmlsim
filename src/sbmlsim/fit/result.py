@@ -471,6 +471,7 @@ class OptimizationResult(ObjectJSONEncoder):
                     target=p.target,
                     scale=p.scale,
                     mappings=p.mappings,
+                    description=p.description,
                 )
             )
         return fit_pars
