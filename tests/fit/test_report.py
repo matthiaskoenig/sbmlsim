@@ -357,7 +357,8 @@ def test_the_goodness_of_fit_and_altman_plots(
     assert MappingKind.OUTLIER.value in metrics
     # both figures cover a full row of the report, the other plots do not
     context = report.html_context(results_dir, name="subsets")
-    wide = {plot["src"]: plot["wide"] for plot in context["result_plots"]}
+    plots = context["result_plots"] + context["mapping_plots"]
+    wide = {plot["src"]: plot["wide"] for plot in plots}
     assert wide["plots/goodness_of_fit.svg"]
     assert wide["plots/bland_altman.svg"]
     assert not wide["plots/residual_boxplot.svg"]
@@ -1030,33 +1031,47 @@ def test_the_report_tab_has_no_absolute_tolerances(report_dir: Path) -> None:
     assert "<td>absolute tolerance</td>" in report
 
 
-def test_the_costs_of_the_mappings_are_in_their_tab(report_dir: Path) -> None:
-    """The cost of every mapping and their contribution are in the mappings tab.
+def test_the_figures_and_metrics_of_the_mappings_are_in_their_tab(
+    report_dir: Path,
+) -> None:
+    """The figures and the metrics of every mapping are in the mappings tab.
 
-    They come before the cards of the mappings, filter with the chips and the
-    search as before, and the report tab and its document have neither.
+    The figures of the cost and weight and of the residuals of every mapping,
+    then the table of their metrics, come before the cards of the mappings;
+    the table filters with the chips and the search, and the report tab and
+    its document have neither.
     """
     html = _html_of(report_dir)
     report, mappings = _tabs(html)
+    assert "Contribution of the fit mappings" not in html
     for token in [
-        "Cost and weight of the fit mappings",
+        "Cost, weight and residuals of the fit mappings",
         "plots/cost_bar.svg",
-        "Contribution of the fit mappings",
+        "plots/residual_boxplot.svg",
+        "Metrics of the fit mappings",
     ]:
         assert token not in report, token
         assert token in mappings, token
     cards = mappings.index('class="card mapping"')
-    assert mappings.index("plots/cost_bar.svg") < cards
-    assert mappings.index("Contribution of the fit mappings") < cards
-    # the rows of the contribution filter by kind and by the search
-    contribution = mappings[mappings.index("Contribution of the fit mappings") : cards]
-    assert '<table data-filter="row">' in contribution
-    assert '<tr data-kind="training">' in contribution
-    # the other figures of the results stay in the report tab
-    assert "plots/residual_boxplot.svg" in report
-    # no document format refers to the moved figure
+    assert (
+        mappings.index("plots/cost_bar.svg")
+        < mappings.index("plots/residual_boxplot.svg")
+        < mappings.index("Metrics of the fit mappings")
+        < cards
+    )
+    # the rows of the metrics filter by kind and by the search
+    metrics = mappings[mappings.index("Metrics of the fit mappings") : cards]
+    assert '<table data-filter="row">' in metrics
+    assert '<tr data-kind="training">' in metrics
+    # the figures of the results stay in the report tab
+    for name in ["goodness_of_fit", "bland_altman"]:
+        assert f"plots/{name}.svg" in report, name
+    # no document format refers to the moved figures, every reference resolves
     for name in ["report.typ", "report.tex", "report_standalone.tex"]:
-        assert "cost_bar" not in (report_dir / name).read_text(), name
+        text = (report_dir / name).read_text()
+        assert "cost_bar" not in text and "residual_boxplot" not in text, name
+    for label in re.findall(r'<a href="#([^"]+)">', html):
+        assert f'id="{label}"' in html, label
 
 
 def test_the_figures_of_the_mappings_grow_with_the_mappings(

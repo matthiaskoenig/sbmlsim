@@ -11,8 +11,9 @@
 {#
   Two tabs: "Report" is the report document (methods, results, references)
   followed by the overview, the results and the identifiability of the fit,
-  "Fit mappings" the cost and weight of every fit mapping, their contribution
-  and a card per fit mapping. A tab is a link with `data-tab`, its
+  "Fit mappings" the figures of the cost and weight and of the residuals of
+  every fit mapping, the table of the metrics of every fit mapping and a card
+  per fit mapping. A tab is a link with `data-tab`, its
   panel a `.tab-panel` with `data-panel`; the page opens on the report, or on
   the tab of the element its address names.
 #}
@@ -376,10 +377,10 @@
   <h2>Fit mappings ({{ mappings | length }})</h2>
 
   {% if mapping_plots %}
-  <h3>Cost and weight of the fit mappings</h3>
+  <h3>Cost, weight and residuals of the fit mappings</h3>
   <div class="grid">
     {% for plot in mapping_plots %}
-    <div class="card wide"><figure>
+    <div class="card{% if plot.wide %} wide{% endif %}"><figure>
       <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
       <figcaption>{{ plot.caption }}{% if plot.hint %}<span class="hint" tabindex="0" data-tip="{{ plot.hint }}">?</span>{% endif %}</figcaption>
     </figure></div>
@@ -387,7 +388,7 @@
   </div>
   {% endif %}
 
-  <h3>Contribution of the fit mappings</h3>
+  <h3>Metrics of the fit mappings</h3>
   <div class="card">
     <table data-filter="row">
       <thead><tr>{% for column in mapping_metrics_columns %}
