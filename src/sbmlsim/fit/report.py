@@ -120,6 +120,13 @@ LIMITS_STYLE: dict[str, Any] = {"linestyle": "--", "linewidth": 1.2}
 #: opacity of the filled area between the limits of agreement
 BAND_ALPHA: float = 0.12
 
+#: style of the lines of twofold of the goodness of fit, `f = 2y` and
+#: `f = y/2`, the criterion of `within_2fold`
+TWOFOLD_STYLE: dict[str, Any] = {"linestyle": ":", "linewidth": 1.5, "color": "0.35"}
+
+#: the header of a column of the metrics whose name is not what a table shows
+METRIC_HEADERS: dict[str, str] = {"within_2fold": "2-fold [%]"}
+
 #: the figures which cover a full row of the report, i.e. the goodness of fit
 #: and the Bland-Altman plot with their panel per kind and their metrics
 WIDE_PLOTS: frozenset[str] = frozenset({"goodness_of_fit", "bland_altman"})
@@ -165,6 +172,11 @@ SET_COLORS: tuple[str, ...] = (
     "tab:purple",
     "tab:brown",
 )
+
+
+def _percent(value: Any) -> str:
+    """Format a percentage of the metrics, `-` for one which is not defined."""
+    return _cell(value, ".1f")
 
 
 def _cell(value: Any, spec: str) -> str:
@@ -768,6 +780,12 @@ class FitReport:
             "square of a correlation and is negative when the prediction is "
             "worse than the mean of the data."
         ),
+        "within_2fold": (
+            "Percentage of the data points whose prediction lies within twofold "
+            "of the data, 0.5 <= prediction/data <= 2. Only the data points "
+            "with a positive value and prediction have a ratio and are counted; "
+            "- if no point has one."
+        ),
         "AIC": (
             "Akaike information criterion, n*ln(MSE) + 2*k, up to a constant. "
             "Only differences between models fitted on the same data are "
@@ -811,8 +829,8 @@ class FitReport:
         "waterfall": "Cost of the optimization runs, ordered",
         "goodness_of_fit": (
             "Prediction against the measured data points, per kind of fit "
-            "mapping, with the agreement of the training data and the metrics "
-            "of the panel"
+            "mapping, with the agreement of the training data, the lines of "
+            "twofold and the metrics of the panel"
         ),
         "bland_altman": (
             "Agreement of prediction and measurement as a ratio, per kind of "
@@ -851,10 +869,13 @@ class FitReport:
             "deviation from it is a systematic error of the model. The band is "
             "the agreement of the training data, i.e. the same band the "
             "Bland-Altman plot draws, here as lines parallel to the diagonal. "
+            "The dotted lines are twofold, prediction = 2 x measurement and "
+            "prediction = measurement / 2. "
             "The validation panel shows how the fit describes data it was not "
             "fitted on, the outlier panel the data the fit dropped. The box "
-            "of a panel carries its R², its normalized RMSE and the RMSE of "
-            "the residuals of the cost."
+            "of a panel carries its R², its normalized RMSE, the RMSE of "
+            "the residuals of the cost and the percentage of its points "
+            "within twofold."
         ),
         "bland_altman": (
             "The ratio of prediction and measurement over the geometric mean "
@@ -884,6 +905,62 @@ class FitReport:
         ),
     }
 
+    def twofold_statement(self) -> str:
+        """Get the percentage of the data points within twofold per kind.
+
+        The percentage of `FitMetrics.summary` for every kind the goodness of
+        fit has a panel of, e.g. `85.7% of the training and 70.0% of the
+        validation data points are within twofold`; a kind without a point with
+        a ratio is left out. With several parameter sets the percentages of
+        every set follow its id, e.g. `within twofold: fit 85.7% of the
+        training data points; model 60.0% of the training data points`.
+
+        Returns:
+            The statement, empty if no kind has a point with a ratio.
+        """
+        statements: list[str] = []
+        for pset in self.parameter_sets:
+            metrics = self.metrics(pset)
+            parts = []
+            for kind in self.point_kinds():
+                value = metrics.summary(kind=MappingKind(kind))["within_2fold"]
+                if np.isfinite(value):
+                    parts.append(f"{value:.1f}% of the {kind}")
+            if not parts:
+                continue
+            listed = (
+                parts[0]
+                if len(parts) == 1
+                else ", ".join(parts[:-1]) + " and " + parts[-1]
+            )
+            prefix = f"{pset.sid} " if len(self.parameter_sets) > 1 else ""
+            statements.append(f"{prefix}{listed} data points")
+        if not statements:
+            return ""
+        if len(self.parameter_sets) > 1:
+            return f"within twofold: {'; '.join(statements)}"
+        return f"{statements[0]} are within twofold"
+
+    def plot_caption(self, name: str) -> str:
+        """Get the caption of a figure of the report.
+
+        The caption of `PLOT_CAPTIONS`; the goodness of fit states the
+        percentage of the data points within twofold of every kind as well,
+        see `twofold_statement`.
+
+        Args:
+            name: name of the figure, e.g. `goodness_of_fit`.
+
+        Returns:
+            The caption, without a full stop.
+        """
+        caption = self.PLOT_CAPTIONS.get(name, name)
+        if name == "goodness_of_fit":
+            statement = self.twofold_statement()
+            if statement:
+                caption = f"{caption}; {statement}"
+        return caption
+
     def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, Any]]:
         """Get the plots of the given names which were created.
 
@@ -892,7 +969,7 @@ class FitReport:
         return [
             {
                 "src": f"plots/{name}.{self.image_format}",
-                "caption": self.PLOT_CAPTIONS.get(name, name),
+                "caption": self.plot_caption(name),
                 "hint": self.PLOT_HINTS.get(name, ""),
                 "wide": name in WIDE_PLOTS,
             }
@@ -1021,6 +1098,11 @@ class FitReport:
                         "n": int(row["n"]) if row else "-",
                         "RMSE": _cell(row["RMSE"], ".4g") if row else "-",
                         "R²": _cell(row["R2"], ".4g") if row else "-",
+                        "2-fold": (
+                            f"{_percent(row['within_2fold'])}%"
+                            if row and np.isfinite(row["within_2fold"])
+                            else "-"
+                        ),
                     },
                     "plots": plots,
                 }
@@ -1122,15 +1204,28 @@ class FitReport:
             },
             "data_summary": data_summary,
             "data_total": {"counts": totals, "total": sum(totals)},
-            "hints": dict(self.HINTS),
+            # the hints by column and by the header a table shows
+            "hints": {
+                **self.HINTS,
+                **{
+                    header: self.HINTS[column]
+                    for column, header in METRIC_HEADERS.items()
+                },
+            },
             "metrics_columns": [
-                {"name": column, "hint": self.HINTS.get(column)}
+                {
+                    "name": METRIC_HEADERS.get(column, column),
+                    "hint": self.HINTS.get(column),
+                }
                 for column in metrics.columns
             ],
             # a metric which is not defined, e.g. the cost of the validation
             # data, is `-`
             "metrics": [
-                [_cell(value, ".6g") for value in row.values()]
+                [
+                    _percent(value) if column == "within_2fold" else _cell(value, ".6g")
+                    for column, value in row.items()
+                ]
                 for row in metrics.to_dict(orient="records")
             ],
             "mapping_metrics_columns": [
@@ -1144,8 +1239,17 @@ class FitReport:
                 "NRMSE",
                 "RMSE_w",
                 "R2",
+                METRIC_HEADERS["within_2fold"],
             ],
-            "numeric_columns": ["n", "MSE", "RMSE", "NRMSE", "RMSE_w", "R2"],
+            "numeric_columns": [
+                "n",
+                "MSE",
+                "RMSE",
+                "NRMSE",
+                "RMSE_w",
+                "R2",
+                METRIC_HEADERS["within_2fold"],
+            ],
             "mapping_metrics": [
                 {
                     "parameter_set": row["parameter_set"],
@@ -1158,6 +1262,7 @@ class FitReport:
                     "nrmse": _cell(row["NRMSE"], ".4g"),
                     "rmse_w": _cell(row["RMSE_w"], ".4g"),
                     "r2": _cell(row["R2"], ".4g"),
+                    "within_2fold": _percent(row["within_2fold"]),
                 }
                 for row in mapping_rows
             ],
@@ -1686,8 +1791,21 @@ class FitReport:
 
         A study is not in every panel, e.g. only one study has outliers, so the
         entries are collected over the panels and shown once next to them.
+        The points of the studies come first and the lines, i.e. the band and
+        the lines of twofold, last, also when a study has points only in the
+        last panel, which labels the lines.
         """
-        unique = FitReport._legend_entries(axes)
+        entries = FitReport._legend_entries(axes)
+
+        def is_line(handle: Any) -> bool:
+            return isinstance(handle, Line2D) and handle.get_marker() in (
+                None,
+                "",
+                "None",
+                "none",
+            )
+
+        unique = dict(sorted(entries.items(), key=lambda entry: is_line(entry[1])))
         if unique:
             fig.legend(
                 unique.values(),
@@ -2191,7 +2309,8 @@ class FitReport:
 
         The goodness of fit shows how well the predictions describe the data
         of the kind: `R²`, the scale free `NRMSE` and the `RMSE_w` of the cost
-        of `FitMetrics.summary`; the absolute RMSE is not shown, the data
+        of `FitMetrics.summary` and the percentage of the points within
+        twofold, `within_2fold`; the absolute RMSE is not shown, the data
         spans orders of magnitude and it only reads the largest curves. The
         Bland-Altman plot shows the agreement of the
         points of the panel itself: the bias and the SD of `log10(f(x)/y)` as
@@ -2211,10 +2330,12 @@ class FitReport:
             prefix = f"{pset.sid}: " if len(self.parameter_sets) > 1 else ""
             if plot == "goodness_of_fit":
                 summary = self.metrics(pset).summary(kind=MappingKind(kind))
+                within = summary["within_2fold"]
                 lines.append(
                     f"{prefix}R² = {summary['R2']:.3f}, "
                     f"NRMSE = {summary['NRMSE']:.3g}, "
-                    f"RMSE$_w$ = {summary['RMSE_w']:.3g}"
+                    f"RMSE$_w$ = {summary['RMSE_w']:.3g}, "
+                    f"2-fold = {f'{within:.1f}%' if np.isfinite(within) else '-'}"
                 )
             elif plot == "bland_altman":
                 dp = self._of_kind(self.points(pset), kind)
@@ -2260,6 +2381,10 @@ class FitReport:
         lines parallel to the identity: a point inside the band is a prediction
         the fit agrees to. It is the same band the Bland-Altman plot draws, in
         the same styles, so the two figures are read the same way.
+
+        The dotted lines are twofold, `f = 2y` and `f = y/2`: the percentage
+        of the points between them is `within_2fold` of the metrics, which the
+        box of a panel and the caption state.
         """
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
         fig, axes, kinds = self._panels()
@@ -2307,6 +2432,13 @@ class FitReport:
                 label=self._band_labels(self.reference_set)[0] if is_last else None,
                 **IDENTITY_STYLE,
             )
+            for factor in (2.0, 0.5):
+                ax.plot(
+                    edge,
+                    edge * factor,
+                    label="2-fold" if is_last and factor > 1 else None,
+                    **TWOFOLD_STYLE,
+                )
 
             for pset in self.parameter_sets:
                 dp = self._of_kind(points[pset.sid], kind)

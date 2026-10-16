@@ -222,6 +222,25 @@ def test_parameters_and_data(fitted: Fitted) -> None:
     assert "validation data" in html and "outlier" in html
 
 
+def test_the_twofold_criterion(fitted: Fitted) -> None:
+    """The methods state the percentage of the points within twofold.
+
+    Only the data points with a positive value and prediction have a ratio,
+    which is what the metric counts, and the goodness of fit plot draws the
+    lines of twofold.
+    """
+    section = _section(fitted)
+    html = _html(section)
+    assert "lies within twofold of the data" in html
+    assert "positive data" in html
+    assert "the others have no ratio" in html
+    assert "lines of twofold" in html
+    typst = TypstRenderer().render(Document("t", (section,)))
+    assert "P_2 = 100 / n_(+)" in typst
+    latex = LaTeXRenderer().render(Document("t", (section,)))
+    assert r"P_2 = \frac{100}{n_+}" in latex
+
+
 def test_a_kind_without_mappings_is_not_described(
     fitted: Fitted, monkeypatch: pytest.MonkeyPatch
 ) -> None:

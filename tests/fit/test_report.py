@@ -301,6 +301,27 @@ def test_the_limits_of_agreement_are_the_training_data(
     assert 1.96 * float(np.std(all_difference, ddof=1)) > half
 
 
+def test_the_legend_lists_the_studies_before_the_lines() -> None:
+    """The legend of the panels lists the points first and the lines last.
+
+    The band and the lines of twofold are labelled on the last panel, and a
+    study whose points are only in that panel, e.g. a study with validation
+    data alone, is still listed with the other studies and not after them.
+    """
+    from matplotlib.figure import Figure
+
+    fig = Figure()
+    first, last = fig.subplots(nrows=1, ncols=2)
+    first.plot([1.0], [1.0], marker="o", linestyle="none", label="StudyA")
+    last.plot([1.0, 2.0], [1.0, 2.0], linestyle="-.", label="bias 1.00x")
+    last.plot([1.0, 2.0], [2.0, 4.0], linestyle=":", label="2-fold")
+    last.plot([1.0], [1.0], marker="o", linestyle="none", label="StudyB")
+    FitReport._set_figure_legend(fig, [first, last])
+    (legend,) = fig.legends
+    labels = [text.get_text() for text in legend.get_texts()]
+    assert labels == ["StudyA", "StudyB", "bias 1.00x", "2-fold"]
+
+
 def test_both_figures_draw_the_same_band(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
@@ -397,6 +418,63 @@ def test_the_key_metrics_of_the_panels(
 
     with pytest.raises(ValueError, match="Unknown plot"):
         report.panel_metrics(kind, "other")
+
+
+def test_the_twofold_criterion_of_a_report(fitted_report) -> None:
+    """The percentage of the points within twofold is a metric of the report.
+
+    It is a column of the metrics per kind and per mapping, of their TSV files
+    and of their tables, and the goodness of fit states it in the box of a
+    panel and in its caption.
+    """
+    report, plots_dir = fitted_report
+    results_dir = plots_dir.parent
+    metrics = report.metrics_df()
+    mappings = report.metrics_mappings_df()
+    assert "within_2fold" in metrics.columns
+    assert "within_2fold" in mappings.columns
+    assert list(metrics.columns).index("within_2fold") == (
+        list(metrics.columns).index("R2") + 1
+    )
+    for name in ["metrics.tsv", "metrics_mappings.tsv"]:
+        header = (results_dir / name).read_text(encoding="utf-8").splitlines()[0]
+        assert "within_2fold" in header.split("\t")
+
+    pset = report.reference_set
+    training = report.metrics(pset).summary(kind=MappingKind.TRAINING)
+    percent = f"{training['within_2fold']:.1f}%"
+    box = report.panel_metrics(MappingKind.TRAINING.value, "goodness_of_fit")
+    assert f"2-fold = {percent}" in box
+
+    caption = report.plot_caption("goodness_of_fit")
+    assert caption.startswith(report.PLOT_CAPTIONS["goodness_of_fit"])
+    assert f"{percent} of the training" in caption
+    if MappingKind.VALIDATION.value in report.point_kinds():
+        validation = report.metrics(pset).summary(kind=MappingKind.VALIDATION)
+        assert f"{validation['within_2fold']:.1f}% of the validation" in caption
+    assert "within twofold" in caption
+    # the other figures keep their caption
+    assert report.plot_caption("waterfall") == report.PLOT_CAPTIONS["waterfall"]
+
+    context = report.html_context(results_dir, name="twofold")
+    names = [column["name"] for column in context["metrics_columns"]]
+    assert "2-fold [%]" in names
+    rows = {row[names.index("kind")]: row for row in context["metrics"]}
+    assert rows["training"][names.index("2-fold [%]")] == f"{percent[:-1]}"
+    assert "2-fold [%]" in context["mapping_metrics_columns"]
+    assert "2-fold [%]" in context["numeric_columns"]
+    assert context["hints"]["2-fold [%]"] == report.HINTS["within_2fold"]
+    assert all("within_2fold" in row for row in context["mapping_metrics"])
+    (plot,) = [
+        p
+        for p in context["result_plots"]
+        if p["src"].endswith(f"goodness_of_fit.{report.image_format}")
+    ]
+    assert plot["caption"] == caption
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert "2-fold [%]" in html
+    assert f"{percent} of the training" in html
 
 
 def test_the_key_metrics_of_several_sets(
@@ -708,7 +786,7 @@ def test_html_context(
     # every mapping carries its kind and its metrics
     for mapping in context["mappings"]:
         assert mapping["kind"] in {kind.value for kind in MappingKind}
-        assert set(mapping["metrics"]) == {"n", "RMSE", "R²"}
+        assert set(mapping["metrics"]) == {"n", "RMSE", "R²", "2-fold"}
 
 
 def test_html_report_is_well_formed(

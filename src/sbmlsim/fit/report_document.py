@@ -408,6 +408,7 @@ METRICS: tuple[tuple[str, str], ...] = (
     ("NRMSE", "NRMSE"),
     ("RMSE_w", "RMSE_w"),
     ("R2", "R²"),
+    ("within_2fold", "2-fold [%]"),
     ("AIC", "AIC"),
     ("BIC", "BIC"),
 )
@@ -426,13 +427,18 @@ def _metrics(report: FitReport, best: ParameterSet, fit_id: str) -> Section:
             elif column in ("AIC", "BIC") and math.isfinite(float(row[column])):
                 # only their differences are read, to one decimal
                 cells.append(f"{float(row[column]):.1f}")
+            elif column == "within_2fold" and math.isfinite(float(row[column])):
+                # a percentage, to one decimal
+                cells.append(f"{float(row[column]):.1f}")
             else:
                 cells.append(_g(row[column]))
         rows.append(tuple(cells))
     table = Table(
         caption=_caption(
             f"Goodness of fit of the fit {fit_id} per kind of data, the parameter "
-            f"set {best.sid}. The cost is defined on the training data only."
+            f"set {best.sid}. The cost is defined on the training data only, "
+            "2-fold is the percentage of the data points with a positive value "
+            "and prediction whose prediction is within twofold of the data."
         ),
         header=("Kind", *(header for _, header in METRICS)),
         rows=tuple(rows),
@@ -450,6 +456,10 @@ def _figures(report: FitReport, plots_dir: Path, fit_id: str) -> Section | None:
         if not (Path(plots_dir) / name).exists():
             continue
         caption: list[Inline] = [Text(f"{report.PLOT_CAPTIONS[key]}, fit {fit_id}.")]
+        if key == "goodness_of_fit":
+            statement = report.twofold_statement()
+            if statement:
+                caption.append(Text(f" {statement[0].upper()}{statement[1:]}."))
         hint = report.PLOT_HINTS.get(key, "")
         if hint:
             caption.extend([Text(" "), *_markup(hint)])
