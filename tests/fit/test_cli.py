@@ -1,6 +1,9 @@
 """Test the general fit runner and its command line tools."""
 
 import dataclasses
+import json
+import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -186,6 +189,79 @@ def test_report_cli(
     )
     assert (results_dir / "index.html").exists()
     assert (results_dir / "metrics.tsv").exists()
+    # without the records of a fit next to the parameters the report has none
+    for name in ["optimization_result.json", "identifiability.json", "fisher.json"]:
+        assert not (results_dir / name).exists(), name
+
+
+def test_report_cli_reads_the_records_of_the_fit(
+    tmp_path: Path, report_dir: Path
+) -> None:
+    """A report of the parameters of a fit carries its records.
+
+    The result of the optimization, the profiles and the Fisher information
+    next to the `parameters.json` give the report its methods, its provenance
+    and its identifiability.
+    """
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    results_dir = report_cli(
+        FIT_DEFINITIONS,
+        args=[
+            "--no-mapping-figures",
+            str(report_dir / "parameters.json"),
+            "--subset=PK",
+            "--name=record",
+            f"--output_dir={tmp_path}",
+        ],
+    )
+    for name in ["optimization_result.json", "identifiability.json", "fisher.json"]:
+        assert (results_dir / name).exists(), name
+    assert (results_dir / "plots" / "traces.svg").exists()
+    assert (results_dir / "plots" / "profiles.svg").exists()
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    # the provenance of the fit, its seed and its identifiability
+    assert "1234" in html
+    assert "not recorded" not in html
+    assert "Profile likelihood" in html and "Fisher information" in html
+    assert (results_dir / "report.pdf").exists()
+
+
+def test_report_cli_describes_the_fit_with_its_stored_settings(
+    tmp_path: Path, report_dir: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A report of a record has the settings the fit ran with, not the definition.
+
+    The definition may have changed since the fit ran: the methods describe
+    the settings of the record and a warning names the difference.
+    """
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    records = tmp_path / "records"
+    records.mkdir()
+    shutil.copy(report_dir / "parameters.json", records)
+    stored = json.loads((report_dir / "optimization_result.json").read_text())
+    assert stored["settings"]["loss_function"] == "LINEAR"
+    stored["settings"]["loss_function"] = "SOFT_L1"
+    (records / "optimization_result.json").write_text(json.dumps(stored))
+
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.cli"):
+        results_dir = report_cli(
+            FIT_DEFINITIONS,
+            args=[
+                "--no-mapping-figures",
+                str(records / "parameters.json"),
+                "--subset=PK",
+                "--name=stored",
+                f"--output_dir={tmp_path}",
+            ],
+        )
+    typ = (results_dir / "report.typ").read_text(encoding="utf-8")
+    assert "soft L1 loss" in typ
+    assert "The loss function is linear" not in typ
+    assert "settings of the record" in caplog.text
+    assert "loss_function" in caplog.text
 
 
 @pytest.mark.parametrize("f_cli", [fit_cli, report_cli])

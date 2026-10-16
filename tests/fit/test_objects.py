@@ -104,3 +104,17 @@ def test_a_problem_is_serialized(op_hctz_iv: OptimizationProblem) -> None:
     assert d["mapping_collections"][0]["experiment_class"] == (
         "examples.hctz_fitting.experiments.studies.beermann1976.Beermann1976"
     )
+
+
+def test_parameter_description_round_trip() -> None:
+    p = FitParameter(
+        pid="k", lower_bound=0.1, upper_bound=10, description="Absorption rate"
+    )
+    assert FitParameter(**p.to_dict()).description == "Absorption rate"
+    # description is documentation, not part of the equality
+    assert FitParameter(pid="k", lower_bound=0.1, upper_bound=10) == p
+    plain = FitParameter(pid="k", lower_bound=0.1, upper_bound=10)
+    assert plain.description is None
+    assert FitParameter(**plain.to_dict()).description is None
+    old = {k: v for k, v in plain.to_dict().items() if k != "description"}
+    assert FitParameter(**old) == plain

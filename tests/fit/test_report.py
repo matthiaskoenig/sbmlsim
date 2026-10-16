@@ -6,19 +6,28 @@ of the problem, the settings and one or more parameter sets.
 
 import dataclasses
 import re
+import shutil
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+from PIL import Image
+from pypdf import PdfReader
 
 from examples.hctz_fitting.experiments.studies import Weir1998
+from sbmlsim import __version__
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
+from sbmlsim.fit.methods import ReportContext
+from sbmlsim.fit.metrics import fold_counts
 from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.report_document import fit_document
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 
@@ -296,6 +305,46 @@ def test_the_limits_of_agreement_are_the_training_data(
     assert 1.96 * float(np.std(all_difference, ddof=1)) > half
 
 
+def test_the_title_of_a_panel_counts_the_points_drawn() -> None:
+    """A panel of the data points states how many of its points it draws.
+
+    The axes of both figures are logarithmic, so a point with a value or a
+    prediction which is zero or negative is not drawn; the title then states
+    the points drawn of the points of the kind, the denominator of the
+    percentage within twofold.
+    """
+    positive = pd.DataFrame(
+        {"kind": ["training"] * 3, "DV": [1.0, 2.0, 3.0], "IPRED": [1.0, 2.0, 3.0]}
+    )
+    assert FitReport._panel_title("training", [positive]) == "training (n=3)"
+    with_zero = positive.assign(IPRED=[1.0, 0.0, -3.0])
+    assert FitReport._panel_title("training", [with_zero]) == "training (n=1 of 3)"
+    # of several sets the one with the most points drawn, of the reference set
+    assert FitReport._panel_title("training", [with_zero, positive]) == "training (n=3)"
+    assert FitReport._panel_title("validation", [positive]) == "validation (n=0)"
+
+
+def test_the_legend_lists_the_studies_before_the_lines() -> None:
+    """The legend of the panels lists the points first and the lines last.
+
+    The band and the lines of twofold are labelled on the last panel, and a
+    study whose points are only in that panel, e.g. a study with validation
+    data alone, is still listed with the other studies and not after them.
+    """
+    from matplotlib.figure import Figure
+
+    fig = Figure()
+    first, last = fig.subplots(nrows=1, ncols=2)
+    first.plot([1.0], [1.0], marker="o", linestyle="none", label="StudyA")
+    last.plot([1.0, 2.0], [1.0, 2.0], linestyle="-.", label="bias 1.00x")
+    last.plot([1.0, 2.0], [2.0, 4.0], linestyle=":", label="2-fold")
+    last.plot([1.0], [1.0], marker="o", linestyle="none", label="StudyB")
+    FitReport._set_figure_legend(fig, [first, last])
+    (legend,) = fig.legends
+    labels = [text.get_text() for text in legend.get_texts()]
+    assert labels == ["StudyA", "StudyB", "bias 1.00x", "2-fold"]
+
+
 def test_both_figures_draw_the_same_band(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
@@ -352,10 +401,11 @@ def test_the_goodness_of_fit_and_altman_plots(
     assert MappingKind.OUTLIER.value in metrics
     # both figures cover a full row of the report, the other plots do not
     context = report.html_context(results_dir, name="subsets")
-    wide = {plot["src"]: plot["wide"] for plot in context["result_plots"]}
+    plots = context["result_plots"] + context["mapping_plots"]
+    wide = {plot["src"]: plot["wide"] for plot in plots}
     assert wide["plots/goodness_of_fit.svg"]
     assert wide["plots/bland_altman.svg"]
-    assert not wide["plots/cost_bar.svg"]
+    assert not wide["plots/residual_boxplot.svg"]
     assert 'class="card wide"' in html
 
 
@@ -391,6 +441,72 @@ def test_the_key_metrics_of_the_panels(
 
     with pytest.raises(ValueError, match="Unknown plot"):
         report.panel_metrics(kind, "other")
+
+
+def test_the_twofold_criterion_of_a_report(fitted_report) -> None:
+    """The percentage of the points within twofold is a metric of the report.
+
+    It is a column of the metrics per kind and per mapping, of their TSV files
+    and of their tables, and the goodness of fit states it in the box of a
+    panel and in its caption.
+    """
+    report, plots_dir = fitted_report
+    results_dir = plots_dir.parent
+    metrics = report.metrics_df()
+    mappings = report.metrics_mappings_df()
+    assert "within_2fold" in metrics.columns
+    assert "within_2fold" in mappings.columns
+    assert list(metrics.columns).index("within_2fold") == (
+        list(metrics.columns).index("R2") + 1
+    )
+    for name in ["metrics.tsv", "metrics_mappings.tsv"]:
+        header = (results_dir / name).read_text(encoding="utf-8").splitlines()[0]
+        assert "within_2fold" in header.split("\t")
+
+    pset = report.reference_set
+    training = report.metrics(pset).summary(kind=MappingKind.TRAINING)
+    percent = f"{training['within_2fold']:.1f}%"
+    box = report.panel_metrics(MappingKind.TRAINING.value, "goodness_of_fit")
+    assert f"2-fold = {percent}" in box
+
+    # the statement names the points it counts, the points with a ratio
+    statement = report.twofold_statement()
+    assert statement.startswith("Within twofold of the data are ")
+    points = report.points(pset)
+    for kind in report.point_kinds():
+        of_kind = points[points.kind == kind]
+        inside, n_ratio = fold_counts(of_kind.DV, of_kind.IPRED)
+        value = report.metrics(pset).summary(kind=MappingKind(kind))["within_2fold"]
+        assert value == pytest.approx(100.0 * inside / n_ratio)
+        assert (
+            f"{inside} of the {n_ratio} {kind} data points ({value:.1f}%)" in statement
+        )
+    assert "with a positive value and prediction" in statement
+
+    caption = report.plot_caption("goodness_of_fit")
+    assert caption == f"{report.PLOT_CAPTIONS['goodness_of_fit']}. {statement}"
+    # the other figures keep their caption
+    assert report.plot_caption("waterfall") == report.PLOT_CAPTIONS["waterfall"]
+
+    context = report.html_context(results_dir, name="twofold")
+    names = [column["name"] for column in context["metrics_columns"]]
+    assert "2-fold [%]" in names
+    rows = {row[names.index("kind")]: row for row in context["metrics"]}
+    assert rows["training"][names.index("2-fold [%]")] == f"{percent[:-1]}"
+    assert "2-fold [%]" in context["mapping_metrics_columns"]
+    assert "2-fold [%]" in context["numeric_columns"]
+    assert context["hints"]["2-fold [%]"] == report.HINTS["within_2fold"]
+    assert all("within_2fold" in row for row in context["mapping_metrics"])
+    (plot,) = [
+        p
+        for p in context["result_plots"]
+        if p["src"].endswith(f"goodness_of_fit.{report.image_format}")
+    ]
+    assert plot["caption"] == caption
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert "2-fold [%]" in html
+    assert statement in html
 
 
 def test_the_key_metrics_of_several_sets(
@@ -702,7 +818,7 @@ def test_html_context(
     # every mapping carries its kind and its metrics
     for mapping in context["mappings"]:
         assert mapping["kind"] in {kind.value for kind in MappingKind}
-        assert set(mapping["metrics"]) == {"n", "RMSE", "R²"}
+        assert set(mapping["metrics"]) == {"n", "RMSE", "R²", "2-fold"}
 
 
 def test_html_report_is_well_formed(
@@ -799,10 +915,10 @@ def test_the_report_of_the_fisher_information(
     assert "<td>dimensionless</td>" in section or "<td>1/" in section
 
 
-def test_the_report_lists_the_tolerances_of_the_states(
-    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+def test_the_settings_state_the_absolute_tolerance(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """The settings section lists the absolute tolerance of every state."""
+    """The settings name the absolute tolerance, the report lists no states."""
     op_hctz_pk.initialize(fit_settings)
     report = FitReport(
         problem=op_hctz_pk,
@@ -810,10 +926,325 @@ def test_the_report_lists_the_tolerances_of_the_states(
         parameter_sets=op_hctz_pk.parameter_set_model(),
         mapping_figures=False,
     )
-    context = report.html_context(tmp_path, "report")
-    rows = context["tolerances"]
-    assert rows
-    assert {"model", "time", "sid", "kind", "volume", "absolute tolerance"} == set(
-        rows[0]
-    )
+    context = report.html_context(Path("nowhere"), "report")
     assert "concentration" in context["settings"]["absolute tolerance"]
+    assert "tolerances" not in context
+
+
+# ---------------------------------------------------------------------------
+# the report document: the two tabs of the HTML, Typst, PDF and LaTeX
+# ---------------------------------------------------------------------------
+#: the figures of the report document, which LaTeX includes as PNG
+DOCUMENT_FIGURES = [
+    "traces",
+    "waterfall",
+    "goodness_of_fit",
+    "bland_altman",
+    "profiles",
+]
+
+
+def test_report_writes_all_formats(report_dir: Path) -> None:
+    for name in [
+        "index.html",
+        "report.typ",
+        "report.pdf",
+        "report.tex",
+        "references.bib",
+    ]:
+        assert (report_dir / name).exists(), name
+    html = (report_dir / "index.html").read_text()
+    assert 'data-tab="report"' in html and 'data-tab="mappings"' in html
+    assert "<math" in html
+
+
+def test_pdf_failure_keeps_the_fit(monkeypatch, tmp_path, fitted) -> None:
+    import sbmlsim.fit.report as report_module
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("typst could not compile 'report.typ': boom")
+
+    monkeypatch.setattr(report_module, "compile_pdf", broken)
+    problem, result = fitted
+    out = FitReport.from_optimization_result(problem=problem, opt_result=result).create(
+        output_dir=tmp_path
+    )
+    assert (out / "report.typ").exists() and not (out / "report.pdf").exists()
+    assert "PDF could not be created" in (out / "index.html").read_text()
+
+
+def test_a_failed_pdf_is_stated_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fitted_report
+) -> None:
+    """The report states why the PDF failed, every other output is written."""
+    import sbmlsim.fit.report as report_module
+
+    def broken(*args: object, **kwargs: object) -> Path:
+        raise RuntimeError("typst could not compile 'report.typ': boom")
+
+    monkeypatch.setattr(report_module, "compile_pdf", broken)
+    report, _ = fitted_report
+    out = report.create(output_dir=tmp_path, name="failed")
+    html = _html_of(out)
+    assert "typst could not compile &#39;report.typ&#39;: boom" in html
+    # the page does not link the PDF which is not there
+    assert 'href="report.pdf"' not in html
+    for name in [
+        "report.typ",
+        "report.tex",
+        "report_standalone.tex",
+        "references.bib",
+        "references.csl",
+        "parameters.json",
+        "optimization_result.json",
+    ]:
+        assert (out / name).exists(), name
+
+
+def test_the_report_tab_holds_the_document(report_dir: Path, fitted) -> None:
+    """The page opens on the report: the document, then the overview."""
+    html = _html_of(report_dir)
+    nav = html[html.index('<nav class="sections">') : html.index("</nav>")]
+    assert nav.index('data-tab="report"') < nav.index('data-tab="mappings"')
+    assert "Overview" not in nav
+
+    # the report tab is the one shown, the document comes first in it
+    report = html.index('id="report"')
+    mappings = html.index('id="mappings"')
+    assert '<div id="report" class="tab-panel active"' in html
+    assert report < html.index("<h2>Methods</h2>") < html.index('id="overview"')
+    assert html.index('id="overview"') < html.index('id="results"') < mappings
+    assert html.index('id="identifiability"') < mappings
+    assert html.index('<section id="references">') < html.index('id="overview"')
+    # the mappings tab holds every fit mapping and nothing of the report
+    assert html.index('class="card mapping"') > mappings
+    problem, _ = fitted
+    assert html.count('class="card mapping"') == len(problem.mapping_keys)
+    assert "PDF could not be created" not in html
+
+    # the document numbers its parts and links its references in the page
+    assert "Table 1." in html and "Figure 1." in html
+    assert '<span class="eqno">(1)</span>' in html
+    for label in re.findall(r'<a href="#([^"]+)">', html):
+        assert f'id="{label}"' in html, label
+    # its figures open full size as the others do, the downloads are linked
+    assert '<figure id="fig:traces' in html
+    for name in ["report.pdf", "report.typ", "report.tex", "references.bib"]:
+        assert f'href="{name}"' in html, name
+
+
+def test_the_document_survives_the_escaping_of_the_page(report_dir: Path) -> None:
+    """The MathML and the tables of the document are markup, not text."""
+    html = _html_of(report_dir)
+    assert "&lt;math" not in html and "&lt;table" not in html
+    assert '<math display="block">' in html
+    # the namespace of MathML is the one of HTML, the page names no URL
+    assert "http" not in html.split("<main>")[1]
+
+
+def _pdf_text(path: Path) -> str:
+    """Text of a PDF, its lines joined by spaces."""
+    text = " ".join(page.extract_text() for page in PdfReader(path).pages)
+    return " ".join(text.split())
+
+
+def test_the_pdf_is_the_report(report_dir: Path) -> None:
+    """The PDF has the methods, the results and the versioned references."""
+    text = _pdf_text(report_dir / "report.pdf")
+    for token in ["Methods", "Results", "Bibliography", "Bland"]:
+        assert token in text, token
+    # the version of the provenance of the fit, here the installed sbmlsim
+    assert f"Version {__version__}." in text
+
+
+def test_latex_includes_the_png_figures(report_dir: Path) -> None:
+    """LaTeX includes a PNG of every figure, at 300 dpi."""
+    plots_dir = report_dir / "plots"
+    for key in DOCUMENT_FIGURES:
+        assert (plots_dir / f"{key}.svg").exists(), key
+        with Image.open(plots_dir / f"{key}.png") as image:
+            assert image.format == "PNG"
+            assert image.info["dpi"] == pytest.approx((300, 300), abs=0.1)
+    # the figures of the mappings and the other figures are not copied
+    pngs = {path.stem for path in plots_dir.glob("*.png")}
+    assert pngs == set(DOCUMENT_FIGURES)
+
+    tex = (report_dir / "report.tex").read_text()
+    included = re.findall(r"\\includegraphics\[[^]]*\]\{([^}]+)\}", tex)
+    assert len(included) == len(DOCUMENT_FIGURES)
+    for path in included:
+        assert path.endswith(".png") and (report_dir / path).exists(), path
+    assert "\\bibliography{references}" in tex
+    standalone = (report_dir / "report_standalone.tex").read_text()
+    assert standalone.startswith("\\documentclass")
+    assert tex.strip() in standalone
+    bib = (report_dir / "references.bib").read_text()
+    assert f"note = {{Version {__version__}}}" in bib
+
+
+def _non_ascii(text: str) -> set[str]:
+    """Characters of a LaTeX source which pdflatex cannot typeset.
+
+    ASCII and the latin letters of T1 with utf8 input (umlauts of the names of
+    authors) are typeset, everything else is not.
+    """
+    return {c for c in text if ord(c) > 127 and not (c.isalpha() and ord(c) < 0x180)}
+
+
+def test_the_latex_has_no_unicode_symbols(report_dir: Path) -> None:
+    """The LaTeX of a report has its symbols as commands, pdflatex reads it."""
+    for name in ["report.tex", "report_standalone.tex"]:
+        tex = (report_dir / name).read_text()
+        assert not _non_ascii(tex), (name, _non_ascii(tex))
+    standalone = (report_dir / "report_standalone.tex").read_text()
+    assert "\\usepackage[T1]{fontenc}" in standalone
+    assert "\\usepackage[utf8]{inputenc}" in standalone
+    tex = (report_dir / "report.tex").read_text()
+    assert "\\chi" in tex and "\\alpha" in tex
+
+
+@pytest.mark.skipif(
+    shutil.which("pdflatex") is None or shutil.which("bibtex") is None,
+    reason="pdflatex and bibtex are not installed",
+)
+def test_the_standalone_latex_compiles(report_dir: Path, tmp_path: Path) -> None:
+    """The standalone LaTeX compiles with pdflatex and bibtex."""
+    work = tmp_path / "latex"
+    shutil.copytree(report_dir, work)
+
+    def run(*command: str) -> None:
+        done = subprocess.run(
+            command, cwd=work, capture_output=True, text=True, check=False
+        )
+        assert done.returncode == 0, done.stdout[-3000:]
+
+    run("pdflatex", "-interaction=nonstopmode", "-halt-on-error", "report_standalone")
+    run("bibtex", "report_standalone")
+    for _ in range(2):
+        run(
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "report_standalone",
+        )
+    assert (work / "report_standalone.pdf").read_bytes().startswith(b"%PDF")
+
+
+def test_a_png_report_has_no_copies(tmp_path: Path, fitted) -> None:
+    """The figures of a PNG report are the figures LaTeX includes."""
+    problem, result = fitted
+    report = FitReport.from_optimization_result(
+        problem=problem, opt_result=result, image_format="png", mapping_figures=False
+    )
+    out = report.create(output_dir=tmp_path)
+    plots = sorted(path.name for path in (out / "plots").iterdir())
+    assert "traces.png" in plots
+    assert not [name for name in plots if name.endswith(".svg")]
+    assert "plots/traces.png" in (out / "report.tex").read_text()
+
+
+def test_the_document_of_a_report(fitted_report) -> None:
+    """The document of a report is its methods and its results."""
+    report, plots_dir = fitted_report
+    document = report.document(plots_dir)
+    assert document == fit_document(report, ReportContext(), plots_dir)
+    assert document.title == report.opt_result.sid
+    assert [block.key for block in document.blocks] == ["methods", "results"]
+
+
+def test_the_context_of_a_report(tmp_path: Path, fitted) -> None:
+    """The context gives the report its title and the first sentence."""
+    problem, result = fitted
+    context = ReportContext(
+        title="Pharmacokinetics of HCTZ",
+        description="The absorption and the elimination of HCTZ.",
+    )
+    report = FitReport.from_optimization_result(
+        problem=problem, opt_result=result, context=context, mapping_figures=False
+    )
+    assert report.context is context
+    out = report.create(output_dir=tmp_path)
+    html = _html_of(out)
+    assert "Methods: Pharmacokinetics of HCTZ" in html
+    assert "The absorption and the elimination of HCTZ." in html
+    assert "Pharmacokinetics of HCTZ" in (out / "report.typ").read_text()
+
+
+def _tabs(html: str) -> tuple[str, str]:
+    """Get the panels of the tabs Report and Fit mappings of a report page."""
+    report = html.index('<div id="report" class="tab-panel')
+    mappings = html.index('<section id="mappings" class="tab-panel')
+    end = html.index("</section>", html.rindex('class="card mapping"'))
+    return html[report:mappings], html[mappings:end]
+
+
+def test_the_report_tab_has_no_absolute_tolerances(report_dir: Path) -> None:
+    """The overview has no table of the tolerances, the methods state them."""
+    html = _html_of(report_dir)
+    report, _ = _tabs(html)
+    assert "Absolute tolerances" not in html
+    assert "reference volume" not in html
+    # the methods and the settings name the absolute tolerance of the fit
+    assert "the absolute tolerance" in report
+    assert "<td>absolute tolerance</td>" in report
+
+
+def test_the_figures_and_metrics_of_the_mappings_are_in_their_tab(
+    report_dir: Path,
+) -> None:
+    """The figures and the metrics of every mapping are in the mappings tab.
+
+    The figures of the cost and weight and of the residuals of every mapping,
+    then the table of their metrics, come before the cards of the mappings;
+    the table filters with the chips and the search, and the report tab and
+    its document have neither.
+    """
+    html = _html_of(report_dir)
+    report, mappings = _tabs(html)
+    assert "Contribution of the fit mappings" not in html
+    for token in [
+        "Cost, weight and residuals of the fit mappings",
+        "plots/cost_bar.svg",
+        "plots/residual_boxplot.svg",
+        "Metrics of the fit mappings",
+    ]:
+        assert token not in report, token
+        assert token in mappings, token
+    cards = mappings.index('class="card mapping"')
+    assert (
+        mappings.index("plots/cost_bar.svg")
+        < mappings.index("plots/residual_boxplot.svg")
+        < mappings.index("Metrics of the fit mappings")
+        < cards
+    )
+    # the rows of the metrics filter by kind and by the search
+    metrics = mappings[mappings.index("Metrics of the fit mappings") : cards]
+    assert '<table data-filter="row">' in metrics
+    assert '<tr data-kind="training">' in metrics
+    # the figures of the results stay in the report tab
+    for name in ["goodness_of_fit", "bland_altman"]:
+        assert f"plots/{name}.svg" in report, name
+    # no document format refers to the moved figures, every reference resolves
+    for name in ["report.typ", "report.tex", "report_standalone.tex"]:
+        text = (report_dir / name).read_text()
+        assert "cost_bar" not in text and "residual_boxplot" not in text, name
+    for label in re.findall(r'<a href="#([^"]+)">', html):
+        assert f'id="{label}"' in html, label
+
+
+def test_the_figures_of_the_mappings_grow_with_the_mappings(
+    report_dir: Path, fitted
+) -> None:
+    """A row per fit mapping keeps its label readable, the first one on top."""
+    problem, _ = fitted
+    n = len(problem.mapping_keys)
+    for name in ["cost_bar", "residual_boxplot"]:
+        svg = (report_dir / "plots" / f"{name}.svg").read_text()
+        match = re.search(r'height="([0-9.]+)pt"', svg)
+        assert match is not None, name
+        height = float(match.group(1))
+        # 0.17 inches per mapping and 1.5 inches for the axes, in points
+        assert height >= (1.5 + 0.17 * n) * 72 - 0.5, name
+    # a long id of a mapping breaks in the table, which stays in its card
+    html = _html_of(report_dir)
+    assert html.count('<td class="mono wrap">') == n

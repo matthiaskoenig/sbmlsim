@@ -22,8 +22,11 @@ likelihood calls non-identifiable is a parameter whose cost is flat away from
 the optimum, which is what the profile is for.
 """
 
+from __future__ import annotations
+
 import hashlib
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -66,6 +69,10 @@ class FisherInformation:
         cost: cost of the parameter set.
         n: number of data points of the fit.
         alpha: confidence level of the intervals.
+        rank_tolerance: eigenvalues below this fraction of the largest one are
+            a direction the data does not constrain.
+        step: relative step of the finite differences of the jacobian the
+            matrix was computed with, see `jacobian`.
         units: the unit of every parameter in the order of the matrix, a unit
             of pint with the unit ids of the model resolved, `None` for the
             unit of the model; empty for an information which does not know
@@ -85,6 +92,7 @@ class FisherInformation:
     n: int
     alpha: float = 0.95
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE
+    step: float = DEFAULT_STEP
     units: list[str | None] = field(default_factory=list)
     scales: list[ParameterScaleType] = field(default_factory=list)
     targets: list[str] = field(default_factory=list)
@@ -321,6 +329,35 @@ class FisherInformation:
         )
         return pd.DataFrame(columns)
 
+    @classmethod
+    def from_dict(cls, d: Mapping[str, Any]) -> FisherInformation:
+        """Create from a dictionary, the inverse of `to_dict`.
+
+        Args:
+            d: dictionary of `to_dict`, e.g. read from the `fisher.json` of a
+                fit record.
+
+        Returns:
+            The Fisher information with the arrays restored.
+        """
+        return cls(
+            opid=d["opid"],
+            sid=d["sid"],
+            pids=list(d["pids"]),
+            values=np.asarray(d["values"], dtype=float),
+            scale=ParameterScaleType[d["scale"]],
+            matrix=np.asarray(d["matrix"], dtype=float),
+            cost=d["cost"],
+            n=d["n"],
+            alpha=d.get("alpha", 0.95),
+            rank_tolerance=d.get("rank_tolerance", DEFAULT_RANK_TOLERANCE),
+            # a record before the step was stored has the default step
+            step=d.get("step", DEFAULT_STEP),
+            units=list(d.get("units", [])),
+            scales=[ParameterScaleType[name] for name in d.get("scales", [])],
+            targets=list(d.get("targets", [])),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON serializable values."""
         return {
@@ -334,6 +371,8 @@ class FisherInformation:
             "cost": self.cost,
             "n": self.n,
             "alpha": self.alpha,
+            "rank_tolerance": self.rank_tolerance,
+            "step": self.step,
             "units": list(self.units),
             "targets": list(self.targets),
         }
@@ -407,6 +446,7 @@ def fisher_information(
         n=int(residuals.size),
         alpha=alpha,
         rank_tolerance=rank_tolerance,
+        step=step,
         # units of pint, a unit id of a model resolved
         units=list(problem.parameter_units.values()),
         scales=list(problem.scales_initialized),
