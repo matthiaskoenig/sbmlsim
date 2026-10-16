@@ -7,9 +7,11 @@ the metrics per kind, the figures of the fit which were created and the table
 of the provenance. `fit_document` puts the methods of `methods_section` and
 the results into one document with the references they cite.
 
-Only what the fit has is reported: a figure whose file does not exist and the
-provenance of a result which has none are left out, so a document references
-no table or figure it does not contain.
+Only what the fit has is reported and nothing is invented: a figure whose
+file does not exist is left out, so a document references no table or figure
+it does not contain, the provenance of a result which has none reads "not
+recorded", and the end of a profile interval which the profile does not prove
+reads "not determined".
 """
 
 from __future__ import annotations
@@ -67,6 +69,12 @@ IDENTIFIABLE: dict[Identifiability, str] = {
     Identifiability.NON_IDENTIFIABLE: "no",
     Identifiability.STRUCTURAL: "structural",
 }
+
+#: the side of a profile interval which the profile does not prove
+NOT_DETERMINED = "not determined"
+
+#: the item of the table of the provenance which a result has not recorded
+NOT_RECORDED = "not recorded"
 
 #: the kinds of data of the table of the data, its columns
 DATA_KINDS: tuple[MappingKind, ...] = EVALUATED_KINDS
@@ -155,7 +163,8 @@ def results_section(
     Returns:
         The section of the results with the sub-sections `results:parameters`,
         `results:data`, `results:metrics`, `results:figures` (if a figure
-        exists) and `results:provenance` (if the result has a provenance).
+        exists) and `results:provenance`, whose items read "not recorded" for
+        a result without a provenance.
     """
     fit_id = _fit_id(report)
     best = _best_set(report)
@@ -167,9 +176,7 @@ def results_section(
     figures = _figures(report, plots_dir, fit_id)
     if figures is not None:
         blocks.append(figures)
-    provenance = _provenance(report, fit_id)
-    if provenance is not None:
-        blocks.append(provenance)
+    blocks.append(_provenance(report, fit_id))
     title = f"Results: {context.title}" if context.title else "Results"
     return Section(title, tuple(blocks), level=1, key="results")
 
@@ -216,12 +223,20 @@ def _interval(
 ) -> tuple[str, str] | None:
     """Get the confidence interval of a parameter as text.
 
-    The interval of the profile likelihood, an open side as the bound `LB` or
-    `UB`; else the Wald interval of the Fisher information; else `None`.
+    The interval of the profile likelihood, an open side of a classified
+    profile as the bound `LB` or `UB`; a missing side of a profile without a
+    classification (a point failed or did not converge) is not proven open and
+    reads `not determined`. Without a profile the Wald interval of the Fisher
+    information; else `None`.
     """
     if profile is not None:
-        lower = "LB" if profile.ci_lower is None else _g(profile.ci_lower)
-        upper = "UB" if profile.ci_upper is None else _g(profile.ci_upper)
+        open_lower, open_upper = (
+            ("LB", "UB")
+            if profile.identifiability is not None
+            else (NOT_DETERMINED, NOT_DETERMINED)
+        )
+        lower = open_lower if profile.ci_lower is None else _g(profile.ci_lower)
+        upper = open_upper if profile.ci_upper is None else _g(profile.ci_upper)
         return lower, upper
     if fisher is not None and pid in fisher.index:
         lower, upper = fisher.loc[pid, "ci_lower"], fisher.loc[pid, "ci_upper"]
@@ -231,9 +246,16 @@ def _interval(
 
 
 def _interval_text(
-    level: float, profiles: bool, fisher: FisherInformation | None
+    level: float,
+    profiles: bool,
+    fisher: FisherInformation | None,
+    undetermined: bool = False,
 ) -> str:
-    """Write where the confidence intervals and the identifiability come from."""
+    """Write where the confidence intervals and the identifiability come from.
+
+    `undetermined` explains `not determined`, a side of a profile interval
+    which is not proven.
+    """
     wald = "the Wald intervals of the Fisher information"
     if fisher is not None and not math.isclose(fisher.alpha, level):
         wald += f" at the confidence level {fisher.alpha:.0%}"
@@ -245,12 +267,19 @@ def _interval_text(
         )
         if fisher is not None:
             text += f", and {wald} for a parameter without a profile"
-        return (
+        text = (
             f"{text}. Identifiable is the classification of the profile: yes, no "
             "(LB) or no (UB) if the profile does not reach the threshold towards "
             "the lower or the upper bound, no if it reaches it on neither side, "
             "structural if it is flat."
         )
+        if undetermined:
+            text += (
+                f" A side is {NOT_DETERMINED} if the profile does not reach the "
+                "threshold on it and has points which failed or did not converge, "
+                "so its end is not proven; such a profile is not classified (-)."
+            )
+        return text
     if fisher is not None:
         return (
             f"The {level:.0%} confidence intervals are {wald}; the identifiability "
@@ -302,7 +331,12 @@ def _parameters(
             )
         )
 
-    ci = _interval_text(level, bool(profiles), fisher)
+    undetermined = any(
+        profile.identifiability is None
+        and (profile.ci_lower is None or profile.ci_upper is None)
+        for profile in profiles.values()
+    )
+    ci = _interval_text(level, bool(profiles), fisher, undetermined)
     cost = f", cost {_g(best.cost)}" if best.cost is not None else ""
     table = Table(
         caption=_caption(
@@ -428,12 +462,28 @@ def _figures(report: FitReport, plots_dir: Path, fit_id: str) -> Section | None:
     return _section("Figures", "results:figures", blocks)
 
 
-def _provenance(report: FitReport, fit_id: str) -> Section | None:
-    """Write the table of the provenance, `None` without a provenance."""
+def _provenance(report: FitReport, fit_id: str) -> Section:
+    """Write the table of the provenance, "not recorded" without a provenance."""
     result = report.opt_result
     provenance = result.provenance if result is not None else None
     if provenance is None:
-        return None
+        # a fit before the provenance was stored: nothing is invented
+        table = Table(
+            caption=_caption(
+                f"Provenance of the fit {fit_id}: it was not recorded with the fit."
+            ),
+            header=("Item", "Value"),
+            rows=(
+                ("Fit", Code(fit_id)),
+                ("Created", NOT_RECORDED),
+                ("Seed", NOT_RECORDED),
+                ("Versions", NOT_RECORDED),
+                ("Repository", NOT_RECORDED),
+            ),
+            label=_label(f"tab:provenance:{fit_id}"),
+            align="ll",
+        )
+        return _section("Provenance", "results:provenance", [table])
     rows: list[tuple[str | Code | Math, ...]] = [
         ("Fit", Code(fit_id)),
         ("Created", _created(provenance.created)),
