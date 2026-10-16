@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   The IEEE style of the Citation Style Language project (http://www.zotero.org/styles/ieee,
-  updated 2026-01-07), which prints the note of an entry at its end: the reports of
-  sbmlsim cite a software with its version as note. Otherwise unchanged.
+  updated 2026-01-07) under CC BY-SA 3.0, adapted for the reports of sbmlsim, which cite
+  a software with its version as note. The changes: this comment; the title (", with notes
+  (sbmlsim)" appended); the id and the self link (this file in the sbmlsim repository); a
+  link to the original style as template; the note of an entry printed at the end of its
+  bibliography entry (the last element of the layout). Everything else is unchanged.
 -->
 <style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0" demote-non-dropping-particle="sort-only">
   <info>

@@ -45,6 +45,7 @@ If you use `sbmlsim` please cite the archived software on [Zenodo](https://doi.o
 ## License
 - Source Code: [MIT](https://opensource.org/license/MIT)
 - Documentation: [CC BY-SA 4.0](http://creativecommons.org/licenses/by-sa/4.0/)
+- Citation style: the bundled `src/sbmlsim/resources/references.csl` of the reports is the IEEE style of the [Citation Style Language](https://citationstyles.org) project under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), adapted to print the version note of a software.
 
 ## Funding
 Matthias König is supported by the German Research Foundation (DFG) within the Research Unit Programme FOR 5151 "QuaLiPerF (Quantifying Liver Perfusion-Function Relationship in Complex Resection - A Systems Medicine Approach)" by grant number 436883643 and by grant number 465194077 (Priority Programme SPP 2311, Subproject SimLivA).

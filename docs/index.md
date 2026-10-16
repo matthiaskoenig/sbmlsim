@@ -73,6 +73,7 @@ If you use `sbmlsim` please cite the archived software on [Zenodo](https://doi.o
 
 - Source Code: [MIT](https://opensource.org/license/MIT)
 - Documentation: [CC BY-SA 4.0](http://creativecommons.org/licenses/by-sa/4.0/)
+- Citation style: the bundled `src/sbmlsim/resources/references.csl` of the reports is the IEEE style of the [Citation Style Language](https://citationstyles.org) project under [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/), adapted to print the version note of a software.
 
 ## Funding
 
