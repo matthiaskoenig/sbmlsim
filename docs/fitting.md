@@ -413,7 +413,22 @@ A report from a stored fit reads the records next to `parameters.json`, i.e. `op
 python -m examples.hctz_fitting.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json
 ```
 
-This is `report_cli`, see [Running a fit from the command line](#running-a-fit-from-the-command-line); `--no-mapping-figures` makes it fast.
+This is `report_cli`, see [Running a fit from the command line](#running-a-fit-from-the-command-line); `--no-mapping-figures` makes it fast. The report is built by `report_from_records` (`sbmlsim.fit.cli`), which `report_cli` and `identifiability_cli` use and a caller uses for a report of its own: it reads the records of a folder, takes the settings of the record with the warning above, initializes the problem and returns the `FitReport`, which `create` writes:
+
+```py
+from sbmlsim.fit.cli import report_from_records
+from sbmlsim.fit.methods import ReportContext
+
+report = report_from_records(
+    FIT_DEFINITIONS["PK"],
+    Path("results/fit/PK_LSQ_ALL"),
+    opid="PK",
+    context=ReportContext(title="HCTZ: fit PK"),
+)
+report.create(output_dir=Path("results/report"), name="PK_LSQ_ALL")
+```
+
+`parameters` reports other parameter sets than the `parameters.json` of the folder. `report_cli(context=...)` gives the report of the command line a `ReportContext`, or a callable which gets the subset and its definition and returns one, so a caller such as pkpdsim passes the context of its model.
 
 `FitParameter.description` describes a parameter in the methods, e.g. `"first order absorption rate"`; without it the report uses the name of the parameter in the SBML model. `FitDefinition.description` says what the fit is for; nothing in sbmlsim feeds it into the report, a caller such as pkpdsim carries it into the `ReportContext`. What the report says beyond the fit is a `ReportContext` (`sbmlsim.fit.methods`), plain data which a caller such as pkpdsim provides to `FitReport(context=...)`: the `title` of the document, the `description` of the fit (the first sentence of the methods), `parameter_descriptions` by parameter id (preferred over `FitParameter.description`) and further `notes`. A report without a context uses the id of the fit as its title.
 

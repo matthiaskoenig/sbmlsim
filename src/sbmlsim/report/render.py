@@ -214,6 +214,28 @@ def _typst_string(text: str) -> str:
     return f'"{escaped}"'
 
 
+def _after_call(text: str) -> str:
+    """Escape the start of Typst markup which follows an embedded call.
+
+    Typst ends an embedded expression such as `#raw("x")` with a ";", which it
+    consumes, and continues it with "(" (arguments), "[" (a content argument,
+    which `escape_typst` escapes) or "." and a name (a field). Text which
+    starts with one of them right after a call is escaped, so it stays text.
+
+    Args:
+        text: rendered Typst markup which directly follows an embedded call.
+
+    Returns:
+        The markup, its first character escaped if Typst would read it as
+        part of the call.
+    """
+    if text[:1] in (";", "(") or (
+        text[:1] == "." and len(text) > 1 and text[1].isidentifier()
+    ):
+        return "\\" + text
+    return text
+
+
 def compile_pdf(typ_path: Path, pdf_path: Path | None = None) -> Path:
     """Compile a Typst file to PDF.
 
@@ -526,7 +548,13 @@ class TypstRenderer(_Renderer):
         return f"[{self._inline(cell)}]"
 
     def _inlines(self, content: tuple[Inline, ...]) -> str:
-        return "".join(self._inline(i) for i in content)
+        out: list[str] = []
+        for span, previous in zip(content, (None, *content), strict=False):
+            text = self._inline(span)
+            if isinstance(previous, (Code, Cite, Ref)):
+                text = _after_call(text)
+            out.append(text)
+        return "".join(out)
 
     def _inline(self, span: Inline) -> str:
         match span:

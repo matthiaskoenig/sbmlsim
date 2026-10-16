@@ -226,3 +226,37 @@ def test_latex_symbols_are_math_and_letters_stay() -> None:
     )
     tex = LaTeXRenderer().render(Document("T", (table,)))
     assert r"\texttt{k\_\ensuremath{\mu}} & \ensuremath{\infty}" in tex
+
+
+def test_typst_keeps_the_text_after_an_inline_call(tmp_path: Path) -> None:
+    """Text right after `#raw`, `#ref` or `#cite` is text, not part of the call.
+
+    Typst ends an embedded expression with a ";", which it consumes, and
+    continues it with "(" (arguments) or "." and a name (a field); the
+    renderer escapes them so the PDF has the text.
+    """
+    pypdf = pytest.importorskip("pypdf")
+    doc = Document(
+        "T",
+        (
+            Section(
+                "S",
+                (
+                    p(Code("wt-models-review"), "; their SHA-256 checksums"),
+                    p("see ", Ref("sec:s"), "; then ", Code("x"), "(y) z"),
+                    p(Code("a"), ".b c and ", Code("d"), ". End"),
+                    p("cited ", Cite(("Raue2009",)), "; next"),
+                ),
+                label="sec:s",
+            ),
+        ),
+    )
+    doc = replace(doc, references=bibliography(doc))
+    write_bibliography(doc.references, tmp_path)
+    typ = tmp_path / "report.typ"
+    typ.write_text(TypstRenderer().render(doc))
+    text = pypdf.PdfReader(compile_pdf(typ)).pages[0].extract_text()
+    assert "wt-models-review; their SHA-256 checksums" in text
+    assert "; then x(y) z" in text
+    assert "a.b c and d. End" in text
+    assert "; next" in text

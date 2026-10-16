@@ -16,8 +16,10 @@ from sbmlsim.fit.cli import (
     fit_cli,
     load_parameter_sets,
     report_cli,
+    report_from_records,
     run_fit,
 )
+from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import OptimizationStrategy
@@ -262,6 +264,98 @@ def test_report_cli_describes_the_fit_with_its_stored_settings(
     assert "The loss function is linear" not in typ
     assert "settings of the record" in caplog.text
     assert "loss_function" in caplog.text
+
+
+def test_report_from_records(
+    report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """The report of a fit is built from the records of its folder.
+
+    The parameters, the result of the optimization, the profiles and the
+    Fisher information of the folder are in the report, its problem has the
+    given id and its context is the given context.
+    """
+    from sbmlsim.fit.report import FitReport
+
+    context = ReportContext(title="Model: fit PK", notes=("A note.",))
+    report = report_from_records(
+        definition_hctz_pk, report_dir, opid="PK", context=context
+    )
+    assert isinstance(report, FitReport)
+    assert report.problem.opid == "PK"
+    assert report.context == context
+    assert report.opt_result is not None
+    assert report.identifiability is not None
+    assert report.fisher is not None
+    stored = load_parameter_sets([report_dir / "parameters.json"])
+    assert [p.sid for p in report.parameter_sets] == [p.sid for p in stored]
+    assert report.settings == report.opt_result.settings
+    assert report.show_titles is False
+    assert report.mapping_figures is True
+
+
+def test_report_from_records_of_other_parameters(
+    tmp_path: Path, report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """The parameters of a report from records may come from other files."""
+    path = tmp_path / "other.json"
+    sets = load_parameter_sets([report_dir / "parameters.json"])
+    sets[0].sid = "other"
+    sets.to_json(path=path)
+    report = report_from_records(
+        definition_hctz_pk,
+        report_dir,
+        opid="PK",
+        parameters=[path],
+        mapping_figures=False,
+    )
+    assert [p.sid for p in report.parameter_sets] == ["other"]
+    assert report.mapping_figures is False
+    assert report.context == ReportContext()
+
+
+def test_report_from_records_without_records(
+    tmp_path: Path, report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """A folder with `parameters.json` alone gives a report without records."""
+    shutil.copy(report_dir / "parameters.json", tmp_path)
+    report = report_from_records(definition_hctz_pk, tmp_path, opid="PK")
+    assert report.opt_result is None
+    assert report.identifiability is None
+    assert report.fisher is None
+    assert report.settings == definition_hctz_pk.settings
+
+
+@pytest.mark.parametrize("callable_context", [True, False])
+def test_report_cli_passes_the_context(
+    tmp_path: Path, report_dir: Path, callable_context: bool
+) -> None:
+    """A caller passes the context of the report, as data or per subset."""
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    seen: list[tuple[str, FitDefinition]] = []
+
+    def context_of(subset: str, definition: FitDefinition) -> ReportContext:
+        seen.append((subset, definition))
+        return ReportContext(title=f"Model: fit {subset}", notes=("A note.",))
+
+    results_dir = report_cli(
+        FIT_DEFINITIONS,
+        args=[
+            "--no-mapping-figures",
+            str(report_dir / "parameters.json"),
+            "--subset=PK",
+            "--name=context",
+            f"--output_dir={tmp_path}",
+        ],
+        context=context_of
+        if callable_context
+        else context_of("PK", FIT_DEFINITIONS["PK"]),
+    )
+    assert seen == [("PK", FIT_DEFINITIONS["PK"])]
+    typ = (results_dir / "report.typ").read_text(encoding="utf-8")
+    assert "Model: fit PK" in typ
+    assert "A note." in typ
 
 
 @pytest.mark.parametrize("f_cli", [fit_cli, report_cli])
