@@ -1,16 +1,21 @@
 """Tests of the provenance of a fit."""
 
+import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
+from examples.hctz_fitting import DATA_PATH
 from sbmlsim.fit.cli import FitDefinition, run_fit
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.provenance import (
     FitProvenance,
     GitInfo,
+    checksum_key,
     collect_versions,
     create_provenance,
+    data_files,
     file_checksums,
     git_info,
 )
@@ -53,6 +58,61 @@ def test_checksums_are_relative_to_the_root(repo: Path) -> None:
     sums = file_checksums([repo / "model.xml"], root=repo)
     assert list(sums) == ["model.xml"]
     assert len(sums["model.xml"]) == 64
+
+
+def test_checksum_keys_are_posix_paths() -> None:
+    root = PureWindowsPath(r"C:\repo")
+    path = PureWindowsPath(r"C:\repo\data\Beermann1976\.Beermann1976_Fig1.tsv")
+    assert checksum_key(path, root) == "data/Beermann1976/.Beermann1976_Fig1.tsv"
+    assert (
+        checksum_key(path, None) == "C:/repo/data/Beermann1976/.Beermann1976_Fig1.tsv"
+    )
+    other = PureWindowsPath(r"D:\elsewhere\model.xml")
+    assert checksum_key(other, root) == "D:/elsewhere/model.xml"
+
+
+def test_nested_checksum_keys_use_slashes(repo: Path) -> None:
+    (repo / "data").mkdir()
+    (repo / "data" / ".study.tsv").write_text("a\tb\n")
+    sums = file_checksums([repo / "data" / ".study.tsv"], root=repo)
+    assert list(sums) == ["data/.study.tsv"]
+
+
+def _data_with_clutter(tmp_path: Path) -> Path:
+    """Copy the HCTZ data and add files no experiment reads."""
+    data = tmp_path / "data"
+    shutil.copytree(DATA_PATH, data)
+    (data / "__init__.py").write_text("")
+    (data / "collect_data.py").write_text("")
+    (data / "__pycache__").mkdir()
+    (data / "__pycache__" / "collect_data.cpython-314.pyc").write_bytes(b"\0")
+    (data / ".ipynb_checkpoints").mkdir()
+    (data / ".ipynb_checkpoints" / ".Beermann1976_Fig1-checkpoint.tsv").write_text("")
+    (data / ".DS_Store").write_bytes(b"\0")
+    (data / "Beermann1976" / ".gitignore").write_text("*.png\n")
+    return data
+
+
+def test_data_files_keep_the_study_data(tmp_path: Path) -> None:
+    data = _data_with_clutter(tmp_path)
+    study_data = sorted(
+        p.resolve() for p in data.rglob("*.tsv") if ".ipynb" not in str(p)
+    )
+    assert len(study_data) == len(list(DATA_PATH.rglob("*.tsv")))
+    assert all(p.name.startswith(".") for p in study_data), "PK-DB data are hidden"
+    assert data_files([data]) == study_data
+
+
+def test_a_problem_hashes_its_models_and_its_data(
+    op_hctz_pk: OptimizationProblem, tmp_path: Path
+) -> None:
+    data = _data_with_clutter(tmp_path)
+    op_hctz_pk.data_path = data
+    names = [p.name for p in op_hctz_pk.files()]
+    assert sum(name.endswith(".xml") for name in names) >= 1
+    tsv = [name for name in names if name.endswith(".tsv")]
+    assert len(tsv) == len(list(DATA_PATH.rglob("*.tsv")))
+    assert all(name.endswith((".xml", ".tsv")) for name in names), names
 
 
 def test_round_trip(repo: Path) -> None:

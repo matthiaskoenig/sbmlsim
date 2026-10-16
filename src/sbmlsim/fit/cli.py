@@ -272,8 +272,9 @@ def run_fit(
         arguments: further arguments to record in the provenance of the fit,
             e.g. the command line of the caller; they come after the arguments
             of `run_fit` and replace one of the same name.
-        fixed_values: values of the model which the fit keeps fixed, e.g. the
-            fitted values of an earlier fit, recorded in the provenance.
+        fixed_values: values of the model which the caller keeps fixed, e.g.
+            the fitted values of an earlier fit; recorded in the provenance,
+            not applied.
         kwargs: additional arguments of the optimizer, they replace the
             defaults of `ALGORITHM_KWARGS`.
 
