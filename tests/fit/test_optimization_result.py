@@ -48,6 +48,26 @@ def test_serialization(
         assert isinstance(fit.x0, np.ndarray)
 
 
+def test_a_result_without_provenance_reads_as_none(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+) -> None:
+    """A fit which records no provenance round trips with `None`."""
+    opt_res = run_optimization(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        size=1,
+        n_cores=1,
+        serial=True,
+    )
+    assert opt_res.provenance is None
+    assert opt_res.to_dict()["provenance"] is None
+    path = tmp_path / "opt_res.json"
+    opt_res.to_json(path=path)
+    assert OptimizationResult.from_json(path).provenance is None
+
+
 def test_parameter_sets(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:

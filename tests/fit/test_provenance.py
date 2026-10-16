@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.provenance import (
     FitProvenance,
     GitInfo,
@@ -13,6 +14,7 @@ from sbmlsim.fit.provenance import (
     file_checksums,
     git_info,
 )
+from sbmlsim.fit.result import OptimizationResult
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -65,3 +67,31 @@ def test_round_trip(repo: Path) -> None:
     )
     assert isinstance(provenance.git, GitInfo)
     assert FitProvenance.from_dict(provenance.to_dict()) == provenance
+
+
+def test_a_fit_stores_its_provenance(
+    definition_hctz_pk: FitDefinition, tmp_path: Path
+) -> None:
+    runs = run_fit(
+        definition_hctz_pk,
+        size=2,
+        n_cores=1,
+        seed=1234,
+        output_dir=tmp_path,
+        max_nfev=1,
+    )
+    (run,) = runs.values()
+    provenance = run.result.provenance
+    assert provenance is not None
+    assert provenance.seed == 1234
+    assert provenance.arguments["size"] == 2
+    assert len(provenance.run_seeds) == 2
+    assert provenance.files, "the models and the data have checksums"
+    assert provenance.start_values
+    paths = sorted((tmp_path / run.problem.opid / "runs").glob("*.json"))
+    assert len(paths) == 2
+    for path in paths:
+        stored = OptimizationResult.from_json(path)
+        assert stored.provenance == provenance
+    combined = OptimizationResult.from_directory(tmp_path / run.problem.opid / "runs")
+    assert combined.provenance == provenance

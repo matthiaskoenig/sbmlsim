@@ -29,7 +29,7 @@ from __future__ import annotations
 import argparse
 import itertools
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -51,6 +51,7 @@ from sbmlsim.fit.options import (
     OptimizationStrategy,
 )
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.provenance import create_provenance
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult, fit_id
 from sbmlsim.fit.runner import run_optimization
@@ -247,6 +248,7 @@ def run_fit(
     study_ids: Sequence[str] | None = None,
     timeout: float | None = None,
     output_dir: Path | None = None,
+    arguments: Mapping[str, Any] | None = None,
     **kwargs: Any,
 ) -> dict[str, FitRun]:
     """Run the fit of a definition.
@@ -266,6 +268,9 @@ def run_fit(
         output_dir: directory of the results. The single runs are written into
             `<output_dir>/<opid>/runs` while the fit runs, so an interrupted
             fit leaves the runs which finished.
+        arguments: further arguments to record in the provenance of the fit,
+            e.g. the command line of the caller; they come after the arguments
+            of `run_fit` and replace one of the same name.
         kwargs: additional arguments of the optimizer, they replace the
             defaults of `ALGORITHM_KWARGS`.
 
@@ -298,6 +303,25 @@ def run_fit(
 
     runs: dict[str, FitRun] = {}
     for problem in problems:
+        # the files are read once the problem is initialized
+        problem.initialize(definition.settings)
+        provenance = create_provenance(
+            arguments={
+                "size": size,
+                "algorithm": algorithm.name,
+                "strategy": strategy.name,
+                "seed": seed,
+                "study_ids": list(study_ids) if study_ids else None,
+                "timeout": timeout,
+                "optimizer": {k: str(v) for k, v in optimizer_kwargs.items()},
+                **dict(arguments or {}),
+            },
+            seed=seed,
+            run_seeds=OptimizationProblem.run_seeds(size, algorithm, seed),
+            base_path=Path(definition.base_path),
+            files=problem.files(),
+            start_values={p.pid: p.start_value for p in problem.parameters},
+        )
         result = run_optimization(
             problem=problem,
             settings=definition.settings,
@@ -307,6 +331,7 @@ def run_fit(
             algorithm=algorithm,
             timeout=timeout,
             runs_dir=(Path(output_dir) / problem.opid / "runs" if output_dir else None),
+            provenance=provenance,
             **optimizer_kwargs,
         )
         runs[problem.opid] = FitRun(problem=problem, result=result)

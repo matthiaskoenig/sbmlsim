@@ -617,6 +617,34 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self._reset_mappings()
 
+    def files(self) -> list[Path]:
+        """Get the files a fit of the problem reads, the models and the data.
+
+        The models are the SBML files of the experiments, the data are the files
+        below `data_path`. An uninitialized problem is initialized first, with
+        the settings of the problem or the default settings.
+
+        Returns:
+            The sorted paths of the files.
+        """
+        if not self.is_initialized:
+            self.initialize(self.settings if self.settings else FitSettings())
+        paths: set[Path] = set()
+        if self.runner is not None:
+            for experiment in self.runner.experiments.values():
+                for model in experiment._models.values():
+                    if model.source.path is not None:
+                        paths.add(Path(model.source.path).resolve())
+        data_path = self.data_path
+        if data_path is not None:
+            roots = [data_path] if isinstance(data_path, (str, Path)) else data_path
+            for root in map(Path, roots):
+                if root.is_dir():
+                    paths.update(p.resolve() for p in root.rglob("*") if p.is_file())
+                elif root.is_file():
+                    paths.add(root.resolve())
+        return sorted(paths)
+
     @property
     def x0(self) -> list[float | None]:
         """Current start values of the parameter definitions."""
