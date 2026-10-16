@@ -15,8 +15,9 @@ the traces of the optimizers and the waterfall plot, are only created when the
 the text report and `index.html`, a page of two tabs. The tab "Report" is the
 report document of the fit (`sbmlsim.fit.report_document`), i.e. its methods
 with their formulas, its results and its references, followed by the overview,
-the results and the identifiability of the fit; the tab "Fit mappings" is a
-card per fit mapping. The same document is written as Typst (`report.typ`),
+the results and the identifiability of the fit; the tab "Fit mappings" is the
+figures of the cost and weight and of the residuals of every fit mapping, the
+table of the metrics of every fit mapping and a card per fit mapping. The same document is written as Typst (`report.typ`),
 compiled to `report.pdf`, and as LaTeX (`report.tex`, a fragment, and
 `report_standalone.tex`) with its references (`references.bib`, and
 `references.csl`, the style of the Typst bibliography). A PDF which cannot be
@@ -1166,12 +1167,12 @@ class FitReport:
                 [
                     "goodness_of_fit",
                     "bland_altman",
-                    "residual_boxplot",
                     "cost_scatter",
                 ],
             ),
-            # the figure of the fit mappings is in their tab, with their table
-            "mapping_plots": self._plots(plots_dir, ["cost_bar"]),
+            # the figures with a row per fit mapping are in the tab of the
+            # mappings, with the table of their metrics
+            "mapping_plots": self._plots(plots_dir, ["cost_bar", "residual_boxplot"]),
             "mappings": mappings,
             "run_columns": run_columns,
             "runs": runs,
@@ -1471,8 +1472,10 @@ class FitReport:
 
         The report is a single page with two tabs. "Report" is the report
         document with the methods and the results, followed by the overview of
-        the fit, its results and its identifiability; "Fit mappings" are the
-        single fit mappings. It is rendered from the `fit_report.html`
+        the fit, its results and its identifiability; "Fit mappings" is the
+        figures of the cost and weight and of the residuals of every fit
+        mapping, the table of the metrics of every fit mapping and a card per
+        fit mapping. It is rendered from the `fit_report.html`
         template and needs no network access.
 
         Args:
@@ -2628,7 +2631,16 @@ class FitReport:
             "Weighted residuals^2\n$(w_{k} \\cdot w_{i,k} (f(x_{i,k}) - y_{i,k}))^2$"
         )
         self._set_log_scale(ax, "x")
-        self._set_legend(ax)
+        # above the panel as in the figure of the costs, a legend inside would
+        # cover the residuals of the curves
+        handles, labels = ax.get_legend_handles_labels()
+        unique = dict(zip(labels, handles, strict=True))
+        fig.legend(
+            list(unique.values()),
+            list(unique),
+            loc="outside upper center",
+            ncols=min(n_sets, 3),
+        )
         self._save_mpl_figure(fig=fig, path=path)
 
     def plot_cost_scatter(self, path: Path) -> None:
