@@ -287,6 +287,10 @@ recovered = OptimizationResult.from_directory(Path("results") / "runs")
 
 `OptimizationAlgorithmType.LEAST_SQUARE` is the local least squares optimizer, `DIFFERENTIAL_EVOLUTION` the global one. The `OptimizationResult` holds the fits of all start points with their costs, the optimal parameters `xopt`, the cost trajectories of the optimizer and the settings the fit was run with; it is stored as JSON and TSV with `to_json` and `to_tsv`, and results of several runs are combined with `OptimizationResult.combine`.
 
+## Provenance
+
+`run_fit` records what a fit ran with in a `FitProvenance` (`sbmlsim.fit.provenance`): the arguments of the fit, the seed and the seed of every run, the versions of python, sbmlsim, libroadrunner, scipy and numpy, the git revision of the repository of the model (and whether the working tree was dirty), the SHA-256 of the SBML models and the data files, and the start value of every fit parameter. The provenance is stored in every run JSON in `<output_dir>/<opid>/runs` and in `OptimizationResult.provenance` (`None` for a result of a fit which did not record it), and `FitReport` reads it from the result. `run_optimization` takes it as `provenance`; `run_fit` adds the entries of its `arguments` argument, e.g. the command line of the caller, to the recorded arguments. The fixed values are those which the caller passes as `fixed_values` (pkpdsim passes the values of adopted fits).
+
 ## Parameter sets
 
 A fit produces parameter values, and these values are what a report is made from. `OptimizationResult.parameter_sets` returns the parameters of the best runs as `ParameterSets`, which are stored as JSON:

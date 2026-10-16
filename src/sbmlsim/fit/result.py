@@ -16,6 +16,7 @@ from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter, describe_array
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
 
 logger = logging.getLogger(__name__)
@@ -125,6 +126,7 @@ class OptimizationResult(ObjectJSONEncoder):
         opid: str | None = None,
         settings: FitSettings | dict[str, Any] | None = None,
         units: Mapping[str, str | None] | None = None,
+        provenance: FitProvenance | dict[str, Any] | None = None,
     ):
         """Initialize optimization result.
 
@@ -142,6 +144,9 @@ class OptimizationResult(ObjectJSONEncoder):
             units: the unit of every parameter in the units of pint by
                 parameter id, see `OptimizationProblem.parameter_units`; the
                 units of the parameters by default.
+            provenance: what the fit ran with (arguments, seeds, versions, git
+                revision, checksums), `None` for a result of a fit which did not
+                record it.
         """
         super().__init__()
         self.opid = opid
@@ -161,6 +166,11 @@ class OptimizationResult(ObjectJSONEncoder):
         self.units: dict[str, str | None] = {
             p.pid: (units or {}).get(p.pid, p.unit) for p in self.parameters
         }
+
+        if isinstance(provenance, Mapping):
+            provenance = FitProvenance.from_dict(provenance)
+        #: what the fit ran with, `None` for a result of a fit before #334
+        self.provenance: FitProvenance | None = provenance
 
         self.fits: list[OptimizeResult] = []
         for fit in fits:
@@ -193,6 +203,7 @@ class OptimizationResult(ObjectJSONEncoder):
         opid: str | None = None,
         settings: FitSettings | None = None,
         units: Mapping[str, str | None] | None = None,
+        provenance: FitProvenance | None = None,
     ) -> Path:
         """Store a single optimization run as JSON.
 
@@ -208,6 +219,7 @@ class OptimizationResult(ObjectJSONEncoder):
             opid: id of the optimization problem.
             settings: settings of the fit.
             units: the units of pint of the parameters, see `__init__`.
+            provenance: what the fit ran with, every run carries it.
 
         Returns:
             Path of the file the run was written to.
@@ -222,6 +234,7 @@ class OptimizationResult(ObjectJSONEncoder):
             opid=opid,
             settings=settings,
             units=units,
+            provenance=provenance,
         ).to_json(path=path)
         return path
 
@@ -282,6 +295,7 @@ class OptimizationResult(ObjectJSONEncoder):
         for key in ["sid", "opid", "parameters", "fits", "trajectories", "units"]:
             d[key] = self.__dict__[key]
         d["settings"] = self.settings.to_dict() if self.settings else None
+        d["provenance"] = self.provenance.to_dict() if self.provenance else None
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -424,6 +438,7 @@ class OptimizationResult(ObjectJSONEncoder):
             opid=opt_results[0].opid,
             settings=opt_results[0].settings,
             units=opt_results[0].units,
+            provenance=opt_results[0].provenance,
         )
 
     @property

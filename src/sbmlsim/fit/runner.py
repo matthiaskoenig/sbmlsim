@@ -49,6 +49,7 @@ from sbmlsim.fit import display
 from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.optimization import OptimizationProblem, RuntimeErrorOptimizeResult
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
+from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.log import PACKAGE_LOGGER
@@ -197,6 +198,7 @@ def run_optimization(
     timeout: float | None = None,
     runs_dir: Path | None = None,
     sampling: SamplingType = SamplingType.UNIFORM,
+    provenance: FitProvenance | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimization of the problem.
@@ -226,6 +228,8 @@ def run_optimization(
             finished; they are read back with
             `OptimizationResult.from_directory`.
         sampling: sampling of the start values, see `sbmlsim.fit.sampling`.
+        provenance: what the fit runs with, see `sbmlsim.fit.provenance`; it is
+            stored with every run and with the result.
         kwargs: additional arguments for the optimizer, i.e., for
             `scipy.optimize.least_squares` or
             `scipy.optimize.differential_evolution`, e.g. xtol.
@@ -284,6 +288,7 @@ def run_optimization(
                 sampling=sampling,
                 timeout=timeout,
                 runs_dir=runs_dir,
+                provenance=provenance,
                 on_progress=lambda: _advance(progress),
                 **kwargs,
             )
@@ -307,6 +312,7 @@ def run_optimization(
             sampling=sampling,
             timeout=timeout,
             runs_dir=runs_dir,
+            provenance=provenance,
             **kwargs,
         )
 
@@ -691,6 +697,7 @@ def _run_optimization_parallel(
     sampling: SamplingType = SamplingType.UNIFORM,
     timeout: float | None = None,
     runs_dir: Path | None = None,
+    provenance: FitProvenance | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimizations in a pool of worker processes.
@@ -746,6 +753,7 @@ def _run_optimization_parallel(
                     fit=fit,
                     trajectory=trajectory,
                     sid=f"{problem.opid}_run_{k}",
+                    provenance=provenance,
                 )
                 _advance(progress)
                 collected[k] = (fit, trajectory)
@@ -787,6 +795,7 @@ def _run_optimization_parallel(
         opid=problem.opid,
         settings=settings,
         units=problem.parameter_units,
+        provenance=provenance,
     )
 
 
@@ -797,6 +806,7 @@ def _store_run(
     fit: OptimizeResult,
     trajectory: list[float],
     sid: str,
+    provenance: FitProvenance | None = None,
 ) -> None:
     """Store a finished repeat, which must never end the fit.
 
@@ -807,6 +817,7 @@ def _store_run(
         fit: result of the repeat.
         trajectory: cost of every step of the repeat.
         sid: id of the repeat, the name of its file.
+        provenance: what the fit runs with.
     """
     if runs_dir is None:
         return
@@ -820,6 +831,7 @@ def _store_run(
             opid=problem.opid,
             settings=settings,
             units=problem.parameter_units,
+            provenance=provenance,
         )
     except Exception as err:
         logger.error(
@@ -841,6 +853,7 @@ def _run_optimization_serial(
     runs_dir: Path | None = None,
     on_progress: Callable[[], None] | None = None,
     run_prefix: str = "run",
+    provenance: FitProvenance | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
@@ -866,6 +879,7 @@ def _run_optimization_serial(
             fit=fit,
             trajectory=trajectory,
             sid=f"{problem.opid}_{run_prefix}_{k}",
+            provenance=provenance,
         )
         if on_progress is not None:
             on_progress()
@@ -897,4 +911,5 @@ def _run_optimization_serial(
         opid=problem.opid,
         settings=settings,
         units=problem.parameter_units,
+        provenance=provenance,
     )
