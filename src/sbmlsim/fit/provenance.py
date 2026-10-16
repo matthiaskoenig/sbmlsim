@@ -15,11 +15,25 @@ import subprocess
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 #: the packages whose versions a fit records
 PACKAGES: tuple[str, ...] = ("sbmlsim", "libroadrunner", "scipy", "numpy")
+
+#: directories below a data path which hold no data: caches of python, of
+#: notebooks and of version control
+IGNORED_DIRECTORIES: frozenset[str] = frozenset(
+    {"__pycache__", ".ipynb_checkpoints", ".git", ".svn", ".hg"}
+)
+
+#: files below a data path which hold no data: the code of a data package,
+#: e.g. the script which collects the data, and the files of the system and of
+#: version control
+IGNORED_SUFFIXES: frozenset[str] = frozenset({".py", ".pyc", ".pyo"})
+IGNORED_NAMES: frozenset[str] = frozenset(
+    {".DS_Store", "Thumbs.db", ".gitignore", ".gitattributes", ".gitkeep"}
+)
 
 
 @dataclass(frozen=True)
@@ -59,7 +73,8 @@ class FitProvenance:
         git: revision of the repository of the model, `None` outside of one.
         files: SHA-256 of the models and the data by path.
         start_values: start value of every fit parameter.
-        fixed_values: values of the model which the fit keeps fixed.
+        fixed_values: values of the model which the caller keeps fixed;
+            recorded, not applied.
     """
 
     created: str
@@ -140,6 +155,56 @@ def git_info(path: Path) -> GitInfo | None:
     return GitInfo(root=root, sha=sha, dirty=dirty)
 
 
+def data_files(roots: Iterable[Path]) -> list[Path]:
+    """Get the data files below data paths.
+
+    The data of a study are hidden files in many repositories (the
+    `.<study>_<figure>.tsv` of PK-DB), so a hidden file counts. Left out are
+    the files of `IGNORED_DIRECTORIES`, python code (`IGNORED_SUFFIXES`) and
+    the files of the system and of version control (`IGNORED_NAMES`).
+
+    Args:
+        roots: the data paths, directories or files; a path which does not
+            exist is left out.
+
+    Returns:
+        The sorted resolved paths of the data files.
+    """
+    paths: set[Path] = set()
+    for root in roots:
+        if root.is_file():
+            paths.add(root.resolve())
+            continue
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root)
+            if IGNORED_DIRECTORIES.intersection(relative.parts[:-1]):
+                continue
+            if path.suffix in IGNORED_SUFFIXES or path.name in IGNORED_NAMES:
+                continue
+            paths.add(path.resolve())
+    return sorted(paths)
+
+
+def checksum_key(path: PurePath, root: PurePath | None) -> str:
+    """Get the key of the checksum of a file, the same on every platform.
+
+    Args:
+        path: the resolved path of the file.
+        root: the resolved root the key is relative to; `None` for no root.
+
+    Returns:
+        The path relative to `root` where possible, the absolute path
+        otherwise, with `/` as separator.
+    """
+    if root is not None and path.is_relative_to(root):
+        return path.relative_to(root).as_posix()
+    return path.as_posix()
+
+
 def file_checksums(paths: Iterable[Path], root: Path | None = None) -> dict[str, str]:
     """Get the SHA-256 of files.
 
@@ -148,16 +213,14 @@ def file_checksums(paths: Iterable[Path], root: Path | None = None) -> dict[str,
         root: the keys are relative to it where possible, absolute otherwise.
 
     Returns:
-        The hex digest by path, sorted by path.
+        The hex digest by path (`checksum_key`, `/` as separator on every
+        platform), sorted by path.
     """
     sums: dict[str, str] = {}
     for path in paths:
         if not path.is_file():
             continue
-        resolved = path.resolve()
-        key = str(resolved)
-        if root is not None and resolved.is_relative_to(root.resolve()):
-            key = str(resolved.relative_to(root.resolve()))
+        key = checksum_key(path.resolve(), root.resolve() if root else None)
         sums[key] = hashlib.sha256(path.read_bytes()).hexdigest()
     return dict(sorted(sums.items()))
 
@@ -181,7 +244,8 @@ def create_provenance(
         base_path: directory of the experiments, it locates the repository.
         files: the models and the data of the problem.
         start_values: start value of every fit parameter.
-        fixed_values: values of the model which the fit keeps fixed.
+        fixed_values: values of the model which the caller keeps fixed;
+            recorded, not applied.
 
     Returns:
         The provenance.
