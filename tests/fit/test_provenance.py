@@ -1,0 +1,67 @@
+"""Tests of the provenance of a fit."""
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+from sbmlsim.fit.provenance import (
+    FitProvenance,
+    GitInfo,
+    collect_versions,
+    create_provenance,
+    file_checksums,
+    git_info,
+)
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+@pytest.fixture
+def repo(tmp_path: Path) -> Path:
+    _git(tmp_path, "init", "-q")
+    _git(tmp_path, "config", "user.email", "t@example.org")
+    _git(tmp_path, "config", "user.name", "t")
+    (tmp_path / "model.xml").write_text("<sbml/>")
+    _git(tmp_path, "add", "model.xml")
+    _git(tmp_path, "commit", "-q", "-m", "model")
+    return tmp_path
+
+
+def test_versions_name_the_simulation_stack() -> None:
+    versions = collect_versions()
+    assert {"python", "sbmlsim", "libroadrunner", "scipy", "numpy"} <= set(versions)
+
+
+def test_git_info_of_a_clean_and_a_dirty_tree(repo: Path) -> None:
+    clean = git_info(repo / "model.xml")
+    assert clean is not None and len(clean.sha) == 40 and not clean.dirty
+    (repo / "model.xml").write_text("<sbml>changed</sbml>")
+    dirty = git_info(repo)
+    assert dirty is not None and dirty.dirty
+
+
+def test_git_info_outside_a_repository(tmp_path: Path) -> None:
+    assert git_info(tmp_path) is None
+
+
+def test_checksums_are_relative_to_the_root(repo: Path) -> None:
+    sums = file_checksums([repo / "model.xml"], root=repo)
+    assert list(sums) == ["model.xml"]
+    assert len(sums["model.xml"]) == 64
+
+
+def test_round_trip(repo: Path) -> None:
+    provenance = create_provenance(
+        arguments={"runs": 3, "method": "LSQ"},
+        seed=1234,
+        run_seeds=[None, None, None],
+        base_path=repo,
+        files=[repo / "model.xml"],
+        start_values={"k": 1.0},
+        fixed_values={"f": 2.0},
+    )
+    assert isinstance(provenance.git, GitInfo)
+    assert FitProvenance.from_dict(provenance.to_dict()) == provenance
