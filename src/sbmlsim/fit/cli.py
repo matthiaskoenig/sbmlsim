@@ -22,7 +22,9 @@ if __name__ == "__main__":
 
 `fit_cli` runs a fit and reports it, `report_cli` reports parameters which were
 stored earlier without optimizing again, with the records of the fit next to
-them (`load_fit_records`).
+them (`load_fit_records`). The report of a stored fit is `report_from_records`,
+which `report_cli` and `identifiability_cli` use and a caller uses for a report
+of its own, e.g. with the context of its model.
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ from sbmlsim.fit.identifiability import (
     ProfileSettings,
     profile_likelihood,
 )
+from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.objects import FitMappingCollection, FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -469,6 +472,117 @@ def _settings_of(definition: FitDefinition, records: FitRecords) -> FitSettings:
     return stored
 
 
+def report_from_records(
+    definition: FitDefinition,
+    directory: Path,
+    *,
+    opid: str,
+    parameters: Sequence[Path] | ParameterSets | None = None,
+    context: ReportContext | None = None,
+    mapping_figures: bool = True,
+    show_titles: bool = False,
+) -> FitReport:
+    """Build the report of a stored fit from the records of its folder.
+
+    No fit is run. The records of the folder (`load_fit_records`), i.e. the
+    result of the optimization, the profiles and the Fisher information,
+    give the report its methods, its provenance, its runs and its
+    identifiability; a record which is not there is left out. The settings of
+    the report are the settings the fit ran with, stored in its result; when
+    they differ from the settings of the definition, which may have changed
+    since, a warning names the settings which differ. Without a result with
+    settings the report has the settings of the definition.
+
+    `report_cli` and `identifiability_cli` build their reports with it, a
+    caller builds the report of a fit of its own with it, e.g. with the
+    context of its model. The report is written by `FitReport.create`.
+
+    Args:
+        definition: the definition of the fit, its problem is reported.
+        directory: the folder of the records of the fit, e.g. the folder of
+            its report.
+        opid: the id of the problem of the report, e.g. the subset of the fit.
+            The report names the fit by the id of its result if it has one.
+        parameters: the parameter sets to report, or the JSON files of them,
+            `parameters.json` of the folder by default. Several sets are
+            combined into a single report, which compares them.
+        context: what the report says about the fit beyond the fit, e.g. its
+            title; an empty context by default.
+        mapping_figures: draw the two figures of every fit mapping.
+        show_titles: add titles to the figures.
+
+    Returns:
+        The report, initialized and ready for `FitReport.create`.
+    """
+    records = load_fit_records(directory)
+    if parameters is None:
+        parameter_sets = load_parameter_sets([directory / "parameters.json"])
+    elif isinstance(parameters, ParameterSets):
+        parameter_sets = parameters
+    else:
+        parameter_sets = load_parameter_sets(parameters)
+    # the problem is a definition, `FitReport` initializes a copy of its own
+    # with the settings, so later fits and edits cannot change the report
+    return FitReport(
+        problem=definition.problem(opid=opid),
+        settings=_settings_of(definition, records),
+        parameter_sets=parameter_sets,
+        opt_result=records.opt_result,
+        identifiability=records.identifiability,
+        fisher=records.fisher,
+        show_titles=show_titles,
+        mapping_figures=mapping_figures,
+        context=context,
+    )
+
+
+def _display_records(
+    report: FitReport,
+    subset: str,
+    parameters: Sequence[Path],
+    output_dir: Path,
+    *,
+    section: str = "Report",
+    icon: str = display.ICON_REPORT,
+) -> None:
+    """Show the report of a stored fit before it is created.
+
+    Args:
+        report: the report, see `report_from_records`.
+        subset: the fit problem.
+        parameters: the files of the parameter sets.
+        output_dir: the directory of the report.
+        section: the title of the section.
+        icon: the icon of the section.
+    """
+    problem = report.problem
+    names = FitRecords(
+        opt_result=report.opt_result,
+        identifiability=report.identifiability,
+        fisher=report.fisher,
+    ).names
+    display.section(section, icon=icon)
+    display.key_values(
+        {
+            "problem": subset,
+            "parameters": ", ".join(str(p) for p in parameters),
+            "sets": ", ".join(pset.sid for pset in report.parameter_sets),
+            "records": ", ".join(names) if names else "none",
+            "output": output_dir,
+        }
+    )
+    display.print_parameters(
+        problem.parameters,
+        coverage=(
+            problem.parameter_mapping.coverage()
+            if problem.parameter_mapping is not None
+            else None
+        ),
+        hooks=hook_summaries(problem.hybridizations),
+    )
+    display.print_settings(report.settings)
+
+
 def _definition(definitions: dict[str, FitDefinition], key: str) -> FitDefinition:
     """Get the definition for a key."""
     return definitions[key]
@@ -628,6 +742,9 @@ def report_cli(
     args: Sequence[str] | None = None,
     prog: str | None = None,
     description: str = "Report of a fit for stored parameters.",
+    context: (
+        ReportContext | Callable[[str, FitDefinition], ReportContext] | None
+    ) = None,
 ) -> Path:
     """Report stored parameters from the command line, without optimizing.
 
@@ -635,13 +752,17 @@ def report_cli(
     are combined into a single report, which compares their parameter sets.
     The records of the fit next to the first file (`load_fit_records`) give the
     report the methods, the provenance, the runs and the identifiability of
-    the fit.
+    the fit, see `report_from_records`.
 
     Args:
         definitions: fit problems by name, the name is the `--subset` argument.
         args: command line arguments, `sys.argv` by default.
         prog: name of the program in the help, the script by default.
         description: description of the program in the help.
+        context: what the report says about the fit beyond the fit, e.g. the
+            title of the model of a caller: a `ReportContext`, or a callable
+            which gets the subset and its definition and returns it. An empty
+            context by default.
 
     Returns:
         Path of the directory the report was written to.
@@ -671,48 +792,21 @@ def report_cli(
     log.enable_rich_logging()
 
     definition = _definition(definitions, options.subset)
-    parameter_sets = load_parameter_sets(options.parameters)
-    # built and initialized here, not left to `FitReport`, so the parameters
-    # and their coverage are shown before the report is created; `FitReport`
-    # initializes a copy of the definition of its own, so later fits and
-    # edits cannot change the report
-    records = load_fit_records(options.parameters[0].parent)
-    settings = _settings_of(definition, records)
-    problem = definition.problem(opid=options.subset)
-    problem.initialize(settings)
-
-    display.section("Report", icon=display.ICON_REPORT)
-    display.key_values(
-        {
-            "problem": options.subset,
-            "parameters": ", ".join(str(p) for p in options.parameters),
-            "sets": ", ".join(pset.sid for pset in parameter_sets),
-            "records": ", ".join(records.names) if records.names else "none",
-            "output": options.output_dir,
-        }
-    )
-    display.print_parameters(
-        problem.parameters,
-        coverage=(
-            problem.parameter_mapping.coverage()
-            if problem.parameter_mapping is not None
-            else None
+    # no fit is run here, the parameter sets come from the given files; the
+    # parameters and their coverage are shown before the report is created
+    report = report_from_records(
+        definition,
+        options.parameters[0].parent,
+        opid=options.subset,
+        parameters=options.parameters,
+        context=(
+            context
+            if context is None or isinstance(context, ReportContext)
+            else context(options.subset, definition)
         ),
-        hooks=hook_summaries(problem.hybridizations),
-    )
-    display.print_settings(settings)
-
-    # no fit is run here, the parameter sets come from the given files
-    report = FitReport(
-        problem=problem,
-        settings=settings,
-        parameter_sets=parameter_sets,
-        opt_result=records.opt_result,
-        identifiability=records.identifiability,
-        fisher=records.fisher,
-        show_titles=False,
         mapping_figures=not options.no_mapping_figures,
     )
+    _display_records(report, options.subset, options.parameters, options.output_dir)
     return report.create(
         output_dir=options.output_dir,
         name=options.name if options.name else "report",
@@ -842,38 +936,28 @@ def identifiability_cli(
         reoptimize=not options.no_reoptimize,
     )
 
-    # built and initialized here, not left to `profile_likelihood`, so the
-    # parameters and their coverage are shown before the scans start;
-    # `profile_likelihood` initializing the same problem with the same
-    # settings again is a no-op
     # the records of the fit next to the parameters give the report the
     # methods, the optimizer and the provenance of the fit, and the settings
-    # the fit ran with, which the analyses use as well
-    records = load_fit_records(options.parameters.parent)
-    settings = _settings_of(definition, records)
-    problem = definition.problem(opid=options.subset)
-    problem.initialize(settings)
-
-    display.section("Identifiability", icon=display.ICON_IDENTIFIABILITY)
-    display.key_values(
-        {
-            "problem": options.subset,
-            "parameters": str(options.parameters),
-            "set": parameter_set.sid,
-            "records": ", ".join(records.names) if records.names else "none",
-            "output": options.output_dir,
-        }
+    # the fit ran with, which the analyses use as well; the analyses run on
+    # the initialized problem of the report, so the parameters and their
+    # coverage are shown before the scans start, and `profile_likelihood`
+    # initializing the same problem with the same settings again is a no-op
+    report = report_from_records(
+        definition,
+        options.parameters.parent,
+        opid=options.subset,
+        parameters=ParameterSets([parameter_set]),
+        mapping_figures=not options.no_mapping_figures,
     )
-    display.print_parameters(
-        problem.parameters,
-        coverage=(
-            problem.parameter_mapping.coverage()
-            if problem.parameter_mapping is not None
-            else None
-        ),
-        hooks=hook_summaries(problem.hybridizations),
+    problem, settings = report.problem, report.settings
+    _display_records(
+        report,
+        options.subset,
+        [options.parameters],
+        options.output_dir,
+        section="Identifiability",
+        icon=display.ICON_IDENTIFIABILITY,
     )
-    display.print_settings(settings)
 
     result = profile_likelihood(
         problem=problem,
@@ -902,16 +986,9 @@ def identifiability_cli(
             }
         )
 
-    report = FitReport(
-        problem=problem,
-        settings=settings,
-        parameter_sets=ParameterSets([parameter_set]),
-        opt_result=records.opt_result,
-        identifiability=result,
-        fisher=fisher,
-        show_titles=False,
-        mapping_figures=not options.no_mapping_figures,
-    )
+    # the analyses of this run replace those of the record
+    report.identifiability = result
+    report.fisher = fisher
     return report.create(
         output_dir=options.output_dir,
         name=options.name if options.name else "identifiability",
