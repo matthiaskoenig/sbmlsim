@@ -21,6 +21,8 @@
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 .warn.card { border-color: var(--outlier); }
+/* a long id of a fit mapping breaks, its table stays in its card */
+.wrap { overflow-wrap: anywhere; min-width: 12em; }
 
 /* the report document: a text to read, numbered tables, equations, figures;
    its card has the width of the other cards, its lines a width to read */
@@ -396,7 +398,7 @@
       {% for row in mapping_metrics %}
       <tr data-kind="{{ row.kind }}">
         <td>{{ row.parameter_set }}</td><td>{{ row.experiment }}</td>
-        <td class="mono">{{ row.mapping }}</td>
+        <td class="mono wrap">{{ row.mapping }}</td>
         <td><span class="tag {{ row.kind }}">{{ row.kind }}</span></td>
         <td class="num">{{ row.n }}</td>
         <td class="num mono">{{ row.mse }}</td><td class="num mono">{{ row.rmse }}</td>

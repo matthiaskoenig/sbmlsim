@@ -1057,3 +1057,21 @@ def test_the_costs_of_the_mappings_are_in_their_tab(report_dir: Path) -> None:
     # no document format refers to the moved figure
     for name in ["report.typ", "report.tex", "report_standalone.tex"]:
         assert "cost_bar" not in (report_dir / name).read_text(), name
+
+
+def test_the_figures_of_the_mappings_grow_with_the_mappings(
+    report_dir: Path, fitted
+) -> None:
+    """A row per fit mapping keeps its label readable, the first one on top."""
+    problem, _ = fitted
+    n = len(problem.mapping_keys)
+    for name in ["cost_bar", "residual_boxplot"]:
+        svg = (report_dir / "plots" / f"{name}.svg").read_text()
+        match = re.search(r'height="([0-9.]+)pt"', svg)
+        assert match is not None, name
+        height = float(match.group(1))
+        # 0.17 inches per mapping and 1.5 inches for the axes, in points
+        assert height >= (1.5 + 0.17 * n) * 72 - 0.5, name
+    # a long id of a mapping breaks in the table, which stays in its card
+    html = _html_of(report_dir)
+    assert html.count('<td class="mono wrap">') == n
