@@ -6,6 +6,8 @@ of the problem, the settings and one or more parameter sets.
 
 import dataclasses
 import re
+import shutil
+import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -1078,6 +1080,54 @@ def test_latex_includes_the_png_figures(report_dir: Path) -> None:
     assert tex.strip() in standalone
     bib = (report_dir / "references.bib").read_text()
     assert f"note = {{Version {__version__}}}" in bib
+
+
+def _non_ascii(text: str) -> set[str]:
+    """Characters of a LaTeX source which pdflatex cannot typeset.
+
+    ASCII and the latin letters of T1 with utf8 input (umlauts of the names of
+    authors) are typeset, everything else is not.
+    """
+    return {c for c in text if ord(c) > 127 and not (c.isalpha() and ord(c) < 0x180)}
+
+
+def test_the_latex_has_no_unicode_symbols(report_dir: Path) -> None:
+    """The LaTeX of a report has its symbols as commands, pdflatex reads it."""
+    for name in ["report.tex", "report_standalone.tex"]:
+        tex = (report_dir / name).read_text()
+        assert not _non_ascii(tex), (name, _non_ascii(tex))
+    standalone = (report_dir / "report_standalone.tex").read_text()
+    assert "\\usepackage[T1]{fontenc}" in standalone
+    assert "\\usepackage[utf8]{inputenc}" in standalone
+    tex = (report_dir / "report.tex").read_text()
+    assert "\\chi" in tex and "\\alpha" in tex
+
+
+@pytest.mark.skipif(
+    shutil.which("pdflatex") is None or shutil.which("bibtex") is None,
+    reason="pdflatex and bibtex are not installed",
+)
+def test_the_standalone_latex_compiles(report_dir: Path, tmp_path: Path) -> None:
+    """The standalone LaTeX compiles with pdflatex and bibtex."""
+    work = tmp_path / "latex"
+    shutil.copytree(report_dir, work)
+
+    def run(*command: str) -> None:
+        done = subprocess.run(
+            command, cwd=work, capture_output=True, text=True, check=False
+        )
+        assert done.returncode == 0, done.stdout[-3000:]
+
+    run("pdflatex", "-interaction=nonstopmode", "-halt-on-error", "report_standalone")
+    run("bibtex", "report_standalone")
+    for _ in range(2):
+        run(
+            "pdflatex",
+            "-interaction=nonstopmode",
+            "-halt-on-error",
+            "report_standalone",
+        )
+    assert (work / "report_standalone.pdf").read_bytes().startswith(b"%PDF")
 
 
 def test_a_png_report_has_no_copies(tmp_path: Path, fitted) -> None:

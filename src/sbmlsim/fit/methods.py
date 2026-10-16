@@ -644,7 +644,10 @@ def _optimization(
                 ]
             )
         )
-    scale_parts.append("; bounds and values are given in the units of the model.")
+    scale_parts.append(
+        "; bounds, values and intervals are given in the units of the fit "
+        "parameters, the units of the table of the parameters."
+    )
     blocks: list[Block] = [p(*scale_parts)]
 
     if result is not None and result.fits:
@@ -1130,10 +1133,18 @@ def _profiles(result: IdentifiabilityResult) -> list[Block]:
                 Math(r"F_{\min}", 'F_"min"'),
                 " the lowest objective of the fit and of all profiles and ",
                 Math(r"\chi^2_{\alpha}(\mathrm{df})", 'chi^2_alpha ("df")'),
-                f" the quantile of the χ² distribution at the confidence level "
-                f"α = {ps.alpha:g} with df = {ps.degrees_of_freedom} degrees of "
-                f"freedom, i.e. {delta:.3g} above the lowest objective. A "
-                "crossing is interpolated between two points of the profile, on "
+                " the quantile of the ",
+                Math(r"\chi^2", "chi^2"),
+                " distribution at the confidence level ",
+                Math(rf"\alpha = {ps.alpha:g}", f"alpha = {ps.alpha:g}"),
+                f" with df = {ps.degrees_of_freedom} degrees of "
+                f"freedom, i.e. {delta:.3g} above the lowest objective. The "
+                "threshold has this confidence level if ",
+                Math("F", "F"),
+                " is the negative log-likelihood of the data up to a constant, "
+                "i.e. if the weighted residuals are independent and normally "
+                "distributed with unit variance; otherwise the level is "
+                "approximate. A crossing is interpolated between two points of the profile, on "
                 "the logarithm of a parameter on a logarithmic scale. A parameter "
                 "is ",
                 *_join(
@@ -1215,8 +1226,9 @@ def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
                 r"\mathrm{SE}_j = \sqrt{\mathrm{cov}_{jj}}",
                 '"SE"_j = sqrt("cov"_(j j))',
             ),
-            f" at the confidence level α = {fisher.alpha:g}, transformed back into "
-            "the units of the model.",
+            " at the confidence level ",
+            Math(rf"\alpha = {fisher.alpha:g}", f"alpha = {fisher.alpha:g}"),
+            ", transformed back into the units of the fit parameters.",
         ),
     ]
     return blocks

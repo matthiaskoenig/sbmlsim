@@ -164,3 +164,65 @@ def test_typst_ref_followed_by_text_compiles(tmp_path: Path, after: str) -> None
 def test_typst_cites_in_a_row_are_separate_calls() -> None:
     out = TypstRenderer().render(Document("T", (p(Cite(("a",)), Cite(("b",)), "s"),)))
     assert "#cite(<a>)#cite(<b>)s" in out
+
+
+def _long_table_doc(n: int = 150) -> Document:
+    """A document with a table of several pages."""
+    rows = tuple(
+        (Code(f"data/study_{i:03d}/Fig{i}.tsv"), Code(f"sha{i:03d}abcdef"))
+        for i in range(n)
+    )
+    table = Table(
+        caption=p("Checksums of the files.").content,
+        header=("File", "SHA-256"),
+        rows=rows,
+        label="tab:long",
+    )
+    return Document("T", (Section("S", (p("see ", Ref("tab:long")), table)),))
+
+
+def test_typst_long_table_breaks_across_pages(tmp_path: Path) -> None:
+    pypdf = pytest.importorskip("pypdf")
+    typ = tmp_path / "long.typ"
+    typ.write_text(TypstRenderer().render(_long_table_doc()))
+    reader = pypdf.PdfReader(compile_pdf(typ))
+    texts = [page.extract_text() for page in reader.pages]
+    assert len(texts) > 2, "150 rows do not fit on two pages"
+    assert all("study_" in text for text in texts[1:]), "no empty page"
+    text = "\n".join(texts)
+    for i in range(150):
+        assert text.count(f"study_{i:03d}/") == 1, f"row {i}"
+    assert text.count("Checksums of the files.") == 1
+
+
+def test_latex_tables_are_longtables() -> None:
+    renderer = LaTeXRenderer()
+    tex = renderer.render(_long_table_doc())
+    assert "\\begin{table}" not in tex and "\\begin{tabular}" not in tex
+    begin = tex.index("\\begin{longtable}{lr}")
+    end = tex.index("\\end{longtable}")
+    body = tex[begin:end]
+    assert body.index("\\caption{") < body.index("\\label{tab:long}")
+    assert body.index("\\label{tab:long}") < body.index("\\toprule")
+    assert "\\endfirsthead" in body and "\\endhead" in body
+    assert body.count("study\\_") == 150
+    full = renderer.render_standalone(_long_table_doc())
+    assert "\\usepackage{longtable}" in full and "\\usepackage{booktabs}" in full
+    assert full.count("\\begin{") == full.count("\\end{")
+
+
+def test_latex_symbols_are_math_and_letters_stay() -> None:
+    assert escape_latex("χ² at α, -∞ to ∞, ± 2") == (
+        r"\ensuremath{\chi}\ensuremath{^{2}} at \ensuremath{\alpha}, "
+        r"-\ensuremath{\infty} to \ensuremath{\infty}, \ensuremath{\pm} 2"
+    )
+    assert escape_latex("Kőnig, Müller, Ångström") == "Kőnig, Müller, Ångström"
+    assert escape_latex("1–2 x y") == "1--2 x~y"
+    table = Table(
+        caption=p("Bounds.").content,
+        header=("Parameter", "Upper"),
+        rows=((Code("k_μ"), "∞"),),
+        label="tab:b",
+    )
+    tex = LaTeXRenderer().render(Document("T", (table,)))
+    assert r"\texttt{k\_\ensuremath{\mu}} & \ensuremath{\infty}" in tex

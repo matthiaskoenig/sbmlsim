@@ -310,12 +310,14 @@ def _parameters(
         level = 0.95
     units = report.problem.parameter_units
     rows = []
+    has_interval = False
     for parameter in report.problem.parameters:
         pid = parameter.pid
         value = _g(best.values.get(pid))
         interval = _interval(profiles.get(pid), fisher_df, pid)
         if interval is not None:
             value = f"{value} [{interval[0]}, {interval[1]}]"
+            has_interval = True
         profile = profiles.get(pid)
         identifiable = (
             IDENTIFIABLE[profile.identifiability]
@@ -349,7 +351,7 @@ def _parameters(
         header=(
             "Parameter",
             "Description",
-            f"Value [{level:.0%} CI]",
+            f"Value [{level:.0%} CI]" if has_interval else "Value",
             "Unit",
             "Bounds",
             "Identifiable",
@@ -522,7 +524,8 @@ def _provenance(report: FitReport, fit_id: str) -> Section:
         "revision of its models and data"
     ]
     if provenance.files:
-        # the checksums are in the table of the methods, in full
+        # the checksums are in the table of the methods, shortened to their
+        # first `CHECKSUM_CHARS` characters; the result has them in full
         caption.extend(
             [
                 "; the SHA-256 checksums of the models and data are listed in ",
