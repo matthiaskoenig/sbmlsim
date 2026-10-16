@@ -203,6 +203,7 @@ class HTMLRenderer(_Renderer):
         self._index(document.blocks)
         self._cites = {}
         body = "\n".join(self._block(b) for b in document.blocks)
+        body += self._references(document)
         title = escape_html(document.title)
         return (
             "<!DOCTYPE html>\n"
@@ -211,6 +212,18 @@ class HTMLRenderer(_Renderer):
             f"<style>\n{_CSS}</style>\n</head>\n<body>\n"
             f"<h1>{title}</h1>\n{body}\n</body>\n</html>\n"
         )
+
+    def _references(self, document: Document) -> str:
+        """List of the references in the order of their first citation."""
+        if not document.references:
+            return ""
+        order = {key: n for n, key in enumerate(self._cites)}
+        refs = sorted(document.references, key=lambda r: order.get(r.key, len(order)))
+        items = "\n".join(
+            f'<li id="ref-{escape_html(r.key)}">{escape_html(r.text())}</li>'
+            for r in refs
+        )
+        return f'\n<section id="references">\n<h2>References</h2>\n<ol>\n{items}\n</ol>\n</section>'
 
     @override
     def block(self, block: Block) -> str:
@@ -317,6 +330,8 @@ class TypstRenderer(_Renderer):
     def render(self, document: Document) -> str:
         self._index(document.blocks)
         body = "\n\n".join(self._block(b) for b in document.blocks)
+        if document.references:
+            body += '\n\n#bibliography("references.bib", style: "ieee")'
         return (
             '#set page(paper: "a4", margin: 2cm)\n'
             "#set text(size: 10pt)\n"
@@ -396,7 +411,10 @@ class LaTeXRenderer(_Renderer):
     @override
     def render(self, document: Document) -> str:
         self._index(document.blocks)
-        return "\n\n".join(self._block(b) for b in document.blocks) + "\n"
+        body = "\n\n".join(self._block(b) for b in document.blocks)
+        if document.references:
+            body += "\n\n\\bibliographystyle{unsrt}\n\\bibliography{references}"
+        return body + "\n"
 
     def render_standalone(self, document: Document) -> str:
         """Render as a LaTeX document with preamble.
