@@ -367,6 +367,7 @@ class FisherInformation:
             cost=d["cost"],
             n=d["n"],
             alpha=d.get("alpha", 0.95),
+            rank_tolerance=d.get("rank_tolerance", DEFAULT_RANK_TOLERANCE),
             units=list(d.get("units", [])),
             scales=[ParameterScaleType[name] for name in d.get("scales", [])],
             targets=list(d.get("targets", [])),
@@ -385,6 +386,7 @@ class FisherInformation:
             "cost": self.cost,
             "n": self.n,
             "alpha": self.alpha,
+            "rank_tolerance": self.rank_tolerance,
             "units": list(self.units),
             "targets": list(self.targets),
         }
