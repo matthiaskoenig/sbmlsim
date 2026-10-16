@@ -5,11 +5,18 @@ methods a report cites. `bibliography` selects the references a document cites,
 in the order of their first citation, and adds the installed version to the
 entries of software packages. The HTML report lists them itself, the Typst and
 LaTeX reports read the file written by `to_bibtex`.
+
+`write_bibliography` writes the files of the Typst and the LaTeX report next to
+them: `references.bib` and `references.csl`, the style of the Typst
+bibliography. It is the IEEE style which prints the note of an entry, i.e. the
+version of a software: the IEEE style of Typst drops the note, LaTeX `unsrt`
+prints it.
 """
 
 from __future__ import annotations
 
 import re
+import shutil
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,15 +34,26 @@ from sbmlsim.report.document import (
 )
 
 __all__ = [
+    "BIBLIOGRAPHY_FILE",
     "REFERENCES_BIB",
+    "REFERENCES_CSL",
+    "STYLE_FILE",
     "Reference",
     "bibliography",
     "cited_keys",
     "load_references",
     "to_bibtex",
+    "write_bibliography",
 ]
 
+#: the bundled references
 REFERENCES_BIB = RESOURCES_DIR / "references.bib"
+#: the bundled style of the Typst bibliography, IEEE with the note of an entry
+REFERENCES_CSL = RESOURCES_DIR / "references.csl"
+#: the file of the references next to a Typst or LaTeX report
+BIBLIOGRAPHY_FILE = "references.bib"
+#: the file of the style of the bibliography next to a Typst report
+STYLE_FILE = "references.csl"
 
 _ENTRY = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,")
 _NAME = re.compile(r"\s*(\w+)\s*=\s*")
@@ -252,3 +270,24 @@ def to_bibtex(references: Iterable[Reference]) -> str:
         ]
         entries.append("\n".join([*lines, "}"]))
     return "\n\n".join(entries) + "\n" if entries else ""
+
+
+def write_bibliography(
+    references: Iterable[Reference], directory: Path
+) -> tuple[Path, Path]:
+    """Write the bibliography files of a Typst and a LaTeX report.
+
+    Args:
+        references: the references of the report, see `bibliography`.
+        directory: folder of the report.
+
+    Returns:
+        The paths of the BibTeX file (`to_bibtex`) and of the style of the
+        Typst bibliography, a copy of `REFERENCES_CSL`.
+    """
+    directory = Path(directory)
+    bib = directory / BIBLIOGRAPHY_FILE
+    bib.write_text(to_bibtex(references), encoding="utf-8")
+    csl = directory / STYLE_FILE
+    shutil.copyfile(REFERENCES_CSL, csl)
+    return bib, csl

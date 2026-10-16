@@ -36,7 +36,7 @@ from sbmlsim.report.references import (
     bibliography,
     cited_keys,
     load_references,
-    to_bibtex,
+    write_bibliography,
 )
 from sbmlsim.report.render import (
     HTMLRenderer,
@@ -376,7 +376,7 @@ def test_the_pdf_builds(fitted: Fitted, tmp_path: Path) -> None:
     )
     doc = Document("Methods", (section,))
     doc = replace(doc, references=bibliography(doc))
-    (tmp_path / "references.bib").write_text(to_bibtex(doc.references))
+    write_bibliography(doc.references, tmp_path)
     typ = tmp_path / "methods.typ"
     typ.write_text(TypstRenderer().render(doc))
     assert compile_pdf(typ).stat().st_size > 0

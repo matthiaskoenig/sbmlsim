@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader
 
 from sbmlsim.report.document import Cite, Document, Figure, Section, Table, Text, p
 from sbmlsim.report.references import (
@@ -11,6 +12,7 @@ from sbmlsim.report.references import (
     cited_keys,
     load_references,
     to_bibtex,
+    write_bibliography,
 )
 from sbmlsim.report.render import (
     HTMLRenderer,
@@ -87,8 +89,9 @@ def test_renderers_list_references_only_when_present() -> None:
     html = HTMLRenderer().render(doc)
     assert '<section id="references">' in html
     assert html.index('id="ref-Raue2009"') < html.index('id="ref-Branch1999"')
-    assert '#bibliography("references.bib", style: "ieee")' in TypstRenderer().render(
-        doc
+    assert (
+        '#bibliography("references.bib", style: "references.csl")'
+        in TypstRenderer().render(doc)
     )
     tex = LaTeXRenderer().render(doc)
     assert "\\bibliographystyle{unsrt}\\n\\bibliography{references}" in tex.replace(
@@ -104,7 +107,38 @@ def test_every_bundled_reference_compiles_in_typst(tmp_path: Path) -> None:
     refs = load_references()
     doc = Document("T", (p("x", Cite(tuple(refs))),))
     doc = replace(doc, references=bibliography(doc, versions={"sbmlsim": "1.0"}))
-    (tmp_path / "references.bib").write_text(to_bibtex(doc.references))
+    write_bibliography(doc.references, tmp_path)
     typ = tmp_path / "report.typ"
     typ.write_text(TypstRenderer().render(doc))
     assert compile_pdf(typ).read_bytes().startswith(b"%PDF")
+
+
+def _pdf_text(path: Path) -> str:
+    """Text of a PDF, its lines joined by spaces."""
+    text = " ".join(page.extract_text() for page in PdfReader(path).pages)
+    return " ".join(text.split())
+
+
+def test_the_pdf_lists_the_versions_of_the_software(tmp_path: Path) -> None:
+    """The version of a software is in the reference list of the PDF.
+
+    The IEEE style of Typst drops the field `note` which carries the version,
+    the bundled style prints it at the end of the entry.
+    """
+    doc = Document(
+        "T", (p("x", Cite(("Koenig2026_sbmlsim", "Virtanen2020", "Raue2009"))),)
+    )
+    versions = {"sbmlsim": "0.10.0", "scipy": "1.18.1"}
+    doc = replace(doc, references=bibliography(doc, versions=versions))
+    bib, csl = write_bibliography(doc.references, tmp_path)
+    assert (bib.name, csl.name) == ("references.bib", "references.csl")
+    assert "note = {Version 0.10.0}" in bib.read_text()
+    typ = tmp_path / "report.typ"
+    typ.write_text(TypstRenderer().render(doc))
+
+    text = _pdf_text(compile_pdf(typ))
+    assert "SBML simulation made easy" in text
+    assert "doi: 10.5281/zenodo.3597770. Version 0.10.0." in text
+    assert "Version 1.18.1." in text
+    # an entry without a note is the IEEE entry
+    assert "Raue" in text and text.count("Version") == 2

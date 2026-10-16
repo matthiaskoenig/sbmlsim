@@ -22,7 +22,9 @@ from examples.hctz_fitting.experiments.studies import Beermann1976
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.fit import FitMapping, FitMappingCollection, FitSettings
 from sbmlsim.fit.cli import FitDefinition, run_fit
+from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.helpers import select_mapping_collections
+from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
     ResidualType,
@@ -211,3 +213,46 @@ def fitted_report(tmp_path_factory: pytest.TempPathFactory) -> tuple[FitReport, 
     )
     results_dir = report.create(output_dir=output_dir / "report")
     return report, results_dir / "plots"
+
+
+@pytest.fixture(scope="session")
+def report_dir(
+    _fitted_template: tuple[OptimizationProblem, OptimizationResult],
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Path:
+    """Create the complete report of the quick fit of two runs for the session.
+
+    The report of `fitted` with its Fisher information and the profiles of a
+    fast scan (no re-optimization), without the figures of the fit mappings:
+    every section of the report document is there. A test must not change
+    the files of the report.
+    """
+    problem, result = _fitted_template
+    # the problem of the session is not changed by the analyses
+    problem = copy.deepcopy(problem)
+    settings = result.settings_stored
+    problem.initialize(settings)
+    parameter_set = result.parameter_set()
+    fisher = fisher_information(problem, settings, parameter_set)
+    identifiability = profile_likelihood(
+        problem=problem,
+        settings=settings,
+        parameter_set=parameter_set,
+        profile_settings=ProfileSettings(
+            reoptimize=False,
+            initial_step=0.5,
+            min_step=0.1,
+            max_step=2.0,
+            max_points=6,
+        ),
+        serial=True,
+        show_progress=False,
+    )
+    report = FitReport.from_optimization_result(
+        problem=problem,
+        opt_result=result,
+        fisher=fisher,
+        identifiability=identifiability,
+        mapping_figures=False,
+    )
+    return report.create(output_dir=tmp_path_factory.mktemp("report_dir"))

@@ -11,14 +11,19 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from PIL import Image
+from pypdf import PdfReader
 
 from examples.hctz_fitting.experiments.studies import Weir1998
+from sbmlsim import __version__
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
+from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.report_document import fit_document
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
 
@@ -817,3 +822,194 @@ def test_the_report_lists_the_tolerances_of_the_states(
         rows[0]
     )
     assert "concentration" in context["settings"]["absolute tolerance"]
+
+
+# ---------------------------------------------------------------------------
+# the report document: the two tabs of the HTML, Typst, PDF and LaTeX
+# ---------------------------------------------------------------------------
+#: the figures of the report document, which LaTeX includes as PNG
+DOCUMENT_FIGURES = [
+    "traces",
+    "waterfall",
+    "goodness_of_fit",
+    "bland_altman",
+    "profiles",
+]
+
+
+def test_report_writes_all_formats(report_dir: Path) -> None:
+    for name in [
+        "index.html",
+        "report.typ",
+        "report.pdf",
+        "report.tex",
+        "references.bib",
+    ]:
+        assert (report_dir / name).exists(), name
+    html = (report_dir / "index.html").read_text()
+    assert 'data-tab="report"' in html and 'data-tab="mappings"' in html
+    assert "<math" in html
+
+
+def test_pdf_failure_keeps_the_fit(monkeypatch, tmp_path, fitted) -> None:
+    import sbmlsim.fit.report as report_module
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("typst could not compile 'report.typ': boom")
+
+    monkeypatch.setattr(report_module, "compile_pdf", broken)
+    problem, result = fitted
+    out = FitReport.from_optimization_result(problem=problem, opt_result=result).create(
+        output_dir=tmp_path
+    )
+    assert (out / "report.typ").exists() and not (out / "report.pdf").exists()
+    assert "PDF could not be created" in (out / "index.html").read_text()
+
+
+def test_a_failed_pdf_is_stated_with_its_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fitted_report
+) -> None:
+    """The report states why the PDF failed, every other output is written."""
+    import sbmlsim.fit.report as report_module
+
+    def broken(*args: object, **kwargs: object) -> Path:
+        raise RuntimeError("typst could not compile 'report.typ': boom")
+
+    monkeypatch.setattr(report_module, "compile_pdf", broken)
+    report, _ = fitted_report
+    out = report.create(output_dir=tmp_path, name="failed")
+    html = _html_of(out)
+    assert "typst could not compile &#39;report.typ&#39;: boom" in html
+    # the page does not link the PDF which is not there
+    assert 'href="report.pdf"' not in html
+    for name in [
+        "report.typ",
+        "report.tex",
+        "report_standalone.tex",
+        "references.bib",
+        "references.csl",
+        "parameters.json",
+        "optimization_result.json",
+    ]:
+        assert (out / name).exists(), name
+
+
+def test_the_report_tab_holds_the_document(report_dir: Path, fitted) -> None:
+    """The page opens on the report: the document, then the overview."""
+    html = _html_of(report_dir)
+    nav = html[html.index('<nav class="sections">') : html.index("</nav>")]
+    assert nav.index('data-tab="report"') < nav.index('data-tab="mappings"')
+    assert "Overview" not in nav
+
+    # the report tab is the one shown, the document comes first in it
+    report = html.index('id="report"')
+    mappings = html.index('id="mappings"')
+    assert '<div id="report" class="tab-panel active"' in html
+    assert report < html.index("<h2>Methods</h2>") < html.index('id="overview"')
+    assert html.index('id="overview"') < html.index('id="results"') < mappings
+    assert html.index('id="identifiability"') < mappings
+    assert html.index('<section id="references">') < html.index('id="overview"')
+    # the mappings tab holds every fit mapping and nothing of the report
+    assert html.index('class="card mapping"') > mappings
+    problem, _ = fitted
+    assert html.count('class="card mapping"') == len(problem.mapping_keys)
+    assert "PDF could not be created" not in html
+
+    # the document numbers its parts and links its references in the page
+    assert "Table 1." in html and "Figure 1." in html
+    assert '<span class="eqno">(1)</span>' in html
+    for label in re.findall(r'<a href="#([^"]+)">', html):
+        assert f'id="{label}"' in html, label
+    # its figures open full size as the others do, the downloads are linked
+    assert '<figure id="fig:traces' in html
+    for name in ["report.pdf", "report.typ", "report.tex", "references.bib"]:
+        assert f'href="{name}"' in html, name
+
+
+def test_the_document_survives_the_escaping_of_the_page(report_dir: Path) -> None:
+    """The MathML and the tables of the document are markup, not text."""
+    html = _html_of(report_dir)
+    assert "&lt;math" not in html and "&lt;table" not in html
+    assert '<math display="block">' in html
+    # the namespace of MathML is the one of HTML, the page names no URL
+    assert "http" not in html.split("<main>")[1]
+
+
+def _pdf_text(path: Path) -> str:
+    """Text of a PDF, its lines joined by spaces."""
+    text = " ".join(page.extract_text() for page in PdfReader(path).pages)
+    return " ".join(text.split())
+
+
+def test_the_pdf_is_the_report(report_dir: Path) -> None:
+    """The PDF has the methods, the results and the versioned references."""
+    text = _pdf_text(report_dir / "report.pdf")
+    for token in ["Methods", "Results", "Bibliography", "Bland"]:
+        assert token in text, token
+    # the version of the provenance of the fit, here the installed sbmlsim
+    assert f"Version {__version__}." in text
+
+
+def test_latex_includes_the_png_figures(report_dir: Path) -> None:
+    """LaTeX includes a PNG of every figure, at 300 dpi."""
+    plots_dir = report_dir / "plots"
+    for key in DOCUMENT_FIGURES:
+        assert (plots_dir / f"{key}.svg").exists(), key
+        with Image.open(plots_dir / f"{key}.png") as image:
+            assert image.format == "PNG"
+            assert image.info["dpi"] == pytest.approx((300, 300), abs=0.1)
+    # the figures of the mappings and the other figures are not copied
+    pngs = {path.stem for path in plots_dir.glob("*.png")}
+    assert pngs == set(DOCUMENT_FIGURES)
+
+    tex = (report_dir / "report.tex").read_text()
+    included = re.findall(r"\\includegraphics\[[^]]*\]\{([^}]+)\}", tex)
+    assert len(included) == len(DOCUMENT_FIGURES)
+    for path in included:
+        assert path.endswith(".png") and (report_dir / path).exists(), path
+    assert "\\bibliography{references}" in tex
+    standalone = (report_dir / "report_standalone.tex").read_text()
+    assert standalone.startswith("\\documentclass")
+    assert tex.strip() in standalone
+    bib = (report_dir / "references.bib").read_text()
+    assert f"note = {{Version {__version__}}}" in bib
+
+
+def test_a_png_report_has_no_copies(tmp_path: Path, fitted) -> None:
+    """The figures of a PNG report are the figures LaTeX includes."""
+    problem, result = fitted
+    report = FitReport.from_optimization_result(
+        problem=problem, opt_result=result, image_format="png", mapping_figures=False
+    )
+    out = report.create(output_dir=tmp_path)
+    plots = sorted(path.name for path in (out / "plots").iterdir())
+    assert "traces.png" in plots
+    assert not [name for name in plots if name.endswith(".svg")]
+    assert "plots/traces.png" in (out / "report.tex").read_text()
+
+
+def test_the_document_of_a_report(fitted_report) -> None:
+    """The document of a report is its methods and its results."""
+    report, plots_dir = fitted_report
+    document = report.document(plots_dir)
+    assert document == fit_document(report, ReportContext(), plots_dir)
+    assert document.title == report.opt_result.sid
+    assert [block.key for block in document.blocks] == ["methods", "results"]
+
+
+def test_the_context_of_a_report(tmp_path: Path, fitted) -> None:
+    """The context gives the report its title and the first sentence."""
+    problem, result = fitted
+    context = ReportContext(
+        title="Pharmacokinetics of HCTZ",
+        description="The absorption and the elimination of HCTZ.",
+    )
+    report = FitReport.from_optimization_result(
+        problem=problem, opt_result=result, context=context, mapping_figures=False
+    )
+    assert report.context is context
+    out = report.create(output_dir=tmp_path)
+    html = _html_of(out)
+    assert "Methods: Pharmacokinetics of HCTZ" in html
+    assert "The absorption and the elimination of HCTZ." in html
+    assert "Pharmacokinetics of HCTZ" in (out / "report.typ").read_text()

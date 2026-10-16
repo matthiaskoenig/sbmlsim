@@ -99,6 +99,8 @@ dev = [
 	"zensical>=0.0.68",
 	"mkdocstrings-python>=2.0.9",
 	"pytest-xdist>=3.8.0",
+	# the text of the PDF reports in the tests
+	"pypdf>=6.21.0",
 	# the prototype of the plotly figures, see sbmlsim.plot.serialization_plotly
 	"plotly>=7.1.0",
 ]
