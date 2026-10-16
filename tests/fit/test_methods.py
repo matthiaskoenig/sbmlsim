@@ -460,3 +460,28 @@ def test_hybridizations(fitted: Fitted, monkeypatch: pytest.MonkeyPatch) -> None
 )
 def test_numbers_of_every_decade(value: float, typst: str) -> None:
     assert TypstRenderer().block(p(methods._number(value))) == typst
+
+
+def test_units_are_those_of_the_table_of_the_parameters(fitted: Fitted) -> None:
+    """The values, bounds and intervals are in the units of the fit parameters.
+
+    The table of the parameters shows the units of the fit parameters
+    (`OptimizationProblem.parameter_units`), so the methods name them, not the
+    units of the model.
+    """
+    problem, _ = fitted
+    html = _html(
+        _section(
+            fitted, identifiability=_identifiability(problem), fisher=_fisher(problem)
+        )
+    )
+    assert "units of the model" not in html
+    assert html.count("units of the fit parameters") == 2
+
+
+def test_the_threshold_states_its_assumption(fitted: Fitted) -> None:
+    """The likelihood ratio threshold holds for a negative log-likelihood."""
+    problem, _ = fitted
+    html = _html(_section(fitted, identifiability=_identifiability(problem)))
+    assert "negative log-likelihood" in html
+    assert "unit variance" in html

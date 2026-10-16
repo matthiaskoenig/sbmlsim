@@ -70,7 +70,9 @@ def test_results_tables_and_missing_figures(
     report, plots_dir = fitted_report
     doc = fit_document(report, ReportContext(title="Toy"), plots_dir)
     html = HTMLRenderer().render(doc)
-    assert "Value [95% CI]" in html
+    # no parameter has an interval, the column is the value alone
+    assert "<th>Value</th>" in html or ">Value<" in html
+    assert "CI]" not in html
     assert "waterfall" not in html  # size=1 has no waterfall plot
     assert "tab:provenance" in html
 
@@ -130,7 +132,7 @@ def test_the_tables(fitted_report: Reported) -> None:
     assert parameters.header == (
         "Parameter",
         "Description",
-        "Value [95% CI]",
+        "Value",
         "Unit",
         "Bounds",
         "Identifiable",

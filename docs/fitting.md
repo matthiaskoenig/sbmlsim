@@ -390,7 +390,7 @@ A report calculates the metrics for every one of its parameter sets and writes t
 `FitReport.create` writes more than the page. A folder of a report holds:
 
 - `index.html`, the page with two tabs: **Report** is the document of the fit (its methods, its results and its references), followed by the overview, the results and the identifiability of the fit; **Fit mappings** is the figures of the cost and weight and of the residuals of every mapping and the table of the metrics of every mapping, then a card per fit mapping;
-- `report.pdf`, the same document as a PDF, written only if Typst compiles it (otherwise there is no PDF and the HTML states why), and its sources `report.typ` ([Typst](https://typst.app)), `report.tex` (a fragment for `\input`) and `report_standalone.tex` (compiles on its own), with `references.bib` and `references.csl`, the style of the bibliography;
+- `report.pdf`, the same document as a PDF (a table longer than a page continues on the next pages with its header repeated), written only if Typst compiles it (otherwise there is no PDF and the HTML states why), and its sources `report.typ` ([Typst](https://typst.app)), `report.tex` (a fragment for `\input` in a document which loads `amsmath`, `graphicx`, `booktabs`, `longtable` and `hyperref`) and `report_standalone.tex` (a document with its preamble, meant to compile with pdflatex and bibtex; tables are `longtable`s, symbols in the text are math), with `references.bib` and `references.csl`, the style of the bibliography;
 - the figures in `plots/`, and the PNG copies of the overview figures (`traces`, `waterfall`, `goodness_of_fit`, `bland_altman`, `profiles`, when the fit has them), which the LaTeX source includes; the HTML and the Typst include the figures in the image format of the report;
 - the tables and records of the fit: `report.txt`, `parameters.json`, `metrics.tsv`, `metrics_mappings.tsv` and `datapoints.tsv`, and, where the report has them, `optimization_result.json` (with `optimization_result.tsv`), `fisher.json` and `identifiability.json` (each with its TSV).
 
@@ -398,7 +398,7 @@ The methods are written from the fit, not from a template of one kind of fit: on
 
 The results are tables and figures of the best parameter set of the report:
 
-- the parameters with the columns Parameter, Description, Value [CI], Unit, Bounds and Identifiable; the confidence interval is that of the profile likelihood where there is one and the Wald interval of the Fisher information otherwise, at the confidence level of the analysis (the identifiability settings or the alpha of the Fisher information), not a fixed one;
+- the parameters with the columns Parameter, Description, Value [CI], Unit, Bounds and Identifiable; the confidence interval is that of the profile likelihood where there is one and the Wald interval of the Fisher information otherwise, at the confidence level of the analysis (the identifiability settings or the alpha of the Fisher information), not a fixed one, which the header states (`Value [95% CI]`); without an interval for any parameter the column is `Value`; values, bounds and intervals are in the units of the fit parameters, the column Unit;
 - the data of the fit per experiment and kind (training, validation, outliers) and the metrics of the fit;
 - the provenance of the fit (versions, seed, git revision), as far as the result recorded it; a result without provenance says that it was not recorded. The table of the SHA-256 checksums of the models and data files is in the provenance of the methods, the provenance of the results refers to it;
 - the figures of the optimization runs, the goodness of fit, the Bland-Altman plot and the profiles, where their files were written (the tab "Fit mappings" has the per-mapping figures).
@@ -407,7 +407,7 @@ The references of the document are those it cites. `sbmlsim` ships the entries a
 
 The PDF needs no LaTeX installation: the python package `typst` compiles `report.typ`. The LaTeX files are offered as source for a manuscript, `sbmlsim` does not compile them. A report which Typst cannot compile does not fail the fit: the error is logged and stated in `index.html`, `report.typ` is kept and every other file is written.
 
-A report from a stored fit reads the records next to `parameters.json`, i.e. `optimization_result.json`, `identifiability.json` and `fisher.json`. Their methods, provenance, runs and identifiability are in the report, and a record which is not there is left out, so a report made from `parameters.json` alone has no optimizer and no provenance:
+A report from a stored fit reads the records next to `parameters.json`, i.e. `optimization_result.json`, `identifiability.json` and `fisher.json`. Their methods, provenance, runs and identifiability are in the report, and a record which is not there is left out, so a report made from `parameters.json` alone has no optimizer and no provenance. The settings of the report are those of the record, which the fit ran with; when the definition has changed since, a warning names the settings which differ:
 
 ```bash
 python -m examples.hctz_fitting.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json

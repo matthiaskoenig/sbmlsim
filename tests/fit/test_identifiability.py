@@ -1,6 +1,7 @@
 """Test the profile likelihood analysis of the parameters of a fit."""
 
 import re
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -609,6 +610,44 @@ def test_identifiability_cli(tmp_path: Path, definition_hctz_pk: FitDefinition) 
     assert (results_dir / "fisher.tsv").exists()
     html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert "Fisher information" in html
+
+
+def test_identifiability_cli_reads_the_records_of_the_fit(
+    tmp_path: Path, report_dir: Path
+) -> None:
+    """The identifiability report of a fit has its methods and provenance.
+
+    The result of the optimization next to the `parameters.json` gives the
+    report the optimizer, the settings and the provenance of the fit.
+    """
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    records = tmp_path / "records"
+    records.mkdir()
+    for name in ["parameters.json", "optimization_result.json"]:
+        shutil.copy(report_dir / name, records)
+
+    results_dir = identifiability_cli(
+        FIT_DEFINITIONS,
+        args=[
+            "--no-mapping-figures",
+            str(records / "parameters.json"),
+            "--subset=PK",
+            "--name=identifiability",
+            "--no-reoptimize",
+            "--no-fisher",
+            "--max-points=2",
+            "--initial-step=1.0",
+            "--min-step=0.5",
+            "--max-step=2.0",
+            f"--output_dir={tmp_path}",
+        ],
+    )
+    assert (results_dir / "optimization_result.json").exists()
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    # the provenance of the fit with its seed
+    assert "1234" in html
+    assert "not recorded" not in html
 
 
 def test_identifiability_cli_without_fisher(

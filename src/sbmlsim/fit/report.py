@@ -802,7 +802,10 @@ class FitReport:
             "same constant as the AIC. It charges a parameter more than the "
             "AIC from eight data points on, so it prefers the smaller model."
         ),
-        "value": "Value of the parameter in the units of the model.",
+        "value": (
+            "Value of the parameter in the unit of its fit parameter, the unit "
+            "of the table of the parameters."
+        ),
         "scale": "Space the optimizer searches the parameter in.",
         "se": (
             "Standard error of the parameter, the square root of the diagonal "

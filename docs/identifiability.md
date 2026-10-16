@@ -87,7 +87,7 @@ run.report(
 )
 ```
 
-which is `examples/hctz_fitting/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz_fitting/fitting/identifiability_report.py` on the HCTZ definitions; it computes both analyses, `--no-fisher` reports the profiles alone:
+which is `examples/hctz_fitting/fitting/identifiability.py`. `identifiability_cli` is the command line tool for stored parameters, `examples/hctz_fitting/fitting/identifiability_report.py` on the HCTZ definitions; it computes both analyses, `--no-fisher` reports the profiles alone. The `optimization_result.json` next to the parameters gives the report the methods, the optimizer and the provenance of the fit, and the analyses run with its settings, those the fit ran with:
 
 ```bash
 python -m examples.hctz_fitting.fitting.identifiability --subset=PK --runs=2 --cores=4

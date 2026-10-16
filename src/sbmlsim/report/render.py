@@ -12,6 +12,7 @@ referenced by their label.
 from __future__ import annotations
 
 import html
+import unicodedata
 from pathlib import Path
 from typing import override
 
@@ -57,6 +58,91 @@ _LATEX = {
     "^": r"\textasciicircum{}",
     "~": r"\textasciitilde{}",
 }
+#: symbols which pdflatex does not read from utf8 text, as LaTeX math; the
+#: latin letters with accents and umlauts are read with T1 and utf8 input
+_LATEX_SYMBOLS = {
+    "α": r"\alpha",
+    "β": r"\beta",
+    "γ": r"\gamma",
+    "Γ": r"\Gamma",
+    "δ": r"\delta",
+    "Δ": r"\Delta",
+    "ε": r"\varepsilon",
+    "ζ": r"\zeta",
+    "η": r"\eta",
+    "θ": r"\theta",
+    "Θ": r"\Theta",
+    "κ": r"\kappa",
+    "λ": r"\lambda",
+    "Λ": r"\Lambda",
+    "μ": r"\mu",
+    "µ": r"\mu",
+    "ν": r"\nu",
+    "ξ": r"\xi",
+    "π": r"\pi",
+    "Π": r"\Pi",
+    "ρ": r"\rho",
+    "σ": r"\sigma",
+    "Σ": r"\Sigma",
+    "τ": r"\tau",
+    "φ": r"\varphi",
+    "Φ": r"\Phi",
+    "χ": r"\chi",
+    "ψ": r"\psi",
+    "Ψ": r"\Psi",
+    "ω": r"\omega",
+    "Ω": r"\Omega",
+    "∞": r"\infty",
+    "±": r"\pm",
+    "∓": r"\mp",
+    "×": r"\times",
+    "·": r"\cdot",
+    "÷": r"\div",
+    "≤": r"\leq",
+    "≥": r"\geq",
+    "≠": r"\neq",
+    "≈": r"\approx",
+    "∼": r"\sim",
+    "→": r"\rightarrow",
+    "←": r"\leftarrow",
+    "↔": r"\leftrightarrow",
+    "−": "-",
+    "√": r"\surd",
+    "∑": r"\sum",
+    "∫": r"\int",
+    "∂": r"\partial",
+    "∈": r"\in",
+    "°": r"^{\circ}",
+    "⁰": "^{0}",
+    "¹": "^{1}",
+    "²": "^{2}",
+    "³": "^{3}",
+    "⁴": "^{4}",
+    "⁵": "^{5}",
+    "⁶": "^{6}",
+    "⁷": "^{7}",
+    "⁸": "^{8}",
+    "⁹": "^{9}",
+    "⁻": "^{-}",
+    "₀": "_{0}",
+    "₁": "_{1}",
+    "₂": "_{2}",
+    "₃": "_{3}",
+}
+
+#: text symbols which pdflatex does not read from utf8 text
+_LATEX_TEXT = {
+    "\u00a0": "~",
+    "\u2009": r"\,",
+    "\u2013": "--",
+    "\u2014": "---",
+    "\u2018": "`",
+    "\u2019": "'",
+    "\u201c": "``",
+    "\u201d": "''",
+    "\u2026": r"\ldots{}",
+    "\u2030": r"\textperthousand{}",
+}
 _TYPST = set("\\#$*_@<>[]`~=/")
 _KIND = {Table: "Table", Figure: "Figure", Equation: "Equation", Section: "Section"}
 
@@ -80,9 +166,28 @@ def escape_latex(text: str) -> str:
         text: literal text.
 
     Returns:
-        Text which LaTeX typesets literally.
+        Text which LaTeX typesets literally. pdflatex reads it with T1 and
+        utf8 input: symbols (greek letters, `±`, `∞`, superscripts) are math
+        (`ensuremath`), latin letters with accents stay as they are.
     """
-    return "".join(_LATEX.get(c, c) for c in text)
+    return "".join(_escape_latex_char(c) for c in text)
+
+
+def _escape_latex_char(c: str) -> str:
+    """Escape a character for LaTeX, see `escape_latex`."""
+    if c in _LATEX:
+        return _LATEX[c]
+    if c.isascii():
+        return c
+    if c in _LATEX_SYMBOLS:
+        return f"\\ensuremath{{{_LATEX_SYMBOLS[c]}}}"
+    if c in _LATEX_TEXT:
+        return _LATEX_TEXT[c]
+    if c.isalpha() and ord(c) < 0x180:
+        return c
+    # a compatibility form, e.g. a ligature, else the character as it is
+    folded = unicodedata.normalize("NFKD", c).encode("ascii", "ignore").decode()
+    return "".join(_LATEX.get(f, f) for f in folded) if folded else c
 
 
 def escape_typst(text: str) -> str:
@@ -368,7 +473,11 @@ class TypstRenderer(_Renderer):
             '#set page(paper: "a4", margin: 2cm)\n'
             "#set text(size: 10pt)\n"
             '#set heading(numbering: "1.1")\n'
-            '#set math.equation(numbering: "(1)")\n\n'
+            '#set math.equation(numbering: "(1)")\n'
+            "// a table longer than a page continues on the next page, its\n"
+            "// caption above it and its header repeated\n"
+            "#show figure.where(kind: table): set block(breakable: true)\n"
+            "#show figure.where(kind: table): set figure.caption(position: top)\n\n"
             f'#align(center, text(size: 16pt, weight: "bold")'
             f"[{escape_typst(document.title)}])\n\n{body}\n"
         )
@@ -460,9 +569,12 @@ class LaTeXRenderer(_Renderer):
         body = self.render(document)
         return (
             "\\documentclass{article}\n"
+            "\\usepackage[T1]{fontenc}\n"
+            "\\usepackage[utf8]{inputenc}\n"
             "\\usepackage{amsmath}\n"
             "\\usepackage{graphicx}\n"
             "\\usepackage{booktabs}\n"
+            "\\usepackage{longtable}\n"
             "\\usepackage{hyperref}\n"
             f"\\title{{{escape_latex(document.title)}}}\n"
             "\\date{}\n"
@@ -494,13 +606,19 @@ class LaTeXRenderer(_Renderer):
                     " & ".join(self._cell(c) for c in row) + " \\\\\n"
                     for row in block.rows
                 )
+                # a longtable breaks across pages: the caption and the label
+                # head the first page, the header repeats on every page
+                n = len(cols)
                 return (
-                    "\\begin{table}[htbp]\n\\centering\n"
-                    f"\\caption{{{self._inlines(block.caption)}}}\n"
-                    f"\\label{{{block.label}}}\n"
-                    f"\\begin{{tabular}}{{{cols}}}\n\\toprule\n{head} \\\\\n"
-                    f"\\midrule\n{rows}\\bottomrule\n\\end{{tabular}}\n"
-                    "\\end{table}"
+                    f"\\begin{{longtable}}{{{cols}}}\n"
+                    f"\\caption{{{self._inlines(block.caption)}}}"
+                    f"\\label{{{block.label}}} \\\\\n"
+                    f"\\toprule\n{head} \\\\\n\\midrule\n\\endfirsthead\n"
+                    f"\\multicolumn{{{n}}}{{l}}{{\\small\\tablename~\\thetable{{}} "
+                    "(continued)} \\\\\n"
+                    f"\\toprule\n{head} \\\\\n\\midrule\n\\endhead\n"
+                    f"\\bottomrule\n\\endlastfoot\n{rows}"
+                    "\\end{longtable}"
                 )
             case Figure():
                 path = Path(block.path)
