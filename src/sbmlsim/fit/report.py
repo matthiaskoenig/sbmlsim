@@ -58,7 +58,7 @@ from sbmlsim.fit.derived import (
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.methods import ReportContext
-from sbmlsim.fit.metrics import FitMetrics
+from sbmlsim.fit.metrics import FitMetrics, fold_counts
 from sbmlsim.fit.objects import (
     EVALUATED_KINDS,
     FitParameter,
@@ -121,8 +121,14 @@ LIMITS_STYLE: dict[str, Any] = {"linestyle": "--", "linewidth": 1.2}
 BAND_ALPHA: float = 0.12
 
 #: style of the lines of twofold of the goodness of fit, `f = 2y` and
-#: `f = y/2`, the criterion of `within_2fold`
-TWOFOLD_STYLE: dict[str, Any] = {"linestyle": ":", "linewidth": 1.5, "color": "0.35"}
+#: `f = y/2`, the criterion of `within_2fold`, in a color of their own, apart
+#: from the black limits of agreement and the gray band, which they lie close
+#: to for a fit of a typical scatter
+TWOFOLD_STYLE: dict[str, Any] = {
+    "linestyle": ":",
+    "linewidth": 2.0,
+    "color": "darkred",
+}
 
 #: the header of a column of the metrics whose name is not what a table shows
 METRIC_HEADERS: dict[str, str] = {"within_2fold": "2-fold [%]"}
@@ -871,8 +877,11 @@ class FitReport:
             "deviation from it is a systematic error of the model. The band is "
             "the agreement of the training data, i.e. the same band the "
             "Bland-Altman plot draws, here as lines parallel to the diagonal. "
-            "The dotted lines are twofold, prediction = 2 x measurement and "
-            "prediction = measurement / 2. "
+            "The dark red dotted lines are twofold, prediction = 2 x "
+            "measurement and prediction = measurement / 2; the caption states "
+            "the points between them of every kind. A point which is zero or "
+            "negative is not drawn on the logarithmic axes and not counted, "
+            "the title of a panel then states the points drawn of all. "
             "The validation panel shows how the fit describes data it was not "
             "fitted on, the outlier panel the data the fit dropped. The box "
             "of a panel carries its R², its normalized RMSE, the RMSE of "
@@ -908,26 +917,33 @@ class FitReport:
     }
 
     def twofold_statement(self) -> str:
-        """Get the percentage of the data points within twofold per kind.
+        """Get the data points within twofold per kind, with their denominator.
 
-        The percentage of `FitMetrics.summary` for every kind the goodness of
-        fit has a panel of, e.g. `85.7% of the training and 70.0% of the
-        validation data points are within twofold`; a kind without a point with
-        a ratio is left out. With several parameter sets the percentages of
-        every set follow its id, e.g. `within twofold: fit 85.7% of the
-        training data points; model 60.0% of the training data points`.
+        The points of every kind the goodness of fit has a panel of, counted
+        as `within_2fold` counts them, i.e. over the points with a positive
+        value and prediction, which are the points the logarithmic axes draw,
+        e.g. `Within twofold of the data are 479 of the 523 training data
+        points (91.6%) and 212 of the 243 validation data points (87.2%); only
+        the data points with a positive value and prediction are counted`. A
+        kind without a point with a ratio is left out. With several parameter
+        sets the counts of every set follow `for <id>`.
 
         Returns:
-            The statement, empty if no kind has a point with a ratio.
+            The statement without a full stop, empty if no kind has a point
+            with a ratio.
         """
         statements: list[str] = []
         for pset in self.parameter_sets:
-            metrics = self.metrics(pset)
+            points = self.points(pset)
             parts = []
             for kind in self.point_kinds():
-                value = metrics.summary(kind=MappingKind(kind))["within_2fold"]
-                if np.isfinite(value):
-                    parts.append(f"{value:.1f}% of the {kind}")
+                of_kind = self._of_kind(points, kind)
+                inside, n_ratio = fold_counts(of_kind.DV, of_kind.IPRED)
+                if n_ratio:
+                    parts.append(
+                        f"{inside} of the {n_ratio} {kind} data points "
+                        f"({100.0 * inside / n_ratio:.1f}%)"
+                    )
             if not parts:
                 continue
             listed = (
@@ -935,13 +951,14 @@ class FitReport:
                 if len(parts) == 1
                 else ", ".join(parts[:-1]) + " and " + parts[-1]
             )
-            prefix = f"{pset.sid} " if len(self.parameter_sets) > 1 else ""
-            statements.append(f"{prefix}{listed} data points")
+            prefix = f"for {pset.sid} " if len(self.parameter_sets) > 1 else ""
+            statements.append(f"{prefix}{listed}")
         if not statements:
             return ""
-        if len(self.parameter_sets) > 1:
-            return f"within twofold: {'; '.join(statements)}"
-        return f"{statements[0]} are within twofold"
+        return (
+            f"Within twofold of the data are {'; '.join(statements)}; only the "
+            "data points with a positive value and prediction are counted"
+        )
 
     def plot_caption(self, name: str) -> str:
         """Get the caption of a figure of the report.
@@ -960,7 +977,7 @@ class FitReport:
         if name == "goodness_of_fit":
             statement = self.twofold_statement()
             if statement:
-                caption = f"{caption}; {statement}"
+                caption = f"{caption}. {statement}"
         return caption
 
     def _plots(self, plots_dir: Path, names: Sequence[str]) -> list[dict[str, Any]]:
@@ -2384,9 +2401,11 @@ class FitReport:
         the fit agrees to. It is the same band the Bland-Altman plot draws, in
         the same styles, so the two figures are read the same way.
 
-        The dotted lines are twofold, `f = 2y` and `f = y/2`: the percentage
-        of the points between them is `within_2fold` of the metrics, which the
-        box of a panel and the caption state.
+        The dark red dotted lines are twofold, `f = 2y` and `f = y/2`: the
+        percentage of the points between them is `within_2fold` of the
+        metrics, which the box of a panel states, and the caption states the
+        points with their denominator, see `twofold_statement`. The title of a
+        panel states the points drawn, see `_panel_title`.
         """
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
         fig, axes, kinds = self._panels()
@@ -2457,8 +2476,11 @@ class FitReport:
                         **kwargs,
                     )
 
-            n_points = len(self._of_kind(points[self.reference_set.sid], kind))
-            ax.set_title(f"{kind} (n={n_points})")
+            ax.set_title(
+                self._panel_title(
+                    kind, [points[pset.sid] for pset in self.parameter_sets]
+                )
+            )
             ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
             ax.set_xscale("log")
             ax.set_yscale("log")
@@ -2472,6 +2494,32 @@ class FitReport:
         if self.show_titles:
             fig.suptitle("Goodness of fit")
         self._save_mpl_figure(fig=fig, path=path)
+
+    @classmethod
+    def _panel_title(cls, kind: str, points: Sequence[pd.DataFrame]) -> str:
+        """Get the title of a panel of the data points, with the points drawn.
+
+        The axes of the goodness of fit and of the Bland-Altman plot are
+        logarithmic, so a data point which is zero or negative, in its value or
+        its prediction, has no ratio and is not drawn. The title states the
+        points drawn, of the set with the most of them, and of how many points
+        of the reference set, e.g. `training (n=523 of 530)`; these are the
+        points `within_2fold` counts.
+
+        Args:
+            kind: kind of fit mapping of the panel.
+            points: the data points of every parameter set, see `points`, the
+                reference set first.
+
+        Returns:
+            The title of the panel.
+        """
+        n_points = len(cls._of_kind(points[0], kind))
+        n_shown = max(
+            int(np.sum(cls._log_ratio(cls._of_kind(df, kind))[2])) for df in points
+        )
+        label = f"n={n_shown}" if n_shown == n_points else f"n={n_shown} of {n_points}"
+        return f"{kind} ({label})"
 
     @staticmethod
     def _log_ratio(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -2558,11 +2606,9 @@ class FitReport:
         fig, axes, kinds = self._panels()
 
         for ax, kind in zip(axes, kinds, strict=True):
-            n_shown = 0
             for pset in self.parameter_sets:
                 dp = self._of_kind(points[pset.sid], kind)
                 mean, difference, mask = self._log_ratio(dp)
-                n_shown = max(n_shown, difference.size)
                 if difference.size == 0:
                     continue
 
@@ -2620,13 +2666,11 @@ class FitReport:
                 label=self._band_labels(self.reference_set)[0] if is_last else None,
                 **IDENTITY_STYLE,
             )
-            # a data point which is zero or negative has no ratio, so a panel
-            # can show fewer points than the metrics of the kind count
-            n_points = len(self._of_kind(points[self.reference_set.sid], kind))
-            label = (
-                f"n={n_shown}" if n_shown == n_points else f"n={n_shown} of {n_points}"
+            ax.set_title(
+                self._panel_title(
+                    kind, [points[pset.sid] for pset in self.parameter_sets]
+                )
             )
-            ax.set_title(f"{kind} ({label})")
             ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
             ax.set_xscale("log")
             ax.grid()

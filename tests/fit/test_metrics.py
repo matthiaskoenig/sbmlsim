@@ -10,6 +10,7 @@ from sbmlsim.fit import FitMetrics, FitSettings, MappingKind, ParameterSet
 from sbmlsim.fit.metrics import (
     aic,
     aic_from_mse,
+    fold_counts,
     mse,
     r_squared,
     rmse,
@@ -124,6 +125,9 @@ def test_within_twofold() -> None:
     data = [1.0, 2.0, 4.0, 0.5, 10.0, 3.0, 0.0, -1.0]
     predicted = [0.4, 1.0, 4.0, 1.0, 21.0, -3.0, 1.0, -2.0]
     assert within_fold(data, predicted) == pytest.approx(60.0)
+    # the points inside and the points with a ratio, the denominator
+    assert fold_counts(data, predicted) == (3, 5)
+    assert fold_counts(data, predicted, fold=3.0) == (5, 5)
     # the default is twofold, a threefold criterion takes in 0.4 and 2.1
     assert within_fold(data, predicted, fold=2.0) == pytest.approx(60.0)
     assert within_fold(data, predicted, fold=3.0) == pytest.approx(100.0)
@@ -136,6 +140,7 @@ def test_within_twofold_without_a_ratio() -> None:
     """Without a point with positive data and prediction the criterion is NaN."""
     assert np.isnan(within_fold([0.0, -1.0, 2.0], [1.0, 1.0, 0.0]))
     assert np.isnan(within_fold([], []))
+    assert fold_counts([0.0, -1.0, 2.0], [1.0, 1.0, 0.0]) == (0, 0)
     with pytest.raises(ValueError, match="as many predictions"):
         within_fold([1.0, 2.0], [1.0])
     with pytest.raises(ValueError, match="fold factor"):

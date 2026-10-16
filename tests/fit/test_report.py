@@ -10,6 +10,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 from PIL import Image
 from pypdf import PdfReader
@@ -20,6 +21,7 @@ from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.methods import ReportContext
+from sbmlsim.fit.metrics import fold_counts
 from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
@@ -301,6 +303,25 @@ def test_the_limits_of_agreement_are_the_training_data(
     assert 1.96 * float(np.std(all_difference, ddof=1)) > half
 
 
+def test_the_title_of_a_panel_counts_the_points_drawn() -> None:
+    """A panel of the data points states how many of its points it draws.
+
+    The axes of both figures are logarithmic, so a point with a value or a
+    prediction which is zero or negative is not drawn; the title then states
+    the points drawn of the points of the kind, the denominator of the
+    percentage within twofold.
+    """
+    positive = pd.DataFrame(
+        {"kind": ["training"] * 3, "DV": [1.0, 2.0, 3.0], "IPRED": [1.0, 2.0, 3.0]}
+    )
+    assert FitReport._panel_title("training", [positive]) == "training (n=3)"
+    with_zero = positive.assign(IPRED=[1.0, 0.0, -3.0])
+    assert FitReport._panel_title("training", [with_zero]) == "training (n=1 of 3)"
+    # of several sets the one with the most points drawn, of the reference set
+    assert FitReport._panel_title("training", [with_zero, positive]) == "training (n=3)"
+    assert FitReport._panel_title("validation", [positive]) == "validation (n=0)"
+
+
 def test_the_legend_lists_the_studies_before_the_lines() -> None:
     """The legend of the panels lists the points first and the lines last.
 
@@ -446,13 +467,22 @@ def test_the_twofold_criterion_of_a_report(fitted_report) -> None:
     box = report.panel_metrics(MappingKind.TRAINING.value, "goodness_of_fit")
     assert f"2-fold = {percent}" in box
 
+    # the statement names the points it counts, the points with a ratio
+    statement = report.twofold_statement()
+    assert statement.startswith("Within twofold of the data are ")
+    points = report.points(pset)
+    for kind in report.point_kinds():
+        of_kind = points[points.kind == kind]
+        inside, n_ratio = fold_counts(of_kind.DV, of_kind.IPRED)
+        value = report.metrics(pset).summary(kind=MappingKind(kind))["within_2fold"]
+        assert value == pytest.approx(100.0 * inside / n_ratio)
+        assert (
+            f"{inside} of the {n_ratio} {kind} data points ({value:.1f}%)" in statement
+        )
+    assert "with a positive value and prediction" in statement
+
     caption = report.plot_caption("goodness_of_fit")
-    assert caption.startswith(report.PLOT_CAPTIONS["goodness_of_fit"])
-    assert f"{percent} of the training" in caption
-    if MappingKind.VALIDATION.value in report.point_kinds():
-        validation = report.metrics(pset).summary(kind=MappingKind.VALIDATION)
-        assert f"{validation['within_2fold']:.1f}% of the validation" in caption
-    assert "within twofold" in caption
+    assert caption == f"{report.PLOT_CAPTIONS['goodness_of_fit']}. {statement}"
     # the other figures keep their caption
     assert report.plot_caption("waterfall") == report.PLOT_CAPTIONS["waterfall"]
 
@@ -474,7 +504,7 @@ def test_the_twofold_criterion_of_a_report(fitted_report) -> None:
 
     html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert "2-fold [%]" in html
-    assert f"{percent} of the training" in html
+    assert statement in html
 
 
 def test_the_key_metrics_of_several_sets(
