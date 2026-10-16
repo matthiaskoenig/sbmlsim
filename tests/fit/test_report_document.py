@@ -18,7 +18,7 @@ from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.report_document import fit_document, results_section
-from sbmlsim.report.document import Block, Figure, Ref, Section, Table
+from sbmlsim.report.document import Block, Code, Figure, Ref, Section, Table
 from sbmlsim.report.render import HTMLRenderer, LaTeXRenderer, TypstRenderer
 
 Reported = tuple[FitReport, Path]
@@ -205,19 +205,34 @@ def test_every_reference_resolves(fitted_report: Reported) -> None:
 
 
 def test_without_provenance(fitted_report: Reported) -> None:
+    """A record without provenance has a table which invents nothing."""
     report, plots_dir = fitted_report
     report = _copy(report)
     assert report.opt_result is not None
+    fit_id = report.opt_result.sid
     report.opt_result.provenance = None
     section = results_section(report, ReportContext(), plots_dir)
-    keys = [b.key for b in section.blocks if isinstance(b, Section)]
-    assert "results:provenance" not in keys
+    table = _table(section, "results:provenance")
+    assert table.label == f"tab:provenance:{fit_id}"
+    assert table.rows == (
+        ("Fit", Code(fit_id)),
+        ("Created", "not recorded"),
+        ("Seed", "not recorded"),
+        ("Versions", "not recorded"),
+        ("Repository", "not recorded"),
+    )
+    assert not any(isinstance(span, Ref) for span in table.caption)
+
     doc = fit_document(report, ReportContext(), plots_dir)
-    assert _refs(doc.blocks) == []
+    labels = {getattr(b, "label", "") for b in _blocks(doc.blocks)} - {""}
+    assert set(_refs(doc.blocks)) <= labels
+    assert not any(label.startswith("tab:checksums") for label in labels)
     html = _render_all(report, plots_dir)
     assert "was not recorded" in html
-    assert "tab:provenance" not in html
+    assert f"tab:provenance:{fit_id}" in html
     assert "tab:checksums" not in html
+    # no seed sentence in the methods
+    assert "(seed " not in html
     sbmlsim = next(r for r in doc.references if r.key == "Koenig2026_sbmlsim")
     assert "note" not in sbmlsim.fields
 
@@ -320,3 +335,61 @@ def test_the_document_of_a_fit_of_two_runs(fitted, tmp_path: Path) -> None:
     html = _render_all(report, plots_dir)
     assert f"fig:waterfall:{result.sid}" in html
     assert "waterfall plot" in html
+
+
+def test_an_unproven_end_of_a_profile_is_not_determined(
+    fitted_report: Reported,
+) -> None:
+    """A profile with failed points has no class, its open side is not proven."""
+    report, plots_dir = fitted_report
+    report = _copy(report)
+    problem = report.problem
+    pids = list(problem.pids)
+    k = len(pids)
+    best = report.parameter_sets[0]
+    report.fisher = FisherInformation(
+        opid=problem.opid,
+        sid=best.sid,
+        pids=pids,
+        values=np.array([best.values[pid] for pid in pids]),
+        scale=ParameterScaleType.LOG10,
+        matrix=np.eye(k) * 100.0,
+        cost=1.0,
+        n=40,
+    )
+    profile = _profile(pids[0], k)
+    profile.converged = np.array([False, True, True])
+    report.identifiability = IdentifiabilityResult(
+        opid=problem.opid,
+        parameter_set=best,
+        parameters=problem.parameters,
+        settings=ProfileSettings(),
+        fit_settings=FitSettings(),
+        cost=1.0,
+        profiles={pids[0]: profile},
+    )
+    # the evaluation keeps a proven end and gives no class
+    profile = report.identifiability.profiles[pids[0]]
+    assert profile.identifiability is None
+    profile.ci_lower, profile.ci_upper = None, 1.8
+
+    table = _table(
+        results_section(report, ReportContext(), plots_dir), "results:parameters"
+    )
+    value = f"{best.values[pids[0]]:.3g}"
+    # no Fisher interval for the side the profile does not prove
+    assert table.rows[0][2] == f"{value} [not determined, 1.8]"
+    assert table.rows[0][5] == "-"
+    caption = " ".join(getattr(span, "text", "") for span in table.caption)
+    assert "is not determined if" in caption
+    html = _render_all(report, plots_dir)
+    assert "not determined" in html
+
+    # a classified profile has no such sentence
+    profile.identifiability = Identifiability.NON_IDENTIFIABLE_LOWER
+    table = _table(
+        results_section(report, ReportContext(), plots_dir), "results:parameters"
+    )
+    assert table.rows[0][2] == f"{value} [LB, 1.8]"
+    caption = " ".join(getattr(span, "text", "") for span in table.caption)
+    assert "not determined" not in caption
