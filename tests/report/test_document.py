@@ -108,7 +108,7 @@ def test_citations_and_references_in_each_format() -> None:
     html = HTMLRenderer().render(doc)
     assert '[<a href="#ref-a">1</a>, <a href="#ref-b">2</a>]' in html
     assert '[<a href="#ref-a">1</a>]' in html
-    assert "@a @b" in TypstRenderer().render(doc)
+    assert "#cite(<a>) #cite(<b>)" in TypstRenderer().render(doc)
     assert r"\cite{a,b}" in LaTeXRenderer().render(doc)
 
 
@@ -139,3 +139,19 @@ def test_compile_failure_raises_runtime_error(tmp_path: Path) -> None:
     typ.write_text("#unknown_function()")
     with pytest.raises(RuntimeError, match=r"could not compile 'bad\.typ'"):
         compile_pdf(typ)
+
+
+@pytest.mark.parametrize("after", ["s", "-x", " and"])
+def test_typst_ref_followed_by_text_compiles(tmp_path: Path, after: str) -> None:
+    table = Table((Text("T."),), ("A",), (("1",),), label="tab:p")
+    doc = Document("T", (p(Ref("tab:p"), after), table))
+    out = TypstRenderer().render(doc)
+    assert f"#ref(<tab:p>){after}" in out
+    typ = tmp_path / "report.typ"
+    typ.write_text(out)
+    assert compile_pdf(typ).read_bytes().startswith(b"%PDF")
+
+
+def test_typst_cites_in_a_row_are_separate_calls() -> None:
+    out = TypstRenderer().render(Document("T", (p(Cite(("a",)), Cite(("b",)), "s"),)))
+    assert "#cite(<a>)#cite(<b>)s" in out
