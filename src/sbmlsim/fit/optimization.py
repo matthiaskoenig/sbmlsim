@@ -731,6 +731,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
         self.mapping_kinds: list[MappingKind] = []
+        #: the metadata of every mapping by field, `MappingMetaData.to_dict`
+        #: with the values as strings, empty for a mapping without metadata
+        self.mapping_metadata: list[dict[str, str]] = []
         # the collection of `mapping_collections` every mapping comes from
         self.collection_indices: list[int] = []
         #: the x of the observable of every mapping: the time (or another
@@ -1511,6 +1514,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                         selected_mappings.setdefault(k_parameter, set()).add(k_mapping)
 
                 self.mapping_kinds.append(mapping_collection.kind)
+                self.mapping_metadata.append(
+                    {}
+                    if mapping.metadata is None
+                    else {
+                        str(key): str(value)
+                        for key, value in mapping.metadata.to_dict().items()
+                    }
+                )
                 self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
                 self.x_units.append(obs_x_unit)

@@ -18,7 +18,7 @@ from sbmlsim.fit.metrics import (
     sse,
     within_fold,
 )
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
 
 
 def test_metrics_report_simulates_once_and_tracks_changed_parameters(
@@ -166,19 +166,8 @@ def test_metrics_datapoints(
     )
     dp = metrics.datapoints_df()
 
-    assert list(dp.columns) == [
-        "experiment",
-        "mapping",
-        "kind",
-        "x",
-        "DV",
-        "PRED",
-        "IPRED",
-        "RES",
-        "IRES",
-        "NRES",
-        "IWRES",
-    ]
+    # the columns of the evaluation follow, see the test of the observable
+    assert list(dp.columns)[:11] == _POINT_COLUMNS
     assert len(dp) == sum(len(y) for y in op_hctz_pk.y_references)
 
     # without individual parameters PRED is IPRED
@@ -325,3 +314,56 @@ def test_the_documentation_describes_the_twofold_criterion() -> None:
     assert "within_2fold" in metrics
     assert "within twofold" in metrics
     assert "within_fold" in metrics
+
+
+#: the columns of the data points before the evaluation of #356
+_POINT_COLUMNS = [
+    "experiment",
+    "mapping",
+    "kind",
+    "x",
+    "DV",
+    "PRED",
+    "IPRED",
+    "RES",
+    "IRES",
+    "NRES",
+    "IWRES",
+]
+
+
+def test_the_points_carry_the_observable_the_error_and_the_metadata(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    dp = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model()).datapoints_df()
+    columns = list(dp.columns)
+    assert columns[:11] == _POINT_COLUMNS
+    assert columns[11:15] == ["observable", "observation", "DV_SD", "N"]
+    assert "tissue" in columns[15:]
+    assert set(dp.observation) <= {kind.value for kind in ObservationKind}
+    for k, mapping in enumerate(op_hctz_pk.mapping_keys):
+        rows = dp[
+            (dp.experiment == op_hctz_pk.experiment_keys[k]) & (dp.mapping == mapping)
+        ]
+        assert set(rows.observable) == {op_hctz_pk.yid_observable[k]}
+        errors = op_hctz_pk.y_errors[k]
+        if errors is None:
+            assert rows.DV_SD.isna().all()
+        else:
+            np.testing.assert_allclose(rows.DV_SD, errors)
+        assert set(rows.tissue) == {op_hctz_pk.mapping_metadata[k]["tissue"]}
+
+
+def test_mappings_without_metadata_have_empty_metadata_columns(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    op_hctz_pk.mapping_metadata[0] = {}
+    dp = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model()).datapoints_df()
+    first = dp[
+        (dp.experiment == op_hctz_pk.experiment_keys[0])
+        & (dp.mapping == op_hctz_pk.mapping_keys[0])
+    ]
+    assert set(first.tissue) == {""}
+    assert "tissue" in dp.columns

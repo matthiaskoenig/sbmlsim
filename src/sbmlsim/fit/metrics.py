@@ -21,6 +21,15 @@ The names of the columns follow the convention of population pharmacokinetics:
             with the loss function applied. The cost of the training data is
             `0.5 * sum(IWRES**2)`
 
+The table of the data points has, after these, the columns a subset of the data
+is selected by: `observable`, the observable of the mapping, `observation`,
+the `ObservationKind` of the mapping (a timecourse, a value per simulation or
+values over a dimension), `DV_SD`, the standard deviation of the measured value
+(every error of a problem is one, `NaN` without one), `N`, the count of the
+data point, the number of subjects (`NaN` without one), and one column per
+field of the metadata of the mappings, `MappingMetaData.to_dict`, empty for a
+mapping which does not have the field.
+
 The data of a fit spans orders of magnitude, so the absolute metrics `MSE`,
 `RMSE` and `R2` are dominated by the curves with the largest values and a
 curve of small values is missed by a factor of 20 at an absolute error which is
@@ -393,7 +402,8 @@ class FitMetrics:
         Returns:
             DataFrame with one row per data point and the columns `experiment`,
             `mapping`, `kind`, `x`, `DV`, `PRED`, `IPRED`, `RES`, `IRES`,
-            `NRES` and `IWRES`, see the module.
+            `NRES`, `IWRES`, `observable`, `observation`, `DV_SD`, `N` and the
+            fields of the metadata, see the module.
         """
         res_data = self._residual_data(self.parameter_set)
         ipred_all = [np.asarray(y, dtype=float) for y in res_data["y_obsip"]]
@@ -403,9 +413,27 @@ class FitMetrics:
             else ipred_all
         )
 
+        # the fields of the metadata of all mappings, in the order they appear
+        fields = list(
+            dict.fromkeys(key for meta in self.problem.mapping_metadata for key in meta)
+        )
         data: list[dict[str, Any]] = []
         for k, mapping in enumerate(self.problem.mapping_keys):
             dv = np.asarray(self.problem.y_references[k], dtype=float)
+            errors = self.problem.y_errors[k]
+            sd = (
+                np.full(dv.size, np.nan)
+                if errors is None
+                else np.asarray(errors, dtype=float)
+            )
+            counts = self.problem.y_counts[k]
+            n = (
+                np.full(dv.size, np.nan)
+                if counts is None
+                else np.asarray(counts, dtype=float)
+            )
+            metadata = self.problem.mapping_metadata[k]
+            facets = {key: metadata.get(key, "") for key in fields}
             pred = pred_all[k]
             ipred = ipred_all[k]
             # the residual of the cost, with the sign of `data - prediction`
@@ -426,6 +454,11 @@ class FitMetrics:
                         "IRES": ires,
                         "NRES": ires / dv_mean if dv_mean else float("nan"),
                         "IWRES": iwres[ix],
+                        "observable": self.problem.yid_observable[k],
+                        "observation": self.problem.observation_kinds[k].value,
+                        "DV_SD": sd[ix],
+                        "N": n[ix],
+                        **facets,
                     }
                 )
 
@@ -444,6 +477,11 @@ class FitMetrics:
                     "IRES",
                     "NRES",
                     "IWRES",
+                    "observable",
+                    "observation",
+                    "DV_SD",
+                    "N",
+                    *fields,
                 ]
             ),
         )
