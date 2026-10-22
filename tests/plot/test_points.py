@@ -16,6 +16,7 @@ from sbmlsim.plot.points import (
     band_lines,
     curve_lines,
     format_value,
+    onto_union,
     point_colormap,
     point_colors,
     point_labels,
@@ -168,10 +169,47 @@ def test_the_label_of_a_band(
     assert band_label(name, quantiles) == label
 
 
-def test_a_band_of_a_ragged_result_raises() -> None:
-    y = xr.DataArray(np.ones((4, 3)), dims=("draw", "_point"))
-    t = xr.DataArray(np.ones((4, 3)), dims=("draw", "_point"))
-    with pytest.raises(ValueError, match=r"band 'b'.*common grid"):
+def _ragged(times: list[list[float]], values: list[list[float]]) -> tuple:
+    """The time and a variable of a ragged result over (draw, _point)."""
+    n = max(len(t) for t in times)
+    pad = [[*t, *[np.nan] * (n - len(t))] for t in times]
+    vals = [[*v, *[np.nan] * (n - len(v))] for v in values]
+    return (
+        xr.DataArray(np.array(pad), dims=("draw", "_point")),
+        xr.DataArray(np.array(vals), dims=("draw", "_point")),
+    )
+
+
+def test_a_band_of_a_ragged_result_is_on_the_union_of_its_times() -> None:
+    """Every draw is interpolated onto the union of the time points, not mixed."""
+    t, y = _ragged([[0.0, 2.0], [0.0, 1.0, 2.0]], [[0.0, 4.0], [0.0, 3.0, 6.0]])
+    (band,) = band_lines("b", (), "draw", (0.0, 1.0), t, y)
+    np.testing.assert_allclose(band.x, [0.0, 1.0, 2.0])
+    # the first draw at 1 is interpolated between its own times, 2
+    np.testing.assert_allclose(band.low, [0.0, 2.0, 4.0])
+    np.testing.assert_allclose(band.high, [0.0, 3.0, 6.0])
+    np.testing.assert_allclose(band.median, [0.0, 2.5, 5.0])
+
+
+def test_a_draw_is_nan_outside_of_its_times() -> None:
+    t, y = _ragged([[0.0, 1.0], [0.0, 1.0, 2.0]], [[1.0, 1.0], [2.0, 2.0, 2.0]])
+    x, values = onto_union("b", t, y)
+    assert values.dims == ("draw", "time")
+    np.testing.assert_allclose(x.values, [0.0, 1.0, 2.0])
+    np.testing.assert_allclose(values.values[0], [1.0, 1.0, np.nan])
+
+
+def test_a_change_gives_the_state_after_it() -> None:
+    """The two states at the time of a change are interpolated as the one after."""
+    t, y = _ragged([[0.0, 1.0, 1.0, 2.0]], [[0.0, 1.0, 5.0, 6.0]])
+    x, values = onto_union("b", t, y)
+    np.testing.assert_allclose(x.values, [0.0, 1.0, 2.0])
+    np.testing.assert_allclose(values.values[0], [0.0, 5.0, 6.0])
+
+
+def test_a_band_of_a_ragged_result_needs_increasing_x() -> None:
+    t, y = _ragged([[0.0, 2.0, 1.0]], [[0.0, 1.0, 2.0]])
+    with pytest.raises(ValueError, match=r"band 'b'.*increase"):
         band_lines("b", (), "draw", (0.05, 0.95), t, y)
 
 

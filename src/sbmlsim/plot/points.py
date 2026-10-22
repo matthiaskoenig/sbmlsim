@@ -15,8 +15,10 @@ value, through the norm of the colour bar (logarithmic for positive values
 spanning more than a factor of `LOG_RATIO`); a dimension which does not change
 one target is coloured by position, with the labels on a discrete colour bar. A
 band reduces a dimension of draws to two quantiles and the median, computed
-when the figure is drawn; it needs a common grid of times, and its legend
-entry is its area, `<name> (<low>-<high> %)`.
+when the figure is drawn; the draws of a ragged result, whose simulations keep
+their own time points (the steps of the integrator), are interpolated onto the
+union of their time points first (`onto_union`), and its legend entry is its
+area, `<name> (<low>-<high> %)`.
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ from matplotlib.colors import (
 
 from sbmlsim.data import ROW
 from sbmlsim.plot.padding import without_padding
-from sbmlsim.result.scan import POINT, TIME
+from sbmlsim.result.scan import MAX_UNION_ELEMENTS, POINT, TIME
 from sbmlsim.simulation import Dimension
 from sbmlsim.units import Quantity
 
@@ -193,6 +195,69 @@ def band_label(name: str | None, quantiles: tuple[float, float]) -> str:
     return f"{name} ({low}-{high} %)" if name else f"{low}-{high} %"
 
 
+def onto_union(
+    sid: str, x: xr.DataArray, y: xr.DataArray
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Interpolate the data of a band of a ragged result onto the union of its x.
+
+    In the ragged layout every simulation keeps its own time points (`_point`,
+    padded with `NaN`), so the quantiles of a band at a position of `_point`
+    would mix times. Every simulation is interpolated linearly onto the union
+    of the x values of all of them, with `NaN` outside its own range; at the
+    time of a change, which a simulation has twice (the states before and
+    after it), the state after the change is taken, as `ScanResult.interpolate`
+    does.
+
+    Args:
+        sid: the id of the band, for the errors.
+        x: the x data, the time over `(*dims, _point)`.
+        y: the y data over `(*dims, _point)`.
+
+    Returns:
+        The union as x over `time` and the y data over `(*dims, time)`.
+
+    Raises:
+        ValueError: if x of a simulation does not increase, or the union of
+            all simulations has more than `MAX_UNION_ELEMENTS` elements.
+    """
+    x, y = xr.broadcast(x, y)
+    dims = [str(d) for d in y.dims if d != POINT]
+    xs = np.asarray(x.transpose(*dims, POINT).values, dtype=float)
+    ys = np.asarray(y.transpose(*dims, POINT).values, dtype=float)
+    shape = xs.shape[:-1]
+    xs = xs.reshape(-1, xs.shape[-1])
+    ys = ys.reshape(-1, ys.shape[-1])
+    union = np.unique(xs[np.isfinite(xs)])
+    if xs.shape[0] * union.size > MAX_UNION_ELEMENTS:
+        raise ValueError(
+            f"The band '{sid}' interpolates {xs.shape[0]} simulations of a ragged "
+            f"result onto the union of their {union.size} time points, above "
+            f"{MAX_UNION_ELEMENTS} elements; run the scan on a common grid (a "
+            f"simulation with steps or times)."
+        )
+    values = np.full((xs.shape[0], union.size), np.nan)
+    for k, (xk, yk) in enumerate(zip(xs, ys, strict=True)):
+        finite = np.isfinite(xk)
+        xp, yp = xk[finite], yk[finite]
+        if xp.size == 0:
+            continue
+        if np.any(np.diff(xp) < 0):
+            raise ValueError(
+                f"The band '{sid}' interpolates a ragged result onto the union of "
+                f"its x values, which have to increase, e.g. the time."
+            )
+        # the state after a change at its time, the last of equal times
+        last = np.append(xp[1:] != xp[:-1], True)
+        values[k] = np.interp(union, xp[last], yp[last], left=np.nan, right=np.nan)
+    coords = {d: y.coords[d] for d in dims if d in y.coords}
+    return (
+        xr.DataArray(union, dims=(TIME,)),
+        xr.DataArray(
+            values.reshape(*shape, union.size), dims=(*dims, TIME), coords=coords
+        ),
+    )
+
+
 def band_lines(
     sid: str,
     over: Sequence[str],
@@ -215,15 +280,12 @@ def band_lines(
         One band per point of `over`.
 
     Raises:
-        ValueError: if the data is ragged, has not the dimension `across`, or
-            leaves more than one dimension besides `over` and `across`.
+        ValueError: if the data has not the dimension `across`, or leaves more
+            than one dimension besides `over` and `across`; for a ragged result
+            see `onto_union`.
     """
     if POINT in y.dims or POINT in x.dims:
-        raise ValueError(
-            f"The band '{sid}' reduces '{across}' of a ragged result, whose "
-            f"simulations keep their own time points; run the scan on a common grid "
-            f"(a simulation with steps or times)."
-        )
+        x, y = onto_union(sid, x, y)
     if across not in y.dims:
         raise ValueError(
             f"The band '{sid}' reduces the dimension '{across}', which its data has "

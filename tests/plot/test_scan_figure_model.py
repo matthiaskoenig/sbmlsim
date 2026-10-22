@@ -175,7 +175,9 @@ def test_a_band_needs_its_dimension_and_names_the_others() -> None:
     _runner(_with_figure(named))
 
 
-def test_a_band_of_a_ragged_scan_raises_at_initialize() -> None:
+def test_a_band_of_a_ragged_scan_is_drawn() -> None:
+    """A band of the steps of the integrator is drawn on the union of the times."""
+
     def draw(plot) -> None:
         plot.band(
             Data("time", task="task_ragged"),
@@ -183,8 +185,12 @@ def test_a_band_of_a_ragged_scan_raises_at_initialize() -> None:
             across="dose",
         )
 
-    with pytest.raises(ValueError, match="common grid"):
-        _runner(_with_figure(draw))
+    runner = _runner(_with_figure(draw))
+    (experiment,) = runner.experiments.values()
+    experiment.run(runner.simulator, keep_results=True)
+    assert experiment.results["task_ragged"].ragged
+    figure = experiment.create_mpl_figures()["fig"]
+    assert figure.axes[0].collections
 
 
 def test_the_data_of_a_band_counts_for_the_selections() -> None:
