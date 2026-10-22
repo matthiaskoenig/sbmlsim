@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.container import ErrorbarContainer
 from matplotlib.figure import Figure
 from PIL import Image
 from pypdf import PdfReader
@@ -22,7 +23,7 @@ from examples.hctz_fitting.experiments.studies import Weir1998
 from sbmlsim import __version__
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
-from sbmlsim.fit.evaluation import Grouping
+from sbmlsim.fit.evaluation import MIN_POINTS_SUBSET_AGREEMENT, Grouping
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.metrics import fold_counts
@@ -1431,3 +1432,86 @@ def test_the_panels_of_a_grouping(
             if of_group[of_group.kind == kind].empty:
                 assert any(text.get_text() == "no data" for text in ax.texts)
     assert len(saved_figures["bland_altman_tissue"].axes) == len(fig.axes)
+
+
+def test_the_bland_altman_plot_draws_twofold(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """The lines of twofold, as in the goodness of fit, and the agreement of a panel.
+
+    The validation panel has the agreement of its points, the training panel
+    the band of the training data alone.
+    """
+    report = _mapping_report(op_hctz_pk, fit_settings)
+    report.plot_bland_altman(tmp_path / "bland_altman.svg")
+    fig = saved_figures["bland_altman"]
+    kinds = report.point_kinds()
+    for ax, kind in zip(fig.axes, kinds, strict=False):
+        ys = [np.asarray(line.get_ydata(), dtype=float) for line in ax.get_lines()]
+        levels = {round(float(y[0]), 6) for y in ys if len(set(y)) == 1}
+        assert round(np.log10(2.0), 6) in levels
+        assert round(-np.log10(2.0), 6) in levels
+        labels = [str(line.get_label()) for line in ax.get_lines()]
+        points = report._of_kind(report.points(report.reference_set), kind)
+        n_points = int(np.sum(report._log_ratio(points)[2]))
+        own = kind == MappingKind.VALIDATION.value
+        own = own and n_points >= MIN_POINTS_SUBSET_AGREEMENT
+        assert ("this panel bias" in labels) is own, kind
+        assert ("this panel LoA" in labels) is own, kind
+    assert MappingKind.VALIDATION.value in kinds
+
+
+def test_error_bars(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """With `error_bars` the points of the data with an SD have error bars."""
+    op_hctz_pk.initialize(fit_settings)
+    assert any(errors is not None for errors in op_hctz_pk.y_errors)
+    for error_bars in (False, True):
+        report = FitReport(
+            problem=op_hctz_pk,
+            settings=fit_settings,
+            parameter_sets=op_hctz_pk.parameter_set_model(),
+            mapping_figures=False,
+            error_bars=error_bars,
+        )
+        saved_figures.clear()
+        report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
+        report.plot_bland_altman(tmp_path / "bland_altman.svg")
+        for name in ("goodness_of_fit", "bland_altman"):
+            ax = saved_figures[name].axes[0]
+            bars = [c for c in ax.containers if isinstance(c, ErrorbarContainer)]
+            assert bool(bars) is error_bars, (name, error_bars)
+
+
+def test_color_by_a_column(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """`color_by` gives the points of one value of a column one colour."""
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
+        color_by="tissue",
+    )
+    report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
+    ax = saved_figures["goodness_of_fit"].axes[0]
+    tissues = set(report.points(report.reference_set).tissue)
+    labelled = {
+        str(line.get_label()): line.get_color()
+        for line in ax.get_lines()
+        if str(line.get_label()) in tissues
+    }
+    assert labelled
+    assert len(set(labelled.values())) == len(labelled)

@@ -39,6 +39,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import pandas as pd
+import scipy.stats
 from numpy.typing import ArrayLike
 
 from sbmlsim.fit.objects import EVALUATED_KINDS
@@ -432,3 +433,45 @@ def group_metrics(
     if not rows:
         return pd.DataFrame(columns=pd.Index(columns))
     return pd.DataFrame(rows)
+
+
+#: the points with a ratio a subset needs for its own limits of agreement, see
+#: `subset_agreement`
+MIN_POINTS_SUBSET_AGREEMENT = 10
+
+
+def subset_agreement(
+    points: pd.DataFrame,
+) -> tuple[float, float, float, float] | None:
+    """Get the agreement of a subset of the data points with its confidence.
+
+    The bias `mean(log10(f/y))` and the half width `1.96 SD` of the limits of
+    agreement of the points with a ratio, and the half widths of the 95%
+    confidence intervals of the bias, `t SD / sqrt(n)`, and of a limit,
+    `t sqrt(3 SD^2 / n)` (Bland and Altman 1999), with `t` the 97.5% quantile
+    of the t distribution of `n - 1` degrees of freedom: with few points a
+    limit is uncertain, and the interval says how much.
+
+    Bland JM, Altman DG. Measuring agreement in method comparison studies.
+    Stat Methods Med Res. 1999;8(2):135-160.
+
+    Args:
+        points: the data points, see the module.
+
+    Returns:
+        The bias, the half width of the limits and the half widths of the
+        intervals of the bias and of a limit, in decades; `None` for fewer
+        than `MIN_POINTS_SUBSET_AGREEMENT` points with a ratio.
+    """
+    ratios = _log_ratios(points)
+    n = ratios.size
+    if n < MIN_POINTS_SUBSET_AGREEMENT:
+        return None
+    sd = float(np.std(ratios, ddof=1))
+    t = float(scipy.stats.t.ppf(0.975, n - 1))
+    return (
+        float(np.mean(ratios)),
+        1.96 * sd,
+        t * sd / np.sqrt(n),
+        t * np.sqrt(3.0 * sd**2 / n),
+    )
