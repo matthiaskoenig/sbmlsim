@@ -632,10 +632,9 @@ def test_the_log_panel_of_a_curve_has_a_gap_at_zero(
         problem.settings_initialized,
         ParameterSet(sid="true", values={"ke": TRUE_KE}),
     )
-    report.plot_fit(tmp_path)
-    report.plot_fit_residual(tmp_path)
+    report.plot_mapping(tmp_path)
     try:
-        for name in ("UrineStudy_fm_urine", "fit_UrineStudy_fm_urine"):
+        for name in ("UrineStudy_fm_urine",):
             linear, log = figures[name].axes[:2]
             assert log.get_yscale() == "log"
             [curve] = [

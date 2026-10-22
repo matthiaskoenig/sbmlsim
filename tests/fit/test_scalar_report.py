@@ -12,7 +12,7 @@ from matplotlib.figure import Figure
 
 from sbmlsim.fit import FitMappingCollection, FitParameter, FitSettings, ParameterSet
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import ParameterScaleType, ResidualType
+from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.report import FitReport
 from tests.fit.scalar_experiment import (
     CMAX,
@@ -65,14 +65,14 @@ def report(tmp_path: Path) -> FitReport:
 
 
 def test_the_report_files_of_both_kinds(report: FitReport, tmp_path: Path) -> None:
-    """The html and the two figures of both mappings are written."""
+    """The html and the figure of both mappings are written."""
     results_dir = report.create(output_dir=tmp_path / "out", name="scalar")
     assert (results_dir / "index.html").exists()
     plots = results_dir / "plots"
     for mapping in report.problem.mapping_keys:
         sid = report.problem.experiment_keys[report.problem.mapping_keys.index(mapping)]
         assert (plots / f"{sid}_{mapping}.svg").exists()
-        assert (plots / f"fit_{sid}_{mapping}.svg").exists()
+        assert not (plots / f"fit_{sid}_{mapping}.svg").exists()
     assert (plots / "goodness_of_fit.svg").exists()
     assert (plots / "bland_altman.svg").exists()
     html = (results_dir / "index.html").read_text()
@@ -184,11 +184,11 @@ def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
         FitSettings(parameter_scale=ParameterScaleType.LINEAR),
         ParameterSet(sid="near", values={"V": 1.2 * TRUE_V}),
     )
-    report.plot_fit(tmp_path)
-    report.plot_fit_residual(tmp_path)
+    report.plot_mapping(tmp_path)
 
     rows = CMAX[1] * np.array([0.9, 1.0, 1.2])
-    for ax in figures["RowsStudy_fm_rows"].axes:
+    # the curve, linear and logarithmic
+    for ax in figures["RowsStudy_fm_rows"].axes[:2]:
         bottom, top = ax.get_ylim()
         assert bottom < rows.min() and top > rows.max()
         if ax.get_yscale() == "log":
@@ -200,15 +200,9 @@ def test_the_figures_of_rows_and_of_a_dimension_of_one_value(
         # next to every row, not on top of it
         x_sim = np.asarray(simulation.get_xdata(), dtype=float)
         assert np.all((x_sim > np.arange(3)) & (x_sim < np.arange(3) + 0.5))
-    for ax in figures["fit_RowsStudy_fm_rows"].axes[:2]:
-        [prediction] = [line for line in ax.get_lines() if line.get_label() == "near"]
-        x_pred = np.asarray(prediction.get_xdata(), dtype=float)
-        assert np.all((x_pred > np.arange(3)) & (x_pred < np.arange(3) + 0.5))
-
-    for name in ("OneDoseStudy_fm_one", "fit_OneDoseStudy_fm_one"):
-        for ax in figures[name].axes:
-            left, right = ax.get_xlim()
-            assert left < 100.0 < right
+    for ax in figures["OneDoseStudy_fm_one"].axes[:2]:
+        left, right = ax.get_xlim()
+        assert left < 100.0 < right
     assert figures["OneDoseStudy_fm_one"].axes[0].get_xlabel() == "PODOSE [mg]"
 
 
@@ -266,27 +260,25 @@ def test_the_figures_of_a_mapping_have_one_title_and_one_legend(
             ParameterSet(sid="near", values={"V": 1.05 * TRUE_V}),
         ],
     )
-    report.plot_fit(tmp_path)
-    report.plot_fit_residual(tmp_path)
-    for name in ("DoseStudy_fm_dose", "fit_DoseStudy_fm_dose"):
-        fig = figures[name]
-        assert fig.get_suptitle() == "DoseStudy fm_dose"
-        assert all(ax.get_title() == "" for ax in fig.axes)
-        assert all(ax.get_legend() is None for ax in fig.axes)
-    # a set has one entry, the sets fill the rows
-    assert _legend_rows(figures["DoseStudy_fm_dose"]) == [
-        ["reference_data ± SD", "true"],
-        ["near"],
-    ]
-    assert _legend_rows(figures["fit_DoseStudy_fm_dose"]) == [
-        ["reference_data"],
-        ["true", "true residuals", "true $(w \\cdot r)^2$"],
-        ["near", "near residuals", "near $(w \\cdot r)^2$"],
-    ]
+    report.plot_mapping(tmp_path)
+    fig = figures["DoseStudy_fm_dose"]
+    title = fig.get_suptitle().splitlines()
+    assert title[0] == "DoseStudy fm_dose [training]"
+    assert title[1].startswith("pk.cmax [mg/l]")
+    assert all(ax.get_title() == "" for ax in fig.axes)
+    assert all(ax.get_legend() is None for ax in fig.axes)
+    # the data first, the entries of a set together, the lines of neither
+    # set last
+    read = [label for row in _legend_rows(fig) for label in row if label]
+    assert read[0].startswith("data")
+    for sid in ("true", "near"):
+        at = [k for k, label in enumerate(read) if label.split(" ")[0] == sid]
+        assert at == list(range(at[0], at[0] + len(at))), read
+    assert read[-2:] == ["prediction = measurement", "2-fold"]
 
     figures.clear()
     report.show_titles = False
-    report.plot_fit(tmp_path)
+    report.plot_mapping(tmp_path)
     assert figures["DoseStudy_fm_dose"].get_suptitle() == ""
 
 
@@ -313,9 +305,8 @@ def test_the_legend_of_a_mapping_fits_into_its_figure(
             for j, sid in enumerate(sids)
         ],
     )
-    report.plot_fit(tmp_path)
-    report.plot_fit_residual(tmp_path)
-    for name in ("DoseStudy_fm_dose", "fit_DoseStudy_fm_dose"):
+    report.plot_mapping(tmp_path)
+    for name in ("DoseStudy_fm_dose",):
         fig = figures[name]
         rows = _legend_rows(fig)
         [legend] = fig.legends
@@ -323,14 +314,11 @@ def test_the_legend_of_a_mapping_fits_into_its_figure(
         assert _inside(extent, fig.bbox), name
         assert not any(ax.get_window_extent().overlaps(extent) for ax in fig.axes)
         assert _inside(fig.texts[0].get_window_extent(), fig.bbox)
-        assert rows[0][0].startswith("reference_data")
+        assert rows[0][0].startswith("data")
         read = [label for row in rows for label in row]
         for sid in sids:
             at = [k for k, label in enumerate(read) if label.split(" ")[0] == sid]
             assert at == list(range(at[0], at[0] + len(at))), (name, read)
-    # three entries per set: every set starts a row
-    rows = _legend_rows(figures["fit_DoseStudy_fm_dose"])
-    assert [row[0].split(" ")[0] for row in rows[1:] if row[0] in sids] == sids
 
 
 def test_a_long_title_of_a_mapping_is_wrapped_between_its_words(
@@ -349,9 +337,9 @@ def test_a_long_title_of_a_mapping_is_wrapped_between_its_words(
     monkeypatch.setattr(
         FitReport, "mapping_title", lambda self, k: f"DoseStudy {identifier} [kind]"
     )
-    report.plot_fit(tmp_path)
+    report.plot_mapping(tmp_path)
     fig = figures["DoseStudy_fm_dose"]
-    assert fig.get_suptitle().split("\n") == ["DoseStudy", identifier, "[kind]"]
+    assert fig.get_suptitle().split("\n")[:3] == ["DoseStudy", identifier, "[kind]"]
     fig.draw_without_rendering()
     assert fig.get_figwidth() > 10.0
     assert _inside(fig.texts[0].get_window_extent(), fig.bbox)
@@ -377,24 +365,19 @@ def test_the_log_panels_of_a_mapping_leave_out_zeros(
             ParameterSet(sid="near", values={"V": 1.05 * TRUE_V}),
         ],
     )
-    report.plot_fit_residual(tmp_path)
-    axes = figures["fit_DoseStudy_fm_dose"].axes
-    for linear, log in ((axes[0], axes[1]), (axes[2], axes[3])):
-        assert (linear.get_yscale(), log.get_yscale()) == ("linear", "log")
-        lines = {line.get_label(): line for line in linear.get_lines()}
-        for masked in log.get_lines():
-            y_log = np.asarray(masked.get_ydata(), dtype=float)
-            assert not np.any(y_log <= 0.0)
-            label = str(masked.get_label())
-            if label.startswith("_"):
-                continue
-            y = np.asarray(lines[label].get_ydata(), dtype=float)
-            np.testing.assert_array_equal(np.where(y > 0, y, np.nan), y_log)
-    # the zero residuals of the true parameters
-    [residuals] = [
-        line for line in axes[1].get_lines() if line.get_label() == "true residuals"
-    ]
-    assert np.isnan(np.asarray(residuals.get_ydata(), dtype=float)).all()
+    report.plot_mapping(tmp_path)
+    axes = figures["DoseStudy_fm_dose"].axes
+    linear, log = axes[0], axes[1]
+    assert (linear.get_yscale(), log.get_yscale()) == ("linear", "log")
+    lines = {line.get_label(): line for line in linear.get_lines()}
+    for masked in log.get_lines():
+        y_log = np.asarray(masked.get_ydata(), dtype=float)
+        assert not np.any(y_log <= 0.0)
+        label = str(masked.get_label())
+        if label.startswith("_"):
+            continue
+        y = np.asarray(lines[label].get_ydata(), dtype=float)
+        np.testing.assert_array_equal(np.where(y > 0, y, np.nan), y_log)
     assert axes[1].collections, "the error bars of the data"
 
 
@@ -423,8 +406,8 @@ def test_a_mapping_without_positive_values_has_a_linear_log_panel(
         "y_references",
         [-np.abs(y) for y in report.problem.y_references],
     )
-    report.plot_fit(tmp_path)
-    assert [ax.get_yscale() for ax in figures["RowsStudy_fm_rows"].axes] == [
+    report.plot_mapping(tmp_path)
+    assert [ax.get_yscale() for ax in figures["RowsStudy_fm_rows"].axes[:2]] == [
         "linear",
         "linear",
     ]
@@ -449,7 +432,7 @@ def test_the_cost_axis_of_a_perfect_fit_starts_at_zero(
     assert left == 0.0 and right > 0.0
 
 
-def test_the_residual_figure_of_a_dimension_draws_what_the_legend_lists(
+def test_the_figure_of_a_dimension_draws_what_the_legend_lists(
     tmp_path: Path, figures: dict[str, Figure]
 ) -> None:
     """The line of a dimension of one value has the marker which shows it."""
@@ -461,35 +444,10 @@ def test_the_residual_figure_of_a_dimension_draws_what_the_legend_lists(
         FitSettings(parameter_scale=ParameterScaleType.LINEAR),
         ParameterSet(sid="near", values={"V": 1.2 * TRUE_V}),
     )
-    report.plot_fit_residual(tmp_path)
-    for ax in figures["fit_OneDoseStudy_fm_one"].axes[:2]:
+    report.plot_mapping(tmp_path)
+    for ax in figures["OneDoseStudy_fm_one"].axes[:2]:
         [line] = [line for line in ax.get_lines() if line.get_label() == "near"][:1]
         assert line.get_marker() not in (None, "None", "")
-
-
-def test_normalized_residuals_are_marked_in_the_residual_figure(
-    tmp_path: Path, figures: dict[str, Figure]
-) -> None:
-    """Dimensionless residuals do not read as a quantity of the data unit."""
-    problem = _problem(
-        [FitMappingCollection(experiment=MixedStudy, mappings=["fm_tc"])], tmp_path
-    )
-    for residual, normalized in (
-        (ResidualType.ABSOLUTE, False),
-        (ResidualType.NORMALIZED, True),
-    ):
-        report = FitReport(
-            problem,
-            FitSettings(parameter_scale=ParameterScaleType.LINEAR, residual=residual),
-            ParameterSet(sid="near", values={"V": 1.2 * TRUE_V}),
-        )
-        figures.clear()
-        report.plot_fit_residual(tmp_path)
-        ax = figures["fit_MixedStudy_fm_tc"].axes[0]
-        _, labels = ax.get_legend_handles_labels()
-        assert ("near normalized residuals" in labels) is normalized
-        assert ("near residuals" in labels) is not normalized
-        assert ("residuals [-]" in ax.get_ylabel()) is normalized
 
 
 def test_the_x_limits_ignore_a_measurement_at_infinity(
