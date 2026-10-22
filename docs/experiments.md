@@ -85,7 +85,7 @@ print(results[0].experiment)
 print(sorted(p.name for p in (Path.cwd() / "results").rglob("*") if p.is_file()))
 ```
 
-`base_path` is the directory the model sources are resolved against, `data_path` the directory of the datasets. The `results` of an experiment are the `ScanResult` of every task, written as netCDF with `save_results=True`; this is the one serialization of a run, the datasets are not written (the report names them). The runner releases the results of an experiment once its outputs are written, so that a run of many experiments holds only the results of the one it runs, and `results` raises afterwards; `keep_results=True` keeps them, as above:
+`base_path` is the directory the model sources are resolved against, `data_path` the directory of the datasets. The `results` of an experiment are the `ScanResult` of every task, written as netCDF with `save_results=True`. A run with an output path writes the datasets as TSV into its folder `datasets` (`datasets/<sid>_<dataset>.tsv`, `dataset_file`), apart from the figures; the report links them. The runner releases the results of an experiment once its outputs are written, so that a run of many experiments holds only the results of the one it runs, and `results` raises afterwards; `keep_results=True` keeps them, as above:
 
 ```python
 experiment = results[0].experiment

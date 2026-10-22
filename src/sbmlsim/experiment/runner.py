@@ -18,6 +18,7 @@ from typing import Any, Literal, cast
 
 from sbmlsim.console import console
 from sbmlsim.experiment.experiment import (
+    DATASETS_DIR,
     STATIC_FORMAT,
     ExperimentResult,
     ExperimentRunError,
@@ -426,10 +427,10 @@ class ExperimentRunner:
         # the clock of a file system is coarser than the clock of the process
         since = started - 0.5
 
-        def current(fmt: str) -> dict[str, Path]:
+        def current(fmt: str, directory: Path = path) -> dict[str, Path]:
             return {
                 p.name[len(sid) + 1 : -len(fmt) - 1]: p
-                for p in path.glob(f"{sid}_*.{fmt}")
+                for p in directory.glob(f"{sid}_*.{fmt}")
                 if p.is_file() and p.stat().st_mtime >= since
             }
 
@@ -437,7 +438,12 @@ class ExperimentRunner:
         for fmt in formats:
             for key in current(fmt):
                 figures.setdefault(key, []).append(fmt)
-        return dataclasses.replace(result, figures=figures)
+        datasets = [
+            key
+            for key in current("tsv", path / DATASETS_DIR)
+            if key in result.experiment._datasets
+        ]
+        return dataclasses.replace(result, figures=figures, datasets=datasets)
 
     def _failed_result(
         self, failed: ExperimentResult, output_path: Path, formats: list[str]

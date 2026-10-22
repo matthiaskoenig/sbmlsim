@@ -52,6 +52,10 @@ STATIC_FORMAT = "svg"
 #: an image: `figure_formats=["svg", "html"]`
 INTERACTIVE_FORMAT = "html"
 
+#: folder of the datasets in the output path of an experiment, which keeps
+#: the tables of the data apart from the figures and the results
+DATASETS_DIR = "datasets"
+
 
 class SimulationExperiment:
     """Generic simulation experiment.
@@ -595,8 +599,9 @@ class SimulationExperiment:
 
         Args:
             simulator: the simulator of the tasks.
-            output_path: directory of the outputs (results, figures and the
-                serialization), none are written without it.
+            output_path: directory of the outputs (the datasets in its folder
+                `DATASETS_DIR`, results, figures and the serialization), none
+                are written without it.
             show_figures: show the matplotlib figures.
             save_results: write the results of the tasks into the output path.
             figure_formats: formats of the figures, `STATIC_FORMAT` by default.
@@ -636,6 +641,7 @@ class SimulationExperiment:
         mpl_figures: dict[str, FigureMPL] = {}
         error: str | None = None
         completed = False
+        saved_datasets: list[str] = []
         try:
             if output_path is not None and not output_path.exists():
                 output_path.mkdir(parents=True)
@@ -648,11 +654,17 @@ class SimulationExperiment:
             # evaluate mappings
             self.evaluate_fit_mappings()
 
-            # save the results, which takes often much longer than the simulation
-            if save_results:
-                if output_path is None:
+            # create outputs
+            if output_path is None:
+                if save_results:
                     logger.error("'output_path' required to save results.")
-                else:
+            else:
+                # save outputs
+                self.save_datasets(output_path)
+                saved_datasets = list(self._datasets)
+
+                # Saving takes often much longer then simulation
+                if save_results:
                     self.save_results(output_path)
 
             # create figures, but only when something looks at them: rendering
@@ -727,6 +739,7 @@ class SimulationExperiment:
             output_path=output_path,
             error=error,
             failed_figures=failed_figures,
+            datasets=saved_datasets,
             figures={
                 key: written[key]
                 for key in dict.fromkeys([*self._figures, *mpl_figures, *written])
@@ -1165,6 +1178,30 @@ class SimulationExperiment:
             "figures": self._figures,
         }
 
+    def dataset_file(self, key: str) -> Path:
+        """Get the file of a dataset relative to the output path of a run.
+
+        Args:
+            key: the key of the dataset.
+
+        Returns:
+            `datasets/<sid>_<key>.tsv`, see `DATASETS_DIR`.
+        """
+        return Path(DATASETS_DIR) / f"{self.sid}_{key}.tsv"
+
+    @timeit
+    def save_datasets(self, results_path: Path) -> None:
+        """Save the datasets as TSV into the folder `DATASETS_DIR`.
+
+        Args:
+            results_path: the output path of the run, see `dataset_file`.
+        """
+        if not self._datasets:
+            return
+        (results_path / DATASETS_DIR).mkdir(parents=True, exist_ok=True)
+        for dkey, dset in self._datasets.items():
+            dset.to_csv(results_path / self.dataset_file(dkey), sep="\t", index=False)
+
     @timeit
     def save_results(self, results_path: Path) -> None:
         """Save the result of every task as netCDF, see `ScanResult.to_netcdf`.
@@ -1479,6 +1516,8 @@ class ExperimentResult:
     #: the figures this run wrote, `{key: [formats]}`, which the report shows;
     #: a figure which failed in one pass keeps the formats of the other one
     figures: dict[str, list[str]] = field(default_factory=dict)
+    #: the datasets this run wrote
+    datasets: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -1495,6 +1534,7 @@ class ExperimentResult:
             "error": self.error,
             "failed_figures": self.failed_figures,
             "figures": self.figures,
+            "datasets": self.datasets,
         }
 
 

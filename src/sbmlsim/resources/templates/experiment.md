@@ -8,8 +8,8 @@
 {% endfor %}
 
 ## Datasets
-{% for dset_id in datasets %}
-* **{{ dset_id }}**
+{% for dset_id, dset_path in datasets.items() %}
+* **{{ dset_id }}**: [{{ dset_path }}]({{ dset_path }})
 {% endfor %}
 
 ## Figures

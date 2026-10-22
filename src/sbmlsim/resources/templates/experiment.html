@@ -59,10 +59,10 @@
   <div class="card">
     {% if datasets %}
     <table data-filter="row">
-      <thead><tr><th data-sort="text">dataset</th></tr></thead>
+      <thead><tr><th data-sort="text">dataset</th><th data-sort="text">file</th></tr></thead>
       <tbody>
-      {% for dset_id in datasets %}
-      <tr><td class="mono">{{ dset_id }}</td></tr>
+      {% for dset_id, dset_path in datasets.items() %}
+      <tr><td class="mono">{{ dset_id }}</td><td><a href="{{ dset_path }}">{{ dset_path }}</a></td></tr>
       {% endfor %}
       </tbody>
     </table>
