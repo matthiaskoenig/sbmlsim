@@ -31,7 +31,7 @@ import json
 import logging
 import textwrap
 import webbrowser
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from copy import deepcopy
 from functools import cached_property
 from pathlib import Path
@@ -55,10 +55,11 @@ from sbmlsim.fit.derived import (
     group_parameters,
     hook_summaries,
 )
+from sbmlsim.fit.evaluation import criteria_metrics
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.methods import ReportContext
-from sbmlsim.fit.metrics import FitMetrics, fold_counts
+from sbmlsim.fit.metrics import FitMetrics, fold_counts, r_squared, rmse
 from sbmlsim.fit.objects import (
     EVALUATED_KINDS,
     FitParameter,
@@ -2359,20 +2360,43 @@ class FitReport:
             The text of the box, the lines are prefixed with the id of the set
             when several sets are compared.
         """
+        if plot not in ("goodness_of_fit", "bland_altman"):
+            raise ValueError(f"Unknown plot '{plot}'.")
+        return self._panel_text(
+            {
+                pset.sid: self._of_kind(self.points(pset), kind)
+                for pset in self.parameter_sets
+            },
+            plot,
+        )
+
+    def _panel_text(self, points: Mapping[str, pd.DataFrame], plot: str) -> str:
+        """Get the key metrics of the points of a panel, see `panel_metrics`.
+
+        Args:
+            points: the data points of the panel of every parameter set, by the
+                id of the set, in the order of the sets.
+            plot: `goodness_of_fit` or `bland_altman`.
+
+        Returns:
+            The text of the box, one line per set.
+
+        Raises:
+            ValueError: for an unknown plot.
+        """
         lines: list[str] = []
         for pset in self.parameter_sets:
             prefix = f"{pset.sid}: " if len(self.parameter_sets) > 1 else ""
+            dp = points[pset.sid]
             if plot == "goodness_of_fit":
-                summary = self.metrics(pset).summary(kind=MappingKind(kind))
-                within = summary["within_2fold"]
+                within = criteria_metrics(dp)["within_2fold"]
                 lines.append(
-                    f"{prefix}R² = {summary['R2']:.3f}, "
-                    f"NRMSE = {summary['NRMSE']:.3g}, "
-                    f"RMSE$_w$ = {summary['RMSE_w']:.3g}, "
+                    f"{prefix}R² = {r_squared(dp.DV, dp.IPRED):.3f}, "
+                    f"NRMSE = {rmse(dp.NRES):.3g}, "
+                    f"RMSE$_w$ = {rmse(dp.IWRES):.3g}, "
                     f"2-fold = {f'{within:.1f}%' if np.isfinite(within) else '-'}"
                 )
             elif plot == "bland_altman":
-                dp = self._of_kind(self.points(pset), kind)
                 _mean, difference, _mask = self._log_ratio(dp)
                 if difference.size == 0:
                     lines.append(f"{prefix}no ratio")
@@ -2389,12 +2413,13 @@ class FitReport:
                 raise ValueError(f"Unknown plot '{plot}'.")
         return "\n".join(lines)
 
-    def _add_metrics_box(self, ax: Axes, kind: str, plot: str) -> None:
+    @staticmethod
+    def _add_metrics_box(ax: Axes, text: str) -> None:
         """Draw the box with the key metrics into the corner of a panel."""
         ax.text(
             0.03,
             0.97,
-            self.panel_metrics(kind, plot),
+            text,
             transform=ax.transAxes,
             ha="left",
             va="top",
@@ -2402,6 +2427,93 @@ class FitReport:
             bbox=METRICS_BOX,
             zorder=10,
         )
+
+    def _draw_goodness_of_fit(
+        self,
+        ax: Axes,
+        points: Mapping[str, pd.DataFrame],
+        limits: tuple[float, float],
+        label_band: bool,
+    ) -> None:
+        """Draw a panel of the goodness of fit: the prediction over the data.
+
+        The band of `agreement` of every set, the identity, the lines of
+        twofold and the points by study and set, on logarithmic axes within
+        `limits`. A panel of the summary figure, of a grouping and of the
+        figure of a mapping is drawn by it, so a point reads the same in all.
+
+        Args:
+            ax: the panel.
+            points: the data points of every parameter set, by the id of the
+                set.
+            limits: the limits of both axes.
+            label_band: label the band and the lines, which a figure does once.
+        """
+        min_dp, max_dp = limits
+        edge = np.array([min_dp, max_dp])
+        for pset in self.parameter_sets:
+            bias, half = self.agreement(pset)
+            color = self._band_color(pset)
+            _identity, bias_label, limits_label = self._band_labels(pset)
+            ax.fill_between(
+                edge,
+                edge * 10 ** (bias - half),
+                edge * 10 ** (bias + half),
+                color=color,
+                alpha=BAND_ALPHA,
+                zorder=0,
+            )
+            ax.plot(
+                edge,
+                edge * 10**bias,
+                color=color,
+                label=bias_label if label_band else None,
+                **BIAS_STYLE,
+            )
+            for limit in (bias - half, bias + half):
+                ax.plot(
+                    edge,
+                    edge * 10**limit,
+                    color=color,
+                    label=limits_label if label_band else None,
+                    **LIMITS_STYLE,
+                )
+        ax.plot(
+            edge,
+            edge,
+            color="black",
+            label=self._band_labels(self.reference_set)[0] if label_band else None,
+            **IDENTITY_STYLE,
+        )
+        for factor in (2.0, 0.5):
+            ax.plot(
+                edge,
+                edge * factor,
+                label="2-fold" if label_band and factor > 1 else None,
+                **TWOFOLD_STYLE,
+            )
+
+        for pset in self.parameter_sets:
+            dp = points[pset.sid]
+            kwargs: dict[str, Any] = {
+                **self.kwargs_scatter,
+                "marker": self.set_marker(pset),
+            }
+            for study, of_study in dp.groupby("experiment", sort=False):
+                ax.plot(
+                    of_study.DV.values,
+                    of_study.IPRED.values,
+                    label=self._point_label(study, pset),
+                    color=self.study_color(str(study)),
+                    **kwargs,
+                )
+
+        ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlim(min_dp, max_dp)
+        ax.set_ylim(min_dp, max_dp)
+        ax.grid()
 
     def plot_goodness_of_fit(self, path: Path) -> None:
         """Plot the predicted against the measured data points, per kind.
@@ -2428,81 +2540,20 @@ class FitReport:
         min_dp, max_dp = self._log_limits(
             *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
         )
-        edge = np.array([min_dp, max_dp])
-
         for ax, kind in zip(axes, kinds, strict=True):
-            # the band, labelled on the last panel so that the legend lists the
-            # studies first and the band, which is the same everywhere, last
-            is_last = ax is axes[-1]
-            for pset in self.parameter_sets:
-                bias, half = self.agreement(pset)
-                color = self._band_color(pset)
-                _identity, bias_label, limits_label = self._band_labels(pset)
-                ax.fill_between(
-                    edge,
-                    edge * 10 ** (bias - half),
-                    edge * 10 ** (bias + half),
-                    color=color,
-                    alpha=BAND_ALPHA,
-                    zorder=0,
-                )
-                ax.plot(
-                    edge,
-                    edge * 10**bias,
-                    color=color,
-                    label=bias_label if is_last else None,
-                    **BIAS_STYLE,
-                )
-                for limit in (bias - half, bias + half):
-                    ax.plot(
-                        edge,
-                        edge * 10**limit,
-                        color=color,
-                        label=limits_label if is_last else None,
-                        **LIMITS_STYLE,
-                    )
-            ax.plot(
-                edge,
-                edge,
-                color="black",
-                label=self._band_labels(self.reference_set)[0] if is_last else None,
-                **IDENTITY_STYLE,
+            of_kind = {
+                pset.sid: self._of_kind(points[pset.sid], kind)
+                for pset in self.parameter_sets
+            }
+            self._draw_goodness_of_fit(
+                ax, of_kind, (min_dp, max_dp), label_band=ax is axes[-1]
             )
-            for factor in (2.0, 0.5):
-                ax.plot(
-                    edge,
-                    edge * factor,
-                    label="2-fold" if is_last and factor > 1 else None,
-                    **TWOFOLD_STYLE,
-                )
-
-            for pset in self.parameter_sets:
-                dp = self._of_kind(points[pset.sid], kind)
-                kwargs: dict[str, Any] = {
-                    **self.kwargs_scatter,
-                    "marker": self.set_marker(pset),
-                }
-                for study, of_study in dp.groupby("experiment", sort=False):
-                    ax.plot(
-                        of_study.DV.values,
-                        of_study.IPRED.values,
-                        label=self._point_label(study, pset),
-                        color=self.study_color(str(study)),
-                        **kwargs,
-                    )
-
             ax.set_title(
                 self._panel_title(
                     kind, [points[pset.sid] for pset in self.parameter_sets]
                 )
             )
-            ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ax.set_xlim(min_dp, max_dp)
-            ax.set_ylim(min_dp, max_dp)
-            ax.grid()
-            self._add_metrics_box(ax, kind, "goodness_of_fit")
+            self._add_metrics_box(ax, self._panel_text(of_kind, "goodness_of_fit"))
 
         axes[0].set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
         self._set_figure_legend(fig, axes)
@@ -2598,6 +2649,84 @@ class FitReport:
         half = 1.96 * float(np.std(difference, ddof=1)) if difference.size > 1 else 0.0
         return float(np.mean(difference)), half
 
+    def _draw_bland_altman(
+        self, ax: Axes, points: Mapping[str, pd.DataFrame], label_band: bool
+    ) -> None:
+        """Draw a panel of the Bland-Altman plot: the log ratio over the geometric mean.
+
+        The points by study and set, the band of `agreement` of every set and
+        the line of no difference, see `plot_bland_altman`. A panel of the
+        summary figure, of a grouping and of the figure of a mapping is drawn
+        by it.
+
+        Args:
+            ax: the panel.
+            points: the data points of every parameter set, by the id of the
+                set.
+            label_band: label the band and the lines, which a figure does once.
+        """
+        for pset in self.parameter_sets:
+            dp = points[pset.sid]
+            mean, difference, mask = self._log_ratio(dp)
+            if difference.size == 0:
+                continue
+
+            studies = np.asarray(dp.experiment, dtype=object)[mask]
+            kwargs: dict[str, Any] = {
+                **self.kwargs_scatter,
+                "marker": self.set_marker(pset),
+            }
+            for study in dict.fromkeys(studies):
+                of_study = studies == study
+                ax.plot(
+                    mean[of_study],
+                    difference[of_study],
+                    label=self._point_label(study, pset),
+                    color=self.study_color(str(study)),
+                    **kwargs,
+                )
+
+        # the agreement of the training data, the same lines in every panel.
+        # The points carry the color of their study, so the lines are neutral
+        # and only take a color when several sets are compared; the same band
+        # as the goodness of fit, here as horizontal lines
+        agreement = [self.agreement(pset) for pset in self.parameter_sets]
+        for pset, (bias, half) in zip(self.parameter_sets, agreement, strict=True):
+            color = self._band_color(pset)
+            _identity, bias_label, limits_label = self._band_labels(pset)
+            ax.axhspan(
+                bias - half,
+                bias + half,
+                color=color,
+                alpha=BAND_ALPHA,
+                zorder=0,
+            )
+            ax.axhline(
+                bias,
+                color=color,
+                label=bias_label if label_band else None,
+                **BIAS_STYLE,
+            )
+            for limit in (bias - half, bias + half):
+                ax.axhline(
+                    limit,
+                    color=color,
+                    label=limits_label if label_band else None,
+                    **LIMITS_STYLE,
+                )
+
+        # the identity of the goodness of fit is no difference here
+        ax.axhline(
+            0.0,
+            color="black",
+            label=self._band_labels(self.reference_set)[0] if label_band else None,
+            **IDENTITY_STYLE,
+        )
+        ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
+        ax.set_xscale("log")
+        ax.grid()
+        self._include_limits(ax, agreement)
+
     def plot_bland_altman(self, path: Path) -> None:
         """Plot the agreement of prediction and measurement, per kind.
 
@@ -2617,80 +2746,20 @@ class FitReport:
         out, i.e. the plot shows the points a ratio is defined for.
         """
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
-        agreement = {pset.sid: self.agreement(pset) for pset in self.parameter_sets}
         fig, axes, kinds = self._panels()
 
         for ax, kind in zip(axes, kinds, strict=True):
-            for pset in self.parameter_sets:
-                dp = self._of_kind(points[pset.sid], kind)
-                mean, difference, mask = self._log_ratio(dp)
-                if difference.size == 0:
-                    continue
-
-                studies = np.asarray(dp.experiment, dtype=object)[mask]
-                kwargs: dict[str, Any] = {
-                    **self.kwargs_scatter,
-                    "marker": self.set_marker(pset),
-                }
-                for study in dict.fromkeys(studies):
-                    of_study = studies == study
-                    ax.plot(
-                        mean[of_study],
-                        difference[of_study],
-                        label=self._point_label(study, pset),
-                        color=self.study_color(str(study)),
-                        **kwargs,
-                    )
-
-            # the agreement of the training data, the same lines in every
-            # panel. The points carry the color of their study, so the lines
-            # are neutral and only take a color when several sets are compared
-            # the same band as the goodness of fit, here as horizontal lines.
-            # Only the last panel labels it, so that the legend lists the
-            # studies first and the band, which is the same everywhere, last
-            is_last = ax is axes[-1]
-            for pset in self.parameter_sets:
-                bias, half = agreement[pset.sid]
-                color = self._band_color(pset)
-                _identity, bias_label, limits_label = self._band_labels(pset)
-                ax.axhspan(
-                    bias - half,
-                    bias + half,
-                    color=color,
-                    alpha=BAND_ALPHA,
-                    zorder=0,
-                )
-                ax.axhline(
-                    bias,
-                    color=color,
-                    label=bias_label if is_last else None,
-                    **BIAS_STYLE,
-                )
-                for limit in (bias - half, bias + half):
-                    ax.axhline(
-                        limit,
-                        color=color,
-                        label=limits_label if is_last else None,
-                        **LIMITS_STYLE,
-                    )
-
-            # the identity of the goodness of fit is no difference here
-            ax.axhline(
-                0.0,
-                color="black",
-                label=self._band_labels(self.reference_set)[0] if is_last else None,
-                **IDENTITY_STYLE,
-            )
+            of_kind = {
+                pset.sid: self._of_kind(points[pset.sid], kind)
+                for pset in self.parameter_sets
+            }
+            self._draw_bland_altman(ax, of_kind, label_band=ax is axes[-1])
             ax.set_title(
                 self._panel_title(
                     kind, [points[pset.sid] for pset in self.parameter_sets]
                 )
             )
-            ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
-            ax.set_xscale("log")
-            ax.grid()
-            self._include_limits(ax, agreement.values())
-            self._add_metrics_box(ax, kind, "bland_altman")
+            self._add_metrics_box(ax, self._panel_text(of_kind, "bland_altman"))
 
         axes[0].set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
         self._set_figure_legend(fig, axes)

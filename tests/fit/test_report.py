@@ -1249,3 +1249,17 @@ def test_the_figures_of_the_mappings_grow_with_the_mappings(
     # a long id of a mapping breaks in the table, which stays in its card
     html = _html_of(report_dir)
     assert html.count('<td class="mono wrap">') == n
+
+
+@pytest.mark.parametrize("plot", ["goodness_of_fit", "bland_altman"])
+def test_the_panel_text_of_a_kind_is_the_text_of_its_points(
+    fitted_report: tuple[FitReport, Path], plot: str
+) -> None:
+    """The box of a panel is computed from the points it draws."""
+    report, _plots = fitted_report
+    kind = MappingKind.TRAINING.value
+    points = {
+        pset.sid: report._of_kind(report.points(pset), kind)
+        for pset in report.parameter_sets
+    }
+    assert report.panel_metrics(kind, plot) == report._panel_text(points, plot)
