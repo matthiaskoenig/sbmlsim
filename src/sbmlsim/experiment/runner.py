@@ -437,8 +437,7 @@ class ExperimentRunner:
         for fmt in formats:
             for key in current(fmt):
                 figures.setdefault(key, []).append(fmt)
-        datasets = [key for key in current("tsv") if key in result.experiment._datasets]
-        return dataclasses.replace(result, figures=figures, datasets=datasets)
+        return dataclasses.replace(result, figures=figures)
 
     def _failed_result(
         self, failed: ExperimentResult, output_path: Path, formats: list[str]

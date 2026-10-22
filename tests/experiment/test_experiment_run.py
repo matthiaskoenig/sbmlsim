@@ -405,7 +405,7 @@ def test_the_results_are_written_as_netcdf(tmp_path: Path) -> None:
     experiment.run(runner.simulator, output_path=tmp_path, save_results=True)
     path = tmp_path / "FitMappingExperiment_task.nc"
     assert ScanResult.from_netcdf(path)["[X]"].size > 0
-    assert not list(tmp_path.glob("FitMappingExperiment_task.tsv"))
+    assert not list(tmp_path.glob("*.tsv"))
 
 
 # ---------------------------------------------------------------------------

@@ -113,13 +113,8 @@ class ReportResults:
             code = f_code.read()
         code_rel_path = _relative_path(Path(code_path), abs_path)
 
-        # a failed experiment may have failed before it wrote its datasets, and
-        # a file of an earlier run is not one of this run
-        datasets = {
-            key: rel_path / f"{exp_id}_{key}.tsv"
-            for key in experiment._datasets
-            if exp_result.error is None or key in exp_result.datasets
-        }
+        # the datasets are not written, the page names them
+        datasets = list(experiment._datasets)
 
         # the figures this run wrote: a figure which failed in this run, or which
         # a failed experiment did not get to, has no tile and is not counted

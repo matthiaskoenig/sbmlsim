@@ -595,8 +595,8 @@ class SimulationExperiment:
 
         Args:
             simulator: the simulator of the tasks.
-            output_path: directory of the outputs (datasets, results, figures and
-                the serialization), none are written without it.
+            output_path: directory of the outputs (results, figures and the
+                serialization), none are written without it.
             show_figures: show the matplotlib figures.
             save_results: write the results of the tasks into the output path.
             figure_formats: formats of the figures, `STATIC_FORMAT` by default.
@@ -636,7 +636,6 @@ class SimulationExperiment:
         mpl_figures: dict[str, FigureMPL] = {}
         error: str | None = None
         completed = False
-        saved_datasets: list[str] = []
         try:
             if output_path is not None and not output_path.exists():
                 output_path.mkdir(parents=True)
@@ -649,17 +648,11 @@ class SimulationExperiment:
             # evaluate mappings
             self.evaluate_fit_mappings()
 
-            # create outputs
-            if output_path is None:
-                if save_results:
+            # save the results, which takes often much longer than the simulation
+            if save_results:
+                if output_path is None:
                     logger.error("'output_path' required to save results.")
-            else:
-                # save outputs
-                self.save_datasets(output_path)
-                saved_datasets = list(self._datasets)
-
-                # Saving takes often much longer then simulation
-                if save_results:
+                else:
                     self.save_results(output_path)
 
             # create figures, but only when something looks at them: rendering
@@ -734,7 +727,6 @@ class SimulationExperiment:
             output_path=output_path,
             error=error,
             failed_figures=failed_figures,
-            datasets=saved_datasets,
             figures={
                 key: written[key]
                 for key in dict.fromkeys([*self._figures, *mpl_figures, *written])
@@ -1174,17 +1166,6 @@ class SimulationExperiment:
         }
 
     @timeit
-    def save_datasets(self, results_path: Path) -> None:
-        """Save datasets."""
-        if self._datasets is None:
-            logger.warning("No datasets in SimulationExperiment: '%s'", self.sid)
-        else:
-            for dkey, dset in self._datasets.items():
-                dset.to_csv(
-                    results_path / f"{self.sid}_{dkey}.tsv", sep="\t", index=False
-                )
-
-    @timeit
     def save_results(self, results_path: Path) -> None:
         """Save the result of every task as netCDF, see `ScanResult.to_netcdf`.
 
@@ -1498,8 +1479,6 @@ class ExperimentResult:
     #: the figures this run wrote, `{key: [formats]}`, which the report shows;
     #: a figure which failed in one pass keeps the formats of the other one
     figures: dict[str, list[str]] = field(default_factory=dict)
-    #: the datasets this run wrote
-    datasets: list[str] = field(default_factory=list)
 
     @property
     def failed(self) -> bool:
@@ -1516,7 +1495,6 @@ class ExperimentResult:
             "error": self.error,
             "failed_figures": self.failed_figures,
             "figures": self.figures,
-            "datasets": self.datasets,
         }
 
 

@@ -588,10 +588,8 @@ def test_a_direct_run_in_a_shared_directory_keeps_files_of_unknown_keys(
     assert stale.exists()
 
 
-def test_the_report_lists_no_stale_dataset_of_a_failed_experiment(
-    tmp_path: Path,
-) -> None:
-    """A dataset file of an earlier run is not one of this run."""
+def test_the_report_names_the_datasets_without_a_file(tmp_path: Path) -> None:
+    """A run writes no dataset, the page names the datasets without a link."""
 
     class BrokenWithDataset(_Base):
         def datasets(self) -> dict:
@@ -602,12 +600,11 @@ def test_the_report_lists_no_stale_dataset_of_a_failed_experiment(
         def evaluate_fit_mappings(self) -> None:
             raise RuntimeError("experiment broken")
 
-    stale = tmp_path / "BrokenWithDataset" / "BrokenWithDataset_table.tsv"
-    stale.parent.mkdir(parents=True)
-    stale.write_text("time\n0\n", encoding="utf-8")
     results = _runner(BrokenWithDataset).run_experiments(output_path=tmp_path)
     ExperimentReport(results).create_report(output_path=tmp_path)
     page = (tmp_path / "BrokenWithDataset" / "BrokenWithDataset.html").read_text(
         encoding="utf-8"
     )
+    assert '<td class="mono">table</td>' in page
     assert 'href="BrokenWithDataset_table.tsv"' not in page
+    assert not list(tmp_path.glob("**/*.tsv"))
