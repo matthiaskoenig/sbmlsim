@@ -459,7 +459,8 @@ def test_the_twofold_criterion_of_a_report(fitted_report) -> None:
     assert list(metrics.columns).index("within_2fold") == (
         list(metrics.columns).index("R2") + 1
     )
-    for name in ["metrics.tsv", "metrics_mappings.tsv"]:
+    assert (results_dir / "metrics_observables.tsv").exists()
+    for name in ["metrics.tsv", "metrics_mappings.tsv", "metrics_observables.tsv"]:
         header = (results_dir / name).read_text(encoding="utf-8").splitlines()[0]
         assert "within_2fold" in header.split("\t")
 
@@ -818,7 +819,7 @@ def test_html_context(
     # every mapping carries its kind and its metrics
     for mapping in context["mappings"]:
         assert mapping["kind"] in {kind.value for kind in MappingKind}
-        assert set(mapping["metrics"]) == {"n", "RMSE", "R²", "2-fold"}
+        assert set(mapping["metrics"]) == {"n", "RMSE", "R²", "2-fold", "GMFE"}
 
 
 def test_html_report_is_well_formed(

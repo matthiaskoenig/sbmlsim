@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from sbmlsim.fit import FitMetrics, FitSettings, MappingKind, ParameterSet
+from sbmlsim.fit.evaluation import criteria_metrics
 from sbmlsim.fit.metrics import (
     aic,
     aic_from_mse,
@@ -220,6 +221,7 @@ def test_metrics_mappings_and_summary(
         "RMSE_w",
         "R2",
         "within_2fold",
+        *_CRITERIA_COLUMNS,
     ]
     assert len(mappings) == len(op_hctz_iv.mapping_keys)
     assert (mappings.n > 0).all()
@@ -240,6 +242,7 @@ def test_metrics_mappings_and_summary(
         "within_2fold",
         "AIC",
         "BIC",
+        *_CRITERIA_COLUMNS,
     }
     # the information criteria are over all data points and not per mapping,
     # a criterion of a subset with the parameters of the whole fit says nothing
@@ -367,3 +370,61 @@ def test_mappings_without_metadata_have_empty_metadata_columns(
     ]
     assert set(first.tissue) == {""}
     assert "tissue" in dp.columns
+
+
+#: the columns of the criteria after the metrics of before #325
+_CRITERIA_COLUMNS = [
+    "GMFE",
+    "AFE",
+    "within_1.25fold",
+    "within_1.5fold",
+    "within_1sd",
+    "within_2sd",
+]
+
+
+def test_the_summary_has_the_criteria(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    metrics = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model())
+    dp = metrics.datapoints_df()
+    summary = metrics.summary_df()
+    assert list(summary.columns)[-6:] == _CRITERIA_COLUMNS
+    assert list(summary.columns).index("within_2fold") == (
+        list(summary.columns).index("R2") + 1
+    )
+    training = dp[dp.kind == MappingKind.TRAINING.value]
+    row = summary[summary.kind == MappingKind.TRAINING.value].iloc[0]
+    assert row.within_2fold == pytest.approx(within_fold(training.DV, training.IPRED))
+    gmfe = row["GMFE"]
+    assert gmfe == pytest.approx(criteria_metrics(training)["GMFE"])
+    mappings = metrics.mappings_df()
+    assert list(mappings.columns)[-6:] == _CRITERIA_COLUMNS
+
+
+def test_the_metrics_per_observable(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    metrics = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model())
+    dp = metrics.datapoints_df()
+    observables = metrics.observables_df()
+    assert list(observables.columns)[:6] == [
+        "kind",
+        "observable",
+        "n",
+        "RMSE",
+        "NRMSE",
+        "median_sd",
+    ]
+    assert list(observables.columns)[6:] == [
+        "GMFE",
+        "AFE",
+        *_CRITERIA_COLUMNS[2:4],
+        "within_2fold",
+        *_CRITERIA_COLUMNS[4:],
+    ]
+    pairs = dp[["kind", "observable"]].drop_duplicates()
+    assert len(observables) == len(pairs)
+    assert observables.n.sum() == len(dp)

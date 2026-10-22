@@ -383,7 +383,9 @@ Both information criteria are calculated for a least squares fit with normally d
 
 The functions of `sbmlsim.fit.metrics` are used on their own as well: `sse`, `mse`, `rmse`, `aic`, `bic`, `r_squared`, `fold_counts` and `within_fold` take arrays of residuals or of data and predictions; `within_fold(data, predictions, fold=2.0)` is the percentage of the points within the fold factor, `NaN` if no point has a ratio, and `fold_counts` gives the points within it and the points with a ratio, its denominator. R² is not the square of a correlation for a non-linear model and is negative when a prediction is worse than the mean of the data; it is `NaN` for fewer than two data points, e.g. a value per simulation against the one row of a study group.
 
-A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE, R² and the percentage within twofold; the tables of the report head the column `within_2fold` as `2-fold [%]`.
+The metrics also have the criteria of `sbmlsim.fit.evaluation`: `GMFE`, the geometric mean fold error `10**mean(|log10(IPRED/DV)|)`, `AFE`, the bias as a fold factor `10**mean(log10(IPRED/DV))`, the percentages within 1.25, 1.5 and 2 fold and the percentages of the points within one and two standard deviations of the data, `within_1sd` and `within_2sd`, of the points with a standard deviation. `observables_df()` has the metrics per kind and observable, e.g. the plasma concentration or the amount in the urine, with the median standard deviation of the data, so the RMSE of an observable is read against the uncertainty of its data.
+
+A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE, R² and the percentage within twofold; the tables of the report head the column `within_2fold` as `2-fold [%]`.
 
 ## Report of a fit
 
