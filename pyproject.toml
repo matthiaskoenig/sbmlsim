@@ -38,8 +38,9 @@ dependencies = [
 	"sbmlutils>=0.16.0",
 	"pymetadata>=0.8.1",
 	"python-libsbml>=5.21.2",
-	# simulation
-	"libroadrunner>=2.10.0",
+	# simulation; libroadrunner 2.11 breaks the tests of the simulator (root
+	# tolerance, events) until the work on libroadrunner 2.11 lands
+	"libroadrunner>=2.10.0,<2.11",
 	# data structures, units and numerics
 	"numpy>=2.5.3",
 	"pandas>=3.0.6",
