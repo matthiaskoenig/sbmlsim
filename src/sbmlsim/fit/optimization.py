@@ -54,6 +54,7 @@ from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.provenance import data_files
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
 from sbmlsim.result import TimecourseResult
 from sbmlsim.result.scan import TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
@@ -530,6 +531,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         base_path: Path | None = None,
         data_path: Path | Sequence[Path] | None = None,
         hybridizations: Sequence[DerivedChanges] | None = None,
+        jit_optimization: JitOptimization | str | None = None,
     ):
         """Optimization problem.
 
@@ -550,6 +552,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 neural networks of a hybrid problem are what implements
                 them. They are part of the definition and are pickled with
                 it.
+            jit_optimization: the optimization level the models are compiled
+                with, see `RoadrunnerSBMLModel`. It is resolved here, so the
+                workers of a parallel fit compile at the level of the parent.
 
         Raises:
             ValueError: if the problem has no parameters or two parameters of
@@ -602,6 +607,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         # paths
         self.base_path = base_path
         self.data_path = data_path
+        self.jit_optimization: JitOptimization = resolve_jit_optimization(
+            jit_optimization
+        )
 
         # set in initialization
         self.runner: ExperimentRunner | None = None
@@ -672,6 +680,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             base_path=self.base_path,
             data_path=self.data_path,
             hybridizations=self.hybridizations,
+            jit_optimization=self.jit_optimization,
         )
         return fresh.__dict__
 
@@ -1060,6 +1069,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             data_path=self.data_path,
             # a fit needs every experiment, its definition errors are raised
             on_error="raise",
+            jit_optimization=self.jit_optimization,
         )
 
         # the fit mappings every versioned parameter selects, by the index of

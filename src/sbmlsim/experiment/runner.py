@@ -24,7 +24,11 @@ from sbmlsim.experiment.experiment import (
     SimulationExperiment,
 )
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.model.model_roadrunner import _is_hierarchical
+from sbmlsim.model.model_roadrunner import (
+    JitOptimization,
+    _is_hierarchical,
+    resolve_jit_optimization,
+)
 from sbmlsim.plot import FigureSettings
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import Simulator
@@ -101,6 +105,7 @@ class ExperimentRunner:
         simulator: Simulator | None = None,
         ureg: UnitRegistry | None = None,  # FIXME: is this needed on ExperimentRunner?
         on_error: Literal["raise", "log"] = "log",
+        jit_optimization: JitOptimization | str | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize the runner.
@@ -118,6 +123,8 @@ class ExperimentRunner:
                 is in `failed` and not in `experiments`, and `run_experiments`
                 reports it as failed without running it. `"raise"` raises it,
                 which is what a fit uses.
+            jit_optimization: the optimization level every model is compiled
+                with, see `RoadrunnerSBMLModel`.
             **kwargs: settings of the experiments, `SimulationExperiment.settings`.
         """
         # single UnitRegistry per runner
@@ -133,6 +140,9 @@ class ExperimentRunner:
         #: failed experiment without an output path
         self.failed: dict[str, ExperimentResult] = {}
         self.on_error: Literal["raise", "log"] = on_error
+        self.jit_optimization: JitOptimization = resolve_jit_optimization(
+            jit_optimization
+        )
         self.models: dict[ModelKey, RoadrunnerSBMLModel] = {}
         self.simulator: Simulator | None = None
         # the sids of the experiments in the order of their classes
@@ -227,7 +237,9 @@ class ExperimentRunner:
             if key not in self.models:
                 # not cached yet, cache the model for lookup
                 self.models[key] = RoadrunnerSBMLModel.from_abstract_model(
-                    abstract_model=abstract_model, ureg=self.ureg
+                    abstract_model=abstract_model,
+                    ureg=self.ureg,
+                    jit_optimization=self.jit_optimization,
                 )
             _models[model_id] = self.models[key]
 

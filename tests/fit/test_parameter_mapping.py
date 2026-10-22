@@ -12,6 +12,8 @@ from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter, MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.parameter_mapping import ParameterMapping, has_renamed_targets
+from sbmlsim.model import JitOptimization
+from sbmlsim.model.model_roadrunner import JIT_OPTIMIZATION_VARIABLE
 from sbmlsim.units import UnitsInformation, ureg
 
 
@@ -501,3 +503,27 @@ def test_a_unit_of_a_version_which_cannot_be_read_names_the_versions(
         ParameterMapping(parameters, {0: {0, 1}, 1: {2}}, GROUPS, KEYS)
     assert type(info.value).__name__ == error
     assert "'Ka_a' or 'Ka_b'" in "\n".join(info.value.__notes__)
+
+
+def test_a_problem_compiles_its_models_at_its_level_in_a_worker(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A worker unpickles the level of the problem, not the one of its environment."""
+    problem = OptimizationProblem(
+        opid="hctz_pk_o0",
+        mapping_collections=op_hctz_pk.mapping_collections,
+        fit_parameters=op_hctz_pk.parameters,
+        base_path=op_hctz_pk.base_path,
+        data_path=op_hctz_pk.data_path,
+        jit_optimization="O0",
+    )
+    monkeypatch.setenv(JIT_OPTIMIZATION_VARIABLE, "O2")
+    unpickled = pickle.loads(pickle.dumps(problem))
+    assert unpickled.jit_optimization is JitOptimization.O0
+    unpickled.initialize(fit_settings)
+    assert unpickled.runner is not None
+    assert {model.jit_optimization for model in unpickled.runner.models.values()} == {
+        JitOptimization.O0
+    }

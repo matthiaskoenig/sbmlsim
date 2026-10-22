@@ -1,9 +1,11 @@
 """RoadRunner model."""
 
 import logging
+import os
 import weakref
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -104,7 +106,81 @@ def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
         roadrunner.Logger.setLevel(level)
 
 
-def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
+class JitOptimization(StrEnum):
+    """The optimization level LLJIT compiles the code of a model with (#331).
+
+    The levels of LLVM, `-O0` to `-O3`, which roadrunner calls `NONE`,
+    `LESS`, `DEFAULT` and `AGGRESSIVE` (`LoadSBMLOptions`). A level trades
+    the time of the compilation against the speed of the simulation, measured
+    with libroadrunner 2.11 on the dulaglutide model of pkdb_models: `O0`
+    compiles in 1.1 s, `O1` to `O3` in 3.9 to 4.2 s and MCJIT, roadrunner's
+    default JIT, in 6.7 s, while a serial scan of 300 doses takes 4.5 s at
+    `O0` and 3.9 s at `O2` and with MCJIT (the midazolam model 0.94 s and
+    0.75 s). `O0` gives the results of MCJIT bitwise, the other levels differ
+    from them in the last bits, so a fit can take another path.
+
+    `O2` is the default (`DEFAULT_JIT_OPTIMIZATION`), it simulates as fast as
+    MCJIT. `O0` pays for a run which compiles more than it simulates, e.g.
+    the initialization of experiments: the run of all experiments of
+    dulaglutide takes about 30 s at `O0` against 34 s at `O2`.
+    """
+
+    O0 = "O0"
+    O1 = "O1"
+    O2 = "O2"
+    O3 = "O3"
+
+
+#: the level of a model loaded without one, unless `JIT_OPTIMIZATION_VARIABLE`
+#: sets another
+DEFAULT_JIT_OPTIMIZATION = JitOptimization.O2
+
+#: the environment variable which sets the level of a model loaded without one,
+#: e.g. `SBMLSIM_JIT_OPTIMIZATION=O0`
+JIT_OPTIMIZATION_VARIABLE = "SBMLSIM_JIT_OPTIMIZATION"
+
+#: the optimization level of roadrunner of every level
+_LLJIT_LEVELS: dict[JitOptimization, int] = {
+    JitOptimization.O0: roadrunner.LoadSBMLOptions.NONE,
+    JitOptimization.O1: roadrunner.LoadSBMLOptions.LESS,
+    JitOptimization.O2: roadrunner.LoadSBMLOptions.DEFAULT,
+    JitOptimization.O3: roadrunner.LoadSBMLOptions.AGGRESSIVE,
+}
+
+
+def resolve_jit_optimization(
+    level: JitOptimization | str | None = None,
+) -> JitOptimization:
+    """Get the optimization level of the compilation of a model.
+
+    Args:
+        level: the level, e.g. `"O0"`. Without one, the level of
+            `JIT_OPTIMIZATION_VARIABLE` or else `DEFAULT_JIT_OPTIMIZATION`.
+
+    Returns:
+        The level.
+
+    Raises:
+        ValueError: if the level is none of `JitOptimization`.
+    """
+    source = "jit_optimization"
+    if level is None:
+        level = os.environ.get(JIT_OPTIMIZATION_VARIABLE)
+        source = JIT_OPTIMIZATION_VARIABLE
+        if not level:
+            return DEFAULT_JIT_OPTIMIZATION
+    try:
+        return JitOptimization(level)
+    except ValueError:
+        levels = ", ".join(repr(str(member)) for member in JitOptimization)
+        raise ValueError(
+            f"{source} {level!r} is no optimization level of the JIT, one of {levels}."
+        ) from None
+
+
+def load_roadrunner(
+    source: str | Path, optimization: JitOptimization | str | None = None
+) -> roadrunner.RoadRunner:
     """Load an instance of roadrunner, its model always compiled (#313).
 
     roadrunner (2.10 and 2.11) takes the compiled model of a new instance from
@@ -120,17 +196,16 @@ def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
     per model of an `ExperimentRunner` and of a worker of a pool, and an
     instance no longer shares its code with another one.
 
-    The model is compiled with LLJIT at its optimization level `DEFAULT`,
-    which compiles the acetaminophen model of pkdb_models (403 kB of SBML)
-    three to five times faster than roadrunner's default JIT, MCJIT (1.2 s
-    against 5.4 s), with the same results bitwise and about as fast a
-    simulation. Up to libroadrunner 2.10 LLJIT crashed when the code of a
-    model and its jump tables were more than 2 GiB apart (#331, roadrunner
-    #1368), e.g. when a model was compiled again while an earlier instance of
-    it was alive.
+    The model is compiled with LLJIT at the given optimization level, see
+    `JitOptimization`, which compiles faster than roadrunner's default JIT,
+    MCJIT. Up to libroadrunner 2.10 LLJIT crashed when the code of a model and
+    its jump tables were more than 2 GiB apart (#331, roadrunner #1368), e.g.
+    when a model was compiled again while an earlier instance of it was alive.
 
     Args:
         source: the path of an SBML file or the SBML itself.
+        optimization: the optimization level of the compilation, see
+            `resolve_jit_optimization` for a level which is not given.
 
     Returns:
         The instance.
@@ -140,7 +215,9 @@ def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
         options.modelGeneratorOpt | roadrunner.LoadSBMLOptions.RECOMPILE
     )
     options.setLLVMBackend(roadrunner.LoadSBMLOptions.LLJIT)
-    options.setLLJitOptimizationLevel(roadrunner.LoadSBMLOptions.DEFAULT)
+    options.setLLJitOptimizationLevel(
+        _LLJIT_LEVELS[resolve_jit_optimization(optimization)]
+    )
     return roadrunner.RoadRunner(str(source), options)
 
 
@@ -161,11 +238,14 @@ class RoadrunnerSBMLModel(AbstractModel):
         ureg: UnitRegistry | None = None,
         settings: dict | None = None,
         parameters: dict[str, float] | None = None,
+        jit_optimization: JitOptimization | str | None = None,
     ):
         """Load the model into roadrunner, with changes, selections and settings.
 
         The `parameters` are added to the model as constant parameters, see
-        `AbstractModel`; they are not selected by default.
+        `AbstractModel`; they are not selected by default. The model is
+        compiled at the optimization level `jit_optimization`, see
+        `resolve_jit_optimization` for a level which is not given.
         """
         super().__init__(
             source=source,
@@ -217,15 +297,23 @@ class RoadrunnerSBMLModel(AbstractModel):
         if self.symbols.events:
             sbml, self.event_markers = with_event_markers(sbml)
 
+        #: the optimization level the model is compiled with, which a worker
+        #: compiles it with as well, see `sbmlsim.simulator.worker.ModelSpec`
+        self.jit_optimization: JitOptimization = resolve_jit_optimization(
+            jit_optimization
+        )
+
         # load model
         self.r: roadrunner.RoadRunner | None = (
-            load_roadrunner(sbml)
+            load_roadrunner(sbml, self.jit_optimization)
             if hierarchical
             or self.initial_helpers
             or self.event_markers
             or self.parameters
             or self.source.content is not None
-            else self.load_roadrunner_model(source=self.source)
+            else self.load_roadrunner_model(
+                source=self.source, optimization=self.jit_optimization
+            )
         )
 
         #: whether the instance was reset or loaded and not simulated since,
@@ -620,8 +708,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         selections: list[str] | None = None,
         ureg: UnitRegistry | None = None,
         settings: dict | None = None,
+        jit_optimization: JitOptimization | str | None = None,
     ):
-        """Create from AbstractModel."""
+        """Create from AbstractModel, see `RoadrunnerSBMLModel`."""
         logger.debug("RoadrunnerSBMLModel from AbstractModel")
         source = abstract_model.source.content
         if source is None:
@@ -638,17 +727,20 @@ class RoadrunnerSBMLModel(AbstractModel):
             selections=abstract_model.selections if selections is None else selections,
             ureg=ureg,
             settings=settings,
+            jit_optimization=jit_optimization,
         )
 
     @classmethod
     def load_roadrunner_model(
         cls,
         source: Source,
+        optimization: JitOptimization | str | None = None,
     ) -> roadrunner.RoadRunner:
         """Load model from given source.
 
         :param source: path to SBML model or SBML string
-        :param state_path: path to rr state
+        :param optimization: the optimization level of the compilation, see
+            `load_roadrunner`
         :return: roadrunner instance
         """
         if isinstance(source, (str, Path)):
@@ -659,7 +751,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             sbml_path: Path = source.path
             # state_path: Path = RoadrunnerSBMLModel.get_state_path(sbml_path=sbml_path)
 
-            r = load_roadrunner(sbml_path)
+            r = load_roadrunner(sbml_path, optimization)
             # FIXME: see https://github.com/sys-bio/roadrunner/issues/963
             # if state_path.exists():
             #     logger.debug(f"Load model from state: '{state_path}'")
@@ -678,7 +770,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             #     logger.info(f"Save state: '{state_path}'")
 
         elif source.is_content():
-            r = load_roadrunner(str(source.content))
+            r = load_roadrunner(str(source.content), optimization)
 
         return r
 
