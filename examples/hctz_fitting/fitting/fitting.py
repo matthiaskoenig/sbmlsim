@@ -26,6 +26,7 @@ from examples.hctz_fitting.fitting.mapping_collections import (
 from examples.hctz_fitting.fitting.parameters import PARAMETERS
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition, fit_cli
+from sbmlsim.fit.evaluation import Grouping
 from sbmlsim.fit.options import (
     LossFunctionType,
     ResidualType,
@@ -57,6 +58,8 @@ FIT_DEFINITIONS: dict[str, FitDefinition] = {
         base_path=HCTZ_PATH,
         data_path=DATA_PATH,
         settings=FIT_SETTINGS,
+        # the reports evaluate the data per tissue: plasma, urine and feces
+        groupings=(Grouping.by("tissue"),),
     ),
 }
 

@@ -41,6 +41,7 @@ from typing import Any
 from sbmlsim import log
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import DerivedChanges, hook_summaries
+from sbmlsim.fit.evaluation import Grouping
 from sbmlsim.fit.fisher import FisherInformation, fisher_information
 from sbmlsim.fit.identifiability import (
     IdentifiabilityResult,
@@ -107,6 +108,9 @@ class FitDefinition:
             `sbmlsim.fit.derived`, e.g. the hybridizations of its neural
             networks.
         description: description of the fit problem for the reports of a fit.
+        groupings: the groupings the reports of the fit evaluate the data by,
+            e.g. `Grouping.by("tissue")`, see `FitReport`; `--group-by` of the
+            command line tools replaces them.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -116,6 +120,7 @@ class FitDefinition:
     settings: FitSettings = field(default_factory=FitSettings)
     hybridizations: Sequence[DerivedChanges] = ()
     description: str = ""
+    groupings: Sequence[Grouping] = ()
 
     def collections(
         self, study_ids: Sequence[str] | None = None
@@ -482,6 +487,7 @@ def report_from_records(
     context: ReportContext | None = None,
     mapping_figures: bool = True,
     show_titles: bool = False,
+    groupings: Sequence[Grouping] | None = None,
 ) -> FitReport:
     """Build the report of a stored fit from the records of its folder.
 
@@ -513,6 +519,8 @@ def report_from_records(
             title; an empty context by default.
         mapping_figures: draw the figure of every fit mapping.
         show_titles: add titles to the figures.
+        groupings: the groupings the report evaluates the data by, the
+            groupings of the definition by default, see `FitReport`.
 
     Returns:
         The report, initialized and ready for `FitReport.create`.
@@ -537,6 +545,7 @@ def report_from_records(
         show_titles=show_titles,
         mapping_figures=mapping_figures,
         context=context,
+        groupings=definition.groupings if groupings is None else groupings,
     )
 
 
@@ -614,6 +623,27 @@ def _add_common_arguments(
         "They are almost the whole cost of it, so a report which is read for "
         "its tables and its overview figures is created much faster",
     )
+    parser.add_argument(
+        "--group-by",
+        action="append",
+        default=None,
+        metavar="COLUMNS",
+        help="evaluate the report by the values of columns of its data points, "
+        "a comma separated list per grouping, e.g. tissue or tissue,route; "
+        "repeatable, replaces the groupings of the definition",
+    )
+
+
+def _groupings(
+    definition: FitDefinition, options: argparse.Namespace
+) -> tuple[Grouping, ...]:
+    """Get the groupings of a report: those of `--group-by`, else of the definition."""
+    if options.group_by:
+        return tuple(
+            Grouping.by(*[column.strip() for column in value.split(",")])
+            for value in options.group_by
+        )
+    return tuple(definition.groupings)
 
 
 def fit_cli(
@@ -736,6 +766,7 @@ def fit_cli(
             name=options.name,
             show_titles=False,
             mapping_figures=not options.no_mapping_figures,
+            groupings=_groupings(definition, options),
         )
 
     return runs
@@ -811,6 +842,7 @@ def report_cli(
             else context(options.subset, definition, records)
         ),
         mapping_figures=not options.no_mapping_figures,
+        groupings=_groupings(definition, options),
     )
     _display_records(report, options.subset, options.parameters, options.output_dir)
     return report.create(
@@ -954,6 +986,7 @@ def identifiability_cli(
         opid=options.subset,
         parameters=ParameterSets([parameter_set]),
         mapping_figures=not options.no_mapping_figures,
+        groupings=_groupings(definition, options),
     )
     problem, settings = report.problem, report.settings
     _display_records(
