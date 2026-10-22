@@ -77,7 +77,7 @@ def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
     An integration with the steps of the integrator whose last step of
     CVODE found the root of an event after the end leaves that event pending
     in the integrator, which neither a reset nor the next `simulate` clears
-    (`variableStepPendingEvent` of `CVODEIntegrator`, libroadrunner 2.11): the
+    (`variableStepPendingEvent` of `CVODEIntegrator`, roadrunner #1381): the
     first call of the integrator of the next simulation applies it with the
     states of the triggers before it, and an event whose trigger is not
     persistent misses its next rise (case 01590 of the SBML Test Suite). The
