@@ -14,10 +14,8 @@ model, see `repeat_check`.
 
 from __future__ import annotations
 
-import ctypes
 import logging
 import os
-import sys
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -190,26 +188,25 @@ def simulate_case(
     return simulator.simulate(model, simulation or case_simulation(case))
 
 
-def seed_event_order(seed: int = 1) -> None:
+def seed_event_order(model: RoadrunnerSBMLModel, seed: int = 1) -> None:
     """Seed the random generator which orders simultaneous events.
 
     libroadrunner executes simultaneous events of the same priority in a
-    random order, drawn with `std::rand` of the C library, whose state
-    belongs to the process: a second simulation of a model with such events
-    draws other numbers than the first and differs in the last bits (cases
-    00952 and 01588), and so does a case after other cases in a process. The
-    generator is seeded before every simulation of a case, so a case gives the
-    same results in every process and the repeat check compares simulations of
-    the same order; a C library which is not found keeps its state.
+    random order, drawn with the random generator of the model (from
+    libroadrunner 2.11; before with `std::rand` of the C library), whose
+    state advances with every draw: a second simulation of a model with such
+    events draws other numbers than the first and differs in the last bits
+    (cases 00952 and 01588). The generator is seeded before every simulation
+    of a case, without a reset of the model, so a case gives the same results
+    in every process and the repeat check compares simulations of the same
+    order. The seed is also the one of the models roadrunner creates later in
+    the process, i.e. of a regenerated model.
 
     Args:
-        seed: the seed of `srand`.
+        model: the loaded model.
+        seed: the seed.
     """
-    try:
-        libc = ctypes.CDLL("ucrtbase") if sys.platform == "win32" else ctypes.CDLL(None)
-        libc.srand(ctypes.c_uint(seed))
-    except (OSError, AttributeError) as err:
-        logger.debug("The random generator of the C library is not seeded: %s", err)
+    model.r_loaded.setSeed(seed, False)
 
 
 def repeat_difference(
@@ -248,7 +245,7 @@ def _steady_state(
     case: SemanticCase, simulator: Simulator, model: RoadrunnerSBMLModel
 ) -> TimecourseResult | str:
     """Simulate a case after a steady state, the results or why it failed."""
-    seed_event_order()
+    seed_event_order(model)
     try:
         return simulate_case(
             case, simulator, model, case_simulation(case, steady_state=True)
@@ -277,9 +274,9 @@ def repeat_check(
        end, compared with that simulation of a fresh model; both may fail to
        reach a steady state, then with the same error.
 
-    Each must equal the first, bitwise. The C random generator is seeded
-    before every simulation, see `seed_event_order`. A regeneration draws from
-    it as well, so a case of random event execution (the test tag
+    Each must equal the first, bitwise. The random generator of the model is
+    seeded before every simulation, see `seed_event_order`. A regeneration
+    draws from it as well, so a case of random event execution (the test tag
     `RandomEventExecution`) is compared with its expected results in 2 and
     within the tolerances of the case in 3 instead.
 
@@ -294,14 +291,14 @@ def repeat_check(
     """
     random = RANDOM_EVENT_EXECUTION in case.test_tags
 
-    seed_event_order()
+    seed_event_order(model)
     second = simulate_case(case, simulator, model)
     difference = repeat_difference(first, second)
     if difference:
         return difference
 
     simulate_case(case, simulator, model, case_simulation(case, fraction=0.5))
-    seed_event_order()
+    seed_event_order(model)
     third = simulate_case(case, simulator, model)
     difference = repeat_difference(
         first, third, "a simulation of the loaded model after a shorter one"
@@ -435,7 +432,7 @@ def run_case(case: SemanticCase) -> CaseResult:
         return result(CaseStatus.NOT_READ, str(err).strip().splitlines()[0][:300])
 
     try:
-        seed_event_order()
+        seed_event_order(model)
         observed = simulate_case(case, simulator, model)
     except Exception as err:
         logger.debug("'%s': the simulation failed: %s", case.cid, err)

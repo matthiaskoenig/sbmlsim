@@ -171,8 +171,8 @@ end
 """
 
 #: an event with a delay and a floating species of an assignment rule, for
-#: which `RoadRunner.regenerateModel` cannot restore a vector of absolute
-#: tolerances (`setIndividualTolerance` raises for `R`)
+#: which `RoadRunner.regenerateModel` of libroadrunner 2.10 could not restore
+#: a vector of absolute tolerances (`setIndividualTolerance` raised for `R`)
 DELAYED_EVENT_RULE = """
 model delayed_event_rule
   compartment C = 1

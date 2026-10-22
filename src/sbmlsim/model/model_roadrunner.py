@@ -16,8 +16,8 @@ from pint.facets.plain import PlainUnit
 from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
 from sbmlsim.model import AbstractModel
+from sbmlsim.model.event_rows import MARKER_PREFIX, with_event_markers
 from sbmlsim.model.model_resources import Source
-from sbmlsim.model.roottol import root_tolerance
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.model.tolerances import (
     AbsoluteTolerance,
@@ -71,35 +71,63 @@ def reset_all(r: roadrunner.RoadRunner) -> None:
     _roadrunner.RoadRunner_reset(r, RESET_ALL)
 
 
+def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
+    """Apply an event which the integrator keeps pending after a simulation.
+
+    An integration with the steps of the integrator whose last step of
+    CVODE found the root of an event after the end leaves that event pending
+    in the integrator, which neither a reset nor the next `simulate` clears
+    (`variableStepPendingEvent` of `CVODEIntegrator`, roadrunner #1381): the
+    first call of the integrator of the next simulation applies it with the
+    states of the triggers before it, and an event whose trigger is not
+    persistent misses its next rise (case 01590 of the SBML Test Suite). The
+    integrator is called once with exact output at the time of the model,
+    which applies such an event after the simulation, and does not integrate
+    without one.
+
+    Args:
+        r: the roadrunner instance after a simulation.
+    """
+    integrator: roadrunner.Integrator = r.getIntegrator()
+    if integrator.getName() != "cvode":
+        return
+    variable_step_size = bool(integrator.getValue("variable_step_size"))
+    level = roadrunner.Logger.getLevel()
+    roadrunner.Logger.setLevel(min(level, roadrunner.Logger.LOG_CRITICAL))
+    try:
+        integrator.setValue("variable_step_size", False)
+        integrator.integrate(float(r.model.getTime()), 0.0)
+    except RuntimeError:
+        pass
+    finally:
+        integrator.setValue("variable_step_size", variable_step_size)
+        roadrunner.Logger.setLevel(level)
+
+
 def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
     """Load an instance of roadrunner, its model always compiled (#313).
 
-    roadrunner 2.10 takes the compiled model of a new instance from its cache
-    in the process when another instance of the same SBML is alive, and the
-    data of such a model has no piecewise triggers (`createModelData(...,
-    0)` in `LLVMModelGenerator::createModel`): CVODE's root finding does not
-    stop at the switch of a piecewise of the model, and the instance
-    integrates a few 1e-9 apart from a compiled one. Which instance is alive
-    differs between the first experiment of a run, the later ones, a serial
-    run and the workers of a pool, so a model is compiled whenever it is
-    loaded (`LoadSBMLOptions.RECOMPILE`), which also keeps it out of the
-    cache. The compilation is paid once per loaded model, i.e. once per
-    model of an `ExperimentRunner` and of a worker of a pool, and an instance
-    no longer shares its code with another one: 1.2 s and 41 MB per
-    instance for the acetaminophen model of pkdb_models (403 kB of SBML),
-    against 0.044 s and 16 MB from the cache; 0.2 s for dapagliflozin.
+    roadrunner (2.10 and 2.11) takes the compiled model of a new instance from
+    its cache in the process when another instance of the same SBML is alive,
+    and the data of such a model has no piecewise triggers
+    (`createModelData(..., 0)` in `LLVMModelGenerator::createModel`): CVODE's
+    root finding does not stop at the switch of a piecewise of the model, and
+    the instance integrates a few 1e-9 apart from a compiled one. Which
+    instance is alive differs between the first experiment of a run, the
+    later ones, a serial run and the workers of a pool, so a model is compiled
+    whenever it is loaded (`LoadSBMLOptions.RECOMPILE`), which also keeps it
+    out of the cache. The compilation is paid once per loaded model, i.e. once
+    per model of an `ExperimentRunner` and of a worker of a pool, and an
+    instance no longer shares its code with another one.
 
-    The model is compiled with roadrunner's default JIT, MCJIT. LLJIT
-    compiles the dulaglutide model of pkdb_models 6.9 times faster (1.5 s
-    against 10.4 s), but roadrunner 2.10 crashes with it (a segmentation
-    fault in the compiled code of a model) in runs which compile a model
-    again while an earlier instance of it is alive: in 3 of 8 fits of the
-    dulaglutide model at the optimization level NONE (the levels LESS,
-    DEFAULT and AGGRESSIVE were fitted once each, without a crash, and not
-    in a loop), and in 1 to 3 of 40 processes of a loop over
-    its experiments at the levels NONE, LESS and AGGRESSIVE (DEFAULT was not
-    run). MCJIT did not crash, in 0 of 6 fits and 0 of 20 processes of the
-    loop (#331).
+    The model is compiled with LLJIT at its optimization level `DEFAULT`,
+    which compiles the acetaminophen model of pkdb_models (403 kB of SBML)
+    three to five times faster than roadrunner's default JIT, MCJIT (1.2 s
+    against 5.4 s), with the same results bitwise and about as fast a
+    simulation. Up to libroadrunner 2.10 LLJIT crashed when the code of a
+    model and its jump tables were more than 2 GiB apart (#331, roadrunner
+    #1368), e.g. when a model was compiled again while an earlier instance of
+    it was alive.
 
     Args:
         source: the path of an SBML file or the SBML itself.
@@ -111,6 +139,8 @@ def load_roadrunner(source: str | Path) -> roadrunner.RoadRunner:
     options.modelGeneratorOpt = (
         options.modelGeneratorOpt | roadrunner.LoadSBMLOptions.RECOMPILE
     )
+    options.setLLVMBackend(roadrunner.LoadSBMLOptions.LLJIT)
+    options.setLLJitOptimizationLevel(roadrunner.LoadSBMLOptions.DEFAULT)
     return roadrunner.RoadRunner(str(source), options)
 
 
@@ -180,16 +210,19 @@ class RoadrunnerSBMLModel(AbstractModel):
         self.initial_helpers: dict[str, str] = {}
         if self.symbols.initial_assignments:
             sbml, self.initial_helpers = _with_initial_helpers(sbml)
+        #: the parameters which mark the events of the model, which the
+        #: executor selects as the last columns of its integrations, see
+        #: `sbmlsim.model.event_rows`
+        self.event_markers: tuple[str, ...] = ()
+        if self.symbols.events:
+            sbml, self.event_markers = with_event_markers(sbml)
 
-        # the probe of roadrunner's root tolerance of events runs before the
-        # first model of the process, as its first integration, see
-        # `sbmlsim.model.roottol`
-        root_tolerance()
         # load model
         self.r: roadrunner.RoadRunner | None = (
             load_roadrunner(sbml)
             if hierarchical
             or self.initial_helpers
+            or self.event_markers
             or self.parameters
             or self.source.content is not None
             else self.load_roadrunner_model(source=self.source)
@@ -517,12 +550,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         large one). Every point of a scan reaches the same end, so a scan
         regenerates no model, unless it integrates to a steady state.
 
-        roadrunner restores a vector of absolute tolerances after the
-        regeneration species by species with `setIndividualTolerance`, which
-        raises for a species of an assignment rule, and not a number: the
-        tolerance is a number during the regeneration, and the selections and
-        the absolute tolerances of sbmlsim are set again after it. The next
-        initialization resets the new model, which queues its events at t0.
+        The selections and the absolute tolerances of sbmlsim are set again
+        after it. The next initialization resets the new model, which queues
+        its events at t0.
 
         Args:
             horizon: the time of roadrunner the next simulation integrates to,
@@ -532,9 +562,6 @@ class RoadrunnerSBMLModel(AbstractModel):
             return
         r = self.r_loaded
         selections = list(r.timeCourseSelections)
-        integrator: roadrunner.Integrator = r.getIntegrator()
-        vector = _floats(integrator.getAbsoluteToleranceVector())
-        integrator.setValue("absolute_tolerance", min(vector, default=1e-12))
         try:
             r.regenerateModel(True)
         finally:
@@ -736,7 +763,7 @@ class RoadrunnerSBMLModel(AbstractModel):
                 *[
                     pid
                     for pid in r_model.getGlobalParameterIds()
-                    if not pid.endswith(INITIAL_SUFFIX) and pid not in exclude
+                    if not _is_helper(pid) and pid not in exclude
                 ],
                 *r_model.getReactionIds(),
                 *compartments,
@@ -938,9 +965,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         roadrunner turns a single value into a vector by its own scaling, so
         the tolerances are set as the vector of CVODE, in the order of
-        `state_ids`. `setIndividualTolerance` is not used: it indexes a species
-        by its index among the floating species and a rate rule after them,
-        while CVODE integrates the rate rules first. The reference volumes are
+        `state_ids`, in one call. The reference volumes are
         the initial volumes of the model as loaded, see `_loaded_volumes`.
         """
         r = self.r_loaded
@@ -1003,13 +1028,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         r_model: roadrunner.ExecutableModel = r.model
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(r.getCurrentSBML())
         model: libsbml.Model = doc.getModel()
-        # the helpers of the initial assignments are not parameters of the
-        # model, see `initialize`
-        sids = [
-            sid
-            for sid in r_model.getGlobalParameterIds()
-            if not sid.endswith(INITIAL_SUFFIX)
-        ]
+        # the helpers of the initial assignments and the markers of the events
+        # are not parameters of the model, see `initialize`
+        sids = [sid for sid in r_model.getGlobalParameterIds() if not _is_helper(sid)]
         parameters: list[libsbml.Parameter] = [model.getParameter(sid) for sid in sids]
         data = {
             "sid": sids,
@@ -1174,6 +1195,16 @@ def _state_values(r: roadrunner.RoadRunner) -> np.ndarray:
 def _floats(values: Sequence[float] | np.ndarray) -> list[float]:
     """Get the values of an array of roadrunner as floats."""
     return np.asarray(values, dtype=float).tolist()
+
+
+def _is_helper(sid: str) -> bool:
+    """Whether a parameter is a helper of sbmlsim and no parameter of the model.
+
+    The helpers are the parameters of the initial assignments, see
+    `_with_initial_helpers`, and the markers of the events, see
+    `sbmlsim.model.event_rows`.
+    """
+    return sid.endswith(INITIAL_SUFFIX) or sid.startswith(MARKER_PREFIX)
 
 
 def _with_initial_helpers(sbml: str) -> tuple[str, dict[str, str]]:

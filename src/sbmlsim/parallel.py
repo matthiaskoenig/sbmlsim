@@ -319,7 +319,7 @@ def _end_with_the_parent() -> None:
 
 
 def _initialize_worker() -> None:
-    """Initialize a worker: it ends with its parent, SIGINT is ignored and roadrunner is probed.
+    """Initialize a worker: it ends with its parent, and SIGINT is ignored.
 
     A worker ends when the process which started its pool ends, also when it
     was killed, see `_end_with_the_parent`.
@@ -329,20 +329,11 @@ def _initialize_worker() -> None:
     handles it and stops a pool whose run it interrupts, see `stop`. On POSIX
     the worker started with SIGINT blocked, see `_SigintBlocked`: ignoring it
     discards a SIGINT which arrived since, and it is unblocked again.
-
-    The probe of the root tolerance of roadrunner is the first integration of
-    the worker, see `sbmlsim.model.roottol`, unless the main module, which the
-    worker imported before, integrates when it is imported; it costs the
-    compilation of a small model, paid with the start of the worker rather
-    than with the first model it loads.
     """
     _end_with_the_parent()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
         signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
-    from sbmlsim.model.roottol import root_tolerance
-
-    root_tolerance()
 
 
 def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecutor:
@@ -412,11 +403,6 @@ def pool(n_workers: int) -> ProcessPoolExecutor:
     The pool is kept, so the workers start once per process; a pool which
     broke, e.g. because a worker died, is replaced. Every pool is stopped when
     the process ends, see `shutdown`.
-
-    A worker which ran a chunk of a scan prints no messages of the integrator
-    (SUNDIALS) for the rest of its life, see
-    `sbmlsim.simulator.worker.quiet_sundials`: the workers report a failure
-    through its exception or the variable `status` of a scan.
 
     Args:
         n_workers: the number of worker processes.

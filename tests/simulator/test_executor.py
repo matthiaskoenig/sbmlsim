@@ -1,17 +1,15 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
 import logging
-import tempfile
 import warnings
-from pathlib import Path
 
 import numpy as np
 import pytest
 
 from sbmlsim.model import RoadrunnerSBMLModel
-from sbmlsim.model.roottol import EPSILON
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Change, Simulation, SteadyState
+from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import (
     SteadyStateError,
     _exact_times,
@@ -599,7 +597,17 @@ class _FailingIntegrator:
 
 
 class _FailingRoadRunner:
-    """A roadrunner instance whose integrator fails at the end."""
+    """A roadrunner instance whose integrator fails at the end.
+
+    roadrunner stopped at the most rows of its output, before the end.
+    """
+
+    def __init__(self) -> None:
+        self.model = self
+
+    def getTime(self) -> float:
+        """Get the time of the model."""
+        return 0.5
 
     def getIntegrator(self) -> _FailingIntegrator:
         """Get the integrator."""
@@ -612,6 +620,13 @@ def test_a_failure_of_the_integrator_at_the_end_raises() -> None:
     with pytest.raises(RuntimeError, match="CV_TOO_MUCH_WORK"):
         _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
     assert not _to_the_end(r, 1.0, events=True)  # ty: ignore[invalid-argument-type]
+
+
+def test_a_model_without_events_at_the_end_is_not_integrated_again() -> None:
+    """roadrunner leaves the model at the end of its steps (libroadrunner 2.11)."""
+    r = _FailingRoadRunner()
+    r.getTime = lambda: 1.0  # ty: ignore[invalid-assignment]
+    assert _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
 
 
 def test_a_plan_without_changes_after_the_start_has_one_row_per_time() -> None:
@@ -781,24 +796,15 @@ def _count_runs(monkeypatch: pytest.MonkeyPatch) -> list[int]:
 
 
 def test_segments_past_their_end_are_integrated_again_at_most_twice(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The plan runs three times however many segments roadrunner integrated past their end.
 
     A change of `k` to its own value 0.002 before every reset: the last step
     of roadrunner before every change ends after the reset. The second run
     finds the second segment past its end, the third one keeps the state at
-    the start of every later segment in a temporary file, which it removes;
-    `saveStateS` of roadrunner 2.10 keeps every state in memory and is not
-    used.
+    the start of every later segment in memory.
     """
-    import roadrunner
-
-    def leaking(self: object) -> bytes:
-        raise AssertionError("saveStateS keeps every state in memory")
-
-    monkeypatch.setattr(roadrunner.RoadRunner, "saveStateS", leaking)
-    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     runs = _count_runs(monkeypatch)
     model = RoadrunnerSBMLModel(source=sbml(SAWTOOTH))
     times = [j - 0.002 for j in range(1, 11)]
@@ -808,7 +814,6 @@ def test_segments_past_their_end_are_integrated_again_at_most_twice(
         ["time", "X", "Y"],
     )
     assert len(runs) == 3
-    assert list(tmp_path.iterdir()) == []
     at = np.isin(result.time, times) & _after(result)
     np.testing.assert_allclose(np.asarray(result["X"])[at], 0.998, rtol=1e-6)
     np.testing.assert_array_equal(np.asarray(result["Y"])[at], np.arange(10))
@@ -917,33 +922,29 @@ class _Folded:
 
 
 @pytest.mark.parametrize(
-    ("end", "model_time", "offset", "folded"),
+    ("end", "model_time", "marker", "last", "folded"),
     [
-        (2.0, 1.9999995, 1e-6, True),  # the root of a trigger, `roottol` before
-        (2.0, 1.9999995, EPSILON, True),  # an event at the end of a step of CVODE
-        (5.0, 4.4999995, 0.0, True),  # from 4 on the epsilon rounds away
-        (10.0, 9.9999995, 0.0, True),
-        (2.0, 2.0000004, 1e-6, True),  # an event after the end
-        (2.0, 2.0000004, 1.0000004, False),  # a step of CVODE past the end
-        (2.0, 1.9999995, 3e-6, False),  # another distance: a step of CVODE
+        (2.0, 1.9999995, 1.0, 2.0, True),  # an event before the end
+        (2.0, 2.0000004, 1.0, 2.0, True),  # an event after the end
+        (2.0, 2.0000004, 0.0, 2.0, False),  # a step of CVODE past the end
+        (2.0, 1.9999995, 1.0, 1.5, False),  # the most rows, before the end
     ],
 )
 def test_an_event_whose_row_after_it_roadrunner_folded_into_the_end(
-    end: float, model_time: float, offset: float, folded: bool
+    end: float, model_time: float, marker: float, last: float, folded: bool
 ) -> None:
-    """roadrunner left the model at the event, `roottol` after its row before it."""
-    from sbmlsim.model.roottol import RootTolerance
+    """The markers of the model differ from the ones of the row before the last."""
     from sbmlsim.simulator.executor import _folded_event
 
     block = np.array(
-        [[0.0, 0.0], [1.0, 1.0], [model_time - offset, 2.0], [end + 1e-16, 0.7]]
+        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.2, 2.0, 0.0], [last, 0.7, 0.0]]
     )
     event = _folded_event(
-        _Folded(model_time, [model_time, 0.0]),  # ty: ignore[invalid-argument-type]
+        _Folded(model_time, [model_time, 0.0, marker]),  # ty: ignore[invalid-argument-type]
         block,
         end,
-        RootTolerance(1e-6, 1e-19),
         1e-8,
+        1,
     )
     assert event == (model_time if folded else None)
 
@@ -954,65 +955,64 @@ def test_the_last_row_of_roadrunner_is_no_row_of_an_event(
 ) -> None:
     """The row roadrunner interpolated to the end is left out of the events.
 
-    CVODE located an event a few ulps after the end; roadrunner's last row is
-    `roottol` after the row before the event. A last row before the end is a
-    step, roadrunner stopped at the most rows of its output.
+    roadrunner folded the row after an event a few ulps after the end into its
+    last row. A last row before the end is a step, roadrunner stopped at the
+    most rows of its output.
     """
-    from sbmlsim.model.roottol import RootTolerance
     from sbmlsim.simulator.executor import _at_event_times
 
-    roottol = RootTolerance(1e-6, 1e-19)
-    block = np.array([[0.0, 0.0], [1.0, 1.0], [last - 1e-6, 2.0], [last, 0.7]])
-    _at_event_times(block, 2.0, roottol, 1e-8)
+    block = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [last - 1e-6, 2.0, 0.0], [last, 0.7, 1.0]]
+    )
+    _at_event_times(block, 2.0, 1e-8, 1)
     if paired:
-        assert block[2, 0] == block[3, 0] == last - 1e-6
+        assert block[2, 0] == block[3, 0] == pytest.approx(last - 0.5e-6, abs=1e-15)
     else:
         np.testing.assert_array_equal(block[:, 0], [0.0, 1.0, 2.0 - 1e-6, 2.0])
 
 
-def test_an_event_after_the_end_which_roadrunner_applied_is_past_the_end(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_an_event_after_the_end_which_roadrunner_applied_is_past_the_end() -> None:
     """An event at a change fires after it: the segment gets exact output.
 
-    roadrunner applied the event, `roottol` after its row before it, and the
-    row before it is no step of CVODE, so it is left out of the steps.
+    roadrunner applied the event after the end, and the row before it is no
+    step of CVODE, so it is left out of the steps.
     """
-    from sbmlsim.model.roottol import RootTolerance
     from sbmlsim.simulator import executor
 
-    monkeypatch.setattr(executor, "root_tolerance", lambda: RootTolerance(1e-6, 1e-19))
     end = float(np.nextafter(2.0, -np.inf))
-    block = np.array([[0.0, 0.0], [1.0, 1.0], [2.0 + 1e-13 - 1e-6, 2.0], [end, 0.7]])
+    block = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [2.0 - 1e-6, 2.0, 0.0], [end, 0.7, 0.0]]
+    )
     out, inside = executor._events_at_the_end(
-        _Folded(2.0 + 1e-13, [2.0 + 1e-13, 0.0]),  # ty: ignore[invalid-argument-type]
+        _Folded(2.0 + 1e-13, [2.0 + 1e-13, 0.0, 1.0]),  # ty: ignore[invalid-argument-type]
         block.copy(),
         end,
         1e-8,
+        1,
     )
     assert not inside
     np.testing.assert_array_equal(out, block[[0, 1, 3]])
 
 
-def test_an_event_within_the_resolution_before_the_end_gets_its_row_after_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_an_event_within_the_resolution_before_the_end_gets_its_row_after_it() -> None:
     """The state of the model is the row after the event, the steps do not go on."""
-    from sbmlsim.model.roottol import RootTolerance
     from sbmlsim.simulator import executor
 
-    monkeypatch.setattr(executor, "root_tolerance", lambda: RootTolerance(1e-6, 1e-19))
     event = 2.0 - 5e-9
-    block = np.array([[0.0, 0.0], [1.0, 1.0], [event - 1e-6, 2.0], [2.0, 0.7]])
+    block = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [event - 1e-6, 2.0, 0.0], [2.0, 0.7, 0.0]]
+    )
     out, inside = executor._events_at_the_end(
-        _Folded(event, [event, 0.0]),  # ty: ignore[invalid-argument-type]
+        _Folded(event, [event, 0.0, 1.0]),  # ty: ignore[invalid-argument-type]
         block,
         2.0,
         1e-8,
+        1,
     )
     assert inside
     np.testing.assert_array_equal(
-        out, [[0, 0], [1, 1], [event, 2], [event, 0], [2.0, 0.7]]
+        out,
+        [[0, 0, 0], [1, 1, 0], [event, 2, 0], [event, 0, 1], [2.0, 0.7, 0]],
     )
 
 
@@ -1587,3 +1587,33 @@ def test_the_state_before_a_change_is_before_the_event_at_every_time() -> None:
     for c in np.round(np.linspace(1.0, 3.0, 401), 6):
         states.extend(_states_at_a_change(float(c)))
     assert not _wrong(states)
+
+
+#: an event with a delay whose trigger is not persistent and which disables
+#: itself, every 0.01 (case 01590 of the SBML Test Suite); its parameter is not
+#: named `reset` as in the case, which hides `RoadRunner.reset` of every
+#: instance created after it in the process
+PULSES = """
+model pulses
+  Q = 0
+  last = 0
+  E: at 0.005 after (time - last >= 0.005), persistent=false, fromTrigger=false: last = time, Q = Q + 0.01
+end
+"""
+
+
+def test_an_event_which_the_integrator_keeps_pending_does_not_reach_the_next_simulation() -> (
+    None
+):
+    """A second simulation equals the first, see `model_roadrunner.reset_all`.
+
+    The integration to the events at the end found the root of an event after
+    the end; libroadrunner 2.11 keeps it pending across the reset, and the
+    next simulation missed the next rise of the trigger.
+    """
+    simulator = Simulator(n_workers=1, variable_step_size=False)
+    model = simulator.load(sbml(PULSES))
+    simulation = Simulation(end=10, steps=100)
+    first = np.asarray(simulator.simulate(model, simulation)["Q"])
+    second = np.asarray(simulator.simulate(model, simulation)["Q"])
+    np.testing.assert_array_equal(first, second)

@@ -22,6 +22,7 @@ classifiers = [
 	"Operating System :: OS Independent",
 	"Programming Language :: Python :: 3.13",
 	"Programming Language :: Python :: 3.14",
+	"Programming Language :: Python :: 3.15",
 	"Programming Language :: Python :: Implementation :: CPython",
 	"Topic :: Scientific/Engineering",
 	"Topic :: Scientific/Engineering :: Bio-Informatics",
@@ -38,9 +39,8 @@ dependencies = [
 	"sbmlutils>=0.16.0",
 	"pymetadata>=0.8.1",
 	"python-libsbml>=5.21.2",
-	# simulation; libroadrunner 2.11 breaks the tests of the simulator (root
-	# tolerance, events) until the work on libroadrunner 2.11 lands
-	"libroadrunner>=2.10.0,<2.11",
+	# simulation
+	"libroadrunner>=2.11.0",
 	# data structures, units and numerics
 	"numpy>=2.5.3",
 	"pandas>=3.0.6",

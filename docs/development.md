@@ -19,7 +19,7 @@ A pull request can only be merged once the four required checks are green:
 
 | check   | workflow      | content                                                              |
 | ------- | ------------- | -------------------------------------------------------------------- |
-| `tests` | `ci-cd.yml`   | the test matrix, python 3.14 on linux, macos and windows, and the plain install |
+| `tests` | `ci-cd.yml`   | the test matrix, python 3.14 on linux, macos and windows and python 3.15 on linux, and the plain install |
 | `ruff`  | `lint.yml`    | `ruff check` and `ruff format --check`, with the ruff of `uv.lock`    |
 | `ty`    | `lint.yml`    | `ty check`                                                            |
 | `docs`  | `docs.yml`    | the zensical build including the api reference and the agent files    |
@@ -28,7 +28,7 @@ A pull request can only be merged once the four required checks are green:
 
 Every job sets up its environment with the action `.github/actions/setup`: uv with its cache of the packages and the interpreters, the python of the job, the libpython roadrunner needs on linux, and `uv sync --locked` with the extras of the job, i.e. the versions of `uv.lock`, see [Dependencies](#dependencies). The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit. The release builds the distributions without the cache (`cache: "false"`).
 
-Continuous integration is kept small: every workflow cancels its running build when a newer commit of the same pull request arrives, uv caches the packages and the interpreters between runs, dependabot proposes its updates once a month, and the matrix tests only the newest python. Python 3.13 is tested locally, see [Testing](#testing), before a pull request is opened.
+Continuous integration is kept small: every workflow cancels its running build when a newer commit of the same pull request arrives, uv caches the packages and the interpreters between runs, dependabot proposes its updates once a month, and the matrix tests python 3.14 on every platform and python 3.15 on linux only: h5py publishes no wheels for python 3.15 yet, the job builds it from source against the headers of HDF5 (`libhdf5-dev`). Python 3.13 is tested locally, see [Testing](#testing), before a pull request is opened.
 
 Further rules of a pull request:
 
@@ -106,7 +106,7 @@ Dependabot keeps the lock current: once a month it opens one pull request which 
 
 The tests are written with pytest, tox runs them against every supported python version.
 
-The tox environments are named after the interpreter (`py3.13` to `py3.14`, see `envlist` in `tox.ini`), a single one is run with
+The tox environments are named after the interpreter (`py3.13` to `py3.15`, see `envlist` in `tox.ini`), a single one is run with
 
 ```bash
 tox r -e py3.14
@@ -118,7 +118,7 @@ and the complete matrix in parallel with
 tox run-parallel
 ```
 
-This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14`. It is the complete test and is run before a pull request is opened: continuous integration runs only python 3.14, on linux, macos and windows, without the tests marked `slow`. It does not use tox, it runs `pytest` in an environment of the python of the job, see [pull requests](#pull-requests).
+This needs the interpreters to be available, which uv installs with `uv python install 3.13 3.14 3.15`; the environment of python 3.15 builds h5py from source, which needs the headers of HDF5 (`libhdf5-dev` on linux). It is the complete test and is run before a pull request is opened: continuous integration runs python 3.14 on linux, macos and windows and python 3.15 on linux, without the tests marked `slow`. It does not use tox, it runs `pytest` in an environment of the python of the job, see [pull requests](#pull-requests).
 
 To run the tests directly against the development environment use
 

@@ -31,16 +31,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # continuous integration tests the newest python on every platform, the
-        # older versions are tested locally with `tox run-parallel`, see
-        # docs/development.md
+        # continuous integration tests python 3.14 on every platform and the
+        # newest python, 3.15, on linux, the older versions are tested locally
+        # with `tox run-parallel`, see docs/development.md
         os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ["3.14"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.15"
 
     steps:
     - uses: actions/checkout@v7
       with:
         persist-credentials: false
+    - name: Install the headers of HDF5 (python 3.15 on linux)
+      # h5py publishes no wheels for python 3.15 yet and is built from source
+      if: matrix.python-version == '3.15'
+      run: sudo apt-get update && sudo apt-get install -y libhdf5-dev
     - name: Set up the environment
       # the dependencies are the versions of uv.lock, the package is installed
       # as a wheel and not editable, so the tests run against what is

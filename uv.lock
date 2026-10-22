@@ -802,20 +802,24 @@ wheels = [
 
 [[package]]
 name = "libroadrunner"
-version = "2.10.0"
+version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b0/4c/5be26c0ad6c9e306a99a41640ec0ef10b01930be3382028faa90f4ae2432/libroadrunner-2.10.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:f3204b7f0ee207e9d4d8abad0910d5bd2ebb760051c9a864a621f23003a4ee86", size = 34201906, upload-time = "2026-08-05T06:04:39.596Z" },
-    { url = "https://files.pythonhosted.org/packages/94/8b/f800ab9769c989e4d76129a5a5cfee4d22e8f0d8439f02f34aa4b8e849b3/libroadrunner-2.10.0-cp313-cp313-macosx_15_0_x86_64.whl", hash = "sha256:01080024d2aa579cff9b0245dd357669a1d50d57716b3fd5ecb12ed382f7eca5", size = 36620959, upload-time = "2026-08-05T06:04:42.342Z" },
-    { url = "https://files.pythonhosted.org/packages/72/c8/45b1849e48cd83a0e0cec9082e90cd97df7da3232362d320f693e5e3747f/libroadrunner-2.10.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:9efc3571fa422dd014d90090150f1baf051863e8f67eece023e6181728d633dd", size = 51162468, upload-time = "2026-08-05T06:04:45.19Z" },
-    { url = "https://files.pythonhosted.org/packages/0a/c9/0c84e343096f5f2b1ab321d712f023f1159b18c263da9313b96ae57ce202/libroadrunner-2.10.0-cp313-cp313-win_amd64.whl", hash = "sha256:b881b6db0d0c92ddf62bd3a95c355d1c0fbbcc683a06f2430e43fdec3fe1875b", size = 24420971, upload-time = "2026-08-05T06:04:47.894Z" },
-    { url = "https://files.pythonhosted.org/packages/1e/40/2d2a221bef074ff54f445c3518781e3e6d2f8f4d82ae03e58df951cffcb6/libroadrunner-2.10.0-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:11ce888d5f2fc396a45c885aa647d6cda49cd678848387d8323e8e588c759831", size = 34203182, upload-time = "2026-08-05T06:04:50.915Z" },
-    { url = "https://files.pythonhosted.org/packages/94/5f/b55c2a54132d1e2907e880b07259122a2845a08c56a3458c69c8857564b9/libroadrunner-2.10.0-cp314-cp314-macosx_15_0_x86_64.whl", hash = "sha256:04f1fb5aeace59514a4a10d869acd1bd88c6a9f597f140f18ebd31e67afc485d", size = 36621769, upload-time = "2026-08-05T06:04:53.747Z" },
-    { url = "https://files.pythonhosted.org/packages/17/4e/86592cbba7f6b493aaf8f64849a500464402231e86a9866428fafdb38664/libroadrunner-2.10.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:3481b6c2aa8030e3c35419b216b1036e4c1aee75e2083716353ebc863aced620", size = 51163285, upload-time = "2026-08-05T06:04:56.869Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/64/4c14a855490980d6b7803084778725ac377b388539c8fb4fc8a4c3cf2eba/libroadrunner-2.10.0-cp314-cp314-win_amd64.whl", hash = "sha256:b4d54bc51c78e5be673f1ccc64ee1596125600c4745abcea789e446db7022479", size = 25067406, upload-time = "2026-08-05T06:04:59.631Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/5f/0c220c0490cfbaa37626af9c166a261310fafa2a60902d7af0f603637edd/libroadrunner-2.11.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:8dcca85b111242e50c0c892ab20059a0abf7a4bd8c8dc830fe4f969d91a8aafe", size = 34248134, upload-time = "2026-10-21T20:52:34.516Z" },
+    { url = "https://files.pythonhosted.org/packages/85/4d/ad36c7b94ac7d481a511baa6e0c473e2f8b188f16a9873df4c3f38d00933/libroadrunner-2.11.0-cp313-cp313-macosx_15_0_x86_64.whl", hash = "sha256:7ecf2e64d8f2788d2354d0b75fbfc479abbdec8b7704b58f99cfb5fb50a44d04", size = 36669042, upload-time = "2026-10-21T20:52:37.429Z" },
+    { url = "https://files.pythonhosted.org/packages/71/11/73cf8e5e5e412d6be4aa1097eb1a148c741237cb3b6f66338ebfe7271ada/libroadrunner-2.11.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:067f4807644f77811d076823d1b463e4ebfc318c76b3b1a975fea39884dc1697", size = 50797625, upload-time = "2026-10-21T20:52:40.377Z" },
+    { url = "https://files.pythonhosted.org/packages/41/44/9d68deb109ddf702bc94d37fcd3940f2346627744f944204fce4cfa7f63c/libroadrunner-2.11.0-cp313-cp313-win_amd64.whl", hash = "sha256:b50cd9dfdf87ee06ddfd7dc4ae56187a25b89daed3ed8150b8f86ce595ab76d9", size = 24438797, upload-time = "2026-10-21T20:52:42.984Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/ff/0b8697209c0e3fffbaa073381f889694e0829b1c61c4e0c7c3a8a449a677/libroadrunner-2.11.0-cp314-cp314-macosx_14_0_arm64.whl", hash = "sha256:92681aa02754011ed278c1bf615def29892b63cc6b8b847db9cd06ab2df46305", size = 34248072, upload-time = "2026-10-21T20:52:45.487Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/dd/2fc627334ca81108333a26bc2a3c407776efb0521b7af91dcab8105a342b/libroadrunner-2.11.0-cp314-cp314-macosx_15_0_x86_64.whl", hash = "sha256:13a82c947c71062488f8f3077c81b815d0c9c1b7d29371a20e20b8254a43e96b", size = 36670141, upload-time = "2026-10-21T20:52:48.434Z" },
+    { url = "https://files.pythonhosted.org/packages/30/f7/ee15827115ebe0f9a8a811f05f74f6de012356879618a837734215a2d575/libroadrunner-2.11.0-cp314-cp314-manylinux_2_28_x86_64.whl", hash = "sha256:87e8f7b8977c0f704d38d515fbf4830667d110f1552a55bf44c14bd26344e358", size = 50797691, upload-time = "2026-10-21T20:52:51.489Z" },
+    { url = "https://files.pythonhosted.org/packages/15/74/9d97217fd269255768efebfafe9a3f66d0bd5a028373abee09eada0c3d44/libroadrunner-2.11.0-cp314-cp314-win_amd64.whl", hash = "sha256:2e553a3261227b274fad304995a900b062bb4743062bf57cdccc6a1b0f596d53", size = 25100087, upload-time = "2026-10-21T20:52:54.277Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/16/86e2c9835202c7d36736521af6fab51b1617de21123a2b9db52751f5c128/libroadrunner-2.11.0-cp315-cp315-macosx_14_0_arm64.whl", hash = "sha256:bf7b8b268bbe85d303ffb5a0c0d55c5968cc9020772bafe28f7819b7124c231b", size = 34247995, upload-time = "2026-10-21T20:52:56.82Z" },
+    { url = "https://files.pythonhosted.org/packages/47/0d/078e6f80aa4af943e28f439b3460fa2a33e27ed8c45b488378cd29759616/libroadrunner-2.11.0-cp315-cp315-macosx_15_0_x86_64.whl", hash = "sha256:1ce06db6b18573b97d2fcc7a8b963f704cf49ffb4038e4a433504d64c2660ee5", size = 36670231, upload-time = "2026-10-21T20:53:00.309Z" },
+    { url = "https://files.pythonhosted.org/packages/87/b0/8323be66accd699fb40a4cb68b64de52bdbfd180b44e146881abd5b79765/libroadrunner-2.11.0-cp315-cp315-manylinux_2_28_x86_64.whl", hash = "sha256:c17824289dcc2e38b17610a91f5c0b3f464d501a027e87dd6c2325c9bcbd5d6e", size = 50797878, upload-time = "2026-10-21T20:53:03.66Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/e9/d8ef2eb3ba4f59025c1647b12bbf62cefee4a6233315f7c8fec344b02e6a/libroadrunner-2.11.0-cp315-cp315-win_amd64.whl", hash = "sha256:81ffdeadd3677ca8f514adda1b8acb4729e26277c0abf1ebd6ea09e8ac5e4e33", size = 25100161, upload-time = "2026-10-21T20:53:06.268Z" },
 ]
 
 [[package]]
@@ -2287,7 +2291,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.16.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "latex2mathml", specifier = ">=3.77" },
-    { name = "libroadrunner", specifier = ">=2.10.0,<2.11" },
+    { name = "libroadrunner", specifier = ">=2.11.0" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.9" },
     { name = "numpy", specifier = ">=2.5.3" },
