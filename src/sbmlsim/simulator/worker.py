@@ -36,7 +36,7 @@ import numpy as np
 import roadrunner
 
 from sbmlsim import parallel
-from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
+from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
 from sbmlsim.result.scan import TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.simulator.executor import execute
@@ -74,13 +74,17 @@ class ModelSpec:
     """What a worker needs to load a model as the parent loaded it.
 
     Attributes:
-        key: identifies the model, its integrator and the settings of the
-            integrator, the key of the model in the cache of a worker.
+        key: identifies the model, its optimization level, its integrator and
+            the settings of the integrator, the key of the model in the cache
+            of a worker.
         source: the SBML of the model as the parent loaded it, see
             `RoadrunnerSBMLModel.sbml`, or the path of the file
             `parallel.shared_payloads` shares it in. It is flattened and the
             path is absolute, so nothing is resolved against a directory.
         parameters: the parameters added to the model, see `AbstractModel`.
+        jit_optimization: the optimization level the model is compiled with,
+            see `RoadrunnerSBMLModel.jit_optimization`: a worker compiles it
+            at the level of the parent, whatever its environment says.
         integrator: the name of the integrator, e.g. `cvode`.
         settings: every setting of the integrator by its name, the absolute
             tolerance as the `AbsoluteTolerance` of the model.
@@ -89,6 +93,7 @@ class ModelSpec:
     key: str
     source: str
     parameters: tuple[tuple[str, float], ...]
+    jit_optimization: JitOptimization
     integrator: str
     settings: tuple[tuple[str, Any], ...]
 
@@ -109,14 +114,18 @@ class ModelSpec:
         parameters = tuple(
             sorted((str(k), float(v)) for k, v in (model.parameters or {}).items())
         )
+        jit_optimization = model.jit_optimization
         integrator, settings = integrator_state(model)
         digest = hashlib.sha256(
-            repr((source, parameters, integrator, settings)).encode("utf-8")
+            repr(
+                (source, parameters, str(jit_optimization), integrator, settings)
+            ).encode("utf-8")
         ).hexdigest()
         return cls(
             key=digest,
             source=source,
             parameters=parameters,
+            jit_optimization=jit_optimization,
             integrator=integrator,
             settings=settings,
         )
@@ -124,7 +133,9 @@ class ModelSpec:
     def load(self) -> RoadrunnerSBMLModel:
         """Load the model with the integrator and its settings."""
         model = RoadrunnerSBMLModel(
-            source=self.source, parameters=dict(self.parameters) or None
+            source=self.source,
+            parameters=dict(self.parameters) or None,
+            jit_optimization=self.jit_optimization,
         )
         r = model.r_loaded
         if r.getIntegrator().getName() != self.integrator:

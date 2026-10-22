@@ -29,6 +29,26 @@ print(model.selections)
 
 The model can be created explicitly and passed to the simulator, which is useful when several simulators or experiments share a model.
 
+## Compiling a model
+
+roadrunner compiles the code of a model when it is loaded, with LLJIT at an optimization level of LLVM, `JitOptimization`: `O0` compiles fastest, the higher levels optimize the code for the simulation. `O2` is the default and simulates as fast as roadrunner's default JIT, MCJIT, which compiles slower; `O0` gives the results of MCJIT bitwise and pays for a run which compiles more than it simulates, e.g. the initialization of the experiments of a model. On the dulaglutide model of pkdb_models `O0` compiles in 1.1 s and `O2` in 4.1 s, while a scan of 300 doses takes 4.5 s at `O0` and 3.9 s at `O2`.
+
+A model takes its level as `jit_optimization`, an `ExperimentRunner` and an `OptimizationProblem` compile all their models at theirs, and the environment variable `SBMLSIM_JIT_OPTIMIZATION` sets the level of everything which is not given one:
+
+```python
+from sbmlsim.model import JitOptimization, RoadrunnerSBMLModel
+
+model = RoadrunnerSBMLModel(
+    source=REPRESSILATOR_SBML, jit_optimization=JitOptimization.O0
+)
+```
+
+```bash
+SBMLSIM_JIT_OPTIMIZATION=O0 pytest
+```
+
+The workers of a scan and of a fit compile a model at the level of the parent, whatever their environment says.
+
 ## Units of a model
 
 The units of every parameter, species and compartment are read from the SBML and stored as a `UnitsInformation`, a mapping from identifier to unit string. All changes and results of a simulation carry these units, see [Units](units.md):
