@@ -1,5 +1,7 @@
 """The criteria and the aggregates of the evaluation of a fit (#325, #326)."""
 
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -7,10 +9,13 @@ import pytest
 from sbmlsim.fit.evaluation import (
     DEFAULT_CRITERIA,
     Fold,
+    Grouping,
+    Subset,
     Uncertainty,
     afe,
     criteria_metrics,
     gmfe,
+    group_metrics,
     guest_limits,
     within_guest,
 )
@@ -90,3 +95,97 @@ def test_guest_as_published() -> None:
     np.testing.assert_allclose(low, [1.0, 4 / 3, 1 / 3, 10 / 1.9])
     assert within_guest([2.0, 2.0], [2.5, 3.5]) == pytest.approx(50.0)
     assert within_guest([0.5], [0.6]) == pytest.approx(100.0)
+
+
+def _table() -> pd.DataFrame:
+    """Points of three mappings of two studies with metadata."""
+    return pd.DataFrame(
+        {
+            "experiment": ["A", "A", "A", "B", "B"],
+            "mapping": ["fm_p", "fm_p", "fm_u", "fm_p", "fm_p"],
+            "kind": ["training", "training", "training", "validation", "training"],
+            "DV": [1.0, 2.0, 1.0, 1.0, 4.0],
+            "IPRED": [1.0, 1.0, 3.0, 1.5, 4.0],
+            "IRES": [0.0, 1.0, -2.0, -0.5, 0.0],
+            "NRES": [0.0, 0.5, -2.0, -0.5, 0.0],
+            "DV_SD": [0.1, np.nan, 1.0, 1.0, 1.0],
+            "tissue": ["PLASMA", "PLASMA", "URINE", "PLASMA", "PLASMA"],
+            "health": ["HEALTHY", "HEALTHY", "HEALTHY", "", "IMPAIRED"],
+        }
+    )
+
+
+def _no_mapping(experiment: str, mapping: str) -> Any:
+    return mapping
+
+
+def test_a_grouping_by_a_column() -> None:
+    groups = Grouping.by("tissue").groups(_table(), _no_mapping)
+    assert [label for label, _points in groups] == ["PLASMA", "URINE"]
+    assert [len(points) for _label, points in groups] == [4, 1]
+    assert Grouping.by("tissue").name == "tissue"
+
+
+def test_a_grouping_by_two_columns() -> None:
+    grouping = Grouping.by("tissue", "health")
+    assert grouping.name == "tissue_health"
+    labels = [label for label, _points in grouping.groups(_table(), _no_mapping)]
+    assert labels == [
+        "PLASMA, HEALTHY",
+        "URINE, HEALTHY",
+        "PLASMA, not reported",
+        "PLASMA, IMPAIRED",
+    ]
+
+
+def test_a_grouping_by_subsets_may_overlap() -> None:
+    grouping = Grouping.of_subsets(
+        "studies",
+        Subset("A", lambda key, mapping: key in ("fm_p", "fm_u")),
+        Subset("plasma", lambda key, mapping: key == "fm_p"),
+    )
+    groups = dict(grouping.groups(_table(), _no_mapping))
+    assert len(groups["A"]) == 5
+    assert len(groups["plasma"]) == 4
+
+
+def test_an_unknown_column_names_the_columns() -> None:
+    with pytest.raises(ValueError, match=r"'route'.*'tissue'"):
+        Grouping.by("route").groups(_table(), _no_mapping)
+
+
+def test_a_grouping_has_columns_or_subsets() -> None:
+    with pytest.raises(ValueError, match="columns or subsets"):
+        Grouping(name="none")
+    with pytest.raises(ValueError, match="columns or subsets"):
+        Grouping(
+            name="both",
+            columns=("tissue",),
+            subsets=(Subset("A", lambda key, mapping: True),),
+        )
+
+
+def test_the_metrics_of_a_grouping() -> None:
+    metrics = group_metrics(_table(), Grouping.by("tissue"), _no_mapping)
+    assert list(metrics.columns[:6]) == [
+        "grouping",
+        "group",
+        "kind",
+        "n",
+        "RMSE",
+        "NRMSE",
+    ]
+    assert list(metrics.columns[6:]) == list(criteria_metrics(_table()))
+    rows = list(zip(metrics.group, metrics.kind, metrics.n, strict=True))
+    assert rows == [
+        ("PLASMA", "training", 3),
+        ("PLASMA", "validation", 1),
+        ("URINE", "training", 1),
+    ]
+
+
+def test_a_group_of_one_point_has_metrics() -> None:
+    table = _table().iloc[[2]]
+    metrics = group_metrics(table, Grouping.by("tissue"), _no_mapping)
+    assert metrics.n.tolist() == [1]
+    assert np.isfinite(metrics.RMSE.iloc[0])
