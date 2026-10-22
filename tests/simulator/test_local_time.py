@@ -6,6 +6,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
+import roadrunner
 
 from sbmlsim import Q
 from sbmlsim.model import RoadrunnerSBMLModel
@@ -163,6 +164,15 @@ def _late_dose_output(capfd, local: bool) -> str:
     sys.platform == "win32", reason="the streams of C are flushed with POSIX ctypes"
 )
 def test_no_warning_after_a_late_dose(capfd) -> None:
-    """A late dose warns in absolute time, not in the local time of the simulator."""
-    assert "t + h = t" in _late_dose_output(capfd, local=False)
-    assert "t + h = t" not in _late_dose_output(capfd, local=True)
+    """A late dose warns in absolute time, not in the local time of the simulator.
+
+    roadrunner writes the warnings of CVODE from its log level `LOG_WARNING`
+    on, which is not its default.
+    """
+    level = roadrunner.Logger.getLevel()
+    roadrunner.Logger.setLevel(roadrunner.Logger.LOG_WARNING)
+    try:
+        assert "t + h = t" in _late_dose_output(capfd, local=False)
+        assert "t + h = t" not in _late_dose_output(capfd, local=True)
+    finally:
+        roadrunner.Logger.setLevel(level)

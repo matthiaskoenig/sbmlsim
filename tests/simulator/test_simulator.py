@@ -3,7 +3,6 @@
 import contextlib
 import ctypes
 import gc
-import os
 import sys
 import weakref
 from pathlib import Path
@@ -15,7 +14,6 @@ import pytest
 import roadrunner
 
 import sbmlsim.simulator.simulator as simulator_module
-import sbmlsim.simulator.worker as worker_module
 from sbmlsim import Q
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -616,42 +614,19 @@ def test_a_selection_which_the_result_reserves_is_an_error(
         simulator.run(model, Simulation(end=1, steps=2))
 
 
-def test_a_worker_process_silences_sundials(
-    monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+def test_a_failing_point_prints_no_messages_of_sundials(
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
-    names = worker_module.SUNDIALS_LOGS
-    before = {name: os.environ.get(name) for name in names}
-    with monkeypatch.context() as mp:
-        for name in names:
-            # recorded even if it is not set, so the undo removes what
-            # quiet_sundials sets
-            mp.setenv(name, "")
-            mp.delenv(name)
-        mp.setattr(worker_module.parallel, "in_worker", lambda: False)
-        worker_module.quiet_sundials()
-        assert not set(names) & set(os.environ)
-        mp.setattr(worker_module.parallel, "in_worker", lambda: True)
-        mp.setenv(names[0], "mine.log")
-        worker_module.quiet_sundials()
-        # a setting of the user stays
-        assert os.environ[names[0]] == "mine.log"
-        mp.delenv(names[0])
-        worker_module.quiet_sundials()
-        assert {os.environ[name] for name in names} == {os.devnull}
-        # a model loaded after it fails without the messages of SUNDIALS
-        blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
-        scan = Scan(
-            Simulation(end=1, steps=4), [Dimension("rate", values={"k": [2.0]})]
-        )
-        _c_output(capfd)
-        res = Simulator(n_workers=1).run(blowup, scan, on_error="flag")
-        assert res["status"].values.tolist() == [1]
-        output = _c_output(capfd)
-        # on windows the output of C is not flushed, see `_c_output`
-        if sys.platform != "win32":
-            assert "cvodes" not in output
-    # the process of the tests is not silenced
-    assert {name: os.environ.get(name) for name in names} == before
+    """The messages of SUNDIALS follow the log level of roadrunner (2.11)."""
+    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    scan = Scan(Simulation(end=1, steps=4), [Dimension("rate", values={"k": [2.0]})])
+    _c_output(capfd)
+    res = Simulator(n_workers=1).run(blowup, scan, on_error="flag")
+    assert res["status"].values.tolist() == [1]
+    output = _c_output(capfd)
+    # on windows the output of C is not flushed, see `_c_output`
+    if sys.platform != "win32":
+        assert "cvodes" not in output
 
 
 def test_no_compile_per_point(

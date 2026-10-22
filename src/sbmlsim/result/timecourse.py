@@ -138,7 +138,7 @@ def grid_weights(
     The output of a simulation has two time points at the time of a change
     after the start, the states before and after the change, and two at the
     time of an event of the model, the states before and after the event
-    (`sbmlsim.model.roottol`): a jump. Two time points of an event which are
+    (`sbmlsim.model.event_rows`): a jump. Two time points of an event which are
     a little apart, as the exact output of `sbmlsim.simulator.executor` has
     them, are a jump as well. A chain of jumps starts at a jump and has the
     time points after it at most `tolerance` apart, e.g. a change and an

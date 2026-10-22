@@ -1,6 +1,6 @@
 # Installation
 
-`sbmlsim` requires python >= 3.13 and is available from [pypi](https://pypi.python.org/pypi/sbmlsim). It is tested on Linux, macOS and Windows. The simulations run on [libroadrunner](https://libroadrunner.org), which ships binary wheels for all three platforms, so no compiler is needed.
+`sbmlsim` requires python >= 3.13 and is available from [pypi](https://pypi.python.org/pypi/sbmlsim). It is tested on Linux, macOS and Windows. The simulations run on [libroadrunner](https://libroadrunner.org), which ships binary wheels for all three platforms, so no compiler is needed. On python 3.15 h5py, which reads and writes the netCDF files of the results, publishes no wheels yet: pip builds it from source, which needs a C compiler and HDF5 (e.g. `libhdf5-dev` on Debian and Ubuntu, `brew install hdf5` on macOS).
 
 ## With uv
 

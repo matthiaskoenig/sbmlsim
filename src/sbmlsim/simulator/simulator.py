@@ -250,10 +250,7 @@ class Simulator:
                 the order of the scan which fails; `"flag"` sets every value of
                 a point which fails to `NaN` and records it in the variable
                 `status`. A failing point is reported by its error, not by the
-                log of roadrunner; a run in a pool prints no messages of the
-                integrator (SUNDIALS), while a serial run, which integrates the
-                model of the user in the calling process, still shows them, a
-                dozen lines or more per failing point.
+                log of roadrunner.
             progress: show a progress bar; `None` shows it for a run in a pool.
 
         Returns:

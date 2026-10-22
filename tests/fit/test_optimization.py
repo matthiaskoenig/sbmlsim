@@ -1,7 +1,6 @@
 """Tests of the evaluation of an optimization problem."""
 
 import functools
-import os
 import pickle
 import time
 import warnings
@@ -28,7 +27,6 @@ from sbmlsim.fit.options import (
     ResidualType,
 )
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulator.worker import SUNDIALS_LOGS
 from tests.fit.scalar_experiment import CMAX_UNIT, TRUE_V, ScalarStudy
 from tests.simulator.models import sbml_pk
 
@@ -158,8 +156,6 @@ def test_failed_simulations_with_zero_data_cannot_win_a_fit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Real integration failures never return a perfect zero-data fit."""
-    for name in SUNDIALS_LOGS:
-        monkeypatch.setenv(name, os.devnull)
     problem = OptimizationProblem(
         "zero",
         [FitMappingCollection(experiment=ZeroBlowupStudy, mappings=["fm_cmax"])],

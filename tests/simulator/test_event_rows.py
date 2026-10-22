@@ -1,15 +1,14 @@
 """The rows of an event of the model do not depend on the history of the process.
 
-libroadrunner 2.10 reports an event of the model in the steps of the
-integrator as two rows, the state before it at `root - roottol` and the state
-after it at `root + roottol`, where `roottol` is a `static const` of
-`CVODEIntegrator::integrate` which the first integration of the process fixes
-to `100 * 32 * eps * (|t0| + |h|)`. The script runs in two fresh processes at
-once, since `roottol` cannot be reset within one: the first integration of
-the process is one over `0..10000` of an unrelated model, either with
-roadrunner before sbmlsim loaded a model or with sbmlsim. Every check is a
-subtest of one test, so the processes run once per session, also with the
-workers of pytest-xdist.
+libroadrunner reports an event of the model in the steps of the integrator
+as two rows, the state before it a little before its time and the state after
+it a little after it; up to libroadrunner 2.10 the first integration of the
+process fixed that distance. sbmlsim tells the rows by the markers of the
+events, see `sbmlsim.model.event_rows`. The script runs in two fresh
+processes at once: the first integration of the process is one over
+`0..10000` of an unrelated model, either with roadrunner before sbmlsim
+loaded a model or with sbmlsim. Every check is a subtest of one test, so the
+processes run once per session, also with the workers of pytest-xdist.
 """
 
 import json
@@ -28,18 +27,18 @@ ROOT = Path(__file__).resolve().parents[2]
 #: seconds a script may take, a pool which hangs fails the test
 TIMEOUT = 600
 
-#: the time of the reset of `LATE`, closer to the end 2.5 than the 7.1e-9 of
-#: `roottol` after a first integration over `0..10000` of roadrunner, farther
-#: than the resolution of the time, 2.5e-9
+#: the time of the reset of `LATE`, closer to the end 2.5 than 7.1e-9, the
+#: distance of the rows of an event after a first integration over `0..10000`
+#: with libroadrunner 2.10, farther than the resolution of the time, 2.5e-9
 LATE_TIME = 2.5 - 3e-9
 
-#: the times of the resets of `TWO`, both closer to the end 2.5 than `roottol`
+#: the times of the resets of `TWO`, both closer to the end 2.5 than 7.1e-9
 TWO_TIMES = (2.5 - 6.5e-9, 2.5 - 3e-9)
 
 #: the times of the doses of `SHORT` and of the changes, in simulations of one
-#: time unit after them, whose resolution of the time is less than `roottol`;
-#: CVODE locates the dose a few ulps after the end of the segment before the
-#: change, roadrunner's last row is then `roottol` after its row before it
+#: time unit after them, whose resolution of the time is less than the
+#: distance of the rows of an event; CVODE locates the dose a few ulps after
+#: the end of the segment before the change
 SHORT_TIMES = {"short_": 1.04, "short2_": 1.015}
 
 SCRIPT = """
@@ -59,7 +58,7 @@ LATE = (
     "model late\\n  var X = 0\\n  var Y = 0\\n  k = 1\\n  X' = k\\n"
     "  E: at (time >= LATE_TIME): X = 0, Y = Y + 1\\nend"
 )
-# two resets less than `roottol` before the end
+# two resets less than 7.1e-9 before the end
 TWO = (
     "model two\\n  var X = 0\\n  var Y = 0\\n  k = 1\\n  X' = k\\n  Y' = k\\n"
     "  E1: at (time >= TWO_A): X = 0\\n  E2: at (time >= TWO_B): Y = 0\\nend"
@@ -230,11 +229,11 @@ def check_rows_of_an_event(
 ) -> None:
     """The states before and after a reset are two rows of one time.
 
-    CVODE locates a reset a little after its time; before, the rows were at
-    `root -/+ roottol`, 7.1e-9 from it after a first integration over
-    `0..10000`, and the first step of CVODE after the reset was dropped. The
-    late resets are closer to the end than `roottol`: roadrunner folded the
-    row after a reset into its last row and left the row before it alone.
+    CVODE locates a reset a little after its time; with libroadrunner 2.10
+    the rows were 7.1e-9 from it after a first integration over `0..10000`,
+    and the first step of CVODE after the reset was dropped. The late resets
+    are closer to the end than that: roadrunner folded the row after a reset
+    into its last row and left the row before it alone.
     """
     time, x = np.asarray(out[key]["time"]), np.asarray(out[key][variable])
     rows = _event(time, x)
@@ -305,7 +304,7 @@ EXPECTED = {
 def check_a_time_at_an_event_in_a_run(out: dict[str, Any], key: str) -> None:
     """A time at an event sees the state after it, and a dose at a change fires once.
 
-    roadrunner applied the dose at 2 `roottol` after its row before it, after
+    roadrunner applied the dose at 2 a little after its row before it, after
     the end of the segment before the change at 2; the integration back to
     the end did not see it, and the event fired a second time after the
     change.

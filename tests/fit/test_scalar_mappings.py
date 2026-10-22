@@ -1,6 +1,5 @@
 """Fit mappings of a value per simulation and of values over a dimension."""
 
-import os
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -18,7 +17,6 @@ from sbmlsim.fit.options import FitSettings, ParameterScaleType, ResidualType
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.simulation import Change, Custom, Dimension, Observable, Scan, Simulation
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.worker import SUNDIALS_LOGS
 from tests.fit.hooks import Scaling
 from tests.fit.scalar_experiment import (
     CMAX,
@@ -398,10 +396,6 @@ def test_a_failed_observable_gives_the_failure_residual(
 def test_a_failed_integration_gives_the_failure_residual(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # the integrator of the model, created when it loads, does not print the
-    # messages of SUNDIALS about the blowup, see `worker.quiet_sundials`
-    for name in SUNDIALS_LOGS:
-        monkeypatch.setenv(name, os.devnull)
     kb = FitParameter(pid="kb", lower_bound=0.0, upper_bound=2.0, start_value=0.5)
     problem = _problem(BlowupStudy, ["fm_cmax"], tmp_path, parameter=kb)
     working = problem.residuals(np.array([0.0]))
