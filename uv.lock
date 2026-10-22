@@ -2287,7 +2287,7 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.16.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "latex2mathml", specifier = ">=3.77" },
-    { name = "libroadrunner", specifier = ">=2.10.0" },
+    { name = "libroadrunner", specifier = ">=2.10.0,<2.11" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.9" },
     { name = "numpy", specifier = ">=2.5.3" },
