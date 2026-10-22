@@ -1179,8 +1179,8 @@ def test_a_longer_simulation_of_a_model_with_a_delayed_event_and_a_rule_species(
 
     A model with an event with a delay is generated again before such a
     simulation, and roadrunner restores a vector of absolute tolerances with
-    `setIndividualTolerance`, which raises for a species of an assignment
-    rule (#305).
+    `setIndividualTolerance`, which raised for a species of an assignment
+    rule up to libroadrunner 2.10 (#305).
     """
     simulator = Simulator(n_workers=1)
     simulation = Simulation(end=10, steps=10)
@@ -1201,8 +1201,8 @@ def test_a_failed_regeneration_keeps_the_tolerances(
 ) -> None:
     """A regeneration which raises leaves the absolute tolerances of sbmlsim (#305).
 
-    The tolerance is a number during the regeneration; when it raises, the
-    vector is set again, and the next simulation regenerates the model.
+    When it raises, the vector is set again, and the next simulation
+    regenerates the model.
     """
     simulator = Simulator(n_workers=1)
     simulation = Simulation(end=10, steps=10)

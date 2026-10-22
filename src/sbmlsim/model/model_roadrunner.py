@@ -550,12 +550,9 @@ class RoadrunnerSBMLModel(AbstractModel):
         large one). Every point of a scan reaches the same end, so a scan
         regenerates no model, unless it integrates to a steady state.
 
-        roadrunner restores a vector of absolute tolerances after the
-        regeneration species by species with `setIndividualTolerance`, which
-        raises for a species of an assignment rule, and not a number: the
-        tolerance is a number during the regeneration, and the selections and
-        the absolute tolerances of sbmlsim are set again after it. The next
-        initialization resets the new model, which queues its events at t0.
+        The selections and the absolute tolerances of sbmlsim are set again
+        after it. The next initialization resets the new model, which queues
+        its events at t0.
 
         Args:
             horizon: the time of roadrunner the next simulation integrates to,
@@ -565,9 +562,6 @@ class RoadrunnerSBMLModel(AbstractModel):
             return
         r = self.r_loaded
         selections = list(r.timeCourseSelections)
-        integrator: roadrunner.Integrator = r.getIntegrator()
-        vector = _floats(integrator.getAbsoluteToleranceVector())
-        integrator.setValue("absolute_tolerance", min(vector, default=1e-12))
         try:
             r.regenerateModel(True)
         finally:
@@ -971,9 +965,7 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         roadrunner turns a single value into a vector by its own scaling, so
         the tolerances are set as the vector of CVODE, in the order of
-        `state_ids`. `setIndividualTolerance` is not used: it indexes a species
-        by its index among the floating species and a rate rule after them,
-        while CVODE integrates the rate rules first. The reference volumes are
+        `state_ids`, in one call. The reference volumes are
         the initial volumes of the model as loaded, see `_loaded_volumes`.
         """
         r = self.r_loaded

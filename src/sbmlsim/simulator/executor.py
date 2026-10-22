@@ -423,12 +423,13 @@ def _steps(
     """Integrate a segment with the steps of the integrator.
 
     roadrunner integrates with the steps of CVODE up to the step after the
-    end and interpolates its last row linearly to the end, the model is left
-    in the state of the later time; `_to_the_end` sets it to the state at the
-    end, which the last row takes. roadrunner also fires an event of the
-    model it finds in that step after the end, or keeps it pending and fires
-    it in its next integration, also of the next simulation: such a segment
-    is integrated past its end and gets exact output, see `_PastTheEnd`.
+    end and interpolates its last row to the end with the dense output of
+    CVODE, the model is left in the state at the end (libroadrunner 2.11).
+    roadrunner also fires an event of the model it finds in that step after
+    the end, or keeps it pending and fires it in its next integration, also
+    of the next simulation: `_to_the_end` fires such an event, and the
+    segment is integrated past its end and gets exact output, see
+    `_PastTheEnd`.
 
     roadrunner reports an event of the model inside the segment as two rows,
     the states before and after it, a little before and after its time; both
@@ -452,6 +453,8 @@ def _steps(
     """
     events = markers > 0
     block = _variable_steps(r, start, end)
+    if not events and block[-1, 0] == end:
+        return block, True
     if events:
         block, inside = _events_at_the_end(r, block, end, tolerance, markers)
         if not inside:
@@ -717,9 +720,12 @@ def _variable_steps(r: roadrunner.RoadRunner, start: float, end: float) -> np.nd
 def _to_the_end(r: roadrunner.RoadRunner, end: float, events: bool) -> bool:
     """Set the model to its state at the end of an integration with its steps.
 
-    The integrator is called with exact output at the end, which CVODE
-    interpolates from its last step without integrating. An event of the
-    model which roadrunner keeps pending fires first, after the end.
+    roadrunner leaves the model at the end of an integration with its steps
+    (libroadrunner 2.11), unless it stopped at the most rows of its output.
+    Else, and for a model with events, the integrator is called with exact
+    output at the end, which CVODE interpolates from its last step without
+    integrating: an event of the model which roadrunner keeps pending fires
+    first, after the end.
 
     Args:
         r: the roadrunner instance after an integration with the steps of
@@ -735,6 +741,8 @@ def _to_the_end(r: roadrunner.RoadRunner, end: float, events: bool) -> bool:
     Raises:
         RuntimeError: if the integrator fails for a model without events.
     """
+    if not events and float(r.model.getTime()) == end:
+        return True
     integrator: roadrunner.Integrator = r.getIntegrator()
     integrator.setValue(VARIABLE_STEP_SIZE, False)
     try:

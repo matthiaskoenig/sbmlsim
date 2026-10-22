@@ -597,7 +597,17 @@ class _FailingIntegrator:
 
 
 class _FailingRoadRunner:
-    """A roadrunner instance whose integrator fails at the end."""
+    """A roadrunner instance whose integrator fails at the end.
+
+    roadrunner stopped at the most rows of its output, before the end.
+    """
+
+    def __init__(self) -> None:
+        self.model = self
+
+    def getTime(self) -> float:
+        """Get the time of the model."""
+        return 0.5
 
     def getIntegrator(self) -> _FailingIntegrator:
         """Get the integrator."""
@@ -610,6 +620,13 @@ def test_a_failure_of_the_integrator_at_the_end_raises() -> None:
     with pytest.raises(RuntimeError, match="CV_TOO_MUCH_WORK"):
         _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
     assert not _to_the_end(r, 1.0, events=True)  # ty: ignore[invalid-argument-type]
+
+
+def test_a_model_without_events_at_the_end_is_not_integrated_again() -> None:
+    """roadrunner leaves the model at the end of its steps (libroadrunner 2.11)."""
+    r = _FailingRoadRunner()
+    r.getTime = lambda: 1.0  # ty: ignore[invalid-assignment]
+    assert _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
 
 
 def test_a_plan_without_changes_after_the_start_has_one_row_per_time() -> None:
