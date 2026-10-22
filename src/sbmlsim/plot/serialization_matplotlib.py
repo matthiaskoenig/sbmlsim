@@ -831,7 +831,7 @@ class MatplotlibFigureSerializer:
         wspace = resolved.fig_subplots_wspace
         hspace = resolved.fig_subplots_hspace
         fig.subplots_adjust(
-            top=cls._top(figure, resolved), wspace=wspace, hspace=hspace
+            **cls._margins(figure, resolved), wspace=wspace, hspace=hspace
         )
 
         panels: list[_Panel] = []
@@ -1151,8 +1151,16 @@ class MatplotlibFigureSerializer:
         return fig
 
     @staticmethod
-    def _top(figure: Figure, settings: FigureSettings) -> float:
-        """Get the top of the plots as a fraction of the height of the figure.
+    def _margins(figure: Figure, settings: FigureSettings) -> dict[str, float]:
+        """Get the margins of the grid as fractions of the size of the figure.
+
+        The margins are the ones of a figure of one panel, the fractions of
+        matplotlib (`figure.subplot.left`, `right`, `bottom` and `top`) of
+        the size of a panel, i.e., of the size of the figure divided by its
+        number of columns or rows. The fractions of the whole figure grew with
+        the number of panels, whose size is fixed in inches: a figure of six
+        rows had 3.3 in below its last row, one of six columns 5.25 in left of
+        its first (#323).
 
         The title of the figure and the titles of the plots below it need a
         band of a fixed height, i.e., the smaller the figure, the larger the
@@ -1161,10 +1169,18 @@ class MatplotlibFigureSerializer:
         the padding of both. The plots begin right below the band whatever the
         height of the figure; the fraction of matplotlib capped them, so the
         gap below the title grew with the height, 3.6 in above the plots of a
-        figure of six rows (#312). A figure without a title keeps the top of
-        matplotlib.
+        figure of six rows (#312).
         """
-        if not figure.name:
-            return float(rcParams["figure.subplot.top"])
-        band = (1.2 * (settings.fig_titlesize + settings.axes_titlesize) + 12.0) / 72.0
-        return 0.98 - band / figure.size(settings)[1]
+        cols, rows = figure.num_cols, figure.num_rows
+        margins = {
+            "left": float(rcParams["figure.subplot.left"]) / cols,
+            "right": 1.0 - (1.0 - float(rcParams["figure.subplot.right"])) / cols,
+            "bottom": float(rcParams["figure.subplot.bottom"]) / rows,
+            "top": 1.0 - (1.0 - float(rcParams["figure.subplot.top"])) / rows,
+        }
+        if figure.name:
+            band = (
+                1.2 * (settings.fig_titlesize + settings.axes_titlesize) + 12.0
+            ) / 72.0
+            margins["top"] = 0.98 - band / figure.size(settings)[1]
+        return margins

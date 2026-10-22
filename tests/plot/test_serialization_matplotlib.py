@@ -1,6 +1,7 @@
 """Tests of rendering the figure model with matplotlib."""
 
 from pathlib import Path
+from typing import Any
 
 import matplotlib
 import pytest
@@ -408,6 +409,52 @@ def test_the_gap_below_the_title_of_the_figure_does_not_grow_with_its_height() -
     gaps = [gap(rows) for rows in (1, 2, 6)]
     assert max(gaps) - min(gaps) < 0.02, gaps
     assert max(gaps) < 0.3, gaps
+
+
+def _margins(figure: Figure) -> tuple[float, float, float, float]:
+    """Get the margins of the panels of a rendered figure, left, right, bottom and top, in inches."""
+    mpl_figure = MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
+    width, height = mpl_figure.get_size_inches()
+    boxes = [ax.get_position() for ax in mpl_figure.axes]
+    return (
+        min(box.x0 for box in boxes) * width,
+        (1.0 - max(box.x1 for box in boxes)) * width,
+        min(box.y0 for box in boxes) * height,
+        (1.0 - max(box.y1 for box in boxes)) * height,
+    )
+
+
+def _grid(rows: int, cols: int, **kwargs: Any) -> Figure:
+    """Get a figure with a plot in every cell of its grid."""
+    return Figure(
+        experiment=None,
+        sid="fig",
+        num_rows=rows,
+        num_cols=cols,
+        subplots=[
+            SubPlot(plot=Plot(sid=f"p{row}_{col}"), row=row, col=col)
+            for row in range(1, rows + 1)
+            for col in range(1, cols + 1)
+        ],
+        **kwargs,
+    )
+
+
+def test_the_margins_of_a_figure_do_not_grow_with_its_number_of_panels() -> None:
+    """A figure has the margins of a figure of one panel (#323).
+
+    The margins were the fractions of matplotlib of the size of the figure,
+    while the panels have a size in inches: a figure of six rows had 3.3 in
+    below its last row, one of six columns 5.25 in left of its first.
+    """
+    single = _margins(_grid(1, 1))
+    for rows, cols in [(6, 1), (1, 6), (3, 3)]:
+        assert _margins(_grid(rows, cols)) == pytest.approx(single), (rows, cols)
+    # the margins of a figure of an explicit size are the ones of its panels
+    assert _margins(_grid(2, 3, width=21.0, height=10.0)) == pytest.approx(single)
+    assert _margins(_grid(1, 1, width=3.5, height=2.5)) == pytest.approx(
+        [margin / 2 for margin in single]
+    )
 
 
 def test_the_fixture_no_pyplot_fails_on_a_resolution_of_the_backend(
