@@ -1590,12 +1590,14 @@ def test_the_state_before_a_change_is_before_the_event_at_every_time() -> None:
 
 
 #: an event with a delay whose trigger is not persistent and which disables
-#: itself, every 0.01 (case 01590 of the SBML Test Suite)
+#: itself, every 0.01 (case 01590 of the SBML Test Suite); its parameter is not
+#: named `reset` as in the case, which hides `RoadRunner.reset` of every
+#: instance created after it in the process
 PULSES = """
 model pulses
   Q = 0
-  reset = 0
-  E: at 0.005 after (time - reset >= 0.005), persistent=false, fromTrigger=false: reset = time, Q = Q + 0.01
+  last = 0
+  E: at 0.005 after (time - last >= 0.005), persistent=false, fromTrigger=false: last = time, Q = Q + 0.01
 end
 """
 
