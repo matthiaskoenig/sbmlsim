@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from sbmlsim.fit import FitMetrics, FitSettings, MappingKind, ParameterSet
+from sbmlsim.fit.evaluation import criteria_metrics
 from sbmlsim.fit.metrics import (
     aic,
     aic_from_mse,
@@ -18,7 +19,7 @@ from sbmlsim.fit.metrics import (
     sse,
     within_fold,
 )
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
 
 
 def test_metrics_report_simulates_once_and_tracks_changed_parameters(
@@ -166,19 +167,8 @@ def test_metrics_datapoints(
     )
     dp = metrics.datapoints_df()
 
-    assert list(dp.columns) == [
-        "experiment",
-        "mapping",
-        "kind",
-        "x",
-        "DV",
-        "PRED",
-        "IPRED",
-        "RES",
-        "IRES",
-        "NRES",
-        "IWRES",
-    ]
+    # the columns of the evaluation follow, see the test of the observable
+    assert list(dp.columns)[:11] == _POINT_COLUMNS
     assert len(dp) == sum(len(y) for y in op_hctz_pk.y_references)
 
     # without individual parameters PRED is IPRED
@@ -231,6 +221,7 @@ def test_metrics_mappings_and_summary(
         "RMSE_w",
         "R2",
         "within_2fold",
+        *_CRITERIA_COLUMNS,
     ]
     assert len(mappings) == len(op_hctz_iv.mapping_keys)
     assert (mappings.n > 0).all()
@@ -251,6 +242,7 @@ def test_metrics_mappings_and_summary(
         "within_2fold",
         "AIC",
         "BIC",
+        *_CRITERIA_COLUMNS,
     }
     # the information criteria are over all data points and not per mapping,
     # a criterion of a subset with the parameters of the whole fit says nothing
@@ -325,3 +317,114 @@ def test_the_documentation_describes_the_twofold_criterion() -> None:
     assert "within_2fold" in metrics
     assert "within twofold" in metrics
     assert "within_fold" in metrics
+
+
+#: the columns of the data points before the evaluation of #356
+_POINT_COLUMNS = [
+    "experiment",
+    "mapping",
+    "kind",
+    "x",
+    "DV",
+    "PRED",
+    "IPRED",
+    "RES",
+    "IRES",
+    "NRES",
+    "IWRES",
+]
+
+
+def test_the_points_carry_the_observable_the_error_and_the_metadata(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    dp = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model()).datapoints_df()
+    columns = list(dp.columns)
+    assert columns[:11] == _POINT_COLUMNS
+    assert columns[11:15] == ["observable", "observation", "DV_SD", "N"]
+    assert "tissue" in columns[15:]
+    assert set(dp.observation) <= {kind.value for kind in ObservationKind}
+    for k, mapping in enumerate(op_hctz_pk.mapping_keys):
+        rows = dp[
+            (dp.experiment == op_hctz_pk.experiment_keys[k]) & (dp.mapping == mapping)
+        ]
+        assert set(rows.observable) == {op_hctz_pk.yid_observable[k]}
+        errors = op_hctz_pk.y_errors[k]
+        if errors is None:
+            assert rows.DV_SD.isna().all()
+        else:
+            np.testing.assert_allclose(rows.DV_SD, errors)
+        assert set(rows.tissue) == {op_hctz_pk.mapping_metadata[k]["tissue"]}
+
+
+def test_mappings_without_metadata_have_empty_metadata_columns(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    op_hctz_pk.mapping_metadata[0] = {}
+    dp = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model()).datapoints_df()
+    first = dp[
+        (dp.experiment == op_hctz_pk.experiment_keys[0])
+        & (dp.mapping == op_hctz_pk.mapping_keys[0])
+    ]
+    assert set(first.tissue) == {""}
+    assert "tissue" in dp.columns
+
+
+#: the columns of the criteria after the metrics of before #325
+_CRITERIA_COLUMNS = [
+    "GMFE",
+    "AFE",
+    "within_1.25fold",
+    "within_1.5fold",
+    "within_1sd",
+    "within_2sd",
+]
+
+
+def test_the_summary_has_the_criteria(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    metrics = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model())
+    dp = metrics.datapoints_df()
+    summary = metrics.summary_df()
+    assert list(summary.columns)[-6:] == _CRITERIA_COLUMNS
+    assert list(summary.columns).index("within_2fold") == (
+        list(summary.columns).index("R2") + 1
+    )
+    training = dp[dp.kind == MappingKind.TRAINING.value]
+    row = summary[summary.kind == MappingKind.TRAINING.value].iloc[0]
+    assert row.within_2fold == pytest.approx(within_fold(training.DV, training.IPRED))
+    gmfe = row["GMFE"]
+    assert gmfe == pytest.approx(criteria_metrics(training)["GMFE"])
+    mappings = metrics.mappings_df()
+    assert list(mappings.columns)[-6:] == _CRITERIA_COLUMNS
+
+
+def test_the_metrics_per_observable(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    metrics = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model())
+    dp = metrics.datapoints_df()
+    observables = metrics.observables_df()
+    assert list(observables.columns)[:6] == [
+        "kind",
+        "observable",
+        "n",
+        "RMSE",
+        "NRMSE",
+        "median_sd",
+    ]
+    assert list(observables.columns)[6:] == [
+        "GMFE",
+        "AFE",
+        *_CRITERIA_COLUMNS[2:4],
+        "within_2fold",
+        *_CRITERIA_COLUMNS[4:],
+    ]
+    pairs = dp[["kind", "observable"]].drop_duplicates()
+    assert len(observables) == len(pairs)
+    assert observables.n.sum() == len(dp)

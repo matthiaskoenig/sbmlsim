@@ -21,6 +21,15 @@ The names of the columns follow the convention of population pharmacokinetics:
             with the loss function applied. The cost of the training data is
             `0.5 * sum(IWRES**2)`
 
+The table of the data points has, after these, the columns a subset of the data
+is selected by: `observable`, the observable of the mapping, `observation`,
+the `ObservationKind` of the mapping (a timecourse, a value per simulation or
+values over a dimension), `DV_SD`, the standard deviation of the measured value
+(every error of a problem is one, `NaN` without one), `N`, the count of the
+data point, the number of subjects (`NaN` without one), and one column per
+field of the metadata of the mappings, `MappingMetaData.to_dict`, empty for a
+mapping which does not have the field.
+
 The data of a fit spans orders of magnitude, so the absolute metrics `MSE`,
 `RMSE` and `R2` are dominated by the curves with the largest values and a
 curve of small values is missed by a factor of 20 at an absolute error which is
@@ -46,6 +55,7 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
 
+from sbmlsim.fit.evaluation import criteria_metrics
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.parameters import ParameterSet
 
@@ -53,6 +63,26 @@ if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
 
 logger = logging.getLogger(__name__)
+
+#: the columns of the criteria of `sbmlsim.fit.evaluation` which follow the
+#: metrics, `within_2fold` has its place next to `R2`
+CRITERIA_COLUMNS = (
+    "GMFE",
+    "AFE",
+    "within_1.25fold",
+    "within_1.5fold",
+    "within_1sd",
+    "within_2sd",
+)
+
+
+def _criteria(dp: pd.DataFrame) -> dict[str, float]:
+    """Get the criteria of the data points, `within_2fold` first."""
+    metrics = criteria_metrics(dp)
+    return {
+        "within_2fold": metrics["within_2fold"],
+        **{column: metrics[column] for column in CRITERIA_COLUMNS},
+    }
 
 
 def _as_array(values: ArrayLike) -> np.ndarray:
@@ -393,7 +423,8 @@ class FitMetrics:
         Returns:
             DataFrame with one row per data point and the columns `experiment`,
             `mapping`, `kind`, `x`, `DV`, `PRED`, `IPRED`, `RES`, `IRES`,
-            `NRES` and `IWRES`, see the module.
+            `NRES`, `IWRES`, `observable`, `observation`, `DV_SD`, `N` and the
+            fields of the metadata, see the module.
         """
         res_data = self._residual_data(self.parameter_set)
         ipred_all = [np.asarray(y, dtype=float) for y in res_data["y_obsip"]]
@@ -403,9 +434,27 @@ class FitMetrics:
             else ipred_all
         )
 
+        # the fields of the metadata of all mappings, in the order they appear
+        fields = list(
+            dict.fromkeys(key for meta in self.problem.mapping_metadata for key in meta)
+        )
         data: list[dict[str, Any]] = []
         for k, mapping in enumerate(self.problem.mapping_keys):
             dv = np.asarray(self.problem.y_references[k], dtype=float)
+            errors = self.problem.y_errors[k]
+            sd = (
+                np.full(dv.size, np.nan)
+                if errors is None
+                else np.asarray(errors, dtype=float)
+            )
+            counts = self.problem.y_counts[k]
+            n = (
+                np.full(dv.size, np.nan)
+                if counts is None
+                else np.asarray(counts, dtype=float)
+            )
+            metadata = self.problem.mapping_metadata[k]
+            facets = {key: metadata.get(key, "") for key in fields}
             pred = pred_all[k]
             ipred = ipred_all[k]
             # the residual of the cost, with the sign of `data - prediction`
@@ -426,6 +475,11 @@ class FitMetrics:
                         "IRES": ires,
                         "NRES": ires / dv_mean if dv_mean else float("nan"),
                         "IWRES": iwres[ix],
+                        "observable": self.problem.yid_observable[k],
+                        "observation": self.problem.observation_kinds[k].value,
+                        "DV_SD": sd[ix],
+                        "N": n[ix],
+                        **facets,
                     }
                 )
 
@@ -444,6 +498,11 @@ class FitMetrics:
                     "IRES",
                     "NRES",
                     "IWRES",
+                    "observable",
+                    "observation",
+                    "DV_SD",
+                    "N",
+                    *fields,
                 ]
             ),
         )
@@ -453,8 +512,9 @@ class FitMetrics:
 
         Returns:
             DataFrame with one row per fit mapping and the columns `experiment`,
-            `mapping`, `kind`, `n`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2` and
-            `within_2fold`, the percentage of the points within twofold.
+            `mapping`, `kind`, `n`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`,
+            `within_2fold`, the percentage of the points within twofold, and
+            the columns of `CRITERIA_COLUMNS`, see `criteria_metrics`.
         """
         return self._mappings_df(self.datapoints_df())
 
@@ -466,6 +526,7 @@ class FitMetrics:
             experiment = self.problem.experiment_keys[k]
             of_mapping = dp[(dp.experiment == experiment) & (dp.mapping == mapping)]
             mse_value = mse(of_mapping.IRES)
+            criteria = _criteria(of_mapping)
             data.append(
                 {
                     "experiment": experiment,
@@ -477,7 +538,7 @@ class FitMetrics:
                     "NRMSE": rmse(of_mapping.NRES),
                     "RMSE_w": rmse(of_mapping.IWRES),
                     "R2": r_squared(of_mapping.DV, of_mapping.IPRED),
-                    "within_2fold": within_fold(of_mapping.DV, of_mapping.IPRED),
+                    **criteria,
                 }
             )
 
@@ -495,9 +556,47 @@ class FitMetrics:
                     "RMSE_w",
                     "R2",
                     "within_2fold",
+                    *CRITERIA_COLUMNS,
                 ]
             ),
         )
+
+    def observables_df(self) -> pd.DataFrame:
+        """Get the metrics of every observable and kind of fit mapping.
+
+        The data points of the mappings of one observable, e.g. the plasma
+        concentration or the amount in the urine, of one kind together, so the
+        RMSE of an observable is read next to the median standard deviation of
+        its data, i.e. whether the residuals are within the uncertainty of the
+        data (#325).
+
+        Returns:
+            DataFrame with one row per kind and observable, the kinds the
+            report evaluates, and the columns `kind`, `observable`, `n`,
+            `RMSE`, `NRMSE`, `median_sd` (the median of `DV_SD`, `nan` without
+            one), `GMFE`, `AFE` and the criteria, see `criteria_metrics`.
+        """
+        dp = self.datapoints_df()
+        data: list[dict[str, Any]] = []
+        for kind in self.problem.mapping_counts():
+            if kind not in EVALUATED_KINDS:
+                continue
+            of_kind = dp[dp.kind == kind.value]
+            for observable, points in of_kind.groupby("observable", sort=False):
+                sd = np.asarray(points.DV_SD, dtype=float)
+                sd = sd[np.isfinite(sd)]
+                data.append(
+                    {
+                        "kind": kind.value,
+                        "observable": observable,
+                        "n": len(points),
+                        "RMSE": rmse(points.IRES),
+                        "NRMSE": rmse(points.NRES),
+                        "median_sd": float(np.median(sd)) if sd.size else float("nan"),
+                        **criteria_metrics(points),
+                    }
+                )
+        return pd.DataFrame(data)
 
     def summary(self, kind: MappingKind | None = None) -> dict[str, Any]:
         """Get the metrics over the data points of the problem.
@@ -527,8 +626,10 @@ class FitMetrics:
         Returns:
             Dictionary with the id of the parameter set, the `kind`, the number
             of data points `n`, the number of parameters `k`, the `cost`,
-            `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`, `within_2fold`, `AIC` and
-            `BIC`.
+            `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`, `within_2fold`, `AIC`,
+            `BIC` and the columns of `CRITERIA_COLUMNS`, the fold errors
+            `GMFE` and `AFE` and the percentages within 1.25 and 1.5 fold and
+            within one and two standard deviations, see `criteria_metrics`.
 
         Raises:
             ValueError: if the problem has no data points of the kind.
@@ -555,6 +656,7 @@ class FitMetrics:
             cost = 0.5 * sse(dp.IWRES) if np.isfinite(dp.IPRED).all() else float("inf")
 
         mse_value = mse(dp.IRES)
+        criteria = _criteria(dp)
         return {
             "parameter_set": self.parameter_set.sid,
             "kind": kind.value if kind else "all",
@@ -566,9 +668,10 @@ class FitMetrics:
             "NRMSE": rmse(dp.NRES),
             "RMSE_w": rmse(dp.IWRES),
             "R2": r_squared(dp.DV, dp.IPRED),
-            "within_2fold": within_fold(dp.DV, dp.IPRED),
+            "within_2fold": criteria["within_2fold"],
             "AIC": aic_from_mse(mse=mse_value, n=len(dp), k=self.n_parameters),
             "BIC": bic_from_mse(mse=mse_value, n=len(dp), k=self.n_parameters),
+            **{column: criteria[column] for column in CRITERIA_COLUMNS},
         }
 
     def summary_df(self) -> pd.DataFrame:

@@ -108,6 +108,7 @@ nav = [
       { "cli" = "api/fit.cli.md" },
       { "display" = "api/fit.display.md" },
       { "metrics" = "api/fit.metrics.md" },
+      { "evaluation" = "api/fit.evaluation.md" },
       { "fisher" = "api/fit.fisher.md" },
       { "identifiability" = "api/fit.identifiability.md" },
       { "sampling" = "api/fit.sampling.md" },

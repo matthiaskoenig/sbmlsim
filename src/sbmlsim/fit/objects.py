@@ -1103,7 +1103,9 @@ class FitData:
             xid_se: index of the standard error of the x data.
             yid_sd: index of the standard deviation of the y data.
             yid_se: index of the standard error of the y data.
-            count: number of subjects, either an integer or a column of the dataset.
+            count: number of subjects, either an integer or a column of the
+                dataset. The count of every row of the data converts a standard
+                error to a standard deviation, see `FitDataInitialized.count`.
             dataset: id of the dataset the data comes from.
             task: id of the task the data comes from.
             function: id of the function the data is calculated with.
@@ -1118,6 +1120,8 @@ class FitData:
         self.task_id = task
         self.function = function
         self.sel: dict[str, Any] = dict(sel) if sel else {}
+        #: the count as given, an integer or a column of the dataset
+        self.count_source: int | str | None = count
         self.count: int | None = self._resolve_count(count)
 
         # actual data
@@ -1232,8 +1236,26 @@ class FitData:
                     key,
                     to_quantity(d.get_data(self.experiment), self.experiment.ureg),
                 )
-
+        result.count = self._counts(result.y)
         return result
+
+    def _counts(self, y: Quantity | None) -> np.ndarray | None:
+        """Get the count of every row of the data, `None` without a count.
+
+        An integer is the count of every row, a column of the dataset gives the
+        count of its row, `NaN` where the column has none.
+        """
+        if self.count_source is None or y is None:
+            return None
+        if isinstance(self.count_source, int):
+            return np.full(np.shape(y.magnitude), float(self.count_source))
+        counts = Data(
+            index=self.count_source,
+            dataset=self.dset_id,
+            task=self.task_id,
+            sel=self.sel or None,
+        ).get_data(self.experiment)
+        return np.asarray(counts.values, dtype=float)
 
 
 @dataclass
@@ -1241,7 +1263,8 @@ class FitDataInitialized:
     """Initialized FitData with actual data content.
 
     The data is created from the simulation experiment, the values are quantities
-    with the units of the data.
+    with the units of the data. `count` is the count of every row of the data,
+    the number of subjects, see `FitData`.
     """
 
     KEYS = ("x", "y", "x_sd", "x_se", "y_sd", "y_se")
@@ -1252,6 +1275,7 @@ class FitDataInitialized:
     x_se: Quantity | None = None
     y_sd: Quantity | None = None
     y_se: Quantity | None = None
+    count: np.ndarray | None = None
 
     def __str__(self) -> str:
         """Get string representation."""

@@ -520,6 +520,44 @@ class RuntimeErrorOptimizeResult(scipy.optimize.OptimizeResult):
         )
 
 
+def _sd_of_se(
+    se: np.ndarray, counts: np.ndarray | None, y: np.ndarray, mapping: str
+) -> np.ndarray:
+    """Convert the standard errors of a mapping to standard deviations.
+
+    The standard deviation of a data point is `SE * sqrt(count)`, with the
+    count of its row, so that every error of a problem is a standard
+    deviation. A row without a value has no error to convert.
+
+    Args:
+        se: the standard errors of the rows.
+        counts: the counts of the rows, `None` without a count.
+        y: the values of the rows.
+        mapping: the key of the mapping, for the message.
+
+    Returns:
+        The standard deviations of the rows.
+
+    Raises:
+        ValueError: if a row with a value and a standard error has no count.
+    """
+    with_error = ~np.isnan(y) & np.isfinite(se) & (se != 0.0)
+    valid = (
+        np.zeros(se.shape, dtype=bool)
+        if counts is None
+        else np.isfinite(counts) & (counts > 0)
+    )
+    missing = np.flatnonzero(with_error & ~valid)
+    if missing.size:
+        raise ValueError(
+            f"{mapping}: the standard error of the rows {missing.tolist()} cannot "
+            f"be converted to a standard deviation without a count."
+        )
+    if counts is None:
+        return se
+    return se * np.sqrt(np.where(valid, counts, 1.0))
+
+
 class OptimizationProblem(ObjectJSONEncoder):
     """Parameter optimization problem."""
 
@@ -693,6 +731,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.experiment_keys: list[str] = []
         self.mapping_keys: list[str] = []
         self.mapping_kinds: list[MappingKind] = []
+        #: the metadata of every mapping by field, `MappingMetaData.to_dict`
+        #: with the values as strings, empty for a mapping without metadata
+        self.mapping_metadata: list[dict[str, str]] = []
         # the collection of `mapping_collections` every mapping comes from
         self.collection_indices: list[int] = []
         #: the x of the observable of every mapping: the time (or another
@@ -714,6 +755,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.y_references: list[Any] = []
         self.y_errors: list[Any] = []
         self.y_errors_type: list[str | None] = []
+        #: the count of every data point, the number of subjects, `None` for a
+        #: mapping without a count, see `FitDataInitialized.count`
+        self.y_counts: list[np.ndarray | None] = []
         #: the noise model of every mapping, `None` for a mapping without one,
         #: see `sbmlsim.fit.petab_v2.likelihood`
         self.noise_models: list[NoiseModel | None] = []
@@ -1251,16 +1295,22 @@ class OptimizationProblem(ObjectJSONEncoder):
                     y_ref = y_ref - y_ref[0]
 
                 # --- errors on data ---
-                # Use errors for weighting (tries SD and falls back on SE)
+                # every error is a standard deviation: an SD is used, else an SE
+                # is converted with the count of its row, `SE * sqrt(count)`
+                y_counts = None if data_ref.count is None else np.array(data_ref.count)
                 y_ref_err = None
+                y_ref_err_type: str | None = None
                 if data_ref.y_sd is not None:
-                    y_ref_err = data_ref.y_sd.to(obs_y_unit).magnitude
+                    y_ref_err = np.array(data_ref.y_sd.to(obs_y_unit).magnitude)
                     y_ref_err_type = "SD"
                 elif data_ref.y_se is not None:
-                    y_ref_err = data_ref.y_se.to(obs_y_unit).magnitude
-                    y_ref_err_type = "SE"
-                else:
-                    y_ref_err_type = None
+                    y_ref_err = _sd_of_se(
+                        np.array(data_ref.y_se.to(obs_y_unit).magnitude),
+                        y_counts,
+                        y_ref,
+                        f"{sid}.{mapping_id}",
+                    )
+                    y_ref_err_type = "SD"
 
                 # handle special case of all NaN
                 if y_ref_err is not None and np.all(np.isnan(y_ref_err)):
@@ -1345,6 +1395,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 selections_set.update(noise_selections)
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
+                if y_counts is not None:
+                    y_counts = y_counts[nonnan_mask]
 
                 # at this point all x_ref, y_ref and y_ref_err must be finite,
                 # but for a time `inf`, which is the steady state
@@ -1462,6 +1514,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                         selected_mappings.setdefault(k_parameter, set()).add(k_mapping)
 
                 self.mapping_kinds.append(mapping_collection.kind)
+                self.mapping_metadata.append(
+                    {}
+                    if mapping.metadata is None
+                    else {
+                        str(key): str(value)
+                        for key, value in mapping.metadata.to_dict().items()
+                    }
+                )
                 self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)
                 self.x_units.append(obs_x_unit)
@@ -1477,6 +1537,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
+                self.y_counts.append(y_counts)
                 self.noise_models.append(noise)
                 self.noise_selections.append(noise_selections)
                 self.observable_models.append(observable_model)

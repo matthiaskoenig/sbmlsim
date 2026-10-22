@@ -475,6 +475,15 @@ class FitReport:
             frames.append(df)
         return pd.concat(frames, ignore_index=True)
 
+    def metrics_observables_df(self) -> pd.DataFrame:
+        """Get the metrics of every observable, kind and parameter set."""
+        frames = []
+        for pset in self.parameter_sets:
+            df = self.metrics(pset).observables_df()
+            df.insert(0, "parameter_set", pset.sid)
+            frames.append(df)
+        return pd.concat(frames, ignore_index=True)
+
     def datapoints_df(self) -> pd.DataFrame:
         """Get the data points with their predictions for every parameter set."""
         frames = []
@@ -603,6 +612,7 @@ class FitReport:
         for df, name in [
             (self.metrics_df(), "metrics.tsv"),
             (self.metrics_mappings_df(), "metrics_mappings.tsv"),
+            (self.metrics_observables_df(), "metrics_observables.tsv"),
             (self.datapoints_df(), "datapoints.tsv"),
         ]:
             df.to_csv(results_dir / name, sep="\t", index=False)
@@ -1125,6 +1135,7 @@ class FitReport:
                             if row and np.isfinite(row["within_2fold"])
                             else "-"
                         ),
+                        "GMFE": _cell(row["GMFE"], ".3g") if row else "-",
                     },
                     "plots": plots,
                 }
@@ -1135,6 +1146,7 @@ class FitReport:
             {"href": "parameters.json", "label": "parameters.json"},
             {"href": "metrics.tsv", "label": "metrics.tsv"},
             {"href": "metrics_mappings.tsv", "label": "metrics_mappings.tsv"},
+            {"href": "metrics_observables.tsv", "label": "metrics_observables.tsv"},
             {"href": "datapoints.tsv", "label": "datapoints.tsv"},
         ]
         if self.opt_result:
