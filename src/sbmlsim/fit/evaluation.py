@@ -5,6 +5,11 @@ The functions work on the table of the data points of a fit,
 `IPRED` (the prediction) and `DV_SD` (the standard deviation of the measured
 value, `NaN` without one), see `sbmlsim.fit.metrics`.
 
+The points are evaluated per subset of the data with a `Grouping`: by the
+values of columns of the table, e.g. the tissue or the health of the metadata
+of the mappings, or by named subsets of fit mappings, which are selected with
+the `MappingFilter` of `sbmlsim.fit.helpers` a fit selects its data with.
+
 A criterion decides per data point whether its prediction is acceptable, and
 it is applicable only to some points: a fold criterion to the points whose
 value and prediction are positive and finite, which have a ratio, an
@@ -28,13 +33,22 @@ assessment of drug-drug interactions. Drug Metab Dispos. 2011;39(2):170-173.
 https://doi.org/10.1124/dmd.110.036103
 """
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
+
+from sbmlsim.fit.objects import EVALUATED_KINDS
+
+if TYPE_CHECKING:
+    from sbmlsim.fit.helpers import MappingFilter
+    from sbmlsim.fit.objects import FitMapping
+
+#: the label of the value `""` of a column, a field a mapping does not report
+NOT_REPORTED = "not reported"
 
 
 class Criterion(Protocol):
@@ -241,3 +255,180 @@ def within_guest(observed: ArrayLike, predicted: ArrayLike) -> float:
     rtol = 1e-12
     inside = (predicted >= low * (1 - rtol)) & (predicted <= high * (1 + rtol))
     return 100.0 * float(np.mean(inside))
+
+
+#: the fit mapping of an experiment and a mapping key, see `Grouping.groups`
+MappingLookup = Callable[[str, str], "FitMapping | Any"]
+
+
+@dataclass(frozen=True)
+class Subset:
+    """A named subset of the fit mappings.
+
+    Attributes:
+        label: the name of the subset.
+        select: the filter of the mappings, called with the key and the fit
+            mapping, see `sbmlsim.fit.helpers.MappingFilter`.
+    """
+
+    label: str
+    select: "MappingFilter"
+
+
+@dataclass(frozen=True)
+class Grouping:
+    """A grouping of the data points of a fit, by columns or by subsets.
+
+    Attributes:
+        name: the name of the grouping, the name of its figures and of its rows
+            in the metrics.
+        columns: the columns of the table of the data points; one group per
+            combination of their values.
+        subsets: the subsets of the fit mappings, one group per subset; the
+            subsets may overlap.
+    """
+
+    name: str
+    columns: tuple[str, ...] = ()
+    subsets: tuple[Subset, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Check that the grouping has columns or subsets.
+
+        Raises:
+            ValueError: if it has both or neither.
+        """
+        if bool(self.columns) == bool(self.subsets):
+            raise ValueError(
+                f"The grouping '{self.name}' groups by columns or subsets, "
+                f"exactly one of them, not {list(self.columns)} and "
+                f"{[subset.label for subset in self.subsets]}."
+            )
+
+    @classmethod
+    def by(cls, *columns: str) -> "Grouping":
+        """Get the grouping by the values of columns, named after them.
+
+        Args:
+            columns: the columns of the table of the data points, e.g. the
+                fields of the metadata of the mappings.
+
+        Returns:
+            The grouping, e.g. `tissue_health` for `by("tissue", "health")`.
+        """
+        return cls(name="_".join(columns), columns=tuple(columns))
+
+    @classmethod
+    def of_subsets(cls, name: str, *subsets: Subset) -> "Grouping":
+        """Get the grouping by named subsets of the fit mappings.
+
+        Args:
+            name: the name of the grouping.
+            subsets: the subsets.
+
+        Returns:
+            The grouping.
+        """
+        return cls(name=name, subsets=tuple(subsets))
+
+    def groups(
+        self, points: pd.DataFrame, fit_mappings: MappingLookup
+    ) -> list[tuple[str, pd.DataFrame]]:
+        """Get the groups of the data points with their labels.
+
+        Args:
+            points: the data points with the columns `experiment` and
+                `mapping` and the columns of the grouping.
+            fit_mappings: the fit mapping of an experiment and a mapping key,
+                which the filter of a subset is called with.
+
+        Returns:
+            The label and the points of every group: by columns in the order
+            their values appear, the values joined by `, ` and the value `""`
+            labelled `NOT_REPORTED`; by subsets in the order of the subsets,
+            including a subset without points.
+
+        Raises:
+            ValueError: if a column of the grouping is not a column of the
+                points.
+        """
+        if self.columns:
+            missing = [c for c in self.columns if c not in points.columns]
+            if missing:
+                raise ValueError(
+                    f"The grouping '{self.name}' groups by {missing}, which are "
+                    f"no columns of the data points: {list(points.columns)}."
+                )
+            groups: list[tuple[str, pd.DataFrame]] = []
+            for values, of_group in points.groupby(
+                list(self.columns), sort=False, dropna=False
+            ):
+                values = values if isinstance(values, tuple) else (values,)
+                label = ", ".join(
+                    str(value) if str(value) != "" else NOT_REPORTED for value in values
+                )
+                groups.append((label, of_group))
+            return groups
+        keys = points[["experiment", "mapping"]].drop_duplicates()
+        result: list[tuple[str, pd.DataFrame]] = []
+        for subset in self.subsets:
+            selected = {
+                (experiment, mapping)
+                for experiment, mapping in keys.itertuples(index=False)
+                if subset.select(mapping, fit_mappings(experiment, mapping))
+            }
+            mask = [
+                (experiment, mapping) in selected
+                for experiment, mapping in zip(
+                    points.experiment, points.mapping, strict=True
+                )
+            ]
+            result.append((subset.label, points[mask]))
+        return result
+
+
+def _rms(values: pd.Series) -> float:
+    """Get the root mean square of the finite values, `nan` without one."""
+    array = np.asarray(values, dtype=float)
+    array = array[np.isfinite(array)]
+    return float(np.sqrt(np.mean(array**2))) if array.size else float("nan")
+
+
+def group_metrics(
+    points: pd.DataFrame, grouping: Grouping, fit_mappings: MappingLookup
+) -> pd.DataFrame:
+    """Get the metrics of every group and kind of fit mapping.
+
+    Args:
+        points: the data points, see `Grouping.groups`, with the columns
+            `kind`, `DV`, `IPRED`, `IRES`, `NRES` and `DV_SD`.
+        grouping: the grouping.
+        fit_mappings: the fit mapping of an experiment and a mapping key.
+
+    Returns:
+        One row per group and kind, the kinds in the order of
+        `EVALUATED_KINDS`, a group without points of a kind has no row of it;
+        the columns `grouping`, `group`, `kind`, `n`, `RMSE`, `NRMSE` and the
+        metrics of `criteria_metrics`.
+    """
+    rows: list[dict[str, Any]] = []
+    for label, of_group in grouping.groups(points, fit_mappings):
+        for kind in EVALUATED_KINDS:
+            of_kind = of_group[of_group.kind == kind.value]
+            if of_kind.empty:
+                continue
+            rows.append(
+                {
+                    "grouping": grouping.name,
+                    "group": label,
+                    "kind": kind.value,
+                    "n": len(of_kind),
+                    "RMSE": _rms(of_kind.IRES),
+                    "NRMSE": _rms(of_kind.NRES),
+                    **criteria_metrics(of_kind),
+                }
+            )
+    columns = ["grouping", "group", "kind", "n", "RMSE", "NRMSE"]
+    if not rows:
+        return pd.DataFrame(columns=pd.Index(columns))
+    return pd.DataFrame(rows)

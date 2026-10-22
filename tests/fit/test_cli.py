@@ -21,6 +21,7 @@ from sbmlsim.fit.cli import (
     report_from_records,
     run_fit,
 )
+from sbmlsim.fit.evaluation import Grouping
 from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.fit.optimization import OptimizationProblem
@@ -514,3 +515,67 @@ def test_a_versioned_fit_is_not_worse_than_the_shared_one(
     # at the values of the model the two are the same fit, which is the check
     # that the versions were bound and nothing else moved
     assert _cost(PARAMETERS_BY_ROUTE) == pytest.approx(_cost(PARAMETERS), rel=1e-6)
+
+
+def test_group_by_on_the_command_line(
+    tmp_path: Path, definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
+) -> None:
+    """`--group-by` evaluates the report by the columns it names."""
+    from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
+
+    runs = run_fit(
+        definition=definition_hctz_pk,
+        opid="pk",
+        size=1,
+        n_cores=1,
+        seed=1234,
+        **short_fit,
+    )
+    parameters_path = tmp_path / "parameters.json"
+    runs["pk"].result.parameter_sets(size=1).to_json(path=parameters_path)
+
+    results_dir = report_cli(
+        FIT_DEFINITIONS,
+        args=[
+            "--no-mapping-figures",
+            str(parameters_path),
+            "--subset=PK",
+            "--name=grouped",
+            "--group-by",
+            "tissue",
+            "--group-by",
+            "tissue,route",
+            f"--output_dir={tmp_path / 'report'}",
+        ],
+    )
+    plots = results_dir / "plots"
+    assert (plots / "goodness_of_fit_tissue.svg").exists()
+    assert (plots / "goodness_of_fit_tissue_route.svg").exists()
+
+
+def test_the_groupings_of_a_definition(
+    tmp_path: Path, definition_hctz_pk: FitDefinition, short_fit: dict[str, Any]
+) -> None:
+    """A report of a definition evaluates by its groupings, `--group-by` replaces them."""
+    definition = dataclasses.replace(
+        definition_hctz_pk, groupings=(Grouping.by("health"),)
+    )
+    runs = run_fit(
+        definition=definition,
+        opid="pk",
+        size=1,
+        n_cores=1,
+        seed=1234,
+        **short_fit,
+    )
+    runs["pk"].result.parameter_sets(size=1).to_json(path=tmp_path / "parameters.json")
+    report = report_from_records(definition, tmp_path, opid="pk", mapping_figures=False)
+    assert report.groupings == (Grouping.by("health"),)
+    report = report_from_records(
+        definition,
+        tmp_path,
+        opid="pk",
+        mapping_figures=False,
+        groupings=[Grouping.by("tissue")],
+    )
+    assert [grouping.name for grouping in report.groupings] == ["tissue"]
