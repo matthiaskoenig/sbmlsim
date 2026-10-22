@@ -511,7 +511,7 @@ def report_from_records(
             caller which read them already, e.g. for the context, passes them.
         context: what the report says about the fit beyond the fit, e.g. its
             title; an empty context by default.
-        mapping_figures: draw the two figures of every fit mapping.
+        mapping_figures: draw the figure of every fit mapping.
         show_titles: add titles to the figures.
 
     Returns:
@@ -610,7 +610,7 @@ def _add_common_arguments(
     parser.add_argument(
         "--no-mapping-figures",
         action="store_true",
-        help="leave the two figures of every fit mapping out of the report. "
+        help="leave the figure of every fit mapping out of the report. "
         "They are almost the whole cost of it, so a report which is read for "
         "its tables and its overview figures is created much faster",
     )

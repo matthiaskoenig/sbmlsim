@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+from matplotlib.figure import Figure
 from PIL import Image
 from pypdf import PdfReader
 
@@ -539,7 +540,7 @@ def test_the_figures_of_every_mapping(
     fit_settings: FitSettings,
     no_pyplot: None,
 ) -> None:
-    """A report draws the two figures of every fit mapping by default.
+    """A report draws the figure of every fit mapping by default.
 
     They are almost the whole cost of a report, so the tests which only read
     its tables create it with `mapping_figures=False`; this is the test that
@@ -558,10 +559,11 @@ def test_the_figures_of_every_mapping(
     for k, mapping_id in enumerate(op_hctz_iv.mapping_keys):
         sid = op_hctz_iv.experiment_keys[k]
         assert (plots / f"{sid}_{mapping_id}.svg").exists()
-        assert (plots / f"fit_{sid}_{mapping_id}.svg").exists()
+        # one figure per mapping, the residual figure is gone
+        assert not (plots / f"fit_{sid}_{mapping_id}.svg").exists()
 
     html = (results_dir / "index.html").read_text(encoding="utf-8")
-    assert "Data and simulation" in html
+    assert "Data, simulation and agreement" in html
 
 
 def test_a_report_without_the_figures_of_the_mappings(
@@ -1263,3 +1265,97 @@ def test_the_panel_text_of_a_kind_is_the_text_of_its_points(
         for pset in report.parameter_sets
     }
     assert report.panel_metrics(kind, plot) == report._panel_text(points, plot)
+
+
+@pytest.fixture
+def saved_figures(monkeypatch: pytest.MonkeyPatch) -> dict[str, Figure]:
+    """The figures a report saves, by the name of their file."""
+    saved: dict[str, Figure] = {}
+
+    def save(self: FitReport, fig: Figure, path: Path) -> None:
+        saved[path.stem] = fig
+
+    monkeypatch.setattr(FitReport, "_save_mpl_figure", save)
+    return saved
+
+
+def _mapping_report(
+    problem: OptimizationProblem, settings: FitSettings, n_sets: int = 1
+) -> FitReport:
+    problem.initialize(settings)
+    model = problem.parameter_set_model()
+    sets = [model]
+    if n_sets > 1:
+        sets.append(
+            ParameterSet(
+                sid="other",
+                values={pid: 1.2 * value for pid, value in model.values.items()},
+            )
+        )
+    return FitReport(
+        problem=problem, settings=settings, parameter_sets=ParameterSets(sets)
+    )
+
+
+def test_the_figure_of_a_mapping_has_the_curve_and_the_agreement(
+    tmp_path: Path,
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """The curve linear and logarithmic, the goodness of fit and the Bland-Altman plot."""
+    report = _mapping_report(op_hctz_iv, fit_settings)
+    report.plot_mapping(tmp_path)
+    assert len(saved_figures) == len(op_hctz_iv.mapping_keys)
+    k = 0
+    name = f"{op_hctz_iv.experiment_keys[k]}_{op_hctz_iv.mapping_keys[k]}"
+    fig = saved_figures[name]
+    curve, curve_log, gof, altman = fig.axes[:4]
+    assert curve.get_yscale() == "linear"
+    assert curve_log.get_yscale() == "log"
+    assert (gof.get_xscale(), gof.get_yscale()) == ("log", "log")
+    assert (altman.get_xscale(), altman.get_yscale()) == ("log", "linear")
+    box = "\n".join(text.get_text() for text in gof.texts)
+    assert "GMFE" in box and "2-fold" in box and "cost" in box
+    # the title has the kind, also of training data, and the observable
+    title = fig.get_suptitle().splitlines()
+    assert title[0].endswith(f"[{op_hctz_iv.mapping_kinds[k].value}]")
+    assert title[1].startswith(report._y_label(k))
+    # the data is labelled in words, the prediction at the data are open markers
+    labels = [str(line.get_label()) for line in curve.get_lines()]
+    assert not any(label.startswith("reference_data") for label in labels)
+    open_markers = [
+        line for line in curve.get_lines() if line.get_markerfacecolor() == "none"
+    ]
+    assert open_markers
+
+
+def test_the_box_of_a_mapping_without_errors_has_no_uncertainty(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    report = _mapping_report(op_hctz_iv, fit_settings)
+    for k in range(len(op_hctz_iv.mapping_keys)):
+        if op_hctz_iv.y_errors[k] is None:
+            assert "2 SD = -" in report.mapping_text(k)
+        else:
+            assert "2 SD = -" not in report.mapping_text(k)
+
+
+def test_the_figure_of_a_mapping_compares_sets(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    report = _mapping_report(op_hctz_iv, fit_settings, n_sets=2)
+    text = report.mapping_text(0).splitlines()
+    sids = [pset.sid for pset in report.parameter_sets]
+    assert [line.split(":")[0] for line in text[::2]] == sids
+
+
+def test_the_data_label_of_a_mapping_has_its_error_and_count(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    report = _mapping_report(op_hctz_iv, fit_settings)
+    for k in range(len(op_hctz_iv.mapping_keys)):
+        label = report._data_label(k)
+        assert label.startswith("data")
+        assert ("mean ± SD" in label) == (op_hctz_iv.y_errors[k] is not None)
+        assert ("N = " in label) == (op_hctz_iv.y_counts[k] is not None)
