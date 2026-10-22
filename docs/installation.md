@@ -54,6 +54,7 @@ To work on the repository itself, with the test and documentation tooling, see [
 | [pint](https://pint.readthedocs.io), [pydantic](https://docs.pydantic.dev) | units and unit conversions, validated data |
 | [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | parameter fitting problems, the files of the PEtab test suites and global sensitivity analysis |
 | [matplotlib](https://matplotlib.org), [seaborn](https://seaborn.pydata.org), [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | plots, reports and the output of scripts |
+| [certifi](https://github.com/certifi/python-certifi) | the CA bundle of requests, with which sbmlutils and pymetadata reach the network, at least 2026.10.19, which removes the emSign root of the compromised intermediate keys ([GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2)) |
 
 ## Logging
 

@@ -73,6 +73,10 @@ dependencies = [
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",
 	"typst>=0.13",
+	# the CA bundle of requests, with which sbmlutils and pymetadata reach the
+	# network; 2026.10.19 removes the emSign root of the compromised
+	# intermediate keys (GHSA-6q48-6c7w-9gw2)
+	"certifi>=2026.10.19",
 ]
 
 [project.optional-dependencies]
