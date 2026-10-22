@@ -22,6 +22,7 @@ from examples.hctz_fitting.experiments.studies import Weir1998
 from sbmlsim import __version__
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.evaluation import Grouping
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.metrics import fold_counts
@@ -1359,3 +1360,74 @@ def test_the_data_label_of_a_mapping_has_its_error_and_count(
         assert label.startswith("data")
         assert ("mean ± SD" in label) == (op_hctz_iv.y_errors[k] is not None)
         assert ("N = " in label) == (op_hctz_iv.y_counts[k] is not None)
+
+
+def test_a_report_without_groupings_is_unchanged(
+    fitted_report: tuple[FitReport, Path],
+) -> None:
+    """No figure, no table and no section of an evaluation without groupings."""
+    report, plots = fitted_report
+    assert report.groupings == ()
+    assert not list(plots.glob("goodness_of_fit_*"))
+    assert not list(plots.glob("criteria_*"))
+    results_dir = plots.parent
+    assert not (results_dir / "metrics_groups.tsv").exists()
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert 'id="evaluation"' not in html
+
+
+def test_a_report_of_a_grouping(
+    tmp_path: Path, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The figures of a grouping, its metrics and its section."""
+    op_hctz_iv.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_iv,
+        settings=fit_settings,
+        parameter_sets=op_hctz_iv.parameter_set_model(),
+        mapping_figures=False,
+        groupings=[Grouping.by("tissue")],
+    )
+    results_dir = report.create(output_dir=tmp_path, name="grouping")
+    plots = results_dir / "plots"
+    for name in ("goodness_of_fit_tissue", "bland_altman_tissue", "criteria_tissue"):
+        assert (plots / f"{name}.svg").exists(), name
+    table = pd.read_csv(results_dir / "metrics_groups.tsv", sep="\t")
+    assert list(table.columns[:4]) == ["parameter_set", "grouping", "group", "kind"]
+    assert set(table.grouping) == {"tissue"}
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert 'id="evaluation"' in html
+    assert "goodness_of_fit_tissue" in html
+
+
+def test_the_panels_of_a_grouping(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """A row per group and a column per kind, an empty panel says so."""
+    op_hctz_pk.initialize(fit_settings)
+    grouping = Grouping.by("tissue")
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
+        groupings=[grouping],
+    )
+    report.plot_grouping(grouping, tmp_path)
+    points = report.points(report.reference_set)
+    groups = grouping.groups(points, report._fit_mapping)
+    kinds = report.point_kinds()
+    fig = saved_figures["goodness_of_fit_tissue"]
+    assert len(fig.axes) == len(groups) * len(kinds)
+    for (label, of_group), row in zip(
+        groups, range(0, len(fig.axes), len(kinds)), strict=True
+    ):
+        for column, kind in enumerate(kinds):
+            ax = fig.axes[row + column]
+            assert ax.get_title().startswith(f"{label}: {kind}")
+            if of_group[of_group.kind == kind].empty:
+                assert any(text.get_text() == "no data" for text in ax.texts)
+    assert len(saved_figures["bland_altman_tissue"].axes) == len(fig.axes)

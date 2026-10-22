@@ -387,6 +387,18 @@ The metrics also have the criteria of `sbmlsim.fit.evaluation`: `GMFE`, the geom
 
 A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE, R² and the percentage within twofold; the tables of the report head the column `within_2fold` as `2-fold [%]`.
 
+## Evaluation by subsets of the data
+
+A report evaluates the data points by subsets of the data with groupings, `FitReport(groupings=[...])`, from `sbmlsim.fit.evaluation`: `Grouping.by("tissue")` groups the points by the values of a column of `datapoints.tsv`, e.g. a field of the metadata of the mappings, `Grouping.by("health", "coadministration")` by the combinations of the values of two columns, and `Grouping.of_subsets("studies", Subset("oral", is_oral), Subset("iv", is_intravenous))` by named subsets of the fit mappings, selected with the filters a fit selects its data with (`MappingFilter`); subsets may overlap. A value which a mapping does not report is the group `not reported`.
+
+```python
+from sbmlsim.fit.evaluation import Grouping
+
+report = FitReport(problem, settings, parameter_sets, groupings=[Grouping.by("tissue")])
+```
+
+Every grouping adds three figures to the results of the report, `goodness_of_fit_<name>` and `bland_altman_<name>` with a row per group and a column per kind, drawn as the summary figures with the band of the agreement of the training data and the box of the points of the panel, and `criteria_<name>`, the percentage of the points within twofold and within two standard deviations per group and kind of the reference set, and the table `metrics_groups.tsv` with the metrics of every group and kind (`group_metrics`: n, RMSE, NRMSE, GMFE, AFE and the criteria). A report without groupings has none of them. The figures of the fit mappings are not grouped.
+
 ## Report of a fit
 
 `FitReport.create` writes more than the page. A folder of a report holds:

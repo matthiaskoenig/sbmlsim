@@ -253,6 +253,33 @@
   {% endif %}
 </section>
 
+{% if groupings %}
+<section id="evaluation">
+  <h2>Evaluation</h2>
+  {% for grouping in groupings %}
+  <h3>By {{ grouping.name }}</h3>
+  <div class="grid">
+    {% for plot in grouping.plots %}
+    <div class="card{% if plot.wide %} wide{% endif %}"><figure>
+      <img loading="lazy" src="{{ plot.src }}" alt="{{ plot.caption }}">
+      <figcaption>{{ plot.caption }}</figcaption>
+    </figure></div>
+    {% endfor %}
+  </div>
+  <div class="card">
+    <table data-filter="row">
+      <thead><tr>{% for column in grouping.columns %}
+        <th class="{{ 'num' if loop.index0 > 2 }}" data-sort="{{ 'text' if loop.index0 <= 2 else 'num' }}">{{ column }}</th>
+      {% endfor %}</tr></thead>
+      <tbody>
+      {% for row in grouping.rows %}<tr data-kind="{{ row[2] }}">{% for value in row %}<td class="{{ 'num mono' if loop.index0 > 2 }}">{{ value }}</td>{% endfor %}</tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
 {% if fisher or identifiability %}
 <!-- the local analysis and the profiles are one section under one heading -->
 <section id="identifiability">

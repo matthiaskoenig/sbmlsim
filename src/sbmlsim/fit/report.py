@@ -54,7 +54,7 @@ from sbmlsim.fit.derived import (
     group_parameters,
     hook_summaries,
 )
-from sbmlsim.fit.evaluation import criteria_metrics
+from sbmlsim.fit.evaluation import Grouping, criteria_metrics, group_metrics
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.methods import ReportContext
@@ -85,6 +85,13 @@ from sbmlsim.units import ureg
 from sbmlsim.utils import paths_text
 
 logger = logging.getLogger(__name__)
+
+#: colors of the kinds of fit mapping, the colors of the chips of the page
+KIND_COLORS: dict[str, str] = {
+    MappingKind.TRAINING.value: "#2f9e44",
+    MappingKind.VALIDATION.value: "#1c7ed6",
+    MappingKind.OUTLIER.value: "#e8590c",
+}
 
 #: the length of the id of a parameter set in a box of metrics, see `_box_prefix`
 BOX_ID_LENGTH = 20
@@ -219,6 +226,7 @@ class FitReport:
         image_format: str = "svg",
         mapping_figures: bool = True,
         context: ReportContext | None = None,
+        groupings: Sequence[Grouping] = (),
     ) -> None:
         """Construct the report.
 
@@ -252,6 +260,11 @@ class FitReport:
             context: what the report document says about the fit beyond the
                 fit, e.g. its title and its description; sbmlsim reports a fit
                 with an empty context.
+            groupings: the groupings the data points are evaluated by, e.g.
+                `Grouping.by("tissue")`: per grouping a goodness of fit and a
+                Bland-Altman plot with a row per group and a column per kind,
+                the criteria per group and their metrics, see
+                `plot_grouping`. A report without groupings has none of them.
         """
         # Copy the definition, which excludes native models, then build a runtime
         # owned by this report. Later fits and reports cannot change its settings.
@@ -265,6 +278,7 @@ class FitReport:
         self.image_format = image_format
         self.mapping_figures = mapping_figures
         self.context = context if context is not None else ReportContext()
+        self.groupings: tuple[Grouping, ...] = tuple(groupings)
         # resolution of the PNG copies of the figures, see `_create_figures`
         self._png_dpi: float | str = PNG_DPI
 
@@ -479,6 +493,23 @@ class FitReport:
             frames.append(df)
         return pd.concat(frames, ignore_index=True)
 
+    def _fit_mapping(self, experiment: str, mapping: str) -> Any:
+        """Get the fit mapping of an experiment and a mapping key."""
+        runner = self.problem.runner
+        if runner is None:
+            raise ValueError(f"The problem '{self.problem.opid}' is not initialized.")
+        return runner.experiments[experiment]._fit_mappings[mapping]
+
+    def metrics_groups_df(self) -> pd.DataFrame:
+        """Get the metrics of every grouping, group, kind and parameter set."""
+        frames = []
+        for pset in self.parameter_sets:
+            for grouping in self.groupings:
+                df = group_metrics(self.points(pset), grouping, self._fit_mapping)
+                df.insert(0, "parameter_set", pset.sid)
+                frames.append(df)
+        return pd.concat(frames, ignore_index=True)
+
     def datapoints_df(self) -> pd.DataFrame:
         """Get the data points with their predictions for every parameter set."""
         frames = []
@@ -611,6 +642,10 @@ class FitReport:
             (self.datapoints_df(), "datapoints.tsv"),
         ]:
             df.to_csv(results_dir / name, sep="\t", index=False)
+        if self.groupings:
+            self.metrics_groups_df().to_csv(
+                results_dir / "metrics_groups.tsv", sep="\t", index=False
+            )
         if self.opt_result:
             self.opt_result.to_json(path=results_dir / "optimization_result.json")
             self.opt_result.to_tsv(path=results_dir / "optimization_result.tsv")
@@ -1310,8 +1345,49 @@ class FitReport:
             "runs": runs,
             "identifiability": self._identifiability_context(plots_dir),
             "fisher": self._fisher_context(),
+            "groupings": self._groupings_context(plots_dir),
             "files": files,
         }
+
+    def _groupings_context(self, plots_dir: Path) -> list[dict[str, Any]]:
+        """Get the figures and the metrics of every grouping for the page."""
+        if not self.groupings:
+            return []
+        metrics = self.metrics_groups_df()
+        captions = {
+            "goodness_of_fit": "Goodness of fit per group and kind",
+            "bland_altman": "Bland-Altman per group and kind",
+            "criteria": "Within twofold and within two SD per group and kind",
+        }
+        context: list[dict[str, Any]] = []
+        for grouping in self.groupings:
+            plots = []
+            for plot, caption in captions.items():
+                name = f"{plot}_{grouping.name}"
+                if (plots_dir / f"{name}.{self.image_format}").exists():
+                    plots.append(
+                        {
+                            "src": f"plots/{name}.{self.image_format}",
+                            "caption": f"{caption}, by {grouping.name}",
+                            "wide": plot != "criteria",
+                        }
+                    )
+            rows = metrics[metrics.grouping == grouping.name].drop(columns="grouping")
+            context.append(
+                {
+                    "name": grouping.name,
+                    "plots": plots,
+                    "columns": list(rows.columns),
+                    "rows": [
+                        [
+                            value if isinstance(value, str) else _cell(value, ".4g")
+                            for value in row
+                        ]
+                        for row in rows.itertuples(index=False)
+                    ],
+                }
+            )
+        return context
 
     def _array_rows(
         self,
@@ -1677,6 +1753,8 @@ class FitReport:
                     path=plots_dir / f"cost_scatter.{self.image_format}"
                 )
 
+            for grouping in self.groupings:
+                self.plot_grouping(grouping, plots_dir)
             if self.mapping_figures:
                 self.plot_mapping(output_dir=plots_dir)
             if self.identifiability:
@@ -2808,6 +2886,154 @@ class FitReport:
         if self.show_titles:
             fig.suptitle("Bland-Altman")
         self._save_mpl_figure(fig=fig, path=path)
+
+    def plot_grouping(self, grouping: Grouping, plots_dir: Path) -> None:
+        """Plot the figures of a grouping of the data points.
+
+        `goodness_of_fit_<name>` and `bland_altman_<name>`: a row per group
+        and a column per kind of fit mapping, the panels drawn as the summary
+        figures draw theirs, with the band of the agreement of the training
+        data and the box of the points of the panel; a panel without points
+        says so. `criteria_<name>`: the percentage of the points within
+        twofold and within two standard deviations of the data per group and
+        kind, of the reference set.
+
+        Args:
+            grouping: the grouping.
+            plots_dir: the directory of the figures.
+        """
+        points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
+        groups = {
+            sid: grouping.groups(df, self._fit_mapping) for sid, df in points.items()
+        }
+        labels = [label for label, _ in groups[self.reference_set.sid]]
+        kinds = self.point_kinds()
+        limits = self._log_limits(
+            *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
+        )
+        height = 5.5
+        for plot in ("goodness_of_fit", "bland_altman"):
+            fig = Figure(
+                figsize=(
+                    height * len(kinds) + LEGEND_WIDTH,
+                    height * max(len(labels), 1),
+                ),
+                layout="constrained",
+            )
+            axes = fig.subplots(
+                nrows=max(len(labels), 1), ncols=len(kinds), squeeze=False
+            )
+            flat = [ax for row in axes for ax in row]
+            for g, label in enumerate(labels):
+                for c, kind in enumerate(kinds):
+                    ax = axes[g][c]
+                    of_panel = {
+                        sid: self._of_kind(groups[sid][g][1], kind) for sid in groups
+                    }
+                    ax.set_title(
+                        f"{label}: " + self._panel_title(kind, list(of_panel.values()))
+                    )
+                    if all(df.empty for df in of_panel.values()):
+                        ax.text(
+                            0.5,
+                            0.5,
+                            "no data",
+                            transform=ax.transAxes,
+                            ha="center",
+                            va="center",
+                        )
+                        ax.set_xticks([])
+                        ax.set_yticks([])
+                        continue
+                    label_band = ax is flat[-1]
+                    if plot == "goodness_of_fit":
+                        self._draw_goodness_of_fit(ax, of_panel, limits, label_band)
+                    else:
+                        self._draw_bland_altman(ax, of_panel, label_band)
+                    self._add_metrics_box(ax, self._panel_text(of_panel, plot))
+            for row in axes:
+                row[0].set_ylabel(
+                    "Prediction $f(x_{i,k})$"
+                    if plot == "goodness_of_fit"
+                    else "$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$",
+                    fontweight="bold",
+                )
+            self._set_figure_legend(fig, flat)
+            if self.show_titles:
+                title = (
+                    "Goodness of fit" if plot == "goodness_of_fit" else "Bland-Altman"
+                )
+                fig.suptitle(f"{title} by {grouping.name}")
+            self._save_mpl_figure(
+                fig=fig,
+                path=plots_dir / f"{plot}_{grouping.name}.{self.image_format}",
+            )
+        self._plot_criteria(grouping, plots_dir)
+
+    def _plot_criteria(self, grouping: Grouping, plots_dir: Path) -> None:
+        """Plot the criteria of the groups of a grouping, see `plot_grouping`."""
+        metrics = group_metrics(
+            self.points(self.reference_set), grouping, self._fit_mapping
+        )
+        labels = list(dict.fromkeys(metrics.group))
+        kinds = [kind for kind in self.point_kinds() if kind in set(metrics.kind)]
+        criteria = (("within_2fold", "2-fold"), ("within_2sd", "2 SD"))
+        fig = Figure(
+            figsize=(
+                5.0 * len(criteria) + LEGEND_WIDTH,
+                1.0 + 0.5 * len(labels) * max(len(kinds), 1),
+            ),
+            layout="constrained",
+        )
+        axes = fig.subplots(nrows=1, ncols=len(criteria), squeeze=False, sharey=True)[0]
+        width = 0.8 / max(len(kinds), 1)
+        y = np.arange(len(labels))
+        for ax, (column, name) in zip(axes, criteria, strict=True):
+            for j, kind in enumerate(kinds):
+                of_kind = metrics[metrics.kind == kind].set_index("group")
+                values = np.array(
+                    [
+                        float(of_kind.loc[label, column])
+                        if label in of_kind.index
+                        else np.nan
+                        for label in labels
+                    ]
+                )
+                positions = y + (j - (len(kinds) - 1) / 2) * width
+                ax.barh(
+                    positions,
+                    np.nan_to_num(values),
+                    height=width,
+                    color=KIND_COLORS.get(kind, "gray"),
+                    label=kind,
+                )
+                # the value at every bar, `-` where the criterion applies to no
+                # point, so that 0% and no value read differently
+                for position, value, label in zip(
+                    positions, values, labels, strict=True
+                ):
+                    if label not in of_kind.index:
+                        continue
+                    ax.text(
+                        (value if np.isfinite(value) else 0.0) + 1.0,
+                        position,
+                        f"{value:.0f}%" if np.isfinite(value) else "-",
+                        va="center",
+                        fontsize="small",
+                    )
+            ax.set_yticks(y, labels)
+            ax.set_ylim(len(labels) - 0.5, -0.5)
+            ax.set_xlim(0.0, 110.0)
+            ax.set_xticks(np.arange(0, 101, 20))
+            ax.set_xlabel(f"within {name} [%]", fontweight="bold")
+            ax.grid(axis="x")
+        self._set_figure_legend(fig, list(axes))
+        if self.show_titles:
+            fig.suptitle(f"Criteria by {grouping.name}")
+        self._save_mpl_figure(
+            fig=fig,
+            path=plots_dir / f"criteria_{grouping.name}.{self.image_format}",
+        )
 
     def plot_cost_bar(self, path: Path) -> None:
         """Plot the cost and the weight of every curve, per set.
