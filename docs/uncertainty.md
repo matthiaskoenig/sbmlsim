@@ -71,7 +71,7 @@ The draws are correlated through their normal scores (a Gaussian copula): for no
 
 ## Propagation
 
-`propagate` runs what an `UncertaintyModel` declares uncertain through one simulation or several scenarios: the uncertain values of the simulations and the parameters with their distributions. The draws are one dimension of a scan, so the model is compiled once and the simulations run on the scan core (in the pool for many draws); they are quasi-random (scrambled Sobol points), correlated by the covariances. Several scenarios get the same draws (common random numbers), so a ratio between them is paired. A parameter is drawn in every scenario, so a scenario must not set it: a draw would replace the value of the scenario, which raises; a scenario sets another target instead, as the inhibitor below sets the activity `LI__MIDOH_f` of the uncertain `LI__MIDOH_Vmax`. Without `n` the number of draws doubles until the intervals of the mean, the SD and the 5 % and 95 % quantiles of the outputs are narrower than `rel_tol` (0.1) times their SD, after the adaptive procedure of GUM Supplement 1 (JCGM 101:2008).
+`propagate` runs what an `UncertaintyModel` declares uncertain through one simulation or several scenarios: the uncertain values of the simulations and the parameters with their distributions. The draws are one dimension of a scan, so the model is compiled once and the simulations run on the scan core (in the pool for many draws); they are quasi-random (scrambled Sobol points), correlated by the covariances. Several scenarios get the same draws (common random numbers), so a ratio between them is paired; an uncertain value of one target whose distribution differs between the scenarios, e.g. a dose of 100 mg in one and of 200 mg in another, is drawn at the same quantile of each. A parameter is drawn in every scenario, so a scenario must not set it: a draw would replace the value of the scenario, which raises; a scenario sets another target instead, as the inhibitor below sets the activity `LI__MIDOH_f` of the uncertain `LI__MIDOH_Vmax`. Without `n` the number of draws doubles until the intervals of the mean, the SD and the 5 % and 95 % quantiles of the outputs are narrower than `rel_tol` (0.1) times their SD, after the adaptive procedure of GUM Supplement 1 (JCGM 101:2008). A Latin hypercube (`design="lhs"`) has no continuation and needs `n`; Sobol and random points continue their sequence, so a result of more draws starts with the draws of fewer.
 
 ```python
 from sbmlsim.uncertainty import UncertaintyModel, propagate
@@ -101,27 +101,29 @@ print(res.contributions("pk.auc_last", scenario="control"))
 
 ## Probability statements
 
-A question about a prediction is a probability over the draws: the fraction of the draws which satisfy the hypothesis, with its Wilson score interval (Wilson 1927). A decision against a threshold is made only when the whole interval is on one side of it; otherwise it is `undecided`, with the number of draws which would decide it.
+A question about a prediction is a probability over the draws: `P(H)`, the probability that an output satisfies a hypothesis H given everything that is uncertain, estimated by the fraction of the draws which satisfy H. `P(H)` is a property of the model and of what is uncertain, not of the number of draws: more draws can always be simulated, and they only estimate it more precisely. The statements are built for this, they are anytime valid: their interval is a confidence sequence (Robbins 1970; Lai 1976; Howard et al. 2021), which contains `P(H)` at every number of draws at once with probability 95 %, so a statement may be looked at after every batch and continued with more draws. A confidence interval of a fixed number of draws, e.g. the Wilson interval, misses `P(H)` far more often when it is looked at repeatedly.
+
+A decision against a threshold `at_least=p0` is one of `accepted` (`P(H) >= p0` is shown), `rejected` (`P(H) < p0` is shown), `equivalent` (`P(H)` is shown to be within the `margin` of the threshold, two one-sided tests, Schuirmann 1987) and `undecided`, with the number of draws which would decide it (`n_needed`). More draws only make a statement more precise: an undecided one becomes decided, an equivalent one becomes the direction which is shown later, and a direction once shown is kept, so a decision is never reversed and is wrong with probability at most 5 %. The margin is a difference of probability which does not matter, by default a tenth of the distance of the threshold to 0 or 1 (0.01 for 0.9, 0.001 for 0.99); it makes a statement whose probability is the threshold decidable.
 
 ```python
-from sbmlsim.uncertainty import TestReport
+from sbmlsim.uncertainty import Hypothesis
 
-ratio = res.contrast("pk.auc_last", "inhibitor", "control")
-report = TestReport(
-    [
-        res.probability(ratio, greater=1.25, at_least=0.9),
-        res.probability(ratio, greater=3.0),
-        res.probability(
-            "pk.cmax", scenario="control", less=Q(0.1, "mmol/l"), at_least=0.95
-        ),
-    ]
-)
+hypotheses = [
+    Hypothesis(
+        "pk.auc_last", contrast=("inhibitor", "control"), greater=1.25, at_least=0.9
+    ),
+    Hypothesis("pk.auc_last", contrast=("inhibitor", "control"), greater=3.0),
+    Hypothesis("pk.cmax", scenario="control", less=Q(0.1, "mmol/l"), at_least=0.95),
+]
+report = res.test(hypotheses)
 print(report.table()[["hypothesis", "estimate", "low", "high", "decision"]])
+ratio = res.contrast("pk.auc_last", "inhibitor", "control")
+print(res.probability(ratio, greater=2.0, at_least=0.5).decision)
 ```
 
-A `TestReport` adjusts several decisions for their multiplicity, by Holm (1979, the family-wise error, by default) or by Benjamini and Hochberg (1995, `adjust="bh"`, the false discovery rate), on the one-sided p-values of the score tests of the thresholds, which are dual to the Wilson interval: a report of one statement keeps its decision, and a decision which the adjustment makes `undecided` gets the number of draws which decide it at the level of Bonferroni. A probability statement is about the predictive distribution, i.e. about what is uncertain, not a test of a study: the draws are not subjects.
+A `TestReport` decides `m` statements at the level of Bonferroni, 5 % / `m` each, with their simultaneous intervals, so the probability that any of its decisions is wrong is at most 5 %, whatever the dependence between the statements, which share their draws. A step-down procedure such as Holm would not control this error: every statement has a true null (both directions at the threshold, the equivalence away from it), so the correct decision of one statement must not relax the level of the others. The decisions of a report are decisions of single statements at a fixed level, so more draws never reverse them either, and the conservative level costs draws only. `propagate(..., hypotheses=hypotheses)` draws until every hypothesis is decided in its report (or `n_max`), which the anytime validity allows; it draws random points by default, for which the statements are exactly valid. The draws which failed (`NaN`) are excluded and counted, infinite values, e.g. a ratio over a zero, are values. The counts of the quasi-random Sobol points of a propagation without hypotheses fluctuate less than the ones of random points, for which the statements are conservative in practice but not by a theorem. A probability statement is about the predictive distribution, i.e. about what is uncertain, not a test of a study: the draws are not subjects.
 
-`examples/uncertainty_midazolam.py` is the analysis of this page with the adaptive number of draws.
+`examples/uncertainty_midazolam.py` is the analysis of this page with the adaptive number of draws, which draws until its hypotheses are decided.
 
 ## References
 
@@ -132,6 +134,6 @@ A `TestReport` adjusts several decisions for their multiplicity, by Holm (1979, 
 - Glasserman P (2003). Monte Carlo Methods in Financial Engineering. Springer.
 - Hahn GJ, Meeker WQ (1991). Statistical Intervals: A Guide for Practitioners. Wiley.
 - Plischke E, Borgonovo E, Smith CL (2013). Global sensitivity measures from given data. Eur J Oper Res 226:536-550.
-- Wilson EB (1927). Probable inference, the law of succession, and statistical inference. J Am Stat Assoc 22:209-212.
+- Robbins H (1970). Statistical methods related to the law of the iterated logarithm. Ann Math Stat 41:1397-1409. Lai TL (1976). On confidence sequences. Ann Stat 4:265-280. Howard SR, Ramdas A, McAuliffe J, Sekhon J (2021). Time-uniform, nonparametric, nonasymptotic confidence sequences. Ann Stat 49:1055-1080.
+- Schuirmann DJ (1987). A comparison of the two one-sided tests procedure and the power approach for assessing the equivalence of average bioavailability. J Pharmacokinet Biopharm 15:657-680.
 - Gelman A, Carlin JB, Stern HS, Dunson DB, Vehtari A, Rubin DB (2013). Bayesian Data Analysis, 3rd ed. CRC Press.
-- Holm S (1979). A simple sequentially rejective multiple test procedure. Scand J Stat 6:65-70. Benjamini Y, Hochberg Y (1995). Controlling the false discovery rate. J R Stat Soc B 57:289-300.

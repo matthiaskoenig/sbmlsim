@@ -10,7 +10,8 @@ points run in the pool. The result does not depend on the number of workers.
 and a treatment, are run with the same draws, so a difference or a ratio of an
 output between them is paired and its Monte Carlo variance is much smaller
 than with independent draws (Glasserman 2003). An input variable is applied
-to the scenarios which declare it, a parameter to every scenario.
+to the scenarios which declare it, at the same quantile of the distribution
+of every scenario, a parameter to every scenario.
 
 **Adaptive number of draws.** Without `n` the propagation draws batches of
 quasi-random points, doubling their number (powers of two keep the balance of
@@ -21,8 +22,14 @@ which takes about 2000 draws of a normal output and more of a skewed one,
 whose tail quantiles are less precise), after the adaptive Monte Carlo procedure of
 the GUM (JCGM 101:2008, 7.9), with the errors of
 `sbmlsim.uncertainty.statistics`, which are conservative for quasi-random
-draws; at `n_max` a warning says that the tolerance was not reached. The
-history of the batches is recorded.
+draws; with `hypotheses` it draws until every hypothesis is decided after the
+adjustment for their multiplicity, which the anytime-valid statements of
+`sbmlsim.uncertainty.testing` allow (more draws never reverse a decision). At
+`n_max` (the last batch is cut to it) a warning says that the tolerance was
+not reached or which hypotheses are undecided. The history of the batches is
+recorded, and the result of the batches is the one of a single scan of all
+the draws: the same draws of Sobol or random points, the labels, the values
+and the errors of every batch.
 
 The `UncertaintyResult` has the results of the scenarios, the variables and
 the record (seed, design, number of draws, history, covariances), and gives
@@ -37,6 +44,7 @@ using a Monte Carlo method.
 
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import math
@@ -53,6 +61,7 @@ from sbmlsim.result.scan import ScanResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.scan import Design, Dimension, Scan
 from sbmlsim.simulator.simulator import Simulator
+from sbmlsim.simulator.worker import MAX_ERRORS
 from sbmlsim.uncertainty.draws import draw
 from sbmlsim.uncertainty.sources import UncertaintyModel, Variable
 from sbmlsim.uncertainty.statistics import (
@@ -61,7 +70,12 @@ from sbmlsim.uncertainty.statistics import (
     quantile_ci,
     sd_se,
 )
-from sbmlsim.uncertainty.testing import TestResult, probability
+from sbmlsim.uncertainty.testing import (
+    Hypothesis,
+    TestReport,
+    TestResult,
+    probability,
+)
 from sbmlsim.units import Quantity
 
 logger = logging.getLogger(__name__)
@@ -107,6 +121,7 @@ def _variable_dict(variable: Variable) -> dict[str, Any]:
         "distribution": variable.distribution.to_dict(),
         "kind": variable.kind,
         "source": variable.source,
+        "by_scenario": {s: d.to_dict() for s, d in variable.by_scenario.items()},
     }
 
 
@@ -168,7 +183,7 @@ class UncertaintyResult:
             raise ValueError(
                 f"The output '{output}' is none of {sorted(map(str, result.ds.data_vars))}."
             )
-        values = result.ds[output]
+        values = result.ds[output].copy()
         values.attrs["units"] = result.units.get(output, "")
         return values
 
@@ -199,7 +214,9 @@ class UncertaintyResult:
         """
         x, y = self.values(output, a), self.values(output, b)
         if kind == "ratio":
-            contrast = x / y
+            with np.errstate(divide="ignore", invalid="ignore"):
+                # a zero denominator is an infinite ratio, 0 / 0 a failed draw
+                contrast = x / y
             contrast.attrs["units"] = ""
             return contrast.rename(f"{output}:{a}/{b}")
         if kind == "difference":
@@ -229,6 +246,31 @@ class UncertaintyResult:
         values = self.values(output, scenario) if isinstance(output, str) else output
         return probability(values, **kwargs)
 
+    def hypothesis_values(self, hypothesis: Hypothesis) -> xr.DataArray:
+        """Get the values of the output of a hypothesis: of its scenario or contrast."""
+        if hypothesis.contrast is not None:
+            a, b = hypothesis.contrast
+            return self.contrast(hypothesis.output, a, b, hypothesis.kind)
+        return self.values(hypothesis.output, hypothesis.scenario)
+
+    def test(
+        self,
+        hypotheses: Sequence[Hypothesis],
+        adjust: Literal["bonferroni", "none"] = "bonferroni",
+    ) -> TestReport:
+        """Get the statements of hypotheses, adjusted for their multiplicity.
+
+        Args:
+            hypotheses: the hypotheses.
+            adjust: the adjustment, see `sbmlsim.uncertainty.testing.TestReport`.
+
+        Returns:
+            The report of the statements.
+        """
+        return TestReport(
+            [h.evaluate(self.hypothesis_values(h)) for h in hypotheses], adjust
+        )
+
     def outputs(self) -> list[str]:
         """Get the outputs which are a value per draw, the values per simulation."""
         result = next(iter(self.results.values()))
@@ -253,7 +295,7 @@ class UncertaintyResult:
 
         Returns:
             One row per scenario and output: `scenario`, `output`, `unit`,
-            `n` (the finite draws), `n_failed`, `mean`, `mean_se`, `sd`,
+            `n` (the draws which did not fail), `n_failed`, `mean`, `mean_se`, `sd`,
             `sd_se` and per quantile `q<q>` with `q<q>_low` and `q<q>_high`,
             the ends of its distribution-free interval, see
             `sbmlsim.uncertainty.statistics`.
@@ -371,6 +413,10 @@ class UncertaintyResult:
                 distribution_from_dict(v["distribution"]),
                 v["kind"],
                 v["source"],
+                by_scenario={
+                    s: distribution_from_dict(d)
+                    for s, d in v.get("by_scenario", {}).items()
+                },
             )
             for v in content["variables"]
         ]
@@ -403,7 +449,7 @@ def _precise(values: np.ndarray, rel_tol: float) -> tuple[bool, float]:
         Whether they are and the largest half width relative to the standard
         deviation.
     """
-    finite = values[np.isfinite(values)]
+    finite = values[~np.isnan(values)]
     if finite.size < 8:
         return False, math.inf
     sd, sd_error, _ = sd_se(finite)
@@ -419,6 +465,39 @@ def _precise(values: np.ndarray, rel_tol: float) -> tuple[bool, float]:
     return largest <= rel_tol, float(largest)
 
 
+def _merged_attrs(dss: Sequence[xr.Dataset], n: int) -> dict[str, Any]:
+    """Get the attributes of the batches of a scenario as the ones of one scan.
+
+    The dimension of the draws has the labels and values of every batch and
+    the options of its design the number of all the draws; the errors of the
+    failed points are the ones of every batch.
+    """
+    attrs = copy.deepcopy(dss[0].attrs)
+    scan = attrs.get("scan")
+    if isinstance(scan, dict):
+        (dimension,) = [d for d in scan["dimensions"] if d["id"] == DRAW]
+        others = [
+            next(d for d in ds.attrs["scan"]["dimensions"] if d["id"] == DRAW)
+            for ds in dss[1:]
+        ]
+        for other in others:
+            dimension["labels"] = list(dimension["labels"]) + list(other["labels"])
+            for target, value in dimension["values"].items():
+                more = other["values"][target]
+                if isinstance(value, dict):
+                    value["value"] = list(value["value"]) + list(more["value"])
+                else:
+                    dimension["values"][target] = list(value) + list(more)
+        design = dimension.get("design")
+        if isinstance(design, dict):
+            design["options"] = design.get("options", {}) | {"start": 0, "n": n}
+    if "errors" in attrs:
+        attrs["errors"] = [e for ds in dss for e in ds.attrs.get("errors", [])][
+            :MAX_ERRORS
+        ]
+    return attrs
+
+
 def propagate(
     model: Any,
     simulation: Simulation | Mapping[str, Simulation],
@@ -426,11 +505,13 @@ def propagate(
     observables: Sequence[Any] = (),
     *,
     outputs: Sequence[str] | None = None,
+    hypotheses: Sequence[Hypothesis] = (),
+    adjust: Literal["bonferroni", "none"] = "bonferroni",
     n: int | None = None,
     rel_tol: float = 0.1,
     n_start: int = 256,
     n_max: int = 16384,
-    design: Literal["sobol", "lhs", "random"] = "sobol",
+    design: Literal["sobol", "lhs", "random"] | None = None,
     seed: int | None = None,
     simulator: Simulator | None = None,
     keep: Sequence[str] | None = None,
@@ -445,14 +526,20 @@ def propagate(
         uq: what is uncertain.
         observables: the observables of the run, e.g. a `PK`.
         outputs: the outputs of the adaptive stopping and of the summary,
-            values per simulation; every value per simulation by default.
+            values per simulation; every value per simulation by default,
+            none with hypotheses.
+        hypotheses: the hypotheses of the adaptive stopping, which draws until
+            every one is decided after the adjustment for their multiplicity.
+        adjust: the adjustment of the hypotheses, see `TestReport`.
         n: the number of draws; `None` for the adaptive number.
         rel_tol: the tolerance of the adaptive stopping, the half width of the
             intervals of the statistics relative to the standard deviation of
             an output.
         n_start: the draws of the first batch of the adaptive stopping.
         n_max: the most draws of the adaptive stopping.
-        design: `sobol`, `lhs` or `random`.
+        design: `sobol`, `lhs` (only with `n`, a Latin hypercube has no
+            continuation) or `random`; by default `random` with hypotheses,
+            whose statements assume independent draws, else `sobol`.
         seed: the seed, `None` draws one, which the record keeps.
         simulator: the simulator, `Simulator()` by default.
         keep: the timecourses the results keep, see `Simulator.run`.
@@ -464,13 +551,36 @@ def propagate(
 
     Raises:
         ValueError: without uncertain values, see `UncertaintyModel.variables`,
-            or without outputs for the adaptive stopping.
+            for outputs which are no values per draw, without outputs or
+            hypotheses for the adaptive stopping, for an output of the
+            adaptive stopping without a draw which did not fail, or for a
+            Latin hypercube of an adaptive number of draws.
     """
     scenarios = (
         {DEFAULT_SCENARIO: simulation}
         if isinstance(simulation, Simulation)
         else dict(simulation)
     )
+    if design is None:
+        design = "random" if hypotheses else "sobol"
+    if n is None and design == "lhs":
+        raise ValueError(
+            "A Latin hypercube has no continuation, its points of more draws are "
+            "another hypercube: give the number of draws `n`, or use 'sobol' or "
+            "'random' for the adaptive number of draws."
+        )
+    for hypothesis in hypotheses:
+        names = (
+            hypothesis.contrast
+            if hypothesis.contrast is not None
+            else ([hypothesis.scenario] if hypothesis.scenario is not None else [])
+        )
+        unknown = [name for name in names if name not in scenarios]
+        if unknown:
+            raise ValueError(
+                f"The hypothesis about '{hypothesis.output}' names the scenarios "
+                f"{unknown}, which are none of {list(scenarios)}."
+            )
     variables = uq.variables(scenarios)
     if not variables:
         raise ValueError(
@@ -481,23 +591,25 @@ def propagate(
     loaded = simulator.load(model)
     if seed is None:
         seed = int(np.random.default_rng().integers(2**31))
-    first = next(iter(scenarios.values()))
 
     batches: dict[str, list[xr.Dataset]] = {name: [] for name in scenarios}
     history: list[dict[str, Any]] = []
 
     def run_batch(start: int, size: int) -> None:
-        draws = draw(
-            variables,
-            uq.covariance,
-            size,
-            design=design,
-            seed=seed,
-            start=start,
-            model=loaded,
-            simulation=first,
-        )
         for name, scenario in scenarios.items():
+            # the same points in every scenario, each with its own marginals
+            # and the references of its own pre-initialization
+            draws = draw(
+                variables,
+                uq.covariance,
+                size,
+                design=design,
+                seed=seed,
+                start=start,
+                model=loaded,
+                simulation=scenario,
+                scenario=name,
+            )
             values = _scenario_values(variables, draws, scenario)
             dimension = Dimension(
                 DRAW,
@@ -505,7 +617,9 @@ def propagate(
                 labels=np.arange(start, start + size),
                 design=Design(
                     method="propagation",
-                    distributions={v.key: v.distribution.to_dict() for v in variables},
+                    distributions={
+                        v.key: v.marginal(name).to_dict() for v in variables
+                    },
                     options={"seed": seed, "design": design, "start": start, "n": size},
                 ),
             )
@@ -519,15 +633,16 @@ def propagate(
             )
             batches[name].append(result.ds)
 
-    def combined() -> dict[str, ScanResult]:
-        return {
-            name: ScanResult(
-                dss[0]
-                if len(dss) == 1
-                else xr.concat(dss, dim=DRAW, combine_attrs="override", join="outer")
-            )
-            for name, dss in batches.items()
-        }
+    def combined(total: int) -> dict[str, ScanResult]:
+        results = {}
+        for name, dss in batches.items():
+            if len(dss) == 1:
+                results[name] = ScanResult(dss[0])
+                continue
+            ds = xr.concat(dss, dim=DRAW, combine_attrs="override", join="outer")
+            ds.attrs = _merged_attrs(dss, total)
+            results[name] = ScanResult(ds)
+        return results
 
     def check_outputs() -> None:
         if outputs is None:
@@ -548,48 +663,72 @@ def propagate(
         check_outputs()
         total = n
     else:
-        total = n_start
-        run_batch(0, n_start)
+        total = min(n_start, n_max)
+        run_batch(0, total)
         check_outputs()
         while True:
-            results = combined()
+            results = combined(total)
+            result = UncertaintyResult(results)
             names = (
                 list(outputs)
                 if outputs is not None
-                else UncertaintyResult(results).outputs()
+                else ([] if hypotheses else result.outputs())
             )
-            if not names:
+            if not names and not hypotheses:
                 raise ValueError(
                     "The adaptive propagation needs outputs which are a value per "
-                    "simulation, e.g. of a `PK` observable; give `outputs` or `n`."
+                    "simulation, e.g. of a `PK` observable, or hypotheses; give "
+                    "`outputs`, `hypotheses` or `n`."
                 )
-            checks = [
-                _precise(_per_draw(result.ds[name]), rel_tol)
-                for result in results.values()
-                for name in names
-            ]
-            converged = all(ok for ok, _ in checks)
-            history.append(
-                {
-                    "n": total,
-                    "converged": converged,
-                    "precision": max(d for _, d in checks),
-                }
+            checks = []
+            for scenario, scenario_result in results.items():
+                for name in names:
+                    values = _per_draw(scenario_result.ds[name])
+                    if np.isnan(values).all():
+                        raise ValueError(
+                            f"The output '{name}' of the scenario '{scenario}' has "
+                            f"no draw which did not fail, see the attribute "
+                            f"'errors' of its result."
+                        )
+                    if np.isinf(values).any():
+                        raise ValueError(
+                            f"The output '{name}' of the scenario '{scenario}' has "
+                            f"infinite draws, whose mean and standard deviation "
+                            f"the adaptive stopping cannot judge: give `n` or "
+                            f"hypotheses about it."
+                        )
+                    checks.append(_precise(values, rel_tol))
+            undecided = (
+                sum(
+                    t.decision == "undecided"
+                    for t in result.test(hypotheses, adjust).adjusted()
+                )
+                if hypotheses
+                else 0
             )
+            converged = all(ok for ok, _ in checks) and undecided == 0
+            entry: dict[str, Any] = {"n": total, "converged": converged}
+            if checks:
+                entry["precision"] = max(d for _, d in checks)
+            if hypotheses:
+                entry["undecided"] = undecided
+            history.append(entry)
             if converged:
                 break
             if total >= n_max:
                 logger.warning(
-                    "The propagation reached %s draws without its tolerance %s, "
-                    "the largest half width of an interval is %.3g standard "
-                    "deviations.",
+                    "The propagation reached %s draws without its tolerance %s or "
+                    "with %s undecided hypotheses, the largest half width of an "
+                    "interval is %s standard deviations.",
                     total,
                     rel_tol,
-                    history[-1]["precision"],
+                    undecided,
+                    entry.get("precision"),
                 )
                 break
-            run_batch(total, total)
-            total *= 2
+            size = min(total, n_max - total)
+            run_batch(total, size)
+            total += size
 
     record = {
         "seed": seed,
@@ -600,5 +739,7 @@ def propagate(
         "variables": [_variable_dict(v) for v in variables],
         "covariance": [c.to_dict() for c in uq.covariance],
         "scenarios": list(scenarios),
+        "hypotheses": [h.to_dict() for h in hypotheses],
+        "adjust": adjust,
     }
-    return UncertaintyResult(combined(), list(variables), record)
+    return UncertaintyResult(combined(total), list(variables), record)

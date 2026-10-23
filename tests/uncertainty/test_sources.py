@@ -112,3 +112,41 @@ def test_a_parameter_which_a_scenario_sets_raises() -> None:
         UncertaintyModel(
             parameters={"V": Uncertain(10.0, cv=0.2)}, inputs=False
         ).variables({"dosed": dosed})
+
+
+def test_one_target_of_scenarios_with_their_marginals() -> None:
+    small, large = Uncertain(Q(100, "mg"), cv=0.1), Uncertain(Q(200, "mg"), cv=0.2)
+    variables = UncertaintyModel().variables(
+        {"a": _simulation(PODOSE=small), "b": _simulation(PODOSE=large)}
+    )
+    (variable,) = variables
+    assert variable.marginal("a") is small.distribution
+    assert variable.marginal("b") is large.distribution
+    with pytest.raises(ValueError, match="kind"):
+        UncertaintyModel().variables(
+            {
+                "a": _simulation(PODOSE=small),
+                "b": _simulation(
+                    PODOSE=Uncertain(Q(1, "mg"), cv=0.1, kind="variability")
+                ),
+            }
+        )
+
+
+def test_equal_values_of_one_name_are_one_variable() -> None:
+    simulation = Simulation(
+        end=48,
+        changes=[
+            Change(0, {"PODOSE": Uncertain(Q(100, "mg"), cv=0.1, name="dose")}),
+            Change(24, {"PODOSE": Uncertain(Q(100, "mg"), cv=0.1, name="dose")}),
+        ],
+    )
+    (variable,) = UncertaintyModel().variables({"s": simulation})
+    assert (variable.key, variable.targets) == ("dose", ("PODOSE",))
+
+
+def test_an_input_whose_key_is_a_parameter_raises() -> None:
+    simulation = _simulation(PODOSE=Uncertain(Q(100, "mg"), cv=0.1, name="ke"))
+    uq = UncertaintyModel(parameters={"ke": Uncertain(0.2, cv=0.2)})
+    with pytest.raises(ValueError, match="'ke'"):
+        uq.variables({"s": simulation})

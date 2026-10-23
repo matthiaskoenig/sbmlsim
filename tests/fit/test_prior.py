@@ -167,3 +167,35 @@ def test_a_truncation_is_the_bounds_of_the_parameter() -> None:
             unit="dimensionless",
             prior=Truncated(inner, lower=2.0, upper=6.0),
         )
+
+
+def test_a_prior_in_a_unit_which_does_not_fit_raises() -> None:
+    inner = Normal(mean=Q(4.0, "mg"), sd=Q(1.0, "mg"))
+    with pytest.raises(ValueError, match="does not fit"):
+        FitParameter(
+            pid="k",
+            lower_bound=0.0,
+            upper_bound=10.0,
+            unit="mmol",
+            prior=Truncated(inner, lower=Q(0.0, "mg"), upper=Q(10.0, "mg")),
+        )
+
+
+def test_a_prior_of_quantities_for_a_unit_id_of_a_model_raises() -> None:
+    """A unit id of a model is resolved later, a prior of numbers is in it."""
+    with pytest.raises(ValueError, match=r"no unit of pint.*numbers"):
+        FitParameter(
+            pid="k",
+            lower_bound=0.0,
+            upper_bound=10.0,
+            unit="mg_per_min",
+            prior=Normal(mean=Q(4.0, "mg/min"), sd=Q(1.0, "mg/min")),
+        )
+    parameter = FitParameter(
+        pid="k",
+        lower_bound=0.0,
+        upper_bound=10.0,
+        unit="mg_per_min",
+        prior=Normal(mean=4.0, sd=1.0),
+    )
+    assert parameter.prior == Prior.from_distribution(Normal(mean=4.0, sd=1.0), None)

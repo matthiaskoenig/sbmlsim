@@ -128,6 +128,13 @@ def normal_score_correlation(
         if cov.kind == "correlation":
             r[np.ix_(rows, rows)] = cov.matrix
             continue
+        varying = [t for t in cov.targets if variables[index[t]].by_scenario]
+        if varying:
+            raise ValueError(
+                f"The variables {varying} of the covariance of {list(cov.targets)} "
+                f"have the marginals of its scenarios, whose variances differ; "
+                f"give a correlation instead."
+            )
         units = cov.units or (None,) * len(cov.targets)
         moments = [
             _moments(variables[k], unit) for k, unit in zip(rows, units, strict=True)
@@ -190,9 +197,10 @@ def unit_points(
 ) -> np.ndarray:
     """Get `n` points of the unit cube of `d` dimensions.
 
-    Sobol points continue their sequence from `start`, so the batches of a
-    propagation are the first points of one sequence; a Latin hypercube or
-    random points of a batch are drawn with the seed and the start.
+    Sobol points and random points continue their sequence from `start`, so
+    the batches of a propagation are the first points of one sequence; a
+    Latin hypercube has no continuation, a hypercube of more points is
+    another one.
 
     Args:
         d: the number of dimensions.
@@ -205,7 +213,7 @@ def unit_points(
         The points, `n` rows of `d` columns.
 
     Raises:
-        ValueError: for another design.
+        ValueError: for another design, or a Latin hypercube after `start`.
     """
     if design == "sobol":
         sampler = qmc.Sobol(d, scramble=True, seed=seed)
@@ -217,11 +225,17 @@ def unit_points(
                 sampler.fast_forward(start)
             return sampler.random(n)
     if design == "lhs":
-        return qmc.LatinHypercube(d, seed=np.random.default_rng([seed, start])).random(
-            n
-        )
+        if start:
+            raise ValueError(
+                "A Latin hypercube has no continuation, its points of more draws "
+                "are another hypercube: give the number of draws, or use 'sobol' "
+                "or 'random' for more draws."
+            )
+        return qmc.LatinHypercube(d, seed=np.random.default_rng(seed)).random(n)
     if design == "random":
-        return np.random.default_rng([seed, start]).random((n, d))
+        # a double of the generator is one step of its bit generator
+        bits = np.random.PCG64(seed).advance(start * d)
+        return np.random.Generator(bits).random((n, d))
     raise ValueError(f"The design {design!r} is none of 'sobol', 'lhs' and 'random'.")
 
 
@@ -235,6 +249,7 @@ def draw(
     start: int = 0,
     model: Any = None,
     simulation: Simulation | None = None,
+    scenario: str | None = None,
 ) -> dict[str, np.ndarray | Quantity]:
     """Get `n` correlated draws of the variables, see the module.
 
@@ -248,6 +263,9 @@ def draw(
         model: the model, which a relative distribution needs.
         simulation: the simulation whose pre-initialization gives the
             references of relative distributions.
+        scenario: the scenario of the marginals of the variables, see
+            `Variable.by_scenario`; the same points give the same quantiles in
+            every scenario.
 
     Returns:
         Key -> the values of the variable, a quantity where it has a unit.
@@ -263,7 +281,8 @@ def draw(
     if not np.allclose(r, np.eye(len(variables))):
         z = stats.norm.ppf(np.clip(u, EPS, 1.0 - EPS)) @ _factor(r).T
         u = stats.norm.cdf(z)
-    relative = [v for v in variables if v.distribution.is_relative]
+    marginals = [variable.marginal(scenario) for variable in variables]
+    relative = [v for v, d in zip(variables, marginals, strict=True) if d.is_relative]
     refs: dict[str, Any] = {}
     if relative:
         if model is None:
@@ -274,11 +293,9 @@ def draw(
         found = references(model, [v.targets[0] for v in relative], simulation)
         refs = {v.key: found[v.targets[0]] for v in relative}
     values: dict[str, np.ndarray | Quantity] = {}
-    for k, variable in enumerate(variables):
+    for k, (variable, marginal) in enumerate(zip(variables, marginals, strict=True)):
         try:
-            values[variable.key] = variable.distribution.ppf(
-                u[:, k], refs.get(variable.key)
-            )
+            values[variable.key] = marginal.ppf(u[:, k], refs.get(variable.key))
         except ValueError as err:
             raise ValueError(f"'{variable.key}': {err}") from err
     return values

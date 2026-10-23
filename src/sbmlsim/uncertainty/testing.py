@@ -1,91 +1,288 @@
-"""Probability statements about predictions with their Monte Carlo error.
+"""Probability statements about predictions, robust to the number of draws.
 
 The question "how probable is it that an output satisfies a hypothesis H,
 given everything that is uncertain?" is answered from the draws of a
-propagation: the estimate is the fraction of the draws which satisfy H (a
-posterior predictive probability, Gelman et al. 2013), its uncertainty from
-the finite number of draws is the Wilson score interval of a binomial
-proportion (Wilson 1927), which stays inside [0, 1] and is not degenerate at
-0 or 1.
+propagation: the estimate is the fraction of the draws which satisfy H, an
+estimate of the posterior predictive probability `P(H)` (Gelman et al. 2013).
+`P(H)` is a property of the model and of what is uncertain, not of the number
+of draws: more draws estimate it more precisely and change nothing else.
 
-A decision against a threshold (`at_least=p0`) is made only when the whole
-interval is on one side of it: `accepted` when its lower end is at least
-`p0`, `rejected` when its upper end is below `p0`, and `undecided` otherwise,
-together with the number of draws which would decide it at the current
-estimate (`n_needed`), which a propagation with more draws can run. The draws
-which are not finite (failed points) are excluded and counted.
+**Anytime-valid inference.** More draws can always be simulated, so a
+statement must stay valid whenever one looks at it and adds draws (optional
+stopping). A confidence interval of a fixed number of draws, e.g. the Wilson
+interval, does not: looked at after every batch, it misses the true
+probability far more often than its level says. The statements use the
+confidence sequence of the beta-binomial mixture instead (Robbins 1970; Lai
+1976; Howard et al. 2021): with the mixture of the likelihood ratios of the
+first `m` draws, `M_m(p) = B(a + k_m, b + m - k_m) / B(a, b) / (p^k_m (1 -
+p)^(m - k_m))` with the Jeffreys mixture `a = b = 1/2`, a nonnegative
+martingale of mean 1 under the true probability, the set `{p: M_m(p) < 1 /
+alpha}` contains the true probability at every `m` at once with probability
+at least `1 - alpha` (Ville's inequality, `alpha = 1 - level`). The sequence
+is intersected over the numbers of draws, so it is nested: it only shrinks
+with more draws (should the sets of two numbers of draws exclude each other,
+which happens with probability at most `alpha`, it stays the last set which is
+not empty). Its anytime-valid p-value of a probability `p0` is `min(1, 1 /
+max_m M_m(p0))` over the numbers of draws whose estimate is on the side of the
+alternative, valid for the composite null of that side.
 
-A `TestReport` of several statements adjusts their decisions for the
-multiplicity: the one-sided p-values of the score tests of the thresholds,
-which are dual to the Wilson interval (a statement is decided exactly when its
-p-value is at most `(1 - level) / 2`, the one-sided level of the interval),
-are adjusted by Holm (1979, the family-wise error, by default) or by Benjamini
-and Hochberg (1995, the false discovery rate, for screening many outputs), and
-a decision whose adjusted p-value exceeds `(1 - level) / 2` becomes
-`undecided`, with the draws which decide it at the level of Bonferroni, which
-suffice for both adjustments.
+**Decisions.** A statement with a threshold (`at_least=p0`) is decided by the
+p-values at `alpha` after every number of draws: `accepted` when `P(H) >= p0`
+is shown, `rejected` when `P(H) < p0` is shown, `equivalent` when `P(H)` is
+shown to be within the `margin` of the threshold (two one-sided tests,
+Schuirmann 1987), `undecided` otherwise, with the number of draws which would
+decide it at the current estimate (`n_needed`). More draws only make a
+statement more precise: an undecided one becomes decided, an equivalence
+becomes the direction which is shown later, and a direction once shown is
+kept (the direction shown first, at `n_decided` draws): a decision is never
+reversed. Every wrong decision of a statement is an event of the martingale
+of its true probability, so a statement is wrong with probability at most
+`alpha`. The margin is the difference of a probability which does not matter,
+by default a tenth of the distance of the threshold to 0 or 1, whichever is
+nearer (0.01 for 0.9, 0.001 for 0.99); it makes every statement decidable with
+a bounded number of draws, also one whose probability is the threshold.
 
-A probability statement is about the predictive distribution, i.e. about the
-uncertainty of the inputs, not a test of observed data: the draws are not
-subjects of a study, and a frequentist test of a study is a test of simulated
-trials of a stated size, see the virtual trials of a later release.
+**Several statements.** A `TestReport` decides `m` statements at the level of
+Bonferroni, `alpha / m` each (and gives their simultaneous intervals at that
+level), so the probability that any of them is wrong is at most `alpha`,
+whatever the dependence between them, which share their draws. A step-down
+procedure, e.g. Holm, does not control this error: every statement with a
+threshold has a true null (both directions at the threshold, one direction
+and the equivalence elsewhere), so a correct decision of one statement must
+not relax the level of the others. The decisions of a report are the
+decisions of single statements at a fixed level, so they are never reversed
+by more draws either; the conservative level costs draws only, about
+`log(m)` times the information per statement, which more draws provide.
 
-Gelman A, Carlin JB, Stern HS, Dunson DB, Vehtari A, Rubin DB (2013).
-Bayesian Data Analysis, 3rd ed. CRC Press. Wilson EB (1927). Probable
-inference, the law of succession, and statistical inference. J Am Stat Assoc
-22:209-212. Holm S (1979). A simple sequentially rejective multiple test
-procedure. Scand J Stat 6:65-70. Benjamini Y, Hochberg Y (1995). Controlling
-the false discovery rate: a practical and powerful approach to multiple
-testing. J R Stat Soc B 57:289-300.
+The draws which are `NaN` (failed points) are excluded and counted, infinite
+values are values. The validity assumes independent draws, which
+`design="random"` of a propagation gives; the counts of quasi-random draws
+fluctuate less, for which the sequence is conservative in practice but not by
+a theorem. A probability statement is about the predictive distribution, i.e.
+about the uncertainty of the inputs, not a test of observed data: the draws
+are not subjects of a study.
+
+Robbins H (1970). Statistical methods related to the law of the iterated
+logarithm. Ann Math Stat 41:1397-1409. Lai TL (1976). On confidence
+sequences. Ann Stat 4:265-280. Howard SR, Ramdas A, McAuliffe J, Sekhon J
+(2021). Time-uniform, nonparametric, nonasymptotic confidence sequences. Ann
+Stat 49:1055-1080. Schuirmann DJ (1987). A comparison of the two one-sided
+tests procedure and the power approach for assessing the equivalence of
+average bioavailability. J Pharmacokinet Biopharm 15:657-680. Gelman A,
+Carlin JB, Stern HS, Dunson DB, Vehtari A, Rubin DB (2013). Bayesian Data
+Analysis, 3rd ed. CRC Press.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
 import xarray as xr
+from numpy.typing import ArrayLike
 from pint.errors import DimensionalityError
-from scipy import stats
+from scipy import special
 
 from sbmlsim.units import Quantity
 
 #: the references of a probability statement
 REFERENCES: tuple[str, ...] = (
     "Gelman A et al. (2013). Bayesian Data Analysis, 3rd ed. CRC Press.",
-    "Wilson EB (1927). J Am Stat Assoc 22:209-212.",
+    "Lai TL (1976). On confidence sequences. Ann Stat 4:265-280.",
+    "Howard SR et al. (2021). Ann Stat 49:1055-1080.",
 )
+
+#: the parameters of the Jeffreys mixture of the confidence sequence
+MIXTURE: tuple[float, float] = (0.5, 0.5)
+
+#: the margin of a threshold by default, a fraction of its distance to 0 or 1
+MARGIN_FRACTION: float = 0.1
 
 #: the most draws `n_needed` searches
 MAX_NEEDED: int = 2**26
 
+#: the iterations of the bisection of the bounds of the sequence
+BISECTIONS: int = 52
 
-def wilson(k: int, n: int, level: float = 0.95) -> tuple[float, float]:
-    """Get the Wilson score interval of a binomial proportion.
+Decision = Literal["accepted", "rejected", "equivalent", "undecided", "estimate"]
+
+
+def default_margin(threshold: float) -> float:
+    """Get the margin of a threshold by default, see the module."""
+    return MARGIN_FRACTION * min(threshold, 1.0 - threshold)
+
+
+class _Prefixes:
+    """The counts of the first `m` draws, for every `m`, and their mixtures."""
+
+    def __init__(self, k: np.ndarray, m: np.ndarray) -> None:
+        """Keep the counts `k_m` of the numbers of draws `m`."""
+        a, b = MIXTURE
+        self.k = k
+        self.m = m
+        # the part of log M_m(p) which does not depend on p
+        self.base = special.betaln(a + k, b + m - k) - special.betaln(a, b)
+        self.mle = k / m
+
+    @classmethod
+    def of(cls, satisfied: ArrayLike) -> _Prefixes:
+        """Get the prefixes of the draws, whether every draw satisfies H in order."""
+        x = np.asarray(satisfied, dtype=bool).ravel()
+        return cls(np.cumsum(x, dtype=float), np.arange(1, x.size + 1, dtype=float))
+
+    def head(self, n: int) -> _Prefixes:
+        """Get the prefixes of the first `n` draws."""
+        return _Prefixes(self.k[:n], self.m[:n])
+
+    def log_mixture(self, p: float) -> np.ndarray:
+        """Get `log M_m(p)` of every prefix, for `0 < p < 1`."""
+        return self.base - self.k * math.log(p) - (self.m - self.k) * math.log1p(-p)
+
+    def p_values(self, p0: float, side: Literal["greater", "less"]) -> np.ndarray:
+        """Get the anytime-valid p-values of `P > p0` or `P < p0` after every prefix.
+
+        The running minimum of `1 / M_m(p0)` over the prefixes whose estimate
+        is on the side of the alternative, see the module.
+        """
+        certain, impossible = (p0 <= 0.0, p0 >= 1.0)
+        if side == "less":
+            certain, impossible = impossible, certain
+        if certain:
+            return np.zeros_like(self.m)
+        if impossible:
+            return np.ones_like(self.m)
+        on_side = self.mle > p0 if side == "greater" else self.mle < p0
+        log_m = self.log_mixture(p0)
+        with np.errstate(over="ignore"):
+            p = np.where(on_side, np.exp(-log_m), 1.0)
+        return np.minimum.accumulate(np.clip(p, 0.0, 1.0))
+
+    def outside(self, p: float, level: float, below: bool) -> bool:
+        """Check whether a prefix excludes `p` below (or above) its estimate."""
+        if not 0.0 < p < 1.0:
+            return False
+        side = self.mle > p if below else self.mle < p
+        return bool(np.any(side & (self.log_mixture(p) >= level)))
+
+    def bounds(self, alpha: float) -> tuple[float, float]:
+        """Get the intersection of the confidence sets of every prefix.
+
+        The largest lower and the smallest upper bound, each by a bisection
+        on the bound itself: a probability is below the largest lower bound
+        when one prefix excludes it from below.
+        """
+        level = math.log(1.0 / alpha)
+        lo, hi = 0.0, 1.0
+        for _ in range(BISECTIONS):
+            mid = (lo + hi) / 2.0
+            lo, hi = (mid, hi) if self.outside(mid, level, below=True) else (lo, mid)
+        low = lo
+        lo, hi = 0.0, 1.0
+        for _ in range(BISECTIONS):
+            mid = (lo + hi) / 2.0
+            lo, hi = (lo, mid) if self.outside(mid, level, below=False) else (mid, hi)
+        return low, hi
+
+
+def confidence_sequence(
+    satisfied: ArrayLike, level: float = 0.95
+) -> tuple[float, float]:
+    """Get the confidence sequence of a probability after the draws, see the module.
 
     Args:
-        k: the number of successes.
-        n: the number of trials, positive.
-        level: the level of the interval.
+        satisfied: whether every draw satisfies the hypothesis, in the order
+            of the draws.
+        level: the level of the sequence, its coverage at every number of
+            draws at once.
 
     Returns:
-        The lower and the upper end, inside [0, 1].
-
-    Raises:
-        ValueError: without trials.
+        The lower and the upper end, the intersection of the confidence sets
+        of every number of draws; `(0, 1)` without draws.
     """
-    if n <= 0:
-        raise ValueError("The Wilson interval needs at least one trial.")
-    z = float(stats.norm.ppf(0.5 + level / 2.0))
-    p = k / n
-    denominator = 1.0 + z**2 / n
-    center = (p + z**2 / (2 * n)) / denominator
-    half = z * math.sqrt(p * (1.0 - p) / n + z**2 / (4 * n**2)) / denominator
-    return max(0.0, center - half), min(1.0, center + half)
+    return _sequence(_Prefixes.of(satisfied), 1.0 - level)
+
+
+def _sequence(prefixes: _Prefixes, alpha: float) -> tuple[float, float]:
+    """Get the confidence sequence of the prefixes, see `confidence_sequence`."""
+    n = prefixes.m.size
+    if n == 0:
+        return 0.0, 1.0
+    low, high = prefixes.bounds(alpha)
+    if low <= high:
+        return low, high
+    # the sets of two prefixes exclude each other: the last intersection which
+    # is not empty, of the most draws whose sets intersect
+    good, bad = 1, n
+    while bad - good > 1:
+        middle = (good + bad) // 2
+        low, high = prefixes.head(middle).bounds(alpha)
+        good, bad = (middle, bad) if low <= high else (good, middle)
+    return prefixes.head(good).bounds(alpha)
+
+
+def _first(shown: np.ndarray) -> int | None:
+    """Get the index of the first number of draws at which something is shown."""
+    indices = np.flatnonzero(shown)
+    return int(indices[0]) if indices.size else None
+
+
+def _p_values(
+    prefixes: _Prefixes, p0: float, margin: float
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Get the p-values of `P >= p0`, `P < p0` and of the equivalence with `p0`.
+
+    After every number of draws; the equivalence is shown by both one-sided
+    tests of the ends of the margin (Schuirmann 1987).
+    """
+    equivalent = np.maximum(
+        prefixes.p_values(p0 - margin, "greater"),
+        prefixes.p_values(p0 + margin, "less"),
+    )
+    return prefixes.p_values(p0, "greater"), prefixes.p_values(p0, "less"), equivalent
+
+
+def _decide(
+    p_greater: np.ndarray,
+    p_less: np.ndarray,
+    p_equivalent: np.ndarray,
+    m: np.ndarray,
+    alpha: float,
+) -> tuple[Decision, int | None]:
+    """Decide a statement of its p-values after every number of draws.
+
+    Returns:
+        The decision and the number of draws at which it was first shown:
+        the direction shown first, else the equivalence, else undecided.
+    """
+    greater, less = _first(p_greater <= alpha), _first(p_less <= alpha)
+    if greater is not None and (less is None or greater <= less):
+        return "accepted", int(m[greater])
+    if less is not None:
+        return "rejected", int(m[less])
+    equivalent = _first(p_equivalent <= alpha)
+    if equivalent is not None:
+        return "equivalent", int(m[equivalent])
+    return "undecided", None
+
+
+def _needed(
+    estimate: float, n: int, p0: float, margin: float, alpha: float
+) -> int | None:
+    """Get the draws which decide a statement at its estimate, `None` beyond `MAX_NEEDED`."""
+    m = n
+    while m < MAX_NEEDED:
+        m *= 2
+        prefix = _Prefixes(
+            np.array([round(estimate * m)], dtype=float), np.array([m], dtype=float)
+        )
+        decision, _ = _decide(*_p_values(prefix, p0, margin), prefix.m, alpha)
+        if decision != "undecided":
+            return m
+    return None
 
 
 @dataclass(frozen=True)
@@ -95,15 +292,26 @@ class TestResult:
     Attributes:
         hypothesis: the hypothesis in words.
         estimate: the fraction of the draws which satisfy it.
-        low: the lower end of the Wilson interval.
-        high: the upper end of the Wilson interval.
-        n: the number of finite draws.
-        n_failed: the number of draws which are not finite.
+        low: the lower end of the confidence sequence.
+        high: the upper end of the confidence sequence.
+        n: the number of draws which are not `NaN`.
+        n_failed: the number of draws which are `NaN`.
+        k: the number of draws which satisfy the hypothesis.
         threshold: the probability of the decision, `None` for an estimate.
-        decision: `accepted`, `rejected`, `undecided` or `estimate`.
-        n_needed: the draws a decision needs at the estimate, `None` if it is
-            decided or cannot be decided (the estimate is the threshold).
-        level: the level of the interval.
+        decision: `accepted`, `rejected`, `equivalent`, `undecided` or
+            `estimate`.
+        n_needed: the draws an undecided statement needs at its estimate,
+            `None` otherwise.
+        n_decided: the number of draws at which the decision was first shown,
+            `None` for an undecided statement.
+        level: the level of the confidence sequence and of the decisions.
+        margin: the margin of the threshold of an equivalence, `None` for an
+            estimate.
+        p_greater: the anytime-valid p-value of `P >= threshold`.
+        p_less: the anytime-valid p-value of `P < threshold`.
+        p_equivalent: the anytime-valid p-value of the equivalence.
+        satisfied: whether every draw satisfies the hypothesis, in the order
+            of the draws, which a statement at another level needs.
         method: the method.
         references: the references of the method.
     """
@@ -116,54 +324,112 @@ class TestResult:
     high: float
     n: int
     n_failed: int
+    k: int
     threshold: float | None
-    decision: Literal["accepted", "rejected", "undecided", "estimate"]
+    decision: Decision
     n_needed: int | None = None
+    n_decided: int | None = None
     level: float = 0.95
-    method: str = "fraction of the draws, Wilson score interval"
+    margin: float | None = None
+    p_greater: float = math.nan
+    p_less: float = math.nan
+    p_equivalent: float = math.nan
+    satisfied: np.ndarray | None = field(default=None, repr=False, compare=False)
+    method: str = "fraction of the draws, beta-binomial confidence sequence"
     references: tuple[str, ...] = REFERENCES
 
-    @property
-    def k(self) -> int:
-        """Get the number of draws which satisfy the hypothesis."""
-        return round(self.estimate * self.n)
-
     def p_value(self) -> float:
-        """Get the one-sided p-value of the score test of the decision.
+        """Get the p-value of the decision, the smallest one of an undecided statement.
 
-        The score `z = (p - p0) / sqrt(p0 (1 - p0) / n)` of the estimate `p`
-        against the threshold `p0`, whose test is dual to the Wilson interval:
-        `greater` for an estimate at least the threshold, `less` otherwise;
         `nan` for an estimate.
         """
-        if self.threshold is None or self.n == 0:
+        if self.threshold is None:
             return math.nan
-        p0 = self.threshold
-        z = (self.k / self.n - p0) / math.sqrt(p0 * (1.0 - p0) / self.n)
-        if self.k / self.n >= p0:
-            return float(stats.norm.sf(z))
-        return float(stats.norm.cdf(z))
+        values = {
+            "accepted": self.p_greater,
+            "rejected": self.p_less,
+            "equivalent": self.p_equivalent,
+        }
+        if self.decision in values:
+            return values[self.decision]
+        return min(self.p_greater, self.p_less, self.p_equivalent)
+
+    def at_level(self, level: float) -> TestResult:
+        """Get the statement at another level, e.g. of a `TestReport`.
+
+        Raises:
+            ValueError: for a statement without its draws.
+        """
+        if self.satisfied is None:
+            raise ValueError(
+                f"The statement '{self.hypothesis}' has no draws, it was not "
+                f"created by `probability`."
+            )
+        return _statement(
+            self.hypothesis,
+            self.satisfied,
+            self.n_failed,
+            self.threshold,
+            self.margin,
+            level,
+        )
 
 
-def _decide(
-    k: int, n: int, threshold: float, level: float
-) -> tuple[Literal["accepted", "rejected", "undecided"], int | None]:
-    """Decide a threshold and get the draws an undecided one needs."""
-    low, high = wilson(k, n, level)
-    if low >= threshold:
-        return "accepted", None
-    if high < threshold:
-        return "rejected", None
-    p = k / n
-    if p == threshold:
-        return "undecided", None
-    m = n
-    while m < MAX_NEEDED:
-        m *= 2
-        lo, hi = wilson(round(p * m), m, level)
-        if lo >= threshold or hi < threshold:
-            return "undecided", m
-    return "undecided", None
+def _statement(
+    hypothesis: str,
+    satisfied: np.ndarray,
+    n_failed: int,
+    threshold: float | None,
+    margin: float | None,
+    level: float,
+) -> TestResult:
+    """Get the statement of the draws which satisfy a hypothesis, see the module."""
+    prefixes = _Prefixes.of(satisfied)
+    n = int(satisfied.size)
+    k = int(np.count_nonzero(satisfied))
+    alpha = 1.0 - level
+    low, high = _sequence(prefixes, alpha)
+    if threshold is None:
+        return TestResult(
+            hypothesis,
+            k / n,
+            low,
+            high,
+            n,
+            n_failed,
+            k,
+            None,
+            "estimate",
+            level=level,
+            satisfied=satisfied,
+        )
+    if margin is None:
+        margin = default_margin(threshold)
+    p_greater, p_less, p_equivalent = _p_values(prefixes, threshold, margin)
+    decision, n_decided = _decide(p_greater, p_less, p_equivalent, prefixes.m, alpha)
+    return TestResult(
+        hypothesis,
+        k / n,
+        low,
+        high,
+        n,
+        n_failed,
+        k,
+        threshold,
+        decision,
+        n_needed=(
+            _needed(k / n, n, threshold, margin, alpha)
+            if decision == "undecided"
+            else None
+        ),
+        n_decided=n_decided,
+        level=level,
+        margin=margin,
+        p_greater=float(p_greater[-1]),
+        p_less=float(p_less[-1]),
+        p_equivalent=float(p_equivalent[-1]),
+        satisfied=satisfied,
+    )
 
 
 def _magnitude(value: Any, unit: str) -> float:
@@ -182,6 +448,29 @@ def _magnitude(value: Any, unit: str) -> float:
     return float(value)
 
 
+def _check(
+    greater: Any,
+    less: Any,
+    between: tuple[Any, Any] | None,
+    at_least: float | None,
+    margin: float | None,
+) -> None:
+    """Check a hypothesis and its threshold.
+
+    Raises:
+        ValueError: unless exactly one hypothesis is given, for a threshold
+            outside (0, 1) or a margin outside [0, 0.5).
+    """
+    if sum(h is not None for h in (greater, less, between)) != 1:
+        raise ValueError(
+            "A probability needs exactly one of greater, less and between."
+        )
+    if at_least is not None and not 0.0 < at_least < 1.0:
+        raise ValueError(f"The threshold {at_least} must be in (0, 1).")
+    if margin is not None and not 0.0 <= margin < 0.5:
+        raise ValueError(f"The margin {margin} must be in [0, 0.5).")
+
+
 def probability(
     values: xr.DataArray,
     *,
@@ -189,32 +478,31 @@ def probability(
     less: Any = None,
     between: tuple[Any, Any] | None = None,
     at_least: float | None = None,
+    margin: float | None = None,
     level: float = 0.95,
 ) -> TestResult:
     """Get the probability that values satisfy a hypothesis, see the module.
 
     Args:
-        values: the draws of an output, with its unit in `attrs["units"]`.
+        values: the draws of an output in their order, one value per draw,
+            with its unit in `attrs["units"]`.
         greater: the hypothesis `values > greater`.
         less: the hypothesis `values < less`.
         between: the hypothesis `low <= values <= high`.
         at_least: the threshold of a decision.
-        level: the level of the interval.
+        margin: the margin of the threshold of an equivalence, in [0, 0.5);
+            `default_margin` of the threshold by default.
+        level: the level of the confidence sequence and of the decision.
 
     Returns:
         The statement.
 
     Raises:
-        ValueError: unless exactly one hypothesis is given, for a threshold
-            outside (0, 1), bounds whose units do not fit, or no finite draw.
+        ValueError: unless exactly one hypothesis is given, for values which
+            are not one value per draw, a threshold outside (0, 1), a margin
+            outside [0, 0.5), bounds whose units do not fit, or no draw.
     """
-    given = [h for h in (greater, less, between) if h is not None]
-    if len(given) != 1:
-        raise ValueError(
-            "A probability needs exactly one of greater, less and between."
-        )
-    if at_least is not None and not 0.0 < at_least < 1.0:
-        raise ValueError(f"The threshold {at_least} must be in (0, 1).")
+    _check(greater, less, between, at_least, margin)
     if values.ndim != 1:
         raise ValueError(
             f"A probability needs one value per draw, '{values.name}' has the "
@@ -223,11 +511,11 @@ def probability(
         )
     unit = str(values.attrs.get("units", "") or "")
     x = np.asarray(values.values, dtype=float)
-    finite = np.isfinite(x)
-    n, n_failed = int(finite.sum()), int(x.size - finite.sum())
-    if n == 0:
-        raise ValueError(f"The output '{values.name}' has no finite draw.")
-    x = x[finite]
+    valid = ~np.isnan(x)
+    n_failed = int(x.size - valid.sum())
+    if not valid.any():
+        raise ValueError(f"The output '{values.name}' has no draw which did not fail.")
+    x = x[valid]
     name = str(values.name)
     shown = f" {unit}" if unit else ""
     if greater is not None:
@@ -243,45 +531,94 @@ def probability(
         low_bound, high_bound = (_magnitude(b, unit) for b in between)
         satisfied = (x >= low_bound) & (x <= high_bound)
         hypothesis = f"{low_bound:g} <= {name} <= {high_bound:g}{shown}"
-    k = int(satisfied.sum())
-    low, high = wilson(k, n, level)
-    if at_least is None:
-        return TestResult(
-            hypothesis, k / n, low, high, n, n_failed, None, "estimate", level=level
-        )
-    decision, needed = _decide(k, n, at_least, level)
-    return TestResult(
-        f"P({hypothesis}) >= {at_least:g}",
-        k / n,
-        low,
-        high,
-        n,
-        n_failed,
-        at_least,
-        decision,
-        needed,
-        level,
-    )
+    if at_least is not None:
+        hypothesis = f"P({hypothesis}) >= {at_least:g}"
+    return _statement(hypothesis, satisfied, n_failed, at_least, margin, level)
 
 
-def _adjusted(p: np.ndarray, method: Literal["holm", "bh", "none"]) -> np.ndarray:
-    """Get the adjusted p-values of Holm or Benjamini-Hochberg."""
-    m = p.size
-    if method == "none" or m == 0:
-        return p.copy()
-    order = np.argsort(p)
-    ranked = p[order]
-    if method == "holm":
-        adjusted = np.maximum.accumulate(ranked * (m - np.arange(m)))
-    elif method == "bh":
-        adjusted = np.minimum.accumulate((ranked * m / np.arange(1, m + 1))[::-1])[::-1]
-    else:
-        raise ValueError(
-            f"The adjustment {method!r} is none of 'holm', 'bh' and 'none'."
+@dataclass(frozen=True)
+class Hypothesis:
+    """A hypothesis about an output of a propagation, which it can draw until decided.
+
+    Attributes:
+        output: the output, one value per draw, e.g. `pk.auc_last`.
+        greater: the hypothesis `output > greater`.
+        less: the hypothesis `output < less`.
+        between: the hypothesis `low <= output <= high`.
+        at_least: the threshold of the decision, `None` for an estimate.
+        scenario: the scenario of the output, the only one by default.
+        contrast: the scenarios `(a, b)` of a paired contrast of the output
+            instead of a scenario.
+        kind: the kind of the contrast, `ratio` or `difference`.
+        margin: the margin of the threshold of an equivalence, see
+            `probability`.
+        level: the level of the decision.
+    """
+
+    output: str
+    greater: Any = None
+    less: Any = None
+    between: tuple[Any, Any] | None = None
+    at_least: float | None = None
+    scenario: str | None = None
+    contrast: tuple[str, str] | None = None
+    kind: Literal["ratio", "difference"] = "ratio"
+    margin: float | None = None
+    level: float = 0.95
+
+    def __post_init__(self) -> None:
+        """Check the hypothesis.
+
+        Raises:
+            ValueError: for a scenario and a contrast, unless exactly one
+                hypothesis is given, for a threshold outside (0, 1), a margin
+                outside [0, 0.5), another kind or a level outside (0, 1).
+        """
+        if self.scenario is not None and self.contrast is not None:
+            raise ValueError(
+                "A hypothesis is about a scenario or a contrast, not both."
+            )
+        _check(self.greater, self.less, self.between, self.at_least, self.margin)
+        if self.kind not in ("ratio", "difference"):
+            raise ValueError(
+                f"The kind {self.kind!r} is none of 'ratio' and 'difference'."
+            )
+        if not 0.0 < self.level < 1.0:
+            raise ValueError(f"The level {self.level} must be in (0, 1).")
+        if self.contrast is not None:
+            a, b = self.contrast
+            object.__setattr__(self, "contrast", (a, b))
+
+    def evaluate(self, values: xr.DataArray) -> TestResult:
+        """Get the statement of the hypothesis about the values of its output."""
+        return probability(
+            values,
+            greater=self.greater,
+            less=self.less,
+            between=self.between,
+            at_least=self.at_least,
+            margin=self.margin,
+            level=self.level,
         )
-    result = np.empty(m)
-    result[order] = np.clip(adjusted, 0.0, 1.0)
-    return result
+
+    def to_dict(self) -> dict[str, Any]:
+        """Get the hypothesis as a dictionary of JSON types."""
+        from sbmlsim.simulation.definition import _encode
+
+        return {
+            "output": self.output,
+            "greater": _encode(self.greater),
+            "less": _encode(self.less),
+            "between": (
+                None if self.between is None else [_encode(b) for b in self.between]
+            ),
+            "at_least": self.at_least,
+            "scenario": self.scenario,
+            "contrast": None if self.contrast is None else list(self.contrast),
+            "kind": self.kind,
+            "margin": self.margin,
+            "level": self.level,
+        }
 
 
 @dataclass
@@ -290,55 +627,67 @@ class TestReport:
 
     Attributes:
         tests: the statements.
-        adjust: `holm` (the family-wise error), `bh` (the false discovery
-            rate) or `none`.
+        adjust: `bonferroni` (the family-wise error of the decisions, see the
+            module) or `none`.
     """
 
     __test__ = False  # not a test class of pytest
 
     tests: Sequence[TestResult] = field(default_factory=list)
-    adjust: Literal["holm", "bh", "none"] = "holm"
+    adjust: Literal["bonferroni", "none"] = "bonferroni"
+
+    def __post_init__(self) -> None:
+        """Check the adjustment.
+
+        Raises:
+            ValueError: for another adjustment.
+        """
+        if self.adjust not in ("bonferroni", "none"):
+            raise ValueError(
+                f"The adjustment {self.adjust!r} is none of 'bonferroni' and "
+                f"'none'; a step-down adjustment, e.g. Holm, does not control "
+                f"the error of decisions with an equivalence, see the module."
+            )
+
+    @property
+    def m(self) -> int:
+        """Get the number of statements with a threshold, the family of the decisions."""
+        return sum(t.threshold is not None for t in self.tests)
 
     def adjusted(self) -> list[TestResult]:
-        """Get the statements with the decisions of the adjusted p-values, see the module."""
-        decided = [k for k, t in enumerate(self.tests) if t.threshold is not None]
-        p = np.array([self.tests[k].p_value() for k in decided])
-        adjusted = _adjusted(p, self.adjust)
-        result = list(self.tests)
-        for k, value in zip(decided, adjusted, strict=True):
-            test = self.tests[k]
-            if (
-                test.decision in ("accepted", "rejected")
-                and value > (1.0 - test.level) / 2.0
-            ):
-                assert test.threshold is not None
-                bonferroni = 1.0 - (1.0 - test.level) / len(decided)
-                _, needed = _decide(test.k, test.n, test.threshold, bonferroni)
-                result[k] = replace(test, decision="undecided", n_needed=needed)
-        return result
+        """Get the statements at the level of Bonferroni, see the module."""
+        m = self.m
+        if self.adjust == "none" or m <= 1:
+            return list(self.tests)
+        return [
+            t.at_level(1.0 - (1.0 - t.level) / m) if t.threshold is not None else t
+            for t in self.tests
+        ]
 
     def table(self) -> pd.DataFrame:
-        """Get the table of the statements with their adjusted decisions."""
-        decided = {k for k, t in enumerate(self.tests) if t.threshold is not None}
-        p = np.array([self.tests[k].p_value() for k in sorted(decided)])
-        adjusted = dict(zip(sorted(decided), _adjusted(p, self.adjust), strict=True))
+        """Get the table of the statements with their adjusted decisions.
+
+        The interval, the decision and the draws are the ones of the adjusted
+        level, `p_adjusted` is the p-value of the decision times `m`.
+        """
+        m = self.m if self.adjust == "bonferroni" else 1
         rows = []
-        for k, (test, result) in enumerate(
-            zip(self.tests, self.adjusted(), strict=True)
-        ):
+        for test, result in zip(self.tests, self.adjusted(), strict=True):
             rows.append(
                 {
                     "hypothesis": test.hypothesis,
                     "estimate": test.estimate,
-                    "low": test.low,
-                    "high": test.high,
+                    "low": result.low,
+                    "high": result.high,
                     "n": test.n,
                     "n_failed": test.n_failed,
                     "threshold": test.threshold,
-                    "p_value": test.p_value(),
-                    "p_adjusted": adjusted.get(k, math.nan),
+                    "level": result.level,
+                    "p_value": result.p_value(),
+                    "p_adjusted": min(1.0, m * result.p_value()),
                     "decision": result.decision,
-                    "n_needed": test.n_needed,
+                    "n_decided": result.n_decided,
+                    "n_needed": result.n_needed,
                 }
             )
         return pd.DataFrame(rows)

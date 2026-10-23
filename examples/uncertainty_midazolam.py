@@ -5,7 +5,8 @@ hepatic clearance is an uncertain parameter, the body weight and the height
 are correlated. The propagation runs them through a control and an inhibitor
 scenario with the same draws, summarizes the AUC and the Cmax with their
 Monte Carlo errors, ranks the contributions of the uncertain values and
-states the probability of a relevant interaction.
+draws until the hypotheses about the interaction are decided: a decision does
+not depend on the number of draws, more draws only decide what is undecided.
 """
 
 from pathlib import Path
@@ -16,7 +17,7 @@ from sbmlsim.simulation import PK, Change, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.uncertainty import (
     Covariance,
-    TestReport,
+    Hypothesis,
     Uncertain,
     UncertaintyModel,
     propagate,
@@ -26,6 +27,18 @@ from sbmlsim.uncertainty import (
 DOSE = Uncertain(Q(5, "mg"), cv=0.05)
 WEIGHT = Uncertain(Q(75, "kg"), sd=Q(12, "kg"), low=Q(45, "kg"), kind="variability")
 HEIGHT = Uncertain(Q(176, "cm"), sd=Q(8, "cm"), kind="variability")
+
+#: the hypotheses about the interaction, paired ratios of inhibitor to control
+HYPOTHESES = [
+    # a relevant interaction: the AUC ratio is above 1.25 with a probability of 90 %
+    Hypothesis(
+        "pk.auc_last", contrast=("inhibitor", "control"), greater=1.25, at_least=0.9
+    ),
+    # an AUC ratio above 3 in at least half of the cases
+    Hypothesis(
+        "pk.auc_last", contrast=("inhibitor", "control"), greater=3.0, at_least=0.5
+    ),
+]
 
 
 def simulation(activity: float = 1.0) -> Simulation:
@@ -54,6 +67,7 @@ def run(output: Path) -> None:
         uq,
         [PK("pk", "[Cve_mid]", dose="PODOSE_mid", route="oral")],
         outputs=["pk.auc_last", "pk.cmax"],
+        hypotheses=HYPOTHESES,
         n_start=256,
         n_max=8192,
         seed=1234,
@@ -64,15 +78,8 @@ def run(output: Path) -> None:
         summary[["scenario", "output", "n", "mean", "mean_se", "sd", "q0.05", "q0.95"]]
     )
     print(res.contributions("pk.auc_last", scenario="control"))
-    ratio = res.contrast("pk.auc_last", "inhibitor", "control")
-    report = TestReport(
-        [
-            res.probability(ratio, greater=1.25, at_least=0.9),
-            res.probability(ratio, greater=3.0),
-        ]
-    )
-    table = report.table()
-    print(table[["hypothesis", "estimate", "low", "high", "decision"]])
+    table = res.test(HYPOTHESES).table()
+    print(table[["hypothesis", "estimate", "low", "high", "decision", "n_needed"]])
     output.mkdir(parents=True, exist_ok=True)
     summary.to_csv(output / "uncertainty_summary.tsv", sep="\t", index=False)
     table.to_csv(output / "uncertainty_tests.tsv", sep="\t", index=False)
