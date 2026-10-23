@@ -64,6 +64,17 @@ from sbmlsim.testsuite import cache
 
 logger = logging.getLogger(__name__)
 
+
+def _read_numbers(path: Path) -> pd.DataFrame:
+    """Read a table of the suite with every number as it was written.
+
+    The parser of python reads a number with `float`, which rounds it
+    correctly; the C parser of pandas rounds the last bit unless asked for
+    `float_precision="round_trip"`, which pandas 3.1 deprecates.
+    """
+    return pd.read_csv(path, sep="\t", engine="python")
+
+
 #: commit of the test suite the tests run against
 SCIML_SUITE_COMMIT = "0622bbfc5e12eb9b482659eabd1756ca0e87dfc8"
 
@@ -772,10 +783,7 @@ class ProblemImportCase:
         """
         if not self.simulation_files:
             raise ValueError(f"The case '{self.path}' lists no simulation files")
-        frames = [
-            pd.read_csv(path, sep="\t", float_precision="round_trip")
-            for path in self.simulation_files
-        ]
+        frames = [_read_numbers(path) for path in self.simulation_files]
         df = pd.concat(frames, ignore_index=True)
         missing = sorted(
             {"observableId", "experimentId", "time", "simulation"} - set(df.columns)
@@ -808,7 +816,7 @@ class ProblemImportCase:
         expected: dict[str, float] = {}
         for key, path in self.gradient_files.items():
             if key == MECHANISTIC:
-                df = pd.read_csv(path, sep="\t", float_precision="round_trip")
+                df = _read_numbers(path)
                 for pid, value in zip(df["parameterId"], df["value"], strict=True):
                     expected[str(pid)] = float(value)
                 continue
@@ -903,7 +911,9 @@ class ProblemImportCase:
         expected = self.expected_simulations()
         predictions = problem.predictions(parameters.x(problem.pids))
         # a measurement without an experiment has a row without one
-        experiment_ids = expected["experimentId"].fillna("").astype(str)
+        experiment_ids = expected["experimentId"].map(
+            lambda value: "" if pd.isna(value) else str(value)
+        )
         matched: set[int] = set()
         for k, prediction in predictions.items():
             key = problem.mapping_keys[k]

@@ -1126,10 +1126,7 @@ class DataSet(pd.DataFrame):
                                     err_key,
                                 )
 
-                            df.rename(
-                                columns={f"{err_key}": f"mean_{err_key}"},
-                                inplace=True,
-                            )
+                            df = df.rename(columns={f"{err_key}": f"mean_{err_key}"})
 
                 # remove unit column
                 del df["unit"]
