@@ -343,3 +343,58 @@ def test_a_timecourse_is_no_output_of_a_summary() -> None:
             call()
     with pytest.raises(ValueError, match="one value per draw"):
         run(outputs=["[C]"])
+
+
+def _sbml_initial_assignment() -> str:
+    """Get a model whose rate is an initial assignment of the body weight."""
+    import libsbml
+
+    document = libsbml.SBMLDocument(3, 2)
+    model = document.createModel()
+    model.setId("weight_rate")
+    compartment = model.createCompartment()
+    compartment.setId("c")
+    compartment.setSize(1.0)
+    compartment.setConstant(True)
+    for pid, value in (("BW", 70.0), ("k", 1.0)):
+        parameter = model.createParameter()
+        parameter.setId(pid)
+        parameter.setValue(value)
+        parameter.setConstant(True)
+    assignment = model.createInitialAssignment()
+    assignment.setSymbol("k")
+    assignment.setMath(libsbml.parseL3Formula("0.01 * BW"))
+    species = model.createSpecies()
+    species.setId("S")
+    species.setCompartment("c")
+    species.setInitialAmount(1.0)
+    species.setHasOnlySubstanceUnits(True)
+    species.setBoundaryCondition(False)
+    species.setConstant(False)
+    rule = model.createRateRule()
+    rule.setVariable("S")
+    rule.setMath(libsbml.parseL3Formula("-k * S"))
+    return libsbml.writeSBMLToString(document)
+
+
+def test_a_relative_distribution_has_the_reference_of_its_scenario() -> None:
+    """The reference of `k` is its initial assignment of the weight of each scenario."""
+    from sbmlsim.simulation.sampling import LogNormal
+
+    res = propagate(
+        _sbml_initial_assignment(),
+        {
+            "light": Simulation(end=1, preinit_changes={"BW": 70.0}),
+            "heavy": Simulation(end=1, preinit_changes={"BW": 140.0}),
+        },
+        UncertaintyModel(parameters={"k": LogNormal(cv=0.2)}),
+        n=32,
+        seed=1,
+        simulator=Simulator(n_workers=1),
+    )
+    light, heavy = (
+        np.asarray(res.results[name].ds.coords["draw.k"].values)
+        for name in ("light", "heavy")
+    )
+    np.testing.assert_allclose(heavy, 2.0 * light)
+    assert np.median(light) == pytest.approx(0.7, rel=0.1)
