@@ -25,6 +25,7 @@ PAGES = [
     "data.md",
     "observables.md",
     "sensitivity.md",
+    "uncertainty.md",
 ]
 
 #: a fenced block of python

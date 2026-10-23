@@ -53,6 +53,7 @@ SCRIPTS = [
     "examples.fit_sampling",
     "examples.units",
     "examples.model_sensitivity",
+    "examples.uncertainty_midazolam",
     "examples.curve_types.experiment",
     "examples.initial_assignment.initial_assignment",
     "examples.glucose.glucose",

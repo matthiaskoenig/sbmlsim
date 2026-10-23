@@ -14,12 +14,15 @@ to the scenarios which declare it, a parameter to every scenario.
 
 **Adaptive number of draws.** Without `n` the propagation draws batches of
 quasi-random points, doubling their number (powers of two keep the balance of
-the Sobol points), until the mean, the standard deviation and the 2.5 % and
-97.5 % quantiles of every output agree between the two halves of the draws
-within `rel_tol` times the standard deviation of the output, the adaptive
-procedure of the Monte Carlo method of the GUM (JCGM 101:2008, 7.9) with the
-halves as the batches; at `n_max` a warning says that the tolerance was not
-reached. The history of the batches is recorded.
+the Sobol points), until the half widths of the 95 % intervals of the mean,
+the standard deviation and the 5 % and 95 % quantiles of every output are at
+most `rel_tol` times the standard deviation of the output (0.1 by default,
+which takes about 2000 draws of a normal output and more of a skewed one,
+whose tail quantiles are less precise), after the adaptive Monte Carlo procedure of
+the GUM (JCGM 101:2008, 7.9), with the errors of
+`sbmlsim.uncertainty.statistics`, which are conservative for quasi-random
+draws; at `n_max` a warning says that the tolerance was not reached. The
+history of the batches is recorded.
 
 The `UncertaintyResult` has the results of the scenarios, the variables and
 the record (seed, design, number of draws, history, covariances), and gives
@@ -373,28 +376,31 @@ def _scenario_values(
     return values
 
 
-def _halves_agree(values: np.ndarray, rel_tol: float) -> tuple[bool, float]:
-    """Check whether the statistics of the two halves of draws agree.
+def _precise(values: np.ndarray, rel_tol: float) -> tuple[bool, float]:
+    """Check whether the statistics of the draws of an output are precise enough.
+
+    The half widths of the 95 % intervals of the mean, the standard deviation
+    and the 5 % and 95 % quantiles must be at most `rel_tol` times the
+    standard deviation of the output, see the module.
 
     Returns:
-        Whether they agree and the largest difference relative to the
-        standard deviation.
+        Whether they are and the largest half width relative to the standard
+        deviation.
     """
     finite = values[np.isfinite(values)]
-    if finite.size < 4:
+    if finite.size < 8:
         return False, math.inf
-    sd = float(np.std(finite, ddof=1))
-    half = values.size // 2
-    a, b = values[:half], values[half:]
-    a, b = a[np.isfinite(a)], b[np.isfinite(b)]
-    if a.size < 2 or b.size < 2:
-        return False, math.inf
+    sd, sd_error, _ = sd_se(finite)
     if sd == 0.0:
         return True, 0.0
-    stats_a = [np.mean(a), np.std(a, ddof=1), *np.quantile(a, [0.025, 0.975])]
-    stats_b = [np.mean(b), np.std(b, ddof=1), *np.quantile(b, [0.025, 0.975])]
-    difference = max(abs(x - y) for x, y in zip(stats_a, stats_b, strict=True)) / sd
-    return difference <= rel_tol, float(difference)
+    widths = [1.96 * mean_se(finite)[1], 1.96 * sd_error]
+    for q in (0.05, 0.95):
+        _estimate, low, high, _n = quantile_ci(finite, q)
+        widths.append(
+            0.5 * (high - low) if np.isfinite(low) and np.isfinite(high) else math.inf
+        )
+    largest = max(widths) / sd
+    return largest <= rel_tol, float(largest)
 
 
 def propagate(
@@ -405,7 +411,7 @@ def propagate(
     *,
     outputs: Sequence[str] | None = None,
     n: int | None = None,
-    rel_tol: float = 0.01,
+    rel_tol: float = 0.1,
     n_start: int = 256,
     n_max: int = 16384,
     design: Literal["sobol", "lhs", "random"] = "sobol",
@@ -425,8 +431,9 @@ def propagate(
         outputs: the outputs of the adaptive stopping and of the summary,
             values per simulation; every value per simulation by default.
         n: the number of draws; `None` for the adaptive number.
-        rel_tol: the tolerance of the adaptive stopping, relative to the
-            standard deviation of an output.
+        rel_tol: the tolerance of the adaptive stopping, the half width of the
+            intervals of the statistics relative to the standard deviation of
+            an output.
         n_start: the draws of the first batch of the adaptive stopping.
         n_max: the most draws of the adaptive stopping.
         design: `sobol`, `lhs` or `random`.
@@ -539,18 +546,18 @@ def propagate(
                     "simulation, e.g. of a `PK` observable; give `outputs` or `n`."
                 )
             checks = [
-                _halves_agree(
+                _precise(
                     np.asarray(result.ds[name].values, dtype=float).ravel(), rel_tol
                 )
                 for result in results.values()
                 for name in names
             ]
-            converged = total >= 2 * n_start and all(ok for ok, _ in checks)
+            converged = all(ok for ok, _ in checks)
             history.append(
                 {
                     "n": total,
                     "converged": converged,
-                    "difference": max(d for _, d in checks),
+                    "precision": max(d for _, d in checks),
                 }
             )
             if converged:
@@ -558,11 +565,11 @@ def propagate(
             if total >= n_max:
                 logger.warning(
                     "The propagation reached %s draws without its tolerance %s, "
-                    "the largest difference of the halves is %.3g standard "
+                    "the largest half width of an interval is %.3g standard "
                     "deviations.",
                     total,
                     rel_tol,
-                    history[-1]["difference"],
+                    history[-1]["precision"],
                 )
                 break
             run_batch(total, total)

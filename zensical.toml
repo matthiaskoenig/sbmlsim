@@ -24,6 +24,7 @@ nav = [
   { "Sensitivity & uncertainty" = [
     { "Parameter scans" = "scans.md" },
     { "Sampling and uncertainty" = "sampling.md" },
+    { "Uncertainty" = "uncertainty.md" },
     { "Observables" = "observables.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
   ] },
