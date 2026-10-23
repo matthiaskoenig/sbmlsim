@@ -758,6 +758,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: the count of every data point, the number of subjects, `None` for a
         #: mapping without a count, see `FitDataInitialized.count`
         self.y_counts: list[np.ndarray | None] = []
+        #: which errors of `y_errors` the data has, `None` for a mapping without
+        #: errors: a zero or missing error of a point is filled with the
+        #: largest error of the mapping for the weights, but it is no standard
+        #: deviation of the point, see `FitMetrics.datapoints_df`
+        self.y_errors_measured: list[np.ndarray | None] = []
         #: the noise model of every mapping, `None` for a mapping without one,
         #: see `sbmlsim.fit.petab_v2.likelihood`
         self.noise_models: list[NoiseModel | None] = []
@@ -1294,6 +1299,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                     # Changes to baseline, which is the first point
                     y_ref = y_ref - y_ref[0]
 
+                # the errors which the data has, the others are filled for the
+                # weights, see `y_errors_measured`
+                y_measured: np.ndarray | None = None
                 # --- errors on data ---
                 # every error is a standard deviation: an SD is used, else an SE
                 # is converted with the count of its row, `SE * sqrt(count)`
@@ -1334,6 +1342,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                     else:
                         # FIXME: this must be based on coefficient of variation
                         # some NaNs could exist (err is maximal error of all points)
+                        y_measured = ~np.isnan(y_ref_err)
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
 
                 if (
@@ -1395,6 +1404,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                 selections_set.update(noise_selections)
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
+                    y_measured = (
+                        np.ones(y_ref_err.shape, dtype=bool)
+                        if y_measured is None
+                        else y_measured[nonnan_mask]
+                    )
                 if y_counts is not None:
                     y_counts = y_counts[nonnan_mask]
 
@@ -1538,6 +1552,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
                 self.y_counts.append(y_counts)
+                self.y_errors_measured.append(y_measured)
                 self.noise_models.append(noise)
                 self.noise_selections.append(noise_selections)
                 self.observable_models.append(observable_model)

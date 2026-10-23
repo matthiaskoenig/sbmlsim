@@ -10,6 +10,7 @@ import shutil
 import subprocess
 from html.parser import HTMLParser
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -23,7 +24,7 @@ from examples.hctz_fitting.experiments.studies import Weir1998
 from sbmlsim import __version__
 from sbmlsim.fit import FitSettings, MappingKind, ParameterSet, ParameterSets
 from sbmlsim.fit.cli import FitDefinition
-from sbmlsim.fit.evaluation import MIN_POINTS_SUBSET_AGREEMENT, Grouping
+from sbmlsim.fit.evaluation import MIN_POINTS_SUBSET_AGREEMENT, Grouping, Subset
 from sbmlsim.fit.fisher import fisher_information
 from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.metrics import fold_counts
@@ -516,7 +517,7 @@ def test_the_twofold_criterion_of_a_report(fitted_report) -> None:
 def test_the_key_metrics_of_several_sets(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """With several sets the box has a line per set, prefixed with its id."""
+    """With several sets the metrics of a set follow a line of its id."""
     op_hctz_pk.initialize(fit_settings)
     model = op_hctz_pk.parameter_set_model()
     other = ParameterSet(
@@ -531,9 +532,10 @@ def test_the_key_metrics_of_several_sets(
     )
     text = report.panel_metrics(MappingKind.TRAINING.value, "goodness_of_fit")
     lines = text.splitlines()
-    assert len(lines) == 2
-    assert lines[0].startswith(f"{model.sid}: ")
-    assert lines[1].startswith("other: ")
+    # a line of the id of every set and two lines of its metrics
+    assert len(lines) == 6
+    assert lines[0] == f"{model.sid}:"
+    assert lines[3] == "other:"
 
 
 def test_the_figures_of_every_mapping(
@@ -1349,7 +1351,7 @@ def test_the_figure_of_a_mapping_compares_sets(
     report = _mapping_report(op_hctz_iv, fit_settings, n_sets=2)
     text = report.mapping_text(0).splitlines()
     sids = [pset.sid for pset in report.parameter_sets]
-    assert [line.split(":")[0] for line in text[::2]] == sids
+    assert [line[:-1] for line in text if line.endswith(":")] == sids
 
 
 def test_the_data_label_of_a_mapping_has_its_error_and_count(
@@ -1515,3 +1517,145 @@ def test_color_by_a_column(
     }
     assert labelled
     assert len(set(labelled.values())) == len(labelled)
+
+
+def test_the_legend_of_a_grouping_has_the_band(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """The band is in the legend also when the last panel has no points."""
+    op_hctz_pk.initialize(fit_settings)
+    grouping = Grouping.of_subsets(
+        "subsets",
+        Subset("all", _select_all),
+        Subset("none", _select_none),
+    )
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
+    )
+    report.plot_grouping(grouping, tmp_path)
+    for name in ("goodness_of_fit_subsets", "bland_altman_subsets"):
+        [legend] = saved_figures[name].legends
+        labels = [text.get_text() for text in legend.get_texts()]
+        assert "prediction = measurement" in labels, name
+        assert "2-fold" in labels, name
+        assert any(label.startswith("LoA") for label in labels), name
+
+
+def _select_all(key: str, mapping: Any) -> bool:
+    return True
+
+
+def _select_none(key: str, mapping: Any) -> bool:
+    return False
+
+
+def test_the_box_of_a_panel_has_the_criteria(
+    fitted_report: tuple[FitReport, Path],
+) -> None:
+    """The box of the goodness of fit states GMFE, AFE and the points within 2 SD."""
+    report, _plots = fitted_report
+    box = report.panel_metrics(MappingKind.TRAINING.value, "goodness_of_fit")
+    assert "GMFE = " in box and "AFE = " in box and "2 SD = " in box
+
+
+def test_error_bars_only_for_points_with_a_ratio(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A point which is not drawn on the logarithmic axes has no error bar."""
+    op_hctz_pk.initialize(fit_settings)
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=op_hctz_pk.parameter_set_model(),
+        mapping_figures=False,
+        error_bars=True,
+    )
+    # a standard deviation of the points which are zero, e.g. at the start of
+    # an amount in the urine
+    points = FitReport.points
+
+    def with_sd(self: FitReport, pset: ParameterSet) -> pd.DataFrame:
+        df = points(self, pset)
+        df.loc[df.DV <= 0, "DV_SD"] = 1e-3
+        return df
+
+    monkeypatch.setattr(FitReport, "points", with_sd)
+    assert (report.points(report.reference_set).DV <= 0).any()
+    report.plot_goodness_of_fit(tmp_path / "goodness_of_fit.svg")
+    for ax in saved_figures["goodness_of_fit"].axes:
+        for container in ax.containers:
+            if not isinstance(container, ErrorbarContainer):
+                continue
+            for collection in container.lines[2]:
+                for segment in collection.get_segments():
+                    center = 0.5 * (segment[0] + segment[1])
+                    assert center[0] > 0 and center[1] > 0
+
+
+def test_long_set_ids_stay_in_their_box(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """With several sets the id of a set is a line of its own in a box."""
+    op_hctz_pk.initialize(fit_settings)
+    model = op_hctz_pk.parameter_set_model()
+    sets = [
+        ParameterSet(sid="PK_20261022_232242__64ca9_0", values=dict(model.values)),
+        ParameterSet(
+            sid="PK_20261022_232242__64ca9_1",
+            values={pid: 1.1 * value for pid, value in model.values.items()},
+        ),
+    ]
+    report = FitReport(
+        problem=op_hctz_pk,
+        settings=fit_settings,
+        parameter_sets=ParameterSets(sets),
+        mapping_figures=False,
+    )
+    for plot in ("goodness_of_fit", "bland_altman"):
+        lines = report.panel_metrics(MappingKind.TRAINING.value, plot).splitlines()
+        ids = [line for line in lines if line.endswith(":")]
+        assert len(ids) == 2
+        # not wider than the one line of a set of before, which fit its panel
+        assert max(len(line) for line in lines) <= 56, lines
+    text = report.mapping_text(0).splitlines()
+    assert sum(line.endswith(":") for line in text) == 2
+
+
+def test_the_curve_of_a_mapping_draws_only_the_errors_of_the_data(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """A filled error of the weights has no error bar in the curve."""
+    report = _mapping_report(op_hctz_pk, fit_settings)
+    filled = [
+        k
+        for k, measured in enumerate(op_hctz_pk.y_errors_measured)
+        if measured is not None and not measured.all()
+    ]
+    assert filled
+    k = filled[0]
+    report.plot_mapping(tmp_path)
+    name = f"{op_hctz_pk.experiment_keys[k]}_{op_hctz_pk.mapping_keys[k]}"
+    curve = saved_figures[name].axes[0]
+    [container] = [c for c in curve.containers if isinstance(c, ErrorbarContainer)]
+    # a segment of a NaN error is not drawn
+    n_bars = sum(
+        int(len(segment) > 0 and np.isfinite(segment).all())
+        for c in container.lines[2]
+        for segment in c.get_segments()
+    )
+    measured = op_hctz_pk.y_errors_measured[k]
+    assert measured is not None
+    assert n_bars == int(measured.sum())

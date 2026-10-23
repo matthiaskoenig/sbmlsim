@@ -12,6 +12,7 @@ from sbmlsim.fit import (
     FitData,
     FitMapping,
     FitMappingCollection,
+    FitMetrics,
     FitParameter,
     FitSettings,
 )
@@ -137,3 +138,17 @@ def test_an_se_with_a_missing_count_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match=r"rows \[1\]"):
         _initialized(Study, tmp_path)
+
+
+def test_a_filled_error_is_no_standard_deviation_of_a_point(tmp_path: Path) -> None:
+    """The weights fill a missing error, the data points keep it missing."""
+
+    class Study(_Study):
+        columns: ClassVar[dict[str, list[float]]] = {"cmax_sd": [1.5, 0.0]}
+        error = "cmax_sd"
+        count = None
+
+    problem = _initialized(Study, tmp_path)
+    np.testing.assert_allclose(problem.y_errors[0], [1.5, 1.5])
+    dp = FitMetrics(problem, problem.parameter_set_model()).datapoints_df()
+    np.testing.assert_array_equal(dp.DV_SD.to_numpy(), [1.5, np.nan])

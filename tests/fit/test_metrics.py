@@ -351,10 +351,13 @@ def test_the_points_carry_the_observable_the_error_and_the_metadata(
         ]
         assert set(rows.observable) == {op_hctz_pk.yid_observable[k]}
         errors = op_hctz_pk.y_errors[k]
+        measured = op_hctz_pk.y_errors_measured[k]
         if errors is None:
             assert rows.DV_SD.isna().all()
         else:
-            np.testing.assert_allclose(rows.DV_SD, errors)
+            # an error which the weights filled is no SD of the point
+            assert measured is not None
+            np.testing.assert_allclose(rows.DV_SD, np.where(measured, errors, np.nan))
         assert set(rows.tissue) == {op_hctz_pk.mapping_metadata[k]["tissue"]}
 
 

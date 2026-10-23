@@ -102,7 +102,7 @@ KIND_COLORS: dict[str, str] = {
 #: apart from the black band of the training data, see `_draw_subset_agreement`
 SUBSET_AGREEMENT_COLOR = "#7048e8"
 
-#: the length of the id of a parameter set in a box of metrics, see `_box_prefix`
+#: the length of the id of a parameter set in a box of metrics, see `_box_id`
 BOX_ID_LENGTH = 20
 
 #: colors of the studies, i.e. of the simulation experiments of the problem, in
@@ -197,6 +197,11 @@ SET_COLORS: tuple[str, ...] = (
 def _percent(value: Any) -> str:
     """Format a percentage of the metrics, `-` for one which is not defined."""
     return _cell(value, ".1f")
+
+
+def _box_value(value: float, spec: str, unit: str = "") -> str:
+    """Format a value of a box of metrics, `-` for a value which is not defined."""
+    return f"{value:{spec}}{unit}" if np.isfinite(value) else "-"
 
 
 def _cell(value: Any, spec: str) -> str:
@@ -2224,6 +2229,10 @@ class FitReport:
         x_ref = self._x_positions(k)
         y_ref = self.problem.y_references[k]
         y_ref_err = self.problem.y_errors[k]
+        measured = self.problem.y_errors_measured[k]
+        if y_ref_err is not None and measured is not None:
+            # an error which the weights filled is no SD of the data
+            y_ref_err = np.where(measured, y_ref_err, np.nan)
         scalar = self._is_scalar(k)
         dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
         ax.set_ylabel(self._y_label(k))
@@ -2299,10 +2308,6 @@ class FitReport:
             The text of the box, the lines are prefixed with the id of the set
             when several sets are compared.
         """
-
-        def cell(value: float, spec: str, unit: str = "") -> str:
-            return f"{value:{spec}}{unit}" if np.isfinite(value) else "-"
-
         training = self.problem.mapping_kinds[k] is MappingKind.TRAINING
         training_indices = [
             i
@@ -2311,23 +2316,23 @@ class FitReport:
         ]
         lines: list[str] = []
         for pset in self.parameter_sets:
-            prefix = self._box_prefix(pset)
+            lines.extend(self._box_id(pset))
             dp = self._of_mapping(self.points(pset), k)
             metrics = criteria_metrics(dp)
             costs = self.residual_data(pset)["cost"]
             cost = float(costs[k])
             total = float(sum(costs[i] for i in training_indices))
             share = (
-                f" ({cell(100.0 * cost / total, '.1f', '%')})"
+                f" ({_box_value(100.0 * cost / total, '.1f', '%')})"
                 if training and total > 0
                 else ""
             )
             lines.append(
-                f"{prefix}n = {len(dp)}, GMFE = {cell(metrics['GMFE'], '.3g')}, "
-                f"AFE = {cell(metrics['AFE'], '.3g')}\n"
-                f"2-fold = {cell(metrics['within_2fold'], '.1f', '%')}, "
-                f"2 SD = {cell(metrics['within_2sd'], '.1f', '%')}, "
-                f"cost = {cell(cost, '.3g')}{share}"
+                f"n = {len(dp)}, GMFE = {_box_value(metrics['GMFE'], '.3g')}, "
+                f"AFE = {_box_value(metrics['AFE'], '.3g')}\n"
+                f"2-fold = {_box_value(metrics['within_2fold'], '.1f', '%')}, "
+                f"2 SD = {_box_value(metrics['within_2sd'], '.1f', '%')}, "
+                f"cost = {_box_value(cost, '.3g')}{share}"
             )
         return "\n".join(lines)
 
@@ -2500,46 +2505,55 @@ class FitReport:
         """
         lines: list[str] = []
         for pset in self.parameter_sets:
-            prefix = self._box_prefix(pset)
+            lines.extend(self._box_id(pset))
             dp = points[pset.sid]
             if plot == "goodness_of_fit":
-                within = criteria_metrics(dp)["within_2fold"]
+                metrics = criteria_metrics(dp)
                 lines.append(
-                    f"{prefix}R² = {r_squared(dp.DV, dp.IPRED):.3f}, "
-                    f"NRMSE = {rmse(dp.NRES):.3g}, "
-                    f"RMSE$_w$ = {rmse(dp.IWRES):.3g}, "
-                    f"2-fold = {f'{within:.1f}%' if np.isfinite(within) else '-'}"
+                    f"R² = {_box_value(r_squared(dp.DV, dp.IPRED), '.3f')}, "
+                    f"NRMSE = {_box_value(rmse(dp.NRES), '.3g')}, "
+                    f"RMSE$_w$ = {_box_value(rmse(dp.IWRES), '.3g')}"
+                )
+                lines.append(
+                    f"GMFE = {_box_value(metrics['GMFE'], '.3g')}, "
+                    f"AFE = {_box_value(metrics['AFE'], '.3g')}, "
+                    f"2-fold = {_box_value(metrics['within_2fold'], '.1f', '%')}, "
+                    f"2 SD = {_box_value(metrics['within_2sd'], '.1f', '%')}"
                 )
             elif plot == "bland_altman":
                 _mean, difference, _mask = self._log_ratio(dp)
                 if difference.size == 0:
-                    lines.append(f"{prefix}no ratio")
+                    lines.append("no ratio")
                     continue
                 bias_training, half = self.agreement(pset)
                 inside = np.mean(np.abs(difference - bias_training) <= half + 1e-12)
                 bias = float(np.mean(difference))
-                sd = float(np.std(difference, ddof=1)) if difference.size > 1 else 0.0
+                sd = (
+                    _box_value(10 ** float(np.std(difference, ddof=1)), ".2f", "x")
+                    if difference.size > 1
+                    else "-"
+                )
                 lines.append(
-                    f"{prefix}bias = {10**bias:.2f}x, SD = {10**sd:.2f}x, "
-                    f"in LoA = {inside:.0%}"
+                    f"bias = {10**bias:.2f}x, SD = {sd}, in LoA = {inside:.0%}"
                 )
             else:
                 raise ValueError(f"Unknown plot '{plot}'.")
         return "\n".join(lines)
 
-    def _box_prefix(self, pset: ParameterSet) -> str:
-        """Get the prefix of the line of a set in a box of metrics.
+    def _box_id(self, pset: ParameterSet) -> list[str]:
+        """Get the line of the id of a set in a box of metrics, none for one set.
 
-        The id of the set when several sets are compared, shortened to
-        `BOX_ID_LENGTH` characters: a box is inside its panel, and a long id
-        would take the width of the panel; the legend has the whole id.
+        When several sets are compared the metrics of a set follow a line of
+        its id, shortened to `BOX_ID_LENGTH` characters: a box is inside its
+        panel, and a long id in front of the metrics would take the width of
+        the panel; the legend has the whole id.
         """
         if len(self.parameter_sets) == 1:
-            return ""
+            return []
         sid = pset.sid
         if len(sid) > BOX_ID_LENGTH:
             sid = f"{sid[: BOX_ID_LENGTH - 3]}..."
-        return f"{sid}: "
+        return [f"{sid}:"]
 
     @staticmethod
     def _add_metrics_box(ax: Axes, text: str) -> None:
@@ -2782,7 +2796,8 @@ class FitReport:
             )
 
         for pset in self.parameter_sets:
-            dp = points[pset.sid]
+            # the points with a ratio, the others have no place on the axes
+            dp = points[pset.sid][self._log_ratio(points[pset.sid])[2]]
             sd = np.asarray(dp.DV_SD, dtype=float)
             self._draw_points(
                 ax,
@@ -3142,7 +3157,9 @@ class FitReport:
                         ax.set_xticks([])
                         ax.set_yticks([])
                         continue
-                    label_band = ax is flat[-1]
+                    # every drawn panel labels the band, the legend has an entry
+                    # once; the last panel may have no points
+                    label_band = True
                     if plot == "goodness_of_fit":
                         self._draw_goodness_of_fit(ax, of_panel, limits, label_band)
                     else:
