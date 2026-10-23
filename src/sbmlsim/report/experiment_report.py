@@ -10,8 +10,9 @@ import sys
 import webbrowser
 from collections.abc import Callable
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from sbmlsim import __version__, display
 from sbmlsim.model import AbstractModel
@@ -33,6 +34,20 @@ def _relative_path(path: Path, start: Path) -> Path:
         return Path(os.path.relpath(path, str(start)))
     except ValueError:
         return path.resolve()
+
+
+def _link(path: PurePath) -> str:
+    """Get the link of a path in a report, the same on every platform.
+
+    A relative path with slashes, which a browser reads on Windows as well (a
+    path of Windows has backslashes), an absolute one as a file URL.
+    """
+    if path.is_absolute():
+        posix = path.as_posix()
+        return (
+            "file://" + ("" if posix.startswith("/") else "/") + quote(posix, safe="/:")
+        )
+    return path.as_posix()
 
 
 class ReportResults:
@@ -91,7 +106,7 @@ class ReportResults:
                 raise
             logger.debug("No models in the report of the failed '%s'", exp_id)
             experiment_models = {}
-        models: dict[str, Path] = {}
+        models: dict[str, str] = {}
         for model_key, model in experiment_models.items():
             model_path: Path
             if isinstance(model, (Path, str)):
@@ -103,7 +118,7 @@ class ReportResults:
             else:
                 raise ValueError(f"Unsupported model type: '{type(model)}'")
 
-            models[model_key] = _relative_path(model_path, abs_path)
+            models[model_key] = _link(_relative_path(model_path, abs_path))
 
         # code path
         code_path = sys.modules[experiment.__module__].__file__
@@ -111,12 +126,12 @@ class ReportResults:
             raise ValueError(f"No source file for experiment '{exp_id}'.")
         with open(code_path, encoding="utf-8") as f_code:
             code = f_code.read()
-        code_rel_path = _relative_path(Path(code_path), abs_path)
+        code_rel_path = _link(_relative_path(Path(code_path), abs_path))
 
         # a failed experiment may have failed before it wrote its datasets, and
         # a file of an earlier run is not one of this run
         datasets = {
-            key: rel_path / experiment.dataset_file(key)
+            key: _link(rel_path / experiment.dataset_file(key))
             for key in experiment._datasets
             if exp_result.error is None or key in exp_result.datasets
         }
@@ -127,7 +142,7 @@ class ReportResults:
         for key, formats in exp_result.figures.items():
             stem = f"{exp_id}_{key}"
             figures[key] = {
-                "path": str(rel_path / stem),
+                "path": _link(rel_path / stem),
                 # which of the two backends wrote something for this figure
                 "static": "svg" in formats,
                 "interactive": "html" in formats,
