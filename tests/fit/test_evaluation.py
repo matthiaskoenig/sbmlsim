@@ -5,9 +5,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
+import scipy.stats
 
 from sbmlsim.fit.evaluation import (
     DEFAULT_CRITERIA,
+    MIN_POINTS_SUBSET_AGREEMENT,
     Fold,
     Grouping,
     Subset,
@@ -17,6 +19,7 @@ from sbmlsim.fit.evaluation import (
     gmfe,
     group_metrics,
     guest_limits,
+    subset_agreement,
     within_guest,
 )
 
@@ -189,3 +192,20 @@ def test_a_group_of_one_point_has_metrics() -> None:
     metrics = group_metrics(table, Grouping.by("tissue"), _no_mapping)
     assert metrics.n.tolist() == [1]
     assert np.isfinite(metrics.RMSE.iloc[0])
+
+
+def test_subset_agreement() -> None:
+    ratios = np.linspace(-0.3, 0.4, 12)
+    points = _points([1.0] * 12, list(10**ratios))
+    agreement = subset_agreement(points)
+    assert agreement is not None
+    bias, half, bias_ci, limit_ci = agreement
+    sd = np.std(ratios, ddof=1)
+    t = scipy.stats.t.ppf(0.975, 11)
+    assert bias == pytest.approx(np.mean(ratios))
+    assert half == pytest.approx(1.96 * sd)
+    assert bias_ci == pytest.approx(t * sd / np.sqrt(12))
+    assert limit_ci == pytest.approx(t * np.sqrt(3 * sd**2 / 12))
+    # the points without a ratio do not count
+    assert subset_agreement(_points([1.0] * 9 + [0.0] * 3, [2.0] * 12)) is None
+    assert MIN_POINTS_SUBSET_AGREEMENT == 10

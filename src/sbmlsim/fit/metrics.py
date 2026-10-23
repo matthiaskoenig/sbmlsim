@@ -25,7 +25,8 @@ The table of the data points has, after these, the columns a subset of the data
 is selected by: `observable`, the observable of the mapping, `observation`,
 the `ObservationKind` of the mapping (a timecourse, a value per simulation or
 values over a dimension), `DV_SD`, the standard deviation of the measured value
-(every error of a problem is one, `NaN` without one), `N`, the count of the
+(every error of a problem is one, `NaN` without one, also where the weights
+fill a missing error, see `OptimizationProblem.y_errors_measured`), `N`, the count of the
 data point, the number of subjects (`NaN` without one), and one column per
 field of the metadata of the mappings, `MappingMetaData.to_dict`, empty for a
 mapping which does not have the field.
@@ -442,11 +443,15 @@ class FitMetrics:
         for k, mapping in enumerate(self.problem.mapping_keys):
             dv = np.asarray(self.problem.y_references[k], dtype=float)
             errors = self.problem.y_errors[k]
+            measured = self.problem.y_errors_measured[k]
             sd = (
                 np.full(dv.size, np.nan)
                 if errors is None
                 else np.asarray(errors, dtype=float)
             )
+            if measured is not None:
+                # an error which the weights filled is no SD of the point
+                sd = np.where(measured, sd, np.nan)
             counts = self.problem.y_counts[k]
             n = (
                 np.full(dv.size, np.nan)

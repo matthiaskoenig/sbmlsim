@@ -54,7 +54,12 @@ from sbmlsim.fit.derived import (
     group_parameters,
     hook_summaries,
 )
-from sbmlsim.fit.evaluation import Grouping, criteria_metrics, group_metrics
+from sbmlsim.fit.evaluation import (
+    Grouping,
+    criteria_metrics,
+    group_metrics,
+    subset_agreement,
+)
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.methods import ReportContext
@@ -93,7 +98,11 @@ KIND_COLORS: dict[str, str] = {
     MappingKind.OUTLIER.value: "#e8590c",
 }
 
-#: the length of the id of a parameter set in a box of metrics, see `_box_prefix`
+#: color of the agreement of the points of a panel of a single parameter set,
+#: apart from the black band of the training data, see `_draw_subset_agreement`
+SUBSET_AGREEMENT_COLOR = "#7048e8"
+
+#: the length of the id of a parameter set in a box of metrics, see `_box_id`
 BOX_ID_LENGTH = 20
 
 #: colors of the studies, i.e. of the simulation experiments of the problem, in
@@ -190,6 +199,11 @@ def _percent(value: Any) -> str:
     return _cell(value, ".1f")
 
 
+def _box_value(value: float, spec: str, unit: str = "") -> str:
+    """Format a value of a box of metrics, `-` for a value which is not defined."""
+    return f"{value:{spec}}{unit}" if np.isfinite(value) else "-"
+
+
 def _cell(value: Any, spec: str) -> str:
     """Format a value of a table, `-` for a value which is not defined.
 
@@ -227,6 +241,8 @@ class FitReport:
         mapping_figures: bool = True,
         context: ReportContext | None = None,
         groupings: Sequence[Grouping] = (),
+        error_bars: bool = False,
+        color_by: str | None = None,
     ) -> None:
         """Construct the report.
 
@@ -265,6 +281,11 @@ class FitReport:
                 Bland-Altman plot with a row per group and a column per kind,
                 the criteria per group and their metrics, see
                 `plot_grouping`. A report without groupings has none of them.
+            error_bars: draw the standard deviation of the data points in the
+                goodness of fit and the Bland-Altman plots, see `_draw_points`.
+            color_by: a column of the data points which colors the points of
+                the goodness of fit and the Bland-Altman plots, e.g. `tissue`,
+                the study by default.
         """
         # Copy the definition, which excludes native models, then build a runtime
         # owned by this report. Later fits and reports cannot change its settings.
@@ -279,6 +300,8 @@ class FitReport:
         self.mapping_figures = mapping_figures
         self.context = context if context is not None else ReportContext()
         self.groupings: tuple[Grouping, ...] = tuple(groupings)
+        self.error_bars = error_bars
+        self.color_by = color_by
         # resolution of the PNG copies of the figures, see `_create_figures`
         self._png_dpi: float | str = PNG_DPI
 
@@ -928,8 +951,9 @@ class FitReport:
             "The validation panel shows how the fit describes data it was not "
             "fitted on, the outlier panel the data the fit dropped. The box "
             "of a panel carries its R², its normalized RMSE, the RMSE of "
-            "the residuals of the cost and the percentage of its points "
-            "within twofold."
+            "the residuals of the cost, its fold errors GMFE and AFE and the "
+            "percentages of its points within twofold and within two standard "
+            "deviations of the data."
         ),
         "bland_altman": (
             "The ratio of prediction and measurement over the geometric mean "
@@ -2153,7 +2177,11 @@ class FitReport:
             ax3.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
             self._add_metrics_box(ax3, self.mapping_text(k))
             self._draw_bland_altman(
-                ax4, of_mapping, label_band=True, point_labels=False
+                ax4,
+                of_mapping,
+                label_band=True,
+                point_labels=False,
+                own_agreement=self.problem.mapping_kinds[k] is not MappingKind.OUTLIER,
             )
             ax4.set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
             self._add_metrics_box(ax4, self._panel_text(of_mapping, "bland_altman"))
@@ -2202,6 +2230,10 @@ class FitReport:
         x_ref = self._x_positions(k)
         y_ref = self.problem.y_references[k]
         y_ref_err = self.problem.y_errors[k]
+        measured = self.problem.y_errors_measured[k]
+        if y_ref_err is not None and measured is not None:
+            # an error which the weights filled is no SD of the data
+            y_ref_err = np.where(measured, y_ref_err, np.nan)
         scalar = self._is_scalar(k)
         dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
         ax.set_ylabel(self._y_label(k))
@@ -2277,10 +2309,6 @@ class FitReport:
             The text of the box, the lines are prefixed with the id of the set
             when several sets are compared.
         """
-
-        def cell(value: float, spec: str, unit: str = "") -> str:
-            return f"{value:{spec}}{unit}" if np.isfinite(value) else "-"
-
         training = self.problem.mapping_kinds[k] is MappingKind.TRAINING
         training_indices = [
             i
@@ -2289,23 +2317,23 @@ class FitReport:
         ]
         lines: list[str] = []
         for pset in self.parameter_sets:
-            prefix = self._box_prefix(pset)
+            lines.extend(self._box_id(pset))
             dp = self._of_mapping(self.points(pset), k)
             metrics = criteria_metrics(dp)
             costs = self.residual_data(pset)["cost"]
             cost = float(costs[k])
             total = float(sum(costs[i] for i in training_indices))
             share = (
-                f" ({cell(100.0 * cost / total, '.1f', '%')})"
+                f" ({_box_value(100.0 * cost / total, '.1f', '%')})"
                 if training and total > 0
                 else ""
             )
             lines.append(
-                f"{prefix}n = {len(dp)}, GMFE = {cell(metrics['GMFE'], '.3g')}, "
-                f"AFE = {cell(metrics['AFE'], '.3g')}\n"
-                f"2-fold = {cell(metrics['within_2fold'], '.1f', '%')}, "
-                f"2 SD = {cell(metrics['within_2sd'], '.1f', '%')}, "
-                f"cost = {cell(cost, '.3g')}{share}"
+                f"n = {len(dp)}, GMFE = {_box_value(metrics['GMFE'], '.3g')}, "
+                f"AFE = {_box_value(metrics['AFE'], '.3g')}\n"
+                f"2-fold = {_box_value(metrics['within_2fold'], '.1f', '%')}, "
+                f"2 SD = {_box_value(metrics['within_2sd'], '.1f', '%')}, "
+                f"cost = {_box_value(cost, '.3g')}{share}"
             )
         return "\n".join(lines)
 
@@ -2436,8 +2464,9 @@ class FitReport:
 
         The goodness of fit shows how well the predictions describe the data
         of the kind: `R²`, the scale free `NRMSE` and the `RMSE_w` of the cost
-        of `FitMetrics.summary` and the percentage of the points within
-        twofold, `within_2fold`; the absolute RMSE is not shown, the data
+        of `FitMetrics.summary`, the fold errors `GMFE` and `AFE` and the
+        percentages of the points within twofold and within two standard
+        deviations, see `sbmlsim.fit.evaluation`; the absolute RMSE is not shown, the data
         spans orders of magnitude and it only reads the largest curves. The
         Bland-Altman plot shows the agreement of the
         points of the panel itself: the bias and the SD of `log10(f(x)/y)` as
@@ -2478,46 +2507,55 @@ class FitReport:
         """
         lines: list[str] = []
         for pset in self.parameter_sets:
-            prefix = self._box_prefix(pset)
+            lines.extend(self._box_id(pset))
             dp = points[pset.sid]
             if plot == "goodness_of_fit":
-                within = criteria_metrics(dp)["within_2fold"]
+                metrics = criteria_metrics(dp)
                 lines.append(
-                    f"{prefix}R² = {r_squared(dp.DV, dp.IPRED):.3f}, "
-                    f"NRMSE = {rmse(dp.NRES):.3g}, "
-                    f"RMSE$_w$ = {rmse(dp.IWRES):.3g}, "
-                    f"2-fold = {f'{within:.1f}%' if np.isfinite(within) else '-'}"
+                    f"R² = {_box_value(r_squared(dp.DV, dp.IPRED), '.3f')}, "
+                    f"NRMSE = {_box_value(rmse(dp.NRES), '.3g')}, "
+                    f"RMSE$_w$ = {_box_value(rmse(dp.IWRES), '.3g')}"
+                )
+                lines.append(
+                    f"GMFE = {_box_value(metrics['GMFE'], '.3g')}, "
+                    f"AFE = {_box_value(metrics['AFE'], '.3g')}, "
+                    f"2-fold = {_box_value(metrics['within_2fold'], '.1f', '%')}, "
+                    f"2 SD = {_box_value(metrics['within_2sd'], '.1f', '%')}"
                 )
             elif plot == "bland_altman":
                 _mean, difference, _mask = self._log_ratio(dp)
                 if difference.size == 0:
-                    lines.append(f"{prefix}no ratio")
+                    lines.append("no ratio")
                     continue
                 bias_training, half = self.agreement(pset)
                 inside = np.mean(np.abs(difference - bias_training) <= half + 1e-12)
                 bias = float(np.mean(difference))
-                sd = float(np.std(difference, ddof=1)) if difference.size > 1 else 0.0
+                sd = (
+                    _box_value(10 ** float(np.std(difference, ddof=1)), ".2f", "x")
+                    if difference.size > 1
+                    else "-"
+                )
                 lines.append(
-                    f"{prefix}bias = {10**bias:.2f}x, SD = {10**sd:.2f}x, "
-                    f"in LoA = {inside:.0%}"
+                    f"bias = {10**bias:.2f}x, SD = {sd}, in LoA = {inside:.0%}"
                 )
             else:
                 raise ValueError(f"Unknown plot '{plot}'.")
         return "\n".join(lines)
 
-    def _box_prefix(self, pset: ParameterSet) -> str:
-        """Get the prefix of the line of a set in a box of metrics.
+    def _box_id(self, pset: ParameterSet) -> list[str]:
+        """Get the line of the id of a set in a box of metrics, none for one set.
 
-        The id of the set when several sets are compared, shortened to
-        `BOX_ID_LENGTH` characters: a box is inside its panel, and a long id
-        would take the width of the panel; the legend has the whole id.
+        When several sets are compared the metrics of a set follow a line of
+        its id, shortened to `BOX_ID_LENGTH` characters: a box is inside its
+        panel, and a long id in front of the metrics would take the width of
+        the panel; the legend has the whole id.
         """
         if len(self.parameter_sets) == 1:
-            return ""
+            return []
         sid = pset.sid
         if len(sid) > BOX_ID_LENGTH:
             sid = f"{sid[: BOX_ID_LENGTH - 3]}..."
-        return f"{sid}: "
+        return [f"{sid}:"]
 
     @staticmethod
     def _add_metrics_box(ax: Axes, text: str) -> None:
@@ -2533,6 +2571,162 @@ class FitReport:
             bbox=METRICS_BOX,
             zorder=10,
         )
+
+    def _value_color(self, value: Any) -> str:
+        """Get the color of a value of the column `color_by`.
+
+        The values in the order they appear in the data points of the
+        reference set, so a value has the same color in every figure.
+        """
+        if self.color_by is None:
+            raise ValueError("The report has no column to color by.")
+        values = list(
+            dict.fromkeys(
+                str(v) for v in self.points(self.reference_set)[self.color_by]
+            )
+        )
+        index = values.index(str(value)) if str(value) in values else len(values)
+        return STUDY_COLORS[index % len(STUDY_COLORS)]
+
+    def _draw_points(
+        self,
+        ax: Axes,
+        dp: pd.DataFrame,
+        pset: ParameterSet,
+        x: np.ndarray,
+        y: np.ndarray,
+        point_labels: bool,
+        xerr: np.ndarray | None = None,
+        yerr: np.ndarray | None = None,
+    ) -> None:
+        """Draw the data points of a set in a panel of the agreement.
+
+        The points of a study, or of a value of `color_by`, take its color and
+        its legend entry; with `point_labels` false (the figure of a mapping)
+        the points take the color of their set and no entry. With
+        `error_bars` the errors are drawn, the columns of `xerr` and `yerr`
+        per point, `NaN` for a point without a standard deviation.
+
+        Args:
+            ax: the panel.
+            dp: the data points of the set which are drawn.
+            pset: the parameter set.
+            x: the x of every point.
+            y: the y of every point.
+            point_labels: label and color the points by their group.
+            xerr: the lower and upper error of x of every point.
+            yerr: the lower and upper error of y of every point.
+        """
+        column = self.color_by if self.color_by is not None else "experiment"
+        keys = np.asarray(dp[column], dtype=object)
+        kwargs: dict[str, Any] = {
+            **self.kwargs_scatter,
+            "marker": self.set_marker(pset),
+        }
+        for key in dict.fromkeys(keys):
+            of_key = keys == key
+            if not point_labels:
+                color = self.color(pset)
+            elif self.color_by is not None:
+                color = self._value_color(key)
+            else:
+                color = self.study_color(str(key))
+            ax.plot(
+                x[of_key],
+                y[of_key],
+                label=self._point_label(key, pset) if point_labels else None,
+                color=color,
+                **kwargs,
+            )
+            if not self.error_bars:
+                continue
+            for err, along in ((xerr, "x"), (yerr, "y")):
+                if err is None:
+                    continue
+                part = err[:, of_key]
+                finite = np.all(np.isfinite(part), axis=0)
+                if not finite.any():
+                    continue
+                errors = part[:, finite]
+                ax.errorbar(
+                    x[of_key][finite],
+                    y[of_key][finite],
+                    xerr=errors if along == "x" else None,
+                    yerr=errors if along == "y" else None,
+                    fmt="none",
+                    ecolor=color,
+                    elinewidth=1.0,
+                    alpha=0.6,
+                    zorder=1,
+                )
+
+    @staticmethod
+    def _log_ratio_errors(dp: pd.DataFrame, difference: np.ndarray) -> np.ndarray:
+        """Get the error of the log ratio of the points from the SD of the data.
+
+        `log10(f/(y ± SD))` around `log10(f/y)`: a larger data value is a
+        smaller ratio. The upper end of a point whose SD is not smaller than
+        its value has no logarithm and is drawn one decade above the point.
+
+        Returns:
+            The lower and the upper error of every point, `NaN` without an SD.
+        """
+        dv = np.asarray(dp.DV, dtype=float)
+        sd = np.asarray(dp.DV_SD, dtype=float)
+        ipred = np.asarray(dp.IPRED, dtype=float)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            lower = difference - np.log10(ipred / (dv + sd))
+            below = dv - sd
+            upper = np.where(
+                below > 0, np.log10(ipred / np.where(below > 0, below, 1.0)), np.nan
+            )
+            upper = np.where(below > 0, upper - difference, 1.0)
+        upper = np.where(np.isfinite(sd), upper, np.nan)
+        return np.vstack([lower, upper])
+
+    def _draw_subset_agreement(
+        self, ax: Axes, dp: pd.DataFrame, pset: ParameterSet
+    ) -> tuple[float, float] | None:
+        """Draw the agreement of the points of a panel with its confidence.
+
+        The bias and the limits of agreement of the points of the panel,
+        thinner than the band of the training data, and the 95% confidence
+        intervals of the bias and of the limits as shaded bands, see
+        `sbmlsim.fit.evaluation.subset_agreement`; a panel of fewer than
+        `MIN_POINTS_SUBSET_AGREEMENT` points has none. The lines are labelled
+        in every panel which has them, the legend of a figure has an entry
+        once; they are violet for a single set, which the band of the training
+        data has in black, and in the color of a set when sets are compared.
+
+        Returns:
+            The lowest and the highest value drawn, `None` without an agreement.
+        """
+        agreement = subset_agreement(dp)
+        if agreement is None:
+            return None
+        bias, half, bias_ci, limit_ci = agreement
+        single = len(self.parameter_sets) == 1
+        color = SUBSET_AGREEMENT_COLOR if single else self.color(pset)
+        prefix = "" if single else f"{pset.sid} "
+        style: dict[str, Any] = {"color": color, "linewidth": 0.9, "alpha": 0.9}
+        ax.axhline(
+            bias,
+            label=f"{prefix}this panel bias",
+            linestyle="-.",
+            **style,
+        )
+        ax.axhspan(bias - bias_ci, bias + bias_ci, color=color, alpha=0.15, zorder=0)
+        for limit in (bias - half, bias + half):
+            ax.axhline(
+                limit,
+                label=f"{prefix}this panel LoA",
+                linestyle="--",
+                **style,
+            )
+            ax.axhspan(
+                limit - limit_ci, limit + limit_ci, color=color, alpha=0.1, zorder=0
+            )
+        return bias - half - limit_ci, bias + half + limit_ci
 
     def _draw_goodness_of_fit(
         self,
@@ -2604,21 +2798,18 @@ class FitReport:
             )
 
         for pset in self.parameter_sets:
-            dp = points[pset.sid]
-            kwargs: dict[str, Any] = {
-                **self.kwargs_scatter,
-                "marker": self.set_marker(pset),
-            }
-            for study, of_study in dp.groupby("experiment", sort=False):
-                ax.plot(
-                    of_study.DV.values,
-                    of_study.IPRED.values,
-                    label=self._point_label(study, pset) if point_labels else None,
-                    color=self.study_color(str(study))
-                    if point_labels
-                    else self.color(pset),
-                    **kwargs,
-                )
+            # the points with a ratio, the others have no place on the axes
+            dp = points[pset.sid][self._log_ratio(points[pset.sid])[2]]
+            sd = np.asarray(dp.DV_SD, dtype=float)
+            self._draw_points(
+                ax,
+                dp,
+                pset,
+                np.asarray(dp.DV, dtype=float),
+                np.asarray(dp.IPRED, dtype=float),
+                point_labels,
+                xerr=np.vstack([sd, sd]),
+            )
 
         ax.set_xlabel("Experiment $y_{i,k}$", fontweight="bold")
         ax.set_xscale("log")
@@ -2767,13 +2958,15 @@ class FitReport:
         points: Mapping[str, pd.DataFrame],
         label_band: bool,
         point_labels: bool = True,
+        own_agreement: bool = True,
     ) -> None:
         """Draw a panel of the Bland-Altman plot: the log ratio over the geometric mean.
 
-        The points by study and set, the band of `agreement` of every set and
-        the line of no difference, see `plot_bland_altman`. A panel of the
-        summary figure, of a grouping and of the figure of a mapping is drawn
-        by it.
+        The points by study and set, the band of `agreement` of every set, the
+        line of no difference and the lines of twofold, see
+        `plot_bland_altman`, and the agreement of the points of the panel
+        itself, see `_draw_subset_agreement`. A panel of the summary figure, of
+        a grouping and of the figure of a mapping is drawn by it.
 
         Args:
             ax: the panel.
@@ -2782,29 +2975,35 @@ class FitReport:
             label_band: label the band and the lines, which a figure does once.
             point_labels: label the points by their study, see
                 `_draw_goodness_of_fit`.
+            own_agreement: draw the agreement of the points of the panel. The
+                panel of the training data of the summary figure has the
+                agreement of the band, the reference, and the outliers were
+                dropped for not agreeing, so both leave it out.
         """
+        # the values the y axis shows: the points, the lines of twofold and the
+        # agreement of the panel; not the error bars, which may reach far
+        # beyond the points, e.g. a standard deviation as large as the value
+        shown_y: list[float] = [np.log10(2.0), -np.log10(2.0)]
         for pset in self.parameter_sets:
             dp = points[pset.sid]
             mean, difference, mask = self._log_ratio(dp)
             if difference.size == 0:
                 continue
-
-            studies = np.asarray(dp.experiment, dtype=object)[mask]
-            kwargs: dict[str, Any] = {
-                **self.kwargs_scatter,
-                "marker": self.set_marker(pset),
-            }
-            for study in dict.fromkeys(studies):
-                of_study = studies == study
-                ax.plot(
-                    mean[of_study],
-                    difference[of_study],
-                    label=self._point_label(study, pset) if point_labels else None,
-                    color=self.study_color(str(study))
-                    if point_labels
-                    else self.color(pset),
-                    **kwargs,
-                )
+            shown_y.extend(difference.tolist())
+            shown = dp[mask]
+            self._draw_points(
+                ax,
+                shown,
+                pset,
+                mean,
+                difference,
+                point_labels,
+                yerr=self._log_ratio_errors(shown, difference),
+            )
+            if own_agreement:
+                extent = self._draw_subset_agreement(ax, shown, pset)
+                if extent is not None:
+                    shown_y.extend(extent)
 
         # the agreement of the training data, the same lines in every panel.
         # The points carry the color of their study, so the lines are neutral
@@ -2835,16 +3034,26 @@ class FitReport:
                     **LIMITS_STYLE,
                 )
 
-        # the identity of the goodness of fit is no difference here
+        # the identity of the goodness of fit is no difference here, its lines
+        # of twofold are the differences of `±log10(2)`
         ax.axhline(
             0.0,
             color="black",
             label=self._band_labels(self.reference_set)[0] if label_band else None,
             **IDENTITY_STYLE,
         )
+        for sign in (1.0, -1.0):
+            ax.axhline(
+                sign * np.log10(2.0),
+                label="2-fold" if label_band and sign > 0 else None,
+                **TWOFOLD_STYLE,
+            )
         ax.set_xlabel("Geometric mean $\\sqrt{f(x_{i,k}) y_{i,k}}$")
         ax.set_xscale("log")
         ax.grid()
+        low, high = min(shown_y), max(shown_y)
+        pad = 0.08 * (high - low)
+        ax.set_ylim(low - pad, high + pad)
         self._include_limits(ax, agreement)
 
     def plot_bland_altman(self, path: Path) -> None:
@@ -2873,7 +3082,12 @@ class FitReport:
                 pset.sid: self._of_kind(points[pset.sid], kind)
                 for pset in self.parameter_sets
             }
-            self._draw_bland_altman(ax, of_kind, label_band=ax is axes[-1])
+            self._draw_bland_altman(
+                ax,
+                of_kind,
+                label_band=ax is axes[-1],
+                own_agreement=kind == MappingKind.VALIDATION.value,
+            )
             ax.set_title(
                 self._panel_title(
                     kind, [points[pset.sid] for pset in self.parameter_sets]
@@ -2945,11 +3159,18 @@ class FitReport:
                         ax.set_xticks([])
                         ax.set_yticks([])
                         continue
-                    label_band = ax is flat[-1]
+                    # every drawn panel labels the band, the legend has an entry
+                    # once; the last panel may have no points
+                    label_band = True
                     if plot == "goodness_of_fit":
                         self._draw_goodness_of_fit(ax, of_panel, limits, label_band)
                     else:
-                        self._draw_bland_altman(ax, of_panel, label_band)
+                        self._draw_bland_altman(
+                            ax,
+                            of_panel,
+                            label_band,
+                            own_agreement=kind != MappingKind.OUTLIER.value,
+                        )
                     self._add_metrics_box(ax, self._panel_text(of_panel, plot))
             for row in axes:
                 row[0].set_ylabel(
