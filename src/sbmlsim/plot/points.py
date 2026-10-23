@@ -195,6 +195,33 @@ def band_label(name: str | None, quantiles: tuple[float, float]) -> str:
     return f"{name} ({low}-{high} %)" if name else f"{low}-{high} %"
 
 
+def nan_quantile(values: np.ndarray, q: float) -> np.ndarray:
+    """Get a quantile along the last axis, ignoring NaN, vectorized.
+
+    The linear interpolation of `numpy.nanquantile`, whose reduction of an
+    array with a NaN runs in python once per position of the other axes; the
+    values are sorted once (NaN last) and the quantile is taken from the
+    finite values of every position.
+
+    Args:
+        values: the values, reduced along the last axis.
+        q: the quantile in `[0, 1]`.
+
+    Returns:
+        The quantile of every position of the other axes, `NaN` where every
+        value is `NaN`.
+    """
+    ordered = np.sort(np.asarray(values, dtype=float), axis=-1)
+    n = np.isfinite(ordered).sum(axis=-1)
+    position = q * np.maximum(n - 1, 0)
+    lower = np.floor(position).astype(int)
+    upper = np.minimum(lower + 1, np.maximum(n - 1, 0))
+    low = np.take_along_axis(ordered, lower[..., np.newaxis], axis=-1)[..., 0]
+    high = np.take_along_axis(ordered, upper[..., np.newaxis], axis=-1)[..., 0]
+    result = low + (position - lower) * (high - low)
+    return np.where(n > 0, result, np.nan)
+
+
 def onto_union(
     sid: str, x: xr.DataArray, y: xr.DataArray
 ) -> tuple[xr.DataArray, xr.DataArray]:
@@ -291,21 +318,17 @@ def band_lines(
             f"The band '{sid}' reduces the dimension '{across}', which its data has "
             f"not: {[str(d) for d in y.dims]}."
         )
-    # a point at which every draw is NaN (all simulations failed) has no quantile:
-    # it is reduced on zeros, which the mask then replaces with NaN
-    valid = y.notnull().any(dim=across)
-    filled = y.where(valid, 0.0)
-    low = (
-        filled.quantile(quantiles[0], dim=across, skipna=True)
-        .drop_vars("quantile")
-        .where(valid)
+    # the quantiles over the draws, ignoring NaN; a point at which every draw
+    # is NaN (all simulations failed) has no quantile and is NaN
+    low, median, high = (
+        xr.apply_ufunc(
+            nan_quantile,
+            y,
+            input_core_dims=[[across]],
+            kwargs={"q": q},
+        )
+        for q in (quantiles[0], 0.5, quantiles[1])
     )
-    high = (
-        filled.quantile(quantiles[1], dim=across, skipna=True)
-        .drop_vars("quantile")
-        .where(valid)
-    )
-    median = filled.median(dim=across, skipna=True).where(valid)
     lows = curve_lines(sid, over, x, low)
     medians = curve_lines(sid, over, x, median)
     highs = curve_lines(sid, over, x, high)

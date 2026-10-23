@@ -16,6 +16,7 @@ from sbmlsim.plot.points import (
     band_lines,
     curve_lines,
     format_value,
+    nan_quantile,
     onto_union,
     point_colormap,
     point_colors,
@@ -387,3 +388,15 @@ def test_format_value() -> None:
     assert format_value(1e-5) == "1e-5"
     assert format_value(1234567.0) == "1.23457e6"
     assert format_value(0.00012) == "0.00012"
+
+
+@pytest.mark.parametrize("q", [0.0, 0.05, 0.5, 0.95, 1.0])
+def test_nan_quantile_is_the_one_of_numpy(q: float) -> None:
+    rng = np.random.default_rng(1)
+    values = rng.normal(size=(7, 5, 31))
+    values[values > 1.5] = np.nan
+    values[3, 2, :] = np.nan
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        expected = np.nanquantile(values, q, axis=-1)
+    np.testing.assert_allclose(nan_quantile(values, q), expected, equal_nan=True)
