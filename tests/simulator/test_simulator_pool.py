@@ -462,13 +462,22 @@ if __name__ == "__main__":
 
 
 def _group_ended(pgid: int, timeout: float) -> bool:
-    """Wait until no process of a process group is left."""
+    """Wait until no process of a process group is left.
+
+    macOS answers a signal to a group whose members are all zombies, i.e.
+    processes which ended and were not reaped yet, with `EPERM` instead of
+    `ESRCH`: no process of the group runs any more.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             os.killpg(pgid, 0)
         except ProcessLookupError:
             return True
+        except PermissionError:
+            if sys.platform == "darwin":
+                return True
+            raise
         time.sleep(0.1)
     return False
 
