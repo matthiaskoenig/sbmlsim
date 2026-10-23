@@ -5,6 +5,7 @@ import pytest
 
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import TimecourseResult
+from sbmlsim.result.timecourse import plot_times
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
 
@@ -71,3 +72,33 @@ def test_simulator_returns_arrays() -> None:
     np.testing.assert_allclose(result.time, np.insert(np.arange(21), 10, 10))
     assert result["Y"][10] != 5.0
     assert result["Y"][11] == 5.0
+
+
+def test_few_time_points_are_kept() -> None:
+    times = np.array([[0.0, 1.0, 2.0, np.nan], [0.0, 1.5, 2.0, 2.0]])
+    np.testing.assert_array_equal(plot_times(times), [0.0, 1.0, 1.5, 2.0])
+
+
+def test_the_time_points_of_a_figure_follow_the_steps() -> None:
+    """Dense steps after a dose give dense time points, a few hundred in all."""
+    rng = np.random.default_rng(1)
+    # 50 simulations: dense steps in the first hour, sparse to 100 hr
+    steps = [
+        np.concatenate(
+            [[0.0], np.sort(rng.uniform(0, 1, 400)), np.linspace(1, 100, 40)]
+        )
+        for _ in range(50)
+    ]
+    grid = plot_times(np.array(steps), n=200, keep=[24.0])
+    assert grid.size <= 201
+    assert grid[0] == 0.0 and grid[-1] == 100.0
+    assert np.all(np.diff(grid) > 0)
+    assert 24.0 in grid
+    # most of the points in the first hour, every phase covered
+    assert np.mean(grid <= 1.0) > 0.5
+    assert np.max(np.diff(grid)) <= 100 / (200 // 4 - 1) + 1e-9
+
+
+def test_a_figure_needs_two_time_points() -> None:
+    with pytest.raises(ValueError, match="at least 2"):
+        plot_times(np.arange(10.0), n=1)

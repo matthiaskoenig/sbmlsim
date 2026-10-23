@@ -2,9 +2,12 @@
 
 import copy
 
+import numpy as np
 import pytest
 
 from sbmlsim.plot.plotting import (
+    LOG_DECADES,
+    LOG_MARGIN,
     Axis,
     ColorType,
     Figure,
@@ -16,6 +19,7 @@ from sbmlsim.plot.plotting import (
     Plot,
     Style,
     SubPlot,
+    log_limits,
 )
 
 color_data = [
@@ -279,3 +283,29 @@ def test_the_error_bars_of_bars_get_their_caps() -> None:
     """`bar` takes the error keywords in `error_kw`, `errorbar` directly."""
     style = Style.from_mpl_kwargs(linestyle="-", linewidth=2.0)
     assert style.to_mpl_bar_kwargs()["error_kw"]["capsize"] == Style.ERROR_CAPSIZE
+
+
+def test_a_log_axis_shows_at_most_its_decades() -> None:
+    """The tiny first steps of the integrator do not stretch a log axis."""
+    limits = log_limits(1e-40, 100.0)
+    assert limits is not None
+    low, high = limits
+    margin = 10 ** (LOG_MARGIN * LOG_DECADES)
+    assert low == pytest.approx(100.0 / 10**LOG_DECADES / margin)
+    assert high == pytest.approx(100.0 * margin)
+
+
+def test_a_log_axis_of_data_within_its_decades_keeps_its_limits() -> None:
+    assert log_limits(1e-2, 100.0) is None
+    assert log_limits(np.nan, np.nan) is None
+    assert log_limits(1e-40, 0.0) is None
+
+
+def test_a_bound_of_a_log_axis_is_kept() -> None:
+    """A set bound stays, the margin follows the decades it shows."""
+    limits = log_limits(1e-40, 1000.0, low=1.0)
+    assert limits is not None
+    low, high = limits
+    assert low == 1.0
+    assert high == pytest.approx(1000.0 * 10 ** (LOG_MARGIN * 3))
+    assert log_limits(1e-40, 1000.0, low=1.0, high=1e4) == (1.0, 1e4)

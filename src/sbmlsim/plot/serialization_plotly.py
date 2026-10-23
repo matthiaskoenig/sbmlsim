@@ -50,6 +50,7 @@ from sbmlsim.plot.plotting import (
     Style,
     SubPlot,
     YAxisPosition,
+    log_limits,
 )
 from sbmlsim.plot.points import (
     BandLine,
@@ -247,8 +248,32 @@ def _values(data: Any, experiment: Any, unit: str | None) -> xr.DataArray | None
     return data.get_data(experiment=experiment, to_units=unit)
 
 
-def _axis_options(axis: Axis | None) -> dict[str, Any]:
-    """Get the plotly options of an axis of the figure model."""
+def _data_range(traces: list[Any], key: str) -> tuple[float, float]:
+    """Get the smallest positive and the largest value of the traces along x or y."""
+    values = [
+        np.asarray(getattr(trace, key), dtype=float).ravel()
+        for trace in traces
+        if getattr(trace, key, None) is not None
+    ]
+    if not values:
+        return np.nan, np.nan
+    pooled = np.concatenate(values)
+    positive = pooled[np.isfinite(pooled) & (pooled > 0)]
+    if positive.size == 0:
+        return np.nan, np.nan
+    return float(positive.min()), float(positive.max())
+
+
+def _axis_options(
+    axis: Axis | None, data: tuple[float, float] = (np.nan, np.nan)
+) -> dict[str, Any]:
+    """Get the plotly options of an axis of the figure model.
+
+    Args:
+        axis: the axis.
+        data: the smallest positive and the largest value of the traces on it,
+            which limit a log axis to `LOG_DECADES` (`log_limits`).
+    """
     if axis is None:
         return {}
     options: dict[str, Any] = {
@@ -262,6 +287,10 @@ def _axis_options(axis: Axis | None) -> dict[str, Any]:
         high = np.log10(axis.max) if axis.max and options["type"] == "log" else axis.max
         if low is not None and high is not None:
             options["range"] = [low, high]
+    if options["type"] == "log":
+        limits = log_limits(*data, axis.min, axis.max)
+        if limits is not None:
+            options["range"] = [float(np.log10(limit)) for limit in limits]
     if axis.reverse:
         options["autorange"] = "reversed"
     return options
@@ -642,11 +671,24 @@ class PlotlyFigureSerializer:
         for trace, _, right in sorted(drawn, key=lambda item: not item[1]):
             fig.add_trace(trace, row=row, col=col, secondary_y=right)
 
-        fig.update_xaxes(**_axis_options(xaxis), row=row, col=col)
-        fig.update_yaxes(**_axis_options(yaxis), row=row, col=col, secondary_y=False)
+        traces = [trace for trace, _, _ in drawn]
+        left = [trace for trace, _, right in drawn if not right]
+        right = [trace for trace, _, right in drawn if right]
+        fig.update_xaxes(
+            **_axis_options(xaxis, _data_range(traces, "x")), row=row, col=col
+        )
+        fig.update_yaxes(
+            **_axis_options(yaxis, _data_range(left, "y")),
+            row=row,
+            col=col,
+            secondary_y=False,
+        )
         if plot.yaxis_right:
             fig.update_yaxes(
-                **_axis_options(plot.yaxis_right), row=row, col=col, secondary_y=True
+                **_axis_options(plot.yaxis_right, _data_range(right, "y")),
+                row=row,
+                col=col,
+                secondary_y=True,
             )
 
     @classmethod

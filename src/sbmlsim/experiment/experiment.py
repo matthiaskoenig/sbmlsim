@@ -24,6 +24,7 @@ from sbmlsim.plot.points import point_linestyles
 from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
     MatplotlibFigureSerializer,
+    limit_log_axes,
 )
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT, TIME
@@ -896,13 +897,12 @@ class SimulationExperiment:
 
         Every dimension of a scan which the task data of a curve has must be
         its axis (the one dimension of x which is not in `over`), in `over`,
-        or selected by one label; a band reduces `across` and needs a common
-        grid. Dataset and function data are checked when they are drawn.
+        or selected by one label; a band reduces `across`. Dataset and function data are checked when they are drawn.
 
         Raises:
             ValueError: for a dimension which is not named, an `over` or
                 `across` dimension the data has not, more points of a second
-                `over` dimension than line styles, or a band of a ragged scan.
+                `over` dimension than line styles.
         """
         for key, figure in self._figures.items():
             for plot in figure.get_plots():
@@ -942,24 +942,11 @@ class SimulationExperiment:
                 f"The {what} '{sid}' of the figure '{figure}' draws a line per point of "
                 f"{missing}, which its data has not: {sorted(found)}."
             )
-        if across is not None:
-            y = others[0]
-            simulation = (
-                self._simulations[self._tasks[str(y.task_id)].simulation_id]
-                if y is not None and y.is_task()
-                else None
+        if across is not None and across not in found:
+            raise ValueError(
+                f"The band '{sid}' of the figure '{figure}' reduces the dimension "
+                f"'{across}', which its data has not: {sorted(found)}."
             )
-            if isinstance(simulation, Scan) and _ragged(simulation):
-                raise ValueError(
-                    f"The band '{sid}' of the figure '{figure}' reduces '{across}' of a "
-                    f"ragged scan, whose simulations keep their own time points; run "
-                    f"the scan on a common grid (a simulation with steps or times)."
-                )
-            if across not in found:
-                raise ValueError(
-                    f"The band '{sid}' of the figure '{figure}' reduces the dimension "
-                    f"'{across}', which its data has not: {sorted(found)}."
-                )
         axis = xs - set(over) - {across}
         if len(axis) > 1:
             raise ValueError(
@@ -1243,6 +1230,10 @@ class SimulationExperiment:
         open_before = set(plt.get_fignums())
         try:
             for fig_key, fig_mpl in self.figures_mpl().items():
+                # the tiny first steps of the integrator do not stretch a log
+                # axis whose limits the figure leaves to matplotlib
+                if isinstance(fig_mpl, FigureMPL):
+                    limit_log_axes(fig_mpl)
                 mpl_figures[fig_key] = fig_mpl
         except Exception as err:
             for num in set(plt.get_fignums()) - open_before:

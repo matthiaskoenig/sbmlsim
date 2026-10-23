@@ -35,6 +35,7 @@ from sbmlsim.plot.plotting import (
     ShadedArea,
     Style,
     YAxisPosition,
+    log_limits,
 )
 from sbmlsim.plot.points import (
     BandLine,
@@ -187,6 +188,50 @@ def _entry_key(handle: Any, label: str) -> tuple[Any, ...]:
             handle.get_alpha(),
         )
     return (label, id(handle))
+
+
+def limit_log_axis(
+    ax: AxesMPL,
+    axis: str = "y",
+    low: float | None = None,
+    high: float | None = None,
+) -> None:
+    """Limit a log axis of matplotlib to `LOG_DECADES` below its largest value.
+
+    The limits of the data drawn so far, see `sbmlsim.plot.plotting.log_limits`;
+    for a figure of a model drawn with matplotlib itself, after its data and
+    `set_yscale("log")`.
+
+    Args:
+        ax: the axes.
+        axis: `"x"` or `"y"`.
+        low: the lower limit set on the axis, `None` without.
+        high: the upper limit set on the axis, `None` without.
+    """
+    data = ax.dataLim
+    smallest, largest = (
+        (data.minposx, data.x1) if axis == "x" else (data.minposy, data.y1)
+    )
+    limits = log_limits(smallest, largest, low, high)
+    if limits is None:
+        return
+    if axis == "x":
+        ax.set_xlim(*limits)
+    else:
+        ax.set_ylim(*limits)
+
+
+def limit_log_axes(figure: FigureMPL) -> None:
+    """Limit every automatic log axis of a figure, see `limit_log_axis`.
+
+    The custom figures of an experiment (`figures_mpl`) are drawn by the
+    model; a log axis whose limits it set itself (autoscale off) is kept.
+    """
+    for ax in figure.axes:
+        if ax.get_xscale() == "log" and ax.get_autoscalex_on():
+            limit_log_axis(ax, "x")
+        if ax.get_yscale() == "log" and ax.get_autoscaley_on():
+            limit_log_axis(ax, "y")
 
 
 class MatplotlibFigureSerializer:
@@ -1006,6 +1051,11 @@ class MatplotlibFigureSerializer:
                     ax.set_xscale(cls._get_scale(sax))
                 elif axis_type == "y":
                     ax.set_yscale(cls._get_scale(sax))
+
+                # a log axis shows at most `LOG_DECADES` below the largest
+                # value, not the tiny first steps of the integrator
+                if sax.scale == AxisScale.LOG10:
+                    limit_log_axis(ax, axis_type, sax.min, sax.max)
 
                 if sax.min is not None:
                     if axis_type == "x":

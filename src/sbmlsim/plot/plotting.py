@@ -638,6 +638,57 @@ class Style(BasePlotObject):
         return Style(line=line, marker=marker, fill=fill)
 
 
+#: the decades below the largest value which the automatic limits of a log
+#: axis show at most, see `log_limits`
+LOG_DECADES = 6
+
+#: the margin of the automatic limits of a log axis, a share of its decades, as
+#: matplotlib's default margin
+LOG_MARGIN = 0.05
+
+
+def log_limits(
+    smallest: float,
+    largest: float,
+    low: float | None = None,
+    high: float | None = None,
+) -> tuple[float, float] | None:
+    """Get the limits of a log axis whose data span too many decades.
+
+    The steps of the integrator start with tiny steps, at which a value which
+    starts at zero, e.g. a concentration after an oral dose, is tiny as well;
+    the automatic limits of a log axis would show dozens of decades of these
+    values. Data which span more than `LOG_DECADES` below the largest value
+    are limited to these decades, with the margin `LOG_MARGIN` of the
+    decades; a limit set on the axis is kept and the margin follows it.
+
+    Args:
+        smallest: the smallest positive value of the data.
+        largest: the largest value of the data.
+        low: the lower limit set on the axis, `None` without.
+        high: the upper limit set on the axis, `None` without.
+
+    Returns:
+        The lower and the upper limit, `None` when the automatic limits are
+        fine: no positive data, or data within `LOG_DECADES`, which keeps the
+        figures of such data as they were.
+    """
+    if not (np.isfinite(smallest) and np.isfinite(largest)) or largest <= 0:
+        return None
+    floor = largest / 10**LOG_DECADES
+    if smallest >= floor:
+        return None
+    bottom = low if low is not None else max(smallest, floor)
+    top = high if high is not None else largest
+    if top <= bottom:
+        return None
+    margin = 10 ** (LOG_MARGIN * np.log10(top / bottom))
+    return (
+        bottom if low is not None else bottom / margin,
+        top if high is not None else top * margin,
+    )
+
+
 class AxisScale(Enum):
     """Scale of the axis."""
 

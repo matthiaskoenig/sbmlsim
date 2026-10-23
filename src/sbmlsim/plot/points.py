@@ -15,8 +15,11 @@ value, through the norm of the colour bar (logarithmic for positive values
 spanning more than a factor of `LOG_RATIO`); a dimension which does not change
 one target is coloured by position, with the labels on a discrete colour bar. A
 band reduces a dimension of draws to two quantiles and the median, computed
-when the figure is drawn; it needs a common grid of times, and its legend
-entry is its area, `<name> (<low>-<high> %)`.
+when the figure is drawn; the draws of a ragged result, whose simulations keep
+their own time points (the steps of the integrator), are interpolated onto the
+time points of a figure first, a few hundred which follow the density of their
+time points (`onto_grid`, `sbmlsim.result.timecourse.plot_times`), and its
+legend entry is its area, `<name> (<low>-<high> %)`.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ from matplotlib.colors import (
 from sbmlsim.data import ROW
 from sbmlsim.plot.padding import without_padding
 from sbmlsim.result.scan import POINT, TIME
+from sbmlsim.result.timecourse import PLOT_POINTS, plot_times
 from sbmlsim.simulation import Dimension
 from sbmlsim.units import Quantity
 
@@ -193,6 +197,94 @@ def band_label(name: str | None, quantiles: tuple[float, float]) -> str:
     return f"{name} ({low}-{high} %)" if name else f"{low}-{high} %"
 
 
+def nan_quantile(values: np.ndarray, q: float) -> np.ndarray:
+    """Get a quantile along the last axis, ignoring NaN, vectorized.
+
+    The linear interpolation of `numpy.nanquantile`, whose reduction of an
+    array with a NaN runs in python once per position of the other axes; the
+    values are sorted once (NaN last) and the quantile is taken from the
+    finite values of every position.
+
+    Args:
+        values: the values, reduced along the last axis.
+        q: the quantile in `[0, 1]`.
+
+    Returns:
+        The quantile of every position of the other axes, `NaN` where every
+        value is `NaN`.
+    """
+    ordered = np.sort(np.asarray(values, dtype=float), axis=-1)
+    n = np.isfinite(ordered).sum(axis=-1)
+    position = q * np.maximum(n - 1, 0)
+    lower = np.floor(position).astype(int)
+    upper = np.minimum(lower + 1, np.maximum(n - 1, 0))
+    low = np.take_along_axis(ordered, lower[..., np.newaxis], axis=-1)[..., 0]
+    high = np.take_along_axis(ordered, upper[..., np.newaxis], axis=-1)[..., 0]
+    result = low + (position - lower) * (high - low)
+    return np.where(n > 0, result, np.nan)
+
+
+def onto_grid(
+    sid: str, x: xr.DataArray, y: xr.DataArray, n: int = PLOT_POINTS
+) -> tuple[xr.DataArray, xr.DataArray]:
+    """Interpolate the data of a band of a ragged result onto the time points of a figure.
+
+    In the ragged layout every simulation keeps its own time points (`_point`,
+    padded with `NaN`), so the quantiles of a band at a position of `_point`
+    would mix times. Every simulation is interpolated linearly onto `n` time
+    points which follow the density of the time points of all simulations
+    (`plot_times`), with `NaN` outside of its own range; the times of the
+    changes, which a simulation has twice (the states before and after it),
+    are among them and give the state after the change, as
+    `ScanResult.interpolate` does.
+
+    Args:
+        sid: the id of the band, for the errors.
+        x: the x data, the time over `(*dims, _point)`.
+        y: the y data over `(*dims, _point)`.
+        n: the number of time points.
+
+    Returns:
+        The time points as x over `time` and the y data over `(*dims, time)`.
+
+    Raises:
+        ValueError: if x of a simulation does not increase.
+    """
+    x, y = xr.broadcast(x, y)
+    dims = [str(d) for d in y.dims if d != POINT]
+    xs = np.asarray(x.transpose(*dims, POINT).values, dtype=float)
+    ys = np.asarray(y.transpose(*dims, POINT).values, dtype=float)
+    shape = xs.shape[:-1]
+    xs = xs.reshape(-1, xs.shape[-1])
+    ys = ys.reshape(-1, ys.shape[-1])
+    simulations = []
+    changes: set[float] = set()
+    for xk, yk in zip(xs, ys, strict=True):
+        finite = np.isfinite(xk)
+        xp, yp = xk[finite], yk[finite]
+        if np.any(np.diff(xp) < 0):
+            raise ValueError(
+                f"The band '{sid}' interpolates a ragged result onto the time "
+                f"points of a figure, its x values have to increase, e.g. the time."
+            )
+        # the state after a change at its time, the last of equal times
+        last = np.append(xp[1:] != xp[:-1], True) if xp.size else xp.astype(bool)
+        changes.update(xp[:-1][xp[1:] == xp[:-1]].tolist())
+        simulations.append((xp[last], yp[last]))
+    grid = plot_times(xs, n=n, keep=sorted(changes))
+    values = np.full((xs.shape[0], grid.size), np.nan)
+    for k, (xp, yp) in enumerate(simulations):
+        if xp.size:
+            values[k] = np.interp(grid, xp, yp, left=np.nan, right=np.nan)
+    coords = {d: y.coords[d] for d in dims if d in y.coords}
+    return (
+        xr.DataArray(grid, dims=(TIME,)),
+        xr.DataArray(
+            values.reshape(*shape, grid.size), dims=(*dims, TIME), coords=coords
+        ),
+    )
+
+
 def band_lines(
     sid: str,
     over: Sequence[str],
@@ -215,35 +307,28 @@ def band_lines(
         One band per point of `over`.
 
     Raises:
-        ValueError: if the data is ragged, has not the dimension `across`, or
-            leaves more than one dimension besides `over` and `across`.
+        ValueError: if the data has not the dimension `across`, or leaves more
+            than one dimension besides `over` and `across`; for a ragged result
+            see `onto_grid`.
     """
     if POINT in y.dims or POINT in x.dims:
-        raise ValueError(
-            f"The band '{sid}' reduces '{across}' of a ragged result, whose "
-            f"simulations keep their own time points; run the scan on a common grid "
-            f"(a simulation with steps or times)."
-        )
+        x, y = onto_grid(sid, x, y)
     if across not in y.dims:
         raise ValueError(
             f"The band '{sid}' reduces the dimension '{across}', which its data has "
             f"not: {[str(d) for d in y.dims]}."
         )
-    # a point at which every draw is NaN (all simulations failed) has no quantile:
-    # it is reduced on zeros, which the mask then replaces with NaN
-    valid = y.notnull().any(dim=across)
-    filled = y.where(valid, 0.0)
-    low = (
-        filled.quantile(quantiles[0], dim=across, skipna=True)
-        .drop_vars("quantile")
-        .where(valid)
+    # the quantiles over the draws, ignoring NaN; a point at which every draw
+    # is NaN (all simulations failed) has no quantile and is NaN
+    low, median, high = (
+        xr.apply_ufunc(
+            nan_quantile,
+            y,
+            input_core_dims=[[across]],
+            kwargs={"q": q},
+        )
+        for q in (quantiles[0], 0.5, quantiles[1])
     )
-    high = (
-        filled.quantile(quantiles[1], dim=across, skipna=True)
-        .drop_vars("quantile")
-        .where(valid)
-    )
-    median = filled.median(dim=across, skipna=True).where(valid)
     lows = curve_lines(sid, over, x, low)
     medians = curve_lines(sid, over, x, median)
     highs = curve_lines(sid, over, x, high)
