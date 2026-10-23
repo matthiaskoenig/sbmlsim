@@ -38,20 +38,19 @@ kept (the direction shown first, at `n_decided` draws): a decision is never
 reversed. Every wrong decision of a statement is an event of the martingale
 of its true probability, so a statement is wrong with probability at most
 `alpha`. The margin is the difference of a probability which does not matter,
-by default a tenth of the distance of the threshold to 0 or 1, whichever is
-nearer (0.01 for 0.9, 0.001 for 0.99); it makes every statement decidable with
-a bounded number of draws, also one whose probability is the threshold.
+0.05 by default; it makes every statement decidable with a bounded number of
+draws, also one whose probability is the threshold.
 
 **Several statements.** A `TestReport` decides `m` statements at the level of
 Bonferroni, `alpha / m` each (and gives their simultaneous intervals at that
 level), so the probability that any of them is wrong is at most `alpha` (the
 mean `alpha` of statements of other levels, `TestReport.family_error`),
-whatever the dependence between them, which share their draws. A step-down
-procedure, e.g. Holm, does not control this error: every statement with a
-threshold has a true null (both directions at the threshold, one direction
-and the equivalence elsewhere), so a correct decision of one statement must
-not relax the level of the others. The decisions of a report are the
-decisions of single statements at a fixed level, so they are never reversed
+whatever the dependence between them, which share their draws: every
+statement with a threshold has a true null (both directions at the
+threshold, one direction and the equivalence elsewhere), so a correct
+decision of one statement must not relax the level of the others. The
+decisions of a report are the decisions of single statements at a fixed
+level, so they are never reversed
 by more draws either; the conservative level costs draws only, about
 `log(m)` times the information per statement, which more draws provide.
 
@@ -100,8 +99,8 @@ REFERENCES: tuple[str, ...] = (
 #: the parameters of the Jeffreys mixture of the confidence sequence
 MIXTURE: tuple[float, float] = (0.5, 0.5)
 
-#: the margin of a threshold by default, a fraction of its distance to 0 or 1
-MARGIN_FRACTION: float = 0.1
+#: the margin of a threshold by default, a difference of probability which does not matter
+MARGIN: float = 0.05
 
 #: the most draws `n_needed` searches
 MAX_NEEDED: int = 2**26
@@ -110,11 +109,6 @@ MAX_NEEDED: int = 2**26
 BISECTIONS: int = 52
 
 Decision = Literal["accepted", "rejected", "equivalent", "undecided", "estimate"]
-
-
-def default_margin(threshold: float) -> float:
-    """Get the margin of a threshold by default, see the module."""
-    return MARGIN_FRACTION * min(threshold, 1.0 - threshold)
 
 
 class _Prefixes:
@@ -406,7 +400,7 @@ def _statement(
             satisfied=satisfied,
         )
     if margin is None:
-        margin = default_margin(threshold)
+        margin = MARGIN
     p_greater, p_less, p_equivalent = _p_values(prefixes, threshold, margin)
     decision, n_decided = _decide(p_greater, p_less, p_equivalent, prefixes.m, alpha)
     return TestResult(
@@ -480,7 +474,7 @@ def probability(
     less: Any = None,
     between: tuple[Any, Any] | None = None,
     at_least: float | None = None,
-    margin: float | None = None,
+    margin: float = MARGIN,
     level: float = 0.95,
 ) -> TestResult:
     """Get the probability that values satisfy a hypothesis, see the module.
@@ -492,8 +486,7 @@ def probability(
         less: the hypothesis `values < less`.
         between: the hypothesis `low <= values <= high`.
         at_least: the threshold of a decision.
-        margin: the margin of the threshold of an equivalence, in [0, 0.5);
-            `default_margin` of the threshold by default.
+        margin: the margin of the threshold of an equivalence, in [0, 0.5).
         level: the level of the confidence sequence and of the decision.
 
     Returns:
@@ -565,7 +558,7 @@ class Hypothesis:
     scenario: str | None = None
     contrast: tuple[str, str] | None = None
     kind: Literal["ratio", "difference"] = "ratio"
-    margin: float | None = None
+    margin: float = MARGIN
     level: float = 0.95
 
     def __post_init__(self) -> None:
@@ -661,9 +654,7 @@ class TestReport:
         """
         if self.adjust not in ("bonferroni", "none"):
             raise ValueError(
-                f"The adjustment {self.adjust!r} is none of 'bonferroni' and "
-                f"'none'; a step-down adjustment, e.g. Holm, does not control "
-                f"the error of decisions with an equivalence, see the module."
+                f"The adjustment {self.adjust!r} is none of 'bonferroni' and 'none'."
             )
 
     @property

@@ -13,7 +13,6 @@ from sbmlsim.uncertainty import Hypothesis, Uncertain, UncertaintyModel, propaga
 from sbmlsim.uncertainty.testing import (
     TestReport,
     confidence_sequence,
-    default_margin,
     probability,
 )
 from tests.simulator.models import sbml_pk
@@ -105,24 +104,26 @@ def test_an_equivalence_becomes_the_direction_shown_later() -> None:
     assert decisions[1].p_greater < 0.05 < decisions[0].p_greater
 
 
-def test_the_default_margin_is_relative_to_the_threshold() -> None:
-    assert default_margin(0.9) == pytest.approx(0.01)
-    assert default_margin(0.99) == pytest.approx(0.001)
-    assert default_margin(0.3) == pytest.approx(0.03)
+def test_the_default_margin() -> None:
     statement = probability(_draws(np.ones(64)), greater=0.0, at_least=0.9)
-    assert statement.margin == pytest.approx(0.01)
+    assert statement.margin == pytest.approx(0.05)
     assert probability(_draws(np.ones(64)), greater=0.0).margin is None
 
 
 def test_all_draws_and_a_high_threshold() -> None:
     accepted = probability(_draws([1.0] * 100), greater=0.0, at_least=0.9)
     assert accepted.decision == "accepted"
-    result = probability(_draws([1.0] * 100), greater=0.0, at_least=0.95)
+    # within the margin of 0.05 of the threshold
+    near = probability(_draws([1.0] * 100), greater=0.0, at_least=0.95)
+    assert near.decision == "equivalent"
+    result = probability(_draws([1.0] * 100), greater=0.0, at_least=0.95, margin=0.0)
     assert result.estimate == 1.0
     assert 0.9 < result.low < 0.95 and result.high == pytest.approx(1.0)
     assert result.decision == "undecided"
     assert result.n_needed is not None and result.n_needed > 100
-    more = probability(_draws([1.0] * result.n_needed), greater=0.0, at_least=0.95)
+    more = probability(
+        _draws([1.0] * result.n_needed), greater=0.0, at_least=0.95, margin=0.0
+    )
     assert more.decision == "accepted"
 
 
@@ -159,19 +160,19 @@ def test_failed_draws_are_excluded_and_infinite_ones_are_not() -> None:
 
 
 def _marginal(n: int = 2000, threshold: float = 0.9) -> np.ndarray:
-    """Get the draws whose statement is accepted just barely."""
+    """Get the draws whose statement is accepted just barely, without a margin."""
     for k in range(int(threshold * n), n + 1):
         values = _spread(k, n)
-        if probability(_draws(values), greater=0.0, at_least=threshold).decision == (
-            "accepted"
-        ):
+        if probability(
+            _draws(values), greater=0.0, at_least=threshold, margin=0.0
+        ).decision == ("accepted"):
             return values
     raise AssertionError
 
 
 def test_bonferroni_makes_marginal_decisions_undecided() -> None:
     values = _marginal()
-    marginal = probability(_draws(values), greater=0.0, at_least=0.9)
+    marginal = probability(_draws(values), greater=0.0, at_least=0.9, margin=0.0)
     assert marginal.p_value() > 0.025
     report = TestReport([marginal, marginal]).table()
     assert list(report.decision) == ["undecided", "undecided"]
@@ -181,15 +182,14 @@ def test_bonferroni_makes_marginal_decisions_undecided() -> None:
     none = TestReport([marginal, marginal], adjust="none").table()
     assert list(none.decision) == ["accepted", "accepted"]
     with pytest.raises(ValueError, match="adjustment"):
-        TestReport([marginal], adjust="holm").table()  # ty: ignore[invalid-argument-type]
+        TestReport([marginal], adjust="other").table()  # ty: ignore[invalid-argument-type]
 
 
 def test_a_report_controls_the_family_wise_error() -> None:
     """Statements at their threshold: a direction is wrong in at most 5 % of the runs.
 
     Every statement has a true null, its correct decision is the equivalence:
-    a step-down procedure over the decisions, e.g. Holm, would not control the
-    error, the decisions at the level of Bonferroni do.
+    the decisions at the level of Bonferroni control the error.
     """
     rng = np.random.default_rng(3)
     runs, wrong = 150, 0
@@ -248,13 +248,13 @@ def test_a_report_of_one_statement_keeps_its_decision(n: int, threshold: float) 
 
 def test_a_decision_undecided_by_the_adjustment_needs_draws() -> None:
     values = _marginal()
-    marginal = probability(_draws(values), greater=0.0, at_least=0.9)
+    marginal = probability(_draws(values), greater=0.0, at_least=0.9, margin=0.0)
     adjusted = TestReport([marginal, marginal]).adjusted()
     assert [t.decision for t in adjusted] == ["undecided", "undecided"]
     needed = adjusted[0].n_needed
     assert needed is not None and needed > values.size
     more = _spread(round(marginal.estimate * needed), needed)
-    decided = probability(_draws(more), greater=0.0, at_least=0.9)
+    decided = probability(_draws(more), greater=0.0, at_least=0.9, margin=0.0)
     assert [t.decision for t in TestReport([decided, decided]).adjusted()] == [
         "accepted",
         "accepted",
@@ -313,7 +313,8 @@ def test_the_probability_of_a_propagation() -> None:
     ratio = res.contrast("pk.cmax", "large", "small")
     # 512 of 512 draws show a probability above 0.98, not yet above 0.99
     assert res.probability(ratio, less=0.6, at_least=0.98).decision == "accepted"
-    undecided = res.probability(ratio, less=0.6, at_least=0.99)
+    assert res.probability(ratio, less=0.6, at_least=0.99).decision == "equivalent"
+    undecided = res.probability(ratio, less=0.6, at_least=0.99, margin=0.0)
     assert undecided.decision == "undecided" and undecided.n_needed == 1024
     nominal = float(res.summary(["pk.cmax"]).set_index("scenario").loc["small", "q0.5"])
     half = res.probability("pk.cmax", scenario="small", greater=nominal)
