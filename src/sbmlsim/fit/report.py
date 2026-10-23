@@ -55,6 +55,7 @@ from sbmlsim.fit.derived import (
     hook_summaries,
 )
 from sbmlsim.fit.evaluation import (
+    GROUP_METRICS_COLUMNS,
     Grouping,
     criteria_metrics,
     group_metrics,
@@ -63,7 +64,13 @@ from sbmlsim.fit.evaluation import (
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import IdentifiabilityResult, plot_all
 from sbmlsim.fit.methods import ReportContext
-from sbmlsim.fit.metrics import FitMetrics, fold_counts, r_squared, rmse
+from sbmlsim.fit.metrics import (
+    POINT_COLUMNS,
+    FitMetrics,
+    fold_counts,
+    r_squared,
+    rmse,
+)
 from sbmlsim.fit.objects import (
     EVALUATED_KINDS,
     FitParameter,
@@ -90,6 +97,20 @@ from sbmlsim.units import ureg
 from sbmlsim.utils import paths_text
 
 logger = logging.getLogger(__name__)
+
+#: the rows of a figure of a grouping, more groups are drawn on more pages, see
+#: `FitReport.plot_grouping`
+MAX_GROUP_ROWS = 6
+
+
+def grouping_page(plot: str, name: str, page: int) -> str:
+    """Get the name of a page of a figure of a grouping.
+
+    `goodness_of_fit_tissue` for the first page, `goodness_of_fit_tissue_2`
+    for the second.
+    """
+    return f"{plot}_{name}" if page == 1 else f"{plot}_{name}_{page}"
+
 
 #: colors of the kinds of fit mapping, the colors of the chips of the page
 KIND_COLORS: dict[str, str] = {
@@ -145,7 +166,13 @@ TWOFOLD_STYLE: dict[str, Any] = {
 }
 
 #: the header of a column of the metrics whose name is not what a table shows
-METRIC_HEADERS: dict[str, str] = {"within_2fold": "2-fold [%]"}
+METRIC_HEADERS: dict[str, str] = {
+    "within_2fold": "2-fold [%]",
+    "within_1.25fold": "1.25-fold [%]",
+    "within_1.5fold": "1.5-fold [%]",
+    "within_1sd": "1 SD [%]",
+    "within_2sd": "2 SD [%]",
+}
 
 #: the figures which cover a full row of the report, i.e. the goodness of fit
 #: and the Bland-Altman plot with their panel per kind and their metrics
@@ -202,6 +229,15 @@ def _percent(value: Any) -> str:
 def _box_value(value: float, spec: str, unit: str = "") -> str:
     """Format a value of a box of metrics, `-` for a value which is not defined."""
     return f"{value:{spec}}{unit}" if np.isfinite(value) else "-"
+
+
+def _metric_cell(column: str, value: Any) -> str:
+    """Format a value of a table of metrics, a percentage of a criterion as one."""
+    if isinstance(value, str):
+        return value
+    if column.startswith("within_"):
+        return _percent(value)
+    return _cell(value, ".4g")
 
 
 def _cell(value: Any, spec: str) -> str:
@@ -316,6 +352,45 @@ class FitReport:
 
         # data points with their kind and predictions, by parameter set
         self._points: dict[tuple[Any, ...], pd.DataFrame] = {}
+        self._check_columns()
+
+    def _check_columns(self) -> None:
+        """Check the columns `color_by` and the groupings name, and their names.
+
+        The columns of the data points are known when the problem is
+        initialized: the columns of `POINT_COLUMNS` and the fields of the
+        metadata of the mappings. A typo fails here, not when the report is
+        written, e.g. after a fit.
+
+        Raises:
+            ValueError: for a column which the data points do not have or two
+                groupings of one name.
+        """
+        columns = [
+            *POINT_COLUMNS,
+            *dict.fromkeys(
+                key for metadata in self.problem.mapping_metadata for key in metadata
+            ),
+        ]
+        if self.color_by is not None and self.color_by not in columns:
+            raise ValueError(
+                f"color_by '{self.color_by}' is no column of the data points: "
+                f"{columns}."
+            )
+        for grouping in self.groupings:
+            missing = [c for c in grouping.columns if c not in columns]
+            if missing:
+                raise ValueError(
+                    f"The grouping '{grouping.name}' groups by {missing}, which "
+                    f"are no columns of the data points: {columns}."
+                )
+        names = [grouping.name for grouping in self.groupings]
+        twice = sorted({name for name in names if names.count(name) > 1})
+        if twice:
+            raise ValueError(
+                f"The groupings {twice} are given twice, their figures and tables "
+                f"would overwrite each other; give them other names."
+            )
 
     @staticmethod
     def from_optimization_result(
@@ -531,6 +606,10 @@ class FitReport:
                 df = group_metrics(self.points(pset), grouping, self._fit_mapping)
                 df.insert(0, "parameter_set", pset.sid)
                 frames.append(df)
+        if not frames:
+            return pd.DataFrame(
+                columns=pd.Index(["parameter_set", *GROUP_METRICS_COLUMNS])
+            )
         return pd.concat(frames, ignore_index=True)
 
     def datapoints_df(self) -> pd.DataFrame:
@@ -854,6 +933,24 @@ class FitReport:
             "of the data, 0.5 <= prediction/data <= 2. Only the data points "
             "with a positive value and prediction have a ratio and are counted; "
             "- if no point has one."
+        ),
+        "within_1.25fold": (
+            "Percentage of the data points with a ratio whose prediction lies "
+            "within 1.25-fold of the data."
+        ),
+        "within_1.5fold": (
+            "Percentage of the data points with a ratio whose prediction lies "
+            "within 1.5-fold of the data."
+        ),
+        "within_1sd": (
+            "Percentage of the data points with a standard deviation whose "
+            "prediction lies within one standard deviation of the data; - if "
+            "no point has one."
+        ),
+        "within_2sd": (
+            "Percentage of the data points with a standard deviation whose "
+            "prediction lies within two standard deviations of the data; - if "
+            "no point has one."
         ),
         "AIC": (
             "Akaike information criterion, n*ln(MSE) + 2*k, up to a constant. "
@@ -1309,7 +1406,9 @@ class FitReport:
             # data, is `-`
             "metrics": [
                 [
-                    _percent(value) if column == "within_2fold" else _cell(value, ".6g")
+                    _percent(value)
+                    if column.startswith("within_")
+                    else _cell(value, ".6g")
                     for column, value in row.items()
                 ]
                 for row in metrics.to_dict(orient="records")
@@ -1387,25 +1486,32 @@ class FitReport:
         for grouping in self.groupings:
             plots = []
             for plot, caption in captions.items():
-                name = f"{plot}_{grouping.name}"
-                if (plots_dir / f"{name}.{self.image_format}").exists():
+                page = 1
+                while (
+                    plots_dir
+                    / f"{grouping_page(plot, grouping.name, page)}.{self.image_format}"
+                ).exists():
+                    name = grouping_page(plot, grouping.name, page)
                     plots.append(
                         {
                             "src": f"plots/{name}.{self.image_format}",
-                            "caption": f"{caption}, by {grouping.name}",
+                            "caption": f"{caption}, by {grouping.name}"
+                            + (f", page {page}" if page > 1 else ""),
                             "wide": plot != "criteria",
                         }
                     )
+                    page += 1
             rows = metrics[metrics.grouping == grouping.name].drop(columns="grouping")
             context.append(
                 {
                     "name": grouping.name,
                     "plots": plots,
-                    "columns": list(rows.columns),
+                    "columns": [METRIC_HEADERS.get(c, c) for c in rows.columns],
+                    "kinds": list(rows["kind"]),
                     "rows": [
                         [
-                            value if isinstance(value, str) else _cell(value, ".4g")
-                            for value in row
+                            _metric_cell(column, value)
+                            for column, value in zip(rows.columns, row, strict=True)
                         ]
                         for row in rows.itertuples(index=False)
                     ],
@@ -3108,9 +3214,11 @@ class FitReport:
         and a column per kind of fit mapping, the panels drawn as the summary
         figures draw theirs, with the band of the agreement of the training
         data and the box of the points of the panel; a panel without points
-        says so. `criteria_<name>`: the percentage of the points within
-        twofold and within two standard deviations of the data per group and
-        kind, of the reference set.
+        says so. A figure has at most `MAX_GROUP_ROWS` rows, more groups are
+        drawn on more pages, `goodness_of_fit_<name>_2` and so on, see
+        `grouping_page`. `criteria_<name>`: the percentage of the points
+        within twofold and within two standard deviations of the data per
+        group and kind, of the reference set.
 
         Args:
             grouping: the grouping.
@@ -3126,77 +3234,92 @@ class FitReport:
             *[dp.DV for dp in points.values()], *[dp.IPRED for dp in points.values()]
         )
         height = 5.5
+        pages = [
+            list(range(start, min(start + MAX_GROUP_ROWS, len(labels))))
+            for start in range(0, max(len(labels), 1), MAX_GROUP_ROWS)
+        ]
         for plot in ("goodness_of_fit", "bland_altman"):
-            fig = Figure(
-                figsize=(
-                    height * len(kinds) + LEGEND_WIDTH,
-                    height * max(len(labels), 1),
-                ),
-                layout="constrained",
-            )
-            axes = fig.subplots(
-                nrows=max(len(labels), 1), ncols=len(kinds), squeeze=False
-            )
-            flat = [ax for row in axes for ax in row]
-            for g, label in enumerate(labels):
-                for c, kind in enumerate(kinds):
-                    ax = axes[g][c]
-                    of_panel = {
-                        sid: self._of_kind(groups[sid][g][1], kind) for sid in groups
-                    }
-                    ax.set_title(
-                        f"{label}: " + self._panel_title(kind, list(of_panel.values()))
+            for number, rows in enumerate(pages, start=1):
+                fig = Figure(
+                    figsize=(
+                        height * len(kinds) + LEGEND_WIDTH,
+                        height * max(len(rows), 1),
+                    ),
+                    layout="constrained",
+                )
+                axes = fig.subplots(
+                    nrows=max(len(rows), 1), ncols=len(kinds), squeeze=False
+                )
+                flat = [ax for row in axes for ax in row]
+                for r, g in enumerate(rows):
+                    for c, kind in enumerate(kinds):
+                        self._draw_group_panel(
+                            axes[r][c], plot, labels[g], kind, groups, g, limits
+                        )
+                for row in axes:
+                    row[0].set_ylabel(
+                        "Prediction $f(x_{i,k})$"
+                        if plot == "goodness_of_fit"
+                        else "$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$",
+                        fontweight="bold",
                     )
-                    if all(df.empty for df in of_panel.values()):
-                        ax.text(
-                            0.5,
-                            0.5,
-                            "no data",
-                            transform=ax.transAxes,
-                            ha="center",
-                            va="center",
-                        )
-                        ax.set_xticks([])
-                        ax.set_yticks([])
-                        continue
-                    # every drawn panel labels the band, the legend has an entry
-                    # once; the last panel may have no points
-                    label_band = True
-                    if plot == "goodness_of_fit":
-                        self._draw_goodness_of_fit(ax, of_panel, limits, label_band)
-                    else:
-                        self._draw_bland_altman(
-                            ax,
-                            of_panel,
-                            label_band,
-                            own_agreement=kind != MappingKind.OUTLIER.value,
-                        )
-                    self._add_metrics_box(ax, self._panel_text(of_panel, plot))
-            for row in axes:
-                row[0].set_ylabel(
-                    "Prediction $f(x_{i,k})$"
-                    if plot == "goodness_of_fit"
-                    else "$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$",
-                    fontweight="bold",
+                self._set_figure_legend(fig, flat)
+                if self.show_titles:
+                    title = (
+                        "Goodness of fit"
+                        if plot == "goodness_of_fit"
+                        else "Bland-Altman"
+                    )
+                    page = f", {number} of {len(pages)}" if len(pages) > 1 else ""
+                    fig.suptitle(f"{title} by {grouping.name}{page}")
+                self._save_mpl_figure(
+                    fig=fig,
+                    path=plots_dir
+                    / f"{grouping_page(plot, grouping.name, number)}.{self.image_format}",
                 )
-            self._set_figure_legend(fig, flat)
-            if self.show_titles:
-                title = (
-                    "Goodness of fit" if plot == "goodness_of_fit" else "Bland-Altman"
-                )
-                fig.suptitle(f"{title} by {grouping.name}")
-            self._save_mpl_figure(
-                fig=fig,
-                path=plots_dir / f"{plot}_{grouping.name}.{self.image_format}",
-            )
         self._plot_criteria(grouping, plots_dir)
+
+    def _draw_group_panel(
+        self,
+        ax: Axes,
+        plot: str,
+        label: str,
+        kind: str,
+        groups: Mapping[str, list[tuple[str, pd.DataFrame]]],
+        g: int,
+        limits: tuple[float, float],
+    ) -> None:
+        """Draw the panel of a group and a kind of a figure of a grouping.
+
+        A panel without points says so. Every drawn panel labels the band, the
+        legend has an entry once; the last panel may have no points.
+        """
+        of_panel = {sid: self._of_kind(groups[sid][g][1], kind) for sid in groups}
+        ax.set_title(f"{label}: " + self._panel_title(kind, list(of_panel.values())))
+        if all(df.empty for df in of_panel.values()):
+            ax.text(
+                0.5, 0.5, "no data", transform=ax.transAxes, ha="center", va="center"
+            )
+            ax.set_xticks([])
+            ax.set_yticks([])
+            return
+        if plot == "goodness_of_fit":
+            self._draw_goodness_of_fit(ax, of_panel, limits, label_band=True)
+        else:
+            self._draw_bland_altman(
+                ax,
+                of_panel,
+                label_band=True,
+                own_agreement=kind != MappingKind.OUTLIER.value,
+            )
+        self._add_metrics_box(ax, self._panel_text(of_panel, plot))
 
     def _plot_criteria(self, grouping: Grouping, plots_dir: Path) -> None:
         """Plot the criteria of the groups of a grouping, see `plot_grouping`."""
-        metrics = group_metrics(
-            self.points(self.reference_set), grouping, self._fit_mapping
-        )
-        labels = list(dict.fromkeys(metrics.group))
+        points = self.points(self.reference_set)
+        metrics = group_metrics(points, grouping, self._fit_mapping)
+        # every group, also one without points, e.g. an empty subset
+        labels = [label for label, _ in grouping.groups(points, self._fit_mapping)]
         kinds = [kind for kind in self.point_kinds() if kind in set(metrics.kind)]
         criteria = (("within_2fold", "2-fold"), ("within_2sd", "2 SD"))
         fig = Figure(
@@ -3242,6 +3365,9 @@ class FitReport:
                         va="center",
                         fontsize="small",
                     )
+            for position, label in zip(y, labels, strict=True):
+                if label not in set(metrics.group):
+                    ax.text(1.0, position, "no data", va="center", fontsize="small")
             ax.set_yticks(y, labels)
             ax.set_ylim(len(labels) - 0.5, -0.5)
             ax.set_xlim(0.0, 110.0)

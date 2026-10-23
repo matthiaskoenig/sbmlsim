@@ -30,7 +30,7 @@ from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.metrics import fold_counts
 from sbmlsim.fit.objects import EVALUATED_KINDS, FitMappingCollection, FitParameter
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.report import FitReport
+from sbmlsim.fit.report import MAX_GROUP_ROWS, FitReport
 from sbmlsim.fit.report_document import fit_document
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization
@@ -1659,3 +1659,109 @@ def test_the_curve_of_a_mapping_draws_only_the_errors_of_the_data(
     measured = op_hctz_pk.y_errors_measured[k]
     assert measured is not None
     assert n_bars == int(measured.sum())
+
+
+def _initialized_report(
+    problem: OptimizationProblem, settings: FitSettings, **kwargs: Any
+) -> FitReport:
+    problem.initialize(settings)
+    return FitReport(
+        problem=problem,
+        settings=settings,
+        parameter_sets=problem.parameter_set_model(),
+        mapping_figures=False,
+        **kwargs,
+    )
+
+
+def test_the_columns_of_a_report_are_checked(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """A typo in a column fails when the report is created, not when it is written."""
+    with pytest.raises(ValueError, match=r"color_by 'tisue'.*'tissue'"):
+        _initialized_report(op_hctz_pk, fit_settings, color_by="tisue")
+    with pytest.raises(ValueError, match=r"'tisue'.*'tissue'"):
+        _initialized_report(op_hctz_pk, fit_settings, groupings=[Grouping.by("tisue")])
+    with pytest.raises(ValueError, match=r"tissue.*twice"):
+        _initialized_report(
+            op_hctz_pk,
+            fit_settings,
+            groupings=[Grouping.by("tissue"), Grouping.by("tissue")],
+        )
+
+
+def test_the_metrics_of_no_grouping(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    report = _initialized_report(op_hctz_pk, fit_settings)
+    metrics = report.metrics_groups_df()
+    assert metrics.empty
+    assert list(metrics.columns[:4]) == ["parameter_set", "grouping", "group", "kind"]
+
+
+def test_the_criteria_of_an_empty_subset(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    report = _initialized_report(op_hctz_pk, fit_settings)
+    grouping = Grouping.of_subsets(
+        "subsets", Subset("all", _select_all), Subset("none", _select_none)
+    )
+    report.plot_grouping(grouping, tmp_path)
+    ax = saved_figures["criteria_subsets"].axes[0]
+    assert [tick.get_text() for tick in ax.get_yticklabels()] == ["all", "none"]
+    assert any(text.get_text() == "no data" for text in ax.texts)
+
+
+def test_the_figures_of_many_groups_are_pages(
+    tmp_path: Path,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    saved_figures: dict[str, Figure],
+) -> None:
+    """A figure has at most `MAX_GROUP_ROWS` rows, more groups are more pages."""
+    report = _initialized_report(op_hctz_pk, fit_settings)
+    grouping = Grouping.by("mapping")
+    n_groups = len(grouping.groups(report.points(report.reference_set), _no_lookup))
+    assert n_groups > MAX_GROUP_ROWS
+    report.plot_grouping(grouping, tmp_path)
+    pages = -(-n_groups // MAX_GROUP_ROWS)
+    names = ["goodness_of_fit_mapping"] + [
+        f"goodness_of_fit_mapping_{page}" for page in range(2, pages + 1)
+    ]
+    assert [name for name in saved_figures if name.startswith("goodness")] == names
+    n_kinds = len(report.point_kinds())
+    rows = [len(saved_figures[name].axes) // n_kinds for name in names]
+    assert sum(rows) == n_groups
+    assert max(rows) <= MAX_GROUP_ROWS
+
+
+def _no_lookup(experiment: str, mapping: str) -> Any:
+    return None
+
+
+def test_the_evaluation_section_has_a_tab_per_grouping(
+    tmp_path: Path, op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    report = _initialized_report(
+        op_hctz_pk,
+        fit_settings,
+        groupings=[Grouping.by("tissue"), Grouping.by("route")],
+    )
+    results_dir = report.create(output_dir=tmp_path, name="tabs")
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert html.count('data-grouping="tissue"') == 2
+    assert html.count('data-grouping="route"') == 2
+    assert "2-fold [%]" in html.split('id="evaluation"')[1]
+
+
+def test_a_panel_of_one_point_has_no_nan(
+    fitted_report: tuple[FitReport, Path],
+) -> None:
+    report, _plots = fitted_report
+    points = report.points(report.reference_set).iloc[[1]]
+    for plot in ("goodness_of_fit", "bland_altman"):
+        text = report._panel_text({report.reference_set.sid: points}, plot)
+        assert "nan" not in text, text
