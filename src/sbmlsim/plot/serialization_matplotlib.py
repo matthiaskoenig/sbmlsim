@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import textwrap
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -58,6 +59,10 @@ COLORBAR_GAP = 0.12
 
 #: the width of a colour bar in inches
 COLORBAR_WIDTH = 0.15
+
+#: the least room in inches between the ticks and labels of the panels and the
+#: edges of the figure (the padding of `bbox_inches="tight"`)
+EDGE_PAD = 0.1
 
 
 @dataclass
@@ -1171,6 +1176,10 @@ class MatplotlibFigureSerializer:
             else:
                 ax1.grid(False)
 
+        # the margins fit the ticks and the labels of the panels at the edges,
+        # before the legends and the colour bars are placed from the positions
+        cls._fit_margins(fig, panels, title)
+
         # the legends, then the colour bars and the legends outside, once every
         # axes has its ticks and labels
         slots: list[_Slot] = []
@@ -1199,6 +1208,87 @@ class MatplotlibFigureSerializer:
         )
 
         return fig
+
+    @staticmethod
+    def _wrap_label(label: Text, length: float, vertical: bool) -> None:
+        """Wrap the label of an axis which is longer than the axis.
+
+        The label is broken at its words into the fewest lines each of which
+        is at most as long as the axis (a word longer than it stays a line of
+        its own); a label of the y axis longer than the panel reached far above
+        and below it.
+
+        Args:
+            label: the label of an axis.
+            length: the length of the axis in pixels.
+            vertical: whether the label is along a vertical axis.
+        """
+        text = label.get_text()
+
+        def extent() -> float:
+            box = label.get_window_extent()
+            return box.height if vertical else box.width
+
+        if not text or "\n" in text or extent() <= length:
+            return
+        for width in range(len(text) - 1, 0, -1):
+            label.set_text(textwrap.fill(text, width, break_long_words=False))
+            if extent() <= length:
+                return
+        label.set_text(textwrap.fill(text, 1, break_long_words=False))
+
+    @classmethod
+    def _fit_margins(
+        cls, fig: FigureMPL, panels: list[_Panel], title: Text | None
+    ) -> None:
+        """Grow the figure by what the ticks and labels need beyond its margins.
+
+        The margins of matplotlib are fractions sized for its fonts of 10 pt,
+        the fonts of sbmlsim are larger: the label of the x axis ended below
+        the figure, cut off unless it was saved with `bbox_inches="tight"`
+        (#362). A label longer than its axis is wrapped first, see
+        `_wrap_label`. The tight boxes of the drawn axes give the room the ticks and
+        the labels need around the panels (below the title of the figure), at
+        least `EDGE_PAD`; the figure grows by what is missing, so the panels
+        keep their size in inches and a figure whose labels fit keeps its
+        size. The colour bars and the legends outside get their room right of
+        the panels from `_place_right` afterwards.
+        """
+        for panel in panels:
+            for ax in panel.axes:
+                box = ax.get_window_extent()
+                cls._wrap_label(ax.xaxis.label, box.width, vertical=False)
+                cls._wrap_label(ax.yaxis.label, box.height, vertical=True)
+        width, height, dpi = fig.get_figwidth(), fig.get_figheight(), fig.dpi
+        boxes = [
+            box
+            for panel in panels
+            for ax in panel.axes
+            if (box := ax.get_tightbbox()) is not None
+        ]
+        if not boxes:
+            return
+        ceiling = height
+        if title is not None:
+            ceiling = title.get_window_extent().y0 / dpi
+        left = max(0.0, EDGE_PAD - min(box.x0 for box in boxes) / dpi)
+        bottom = max(0.0, EDGE_PAD - min(box.y0 for box in boxes) / dpi)
+        top = max(0.0, max(box.y1 for box in boxes) / dpi + EDGE_PAD - ceiling)
+        right = max(0.0, max(box.x1 for box in boxes) / dpi + EDGE_PAD - width)
+        if not (left or right or bottom or top):
+            return
+        params = fig.subplotpars
+        wider, taller = width + left + right, height + bottom + top
+        fig.set_size_inches(wider, taller)
+        fig.subplots_adjust(
+            left=(params.left * width + left) / wider,
+            right=(params.right * width + left) / wider,
+            bottom=(params.bottom * height + bottom) / taller,
+            top=(params.top * height + bottom) / taller,
+        )
+        if title is not None:
+            # the title keeps its distance to the top of the figure
+            title.set_y(1.0 - (1.0 - title.get_position()[1]) * height / taller)
 
     @staticmethod
     def _margins(figure: Figure, settings: FigureSettings) -> dict[str, float]:

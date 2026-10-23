@@ -481,3 +481,110 @@ def test_an_automatic_log_axis_of_a_custom_figure_is_limited() -> None:
     # six decades below the largest value, with the margin of the decades
     assert 1e-6 < free.get_ylim()[0] < 1e-5
     assert fixed.get_ylim() == (1e-50, 100.0)
+
+
+def _labelled(
+    rows: int = 1,
+    cols: int = 1,
+    ylabel: str = "midazolam",
+    right: bool = False,
+    **kwargs: Any,
+) -> Figure:
+    """Get a figure of plots with labelled axes in every cell of its grid."""
+    return Figure(
+        experiment=None,
+        sid="fig",
+        num_rows=rows,
+        num_cols=cols,
+        subplots=[
+            SubPlot(
+                plot=Plot(
+                    sid=f"p{row}_{col}",
+                    name=f"plot {row} {col}",
+                    xaxis=Axis("time", unit="hr"),
+                    yaxis=Axis(ylabel, unit="ng/ml"),
+                    yaxis_right=Axis("metabolite", unit="ng/ml") if right else None,
+                ),
+                row=row,
+                col=col,
+            )
+            for row in range(1, rows + 1)
+            for col in range(1, cols + 1)
+        ],
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "figure",
+    [
+        _labelled(),
+        _labelled(2, 3),
+        _labelled(ylabel="the concentration of midazolam in the venous plasma"),
+        _labelled(right=True),
+        _labelled(2, 2, right=True, name="A title"),
+        _labelled(width=3.5, height=2.5),
+    ],
+    ids=["one", "grid", "long label", "right axis", "title", "small"],
+)
+def test_the_labels_are_inside_a_figure_saved_without_a_tight_box(
+    figure: Figure,
+) -> None:
+    """The margins fit the ticks and the labels of the panels at the edges (#362).
+
+    The margins of matplotlib are sized for its fonts of 10 pt: the label of
+    the x axis of the fonts of sbmlsim ended 0.066 in below the figure, which
+    a figure saved without `bbox_inches="tight"` cut off.
+    """
+    mpl_figure = MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
+    renderer = FigureCanvasAgg(mpl_figure).get_renderer()
+    width, height = mpl_figure.get_size_inches()
+    dpi = mpl_figure.dpi
+    axes = [
+        box for ax in mpl_figure.axes if (box := ax.get_tightbbox(renderer)) is not None
+    ]
+    boxes = list(axes)
+    texts = [
+        text
+        for text in mpl_figure.findobj(Text)
+        if mpl_figure.get_suptitle() and text.get_text() == mpl_figure.get_suptitle()
+    ]
+    boxes += [text.get_window_extent(renderer) for text in texts]
+    assert min(box.x0 for box in boxes) / dpi >= 0.05
+    assert min(box.y0 for box in boxes) / dpi >= 0.05
+    assert max(box.x1 for box in boxes) / dpi <= width - 0.05
+    assert max(box.y1 for box in boxes) / dpi <= height - 0.05
+    if texts:
+        # the plots stay below the title
+        title = texts[0].get_window_extent(renderer)
+        assert max(box.y1 for box in axes) <= title.y0
+
+
+def test_a_figure_whose_labels_fit_keeps_its_size() -> None:
+    figure = _grid(2, 3)
+    assert tuple(
+        MatplotlibFigureSerializer.to_figure(
+            experiment=None, figure=figure
+        ).get_size_inches()
+    ) == pytest.approx(figure.size(figure.resolved_settings(None)))
+
+
+def test_a_label_longer_than_its_axis_is_wrapped() -> None:
+    """A label of the y axis longer than the panel reached far above and below it."""
+    long = "the concentration of midazolam in the venous plasma"
+    figure = _labelled(ylabel=long)
+    mpl_figure = MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
+    renderer = FigureCanvasAgg(mpl_figure).get_renderer()
+    ax = mpl_figure.axes[0]
+    label = ax.yaxis.label
+    assert "\n" in label.get_text()
+    assert label.get_text().replace("\n", " ") == f"{long} [ng/ml]"
+    assert (
+        label.get_window_extent(renderer).height
+        <= ax.get_window_extent(renderer).height
+    )
+    # a label which fits is not wrapped
+    assert "\n" not in ax.xaxis.label.get_text()
+    # the figure is as tall as one of a short label
+    short = MatplotlibFigureSerializer.to_figure(None, _labelled())
+    assert mpl_figure.get_figheight() == pytest.approx(short.get_figheight())
