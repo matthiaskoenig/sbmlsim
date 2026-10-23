@@ -28,7 +28,7 @@ import numpy as np
 from pint.errors import DimensionalityError
 from scipy import stats
 
-from sbmlsim.simulation.definition import _encode
+from sbmlsim.simulation.definition import _decode, _encode
 from sbmlsim.units import Quantity, ureg
 
 #: the distance of the clipped probabilities 0 and 1 from the bounds
@@ -718,3 +718,35 @@ class Fixed(Distribution):
     def to_dict(self) -> dict[str, Any]:
         """Get the distribution as a dictionary of JSON types."""
         return {"type": "Fixed", "value": _encode(self.value)}
+
+
+def distribution_from_dict(d: dict[str, Any]) -> Distribution:
+    """Create a distribution from its `to_dict`.
+
+    Args:
+        d: the dictionary, with the class of the distribution as `type`.
+
+    Returns:
+        The distribution.
+
+    Raises:
+        ValueError: for an unknown type.
+    """
+    classes: dict[str, type[Distribution]] = {
+        cls.__name__: cls
+        for cls in (Uniform, LogUniform, Normal, LogNormal, Truncated, Empirical, Fixed)
+    }
+    kind = d.get("type")
+    if kind not in classes:
+        raise ValueError(
+            f"The distribution type {kind!r} is none of {sorted(classes)}."
+        )
+    kwargs: dict[str, Any] = {}
+    for key, value in d.items():
+        if key == "type":
+            continue
+        if key == "distribution":
+            kwargs[key] = distribution_from_dict(value)
+        else:
+            kwargs[key] = _decode(value)
+    return classes[kind](**kwargs)
