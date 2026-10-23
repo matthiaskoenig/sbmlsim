@@ -6,6 +6,7 @@ its nominal value. A `Covariance` is the dependence between uncertain values.
 """
 
 from sbmlsim.uncertainty.covariance import Covariance
+from sbmlsim.uncertainty.propagation import UncertaintyResult, propagate
 from sbmlsim.uncertainty.quantity import Uncertain
 from sbmlsim.uncertainty.sources import UncertaintyModel, Variable
 
@@ -13,5 +14,7 @@ __all__ = [
     "Covariance",
     "Uncertain",
     "UncertaintyModel",
+    "UncertaintyResult",
     "Variable",
+    "propagate",
 ]

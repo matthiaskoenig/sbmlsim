@@ -135,6 +135,10 @@ nav = [
     { "sbmlsim.uncertainty" = [
       { "quantity" = "api/uncertainty.quantity.md" },
       { "covariance" = "api/uncertainty.covariance.md" },
+      { "sources" = "api/uncertainty.sources.md" },
+      { "draws" = "api/uncertainty.draws.md" },
+      { "propagation" = "api/uncertainty.propagation.md" },
+      { "statistics" = "api/uncertainty.statistics.md" },
     ] },
     { "sbmlsim.sciml" = [
       { "sciml" = "api/sciml.md" },
