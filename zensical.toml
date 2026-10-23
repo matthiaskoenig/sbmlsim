@@ -139,6 +139,7 @@ nav = [
       { "draws" = "api/uncertainty.draws.md" },
       { "propagation" = "api/uncertainty.propagation.md" },
       { "statistics" = "api/uncertainty.statistics.md" },
+      { "testing" = "api/uncertainty.testing.md" },
     ] },
     { "sbmlsim.sciml" = [
       { "sciml" = "api/sciml.md" },

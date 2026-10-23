@@ -58,6 +58,7 @@ from sbmlsim.uncertainty.statistics import (
     quantile_ci,
     sd_se,
 )
+from sbmlsim.uncertainty.testing import TestResult, probability
 from sbmlsim.units import Quantity
 
 logger = logging.getLogger(__name__)
@@ -187,6 +188,27 @@ class UncertaintyResult:
             contrast.attrs["units"] = x.attrs.get("units", "")
             return contrast.rename(f"{output}:{a}-{b}")
         raise ValueError(f"The kind {kind!r} is none of 'ratio' and 'difference'.")
+
+    def probability(
+        self,
+        output: str | xr.DataArray,
+        *,
+        scenario: str | None = None,
+        **kwargs: Any,
+    ) -> TestResult:
+        """Get the probability that an output satisfies a hypothesis.
+
+        Args:
+            output: an output, or values over the draws, e.g. a `contrast`.
+            scenario: the scenario of an output, the only one by default.
+            kwargs: the hypothesis and the threshold, see
+                `sbmlsim.uncertainty.testing.probability`.
+
+        Returns:
+            The statement with its Monte Carlo interval.
+        """
+        values = self.values(output, scenario) if isinstance(output, str) else output
+        return probability(values, **kwargs)
 
     def outputs(self) -> list[str]:
         """Get the outputs which are a value per draw, the values per simulation."""
