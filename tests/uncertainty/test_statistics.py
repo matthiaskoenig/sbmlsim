@@ -3,7 +3,12 @@
 import numpy as np
 import pytest
 
-from sbmlsim.uncertainty.statistics import mean_se, quantile_ci, sd_se
+from sbmlsim.uncertainty.statistics import (
+    first_order_given_data,
+    mean_se,
+    quantile_ci,
+    sd_se,
+)
 
 
 def test_the_standard_errors_of_the_mean_and_the_sd() -> None:
@@ -42,3 +47,15 @@ def test_a_quantile_of_few_draws_has_an_open_interval() -> None:
     assert n == 10
     assert np.isfinite(estimate)
     assert np.isnan(high)
+
+
+def test_first_order_indices_of_given_data() -> None:
+    rng = np.random.default_rng(3)
+    x1, x2 = rng.normal(size=(2, 4096))
+    y = x1 + 2 * x2
+    assert first_order_given_data(x1, y) == pytest.approx(0.2, abs=0.03)
+    assert first_order_given_data(x2, y) == pytest.approx(0.8, abs=0.03)
+    # an input without an effect has an index near 0
+    assert first_order_given_data(rng.normal(size=4096), y) == pytest.approx(
+        0.0, abs=0.02
+    )

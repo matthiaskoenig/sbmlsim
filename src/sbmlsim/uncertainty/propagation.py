@@ -52,7 +52,12 @@ from sbmlsim.simulation.scan import Design, Dimension, Scan
 from sbmlsim.simulator.simulator import Simulator
 from sbmlsim.uncertainty.draws import draw
 from sbmlsim.uncertainty.sources import UncertaintyModel, Variable
-from sbmlsim.uncertainty.statistics import mean_se, quantile_ci, sd_se
+from sbmlsim.uncertainty.statistics import (
+    first_order_given_data,
+    mean_se,
+    quantile_ci,
+    sd_se,
+)
 from sbmlsim.units import Quantity
 
 logger = logging.getLogger(__name__)
@@ -236,6 +241,54 @@ class UncertaintyResult:
                     row[f"q{q:g}_high"] = high
                 rows.append(row)
         return pd.DataFrame(rows)
+
+    def _draws_of(self, variable: Variable, scenario: str) -> np.ndarray | None:
+        """Get the draws of a variable from the coordinates of a result."""
+        coords = self.results[scenario].ds.coords
+        for target in variable.targets:
+            for name in (target, f"{DRAW}.{target}"):
+                if name in coords:
+                    return np.asarray(coords[name].values, dtype=float)
+        return None
+
+    def contributions(self, output: str, scenario: str | None = None) -> pd.DataFrame:
+        """Get the contribution of every variable to the variance of an output.
+
+        The first-order index of every variable from the draws of the
+        propagation, see `statistics.first_order_given_data`; no further
+        simulations. A variable of a covariance is flagged `correlated`: its
+        index includes the effect of the variables it is correlated with.
+
+        Args:
+            output: an output which is a value per draw.
+            scenario: the scenario, the only one by default.
+
+        Returns:
+            The variables, `variable`, `index` and `correlated`, the largest
+            index first.
+        """
+        name = self._scenario(scenario)
+        y = np.asarray(self.values(output, name).values, dtype=float)
+        correlated = {
+            target for c in self.record.get("covariance", []) for target in c["targets"]
+        }
+        rows = []
+        for variable in self.variables:
+            x = self._draws_of(variable, name)
+            if x is None:
+                continue
+            rows.append(
+                {
+                    "variable": variable.key,
+                    "index": first_order_given_data(x, y),
+                    "correlated": variable.key in correlated,
+                }
+            )
+        return (
+            pd.DataFrame(rows, columns=pd.Index(["variable", "index", "correlated"]))
+            .sort_values("index", ascending=False, kind="stable")
+            .reset_index(drop=True)
+        )
 
     def to_netcdf(self, path: str | Path) -> None:
         """Write the result into a directory: a netCDF file per scenario and the record.

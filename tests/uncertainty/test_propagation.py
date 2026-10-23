@@ -150,3 +150,22 @@ def test_a_round_trip_of_the_result(tmp_path: Path) -> None:
 def test_an_analysis_without_uncertain_values_raises() -> None:
     with pytest.raises(ValueError, match="no uncertain values"):
         propagate(sbml_pk(), _simulation(Q(100, "mg")), UncertaintyModel(), n=8, seed=1)
+
+
+def test_the_contributions_rank_the_variables() -> None:
+    """The cmax depends on the dose with a CV of 30 % more than on ka with 5 %."""
+    res = propagate(
+        sbml_pk(),
+        _simulation(Uncertain(Q(100, "mg"), cv=0.3)),
+        UncertaintyModel(parameters={"ka": Uncertain(1.0, cv=0.05)}),
+        OBSERVABLES,
+        outputs=["pk.cmax"],
+        n=1024,
+        seed=7,
+        simulator=Simulator(n_workers=1),
+    )
+    contributions = res.contributions("pk.cmax")
+    assert list(contributions.columns) == ["variable", "index", "correlated"]
+    assert list(contributions.variable) == ["PODOSE", "ka"]
+    assert contributions["index"].iloc[0] > 0.8
+    assert not contributions.correlated.any()

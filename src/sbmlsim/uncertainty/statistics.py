@@ -106,3 +106,48 @@ def quantile_ci(
     low = float(values[low_rank - 1]) if low_rank >= 1 else math.nan
     high = float(values[high_rank - 1]) if high_rank <= n else math.nan
     return estimate, low, high, n
+
+
+def first_order_given_data(
+    x: ArrayLike, y: ArrayLike, n_bins: int | None = None
+) -> float:
+    """Get the first-order index of an input from given draws, by binning.
+
+    The draws are split into `n_bins` bins of equal probability of the input
+    (`max(2, sqrt(n) / 2)` by default), and the index is the variance of the
+    means of the output in the bins over the variance of the output,
+    `Var(E[y | bin]) / Var(y)` (Plischke, Borgonovo & Smith 2013), less the
+    variance the bin means have by chance, `(n_bins - 1) / n` of the variance
+    of the output, so an input without an effect has an index near 0. It
+    needs no simulations beyond the draws of the propagation. For inputs
+    which are correlated, the index of an input includes the effect of the
+    inputs it is correlated with; the indices do not add up to the variance.
+
+    Plischke E, Borgonovo E, Smith CL (2013). Global sensitivity measures from
+    given data. Eur J Oper Res 226:536-550.
+
+    Args:
+        x: the draws of the input.
+        y: the draws of the output, of the same draws.
+        n_bins: the number of bins.
+
+    Returns:
+        The index, between 0 and 1; `nan` with fewer than 8 finite pairs or
+        an output without variance.
+    """
+    xs, ys = np.asarray(x, dtype=float).ravel(), np.asarray(y, dtype=float).ravel()
+    finite = np.isfinite(xs) & np.isfinite(ys)
+    xs, ys = xs[finite], ys[finite]
+    n = xs.size
+    if n < 8:
+        return math.nan
+    variance = float(np.var(ys))
+    if variance == 0.0:
+        return math.nan
+    bins = n_bins if n_bins is not None else max(2, int(math.sqrt(n)) // 2)
+    order = np.argsort(xs, kind="stable")
+    groups = np.array_split(ys[order], bins)
+    mean = float(np.mean(ys))
+    between = sum(g.size * (float(np.mean(g)) - mean) ** 2 for g in groups) / n
+    index = between / variance - (bins - 1) / n
+    return float(min(max(index, 0.0), 1.0))
