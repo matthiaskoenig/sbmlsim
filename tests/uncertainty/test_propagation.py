@@ -169,3 +169,40 @@ def test_the_contributions_rank_the_variables() -> None:
     assert list(contributions.variable) == ["PODOSE", "ka"]
     assert contributions["index"].iloc[0] > 0.8
     assert not contributions.correlated.any()
+
+
+def test_a_timecourse_is_no_output_of_a_summary() -> None:
+    """The draws of a timecourse are not pooled over its time."""
+
+    def run(**kwargs: object) -> object:
+        return propagate(
+            sbml_pk(),
+            _simulation(Uncertain(Q(100, "mg"), cv=0.2)),
+            UncertaintyModel(),
+            OBSERVABLES,
+            keep=["[C]"],
+            seed=3,
+            simulator=Simulator(n_workers=1),
+            **kwargs,  # ty: ignore[invalid-argument-type]
+        )
+
+    res = propagate(
+        sbml_pk(),
+        _simulation(Uncertain(Q(100, "mg"), cv=0.2)),
+        UncertaintyModel(),
+        OBSERVABLES,
+        keep=["[C]"],
+        n=32,
+        seed=3,
+        simulator=Simulator(n_workers=1),
+    )
+    assert res.values("[C]").dims == ("draw", "time")
+    for call in (
+        lambda: res.summary(["[C]"]),
+        lambda: res.probability("[C]", greater=0.0),
+        lambda: res.contributions("[C]"),
+    ):
+        with pytest.raises(ValueError, match="one value per draw"):
+            call()
+    with pytest.raises(ValueError, match="one value per draw"):
+        run(outputs=["[C]"])

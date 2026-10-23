@@ -71,7 +71,7 @@ The draws are correlated through their normal scores (a Gaussian copula): for no
 
 ## Propagation
 
-`propagate` runs what an `UncertaintyModel` declares uncertain through one simulation or several scenarios: the uncertain values of the simulations and the parameters with their distributions. The draws are one dimension of a scan, so the model is compiled once and the simulations run on the scan core (in the pool for many draws); they are quasi-random (scrambled Sobol points), correlated by the covariances. Several scenarios get the same draws (common random numbers), so a ratio between them is paired. Without `n` the number of draws doubles until the intervals of the mean, the SD and the 5 % and 95 % quantiles of the outputs are narrower than `rel_tol` (0.1) times their SD, after the adaptive procedure of GUM Supplement 1 (JCGM 101:2008).
+`propagate` runs what an `UncertaintyModel` declares uncertain through one simulation or several scenarios: the uncertain values of the simulations and the parameters with their distributions. The draws are one dimension of a scan, so the model is compiled once and the simulations run on the scan core (in the pool for many draws); they are quasi-random (scrambled Sobol points), correlated by the covariances. Several scenarios get the same draws (common random numbers), so a ratio between them is paired. A parameter is drawn in every scenario, so a scenario must not set it: a draw would replace the value of the scenario, which raises; a scenario sets another target instead, as the inhibitor below sets the activity `LI__MIDOH_f` of the uncertain `LI__MIDOH_Vmax`. Without `n` the number of draws doubles until the intervals of the mean, the SD and the 5 % and 95 % quantiles of the outputs are narrower than `rel_tol` (0.1) times their SD, after the adaptive procedure of GUM Supplement 1 (JCGM 101:2008).
 
 ```python
 from sbmlsim.uncertainty import UncertaintyModel, propagate
@@ -97,7 +97,7 @@ print(
 print(res.contributions("pk.auc_last", scenario="control"))
 ```
 
-`summary` gives every output with its Monte Carlo errors: the standard errors of the mean and of the SD and the distribution-free intervals of the quantiles (Hahn & Meeker 1991). `contributions` ranks the uncertain values by their first-order indices, estimated from the same draws (Plischke et al. 2013); the index of a correlated value includes the effect of the values it is correlated with. `values(output, scenario)` gives the draws, `contrast(output, a, b)` the paired ratio or difference of two scenarios, and `to_netcdf`/`from_netcdf` store a result with its record (the seed, the design, the number of draws, the convergence history, the variables and the covariances).
+`summary` gives every output which is one value per draw with its Monte Carlo errors (a timecourse raises, it is reduced by an observable, e.g. `at`, `max` or a `PK` parameter): the standard errors of the mean and of the SD and the distribution-free intervals of the quantiles (Hahn & Meeker 1991). `contributions` ranks the uncertain values by their first-order indices, estimated from the same draws (Plischke et al. 2013); the index of a correlated value includes the effect of the values it is correlated with. `values(output, scenario)` gives the draws, `contrast(output, a, b)` the paired ratio or difference of two scenarios, and `to_netcdf`/`from_netcdf` store a result with its record (the seed, the design, the number of draws, the convergence history, the variables and the covariances).
 
 ## Probability statements
 
@@ -119,7 +119,7 @@ report = TestReport(
 print(report.table()[["hypothesis", "estimate", "low", "high", "decision"]])
 ```
 
-A `TestReport` adjusts several decisions for their multiplicity, by Holm (1979, the family-wise error, by default) or by Benjamini and Hochberg (1995, `adjust="bh"`, the false discovery rate), on the one-sided p-values of the exact binomial tests of the thresholds. A probability statement is about the predictive distribution, i.e. about what is uncertain, not a test of a study: the draws are not subjects.
+A `TestReport` adjusts several decisions for their multiplicity, by Holm (1979, the family-wise error, by default) or by Benjamini and Hochberg (1995, `adjust="bh"`, the false discovery rate), on the one-sided p-values of the score tests of the thresholds, which are dual to the Wilson interval: a report of one statement keeps its decision, and a decision which the adjustment makes `undecided` gets the number of draws which decide it at the level of Bonferroni. A probability statement is about the predictive distribution, i.e. about what is uncertain, not a test of a study: the draws are not subjects.
 
 `examples/uncertainty_midazolam.py` is the analysis of this page with the adaptive number of draws.
 

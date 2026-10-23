@@ -16,11 +16,14 @@ estimate (`n_needed`), which a propagation with more draws can run. The draws
 which are not finite (failed points) are excluded and counted.
 
 A `TestReport` of several statements adjusts their decisions for the
-multiplicity: the one-sided p-values of the exact binomial tests of the
-thresholds are adjusted by Holm (1979, the family-wise error, by default) or
-by Benjamini and Hochberg (1995, the false discovery rate, for screening many
-outputs), and a decision whose adjusted p-value exceeds `(1 - level) / 2` (the
-one-sided level of the Wilson interval) becomes `undecided`.
+multiplicity: the one-sided p-values of the score tests of the thresholds,
+which are dual to the Wilson interval (a statement is decided exactly when its
+p-value is at most `(1 - level) / 2`, the one-sided level of the interval),
+are adjusted by Holm (1979, the family-wise error, by default) or by Benjamini
+and Hochberg (1995, the false discovery rate, for screening many outputs), and
+a decision whose adjusted p-value exceeds `(1 - level) / 2` becomes
+`undecided`, with the draws which decide it at the level of Bonferroni, which
+suffice for both adjustments.
 
 A probability statement is about the predictive distribution, i.e. about the
 uncertainty of the inputs, not a test of observed data: the draws are not
@@ -126,19 +129,20 @@ class TestResult:
         return round(self.estimate * self.n)
 
     def p_value(self) -> float:
-        """Get the one-sided p-value of the exact binomial test of the decision.
+        """Get the one-sided p-value of the score test of the decision.
 
-        `greater` for an accepted decision (the probability is at least the
-        threshold), `less` otherwise; `nan` for an estimate.
+        The score `z = (p - p0) / sqrt(p0 (1 - p0) / n)` of the estimate `p`
+        against the threshold `p0`, whose test is dual to the Wilson interval:
+        `greater` for an estimate at least the threshold, `less` otherwise;
+        `nan` for an estimate.
         """
         if self.threshold is None or self.n == 0:
             return math.nan
-        alternative = "greater" if self.estimate >= self.threshold else "less"
-        return float(
-            stats.binomtest(
-                self.k, self.n, self.threshold, alternative=alternative
-            ).pvalue
-        )
+        p0 = self.threshold
+        z = (self.k / self.n - p0) / math.sqrt(p0 * (1.0 - p0) / self.n)
+        if self.k / self.n >= p0:
+            return float(stats.norm.sf(z))
+        return float(stats.norm.cdf(z))
 
 
 def _decide(
@@ -211,8 +215,14 @@ def probability(
         )
     if at_least is not None and not 0.0 < at_least < 1.0:
         raise ValueError(f"The threshold {at_least} must be in (0, 1).")
+    if values.ndim != 1:
+        raise ValueError(
+            f"A probability needs one value per draw, '{values.name}' has the "
+            f"dimensions {values.dims}; select a time or reduce the timecourse "
+            f"with an observable, e.g. `at`, `max` or a `PK` parameter."
+        )
     unit = str(values.attrs.get("units", "") or "")
-    x = np.asarray(values.values, dtype=float).ravel()
+    x = np.asarray(values.values, dtype=float)
     finite = np.isfinite(x)
     n, n_failed = int(finite.sum()), int(x.size - finite.sum())
     if n == 0:
@@ -301,7 +311,10 @@ class TestReport:
                 test.decision in ("accepted", "rejected")
                 and value > (1.0 - test.level) / 2.0
             ):
-                result[k] = replace(test, decision="undecided")
+                assert test.threshold is not None
+                bonferroni = 1.0 - (1.0 - test.level) / len(decided)
+                _, needed = _decide(test.k, test.n, test.threshold, bonferroni)
+                result[k] = replace(test, decision="undecided", n_needed=needed)
         return result
 
     def table(self) -> pd.DataFrame:

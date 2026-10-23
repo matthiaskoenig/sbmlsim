@@ -83,6 +83,22 @@ def _magnitudes(values: Any) -> np.ndarray:
     return np.asarray(values, dtype=float)
 
 
+def _per_draw(values: xr.DataArray) -> np.ndarray:
+    """Get the values of an output which is one value per draw.
+
+    Raises:
+        ValueError: for an output with another dimension, e.g. a timecourse,
+            whose draws would be pooled over its time.
+    """
+    if values.dims != (DRAW,):
+        raise ValueError(
+            f"The output '{values.name}' is not one value per draw, it has the "
+            f"dimensions {values.dims}; reduce the timecourse with an "
+            f"observable, e.g. `at`, `max` or a `PK` parameter."
+        )
+    return np.asarray(values.values, dtype=float)
+
+
 def _variable_dict(variable: Variable) -> dict[str, Any]:
     """Get a variable as a dictionary of JSON types."""
     return {
@@ -245,7 +261,7 @@ class UncertaintyResult:
         rows: list[dict[str, Any]] = []
         for scenario in self.scenarios:
             for output in outputs if outputs is not None else self.outputs():
-                values = np.asarray(self.values(output, scenario).values, dtype=float)
+                values = _per_draw(self.values(output, scenario))
                 mean, mean_error, n = mean_se(values)
                 sd, sd_error, _ = sd_se(values)
                 row: dict[str, Any] = {
@@ -293,7 +309,7 @@ class UncertaintyResult:
             index first.
         """
         name = self._scenario(scenario)
-        y = np.asarray(self.values(output, name).values, dtype=float)
+        y = _per_draw(self.values(output, name))
         correlated = {
             target for c in self.record.get("covariance", []) for target in c["targets"]
         }
@@ -524,6 +540,8 @@ def propagate(
             raise ValueError(
                 f"The outputs {unknown} are no variables of the result: {sorted(known)}."
             )
+        for name in outputs:
+            _per_draw(next(iter(batches.values()))[0][name])
 
     if n is not None:
         run_batch(0, n)
@@ -546,9 +564,7 @@ def propagate(
                     "simulation, e.g. of a `PK` observable; give `outputs` or `n`."
                 )
             checks = [
-                _precise(
-                    np.asarray(result.ds[name].values, dtype=float).ravel(), rel_tol
-                )
+                _precise(_per_draw(result.ds[name]), rel_tol)
                 for result in results.values()
                 for name in names
             ]

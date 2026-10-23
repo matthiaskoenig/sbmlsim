@@ -12,7 +12,8 @@ with its distribution. A draw of the analysis gives every variable a value,
 which replaces each of its targets wherever a simulation sets it (the rule of
 `Simulation.with_values`). A target which a simulation sets to an uncertain
 value and elsewhere to another value cannot be replaced in one place alone
-and raises.
+and raises, and so does a parameter which a simulation sets: its draw would
+replace the value of the simulation, e.g. the inhibition of a scenario.
 """
 
 from __future__ import annotations
@@ -87,7 +88,8 @@ class UncertaintyModel:
         Raises:
             ValueError: for a target set to an uncertain value and to another
                 value, two uncertain values of one name and different
-                distributions, or a parameter which is an input as well.
+                distributions, a parameter which is an input as well, or a
+                parameter which a simulation sets.
         """
         found: dict[str, tuple[list[str], Uncertain]] = {}
         # an object used for several targets is one variable, of its first key
@@ -122,6 +124,18 @@ class UncertaintyModel:
                     f"The parameter '{target}' is an uncertain value of a "
                     f"simulation as well; declare it once."
                 )
+            for name, simulation in simulations.items():
+                uses = _uses(simulation).get(target)
+                if uses:
+                    raise ValueError(
+                        f"The simulation '{name}' sets the parameter '{target}' "
+                        f"at the times {[t for t, _ in uses]} (None is before "
+                        f"the initialization): a draw of the parameter would "
+                        f"replace the value of the simulation. Set another "
+                        f"target in the simulation, e.g. a factor or an "
+                        f"activity of the parameter, or declare the value of "
+                        f"the simulation uncertain."
+                    )
             if isinstance(value, Uncertain):
                 variables.append(
                     Variable(
@@ -194,12 +208,13 @@ class UncertaintyModel:
         return cls(parameters=parameters, covariance=(covariance,), **kwargs)
 
 
-def _check_targets(name: str, simulation: Simulation) -> None:
-    """Check that an uncertain target is set by its uncertain value alone.
+def _uses(simulation: Simulation) -> dict[str, list[tuple[Any, object]]]:
+    """Get the values a simulation sets its targets to, with their times.
 
-    Raises:
-        ValueError: if a target is set to an uncertain value and elsewhere to
-            another value or another uncertain value.
+    Returns:
+        Target -> (time, value) of every use, an uncertain value as declared;
+        the time is `None` before the initialization and `presimulation` for
+        the pre-initialization of the steady state before it.
     """
     uses: dict[str, list[tuple[Any, object]]] = {}
     for target, value in simulation.preinit_changes.items():
@@ -217,7 +232,17 @@ def _check_targets(name: str, simulation: Simulation) -> None:
                 uses.setdefault(target, []).append(
                     (time, change.uncertain.get(target, value))
                 )
-    for target, values in uses.items():
+    return uses
+
+
+def _check_targets(name: str, simulation: Simulation) -> None:
+    """Check that an uncertain target is set by its uncertain value alone.
+
+    Raises:
+        ValueError: if a target is set to an uncertain value and elsewhere to
+            another value or another uncertain value.
+    """
+    for target, values in _uses(simulation).items():
         uncertain = [v for _, v in values if isinstance(v, Uncertain)]
         if not uncertain:
             continue

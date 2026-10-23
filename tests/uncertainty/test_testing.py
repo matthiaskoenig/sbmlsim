@@ -113,3 +113,46 @@ def test_the_probability_of_a_propagation() -> None:
     nominal = float(res.summary(["pk.cmax"]).set_index("scenario").loc["small", "q0.5"])
     half = res.probability("pk.cmax", scenario="small", greater=nominal)
     assert half.estimate == pytest.approx(0.5, abs=0.05)
+
+
+@pytest.mark.parametrize("n", [20, 50, 200])
+@pytest.mark.parametrize("threshold", [0.564, 0.8, 0.9, 0.95])
+def test_a_report_of_one_statement_keeps_its_decision(n: int, threshold: float) -> None:
+    """The p-value of a report is dual to the Wilson interval of the statement."""
+    for k in range(n + 1):
+        single = probability(
+            _draws([1.0] * k + [-1.0] * (n - k)), greater=0.0, at_least=threshold
+        )
+        for adjust in ("none", "holm", "bh"):
+            (reported,) = TestReport([single], adjust=adjust).adjusted()
+            assert reported.decision == single.decision, (k, adjust)
+
+
+def test_a_decision_undecided_by_the_adjustment_needs_draws() -> None:
+    marginal = probability(
+        _draws([1.0] * 965 + [-1.0] * 35), greater=0.0, at_least=0.95
+    )
+    adjusted = TestReport([marginal, marginal], adjust="holm").adjusted()
+    assert [t.decision for t in adjusted] == ["undecided", "undecided"]
+    for test in adjusted:
+        assert test.n_needed is not None and test.n_needed > 1000
+        decided = probability(
+            _draws(
+                [1.0] * round(0.965 * test.n_needed)
+                + [-1.0] * round(0.035 * test.n_needed)
+            ),
+            greater=0.0,
+            at_least=0.95,
+        )
+        assert [t.decision for t in TestReport([decided, decided]).adjusted()] == [
+            "accepted",
+            "accepted",
+        ]
+
+
+def test_a_timecourse_is_no_value_per_draw() -> None:
+    with pytest.raises(ValueError, match="one value per draw"):
+        probability(
+            xr.DataArray(np.ones((4, 3)), dims=("draw", "time"), name="[C]"),
+            greater=0.0,
+        )

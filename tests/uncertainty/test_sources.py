@@ -99,3 +99,16 @@ def test_from_covariance() -> None:
         {"CL": 10.0, "V": 50.0}, linear, shape="normal"
     )
     assert normal.parameters["V"].sd == pytest.approx(3.0)  # ty: ignore[unresolved-attribute]
+
+
+def test_a_parameter_which_a_scenario_sets_raises() -> None:
+    """A draw of a parameter would replace the value a scenario sets."""
+    uq = UncertaintyModel(parameters={"V": Uncertain(10.0, cv=0.2)})
+    assert [v.key for v in uq.variables({"control": _simulation(k=1.0)})] == ["V"]
+    with pytest.raises(ValueError, match=r"'large' sets the parameter 'V'.*\[None\]"):
+        uq.variables({"control": _simulation(), "large": _simulation(V=20.0)})
+    dosed = Simulation(end=24, changes=[Change([0, 12], {"V": 5.0})])
+    with pytest.raises(ValueError, match=r"'dosed' sets the parameter 'V'.*\[0, 12\]"):
+        UncertaintyModel(
+            parameters={"V": Uncertain(10.0, cv=0.2)}, inputs=False
+        ).variables({"dosed": dosed})
