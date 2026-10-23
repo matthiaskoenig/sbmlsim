@@ -23,6 +23,7 @@ An example writes what it creates into the current working directory: figures ar
 | `examples/fit_sampling.py` | sampling of the start values of a parameter fit, uniform and logarithmic, with and without latin hypercube sampling |
 | `examples/units.py` | units of a model and changes with pint quantities |
 | `examples/model_sensitivity.py` | a local design and lognormal draws of all parameters of the repressilator, with their mean and range |
+| `examples/uncertainty_midazolam.py` | the uncertainty of the pharmacokinetics of midazolam with and without an inhibitor of CYP3A4: an uncertain dose, body weight and height (correlated) and an uncertain clearance parameter, propagated with common random numbers and an adaptive number of draws, the summaries with their Monte Carlo errors, the contributions and the probability of an interaction |
 | `examples/curve_types/` | a two reaction model (created with sbmlutils) and a simulation experiment showing the curve types of the plots |
 | `examples/initial_assignment/` | a simulation experiment on a model with initial assignments and changes of the assigned parameters |
 | `examples/glucose/` | dose response experiment of the hepatic glucose model with data from PK-DB, the hormones drawn as observables over the glucose dimension |

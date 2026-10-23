@@ -24,6 +24,7 @@ nav = [
   { "Sensitivity & uncertainty" = [
     { "Parameter scans" = "scans.md" },
     { "Sampling and uncertainty" = "sampling.md" },
+    { "Uncertainty" = "uncertainty.md" },
     { "Observables" = "observables.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
   ] },
@@ -135,6 +136,11 @@ nav = [
     { "sbmlsim.uncertainty" = [
       { "quantity" = "api/uncertainty.quantity.md" },
       { "covariance" = "api/uncertainty.covariance.md" },
+      { "sources" = "api/uncertainty.sources.md" },
+      { "draws" = "api/uncertainty.draws.md" },
+      { "propagation" = "api/uncertainty.propagation.md" },
+      { "statistics" = "api/uncertainty.statistics.md" },
+      { "testing" = "api/uncertainty.testing.md" },
     ] },
     { "sbmlsim.sciml" = [
       { "sciml" = "api/sciml.md" },
