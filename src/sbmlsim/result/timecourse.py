@@ -343,3 +343,49 @@ def without_states_before(
         out_time[r, : counts[r]] = time[r, keep[r]]
         out_values[r, : counts[r]] = values[r, keep[r]]
     return out_time, out_values
+
+
+#: the number of time points of a figure of simulations with their own time
+#: points, see `plot_times`
+PLOT_POINTS = 500
+
+
+def plot_times(
+    times: np.ndarray, n: int = PLOT_POINTS, keep: Sequence[float] = ()
+) -> np.ndarray:
+    """Get the time points of a figure of simulations with their own time points.
+
+    The steps of the integrator are dense where the state changes, e.g. after a
+    dose, and sparse where it does not; the union of the steps of many
+    simulations has far more time points than a curve needs. `n` time points
+    from the first to the last time are enough: three quarters at the
+    quantiles of all time points together, so that they are dense where the
+    simulations stepped densely, and a quarter equidistant, so that no phase
+    without a change is left out. The times `keep`, e.g. of the changes, are
+    added. Fewer distinct time points than `n` are returned as they are.
+
+    Args:
+        times: the time points of all simulations, any shape, padded with
+            `NaN`.
+        n: the number of time points.
+        keep: times which are added, within the first and the last time.
+
+    Returns:
+        The time points, sorted and distinct.
+
+    Raises:
+        ValueError: if `n` is smaller than 2.
+    """
+    if n < 2:
+        raise ValueError(f"A figure needs at least 2 time points, not {n}.")
+    pooled = np.sort(np.asarray(times, dtype=float).ravel())
+    pooled = pooled[np.isfinite(pooled)]
+    distinct = np.unique(pooled)
+    if distinct.size <= n:
+        return distinct
+    first, last = distinct[0], distinct[-1]
+    n_uniform = max(n // 4, 2)
+    dense = np.quantile(pooled, np.linspace(0.0, 1.0, n - n_uniform))
+    uniform = np.linspace(first, last, n_uniform)
+    extra = np.asarray([t for t in keep if first <= t <= last], dtype=float)
+    return np.unique(np.concatenate([dense, uniform, extra]))
