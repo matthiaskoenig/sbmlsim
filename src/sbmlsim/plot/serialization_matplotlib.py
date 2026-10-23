@@ -11,6 +11,8 @@ from typing import Any
 import numpy as np
 from matplotlib import rcParams
 from matplotlib.axes import Axes as AxesMPL
+from matplotlib.backend_bases import RendererBase
+from matplotlib.backends.backend_agg import RendererAgg
 from matplotlib.cm import ScalarMappable
 from matplotlib.collections import Collection, LineCollection, PolyCollection
 from matplotlib.colorbar import Colorbar
@@ -63,6 +65,27 @@ COLORBAR_WIDTH = 0.15
 #: the least room in inches between the ticks and labels of the panels and the
 #: edges of the figure (the padding of `bbox_inches="tight"`)
 EDGE_PAD = 0.1
+
+
+def _measuring_renderer(fig: FigureMPL) -> RendererAgg:
+    """Get a renderer which measures the text of a figure without drawing it.
+
+    A text or an axes measured without a renderer draws the whole figure into
+    a renderer of the size of the figure and keeps it: the margins, the
+    wrapping of the labels and the room right of the panels drew a figure
+    dozens of times, half the time of the simulation experiments of a model,
+    and the texts kept renderers of 10 GB until the figures were saved. The
+    extents of a text depend on the resolution of the renderer, not on its
+    size, so one renderer of a pixel at the resolution of the figure measures
+    everything.
+
+    Args:
+        fig: the figure.
+
+    Returns:
+        The renderer.
+    """
+    return RendererAgg(1, 1, fig.dpi)
 
 
 @dataclass
@@ -472,6 +495,7 @@ class MatplotlibFigureSerializer:
         title: Text | None = None,
         slots: list[_Slot] | None = None,
         grid_right: float = 0.0,
+        renderer: RendererBase | None = None,
     ) -> None:
         """Place the colour bars and the outside legend of every panel right of it.
 
@@ -503,7 +527,10 @@ class MatplotlibFigureSerializer:
             grid_right: the right edge of the last column of the grid in
                 figure coordinates, which the legends of the rows are right
                 of when no panel is in the last column.
+            renderer: the renderer which measures the bars and the legends,
+                see `_measuring_renderer`; one of its own by default.
         """
+        renderer = renderer or _measuring_renderer(fig)
         num_rows, num_cols = grid
         last = num_cols - 1
         slots = slots or []
@@ -518,7 +545,7 @@ class MatplotlibFigureSerializer:
             panel_rooms: list[float] = []
             panel_bars: list[Colorbar] = []
             widths = [
-                slot.legend.get_window_extent().width / dpi
+                slot.legend.get_window_extent(renderer).width / dpi
                 for slot in slots
                 if slot.panel is panel
             ]
@@ -527,7 +554,7 @@ class MatplotlibFigureSerializer:
                 # the ticks and the title of a right y axis, in inches
                 right = 0.0
                 for ax in panel.axes[1:]:
-                    tight = ax.yaxis.get_tightbbox()
+                    tight = ax.yaxis.get_tightbbox(renderer)
                     if tight is not None:
                         right = max(right, tight.x1 / dpi - box.x1 * width)
                 panel_rooms.append(right)
@@ -536,7 +563,7 @@ class MatplotlibFigureSerializer:
                         (box.x1, box.y0, COLORBAR_WIDTH / width, box.height)
                     )
                     panel_bars.append(cls._colorbar(fig, cax, styles, settings))
-                    tight = cax.get_tightbbox()
+                    tight = cax.get_tightbbox(renderer)
                     end = tight.x1 / dpi if tight is not None else 0.0
                     panel_rooms.append(max(0.0, end - box.x1 * width - COLORBAR_WIDTH))
             rooms.append(panel_rooms)
@@ -568,14 +595,16 @@ class MatplotlibFigureSerializer:
                 )
                 + COLORBAR_GAP
                 + max(
-                    slot.legend.get_window_extent().width / dpi for slot in grid_legends
+                    slot.legend.get_window_extent(renderer).width / dpi
+                    for slot in grid_legends
                 ),
             )
         # the overflow of a legend below its panel or its row, in inches
         rows = [0.0] * num_rows
         for slot in slots:
             overflow = (
-                slot.legend.get_window_extent().height / dpi - slot.height * height
+                slot.legend.get_window_extent(renderer).height / dpi
+                - slot.height * height
             )
             rows[slot.bottom_row] = max(rows[slot.bottom_row], overflow)
         if not any(columns) and not any(rows):
@@ -1178,7 +1207,8 @@ class MatplotlibFigureSerializer:
 
         # the margins fit the ticks and the labels of the panels at the edges,
         # before the legends and the colour bars are placed from the positions
-        cls._fit_margins(fig, panels, title)
+        renderer = _measuring_renderer(fig)
+        cls._fit_margins(fig, panels, title, renderer)
 
         # the legends, then the colour bars and the legends outside, once every
         # axes has its ticks and labels
@@ -1205,12 +1235,15 @@ class MatplotlibFigureSerializer:
             title,
             slots,
             grid_right=gs[0, figure.num_cols - 1].get_position(fig).x1,
+            renderer=renderer,
         )
 
         return fig
 
     @staticmethod
-    def _wrap_label(label: Text, length: float, vertical: bool) -> None:
+    def _wrap_label(
+        label: Text, length: float, vertical: bool, renderer: RendererBase
+    ) -> None:
         """Wrap the label of an axis which is longer than the axis.
 
         The label is broken at its words into the fewest lines each of which
@@ -1222,11 +1255,12 @@ class MatplotlibFigureSerializer:
             label: the label of an axis.
             length: the length of the axis in pixels.
             vertical: whether the label is along a vertical axis.
+            renderer: the renderer which measures the label.
         """
         text = label.get_text()
 
         def extent() -> float:
-            box = label.get_window_extent()
+            box = label.get_window_extent(renderer)
             return box.height if vertical else box.width
 
         if not text or "\n" in text or extent() <= length:
@@ -1239,7 +1273,11 @@ class MatplotlibFigureSerializer:
 
     @classmethod
     def _fit_margins(
-        cls, fig: FigureMPL, panels: list[_Panel], title: Text | None
+        cls,
+        fig: FigureMPL,
+        panels: list[_Panel],
+        title: Text | None,
+        renderer: RendererBase,
     ) -> None:
         """Grow the figure by what the ticks and labels need beyond its margins.
 
@@ -1256,21 +1294,21 @@ class MatplotlibFigureSerializer:
         """
         for panel in panels:
             for ax in panel.axes:
-                box = ax.get_window_extent()
-                cls._wrap_label(ax.xaxis.label, box.width, vertical=False)
-                cls._wrap_label(ax.yaxis.label, box.height, vertical=True)
+                box = ax.get_window_extent(renderer)
+                cls._wrap_label(ax.xaxis.label, box.width, False, renderer)
+                cls._wrap_label(ax.yaxis.label, box.height, True, renderer)
         width, height, dpi = fig.get_figwidth(), fig.get_figheight(), fig.dpi
         boxes = [
             box
             for panel in panels
             for ax in panel.axes
-            if (box := ax.get_tightbbox()) is not None
+            if (box := ax.get_tightbbox(renderer)) is not None
         ]
         if not boxes:
             return
         ceiling = height
         if title is not None:
-            ceiling = title.get_window_extent().y0 / dpi
+            ceiling = title.get_window_extent(renderer).y0 / dpi
         left = max(0.0, EDGE_PAD - min(box.x0 for box in boxes) / dpi)
         bottom = max(0.0, EDGE_PAD - min(box.y0 for box in boxes) / dpi)
         top = max(0.0, max(box.y1 for box in boxes) / dpi + EDGE_PAD - ceiling)
