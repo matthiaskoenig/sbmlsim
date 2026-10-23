@@ -951,8 +951,9 @@ class FitReport:
             "The validation panel shows how the fit describes data it was not "
             "fitted on, the outlier panel the data the fit dropped. The box "
             "of a panel carries its R², its normalized RMSE, the RMSE of "
-            "the residuals of the cost and the percentage of its points "
-            "within twofold."
+            "the residuals of the cost, its fold errors GMFE and AFE and the "
+            "percentages of its points within twofold and within two standard "
+            "deviations of the data."
         ),
         "bland_altman": (
             "The ratio of prediction and measurement over the geometric mean "
@@ -2463,8 +2464,9 @@ class FitReport:
 
         The goodness of fit shows how well the predictions describe the data
         of the kind: `R²`, the scale free `NRMSE` and the `RMSE_w` of the cost
-        of `FitMetrics.summary` and the percentage of the points within
-        twofold, `within_2fold`; the absolute RMSE is not shown, the data
+        of `FitMetrics.summary`, the fold errors `GMFE` and `AFE` and the
+        percentages of the points within twofold and within two standard
+        deviations, see `sbmlsim.fit.evaluation`; the absolute RMSE is not shown, the data
         spans orders of magnitude and it only reads the largest curves. The
         Bland-Altman plot shows the agreement of the
         points of the panel itself: the bias and the SD of `log10(f(x)/y)` as
