@@ -256,7 +256,7 @@ class UncertaintyResult:
     def test(
         self,
         hypotheses: Sequence[Hypothesis],
-        adjust: Literal["holm", "by", "none"] = "holm",
+        adjust: Literal["bonferroni", "none"] = "bonferroni",
     ) -> TestReport:
         """Get the statements of hypotheses, adjusted for their multiplicity.
 
@@ -295,7 +295,7 @@ class UncertaintyResult:
 
         Returns:
             One row per scenario and output: `scenario`, `output`, `unit`,
-            `n` (the finite draws), `n_failed`, `mean`, `mean_se`, `sd`,
+            `n` (the draws which did not fail), `n_failed`, `mean`, `mean_se`, `sd`,
             `sd_se` and per quantile `q<q>` with `q<q>_low` and `q<q>_high`,
             the ends of its distribution-free interval, see
             `sbmlsim.uncertainty.statistics`.
@@ -449,7 +449,7 @@ def _precise(values: np.ndarray, rel_tol: float) -> tuple[bool, float]:
         Whether they are and the largest half width relative to the standard
         deviation.
     """
-    finite = values[np.isfinite(values)]
+    finite = values[~np.isnan(values)]
     if finite.size < 8:
         return False, math.inf
     sd, sd_error, _ = sd_se(finite)
@@ -506,12 +506,12 @@ def propagate(
     *,
     outputs: Sequence[str] | None = None,
     hypotheses: Sequence[Hypothesis] = (),
-    adjust: Literal["holm", "by", "none"] = "holm",
+    adjust: Literal["bonferroni", "none"] = "bonferroni",
     n: int | None = None,
     rel_tol: float = 0.1,
     n_start: int = 256,
     n_max: int = 16384,
-    design: Literal["sobol", "lhs", "random"] = "sobol",
+    design: Literal["sobol", "lhs", "random"] | None = None,
     seed: int | None = None,
     simulator: Simulator | None = None,
     keep: Sequence[str] | None = None,
@@ -538,7 +538,8 @@ def propagate(
         n_start: the draws of the first batch of the adaptive stopping.
         n_max: the most draws of the adaptive stopping.
         design: `sobol`, `lhs` (only with `n`, a Latin hypercube has no
-            continuation) or `random`.
+            continuation) or `random`; by default `random` with hypotheses,
+            whose statements assume independent draws, else `sobol`.
         seed: the seed, `None` draws one, which the record keeps.
         simulator: the simulator, `Simulator()` by default.
         keep: the timecourses the results keep, see `Simulator.run`.
@@ -560,6 +561,8 @@ def propagate(
         if isinstance(simulation, Simulation)
         else dict(simulation)
     )
+    if design is None:
+        design = "random" if hypotheses else "sobol"
     if n is None and design == "lhs":
         raise ValueError(
             "A Latin hypercube has no continuation, its points of more draws are "
@@ -686,6 +689,13 @@ def propagate(
                             f"The output '{name}' of the scenario '{scenario}' has "
                             f"no draw which did not fail, see the attribute "
                             f"'errors' of its result."
+                        )
+                    if np.isinf(values).any():
+                        raise ValueError(
+                            f"The output '{name}' of the scenario '{scenario}' has "
+                            f"infinite draws, whose mean and standard deviation "
+                            f"the adaptive stopping cannot judge: give `n` or "
+                            f"hypotheses about it."
                         )
                     checks.append(_precise(values, rel_tol))
             undecided = (

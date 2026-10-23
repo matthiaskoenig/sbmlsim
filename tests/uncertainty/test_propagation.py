@@ -122,6 +122,10 @@ def fails_for_a_large_dose(time: np.ndarray, values: dict) -> float:
     return 1.0
 
 
+def infinite(time: np.ndarray, values: dict) -> float:
+    return np.inf
+
+
 def always_fails(time: np.ndarray, values: dict) -> float:
     raise ValueError("always")
 
@@ -188,6 +192,20 @@ def test_an_output_which_always_fails_raises() -> None:
             UncertaintyModel(),
             [Custom("check", always_fails, "dimensionless", symbols=["[C]"])],
             outputs=["check"],
+            n_start=16,
+            seed=4,
+            simulator=Simulator(n_workers=1),
+        )
+
+
+def test_an_infinite_output_has_no_adaptive_moments() -> None:
+    with pytest.raises(ValueError, match="infinite"):
+        propagate(
+            sbml_pk(),
+            _simulation(Uncertain(Q(100, "mg"), cv=0.1)),
+            UncertaintyModel(),
+            [Custom("inf", infinite, "dimensionless", symbols=["[C]"])],
+            outputs=["inf"],
             n_start=16,
             seed=4,
             simulator=Simulator(n_workers=1),

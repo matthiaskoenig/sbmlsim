@@ -36,20 +36,36 @@ def _bernoulli(p: float, n: int, seed: int) -> np.ndarray:
     return np.where(np.random.default_rng(seed).random(n) < p, 1.0, -1.0)
 
 
+def _wilson_misses(x: np.ndarray, p: float, looks: list[int]) -> bool:
+    """Check whether a Wilson interval looked at after every batch misses p."""
+    z = 1.959963984540054
+    for m in looks:
+        q = x[:m].mean()
+        center = (q + z**2 / (2 * m)) / (1 + z**2 / m)
+        half = z * np.sqrt(q * (1 - q) / m + z**2 / (4 * m**2)) / (1 + z**2 / m)
+        if not center - half <= p <= center + half:
+            return True
+    return False
+
+
 def test_the_confidence_sequence_covers_at_every_number_of_draws() -> None:
     """The true probability is inside the sequence at every n, in 95 % of the runs.
 
-    A Wilson interval looked at after every batch would not be: its coverage
-    holds at one fixed n only.
+    A Wilson interval looked at after every batch is not: its coverage holds
+    at one fixed n only.
     """
-    p, n, runs = 0.3, 2000, 400
+    p, n, runs = 0.3, 2048, 400
+    looks = [2**k for k in range(4, 12)]
     rng = np.random.default_rng(7)
-    outside = 0
+    sequence = wilson = 0
     for _ in range(runs):
         x = rng.random(n) < p
         low, high = confidence_sequence(x)
-        outside += not low <= p <= high
-    assert outside / runs <= 0.05
+        sequence += not low <= p <= high
+        wilson += _wilson_misses(x, p, looks)
+    # at most 5 %, within two standard errors of the runs
+    assert sequence / runs <= 0.05 + 2 * np.sqrt(0.05 * 0.95 / runs)
+    assert wilson / runs > 0.15
 
 
 def test_the_sequence_is_nested() -> None:
@@ -153,19 +169,71 @@ def _marginal(n: int = 2000, threshold: float = 0.9) -> np.ndarray:
     raise AssertionError
 
 
-def test_holm_makes_marginal_decisions_undecided() -> None:
+def test_bonferroni_makes_marginal_decisions_undecided() -> None:
     values = _marginal()
     marginal = probability(_draws(values), greater=0.0, at_least=0.9)
     assert marginal.p_value() > 0.025
-    holm = TestReport([marginal, marginal], adjust="holm").table()
-    assert list(holm.decision) == ["undecided", "undecided"]
-    assert (holm.p_adjusted > holm.p_value).all()
+    report = TestReport([marginal, marginal]).table()
+    assert list(report.decision) == ["undecided", "undecided"]
+    assert list(report.p_adjusted) == pytest.approx(2 * report.p_value)
+    # the intervals of the report hold for both statements at once
+    assert (report.low < marginal.low).all() and (report.high > marginal.high).all()
     none = TestReport([marginal, marginal], adjust="none").table()
     assert list(none.decision) == ["accepted", "accepted"]
-    by = TestReport([marginal, marginal], adjust="by").table()
-    assert list(by.decision) == ["undecided", "undecided"]
     with pytest.raises(ValueError, match="adjustment"):
-        TestReport([marginal], adjust="bh").table()  # ty: ignore[invalid-argument-type]
+        TestReport([marginal], adjust="holm").table()  # ty: ignore[invalid-argument-type]
+
+
+def test_a_report_controls_the_family_wise_error() -> None:
+    """Statements at their threshold: a direction is wrong in at most 5 % of the runs.
+
+    Every statement has a true null, its correct decision is the equivalence:
+    a step-down procedure over the decisions, e.g. Holm, would not control the
+    error, the decisions at the level of Bonferroni do.
+    """
+    rng = np.random.default_rng(3)
+    runs, wrong = 150, 0
+    for _ in range(runs):
+        tests = [
+            probability(
+                _draws(np.where(rng.random(2000) < 0.5, 1.0, -1.0)),
+                greater=0.0,
+                at_least=0.5,
+            )
+            for _ in range(10)
+        ]
+        decisions = [t.decision for t in TestReport(tests).adjusted()]
+        wrong += any(d in ("accepted", "rejected") for d in decisions)
+    assert wrong / runs <= 0.05
+
+
+def test_a_report_is_not_reversed_by_more_draws() -> None:
+    """More draws refine the decisions of a report and never reverse them."""
+    a = _bernoulli(0.515, 2**15, seed=5)
+    b = _bernoulli(0.53, 2**15, seed=6)
+    allowed = {
+        ("undecided", "undecided"),
+        ("undecided", "equivalent"),
+        ("undecided", "accepted"),
+        ("undecided", "rejected"),
+        ("equivalent", "equivalent"),
+        ("equivalent", "accepted"),
+        ("equivalent", "rejected"),
+        ("accepted", "accepted"),
+        ("rejected", "rejected"),
+    }
+    before = ["undecided", "undecided"]
+    seen = set()
+    for m in range(512, 2**15 + 1, 512):
+        tests = [
+            probability(_draws(x[:m]), greater=0.0, at_least=0.5, margin=0.05)
+            for x in (a, b)
+        ]
+        after = [t.decision for t in TestReport(tests).adjusted()]
+        assert all((x, y) in allowed for x, y in zip(before, after, strict=True)), m
+        seen |= set(after)
+        before = after
+    assert {"equivalent", "accepted"} <= seen
 
 
 @pytest.mark.parametrize("n", [20, 50, 200])
@@ -173,7 +241,7 @@ def test_holm_makes_marginal_decisions_undecided() -> None:
 def test_a_report_of_one_statement_keeps_its_decision(n: int, threshold: float) -> None:
     for k in range(n + 1):
         single = probability(_draws(_spread(k, n)), greater=0.0, at_least=threshold)
-        for adjust in ("none", "holm", "by"):
+        for adjust in ("none", "bonferroni"):
             (reported,) = TestReport([single], adjust=adjust).adjusted()
             assert reported.decision == single.decision, (k, adjust)
 
@@ -181,7 +249,7 @@ def test_a_report_of_one_statement_keeps_its_decision(n: int, threshold: float) 
 def test_a_decision_undecided_by_the_adjustment_needs_draws() -> None:
     values = _marginal()
     marginal = probability(_draws(values), greater=0.0, at_least=0.9)
-    adjusted = TestReport([marginal, marginal], adjust="holm").adjusted()
+    adjusted = TestReport([marginal, marginal]).adjusted()
     assert [t.decision for t in adjusted] == ["undecided", "undecided"]
     needed = adjusted[0].n_needed
     assert needed is not None and needed > values.size
@@ -191,6 +259,24 @@ def test_a_decision_undecided_by_the_adjustment_needs_draws() -> None:
         "accepted",
         "accepted",
     ]
+    assert TestReport([marginal], adjust="none").adjusted()[0].n_needed is None
+
+
+def test_a_hypothesis_is_checked() -> None:
+    with pytest.raises(ValueError, match="threshold"):
+        Hypothesis("x", greater=1.0, at_least=1.5)
+    with pytest.raises(ValueError, match="margin"):
+        Hypothesis("x", greater=1.0, at_least=0.9, margin=0.7)
+    with pytest.raises(ValueError, match="exactly one"):
+        Hypothesis("x", at_least=0.9)
+
+
+def test_contradicting_draws_keep_the_sequence_nested() -> None:
+    """The draws change their probability: the sets exclude each other at last."""
+    x = np.concatenate([np.ones(300), np.zeros(3000)]) > 0
+    bounds = [confidence_sequence(x[:m]) for m in (100, 300, 1000, 2000, 3300)]
+    for (low_a, high_a), (low_b, high_b) in itertools.pairwise(bounds):
+        assert low_a <= low_b <= high_b <= high_a
 
 
 def test_a_timecourse_is_no_value_per_draw() -> None:
@@ -264,6 +350,8 @@ def test_a_propagation_draws_until_its_hypotheses_are_decided() -> None:
         "accepted",
     ]
     assert res.record["hypotheses"][1]["contrast"] == ["large", "small"]
+    # independent draws, for which the statements are exactly valid
+    assert res.record["design"] == "random"
 
 
 def test_the_sequence_covers_with_quasi_random_draws() -> None:
