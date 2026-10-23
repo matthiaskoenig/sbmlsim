@@ -163,7 +163,8 @@ def test_log_likelihood_of_the_sciml_test_suite() -> None:
     This pins the sign and the constant of the log-likelihood against a value
     which another tool calculated.
     """
-    df = pd.read_csv(SCIML_001, sep="\t", float_precision="round_trip")
+    # the parser of python reads every number as it was written
+    df = pd.read_csv(SCIML_001, sep="\t", engine="python")
     assert len(df) == 20
     llh = float(np.sum(log_density(df.measurement, df.simulation, 0.05)))
     assert llh == pytest.approx(SCIML_001_LLH, abs=SCIML_001_TOL)

@@ -79,7 +79,4 @@ class SimulateCopasiSBML(SimulateSBML):
         ]
 
         # add time column & remove index
-        df.reset_index(inplace=True)
-        df.rename(columns={"Time": "time"}, inplace=True)
-
-        return df
+        return df.reset_index().rename(columns={"Time": "time"})

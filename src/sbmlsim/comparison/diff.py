@@ -489,11 +489,11 @@ class DataSetsComparison:
             if df_diff_bool[col].sum() == 0:
                 col_drops.append(col)
 
-        df_diff_bool.drop(labels=col_drops, axis=1, inplace=True)
+        df_diff_bool = df_diff_bool.drop(labels=col_drops, axis=1)
 
         # absolute difference
         df_diff: pd.DataFrame = self.diff_tol.copy()
-        df_diff.drop(labels=col_drops, axis=1, inplace=True)
+        df_diff = df_diff.drop(labels=col_drops, axis=1)
         df_diff[df_diff < 0] = np.nan
 
         if df_diff.empty:

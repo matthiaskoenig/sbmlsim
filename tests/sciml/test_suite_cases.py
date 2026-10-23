@@ -786,7 +786,8 @@ def test_the_simulations_of_measurements_without_an_experiment(
     """A fit mapping without an experiment has the rows without an experiment."""
     case = _problem_import_case(tmp_path, experiment=False)
     assert case.run().passed
-    df = pd.read_csv(case.simulation_files[0], sep="\t")
+    # the empty experiment ids stay strings, which the new row continues
+    df = pd.read_csv(case.simulation_files[0], sep="\t", keep_default_na=False)
     df.loc[len(df)] = ["prey_o", "e1", 1.0, 1.0]
     df.to_csv(case.simulation_files[0], sep="\t", index=False)
     result = case.run()
