@@ -59,3 +59,8 @@ def test_first_order_indices_of_given_data() -> None:
     assert first_order_given_data(rng.normal(size=4096), y) == pytest.approx(
         0.0, abs=0.02
     )
+
+
+def test_infinite_draws_are_values() -> None:
+    mean, se, n = mean_se(np.array([1.0, np.inf, np.nan]))
+    assert (mean, n) == (np.inf, 2) and np.isnan(se)

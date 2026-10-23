@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
-from pint.errors import PintError
+from pint.errors import PintError, UndefinedUnitError
 
 from sbmlsim.data import Data, to_quantity
 from sbmlsim.fit.options import ParameterScaleType
@@ -239,17 +239,7 @@ class Prior:
         )
 
         def magnitude(value: Any) -> float:
-            if isinstance(value, Quantity):
-                if unit is None:
-                    return float(value.to("dimensionless").magnitude)
-                try:
-                    return float(value.to(unit).magnitude)
-                except PintError as err:
-                    raise ValueError(
-                        f"The prior {distribution!r} does not fit the unit '{unit}' "
-                        f"of the parameter."
-                    ) from err
-            return float(value)
+            return _in_unit(value, unit, f"The prior {distribution!r}")
 
         if isinstance(distribution, Truncated):
             distribution = distribution.distribution
@@ -936,6 +926,32 @@ class FitMapping:
         )
 
 
+def _in_unit(value: Any, unit: str | None, what: str) -> float:
+    """Get a number of a prior in the unit of its parameter.
+
+    Raises:
+        ValueError: for a quantity whose unit does not fit, or a quantity for
+            a unit which is no unit of pint, e.g. a unit id of a model, which
+            is resolved only with the model.
+    """
+    if not isinstance(value, Quantity):
+        return float(value)
+    if unit is None:
+        unit = "dimensionless"
+    try:
+        return float(value.to(unit).magnitude)
+    except UndefinedUnitError as err:
+        raise ValueError(
+            f"{what}: the unit '{unit}' of the parameter is no unit of pint, e.g. "
+            f"a unit id of a model, which is resolved with the model; give the "
+            f"prior in numbers of the unit of the parameter."
+        ) from err
+    except PintError as err:
+        raise ValueError(
+            f"{what} does not fit the unit '{unit}' of the parameter."
+        ) from err
+
+
 def _prior_of(
     pid: str,
     prior: Prior | Distribution | Uncertain | None,
@@ -962,11 +978,7 @@ def _prior_of(
         ):
             if bound is None:
                 continue
-            value = (
-                float(bound.to(unit).magnitude)
-                if isinstance(bound, Quantity) and unit
-                else float(bound.magnitude if isinstance(bound, Quantity) else bound)
-            )
+            value = _in_unit(bound, unit, f"FitParameter '{pid}': the {side} bound")
             limit = lower if side == "lower" else upper
             if not math.isclose(value, limit):
                 raise ValueError(

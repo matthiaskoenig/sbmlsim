@@ -104,3 +104,43 @@ def test_other_designs(design: str) -> None:
     assert stats.kstest(values, "norm").pvalue > 0.01
     again = _magnitude(draw(variables, [], 2048, seed=5, design=design)["a"])  # ty: ignore[invalid-argument-type]
     np.testing.assert_array_equal(values, again)
+
+
+def test_random_draws_do_not_depend_on_the_batches() -> None:
+    variables = [
+        _variable("a", Normal(mean=0.0, sd=1.0)),
+        _variable("b", Uniform(0, 1)),
+    ]
+    whole = draw(variables, [], 512, seed=4, design="random")
+    first = draw(variables, [], 256, seed=4, design="random")
+    second = draw(variables, [], 256, seed=4, start=256, design="random")
+    for key in ("a", "b"):
+        np.testing.assert_array_equal(
+            np.concatenate([_magnitude(first[key]), _magnitude(second[key])]),
+            _magnitude(whole[key]),
+        )
+
+
+def test_a_latin_hypercube_has_no_continuation() -> None:
+    variables = [_variable("a", Normal(mean=0.0, sd=1.0))]
+    with pytest.raises(ValueError, match="Latin hypercube"):
+        draw(variables, [], 256, seed=4, start=256, design="lhs")
+
+
+def test_a_variable_with_the_marginals_of_its_scenarios() -> None:
+    """The same quantiles in every scenario: common random numbers."""
+    variable = Variable(
+        "dose",
+        ("PODOSE",),
+        Normal(mean=100.0, sd=10.0),
+        "uncertainty",
+        "input",
+        by_scenario={"b": Normal(mean=200.0, sd=30.0)},
+    )
+    a = _magnitude(draw([variable], [], 64, seed=1)["dose"])
+    b = _magnitude(draw([variable], [], 64, seed=1, scenario="b")["dose"])
+    np.testing.assert_allclose((b - 200.0) / 30.0, (a - 100.0) / 10.0)
+    other = _variable("k", Normal(mean=1.0, sd=1.0))
+    covariance = Covariance(["dose", "k"], [[100.0, 1.0], [1.0, 1.0]])
+    with pytest.raises(ValueError, match="marginals of its scenarios"):
+        draw([variable, other], [covariance], 8, seed=1)

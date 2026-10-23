@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from sbmlsim import Q
-from sbmlsim.simulation import PK, Change, Simulation
+from sbmlsim.simulation import PK, Change, Custom, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.uncertainty import Uncertain, UncertaintyModel, propagate
 from tests.simulator.models import sbml_pk
@@ -63,15 +63,36 @@ def test_the_adaptive_propagation_stops() -> None:
         outputs=["pk.cmax", "pk.auc_last"],
         rel_tol=0.05,
         n_start=128,
-        n_max=4096,
+        n_max=1 << 16,
         seed=2,
         simulator=Simulator(n_workers=1),
     )
-    n = res.record["n"]
-    assert 256 <= n <= 4096 and n & (n - 1) == 0
     history = res.record["history"]
-    assert history[-1]["n"] == n
-    assert history[-1]["converged"] == (n < 4096 or history[-1]["converged"])
+    assert [entry["n"] for entry in history] == [128 << k for k in range(len(history))]
+    assert len(history) > 1 and res.record["n"] == history[-1]["n"] < 1 << 16
+    assert [entry["converged"] for entry in history] == [False] * (len(history) - 1) + [
+        True
+    ]
+    assert history[-1]["precision"] <= 0.05 < history[-2]["precision"]
+    assert res.values("pk.cmax").sizes["draw"] == res.record["n"]
+
+
+def test_the_adaptive_propagation_stops_at_n_max() -> None:
+    res = propagate(
+        sbml_pk(),
+        _simulation(Uncertain(Q(100, "mg"), cv=0.2)),
+        UncertaintyModel(),
+        OBSERVABLES,
+        outputs=["pk.cmax"],
+        rel_tol=1e-4,
+        n_start=256,
+        n_max=1000,
+        seed=2,
+        simulator=Simulator(n_workers=1),
+    )
+    assert [entry["n"] for entry in res.record["history"]] == [256, 512, 1000]
+    assert res.record["n"] == res.values("pk.cmax").sizes["draw"] == 1000
+    np.testing.assert_array_equal(res.values("pk.cmax").draw, np.arange(1000))
 
 
 def test_scenarios_have_common_random_numbers() -> None:
@@ -94,20 +115,118 @@ def test_scenarios_have_common_random_numbers() -> None:
     assert np.all(difference.values < 0)
 
 
-def test_failed_draws_are_counted() -> None:
+def fails_for_a_large_dose(time: np.ndarray, values: dict) -> float:
+    """Fail for a large concentration, i.e. a large dose."""
+    if np.max(values["[C]"]) > 7.0:
+        raise ValueError("a large dose")
+    return 1.0
+
+
+def always_fails(time: np.ndarray, values: dict) -> float:
+    raise ValueError("always")
+
+
+FAILING = [
+    *OBSERVABLES,
+    Custom("check", fails_for_a_large_dose, "dimensionless", symbols=["[C]"]),
+]
+
+
+def test_failed_draws_are_counted(nominal_cmax: float) -> None:
+    assert 6.5 < nominal_cmax < 7.0
     res = propagate(
         sbml_pk(),
         _simulation(Uncertain(Q(100, "mg"), cv=0.1)),
         UncertaintyModel(),
-        OBSERVABLES,
+        FAILING,
         outputs=["pk.cmax"],
         n=64,
         seed=4,
         simulator=Simulator(n_workers=1),
     )
-    res.results["default"].ds["pk.cmax"][:5] = np.nan
+    failed = int(res.results["default"].ds["status"].sum())
+    assert 0 < failed < 64
     row = res.summary(["pk.cmax"]).iloc[0]
-    assert (row["n"], row["n_failed"]) == (59, 5)
+    assert (row["n"], row["n_failed"]) == (64 - failed, failed)
+    statement = res.probability("pk.cmax", greater=0.0)
+    assert (statement.n, statement.n_failed) == (64 - failed, failed)
+
+
+def test_the_batches_keep_their_errors_and_draws() -> None:
+    res = propagate(
+        sbml_pk(),
+        _simulation(Uncertain(Q(100, "mg"), cv=0.1)),
+        UncertaintyModel(),
+        FAILING,
+        outputs=["pk.cmax"],
+        rel_tol=1e-4,
+        n_start=32,
+        n_max=128,
+        seed=4,
+        simulator=Simulator(n_workers=1),
+    )
+    ds = res.results["default"].ds
+    (dimension,) = ds.attrs["scan"]["dimensions"]
+    assert dimension["labels"] == list(range(128))
+    assert len(dimension["values"]["PODOSE"]["value"]) == 128
+    assert dimension["design"]["options"] | {"n": 0} == {
+        "seed": 4,
+        "design": "sobol",
+        "start": 0,
+        "n": 0,
+    }
+    assert dimension["design"]["options"]["n"] == 128
+    # the errors of every batch, at most MAX_ERRORS of them
+    assert len(ds.attrs["errors"]) == min(10, int(ds["status"].sum()))
+
+
+def test_an_output_which_always_fails_raises() -> None:
+    with pytest.raises(ValueError, match="no draw"):
+        propagate(
+            sbml_pk(),
+            _simulation(Uncertain(Q(100, "mg"), cv=0.1)),
+            UncertaintyModel(),
+            [Custom("check", always_fails, "dimensionless", symbols=["[C]"])],
+            outputs=["check"],
+            n_start=16,
+            seed=4,
+            simulator=Simulator(n_workers=1),
+        )
+
+
+def test_the_values_are_a_copy() -> None:
+    res = propagate(
+        sbml_pk(),
+        _simulation(Uncertain(Q(100, "mg"), cv=0.1)),
+        UncertaintyModel(),
+        OBSERVABLES,
+        n=16,
+        seed=4,
+        simulator=Simulator(n_workers=1),
+    )
+    res.values("pk.cmax").attrs["units"] = "changed"
+    assert "units" not in res.results["default"].ds["pk.cmax"].attrs
+    assert res.values("pk.cmax").attrs["units"] != "changed"
+
+
+def test_scenarios_with_their_own_marginals_have_common_random_numbers() -> None:
+    """A dose of each scenario at the same quantile: the ratio of the cmax is exact."""
+    res = propagate(
+        sbml_pk(),
+        {
+            "low": _simulation(Uncertain(Q(100, "mg"), cv=0.2)),
+            "high": _simulation(Uncertain(Q(200, "mg"), cv=0.2)),
+        },
+        UncertaintyModel(),
+        OBSERVABLES,
+        n=64,
+        seed=3,
+        simulator=Simulator(n_workers=1),
+    )
+    np.testing.assert_allclose(
+        res.contrast("pk.cmax", "high", "low").values, 2.0, rtol=1e-5
+    )
+    assert res.record["variables"][0]["by_scenario"].keys() == {"high"}
 
 
 def test_the_result_does_not_depend_on_the_workers() -> None:

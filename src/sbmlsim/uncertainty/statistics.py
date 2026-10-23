@@ -2,8 +2,9 @@
 
 Every statistic of a Monte Carlo propagation has an error from the finite
 number of draws, which is reported with it. The functions ignore the draws
-which are not finite, e.g. of a point which failed, and return the number of
-draws they used.
+which are `NaN`, i.e. of a point which failed, and return the number of draws
+they used; an infinite draw is a value (the mean of draws with one is
+infinite, their standard deviation `NaN`).
 
 - `mean_se`: the mean and its standard error `s / sqrt(n)`
 - `sd_se`: the standard deviation and its standard error by the delta method
@@ -28,10 +29,10 @@ from numpy.typing import ArrayLike
 from scipy import stats
 
 
-def _finite(x: ArrayLike) -> np.ndarray:
-    """Get the finite values of an array, flattened."""
+def _valid(x: ArrayLike) -> np.ndarray:
+    """Get the values of an array which are not `NaN`, flattened."""
     values = np.asarray(x, dtype=float).ravel()
-    return values[np.isfinite(values)]
+    return values[~np.isnan(values)]
 
 
 def mean_se(x: ArrayLike) -> tuple[float, float, int]:
@@ -41,15 +42,17 @@ def mean_se(x: ArrayLike) -> tuple[float, float, int]:
         x: the draws.
 
     Returns:
-        The mean, its standard error and the number of finite draws; `nan`
-        without draws (the error without two of them).
+        The mean, its standard error and the number of draws which are not
+        `NaN`; `nan` without draws (the error without two of them).
     """
-    values = _finite(x)
+    values = _valid(x)
     n = values.size
     if n == 0:
         return math.nan, math.nan, 0
-    se = float(np.std(values, ddof=1) / math.sqrt(n)) if n > 1 else math.nan
-    return float(np.mean(values)), se, n
+    if n < 2 or not np.all(np.isfinite(values)):
+        # the standard deviation of infinite draws is NaN
+        return float(np.mean(values)), math.nan, n
+    return float(np.mean(values)), float(np.std(values, ddof=1) / math.sqrt(n)), n
 
 
 def sd_se(x: ArrayLike) -> tuple[float, float, int]:
@@ -60,11 +63,13 @@ def sd_se(x: ArrayLike) -> tuple[float, float, int]:
 
     Returns:
         The standard deviation, its standard error by the delta method and
-        the number of finite draws; `nan` without two draws.
+        the number of draws which are not `NaN`; `nan` without two draws.
     """
-    values = _finite(x)
+    values = _valid(x)
     n = values.size
     if n < 2:
+        return math.nan, math.nan, n
+    if not np.all(np.isfinite(values)):
         return math.nan, math.nan, n
     sd = float(np.std(values, ddof=1))
     if sd == 0.0:
@@ -92,10 +97,10 @@ def quantile_ci(
 
     Returns:
         The quantile, the lower and the upper end of its interval and the
-        number of finite draws; an end beyond the draws is `nan`, e.g. the
-        upper end of the 99 % quantile of 10 draws.
+        number of draws which are not `NaN`; an end beyond the draws is `nan`,
+        e.g. the upper end of the 99 % quantile of 10 draws.
     """
-    values = np.sort(_finite(x))
+    values = np.sort(_valid(x))
     n = values.size
     if n == 0:
         return math.nan, math.nan, math.nan, 0

@@ -9,10 +9,11 @@ from sbmlsim.uncertainty.covariance import Covariance
 from sbmlsim.uncertainty.propagation import UncertaintyResult, propagate
 from sbmlsim.uncertainty.quantity import Uncertain
 from sbmlsim.uncertainty.sources import UncertaintyModel, Variable
-from sbmlsim.uncertainty.testing import TestReport, TestResult, probability
+from sbmlsim.uncertainty.testing import Hypothesis, TestReport, TestResult, probability
 
 __all__ = [
     "Covariance",
+    "Hypothesis",
     "TestReport",
     "TestResult",
     "Uncertain",
