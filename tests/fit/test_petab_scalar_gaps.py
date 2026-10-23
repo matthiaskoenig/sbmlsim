@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from sbmlsim import Q
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitData, FitMapping, FitMappingCollection, FitParameter
 from sbmlsim.fit.objects import MappingKind
@@ -11,6 +12,8 @@ from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2 import PetabExporter
 from sbmlsim.fit.petab_v2.gaps import gap_mappings, gaps_of_problem
+from sbmlsim.simulation import Change, Scan, Simulation
+from sbmlsim.uncertainty import Uncertain
 from tests.fit.scalar_experiment import DoseStudy, MixedStudy, ScalarStudy
 
 
@@ -149,3 +152,24 @@ def test_the_selections_gap_counts_the_exported_experiments(tmp_path: Path) -> N
     training = PetabExporter(problem, kinds={MappingKind.TRAINING})
     assert "selections" not in {gap.id for gap in training.gaps}
     assert "selections" in {gap.id for gap in PetabExporter(problem).gaps}
+
+
+class UncertainDoseStudy(ScalarStudy):
+    """`ScalarStudy` with an uncertain dose."""
+
+    def simulations(self) -> dict[str, Simulation | Scan]:
+        simulations = super().simulations()
+        simulations["single"] = Simulation(
+            end=48,
+            steps=480,
+            changes=[Change(0, {"PODOSE": Uncertain(Q(100, "mg"), cv=0.05)})],
+        )
+        return simulations
+
+
+def test_an_uncertain_value_is_a_gap(tmp_path: Path) -> None:
+    """The nominal value of an uncertain value is written, the gap says so."""
+    problem = _problem(UncertainDoseStudy, "fm_cmax", tmp_path)
+    assert "uncertain-value" in {gap.id for gap in gaps_of_problem(problem)}
+    plain = _problem(ScalarStudy, "fm_cmax", tmp_path)
+    assert "uncertain-value" not in {gap.id for gap in gaps_of_problem(plain)}

@@ -14,15 +14,18 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+from pint.errors import PintError
 
 from sbmlsim.data import Data, to_quantity
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.serialization import to_json
 from sbmlsim.simulator.formula import compile_formula
-from sbmlsim.units import Quantity
+from sbmlsim.units import Quantity, ureg
 
 if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
+    from sbmlsim.simulation.sampling.distributions import Distribution
+    from sbmlsim.uncertainty.quantity import Uncertain
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +206,125 @@ class Prior:
             "distribution": self.distribution.value,
             "parameters": list(self.parameters),
         }
+
+    @classmethod
+    def from_distribution(cls, distribution: Distribution, unit: str | None) -> Prior:
+        """Get the prior of PEtab of a distribution of the sampler.
+
+        The parameters of PEtab, in the unit of the parameter: `normal` the
+        mean and the standard deviation, `log-normal` the mean and the
+        standard deviation of the logarithm (`ln(median)` and
+        `sqrt(ln(1 + cv^2))`), `uniform` and `log-uniform` the bounds. A
+        `Truncated` distribution is the prior of its inner distribution, which
+        PEtab truncates at the bounds of the parameter, see `FitParameter`.
+
+        Args:
+            distribution: `Normal`, `LogNormal`, `Uniform`, `LogUniform` or a
+                `Truncated` of them, with a location (not relative).
+            unit: the unit of the parameter, quantities are converted into it.
+
+        Returns:
+            The prior.
+
+        Raises:
+            ValueError: for another distribution, a relative one, or a unit
+                which does not fit.
+        """
+        from sbmlsim.simulation.sampling.distributions import (
+            LogNormal,
+            LogUniform,
+            Normal,
+            Truncated,
+            Uniform,
+        )
+
+        def magnitude(value: Any) -> float:
+            if isinstance(value, Quantity):
+                if unit is None:
+                    return float(value.to("dimensionless").magnitude)
+                try:
+                    return float(value.to(unit).magnitude)
+                except PintError as err:
+                    raise ValueError(
+                        f"The prior {distribution!r} does not fit the unit '{unit}' "
+                        f"of the parameter."
+                    ) from err
+            return float(value)
+
+        if isinstance(distribution, Truncated):
+            distribution = distribution.distribution
+        if distribution.is_relative:
+            raise ValueError(
+                f"The prior {distribution!r} is relative to the reference of its "
+                f"target; a prior needs a location."
+            )
+        if isinstance(distribution, Normal):
+            mean = magnitude(distribution.mean)
+            sd = (
+                magnitude(distribution.sd)
+                if distribution.sd is not None
+                else float(distribution.cv or 0.0) * abs(mean)
+            )
+            return cls(PriorDistribution.NORMAL, (mean, sd))
+        if isinstance(distribution, LogNormal):
+            sigma = math.sqrt(math.log1p(float(distribution.cv or 0.0) ** 2))
+            return cls(
+                PriorDistribution.LOG_NORMAL,
+                (math.log(magnitude(distribution.median)), sigma),
+            )
+        if isinstance(distribution, Uniform):
+            return cls(
+                PriorDistribution.UNIFORM,
+                (magnitude(distribution.lower), magnitude(distribution.upper)),
+            )
+        if isinstance(distribution, LogUniform):
+            return cls(
+                PriorDistribution.LOG_UNIFORM,
+                (magnitude(distribution.lower), magnitude(distribution.upper)),
+            )
+        raise ValueError(
+            f"The distribution {distribution!r} has no prior of PEtab; the "
+            f"distributions of a prior are Normal, LogNormal, Uniform, LogUniform "
+            f"and a Truncated of them."
+        )
+
+    def to_distribution(self, unit: str | None) -> Distribution:
+        """Get the distribution of the sampler of the prior, the inverse of `from_distribution`.
+
+        Args:
+            unit: the unit of the parameter, the values are quantities of it.
+
+        Returns:
+            The distribution.
+
+        Raises:
+            ValueError: for a prior of another distribution.
+        """
+        from sbmlsim.simulation.sampling.distributions import (
+            LogNormal,
+            LogUniform,
+            Normal,
+            Uniform,
+        )
+
+        def value(x: float) -> Any:
+            return ureg.Quantity(x, unit) if unit else x
+
+        a, *rest = self.parameters
+        if self.distribution is PriorDistribution.NORMAL:
+            return Normal(mean=value(a), sd=value(rest[0]))
+        if self.distribution is PriorDistribution.LOG_NORMAL:
+            return LogNormal(
+                median=value(math.exp(a)), cv=math.sqrt(math.expm1(rest[0] ** 2))
+            )
+        if self.distribution is PriorDistribution.UNIFORM:
+            return Uniform(lower=value(a), upper=value(rest[0]))
+        if self.distribution is PriorDistribution.LOG_UNIFORM:
+            return LogUniform(lower=value(a), upper=value(rest[0]))
+        raise ValueError(
+            f"The prior '{self.distribution.value}' has no distribution of the "
+            f"sampler; those are normal, log-normal, uniform and log-uniform."
+        )
 
 
 @dataclass(frozen=True)
@@ -814,6 +936,48 @@ class FitMapping:
         )
 
 
+def _prior_of(
+    pid: str,
+    prior: Prior | Distribution | Uncertain | None,
+    unit: str | None,
+    lower: float,
+    upper: float,
+) -> Prior | None:
+    """Get the prior of PEtab of the prior of a fit parameter.
+
+    Raises:
+        ValueError: for a distribution without a prior of PEtab, or a
+            truncation which the bounds of the parameter would not keep.
+    """
+    if prior is None or isinstance(prior, Prior):
+        return prior
+    from sbmlsim.simulation.sampling.distributions import Truncated
+    from sbmlsim.uncertainty.quantity import Uncertain as UncertainValue
+
+    distribution = prior.distribution if isinstance(prior, UncertainValue) else prior
+    if isinstance(distribution, Truncated):
+        for bound, side in (
+            (distribution.lower, "lower"),
+            (distribution.upper, "upper"),
+        ):
+            if bound is None:
+                continue
+            value = (
+                float(bound.to(unit).magnitude)
+                if isinstance(bound, Quantity) and unit
+                else float(bound.magnitude if isinstance(bound, Quantity) else bound)
+            )
+            limit = lower if side == "lower" else upper
+            if not math.isclose(value, limit):
+                raise ValueError(
+                    f"FitParameter '{pid}': the {side} bound {bound} of the "
+                    f"truncation of the prior differs from the {side} bound "
+                    f"{limit} of the parameter; a prior is truncated at the bounds "
+                    f"of the parameter, set them instead."
+                )
+    return Prior.from_distribution(distribution, unit)
+
+
 class FitParameter:
     """Parameter adjusted in a parameter optimization.
 
@@ -832,7 +996,7 @@ class FitParameter:
         target: str | None = None,
         mappings: Any = None,
         scale: ParameterScaleType | str | None = None,
-        prior: Prior | Mapping[str, Any] | None = None,
+        prior: Prior | Distribution | Uncertain | Mapping[str, Any] | None = None,
         description: str | None = None,
     ):
         """Initialize FitParameter.
@@ -864,7 +1028,9 @@ class FitParameter:
                 `None` is the `parameter_scale` of the `FitSettings`. A
                 parameter which is negative or zero, e.g. a weight of a
                 network, is searched on the linear scale.
-            prior: the prior of the parameter or its dictionary, see `Prior`.
+            prior: the prior of the parameter or its dictionary, see `Prior`,
+                or a distribution of the sampler or an `Uncertain`, which is
+                converted to a prior of PEtab, see `Prior.from_distribution`.
                 `None` is the uniform prior over the bounds. The objective of
                 a fit does not use it, `log_prior` evaluates it.
             description: description of the parameter for the reports of a
@@ -929,7 +1095,7 @@ class FitParameter:
             prior = Prior(
                 distribution=prior["distribution"], parameters=prior["parameters"]
             )
-        self.prior: Prior | None = prior
+        self.prior: Prior | None = _prior_of(pid, prior, unit, lower_bound, upper_bound)
         self.description: str | None = description
         if unit is None:
             logger.warning(

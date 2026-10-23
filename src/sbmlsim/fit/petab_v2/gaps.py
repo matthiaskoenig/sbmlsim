@@ -94,6 +94,15 @@ class Gap:
 #: every difference between an `sbmlsim` fit and a PEtab v2 problem
 GAPS: tuple[Gap, ...] = (
     Gap(
+        id="uncertain-value",
+        kind=GapKind.LOSSY,
+        sbmlsim="a value of a change is uncertain, an `sbmlsim.uncertainty."
+        "Uncertain`: a nominal value with its distribution",
+        petab="a condition assigns a value or a formula",
+        detail="the nominal value is written, which is the value a fit "
+        "simulates; the distribution is not part of the problem",
+    ),
+    Gap(
         id="units",
         kind=GapKind.EXTENSION,
         sbmlsim="pint units on the parameters, the observables and the data",
@@ -581,6 +590,8 @@ def gaps_of_problem(
         )
         hits.add("measurement-at-change")
 
+    if any(problem.simulations[k].uncertain_values() for k in exported):
+        hits.add("uncertain-value")
     return [gap for gap in GAPS if gap.id in hits]
 
 

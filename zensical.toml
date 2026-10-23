@@ -132,6 +132,10 @@ nav = [
       { "classification" = "api/sensitivity.classification.md" },
       { "plots" = "api/sensitivity.plots.md" },
     ] },
+    { "sbmlsim.uncertainty" = [
+      { "quantity" = "api/uncertainty.quantity.md" },
+      { "covariance" = "api/uncertainty.covariance.md" },
+    ] },
     { "sbmlsim.sciml" = [
       { "sciml" = "api/sciml.md" },
       { "network" = "api/sciml.network.md" },

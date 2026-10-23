@@ -18,7 +18,13 @@ are the ones of PEtab v2:
 A value is a `Quantity`, a number in the unit of its target in the model, or
 a formula: a string of the math of PEtab over the symbols of the model, in the
 units of the model. `S` is the amount of a species and `[S]` its
-concentration, as in the selections of roadrunner.
+concentration, as in the selections of roadrunner. A value can also be an
+`sbmlsim.uncertainty.Uncertain`, a value with its distribution: the
+simulation simulates its nominal value, which is the value of the change
+(`Change.values`, `Simulation.preinit_changes`), and keeps the declaration
+(`Change.uncertain`, `Simulation.uncertain_preinit`,
+`Simulation.uncertain_values`) for an uncertainty analysis, see
+`sbmlsim.uncertainty.propagate`.
 
 A time is a number in the `time_unit` of the simulation, in the time unit of
 the model if the simulation has none, or a `Quantity`.
@@ -30,11 +36,14 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, overload
+from typing import TYPE_CHECKING, Any, overload
 
 import numpy as np
 
 from sbmlsim.units import Quantity, ureg
+
+if TYPE_CHECKING:
+    from sbmlsim.uncertainty.quantity import Uncertain
 
 #: a time: a number in the time unit of the simulation or a quantity
 Time = float | Quantity
@@ -42,6 +51,55 @@ Time = float | Quantity
 #: a value of a change: a number in the unit of the target, a quantity or a
 #: formula
 Value = float | Quantity | str
+
+
+def _uncertain_type() -> type[Uncertain]:
+    """Get the class of uncertain values, which imports this module."""
+    from sbmlsim.uncertainty.quantity import Uncertain
+
+    return Uncertain
+
+
+def _split(
+    values: Mapping[str, Any],
+) -> tuple[dict[str, Value], dict[str, Uncertain]]:
+    """Split values into the plain values and the uncertain ones.
+
+    The plain value of an uncertain value is its nominal value.
+    """
+    plain_types = (int, float, str, Quantity, np.generic)
+    if all(isinstance(value, plain_types) for value in values.values()):
+        # no uncertain value, and no import of the uncertainty, which imports
+        # the simulator, whose module creates a steady state
+        return dict(values), {}
+    uncertain_type = _uncertain_type()
+    plain: dict[str, Value] = {}
+    uncertain: dict[str, Uncertain] = {}
+    for target, value in values.items():
+        if isinstance(value, uncertain_type):
+            plain[target] = value.nominal
+            uncertain[target] = value
+        else:
+            plain[target] = value
+    return plain, uncertain
+
+
+@dataclass(frozen=True)
+class UncertainUse:
+    """A use of an uncertain value in a simulation.
+
+    Attributes:
+        target: the target of the value.
+        time: the time of the change, `None` before the initialization.
+        presimulation: whether it is a change of the presimulation.
+        value: the uncertain value.
+    """
+
+    target: str
+    time: Time | None
+    presimulation: bool
+    value: Uncertain
+
 
 #: one or several times
 Times = float | Sequence[Time] | Quantity
@@ -78,13 +136,17 @@ class Change:
     Attributes:
         times: the times, numbers in the `time_unit` of the simulation or
             quantities.
-        values: target -> value, see the module.
+        values: target -> value, see the module; the nominal value of an
+            uncertain value.
+        uncertain: target -> the uncertain value of the target, see the
+            module.
     """
 
     times: tuple[Time, ...]
     values: dict[str, Value]
+    uncertain: dict[str, Uncertain]
 
-    def __init__(self, times: Times, values: Mapping[str, Value]) -> None:
+    def __init__(self, times: Times, values: Mapping[str, Value | Uncertain]) -> None:
         """Create a change, see the class.
 
         Raises:
@@ -95,14 +157,20 @@ class Change:
         resolved = _times(times)
         if not resolved:
             raise ValueError(f"The change of {sorted(values)} has no times.")
+        plain, uncertain = _split(values)
         object.__setattr__(self, "times", resolved)
-        object.__setattr__(self, "values", dict(values))
+        object.__setattr__(self, "values", plain)
+        object.__setattr__(self, "uncertain", uncertain)
+
+    def declared(self) -> dict[str, Value | Uncertain]:
+        """Get the values as declared, an uncertain value as itself."""
+        return {**self.values, **self.uncertain}
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON types."""
         return {
             "times": [_encode(t) for t in self.times],
-            "values": {k: _encode(v) for k, v in self.values.items()},
+            "values": {k: _encode(v) for k, v in self.declared().items()},
         }
 
     @classmethod
@@ -133,15 +201,27 @@ class SteadyState:
             a simulation which does not reach the steady state by then fails.
     """
 
-    preinit_changes: dict[str, Value] = field(default_factory=dict)
+    #: the plain values, an uncertain value given is its nominal, see the module
+    preinit_changes: dict[str, Value | Uncertain] = field(default_factory=dict)
     absolute_tolerance: float = 1e-8
     relative_tolerance: float = 1e-6
     max_time: float = 1e8
+    uncertain: dict[str, Uncertain] = field(default_factory=dict, init=False)
+
+    def __post_init__(self) -> None:
+        """Split the uncertain values from the plain ones, see the module."""
+        plain, uncertain = _split(self.preinit_changes)
+        object.__setattr__(self, "preinit_changes", plain)
+        object.__setattr__(self, "uncertain", uncertain)
+
+    def declared(self) -> dict[str, Value | Uncertain]:
+        """Get the values as declared, an uncertain value as itself."""
+        return {**self.preinit_changes, **self.uncertain}
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON types."""
         return {
-            "preinit_changes": {k: _encode(v) for k, v in self.preinit_changes.items()},
+            "preinit_changes": {k: _encode(v) for k, v in self.declared().items()},
             "absolute_tolerance": self.absolute_tolerance,
             "relative_tolerance": self.relative_tolerance,
             "max_time": self.max_time,
@@ -183,7 +263,7 @@ class Simulation:
         end: Time,
         start: Time = 0.0,
         time_unit: str | None = None,
-        preinit_changes: Mapping[str, Value] | None = None,
+        preinit_changes: Mapping[str, Value | Uncertain] | None = None,
         changes: Sequence[Change] | None = None,
         presimulation: SteadyState | None = None,
         times: Sequence[Time] | Quantity | None = None,
@@ -201,7 +281,10 @@ class Simulation:
         self.time_unit: str | None = time_unit
         self.start: Time = start
         self.end: Time = end
-        self.preinit_changes: dict[str, Value] = dict(preinit_changes or {})
+        plain, uncertain = _split(preinit_changes or {})
+        self.preinit_changes: dict[str, Value] = plain
+        #: target -> the uncertain value before the initialization, see the module
+        self.uncertain_preinit: dict[str, Uncertain] = uncertain
         self.changes: list[Change] = list(changes or [])
         self.presimulation: SteadyState | None = presimulation
         self.times: tuple[Time, ...] | None = None if times is None else _times(times)
@@ -275,11 +358,11 @@ class Simulation:
         Returns:
             The new simulation, this one is not changed.
         """
-        preinit = dict(self.preinit_changes)
+        preinit = self._declared_preinit()
         changes: list[Change] = []
         set_elsewhere: set[str] = set()
         for change in self.changes:
-            new_values = dict(change.values)
+            new_values = change.declared()
             for target in change.values:
                 if target in values:
                     new_values[target] = values[target]
@@ -287,7 +370,7 @@ class Simulation:
             changes.append(Change(change.times, new_values))
         presimulation = self.presimulation
         if presimulation is not None:
-            steady = dict(presimulation.preinit_changes)
+            steady = presimulation.declared()
             for target in steady:
                 if target in values:
                     steady[target] = values[target]
@@ -317,13 +400,55 @@ class Simulation:
         own = set(self.preinit_changes)
         if self.presimulation is not None:
             own |= set(self.presimulation.preinit_changes)
-        preinit: dict[str, Value] = {k: v for k, v in values.items() if k not in own}
-        preinit.update(self.preinit_changes)
+        preinit: dict[str, Value | Uncertain] = {
+            k: v for k, v in values.items() if k not in own
+        }
+        preinit.update(self._declared_preinit())
         return self._copy(preinit, list(self.changes), self.presimulation)
+
+    def _declared_preinit(self) -> dict[str, Value | Uncertain]:
+        """Get the pre-initialization changes as declared, see the module."""
+        return {**self.preinit_changes, **self.uncertain_preinit}
+
+    def uncertain_values(self) -> list[UncertainUse]:
+        """Get the uses of uncertain values: before the initialization, of the presimulation, at times.
+
+        Returns:
+            The uses, those before the initialization first, then those of the
+            presimulation, then those of the changes in their order and the
+            order of their times; an uncertain value of a change at several
+            times is a use per time.
+        """
+        uses = [
+            UncertainUse(target, None, False, value)
+            for target, value in self.uncertain_preinit.items()
+        ]
+        if self.presimulation is not None:
+            uses.extend(
+                UncertainUse(target, None, True, value)
+                for target, value in self.presimulation.uncertain.items()
+            )
+        for change in self.changes:
+            for time in change.times:
+                uses.extend(
+                    UncertainUse(target, time, False, value)
+                    for target, value in change.uncertain.items()
+                )
+        return uses
+
+    def nominal(self) -> Simulation:
+        """Get the simulation with the nominal values instead of the uncertain ones."""
+        changes = [Change(change.times, change.values) for change in self.changes]
+        presimulation = self.presimulation
+        if presimulation is not None:
+            presimulation = replace(
+                presimulation, preinit_changes=dict(presimulation.preinit_changes)
+            )
+        return self._copy(dict(self.preinit_changes), changes, presimulation)
 
     def _copy(
         self,
-        preinit: Mapping[str, Value],
+        preinit: Mapping[str, Value | Uncertain],
         changes: Sequence[Change],
         presimulation: SteadyState | None,
     ) -> Simulation:
@@ -362,7 +487,9 @@ class Simulation:
             "time_unit": self.time_unit,
             "start": _encode(self.start),
             "end": _encode(self.end),
-            "preinit_changes": {k: _encode(v) for k, v in self.preinit_changes.items()},
+            "preinit_changes": {
+                k: _encode(v) for k, v in self._declared_preinit().items()
+            },
             "changes": [change.to_dict() for change in self.changes],
             "presimulation": None
             if self.presimulation is None
@@ -426,7 +553,11 @@ class Simulation:
 
 
 def _encode(value: Any) -> Any:
-    """Encode a number, a quantity or a formula as a JSON type."""
+    """Encode a number, a quantity, a formula or an uncertain value as a JSON type."""
+    if not isinstance(value, (int, float, str, Quantity, np.generic)) and isinstance(
+        value, _uncertain_type()
+    ):
+        return {"uncertain": value.to_dict()}
     if isinstance(value, Quantity):
         magnitude = value.magnitude
         if isinstance(magnitude, np.ndarray):
@@ -441,4 +572,6 @@ def _decode(value: Any) -> Any:
     """Decode a value of `_encode`."""
     if isinstance(value, dict) and set(value) == {"value", "unit"}:
         return ureg.Quantity(value["value"], value["unit"])
+    if isinstance(value, dict) and set(value) == {"uncertain"}:
+        return _uncertain_type().from_dict(value["uncertain"])
     return value
