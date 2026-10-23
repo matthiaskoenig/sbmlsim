@@ -4,10 +4,11 @@ import logging
 from pathlib import Path
 
 import libsbml
+import numpy as np
 import pytest
 
 from sbmlsim.resources import DEMO_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
-from sbmlsim.units import UnitRegistry, Units, UnitsInformation
+from sbmlsim.units import UnitRegistry, Units, UnitsInformation, unit_signature
 
 LOTKA_VOLTERRA_SBML = Path(__file__).parent / "data" / "models" / "lotka_volterra.xml"
 
@@ -511,3 +512,123 @@ def test_a_quantity_of_a_model_takes_a_unit_of_pint() -> None:
         for quantity in [uinfo.quantity(3.0, unit), model.Q(3.0, unit)]:
             assert quantity.units == unit
             assert quantity.magnitude == 3.0
+
+
+def _unit_definition(
+    units: list[tuple[int, float, int, float]],
+) -> libsbml.UnitDefinition:
+    """A unit definition of (kind, exponent, scale, multiplier)."""
+    udef = libsbml.UnitDefinition(3, 2)
+    for kind, exponent, scale, multiplier in units:
+        unit = udef.createUnit()
+        unit.setKind(kind)
+        unit.setExponent(exponent)
+        unit.setScale(scale)
+        unit.setMultiplier(multiplier)
+    return udef
+
+
+KIND_MOLE, KIND_SECOND, KIND_GRAM, KIND_DIMENSIONLESS = (
+    libsbml.UNIT_KIND_MOLE,
+    libsbml.UNIT_KIND_SECOND,
+    libsbml.UNIT_KIND_GRAM,
+    libsbml.UNIT_KIND_DIMENSIONLESS,
+)
+
+
+@pytest.mark.parametrize(
+    ("a", "b", "same"),
+    [
+        # mmol/min written with a multiplier and with a scale and a multiplier
+        (
+            [(KIND_MOLE, 1, -3, 1.0), (KIND_SECOND, -1, 0, 60.0)],
+            [(KIND_SECOND, -1, 0, 60000.0), (KIND_MOLE, 1, 0, 1.0)],
+            True,
+        ),
+        # the units of one kind are merged, a dimensionless unit is a factor
+        (
+            [
+                (KIND_MOLE, 1, 0, 1.0),
+                (KIND_MOLE, 1, 0, 1.0),
+                (KIND_DIMENSIONLESS, 1, 0, 2.0),
+            ],
+            [(KIND_MOLE, 2, 0, 1.0), (KIND_DIMENSIONLESS, 1, 0, 2.0)],
+            True,
+        ),
+        # cancelled kinds are left out
+        (
+            [(KIND_GRAM, 1, 0, 1.0), (KIND_GRAM, -1, 0, 1.0)],
+            [(KIND_DIMENSIONLESS, 1, 0, 1.0)],
+            True,
+        ),
+        ([(KIND_MOLE, 1, 0, 1.0)], [(KIND_MOLE, 1, -3, 1.0)], False),
+        ([(KIND_MOLE, 1, 0, 1.0)], [(KIND_GRAM, 1, 0, 1.0)], False),
+        ([(KIND_MOLE, 1, 0, 1.0)], [(KIND_MOLE, 2, 0, 1.0)], False),
+    ],
+)
+def test_the_signature_of_a_unit(
+    a: list[tuple[int, float, int, float]],
+    b: list[tuple[int, float, int, float]],
+    same: bool,
+) -> None:
+    """Two unit definitions of the same unit have the same signature."""
+    (kinds_a, factor_a), (kinds_b, factor_b) = (
+        unit_signature(_unit_definition(a)),
+        unit_signature(_unit_definition(b)),
+    )
+    assert bool(kinds_a == kinds_b and np.isclose(factor_a, factor_b)) == same
+
+
+def test_a_derived_unit_is_matched_with_its_unit_definition() -> None:
+    """The derived unit of a kinetic law is the unit definition of its unit.
+
+    Without `libsbml.UnitDefinition.areIdentical`, which keeps memory on every
+    call for a unit with a multiplier (sbmlteam/libsbml#503).
+    """
+    doc = libsbml.SBMLDocument(3, 2)
+    model = doc.createModel()
+    model.setTimeUnits("min")
+    model.setSubstanceUnits("mmole")
+    model.setExtentUnits("mmole")
+    for sid, units in [
+        ("min", [(KIND_SECOND, 1, 0, 60.0)]),
+        ("mmole", [(KIND_MOLE, 1, -3, 1.0)]),
+        ("mmole_per_min", [(KIND_MOLE, 1, -3, 1.0), (KIND_SECOND, -1, 0, 60.0)]),
+        ("per_min", [(KIND_SECOND, -1, 0, 60.0)]),
+    ]:
+        udef = model.createUnitDefinition()
+        udef.setId(sid)
+        for kind, exponent, scale, multiplier in units:
+            unit = udef.createUnit()
+            unit.setKind(kind)
+            unit.setExponent(exponent)
+            unit.setScale(scale)
+            unit.setMultiplier(multiplier)
+    compartment = model.createCompartment()
+    compartment.setId("c")
+    compartment.setSize(1.0)
+    compartment.setConstant(True)
+    compartment.setUnits("litre")
+    species = model.createSpecies()
+    species.setId("S")
+    species.setCompartment("c")
+    species.setInitialAmount(1.0)
+    species.setSubstanceUnits("mmole")
+    species.setHasOnlySubstanceUnits(True)
+    species.setBoundaryCondition(False)
+    species.setConstant(False)
+    k = model.createParameter()
+    k.setId("k")
+    k.setValue(0.1)
+    k.setUnits("per_min")
+    k.setConstant(True)
+    reaction = model.createReaction()
+    reaction.setId("R")
+    reaction.setReversible(False)
+    reactant = reaction.createReactant()
+    reactant.setSpecies("S")
+    reactant.setStoichiometry(1.0)
+    reactant.setConstant(True)
+    reaction.createKineticLaw().setMath(libsbml.parseL3Formula("k * S"))
+    uinfo = UnitsInformation.from_sbml_doc(doc)
+    assert uinfo.udict["R"] == uinfo.unit_ids["mmole_per_min"]
