@@ -517,6 +517,11 @@ class UnitsInformation(MutableMapping):
             raise ValueError(f"No model found in SBMLDocument: {doc}")
 
         uid_dict: dict[str, str] = UnitsInformation.model_uid_dict(model, ureg=ureg)
+        # the unit definitions of the model, which a derived unit is matched with
+        signatures = [
+            (udef.getId(), unit_signature(udef))
+            for udef in model.getListOfUnitDefinitions()
+        ]
 
         # add additional units
         udict: dict[str, str] = {}
@@ -594,12 +599,7 @@ class UnitsInformation(MutableMapping):
                         continue
 
                     # find the correct unit definition
-                    uid: str | None = None
-                    udef_test: libsbml.UnitDefinition
-                    for udef_test in model.getListOfUnitDefinitions():
-                        if libsbml.UnitDefinition.areIdentical(udef_test, udef):
-                            uid = udef_test.getId()
-                            break
+                    uid = _matching_unit_definition(udef, signatures)
 
                     if uid:
                         udict[sid] = expression(uid)
@@ -836,6 +836,60 @@ class Units:
             return expression if simple or _enclosed(expression) else f"({expression})"
 
         return f"{group(numerator)}/{group(denominator)}"
+
+
+#: the relative tolerance of the factors of two units which `unit_signature`
+#: counts as equal
+UNIT_FACTOR_RTOL = 1e-12
+
+UnitSignature = tuple[tuple[tuple[int, float], ...], float]
+
+
+def unit_signature(udef: libsbml.UnitDefinition) -> UnitSignature:
+    """Get the base units of a unit definition with their exponents and its factor.
+
+    The units of one kind are merged, their exponents summed (a kind whose
+    exponents cancel is left out), and the multipliers and scales of all units
+    are one factor, `prod((multiplier * 10**scale) ** exponent)`. Two unit
+    definitions with the same signature are the same unit.
+
+    It replaces `libsbml.UnitDefinition.areIdentical`, which keeps memory on
+    every call for a unit with a multiplier other than 1 (libsbml 5.21.2,
+    sbmlteam/libsbml#503): about 13 MB per model when the derived units of a
+    model are matched with its unit definitions. Unlike `areIdentical` the
+    same factor written as a multiplier or as a scale is the same unit.
+
+    Args:
+        udef: the unit definition.
+
+    Returns:
+        The kinds with their exponents, sorted by kind, and the factor.
+    """
+    exponents: dict[int, float] = {}
+    factor = 1.0
+    for k in range(udef.getNumUnits()):
+        unit: libsbml.Unit = udef.getUnit(k)
+        exponent = unit.getExponentAsDouble()
+        factor *= (unit.getMultiplier() * 10.0 ** unit.getScale()) ** exponent
+        kind = unit.getKind()
+        if kind == libsbml.UNIT_KIND_DIMENSIONLESS:
+            continue
+        exponents[kind] = exponents.get(kind, 0.0) + exponent
+    kinds = tuple(sorted((kind, e) for kind, e in exponents.items() if e != 0.0))
+    return kinds, factor
+
+
+def _matching_unit_definition(
+    udef: libsbml.UnitDefinition, signatures: list[tuple[str, UnitSignature]]
+) -> str | None:
+    """Get the id of the first unit definition of the same unit, see `unit_signature`."""
+    kinds, factor = unit_signature(udef)
+    for uid, (other_kinds, other_factor) in signatures:
+        if other_kinds == kinds and np.isclose(
+            other_factor, factor, rtol=UNIT_FACTOR_RTOL, atol=0.0
+        ):
+            return uid
+    return None
 
 
 def _enclosed(expression: str) -> bool:
