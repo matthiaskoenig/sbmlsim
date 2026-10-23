@@ -21,6 +21,15 @@
 <style>
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
+/* the groupings of the evaluation, one shown at a time */
+.grouping-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.grouping-tab {
+  border: 1px solid var(--line); background: var(--bg-soft); color: var(--fg-soft);
+  border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+}
+.grouping-tab.active { background: var(--accent); border-color: transparent; color: #fff; }
+.grouping-panel { display: none; }
+.grouping-panel.active { display: block; }
 .warn.card { border-color: var(--outlier); }
 /* a long id of a fit mapping breaks, its table stays in its card */
 .wrap { overflow-wrap: anywhere; min-width: 12em; }
@@ -256,8 +265,13 @@
 {% if groupings %}
 <section id="evaluation">
   <h2>Evaluation</h2>
+  <div class="grouping-tabs" role="tablist">
+    {% for grouping in groupings %}
+    <button type="button" class="grouping-tab{% if loop.first %} active{% endif %}" data-grouping="{{ grouping.name }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">by {{ grouping.name }}</button>
+    {% endfor %}
+  </div>
   {% for grouping in groupings %}
-  <h3>By {{ grouping.name }}</h3>
+  <div class="grouping-panel{% if loop.first %} active{% endif %}" data-grouping="{{ grouping.name }}">
   <div class="grid">
     {% for plot in grouping.plots %}
     <div class="card{% if plot.wide %} wide{% endif %}"><figure>
@@ -269,12 +283,13 @@
   <div class="card">
     <table data-filter="row">
       <thead><tr>{% for column in grouping.columns %}
-        <th class="{{ 'num' if loop.index0 > 2 }}" data-sort="{{ 'text' if loop.index0 <= 2 else 'num' }}">{{ column }}</th>
+        <th class="{{ 'num' if loop.index0 > 2 }}" data-sort="{{ 'text' if loop.index0 <= 2 else 'num' }}">{{ column }}{% if hints[column] %}<span class="hint" tabindex="0" data-tip="{{ hints[column] }}">?</span>{% endif %}</th>
       {% endfor %}</tr></thead>
       <tbody>
-      {% for row in grouping.rows %}<tr data-kind="{{ row[2] }}">{% for value in row %}<td class="{{ 'num mono' if loop.index0 > 2 }}">{{ value }}</td>{% endfor %}</tr>{% endfor %}
+      {% for row in grouping.rows %}<tr data-kind="{{ grouping.kinds[loop.index0] }}">{% for value in row %}<td class="{{ 'num mono' if loop.index0 > 2 }}">{{ value }}</td>{% endfor %}</tr>{% endfor %}
       </tbody>
     </table>
+  </div>
   </div>
   {% endfor %}
 </section>
@@ -491,6 +506,22 @@
     if (name) show(name);
   });
   show(tabOf(location.hash) || "report");
+
+  // ---- the groupings of the evaluation: a button shows its grouping -----
+  const groupingTabs = Array.from(document.querySelectorAll(".grouping-tab"));
+  const groupingPanels = Array.from(document.querySelectorAll(".grouping-panel"));
+  for (const tab of groupingTabs) {
+    tab.addEventListener("click", () => {
+      for (const other of groupingTabs) {
+        const active = other === tab;
+        other.classList.toggle("active", active);
+        other.setAttribute("aria-pressed", active ? "true" : "false");
+      }
+      for (const panel of groupingPanels) {
+        panel.classList.toggle("active", panel.dataset.grouping === tab.dataset.grouping);
+      }
+    });
+  }
 })();
 </script>
 {% endblock %}

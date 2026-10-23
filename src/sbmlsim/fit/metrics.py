@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import InitVar, dataclass, field
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -57,13 +58,71 @@ import pandas as pd
 from numpy.typing import ArrayLike
 
 from sbmlsim.fit.evaluation import criteria_metrics
-from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
+from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind, MappingMetaData
 from sbmlsim.fit.parameters import ParameterSet
 
 if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
 
 logger = logging.getLogger(__name__)
+
+#: the columns of the data points before the fields of the metadata of their
+#: mappings, see `FitMetrics.datapoints_df`
+POINT_COLUMNS: tuple[str, ...] = (
+    "experiment",
+    "mapping",
+    "kind",
+    "x",
+    "DV",
+    "PRED",
+    "IPRED",
+    "RES",
+    "IRES",
+    "NRES",
+    "IWRES",
+    "observable",
+    "observation",
+    "DV_SD",
+    "N",
+)
+
+
+def metadata_dict(metadata: MappingMetaData | None, mapping: str) -> dict[str, str]:
+    """Get the metadata of a fit mapping as text by field.
+
+    The values of `MappingMetaData.to_dict` as text: `None` is empty, a member
+    of an enum its name, anything else `str` of it. The fields are columns of
+    the data points, see `FitMetrics.datapoints_df`, so a field must not be a
+    column of them.
+
+    Args:
+        metadata: the metadata of the mapping, `None` without.
+        mapping: the experiment and the key of the mapping, for the message.
+
+    Returns:
+        The values by field, empty without metadata.
+
+    Raises:
+        ValueError: if a field is named like a column of the data points.
+    """
+    if metadata is None:
+        return {}
+    values: dict[str, str] = {}
+    for key, value in metadata.to_dict().items():
+        if key in (*POINT_COLUMNS, "parameter_set"):
+            raise ValueError(
+                f"{mapping}: the field '{key}' of the metadata is named like a "
+                f"column of the data points {list(POINT_COLUMNS)}; rename it."
+            )
+        if value is None:
+            text = ""
+        elif isinstance(value, Enum):
+            text = value.name
+        else:
+            text = str(value)
+        values[str(key)] = text
+    return values
+
 
 #: the columns of the criteria of `sbmlsim.fit.evaluation` which follow the
 #: metrics, `within_2fold` has its place next to `R2`
@@ -490,26 +549,7 @@ class FitMetrics:
 
         return pd.DataFrame(
             data,
-            columns=pd.Index(
-                [
-                    "experiment",
-                    "mapping",
-                    "kind",
-                    "x",
-                    "DV",
-                    "PRED",
-                    "IPRED",
-                    "RES",
-                    "IRES",
-                    "NRES",
-                    "IWRES",
-                    "observable",
-                    "observation",
-                    "DV_SD",
-                    "N",
-                    *fields,
-                ]
-            ),
+            columns=pd.Index([*POINT_COLUMNS, *fields]),
         )
 
     def mappings_df(self) -> pd.DataFrame:

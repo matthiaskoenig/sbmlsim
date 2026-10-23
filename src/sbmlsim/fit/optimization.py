@@ -28,6 +28,7 @@ from sbmlsim.fit.derived import (
     resolve_derived_changes,
 )
 from sbmlsim.fit.helpers import _filters
+from sbmlsim.fit.metrics import metadata_dict
 from sbmlsim.fit.objects import (
     EXTERNAL_PREFIX,
     UNUSED_KINDS,
@@ -1529,12 +1530,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 self.mapping_kinds.append(mapping_collection.kind)
                 self.mapping_metadata.append(
-                    {}
-                    if mapping.metadata is None
-                    else {
-                        str(key): str(value)
-                        for key, value in mapping.metadata.to_dict().items()
-                    }
+                    metadata_dict(mapping.metadata, f"{sid}.{mapping_id}")
                 )
                 self.collection_indices.append(collection_index)
                 self.xid_observable.append(obs_xid)

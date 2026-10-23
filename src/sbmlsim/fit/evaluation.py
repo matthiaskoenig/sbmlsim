@@ -48,8 +48,14 @@ if TYPE_CHECKING:
     from sbmlsim.fit.helpers import MappingFilter
     from sbmlsim.fit.objects import FitMapping
 
-#: the label of the value `""` of a column, a field a mapping does not report
+#: the label of a value of a column which a mapping does not report, see
+#: `NOT_REPORTED_VALUES`
 NOT_REPORTED = "not reported"
+
+#: the values of a column which are not reported: the empty value of a field a
+#: mapping does not have and `NR`, the value of pkpdsim for a value which a
+#: study does not report; they are one group
+NOT_REPORTED_VALUES: tuple[str, ...] = ("", "NR")
 
 
 class Criterion(Protocol):
@@ -78,6 +84,14 @@ def _ratio_mask(points: pd.DataFrame) -> np.ndarray:
     dv = np.asarray(points["DV"], dtype=float)
     ipred = np.asarray(points["IPRED"], dtype=float)
     return np.isfinite(dv) & np.isfinite(ipred) & (dv > 0) & (ipred > 0)
+
+
+def _sd_mask(points: pd.DataFrame) -> np.ndarray:
+    """Get the mask of the points with a standard deviation, a finite value and prediction."""
+    dv = np.asarray(points["DV"], dtype=float)
+    ipred = np.asarray(points["IPRED"], dtype=float)
+    sd = np.asarray(points["DV_SD"], dtype=float)
+    return np.isfinite(sd) & (sd > 0) & np.isfinite(ipred) & np.isfinite(dv)
 
 
 @dataclass(frozen=True)
@@ -138,7 +152,7 @@ class Uncertainty:
         dv = np.asarray(points["DV"], dtype=float)
         ipred = np.asarray(points["IPRED"], dtype=float)
         sd = np.asarray(points["DV_SD"], dtype=float)
-        applicable = np.isfinite(sd) & (sd > 0) & np.isfinite(ipred) & np.isfinite(dv)
+        applicable = _sd_mask(points)
         with np.errstate(invalid="ignore"):
             inside = np.abs(dv - ipred) <= self.k * sd
         values = np.where(applicable, inside.astype(float), np.nan)
@@ -241,14 +255,31 @@ def within_guest(observed: ArrayLike, predicted: ArrayLike) -> float:
     """Get the percentage of the predicted ratios within the limits of Guest et al.
 
     Args:
-        observed: the observed ratios, positive.
-        predicted: the predicted ratios.
+        observed: the observed ratios, positive and finite.
+        predicted: the predicted ratios; a ratio which is not finite, e.g. of
+            a failed simulation, is not counted.
 
     Returns:
-        The percentage (0 to 100) of the predicted ratios within the limits of
-        `guest_limits`, the limits included, `nan` without a ratio.
+        The percentage (0 to 100) of the finite predicted ratios within the
+        limits of `guest_limits`, the limits included, `nan` without one.
+
+    Raises:
+        ValueError: if an observed ratio is not positive and finite, or the
+            lengths of the ratios differ.
     """
+    observed = np.asarray(observed, dtype=float)
     predicted = np.asarray(predicted, dtype=float)
+    if observed.shape != predicted.shape:
+        raise ValueError(
+            f"The observed and the predicted ratios have different lengths, "
+            f"{observed.size} and {predicted.size}."
+        )
+    if not np.all(np.isfinite(observed) & (observed > 0)):
+        raise ValueError(
+            f"The observed ratios must be positive and finite: {observed.tolist()}."
+        )
+    finite = np.isfinite(predicted)
+    observed, predicted = observed[finite], predicted[finite]
     if predicted.size == 0:
         return float("nan")
     low, high = guest_limits(observed)
@@ -360,15 +391,24 @@ class Grouping:
                     f"The grouping '{self.name}' groups by {missing}, which are "
                     f"no columns of the data points: {list(points.columns)}."
                 )
+            # the values which are not reported are one value
+            keys = pd.DataFrame(
+                {
+                    column: [
+                        NOT_REPORTED if str(v) in NOT_REPORTED_VALUES else str(v)
+                        for v in points[column]
+                    ]
+                    for column in self.columns
+                },
+                index=points.index,
+            )
             groups: list[tuple[str, pd.DataFrame]] = []
-            for values, of_group in points.groupby(
+            for values, of_keys in keys.groupby(
                 list(self.columns), sort=False, dropna=False
             ):
                 values = values if isinstance(values, tuple) else (values,)
-                label = ", ".join(
-                    str(value) if str(value) != "" else NOT_REPORTED for value in values
-                )
-                groups.append((label, of_group))
+                label = ", ".join(str(value) for value in values)
+                groups.append((label, points.loc[of_keys.index]))
             return groups
         keys = points[["experiment", "mapping"]].drop_duplicates()
         result: list[tuple[str, pd.DataFrame]] = []
@@ -388,11 +428,31 @@ class Grouping:
         return result
 
 
+#: the columns of `group_metrics`
+GROUP_METRICS_COLUMNS: tuple[str, ...] = (
+    "grouping",
+    "group",
+    "kind",
+    "n",
+    "n_ratio",
+    "n_sd",
+    "NRMSE",
+    "GMFE",
+    "AFE",
+    *(criterion.name for criterion in DEFAULT_CRITERIA),
+)
+
+
 def _rms(values: pd.Series) -> float:
-    """Get the root mean square of the finite values, `nan` without one."""
+    """Get the root mean square, `nan` without a value or with one which is not finite.
+
+    As `sbmlsim.fit.metrics.rmse`: a residual which is not finite, e.g. of a
+    failed simulation, makes the metric undefined.
+    """
     array = np.asarray(values, dtype=float)
-    array = array[np.isfinite(array)]
-    return float(np.sqrt(np.mean(array**2))) if array.size else float("nan")
+    if array.size == 0 or not np.all(np.isfinite(array)):
+        return float("nan")
+    return float(np.sqrt(np.mean(array**2)))
 
 
 def group_metrics(
@@ -409,8 +469,11 @@ def group_metrics(
     Returns:
         One row per group and kind, the kinds in the order of
         `EVALUATED_KINDS`, a group without points of a kind has no row of it;
-        the columns `grouping`, `group`, `kind`, `n`, `RMSE`, `NRMSE` and the
-        metrics of `criteria_metrics`.
+        the columns `grouping`, `group`, `kind`, `n`, `n_ratio` (the points
+        with a ratio, which the fold criteria count), `n_sd` (the points with
+        a standard deviation, which the SD criteria count), `NRMSE` and the
+        metrics of `criteria_metrics`. There is no RMSE, a group mixes the
+        units of its observables; the NRMSE is scale free.
     """
     rows: list[dict[str, Any]] = []
     for label, of_group in grouping.groups(points, fit_mappings):
@@ -424,14 +487,14 @@ def group_metrics(
                     "group": label,
                     "kind": kind.value,
                     "n": len(of_kind),
-                    "RMSE": _rms(of_kind.IRES),
+                    "n_ratio": int(np.sum(_ratio_mask(of_kind))),
+                    "n_sd": int(np.sum(_sd_mask(of_kind))),
                     "NRMSE": _rms(of_kind.NRES),
                     **criteria_metrics(of_kind),
                 }
             )
-    columns = ["grouping", "group", "kind", "n", "RMSE", "NRMSE"]
     if not rows:
-        return pd.DataFrame(columns=pd.Index(columns))
+        return pd.DataFrame(columns=pd.Index(GROUP_METRICS_COLUMNS))
     return pd.DataFrame(rows)
 
 

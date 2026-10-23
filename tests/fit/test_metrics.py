@@ -1,5 +1,7 @@
 """Test the metrics of a fit."""
 
+import dataclasses
+import enum
 from pathlib import Path
 from unittest.mock import patch
 
@@ -12,6 +14,7 @@ from sbmlsim.fit.metrics import (
     aic,
     aic_from_mse,
     fold_counts,
+    metadata_dict,
     mse,
     r_squared,
     rmse,
@@ -19,6 +22,7 @@ from sbmlsim.fit.metrics import (
     sse,
     within_fold,
 )
+from sbmlsim.fit.objects import MappingMetaData
 from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
 
 
@@ -431,3 +435,30 @@ def test_the_metrics_per_observable(
     pairs = dp[["kind", "observable"]].drop_duplicates()
     assert len(observables) == len(pairs)
     assert observables.n.sum() == len(dp)
+
+
+def test_the_values_of_the_metadata() -> None:
+    class Plain(enum.Enum):
+        ORAL = "oral"
+
+    class Text(enum.StrEnum):
+        PLASMA = "plasma"
+
+    @dataclasses.dataclass
+    class Meta(MappingMetaData):
+        route: Plain
+        tissue: Text
+        dose: float | None = None
+
+    values = metadata_dict(Meta(route=Plain.ORAL, tissue=Text.PLASMA), "s.fm")
+    assert values == {"route": "ORAL", "tissue": "PLASMA", "dose": ""}
+    assert metadata_dict(None, "s.fm") == {}
+
+
+def test_a_metadata_field_named_like_a_column_raises() -> None:
+    @dataclasses.dataclass
+    class Meta(MappingMetaData):
+        kind: str = "plasma"
+
+    with pytest.raises(ValueError, match=r"s\.fm.*'kind'"):
+        metadata_dict(Meta(), "s.fm")

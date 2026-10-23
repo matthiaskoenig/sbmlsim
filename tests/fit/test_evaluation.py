@@ -170,15 +170,16 @@ def test_a_grouping_has_columns_or_subsets() -> None:
 
 def test_the_metrics_of_a_grouping() -> None:
     metrics = group_metrics(_table(), Grouping.by("tissue"), _no_mapping)
-    assert list(metrics.columns[:6]) == [
+    assert list(metrics.columns[:7]) == [
         "grouping",
         "group",
         "kind",
         "n",
-        "RMSE",
+        "n_ratio",
+        "n_sd",
         "NRMSE",
     ]
-    assert list(metrics.columns[6:]) == list(criteria_metrics(_table()))
+    assert list(metrics.columns[7:]) == list(criteria_metrics(_table()))
     rows = list(zip(metrics.group, metrics.kind, metrics.n, strict=True))
     assert rows == [
         ("PLASMA", "training", 3),
@@ -191,7 +192,7 @@ def test_a_group_of_one_point_has_metrics() -> None:
     table = _table().iloc[[2]]
     metrics = group_metrics(table, Grouping.by("tissue"), _no_mapping)
     assert metrics.n.tolist() == [1]
-    assert np.isfinite(metrics.RMSE.iloc[0])
+    assert np.isfinite(metrics.NRMSE.iloc[0])
 
 
 def test_subset_agreement() -> None:
@@ -209,3 +210,45 @@ def test_subset_agreement() -> None:
     # the points without a ratio do not count
     assert subset_agreement(_points([1.0] * 9 + [0.0] * 3, [2.0] * 12)) is None
     assert MIN_POINTS_SUBSET_AGREEMENT == 10
+
+
+def test_group_metrics_has_its_denominators() -> None:
+    metrics = group_metrics(_table(), Grouping.by("tissue"), _no_mapping)
+    assert list(metrics.columns[:7]) == [
+        "grouping",
+        "group",
+        "kind",
+        "n",
+        "n_ratio",
+        "n_sd",
+        "NRMSE",
+    ]
+    plasma = metrics[(metrics.group == "PLASMA") & (metrics.kind == "training")]
+    assert plasma[["n", "n_ratio", "n_sd"]].to_numpy().tolist() == [[3, 3, 2]]
+
+
+def test_group_metrics_has_no_rmse_over_units() -> None:
+    """The RMSE of a group mixes the units of its observables, NRMSE is scale free."""
+    metrics = group_metrics(_table(), Grouping.by("tissue"), _no_mapping)
+    assert "RMSE" not in metrics.columns
+    table = _table()
+    table.loc[0, "NRES"] = np.nan
+    metrics = group_metrics(table, Grouping.by("tissue"), _no_mapping)
+    first = metrics[(metrics.group == "PLASMA") & (metrics.kind == "training")]
+    assert np.isnan(first.NRMSE.iloc[0])
+
+
+def test_not_reported_values_are_one_group() -> None:
+    table = _table()
+    table.loc[4, "health"] = "NR"
+    labels = [label for label, _ in Grouping.by("health").groups(table, _no_mapping)]
+    assert labels == ["HEALTHY", "not reported"]
+
+
+def test_within_guest_checks_its_input() -> None:
+    assert within_guest([2.0, 2.0], [2.5, np.nan]) == pytest.approx(100.0)
+    assert np.isnan(within_guest([2.0], [np.nan]))
+    with pytest.raises(ValueError, match="positive"):
+        within_guest([0.0], [1.0])
+    with pytest.raises(ValueError, match="lengths"):
+        within_guest([2.0, 2.0], [2.0])
