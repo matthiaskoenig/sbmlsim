@@ -602,7 +602,7 @@ def test_the_report_lists_no_stale_dataset_of_a_failed_experiment(
         def evaluate_fit_mappings(self) -> None:
             raise RuntimeError("experiment broken")
 
-    stale = tmp_path / "BrokenWithDataset" / "BrokenWithDataset_table.tsv"
+    stale = tmp_path / "BrokenWithDataset" / "datasets" / "BrokenWithDataset_table.tsv"
     stale.parent.mkdir(parents=True)
     stale.write_text("time\n0\n", encoding="utf-8")
     results = _runner(BrokenWithDataset).run_experiments(output_path=tmp_path)
@@ -610,4 +610,4 @@ def test_the_report_lists_no_stale_dataset_of_a_failed_experiment(
     page = (tmp_path / "BrokenWithDataset" / "BrokenWithDataset.html").read_text(
         encoding="utf-8"
     )
-    assert 'href="BrokenWithDataset_table.tsv"' not in page
+    assert "BrokenWithDataset_table.tsv</a>" not in page

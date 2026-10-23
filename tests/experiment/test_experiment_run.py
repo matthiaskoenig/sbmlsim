@@ -20,7 +20,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.plot.padding import without_padding
-from sbmlsim.report.experiment_report import ReportResults
+from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.result import ScanResult
 from sbmlsim.simulation import Dimension, Scan, Simulation
@@ -313,6 +313,31 @@ class RegistryExperiment(FitMappingExperiment):
                 df, udict={"time": "second", "X": "dimensionless"}, ureg=self.ureg
             )
         }
+
+
+def test_the_datasets_are_written_into_their_folder(tmp_path: Path) -> None:
+    """A run writes the datasets as TSV into the folder `datasets`, not next to
+    the figures (pkdb_models#382); the report links them there."""
+    runner = _runner(RegistryExperiment)
+    results = runner.run_experiments(output_path=tmp_path)
+    folder = tmp_path / "RegistryExperiment"
+    assert [p.name for p in (folder / "datasets").iterdir()] == [
+        "RegistryExperiment_ds.tsv"
+    ]
+    assert not list(folder.glob("*.tsv"))
+    assert results[0].datasets == ["ds"]
+    ExperimentReport(results).create_report(output_path=tmp_path)
+    page = (folder / "RegistryExperiment.html").read_text(encoding="utf-8")
+    assert 'href="datasets/RegistryExperiment_ds.tsv"' in page
+
+
+def test_an_experiment_without_datasets_has_no_folder_of_datasets(
+    tmp_path: Path,
+) -> None:
+    """A run of an experiment without datasets creates no empty folder."""
+    runner = _runner(FitMappingExperiment)
+    runner.run_experiments(output_path=tmp_path)
+    assert not (tmp_path / "FitMappingExperiment" / "datasets").exists()
 
 
 def test_the_data_of_a_task_is_in_the_registry_of_the_experiment() -> None:

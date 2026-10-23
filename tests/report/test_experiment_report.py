@@ -250,3 +250,16 @@ def test_latex_report_includes_every_figure(report_dir: Path) -> None:
     graphics = re.findall(r"\\includegraphics\[[^]]*\]\{([^}]+)\}", tex.read_text())
     assert graphics == [f"index_figures/Beermann1976_{fig}.png" for fig in FIGURES]
     assert [g for g in graphics if not (report_dir / g).exists()] == []
+
+
+def test_a_link_of_a_report_is_a_url_path_on_every_platform() -> None:
+    """A link of a path of Windows has slashes, an absolute one is a file URL."""
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    from sbmlsim.report.experiment_report import _link
+
+    assert _link(PureWindowsPath("datasets") / "Exp_ds.tsv") == "datasets/Exp_ds.tsv"
+    assert _link(PureWindowsPath("..") / "models" / "m.xml") == "../models/m.xml"
+    assert _link(PureWindowsPath("C:/models/m.xml")) == "file:///C:/models/m.xml"
+    assert _link(Path("datasets") / "Exp_ds.tsv") == "datasets/Exp_ds.tsv"
+    assert _link(PurePosixPath("/home/a b/m.xml")) == "file:///home/a%20b/m.xml"

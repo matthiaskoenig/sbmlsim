@@ -52,6 +52,10 @@ STATIC_FORMAT = "svg"
 #: an image: `figure_formats=["svg", "html"]`
 INTERACTIVE_FORMAT = "html"
 
+#: folder of the datasets in the output path of an experiment, which keeps
+#: the tables of the data apart from the figures and the results
+DATASETS_DIR = "datasets"
+
 
 class SimulationExperiment:
     """Generic simulation experiment.
@@ -595,8 +599,9 @@ class SimulationExperiment:
 
         Args:
             simulator: the simulator of the tasks.
-            output_path: directory of the outputs (datasets, results, figures and
-                the serialization), none are written without it.
+            output_path: directory of the outputs (the datasets in its folder
+                `DATASETS_DIR`, results, figures and the serialization), none
+                are written without it.
             show_figures: show the matplotlib figures.
             save_results: write the results of the tasks into the output path.
             figure_formats: formats of the figures, `STATIC_FORMAT` by default.
@@ -1173,16 +1178,29 @@ class SimulationExperiment:
             "figures": self._figures,
         }
 
+    def dataset_file(self, key: str) -> Path:
+        """Get the file of a dataset relative to the output path of a run.
+
+        Args:
+            key: the key of the dataset.
+
+        Returns:
+            `datasets/<sid>_<key>.tsv`, see `DATASETS_DIR`.
+        """
+        return Path(DATASETS_DIR) / f"{self.sid}_{key}.tsv"
+
     @timeit
     def save_datasets(self, results_path: Path) -> None:
-        """Save datasets."""
-        if self._datasets is None:
-            logger.warning("No datasets in SimulationExperiment: '%s'", self.sid)
-        else:
-            for dkey, dset in self._datasets.items():
-                dset.to_csv(
-                    results_path / f"{self.sid}_{dkey}.tsv", sep="\t", index=False
-                )
+        """Save the datasets as TSV into the folder `DATASETS_DIR`.
+
+        Args:
+            results_path: the output path of the run, see `dataset_file`.
+        """
+        if not self._datasets:
+            return
+        (results_path / DATASETS_DIR).mkdir(parents=True, exist_ok=True)
+        for dkey, dset in self._datasets.items():
+            dset.to_csv(results_path / self.dataset_file(dkey), sep="\t", index=False)
 
     @timeit
     def save_results(self, results_path: Path) -> None:
