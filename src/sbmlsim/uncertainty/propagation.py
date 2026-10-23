@@ -74,6 +74,7 @@ from sbmlsim.uncertainty.testing import (
     Hypothesis,
     TestReport,
     TestResult,
+    family_level,
     probability,
 )
 from sbmlsim.units import Quantity
@@ -698,13 +699,17 @@ def propagate(
                             f"hypotheses about it."
                         )
                     checks.append(_precise(values, rel_tol))
-            undecided = (
-                sum(
-                    t.decision == "undecided"
-                    for t in result.test(hypotheses, adjust).adjusted()
-                )
-                if hypotheses
-                else 0
+            # the hypotheses at the levels of their report, evaluated once
+            m = sum(h.at_least is not None for h in hypotheses)
+            undecided = sum(
+                h.evaluate(
+                    result.hypothesis_values(h),
+                    family_level(h.level, m, adjust)
+                    if h.at_least is not None
+                    else h.level,
+                ).decision
+                == "undecided"
+                for h in hypotheses
             )
             converged = all(ok for ok, _ in checks) and undecided == 0
             entry: dict[str, Any] = {"n": total, "converged": converged}

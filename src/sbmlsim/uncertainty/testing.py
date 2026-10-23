@@ -44,7 +44,8 @@ a bounded number of draws, also one whose probability is the threshold.
 
 **Several statements.** A `TestReport` decides `m` statements at the level of
 Bonferroni, `alpha / m` each (and gives their simultaneous intervals at that
-level), so the probability that any of them is wrong is at most `alpha`,
+level), so the probability that any of them is wrong is at most `alpha` (the
+mean `alpha` of statements of other levels, `TestReport.family_error`),
 whatever the dependence between them, which share their draws. A step-down
 procedure, e.g. Holm, does not control this error: every statement with a
 threshold has a true null (both directions at the threshold, one direction
@@ -124,6 +125,7 @@ class _Prefixes:
         a, b = MIXTURE
         self.k = k
         self.m = m
+        self.rest = m - k
         # the part of log M_m(p) which does not depend on p
         self.base = special.betaln(a + k, b + m - k) - special.betaln(a, b)
         self.mle = k / m
@@ -140,7 +142,7 @@ class _Prefixes:
 
     def log_mixture(self, p: float) -> np.ndarray:
         """Get `log M_m(p)` of every prefix, for `0 < p < 1`."""
-        return self.base - self.k * math.log(p) - (self.m - self.k) * math.log1p(-p)
+        return self.base - self.k * math.log(p) - self.rest * math.log1p(-p)
 
     def p_values(self, p0: float, side: Literal["greater", "less"]) -> np.ndarray:
         """Get the anytime-valid p-values of `P > p0` or `P < p0` after every prefix.
@@ -589,8 +591,14 @@ class Hypothesis:
             a, b = self.contrast
             object.__setattr__(self, "contrast", (a, b))
 
-    def evaluate(self, values: xr.DataArray) -> TestResult:
-        """Get the statement of the hypothesis about the values of its output."""
+    def evaluate(self, values: xr.DataArray, level: float | None = None) -> TestResult:
+        """Get the statement of the hypothesis about the values of its output.
+
+        Args:
+            values: the values of its output.
+            level: the level of the statement, the one of the hypothesis by
+                default, e.g. `family_level` of a report.
+        """
         return probability(
             values,
             greater=self.greater,
@@ -598,7 +606,7 @@ class Hypothesis:
             between=self.between,
             at_least=self.at_least,
             margin=self.margin,
-            level=self.level,
+            level=self.level if level is None else level,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -619,6 +627,15 @@ class Hypothesis:
             "margin": self.margin,
             "level": self.level,
         }
+
+
+def family_level(
+    level: float, m: int, adjust: Literal["bonferroni", "none"] = "bonferroni"
+) -> float:
+    """Get the level of a statement with a threshold in a report of `m` of them."""
+    if adjust == "none" or m <= 1:
+        return level
+    return 1.0 - (1.0 - level) / m
 
 
 @dataclass
@@ -654,13 +671,27 @@ class TestReport:
         """Get the number of statements with a threshold, the family of the decisions."""
         return sum(t.threshold is not None for t in self.tests)
 
+    @property
+    def family_error(self) -> float:
+        """Get the bound of the probability that any decision is wrong.
+
+        The mean `alpha` of the statements with a threshold, each decided at
+        its own `alpha / m`; the `alpha` of the statement without adjustment.
+        """
+        alphas = [1.0 - t.level for t in self.tests if t.threshold is not None]
+        if not alphas:
+            return 0.0
+        return float(np.mean(alphas)) if self.adjust == "bonferroni" else sum(alphas)
+
     def adjusted(self) -> list[TestResult]:
         """Get the statements at the level of Bonferroni, see the module."""
         m = self.m
         if self.adjust == "none" or m <= 1:
             return list(self.tests)
         return [
-            t.at_level(1.0 - (1.0 - t.level) / m) if t.threshold is not None else t
+            t.at_level(family_level(t.level, m, self.adjust))
+            if t.threshold is not None
+            else t
             for t in self.tests
         ]
 

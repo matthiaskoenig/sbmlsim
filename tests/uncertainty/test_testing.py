@@ -366,3 +366,15 @@ def test_the_sequence_covers_with_quasi_random_draws() -> None:
         low, high = confidence_sequence(u.sum(axis=1) < 1.2)
         outside += not low <= truth <= high
     assert outside <= 5
+
+
+def test_a_report_of_statements_of_other_levels() -> None:
+    """Every statement at its own alpha / m: the error is at most the mean alpha."""
+    values = _draws(_spread(940, 1000))
+    tests = [
+        probability(values, greater=0.0, at_least=0.9, level=0.95),
+        probability(values, greater=0.0, at_least=0.9, level=0.99),
+    ]
+    adjusted = TestReport(tests).adjusted()
+    assert [t.level for t in adjusted] == pytest.approx([0.975, 0.995])
+    assert TestReport(tests).family_error == pytest.approx(0.03)
