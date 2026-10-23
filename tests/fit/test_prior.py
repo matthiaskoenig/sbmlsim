@@ -4,10 +4,22 @@ import json
 import math
 import re
 
+import numpy as np
 import pytest
 import scipy.stats
 
+from sbmlsim import Q
 from sbmlsim.fit.objects import FitParameter, Prior, PriorDistribution
+from sbmlsim.simulation.sampling import (
+    Fixed,
+    LogNormal,
+    LogUniform,
+    Normal,
+    Truncated,
+    Uniform,
+)
+from sbmlsim.simulation.sampling.distributions import Distribution
+from sbmlsim.uncertainty import Uncertain
 
 #: the `log_prior` of the case 0024 of the PEtab v2 test suite at `5.0`, the
 #: parameters have the bounds `[0, 10]`
@@ -81,3 +93,77 @@ def test_a_fit_parameter_with_a_prior() -> None:
     assert parameter != FitParameter(
         pid="k", lower_bound=0.0, upper_bound=10.0, unit="dimensionless"
     )
+
+
+@pytest.mark.parametrize(
+    "distribution",
+    [
+        Normal(mean=Q(4.0, "1/hr"), sd=Q(0.5, "1/hr")),
+        LogNormal(median=Q(1.2, "1/hr"), cv=0.4),
+        Uniform(lower=Q(0.5, "1/hr"), upper=Q(8.0, "1/hr")),
+        LogUniform(lower=Q(0.1, "1/hr"), upper=Q(10.0, "1/hr")),
+    ],
+)
+def test_a_prior_of_a_distribution(distribution: Distribution) -> None:
+    """The prior is the distribution: the density agrees, the round trip holds."""
+    prior = Prior.from_distribution(distribution, "1/min")
+    values = np.array([0.6, 1.0, 2.0, 4.0, 7.0]) / 60.0
+    densities = np.exp([prior.log_density(float(v), 1e-6, 100.0) for v in values])
+    # the density of the distribution in 1/min, from its cumulative distribution
+    h = 1e-7
+    upper = distribution.cdf(Q(values + h, "1/min"))
+    lower = distribution.cdf(Q(values - h, "1/min"))
+    # a central difference of the distribution function, accurate to about 1e-3
+    np.testing.assert_allclose(densities, (upper - lower) / (2 * h), rtol=1e-3)
+    again = prior.to_distribution("1/min")
+    np.testing.assert_allclose(
+        again.cdf(Q(values, "1/min")), distribution.cdf(Q(values, "1/min")), rtol=1e-9
+    )
+
+
+def test_a_fit_parameter_with_an_uncertain_prior() -> None:
+    parameter = FitParameter(
+        pid="ka",
+        lower_bound=0.01,
+        upper_bound=100.0,
+        unit="1/hr",
+        prior=Uncertain(Q(1.2, "1/hr"), cv=0.3),
+    )
+    assert parameter.prior is not None
+    assert parameter.prior.distribution is PriorDistribution.LOG_NORMAL
+    sigma = math.sqrt(math.log1p(0.09))
+    mu = math.log(1.2 / math.sqrt(1.09))
+    assert parameter.prior.parameters == pytest.approx((mu, sigma))
+
+
+def test_a_prior_which_is_no_prior_of_petab_raises() -> None:
+    with pytest.raises(ValueError, match="Normal, LogNormal, Uniform, LogUniform"):
+        Prior.from_distribution(Fixed(value=1.0), None)
+    with pytest.raises(ValueError, match="relative"):
+        Prior.from_distribution(Normal(cv=0.2), None)
+
+
+def test_a_truncation_is_the_bounds_of_the_parameter() -> None:
+    """A truncation inside the bounds of the parameter would be lost."""
+    inner = Normal(mean=4.0, sd=1.0)
+    truncated = Truncated(inner, lower=0.0, upper=10.0)
+    assert Prior.from_distribution(truncated, None) == Prior.from_distribution(
+        inner, None
+    )
+    # a truncation at the bounds of the parameter is the prior of PEtab
+    parameter = FitParameter(
+        pid="k",
+        lower_bound=0.0,
+        upper_bound=10.0,
+        unit="dimensionless",
+        prior=truncated,
+    )
+    assert parameter.prior == Prior.from_distribution(inner, None)
+    with pytest.raises(ValueError, match="bounds"):
+        FitParameter(
+            pid="k",
+            lower_bound=0.0,
+            upper_bound=10.0,
+            unit="dimensionless",
+            prior=Truncated(inner, lower=2.0, upper=6.0),
+        )

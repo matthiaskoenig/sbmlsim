@@ -92,6 +92,8 @@ print(mapping_collections)
 
 `FitParameter` names a parameter of the model with its start value, bounds and unit, `FitMappingCollection` names a simulation experiment class and the mappings of it which enter the fit together, with optional weights:
 
+The prior of a parameter, `FitParameter(prior=...)`, is a prior of PEtab v2 (`Prior`), a distribution of the sampler (`Normal`, `LogNormal`, `Uniform`, `LogUniform` or a `Truncated` of them at the bounds of the parameter) or an `Uncertain` value of `sbmlsim.uncertainty`, e.g. `prior=Uncertain(Q(1.2, "1/hr"), cv=0.3)` for a literature value with a CV of 30 % (a log-normal with that mean and CV); a distribution is converted to the prior of PEtab in the unit of the parameter (`Prior.from_distribution`, `Prior.to_distribution` back). The objective of a fit does not use the prior, `log_prior` of the PEtab layer evaluates it.
+
 ```python
 from examples.hctz_fitting.experiments.studies import Beermann1976
 from sbmlsim.fit import FitMappingCollection, FitParameter
