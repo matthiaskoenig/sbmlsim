@@ -24,6 +24,7 @@ from sbmlsim.plot.points import point_linestyles
 from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
     MatplotlibFigureSerializer,
+    limit_log_axes,
 )
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT, TIME
@@ -1229,6 +1230,10 @@ class SimulationExperiment:
         open_before = set(plt.get_fignums())
         try:
             for fig_key, fig_mpl in self.figures_mpl().items():
+                # the tiny first steps of the integrator do not stretch a log
+                # axis whose limits the figure leaves to matplotlib
+                if isinstance(fig_mpl, FigureMPL):
+                    limit_log_axes(fig_mpl)
                 mpl_figures[fig_key] = fig_mpl
         except Exception as err:
             for num in set(plt.get_fignums()) - open_before:

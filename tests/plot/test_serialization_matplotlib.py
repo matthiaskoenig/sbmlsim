@@ -5,6 +5,7 @@ from typing import Any
 
 import matplotlib
 import pytest
+from matplotlib.figure import Figure as FigureMPL
 
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
@@ -28,6 +29,7 @@ from sbmlsim.plot.plotting import (
 )
 from sbmlsim.plot.serialization_matplotlib import (
     MatplotlibFigureSerializer,
+    limit_log_axes,
 )
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Simulation
@@ -465,3 +467,17 @@ def test_the_fixture_no_pyplot_fails_on_a_resolution_of_the_backend(
         _ = {**matplotlib.rcParams}
     with pytest.raises(AssertionError, match="created with pyplot"):
         plt.subplots()
+
+
+def test_an_automatic_log_axis_of_a_custom_figure_is_limited() -> None:
+    """The tiny first steps of the integrator do not stretch a log axis."""
+    figure = FigureMPL()
+    free, fixed = figure.subplots(1, 2)
+    for ax in (free, fixed):
+        ax.plot([0.0, 1e-9, 1.0, 2.0], [0.0, 1e-40, 10.0, 1.0])
+        ax.set_yscale("log")
+    fixed.set_ylim(1e-50, 100.0)
+    limit_log_axes(figure)
+    # six decades below the largest value, with the margin of the decades
+    assert 1e-6 < free.get_ylim()[0] < 1e-5
+    assert fixed.get_ylim() == (1e-50, 100.0)

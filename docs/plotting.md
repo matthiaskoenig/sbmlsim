@@ -75,7 +75,7 @@ A value per simulation is drawn over the values a dimension sets: `plot.curve(x=
 
 ## Log axes
 
-The output of a simulation without `steps` or `times` are the steps of the integrator, which start with tiny steps: a value which starts at zero, e.g. a concentration after an oral dose, is tiny there as well, and the automatic limits of a log axis would show dozens of decades of these values. A log axis whose data span more than `LOG_DECADES` (6) below their largest value shows these decades, with the margin `LOG_MARGIN` of matplotlib; a limit set on the axis stays (`sbmlsim.plot.plotting.log_limits`, both backends). A figure drawn with matplotlib itself limits its log axis with `limit_log_axis(ax)` of `sbmlsim.plot.serialization_matplotlib`.
+The output of a simulation without `steps` or `times` are the steps of the integrator, which start with tiny steps: a value which starts at zero, e.g. a concentration after an oral dose, is tiny there as well, and the automatic limits of a log axis would show dozens of decades of these values. A log axis whose data span more than `LOG_DECADES` (6) below their largest value shows these decades, with the margin `LOG_MARGIN` of matplotlib; a limit set on the axis stays (`sbmlsim.plot.plotting.log_limits`, both backends). The custom figures of an experiment (`figures_mpl`) get the same limits on every log axis whose limits they leave to matplotlib (`limit_log_axes`); `limit_log_axis(ax)` of `sbmlsim.plot.serialization_matplotlib` limits one axis.
 
 ## Styles
 

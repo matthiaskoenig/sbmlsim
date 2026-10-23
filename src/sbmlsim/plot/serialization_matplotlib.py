@@ -221,6 +221,19 @@ def limit_log_axis(
         ax.set_ylim(*limits)
 
 
+def limit_log_axes(figure: FigureMPL) -> None:
+    """Limit every automatic log axis of a figure, see `limit_log_axis`.
+
+    The custom figures of an experiment (`figures_mpl`) are drawn by the
+    model; a log axis whose limits it set itself (autoscale off) is kept.
+    """
+    for ax in figure.axes:
+        if ax.get_xscale() == "log" and ax.get_autoscalex_on():
+            limit_log_axis(ax, "x")
+        if ax.get_yscale() == "log" and ax.get_autoscaley_on():
+            limit_log_axis(ax, "y")
+
+
 class MatplotlibFigureSerializer:
     """Serializer for figures to matplotlib."""
 
