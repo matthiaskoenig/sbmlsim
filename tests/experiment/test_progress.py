@@ -1,5 +1,6 @@
 """Tests of the progress and the timings of a run of experiments."""
 
+import io
 import logging
 import time
 from pathlib import Path
@@ -8,6 +9,7 @@ from typing import Any, override
 import pytest
 from rich.console import Console
 
+import sbmlsim.console
 from sbmlsim.experiment import ExperimentResult, ExperimentRunner, SimulationExperiment
 from sbmlsim.experiment import progress as progress_module
 from sbmlsim.experiment.progress import (
@@ -38,6 +40,28 @@ class Slow(GoodExperiment):
         result = super().run(*args, **kwargs)
         time.sleep(SLEEP)
         return result
+
+
+@pytest.fixture(autouse=True)
+def _console_of_the_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The console of the package is 100 columns wide and no terminal.
+
+    Without a terminal rich takes the width from the environment (`COLUMNS`)
+    or from a terminal of the process, which differ between the platforms of
+    the continuous integration; the console still writes to `sys.stdout`,
+    which `capsys` captures.
+    """
+    monkeypatch.setattr(
+        sbmlsim.console,
+        "console",
+        Console(width=100, force_terminal=False, force_jupyter=False),
+    )
+
+
+def _recording(width: int, encoding: str = "utf-8") -> Console:
+    """Get a console which records, of a width and an encoding."""
+    file = io.TextIOWrapper(io.BytesIO(), encoding=encoding)
+    return Console(width=width, record=True, file=file)
 
 
 def _runner(*classes: type[SimulationExperiment]) -> ExperimentRunner:
@@ -309,12 +333,12 @@ def test_the_table_of_the_timings() -> None:
 def test_the_bars_give_way_on_a_narrow_console() -> None:
     """The numbers stay readable, the bars are left out on a narrow console."""
     results = [_result("experiment_with_a_long_name", {"simulations": 2.0})]
-    narrow = Console(width=40, record=True)
+    narrow = _recording(40)
     show_timings(results, initialized=0.5, elapsed=2.0, where="here", console=narrow)
     text = narrow.export_text()
     assert "━" not in text
     assert "2.00" in text
-    wide = Console(width=100, record=True)
+    wide = _recording(100)
     show_timings(results, initialized=0.5, elapsed=2.0, where="here", console=wide)
     text = wide.export_text()
     assert "━" in text
@@ -347,3 +371,47 @@ def test_an_experiment_whose_worker_died_is_counted_once(
     [overall] = [line for line in out.splitlines() if "✓ experiments" in line]
     assert "3/3" in overall
     assert all(r.timings[Phase.SIMULATIONS] > 0 for r in results)
+
+
+def test_a_narrow_console_gets_the_totals() -> None:
+    """A console too narrow for every phase gets the totals of the experiments and phases.
+
+    Nothing is cut: every name and every number is shown.
+    """
+    timings = {phase.value: 1.0 for phase in Phase}
+    results = [_result("GoodExperiment", timings), _result("BrokenTask", timings, "x")]
+    console = _recording(40)
+    show_timings(results, initialized=0.5, elapsed=2.0, where="here", console=console)
+    lines = console.export_text().splitlines()
+    assert all(len(line) <= 40 for line in lines)
+    rows = {line.split()[0]: line.split() for line in lines if line.split()}
+    assert rows["✓"] == ["✓", "GoodExperiment", "7.00"]
+    assert rows["✗"] == ["✗", "BrokenTask", "7.00"]
+    assert rows["total"] == ["total", "14.00"]
+    for phase in Phase:
+        assert rows[phase.value] == [phase.value, "2.00", "14%"]
+
+
+@pytest.mark.parametrize("encoding", ["cp1252", "ascii"])
+def test_a_console_without_utf_gets_ascii(encoding: str) -> None:
+    """A console which writes no UTF, e.g. a redirected output on windows, does not fail.
+
+    The marks, the bars and the lines are ASCII, the names are cut in ASCII.
+    """
+    console = _recording(100, encoding)
+    display = RunProgress(2, 2, console=console)
+    display.start()
+    display(Event("x" * 40, Phase.SIMULATIONS, "simulations", 1, 2))
+    display.finished("x" * 40)
+    display.finished("b", failed=True)
+    display.stop()
+    results = [
+        _result("GoodExperiment", {"models": 1.0, "simulations": 1.0}),
+        _result("BrokenTask", {"simulations": 1.0}, error="x"),
+    ]
+    show_timings(results, initialized=0.5, elapsed=2.0, where="here", console=console)
+    text = console.export_text()
+    assert text.isascii()
+    assert "+ experiments 2 workers, 1 failed" in text
+    assert "+ GoodExperiment" in text and "x BrokenTask" in text
+    assert "================" in text

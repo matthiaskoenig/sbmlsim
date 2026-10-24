@@ -111,6 +111,11 @@ _TABLE_BOX = box.Box(
     "    \n"  # bottom
 )
 
+#: the lines of `_TABLE_BOX` in ASCII, for a console which writes no UTF
+_ASCII_TABLE_BOX = box.Box(
+    "    \n    \n -- \n    \n -- \n -- \n    \n    \n", ascii=True
+)
+
 
 @dataclass(frozen=True, slots=True)
 class Event:
@@ -321,8 +326,9 @@ class RunProgress:
                 default.
         """
         self._lock = threading.RLock()
+        self._marks = glyphs(console)
         self._progress = Progress(
-            SpinnerColumn(finished_text="[green]✓"),
+            SpinnerColumn(finished_text=f"[green]{self._marks.done}"),
             TextColumn(
                 "{task.description}",
                 table_column=Column(no_wrap=True, max_width=NAME_WIDTH),
@@ -363,7 +369,8 @@ class RunProgress:
             if task is None:
                 name = event.sid
                 if len(name) > NAME_WIDTH - 2:
-                    name = name[: NAME_WIDTH - 3] + "…"
+                    cut = NAME_WIDTH - 2 - len(self._marks.ellipsis)
+                    name = name[:cut] + self._marks.ellipsis
                 task = self._progress.add_task(
                     f"  {name}", total=event.total, activity=event.activity
                 )
@@ -404,9 +411,93 @@ class RunProgress:
             self._progress.update(self._overall, advance=1, activity=activity)
 
 
+@dataclass(frozen=True, slots=True)
+class Glyphs:
+    """The characters of the marks and the bars of the output.
+
+    A console whose encoding is no UTF, e.g. a redirected output on windows
+    in `cp1252`, cannot write the check marks and the bars; it gets ASCII
+    characters instead, as rich draws the lines of its tables in ASCII there.
+    """
+
+    #: the mark of an experiment which ran
+    done: str
+    #: the mark of an experiment which failed or has failed figures
+    failed: str
+    #: the character of the bars of the timings
+    bar: str
+    #: the icon of the section of the timings, with its space
+    icon: str
+    #: the end of a name which is cut
+    ellipsis: str
+    #: the lines of the tables of the timings
+    lines: box.Box
+
+
+#: the glyphs of a console which writes UTF
+UNICODE_GLYPHS = Glyphs(
+    done="✓", failed="✗", bar="━", icon="⏱ ", ellipsis="…", lines=_TABLE_BOX
+)
+
+#: the glyphs of a console which writes another encoding, see `Glyphs`
+ASCII_GLYPHS = Glyphs(
+    done="+", failed="x", bar="=", icon="", ellipsis="...", lines=_ASCII_TABLE_BOX
+)
+
+
+def glyphs(console: Console | None = None) -> Glyphs:
+    """Get the glyphs a console can write, see `Glyphs`.
+
+    Args:
+        console: the console of the output, the one of the package by default.
+
+    Returns:
+        `ASCII_GLYPHS` for a console whose encoding is no UTF, else
+        `UNICODE_GLYPHS`.
+    """
+    return ASCII_GLYPHS if _console(console).options.ascii_only else UNICODE_GLYPHS
+
+
+def _phases(results: Sequence[ExperimentResult]) -> list[Phase]:
+    """Get the phases of the columns, the ones an experiment ran.
+
+    `other` only when it took a measurable time.
+    """
+    return [
+        phase
+        for phase in Phase
+        if any(phase.value in r.timings for r in results)
+        and (
+            phase != Phase.OTHER
+            or round(sum(r.timings.get(phase.value, 0.0) for r in results), 2) > 0
+        )
+    ]
+
+
+def _table(marks: Glyphs) -> Table:
+    """Get an empty table of timings with the lines of the glyphs."""
+    return Table(
+        box=marks.lines, show_edge=False, pad_edge=False, collapse_padding=True
+    )
+
+
+def _name(result: ExperimentResult, marks: Glyphs) -> Text:
+    """Get the name of an experiment with its mark in front of it.
+
+    A name is cut and not wrapped, so its mark stays in front of it.
+    """
+    return Text.assemble(
+        (f"{marks.failed} ", "red") if result.failed else (f"{marks.done} ", "green"),
+        (result.experiment.sid, "red" if result.failed else ""),
+        no_wrap=True,
+        overflow="ellipsis",
+    )
+
+
 def timings_table(
     results: Sequence[ExperimentResult],
     bars: bool = True,
+    marks: Glyphs = UNICODE_GLYPHS,
 ) -> Table:
     """Get the table of the seconds every experiment took in every phase.
 
@@ -423,25 +514,13 @@ def timings_table(
     Args:
         results: the results of the experiments, see `ExperimentResult.timings`.
         bars: show the bars, e.g. not on a console too narrow for them.
+        marks: the characters of the marks and the bars, see `glyphs`.
 
     Returns:
         The table.
     """
-    phases = [
-        phase
-        for phase in Phase
-        if any(phase.value in r.timings for r in results)
-        and (
-            phase != Phase.OTHER
-            or round(sum(r.timings.get(phase.value, 0.0) for r in results), 2) > 0
-        )
-    ]
-    table = Table(
-        box=_TABLE_BOX,
-        show_edge=False,
-        pad_edge=False,
-        collapse_padding=True,
-    )
+    phases = _phases(results)
+    table = _table(marks)
     # the names give way on a narrow console, the numbers do not
     table.add_column("experiment", min_width=10, max_width=NAME_WIDTH)
     for phase in phases:
@@ -459,19 +538,12 @@ def timings_table(
     totals = [total_seconds(r.timings) for r in results]
     longest = max(totals, default=0.0)
     for k, (result, total) in enumerate(zip(results, totals, strict=True)):
-        # a name is cut and not wrapped, its mark stays in front of it
-        name = Text.assemble(
-            ("✗ ", "red") if result.failed else ("✓ ", "green"),
-            (result.experiment.sid, "red" if result.failed else ""),
-            no_wrap=True,
-            overflow="ellipsis",
-        )
-        bar = _bar(result.timings, phases, total / longest if longest else 0.0)
+        fraction = total / longest if longest else 0.0
         table.add_row(
-            name,
+            _name(result, marks),
             *(_seconds(result.timings.get(phase.value)) for phase in phases),
             Text(f"{total:.2f}", style="bold"),
-            *([bar] if bars else []),
+            *([_bar(result.timings, phases, fraction, marks.bar)] if bars else []),
             end_section=k == len(results) - 1,
         )
 
@@ -484,7 +556,7 @@ def timings_table(
         Text("total", style="bold"),
         *(Text(f"{sums[phase.value]:.2f}", style="bold") for phase in phases),
         Text(f"{overall:.2f}", style="bold"),
-        *([_bar(sums, phases, 1.0 if overall else 0.0)] if bars else []),
+        *([_bar(sums, phases, 1.0 if overall else 0.0, marks.bar)] if bars else []),
     )
     table.add_row(
         Text("share", style="dim"),
@@ -495,6 +567,50 @@ def timings_table(
     return table
 
 
+def narrow_timings_tables(
+    results: Sequence[ExperimentResult], marks: Glyphs = UNICODE_GLYPHS
+) -> tuple[Table, Table]:
+    """Get the timings for a console too narrow for `timings_table`.
+
+    The total of every experiment, and the seconds and the share of every
+    phase over the experiments, as two tables of two and three columns.
+
+    Args:
+        results: the results of the experiments, see `ExperimentResult.timings`.
+        marks: the characters of the marks, see `glyphs`.
+
+    Returns:
+        The table of the experiments and the table of the phases.
+    """
+    totals = [total_seconds(r.timings) for r in results]
+    overall = sum(totals)
+    experiments = _table(marks)
+    experiments.add_column("experiment", min_width=10, max_width=NAME_WIDTH)
+    experiments.add_column("total", justify="right", no_wrap=True, min_width=5)
+    for k, (result, total) in enumerate(zip(results, totals, strict=True)):
+        experiments.add_row(
+            _name(result, marks),
+            Text(f"{total:.2f}", style="bold"),
+            end_section=k == len(results) - 1,
+        )
+    experiments.add_row(
+        Text("total", style="bold"), Text(f"{overall:.2f}", style="bold")
+    )
+
+    phases = _table(marks)
+    phases.add_column("phase", no_wrap=True)
+    phases.add_column("total", justify="right", no_wrap=True, min_width=5)
+    phases.add_column("share", justify="right", no_wrap=True)
+    for phase in _phases(results):
+        seconds = sum(r.timings.get(phase.value, 0.0) for r in results)
+        phases.add_row(
+            Text(phase.value, style=f"bold {PHASE_STYLES[phase]}"),
+            Text(f"{seconds:.2f}"),
+            _share(seconds, overall),
+        )
+    return experiments, phases
+
+
 def show_timings(
     results: Sequence[ExperimentResult],
     initialized: float | None,
@@ -503,6 +619,11 @@ def show_timings(
     console: Console | None = None,
 ) -> None:
     """Print the timings of a run below a section, see `timings_table`.
+
+    The numbers are what matters: the names give way to the bars down to
+    `MIN_NAME_WIDTH`, then the bars give way, and a console too narrow for
+    the seconds of every phase of every experiment gets the totals of the
+    experiments and of the phases, see `narrow_timings_tables`.
 
     Args:
         results: the results of the experiments of the run.
@@ -516,23 +637,35 @@ def show_timings(
     if not results:
         return
     console = _console(console)
+    marks = glyphs(console)
     n = len(results)
     noun = "experiment" if n == 1 else "experiments"
     before = "" if initialized is None else f", initialized in {initialized:.2f} s and"
     caption = f"{n} {noun}{before} run in {elapsed:.2f} s {where}"
     console.line()
     console.rule(
-        ":stopwatch: [bold]Timings[/bold] in seconds", align="left", style="white"
+        f"{marks.icon}[bold]Timings[/bold] in seconds",
+        characters=marks.lines.head_row_horizontal,
+        align="left",
+        style="white",
     )
-    console.print(timings_table(results, bars=_bars_fit(results, console)))
+    numbers = _numbers_width(results, console)
+    if numbers + BAR_WIDTH + 2 <= console.width:
+        console.print(timings_table(results, marks=marks))
+    elif numbers <= console.width:
+        console.print(timings_table(results, bars=False, marks=marks))
+    else:
+        experiments, phases = narrow_timings_tables(results, marks=marks)
+        console.print(experiments)
+        console.line()
+        console.print(phases)
     console.print(caption, markup=False)
 
 
-def _bars_fit(results: Sequence[ExperimentResult], console: Console) -> bool:
-    """Check whether the bars of the timings fit on the console.
+def _numbers_width(results: Sequence[ExperimentResult], console: Console) -> int:
+    """Get the width of the table of the timings without its bars.
 
-    The numbers are what matters: the names give way to the bars down to
-    `MIN_NAME_WIDTH`, the bars give way on a console narrower than that.
+    With the names cut to `MIN_NAME_WIDTH`, as far as they give way.
     """
     table = timings_table(results, bars=False)
     unlimited = console.options.update(max_width=sys.maxsize)
@@ -540,9 +673,7 @@ def _bars_fit(results: Sequence[ExperimentResult], console: Console) -> bool:
     names = max(
         (min(len(r.experiment.sid) + 2, NAME_WIDTH) for r in results), default=0
     )
-    # the bar and the gap in front of it
-    bars = BAR_WIDTH + 2
-    return width - names + min(names, MIN_NAME_WIDTH) + bars <= console.width
+    return width - names + min(names, MIN_NAME_WIDTH)
 
 
 def _console(console: Console | None) -> Console:
@@ -568,7 +699,10 @@ def _share(seconds: float, total: float) -> Text:
 
 
 def _bar(
-    timings: Mapping[str, float], phases: Iterable[Phase], fraction: float
+    timings: Mapping[str, float],
+    phases: Iterable[Phase],
+    fraction: float,
+    character: str,
 ) -> RenderableType:
     """Get a bar of the phases in their colours, `fraction` of `BAR_WIDTH` long.
 
@@ -586,6 +720,6 @@ def _bar(
         cumulative += timings.get(phase.value, 0.0)
         end = round(length * cumulative / total)
         if end > drawn:
-            bar.append("━" * (end - drawn), style=PHASE_STYLES[phase])
+            bar.append(character * (end - drawn), style=PHASE_STYLES[phase])
             drawn = end
     return bar
