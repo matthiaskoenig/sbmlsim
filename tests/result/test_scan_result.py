@@ -632,3 +632,64 @@ def test_q_of_one_point_of_a_ragged_result_has_no_padding() -> None:
     assert np.max(point.q["y"].magnitude) == 4.0
     # every point together keeps the padding, which lines up the points
     assert np.isnan(_ragged().q["y"].magnitude).sum() == 1
+
+
+def test_to_converts_variables_and_coordinates_and_keeps_the_labels() -> None:
+    """A converted result has the values in the new units and the same labels."""
+    res = _grid()
+    converted = res.to({"y": "µM", "time": "s", "k1": "1/hr"})
+    np.testing.assert_allclose(converted["y"].values, 1000 * res["y"].values)
+    assert converted["time"].values.tolist() == [0.0, 60.0, 120.0]
+    np.testing.assert_allclose(converted["k1"].values, [60.0, 120.0])
+    assert converted["d"].values.tolist() == [0, 1]
+    assert converted.units["y"] == "micromolar"
+    assert converted.q["y"].to("mM").magnitude.tolist() == res["y"].values.tolist()
+    # the result itself does not change
+    assert res.units["y"] == "mM" and res["time"].values.tolist() == [0.0, 1.0, 2.0]
+
+
+def test_to_converts_the_times_of_the_changes_with_the_time() -> None:
+    """The changes are in the time of the result, which `interpolate` reads."""
+    ds = xr.Dataset(
+        {"y": ("time", np.array([0.0, 1.0, 0.0, 1.0]))},
+        coords={"time": [0.0, 1.0, 1.0, 2.0]},
+        attrs={"dims": [], "units": {"y": "mM", "time": "hr"}, "changes": [1.0]},
+    )
+    converted = ScanResult(ds).to({"time": "min"})
+    assert converted.ds.attrs["changes"] == [60.0]
+    assert converted.interpolate([60.0]).ds["y"].values.tolist() == [0.0]
+
+
+def test_to_keeps_the_dimensionless_cv_of_a_summary() -> None:
+    """The `cv` of a summary is a ratio, the other statistics are converted."""
+    summary = _grid().summary("d")
+    converted = summary.to({"y": "µM"})
+    cv = summary["y"].sel(statistic="cv").values
+    np.testing.assert_array_equal(converted["y"].sel(statistic="cv").values, cv)
+    np.testing.assert_allclose(
+        converted["y"].sel(statistic="mean").values,
+        1000 * summary["y"].sel(statistic="mean").values,
+    )
+
+
+def test_to_converts_the_time_of_a_ragged_result() -> None:
+    """The time of a ragged result is a variable, its padding stays `NaN`."""
+    converted = _ragged().to({"time": "s"})
+    np.testing.assert_array_equal(
+        converted["time"].values, [[0.0, 60.0, 180.0], [0.0, 120.0, np.nan]]
+    )
+
+
+@pytest.mark.parametrize(
+    ("units", "error", "match"),
+    [
+        ({"x": "mM"}, KeyError, "no variable"),
+        ({"y": "kg"}, ValueError, "cannot be converted"),
+        ({"d": "mM"}, ValueError, "no unit"),
+    ],
+)
+def test_to_refuses_what_it_cannot_convert(
+    units: dict[str, str], error: type[Exception], match: str
+) -> None:
+    with pytest.raises(error, match=match):
+        _grid().to(units)
