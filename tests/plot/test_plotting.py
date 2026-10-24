@@ -1,10 +1,12 @@
 """Test plotting."""
 
 import copy
+import logging
 
 import numpy as np
 import pytest
 
+from sbmlsim.data import Data
 from sbmlsim.plot.plotting import (
     LOG_DECADES,
     LOG_MARGIN,
@@ -309,3 +311,77 @@ def test_a_bound_of_a_log_axis_is_kept() -> None:
     assert low == 1.0
     assert high == pytest.approx(1000.0 * 10 ** (LOG_MARGIN * 3))
     assert log_limits(1e-40, 1000.0, low=1.0, high=1e4) == (1.0, 1e4)
+
+
+# ---------------------------------------------------------------------------
+# the arguments of a styled curve and the labels of data
+# ---------------------------------------------------------------------------
+STYLE = Style(line=Line(color=ColorType("#000000ff"), thickness=1.0))
+
+
+def test_the_label_of_a_styled_curve_is_no_ignored_style_argument(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The label of a curve with a style names the curve, nothing is ignored."""
+    plot = Plot(sid="p")
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.plot.plotting"):
+        plot.curve(
+            x=Data("time", task="t"), y=Data("[X]", task="t"), label="sim", style=STYLE
+        )
+    assert caplog.records == []
+    assert plot.curves[0].name == "sim"
+    assert plot.curves[0].style is STYLE
+
+
+def test_a_styled_curve_warns_about_the_style_arguments_it_ignores(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The arguments of matplotlib next to a style are ignored, and named."""
+    plot = Plot(sid="p")
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.plot.plotting"):
+        plot.curve(
+            x=Data("time", task="t"),
+            y=Data("[X]", task="t"),
+            label="sim",
+            color="red",
+            style=STYLE,
+        )
+    assert [r.getMessage() for r in caplog.records] == [
+        "'style' is set, the style arguments ['color'] are ignored."
+    ]
+
+
+def test_data_with_a_style_warns_about_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`add_data` adds no style argument of its own to a curve with a style."""
+    plot = Plot(sid="p")
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.plot.plotting"):
+        plot.add_data(xid="time", yid="mean", dataset="d", label="data", style=STYLE)
+    assert caplog.records == []
+    assert plot.curves[0].style is STYLE
+
+
+@pytest.mark.parametrize(
+    "yid_sd, yid_se, label",
+    [
+        (None, None, "Patel 1984 (n=12)"),
+        ("mean_sd", None, "Patel 1984 ± SD (n=12)"),
+        (None, "mean_se", "Patel 1984 ± SE (n=12)"),
+    ],
+)
+def test_the_label_of_data_names_its_error(
+    yid_sd: str | None, yid_se: str | None, label: str
+) -> None:
+    """The error of the data follows the label after a space, then the count."""
+    plot = Plot(sid="p")
+    plot.add_data(
+        xid="time",
+        yid="mean",
+        yid_sd=yid_sd,
+        yid_se=yid_se,
+        dataset="d",
+        label="Patel 1984",
+        count=12,
+    )
+    assert plot.curves[0].name == label

@@ -81,6 +81,8 @@ FLAGS = "flags"
 #: the most elements (points of the scan times time points) of the union of the
 #: time points of a ragged result which `ScanResult.summary` interpolates onto
 MAX_UNION_ELEMENTS = 10_000_000
+#: the most variables the representation of a result names, a model has hundreds
+REPR_VARIABLES = 8
 
 
 class ScanResult:
@@ -97,7 +99,11 @@ class ScanResult:
     def __repr__(self) -> str:
         """Get the representation."""
         sizes = ", ".join(f"{dim}: {size}" for dim, size in self.ds.sizes.items())
-        return f"ScanResult({sizes}; {', '.join(self.variables)})"
+        names = self.variables
+        shown = ", ".join(names[:REPR_VARIABLES])
+        if len(names) > REPR_VARIABLES:
+            shown += f", ... ({len(names)} variables)"
+        return f"ScanResult({sizes}; {shown})"
 
     @property
     def units(self) -> dict[str, str]:

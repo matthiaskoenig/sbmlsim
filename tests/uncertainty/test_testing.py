@@ -279,6 +279,20 @@ def test_contradicting_draws_keep_the_sequence_nested() -> None:
         assert low_a <= low_b <= high_b <= high_a
 
 
+def test_the_hypothesis_has_the_short_unit() -> None:
+    values = _draws(np.linspace(10.0, 50.0, 64), "nanogram / milliliter")
+    tested = probability(values, less=Q(40, "ng/ml"), at_least=0.5)
+    assert tested.hypothesis == "P(x < 40 ng/ml) >= 0.5"
+    between = probability(values, between=(Q(0.01, "ug/ml"), 30.0))
+    assert between.hypothesis == "10 <= x <= 30 ng/ml"
+    assert probability(_draws([1.0, 2.0], "dimensionless"), greater=0).hypothesis == (
+        "x > 0"
+    )
+    # a unit pint does not parse is written as given
+    odd = probability(_draws([1.0, 2.0], "IU_insulin"), greater=0)
+    assert odd.hypothesis == "x > 0 IU_insulin"
+
+
 def test_a_timecourse_is_no_value_per_draw() -> None:
     with pytest.raises(ValueError, match="one value per draw"):
         probability(
@@ -319,12 +333,18 @@ def test_the_probability_of_a_propagation() -> None:
     nominal = float(res.summary(["pk.cmax"]).set_index("scenario").loc["small", "q0.5"])
     half = res.probability("pk.cmax", scenario="small", greater=nominal)
     assert half.estimate == pytest.approx(0.5, abs=0.05)
+    # the statement of a scenario names it, as a contrast names its scenarios
+    assert half.hypothesis == f"pk.cmax:small > {nominal:g} mg/l"
     hypothesis = Hypothesis(
         "pk.cmax", contrast=("large", "small"), less=0.6, at_least=0.98
     )
-    (tested,) = res.test([hypothesis]).adjusted()
+    single = Hypothesis("pk.cmax", scenario="small", less=Q(40, "g/l"), at_least=0.9)
+    tested, scenario = res.test([hypothesis, single]).adjusted()
     assert tested.decision == "accepted"
     assert tested.hypothesis.startswith("P(pk.cmax:large/small < 0.6)")
+    assert scenario.hypothesis == "P(pk.cmax:small < 40000 mg/l) >= 0.9"
+    table = res.test([hypothesis, single]).table()
+    assert table["hypothesis"].tolist() == [tested.hypothesis, scenario.hypothesis]
 
 
 def test_a_propagation_draws_until_its_hypotheses_are_decided() -> None:

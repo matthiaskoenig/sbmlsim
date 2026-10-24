@@ -1,10 +1,10 @@
 # Data
 
-Simulation experiments compare simulations with experimental data. `sbmlsim` represents experimental data as `DataSet` objects, data frames which know the units of their columns, and references both simulation results and datasets through `Data` objects, which plots, functions and fit mappings consume.
+A simulation experiment works with two kinds of data. Measured data, such as the plasma concentrations of a clinical study, is a `DataSet`: a pandas data frame that knows the units of its columns. Everything a figure or a fit reads, simulated or measured, is named by a `Data` object, which you create before the experiment runs and resolve to numbers afterwards.
 
 ## Datasets
 
-A `DataSet` is a `pandas.DataFrame` with units. It is created from a data frame whose columns declare their units, either with a `*_unit` column per column, which applies to the column and its `*_sd`, `*_se`, `*_min` and `*_max` columns, or with one `unit` column which applies to all numbers of a row: `mean`, `value`, `median`, their `sd`/`se` columns and the range `min`/`max` (`cv` is relative and has no unit):
+A `DataSet` is created from a data frame and the units of its columns. Here are the plasma concentrations of hydrochlorothiazide (HCTZ) measured by Patel et al. (1984) after a 25 mg tablet:
 
 ```python
 import pandas as pd
@@ -12,179 +12,293 @@ import pandas as pd
 from sbmlsim.data import DataSet
 from sbmlsim.units import ureg
 
-df = pd.DataFrame(
+patel1984 = pd.DataFrame(
     {
-        "time": [0.0, 10.0, 20.0, 30.0],
-        "time_unit": ["min"] * 4,
-        "mean": [0.0, 2.1, 1.6, 1.1],
-        "mean_sd": [0.0, 0.3, 0.2, 0.2],
-        "mean_unit": ["mg/l"] * 4,
+        "time": [0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 24, 36],
+        "cp": [22.8, 71.6, 97.9, 107, 115, 92.6, 54.2, 39.3, 23.3, 9.0, 4.6],
+        "cp_sd": [21.9, 32.4, 39.1, 36.0, 29.0, 21.1, 11.6, 9.5, 11.9, 6.3, 5.2],
     }
 )
-dset = DataSet.from_df(df, ureg=ureg)
-print(dset.uinfo["time"], dset.uinfo["mean"])
-print(dset)
+dset = DataSet.from_df(patel1984, ureg=ureg, udict={"time": "hr", "cp": "ng/ml"})
+print(dset.head(3))
+print(dset.get_quantity("cp")[:3].to("µg/l").round(1))
 ```
 
-The unit of a column is the unit of its first row with a value. The unit of a row which carries no number (no value, sd, se, min or max) is ignored, and a column without any unit has no unit. Rows with another unit of the same dimension are converted to the unit of the column, all their numbers, and their unit column is rewritten; the rows of a `unit` column are converted in one pass, so `mean`, `value` and `median` get one unit and the numbers they share (`sd`, `se`, `min`, `max`) are converted once. The data frame passed in is not changed. A column whose rows cannot be brought to one unit raises a `ValueError` which names the column and its units: a unit of another dimension or with an offset (`degC` next to `kelvin`), a unit which is undefined, is no string or has a factor which is no positive number, and values which are no numbers. A unit with a numeric factor, as PK-DB writes the unit of a publication (`ml/min/(1.73*m^2)`, `micromol/(0.5*hr)`, `(10*ml)/hr`, `10^9/l`), is read as a number of the values: the numbers of its rows (values, sd, se, min and max) are multiplied by the factor, and a column whose first unit has a factor gets the unit without it, e.g. `8.6` in `micromol/(0.5*hr)` is `17.2` in `micromole/hour`. Every unit is read on import, also the one unit of a column whose rows all have it, so a unit the registry does not define fails here, see [Units](units.md#the-unit-registry-and-q).
+```text title="Output"
+   time    cp  cp_sd time_unit cp_unit
+0   0.5  22.8   21.9        hr   ng/ml
+1   1.0  71.6   32.4        hr   ng/ml
+2   1.5  97.9   39.1        hr   ng/ml
+[22.8 71.6 97.9] microgram / liter
+```
+
+`udict` gives the unit of a column, and the columns `cp_sd`, `cp_se`, `cp_min` and `cp_max` share the unit of `cp`. `get_quantity` returns a column as a pint quantity, which converts to any unit of the same dimension. `ureg` is the unit registry of `sbmlsim`; inside an experiment use `self.ureg`.
+
+### Units in the table
+
+Tables exported from a database such as [PK-DB](https://pk-db.com) carry the units as columns. There are two forms:
+
+- A `<column>_unit` column gives the unit of `<column>` and of its `_sd`, `_se`, `_min` and `_max` columns.
+- A `unit` column gives the unit of every number of its row: `mean`, `value`, `median`, `sd`, `se`, `min` and `max`. The column `cv` is relative and has no unit.
+
+The units may change from row to row. `from_df` converts every row to the unit of the first row with a value and rewrites the unit column:
 
 ```python
-mixed = pd.DataFrame({"dose": [1.0, 500.0], "dose_unit": ["g", "mg"]})
-print(DataSet.from_df(mixed, ureg=ureg)["dose"].tolist())
+pkdb = pd.DataFrame(
+    {
+        "time": [0, 30, 1],
+        "time_unit": ["min", "min", "hr"],
+        "mean": [0.0, 2.1, 800.0],
+        "sd": [0.0, 0.3, 100.0],
+        "unit": ["mg/l", "mg/l", "µg/l"],
+    }
+)
+print(DataSet.from_df(pkdb, ureg=ureg))
 ```
 
-A slice, a column or a copy of a dataset owns a copy of its units, so a `unit_conversion` of one changes no other.
-
-The units of the dataset are a `UnitsInformation` like the units of a model, see [Units](units.md). A column is read as a quantity and converted:
-
-```python
-q = dset.get_quantity("mean")
-print(q.to("mg/dl"))
+```text title="Output"
+   time time_unit  mean  mean_sd mean_unit
+0   0.0       min   0.0      0.0      mg/l
+1  30.0       min   2.1      0.3      mg/l
+2  60.0       min   0.8      0.1      mg/l
 ```
 
-In an experiment the datasets are returned by `datasets()`, keyed by identifier, and read from the `data_path` of the experiment. `load_pkdb_dataframe` reads the TSV files of a [PK-DB](https://pk-db.com) study, see `examples/glucose/experiments/dose_response.py`.
+The time of the last row became 60 min and its mean and SD 0.8 and 0.1 mg/l. With a `unit` column, `sd` and `se` are renamed to `mean_sd` and `mean_se`.
 
-## Data references
+A few more rules:
 
-A `Data` object is a promise for data: it names a variable of a task, a column of a dataset, or a function of other data, and is resolved when the experiment has run. A plot curve or a fit mapping is described with `Data` objects before any simulation exists:
+- A unit with a number in it, as publications write it (`micromol/(0.5*hr)`, `ml/min/(1.73*m^2)`), is read as part of the values: `8.6 micromol/(0.5*hr)` becomes `17.2 micromole/hour`.
+- A column whose rows cannot be brought to one unit raises a `ValueError` that names the column and its units. That happens for units of different dimensions, units with an offset such as `degC`, units the registry does not know (see [Units](units.md#the-unit-registry-and-q)) and values that are not numbers.
+- `from_df` does not change the data frame you pass in, and a copy or slice of a dataset has its own units.
+
+In an experiment, `datasets()` returns the datasets by key. `load_pkdb_dataframe(sid, data_path)` reads the TSV file of a PK-DB study from the `data_path` of the experiment; `examples/glucose/experiments/dose_response.py` shows it in use.
+
+## Referring to data
+
+A `Data` object names one of three things:
+
+- a variable of a task: `Data("cp", task="task_po25")`,
+- a column of a dataset: `Data("cp", dataset="patel1984")`,
+- a function of other data: `Data("cp_norm", function="cp / max(cp)", variables={"cp": ...})`.
+
+The variable of a task can be `time`, a variable of the model, an observable, or a parameter of a `PK` observable such as `pk.cmax`. A species in brackets, `[Cve_hctz]`, is its concentration, without brackets its amount.
 
 ```python
 from sbmlsim.data import Data
 
-x = Data("time", task="task_tc")
-y = Data("[X]", task="task_tc")
-y_data = Data("mean", dataset="dset1")
-print(x.sid, x.dtype, y.selection)
-print(y_data.sid, y_data.dtype)
+print(Data("[Cve_hctz]", task="task_po25").sid)
+print(Data("Cve_hctz", task="task_po25").sid)
+print(Data("pk.cmax", task="task_doses").sid)
 ```
 
-A species in brackets is a concentration, without brackets an amount; `Data.selection` is the roadrunner selection recorded for it. The id of a data, `Data.sid`, is `<task or dataset>__<index>` for an amount and `<task or dataset>__conc__<index>` for a concentration, so both are kept; a dot of the index becomes `__` (`pk.cmax` gives `<task>__pk__cmax`) and any other character which is no letter, digit or underscore `_x<hex>_` (the rate of change `X'` gives `<task>__X_x27_`), so the id is a valid SId. In an experiment the selections of every task are reduced to the data which reads it in `data()`, the figures and the fit mappings; `data()` registers the data which nothing else reads, e.g. data an analysis reads after the run.
-
-## Functions of data
-
-Data can be a function of other data, written as a formula with the referenced data as variables. The function is evaluated on the resolved data with their units:
-
-```python
-f = Data(
-    "[X]_ratio",
-    function="x / y",
-    variables={"x": Data("[X]", task="task_tc"), "y": Data("[Y]", task="task_tc")},
-)
-print(f.sid, f.dtype, f.function)
+```text title="Output"
+task_po25__conc__Cve_hctz
+task_po25__Cve_hctz
+task_doses__pk__cmax
 ```
 
-The function is a formula of the math of PEtab, the same as the formulas of changes and observables. One extension serves data: `max` and `min` of a single argument reduce it along the time of every simulation and ignore the `NaN` of padding, so `Y/max(Y)` normalizes every simulation of a scan to its own maximum; with two or more arguments they are the elementwise maximum and minimum. The reductions `mean` and `at` need the time points of a simulation and are part of the observables of a scan, see [Observables](observables.md).
+The `sid` of a `Data` is built from its source and its name, so it is a valid SBML id. Figures, fit mappings and the JSON file refer to data by it. Pass `sid=` to choose it yourself, for example when you read the same variable twice with different selections.
 
-The math of PEtab is not the L3 formula syntax of SBML which a function of data was written in before, and one difference changes a result without an error: `log(x)` is the natural logarithm, as in PEtab, where the L3 syntax read it as the logarithm to base 10. Write `log10(x)` for base 10 (`log2(x)` for base 2) and `log(x, b)` for the logarithm of `x` to base `b`. The other functions and constants of the L3 syntax which differ fail with a `ValueError` when the data is evaluated:
+The data a figure, a fit mapping or `data()` reads decides what a task records. To read a variable after the run that nothing else reads, list it in `data()`.
 
-- `asin`, `acos`, `atan`, `asinh` and the other inverse functions are `arcsin`, `arccos`, `arctan`, `arcsinh` and so on.
-- `root(n, x)` is `sqrt(x)` for `n = 2` and `x^(1/n)` otherwise.
-- `pi` is an identifier like any other in PEtab, so its value is a parameter of the data, `Data(..., function="x * pi", parameters={"pi": math.pi})`.
-- `ceiling`, `ceil`, `floor` and `factorial` are not functions of the math of PEtab and have no equivalent.
+## Reading the data of a run
 
-## Resolving data
-
-`Data.get_data(experiment)` returns the values of the data in a run experiment as a labelled array, an `xarray.DataArray` with the dimensions of its source, their coordinates and the unit in `attrs["units"]`, optionally converted to other units; `sbmlsim.data.to_quantity(array, ureg)` gives the pint quantity:
+This experiment simulates the 25 mg dose of the study and a scan over four doses, and computes the mass concentration `cp` and its PK parameters:
 
 ```python
 from pathlib import Path
 from typing import override
 
+from sbmlsim import Q
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
-from sbmlsim.model import AbstractModel
-from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Simulation
+from sbmlsim.resources import HCTZ_SBML
+from sbmlsim.simulation import (
+    PK,
+    Change,
+    Dimension,
+    Formula,
+    Observable,
+    Scan,
+    Simulation,
+)
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
 
 
-class DataExperiment(SimulationExperiment):
+def oral_dose() -> Simulation:
+    return Simulation(
+        time_unit="hr",
+        end=36,
+        steps=360,
+        changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
+    )
+
+
+class Hctz(SimulationExperiment):
     @override
-    def models(self) -> dict[str, AbstractModel | Path]:
-        return {"model": REPRESSILATOR_SBML}
+    def datasets(self) -> dict[str, DataSet]:
+        units = {"time": "hr", "cp": "ng/ml"}
+        return {"patel1984": DataSet.from_df(patel1984, udict=units, ureg=self.ureg)}
 
     @override
-    def simulations(self) -> dict[str, Simulation]:
-        return {"tc": Simulation(end=100, steps=100)}
+    def models(self) -> dict[str, Path]:
+        return {"hctz": HCTZ_SBML}
 
-    @override
-    def tasks(self) -> dict[str, Task]:
-        return {"task_tc": Task(model="model", simulation="tc")}
-
-    @override
-    def data(self) -> dict[str, Data]:
-        data = [Data(sid, task="task_tc") for sid in ["time", "[X]"]]
-        return {d.sid: d for d in data}
-
-
-runner = ExperimentRunner(
-    [DataExperiment],
-    simulator=Simulator(),
-    base_path=Path.cwd(),
-    data_path=Path.cwd(),
-)
-# the results are read after the run: keep them
-results = runner.run_experiments(output_path=Path.cwd() / "results", keep_results=True)
-experiment = results[0].experiment
-
-time = Data("time", task="task_tc").get_data(experiment)
-print(time.attrs["units"], time.values[:3])
-x = Data("[X]", task="task_tc").get_data(experiment, to_units="dimensionless")
-print(x.attrs["units"], x.values[:3])
-```
-
-## Selecting points
-
-The data of a task has the dimensions of its scan: a timecourse is over `(*dims, time)`, or `(*dims, _point)` for a ragged result whose simulations keep their own time points padded with `NaN`, a value per simulation is over `(*dims)`, and the values a dimension sets are `Data("<dimension>.<target>")` over the dimension, while the plain name of a symbol is its timecourse, also when the scan changes it. Every array of a task carries the values of a dimension as the coordinate `<dimension>.<target>`, whatever else the task keeps; the plain name of a changed target whose timecourse the task did not keep raises and names `<dimension>.<target>`, and data of the experiment which reads the timecourse keeps it. `sel` selects labels: `Data("[X]", task="task_scan", sel={"x0": 2})` of the scan below keeps one point and drops the dimension, `sel={"x0": [0, 2]}` keeps the dimension with two labels. A dimension of the scan which the data has not, e.g. the dimension of a scan for the time on a common grid, is skipped, so the same `sel` serves the time and the values of a curve; a dimension or label of the scan which does not exist raises with the ones which do when the experiment is initialized. The data of a dataset is a column over the dimension `row`, and `sel={"group": "b"}` keeps the rows whose column `group` has the value. A function broadcasts its data by the names of their dimensions, and `max` and `min` of a single argument reduce along the time of a timecourse, or along the rows of a dataset.
-
-## Data of observables
-
-An experiment declares observables with `observables()`, the `Formula`, `PK` and `Custom` of [Observables](observables.md), and a `Data` of a task reads one by its id, the parameter of a `PK` observable as `<id>.<parameter>`. A task computes the observables its data read, in one run with the selections it reads. The values a dimension sets are `Data("x0.X")`, and every array of the task names them so among its coordinates, e.g. `xmax["x0.X"]`:
-
-```python
-import numpy as np
-
-from sbmlsim.simulation import Dimension, Formula, Observable, Scan
-
-
-class ObservableExperiment(DataExperiment):
     @override
     def simulations(self) -> dict[str, Simulation | Scan]:
-        return {
-            "scan": Scan(
-                Simulation(end=100, steps=100),
-                [Dimension("x0", values={"X": np.array([10.0, 20.0, 40.0])})],
-            ),
-        }
+        doses = Dimension("dose", values={"PODOSE_hctz": Q([12.5, 25, 50, 100], "mg")})
+        return {"po25": oral_dose(), "doses": Scan(oral_dose(), [doses])}
 
     @override
     def observables(self) -> dict[str, Observable]:
-        return {"xmax": Formula("xmax", "max([X])")}
+        return {
+            "cp": Formula("cp", "[Cve_hctz] * Mr_hctz", unit="ng/ml"),
+            "pk": PK("pk", "cp", dose="PODOSE_hctz", route="oral"),
+        }
 
     @override
     def tasks(self) -> dict[str, Task]:
-        return {"task_scan": Task(model="model", simulation="scan")}
+        return {
+            "task_po25": Task(model="hctz", simulation="po25"),
+            "task_doses": Task(model="hctz", simulation="doses"),
+        }
 
     @override
     def data(self) -> dict[str, Data]:
-        return {
-            "data_xmax": Data("xmax", task="task_scan"),
-            "x": Data("[X]", task="task_scan"),
-        }
+        data = [
+            Data("[Cve_hctz]", task="task_po25"),
+            Data("cp", task="task_doses"),
+            Data("pk.cmax", task="task_doses"),
+        ]
+        return {d.sid: d for d in data}
 
 
-results = ExperimentRunner(
-    [ObservableExperiment],
-    simulator=Simulator(),
-    base_path=Path.cwd(),
-    data_path=Path.cwd(),
-).run_experiments(output_path=Path.cwd() / "results", keep_results=True)
-experiment = results[0].experiment
-
-x0 = Data("x0.X", task="task_scan").get_data(experiment)
-print(x0.dims, x0.values)
-xmax = Data("xmax", task="task_scan").get_data(experiment)
-print(xmax.dims, xmax["x0.X"].values, xmax.values.round(3))
-x = Data("[X]", task="task_scan", sel={"x0": 2}).get_data(experiment)
-print(x.dims, float(x.max()) == float(xmax.sel(x0=2)))
+runner = ExperimentRunner(Hctz, base_path=None, data_path=None, simulator=Simulator())
+[result] = runner.run_experiments(Path("results"), keep_results=True)
+experiment = result.experiment
+print(experiment)
 ```
+
+```text title="Output"
+*** SimulationExperiment: Hctz ***
+data                 ['task_po25__conc__Cve_hctz', 'task_doses__cp', 'task_doses__pk__cmax']
+datasets             ['patel1984']
+fit_mappings         []
+simulations          ['po25', 'doses']
+observables          ['cp', 'pk']
+tasks                ['task_po25', 'task_doses']
+results              ['task_po25', 'task_doses']
+figures              []
+```
+
+`Data.get_data(experiment)` returns the values as an `xarray.DataArray` with the unit in `attrs["units"]`. `to_units` converts them, and `to_quantity` turns the array into a pint quantity:
+
+```python
+from sbmlsim.data import to_quantity
+
+conc = Data("[Cve_hctz]", task="task_po25").get_data(experiment, to_units="µmol/l")
+print(conc.dims, conc.attrs["units"], conc.values[:3].round(4))
+print(f"{to_quantity(conc, experiment.ureg).max():~.3f}")
+
+measured = Data("cp", dataset="patel1984").get_data(experiment)
+print(measured.dims, measured.attrs["units"], measured.values[:3])
+```
+
+```text title="Output"
+('time',) µmol/l [0.     0.0143 0.0459]
+0.452 μmol / l
+('row',) ng/ml [22.8 71.6 97.9]
+```
+
+A timecourse has the dimension `time`, a dataset column the dimension `row`. The values of a task are in the units of the model, here mmol/l for the concentration, unless you ask for others.
+
+## Selecting points
+
+The data of a scan has one dimension per scan dimension, before the time. The peak concentration `pk.cmax` is one value per simulation, so it only has the dimension `dose`:
+
+```python
+cmax = Data("pk.cmax", task="task_doses").get_data(experiment)
+print(cmax.dims, cmax.attrs["units"])
+print(cmax.to_pandas().round(1))
+print(cmax["dose.PODOSE_hctz"].values)
+```
+
+```text title="Output"
+('dose',) nanogram / milliliter
+dose
+0     67.3
+1    134.6
+2    269.2
+3    538.3
+Name: task_doses__pk__cmax, dtype: float64
+[ 12.5  25.   50.  100. ]
+```
+
+Every array of a task carries the values a dimension sets as the coordinate `<dimension>.<target>`, here `dose.PODOSE_hctz`, and `Data("dose.PODOSE_hctz", task="task_doses")` reads them as data of their own. The plain name of a changed target, `PODOSE_hctz`, is its timecourse, which a task only records when some data reads it.
+
+`sel` selects points by their labels. A single label drops the dimension, a list keeps it:
+
+```python
+one = Data("cp", task="task_doses", sel={"dose": 2}).get_data(experiment)
+two = Data("cp", task="task_doses", sel={"dose": [0, 3]}).get_data(experiment)
+print(one.dims, two.dims, two["dose.PODOSE_hctz"].values)
+```
+
+```text title="Output"
+('time',) ('dose', 'time') [ 12.5 100. ]
+```
+
+The labels of a dimension are `0, 1, 2, ...` unless the `Dimension` sets `labels=`. A dimension of the scan that the data does not have is skipped, so the same `sel` works for the time and the values of a curve. A dimension or label that does not exist raises an error when the experiment is initialized. For a dataset, `sel={"group": "b"}` keeps the rows whose column `group` is `b`.
+
+Since the arrays are labelled, plotting them with matplotlib takes a few lines:
+
+```python
+import matplotlib.pyplot as plt
+
+time = Data("time", task="task_doses").get_data(experiment, to_units="hr")
+cp = Data("cp", task="task_doses").get_data(experiment)
+
+fig, ax = plt.subplots(figsize=(7, 3.5))
+for mg, curve in zip(cp["dose.PODOSE_hctz"].values, cp):
+    ax.plot(time, curve, label=f"{mg:g} mg")
+data_time = Data("time", dataset="patel1984").get_data(experiment)
+ax.plot(data_time, measured, "o", color="black", label="Patel 1984 (25 mg)")
+ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
+ax.legend()
+```
+
+![Output figure](images/outputs/data-08.png)
+
+For figures that are part of an experiment, see [Plots](plotting.md): a curve with `over="dose"` draws one line per dose.
+
+A scan over the steps of the integrator, where every simulation keeps its own time points, has the dimension `_point` instead of `time`, padded with `NaN` where a simulation has fewer points.
+
+## Functions of data
+
+Data can be computed from other data with a formula. The formula uses the names of `variables` and `parameters`:
+
+```python
+cp_norm = Data(
+    "cp_norm",
+    function="cp / max(cp)",
+    variables={"cp": Data("cp", task="task_doses")},
+)
+norm = cp_norm.get_data(experiment)
+print(norm.dims, norm.max(dim="time").values)
+```
+
+```text title="Output"
+('dose', 'time') [1. 1. 1. 1.]
+```
+
+The variables are broadcast by the names of their dimensions, so a function of a scan keeps the scan dimensions. `max` and `min` with one argument reduce it along the time of every simulation, ignoring the `NaN` of padding, so `cp / max(cp)` scales every dose to its own peak. For a dataset column they reduce over the rows. With two or more arguments they are the elementwise maximum and minimum.
+
+The formula is written in the math of [PEtab](https://petab.readthedocs.io), the same as the formulas of changes and observables. It differs from the L3 formula syntax of SBML that older versions of `sbmlsim` used:
+
+- `log(x)` is the natural logarithm. Use `log10(x)` for base 10 and `log(x, b)` for base `b`. This difference changes a result without an error.
+- Write `arcsin`, `arccos`, `arctan`, `arcsinh` and so on instead of `asin`, `acos`, `atan` and `asinh`.
+- Write `sqrt(x)` or `x^(1/n)` instead of `root(n, x)`.
+- `pi` is an ordinary name, so pass its value: `parameters={"pi": math.pi}`.
+- `ceiling`, `ceil`, `floor` and `factorial` do not exist.
+
+The other differences raise a `ValueError` when the data is evaluated. The reductions `mean` and `at` need the time points of a simulation, so they exist only in observables, see [Observables](observables.md).

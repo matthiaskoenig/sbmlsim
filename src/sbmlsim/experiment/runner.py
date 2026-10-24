@@ -35,7 +35,6 @@ from typing import Any, Literal, cast, override
 import matplotlib
 
 from sbmlsim import parallel
-from sbmlsim.console import console
 from sbmlsim.experiment.experiment import (
     DATASETS_DIR,
     STATIC_FORMAT,
@@ -135,8 +134,8 @@ class ExperimentRunner:
         self,
         experiment_classes: type[SimulationExperiment]
         | Iterable[type[SimulationExperiment]],
-        base_path: Path | None,
-        data_path: Path | Iterable[Path] | None,
+        base_path: Path | None = None,
+        data_path: Path | Iterable[Path] | None = None,
         simulator: Simulator | None = None,
         ureg: UnitRegistry | None = None,  # FIXME: is this needed on ExperimentRunner?
         on_error: Literal["raise", "log"] = "log",
@@ -147,8 +146,10 @@ class ExperimentRunner:
 
         Args:
             experiment_classes: the simulation experiments.
-            base_path: base path of the simulation experiments.
-            data_path: path or paths of the datasets of the simulation experiments.
+            base_path: base path of the simulation experiments, `None` for none,
+                e.g. for experiments whose models are absolute paths.
+            data_path: path or paths of the datasets of the simulation
+                experiments, `None` for experiments without datasets of files.
             simulator: the simulator of the tasks.
             ureg: the unit registry of the experiments.
             on_error: what an error in the definition of an experiment does (its
@@ -383,7 +384,6 @@ class ExperimentRunner:
             )
             exp_results = []
             for sid in self._order:
-                console.rule(style="white")
                 if sid in self.failed:
                     # the definition raised, the experiment is reported, not run
                     exp_results.append(

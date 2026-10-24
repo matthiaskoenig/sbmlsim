@@ -212,13 +212,14 @@ class WeightingPointsType(Enum):
 
         w_{i,k} = 1.0
 
-    `error_weighting`: data points are weighted as ~1/error
+    `error_weighting`: data points are weighted by the inverse of their
+    coefficient of variation, so that the weights of curves of different units
+    are comparable, the larger the error the smaller the weight::
 
-      # FIXME: update documentation, These must probably be normalized also.
-      if yerr{i,k}:
-        w_{i,k} = 1.0/yerr{i,k}
-      else:
-        w_{i,k} = 1.0/yerr{i,k}
+        w_{i,k} = |y_{i,k} / yerr_{i,k}|
+
+    A curve without errors gets the weight of a coefficient of variation of
+    0.5, `w_{i,k} = 2`.
     """
 
     NO_WEIGHTING = 1

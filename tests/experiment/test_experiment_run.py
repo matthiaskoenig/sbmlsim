@@ -26,7 +26,7 @@ from sbmlsim.result import ScanResult
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.task import Task
-from sbmlsim.units import Quantity, _create_registry
+from sbmlsim.units import Q, _create_registry
 
 
 class FitMappingExperiment(SimulationExperiment):
@@ -132,7 +132,7 @@ class ModelChanged(FitMappingExperiment):
         return {
             "m": AbstractModel(
                 source=REPRESSILATOR_SBML,
-                changes={"X": Quantity(20.0, "dimensionless")},
+                changes={"X": Q(20.0, "item")},
             )
         }
 
@@ -195,9 +195,7 @@ def test_the_key_of_a_model_describes_it() -> None:
     """Two descriptions of the same model have the same key."""
     a = AbstractModel(source=REPRESSILATOR_SBML)
     b = AbstractModel(source=REPRESSILATOR_SBML)
-    changed = AbstractModel(
-        source=REPRESSILATOR_SBML, changes={"X": Quantity(20.0, "dimensionless")}
-    )
+    changed = AbstractModel(source=REPRESSILATOR_SBML, changes={"X": Q(20.0, "item")})
 
     # the objects are not equal, their keys are
     assert a != b
@@ -295,9 +293,10 @@ def test_the_data_of_a_scan_has_the_time_last() -> None:
 
     y = Data("[Y]", task="task").get_data(experiment)
     assert y.shape == (3, 11)
-    assert y.attrs["units"] == "dimensionless"
+    # the repressilator counts items per femtolitre, in minutes
+    assert y.attrs["units"] == "item/fl"
     time = Data("time", task="task").get_data(experiment, to_units="second")
-    np.testing.assert_allclose(time.values, np.linspace(0, 10, 11))
+    np.testing.assert_allclose(time.values, np.linspace(0, 10, 11) * 60.0)
     x = Data("d.X", task="task").get_data(experiment)
     np.testing.assert_allclose(x.values, [1.0, 2.0, 3.0])
     np.testing.assert_allclose(y["d.X"].values, [1.0, 2.0, 3.0])
@@ -443,7 +442,7 @@ class FigureExperiment(FitMappingExperiment):
         plot = Plot(
             sid="p",
             xaxis=Axis("time", unit="second"),
-            yaxis=Axis("X", unit="dimensionless"),
+            yaxis=Axis("X", unit="item/fl"),
         )
         plot.curves.append(
             Curve(
@@ -644,3 +643,37 @@ def test_a_value_which_cannot_be_encoded_skips_the_json_of_a_run(
     with pytest.raises(TypeError, match="set is not JSON serializable"):
         experiment.to_json(path)
     assert not path.exists()
+
+
+def test_a_runner_needs_no_paths(tmp_path: Path) -> None:
+    """The base path and the data path are optional, as in `run_experiments`.
+
+    An experiment whose models are absolute paths and which has no datasets of
+    files needs neither; the positional order of the arguments is kept.
+    """
+    runner = ExperimentRunner(FitMappingExperiment, simulator=Simulator())
+    assert runner.base_path is None and runner.data_path is None
+    [result] = runner.run_experiments(output_path=tmp_path, save_results=False)
+    assert not result.failed
+
+    positional = ExperimentRunner(FitMappingExperiment, Path("."), Path("."))
+    assert positional.base_path == Path(".")
+    assert positional.data_path == Path(".")
+
+
+def test_a_run_prints_nothing(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A run of experiments logs the experiment it runs and prints nothing.
+
+    The runner is used as a library, e.g. in a notebook, where a rule
+    printed before every experiment showed as a bare line.
+    """
+    runner = ExperimentRunner(FitMappingExperiment, simulator=Simulator())
+    with caplog.at_level(logging.INFO, logger="sbmlsim.experiment.runner"):
+        runner.run_experiments(output_path=tmp_path, save_results=False)
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "FitMappingExperiment" in caplog.text

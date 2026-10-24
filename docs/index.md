@@ -3,63 +3,71 @@
 # sbmlsim: SBML simulation made easy
 [![GitHub Actions CI/CD Status](https://github.com/matthiaskoenig/sbmlsim/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/matthiaskoenig/sbmlsim/actions/workflows/ci-cd.yml) [![Documentation](https://img.shields.io/badge/docs-sbmlsim-3f51b5.svg)](https://matthiaskoenig.github.io/sbmlsim) [![Version](https://img.shields.io/pypi/v/sbmlsim.svg)](https://pypi.org/project/sbmlsim/) [![Python Versions](https://img.shields.io/pypi/pyversions/sbmlsim.svg)](https://pypi.org/project/sbmlsim/) [![MIT License](https://img.shields.io/pypi/l/sbmlsim.svg)](https://opensource.org/licenses/MIT) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg)](https://doi.org/10.5281/zenodo.3597770)
 
-`sbmlsim` is a collection of python utilities for the simulation of models in the [Systems Biology Markup Language](https://sbml.org) (SBML), built on [libroadrunner](https://libroadrunner.org). The source code is available from [https://github.com/matthiaskoenig/sbmlsim](https://github.com/matthiaskoenig/sbmlsim).
+`sbmlsim` is a python library for simulating models in the [Systems Biology Markup Language](https://sbml.org) (SBML), the exchange format for models in systems biology ([Keating *et al.* 2020](references.md#standards)). It runs on the fast simulator [libroadrunner](https://libroadrunner.org) ([Welsh *et al.* 2023](references.md#simulation)) and adds what a simulation study needs around it: doses and other changes at given times, values with units, parameter scans, comparisons with experimental data, figures and reports, parameter fitting, and sensitivity and uncertainty analysis. The source code is on [GitHub](https://github.com/matthiaskoenig/sbmlsim).
 
-## Background
+!!! tip "New to sbmlsim?"
+    [Install](installation.md) the package with `pip install sbmlsim`, then work through the [Tutorial](tutorial.md). It takes one drug model from a first simulation to a parameter fit and an uncertainty analysis, one small step at a time.
 
-SBML is the exchange format for computational models in systems biology ([Keating *et al.* 2020](references.md#standards)) and libroadrunner is a fast simulator for it ([Welsh *et al.* 2023](references.md#simulation)). Simulating a model is a few lines with roadrunner; a simulation *experiment* is more: the model comes with changes of parameters and initial conditions, doses are given at times, parameters are scanned over ranges, the results are compared to experimental data in the units of the model, plotted and reported, and all of that has to be reproducible.
+## A first simulation
 
-`sbmlsim` is the layer above the simulator which describes these experiments. A `Simulation` is a simulation with its changes before the initialization and at times, e.g. the doses of a dosing protocol, a `Scan` runs a simulation over dimensions of values, simulations and models, serially or in a pool of processes, and a `SimulationExperiment` collects models, datasets, simulations, tasks, data and figures into one python object which is executed and reported by an `ExperimentRunner`. Results are `ScanResult` objects, labeled N-dimensional arrays with units, so the statistics over a scan dimension or the conversion to the units of a dataset is one call.
-
-Around this core the package collects the tasks which come with simulation experiments: fitting parameters to data, exchanging a fit as a PEtab problem, and analysing the sensitivity of a model to its parameters.
-
-## Features
-
-### Core
-
-- **[Models](models.md)** - SBML models are loaded into roadrunner with their units, parameter changes and selections; the source of a model is a file or the SBML itself.
-- **[Simulations](simulation.md)** - `Simulation` and `Change`, changes of parameters and initial conditions before the initialization and at times, for dosing protocols and perturbations, with the semantics of PEtab v2.
-- **[Units](units.md)** - the units of the model are read from the SBML and all changes and results carry [pint](https://pint.readthedocs.io) quantities, so values are converted instead of assumed.
-- **[Simulation experiments](experiments.md)** - `SimulationExperiment` and `ExperimentRunner`, the reproducible description of an experiment with models, datasets, simulations, tasks, data and figures.
-- **[Data](data.md)** - `Data` references simulation results and experimental datasets, with functions computed from them.
-- **[Plots and reports](plotting.md)** - figures described independent of the backend and rendered with matplotlib, HTML and markdown reports of experiments.
-
-### Sensitivity and uncertainty
-
-- **[Parameter scans](scans.md)** - `Scan` and `Dimension` run a simulation over dimensions of values, simulations and models, serially or in a pool of processes; the result is a `ScanResult` with the changed values as coordinates.
-- **[Sampling and uncertainty](sampling.md)** - distributions and designs of the sampler (random, Latin hypercube, Sobol, FAST, Morris, local, populations and designs of a fit) as dimensions of a scan, and the bands and distributions of the uncertainty of the outputs.
-- **[Observables](observables.md)** - formulas, non-compartmental PK analyses and custom functions of a run, computed on the simulations of a scan.
-- **[Sensitivity analysis](sensitivity.md)** - local sensitivities and the global Morris, Sobol and FAST methods of [SALib](https://salib.readthedocs.io), computed on the result of a scan with a design of the sampler, with classification and plots.
-
-### Parameter optimization
-
-- **[Parameter fitting](fitting.md)** - `FitParameter`, `FitMapping` and `OptimizationProblem` with local and global optimizers, the metrics and the reports of a fit.
-- **[Identifiability](identifiability.md)** - the profile likelihood and the Fisher information of the fitted parameters.
-- **[PEtab](petab.md)** - a fit is written as a PEtab v2 problem and a PEtab v2 problem is read as a fit.
-- **[PEtab SciML](petab_sciml.md)** - hybrid problems of a model and neural networks.
-
-### Test suites
-
-- **[Test suites](testsuites.md)** - the [SBML Test Suite](testsuite.md), the [PEtab Test Suite](petab_testsuite.md), the [PEtab Benchmark Problems](petab_benchmark.md) and the [PEtab SciML Test Suite](sciml_testsuite.md).
-
-The standards and methods behind the package are cited in [References](references.md).
-
-## Quickstart
-
-A model is simulated with a `Simulation`, the result is a `ScanResult`:
+`sbmlsim` ships a whole body model of midazolam, a sedative which the liver turns into 1-hydroxymidazolam. This simulation gives a 7.5 mg tablet every 8 hours and follows both substances in the blood for a day:
 
 ```python
-from sbmlsim.resources import REPRESSILATOR_SBML
+import matplotlib.pyplot as plt
+
+from sbmlsim import Q
+from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
 
 simulator = Simulator()
-simulation = Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)
-res = simulator.run(REPRESSILATOR_SBML, simulation)
-print(res["X"])
+simulation = Simulation(
+    time_unit="hr",
+    end=24,
+    steps=480,
+    changes=[Change([0, 8, 16], {"PODOSE_mid": Q(7.5, "mg")})],
+)
+res = simulator.run(MIDAZOLAM_SBML, simulation)
+
+hours = res.quantity("time").to("hr").magnitude
+fig, ax = plt.subplots(figsize=(8, 3.5))
+for sid, name in [("[Cve_mid]", "midazolam"), ("[Cve_mid1oh]", "1-hydroxymidazolam")]:
+    ax.plot(hours, res.quantity(sid).to("nM").magnitude, label=name)
+ax.set(xlabel="time [hr]", ylabel="venous blood [nM]")
+ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
 ```
 
-Continue with [Installation](installation.md) and the [simulation guide](simulation.md).
+![Output figure](images/outputs/index-01.png)
+
+The times are in hours and `sbmlsim` converts them into the minutes of the model. `res` is a `ScanResult` with every variable of the model over time and its unit, so `quantity(...).to("nM")` converts the concentrations from the mmol/l of the model. The [Tutorial](tutorial.md) starts from here and goes step by step through the features with a model of another drug.
+
+## Features
+
+Core:
+
+- [Models](models.md): load SBML models, inspect them and set default changes.
+- [Simulations](simulation.md): timecourses with changes before the start and at given times, e.g. repeated doses.
+- [Units](units.md): give values in the units you have; `sbmlsim` converts them into the units of the model.
+- [Simulation experiments](experiments.md): models, data, simulations and figures of one study in one reproducible python class.
+- [Data](data.md): simulation results and experimental datasets, side by side in matching units.
+- [Plots and reports](plotting.md): figures as images or interactive HTML pages, and reports of experiments.
+
+Sensitivity and uncertainty:
+
+- [Parameter scans](scans.md): run a simulation over ranges of values, in parallel if you like.
+- [Sampling](sampling.md): draw parameters from distributions, e.g. a virtual population.
+- [Uncertainty](uncertainty.md): propagate uncertain inputs and test statements about the predictions.
+- [Observables](observables.md): values computed from every simulation, such as a peak concentration or a pharmacokinetic analysis.
+- [Sensitivity analysis](sensitivity.md): local sensitivities and the global Sobol, FAST and Morris methods.
+
+Parameter optimization:
+
+- [Parameter fitting](fitting.md): fit parameters to data with local and global optimizers, with reports.
+- [Identifiability](identifiability.md): profile likelihoods and the Fisher information of fitted parameters.
+- [PEtab](petab.md): write a fit as a PEtab v2 problem and read PEtab v2 problems.
+- [PEtab SciML](petab_sciml.md): hybrid models of SBML and neural networks.
+
+[Test suites](testsuites.md) show how `sbmlsim` does on the [SBML Test Suite](testsuite.md), the [PEtab Test Suite](petab_testsuite.md), the [PEtab Benchmark Problems](petab_benchmark.md) and the [PEtab SciML Test Suite](sciml_testsuite.md). The standards and methods behind the package are cited in [References](references.md).
 
 ## How to cite
 

@@ -1,12 +1,16 @@
 # Test suites
 
-`sbmlsim` is measured against the conformance suites of the standards it implements and against a collection of published problems. Each answers a different question:
+`sbmlsim` is checked against the conformance suites of the standards it implements and against a collection of published problems. Each one answers a different question:
 
-| suite | what it checks | in sbmlsim |
+| suite | what it checks | run with |
 | --- | --- | --- |
-| [SBML Test Suite](testsuite.md) | the simulation of SBML models, i.e. what libroadrunner supports | `pytest -m testsuite`, a report with the documentation and a submission with every release |
-| [PEtab Test Suite](petab_testsuite.md) | the semantics of PEtab problems: initialization, conditions, observables, noise and priors | `pytest -m petab_testsuite` |
-| [PEtab Benchmark Problems](petab_benchmark.md) | the reading and the simulation of published PEtab problems, compared with the collection and with AMICI | `pytest -m petab_benchmark`, `scripts/petab_benchmark.py` |
-| [PEtab SciML Test Suite](sciml_testsuite.md) | the neural networks and hybrid problems of PEtab SciML | `pytest -m sciml_testsuite` |
+| [SBML Test Suite](testsuite.md) | how SBML models are simulated, i.e. what libroadrunner supports | `pytest -m testsuite` |
+| [PEtab Test Suite](petab_testsuite.md) | the meaning of PEtab problems: initialization, conditions, observables, noise and priors | `pytest -m petab_testsuite tests/fit` |
+| [PEtab Benchmark Problems](petab_benchmark.md) | reading and simulating published PEtab problems, compared with the collection and with AMICI | `pytest -m petab_benchmark tests/fit` |
+| [PEtab SciML Test Suite](sciml_testsuite.md) | neural networks and hybrid problems of PEtab SciML | `pytest -m sciml_testsuite tests/sciml` |
 
-The SBML Test Suite, the PEtab Test Suite, the PEtab benchmark collection and the PEtab SciML Test Suite are pinned to a release and a commit, so a run is reproducible, and the cases which do not pass are recorded in a baseline with their reason (`tests/data/testsuite_baseline.json`, `tests/data/petab_baseline.json`, `tests/data/benchmark_baseline.json`, `tests/data/sciml_baseline.json`). A normal `pytest` deselects their cases, because they need the download of the suite; the test suites run before every release, the benchmark collection, whose largest problems take minutes, on demand.
+Each suite is pinned to a release or a commit, so a run gives the same result tomorrow as today. A normal `pytest` skips all of them, because they need a download first. The `tox` environments `testsuite`, `petab`, `benchmark` and `sciml` download the cases and then run them.
+
+Not every case passes. The ones that do not are listed with their outcome, and for the PEtab suites with the reason, in a baseline file under `tests/data/`: `testsuite_baseline.json`, `petab_baseline.json`, `benchmark_baseline.json` and `sciml_baseline.json`. A run is compared with its baseline in both directions. A case that passed before and fails now is a regression. A case that is listed and now passes means the baseline is out of date, and the run fails until the baseline is refreshed.
+
+The three test suites run before every release. The benchmark collection runs on demand, because its largest problems take minutes.

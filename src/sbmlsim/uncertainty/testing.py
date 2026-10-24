@@ -87,7 +87,7 @@ from numpy.typing import ArrayLike
 from pint.errors import DimensionalityError
 from scipy import special
 
-from sbmlsim.units import Quantity
+from sbmlsim.units import Quantity, short_unit
 
 #: the references of a probability statement
 REFERENCES: tuple[str, ...] = (
@@ -512,7 +512,8 @@ def probability(
         raise ValueError(f"The output '{values.name}' has no draw which did not fail.")
     x = x[valid]
     name = str(values.name)
-    shown = f" {unit}" if unit else ""
+    short = short_unit(unit)
+    shown = f" {short}" if short else ""
     if greater is not None:
         bound = _magnitude(greater, unit)
         satisfied = x > bound

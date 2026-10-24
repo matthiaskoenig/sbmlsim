@@ -206,6 +206,17 @@ The API reference is rendered from the docstrings by [mkdocstrings](https://mkdo
 
 Docstrings are therefore the place to document functions and classes, the markdown files provide the narrative around them. Adding a module to the reference means adding such a page and an entry to `nav` in `zensical.toml`.
 
+### Code and outputs of the pages { #code-and-outputs }
+
+Every `python` block of a page runs, in the order of the page and in one namespace, as a reader runs it. Below a block the page shows what it prints, in a block titled `Output`, and the matplotlib figures it creates, as images in `docs/images/outputs/`. Both are generated, never written by hand:
+
+```bash
+uv run python scripts/docs_outputs.py              # every page with code
+uv run python scripts/docs_outputs.py tutorial.md  # one page
+```
+
+A figure is shown when it is an open figure of pyplot after the block or a `matplotlib.figure.Figure` which a name of the block holds. The outputs and images are committed. `tests/docs/test_docs_code.py` runs the code of every page and fails when a page is out of step with it: a block which prints without an output, an output of a block which prints nothing, a missing image or a page with code which is not in `PAGES` of the script. It does not compare the text, whose last digits differ between platforms, so run the script after changing a page or what its code prints. A page with code is added to `PAGES`; keep the code of a page fast, the tests run it on every platform.
+
 ### Files for agents { #files-for-agents }
 
 Agents and language models read markdown, not rendered html. `scripts/llms_txt.py` writes the files of the [llms.txt convention](https://llmstxt.org/) into the built site, i.e., [llms.txt](https://matthiaskoenig.github.io/sbmlsim/llms.txt) as an annotated index of all pages, [llms-full.txt](https://matthiaskoenig.github.io/sbmlsim/llms-full.txt) with the complete documentation in a single file, and the markdown of every page next to its html (`/creation.md` for `/creation/`). The markdown of the API reference is generated from the docstrings with `inspect`, since the pages themselves only contain the mkdocstrings directive.

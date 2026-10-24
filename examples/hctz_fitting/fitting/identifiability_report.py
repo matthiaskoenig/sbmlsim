@@ -3,7 +3,7 @@
 The profiles and the Fisher information are computed around the parameters a
 fit wrote, so the analysis runs without fitting again:
 
-    python -m examples.hctz_fitting.fitting.identifiability_report results/fit/PK/parameters.json
+    python -m examples.hctz_fitting.fitting.identifiability_report results/fit/<fit id>/parameters.json
 
 The report with both analyses is written into `results/identifiability`;
 `--no-fisher` reports the profiles alone.

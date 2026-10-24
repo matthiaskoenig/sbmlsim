@@ -1,64 +1,96 @@
 # Installation
 
-`sbmlsim` requires python >= 3.13 and is available from [pypi](https://pypi.python.org/pypi/sbmlsim). It is tested on Linux, macOS and Windows. The simulations run on [libroadrunner](https://libroadrunner.org), which ships binary wheels for all three platforms, so no compiler is needed. On python 3.15 h5py, which reads and writes the netCDF files of the results, publishes no wheels yet: pip builds it from source, which needs a C compiler and HDF5 (e.g. `libhdf5-dev` on Debian and Ubuntu, `brew install hdf5` on macOS).
+`sbmlsim` needs python 3.13 or newer and runs on Linux, macOS and Windows. Install it from [PyPI](https://pypi.org/project/sbmlsim/) with pip:
+
+```bash
+pip install sbmlsim
+```
+
+The simulator [libroadrunner](https://libroadrunner.org) comes as a binary wheel for all three platforms, so you need no compiler. The one exception is python 3.15: h5py, which writes the result files, has no wheels for it yet, so pip builds it from source. That needs a C compiler and the HDF5 library (`libhdf5-dev` on Debian and Ubuntu, `brew install hdf5` on macOS).
 
 ## With uv
 
-[uv](https://docs.astral.sh/uv/) is the recommended way to install the package. In a project it is added as a dependency, which resolves and locks it together with the rest of the environment:
+With [uv](https://docs.astral.sh/uv/), add `sbmlsim` to your project, which locks it together with the rest of your environment:
 
 ```bash
 uv add sbmlsim
 ```
 
-Into an existing virtual environment it is installed through the pip interface of uv:
+or install it into a virtual environment:
 
 ```bash
 uv venv --python 3.14
 uv pip install sbmlsim
 ```
 
-## With pip
+## Check the installation
 
-```bash
-pip install sbmlsim
+Import the package and run a short simulation of one of the models that ship with it:
+
+```python
+import sbmlsim
+from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.simulation import Simulation
+from sbmlsim.simulator import Simulator
+
+print(sbmlsim.__version__)
+res = Simulator().run(REPRESSILATOR_SBML, Simulation(end=100, steps=10))
+print(res)
 ```
+
+```text title="Output"
+0.13.0
+ScanResult(time: 11; PX, PY, PZ, X, Y, Z, eff, n, ... (41 variables))
+```
+
+Now continue with the [Tutorial](tutorial.md).
+
+## Optional packages
+
+Two features need packages which are not installed with `sbmlsim`:
+
+| feature | install |
+| --- | --- |
+| interactive HTML figures of experiments (`figure_formats=["html"]`, see [Plots and reports](plotting.md)) | `pip install plotly` |
+| hybrid models with neural networks ([PEtab SciML](petab_sciml.md)) | `pip install "sbmlsim[sciml]"` |
 
 ## Development version
 
-The current state of the `develop` branch is installed directly from GitHub:
-
-```bash
-uv add "sbmlsim @ git+https://github.com/matthiaskoenig/sbmlsim.git@develop"
-```
-
-or, with pip,
+Install the current state of the `develop` branch from GitHub:
 
 ```bash
 pip install git+https://github.com/matthiaskoenig/sbmlsim.git@develop
 ```
 
-To work on the repository itself, with the test and documentation tooling, see [Development](development.md).
+or with uv:
+
+```bash
+uv add "sbmlsim @ git+https://github.com/matthiaskoenig/sbmlsim.git@develop"
+```
+
+To work on `sbmlsim` itself, with the tests and the documentation, see [Development](development.md).
 
 ## Dependencies
 
-`sbmlsim` builds on the packages of the COMBINE ecosystem and the scientific python stack. They are installed with it:
+pip installs these packages together with `sbmlsim`:
 
 | package | used for |
 | --- | --- |
-| [libroadrunner](https://libroadrunner.org) | simulation of the SBML models |
+| [libroadrunner](https://libroadrunner.org) | simulating the SBML models |
 | [sbmlutils](https://github.com/matthiaskoenig/sbmlutils), [python-libsbml](https://sbml.org/software/libsbml/) | reading, validating and changing SBML models |
-| [pymetadata](https://github.com/matthiaskoenig/pymetadata) | COMBINE archives of the PEtab problems |
+| [pymetadata](https://github.com/matthiaskoenig/pymetadata) | COMBINE archives of PEtab problems |
 | [numpy](https://numpy.org), [pandas](https://pandas.pydata.org), [xarray](https://xarray.dev), [scipy](https://scipy.org), [sympy](https://www.sympy.org) | numerics, data and results |
 | [h5netcdf](https://h5netcdf.org), [h5py](https://www.h5py.org) | the netCDF files of the results |
 | [sbmlmath](https://github.com/dweindl/sbmlmath) | the math of SBML as sympy expressions |
-| [pint](https://pint.readthedocs.io), [pydantic](https://docs.pydantic.dev) | units and unit conversions, validated data |
-| [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | parameter fitting problems, the files of the PEtab test suites and global sensitivity analysis |
-| [matplotlib](https://matplotlib.org), [seaborn](https://seaborn.pydata.org), [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | plots, reports and the output of scripts |
-| [certifi](https://github.com/certifi/python-certifi) | the CA bundle of requests, with which sbmlutils and pymetadata reach the network, at least 2026.10.19, which removes the emSign root of the compromised intermediate keys ([GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2)) |
+| [pint](https://pint.readthedocs.io), [pydantic](https://docs.pydantic.dev) | units and validated data |
+| [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | PEtab problems and global sensitivity analysis |
+| [pkpdutils](https://github.com/matthiaskoenig/pkpdutils) | non-compartmental pharmacokinetic analysis |
+| [matplotlib](https://matplotlib.org), [seaborn](https://seaborn.pydata.org), [jinja2](https://jinja.palletsprojects.com), [rich](https://rich.readthedocs.io) | figures, reports and console output |
+| [certifi](https://github.com/certifi/python-certifi) | the certificates with which sbmlutils and pymetadata reach the network; at least 2026.10.19, which fixes [GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2) |
 
 ## Logging
 
-`sbmlsim` does not configure logging. It logs to loggers below the `sbmlsim` logger and leaves handlers, levels and formatting to the application, so the messages of the package stay under your control:
+`sbmlsim` logs its messages with the `logging` module of the standard library, under the logger `sbmlsim`, and never configures logging itself. Your application decides what is shown:
 
 ```python
 import logging
@@ -67,7 +99,7 @@ logging.basicConfig(level=logging.INFO)
 logging.getLogger("sbmlsim").setLevel(logging.WARNING)
 ```
 
-For scripts and interactive work the rich output of the package can be turned on explicitly:
+In scripts and interactive sessions you can switch on the colored output of [rich](https://rich.readthedocs.io):
 
 ```python
 from sbmlsim import log

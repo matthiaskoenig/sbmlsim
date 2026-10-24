@@ -291,6 +291,8 @@ def test_heatmap_cutoff_depends_on_the_index() -> None:
         t.get_text() for t in ax.get_yticklabels()
     ) == ["a", "b", "c"]
     assert _colorbar_axes(figure).get_ylabel() == "mu_star [mM]"
+    long = _result("mu_star", values, ["a", "b", "c"], ["o1", "o2"], unit="millimolar")
+    assert _colorbar_axes(plot_heatmap(long, "mu_star")).get_ylabel() == "mu_star [mM]"
     # an explicit cutoff is absolute in the unit of the index
     figure = plot_heatmap(mu_star, "mu_star", cutoff=0.03)
     labels = sorted(t.get_text() for t in _heatmap_axes(figure).get_yticklabels())
@@ -390,7 +392,7 @@ def test_plot_indices_contrast_and_labels() -> None:
     figure.draw_without_rendering()
     labels = _texts(ax.get_xticklabels())
     assert all(t.get_rotation() == 0 for t in labels)
-    assert ax.get_xlabel() == "Parameter"
+    assert ax.get_xlabel() == "parameter"
 
 
 def test_plot_indices_long_names() -> None:
@@ -444,6 +446,12 @@ def test_plot_morris_axes_and_undefined_parameters() -> None:
     notes = [t.get_text() for t in figure.findobj(Text)]
     assert any("undefined" in n and "c" in n for n in notes)
     assert ax.get_xlabel() == "mu_star [mM]"
+    # a unit in the long form of pint is written in its short form
+    long = SensitivityResult(
+        result.ds.assign_attrs(units=dict.fromkeys(data, "millimolar / minute"))
+    )
+    (ax,) = plot_morris(long, "y").axes
+    assert ax.get_xlabel() == "mu_star [mM/min]" and ax.get_ylabel() == "sigma [mM/min]"
 
 
 def _table(values: np.ndarray, columns: list[str] | None = None) -> SensitivityResult:

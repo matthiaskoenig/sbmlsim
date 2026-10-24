@@ -1,67 +1,222 @@
 # Parameter fitting
 
-Parameter fitting adjusts model parameters so that the simulations of experiments match the experimental data. In `sbmlsim` a fit is an `OptimizationProblem` built from `FitMappingCollection` objects, which name the simulation experiments and their fit mappings, and `FitParameter` objects with the bounds of the parameters. The problem is run with local or global optimizers of scipy, reported with `FitReport`, and the identifiability of the fitted parameters is analysed with the profile likelihood and the Fisher information, see [Identifiability](identifiability.md).
+A fit changes parameters of a model until its simulations match measured data. You tell `sbmlsim` which data belongs to which simulation (fit mappings), which parameters it may change and within which bounds (fit parameters), and how to compare simulation and data (settings). It runs local or global optimizers of SciPy from many start points, and a report shows how well the fitted model describes the data.
 
-The example throughout this page is `examples/hctz_fitting/`, a whole body model of hydrochlorothiazide with the simulation experiments of two studies and the fit problem built on them.
+This page continues the fit at the end of the [Tutorial](tutorial.md#fit-the-model-to-data). The examples use `examples/hctz_fitting`, the HCTZ model with the clinical studies of Patel et al. (1984) and Beermann et al. (1976). It is part of the repository, not of the installed package, so run the code from the root of a clone of [sbmlsim](https://github.com/matthiaskoenig/sbmlsim).
 
-## Fit mappings
+## A first fit
 
-A fit mapping pairs a reference, the experimental data, with an observable, the simulated variable. It is defined in the `fit_mappings()` of a `SimulationExperiment` with `FitData` objects, which are `Data` references (see [Data](data.md)) with their errors and counts:
+### Define the problem
 
-```python
-mapping_code = """
-def fit_mappings(self) -> dict[str, FitMapping]:
-    return {
-        "fm_hctz5po_4": FitMapping(
-            self,
-            reference=FitData(
-                self, dataset="hctz5po_4", xid="time", yid="value", count="count"
-            ),
-            observable=FitData(
-                self, task="task_hctz_po5", xid="time", yid="[Cve_hctz]"
-            ),
-            metadata=HCTZMappingMetaData(
-                tissue=Tissue.PLASMA,
-                route=Route.PO,
-                application_form=ApplicationForm.SUSPENSION,
-                dosing=Dosing.SINGLE,
-                health=Health.HEALTHY,
-                fasting=Fasting.FASTED,
-            ),
-        ),
-    }
-"""
-print(mapping_code)
-```
+The study of Patel et al. (1984) gave single oral doses of HCTZ to healthy volunteers and measured HCTZ in the plasma and the amount excreted into the urine. The simulation experiment `Patel1984` describes the study, and its fit mappings pair each measured curve with the simulated variable, e.g. `fm_25_tab` is the plasma concentration after a 25 mg tablet.
 
-The units of the reference and the observable are compared and the reference is converted to the units of the model. A `MappingMetaData` on a mapping describes its curve with application specific information such as the tissue, the route or the dosing. It describes the data, not what a fit does with the data. Its fields are keyword only, so that a subclass can add fields without a default; `examples/hctz_fitting/experiments/metadata.py` is such a subclass.
-
-## Values per simulation and over a dimension
-
-A fit mapping is a timecourse (the x is the time), a value per simulation or values over one dimension of a scan. A value per simulation has no x, `FitData(self, task="task_doses", xid=None, yid="pk.cmax", sel={"dose": "standard"})` against a reference of one or several rows, e.g. the individuals of a study group selected with `FitData(self, dataset="cmax", xid=None, yid="cmax", sel={"group": "25mg"})`. Values over a dimension are the observable over the values of one dimension of a scan, `FitData(self, task="task_doses", xid="dose.PODOSE", yid="pk.cmax")` against a reference with the doses as x: the simulated values are matched to the x of the reference by linear interpolation along the values of the dimension, which must be monotonic and cover the data. The kind is decided when the problem is initialized, from the dimensions of the observable after `sel`, and is in `OptimizationProblem.observation_kinds`; anything else raises with the advice to select a label of a dimension with `sel=`. A prediction which is `NaN`, e.g. a PK parameter of a point without a terminal phase, gives the failure residual. The values of a dimension are applied after the fitted parameters, so a fitted parameter whose target a dimension of the scan sets has no effect on its points; the problem logs a warning which names the parameter and the dimension when it is initialized. A task whose scan has no dimensions is its simulation. The baseline residuals need a timecourse. A report draws a value per simulation as the data with error bars next to the simulated value and values over a dimension as the curve over the values with the data. Such a fit cannot be exported as a PEtab problem, the export raises with the gaps `scalar-observable` and `scan-task` and names the mappings.
-
-`examples/experiment_scans.py` fits the maximal velocity of the metabolism of midazolam to a table of cmax over the dose.
-
-## Training, validation and outlier data
-
-What a fit does with a curve is decided when the data of the fit is selected, not on the fit mapping: the same curve is training data of one fit and validation data of another. Every `FitMappingCollection` therefore carries a `MappingKind` for the mappings it selects: `TRAINING` enters the cost, `VALIDATION` and `OUTLIER` are evaluated but not fitted, and `EXCLUDED` is not used at all. Outlier and excluded say different things: an outlier is a decision about the data, i.e. it is not usable, and an exclusion is a decision about the fit, i.e. the data is not what the fit is about or the model does not describe what was measured, e.g. an arm of a study with a coadministration the model has no interaction for.
-
-- `MappingKind.TRAINING` (the default): the mappings are fitted, i.e., their residuals enter the cost of the optimization,
-- `MappingKind.VALIDATION`: the mappings are not fitted. They are simulated and evaluated together with the training data when the fit is reported, which shows how the fitted parameters describe data they were not fitted on,
-- `MappingKind.OUTLIER`: the mappings are not fitted, because the data is not usable. They are resolved and evaluated like the validation data, so a report has their metrics and their figures and the decision to drop a curve can be checked against the model,
-- `MappingKind.EXCLUDED`: the mappings are not used at all. An optimization problem does not resolve them, so they have no metrics and are not part of a report; they stay in the overview of the data of a `FitDefinition` so that it is visible which curves were dropped.
-
-`sbmlsim.fit.helpers` selects the data of a fit from the complete list of fit mappings of its simulation experiments. `FitMappings` instantiates the experiments once, which loads the models and the datasets, and `FitMappings.select` sets the kind of every mapping in three ordered steps:
-
-1. **The filters select the training data.** A filter is a callable of the key of a fit mapping and the `FitMapping`, e.g. a test on its `MappingMetaData`. A mapping which passes every filter is training data, a mapping which fails one is `EXCLUDED`. No filters select every mapping.
-2. **The outliers are named by their keys.** An outlier is training data whose values are not usable, so it is tagged once for the complete list of mappings and not per fit: it is an `OUTLIER` in every fit whose filters select it. An outlier the filters exclude stays excluded.
-3. **Part of the training data is the validation data.** It is selected from what is left, by the keys of the mappings or by a filter, and is `VALIDATION`. Everything else is `TRAINING`.
-
-The steps are ordered, so a mapping which hits several has one kind: excluded beats outlier, outlier beats validation and validation beats training. The result is a `MappingSelection` with the kind of every mapping, the overview table `df` and the `collections` a `FitDefinition` is defined with, one `FitMappingCollection` per experiment and kind; `select_mapping_collections` does all of it in one call.
+An `OptimizationProblem` collects the data and the parameters of a fit. Here the data of the 25 mg tablet is fitted (training data), and the 50 mg tablet is kept back to check the fit on data it was not fitted to (validation data). The fit estimates the dissolution rate of the tablet and the excretion rate of the kidneys:
 
 ```python
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
-from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984
+from examples.hctz_fitting.experiments.studies import Patel1984
+from sbmlsim.fit import FitMappingCollection, FitParameter, MappingKind
+from sbmlsim.fit.optimization import OptimizationProblem
+
+problem = OptimizationProblem(
+    opid="hctz_patel",
+    mapping_collections=[
+        FitMappingCollection(Patel1984, mappings=["fm_25_tab", "fm_25_tab_urine"]),
+        FitMappingCollection(
+            Patel1984,
+            mappings=["fm_50_tab", "fm_50_tab_urine"],
+            kind=MappingKind.VALIDATION,
+        ),
+    ],
+    fit_parameters=[
+        FitParameter(pid="Ka_dis_hctz", lower_bound=0.01, upper_bound=10, unit="1/hr"),
+        FitParameter(pid="KI__HCTZEX_k", lower_bound=1e-5, upper_bound=1, unit="1/ml"),
+    ],
+    base_path=HCTZ_PATH,
+    data_path=DATA_PATH,
+)
+```
+
+`base_path` is the directory the models of the experiments are relative to, `data_path` the directory of their datasets.
+
+### Run the optimization
+
+`FitSettings` say how simulation and data are compared. The settings below divide every residual by the mean of its curve, so the plasma concentration and the amount in urine count the same although their values differ by orders of magnitude. Every curve gets the same weight whatever its number of points, and a point measured with a small standard deviation counts more than an uncertain one. `run_optimization` draws `size` random start points within the bounds, runs the local least squares optimizer from each and collects the results:
+
+```python
+from sbmlsim.fit import FitSettings
+from sbmlsim.fit.options import ResidualType, WeightingCurvesType, WeightingPointsType
+from sbmlsim.fit.runner import run_optimization
+
+settings = FitSettings(
+    residual=ResidualType.NORMALIZED,
+    weighting_curves=(WeightingCurvesType.POINTS,),
+    weighting_points=WeightingPointsType.ERROR_WEIGHTING,
+)
+fit = run_optimization(problem, settings, size=4, seed=1, show_progress=False)
+print(fit.df_fits[["run", "cost", "Ka_dis_hctz", "KI__HCTZEX_k"]])
+```
+
+```text title="Output"
+🚀 Optimization ────────────────────────────────────────────────────────────────
+
+🎛 Parameters (2) ───────────────────────────────────────────────────────────────
+parameter      start   lower   upper   unit
+───────────────────────────────────────────
+Ka_dis_hctz    -       0.01    10      1/hr
+KI__HCTZEX_k   -       1e-05   1       1/ml
+runs                4
+workers             1 (serial)
+converged           4/4 runs
+best cost           0.0496034
+optimizer time      0.2 s
+   run      cost  Ka_dis_hctz  KI__HCTZEX_k
+0    0  0.049603     0.304801      0.005028
+1    2  0.049603     0.304855      0.005028
+2    3  0.049604     0.304581      0.005024
+3    1  0.049605     0.305241      0.005031
+```
+
+Every run ends at about the same parameters, so the optimum is well defined. With a seed the start points, and therefore the result, are the same in every session.
+
+### Look at the report
+
+A `FitReport` evaluates parameter sets on the problem: metrics, figures and an HTML page. `from_optimization_result` reports the best parameter set of a fit:
+
+```python
+from pathlib import Path
+
+from sbmlsim.fit.report import FitReport
+
+report = FitReport.from_optimization_result(problem, fit, mapping_figures=False)
+metrics = report.metrics_df()
+print(metrics[["kind", "n", "NRMSE", "R2", "GMFE", "within_2fold"]].round(2))
+report.create(Path("results"), name="hctz_patel")
+```
+
+```text title="Output"
+         kind   n  NRMSE    R2  GMFE  within_2fold
+0    training  21   0.15  0.98  1.19          95.0
+1  validation  21   0.20  0.93  1.24          95.0
+
+📋 Report ──────────────────────────────────────────────────────────────────────
+directory           hctz_patel
+parameter sets      hctz_patel_0
+mappings            2 training, 2 validation
+report              file://./results/hctz_patel/index.html
+```
+
+The metrics are computed separately for the training data and the validation data. `GMFE` is the geometric mean fold error and `within_2fold` the percentage of points whose prediction is within a factor of two of the data, see [Metrics](#metrics). `create` writes the report into `results/hctz_patel`, with `index.html` as its page. `mapping_figures=False` skips the figure of every fit mapping to keep this example fast. Without it, the report has a figure per mapping with the data and the simulated curve.
+
+`report.points` is the table behind the figures of the report: one row per data point with its time `x`, the data `DV`, its standard deviation `DV_SD` and the prediction `IPRED`, all in the units of the model (minutes, mmol/l and mmol). To draw the fitted curves against the data, simulate the doses with the fitted values:
+
+```python
+import matplotlib.pyplot as plt
+
+from sbmlsim import Q
+from sbmlsim.resources import HCTZ_SBML
+from sbmlsim.simulation import Simulation
+from sbmlsim.simulator import Simulator
+
+fitted = fit.parameter_set()
+fitted_changes = {pid: Q(v, fitted.units[pid]) for pid, v in fitted.values.items()}
+points = report.points(fitted)
+
+simulator = Simulator()
+model = simulator.load(HCTZ_SBML)
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.5))
+for dose, kind, marker in [(25, "training", "o"), (50, "validation", "s")]:
+    tablet = Simulation(
+        time_unit="hr",
+        end=48,
+        steps=480,
+        preinit_changes={**fitted_changes, "PODOSE_hctz": Q(dose, "mg")},
+    )
+    res = simulator.run(model, tablet)
+    hours = res["time"] / 60
+    for ax, key, yid in [
+        (ax1, f"fm_{dose}_tab", "[Cve_hctz]"),
+        (ax2, f"fm_{dose}_tab_urine", "Aurine_hctz"),
+    ]:
+        (line,) = ax.plot(hours, res[yid] * 1000, label=f"{dose} mg ({kind})")
+        data = points[points.mapping == key]
+        ax.errorbar(
+            data.x / 60,
+            data.DV * 1000,
+            yerr=data.DV_SD * 1000,
+            fmt=marker,
+            color=line.get_color(),
+        )
+ax1.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]")
+ax2.set(xlabel="time [hr]", ylabel="HCTZ urine [µmol]")
+ax1.legend()
+```
+
+![Output figure](images/outputs/fitting-04.png)
+
+The fitted model follows the 25 mg data, although in the urine it rises faster than the data between 12 and 36 hours. For the 50 mg tablet, which the fit has not seen, it predicts about 10 % more HCTZ in the urine than was measured. The goodness of fit plots every prediction against its measurement on logarithmic axes, so plasma and urine fit into one plot. Points on the diagonal are perfect predictions, and the dotted lines mark a factor of two:
+
+```python
+fig, ax = plt.subplots(figsize=(4.5, 4.5))
+positive = points[(points.DV > 0) & (points.IPRED > 0)]
+for kind, data in positive.groupby("kind"):
+    ax.loglog(data.DV, data.IPRED, "o", alpha=0.7, label=kind)
+limits = [positive[["DV", "IPRED"]].min().min() / 2, positive.DV.max() * 2]
+ax.plot(limits, limits, color="black", linewidth=1)
+for factor in [2, 0.5]:
+    ax.plot(limits, [factor * v for v in limits], ":", color="darkred")
+ax.set(xlabel="measurement [model units]", ylabel="prediction [model units]")
+ax.set(xlim=limits, ylim=limits)
+ax.legend()
+```
+
+![Output figure](images/outputs/fitting-05.png)
+
+The report draws this figure and a Bland-Altman plot with a panel per kind of data, see [Report of a fit](#report-of-a-fit).
+
+## Fit mappings
+
+A `FitMapping` is defined in the `fit_mappings()` of a `SimulationExperiment` and pairs a reference, usually the measured data, with an observable, the simulated variable. Both are `FitData`: the reference reads columns of a dataset (`dataset=`), the observable a variable or observable of a task (`task=`). The [Tutorial](tutorial.md#fit-the-model-to-data) defines a complete experiment with one mapping, and `examples/hctz_fitting/experiments/studies/patel1984.py` has many.
+
+- `xid` and `yid` are the x (usually `time`) and the y of the data.
+- `yid_sd` or `yid_se` is the column of the standard deviation or the standard error of the data. A standard error is converted to a standard deviation with the number of subjects, `count`, an integer or a column of the dataset.
+- `sel` selects labels of the dimensions of a scan, or rows of a dataset by the values of its columns, see [Data](data.md).
+- `FitMapping(metadata=...)` attaches a `MappingMetaData` to describe the curve, e.g. the tissue, the route or the dosing. Filters can select data by it, and reports show it and can group by it. `examples/hctz_fitting/experiments/metadata.py` is an example of a subclass.
+
+`sbmlsim` checks that reference and observable have compatible units and converts the data to the units of the model.
+
+### Values per simulation and over a dimension
+
+A fit mapping does not have to be a timecourse. Its kind follows from the dimensions of the observable after `sel`:
+
+- A timecourse has the time as x.
+- A value per simulation has no x, e.g. the peak concentration of a `PK` observable: `FitData(self, task="task_doses", xid=None, yid="pk.cmax", sel={"dose": "standard"})`. Its reference is one or several rows of a dataset, e.g. the subjects of a study group selected with `sel={"group": "25mg"}`.
+- Values over a dimension of a scan have the values of the dimension as x, e.g. `FitData(self, task="task_doses", xid="dose.PODOSE", yid="pk.cmax")` against data with the doses as x. The simulated values are interpolated linearly to the x of the data, so the dimension must be monotonic and cover the data.
+
+Anything else raises when the problem is initialized and asks you to select a label with `sel=`. A prediction which is `NaN`, e.g. a PK parameter of a curve without a terminal phase, gets a large failure residual. A value of a dimension replaces a fitted parameter with the same target, so such a parameter has no effect on the points of the scan; the problem warns about it. `examples/experiment_scans.py` fits the metabolism of midazolam to a table of cmax over the dose. These mappings cannot be exported to PEtab.
+
+## Training, validation and outlier data
+
+What a fit does with a curve is decided by the `MappingKind` of its `FitMappingCollection`, so the same curve can be training data of one fit and validation data of another:
+
+| kind | fitted | in the report | use it for |
+| --- | --- | --- | --- |
+| `TRAINING` (default) | yes | yes | the data the parameters are estimated from |
+| `VALIDATION` | no | yes | checking the fit on data it has not seen |
+| `OUTLIER` | no | yes | data which is not usable, but which you want to compare with the model |
+| `EXCLUDED` | no | no | data the model does not describe, e.g. a study arm with a second drug the model knows nothing about |
+
+With many studies, writing the collections by hand gets tedious. `FitMappings` (in `sbmlsim.fit.helpers`) loads all fit mappings of the experiments once, and `select` assigns the kinds in three steps:
+
+1. Filters select the training data. A filter is a function of the key of a mapping and the `FitMapping`, e.g. a test of its metadata. A mapping which fails a filter is excluded.
+2. Outliers are named by their keys. An outlier stays excluded if the filters exclude it.
+3. Validation data is chosen from the rest, by keys or by a filter.
+
+Here the fit uses all HCTZ amounts in urine of the two studies, drops one curve as an outlier and validates on the highest dose:
+
+```python
+from examples.hctz_fitting.experiments.studies import Beermann1976
 from sbmlsim.fit.helpers import FitMappings
 
 fit_mappings = FitMappings(
@@ -70,453 +225,315 @@ fit_mappings = FitMappings(
     data_path=DATA_PATH,
 )
 selection = fit_mappings.select(
-    filters=[lambda key, fm: "urine" in key],  # the training data
-    outliers={"fm_hctz_iv1_5_urine"},  # not usable, tagged once for all fits
-    validation={"fm_200_tab_urine", "fm_200_sus_urine"},  # evaluated, not fitted
+    filters=[lambda key, fit_mapping: key.endswith("_urine")],
+    outliers={"fm_hctz_iv1_5_urine"},
+    validation={"fm_200_tab_urine", "fm_200_sus_urine"},
+    print_info=False,
 )
-mapping_collections = selection.collections
+selection.print(detail=False)
 ```
 
-The overview ends in a line such as `mappings : 32 (28 training, 2 validation, 2 outlier)`. On the problem, `mapping_counts()` reports how many mappings of each kind it has and `training_indices`, `validation_indices` and `outlier_indices` are their positions in the resolved data.
+```text title="Output"
+📊 Data (44 fit mappings) ──────────────────────────────────────────────────────
+experiment     training   validation   outlier   excluded   mappings
+────────────────────────────────────────────────────────────────────
+Beermann1976   8          0            1         9          18
+Patel1984      6          2            0         18         26
 
-`examples/hctz_fitting/fitting/mapping_collections.py` is the selection of the reference problem: the outliers and the validation data are named once, and every fit problem is a list of filters on the metadata of the mappings.
-
-```python
-from examples.hctz_fitting.fitting.mapping_collections import f_collections_pk
-
-mapping_collections = f_collections_pk()
-print(mapping_collections)
+total          14         2            1         27         44
 ```
 
-## Fit parameters and experiments
+`selection.collections` holds the `FitMappingCollection`s, one per experiment and kind, and `selection.df` a table of every mapping with its kind and metadata. `select_mapping_collections` does it all in one call. `examples/hctz_fitting/fitting/mapping_collections.py` names the outliers and the validation data once and defines each fit as a list of filters on the metadata.
 
-`FitParameter` names a parameter of the model with its start value, bounds and unit, `FitMappingCollection` names a simulation experiment class and the mappings of it which enter the fit together, with optional weights:
+On an initialized problem, `mapping_counts()` gives the number of mappings of each kind.
 
-The prior of a parameter, `FitParameter(prior=...)`, is a prior of PEtab v2 (`Prior`), a distribution of the sampler (`Normal`, `LogNormal`, `Uniform`, `LogUniform` or a `Truncated` of them at the bounds of the parameter) or an `Uncertain` value of `sbmlsim.uncertainty`, e.g. `prior=Uncertain(Q(1.2, "1/hr"), cv=0.3)` for a literature value with a CV of 30 % (a log-normal with that mean and CV); a distribution is converted to the prior of PEtab in the unit of the parameter (`Prior.from_distribution`, `Prior.to_distribution` back). The objective of a fit does not use the prior, `log_prior` of the PEtab layer evaluates it.
+## Parameters
 
-```python
-from examples.hctz_fitting.experiments.studies import Beermann1976
-from sbmlsim.fit import FitMappingCollection, FitParameter
+A `FitParameter` names an entity of the model (`pid`) with its bounds and unit:
 
-mapping_collections = [
-    FitMappingCollection(
-        experiment=Beermann1976,
-        mappings=["fm_hctz_iv1_5_urine", "fm_hctz_iv35_4_urine"],
-    ),
-]
-fit_parameters = [
-    FitParameter(
-        pid="Ka_dis_hctz",
-        start_value=1.0,
-        lower_bound=1e-4,
-        upper_bound=10,
-        unit="1/hr",
-    ),
-    FitParameter(
-        pid="KI__HCTZEX_k",
-        start_value=1e-6,
-        lower_bound=1e-10,
-        upper_bound=1,
-        unit="1/ml",
-    ),
-]
-print(mapping_collections[0])
-print(FitParameter.parameters_to_df(fit_parameters))
-```
+- `lower_bound` and `upper_bound` are the box the optimizer searches.
+- `unit` is a unit of pint or of the unit ids of the model, e.g. `per_min`. Without it the value is in the unit of the model.
+- `start_value` is where every run starts with `sampling=SamplingType.START` (see [Running the optimization](#running-the-optimization)). A parameter with an infinite bound is not sampled and needs it as well.
+- `description` describes the parameter in the report. Without it, the report uses its name in the model.
+- `prior` is a prior of PEtab v2, a distribution of [sampling](sampling.md) or an [`Uncertain`](uncertainty.md) value, e.g. `Uncertain(Q(1.2, "1/hr"), cv=0.3)`. The fit itself does not use it; it is exported to PEtab and evaluated by `log_prior` of the PEtab layer.
 
-A `FitMappingCollection` without mappings uses all fit mappings of its experiment, they are resolved when the problem is initialized. `FitMappingCollection(use_mapping_weights=True)` weights the mappings by the weights of the `FitMapping` objects, e.g., the counts of the data, instead of the weights given here; setting both is an error.
+The optimizer searches the parameters on the `parameter_scale` of the settings: `LOG10` by default, because a rate constant often spans orders of magnitude, or `LOG` and `LINEAR`. A logarithmic scale needs finite positive bounds. `FitParameter(scale=...)` sets the scale of a single parameter, e.g. `LINEAR` for one which can be zero or negative. Bounds, start values and results are always in the units of the model.
 
-`FitSettings.parameter_scale` is the space the optimizer searches the parameters in: `LOG10` by default, because a rate constant spans orders of magnitude and an optimizer on the linear scale spends its steps on the largest parameters, and `LOG` or `LINEAR` if a problem wants them. The bounds, the start values and the fitted parameters are always on the linear scale, i.e. in the units of the model, only the search happens in the scaled space. A logarithm needs finite positive bounds and a positive start value. A parameter on the linear scale may have infinite bounds, which the local optimizer takes; the global optimizer samples a finite box and rejects them. `FitParameter.scale` gives one parameter a scale of its own, e.g. the linear scale for a parameter which is negative or zero while the others are searched on the logarithmic scale of the settings.
+### One parameter for part of the data
 
-The scale is a property of the optimization and not of the model or of the data, which is why it is part of the settings; PEtab v2 removed the `parameterScale` of its parameter table for the same reason.
-
-### One parameter per subset of the data
-
-A `FitParameter` can be estimated for one part of the data only, leaving the model's own value for the rest, e.g. a dissolution rate estimated from the oral data and left untouched for the intravenous data, which does not depend on it: `target` says which entity of the model the value is written to (`pid` by default) and `mappings` is a filter, or an iterable of filters, which selects the fit mappings the parameter applies to; several parameters share one `target` when each of them covers a different part of the data, and `FitParameter.is_versioned`/`target_id` are the two accessors a fit, a report and the PEtab layer read instead of `mappings`/`target` directly.
+Sometimes a parameter should be estimated from only part of the data. The dissolution rate of a tablet, for example, has no effect after an intravenous dose. `target` names the entity of the model the value is written to, and `mappings` is a filter (or a list of filters) of the fit mappings the parameter applies to. Simulations the parameter does not reach keep the value of the model. Several parameters with the same target can cover different parts of the data, e.g. a dissolution rate for tablets and another for capsules.
 
 ```python
 from examples.hctz_fitting.experiments.metadata import Route
-from examples.hctz_fitting.fitting.mapping_collections import _metadata
-from sbmlsim.fit import FitMapping, FitParameter
+from sbmlsim.fit import FitMapping
+from sbmlsim.fit.display import print_parameters
 
 
-def is_oral(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-    """Select the oral data, which is where a dissolution rate applies."""
-    return _metadata(fit_mapping).route == Route.PO
+def is_oral(key: str, fit_mapping: FitMapping) -> bool:
+    """Select the oral data."""
+    return fit_mapping.metadata.route == Route.PO
 
 
-#: the dissolution estimated for the oral data only. A selector must be a
-#: module level function: the workers of a parallel fit unpickle it. There is
-#: no intravenous version: an intravenous dose has nothing to dissolve, so
-#: `Ka_dis_hctz` has no effect on the intravenous curves at all, and versioning
-#: it there too would add a parameter no curve constrains. Leaving the
-#: intravenous mappings unversioned keeps them on the model's shared value,
-#: which is the correct value for them and exactly what
-#: `problem.parameter_mapping.coverage()` reports as uncovered below.
-PARAMETERS_BY_ROUTE = [
-    FitParameter(
-        pid="Ka_dis_hctz_po",
-        start_value=0.35,
-        lower_bound=0.01,
-        upper_bound=10.0,
-        unit="1/hr",
-        target="Ka_dis_hctz",
-        mappings=is_oral,
-    ),
-    # ... the rest of the parameters, unversioned
-]
-```
-
-A selector must be a module level function, not a lambda and not a closure: `OptimizationProblem.__getstate__` reduces a problem to its uninitialized definition for the workers of a parallel fit, and the fit parameters, selectors included, travel with it; a lambda does not pickle and a parallel fit fails when the workers start, not when the fit is defined, which is why `examples/hctz_fitting/fitting/parameters.py` (`PARAMETERS_BY_ROUTE`) defines `is_oral` next to the parameters rather than inline.
-
-`sbmlsim.fit.parameter_mapping.ParameterMapping` resolves every selector to the simulation groups of the initialized problem and validates the binding: two parameters must not write one target in one simulation, a selector must not split a simulation, i.e. select some but not all of the fit mappings which share a simulation, and the versions of a target must agree on their unit, since the unit is how the value reaches the model. A version whose selector matches no fit mapping only warns, because it is usually a mistyped filter rather than an intended gap, and the parameter would otherwise sit in the parameter vector without ever changing the model.
-
-`problem.parameter_mapping.coverage()` reports what every parameter reaches, and the console and the HTML report of a fit show it as a table once a parameter is versioned: the parameter, the target, how many of the problem's simulations it covers, and the simulations it does not reach. An uncovered simulation keeps the value the model has for the target rather than being an error, e.g. an oral dissolution rate does nothing on the intravenous data, and the coverage table makes that a fact which is read rather than one which is discovered later.
-
-The PEtab v2 export writes a version as a condition: the condition assigns the target the value of the estimated parameter, and every experiment the version covers references it on period 0. The selector itself is a python callable and does not round trip; PEtab stores the resolution, so a problem which is read back selects the same fit mappings by their id (`sbmlsim.fit.helpers.filter_keys`) rather than by the original rule. The fit, its cost and its parameters are the same, i.e. the round trip is exact in effect and not in source form. An experiment whose fit mappings span several `MappingKind`s is written as one PEtab experiment per kind, so a problem read back can report a higher coverage count than the fit which was written even though the binding and the simulations themselves are unchanged; this is the `experiment-split` gap of `sbmlsim.fit.petab_v2.gaps`.
-
-## The optimization problem
-
-The `OptimizationProblem` collects the fit mapping collections and parameters with the `base_path` and `data_path` of the experiments:
-
-```python
-from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
-from sbmlsim.fit.optimization import OptimizationProblem
-
-op = OptimizationProblem(
-    opid="hctz_iv",
-    mapping_collections=mapping_collections,
-    fit_parameters=fit_parameters,
+by_route = OptimizationProblem(
+    opid="hctz_routes",
+    mapping_collections=[
+        FitMappingCollection(
+            Beermann1976, mappings=["fm_hctz_iv35_4_urine", "fm_hctz_po5_1_urine"]
+        ),
+    ],
+    fit_parameters=[
+        FitParameter(
+            pid="Ka_dis_hctz_po",
+            target="Ka_dis_hctz",
+            mappings=is_oral,
+            lower_bound=0.01,
+            upper_bound=10,
+            unit="1/hr",
+        ),
+        FitParameter(pid="KI__HCTZEX_k", lower_bound=1e-5, upper_bound=1, unit="1/ml"),
+    ],
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
 )
-print(op)
+by_route.initialize(settings)
+print_parameters(by_route.parameters, by_route.parameter_mapping.coverage())
 ```
 
-The problem is picklable, so it is distributed to worker processes; `initialize` then creates the runner, loads the models, resolves the data and calculates the weights, and groups the fit mappings which share a simulation. Several mappings read different observables of the same simulation, e.g. the plasma concentration and the amount in urine of one dosing, and such a group is simulated once per evaluation of the residuals with the selections of all of its mappings, which is where the time of a fit goes. It takes the `FitSettings`, which decide how the residuals are computed:
+```text title="Output"
+🎛 Parameters (2) ───────────────────────────────────────────────────────────────
+parameter        target         start   lower   upper   unit
+────────────────────────────────────────────────────────────
+Ka_dis_hctz_po   Ka_dis_hctz    -       0.01    10      1/hr
+KI__HCTZEX_k     KI__HCTZEX_k   -       1e-05   1       1/ml
+parameter        target         simulations   not covered
+───────────────────────────────────────────────────────────────────────────────
+Ka_dis_hctz_po   Ka_dis_hctz    1 of 2        Beermann1976|fm_hctz_iv35_4_urine
+KI__HCTZEX_k     KI__HCTZEX_k   2 of 2        -
+```
+
+The coverage table shows that `Ka_dis_hctz_po` reaches one of the two simulations and leaves out the intravenous one. The fit and its report print the same table. The problem checks the parameters when it is initialized: two parameters must not write the same target in one simulation, a filter must select either all or none of the mappings which share a simulation, and the parameters of one target must have the same unit. A filter which selects nothing only warns.
+
+A filter must be a function defined at the top level of a module, not a lambda: the workers of a parallel fit unpickle it. The PEtab export writes the selected mappings, not the filter, see [PEtab](petab.md).
+
+## Settings
+
+`FitSettings` decide how the cost is computed and how the simulations of the fit are integrated. A fit stores its settings with its result, and its report uses the same ones.
 
 ```python
-from sbmlsim.fit import FitSettings
-from sbmlsim.fit.options import (
-    DataAtChangeType,
-    LossFunctionType,
-    ResidualType,
-    WeightingCurvesType,
-    WeightingPointsType,
-)
+from sbmlsim.fit.display import print_settings
 
-settings = FitSettings(
-    residual=ResidualType.NORMALIZED,
-    loss_function=LossFunctionType.LINEAR,
-    weighting_curves=(WeightingCurvesType.POINTS,),
-    weighting_points=WeightingPointsType.ERROR_WEIGHTING,
-    relative_tolerance=1e-6,
-    absolute_tolerance=1e-10,
-    data_at_change=DataAtChangeType.BEFORE,
-)
-print(settings)
+print_settings(settings)
 ```
 
-- `ResidualType`: `ABSOLUTE` residuals or `NORMALIZED` residuals, i.e., relative to the data,
-- `LossFunctionType`: `LINEAR`, `SOFT_L1`, `CAUCHY` or `ARCTAN` as in `scipy.optimize.least_squares`, applied to the squared residuals so that the cost is `0.5 * sum(rho(r**2))`,
-- `WeightingCurvesType`: weighting of the curves by their `MAPPING` weight and by the number of `POINTS`,
-- `WeightingPointsType`: `NO_WEIGHTING` or `ERROR_WEIGHTING` of the points by their errors, which are standard deviations: the SD of the data (`FitData(yid_sd=...)`) or its SE (`yid_se=...`) converted with the count of its row, `SE * sqrt(count)` (`FitData(count=...)`, an integer or a column of the dataset); a row with an SE and without a count raises when the problem is initialized,
-- `DataAtChangeType`: whether a data point at the time of a change is compared with the state `BEFORE` the change (the default) or `AFTER` it, see [Data at the time of a change](#data-at-the-time-of-a-change).
+```text title="Output"
+⚙ Settings ─────────────────────────────────────────────────────────────────────
+setting              value
+─────────────────────────────────────────────────────────────────────────
+residual             NORMALIZED
+loss function        LINEAR
+weighting curves     POINTS
+weighting points     ERROR_WEIGHTING
+relative tolerance   1.0e-06
+absolute tolerance   amount 1.0e-10, concentration 1.0e-10, other 1.0e-10
+variable step size   True
+initial time step    0
+data at a change     before
+```
 
-`variable_step_size`, `relative_tolerance`, `absolute_tolerance` and `initial_time_step` are the settings of the integrator of the simulations of the fit, see [Simulations](simulation.md#selections-and-integrator-settings). `absolute_tolerance` is a float, the same tolerance for every kind of state, or an `AbsoluteTolerance` with one per kind and overrides by id; the default is `1e-10`, the one of the simulator. Settings stored by sbmlsim 0.8.4 and earlier have a float, which roadrunner scaled by the smallest volume of the model; it reads back as the same tolerance for every kind, which is looser (`1e-6` in a model with a volume of `1e-12` was about `1e-18`), so a report of a stored fit integrates with other tolerances than the fit. The settings section of the report lists the absolute tolerance of every state and whether the model is integrated in local or absolute time. The same settings are needed to report a fit, so they are stored with its result. Initializing a problem again with the settings it already has does nothing, i.e., a fit and its report resolve the data once.
+### Residuals and weights
+
+The cost is `0.5 * sum(w * r**2)` over the data points of the training data, with the residuals `r` and the weights `w`:
+
+- `residual`: `ABSOLUTE` (default), the data minus the prediction, or `NORMALIZED`, divided by the mean of the curve. Use `NORMALIZED` when curves of very different magnitude enter one fit.
+- `weighting_curves`: `MAPPING` multiplies a curve by the `weights` of its `FitMappingCollection`, or with `FitMappingCollection(use_mapping_weights=True)` by the `weight` of its `FitMapping`, which defaults to the number of subjects (`count`). `POINTS` divides a curve by its number of points, so that a curve with many points does not dominate. Both can be combined; without either, every point counts the same.
+- `weighting_points`: `NO_WEIGHTING` (default) or `ERROR_WEIGHTING`, which weights a point by `mean / SD`, the inverse of its coefficient of variation. A curve without standard deviations gets the weight of a coefficient of variation of 0.5. A row with a standard error and no count raises when the problem is initialized.
+- `loss_function`: `LINEAR` (default) or the robust `SOFT_L1`, `CAUCHY` and `ARCTAN` of `scipy.optimize.least_squares`, which reduce the influence of outliers.
+
+The settings `relative_tolerance`, `absolute_tolerance`, `variable_step_size` and `initial_time_step` are those of the integrator, see [Simulations](simulation.md#selections-and-integrator-settings).
 
 ### Data at the time of a change
 
-At the time of a `Change` a simulation has two states, the one before the change and the one after it, which the output of a run has both, in two rows of that time (see [Simulations](simulation.md#the-semantics)); PEtab v2 compares a measurement at that time with the state after it. A measurement at that time is mostly taken before the change: cumulative urine data which ends at a collection reset, i.e. a change which empties the urine at that time, is the amount collected until then and not `0`, and a sample at the time of a dose is a pre-dose sample. A fit therefore compares a data point at the time of a change after the start of its simulation with the state before the change (`data_at_change=DataAtChangeType.BEFORE`, the default), also at a change at the end of the simulation. `DataAtChangeType.AFTER` compares every data point with the state after the change, as PEtab does.
+At the time of a `Change`, e.g. a dose or the emptying of the bladder, a simulation has two states: the one before the change and the one after it (see [Simulations](simulation.md#the-semantics)). Most measurements at that time are taken before the change: cumulative urine at the end of a collection period is the amount collected until then, not `0`, and a sample at the time of a dose is a pre-dose sample. So by default a data point at the time of a change after the start is compared with the state before the change (`data_at_change=DataAtChangeType.BEFORE`).
 
-The first point of a curve is the exception: the data point or points with the smallest time of a fit mapping, replicates included, take the state after the change if the mapping has data at a later time. A curve starts there, e.g. the cumulative urine collected after the last dose of a multiple dosing protocol which starts at a negative time starts at `0` at the reset. A curve which ends at a reset and one which starts at it are therefore compared with the collected amount and with `0` in one simulation. A curve of a single time is no start of a collection and takes the state before the change, e.g. the total amount of urine of 0 to 24 h recorded at the reset at 24 h, or a pre-dose trough.
+The first point of a curve is the exception: if a curve has later points, its first point takes the state after the change, because the curve starts there, e.g. a urine collection which starts at `0` at a reset. A curve of a single point takes the state before the change, e.g. the total amount of urine at the end of a collection. A data point counts as at the time of the change if it is within the resolution of the time of the simulation, and data at the start of a simulation always sees the state after the changes at the start. An event of the model is a jump as well: data at the time of an event takes the state after it.
 
-With `BEFORE` a time is at the time of a change if they differ by at most the resolution of the time of the simulation, the tolerance which merges output times (see [Simulations](simulation.md#a-simulation)), on either side of the change. `AFTER` takes the time of a data point as it is, as PEtab does: a time a little before a change, e.g. `23.9999999999` for a reset at `24`, is before the change and is compared with the state before it. A change at the start of the simulation is the initial condition of the experiment and no change of its output, so data at the start sees the state after the changes at the start whatever the setting, also a pre-dose sample at the time of a dose at the start.
-
-The output of a simulation of a fit is the one of a run, with the states before and after a change at its time, and a data point takes one of them; an output time of the data at a change is the time of the change. A group which outputs the times of its data outputs the times of the changes within them as well, so the curve of a mapping draws the jump. A group which keeps the output of its simulation, i.e. one with observables or a timecourse over another selection, interpolates a data point between two outputs linearly, up to a change toward the state before the change and from a change from the state after it, whatever the setting, and takes a data point at a change at the time of the change. An event of the model is a jump as well, whose states before and after it the steps of the integrator have at the time of the event: a data point at the event takes the state after it, also a data point at most the resolution of the time before it, since CVODE locates an event a little after its time, at the end of the interval in which it finds the root of the trigger. Jumps closer than the resolution of the time, e.g. a change and an event, are one chain, and a data point at it or inside it takes the state after its last jump, unless it takes the state before a change at its time. The observables of the simulation, e.g. the parameters of a `PK` observable or a reduction of an observable such as `max([A])`, are the ones of the run, also where a timecourse reads them, e.g. `[A] / pk.cmax`. The output of explicit `times` without the time of a change within them gets the time of the change for a group with a timecourse, so its data and its curve see the jump: its values per simulation are computed on the output without it, as a run has it, and its timecourses on the output with it, so a reduction inside the formula of a timecourse, e.g. `[A] / max([A])`, can differ from the run there; write it as an observable of its own for the value of the run. The figures of the fit mappings in the report draw the jump at a change, the state before it and the state after it at its time, so the prediction at a change lies on the curve. `problem.times_before_changes(k)` lists the times of the data of a mapping which take the state before a change, and settings stored by sbmlsim 0.8.5 and earlier read back with `AFTER`, the comparison of their time.
+`DataAtChangeType.AFTER` compares every data point at a change with the state after it, which is what PEtab does. A PEtab problem read without the `sbmlsim` extension uses `AFTER`. `problem.times_before_changes(k)` lists the times of the data of mapping `k` which take the state before a change.
 
 ## Running the optimization
 
-`run_optimization` samples `size` start points within the bounds (see `sbmlsim.fit.sampling`; a parameter with an infinite bound is not sampled and starts from its start value, and a parameter with the linear `FitParameter.scale` is sampled uniformly also under a logarithmic sampling), runs the optimizer from every start point, in parallel on `n_cores` workers (one worker runs them serially in the calling process), and returns an `OptimizationResult`. `sampling=SamplingType.START` does not sample: every run starts from the start values of the parameters, which is what a fit needs to improve a solution, e.g. the nominal values of a model or a trained network; the runs are identical then, so `size=1` is enough for the local optimizer. A problem owns copies of its parameters: setting `problem.x0`, e.g. to the optimum of a fit, sets the start values of its parameters and changes neither the parameters it was created with nor another problem of the same definition. The progress of the runs is shown on the console, with the runs which are done, the elapsed time and an estimate of the total runtime, e.g. `~ 0:12:30 total`; the estimate is the time per batch of `n_cores` runs times the number of batches (a batch is one run when `n_cores=1`), so it is there as soon as the first run is done and settles as more runs come back:
+`run_optimization(problem, settings, size, ...)` runs `size` optimizations and returns an `OptimizationResult`:
 
-```py
-from sbmlsim.fit.options import OptimizationAlgorithmType
+- `algorithm`: `OptimizationAlgorithmType.LEAST_SQUARE` (default, from `sbmlsim.fit.options`), the local `scipy.optimize.least_squares`, which needs many start points, or `DIFFERENTIAL_EVOLUTION`, the global `scipy.optimize.differential_evolution`, which needs few runs and finite bounds. Further keyword arguments go to the SciPy function, e.g. `max_nfev`. A `loss` or `f_scale` of SciPy is refused, the loss belongs in the settings.
+- `sampling`: how the start points are drawn within the bounds, `SamplingType.UNIFORM` (default, from `sbmlsim.fit.sampling`), `LOGUNIFORM` and their Latin hypercube variants `UNIFORM_LHS` and `LOGUNIFORM_LHS`. `START` starts every run from the start values, to improve a known solution; one run is then enough for the local optimizer. Setting `problem.x0` changes the start values of a problem.
+- `seed`: the seed of the start points. The start points are drawn before the runs start, so the result does not depend on the number of workers.
+- `n_cores`: the number of worker processes; `1` (default) runs in the calling process, `None` uses all cores but one. `serial=True` runs serially whatever `n_cores` says, which is what a debugger needs.
+- `timeout`: seconds per run; a run which runs out of time keeps the best parameters it reached.
+- `runs_dir`: a directory every run is written to as JSON as soon as it finishes, so an interrupted fit keeps its finished runs. `OptimizationResult.from_directory` reads them back.
+
+A run which fails, e.g. with an error of the integrator, keeps its message in the result and does not stop the other runs. [Running a fit from the command line](#running-a-fit-from-the-command-line) shows `runs_dir` in use.
+
+A parallel fit starts worker processes which import your script again. In a script, put the fit under `if __name__ == "__main__":`, otherwise the workers start the fit again:
+
+```bash
+cat > fit.py << 'EOF'
 from sbmlsim.fit.runner import run_optimization
 
-opt_result = run_optimization(
-    problem=op,
-    settings=settings,
-    size=10,
-    n_cores=4,
-    seed=1234,
-    algorithm=OptimizationAlgorithmType.LEAST_SQUARE,
-)
-```
-
-A parallel fit (`n_cores` of two or more) starts worker processes which import the script again, so the fit must run behind a guard, otherwise the workers fit again and the fit does not end:
-
-```py
-def main() -> None:
-    run_optimization(problem=op, settings=settings, size=10, n_cores=4)
-
+from my_fit import problem, settings  # your definitions
 
 if __name__ == "__main__":
-    main()
+    fit = run_optimization(problem, settings, size=20, n_cores=4, seed=1)
+EOF
+python fit.py
 ```
 
-Every repeat is a task of the pool, which hands the next repeat to the worker which is free, so repeats of different duration do not leave workers idle, and every worker resolves the data of the problem once. The start points are sampled by the runner and not by the workers, so a fit with a seed gives the same start points for any number of workers. A fit with one worker, `n_cores=1` which is the default, runs the repeats in the process of the caller without starting a pool and gives the result of `serial=True` for the same seed; `serial=True` does so whatever `n_cores` says, which is what a debugger needs.
+A worker which crashes loses only the run it was working on. While the runs go on, the console shows how many are done and an estimate of the total time.
 
-The further arguments of the optimizer control the search, while `FitSettings` owns the objective: a robust loss is set with `FitSettings.loss_function`, and a `loss` of SciPy other than `"linear"` or an `f_scale` other than `1` is refused, since it would apply a second loss; the same holds for the `optimizer_kwargs` of the profile likelihood, which optimizes the other parameters with the optimizer of the fit. Every stored run records its algorithm and the `optimizer_kwargs` in effect, the defaults of the installed optimizer included.
+## Results and parameter sets
 
-A fit keeps what it has. A single optimization which fails, with an error of the integrator or any other error of the objective, is a result which carries its message and the other repeats are unaffected; `timeout` gives every repeat a budget in seconds and a repeat which runs out of it keeps the best parameters it reached. In a parallel fit a worker which dies loses the one repeat it was running. With `runs_dir` every repeat is written as JSON the moment it finishes, so a fit which is interrupted or crashes leaves the repeats which are done and `OptimizationResult.from_directory` reads them back:
+The `OptimizationResult` holds every run: `df_fits` is a table with the cost, the parameters and the message of every run, the best first, and `df_traces` the cost of every step. It is saved with `to_json` and `to_tsv`, read with `OptimizationResult.from_json`, and `OptimizationResult.combine` merges the results of several fits.
 
-```py
-from pathlib import Path
-
-from sbmlsim.fit.result import OptimizationResult
-
-opt_result = run_optimization(
-    problem=op,
-    settings=settings,
-    size=10,
-    n_cores=4,
-    timeout=600,
-    runs_dir=Path("results") / "runs",
-)
-# the same result, from the files alone
-recovered = OptimizationResult.from_directory(Path("results") / "runs")
-```
-
-`OptimizationAlgorithmType.LEAST_SQUARE` is the local least squares optimizer, `DIFFERENTIAL_EVOLUTION` the global one. The `OptimizationResult` holds the fits of all start points with their costs, the optimal parameters `xopt`, the cost trajectories of the optimizer and the settings the fit was run with; it is stored as JSON and TSV with `to_json` and `to_tsv`, and results of several runs are combined with `OptimizationResult.combine`.
-
-## Provenance
-
-`run_fit` records what a fit ran with in a `FitProvenance` (`sbmlsim.fit.provenance`): the arguments of the fit, the seed and the seed of every run, the versions of python, sbmlsim, libroadrunner, scipy and numpy, the git revision of the repository of the model (and whether the working tree was dirty), the SHA-256 of the SBML models and the data files (the files below the data paths without python code, `__pycache__` and the files of notebooks, the system and version control; hidden files such as the `.<study>_<figure>.tsv` of PK-DB count, the keys are paths with `/` on every platform), and the start value of every fit parameter. The provenance is stored in every run JSON in `<output_dir>/<opid>/runs` and in `OptimizationResult.provenance` (`None` for a result of a fit which did not record it), and `FitReport` reads it from the result. `run_optimization` takes it as `provenance`; `run_fit` adds the entries of its `arguments` argument, e.g. the command line of the caller, to the recorded arguments. The fixed values are those which the caller passes as `fixed_values` (pkpdsim passes the values of adopted fits); `run_fit` records them, it does not apply them.
-
-## Parameter sets
-
-A fit produces parameter values, and these values are what a report is made from. `OptimizationResult.parameter_sets` returns the parameters of the best runs as `ParameterSets`, which are stored as JSON:
-
-```py
-from pathlib import Path
-
-parameter_sets = opt_result.parameter_sets(size=1)
-parameter_sets.to_json(path=Path("parameters.json"))
-print(parameter_sets.to_df())
-```
-
-A set carries the values, their units, the cost and where it comes from. `OptimizationProblem.parameter_set_model()` gives the values the models start from, which is the natural reference to compare a fit against.
-
-The values of a parameter set with units are converted to the resolved units of the problem before they are evaluated, an incompatible unit raises a `ValueError` and a set without a unit has the unit of the problem. `ParameterSets.to_df(units=...)` converts the values to the units it displays. A unit id of SBML is displayed with the unit of pint it stands for in `resolved_units`, e.g. `to_df(units={"k": "per_min"}, resolved_units={"k": "1/min"})`; a display unit pint does not know needs it, unless it is the unit the set already has or the set has no units.
-
-## Reporting the fit
-
-Reporting is separate from optimizing. A `FitReport` is created from the definition of the problem, the settings and one or more parameter sets; it does not need a fit to have been run in the same session:
-
-```py
-from sbmlsim.fit import ParameterSets
-from sbmlsim.fit.report import FitReport
-
-report = FitReport(
-    problem=op,
-    settings=settings,
-    parameter_sets=ParameterSets.from_json(Path("parameters.json")),
-)
-report.create(output_dir=Path("results"), name="hctz_iv")
-```
-
-The report writes `index.html`, `report.txt`, the `parameters.json` it was made from, the metrics as TSV and the figures. `show_report=True` opens the HTML in a browser.
-
-A report keeps a copy of the definition and the parameter sets and initializes its own problem from it, so another report or a problem which is initialized again does not change it. The metrics, the tables and the figures share one evaluation per parameter set, and the data a report hands out can be changed without changing what it writes later. A set which is passed to `metrics`, `points` or `residual_data` stands for a set of the report when it is that set or has its id, its values and its units, e.g. the set the report was created with; any other set, also one which shares the id of a set of the report, e.g. `fit`, is evaluated as it is and not kept.
-
-One figure is drawn per fit mapping (`plot_mapping`), of four panels: the data with the simulation of every parameter set, linear and logarithmic, with the prediction at the data points as open markers on the curve, and the goodness of fit and the Bland-Altman plot of the points of the mapping, drawn as the summary figures draw them, with the band of the agreement of the training data, so a point reads the same in both. The box of the goodness of fit has the metrics of the mapping per set (the number of points, GMFE, AFE, the percentages within twofold and within two standard deviations and the cost of the mapping with its share of the cost of the training data). The title has the mapping and its kind and, below, the observable with its unit and the metadata of the mapping; one legend is below the panels, the data first (`data (mean ± SD, N = 12)`, with the count of the subjects) and then the entries of every parameter set next to each other; the legend takes fewer columns where long ids of the parameter sets need it, and a figure is widened for an id or a title which is wider than it. A logarithmic panel leaves out the values of a curve which are `0` or negative, e.g. the emptied urine after a reset, so the curve has a gap there instead of a vertical line to the bottom of the panel; an error bar which reaches `0` goes to the bottom. The figures are most of the cost of a report. `mapping_figures=False` leaves them out, which is what a report read for its tables and its overview figures wants; the cards of the mappings then carry their metrics alone. The command line tools take `--no-mapping-figures` for the same reason, and `--group-by COLUMNS` (repeatable, e.g. `--group-by tissue --group-by tissue,route`) for the groupings of the report, see [Evaluation by subsets of the data](#evaluation-by-subsets-of-the-data), which replace the `groupings` of the `FitDefinition`.
-
-`index.html` is an interactive page with two tabs, see [Report of a fit](#report-of-a-fit). The tab **Report** is the methods, the results and the references of the fit, followed by **Overview**, which repeats what the console reports, i.e., the fit, the parameters with their bounds and units, the settings and the data per experiment and kind, and by **Results**, which has the metrics per parameter set and kind, the plots of the optimization runs, the goodness of fit and the Bland-Altman plot with a panel per kind of fit mapping; the tab **Fit mappings** has the figures of the cost and weight and of the residuals of every mapping and the table of the metrics of every mapping (parameter set, experiment, mapping, kind, n, MSE, RMSE, NRMSE, RMSE_w, R² and the percentage within twofold, 2-fold [%]), then one card per mapping with its figures and its metrics (n, RMSE, R² and 2-fold). A search box filters the mappings and the tables, the chips filter by training, validation and outlier data, which are the kinds a fit evaluates and therefore the kinds a report shows, the tables sort by any column and a figure opens full size when it is clicked. The page carries its own style and script, so it works from a file and can be archived or sent as it is.
-
-Every parameter set becomes a column of the parameter table and a curve in the plots, so several sets are compared in a single report, e.g., two fits against each other. The first set is the reference the others are compared against.
-
-A problem with neural networks (see [PEtab SciML](petab_sciml.md#the-report-of-a-hybrid-fit)) shows every network in the overview of the report with its pattern, its layers and its targets, and its arrays as one row each with the number of elements, the estimated ones, their bounds and the range and the norm of their values; the parameters of the model keep their rows and `parameters.json` keeps every element.
-
-Two figures show the data points of the fit rather than the curves, each with one panel per kind of fit mapping, i.e. the training data, the validation data and the outliers. The points are colored by study, i.e. by the simulation experiment a fit mapping belongs to, and a study keeps its color in both figures:
-
-- **goodness of fit** (`goodness_of_fit`) plots the prediction against the measurement on logarithmic axes, with the identity line `prediction = measurement` and the dark red dotted lines of twofold, `prediction = 2 x measurement` and `prediction = measurement / 2`. The points scatter around the identity when the model describes the data, and a systematic deviation from it is a systematic error of the model. The box of a panel states the percentage of the points within twofold, `within_2fold` of the [metrics](#metrics), and the caption the points within twofold of every kind with their denominator, e.g. `479 of the 523 training data points (91.6%)`. The axes are logarithmic, so a data point which is zero or negative, in its value or its prediction, is not drawn and not counted; the title of a panel then states the points drawn of the points of the kind, e.g. `training (n=523 of 530)`, in both figures.
-- **Bland-Altman** (`bland_altman`) plots the agreement of the two as a ratio, `log10(f(x)/y)` over the geometric mean of prediction and measurement, with the bias and the limits of agreement `bias ± 1.96 SD` written as fold factors. The data of a fit spans orders of magnitude, so the agreement is multiplicative: a bias of `1.02x` is a fit which is unbiased and limits of `0.51-2.04x` say that a prediction is within a factor of two of the measurement. A trend over the mean is a model which describes the large or the small values better. A data point which is zero or negative has no ratio and is left out, which is why a panel can show fewer points than the metrics of its kind count.
-
-  `FitReport.agreement` calculates the bias and the limits on the **training data** alone and both figures draw the same lines in every panel, so the validation data and the outliers are read against what the fit agrees to. Per panel they would give every subset its own reference and the panels could not be compared, and over all data points the outliers, which are far away by definition, would widen them. A panel whose points stay inside the limits still shows them.
-
-  The band is the same in the two figures and drawn in the same styles, so they are read the same way: a solid line for `prediction = measurement`, a dash-dotted line for the bias, dashed lines for the limits and the area between them filled. A ratio is a horizontal line in the Bland-Altman plot and a line parallel to the diagonal in the goodness of fit, which on logarithmic axes is the same thing, so a point inside the band is a prediction the fit agrees to in either figure.
-
-  The Bland-Altman plot also draws the lines of twofold, `±log10(2)`, the criterion of the goodness of fit, and the agreement of the points of a panel itself (`subset_agreement` of `sbmlsim.fit.evaluation`): its bias and limits of agreement as thin violet lines (in the color of a set when sets are compared) with the 95% confidence intervals of the bias, `t SD / sqrt(n)`, and of the limits, `t sqrt(3 SD² / n)` (Bland and Altman 1999), as shaded bands, for a panel of at least `MIN_POINTS_SUBSET_AGREEMENT` (10) points with a ratio: the validation panel of the summary figure, the panels of a grouping and the figure of a mapping, not the training panel of the summary figure, whose agreement is the band, and no panel of outliers, which were dropped for not agreeing. With few points the limits are uncertain and the bands say how much. `FitReport(error_bars=True)` draws the standard deviation of the data of every point, horizontally in the goodness of fit and as the error of the log ratio, `log10(f/(y ± SD))`, in the Bland-Altman plot (one decade above the point where the SD is not smaller than the value; the error bars do not set the limits of a panel), and `FitReport(color_by="tissue")` colors the points by the values of a column of the data points instead of by their study.
-
-The panels next to each other are what the kinds are for: the training panel is how well the fit describes the data it was fitted on, the validation panel how it describes data it was not, and the outlier panel where the curves a fit dropped sit relative to the model. There is no panel over all data points, which would pool the data a fit was fitted on with the data it dropped. Several parameter sets in one report are told apart by their marker, since the color says which study a point comes from.
-
-`FitReport.from_optimization_result` is the shortcut for the report of a fit. It reads the settings from the result and adds the plots which describe the runs rather than a parameter set, i.e., the optimization traces and the waterfall plot. The report shows the fitted parameters alone; `with_model=True` reports the values the model started from as the reference set as well, so that the figures and the tables show what the fit changed:
-
-```py
-report = FitReport.from_optimization_result(problem=op, opt_result=opt_result)
-report.create(output_dir=Path("results"), name="hctz_iv")
-
-# the fit against the model it started from
-report = FitReport.from_optimization_result(
-    problem=op, opt_result=opt_result, with_model=True
-)
-```
-
-## Metrics
-
-`FitMetrics` calculates the metrics of a parameter set on an initialized problem, i.e., from the data of the fit mappings and the predictions of the model. The column names follow the convention of population pharmacokinetics: `DV` is the measured value, `PRED` the prediction of the population parameters, `IPRED` the prediction of the individual parameters, `RES` and `IRES` the residuals `DV - PRED` and `DV - IPRED`, `NRES` the residual normalized by the mean of its curve, `IRES / mean(DV)`, and `IWRES` the residual of the cost, i.e., the residual of the residual type of the settings, weighted and with the loss function applied. A deterministic fit has a single parameter set, so `PRED` is `IPRED` unless a `population_parameter_set` is given:
-
-```py
-from sbmlsim.fit import FitMetrics
-
-metrics = FitMetrics(problem=op, parameter_set=parameter_sets[0])
-print(metrics.datapoints_df().head())
-print(metrics.mappings_df())
-print(metrics.summary())
-```
-
-`summary()` gives the metrics over all data points: the number of data points `n`, the number of fitted parameters `k`, the `cost`, `MSE`, `RMSE`, `NRMSE`, `RMSE_w`, `R2`, `within_2fold`, `AIC` and `BIC`; `mappings_df()` gives them per fit mapping, keyed by the experiment and the mapping, so the mappings of two studies with the same key are rows of their own. `MSE`, `RMSE`, `R2`, `AIC` and `BIC` are unweighted metrics of the data and the predictions, so they are dominated by the mappings with the largest values: the data of a fit spans orders of magnitude, and a curve of small values which is missed by a factor of 20 still has a tiny absolute error. `NRMSE` is the root mean square of `NRES`, so every curve counts the same whatever its magnitude, and `RMSE_w` is the root mean square of `IWRES`, i.e., what the fit minimizes; the cost of the training data is `0.5 * n * RMSE_w²`. A parameter set can therefore have a larger RMSE and smaller weighted residuals than another one, which is what the weighting is for. `within_2fold` is the percentage (0 to 100) of the data points whose prediction lies within twofold of the data, `0.5 <= IPRED / DV <= 2`, the criterion of pharmacokinetic predictions, which reads the same for every curve as well. Only the data points with a positive value and prediction have a ratio, so it counts these points alone, as the Bland-Altman plot does; a kind or a mapping without such a point has `NaN`, which the tables of the report show as `-`. The boxes of the goodness of fit show `R²`, `NRMSE`, `RMSE_w`, `GMFE`, `AFE` and the percentages within twofold and within two standard deviations per kind, not the absolute RMSE, with a line of the id of every set before its metrics when sets are compared, and the caption of the figure states the percentage of every kind.
-
-A fit is evaluated on the data it was fitted on and on the data it was not, so `summary(kind=...)` restricts the metrics to a kind of mapping and `summary_df()` has one row per kind: the training data, the validation data and the outliers. The outliers are in there because a curve which a fit drops is a claim about the data which the metrics make checkable: an outlier with an R² as good as the training data is a curve which was dropped without reason. There is no row over all data points, which would pool the data a fit was fitted on with the data it dropped; `summary()` without a kind gives that number where it is wanted. The `cost` is the objective of the optimization, which is defined on the training data alone, so it is only reported there:
-
-```py
-metrics.summary_df()
-```
-
-Both information criteria are calculated for a least squares fit with normally distributed residuals, i.e. `n * ln(MSE)` plus a penalty per parameter, up to the same additive constant: only differences between models fitted on the same data are meaningful. They differ in the penalty, `2 * k` for the AIC and `k * ln(n)` for the BIC, so the BIC charges a parameter more as soon as there are more than seven data points and increasingly so with more of them. A model which the AIC prefers and the BIC does not is a model whose extra parameter buys a little fit on a lot of data. A perfect fit, an MSE of 0, has the AIC and the BIC `-inf`, the best possible value, e.g. a fit to synthetic data which the model computed itself.
-
-The functions of `sbmlsim.fit.metrics` are used on their own as well: `sse`, `mse`, `rmse`, `aic`, `bic`, `r_squared`, `fold_counts` and `within_fold` take arrays of residuals or of data and predictions; `within_fold(data, predictions, fold=2.0)` is the percentage of the points within the fold factor, `NaN` if no point has a ratio, and `fold_counts` gives the points within it and the points with a ratio, its denominator. R² is not the square of a correlation for a non-linear model and is negative when a prediction is worse than the mean of the data; it is `NaN` for fewer than two data points, e.g. a value per simulation against the one row of a study group.
-
-The metrics also have the criteria of `sbmlsim.fit.evaluation`: `GMFE`, the geometric mean fold error `10**mean(|log10(IPRED/DV)|)`, `AFE`, the bias as a fold factor `10**mean(log10(IPRED/DV))`, the percentages within 1.25, 1.5 and 2 fold and the percentages of the points within one and two standard deviations of the data, `within_1sd` and `within_2sd`, of the points with a standard deviation. `observables_df()` has the metrics per kind and observable, e.g. the plasma concentration or the amount in the urine, with the median standard deviation of the data, so the RMSE of an observable is read against the uncertainty of its data.
-
-A report calculates the metrics for every one of its parameter sets and writes them as `metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv` and `datapoints.tsv`, so several sets are compared by their AIC, RMSE, R² and the percentage within twofold; the tables of the report head the column `within_2fold` as `2-fold [%]`.
-
-## Evaluation by subsets of the data
-
-A report evaluates the data points by subsets of the data with groupings, `FitReport(groupings=[...])`, from `sbmlsim.fit.evaluation`: `Grouping.by("tissue")` groups the points by the values of a column of `datapoints.tsv`, e.g. a field of the metadata of the mappings, `Grouping.by("health", "coadministration")` by the combinations of the values of two columns, and `Grouping.of_subsets("studies", Subset("oral", is_oral), Subset("iv", is_intravenous))` by named subsets of the fit mappings, selected with the filters a fit selects its data with (`MappingFilter`); subsets may overlap. A value which a mapping does not report, an empty value or `NR`, is the group `not reported`; a value of the metadata is its text, the name of a member of an enum and empty for `None`, and a field of the metadata must not be named like a column of the data points (`POINT_COLUMNS`). The report checks the columns of its groupings and of `color_by` when it is created and raises for a column the data points do not have or two groupings of one name.
+A report is made from parameter sets. `fit.parameter_set()` is the best one and `fit.parameter_sets(size=n)` the `n` best, as `ParameterSets`, which you can store and read back as JSON:
 
 ```python
-from sbmlsim.fit.evaluation import Grouping
+from sbmlsim.fit import ParameterSets
 
-report = FitReport(problem, settings, parameter_sets, groupings=[Grouping.by("tissue")])
+parameter_sets = fit.parameter_sets(size=2)
+parameter_sets.to_json(Path("parameters.json"))
+print(ParameterSets.from_json(Path("parameters.json")).to_df())
 ```
 
-Every grouping adds three figures to the results of the report, `goodness_of_fit_<name>` and `bland_altman_<name>` with a row per group and a column per kind, drawn as the summary figures with the band of the agreement of the training data and the box of the points of the panel, and `criteria_<name>`, the percentage of the points within twofold and within two standard deviations per group and kind of the reference set, and the table `metrics_groups.tsv` with the metrics of every group and kind (`group_metrics`: `n`, the denominators of the percentages `n_ratio`, the points with a ratio, and `n_sd`, the points with a standard deviation, NRMSE, GMFE, AFE and the criteria; no RMSE, a group mixes the units of its observables). A figure has at most `MAX_GROUP_ROWS` (6) rows of groups, more groups are pages of their own, `goodness_of_fit_<name>_2` and so on. The section "Evaluation" of the page has a tab per grouping. A report without groupings has none of them. The figures of the fit mappings are not grouped.
+```text title="Output"
+      parameter  unit  hctz_patel_0  hctz_patel_1
+0   Ka_dis_hctz  1/hr      0.304801      0.304855
+1  KI__HCTZEX_k  1/ml      0.005028      0.005028
+```
+
+A parameter set has the values, their units, the cost and its origin. `problem.parameter_set_model()` is the set of the values in the model, the natural reference to compare a fit with. The values of a set are converted to the units of the problem; an incompatible unit raises a `ValueError`.
 
 ## Report of a fit
 
-`FitReport.create` writes more than the page. A folder of a report holds:
+A `FitReport` is made from a problem, its settings and one or more parameter sets. It does not need the fit, so you can report stored parameters later, or compare several sets in one report: every set is a column of the tables and a curve in the figures, and the first set is the reference.
 
-- `index.html`, the page with two tabs: **Report** is the document of the fit (its methods, its results and its references), followed by the overview, the results and the identifiability of the fit; **Fit mappings** is the figures of the cost and weight and of the residuals of every mapping and the table of the metrics of every mapping, then a card per fit mapping with its figure: the data and the simulation of every parameter set, linear and logarithmic, and the goodness of fit and the Bland-Altman plot of the points of the mapping, drawn as the summary figures draw them, with the metrics of the mapping (the number of points, GMFE, AFE, the percentages within twofold and within two standard deviations and the cost of the mapping with its share of the cost of the training data); its title has the kind of the mapping, its observable and its metadata;
-- `report.pdf`, the same document as a PDF (a table longer than a page continues on the next pages with its header repeated), written only if Typst compiles it (otherwise there is no PDF and the HTML states why), and its sources `report.typ` ([Typst](https://typst.app)), `report.tex` (a fragment for `\input` in a document which loads `amsmath`, `graphicx`, `booktabs`, `longtable` and `hyperref`) and `report_standalone.tex` (a document with its preamble, meant to compile with pdflatex and bibtex; tables are `longtable`s, symbols in the text are math), with `references.bib` and `references.csl`, the style of the bibliography;
-- the figures in `plots/`, and the PNG copies of the overview figures (`traces`, `waterfall`, `goodness_of_fit`, `bland_altman`, `profiles`, when the fit has them), which the LaTeX source includes; the HTML and the Typst include the figures in the image format of the report;
-- the tables and records of the fit: `report.txt`, `parameters.json`, `metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv` and `datapoints.tsv`, and, where the report has them, `optimization_result.json` (with `optimization_result.tsv`), `fisher.json` and `identifiability.json` (each with its TSV).
-
-The methods are written from the fit, not from a template of one kind of fit: only what the fit used appears. The parameters with their descriptions and the data per kind, the objective function with its residuals, weights and loss function, the optimizer with its options (least squares or differential evolution, the number of starts and how they were drawn, the tolerances of the integrator), the metrics, the identifiability analysis (profile likelihood or Fisher information, whichever was done) and the provenance each have their paragraphs, and a fit without an identifiability analysis has no such section. A value of a setting the methods have no text for raises `UnsupportedSetting` (a `ValueError`) instead of producing a text which does not say what the fit did.
-
-The results are tables and figures of the best parameter set of the report:
-
-- the parameters with the columns Parameter, Description, Value [CI], Unit, Bounds and Identifiable; the confidence interval is that of the profile likelihood where there is one and the Wald interval of the Fisher information otherwise, at the confidence level of the analysis (the identifiability settings or the alpha of the Fisher information), not a fixed one, which the header states (`Value [95% CI]`); without an interval for any parameter the column is `Value`; values, bounds and intervals are in the units of the fit parameters, the column Unit;
-- the data of the fit per experiment and kind (training, validation, outliers) and the metrics of the fit;
-- the provenance of the fit (versions, seed, git revision), as far as the result recorded it; a result without provenance says that it was not recorded. The table of the SHA-256 checksums of the models and data files is in the provenance of the methods, the provenance of the results refers to it;
-- the figures of the optimization runs, the goodness of fit, the Bland-Altman plot and the profiles, where their files were written (the tab "Fit mappings" has the per-mapping figures).
-
-The references of the document are those it cites. `sbmlsim` ships the entries and the style in `src/sbmlsim/resources/references.bib` and `references.csl`, see [References](references.md); the `references.bib` next to a report holds the cited entries only. The software is cited with the version the fit ran with (sbmlsim, libRoadRunner, SciPy and NumPy are cited with the versions of the provenance; Python is stated with its version but has no reference), the methods with their publications, e.g. the latin hypercube sampling of the start values of a fit. To cite a fit, cite the `sbmlsim` release as described in [Home](index.md#how-to-cite) and the references of its report; the report names the fit by its id, so the id with the commit of the models is what reproduces it.
-
-The PDF needs no LaTeX installation: the python package `typst` compiles `report.typ`. The LaTeX files are offered as source for a manuscript, `sbmlsim` does not compile them. A report which Typst cannot compile does not fail the fit: the error is logged and stated in `index.html`, `report.typ` is kept and every other file is written.
-
-A report from a stored fit reads the records next to `parameters.json`, i.e. `optimization_result.json`, `identifiability.json` and `fisher.json`. Their methods, provenance, runs and identifiability are in the report, and a record which is not there is left out, so a report made from `parameters.json` alone has no optimizer and no provenance. The settings of the report are those of the record, which the fit ran with; when the definition has changed since, a warning names the settings which differ:
-
-```bash
-python -m examples.hctz_fitting.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json
+```python
+report = FitReport(problem, settings, ParameterSets.from_json(Path("parameters.json")))
 ```
 
-This is `report_cli`, see [Running a fit from the command line](#running-a-fit-from-the-command-line); `--no-mapping-figures` makes it fast. The report is built by `report_from_records` (`sbmlsim.fit.cli`), which `report_cli` and `identifiability_cli` use and a caller uses for a report of its own: it reads the records of a folder, takes the settings of the record with the warning above, initializes the problem and returns the `FitReport`, which `create` writes:
+`FitReport.from_optimization_result(problem, fit)` is the shortcut for a finished fit: it takes the settings from the result and adds the figures of the runs. `with_model=True` adds the values of the model as a reference set, so the report shows what the fit changed. `report.create(output_dir, name)` writes a folder with:
 
-```py
-from sbmlsim.fit.cli import report_from_records
-from sbmlsim.fit.methods import ReportContext
+- `index.html`, an interactive page with the methods, the results and the figures of the fit, with search, filters by kind of data and sortable tables. It works offline and can be archived or sent as it is.
+- `report.pdf` with its sources `report.typ` and LaTeX (`report.tex` for `\input` in a manuscript, `report_standalone.tex`), and `references.bib`. Typst compiles the PDF, no LaTeX installation is needed; if it fails, the page says why and everything else is written.
+- the figures in `plots/`: the optimization runs (traces and waterfall), goodness of fit, Bland-Altman plot, and a figure per fit mapping with the data and the simulation, linear and logarithmic.
+- `report.txt`, `parameters.json`, the metrics as TSV (`metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv`, `datapoints.tsv`), and the records of the fit (`optimization_result.json`, `fisher.json`, `identifiability.json`) where the report has them.
 
-report = report_from_records(
-    FIT_DEFINITIONS["PK"],
-    Path("results/fit/PK_LSQ_ALL"),
-    opid="PK",
-    context=ReportContext(title="HCTZ: fit PK"),
-)
-report.create(output_dir=Path("results/report"), name="PK_LSQ_ALL")
+The methods describe only what the fit used: the parameters, the data per kind, the objective, the optimizer and its options, the identifiability analysis and the provenance. The references are those it cites, see [References](references.md).
+
+The goodness of fit and the Bland-Altman plot have one panel per kind of data, training, validation and outliers, with the points colored by study. The Bland-Altman plot shows the ratio of prediction and measurement against their mean, with the bias and the limits of agreement of the training data as fold factors. Both draw this band from the training data in every panel, so the validation data and the outliers are read against what the fit agrees to. Data points which are zero or negative have no ratio and are not drawn.
+
+`FitReport` takes further options:
+
+- `mapping_figures=False` leaves out the figures of the fit mappings, which are most of the time of a report.
+- `groupings=[Grouping.by("tissue")]` (from `sbmlsim.fit.evaluation`) adds figures and metrics per group of a column of the data points, e.g. a field of the metadata. `Grouping.of_subsets("route", Subset("oral", is_oral), ...)` groups by named filters.
+- `error_bars=True` draws the standard deviations of the data, `color_by="tissue"` colors the points by a column instead of the study.
+- `context=ReportContext(title=..., description=..., parameter_descriptions=...)` (from `sbmlsim.fit.methods`) sets the title of the report and the text about the fit.
+- `identifiability=` and `fisher=` add the results of the [identifiability](identifiability.md) analysis.
+
+To report a stored fit, `report_from_records(definition, directory, opid=...)` of `sbmlsim.fit.cli` reads the records of a report folder (`parameters.json`, `optimization_result.json`, `identifiability.json`, `fisher.json`) and returns the `FitReport`. It uses the settings the fit ran with and warns if the definition has changed since.
+
+## Metrics
+
+`FitMetrics(problem, parameter_set)` computes the metrics of a parameter set on an initialized problem, and `report.metrics(parameter_set)` does the same for a set of a report. The table of the data points uses the names of population pharmacokinetics: `DV` is the measured value, `IPRED` the prediction, `IRES` the residual `DV - IPRED`, `NRES` the residual divided by the mean of its curve, and `IWRES` the weighted residual of the cost.
+
+```python
+columns = ["mapping", "kind", "n", "NRMSE", "GMFE", "AFE", "within_2fold"]
+print(report.metrics(fitted).mappings_df()[columns].round(2))
 ```
 
-`parameters` reports other parameter sets than the `parameters.json` of the folder, `records` passes records which the caller read already. `report_cli(context=...)` gives the report of the command line a `ReportContext`, or a callable which gets the subset, its definition and the records of the fit (`FitRecords`) and returns one, so a caller such as pkpdsim passes the context of its model, e.g. with what the provenance of the record states.
-
-`FitParameter.description` describes a parameter in the methods, e.g. `"first order absorption rate"`; without it the report uses the name of the parameter in the SBML model. `FitDefinition.description` says what the fit is for; nothing in sbmlsim feeds it into the report, a caller such as pkpdsim carries it into the `ReportContext`. What the report says beyond the fit is a `ReportContext` (`sbmlsim.fit.methods`), plain data which a caller such as pkpdsim provides to `FitReport(context=...)`: the `title` of the document, the `description` of the fit (the first sentence of the methods), `parameter_descriptions` by parameter id (preferred over `FitParameter.description`) and further `notes`. A report without a context uses the id of the fit as its title.
-
-```py
-from sbmlsim.fit.methods import ReportContext
-
-context = ReportContext(
-    title="Pharmacokinetics of HCTZ",
-    description="The fit estimates the absorption and the clearance of HCTZ.",
-    parameter_descriptions={"Ka_hctz": "absorption rate"},
-)
-report = FitReport(
-    problem=op, settings=settings, parameter_sets=parameter_sets, context=context
-)
+```text title="Output"
+           mapping        kind   n  NRMSE  GMFE   AFE  within_2fold
+0        fm_25_tab    training  11   0.15  1.29  0.98         90.91
+1  fm_25_tab_urine    training  10   0.14  1.09  1.07        100.00
+2        fm_50_tab  validation  11   0.16  1.30  0.93         90.91
+3  fm_50_tab_urine  validation  10   0.23  1.17  1.14        100.00
 ```
+
+- `MSE`, `RMSE` and `R2` are computed from the values as they are, so curves with large values dominate them. R² is `NaN` for fewer than two points.
+- `NRMSE` is the root mean square of `NRES`, so every curve counts the same whatever its magnitude.
+- `RMSE_w` is the root mean square of `IWRES`, i.e. what the fit minimizes: the cost of the training data is `0.5 * n * RMSE_w**2`.
+- `GMFE` (geometric mean fold error), `AFE` (average fold error, the bias: below 1 when the model predicts too low) and `within_2fold` are the usual criteria of pharmacokinetic predictions. `within_2fold` is the percentage of points within twofold of the data, `0.5 <= IPRED / DV <= 2`. Only points with a positive value and prediction count for them.
+- `within_1sd` and `within_2sd` are the percentages of points within one and two standard deviations of the data.
+- `AIC` and `BIC` compare models fitted to the same data; only their differences mean something.
+
+The functions of `sbmlsim.fit.metrics` also work on plain arrays, e.g. `within_fold(data, predictions, fold=2.0)` and `rmse(residuals)`. `summary_df()` has one row per kind of data, `mappings_df()` one per fit mapping and `observables_df()` one per observable, e.g. plasma and urine. There is no row over all data, which would pool the data the fit was fitted to with data it dropped. A report writes these tables as TSV.
 
 ## Identifiability
 
-Whether the data determines the fitted parameters is answered by the profile likelihood and the Fisher information, see [Identifiability](identifiability.md).
+A fit always returns numbers, but the data may not determine them. The profile likelihood and the Fisher information answer how well each parameter is determined, see [Identifiability](identifiability.md).
 
 ## Running a fit from the command line
 
-Creating the optimization problems, running the optimizations and reporting them is the same for every model, so it lives in `sbmlsim.fit.cli` and a model only defines its fits. A `FitDefinition` is what enters a fit: the fit mapping collections, the parameters which are adjusted, where the experiments and their data are, and the settings.
+Most of a fit is the same for every model, so `sbmlsim.fit.cli` provides it and a model only defines its fits. A `FitDefinition` is everything a fit needs: a function which returns the mapping collections, the parameters, the paths and the settings. `run_fit` builds the problem, runs it and records its provenance; with `output_dir` every run is written to `<output_dir>/<opid>/runs`:
 
 ```python
-from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.cli import FitDefinition, run_fit
+from sbmlsim.fit.result import OptimizationResult
+
+
+def urine_collections() -> dict[str, list[FitMappingCollection]]:
+    """Select the data of the fit."""
+    return selection.collections
+
 
 definition = FitDefinition(
-    mapping_collections=f_collections_pk,  # called when the fit runs
-    parameters=fit_parameters,
+    mapping_collections=urine_collections,
+    parameters=problem.parameters,
     base_path=HCTZ_PATH,
     data_path=DATA_PATH,
     settings=settings,
 )
-print(definition.problem(opid="hctz_pk"))
+fits = run_fit(definition, opid="hctz_urine", size=2, seed=1, output_dir=Path("fits"))
+
+recovered = OptimizationResult.from_directory(Path("fits/hctz_urine/runs"))
+print(recovered.size, "runs read back")
+provenance = recovered.provenance
+print("versions:", ", ".join(provenance.versions))
+print("checksums of", len(provenance.files), "files")
 ```
 
-`run_fit` builds the problems for a strategy and runs them: `OptimizationStrategy.ALL` fits all experiments together, i.e., one parameter set describes every experiment, `SINGLE` fits every experiment on its own, which gives the individual parameters of the metrics. It returns a `FitRun` per optimization, which carries the problem and the result and creates the report.
+```text title="Output"
+🚀 Optimization ────────────────────────────────────────────────────────────────
 
-`fit_cli` and `report_cli` are the command line tools around this. A model passes its definitions by name and gets the whole tool:
-
-```python
-from sbmlsim.fit.cli import fit_cli
-
-FIT_DEFINITIONS = {"PK": definition}
-
-
-def main() -> None:
-    fit_cli(FIT_DEFINITIONS)
-
-
-print(FIT_DEFINITIONS)
+🎛 Parameters (2) ───────────────────────────────────────────────────────────────
+parameter      start   lower   upper   unit
+───────────────────────────────────────────
+Ka_dis_hctz    -       0.01    10      1/hr
+KI__HCTZEX_k   -       1e-05   1       1/ml
+runs                2
+workers             1 (serial)
+  optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:00 ~ 0:00:00 total
+converged           2/2 runs
+best cost           1.0993
+optimizer time      0.4 s
+2 runs read back
+versions: python, sbmlsim, libroadrunner, scipy, numpy
+checksums of 10 files
 ```
 
-Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`. It is the id of the optimization problem, of its result and of the directory of its report, so everything a fit produces carries the same key and sorts by time. The output of a fit is a sequence of sections, each with its own icon: the fit with its strategy, algorithm and paths, the parameters which are optimized with their bounds and units, the settings, the data with the number of fit mappings per experiment and kind, the optimization with its progress, and the report. `sbmlsim.fit.display` renders them and is used on its own as well.
+The provenance records the arguments and seeds of the fit, the versions of python, sbmlsim, libroadrunner, SciPy and NumPy, the git revision of the model repository, and the SHA-256 checksums of the models and data files. It is stored in every run and in the result, and the report shows it. `run_fit(strategy=OptimizationStrategy.SINGLE)` fits every experiment on its own instead of all together. A `FitRun` creates its report with `report()` and its identifiability analyses with `fisher()` and `identifiability()`.
 
-The fit problems of the HCTZ model are in `examples/hctz_fitting/fitting/`: `mapping_collections.py` builds the subsets of the data, `parameters.py` holds the fit parameters and `fitting.py` is the definitions plus the four lines above:
+`fit_cli` and `report_cli` turn a dictionary of definitions into command line tools. `examples/hctz_fitting/fitting/fitting.py` defines the fits of the HCTZ model and calls `fit_cli`; `run_report.py` calls `report_cli`:
 
 ```bash
+# fit the PK data with 10 runs on 4 cores
 python -m examples.hctz_fitting.fitting.fitting --subset=PK --runs=10 --cores=4 \
     --seed=1234 --method=LSQ --strategy=ALL --name=PK_LSQ_ALL
-```
 
-`report.py` is `report_cli` on the same definitions. It creates a report from the `parameters.json` of a finished fit without optimizing again, and compares the parameters of several fits:
-
-```bash
-python -m examples.hctz_fitting.fitting.run_report results/fit/PK_LSQ_ALL/parameters.json
+# report a finished fit again, or compare the parameters of two fits
+python -m examples.hctz_fitting.fitting.run_report results/fit/<fit id>/parameters.json
 python -m examples.hctz_fitting.fitting.run_report run1/parameters.json run2/parameters.json
 ```
 
+Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`, which names its result and its report folder. Both tools take `--no-mapping-figures` for a fast report and `--group-by tissue` for the groupings of the report; `--help` lists all options.
+
 ## PEtab
 
-A fit is exchanged with the tools of the PEtab ecosystem as a PEtab v2 problem, which `sbmlsim.fit.petab_v2` writes and reads, see [PEtab](petab.md); a fit of a model with neural networks is a problem of PEtab SciML, see [PEtab SciML](petab_sciml.md). `sbmlsim.fit.petab_omex` packages a problem as a COMBINE archive.
+A fit can be exchanged with the tools of the PEtab ecosystem as a PEtab v2 problem, which `sbmlsim.fit.petab_v2` writes and reads, see [PEtab](petab.md). A fit with neural networks is a problem of [PEtab SciML](petab_sciml.md). `sbmlsim.fit.petab_omex` packages a problem as a COMBINE archive.

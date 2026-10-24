@@ -200,7 +200,8 @@ def _curve_plot(with_error: bool) -> Plot:
     plot = Plot(
         sid="p",
         xaxis=Axis("time", unit="second"),
-        yaxis=Axis("X", unit="dimensionless"),
+        # the concentration of X in the repressilator, items per femtolitre
+        yaxis=Axis("X", unit="item/fl"),
     )
     plot.curves.append(
         Curve(
@@ -276,7 +277,7 @@ def test_a_bound_of_a_log_axis_keeps_the_other_limit_of_the_log_scale(
 
     def plot_of(bound: float | None) -> Plot:
         plot = _curve_plot(with_error=False)
-        unit = "second" if axis == "x" else "dimensionless"
+        unit = "second" if axis == "x" else "item/fl"
         log = Axis("v", unit=unit, scale="log", min=bound)
         if axis == "x":
             plot.xaxis = log
@@ -413,6 +414,66 @@ def test_the_gap_below_the_title_of_the_figure_does_not_grow_with_its_height() -
     gaps = [gap(rows) for rows in (1, 2, 6)]
     assert max(gaps) - min(gaps) < 0.02, gaps
     assert max(gaps) < 0.3, gaps
+
+
+def _gap_below_the_title(titled: bool, second_row: bool = False) -> float:
+    """Get the gap between the title of a figure and its plots below it, in inches.
+
+    The plots of the first row have a title if `titled`, the plots of a
+    second row, if any, always have one.
+    """
+    rows = 2 if second_row else 1
+    figure = Figure(
+        experiment=None,
+        sid="fig",
+        name="Title of the figure",
+        num_rows=rows,
+        num_cols=2,
+        subplots=[
+            SubPlot(
+                plot=Plot(
+                    sid=f"p{row}{col}",
+                    name=f"Plot {row}{col}" if titled or row > 1 else None,
+                    xaxis=Axis("time", unit="s"),
+                    yaxis=Axis("C", unit="mM"),
+                ),
+                row=row,
+                col=col,
+            )
+            for row in range(1, rows + 1)
+            for col in (1, 2)
+        ],
+    )
+    mpl_figure = MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
+    renderer = FigureCanvasAgg(mpl_figure).get_renderer()
+    title = next(
+        text
+        for text in mpl_figure.findobj(Text)
+        if text.get_text() == mpl_figure.get_suptitle()
+    ).get_window_extent(renderer)
+    top = max(
+        box.y1
+        for ax in mpl_figure.axes
+        if (spec := ax.get_subplotspec()) is not None and spec.rowspan.start == 0
+        if (box := ax.get_tightbbox(renderer)) is not None
+    )
+    assert top <= title.y0
+    return (title.y0 - top) / mpl_figure.dpi
+
+
+def test_a_figure_without_titles_of_plots_has_no_band_for_them() -> None:
+    """The plots begin right below the title of the figure when they have no title.
+
+    The band below the title of the figure reserved the room of the titles of
+    the plots also for plots without one, an empty band.
+    """
+    titled = _gap_below_the_title(titled=True)
+    untitled = _gap_below_the_title(titled=False)
+    assert untitled == pytest.approx(titled, abs=0.05)
+    # the titles of the plots of a later row are in the gap between the rows
+    assert _gap_below_the_title(titled=False, second_row=True) == pytest.approx(
+        untitled, abs=0.01
+    )
 
 
 def _margins(figure: Figure) -> tuple[float, float, float, float]:

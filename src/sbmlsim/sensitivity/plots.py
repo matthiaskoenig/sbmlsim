@@ -38,6 +38,7 @@ from sbmlsim.sensitivity.result import (
     SensitivityResult,
     at_one_time,
 )
+from sbmlsim.units import unit_label
 
 SIGNED_INDICES = ("raw", "normalized", "mu")
 """The indices which have a sign, drawn on a diverging color map around 0."""
@@ -533,19 +534,6 @@ def _check_indices(
         )
 
 
-def _label(name: str, unit: str | None) -> str:
-    """Get an axis label with the unit if one is known.
-
-    Args:
-        name: the name.
-        unit: the unit, `None`, `""` or `dimensionless` for none.
-
-    Returns:
-        The label, e.g. `mu_star [mM]`.
-    """
-    return f"{name} [{unit}]" if unit and unit != "dimensionless" else name
-
-
 def plot_heatmap(
     result: SensitivityResult,
     index: str,
@@ -636,7 +624,7 @@ def plot_heatmap(
     unit = next(iter(units)) if len(units) == 1 else None
     return _heatmap(
         df,
-        label=_label(index, unit),
+        label=unit_label(index, unit),
         cutoff=cutoff,
         cluster_rows=cluster_rows,
         title=title,
@@ -727,8 +715,8 @@ def plot_indices(
             va="bottom",
             color=INTERVAL_COLOR,
         )
-    ax.set_xlabel("Parameter")
-    ax.set_ylabel(INDEX_NAMES.get(result.method, "Sensitivity index"))
+    ax.set_xlabel("parameter")
+    ax.set_ylabel(INDEX_NAMES.get(result.method, "sensitivity index"))
     ax.set_title(title or observable)
     ax.grid(True, axis="y")
     ax.set_axisbelow(True)
@@ -830,8 +818,8 @@ def plot_morris(
     ax.set_xlim(left=0.0)
     ax.set_ylim(bottom=0.0)
     ax.ticklabel_format(style="sci", scilimits=(-3, 4), axis="both", useMathText=True)
-    ax.set_xlabel(_label("mu_star", result.units.get(f"{observable}.mu_star")))
-    ax.set_ylabel(_label("sigma", result.units.get(f"{observable}.sigma")))
+    ax.set_xlabel(unit_label("mu_star", result.units.get(f"{observable}.mu_star")))
+    ax.set_ylabel(unit_label("sigma", result.units.get(f"{observable}.sigma")))
     ax.set_title(title or observable)
     ax.grid(True)
     ax.set_axisbelow(True)
