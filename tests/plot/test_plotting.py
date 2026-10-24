@@ -57,6 +57,11 @@ axis_label_data = [
     # `dimensionless` is written as `-`
     ("x", "dimensionless", "x [-]"),
     (None, "dimensionless", "[-]"),
+    # the short form of pint, as `label_axes` writes it
+    ("time", "hr", "time [h]"),
+    ("C", "nanogram/milliliter", "C [ng/ml]"),
+    # a unit pint does not read is written as given
+    ("rate", "mg_per_min", "rate [mg_per_min]"),
 ]
 
 

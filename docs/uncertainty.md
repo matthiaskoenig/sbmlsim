@@ -138,24 +138,17 @@ The inhibitor triples the mean AUC (in ng/ml × min). The PK parameters are comp
 
 `contributions` ranks the uncertain values by their first-order index, the share of the variance of the output each one explains, estimated from the same draws (Plischke et al. 2013). The index of a correlated value includes the effect of the values it is correlated with, which is why the indices of `LI__MIDOH_Vmax` and `BW` add up to more than 1.
 
-`res.results` holds the result of each scenario, a scan over the dimension `draw`. The quantiles of its summary over the draws are bands of the prediction:
+`res.results` holds the result of each scenario, a scan over the dimension `draw`. The quantiles of its summary over the draws are bands of the prediction, which `plot_bands` draws as a median line and a band from the 5 % to the 95 % quantile, in the units you ask for:
 
 ```python
 import matplotlib.pyplot as plt
 
-from sbmlsim.plot import label_axes
+from sbmlsim.sensitivity.uncertainty import plot_bands
 
 fig, ax = plt.subplots(figsize=(7, 3.5))
 for scenario, result in res.results.items():
     bands = result.summary(quantiles=[0.05, 0.5, 0.95])
-    hours = bands.q["time"].to("hr")
-    low, median, high = (
-        bands.sel(statistic=s).q["mid"] for s in ("q0.05", "q0.5", "q0.95")
-    )
-    ax.plot(hours, median, label=scenario)
-    ax.fill_between(hours, low, high, alpha=0.3)
-label_axes(ax, "time", "midazolam plasma")
-ax.legend()
+    plot_bands(bands, "mid", ax=ax, label=scenario, time_unit="hr", name="midazolam")
 ```
 
 ![Output figure](images/outputs/uncertainty-05.png)

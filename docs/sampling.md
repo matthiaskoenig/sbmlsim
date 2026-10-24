@@ -9,11 +9,9 @@ The examples use the HCTZ model of the [tutorial](tutorial.md): a 25 mg tablet o
 `sampling.lhs` draws a Latin hypercube: `n` points that cover the range of every distribution evenly. The example draws 200 values of the dissolution rate of the tablet and of the renal excretion rate, each with a coefficient of variation of 30 % around its value in the model:
 
 ```python
-import matplotlib.pyplot as plt
 import numpy as np
 
 from sbmlsim import Q
-from sbmlsim.plot import label_axes
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Change, Formula, Scan, Simulation, sampling
 from sbmlsim.simulation.sampling import LogNormal
@@ -47,7 +45,7 @@ Dimension(lhs[200], values=['Ka_dis_hctz', 'KI__HCTZEX_k'], design=lhs)
 The draws are a dimension named `lhs`. Put them into a `Scan` and run it. `time=` puts the timecourses of all draws on one grid of times, every 15 minutes, so the summary over `lhs` has the quantiles at every time of the grid. The median with a band from the 5 % to the 95 % quantile shows the spread:
 
 ```python
-from sbmlsim.sensitivity.uncertainty import plot_distribution
+from sbmlsim.sensitivity.uncertainty import plot_bands, plot_distribution
 
 observables = [
     Formula("cp", "[Cve_hctz] * Mr_hctz", unit="ng/ml"),
@@ -58,18 +56,7 @@ res = simulator.run(model, Scan(dose, [draws]), observables, time=grid)
 bands = res.summary("lhs", quantiles=[0.05, 0.5, 0.95])
 
 
-def plot_band(ax, bands, label=None):
-    low, median, high = (
-        bands.sel(statistic=s).q["cp"] for s in ("q0.05", "q0.5", "q0.95")
-    )
-    hours = bands.q["time"].to("hr")
-    ax.plot(hours, median, label=label)
-    ax.fill_between(hours, low, high, alpha=0.3)
-
-
-fig, ax = plt.subplots(figsize=(7, 3.5))
-plot_band(ax, bands)
-label_axes(ax, "time", "HCTZ plasma")
+fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 ```
 
 ![Output figure](images/outputs/sampling-02.png)
@@ -110,16 +97,12 @@ doses = Dimension(
 )
 res = simulator.run(model, Scan(dose, [doses, draws]), observables, time=grid)
 bands = res.summary("lhs", quantiles=[0.05, 0.5, 0.95])
-fig, ax = plt.subplots(figsize=(7, 3.5))
-for label in doses.labels:
-    plot_band(ax, bands.sel(dose=label), label=label)
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend()
+fig = plot_bands(bands, "cp", time_unit="hr", name="HCTZ plasma")
 ```
 
 ![Output figure](images/outputs/sampling-04.png)
 
-`plot_bands(bands, "cp")` of `sbmlsim.sensitivity.uncertainty` draws these bands in one call, with the time in the unit of the model.
+`plot_bands` draws one band per label of the other dimensions of the summary, here the doses. It draws quantities, so `time_unit` and `unit` choose the units of the axes, and a band shares an axis with lines plotted from `res.q[...]`.
 
 ## Distributions
 

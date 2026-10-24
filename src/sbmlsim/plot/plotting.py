@@ -28,6 +28,7 @@ import numpy as np
 from matplotlib.colors import to_hex, to_rgba
 
 from sbmlsim.data import Data
+from sbmlsim.units import short_unit
 
 if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
@@ -833,14 +834,17 @@ class Axis(BasePlotObject):
     def _derived_name(self) -> str:
         """Get the axis label which the label and the unit form.
 
-        A unit of `dimensionless` is written as `-`, and a part which is not
-        given is left out rather than written as `None`.
+        The unit is written in the short form of pint, as the labels of
+        `sbmlsim.plot.label_axes`, e.g. `h` for `hr` and `ng/ml`; a unit pint
+        does not read, e.g. a unit id of a model, is written as given. A unit
+        of `dimensionless` is written as `-`, and a part which is not given is
+        left out rather than written as `None`.
         """
         if not self._label and not self._unit:
             return ""
         if not self._unit:
             return f"{self._label}"
-        unit = "-" if self._unit == "dimensionless" else self._unit
+        unit = short_unit(self._unit) or "-"
         if not self._label:
             return f"[{unit}]"
         return f"{self._label} [{unit}]"

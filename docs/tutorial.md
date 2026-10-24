@@ -406,17 +406,12 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 `contributions` ranks the uncertain values by how much of the spread of the output each explains. The 5 % and 95 % quantiles of the concentration over all draws form a band:
 
 ```python
+from sbmlsim.sensitivity.uncertainty import plot_bands
+
 fig, ax = plt.subplots(figsize=(7, 3.5))
 for scenario, result in uncertainty.results.items():
     bands = result.summary(quantiles=[0.05, 0.5, 0.95])
-    hours = bands.q["time"].to("hr")
-    low, median, high = (
-        bands.sel(statistic=s).q["cp"] for s in ("q0.05", "q0.5", "q0.95")
-    )
-    ax.plot(hours, median, label=scenario)
-    ax.fill_between(hours, low, high, alpha=0.3)
-label_axes(ax, "time", "HCTZ plasma")
-ax.legend()
+    plot_bands(bands, "cp", ax=ax, label=scenario, time_unit="hr", name="HCTZ plasma")
 ```
 
 ![Output figure](images/outputs/tutorial-15.png)

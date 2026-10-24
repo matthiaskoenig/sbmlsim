@@ -162,3 +162,35 @@ def test_plot_distribution_labels_a_result_per_call(
         volumes["small"], "cmax", dim="random", kind="box", label="small"
     ).axes
     assert [t.get_text() for t in ax.get_xticklabels()] == ["small"]
+
+
+def test_plot_bands_draws_quantities_in_the_units_of_the_axes(
+    volumes: dict[str, ScanResult],
+) -> None:
+    """A band converts into the units of an axis, its own or the ones asked for."""
+    summary = volumes["small"].summary("random", quantiles=[0.05, 0.5, 0.95])
+    figure = plot_bands(summary, "cp", time_unit="min", unit="µg/l", name="C")
+    (ax,) = figure.axes
+    # pint writes micro as the greek letter mu
+    assert (ax.get_xlabel(), ax.get_ylabel()) == ("time [min]", "C [\u03bcg/l]")
+    hours = summary.q["time"].to("hr").magnitude
+    np.testing.assert_allclose(np.asarray(ax.lines[0].get_xydata())[:, 0], 60 * hours)
+    # a second band on the axes is converted into their units
+    other = volumes["large"].summary("random", quantiles=[0.05, 0.5, 0.95])
+    plot_bands(other, "cp", ax=ax, label="large")
+    np.testing.assert_allclose(
+        np.asarray(ax.lines[1].get_xydata())[:, 0], 60 * hours, rtol=1e-12
+    )
+    assert ax.get_ylabel() == "cp [\u03bcg/l]"
+
+
+def test_plot_distribution_converts_into_a_unit(
+    volumes: dict[str, ScanResult],
+) -> None:
+    """The values of a distribution are drawn in the unit asked for."""
+    figure = plot_distribution(volumes["small"], "cmax", dim="random", unit="µg/ml")
+    ax = figure.axes[0]
+    assert ax.get_xlabel() == "cmax [\u03bcg/ml]"
+    cmax = volumes["small"].q["cmax"].to("µg/ml").magnitude
+    edges = [p.get_x() for p in ax.patches if isinstance(p, Rectangle)]
+    assert min(edges) == pytest.approx(np.nanmin(cmax))

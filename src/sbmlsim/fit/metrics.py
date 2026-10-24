@@ -27,7 +27,10 @@ the `ObservationKind` of the mapping (a timecourse, a value per simulation or
 values over a dimension), `DV_SD`, the standard deviation of the measured value
 (every error of a problem is one, `NaN` without one, also where the weights
 fill a missing error, see `OptimizationProblem.y_errors_measured`), `N`, the count of the
-data point, the number of subjects (`NaN` without one), and one column per
+data point, the number of subjects (`NaN` without one), `x_unit`, the unit of `x`
+(empty for a value per simulation, which has no `x`), `unit`, the unit of `DV`,
+the predictions, the residuals `RES` and `IRES` and `DV_SD`, both in the units of
+the model which a fit compares in and which pint reads, and one column per
 field of the metadata of the mappings, `MappingMetaData.to_dict`, empty for a
 mapping which does not have the field.
 
@@ -84,6 +87,8 @@ POINT_COLUMNS: tuple[str, ...] = (
     "observation",
     "DV_SD",
     "N",
+    "x_unit",
+    "unit",
 )
 
 
@@ -483,8 +488,8 @@ class FitMetrics:
         Returns:
             DataFrame with one row per data point and the columns `experiment`,
             `mapping`, `kind`, `x`, `DV`, `PRED`, `IPRED`, `RES`, `IRES`,
-            `NRES`, `IWRES`, `observable`, `observation`, `DV_SD`, `N` and the
-            fields of the metadata, see the module.
+            `NRES`, `IWRES`, `observable`, `observation`, `DV_SD`, `N`,
+            `x_unit`, `unit` and the fields of the metadata, see the module.
         """
         res_data = self._residual_data(self.parameter_set)
         ipred_all = [np.asarray(y, dtype=float) for y in res_data["y_obsip"]]
@@ -524,6 +529,8 @@ class FitMetrics:
             # the residual of the cost, with the sign of `data - prediction`
             iwres = -np.asarray(res_data["residuals_weighted"][k], dtype=float)
             dv_mean = float(np.mean(dv))
+            x_unit = str(self.problem.x_units[k] or "")
+            y_unit = str(self.problem.y_units[k] or "")
             for ix in range(dv.size):
                 ires = dv[ix] - ipred[ix]
                 data.append(
@@ -543,6 +550,8 @@ class FitMetrics:
                         "observation": self.problem.observation_kinds[k].value,
                         "DV_SD": sd[ix],
                         "N": n[ix],
+                        "x_unit": x_unit,
+                        "unit": y_unit,
                         **facets,
                     }
                 )

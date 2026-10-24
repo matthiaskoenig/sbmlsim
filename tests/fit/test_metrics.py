@@ -24,6 +24,7 @@ from sbmlsim.fit.metrics import (
 )
 from sbmlsim.fit.objects import MappingMetaData
 from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
+from sbmlsim.units import ureg
 
 
 def test_metrics_report_simulates_once_and_tracks_changed_parameters(
@@ -346,8 +347,15 @@ def test_the_points_carry_the_observable_the_error_and_the_metadata(
     dp = FitMetrics(op_hctz_pk, op_hctz_pk.parameter_set_model()).datapoints_df()
     columns = list(dp.columns)
     assert columns[:11] == _POINT_COLUMNS
-    assert columns[11:15] == ["observable", "observation", "DV_SD", "N"]
-    assert "tissue" in columns[15:]
+    assert columns[11:17] == [
+        "observable",
+        "observation",
+        "DV_SD",
+        "N",
+        "x_unit",
+        "unit",
+    ]
+    assert "tissue" in columns[17:]
     assert set(dp.observation) <= {kind.value for kind in ObservationKind}
     for k, mapping in enumerate(op_hctz_pk.mapping_keys):
         rows = dp[
@@ -363,6 +371,10 @@ def test_the_points_carry_the_observable_the_error_and_the_metadata(
             assert measured is not None
             np.testing.assert_allclose(rows.DV_SD, np.where(measured, errors, np.nan))
         assert set(rows.tissue) == {op_hctz_pk.mapping_metadata[k]["tissue"]}
+        # the units of the model, which pint reads
+        assert set(rows.unit) == {op_hctz_pk.y_units[k]}
+        assert set(rows.x_unit) == {op_hctz_pk.x_units[k] or ""}
+        ureg.Unit(rows.unit.iloc[0])
 
 
 def test_mappings_without_metadata_have_empty_metadata_columns(
