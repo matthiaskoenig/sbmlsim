@@ -1,5 +1,7 @@
 """The PK analysis of a chunk with pkpdutils."""
 
+from typing import Any
+
 import numpy as np
 import pkpdutils as pk
 import pytest
@@ -7,6 +9,7 @@ import pytest
 from sbmlsim import Q
 from sbmlsim.simulation import PK, Change, Simulation, SteadyState
 from sbmlsim.simulator import Simulator
+from sbmlsim.simulator import pk as pk_module
 from sbmlsim.simulator.pk import DoseSpec, PKNode, compile_pk, doses_of, evaluate_pk
 from sbmlsim.simulator.plan import Plan
 from sbmlsim.units import ureg
@@ -326,3 +329,66 @@ def test_the_state_before_a_dose_is_left_out(plans: dict[str, Plan]) -> None:
         )
     )
     assert float(direct.ds["c0"].values[0]) == pytest.approx(values[at])
+
+
+def test_points_of_similar_lengths_are_analysed_together(
+    plans: dict[str, Plan], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The steps of the integrator give every point its own number of time points.
+
+    A call of pkpdutils per point was a third of a scan of midazolam with its
+    steps; the points are padded to the next power of two, which depends on a
+    point alone, and analysed together.
+    """
+    node, _ = _compile(PK("c", "[C]", dose="PODOSE", route="oral"), plans["single"])
+    lengths = (97, 90, 80, 70)
+    time = np.full((len(lengths), 97), np.nan)
+    for row, n in enumerate(lengths):
+        time[row, :n] = np.linspace(0.0, 48.0 * n / 97, n)
+    values = concentration(np.where(np.isfinite(time), time, 0.0), 100.0)
+    values[~np.isfinite(time)] = np.nan
+    calls: list[int] = []
+    analyse = pk_module._analyse
+
+    def counted(**kwargs: Any) -> Any:
+        calls.append(kwargs["time"].shape[0])
+        return analyse(**kwargs)
+
+    monkeypatch.setattr(pk_module, "_analyse", counted)
+    out = evaluate_pk(node, time, values, [plans["single"]] * len(lengths))
+
+    assert calls == [len(lengths)]
+    for row, n in enumerate(lengths):
+        alone = _direct(
+            time[row : row + 1, :n],
+            values[row : row + 1, :n],
+            np.array([[0.0]]),
+            np.array([[100.0]]),
+        )
+        for parameter in ("cmax", "tmax", "auc_last", "auc_inf_obs", "thalf"):
+            np.testing.assert_allclose(
+                out[f"c.{parameter}"][row, 0],
+                float(alone.ds[parameter].values[0]),
+                rtol=1e-12,
+            )
+
+
+def test_the_points_of_a_manual_terminal_phase_count_from_the_last_time_point(
+    plans: dict[str, Plan],
+) -> None:
+    """pkpdutils indexes the given points in the columns of a row.
+
+    A negative index counts from the end of the row, which the padding would
+    move into the `NaN` behind the last time point.
+    """
+    options = pk.NCAOptions(
+        terminal=pk.TerminalPhase(method="manual", points=(-3, -2, -1))
+    )
+    node, _ = _compile(
+        PK("c", "[C]", dose="PODOSE", route="oral", options=options), plans["single"]
+    )
+    t = np.linspace(0.0, 48.0, 20)
+    values = concentration(t, 100.0)
+    out = evaluate_pk(node, t[None, :], values[None, :], [plans["single"]])
+
+    assert out["c.lambda_z"][0, 0] == pytest.approx(KE, rel=1e-6)
