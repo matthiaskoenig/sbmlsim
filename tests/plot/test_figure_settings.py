@@ -116,7 +116,8 @@ def _legend_fontsize(result: ExperimentResult, settings: Any = None) -> float:
     """Get the font size of the legend of the figure of a run experiment."""
     mpl_figures = result.experiment.create_mpl_figures(figure_settings=settings)
     legend = mpl_figures["fig"].axes[0].get_legend()
-    return legend.get_texts()[0].get_fontsize()
+    assert legend is not None
+    return float(legend.get_texts()[0].get_fontsize())
 
 
 def _pixels(path: Path) -> tuple[int, int]:
@@ -521,7 +522,7 @@ class OldSignature(Plain):
     """An experiment whose override of `run` has no `figure_settings`."""
 
     @override
-    def run(
+    def run(  # ty: ignore[invalid-method-override]
         self,
         simulator: Simulator | None = None,
         output_path: Path | None = None,

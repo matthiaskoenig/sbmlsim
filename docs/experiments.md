@@ -103,7 +103,26 @@ results/Patel1984/Patel1984_fig_cp.svg
 results/Patel1984/datasets/Patel1984_hctz25.tsv
 ```
 
-The run wrote the figure as SVG, the dataset as TSV and the definition of the experiment as JSON. The line at the top separates the experiments of a run in the terminal.
+The run wrote the figure as SVG, the dataset as TSV and the definition of the experiment as JSON.
+
+In a terminal or a notebook the run also shows its progress: a bar over all experiments and a row for each experiment that is running, with what it is doing (its simulations, drawing or writing its figures, ...) and how far it got. At the end it prints how long each experiment took in each phase:
+
+```text
+⏱ Timings in seconds ───────────────────────────────────────────────────────────────────────────────
+experiment      models  initialize  simulations  data  figures  outputs  total
+────────────────────────────────────────────────────────────────────────────────────────────────
+✓ Beermann1976    0.22        0.05         0.04  0.02     0.55     0.01   0.89  ━━━━━━━━━━━━
+✓ Patel1984       0.23        0.09         0.21  0.03     0.63     0.02   1.20  ━━━━━━━━━━━━━━━━
+✓ Weir1998        0.22        0.03         0.05  0.01     0.26     0.01   0.57  ━━━━━━━━
+────────────────────────────────────────────────────────────────────────────────────────────────
+total             0.67        0.17         0.30  0.05     1.43     0.04   2.66  ━━━━━━━━━━━━━━━━
+share              25%          6%          11%    2%      54%       1%   100%
+3 experiments, initialized in 0.36 s and run in 2.42 s on 3 workers
+```
+
+The phases are loading the models, initializing the experiment (its definitions and their checks), the simulations, evaluating the data of the fit mappings, the figures (drawing them and writing their files) and the outputs (datasets, results and JSON). A column `other` appears when time went elsewhere, for example into code that a subclass runs in its own `run`. In the terminal the bar of each row shows the phases in the colours of the column headers, so you see at a glance where the time goes; here the figures take more than half of it. The same numbers are in `ExperimentResult.timings`.
+
+The progress and the timings are shown only when the output goes to a terminal or a notebook, not when it is redirected into a file. `run_experiments(progress=True)` always shows them, `progress=False` prints nothing at all.
 
 To look at a figure in a notebook, ask the experiment for its matplotlib figures:
 
@@ -166,6 +185,8 @@ A worker imports the experiment classes again, which has two consequences:
 - The classes must be importable from a module. Classes defined in a function or in the main script, as in a notebook, run in the calling process. The same holds for a run with `keep_results=True`, with shown figures or with a unit registry of its own.
 
 If the simulator runs its scans in a pool (`Simulator(n_workers=4)`) and you do not set `n_workers`, the experiments run one after another and their scans use the pool. If a worker crashes, its experiment runs again in the calling process.
+
+The workers report what they are doing to the progress display, so its rows are the experiments that are running in the workers. The models and the initialization in the timings are then the ones of the workers, which load the models again; the line below the table gives the time the runner took to initialize the experiments before the run.
 
 ## When something fails
 

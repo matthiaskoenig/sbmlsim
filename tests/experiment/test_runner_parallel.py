@@ -128,7 +128,7 @@ def test_the_experiments_of_a_pool_give_the_results_of_a_serial_run(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """The experiments run in workers, with the settings of matplotlib of the run."""
-    with caplog.at_level(logging.INFO):
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.experiment.runner"):
         pooled = _run(tmp_path / "pooled", 3, CLASSES)
     serial = _run(tmp_path / "serial", 1, CLASSES)
 

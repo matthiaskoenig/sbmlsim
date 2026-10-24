@@ -16,8 +16,16 @@ writes its outputs; the parent keeps its own initialized experiments, which
 the report is created from, and logs the messages of the workers in the order
 of the experiments. A run is serial when an experiment cannot be sent to a
 worker, see `ExperimentRunner._serial_reason`.
+
+A run shows its progress on the console and ends with a table of the seconds
+every experiment took in every phase, see `sbmlsim.experiment.progress`: the
+phases are measured where they run, in a worker too, and the result of every
+experiment carries them (`ExperimentResult.timings`). The workers of a run
+with progress send what their experiments do through a queue, which a thread
+of the parent forwards to the display.
 """
 
+import contextlib
 import copy
 import dataclasses
 import inspect
@@ -25,22 +33,37 @@ import logging
 import math
 import os
 import pickle
+import queue
+import threading
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
+from multiprocessing.queues import Queue
 from pathlib import Path
 from typing import Any, Literal, cast, override
 
 import matplotlib
 
 from sbmlsim import parallel
+from sbmlsim.experiment import progress
 from sbmlsim.experiment.experiment import (
     DATASETS_DIR,
     STATIC_FORMAT,
     ExperimentResult,
     ExperimentRunError,
     SimulationExperiment,
+)
+from sbmlsim.experiment.progress import (
+    Event,
+    Listener,
+    Phase,
+    PhaseClock,
+    RunProgress,
+    reporting,
+    show_progress,
+    show_timings,
+    total_seconds,
 )
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.model.model_roadrunner import (
@@ -54,7 +77,6 @@ from sbmlsim.simulation import Scan
 from sbmlsim.simulator import Simulator
 from sbmlsim.units import UnitRegistry
 from sbmlsim.units import ureg as package_ureg
-from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +208,9 @@ class ExperimentRunner:
         # the settings every experiment was created with, which a worker
         # creates it with again
         self._settings: dict[str, dict[str, Any]] = {}
+        # the seconds of the loading of the models and of the initialization
+        # of every experiment, see `progress.Phase`
+        self._timings: dict[str, dict[str, float]] = {}
 
         classes: list[type[SimulationExperiment]] = (
             list(experiment_classes)
@@ -231,6 +256,7 @@ class ExperimentRunner:
                 )
 
             logger.debug("Initialize SimulationExperiment: %s", exp_class.__name__)
+            created = time.perf_counter()
             experiment: SimulationExperiment = exp_class(
                 base_path=self.base_path,
                 data_path=self.data_path,
@@ -239,6 +265,9 @@ class ExperimentRunner:
             )
 
             sid = experiment.sid
+            clock = PhaseClock(sid)
+            clock.add(Phase.INITIALIZE, time.perf_counter() - created)
+            self._timings[sid] = clock.timings
             if sid not in self._order:
                 self._order.append(sid)
             self._settings[sid] = kwargs
@@ -246,7 +275,7 @@ class ExperimentRunner:
             self.experiments.pop(sid, None)
             self.failed.pop(sid, None)
             try:
-                self._initialize_experiment(experiment)
+                self._initialize_experiment(experiment, clock)
             except Exception as err:
                 if self.on_error == "raise":
                     raise
@@ -257,38 +286,52 @@ class ExperimentRunner:
                     experiment=experiment,
                     output_path=None,
                     error=f"{type(err).__name__}: {err}",
+                    timings=clock.timings,
                 )
                 continue
             self.experiments[sid] = experiment
 
-    def _initialize_experiment(self, experiment: SimulationExperiment) -> None:
+    def _initialize_experiment(
+        self, experiment: SimulationExperiment, clock: PhaseClock
+    ) -> None:
         """Resolve the models of an experiment and initialize it.
 
         The models are loaded once per runner, see `model_key`.
+
+        Args:
+            experiment: the experiment, created from its class.
+            clock: measures the loading of the models and the initialization.
         """
-        _models = {}
+        keys: dict[str, ModelKey] = {}
+        # the models which are not loaded yet
+        new: dict[ModelKey, AbstractModel] = {}
         for model_id, source in experiment.models().items():
             abstract_model = (
                 source
                 if isinstance(source, AbstractModel)
                 else AbstractModel(source=source)
             )
-            key = model_key(abstract_model)
+            key = keys[model_id] = model_key(abstract_model)
             if key not in self.models:
-                # not cached yet, cache the model for lookup
-                self.models[key] = RoadrunnerSBMLModel.from_abstract_model(
-                    abstract_model=abstract_model,
-                    ureg=self.ureg,
-                    jit_optimization=self.jit_optimization,
-                )
-            _models[model_id] = self.models[key]
+                new.setdefault(key, abstract_model)
+        if new:
+            with clock.phase(Phase.MODELS, "loading models", len(new)):
+                for key, abstract_model in new.items():
+                    self.models[key] = RoadrunnerSBMLModel.from_abstract_model(
+                        abstract_model=abstract_model,
+                        ureg=self.ureg,
+                        jit_optimization=self.jit_optimization,
+                    )
+                    progress.advance()
 
         # set resolved models in experiment
-        experiment._models = _models
+        experiment._models = {
+            model_id: self.models[key] for model_id, key in keys.items()
+        }
         # only after model loading the unit registry is filled
-        experiment.initialize()
+        with clock.phase(Phase.INITIALIZE, "initializing"):
+            experiment.initialize()
 
-    @timeit
     def run_experiments(
         self,
         output_path: Path,
@@ -300,8 +343,15 @@ class ExperimentRunner:
         raise_on_failure: bool = False,
         figure_settings: FigureSettings | Mapping[str, Any] | None = None,
         n_workers: int | None = None,
+        progress: bool | None = None,
     ) -> list[ExperimentResult]:
         """Run the experiments and write their outputs.
+
+        The run shows its progress on the console of the package, a bar over
+        the experiments and a row per running experiment with what it does,
+        and ends with a table of the seconds every experiment took in every
+        phase, see `sbmlsim.experiment.progress`. The seconds are in the
+        results as well, `ExperimentResult.timings`.
 
         Args:
             output_path: directory of the outputs, one directory per experiment.
@@ -332,6 +382,11 @@ class ExperimentRunner:
                 an experiment which cannot be pickled is serial, see the
                 module. The pool starts worker processes, a script which runs
                 it needs the guard `if __name__ == "__main__":`.
+            progress: show the progress and the timings on the console; `None`
+                shows them on a terminal and in a notebook and not when the
+                output is redirected, see `progress.show_progress`. `False`
+                prints nothing, the progress bars of the scans of the tasks
+                included.
 
         Returns:
             The results of the experiments, which the report is created from.
@@ -363,13 +418,47 @@ class ExperimentRunner:
             "figure_settings": settings,
         }
         jobs = self._jobs(output_path, formats, figure_formats, options)
-        workers = self._workers(n_workers, jobs, options)
-        executor = (
-            parallel.start_pool(workers, preload=_modules(jobs.values()))
-            if workers > 1
+        workers, reason = self._workers(n_workers, jobs, options)
+        started = time.perf_counter()
+        # the initialization of the experiments before this run, which the
+        # timings of a serial run include, see `_run_timings`
+        initialized = (
+            sum(total_seconds(t) for t in self._timings.values())
+            if self._timings
             else None
         )
-        try:
+        display = (
+            RunProgress(len(self._order), workers) if show_progress(progress) else None
+        )
+        # the workers of a run with progress report what they do through a
+        # queue, which a worker receives when it starts
+        events: Queue[Event] | None = (
+            parallel.process_context().Queue()
+            if display is not None and workers > 1
+            else None
+        )
+        exp_results: list[ExperimentResult] = []
+        with contextlib.ExitStack() as stack:
+            if display is not None:
+                # before the workers start, which takes a moment
+                display.start()
+                stack.callback(display.stop)
+                for sid in self.failed:
+                    display.finished(sid, failed=True)
+            executor = (
+                parallel.start_pool(
+                    workers,
+                    preload=_modules(jobs.values()),
+                    initializer=_set_events if events is not None else None,
+                    initargs=(events,) if events is not None else (),
+                )
+                if workers > 1
+                else None
+            )
+            if executor is not None:
+                stack.callback(parallel.stop, executor)
+            stack.enter_context(reporting(display))
+            stack.enter_context(_forwarded(events, display))
             # the most expensive experiments first, so that none of them
             # starts last and keeps the others waiting
             futures: dict[str, Future[_Outcome]] = (
@@ -382,7 +471,9 @@ class ExperimentRunner:
                 if executor is not None
                 else {}
             )
-            exp_results = []
+            if display is not None:
+                for sid, future in futures.items():
+                    future.add_done_callback(_on_done(display, sid))
             for sid in self._order:
                 if sid in self.failed:
                     # the definition raised, the experiment is reported, not run
@@ -392,11 +483,11 @@ class ExperimentRunner:
                         )
                     )
                     continue
-                logger.info("Running SimulationExperiment: '%s'", sid)
+                logger.debug("Running SimulationExperiment: '%s'", sid)
                 # ExperimentResult used to create report; an error of the
                 # experiment or of a figure is logged and recorded in it
                 outcome = self._outcome(futures.get(sid))
-                exp_results.append(
+                result = (
                     self._run_experiment(
                         sid,
                         output_path / sid,
@@ -407,9 +498,23 @@ class ExperimentRunner:
                     if outcome is None
                     else outcome.result(self.experiments[sid], output_path / sid)
                 )
-        finally:
-            if executor is not None:
-                parallel.stop(executor)
+                if display is not None:
+                    display.finished(sid, failed=result.failed)
+                exp_results.append(result)
+        # the initialization is in the timings of this run, not of the next
+        self._timings.clear()
+        if display is not None:
+            where = (
+                f"on {workers} workers"
+                if workers > 1
+                else "in this process" + (f" ({reason})" if reason else "")
+            )
+            show_timings(
+                exp_results,
+                initialized=initialized,
+                elapsed=time.perf_counter() - started,
+                where=where,
+            )
         self._log_summary(exp_results)
         if raise_on_failure and any(r.failed for r in exp_results):
             raise ExperimentRunError(exp_results)
@@ -446,26 +551,32 @@ class ExperimentRunner:
 
     def _workers(
         self, n_workers: int | None, jobs: dict[str, "_Job"], options: dict[str, Any]
-    ) -> int:
-        """Get the number of processes which run the experiments, see `run_experiments`."""
+    ) -> tuple[int, str | None]:
+        """Get the number of processes which run the experiments, see `run_experiments`.
+
+        Returns:
+            The number of processes, and why a run which asked for a pool, or
+            would get one by default, runs in this process, `None` otherwise;
+            the table of the timings shows it.
+        """
         if n_workers is None:
             if parallel.in_worker():
-                return 1
+                return 1, None
             n_workers = min(
                 os.process_cpu_count() or 1,
                 math.ceil(len(jobs) / EXPERIMENTS_PER_WORKER),
             )
             if n_workers > 1 and (reason := self._scan_pool()) is not None:
-                logger.info("The experiments run in this process: %s", reason)
-                return 1
+                logger.debug("The experiments run in this process: %s", reason)
+                return 1, reason
         n_workers = min(n_workers, len(jobs))
         if n_workers <= 1:
-            return 1
+            return 1, None
         reason = self._serial_reason(jobs, options)
         if reason is not None:
-            logger.info("The experiments run in this process: %s", reason)
-            return 1
-        return n_workers
+            logger.debug("The experiments run in this process: %s", reason)
+            return 1, reason
+        return n_workers, None
 
     def _scan_pool(self) -> str | None:
         """Get why the scans need the pool of the simulator, `None` if they do not.
@@ -598,6 +709,7 @@ class ExperimentRunner:
                     sid,
                 )
         started = time.time()
+        begin = time.perf_counter()
         try:
             result = experiment.run(**kwargs)
         except Exception as err:
@@ -615,7 +727,30 @@ class ExperimentRunner:
             )
         # the keys of a failing `figures_mpl()` are not known
         self._remove_unknown_figure_files(result, formats)
-        return result
+        return dataclasses.replace(
+            result,
+            timings=self._run_timings(sid, result.timings, time.perf_counter() - begin),
+        )
+
+    def _run_timings(
+        self, sid: str, timings: Mapping[str, float], seconds: float
+    ) -> dict[str, float]:
+        """Get the timings of an experiment: its initialization and its run.
+
+        The time of the run which none of its phases measured is `other`, e.g.
+        what a `run` which a subclass overrides does around the run of its
+        base class, so the timings add up to the time the experiment took.
+
+        Args:
+            sid: the experiment.
+            timings: the phases its `run` measured.
+            seconds: the time of its run.
+        """
+        merged = dict(self._timings.get(sid, {}))
+        for phase, value in timings.items():
+            merged[phase] = merged.get(phase, 0.0) + value
+        merged[Phase.OTHER.value] = max(seconds - total_seconds(timings), 0.0)
+        return merged
 
     @staticmethod
     def _written_result(
@@ -780,6 +915,8 @@ class _Outcome:
     figures: dict[str, list[str]]
     datasets: list[str]
     records: list[logging.LogRecord]
+    #: the seconds of the phases of the experiment in the worker
+    timings: dict[str, float]
 
     def result(
         self, experiment: SimulationExperiment, output_path: Path
@@ -797,6 +934,7 @@ class _Outcome:
             failed_figures=self.failed_figures,
             figures=self.figures,
             datasets=self.datasets,
+            timings=self.timings,
         )
 
 
@@ -912,7 +1050,10 @@ def _run_job(job: _Job) -> _Outcome:
         # a worker runs the scans of its experiment itself
         simulator.n_workers = 1
     try:
-        with matplotlib.rc_context(job.rc):
+        with (
+            matplotlib.rc_context(job.rc),
+            reporting(_EVENTS.put if _EVENTS is not None else None),
+        ):
             runner = ExperimentRunner(
                 [],
                 base_path=job.base_path,
@@ -943,7 +1084,83 @@ def _run_job(job: _Job) -> _Outcome:
         figures=result.figures,
         datasets=result.datasets,
         records=handler.records,
+        timings=result.timings,
     )
+
+
+#: the queue of a worker to the display of the parent, see `_set_events`
+_EVENTS: "Queue[Event] | None" = None
+
+
+def _set_events(events: "Queue[Event]") -> None:
+    """Keep the queue to the display of the parent, the initializer of a worker."""
+    global _EVENTS
+    _EVENTS = events
+
+
+@contextlib.contextmanager
+def _forwarded(
+    events: "Queue[Event] | None", display: Listener | None
+) -> Generator[None]:
+    """Forward the events of the workers to the display while the run lasts.
+
+    A thread of the parent takes the events from the queue. A worker which is
+    terminated while it writes, e.g. when Ctrl-C stops the pool, can leave a
+    message half written, which the thread waits for in vain: it is a daemon
+    and is not waited for longer than a second, so it never holds up the end
+    of a run.
+
+    Args:
+        events: the queue of the workers, `None` for a run without one.
+        display: what receives the events.
+    """
+    if events is None or display is None:
+        yield
+        return
+    stop = threading.Event()
+
+    def forward() -> None:
+        """Take the events from the queue until the run ends."""
+        while not stop.is_set():
+            try:
+                event = events.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            except (EOFError, OSError):
+                return
+            display(event)
+
+    thread = threading.Thread(target=forward, name="sbmlsim-progress", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=1.0)
+        if not thread.is_alive():
+            events.close()
+
+
+def _on_done(display: RunProgress, sid: str) -> "Callable[[Future[_Outcome]], None]":
+    """Get what counts an experiment of a worker as done when its result arrives.
+
+    The results arrive in the order the experiments end, while the loop of
+    the run takes them in the order of the experiments, so the bar counts an
+    experiment when it ends. An experiment whose worker died runs again in
+    the parent, which counts it then.
+    """
+
+    def done(future: "Future[_Outcome]") -> None:
+        """Count the experiment, or note that its worker died."""
+        if future.cancelled():
+            return
+        if future.exception() is not None:
+            display.note(sid, "[yellow]its worker died, it runs again")
+            return
+        outcome = future.result()
+        display.finished(sid, failed=bool(outcome.error or outcome.failed_figures))
+
+    return done
 
 
 def run_experiments(
@@ -955,6 +1172,7 @@ def run_experiments(
     raise_on_failure: bool = False,
     figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     n_workers: int | None = None,
+    progress: bool | None = None,
 ) -> list[ExperimentResult]:
     """Run simulation experiments and write their report to the output path.
 
@@ -970,6 +1188,8 @@ def run_experiments(
         figure_settings: the settings of the figures of every experiment, see
             `ExperimentRunner.run_experiments`.
         n_workers: the processes which run the experiments, see
+            `ExperimentRunner.run_experiments`.
+        progress: show the progress and the timings of the run, see
             `ExperimentRunner.run_experiments`.
 
     Returns:
@@ -993,6 +1213,7 @@ def run_experiments(
         show_figures=False,
         figure_settings=figure_settings,
         n_workers=n_workers,
+        progress=progress,
     )
     report_results = ReportResults()
     for exp_result in results:
