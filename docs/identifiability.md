@@ -127,7 +127,7 @@ The Fisher information is the local alternative to the profile: the curvature of
 FIM = J' J,   cov = σ² (J' J)⁻¹,   σ² = 2 cost / (n - k)
 ```
 
-Here `J = ∂r/∂θ` is the jacobian in the space the optimizer searches (`FitSettings.parameter_scale`), `n` the number of data points and `k` the number of parameters.
+Here `J = ∂r/∂θ` is the jacobian in the space the optimizer searches (`FitSettings.parameter_scale`), `n` the number of data points and `k` the number of parameters. The jacobian comes from central differences with the relative step `step`, by default the cube root of `relative_tolerance` of the settings, `1e-2` for the default `1e-6`. The simulations are exact only to that tolerance, and a much smaller step divides this noise by a tiny number: on the HCTZ fit a step of `1e-6` gave standard errors up to 30 times too small.
 
 ```py
 from sbmlsim.fit.fisher import fisher_information

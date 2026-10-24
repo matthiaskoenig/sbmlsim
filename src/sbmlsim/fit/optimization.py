@@ -64,6 +64,7 @@ from sbmlsim.simulation import ObservableKind, Scan, Simulation
 from sbmlsim.simulation.scan import DimensionKind
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import SteadyStateError, execute
+from sbmlsim.simulator.formula import reduce_formula
 from sbmlsim.simulator.observables import (
     CustomNode,
     FormulaNode,
@@ -177,6 +178,26 @@ def _option_metadata(value: Any) -> Any:
             f"{getattr(value, '__qualname__', type(value).__qualname__)}"
         }
     return {"type": f"{type(value).__module__}.{type(value).__qualname__}"}
+
+
+def default_diff_step(relative_tolerance: float) -> float:
+    """Get the relative step of the finite differences of the jacobian of a fit.
+
+    A simulation is exact only to the relative tolerance of its integrator, so
+    the residuals have a noise of about that size, and the step of a forward
+    difference balances this error against the truncation error at the square
+    root of the noise. The default of SciPy, the square root of the machine
+    epsilon, is far below the noise: the jacobian is noise, and the optimizer
+    stops next to its start.
+
+    Args:
+        relative_tolerance: relative tolerance of the integrator of the fit.
+
+    Returns:
+        The step, relative to the parameters in the space the optimizer
+        searches.
+    """
+    return float(np.sqrt(relative_tolerance))
 
 
 def _optimizer_metadata(
@@ -811,6 +832,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: `None` for a group which outputs the times of its data, see
         #: `_compile_plans`
         self._group_graphs: list[ObservableGraph | None] = []
+        #: the observables of every group which outputs the times of its data
+        #: and reads observables, all of them timecourses without reductions,
+        #: which are evaluated on that output; `None` for the other groups,
+        #: see `_compile_plans`
+        self._group_pointwise: list[ObservableGraph | None] = []
+        #: the plan of the output of the simulation of every group which
+        #: outputs the times of its data, which the curves of the evaluation
+        #: of a fit are simulated with, see `residuals`; `None` for a group
+        #: which keeps the output of its simulation
+        self._curve_plans: list[Plan | None] = []
         #: target, index into the parameter vector and factor into the unit
         #: of the target in the model, of every parameter of a group
         self._group_targets: list[list[tuple[str, int, float]]] = []
@@ -1133,13 +1164,6 @@ class OptimizationProblem(ObjectJSONEncoder):
             sid = mapping_collection.experiment_class.__name__
             sim_experiment = self.runner.experiments[sid]
 
-            # FIXME: selections should be based on fit mappings; this will reduce
-            # selections and speed up calculations
-            selections_set: set[str] = set()
-            # for d in sim_experiment._data.values():  # type: Data
-            #     if d.is_task():
-            #         selections_set.add(d.selection)
-
             # a FitMappingCollection without mappings uses all mappings of the experiment
             mapping_collection.resolve_mappings(sim_experiment._fit_mappings.keys())
 
@@ -1155,6 +1179,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
 
                 mapping: FitMapping = sim_experiment._fit_mappings[mapping_id]
+                # the selections of the mapping alone: a group simulates the
+                # union of the selections of its mappings and nothing else
+                selections_set: set[str] = set()
 
                 if mapping_collection.kind in UNUSED_KINDS:
                     # the data the model does not describe is not resolved, it
@@ -2028,10 +2055,13 @@ class OptimizationProblem(ObjectJSONEncoder):
     def _compile_plans(self) -> None:
         """Compile the simulation of every group into a plan.
 
-        A group whose mappings read selections only and all observe the time
-        outputs the times of their data, so an evaluation simulates exactly
-        where the data is; this is the fit of the timecourses of a plain
-        simulation. A group of a scan task keeps the values of its points,
+        A group whose mappings are timecourses over the time and read
+        selections, or observables which are timecourses without reductions,
+        outputs the start of its simulation and the times of their data, so
+        an evaluation simulates exactly where the data is, with the
+        selections its mappings read; the observables are evaluated on that
+        output. The evaluation of a fit draws the curves of such a group from
+        the output of its simulation, see `residuals`. A group of a scan task keeps the values of its points,
         which an evaluation applies to the plan after the fitted values, so
         the values of a dimension win over a fitted value of their target.
         Every other group keeps the output of its simulation and compiles the
@@ -2075,6 +2105,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         self._group_added = []
         self._group_timecourse_graphs = []
         self._group_scalars = []
+        self._group_pointwise = []
+        self._curve_plans = []
         before = self.settings_initialized.data_at_change is DataAtChangeType.BEFORE
         for k_group, group in enumerate(self.mapping_groups):
             k0 = group[0]
@@ -2092,6 +2124,9 @@ class OptimizationProblem(ObjectJSONEncoder):
             at_data = all(
                 not self._observed[k] and self.xid_observable[k] == TIME for k in group
             )
+            pointwise = self._pointwise_graph(k_group, first, points, at_data)
+            at_data = at_data or pointwise is not None
+            curve_plan = plan if at_data else None
             graph: ObservableGraph | None = None
             timecourse_graph: ObservableGraph | None = None
             scalars: tuple[str, ...] = ()
@@ -2141,10 +2176,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # times closer than the resolution of the time are one output
                 # time (`merge_times`, in the time of the plan) and every row
                 # is found by the index of its merged time: the shift of the
-                # time back and forth is not exact in floating point
+                # time back and forth is not exact in floating point. The
+                # start is an output time as well, after the times of the data,
+                # so a time of the data at the start is the start
                 times, index = merge_times(
-                    data_times - plan.time_shift, plan.start, plan.end
+                    np.append(data_times - plan.time_shift, plan.start),
+                    plan.start,
+                    plan.end,
                 )
+                index = index[: data_times.size]
                 if before:
                     # an output time at a change is the time of the change
                     at_change = first.at_change(times)
@@ -2162,14 +2202,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                         f"of its simulation [{plan.start + plan.time_shift}, "
                         f"{plan.end + plan.time_shift}]."
                     )
-                # the changes within the times of the data, at which the curve
-                # of a mapping jumps
-                output = np.union1d(
-                    finite,
-                    changes[(changes >= finite[0]) & (changes <= finite[-1])]
-                    if finite.size
-                    else np.empty(0),
-                )
+                # the start and the times of the data, nothing else: the
+                # curves of the evaluation come from the output of the
+                # simulation, see `residuals`
+                output = finite
                 if steady:
                     output = np.append(output, np.inf)
                 # the rows of the output: two at a change, the states before
@@ -2207,6 +2243,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
             self._group_points.append(points)
             self._group_graphs.append(graph)
+            self._group_pointwise.append(pointwise)
+            self._curve_plans.append(curve_plan)
             self._group_timecourse_graphs.append(timecourse_graph)
             self._group_scalars.append(scalars)
             self._group_added.append(added)
@@ -2225,6 +2263,48 @@ class OptimizationProblem(ObjectJSONEncoder):
                     factors[key] = self._unit_factor(index, model, punit)
                 targets.append((target, index, factors[key]))
             self._group_targets.append(targets)
+
+    def _pointwise_graph(
+        self, k_group: int, first: Plan, points: _Points | None, at_data: bool
+    ) -> ObservableGraph | None:
+        """Get the observables of a group which are evaluated at the times of its data.
+
+        The group outputs the times of its data if all its mappings are
+        timecourses over the time and the observables they read are
+        timecourses without reductions (formulas of the values at a time),
+        since such an observable has the same value at a time of the data
+        whatever the other output times are. A value per simulation, a
+        reduction, a `PK` or a `Custom` observable needs the output of the
+        simulation, and so does a group of several points of a scan.
+
+        Args:
+            k_group: index of the simulation group.
+            first: the plan of the first point of the group.
+            points: the values of the points of a group of a scan.
+            at_data: whether the group reads selections only, which needs no
+                observables.
+
+        Returns:
+            The observables, `None` for a group which reads none or which
+            keeps the output of its simulation.
+        """
+        group = self.mapping_groups[k_group]
+        if at_data or (points is not None and points.size != 1):
+            return None
+        if not all(
+            self.xid_observable[k] == TIME
+            and self.observation_kinds[k] is ObservationKind.TIMECOURSE
+            for k in group
+        ):
+            return None
+        graph = self._group_graph(k_group, first)
+        pointwise = all(
+            isinstance(node, FormulaNode)
+            and node.kind is ObservableKind.TIMECOURSE
+            and not reduce_formula(node.formula).reductions
+            for node in graph.nodes
+        )
+        return graph if pointwise else None
 
     def _first_after(self, k: int, plan: Plan, at_change: np.ndarray) -> np.ndarray:
         """Get the change whose state before it every data point of a mapping takes.
@@ -2842,6 +2922,33 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"scipy.optimize.{optimizer.__name__} and not accepted by it."
             )
 
+    def optimizer_arguments(
+        self, algorithm: OptimizationAlgorithmType, kwargs: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Get the arguments of the optimizer with the defaults of the problem.
+
+        A least squares optimization with a jacobian of finite differences
+        gets the step `default_diff_step` of the relative tolerance of the
+        integrator of the settings, unless `diff_step` is given.
+
+        Args:
+            algorithm: optimization algorithm.
+            kwargs: the arguments given for the optimizer.
+
+        Returns:
+            The arguments.
+        """
+        arguments = dict(kwargs)
+        if (
+            algorithm == OptimizationAlgorithmType.LEAST_SQUARE
+            and "diff_step" not in arguments
+            and isinstance(arguments.get("jac", "2-point"), str)
+        ):
+            arguments["diff_step"] = default_diff_step(
+                self.settings_initialized.relative_tolerance
+            )
+        return arguments
+
     def optimize_run(
         self,
         x0: np.ndarray | None = None,
@@ -2874,6 +2981,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         if run_seed is not None:
             kwargs["rng"] = run_seed
+        kwargs = self.optimizer_arguments(algorithm, kwargs)
         metadata = _optimizer_metadata(algorithm, kwargs)
         algorithm_name = (
             algorithm.name
@@ -2954,6 +3062,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 required and missing.
         """
         self.check_optimizer_arguments(algorithm, kwargs)
+        kwargs = self.optimizer_arguments(algorithm, kwargs)
         if x0 is None:
             if algorithm == OptimizationAlgorithmType.LEAST_SQUARE and any(
                 value is None for value in self.x0
@@ -3082,7 +3191,6 @@ class OptimizationProblem(ObjectJSONEncoder):
             if not indices:
                 continue
 
-            k0 = indices[0]
             graph = self._group_graphs[k_group]
 
             result: DataTimesResult | GroupResult | None
@@ -3093,20 +3201,65 @@ class OptimizationProblem(ObjectJSONEncoder):
                 continue
             # a simulation, or the one point of a scan which a group without
             # observables reads, see `_observation_of`
-            plan = self.evaluated_plan(k_group, x, quantities)
-            selections = sorted({s for k in group for s in self.selections[k]})
-            try:
-                result = DataTimesResult(
-                    output=execute(plan, self.models[k0], selections)
-                )
-            except (RuntimeError, SteadyStateError) as err:
-                self._log_integration_error(x, err)
-                result = None
+            result = self._simulate_at_data(
+                k_group, self.evaluated_plan(k_group, x, quantities), x
+            )
 
             for k in indices:
                 results[k] = result
 
         return results
+
+    def _simulate_at_data(
+        self, k_group: int, plan: Plan, x: np.ndarray
+    ) -> DataTimesResult | None:
+        """Simulate a group which outputs the times of its data, see `_compile_plans`.
+
+        The simulation has the selections the mappings of the group read and
+        the observables they read, evaluated on its output.
+
+        Args:
+            k_group: index of the simulation group.
+            plan: the plan of the group with the values of the parameters,
+                see `evaluated_plan`; the plan of its curve for the evaluation.
+            x: parameter values in the units of the parameters, for the log.
+
+        Returns:
+            The output, `None` if the integration or an observable failed.
+        """
+        group = self.mapping_groups[k_group]
+        graph = self._group_pointwise[k_group]
+        if graph is None:
+            selections = sorted({s for k in group for s in self.selections[k]})
+        else:
+            selections = [TIME, *graph.selections]
+        try:
+            output = execute(plan, self.models[group[0]], selections)
+        except (RuntimeError, SteadyStateError) as err:
+            self._log_integration_error(x, err)
+            return None
+        if graph is None:
+            return DataTimesResult(output=output)
+        try:
+            values = graph.evaluate(
+                output[TIME][np.newaxis, :],
+                {s: output[s][np.newaxis, :] for s in graph.selections},
+                [plan],
+            )
+        except ObservableError as err:
+            logger.error(
+                "The observables failed for ('%s = %s'): \n%s", self.pids, x, err
+            )
+            return None
+        added = [name for name in values if name not in output.columns]
+        return DataTimesResult(
+            output=TimecourseResult(
+                columns=(*output.columns, *added),
+                values=np.column_stack(
+                    [output.values, *(values[name][0] for name in added)]
+                ),
+            )
+        )
 
     def _log_integration_error(self, x: np.ndarray, err: Exception) -> None:
         """Log an integration which failed for the parameters `x`."""
@@ -3200,6 +3353,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x: np.ndarray,
         quantities: Sequence[Quantity] | None = None,
         point: int = 0,
+        curve: bool = False,
     ) -> Plan:
         """Get the plan a group is simulated with for the given parameters.
 
@@ -3215,6 +3369,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                 group has derived changes and they are not given.
             point: the point of a group of a scan, in the order of its
                 points; a group of a simulation has one.
+            curve: the plan of the output of the simulation of a group which
+                outputs the times of its data, the curve of its evaluation,
+                see `residuals`.
 
         Returns:
             The plan of the group with the values of the parameters, of the
@@ -3224,7 +3381,13 @@ class OptimizationProblem(ObjectJSONEncoder):
             target: float(x[index]) * factor
             for target, index, factor in self._group_targets[k_group]
         }
-        plan = self.plans[k_group].with_values(values)
+        base = self._curve_plans[k_group] if curve else self.plans[k_group]
+        if base is None:
+            raise ValueError(
+                f"'{self.opid}': the group {k_group} keeps the output of its "
+                f"simulation, it has no plan of a curve."
+            )
+        plan = base.with_values(values)
         points = self._group_points[k_group]
         if points is not None:
             plan = points.plan(plan, point)
@@ -3307,13 +3470,19 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
     def _observed_curve(
-        self, k: int, result: DataTimesResult | GroupResult
+        self,
+        k: int,
+        result: DataTimesResult | GroupResult,
+        curve: DataTimesResult | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Get the simulated curve of the observable of a fit mapping.
 
         Args:
             k: index of the fit mapping.
             result: result of the simulation of the mapping.
+            curve: the output of the simulation of a group which outputs the
+                times of its data, see `residuals`; the curve is drawn from it
+                instead of from the times of the data.
 
         Returns:
             The x and the y of the observable at every output of the
@@ -3334,6 +3503,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 np.asarray(self.x_references[k], dtype=float),
                 self._interpolate(k, result),
             )
+        if curve is not None:
+            result = curve
         names = (
             [self.yid_observable[k]] if observable is None else list(observable.symbols)
         )
@@ -3717,6 +3888,20 @@ class OptimizationProblem(ObjectJSONEncoder):
         results = self._simulate_groups(
             simulator=simulator, quantities=quantities, evaluated=evaluated, x=x
         )
+        # the evaluation draws the curves of the groups which output the times
+        # of their data from the output of their simulations
+        curves: dict[int, DataTimesResult | None] = {}
+        if complete_data:
+            for k_group, plan in enumerate(self._curve_plans):
+                if plan is None or not any(
+                    k in results for k in self.mapping_groups[k_group]
+                ):
+                    continue
+                curve = self._simulate_at_data(
+                    k_group, self.evaluated_plan(k_group, x, quantities, curve=True), x
+                )
+                for k in self.mapping_groups[k_group]:
+                    curves[k] = curve
 
         result: DataTimesResult | GroupResult | None = None
         for k, mapping_key in enumerate(self.mapping_keys):
@@ -3790,7 +3975,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                         f"'{mapping_key}': no simulation results, the complete data "
                         f"of a failed simulation cannot be evaluated."
                     )
-                x_obs, y_obs = self._observed_curve(k, result)
+                x_obs, y_obs = self._observed_curve(k, result, curves.get(k))
                 residual_data["x_obs"].append(x_obs)
                 residual_data["y_obs"].append(y_obs)
                 residual_data["y_obsip"].append(y_obsip)

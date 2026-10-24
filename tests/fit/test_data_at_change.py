@@ -606,7 +606,9 @@ def test_the_curve_of_a_mapping_jumps_at_a_change(
     assert y[at[0]] == pytest.approx(TRUTH["urine"][1], rel=1e-5)
     assert y[at[1]] == pytest.approx(0.0, abs=1e-8)
     expected = 0 if data_at_change is DataAtChangeType.BEFORE else 1
-    assert prediction[1] == y[at[expected]]
+    # the curve is the output of the simulation, the prediction the output at
+    # the times of the data: both within the tolerances of the integrator
+    assert prediction[1] == pytest.approx(y[at[expected]], rel=1e-6, abs=1e-8)
 
 
 @pytest.mark.parametrize("dense", [False, True])
@@ -766,8 +768,8 @@ def test_two_mappings_of_one_time_near_a_change(tmp_path: Path, dense: bool) -> 
     mappings = ["fm_urine", "fm_noisy"] + (["fm_cmax"] if dense else [])
     problem = _problem(mappings, tmp_path)
     if not dense:
-        # both times are one output time
-        assert len(problem.plans[0].times) == len(TIMES)
+        # both times are one output time, next to the start
+        assert len(problem.plans[0].times) == len(TIMES) + 1
     predictions = _predictions(problem)
     assert predictions["fm_noisy"][1] == predictions["fm_urine"][1]
     assert predictions["fm_noisy"][1] == pytest.approx(
@@ -1182,3 +1184,49 @@ def sawtooth_prediction(tmp_path: Path, task: str, trigger: str) -> np.ndarray:
     assert problem._group_graphs[0] is not None
     k = problem.mapping_keys.index(f"fm_x_{task}")
     return problem.predictions(np.array([1.0]), problem.indices())[k]
+
+
+def test_a_timecourse_observable_is_simulated_at_the_data(tmp_path: Path) -> None:
+    """An observable without reductions is evaluated at the start and the data times."""
+    problem = _problem(["fm_twice", "fm_urine"], tmp_path)
+    assert problem._group_graphs == [None]
+    assert problem._group_pointwise[0] is not None
+    assert problem.plans[0].times == (0.0, *TIMES)
+    predictions = _predictions(problem)
+    np.testing.assert_allclose(predictions["fm_twice"], 2 * TRUTH["urine"], rtol=1e-5)
+    np.testing.assert_array_equal(predictions["fm_twice"], 2 * predictions["fm_urine"])
+
+
+@pytest.mark.parametrize("mapping", ["fm_ratio", "fm_share"])
+def test_an_observable_of_the_whole_timecourse_keeps_the_output(
+    tmp_path: Path, mapping: str
+) -> None:
+    """A value per simulation or a reduction needs the output of the simulation."""
+    problem = _problem([mapping], tmp_path)
+    assert problem._group_graphs[0] is not None
+    assert problem._group_pointwise == [None]
+    assert problem._curve_plans == [None]
+
+
+def test_a_group_simulates_the_selections_of_its_mappings(tmp_path: Path) -> None:
+    """The selections of a mapping are its own, not the ones of the other mappings."""
+    problem = _problem(["fm_urine", "fm_model", "fm_over"], tmp_path)
+    selections = dict(zip(problem.mapping_keys, problem.selections, strict=True))
+    assert sorted(selections["fm_urine"]) == ["Aurine", "time"]
+    assert sorted(selections["fm_model"]) == ["Aurine", "time"]
+    assert sorted(selections["fm_over"]) == ["Aelim", "[C]"]
+
+
+@pytest.mark.parametrize("mappings", [["fm_urine"], ["fm_twice"]])
+def test_the_curve_of_the_evaluation_is_the_output_of_the_simulation(
+    tmp_path: Path, mappings: list[str]
+) -> None:
+    """The fit outputs the times of the data, the evaluation the whole curve."""
+    problem = _problem(mappings, tmp_path)
+    data = problem.residuals(np.array([TRUE_KE]), complete_data=True)
+    assert isinstance(data, dict)
+    x = np.asarray(data["x_obs"][0])
+    # the steps of the integrator of the simulation, with the reset twice
+    assert x.size > 10 * (len(TIMES) + 1)
+    assert (x[0], x[-1]) == (0.0, 48.0)
+    assert np.flatnonzero(x == 24.0).size == 2

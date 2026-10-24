@@ -68,13 +68,13 @@ KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                4
 workers             1 (serial)
 converged           4/4 runs
-best cost           0.0496034
+best cost           0.0496035
 optimizer time      0.2 s
    run      cost  Ka_dis_hctz  KI__HCTZEX_k
-0    0  0.049603     0.304801      0.005028
-1    2  0.049603     0.304855      0.005028
-2    3  0.049604     0.304581      0.005024
-3    1  0.049605     0.305241      0.005031
+0    0  0.049603     0.304798      0.005028
+1    1  0.049603     0.304798      0.005028
+2    3  0.049603     0.304798      0.005028
+3    2  0.049603     0.304798      0.005028
 ```
 
 Every run ends at about the same parameters, so the optimum is well defined. With a seed the start points, and therefore the result, are the same in every session.
@@ -364,6 +364,7 @@ The first point of a curve is the exception: if a curve has later points, its fi
 `run_optimization(problem, settings, size, ...)` runs `size` optimizations and returns an `OptimizationResult`:
 
 - `algorithm`: `OptimizationAlgorithmType.LEAST_SQUARE` (default, from `sbmlsim.fit.options`), the local `scipy.optimize.least_squares`, which needs many start points, or `DIFFERENTIAL_EVOLUTION`, the global `scipy.optimize.differential_evolution`, which needs few runs and finite bounds. Further keyword arguments go to the SciPy function, e.g. `max_nfev`. A `loss` or `f_scale` of SciPy is refused, the loss belongs in the settings.
+- `diff_step`: the relative step of the finite differences of the Jacobian of the least squares optimizer. It defaults to the square root of `relative_tolerance` of the settings, `1e-3` for the default `1e-6`: a simulation is exact only to the tolerance of the integrator, and a smaller step, such as the default of SciPy, measures the noise of the integrator instead of the slope, so the optimizer stops next to its start.
 - `sampling`: how the start points are drawn within the bounds, `SamplingType.UNIFORM` (default, from `sbmlsim.fit.sampling`), `LOGUNIFORM` and their Latin hypercube variants `UNIFORM_LHS` and `LOGUNIFORM_LHS`. `START` starts every run from the start values, to improve a known solution; one run is then enough for the local optimizer. Setting `problem.x0` changes the start values of a problem.
 - `seed`: the seed of the start points. The start points are drawn before the runs start, so the result does not depend on the number of workers.
 - `n_cores`: the number of worker processes; `1` (default) runs in the calling process, `None` uses all cores but one. `serial=True` runs serially whatever `n_cores` says, which is what a debugger needs.
@@ -404,7 +405,7 @@ print(ParameterSets.from_json(Path("parameters.json")).to_df())
 
 ```text title="Output"
       parameter  unit  hctz_patel_0  hctz_patel_1
-0   Ka_dis_hctz  1/hr      0.304801      0.304855
+0   Ka_dis_hctz  1/hr      0.304798      0.304798
 1  KI__HCTZEX_k  1/ml      0.005028      0.005028
 ```
 
@@ -511,7 +512,7 @@ runs                2
 workers             1 (serial)
   optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:00 ~ 0:00:00 total
 converged           2/2 runs
-best cost           1.0993
+best cost           1.09898
 optimizer time      0.4 s
 2 runs read back
 versions: python, sbmlsim, libroadrunner, scipy, numpy

@@ -26,7 +26,7 @@ from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import Identifiability, IdentifiabilityResult
 from sbmlsim.fit.objects import MappingKind
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import OptimizationProblem, default_diff_step
 from sbmlsim.fit.options import (
     DataAtChangeType,
     FitSettings,
@@ -1082,10 +1082,12 @@ def _profiles(result: IdentifiabilityResult) -> list[Block]:
             "At every point of a scan the other parameters were re-optimized from "
             "the previous point with the least squares optimizer of SciPy"
         ]
-        if ps.optimizer_kwargs.get("diff_step") is not None:
-            scan.extend(
-                [" with the relative step ", _number(ps.optimizer_kwargs["diff_step"])]
-            )
+        # the step of a fit, the square root of the relative tolerance of the
+        # integrator, unless the analysis gives one
+        diff_step = ps.optimizer_kwargs.get("diff_step")
+        if diff_step is None:
+            diff_step = default_diff_step(result.fit_settings.relative_tolerance)
+        scan.extend([" with the relative step ", _number(diff_step)])
         scan.append(".")
     else:
         scan = [
