@@ -17,11 +17,11 @@
 {% block nav %}
 <a href="#overview">Overview</a>
 <a href="#figures">Figures</a>
-<a href="#code">Code</a>
+{% if code_path %}<a href="#code">Code</a>{% endif %}
 {% endblock %}
 
 {% block footer %}
-<a href="../index.html">all experiments</a> · <a href="{{ code_path }}" title="{{ code_path }}">{{ code_path | basename }}</a>
+<a href="../index.html">all experiments</a>{% if code_path %} · <a href="{{ code_path }}" title="{{ code_path }}">{{ code_path | basename }}</a>{% endif %}
 {% endblock %}
 
 {% block head %}
@@ -49,7 +49,7 @@
       <thead><tr><th data-sort="text">model</th><th data-sort="text">source</th></tr></thead>
       <tbody>
       {% for model_id, model_path in models.items() %}
-      <tr><td class="mono">{{ model_id }}</td><td><a href="{{ model_path }}" title="{{ model_path }}">{{ model_path | basename }}</a></td></tr>
+      <tr><td class="mono">{{ model_id }}</td><td>{% if model_path %}<a href="{{ model_path }}" title="{{ model_path }}">{{ model_path | basename }}</a>{% else %}inline SBML{% endif %}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -99,6 +99,7 @@
   {% if not figures %}<p class="empty">{% if error %}The experiment failed before it wrote a figure.{% else %}The experiment has no figures.{% endif %}</p>{% endif %}
 </section>
 
+{% if code_path %}
 <section id="code">
   <h2>Code</h2>
   <div class="card">
@@ -106,5 +107,6 @@
     <pre class="code"><code>{{ code }}</code></pre>
   </div>
 </section>
+{% endif %}
 
 {% endblock %}

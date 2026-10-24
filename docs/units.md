@@ -1,128 +1,182 @@
 # Units
 
-Every SBML model declares units for its parameters, species and compartments. `sbmlsim` reads them and uses [pint](https://pint.readthedocs.io) quantities for changes and results, so a dose given in milligram is converted to the substance unit of the model instead of being assumed to match.
+An SBML model declares the units of its parameters, species and compartments. `sbmlsim` reads them, so you can give every value in the unit you have at hand: a dose in gram for a model which counts in milligram, a time in hours for a model which runs in minutes. The values are [pint](https://pint.readthedocs.io) quantities, and `sbmlsim` converts them into the units of the model before it simulates. A unit which does not fit, e.g. a concentration for a dose, raises an error instead of being simulated with the wrong number.
 
 ## The unit registry and `Q`
 
-`sbmlsim` has one unit registry, `sbmlsim.units.ureg`, which every model, simulation, dataset, experiment and fit uses, so quantities from different sources can be combined. `Q` is its quantity, which takes the units of pint and not the unit ids of a model (see [Unit ids of a model](#unit-ids-of-a-model)):
+`Q` creates a quantity, a number with a unit, which converts with `to`:
 
 ```python
 from sbmlsim import Q
 
-dose = Q(10, "mmole")
-print(dose, dose.to("mole"))
+dose = Q(0.025, "g")
+print(dose.to("mg"))
+print(Q(2, "hr").to("min"))
 ```
 
-Besides the units of pint the registry defines `none` and `item` as counts and `percent`. It defines no international unit (`IU`): an international unit is specific to a substance, an `IU` of insulin is no `IU` of the anti-Xa activity of heparin, so one definition for every substance would convert data of one substance with the factor of another. A model which needs an international unit defines it as a unit definition of its own, which the quantities of the model and of an experiment resolve (see [Unit ids of a model](#unit-ids-of-a-model)), and a user defines it in the registry under a name of the substance or as a count:
+```text title="Output"
+25.0 milligram
+120 minute
+```
+
+Every model, simulation, dataset, experiment and fit of `sbmlsim` uses the one unit registry `sbmlsim.units.ureg`, so their quantities combine. It knows the units of pint and adds the counts `none` and `item`, and `percent`.
+
+The registry has no international unit (`IU`). An IU is specific to a substance (an IU of insulin is a different amount than an IU of heparin), so one definition would convert the data of one substance with the factor of another. Define the unit you need under the name of its substance before you use it:
 
 ```python
 from sbmlsim.units import ureg
 
 ureg.define("IU_insulin = 0.0347 * mg")
-print(Q(10, "IU_insulin/ml").to("mg/ml"))
+insulin = Q(10, "IU_insulin/ml").to("mg/ml")
+print(f"{insulin:.3f}")
 ```
 
-A unit string with an `IU` which nothing defines raises, as every unit which cannot be read: `Q` raises the `UndefinedUnitError` of pint, and `DataSet.from_df` raises the `ValueError` which names the column when the data is imported; for an undefined `IU`, `µIU`, `mIU` or `IU_per_ml` both say how to define an international unit. Every unit of a `DataSet` column is read on import, also the one unit of a column whose rows all have it, so data in a unit the registry does not define, e.g. `IU/l` or `µIU/ml`, fails on import and not when it is used; define the unit in the registry before the data is read.
+```text title="Output"
+0.347 milligram / milliliter
+```
+
+A unit which the registry does not know raises an error when it is read: `Q` raises the `UndefinedUnitError` of pint, and a `DataSet` raises a `ValueError` naming the column when the data is imported (see [Data](data.md)). For an `IU` both messages say how to define it.
 
 ## Units of a model
 
-The units are read into a `UnitsInformation`, a mapping from identifier to unit:
+A loaded model has its units in `model.uinfo`, a mapping from id to unit. The id of a species is its amount, the id in brackets its concentration, and `time` is the time unit of the model:
 
 ```python
-from sbmlsim.resources import DEMO_SBML
-from sbmlsim.units import UnitsInformation
+from sbmlsim.resources import HCTZ_SBML
+from sbmlsim.simulator import Simulator
 
-uinfo = UnitsInformation.from_sbml(DEMO_SBML)
-print(uinfo["Vmax_bA"])
-print(uinfo["e__A"])  # amount of the species
-print(uinfo["[e__A]"])  # concentration of the species
+simulator = Simulator()
+model = simulator.load(HCTZ_SBML)
+for sid in ["PODOSE_hctz", "BW", "Cve_hctz", "[Cve_hctz]", "time"]:
+    print(f"{sid:12} {model.uinfo[sid]}")
 ```
 
-A unit of a model is the expression of its unit definition in the units of pint, with the prefixes and names pint knows, e.g. `mmol/min` for a millimole per minute; the ids of the unit definitions of a model are not defined in the registry, so two models which define one id differently keep their own units. A unit whose factor is no prefix, e.g. the `133.322 N/m^2` of a millimeter of mercury, is defined in the registry under its id, or under `<id>_<n>` if another model defines the id differently. Every `RoadrunnerSBMLModel` carries the units of its model as `uinfo`, and every `ScanResult` the units of its variables and coordinates as `units`.
+```text title="Output"
+PODOSE_hctz  mg
+BW           kg
+Cve_hctz     mmol
+[Cve_hctz]   mmol/litre
+time         min
+```
+
+`sbmlsim` writes the unit definitions of the SBML file as units of pint, e.g. `mmol/min` for a millimole per minute. `UnitsInformation.from_sbml(path)` of `sbmlsim.units` reads them without loading the model.
+
+## Values with units in a simulation
+
+The values of a `Simulation`, its `Change`s and the `Dimension`s of a scan are quantities or plain numbers. A quantity is converted into the unit of its target in the model, a plain number is taken in the unit of the model. The times are numbers in the `time_unit` of the simulation. Here a 25 mg dose is written in gram, and the times in hours:
+
+```python
+from sbmlsim.simulation import Change, Simulation
+
+dose = Simulation(
+    time_unit="hr",
+    end=24,
+    steps=240,
+    changes=[Change(0, {"PODOSE_hctz": Q(0.025, "g")})],
+)
+res = simulator.run(model, dose)
+print(res.quantity("PODOSE_hctz")[0])
+```
+
+```text title="Output"
+25.0 milligram
+```
+
+The model got its dose in milligram. A unit which cannot be converted into the unit of the target raises a `ValueError` which names the target and both units:
+
+```python
+wrong = Simulation(end=60, changes=[Change(0, {"PODOSE_hctz": Q(25, "mM")})])
+try:
+    simulator.run(model, wrong)
+except ValueError as err:
+    print(err)
+```
+
+```text title="Output"
+The simulation: The value '25 millimolar' of 'PODOSE_hctz' cannot be converted into the unit 'mg' of the model: Cannot convert from 'millimolar' ([substance] / [length] ** 3) to 'milligram' ([mass])
+```
+
+## Results with units
+
+A `ScanResult` has the units of its variables in `units`, and `quantity` returns a variable as a pint quantity, so you can report a result in the units of a study. Clinical studies give HCTZ in ng/ml, the model in mmol/l; the molecular weight `Mr_hctz` of the model converts the one into the other:
+
+```python
+import matplotlib.pyplot as plt
+
+print(res.units["[Cve_hctz]"])
+mr = Q(model.loaded_value("Mr_hctz"), model.uinfo["Mr_hctz"])
+plasma = (res.quantity("[Cve_hctz]") * mr).to("ng/ml")
+hours = res.quantity("time").to("hr")
+print(f"cmax = {plasma.max():.1f~P}")
+
+fig, ax = plt.subplots(figsize=(6, 3.5))
+ax.plot(hours.magnitude, plasma.magnitude)
+ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
+```
+
+```text title="Output"
+mmol/litre
+cmax = 134.6 ng/ml
+```
+
+![Output figure](images/outputs/units-06.png)
+
+The statistics of a scan keep the units of their variables (`res.summary(...)`, see [Parameter scans](scans.md)), and `Data` converts simulations and datasets into the units a figure asks for (see [Data](data.md) and [Plots and reports](plotting.md)).
 
 ## Unit ids of a model
 
-`Q` does not know the ids of the unit definitions of a model: `Q(0, "mg_per_min")` raises the `UndefinedUnitError` of pint, with a note which names the quantities which know them. The units of a model keep its unit ids with their expressions, `uinfo.unit_ids`, and `uinfo.quantity(value, unit)` replaces every identifier of a unit which is a unit id of the model by its expression in brackets before pint reads it, so a unit id combines with the units of pint, e.g. `mg_per_min/kg`. Only whole identifiers are replaced, `mg` is no unit id of `mg_per_min`, and a unit id wins over a unit of pint of the same name, since the model defines what its id means. `RoadrunnerSBMLModel.Q(value, unit)` is the quantity of a model:
+The unit definitions of a model have ids, such as `mg_per_hr` or `per_min` in the HCTZ model. `Q` does not know them, since two models can define one id differently. `model.Q` does: it replaces every unit id of the model in a unit by its expression, so ids combine with the units of pint, e.g. `mg_per_hr/kg`:
 
 ```python
-from sbmlsim.model import RoadrunnerSBMLModel
-
-model = RoadrunnerSBMLModel(source=DEMO_SBML)
-print(model.uinfo.unit_ids["mole_per_s"])
-print(model.Q(0.5, "mole_per_s").to("mmole/min"))
-print(model.Q(0.5, "mole_per_s/m3").to("mM/s"))
+print(model.uinfo.unit_ids["mg_per_hr"])
+print(model.Q(1, "mg_per_hr").to("mg/day"))
+print(model.Q(1, "mg_per_hr/kg"))
 ```
 
-In an experiment `self.Q(value, unit, model=None)` resolves the unit ids of the models of the experiment. The runner loads the models before `initialize`, so it works in `simulations()` and later:
+```text title="Output"
+mg/hr
+24 milligram / day
+1 milligram / hour / kilogram
+```
+
+A unit id wins over a unit of pint with the same name, since the model defines what its id means. `Q(1, "mg_per_hr")` raises an `UndefinedUnitError` whose message points to `model.Q`.
+
+In a [simulation experiment](experiments.md) `self.Q` resolves the unit ids of the models of the experiment. The runner loads the models before it initializes the experiment, so `self.Q` works in `simulations()` and the methods after it:
 
 ```python
 from pathlib import Path
 from typing import override
 
-from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.model import AbstractModel
-from sbmlsim.simulation import Simulation
 
 
-class Dosing(SimulationExperiment):
+class Infusion(SimulationExperiment):
     @override
     def models(self) -> dict[str, AbstractModel | Path]:
-        return {"demo": DEMO_SBML}
+        return {"hctz": HCTZ_SBML}
 
     @override
     def simulations(self) -> dict[str, Simulation]:
-        # `mole_per_s` is a unit id of the model
-        vmax = self.Q(300, "mole_per_s")
-        return {"vmax": Simulation(end=10, preinit_changes={"Vmax_bA": vmax})}
-```
+        rate = self.Q(1, "mg_per_hr")  # a unit id of the HCTZ model
+        return {
+            "infusion": Simulation(
+                time_unit="hr", end=24, changes=[Change(0, {"Ri_hctz": rate})]
+            )
+        }
 
-With `model=` a unit id is the one of that model; without, a unit id must have the same expression in every model of the experiment which has it, else a `ValueError` names the models, their expressions and `model=`. Before the models are loaded `self.Q` takes the units of pint, and a unit id raises an `UndefinedUnitError` whose note says that the models are not loaded.
 
-The unit of a `FitParameter` may have the unit ids of the model of its target as well, e.g. `unit="per_min"`: the fit converts the value with the units of that model, and the versions of a target agree on their unit when their units are one unit, e.g. `mg_per_min` of the model and `mg/min`. The parameter keeps the unit it was defined with, which the tables of a fit show and a PEtab export writes, while the values of a fit, i.e. its parameter sets, its result, the Fisher information and the profiles, carry the unit of pint (`OptimizationProblem.parameter_units`, `1/min` for `per_min`), so the designs of a fit (`fit_parameters`, `profile_parameters`, `fit_repeats`, see [Sampling](sampling.md)) draw quantities without the model.
-
-## Changes with units
-
-The values of a `Simulation`, its `Change`s and the `Dimension`s of a scan are quantities or numbers; a quantity is converted into the unit of its target in the model when the simulation is compiled, and a number is taken in the unit of the model:
-
-```python
-import numpy as np
-
-from sbmlsim.simulation import Dimension, Scan, Simulation
-from sbmlsim.simulator import Simulator
-
-simulator = Simulator()
-scan = Scan(
-    simulation=Simulation(
-        end=10,
-        steps=100,
-        preinit_changes={
-            "[e__A]": Q(10, "mM"),
-            "[e__B]": Q(1, "mmole/litre"),
-            "[e__C]": Q(1, "mole/m**3"),
-            "c__A": Q(1e-5, "mole"),
-            "c__B": Q(10, "µmole"),
-            "Vmax_bA": Q(300.0, "mole/min"),
-        },
-    ),
-    dimensions=[
-        Dimension("dim1", values={"[e__A]": Q(np.linspace(5, 15, num=5), "mM")}),
-    ],
+runner = ExperimentRunner(
+    [Infusion], simulator=simulator, base_path=Path.cwd(), data_path=Path.cwd()
 )
-res = simulator.run(DEMO_SBML, scan)
-print(res["[e__A]"].values[:, 0])
+experiment = runner.experiments["Infusion"]
+print(experiment.simulations()["infusion"].changes[0].values)
 ```
 
-A change with a unit which cannot be converted into the unit of the model raises a `ValueError` which names the target and both units, which is the point: a dose in `mg` for a parameter in `mmole` is a mistake the units catch. The times of a simulation are converted the same way, from its `time_unit` into the time unit of the model, see [Simulations](simulation.md#units-and-times).
-
-## Results with units
-
-The result of a simulation knows the units of its variables, so its values and their statistics are quantities:
-
-```python
-print(res.units["[e__A]"])
-mean = res.summary("dim1", statistics=["mean"]).quantity("[e__A]")
-print(mean.units)
-print(mean.to("mole/litre").magnitude[0, :3])
+```text title="Output"
+{'Ri_hctz': Quantity(1, "milligram / hour")}
 ```
 
-Data in a `Data` object or a `DataSet` are converted into requested units the same way, see [Data](data.md); the axes of a plot declare their unit and the curves are converted to it, see [Plots and reports](plotting.md).
+When the models of an experiment define one id differently, `self.Q(value, unit, model="hctz")` says which model's id is meant; without `model=` a `ValueError` names the models and their expressions. Before the models are loaded `self.Q` knows only the units of pint.
+
+The `unit` of a `FitParameter` can use the unit ids of the model of its target as well, e.g. `unit="per_min"`. The parameter keeps that unit in the tables of a fit and in a PEtab export, while the fitted values carry the unit of pint (`1/min`), see [Parameter fitting](fitting.md).

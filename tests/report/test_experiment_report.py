@@ -16,7 +16,7 @@ import pytest
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976
-from sbmlsim.experiment import ExperimentRunner
+from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulator import Simulator
 
@@ -263,3 +263,69 @@ def test_a_link_of_a_report_is_a_url_path_on_every_platform() -> None:
     assert _link(PureWindowsPath("C:/models/m.xml")) == "file:///C:/models/m.xml"
     assert _link(Path("datasets") / "Exp_ds.tsv") == "datasets/Exp_ds.tsv"
     assert _link(PurePosixPath("/home/a b/m.xml")) == "file:///home/a%20b/m.xml"
+
+
+#: an experiment which is no part of a file, e.g. of a notebook or of `python -c`
+SOURCELESS_EXPERIMENT = """
+from sbmlsim.data import Data
+from sbmlsim.experiment import SimulationExperiment
+from sbmlsim.model import AbstractModel
+from sbmlsim.resources import REPRESSILATOR_SBML
+from sbmlsim.simulation import Simulation
+from sbmlsim.task import Task
+
+
+class Sourceless(SimulationExperiment):
+    def models(self):
+        return {
+            "m": AbstractModel(source=REPRESSILATOR_SBML),
+            "inline": AbstractModel(source=REPRESSILATOR_SBML.read_text()),
+        }
+
+    def simulations(self):
+        return {"sim": Simulation(end=20, steps=20)}
+
+    def tasks(self):
+        return {"task": Task(model="m", simulation="sim")}
+
+    def data(self):
+        return {"X": Data(index="[X]", task="task")}
+
+    def figures(self):
+        return {}
+"""
+
+
+def test_an_experiment_without_a_source_file_has_a_report(tmp_path: Path) -> None:
+    """An experiment defined at runtime has a report without its code.
+
+    The class of an experiment of a notebook, of `python -c` or of `exec`
+    belongs to a module without a file, e.g. `builtins`; its report has no
+    link to the code and no code section, and a model of inline SBML has no
+    link to a file.
+    """
+    namespace: dict[str, object] = {}
+    exec(SOURCELESS_EXPERIMENT, namespace)
+    experiment_class = namespace["Sourceless"]
+    assert isinstance(experiment_class, type)
+    assert issubclass(experiment_class, SimulationExperiment)
+    assert not hasattr(sys.modules[experiment_class.__module__], "__file__")
+
+    runner = ExperimentRunner(experiment_class, simulator=Simulator(), on_error="raise")
+    results = runner.run_experiments(output_path=tmp_path, save_results=False)
+    report = ExperimentReport(results)
+    for report_type in ExperimentReport.ReportType:
+        report.create_report(tmp_path, report_type=report_type)
+
+    page = tmp_path / "Sourceless" / "Sourceless.html"
+    html = _html(page)
+    assert re.findall(r'<section id="([a-z]+)"', html) == ["overview", "figures"]
+    assert 'href="#code"' not in html
+    assert "inline SBML" in html
+    _assert_balanced(html)
+    assert _unresolved(page) == []
+
+    text = (tmp_path / "Sourceless" / "Sourceless.md").read_text(encoding="utf-8")
+    assert re.findall(r"^## (.+)$", text, re.M) == ["Models", "Datasets", "Figures"]
+    assert "* **inline**: inline SBML" in text
+    assert (tmp_path / "index.tex").exists()

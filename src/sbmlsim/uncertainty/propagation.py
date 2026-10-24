@@ -242,17 +242,33 @@ class UncertaintyResult:
                 `sbmlsim.uncertainty.testing.probability`.
 
         Returns:
-            The statement with its Monte Carlo interval.
+            The statement with its Monte Carlo interval, which names the
+            output of a given scenario `<output>:<scenario>`, as a contrast
+            names its scenarios.
         """
-        values = self.values(output, scenario) if isinstance(output, str) else output
+        values = (
+            self._scenario_values(output, scenario)
+            if isinstance(output, str)
+            else output
+        )
         return probability(values, **kwargs)
 
+    def _scenario_values(self, output: str, scenario: str | None) -> xr.DataArray:
+        """Get the values of an output, named `<output>:<scenario>` for a scenario."""
+        values = self.values(output, scenario)
+        return values if scenario is None else values.rename(f"{output}:{scenario}")
+
     def hypothesis_values(self, hypothesis: Hypothesis) -> xr.DataArray:
-        """Get the values of the output of a hypothesis: of its scenario or contrast."""
+        """Get the values of the output of a hypothesis: of its scenario or contrast.
+
+        The values are named `<output>:<scenario>` for a hypothesis with a
+        scenario and as the `contrast` for one with a contrast, so its
+        statement names them.
+        """
         if hypothesis.contrast is not None:
             a, b = hypothesis.contrast
             return self.contrast(hypothesis.output, a, b, hypothesis.kind)
-        return self.values(hypothesis.output, hypothesis.scenario)
+        return self._scenario_values(hypothesis.output, hypothesis.scenario)
 
     def test(
         self,

@@ -848,6 +848,12 @@ def _missing_unit(
     logger.log(logging.ERROR if numbers else logging.DEBUG, message, *args)
 
 
+def _same_values(first: pd.Series, second: pd.Series) -> bool:
+    """Check that two columns have the same values, a missing value in both rows."""
+    both_missing = first.isna() & second.isna()
+    return bool(((first == second) | both_missing).all())
+
+
 def _unit_string(unit: PlainUnit) -> str:
     """Get the string of a unit as a dataset keeps it, e.g. `milliliter/hour`."""
     return str(unit).replace("**", "^").replace(" ", "")
@@ -1111,22 +1117,23 @@ class DataSet(pd.DataFrame):
                     # rename the sd and se columns to mean_sd and mean_se
                     if key == "mean":
                         for err_key in ["sd", "se"]:
-                            if (
-                                err_key not in df.columns
-                                and f"mean_{err_key}" in df.columns
-                            ):
-                                df[err_key] = df[f"mean_{err_key}"]
+                            mean_err_key = f"mean_{err_key}"
+                            if mean_err_key in df.columns:
+                                if err_key not in df.columns:
+                                    df[err_key] = df[mean_err_key]
+                                elif not _same_values(df[err_key], df[mean_err_key]):
+                                    # two errors of the mean, one is dropped
+                                    logger.warning(
+                                        "The columns '%s' and '%s' are both the %s "
+                                        "of 'mean' and differ, '%s' is used.",
+                                        err_key,
+                                        mean_err_key,
+                                        err_key.upper(),
+                                        err_key,
+                                    )
+                                del df[mean_err_key]
 
-                            if f"mean_{err_key}" in df.columns:
-                                # remove existing mean_sd column
-                                del df[f"mean_{err_key}"]
-                                logger.warning(
-                                    "Removing existing column: 'mean_%s' from DataSet. Column should be named: '%s'",
-                                    err_key,
-                                    err_key,
-                                )
-
-                            df = df.rename(columns={f"{err_key}": f"mean_{err_key}"})
+                            df = df.rename(columns={err_key: mean_err_key})
 
                 # remove unit column
                 del df["unit"]
@@ -1236,7 +1243,13 @@ def load_pkdb_dataframe(
     :param kwargs: additional kwargs for csv parsing
     :return: pandas DataFrame
     :raises FileNotFoundError: if the dataset is in none of the data paths
+    :raises ValueError: without a data path
     """
+    if data_path is None:
+        raise ValueError(
+            f"Dataset '{sid}' needs a 'data_path' to be read from, e.g. the "
+            f"'data_path' of the experiment or of its runner."
+        )
     study = sid.split("_")[0]
     if isinstance(data_path, Path):
         data_path = [data_path]

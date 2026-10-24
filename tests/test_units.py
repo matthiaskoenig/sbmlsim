@@ -7,8 +7,14 @@ import libsbml
 import numpy as np
 import pytest
 
-from sbmlsim.resources import DEMO_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
-from sbmlsim.units import UnitRegistry, Units, UnitsInformation, unit_signature
+from sbmlsim.resources import DEMO_SBML, HCTZ_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
+from sbmlsim.units import (
+    Quantity,
+    UnitRegistry,
+    Units,
+    UnitsInformation,
+    unit_signature,
+)
 
 LOTKA_VOLTERRA_SBML = Path(__file__).parent / "data" / "models" / "lotka_volterra.xml"
 
@@ -281,8 +287,7 @@ def test_every_unit_of_a_model_is_a_unit_without_a_factor() -> None:
     """Every unit of a model parses as a unit, which a quantity needs."""
     from sbmlsim.units import ureg
 
-    hctz = Path(__file__).parents[1] / "examples" / "hctz_fitting" / "models"
-    uinfo = UnitsInformation.from_sbml(hctz / "hctz_body_flat.xml")
+    uinfo = UnitsInformation.from_sbml(HCTZ_SBML)
     for unit in set(uinfo.udict.values()):
         ureg.parse_units(unit)
 
@@ -411,10 +416,19 @@ def test_the_exponent_of_a_number_is_no_unit_id() -> None:
 
     assert unit_identifiers("1e-3*mg_per_min/kg^2.5E+1") == ["mg_per_min", "kg"]
     assert replace_unit_ids("1e-3*e/e2^1e1", {"e": "s", "e2": "min"}) == (
-        "1e-3*(s)/(min)^1e1"
+        "1e-3*s/min^1e1"
     )
     uinfo = _uinfo(e=(SECOND,))
-    assert uinfo.resolve_unit("1e-3*e^2") == "1e-3*(s)^2"
+    assert uinfo.resolve_unit("1e-3*e^2") == "1e-3*s^2"
+
+
+def test_a_unit_id_of_one_name_is_replaced_without_brackets() -> None:
+    """`1/hr` of a model with the unit id `hr` stays `1/hr`, an expression gets brackets."""
+    from sbmlsim.units import replace_unit_ids
+
+    assert replace_unit_ids("1/hr", {"hr": "hr"}) == "1/hr"
+    assert replace_unit_ids("mpm^2/kg", {"mpm": "mg/min"}) == "(mg/min)^2/kg"
+    assert replace_unit_ids("1/x", {"x": ""}) == "1/dimensionless"
 
 
 def test_a_dimensionless_unit_id_is_a_quantity() -> None:
@@ -632,3 +646,189 @@ def test_a_derived_unit_is_matched_with_its_unit_definition() -> None:
     reaction.createKineticLaw().setMath(libsbml.parseL3Formula("k * S"))
     uinfo = UnitsInformation.from_sbml_doc(doc)
     assert uinfo.udict["R"] == uinfo.unit_ids["mmole_per_min"]
+
+
+def test_the_default_units_of_level_2_are_redefined_by_the_repressilator() -> None:
+    """The repressilator (Level 2) redefines `time`, `substance` and `volume`."""
+    uinfo = UnitsInformation.from_sbml(REPRESSILATOR_SBML)
+
+    assert uinfo["time"] == "min"
+    assert uinfo["PX"] == "item"
+    assert uinfo["[PX]"] == "item/fl"
+    assert uinfo["cell"] == "fl"
+
+
+def _sbml_level_2(
+    version: int, redefine_time: bool = False, spatial_size_units: bool = False
+) -> str:
+    """Get the SBML of a Level 2 model without units on its entities.
+
+    The compartments have three, two, one and zero spatial dimensions, each with
+    a species; with `spatial_size_units` the species of three dimensions has the
+    spatial size units `fl`.
+    """
+    doc = libsbml.SBMLDocument(2, version)
+    model = doc.createModel()
+    model.setId(f"l2v{version}")
+    if redefine_time:
+        udef = model.createUnitDefinition()
+        udef.setId("time")
+        unit = udef.createUnit()
+        unit.setKind(libsbml.UNIT_KIND_SECOND)
+        unit.setExponent(1)
+        unit.setScale(0)
+        unit.setMultiplier(3600.0)
+    if spatial_size_units:
+        udef = model.createUnitDefinition()
+        udef.setId("fl")
+        unit = udef.createUnit()
+        unit.setKind(libsbml.UNIT_KIND_LITRE)
+        unit.setExponent(1)
+        unit.setScale(-15)
+        unit.setMultiplier(1.0)
+    for cid, dimensions in [("c3", 3), ("c2", 2), ("c1", 1), ("c0", 0)]:
+        compartment = model.createCompartment()
+        compartment.setId(cid)
+        compartment.setSpatialDimensions(dimensions)
+        if dimensions:
+            compartment.setSize(1.0)
+        species = model.createSpecies()
+        species.setId(f"S_{cid}")
+        species.setCompartment(cid)
+        species.setInitialAmount(1.0)
+        if spatial_size_units and dimensions == 3:
+            assert (
+                species.setSpatialSizeUnits("fl") == libsbml.LIBSBML_OPERATION_SUCCESS
+            )
+    p = model.createParameter()
+    p.setId("p")
+    p.setValue(1.0)
+    return libsbml.writeSBMLToString(doc)
+
+
+@pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
+def test_the_default_units_of_level_2(version: int) -> None:
+    """An entity of Level 2 without units has the predefined unit of its kind."""
+    uinfo = UnitsInformation.from_sbml(_sbml_level_2(version))
+
+    assert uinfo["time"] == "second"
+    assert uinfo["c3"] == "litre"
+    assert uinfo["c2"] == "meter^2"
+    assert uinfo["c1"] == "meter"
+    assert uinfo["c0"] == ""
+    for cid in ["c3", "c2", "c1", "c0"]:
+        assert uinfo[f"S_{cid}"] == "mole"
+    assert uinfo["[S_c3]"] == "mole/litre"
+    assert uinfo["[S_c2]"] == "mole/meter^2"
+    assert uinfo["[S_c1]"] == "mole/meter"
+    # a compartment of zero dimensions has no size
+    assert uinfo["[S_c0]"] == ""
+    # a parameter has no default unit
+    assert uinfo["p"] == ""
+
+
+def test_a_level_2_model_redefines_its_time() -> None:
+    """A unit definition `time` is the time of a Level 2 model."""
+    uinfo = UnitsInformation.from_sbml(_sbml_level_2(4, redefine_time=True))
+
+    assert uinfo["time"] == "hr"
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_the_spatial_size_units_of_a_species(version: int) -> None:
+    """The concentration of a species of Level 2 Version 1 and 2 is per its spatial size."""
+    uinfo = UnitsInformation.from_sbml(_sbml_level_2(version, spatial_size_units=True))
+
+    assert uinfo["c3"] == "litre"
+    assert uinfo["[S_c3]"] == "mole/fl"
+
+
+def test_the_default_units_of_level_1() -> None:
+    """A compartment of Level 1 without units is a volume, a species a substance."""
+    doc = libsbml.SBMLDocument(1, 2)
+    model = doc.createModel()
+    model.setId("l1")
+    compartment = model.createCompartment()
+    compartment.setId("c")
+    compartment.setVolume(1.0)
+    species = model.createSpecies()
+    species.setId("S")
+    species.setCompartment("c")
+    species.setInitialAmount(1.0)
+
+    uinfo = UnitsInformation.from_sbml(libsbml.writeSBMLToString(doc))
+
+    assert uinfo["time"] == "second"
+    assert uinfo["c"] == "litre"
+    assert uinfo["S"] == "mole"
+    assert uinfo["[S]"] == "mole/litre"
+
+
+def test_an_entity_of_level_3_has_no_default_unit() -> None:
+    """Level 3 has no predefined units, an entity without units has none."""
+    doc = libsbml.SBMLDocument(3, 2)
+    model = doc.createModel()
+    model.setId("l3")
+    compartment = model.createCompartment()
+    compartment.setId("c")
+    compartment.setSize(1.0)
+    compartment.setSpatialDimensions(3.0)
+    compartment.setConstant(True)
+    species = model.createSpecies()
+    species.setId("S")
+    species.setCompartment("c")
+    species.setInitialAmount(1.0)
+    species.setHasOnlySubstanceUnits(False)
+    species.setBoundaryCondition(False)
+    species.setConstant(False)
+
+    uinfo = UnitsInformation.from_sbml(libsbml.writeSBMLToString(doc))
+
+    assert uinfo["time"] == "second"
+    assert uinfo["c"] == ""
+    assert uinfo["S"] == ""
+    assert uinfo["[S]"] == ""
+
+
+def test_a_number_of_a_change_is_in_the_unit_of_the_model(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A number of the changes of a model is documented to be in its unit, no warning."""
+    uinfo = UnitsInformation.from_sbml(REPRESSILATOR_SBML)
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.units"):
+        changes = UnitsInformation.normalize_changes({"X": 5.0}, uinfo=uinfo)
+
+    x = changes["X"]
+    assert isinstance(x, Quantity)
+    assert x.magnitude == 5.0
+    assert str(x.units) == "item"
+    assert [r for r in caplog.records if r.levelno > logging.DEBUG] == []
+
+
+def test_a_change_in_a_wrong_unit_raises() -> None:
+    """A quantity which is not in a unit of its target names both units."""
+    from sbmlsim import Q
+
+    uinfo = UnitsInformation.from_sbml(REPRESSILATOR_SBML)
+    with pytest.raises(ValueError, match=r"'5\.0 second' of 'X'.*'item'"):
+        UnitsInformation.normalize_changes({"X": Q(5.0, "s")}, uinfo=uinfo)
+
+
+@pytest.mark.parametrize("quantity", [False, True])
+def test_a_change_of_no_entity_of_the_model_raises(quantity: bool) -> None:
+    """A change of a target the model has not names the target."""
+    from sbmlsim import Q
+
+    uinfo = UnitsInformation.from_sbml(REPRESSILATOR_SBML)
+    change: Quantity | float = Q(5.0, "item") if quantity else 5.0
+    with pytest.raises(ValueError, match="'nope'"):
+        UnitsInformation.normalize_changes({"nope": change}, uinfo=uinfo)
+
+
+def test_a_model_with_a_change_in_a_wrong_unit_raises() -> None:
+    """The changes of a model are converted when it is loaded."""
+    from sbmlsim import Q
+    from sbmlsim.model import RoadrunnerSBMLModel
+
+    with pytest.raises(ValueError, match="'X'"):
+        RoadrunnerSBMLModel(REPRESSILATOR_SBML, changes={"X": Q(5.0, "s")})

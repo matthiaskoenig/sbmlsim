@@ -7,6 +7,9 @@ reference problem for `sbmlsim.fit`.
 
 from pathlib import Path
 
+from sbmlsim.resources import HCTZ_SBML
+
 HCTZ_PATH = Path(__file__).parent
-MODEL_PATH = HCTZ_PATH / "models" / "hctz_body_flat.xml"
+#: the model is part of the package, the tutorial of the documentation uses it
+MODEL_PATH = HCTZ_SBML
 DATA_PATH = HCTZ_PATH / "data"

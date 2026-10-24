@@ -1,43 +1,46 @@
 # PEtab SciML Test Suite
 
-The [PEtab SciML test suite](https://github.com/PEtab-dev/petab_sciml_testsuite) is the conformance suite of [PEtab SciML](petab_sciml.md), the extension of PEtab v2 for hybrid problems of a model and neural networks. Its cases are the reference which `sbmlsim.sciml` and the reader of `sbmlsim.fit.petab_v2` are measured against: a network is read and evaluated like PyTorch evaluates it, and a hybrid problem has the log-likelihood, the simulations and the gradient the reference tools compute.
+The [PEtab SciML test suite](https://github.com/PEtab-dev/petab_sciml_testsuite) is the conformance suite of [PEtab SciML](petab_sciml.md), the PEtab extension for hybrid problems that combine a model with neural networks. It checks two things: that `sbmlsim.sciml` evaluates a network the way PyTorch does, and that a hybrid problem gives the same log-likelihood, simulations and gradient as the reference tools.
+
+Of the 96 cases of the pinned commit, 92 pass. The four that do not run into known gaps (see [below](#cases-that-do-not-pass)).
+
+## Run it
+
+The suite needs the `sciml` extra (`pip install sbmlsim[sciml]`, included in `dev`).
+
+```bash
+uv run python scripts/sciml_testsuite.py download    # download the pinned commit
+uv run python scripts/sciml_testsuite.py run         # run every case, compare with the baseline
+uv run python scripts/sciml_testsuite.py baseline    # refresh the baseline after a change
+pytest -m sciml_testsuite tests/sciml                # one test per case, after the download
+tox r -e sciml                                       # download, then run the tests
+```
+
+The suite has no releases, so it is pinned by a commit (`SCIML_SUITE_COMMIT` in `sbmlsim.sciml.testsuite`). The cases are cached in `~/.cache/sbmlsim/petab-sciml-testsuite/<commit>/`. To use a checkout somewhere else, point `SBMLSIM_SCIML_SUITE_PATH` at its `test_cases` directory.
+
+`tests/sciml/test_testsuite.py` has one test per case and group (`test_model_import`, `test_initialization`, `test_problem_import` and `test_problem_round_trip`), so a failure names the case. A normal `pytest` skips them because they need the download. They run before every release in the `sciml` job of the CI.
 
 ## What is run
 
-The suite has three groups of cases, every case is a directory named by its number with a `solutions.yaml` which holds the reference values and their tolerances. `sbmlsim.sciml.testsuite` reads a case of every group and compares it:
+The suite has three groups of cases. Each case is a directory named by its number, with a `solutions.yaml` that holds the reference values and their tolerances. `sbmlsim.sciml.testsuite` runs all three:
 
-| group | case | compared |
+| group | case class | compared |
 | --- | --- | --- |
-| `ml_model_import` | `ModelImportCase` | the outputs of the forward pass of a network |
+| `ml_model_import` | `ModelImportCase` | the output of a forward pass of a network |
 | `initialization` | `InitializationCase` | the nominal values of the arrays of a network |
 | `sciml_problem_import` | `ProblemImportCase` | the log-likelihood, the simulations at the measurements and the gradient |
 
-A problem is simulated on a fixed grid with the tolerances `1e-13`, because the reference values are simulated with `1e-12` and the error of a simulation enters the gradient multiplied by the sensitivities of the log-likelihood. The gradient is the central difference of five points, which is what the reference values are. Every problem which is read is also written with `to_petab` and read back, and the round trip must give the same parameters, hybridizations, data and log-likelihood.
+A problem is simulated on a fixed grid with integrator tolerances of `1e-13`. The reference values were simulated with `1e-12`, and any simulation error enters the gradient amplified by the sensitivities of the log-likelihood. The gradient is a central difference of five points, like the reference values.
 
-A case which does not pass is a `tolerance` (it was evaluated and the values are wrong), `shape` (the arrays do not have the shape of the reference), `unsupported` (it runs into a gap of `sbmlsim`, see [What is not supported](petab_sciml.md#what-is-not-supported)) or `error`.
+Every problem that is read is also written back with `to_petab` and read again. The round trip must give the same parameters, hybridizations, data and log-likelihood.
 
-## Running it
+The outcome of a case that does not pass is `tolerance` (the values are wrong), `shape` (the arrays do not have the shape of the reference), `unsupported` (the case needs something `sbmlsim` does not support, see [What is not supported](petab_sciml.md#what-is-not-supported)) or `error`.
 
-```bash
-# fetch the pinned commit into the cache, which the tests need
-uv run python scripts/sciml_testsuite.py download
+## Cases that do not pass
 
-# run the cases and report the outcome
-uv run python scripts/sciml_testsuite.py run
+`tests/data/sciml_baseline.json` lists the cases that do not pass, each with its outcome and reason; a case without a reason fails the tests. As for the [SBML Test Suite](testsuite.md), the baseline is checked in both directions: a case that breaks is a regression, and a listed case that passes means the baseline is out of date.
 
-# refresh the expected outcomes after a change which fixes or breaks cases
-uv run python scripts/sciml_testsuite.py baseline
-```
-
-The suite has no releases, so `SCIML_SUITE_COMMIT` in `sbmlsim.sciml.testsuite` pins it by a commit. The cases are cached under `sbmlsim/petab-sciml-testsuite/<commit>` in the user cache, and `SBMLSIM_SCIML_SUITE_PATH` points at the directory `test_cases` of a checkout somewhere else.
-
-## Part of the test suite of sbmlsim
-
-`tests/sciml/test_testsuite.py` is one test per case and group (`test_model_import`, `test_initialization`, `test_problem_import`, `test_problem_round_trip`), so a failure names the case. They carry the `sciml_testsuite` marker and a normal `pytest` deselects them, because they need the download of the suite. They run before a release, in the `sciml` job of the CI, and by hand with
-
-```bash
-pytest -m sciml_testsuite tests/sciml   # the cases must be downloaded
-tox r -e sciml                          # downloads them first
-```
-
-`tests/data/sciml_baseline.json` records the cases which do not pass, each with its outcome and its reason, and a run is compared with it. As for the [SBML Test Suite](testsuite.md), the baseline fails in both directions: a case which passed and now fails is a regression, and a case which is in the baseline and passes is a baseline which is out of date. A case is not listed without a reason, the tests reject it.
+| case | outcome | reason |
+| --- | --- | --- |
+| `ml_model_import/020` | `tolerance` | `AlphaDropout`: the reference values are the mean of many forward passes in training mode, while `sbmlsim` evaluates dropout in evaluation mode, where it is the identity (gap `sciml-training-mode`) |
+| `sciml_problem_import/032` to `034` | `unsupported` | priors on the parameters: the cases state a log-posterior, and priors on network parameters are not supported yet (gap `sciml-priors`, issue #190) |

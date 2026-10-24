@@ -154,9 +154,10 @@ def test_a_reduction_of_a_dataset_runs_over_its_rows(
 
 
 def test_to_units_keeps_the_dimensions(experiment: SimulationExperiment) -> None:
-    time = Data("time", task="grid").get_data(experiment, to_units="minute")
-    assert time.dims == ("time",) and time.attrs["units"] == "minute"
-    np.testing.assert_allclose(time.values, np.linspace(0, 10, 11) / 60.0)
+    # the time of the repressilator is in minutes, its unit definition `time`
+    time = Data("time", task="grid").get_data(experiment, to_units="second")
+    assert time.dims == ("time",) and time.attrs["units"] == "second"
+    np.testing.assert_allclose(time.values, np.linspace(0, 10, 11) * 60.0)
     with pytest.raises(DimensionalityError):
         Data("time", task="grid").get_data(experiment, to_units="mol")
 
@@ -164,7 +165,7 @@ def test_to_units_keeps_the_dimensions(experiment: SimulationExperiment) -> None
 def test_to_quantity(experiment: SimulationExperiment) -> None:
     time = Data("time", task="grid").get_data(experiment)
     quantity = to_quantity(time, experiment.ureg)
-    assert quantity.to("second").magnitude.tolist() == pytest.approx(
+    assert quantity.to("minute").magnitude.tolist() == pytest.approx(
         np.linspace(0, 10, 11).tolist()
     )
     with pytest.raises(ValueError, match="labels"):

@@ -36,6 +36,21 @@ def _relative_path(path: Path, start: Path) -> Path:
         return path.resolve()
 
 
+def _source_file(cls: type) -> Path | None:
+    """Get the python file of the module of a class, `None` if it has none.
+
+    The class of an experiment of a notebook, of `python -c` or of `exec`
+    belongs to a module without a file, e.g. `__main__` or `builtins`, and a
+    module may be compiled or frozen.
+    """
+    module = sys.modules.get(cls.__module__)
+    file = getattr(module, "__file__", None)
+    if not file:
+        return None
+    path = Path(file)
+    return path if path.suffix == ".py" and path.is_file() else None
+
+
 def _link(path: PurePath) -> str:
     """Get the link of a path in a report, the same on every platform.
 
@@ -106,27 +121,33 @@ class ReportResults:
                 raise
             logger.debug("No models in the report of the failed '%s'", exp_id)
             experiment_models = {}
-        models: dict[str, str] = {}
+        # the link of every model, `None` for a model of inline SBML
+        models: dict[str, str | None] = {}
         for model_key, model in experiment_models.items():
-            model_path: Path
+            model_path: Path | None
             if isinstance(model, (Path, str)):
                 model_path = Path(model)
             elif isinstance(model, AbstractModel):
-                if model.source.path is None:
-                    raise ValueError(f"Model '{model_key}' has no source path.")
                 model_path = model.source.path
             else:
                 raise ValueError(f"Unsupported model type: '{type(model)}'")
 
-            models[model_key] = _link(_relative_path(model_path, abs_path))
+            models[model_key] = (
+                None
+                if model_path is None
+                else _link(_relative_path(model_path, abs_path))
+            )
 
-        # code path
-        code_path = sys.modules[experiment.__module__].__file__
-        if code_path is None:
-            raise ValueError(f"No source file for experiment '{exp_id}'.")
-        with open(code_path, encoding="utf-8") as f_code:
-            code = f_code.read()
-        code_rel_path = _link(_relative_path(Path(code_path), abs_path))
+        # the code, an experiment of a notebook, of `python -c` or of `exec`
+        # has no file and its report no code
+        code_file = _source_file(type(experiment))
+        code: str | None = None
+        code_rel_path: str | None = None
+        if code_file is None:
+            logger.debug("No source file of the experiment '%s'", exp_id)
+        else:
+            code = code_file.read_text(encoding="utf-8")
+            code_rel_path = _link(_relative_path(code_file, abs_path))
 
         # a failed experiment may have failed before it wrote its datasets, and
         # a file of an earlier run is not one of this run

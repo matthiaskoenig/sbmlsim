@@ -10,6 +10,7 @@ from typing import Any
 
 import libsbml
 import numpy as np
+import pandas as pd
 import pytest
 import roadrunner
 
@@ -862,6 +863,25 @@ def test_the_tolerance_of_every_state_reaches_cvode(tmp_path: Path) -> None:
         pytest.approx(expected, rel=1e-12, abs=0)
     )
     assert set(table["kind"]) == {"amount", "concentration", "other"}
+
+
+def test_the_tolerances_name_the_compartment_of_every_species(tmp_path: Path) -> None:
+    """An amount species has its compartment, only a concentration a volume."""
+    path = tmp_path / "tolerances.xml"
+    path.write_text(sbml(TOLERANCE_PROBE))
+    model = Simulator(n_workers=1).load(path)
+    table = model.tolerances().set_index("sid")
+
+    assert table.loc["X", "kind"] == "amount"
+    assert table.loc["X", "compartment"] == "C"
+    assert pd.isna(table.loc["X", "volume"])
+    assert table.loc["A", "compartment"] == "C"
+    assert table.loc["A", "volume"] == 2.0
+    assert table.loc["S", "compartment"] == "U"
+    # a state which is no species has no compartment
+    assert table.loc["D", "kind"] == "other"
+    assert pd.isna(table.loc["D", "compartment"])
+    assert pd.isna(table.loc["D", "volume"])
 
 
 def test_a_float_tolerance_is_the_same_for_every_kind(tmp_path: Path) -> None:

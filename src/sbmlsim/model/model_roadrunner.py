@@ -1093,16 +1093,19 @@ class RoadrunnerSBMLModel(AbstractModel):
         """Get the absolute tolerance of every state.
 
         Returns:
-            A row per state with `sid`, `kind`, `compartment`, `volume` (the
-            reference volume of a concentration species) and
+            A row per state with `sid`, `kind`, `compartment` (the compartment
+            of a species, amount and concentration, empty for another state),
+            `volume` (the reference volume of a concentration species, which
+            scales its tolerance, empty for another state) and
             `absolute_tolerance`.
         """
+        compartments = self.symbols.species_compartment
         return pd.DataFrame(
             [
                 {
                     "sid": s.sid,
                     "kind": s.kind.value,
-                    "compartment": s.compartment,
+                    "compartment": compartments.get(s.sid, s.compartment),
                     "volume": s.volume,
                     "absolute_tolerance": s.absolute_tolerance,
                 }

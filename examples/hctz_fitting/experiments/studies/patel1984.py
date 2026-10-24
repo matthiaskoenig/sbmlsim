@@ -144,7 +144,7 @@ class Patel1984(HCTZSimulationExperiment):
                         self, task=f"task_hctz{dose}", xid="time", yid="na_urine"
                     ),
                     metadata=HCTZMappingMetaData(
-                        tissue=Tissue.PLASMA,
+                        tissue=Tissue.URINE,
                         application_form=ApplicationForm.TABLET
                         if form == "tab"
                         else ApplicationForm.SUSPENSION,
@@ -171,7 +171,7 @@ class Patel1984(HCTZSimulationExperiment):
                         self, task=f"task_hctz{dose}", xid="time", yid="cl_urine"
                     ),
                     metadata=HCTZMappingMetaData(
-                        tissue=Tissue.PLASMA,
+                        tissue=Tissue.URINE,
                         application_form=ApplicationForm.TABLET
                         if form == "tab"
                         else ApplicationForm.SUSPENSION,

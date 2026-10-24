@@ -11,6 +11,7 @@ import re
 import warnings
 from collections.abc import Iterator, Mapping, MutableMapping
 from pathlib import Path
+from tokenize import TokenError
 from typing import Any, ClassVar
 
 import libsbml
@@ -22,7 +23,7 @@ os.environ["PINT_ARRAY_PROTOCOL_FALLBACK"] = "0"
 
 import pint
 from pint import UnitRegistry
-from pint.errors import DimensionalityError, UndefinedUnitError
+from pint.errors import DimensionalityError, PintError, UndefinedUnitError
 from pint.facets.plain import PlainQuantity, PlainUnit
 
 #: type of the quantities of a unit registry; `pint.Quantity` is a subclass, the
@@ -179,7 +180,8 @@ def replace_unit_ids(unit: str, unit_ids: Mapping[str, str]) -> str:
 
     The expression is put in brackets, so a power or a quotient applies to all
     of it: `mg_per_min^2/kg` with `mg_per_min = mg/min` is
-    `(mg/min)^2/kg`; a unit which is one unit id is its expression,
+    `(mg/min)^2/kg`; an expression which is a single name and a unit which is
+    one unit id are not put in brackets, `mg_per_min` is `mg/min`,
     `mg_per_min` is `mg/min`. Only whole identifiers are replaced, see
     `unit_identifiers`, and only once: the expression of a unit id is a unit of
     pint, whose names are not replaced again. A unit id wins over a unit of
@@ -202,7 +204,11 @@ def replace_unit_ids(unit: str, unit_ids: Mapping[str, str]) -> str:
         token = match.group()
         if token not in unit_ids:
             return token
-        return f"({unit_ids[token] or 'dimensionless'})"
+        expression = unit_ids[token] or "dimensionless"
+        if _IDENTIFIER.fullmatch(expression):
+            # a single name needs no brackets, `1/hr` stays `1/hr`
+            return expression
+        return f"({expression})"
 
     return _UNIT_TOKEN.sub(replace, unit)
 
@@ -210,6 +216,61 @@ def replace_unit_ids(unit: str, unit_ids: Mapping[str, str]) -> str:
 def _package_registry() -> UnitRegistry:
     """Get the unit registry of the package, for a function with a `ureg` argument."""
     return ureg
+
+
+#: the predefined unit of a compartment of SBML Level 1 and 2 without units,
+#: by its spatial dimensions
+_COMPARTMENT_UNITS: dict[int, str] = {3: "volume", 2: "area", 1: "length"}
+
+
+def _time_units(model: libsbml.Model) -> str:
+    """Get the unit id of the time of a model.
+
+    Level 1 and 2 have no `timeUnits`, the time is in the predefined unit
+    `time`, which a unit definition `time` redefines.
+    """
+    if model.getLevel() < 3:
+        return "time"
+    return model.getTimeUnits()
+
+
+def _substance_units(species: libsbml.Species) -> str:
+    """Get the unit id of the amount of a species, empty without one.
+
+    A species of Level 1 and 2 without `substanceUnits` is in the predefined
+    unit `substance`.
+    """
+    uid: str = species.getSubstanceUnits()
+    if not uid and species.getLevel() < 3:
+        return "substance"
+    return uid
+
+
+def _compartment_units(compartment: libsbml.Compartment) -> str:
+    """Get the unit id of the size of a compartment, empty without one.
+
+    A compartment of Level 1 and 2 without `units` is in the predefined unit of
+    its spatial dimensions, `volume`, `area` or `length`; one of zero
+    dimensions has no size.
+    """
+    uid: str = compartment.getUnits()
+    if not uid and compartment.getLevel() < 3:
+        dimensions = compartment.getSpatialDimensionsAsDouble()
+        return _COMPARTMENT_UNITS.get(int(dimensions), "")
+    return uid
+
+
+def _spatial_size_units(
+    species: libsbml.Species, compartment: libsbml.Compartment
+) -> str:
+    """Get the unit id of the size a species is a concentration per.
+
+    It is the `spatialSizeUnits` of the species (Level 2 Version 1 and 2) or
+    else the unit of its compartment.
+    """
+    if species.getLevel() == 2 and species.isSetSpatialSizeUnits():
+        return species.getSpatialSizeUnits()
+    return _compartment_units(compartment)
 
 
 class UnitsInformation(MutableMapping):
@@ -500,6 +561,14 @@ class UnitsInformation(MutableMapping):
         The units information has the unit ids of the model, see
         `model_uid_dict`, which `UnitsInformation.quantity` resolves.
 
+        In SBML Level 1 and 2 an entity without units has the predefined unit
+        of its kind, which a unit definition of the same id redefines: the
+        time `time`, a species `substance` and a compartment `volume`, `area`
+        or `length` by its spatial dimensions (none for zero dimensions); the
+        concentration of a species is per the `spatialSizeUnits` of the
+        species (Level 2 Version 1 and 2) or the units of its compartment.
+        Level 3 has no predefined units, its entities have the units they set.
+
         An entity without units, i.e. the time without time units, a species
         without the units of its substance or its compartment, or an entity
         whose derived unit is no unit definition of the model, is logged at
@@ -533,7 +602,7 @@ class UnitsInformation(MutableMapping):
             """Get the expression of a unit id, the id if the model lacks it."""
             return uid_dict.get(uid, uid)
 
-        time_uid: str = model.getTimeUnits()
+        time_uid: str = _time_units(model)
         if time_uid:
             udict["time"] = expression(time_uid)
         if not time_uid:
@@ -560,13 +629,13 @@ class UnitsInformation(MutableMapping):
                 # for species the amount and concentration units have to be added
                 if isinstance(element, libsbml.Species):
                     # amount units
-                    substance_uid = element.getSubstanceUnits()
+                    substance_uid = _substance_units(element)
                     udict[sid] = expression(substance_uid) if substance_uid else ""
 
                     compartment: libsbml.Compartment = model.getCompartment(
                         element.getCompartment()
                     )
-                    volume_uid = compartment.getUnits()
+                    volume_uid = _spatial_size_units(element, compartment)
 
                     # store concentration
                     if substance_uid and volume_uid:
@@ -590,7 +659,10 @@ class UnitsInformation(MutableMapping):
                         missing.append(f"[{sid}]")
                         udict[f"[{sid}]"] = ""
 
-                elif isinstance(element, (libsbml.Compartment, libsbml.Parameter)):
+                elif isinstance(element, libsbml.Compartment):
+                    uid_element = _compartment_units(element)
+                    udict[sid] = expression(uid_element) if uid_element else ""
+                elif isinstance(element, libsbml.Parameter):
                     uid_element = element.getUnits()
                     udict[sid] = expression(uid_element) if uid_element else ""
                 else:
@@ -633,41 +705,43 @@ class UnitsInformation(MutableMapping):
     def normalize_changes(
         changes: dict[str, Quantity | float], uinfo: UnitsInformation
     ) -> dict[str, Quantity | float]:
-        """Normalize all changes to units in given units dictionary.
+        """Normalize the changes to the units of a model.
 
-        This is a major helper function allowing to convert changes
-        to the requested units.
+        A quantity is converted into the unit of its target, a number is in
+        the unit of its target and becomes a quantity of it.
+
+        Args:
+            changes: target -> value, a quantity or a number.
+            uinfo: the units of the model.
+
+        Returns:
+            target -> the value as a quantity in the unit of the target.
+
+        Raises:
+            ValueError: if a target has no unit in the model, i.e. is no
+                entity of it, or a quantity cannot be converted into the unit
+                of its target.
         """
         Q_ = uinfo.ureg.Quantity
         changes_normed = {}
         for key, item in changes.items():
+            unit = uinfo.get(key)
+            if unit is None:
+                raise ValueError(
+                    f"'{key}' has no unit in the model, it is no entity of the "
+                    f"model and its change '{item}' cannot be applied."
+                )
             if isinstance(item, Quantity):
                 try:
-                    # convert to model units
-                    item = item.to(uinfo[key])
-                except DimensionalityError as err:
-                    logger.error(
-                        "DimensionalityError '%s = %s'. Check that model units fit with changes units.\n%s",
-                        key,
-                        item,
-                        err,
-                    )
-                    raise err
-                except KeyError as err:
-                    logger.error(
-                        "KeyError: '%s' does not exist in unit dictionary of model.",
-                        key,
-                    )
-                    raise err
+                    item = item.to(unit or "dimensionless")
+                except (DimensionalityError, UndefinedUnitError) as err:
+                    raise ValueError(
+                        f"The value '{item}' of '{key}' cannot be converted into "
+                        f"the unit '{unit}' of the model: {err}"
+                    ) from err
             else:
-                logger.warning(
-                    "No units provided, assuming dictionary units: %s = %s", key, item
-                )
-                try:
-                    # convert to model units
-                    item = Q_(item, uinfo[key])
-                except DimensionalityError as err:
-                    logger.error("DimensionalityError '%s = %s'.\n%s", key, item, err)
+                logger.debug("A number is in the unit of the model: %s = %s", key, item)
+                item = Q_(item, unit)
 
             changes_normed[key] = item
 
@@ -902,3 +976,41 @@ def _enclosed(expression: str) -> bool:
         if depth == 0 and k < len(expression) - 1:
             return False
     return True
+
+
+def short_unit(unit: str | None) -> str:
+    """Get a unit in the short form of pint, e.g. `ng/ml` for `nanogram / milliliter`.
+
+    A result keeps its units in the long form of pint; the labels of plots and
+    of probability statements show the short form.
+
+    Args:
+        unit: the unit as a result keeps it.
+
+    Returns:
+        The short form, empty for no unit and for a dimensionless one, and the
+        unit as given if pint does not parse it as a unit, e.g. one with a
+        factor or a unit of a model only.
+    """
+    if not unit:
+        return ""
+    try:
+        parsed = ureg.Unit(unit)
+    except (PintError, ValueError, TypeError, AttributeError, TokenError):
+        return unit
+    # the short form of dimensionless is empty
+    return f"{parsed:~P}"
+
+
+def unit_label(name: str, unit: str | None) -> str:
+    """Get the label of a quantity, with ` [unit]` in its short form only for a unit.
+
+    Args:
+        name: the name of the quantity.
+        unit: its unit, see `short_unit`.
+
+    Returns:
+        The label, e.g. `cp [ng/ml]`, or the name without a unit.
+    """
+    text = short_unit(unit)
+    return f"{name} [{text}]" if text else name

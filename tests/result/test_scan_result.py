@@ -37,6 +37,18 @@ def _ragged() -> ScanResult:
     return ScanResult(ds)
 
 
+def test_the_representation_names_the_first_variables() -> None:
+    """A result of a model with hundreds of variables is shown in one short line."""
+    assert repr(_grid()) == "ScanResult(d: 2, time: 3; y)"
+    ds = xr.Dataset(
+        {f"y{k}": ("time", np.zeros(3)) for k in range(10)},
+        coords={"time": [0.0, 1.0, 2.0]},
+    )
+    assert repr(ScanResult(ds)) == (
+        "ScanResult(time: 3; y0, y1, y2, y3, y4, y5, y6, y7, ... (10 variables))"
+    )
+
+
 def test_interpolate_ignores_the_padding_and_the_steady_state() -> None:
     time = np.array([0.0, 1.0, np.inf, np.nan])
     values = np.array([[0.0, 1.0], [2.0, 3.0], [9.0, 9.0], [np.nan, np.nan]])

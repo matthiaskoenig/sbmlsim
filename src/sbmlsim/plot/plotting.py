@@ -992,8 +992,9 @@ class Curve(AbstractCurve):
         self.xerr: Data | None = xerr
         self.yerr: Data | None = yerr
 
+        # the label names the curve, it is no argument of the style
         if "label" in kwargs:
-            self.name = kwargs["label"]
+            self.name = kwargs.pop("label")
 
         self.type: CurveType = type
         self.over: tuple[str, ...] = _dimensions(over, "curve", sid or self.name)
@@ -1795,7 +1796,8 @@ class Plot(BasePlotObject):
                 "No label provided on curve, using default label 'yid'. "
                 "To not plot a label use 'label=None'"
             )
-        if "markeredgecolor" not in kwargs:
+        if style is None and "markeredgecolor" not in kwargs:
+            # the default of data, a style of the curve sets its own
             kwargs["markeredgecolor"] = "black"
 
         # xerr data
@@ -1806,12 +1808,12 @@ class Plot(BasePlotObject):
         if xid_sd:
             if xid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
-            xerr_label = "±SD"
+            xerr_label = " ± SD"
             xerr = Data(xid_sd, dataset=dataset, task=task, sel=sel)
         elif xid_se:
             if xid_se.endswith("sd"):
                 logger.warning("SE error column ends with 'sd', check names.")
-            xerr_label = "±SE"
+            xerr_label = " ± SE"
             xerr = Data(xid_se, dataset=dataset, task=task, sel=sel)
 
         _ = xerr_label
@@ -1824,12 +1826,12 @@ class Plot(BasePlotObject):
         if yid_sd:
             if yid_sd.endswith("se"):
                 logger.warning("SD error column ends with 'se', check names.")
-            yerr_label = "±SD"
+            yerr_label = " ± SD"
             yerr = Data(yid_sd, dataset=dataset, task=task, sel=sel)
         elif yid_se:
             if yid_se.endswith("sd"):
                 logger.warning("SE error column ends with 'sd', check names.")
-            yerr_label = "±SE"
+            yerr_label = " ± SE"
             yerr = Data(yid_se, dataset=dataset, task=task, sel=sel)
 
         if label is not None:
