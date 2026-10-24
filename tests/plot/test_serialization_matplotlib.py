@@ -1,5 +1,6 @@
 """Tests of rendering the figure model with matplotlib."""
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -613,3 +614,40 @@ def test_a_figure_is_measured_with_one_renderer(
     figure = _labelled(2, 2, ylabel=long, right=True, name="A title")
     MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
     assert len(created) <= 1
+
+
+def _svg_size(path: Path) -> tuple[float, float]:
+    head = path.read_text()[:2000]
+    width = re.search(r'width="([0-9.]+)pt"', head)
+    height = re.search(r'height="([0-9.]+)pt"', head)
+    assert width is not None and height is not None
+    return float(width.group(1)), float(height.group(1))
+
+
+def test_a_figure_is_saved_without_a_second_drawing(tmp_path: Path) -> None:
+    """The box of a figure is measured, not found by a drawing of the whole figure.
+
+    `bbox_inches="tight"` drew every figure once to find its box and once to
+    write it, 15 % of the time of the experiments of a model.
+    """
+    figure = _labelled(2, 2, right=True, name="A title")
+    fig = MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
+    fig.savefig(tmp_path / "tight.svg", bbox_inches="tight")
+    draws: list[object] = []
+    draw = fig.draw
+
+    def counted(renderer: Any) -> None:
+        draws.append(renderer)
+        draw(renderer)
+
+    fig.draw = counted  # ty: ignore[invalid-assignment]
+    experiment = SimulationExperiment(sid="exp")
+    saved = experiment.save_mpl_figures(tmp_path, {"fig": fig})
+
+    assert saved == {"svg": [tmp_path / "exp_fig.svg"]}
+    assert len(draws) == 1
+    # the box of `bbox_inches="tight"`, up to the metrics of the fonts of the
+    # renderers: Agg measures the texts a little wider than the paths of SVG
+    assert _svg_size(tmp_path / "exp_fig.svg") == pytest.approx(
+        _svg_size(tmp_path / "tight.svg"), rel=0.005
+    )

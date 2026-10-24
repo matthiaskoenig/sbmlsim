@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import textwrap
+import weakref
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 from matplotlib import rcParams
@@ -25,6 +27,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 from matplotlib.text import Text
 from matplotlib.ticker import FuncFormatter, NullFormatter
+from matplotlib.transforms import Bbox
 
 from sbmlsim.plot import Axis, Curve, Figure, Plot, SubPlot
 from sbmlsim.plot.padding import line_values
@@ -77,7 +80,9 @@ def _measuring_renderer(fig: FigureMPL) -> RendererAgg:
     and the texts kept renderers of 10 GB until the figures were saved. The
     extents of a text depend on the resolution of the renderer, not on its
     size, so one renderer of a pixel at the resolution of the figure measures
-    everything.
+    everything. It is one renderer per resolution: matplotlib caches the
+    metrics of a text per renderer, so the texts measured when a figure is
+    built are not measured again when its box is, see `saved_box`.
 
     Args:
         fig: the figure.
@@ -85,7 +90,46 @@ def _measuring_renderer(fig: FigureMPL) -> RendererAgg:
     Returns:
         The renderer.
     """
-    return RendererAgg(1, 1, fig.dpi)
+    return _renderer_at(fig.dpi)
+
+
+@functools.cache
+def _renderer_at(dpi: float) -> RendererAgg:
+    """Get the renderer of a pixel at a resolution, see `_measuring_renderer`."""
+    return RendererAgg(1, 1, dpi)
+
+
+#: the figures `MatplotlibFigureSerializer.to_figure` built, see `saved_box`
+_BUILT: weakref.WeakSet[FigureMPL] = weakref.WeakSet()
+
+
+def saved_box(fig: FigureMPL) -> Bbox | Literal["tight"]:
+    """Get the box of a figure to save, `bbox_inches` of `savefig`.
+
+    `bbox_inches="tight"` draws the whole figure to find the ticks, labels,
+    legends and titles which reach beyond it, and once more to write it, 15 %
+    of the time of the simulation experiments of a model. A figure which the
+    serializer built has its texts measured already and needs no drawing for
+    its box: the tight box of its artists, measured with `_measuring_renderer`
+    and padded by `savefig.pad_inches`, is the box of `"tight"` up to the
+    metrics of the fonts of the format (a fraction of a point). Any other
+    figure, and one with a layout engine, which lays it out when it is drawn,
+    is saved `"tight"`.
+
+    Args:
+        fig: the figure.
+
+    Returns:
+        The box in inches, or `"tight"`.
+    """
+    pad = rcParams["savefig.pad_inches"]
+    if (
+        fig not in _BUILT
+        or fig.get_layout_engine() is not None
+        or not isinstance(pad, (int, float))
+    ):
+        return "tight"
+    return fig.get_tightbbox(_measuring_renderer(fig)).padded(float(pad))
 
 
 @dataclass
@@ -1238,6 +1282,7 @@ class MatplotlibFigureSerializer:
             renderer=renderer,
         )
 
+        _BUILT.add(fig)
         return fig
 
     @staticmethod
