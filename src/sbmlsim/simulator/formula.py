@@ -23,9 +23,12 @@ the rows of a dataset by name, see `sbmlsim.data.evaluate_function`.
 from __future__ import annotations
 
 import functools
+import importlib.util
 import re
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -115,6 +118,66 @@ class CompiledFormula:
         return np.broadcast_to(value, (size,)).copy()
 
 
+#: the name the parser of the math of PEtab is imported as, see `_parser`
+_PARSER = "sbmlsim._petab_math"
+
+
+def parse_math(formula: str) -> sp.Basic:
+    """Parse the math of PEtab into a sympy expression, `petab.v2.math.sympify_petab`.
+
+    Args:
+        formula: the math, without the brackets of a concentration.
+
+    Returns:
+        The expression.
+
+    Raises:
+        ValueError: if the formula is not valid math of PEtab.
+    """
+    return _parser()(formula)
+
+
+@functools.cache
+def _parser() -> Callable[[str], sp.Basic]:
+    """Get the parser of the math of PEtab without importing the package petab.
+
+    The parser of petab is the package `petab.v1.math`, which imports only
+    sympy, numpy and the runtime of ANTLR, but the package `petab` imports
+    the problems of PEtab v1 with matplotlib.pyplot and scipy.stats and
+    `petab.v2` its SciML extension with torch: 1.0 to 1.4 s for the first
+    formula of a process and of every worker of a pool. The directory of the
+    parser is imported as the package `_PARSER` instead, the same code under
+    another name. A process which imported petab already uses it, and a
+    petab whose parser is elsewhere is imported as a whole.
+    """
+    if "petab" in sys.modules:
+        from petab.v2.math import sympify_petab
+
+        return sympify_petab
+    spec = importlib.util.find_spec("petab")
+    locations = list(spec.submodule_search_locations or []) if spec else []
+    directory = Path(locations[0]) / "v1" / "math" if locations else None
+    if directory is None or not (directory / "sympify.py").is_file():
+        from petab.v2.math import sympify_petab
+
+        return sympify_petab
+    package = importlib.util.spec_from_file_location(
+        _PARSER,
+        directory / "__init__.py",
+        submodule_search_locations=[str(directory)],
+    )
+    if package is None or package.loader is None:
+        raise ImportError(f"The parser of petab in '{directory}' cannot be read.")
+    module = importlib.util.module_from_spec(package)
+    sys.modules[_PARSER] = module
+    try:
+        package.loader.exec_module(module)
+    except BaseException:
+        del sys.modules[_PARSER]
+        raise
+    return module.sympify_petab
+
+
 @functools.cache
 def compile_formula(formula: str) -> CompiledFormula:
     """Compile a formula, see the module.
@@ -128,10 +191,6 @@ def compile_formula(formula: str) -> CompiledFormula:
     Raises:
         ValueError: if the formula is not valid math of PEtab.
     """
-    # petab.v2 imports its SciML extension and torch, which costs seconds;
-    # only a simulation with a formula pays it
-    from petab.v2.math import sympify_petab
-
     dotted: dict[str, str] = {}
 
     def escape(match: re.Match[str]) -> str:
@@ -149,7 +208,7 @@ def compile_formula(formula: str) -> CompiledFormula:
         return name
 
     try:
-        expression = sympify_petab(escaped)
+        expression = parse_math(escaped)
     except Exception as err:
         raise ValueError(f"The formula '{formula}' is not valid math: {err}") from err
     ordered = sorted(expression.free_symbols, key=lambda s: selection(str(s)))
