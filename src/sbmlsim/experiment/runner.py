@@ -25,7 +25,6 @@ import logging
 import math
 import os
 import pickle
-import sys
 import time
 from collections.abc import Iterable, Mapping
 from concurrent.futures import Future
@@ -362,25 +361,7 @@ class ExperimentRunner:
             "keep_results": keep_results,
             "figure_settings": settings,
         }
-        jobs = {
-            sid: _Job(
-                experiment_class=type(self.experiments[sid]),
-                settings=self._settings[sid],
-                base_path=self.base_path,
-                data_path=self.data_path,
-                jit_optimization=self.jit_optimization,
-                on_error=self.on_error,
-                simulator=self.simulator,
-                output_path=output_path / sid,
-                formats=formats,
-                figure_formats=figure_formats,
-                options=options,
-                rc=_changed_rc_params(),
-                levels=_logger_levels(),
-            )
-            for sid in self._order
-            if sid in self.experiments
-        }
+        jobs = self._jobs(output_path, formats, figure_formats, options)
         workers = self._workers(n_workers, jobs, options)
         executor = (
             parallel.start_pool(workers, preload=_modules(jobs.values()))
@@ -434,6 +415,35 @@ class ExperimentRunner:
             raise ExperimentRunError(exp_results)
         return exp_results
 
+    def _jobs(
+        self,
+        output_path: Path,
+        formats: list[str],
+        figure_formats: list[str] | None,
+        options: dict[str, Any],
+    ) -> dict[str, "_Job"]:
+        """Get what a worker needs to run every experiment, see `_run_job`."""
+        rc, levels = _changed_rc_params(), _logger_levels()
+        return {
+            sid: _Job(
+                experiment_class=type(self.experiments[sid]),
+                settings=self._settings[sid],
+                base_path=self.base_path,
+                data_path=self.data_path,
+                jit_optimization=self.jit_optimization,
+                on_error=self.on_error,
+                simulator=self.simulator,
+                output_path=output_path / sid,
+                formats=formats,
+                figure_formats=figure_formats,
+                options=options,
+                rc=rc,
+                levels=levels,
+            )
+            for sid in self._order
+            if sid in self.experiments
+        }
+
     def _workers(
         self, n_workers: int | None, jobs: dict[str, "_Job"], options: dict[str, Any]
     ) -> int:
@@ -445,6 +455,9 @@ class ExperimentRunner:
                 os.process_cpu_count() or 1,
                 math.ceil(len(jobs) / EXPERIMENTS_PER_WORKER),
             )
+            if n_workers > 1 and (reason := self._scan_pool()) is not None:
+                logger.info("The experiments run in this process: %s", reason)
+                return 1
         n_workers = min(n_workers, len(jobs))
         if n_workers <= 1:
             return 1
@@ -454,6 +467,34 @@ class ExperimentRunner:
             return 1
         return n_workers
 
+    def _scan_pool(self) -> str | None:
+        """Get why the scans need the pool of the simulator, `None` if they do not.
+
+        An experiment runs its scans serially in a worker: a simulator which
+        runs every scan in a pool of its own (`n_workers` above one), or a
+        scan which the simulator runs in a pool of every CPU (`n_workers=None`
+        and `parallel.POOL_THRESHOLD` points), is faster in this process.
+        """
+        if self.simulator is None or self.simulator.n_workers == 1:
+            return None
+        if self.simulator.n_workers is not None:
+            return (
+                f"the simulator runs the scans in a pool of "
+                f"{self.simulator.n_workers} workers"
+            )
+        largest = max(
+            (
+                len(simulation)
+                for experiment in self.experiments.values()
+                for simulation in experiment._simulations.values()
+                if isinstance(simulation, Scan)
+            ),
+            default=0,
+        )
+        if largest >= parallel.POOL_THRESHOLD:
+            return f"the simulator runs a scan of {largest} points in a pool"
+        return None
+
     def _serial_reason(
         self, jobs: dict[str, "_Job"], options: dict[str, Any]
     ) -> str | None:
@@ -462,8 +503,11 @@ class ExperimentRunner:
         A worker creates an experiment from its class, which pickle sends by
         its module and name: a class defined in a function or at runtime, or
         in the main module of an interactive session, which a worker cannot
-        import, is not found. The figures shown and the results kept are in
-        the worker, and a worker has the unit registry of the package.
+        import, is not found; nor is one of the main script which is defined
+        behind its guard `if __name__ == "__main__":`, which the worker does
+        not run, so an experiment of the main script runs here. The figures
+        shown and the results kept are in the worker, and a worker has the
+        unit registry of the package.
         """
         if parallel.in_worker():
             return "a worker starts no pool"
@@ -473,11 +517,13 @@ class ExperimentRunner:
             return "the results of the experiments are kept"
         if self.ureg is not package_ureg:
             return "the runner has a unit registry of its own"
-        main = sys.modules.get("__main__")
         for job in jobs.values():
             cls = job.experiment_class
-            if cls.__module__ == "__main__" and not hasattr(main, "__file__"):
-                return f"'{cls.__name__}' is defined in an interactive session"
+            if cls.__module__ == "__main__":
+                return (
+                    f"'{cls.__name__}' is defined in the main script, define it "
+                    f"in a module to run it in a worker"
+                )
             try:
                 pickle.dumps(job)
             except Exception as err:
@@ -738,7 +784,12 @@ class _Outcome:
     def result(
         self, experiment: SimulationExperiment, output_path: Path
     ) -> ExperimentResult:
-        """Get the result of the experiment of the run."""
+        """Get the result of the experiment of the run.
+
+        Its results stayed in the worker, so they are released, as the ones of
+        an experiment of a serial run are.
+        """
+        experiment._results_released = True
         return ExperimentResult(
             experiment=experiment,
             output_path=output_path,
@@ -759,12 +810,32 @@ class _Collect(logging.Handler):
 
     @override
     def emit(self, record: logging.LogRecord) -> None:
-        """Keep the message with its arguments and traceback as text, which pickle sends."""
+        """Keep the message with its arguments and traceback as text, which pickle sends.
+
+        A message with attributes which cannot be pickled, e.g. an `extra`,
+        is kept with the attributes of a plain message.
+        """
         record.msg = record.getMessage()
         record.args = None
         if record.exc_info:
             record.exc_text = logging.Formatter().formatException(record.exc_info)
             record.exc_info = None
+        try:
+            pickle.dumps(record)
+        except Exception:
+            plain = logging.LogRecord(
+                record.name,
+                record.levelno,
+                record.pathname,
+                record.lineno,
+                record.msg,
+                None,
+                None,
+                record.funcName,
+            )
+            plain.exc_text = record.exc_text
+            plain.created, plain.msecs = record.created, record.msecs
+            record = plain
         self.records.append(record)
 
 
@@ -830,8 +901,12 @@ def _run_job(job: _Job) -> _Outcome:
     )
     for name, level in job.levels.items():
         logging.getLogger(name or None).setLevel(level)
+    # the messages go to the run only: a handler of the worker, e.g. of a
+    # script which configures logging when it is imported, would print them
+    # a second time and out of order
     handler = _Collect()
-    logging.root.addHandler(handler)
+    handlers = logging.root.handlers[:]
+    logging.root.handlers[:] = [handler]
     simulator = copy.copy(job.simulator)
     if simulator is not None:
         # a worker runs the scans of its experiment itself
@@ -861,7 +936,7 @@ def _run_job(job: _Job) -> _Outcome:
                 )
             )
     finally:
-        logging.root.removeHandler(handler)
+        logging.root.handlers[:] = handlers
     return _Outcome(
         error=result.error,
         failed_figures=result.failed_figures,
