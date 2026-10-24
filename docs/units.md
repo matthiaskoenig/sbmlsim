@@ -124,6 +124,19 @@ label_axes(ax, "time", "HCTZ plasma")
 
 ![Output figure](images/outputs/units-07.png)
 
+`res.to(...)` converts whole variables and coordinates of a result and keeps their labels, so a converted result selects, tabulates and plots as before. Converting `time` converts the times of the changes as well:
+
+```python
+in_hours = res.to({"time": "hr", "[Cve_hctz]": "µM"})
+print(in_hours.units["time"], in_hours.units["[Cve_hctz]"])
+print(f"{in_hours.q['time'].max():~P}, {in_hours.q['[Cve_hctz]'].max():.3f~P}")
+```
+
+```text title="Output"
+hour micromolar
+24.0 h, 0.452 μM
+```
+
 The statistics of a scan keep the units of their variables (`res.summary(...)`, see [Parameter scans](scans.md)), and `Data` converts simulations and datasets into the units a figure asks for (see [Data](data.md) and [Plots and reports](plotting.md)).
 
 ## Unit ids of a model

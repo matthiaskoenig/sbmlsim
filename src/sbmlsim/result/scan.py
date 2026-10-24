@@ -40,7 +40,7 @@ from __future__ import annotations
 import copy
 import json
 import warnings
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -291,6 +291,78 @@ class ScanResult:
             coords=coords or None,
             **kwargs,
         )
+
+    def to(
+        self, units: Mapping[str, Any], ureg: UnitRegistry | None = None
+    ) -> ScanResult:
+        """Get the result with variables and coordinates in other units.
+
+        The labels, the dimensions and every other variable stay as they are,
+        so a converted result selects, tabulates and plots as before, e.g.
+        `res.to({"time": "hr", "pk.cmax": "µM"})["pk.cmax"].to_pandas()`.
+        Converting `time` converts the times of the changes as well. The
+        `cv` of a summary is dimensionless and stays as it is.
+
+        Args:
+            units: the variable or coordinate and its unit, a string or a unit
+                of pint.
+            ureg: the unit registry of the units, the one of the package by
+                default; e.g. the registry of a simulation experiment.
+
+        Returns:
+            A new result, the result itself does not change.
+
+        Raises:
+            KeyError: if a key is no variable or coordinate of the result.
+            ValueError: if a key holds labels, has no unit, or its unit cannot
+                be converted into the unit asked for.
+        """
+        registry = ureg if ureg is not None else package_ureg
+        ds = self.ds.copy()
+        attrs = copy.deepcopy(ds.attrs)
+        units_of: dict[str, str] = attrs.setdefault("units", {})
+        overrides: dict[str, str] = attrs.get("statistic_units", {})
+        for key, unit in units.items():
+            array = self[key]
+            if array.dtype.kind not in "fiu":
+                raise ValueError(
+                    f"'{key}' holds labels, not values, so it has no unit."
+                )
+            source = units_of.get(key)
+            if not source:
+                raise ValueError(f"'{key}' has no unit in the units of the result.")
+            target = registry.Unit(unit) if isinstance(unit, str) else unit
+            values = np.array(array.values, dtype=float)
+            converted = np.array(values)
+            # the statistics of a summary in another unit, e.g. `cv`, stay
+            mask: Any = slice(None)
+            if overrides and STATISTIC in array.dims and key in ds.data_vars:
+                axis = array.dims.index(STATISTIC)
+                keep = np.array(
+                    [str(label) not in overrides for label in array[STATISTIC].values]
+                )
+                mask = (slice(None),) * axis + (keep,)
+            try:
+                converted[mask] = (
+                    registry.Quantity(values[mask], source).to(target).magnitude
+                )
+            except DimensionalityError as err:
+                raise ValueError(
+                    f"'{key}' in '{source}' cannot be converted into '{unit}': {err}"
+                ) from err
+            if key in ds.coords:
+                ds = ds.assign_coords({key: (array.dims, converted, array.attrs)})
+            else:
+                ds[key] = (array.dims, converted, array.attrs)
+            units_of[key] = str(target)
+            if key == TIME and attrs.get(CHANGES):
+                attrs[CHANGES] = (
+                    registry.Quantity(np.asarray(attrs[CHANGES], dtype=float), source)
+                    .to(target)
+                    .magnitude.tolist()
+                )
+        ds.attrs = attrs
+        return ScanResult(ds)
 
     def sel(self, **indexers: Any) -> ScanResult:
         """Select by labels, see `xarray.Dataset.sel`."""
