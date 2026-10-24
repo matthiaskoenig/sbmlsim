@@ -659,21 +659,3 @@ def test_a_runner_needs_no_paths(tmp_path: Path) -> None:
     positional = ExperimentRunner(FitMappingExperiment, Path("."), Path("."))
     assert positional.base_path == Path(".")
     assert positional.data_path == Path(".")
-
-
-def test_a_run_prints_nothing(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """A run of experiments logs the experiment it runs and prints nothing.
-
-    The runner is used as a library, e.g. in a notebook, where a rule
-    printed before every experiment showed as a bare line.
-    """
-    runner = ExperimentRunner(FitMappingExperiment, simulator=Simulator())
-    with caplog.at_level(logging.INFO, logger="sbmlsim.experiment.runner"):
-        runner.run_experiments(output_path=tmp_path, save_results=False)
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert "FitMappingExperiment" in caplog.text

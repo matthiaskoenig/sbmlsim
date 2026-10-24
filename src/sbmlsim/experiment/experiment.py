@@ -16,6 +16,8 @@ from pint.errors import UndefinedUnitError
 from pint.facets.plain import PlainUnit
 
 from sbmlsim.data import Data, DataSet, check_sel
+from sbmlsim.experiment import progress
+from sbmlsim.experiment.progress import Phase, PhaseClock
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
@@ -41,7 +43,6 @@ from sbmlsim.units import (
     unit_identifiers,
 )
 from sbmlsim.units import ureg as package_ureg
-from sbmlsim.utils import timeit
 
 logger = logging.getLogger(__name__)
 
@@ -575,7 +576,6 @@ class SimulationExperiment:
 
     # --- EXECUTE ---------------------------------------------------------------------
 
-    @timeit
     def run(
         self,
         simulator: Simulator | None,
@@ -619,7 +619,8 @@ class SimulationExperiment:
                 figure override.
 
         Returns:
-            The result of the experiment, which the report is created from.
+            The result of the experiment, which the report is created from,
+            with the seconds of its phases, see `ExperimentResult.timings`.
 
         Raises:
             ValueError: if a key of `figure_settings` is no setting, also with
@@ -639,6 +640,8 @@ class SimulationExperiment:
         error: str | None = None
         completed = False
         saved_datasets: list[str] = []
+        # the seconds of every phase, which the runner shows
+        clock = PhaseClock(self.sid)
         try:
             if output_path is not None and not output_path.exists():
                 output_path.mkdir(parents=True)
@@ -646,10 +649,12 @@ class SimulationExperiment:
 
             # run simulations (sets self._results)
             self._results_released = False
-            self._run_tasks(simulator, reduced_selections=reduced_selections)
+            with clock.phase(Phase.SIMULATIONS, "simulations", len(self._tasks)):
+                self._run_tasks(simulator, reduced_selections=reduced_selections)
 
             # evaluate mappings
-            self.evaluate_fit_mappings()
+            with clock.phase(Phase.DATA, "fit mappings", len(self._fit_mappings)):
+                self.evaluate_fit_mappings()
 
             # create outputs
             if output_path is None:
@@ -657,30 +662,45 @@ class SimulationExperiment:
                     logger.error("'output_path' required to save results.")
             else:
                 # save outputs
-                self.save_datasets(output_path)
+                with clock.phase(
+                    Phase.OUTPUTS, "writing datasets", len(self._datasets)
+                ):
+                    self.save_datasets(output_path)
                 saved_datasets = list(self._datasets)
 
                 # Saving takes often much longer then simulation
                 if save_results:
-                    self.save_results(output_path)
+                    with clock.phase(
+                        Phase.OUTPUTS, "writing results", len(self._results or {})
+                    ):
+                        self.save_results(output_path)
 
             # create figures, but only when something looks at them: rendering
             # every figure is most of the time a run takes, and a run without an
             # output path which does not show them would close them again
             if show_figures or (output_path and static_formats):
-                mpl_figures = self.create_mpl_figures(
-                    on_error=on_error, failed=failed_figures, figure_settings=settings
-                )
-                if show_figures:
-                    self.show_mpl_figures(mpl_figures=mpl_figures)
-                if output_path and static_formats:
-                    saved = self.save_mpl_figures(
-                        output_path,
-                        mpl_figures=mpl_figures,
-                        figure_formats=static_formats,
+                with clock.phase(Phase.FIGURES, "drawing figures", len(self._figures)):
+                    mpl_figures = self.create_mpl_figures(
                         on_error=on_error,
                         failed=failed_figures,
+                        figure_settings=settings,
                     )
+                if show_figures:
+                    with clock.phase(
+                        Phase.FIGURES, "showing figures", len(mpl_figures)
+                    ):
+                        self.show_mpl_figures(mpl_figures=mpl_figures)
+                if output_path and static_formats:
+                    with clock.phase(
+                        Phase.FIGURES, "writing figures", len(mpl_figures)
+                    ):
+                        saved = self.save_mpl_figures(
+                            output_path,
+                            mpl_figures=mpl_figures,
+                            figure_formats=static_formats,
+                            on_error=on_error,
+                            failed=failed_figures,
+                        )
                     saved_paths = {path for paths in saved.values() for path in paths}
                     for key in mpl_figures:
                         for fig_format in static_formats:
@@ -693,18 +713,22 @@ class SimulationExperiment:
                 self.close_mpl_figures(mpl_figures=mpl_figures)
 
             if output_path and interactive:
-                pages = self.save_interactive_figures(
-                    output_path,
-                    on_error=on_error,
-                    failed=failed_figures,
-                    figure_settings=settings,
-                )
+                with clock.phase(
+                    Phase.FIGURES, "interactive figures", len(self._figures)
+                ):
+                    pages = self.save_interactive_figures(
+                        output_path,
+                        on_error=on_error,
+                        failed=failed_figures,
+                        figure_settings=settings,
+                    )
                 for key in pages:
                     written.setdefault(key, []).append(INTERACTIVE_FORMAT)
 
             # only perform serialization after data evaluation (to access units)
             if output_path:
-                self._write_json(output_path / f"{self.sid}.json")
+                with clock.phase(Phase.OUTPUTS, "writing JSON"):
+                    self._write_json(output_path / f"{self.sid}.json")
             completed = True
 
         except Exception as err:
@@ -742,9 +766,9 @@ class SimulationExperiment:
                 for key in dict.fromkeys([*self._figures, *mpl_figures, *written])
                 if key in written
             },
+            timings=clock.timings,
         )
 
-    @timeit
     def _run_tasks(
         self, simulator: Simulator | None, reduced_selections: bool = True
     ) -> None:
@@ -787,14 +811,18 @@ class SimulationExperiment:
                     # the selections of the data of this task, not the ones of
                     # the other tasks of the model
                     model.set_selections(sorted({TIME, *selections}))
-                    self._results[task_key] = simulator.run(model, scan)
-                    continue
-                self._results[task_key] = simulator.run(
-                    model,
-                    scan,
-                    self._needed_observables(observed),
-                    keep=[*observed, *selections],
-                )
+                    self._results[task_key] = simulator.run(
+                        model, scan, progress=progress.scan_progress()
+                    )
+                else:
+                    self._results[task_key] = simulator.run(
+                        model,
+                        scan,
+                        self._needed_observables(observed),
+                        keep=[*observed, *selections],
+                        progress=progress.scan_progress(),
+                    )
+                progress.advance()
 
     def _figure_data(self) -> Iterator[Data]:
         """Iterate the data the curves and areas of the figures read."""
@@ -1107,9 +1135,9 @@ class SimulationExperiment:
             for fit_data in [mapping.reference, mapping.observable]:
                 # Get actual data from the results
                 fit_data.get_data()
+            progress.advance()
 
     # --- SERIALIZATION -------------------------------------------------------
-    @timeit
     def to_json(self, path: Path | None = None, indent: int = 2):
         """Convert experiment to JSON for exchange.
 
@@ -1186,7 +1214,6 @@ class SimulationExperiment:
         """
         return Path(DATASETS_DIR) / f"{self.sid}_{key}.tsv"
 
-    @timeit
     def save_datasets(self, results_path: Path) -> None:
         """Save the datasets as TSV into the folder `DATASETS_DIR`.
 
@@ -1198,8 +1225,8 @@ class SimulationExperiment:
         (results_path / DATASETS_DIR).mkdir(parents=True, exist_ok=True)
         for dkey, dset in self._datasets.items():
             dset.to_csv(results_path / self.dataset_file(dkey), sep="\t", index=False)
+            progress.advance()
 
-    @timeit
     def save_results(self, results_path: Path) -> None:
         """Save the result of every task as netCDF, see `ScanResult.to_netcdf`.
 
@@ -1211,14 +1238,14 @@ class SimulationExperiment:
         else:
             for rkey, result in self.results.items():
                 result.to_netcdf(results_path / f"{self.sid}_{rkey}.nc")
+                progress.advance()
 
-    @timeit
     def create_mpl_figures(
         self,
         on_error: Literal["raise", "log"] = "raise",
         failed: dict[str, str] | None = None,
         figure_settings: FigureSettings | Mapping[str, Any] | None = None,
-    ) -> dict[str, FigureMPL | Figure]:
+    ) -> dict[str, FigureMPL]:
         """Create matplotlib figures.
 
         Args:
@@ -1238,6 +1265,7 @@ class SimulationExperiment:
                 )
             except Exception as err:
                 self._figure_failed(fig_key, err, on_error, failed)
+            progress.advance()
 
         # additional custom figures, all of them fail together with the method;
         # the key is no valid figure key, so it cannot clash with a figure. The
@@ -1281,7 +1309,6 @@ class SimulationExperiment:
                 f"{failed[fig_key]}; {message}" if fig_key in failed else message
             )
 
-    @timeit
     def show_mpl_figures(self, mpl_figures: dict[str, FigureMPL]) -> None:
         """Show matplotlib figures.
 
@@ -1300,8 +1327,8 @@ class SimulationExperiment:
                     manager.canvas.figure = fig_mpl
                     fig_mpl.set_canvas(manager.canvas)
             fig_mpl.show()
+            progress.advance()
 
-    @timeit
     def save_mpl_figures(
         self,
         results_path: Path,
@@ -1324,7 +1351,7 @@ class SimulationExperiment:
             # default to SVG output
             figure_formats = ["svg"]
         paths = defaultdict(list)
-        for fkey, fig_mpl in mpl_figures.items():  # type
+        for fkey, fig_mpl in mpl_figures.items():
             fig_paths: dict[str, Path] = {}
             try:
                 box = saved_box(fig_mpl)
@@ -1338,9 +1365,11 @@ class SimulationExperiment:
                 for fig_path in fig_paths.values():
                     fig_path.unlink(missing_ok=True)
                 self._figure_failed(fkey, err, on_error, failed)
+                progress.advance()
                 continue
             for fig_format, fig_path in fig_paths.items():
                 paths[fig_format].append(fig_path)
+            progress.advance()
 
         return paths
 
@@ -1397,6 +1426,7 @@ class SimulationExperiment:
                     missing_ok=True
                 )
                 self._figure_failed(key, err, on_error, failed)
+            progress.advance()
         return paths
 
     def _figure_path(self, results_path: Path, key: str, fig_format: str) -> Path:
@@ -1516,6 +1546,11 @@ class ExperimentResult:
     figures: dict[str, list[str]] = field(default_factory=dict)
     #: the datasets this run wrote
     datasets: list[str] = field(default_factory=list)
+    #: the seconds of every phase of the experiment, by the values of
+    #: `sbmlsim.experiment.progress.Phase`, measured in the process which ran
+    #: it; a phase which did not run is missing, e.g. the models which an
+    #: earlier experiment of the runner loaded
+    timings: dict[str, float] = field(default_factory=dict)
 
     @property
     def failed(self) -> bool:
@@ -1533,6 +1568,7 @@ class ExperimentResult:
             "failed_figures": self.failed_figures,
             "figures": self.figures,
             "datasets": self.datasets,
+            "timings": self.timings,
         }
 
 

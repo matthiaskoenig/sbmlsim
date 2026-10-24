@@ -64,6 +64,7 @@ Simulation experiments and their results, see [Simulation experiments](../experi
 | --- | --- |
 | [experiment.experiment](experiment.experiment.md) | `SimulationExperiment`, models, datasets, simulations, tasks, data and figures of an experiment |
 | [experiment.runner](experiment.runner.md) | `ExperimentRunner`, executing experiments and writing their results |
+| [experiment.progress](experiment.progress.md) | `RunProgress` and `PhaseClock`, the progress of a run of experiments and the seconds of their phases |
 | [result.timecourse](result.timecourse.md) | `TimecourseResult`, the array of the selections of a single timecourse simulation |
 | [result.scan](result.scan.md) | `ScanResult`, the result of a scan as an xarray dataset with units |
 

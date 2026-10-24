@@ -45,7 +45,7 @@ from multiprocessing.context import BaseContext
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import cast, override
+from typing import Any, cast, override
 
 if sys.platform != "win32":
     from multiprocessing.context import (
@@ -318,8 +318,13 @@ def _end_with_the_parent() -> None:
     threading.Thread(target=watch, name="sbmlsim-parent", daemon=True).start()
 
 
-def _initialize_worker() -> None:
+def _initialize_worker(
+    initializer: Callable[..., object] | None = None, initargs: tuple[Any, ...] = ()
+) -> None:
     """Initialize a worker: it ends with its parent, and SIGINT is ignored.
+
+    The initializer of the caller of `start_pool` runs after it, with its
+    arguments.
 
     A worker ends when the process which started its pool ends, also when it
     was killed, see `_end_with_the_parent`.
@@ -334,9 +339,16 @@ def _initialize_worker() -> None:
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
         signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+    if initializer is not None:
+        initializer(*initargs)
 
 
-def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecutor:
+def start_pool(
+    n_workers: int,
+    preload: Sequence[str] = (),
+    initializer: Callable[..., object] | None = None,
+    initargs: tuple[Any, ...] = (),
+) -> ProcessPoolExecutor:
     """Start a pool whose workers answer, see `pool` for one which is kept.
 
     The workers ignore SIGINT, Ctrl-C interrupts the parent only, see the
@@ -347,6 +359,10 @@ def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecut
         preload: modules the forkserver imports once for all workers; it
             takes effect only when the forkserver starts for the first time in
             this process.
+        initializer: a module level function every worker calls when it
+            starts, e.g. to keep a queue to the parent, which a worker can
+            only receive when it starts (a queue cannot be sent with a task).
+        initargs: the arguments of the initializer.
 
     Returns:
         The pool, the caller stops it with `stop`.
@@ -366,6 +382,7 @@ def start_pool(n_workers: int, preload: Sequence[str] = ()) -> ProcessPoolExecut
         max_workers=n_workers,
         mp_context=_context(preload),
         initializer=_initialize_worker,
+        initargs=(initializer, initargs),
     )
     logger.debug("Starting a pool of %s workers", n_workers)
     try:
