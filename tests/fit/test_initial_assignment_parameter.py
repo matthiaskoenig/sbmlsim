@@ -90,11 +90,12 @@ def test_fit_parameter_reaches_initial_assignment(
 
 
 def test_fit_simulates_at_the_data(problem: OptimizationProblem) -> None:
-    """The plan of the fit outputs the times of the data, no interpolation.
+    """The plan of the fit outputs the start and the times of the data, no interpolation.
 
-    And the time of the change within them, at which the curve jumps.
+    The change within them is no output time: the curves of the evaluation
+    come from the output of the simulation.
     """
-    assert problem.plans[0].times == (0.0, 0.5, 1.0, 1.5)
+    assert problem.plans[0].times == (0.0, 0.5, 1.5)
 
 
 class ShiftedExperiment(IAExperiment):
@@ -182,7 +183,8 @@ def test_fit_with_near_identical_data_times(tmp_path: Path) -> None:
         data_path=tmp_path,
     )
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
-    assert problem.plans[0].times == (0.5, 0.99999999999999, 1.5)
+    # the start and the times of the data
+    assert problem.plans[0].times == (-1000.0, 0.5, 0.99999999999999, 1.5)
     predictions = problem.predictions(np.array([0.5]))
     assert predictions[0].shape == (4,)
     assert predictions[0][1] == predictions[0][2]
@@ -234,7 +236,8 @@ def test_fit_with_digitized_times_after_the_last_dose(tmp_path: Path) -> None:
         data_path=tmp_path,
     )
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
-    assert len(problem.plans[0].times) == 3
+    # the start and the three merged times of the data
+    assert len(problem.plans[0].times) == 4
     predictions = problem.predictions(np.array([0.5]))
     assert predictions[0].shape == (5,)
     assert predictions[0][1] == predictions[0][2]

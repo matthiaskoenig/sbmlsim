@@ -19,7 +19,11 @@ from pint.errors import UndefinedUnitError
 from sbmlsim.data import DataSet
 from sbmlsim.fit import FitMappingCollection, FitParameter, FitSettings, MappingKind
 from sbmlsim.fit.cli import FitDefinition
-from sbmlsim.fit.optimization import OptimizationProblem, apply_loss_function
+from sbmlsim.fit.optimization import (
+    OptimizationProblem,
+    apply_loss_function,
+    default_diff_step,
+)
 from sbmlsim.fit.options import (
     LossFunctionType,
     OptimizationAlgorithmType,
@@ -349,3 +353,34 @@ def test_the_start_values_of_a_problem_are_its_own(
     assert second.x0 == start
     assert [p.start_value for p in definition.parameters] == start
     assert pickle.loads(pickle.dumps(first)).x0 == first.x0
+
+
+def test_the_step_of_the_jacobian_is_the_root_of_the_tolerance() -> None:
+    """The step balances the noise of the integrator, not of the machine."""
+    assert default_diff_step(1e-6) == pytest.approx(1e-3)
+    assert default_diff_step(1e-10) == pytest.approx(1e-5)
+
+
+def test_a_least_squares_fit_gets_the_step_of_its_tolerance(
+    op_hctz_pk: OptimizationProblem,
+) -> None:
+    """A given step, the global optimizer and a jacobian function keep theirs."""
+    op_hctz_pk.initialize(FitSettings(relative_tolerance=1e-8))
+    lsq = OptimizationAlgorithmType.LEAST_SQUARE
+    assert op_hctz_pk.optimizer_arguments(lsq, {"xtol": 1e-6}) == {
+        "xtol": 1e-6,
+        "diff_step": pytest.approx(1e-4),
+    }
+    assert op_hctz_pk.optimizer_arguments(lsq, {"diff_step": 0.1}) == {"diff_step": 0.1}
+    assert op_hctz_pk.optimizer_arguments(lsq, {"jac": len}) == {"jac": len}
+    de = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+    assert op_hctz_pk.optimizer_arguments(de, {}) == {}
+
+
+def test_a_fit_records_the_step_of_its_jacobian(
+    op_hctz_pk: OptimizationProblem,
+) -> None:
+    """The methods of a report state the step the optimizer used."""
+    op_hctz_pk.initialize(FitSettings())
+    fit, _ = op_hctz_pk.optimize_run(x0=np.array(op_hctz_pk.x0), max_nfev=2)
+    assert fit.optimizer_kwargs["diff_step"] == pytest.approx(1e-3)

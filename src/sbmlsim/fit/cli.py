@@ -80,10 +80,9 @@ STRATEGY_INFO: dict[OptimizationStrategy, str] = {
 
 #: default arguments of the optimizers
 ALGORITHM_KWARGS: dict[OptimizationAlgorithmType, dict[str, Any]] = {
-    OptimizationAlgorithmType.LEAST_SQUARE: {
-        "sampling": SamplingType.LOGUNIFORM_LHS,
-        "diff_step": 0.05,
-    },
+    # the step of the finite differences is the default of the problem, the
+    # square root of the relative tolerance of the integrator
+    OptimizationAlgorithmType.LEAST_SQUARE: {"sampling": SamplingType.LOGUNIFORM_LHS},
     OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION: {},
 }
 

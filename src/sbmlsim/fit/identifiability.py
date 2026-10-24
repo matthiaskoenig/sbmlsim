@@ -198,7 +198,9 @@ class ProfileSettings:
         optimizer_kwargs: arguments of `scipy.optimize.least_squares` for the
             optimization of the other parameters, without `loss` and
             `f_scale`: the loss is the one of the fit,
-            `FitSettings.loss_function`.
+            `FitSettings.loss_function`. The step of the finite differences
+            is the one of a fit, `OptimizationProblem.optimizer_arguments`,
+            unless `diff_step` is given.
     """
 
     alpha: float = 0.95
@@ -211,9 +213,7 @@ class ProfileSettings:
     max_points: int = 50
     flatness: float = 0.05
     reoptimize: bool = True
-    optimizer_kwargs: Mapping[str, Any] = field(
-        default_factory=lambda: {"diff_step": 0.05}
-    )
+    optimizer_kwargs: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Check the settings.
@@ -859,7 +859,9 @@ def _evaluate_point(
             fun=residuals,
             x0=x0,
             bounds=(lower[free], upper[free]),
-            **settings.optimizer_kwargs,
+            **problem.optimizer_arguments(
+                OptimizationAlgorithmType.LEAST_SQUARE, settings.optimizer_kwargs
+            ),
         )
         theta_opt = theta.copy()
         theta_opt[free] = opt_result.x

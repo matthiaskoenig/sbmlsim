@@ -10,6 +10,7 @@ from sbmlsim.fit import FitSettings
 from sbmlsim.fit.fisher import (
     DEFAULT_STEP,
     FisherInformation,
+    default_step,
     fisher_information,
     jacobian,
 )
@@ -128,6 +129,8 @@ def test_the_fisher_information_of_the_example(
     problem.initialize(fit_settings)
     fim = fisher_information(problem, fit_settings, problem.parameter_set_model())
 
+    # the step follows the noise of the integrator of the fit
+    assert fim.step == pytest.approx(default_step(fit_settings.relative_tolerance))
     assert fim.k == len(problem.pids)
     assert fim.targets == [p.target_id for p in problem.parameters]
     assert fim.matrix.shape == (fim.k, fim.k)
@@ -298,3 +301,9 @@ def test_fisher_from_dict_round_trip(
     assert again.rank == fisher.rank
     assert again.condition_number == fisher.condition_number
     np.testing.assert_allclose(again.standard_errors, fisher.standard_errors)
+
+
+def test_the_step_balances_the_noise_of_the_integrator() -> None:
+    """A central difference divides the noise of the integrator by its step."""
+    assert default_step(1e-6) == pytest.approx(1e-2)
+    assert default_step(1e-9) == pytest.approx(1e-3)

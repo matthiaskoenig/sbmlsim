@@ -40,10 +40,31 @@ from sbmlsim.fit.parameters import ParameterSet
 
 logger = logging.getLogger(__name__)
 
-#: relative step of the finite differences of the jacobian, in the space the
-#: optimizer searches. The square root of the machine epsilon is the step which
-#: balances the truncation and the rounding error of a central difference
+#: relative step of the finite differences of a record which does not store
+#: its step, the step of the information before it followed the tolerance of
+#: the integrator, see `default_step`
 DEFAULT_STEP = 1e-6
+
+
+def default_step(relative_tolerance: float) -> float:
+    """Get the relative step of the central differences of the jacobian.
+
+    A simulation is exact only to the relative tolerance of its integrator, so
+    the residuals have a noise of about that size. The error of a central
+    difference is the noise divided by the step plus the truncation error,
+    which grows with the square of the step; the cube root of the noise
+    balances them. A step at the machine epsilon divides the noise of the
+    integrator by a tiny step and the jacobian is noise.
+
+    Args:
+        relative_tolerance: relative tolerance of the integrator of the fit.
+
+    Returns:
+        The step, relative to the parameters in the space the optimizer
+        searches, `1e-2` for the default tolerance `1e-6`.
+    """
+    return float(np.cbrt(relative_tolerance))
+
 
 #: eigenvalues below this fraction of the largest one are a direction the data
 #: does not constrain, i.e. the matrix is numerically rank deficient
@@ -430,7 +451,7 @@ def fisher_information(
     settings: FitSettings,
     parameter_set: ParameterSet,
     alpha: float = 0.95,
-    step: float = DEFAULT_STEP,
+    step: float | None = None,
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE,
 ) -> FisherInformation:
     """Calculate the Fisher information of a parameter set on a problem.
@@ -441,7 +462,9 @@ def fisher_information(
         parameter_set: parameters to evaluate the information at, i.e. the
             result of a fit.
         alpha: confidence level of the intervals.
-        step: relative step of the finite differences of the jacobian.
+        step: relative step of the finite differences of the jacobian,
+            `default_step` of the relative tolerance of the settings by
+            default.
         rank_tolerance: eigenvalues below this fraction of the largest one are
             a direction the data does not constrain.
 
@@ -450,6 +473,8 @@ def fisher_information(
         directions the data does not constrain.
     """
     problem.initialize(settings)
+    if step is None:
+        step = default_step(settings.relative_tolerance)
     values = problem.bind_parameter_set(parameter_set).x(problem.pids)
     x = problem.to_scale(values)
 
