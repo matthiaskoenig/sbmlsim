@@ -25,6 +25,7 @@ from sbmlsim.plot.serialization_matplotlib import (
     FigureMPL,
     MatplotlibFigureSerializer,
     limit_log_axes,
+    saved_box,
 )
 from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import POINT, TIME
@@ -1330,10 +1331,11 @@ class SimulationExperiment:
         for fkey, fig_mpl in mpl_figures.items():  # type
             fig_paths: dict[str, Path] = {}
             try:
+                box = saved_box(fig_mpl)
                 for fig_format in figure_formats:
                     fig_path = self._figure_path(results_path, fkey, fig_format)
                     fig_paths[fig_format] = fig_path
-                    fig_mpl.savefig(fig_path, bbox_inches="tight")
+                    fig_mpl.savefig(fig_path, bbox_inches=box)
             except Exception as err:
                 # a figure which is reported as failed has no file, neither a
                 # partial one nor one of the formats saved before the error
