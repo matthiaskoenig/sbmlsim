@@ -98,10 +98,8 @@ class SimulationExperiment:
             base_path = Path(base_path).resolve()
             if not base_path.exists():
                 raise OSError(f"base_path '{base_path}' does not exist")
-        else:
-            logger.warning(
-                "No 'base_path' provided, reading/writing of resources may fail."
-            )
+        # without a base path a relative path is resolved against the working
+        # directory, an absolute path or a dataset of the experiment needs none
         self.base_path = base_path
 
         data_paths: list[Path] | None = None
@@ -113,8 +111,6 @@ class SimulationExperiment:
             for p in data_paths:
                 if not p.exists():
                     raise OSError(f"data_path '{p}' does not exist")
-        else:
-            logger.warning("No 'data_path' provided, reading of datasets may fail.")
         self.data_path: list[Path] | None = data_paths
 
         # single UnitRegistry per SimulationExperiment (can be shared)

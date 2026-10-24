@@ -13,6 +13,7 @@ edit_uri = "edit/develop/docs/"
 nav = [
   { "Home" = "index.md" },
   { "Installation" = "installation.md" },
+  { "Tutorial" = "tutorial.md" },
   { "Core" = [
     { "Models" = "models.md" },
     { "Simulations" = "simulation.md" },
@@ -23,7 +24,7 @@ nav = [
   ] },
   { "Sensitivity & uncertainty" = [
     { "Parameter scans" = "scans.md" },
-    { "Sampling and uncertainty" = "sampling.md" },
+    { "Sampling" = "sampling.md" },
     { "Uncertainty" = "uncertainty.md" },
     { "Observables" = "observables.md" },
     { "Sensitivity analysis" = "sensitivity.md" },

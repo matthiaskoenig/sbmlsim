@@ -31,7 +31,7 @@ def _report_output() -> Path:
 def _report_link() -> Path:
     """Get the link of the documentation to the report, relative to `docs`."""
     page = DOCS_PAGE.read_text(encoding="utf-8")
-    match = re.search(r"\[\*\*The report of the current run\*\*\]\(([^)]+)\)", page)
+    match = re.search(r"\[The report of the current run\]\(([^)]+)\)", page)
     assert match, "the page does not link the report of the current run"
     return Path(match.group(1))
 

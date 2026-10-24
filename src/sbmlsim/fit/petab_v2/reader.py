@@ -66,7 +66,6 @@ from sbmlsim.fit.petab_v2.symbols import (
     selection_of_formula,
     selection_of_target,
     selections_of_formula,
-    split_selection,
 )
 from sbmlsim.model import AbstractModel
 from sbmlsim.model.symbols import ModelSymbols
@@ -1178,8 +1177,10 @@ class PetabReader:
             observable_model = self.observable_model(key)
             if observable_model is None:
                 yid = info.get("yid_observable") or self._selection_of(key)
+                # the unit of the selection: a concentration `[S]` is in the
+                # unit of the concentration, not of the amount of `S`
                 value_unit = info.get("y_unit") or self._unit_of(
-                    split_selection(yid)[0], DEFAULT_VALUE_UNIT, model_id
+                    yid, DEFAULT_VALUE_UNIT, model_id
                 )
             else:
                 value_unit = observable_model.unit

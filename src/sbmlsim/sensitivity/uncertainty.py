@@ -7,7 +7,10 @@ parameters, see `sbmlsim.simulation.sampling` (`random`, `lhs`,
 `ScanResult.summary(dim, quantiles=[0.05, 0.5, 0.95])`. The functions here
 draw it: `plot_bands` a timecourse as a median and a band per label of the
 other dimensions, `plot_distribution` a value per simulation as a histogram
-or a box per label. They return the figure and never show it.
+or a box per label. They return the figure and never show it; called once per
+scenario with one `ax` and a `label` each, they draw the scenarios into one
+plot with one legend. The units of the labels are the short ones of pint,
+e.g. `ng/ml`.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
 from sbmlsim.result.scan import STATISTIC, TIME, ScanResult
+from sbmlsim.units import unit_label
 
 
 def _figure(ax: Axes | None) -> tuple[Figure, Axes]:
@@ -42,14 +46,28 @@ def _labels(data: Any, skip: set[str]) -> list[dict[str, Any]]:
     ]
 
 
-def _unit_label(name: str, unit: str | None) -> str:
-    """Get the label of an axis, with ` [unit]` only for a unit."""
-    return f"{name} [{unit}]" if unit else name
+def _text(selection: dict[str, Any], label: str | None, key: str) -> str:
+    """Get the label of a curve.
+
+    Args:
+        selection: the labels of the other dimensions of the curve.
+        label: the label of the call, a prefix of the labels of the dimensions.
+        key: the variable, the label of a curve without labels.
+    """
+    labels = ", ".join(f"{d}={v}" for d, v in selection.items())
+    if label is None:
+        return labels or key
+    return f"{label}: {labels}" if labels else label
 
 
-def _text(selection: dict[str, Any]) -> str:
-    """Get the label of a curve."""
-    return ", ".join(f"{d}={v}" for d, v in selection.items())
+def _legend(axes: Axes, label: str | None) -> None:
+    """Draw the legend of every labelled curve of the axes, also of earlier calls.
+
+    A legend needs two curves, or one with the label of a call.
+    """
+    handles, _ = axes.get_legend_handles_labels()
+    if len(handles) > 1 or (handles and label is not None):
+        axes.legend()
 
 
 def plot_bands(
@@ -61,8 +79,16 @@ def plot_bands(
     upper: str = "q0.95",
     ax: Axes | None = None,
     alpha: float = 0.3,
+    label: str | None = None,
 ) -> Figure:
     """Draw a timecourse of a summary as a center line and a band per label.
+
+    Every line is labelled with the labels of the other dimensions, e.g.
+    `dose=1`, or with the key for a summary without other dimensions. A
+    `label` is the label of the line of a summary without other dimensions
+    and the prefix of the labels of the lines otherwise, e.g. `mid: dose=1`,
+    so the summaries of several scenarios drawn into one `ax` are told apart
+    in its legend, which every call draws again with every line of the axes.
 
     Args:
         summary: a summary of a scan, `ScanResult.summary(..., quantiles=...)`.
@@ -72,6 +98,7 @@ def plot_bands(
         upper: the statistic of the upper bound of the band.
         ax: the axes to draw into, a new figure without.
         alpha: the opacity of the band.
+        label: the label of the lines, see above.
 
     Returns:
         The figure.
@@ -97,7 +124,9 @@ def plot_bands(
     for selection in _labels(data, {STATISTIC, TIME}):
         curve = data.sel(selection)
         lines = axes.plot(
-            time, curve.sel({STATISTIC: center}).values, label=_text(selection) or key
+            time,
+            curve.sel({STATISTIC: center}).values,
+            label=_text(selection, label, key),
         )
         axes.fill_between(
             time,
@@ -108,10 +137,9 @@ def plot_bands(
             linewidth=0,
         )
     units = summary.units
-    axes.set_xlabel(_unit_label("time", units.get(TIME)))
-    axes.set_ylabel(_unit_label(key, units.get(key)))
-    if len(axes.lines) > 1:
-        axes.legend()
+    axes.set_xlabel(unit_label("time", units.get(TIME)))
+    axes.set_ylabel(unit_label(key, units.get(key)))
+    _legend(axes, label)
     return figure
 
 
@@ -123,8 +151,15 @@ def plot_distribution(
     kind: str = "hist",
     ax: Axes | None = None,
     bins: int = 30,
+    label: str | None = None,
 ) -> Figure:
     """Draw a value per simulation over the draws as a histogram or a box per label.
+
+    The histograms and boxes are labelled as the lines of `plot_bands`: with
+    the labels of the other dimensions, the key without them, and a `label`
+    is the label of a result without other dimensions and the prefix of the
+    labels otherwise. Histograms of several calls into one `ax` share one
+    legend; the bins are the ones of a call.
 
     Args:
         result: the result of a scan over draws.
@@ -133,6 +168,7 @@ def plot_distribution(
         kind: `hist` or `box`.
         ax: the axes to draw into, a new figure without.
         bins: the number of bins of a histogram, shared by every label.
+        label: the label of the distributions, see above.
 
     Returns:
         The figure.
@@ -156,16 +192,15 @@ def plot_distribution(
     selections = _labels(data, {dim})
     samples = [np.asarray(data.sel(s).values, dtype=float) for s in selections]
     samples = [s[np.isfinite(s)] for s in samples]
-    names = [_text(s) or key for s in selections]
+    names = [_text(s, label, key) for s in selections]
     if kind == "hist":
         edges = np.histogram_bin_edges(np.concatenate(samples), bins=bins)
         for values, name in zip(samples, names, strict=True):
             axes.hist(values, bins=edges, alpha=0.5, label=name)
-        axes.set_xlabel(_unit_label(key, result.units.get(key)))
+        axes.set_xlabel(unit_label(key, result.units.get(key)))
         axes.set_ylabel("count")
-        if len(samples) > 1:
-            axes.legend()
+        _legend(axes, label)
     else:
         axes.boxplot(samples, tick_labels=names)
-        axes.set_ylabel(_unit_label(key, result.units.get(key)))
+        axes.set_ylabel(unit_label(key, result.units.get(key)))
     return figure

@@ -1,127 +1,226 @@
 # Simulation experiments
 
-A `SimulationExperiment` is the reproducible description of an experiment: the models, the datasets, the simulations, the tasks which apply a simulation to a model, the data derived from the results, and the figures. The experiment is a python class; the `ExperimentRunner` executes it and writes results, figures and a JSON serialization.
+A simulation experiment describes one study in code: the model, the measured data, the simulations, and the figures that compare them. You write it as a python class, and an `ExperimentRunner` runs it and writes the results, the figures and a report. Parameter fits use the same classes, so a study you described once can be plotted, reported and fitted (see [Parameter fitting](fitting.md)).
 
-## Defining an experiment
+For a quick simulation you do not need an experiment, `Simulator.run` is enough (see [Simulations](simulation.md)). An experiment pays off when you compare a model with data, keep many studies in one project, or want figures and reports you can regenerate.
 
-An experiment subclasses `SimulationExperiment` and overrides the methods for its parts. Every method returns a dictionary keyed by identifier, and the parts reference each other by these identifiers. A key is a valid SId (`[a-zA-Z_][a-zA-Z0-9_]*`, no `-`, `.` or space) and unique in the experiment; the keys which are not are named in one error when the experiment is initialized. The methods are marked with `typing.override`, so that a type checker reports a method which overrides nothing, e.g. a misspelled `simulation`, and the examples define them in the order of their dependencies: datasets, models, simulations, observables, tasks, data, fit mappings and figures.
+## A first experiment
+
+Patel et al. (1984) gave 25 mg of hydrochlorothiazide (HCTZ) to healthy volunteers and measured the drug in plasma. The experiment below holds their data, simulates the same dose with the HCTZ model that ships with `sbmlsim` and draws both in one figure:
 
 ```python
 from pathlib import Path
 from typing import override
 
-from sbmlsim.data import Data
+import pandas as pd
+
+from sbmlsim import Q
+from sbmlsim.data import DataSet
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Axis, Figure
-from sbmlsim.resources import REPRESSILATOR_SBML
-from sbmlsim.simulation import Change, Simulation
+from sbmlsim.resources import HCTZ_SBML
+from sbmlsim.simulation import Change, Formula, Observable, Simulation
 from sbmlsim.task import Task
 
+patel1984 = pd.DataFrame(
+    {
+        "time": [0.5, 1, 1.5, 2, 3, 4, 6, 8, 12, 24, 36],
+        "cp": [22.8, 71.6, 97.9, 107, 115, 92.6, 54.2, 39.3, 23.3, 9.0, 4.6],
+        "cp_sd": [21.9, 32.4, 39.1, 36.0, 29.0, 21.1, 11.6, 9.5, 11.9, 6.3, 5.2],
+    }
+)
 
-class RepressilatorExperiment(SimulationExperiment):
-    """Repressilator with a perturbation of X."""
+
+class Patel1984(SimulationExperiment):
+    """A single oral dose of 25 mg HCTZ (Patel et al. 1984)."""
 
     @override
-    def models(self) -> dict[str, AbstractModel | Path]:
-        return {"model": REPRESSILATOR_SBML}
+    def datasets(self) -> dict[str, DataSet]:
+        units = {"time": "hr", "cp": "ng/ml", "cp_sd": "ng/ml"}
+        return {"hctz25": DataSet.from_df(patel1984, udict=units, ureg=self.ureg)}
+
+    @override
+    def models(self) -> dict[str, Path]:
+        return {"hctz": HCTZ_SBML}
 
     @override
     def simulations(self) -> dict[str, Simulation]:
-        return {"tc": Simulation(end=200, changes=[Change(100, {"X": 10})], steps=200)}
+        po25 = Simulation(
+            time_unit="hr",
+            end=36,
+            steps=360,
+            changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
+        )
+        return {"po25": po25}
+
+    @override
+    def observables(self) -> dict[str, Observable]:
+        return {"cp": Formula("cp", "[Cve_hctz] * Mr_hctz", unit="ng/ml")}
 
     @override
     def tasks(self) -> dict[str, Task]:
-        return {"task_tc": Task(model="model", simulation="tc")}
-
-    @override
-    def data(self) -> dict[str, Data]:
-        data = [Data(sid, task="task_tc") for sid in ["time", "[X]", "[Y]", "[Z]"]]
-        return {d.sid: d for d in data}
+        return {"task_po25": Task(model="hctz", simulation="po25")}
 
     @override
     def figures(self) -> dict[str, Figure]:
-        fig = Figure(experiment=self, sid="fig1", name="Repressilator", num_rows=1)
-        plots = fig.create_plots(
-            xaxis=Axis("time", unit="second"),
-            yaxis=Axis("concentration", unit="dimensionless"),
-            legend=True,
+        fig = Figure(experiment=self, sid="fig_cp")
+        [plot] = fig.create_plots(
+            xaxis=Axis("time", unit="hr"), yaxis=Axis("HCTZ plasma", unit="ng/ml")
         )
-        for sid in ["[X]", "[Y]", "[Z]"]:
-            plots[0].curve(
-                x=Data("time", task="task_tc"), y=Data(sid, task="task_tc"), label=sid
-            )
-        return {"fig1": fig}
+        plot.set_title("HCTZ 25 mg")
+        plot.add_data(task="task_po25", xid="time", yid="cp", label="simulation")
+        plot.add_data(
+            dataset="hctz25",
+            xid="time",
+            yid="cp",
+            yid_sd="cp_sd",
+            label="Patel 1984",
+            color="black",
+            marker="o",
+            linestyle="",
+        )
+        return {"fig_cp": fig}
 ```
 
-- **models** are paths, SBML strings or `AbstractModel` objects with changes, see [Models](models.md). They are resolved relative to the `base_path` of the experiment.
-- **simulations** are `Simulation` or `Scan` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md); the changes of a model are changes before the initialization of every simulation of it, unless the simulation sets the target itself.
-- **observables** (not used here) are the `Formula`, `PK` and `Custom` observables the data of the tasks read, see [Observables and scans](#observables-and-scans).
-- **tasks** apply a simulation to a model; the results of the experiment are keyed by task.
-- **data** are `Data` objects referencing a task or a dataset, see [Data](data.md).
-- **figures** are `Figure` objects with plots and curves, see [Plots and reports](plotting.md).
-- **datasets** (not used here) are `DataSet` objects with experimental data, see [Data](data.md).
+Every method returns a dictionary, and the parts refer to each other by its keys: the task `task_po25` runs the simulation `po25` on the model `hctz`, and the figure reads the task and the dataset `hctz25`. The observable `cp` turns the molar concentration of the model into ng/ml, the unit of the data.
 
-## Observables and scans
-
-`observables()` declares the observables of the experiment, the `Formula`, `PK` and `Custom` of [Observables](observables.md), by their id; it is defined after `simulations()` and before `tasks()`. A `Data` of a task reads an observable by its id (`Data("pk.cmax", task="task_doses")` for a parameter of a `PK` observable), and every task computes the observables its data read, in one run with the selections they read; the data of `data()`, of the fit mappings and of the figures count. The index of every task data is checked when the experiment is initialized: an index which is neither `time`, an observable, a coordinate of the scan of the task nor a selection of its model raises before anything is simulated, as do a `PK` observable read without a parameter and a dimension or label of `sel` which the scan of the task has not. The data of a task is a labelled array with the dimensions of its scan, see [Data](data.md); a curve draws one line per point of the dimensions it names with `over=`, the others are selected with `Data(sel=...)`, see [Plots and reports](plotting.md). `examples/experiment_scans.py` reads the PK parameters of midazolam over three doses; a fit mapping can compare such a value per simulation or the values over a dimension with data, see [Parameter fitting](fitting.md#values-per-simulation-and-over-a-dimension).
-
-## Running an experiment
-
-The `ExperimentRunner` creates the experiments, loads their models into a simulator and runs them. The results, the figures (`svg` by default) and the JSON serialization of every experiment are written below `output_path`:
+The `ExperimentRunner` loads the models, runs the experiment and writes its outputs into a folder per experiment:
 
 ```python
 from sbmlsim.experiment import ExperimentRunner
 from sbmlsim.simulator import Simulator
 
 runner = ExperimentRunner(
-    [RepressilatorExperiment],
-    simulator=Simulator(),
-    base_path=Path.cwd(),
-    data_path=Path.cwd(),
+    Patel1984, base_path=None, data_path=None, simulator=Simulator()
 )
-results = runner.run_experiments(output_path=Path.cwd() / "results", keep_results=True)
-print(results[0].experiment)
-print(sorted(p.name for p in (Path.cwd() / "results").rglob("*") if p.is_file()))
+results = runner.run_experiments(output_path=Path("results"), keep_results=True)
+for path in sorted(Path("results").rglob("*.*")):
+    print(path)
 ```
 
-`base_path` is the directory the model sources are resolved against, `data_path` the directory of the datasets. The `results` of an experiment are the `ScanResult` of every task, written as netCDF with `save_results=True`. A run with an output path writes the datasets as TSV into its folder `datasets` (`datasets/<sid>_<dataset>.tsv`, `dataset_file`), apart from the figures; the report links them. The runner releases the results of an experiment once its outputs are written, so that a run of many experiments holds only the results of the one it runs, and `results` raises afterwards; `keep_results=True` keeps them, as above:
+```text title="Output"
+results/Patel1984/Patel1984.json
+results/Patel1984/Patel1984_fig_cp.svg
+results/Patel1984/datasets/Patel1984_hctz25.tsv
+```
+
+The run wrote the figure as SVG, the dataset as TSV and the definition of the experiment as JSON. The line at the top separates the experiments of a run in the terminal.
+
+To look at a figure in a notebook, ask the experiment for its matplotlib figures:
 
 ```python
 experiment = results[0].experiment
-res = experiment.results["task_tc"]
-print(res["[X]"].values[-3:])
+fig = experiment.create_mpl_figures()["fig_cp"]
 ```
 
-The experiments of a run are independent, so a run of several experiments runs them in a pool of worker processes: `run_experiments(n_workers=None)` starts a worker per four experiments, at most one per CPU, and runs a few experiments in the calling process; `n_workers=1` runs every experiment in the calling process and a number in a pool of that many workers. A worker creates an experiment again from its class with the settings of the runner, loads its models once for all its experiments, runs it with the parameters of matplotlib of the run and writes its outputs; the messages of the workers are logged in the order of the experiments, the most expensive experiments (the points of their scans and their figures) start first. An experiment runs its scans serially in its worker, so by default a runner whose simulator runs its scans in a pool (`Simulator(n_workers=4)`, or `n_workers=None` and a scan of `POOL_THRESHOLD` points) runs its experiments in the calling process, and its scans get the pool of the simulator; a number of workers runs the experiments in a pool all the same. The 28 experiments of the HCTZ model of pkdb_models take 12 s instead of 21 s. A run whose figures are shown, whose results are kept (`keep_results=True`), whose runner has a unit registry of its own or whose experiments cannot be pickled or imported by a worker, e.g. a class defined in a function or in the main script, runs in the calling process: a worker imports the main script without the block of its guard, so an experiment is defined in a module to run in a pool. The workers import the script again, so a script which runs a pool needs the guard `if __name__ == "__main__":`; a worker which dies, e.g. by a crash of roadrunner, has its experiment run in the calling process again.
+![Output figure](images/outputs/experiments-03.png)
 
-`run_experiments(reduced_selections=True)` records for every task only the variables its data refer to, which speeds up large experiments; `reduced_selections=False` records every variable of the model and the ones the data of the task refer to.
+## The parts of an experiment
 
-One failing experiment does not stop a run. An error in the definition of an experiment (its models, datasets, simulations, tasks, data, figures or fit mappings, or a key which is no valid SId) is logged with its traceback when the runner is created, and the experiment is not run; an error while an experiment runs ends that experiment; a failing figure is skipped and the other figures are written. The run ends with a summary of the failures in the log, every `ExperimentResult` records them (`error`, `failed_figures` and `failed`) and the report lists them. `run_experiments(raise_on_failure=True)` raises one `ExperimentRunError` after every experiment ran, `ExperimentRunner(on_error="raise")` raises the error of a definition at once, which is what a fit does, and `SimulationExperiment.run` called directly raises its error. A figure which failed, or which a failed experiment did not write, leaves no file of an earlier run in the output directory, so no figure there looks like one of this run.
+An experiment overrides the methods it needs. Define them in this order, since each part can only refer to the parts before it:
+
+- `datasets()`: measured data as `DataSet` objects, data frames with units. See [Data](data.md).
+- `models()`: a path, an SBML string or an `AbstractModel` with changes (see [Models](models.md)). A relative path is resolved against the `base_path` of the experiment. The changes of a model are applied before every simulation of it, unless the simulation sets the same value itself.
+- `simulations()`: `Simulation` or `Scan` objects, see [Simulations](simulation.md) and [Parameter scans](scans.md).
+- `observables()`: `Formula`, `PK` and `Custom` observables, see [Observables](observables.md).
+- `tasks()`: a `Task` runs one simulation on one model. Results are stored by task.
+- `data()`: `Data` objects you want to read after the run that no figure or fit mapping reads already. See [Data](data.md).
+- `fit_mappings()`: pairs of data and simulation for a fit, see [Parameter fitting](fitting.md).
+- `figures()`: `Figure` objects with plots and curves, see [Plots](plotting.md).
+
+A few rules apply to the keys. Each key must be a valid SBML id (letters, digits and `_`, not starting with a digit; no `-`, `.` or spaces), and each key must be unique in the whole experiment, so a task cannot have the same key as a simulation. The runner checks the keys when it creates the experiment and names all invalid keys in one error. It also checks what the data of a task read: a variable that is neither `time`, an observable, a dimension of the scan nor a variable of the model raises before anything is simulated.
+
+Mark each method with `typing.override`. A type checker then reports a method that overrides nothing, such as a misspelled `simulation()`.
+
+To save time, a task only records the variables that the data, figures and fit mappings of the experiment read. `run_experiments(reduced_selections=False)` records every variable of the model as well.
+
+## Results
+
+With `keep_results=True` the results stay in memory after the run. `experiment.results` holds one `ScanResult` per task. The values are in the units of the model, so the time is in minutes here, and an observable has the unit it declares:
+
+```python
+res = experiment.results["task_po25"]
+print(res)
+print(res.units)
+print(f"peak: {res['cp'].max():.1f} ng/ml")
+```
+
+```text title="Output"
+ScanResult(time: 361; cp)
+{'time': 'min', 'cp': 'nanogram / milliliter'}
+peak: 134.6 ng/ml
+```
+
+By default the runner releases the results once it has written the outputs, so a run of many experiments only holds the results of the experiment it is running. `experiment.results` then raises an error. `save_results=True` writes the result of every task as a netCDF file, `<experiment>_<task>.nc`, which `ScanResult.from_netcdf` reads back.
+
+To read data in the units you want, such as a variable over the points of a scan, use `Data.get_data`, see [Data](data.md#reading-the-data-of-a-run).
+
+## Running many experiments
+
+`ExperimentRunner` takes a list of experiment classes. They are independent, so the runner runs them in parallel worker processes: with the default `n_workers=None` it starts one worker per four experiments, at most one per CPU, and a run of a few experiments stays in the calling process. `n_workers=1` runs everything in the calling process, another number starts that many workers. The 28 experiments of the HCTZ project run in 12 s in parallel instead of 21 s.
+
+A worker imports the experiment classes again, which has two consequences:
+
+- A script that runs experiments in parallel needs its code under `if __name__ == "__main__":`.
+- The classes must be importable from a module. Classes defined in a function or in the main script, as in a notebook, run in the calling process. The same holds for a run with `keep_results=True`, with shown figures or with a unit registry of its own.
+
+If the simulator runs its scans in a pool (`Simulator(n_workers=4)`) and you do not set `n_workers`, the experiments run one after another and their scans use the pool. If a worker crashes, its experiment runs again in the calling process.
+
+## When something fails
+
+One failing experiment does not stop the run. An error in a definition, such as a bad key or a missing dataset, is logged with its traceback when the runner is created, and that experiment is skipped. An error during the run ends only that experiment, and a failing figure is skipped while the others are written.
+
+At the end of the run, the log lists the failures. Each `ExperimentResult` records them in `error`, `failed_figures` and `failed`, and the report shows them. A figure that failed leaves no old file from an earlier run in the output folder.
+
+To stop on errors instead:
+
+- `run_experiments(raise_on_failure=True)` raises one `ExperimentRunError` after all experiments ran.
+- `ExperimentRunner(..., on_error="raise")` raises an error of a definition right away.
 
 ## Reports
 
-`ExperimentReport` renders the results of one or several experiments into an HTML (or markdown) report with the figures, the models and the simulations of every experiment:
+`ExperimentReport` renders the results of a run into an HTML report with the figures, models, simulations, datasets and the code of every experiment. The function `run_experiments` of `sbmlsim.experiment.runner` runs a list of experiments and writes the report in one call:
 
 ```python
-from sbmlsim.report.experiment_report import ExperimentReport
+from sbmlsim.experiment.runner import run_experiments
 
-report = ExperimentReport(results)
-report_path = report.create_report(output_path=Path.cwd() / "results")
+if __name__ == "__main__":
+    run_experiments([Patel1984], output_path=Path("report"))
 ```
 
-The report ends the output with its section, the number of experiments and the link to the report, which the terminal opens with a click (a hyperlink in VS Code, iTerm2, Windows Terminal, GNOME Terminal or kitty, the `file://` URI in any other terminal and in a log). `show_report=True` opens the report in the web browser. The sections, key/value blocks and links of `sbmlsim.display` are the output of scripts as well, e.g. `display.link("figures", figures_dir)`.
+```text title="Output"
+📋 Report ──────────────────────────────────────────────────────────────────────
+experiments         1
+report              file://./report/index.html
+```
 
-## Serialization
+The last line of the output is a link to `report/index.html`, which most terminals open with a click, and `show_report=True` opens it in the web browser. The report links the source file of an experiment defined in a module; an experiment of a notebook has no file to link. To build the report from results you already have, call `ExperimentReport(results).create_report(output_path)` from `sbmlsim.report.experiment_report`; `report_type=ExperimentReport.ReportType.MARKDOWN` writes markdown instead of HTML.
 
-Every experiment is serialized to JSON when it is run, `<ExperimentId>.json` below the output path, with the models, simulations, tasks, data and figures:
+## The JSON file
+
+Every run writes `<experiment>.json` with the models, simulations, tasks, data and figures of the experiment. `experiment.to_json()` returns the same text:
 
 ```python
-print(experiment.to_json()[:300])
+import json
+
+definition = json.loads(experiment.to_json())
+print(list(definition))
+print(definition["simulations"]["po25"]["changes"])
 ```
 
-The definition includes the selections and resource directories of the models, the ids and names of the tasks and the parameters of the data formulas. A NumPy scalar stays a JSON number. Paths, quantities, enums, arrays, dataclasses and objects with a `to_dict()` method are written as such, any other value raises a `TypeError` rather than being written as a string or with the internal attributes of its object. A custom object of a definition provides `to_dict()` with the fields which describe its behaviour.
+```text title="Output"
+['experiment_id', 'base_path', 'data_path', 'models', 'tasks', 'observables', 'simulations', 'data', 'figures']
+[{'times': [0], 'values': {'PODOSE_hctz': {'value': 25, 'unit': 'milligram'}}}]
+```
 
-## Where to look
+Paths, quantities, enums, arrays and objects with a `to_dict()` method are written as such. Any other value raises a `TypeError`; the runner then logs the error and writes no JSON file for that experiment. If you put your own objects into an experiment, give them a `to_dict()` method that returns the fields that describe their behaviour.
 
-The [examples](https://github.com/matthiaskoenig/sbmlsim/tree/develop/examples) contain complete experiments: `examples/initial_assignment` for a model with changes and two simulations, `examples/curve_types` for the curve types of the plots, `examples/glucose` for an experiment with datasets and a dose response scan, and `examples/hctz_fitting` for pharmacokinetics experiments with data from two studies and the parameter fitting problems built on them.
+## Examples
+
+The [examples](https://github.com/matthiaskoenig/sbmlsim/tree/develop/examples) folder has complete experiments:
+
+- `examples/initial_assignment`: a model with changes and two simulations.
+- `examples/curve_types`: every curve type of the plots.
+- `examples/glucose`: datasets and a dose response scan.
+- `examples/experiment_scans.py`: PK parameters of midazolam over three doses, a band over parameter draws and a fit.
+- `examples/hctz_fitting`: pharmacokinetic experiments with data from two studies and the fitting problems built on them.

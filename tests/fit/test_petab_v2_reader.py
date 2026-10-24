@@ -697,3 +697,33 @@ def test_a_noise_formula_with_an_observable_placeholder(tmp_path: Path) -> None:
     scale = np.where(np.arange(10) < 5, 2.0, 3.0)
     expected = log_density(np.asarray(problem.y_references[0]), prediction, 0.1 * scale)
     assert log_likelihood(problem) == pytest.approx(float(np.sum(expected)))
+
+
+def test_the_data_of_a_concentration_is_in_the_unit_of_the_concentration(
+    tmp_path: Path,
+) -> None:
+    """A measurement of a concentration species is in its concentration unit.
+
+    PEtab measures in the units of the model, and the formula `prey` of a
+    species which is no amount is its concentration, `[prey]`: its data has the
+    unit of the concentration and not the one of the amount.
+    """
+    import libsbml
+
+    path = write_problem(
+        tmp_path, observables={"prey_o": "prey"}, experiments={"e1": None}
+    )
+    doc = libsbml.readSBMLFromFile(str(tmp_path / "lv.xml"))
+    model = doc.getModel()
+    model.getCompartment("default").setUnits("litre")
+    for species in model.getListOfSpecies():
+        species.setSubstanceUnits("mole")
+        # a concentration species, in a compartment of size 1
+        species.setHasOnlySubstanceUnits(False)
+    libsbml.writeSBMLToFile(doc, str(tmp_path / "lv.xml"))
+
+    reader = PetabReader.from_yaml(path)
+    (dataset,) = reader.datasets().values()
+    assert dataset.uinfo["value"] == "mole/litre"
+    problem = reader.to_optimization_problem()
+    problem.initialize(SETTINGS)

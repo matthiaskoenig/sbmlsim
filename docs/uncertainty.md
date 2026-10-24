@@ -1,10 +1,12 @@
 # Uncertainty
 
-A prediction depends on inputs which are not known exactly: a dose and a body weight reported as mean ± SD, a parameter from the literature with a CV, a clearance with an interval. `sbmlsim.uncertainty` declares these values as uncertain where they are used, runs them through the simulations and answers questions about the predictions with their Monte Carlo error.
+A prediction depends on inputs that are not known exactly: a dose and a body weight reported as mean ± SD, a parameter from the literature with a CV, a clearance with an interval. `sbmlsim.uncertainty` lets you declare such values as uncertain where you use them, runs them through the simulations, and answers questions about the predictions with their Monte Carlo error.
+
+The example on this page is midazolam, a sedative that the liver clears. The question is how much an inhibitor of the liver enzyme, which leaves 30 % of its activity, raises the exposure to midazolam.
 
 ## Uncertain values
 
-An `Uncertain` is a value with its distribution. It is given wherever a value is given, in a `Change`, in the pre-initialization changes of a `Simulation` or as the prior of a `FitParameter`:
+An `Uncertain` is a value with a distribution. You can use it wherever you would use a value: in a `Change`, in the `preinit_changes` of a `Simulation`, or as the prior of a `FitParameter`.
 
 ```python
 from sbmlsim import Q
@@ -13,31 +15,38 @@ from sbmlsim.uncertainty import Uncertain
 dose = Uncertain(Q(5, "mg"), cv=0.05)  # log-normal, mean 5 mg, CV 5 %
 weight = Uncertain(Q(75, "kg"), sd=Q(12, "kg"), low=Q(45, "kg"), kind="variability")
 fraction = Uncertain.range(0.6, 0.9)  # uniform
-clearance = Uncertain.interval(
-    Q(12, "l/hr"), Q(30, "l/hr"), level=0.9
-)  # a reported 90 % interval
-auc = Uncertain.se(Q(40, "mg*hr/l"), Q(2, "mg*hr/l"), n=16)  # the SD is SE * sqrt(n)
-print(dose.shape, dose.mean(), dose.sd(), weight.mean())
+clearance = Uncertain.interval(Q(12, "l/hr"), Q(30, "l/hr"), level=0.9)
+auc = Uncertain.se(Q(40, "mg*hr/l"), Q(2, "mg*hr/l"), n=16)  # SD = SE * sqrt(n)
+print(dose.shape, dose.mean(), dose.sd())
+print(round(weight.mean(), 2))
 ```
 
-| given | distribution | nominal |
+```text title="Output"
+log-normal 5.0 milligram 0.25 milligram
+75.03 kilogram
+```
+
+The mean of the weight is a little above 75 kg because the distribution is cut at 45 kg. How the arguments set the distribution:
+
+| given | distribution | nominal value |
 |---|---|---|
 | `sd=` or `cv=` of a positive value | log-normal with that mean and SD | the value |
-| `sd=`/`cv=` with `shape="normal"`, or a value which may be negative | normal | the value |
-| `low=`/`high=` with them | the distribution above, truncated | the value |
+| `sd=`/`cv=` with `shape="normal"`, or a value that may be negative | normal | the value |
+| `low=`/`high=` in addition | the distribution above, truncated | the value |
 | `Uncertain.range(low, high)` | uniform (`log=True`: log-uniform) | the (geometric) midpoint |
 | `Uncertain.interval(low, high, level)` | log-normal (positive) or normal with these quantiles | the median |
 | `Uncertain.se(mean, se, n)` | the SD `se * sqrt(n)` | the mean |
-| `distribution=` | a distribution of `sbmlsim.simulation.sampling` | the value |
+| `distribution=` | a distribution of [`sbmlsim.simulation.sampling`](sampling.md#distributions) | the value |
 
-A positive quantity given with an SD or a CV, e.g. a dose, a body weight, a volume or a rate, is log-normal by default, whose median is `mean / sqrt(1 + cv²)` and whose logarithm has the standard deviation `sqrt(ln(1 + cv²))` (Limpert et al. 2001): a normal distribution of a large CV gives negative values. `shape="normal"` asks for the normal. `kind` is `uncertainty` (what is not known about a value) or `variability` (a value which differs between subjects). Two uses of one object, or two objects of one `name`, are one random variable.
+A positive value given with an SD or a CV, e.g. a dose, a body weight, a volume or a rate, is log-normal by default, because a normal distribution with a large CV gives negative values. Its median is `mean / sqrt(1 + cv²)` and its logarithm has the standard deviation `sqrt(ln(1 + cv²))` (Limpert et al. 2001). `shape="normal"` asks for the normal distribution instead.
 
-A simulation simulates the nominal values, so declaring a value uncertain changes nothing until it is propagated:
+`kind` is `uncertainty` (something not known about a value) or `variability` (a value that differs between subjects). Using one object twice, or two objects with the same `name`, gives one random variable.
+
+A simulation always simulates the nominal values, so declaring a value uncertain changes nothing until you propagate it. The simulations of this page differ in the activity of the enzyme, `LI__MIDOH_f`:
 
 ```python
 from sbmlsim.resources import MIDAZOLAM_SBML
-from sbmlsim.simulation import PK, Change, Simulation
-from sbmlsim.simulator import Simulator
+from sbmlsim.simulation import PK, Change, Formula, Simulation
 
 
 def simulation(activity: float = 1.0) -> Simulation:
@@ -52,26 +61,41 @@ def simulation(activity: float = 1.0) -> Simulation:
 
 control = simulation()
 print([use.target for use in control.uncertain_values()])
-nominal = Simulator().simulate(MIDAZOLAM_SBML, control)
+print(control.preinit_changes["BW"], control.changes[0].values["PODOSE_mid"])
+```
+
+```text title="Output"
+['BW', 'PODOSE_mid']
+75 kilogram 5 milligram
 ```
 
 ## Covariances
 
-A `Covariance` is the dependence between uncertain values: a covariance matrix (in the units of the targets, on the linear or the log scale), a correlation matrix or the coefficients of pairs. Every matrix is validated (symmetric, positive semi-definite, a unit diagonal of a correlation); `nearest=True` replaces a correlation which is not positive semi-definite by the nearest correlation matrix (Higham 2002).
+A `Covariance` describes how uncertain values depend on each other. It is a covariance matrix (in the units of the targets, on the linear or the log scale), a correlation matrix, or the correlation coefficients of pairs:
 
 ```python
 from sbmlsim.uncertainty import Covariance
 
 correlation = Covariance.correlation({("BW", "LI__MIDOH_Vmax"): 0.4})
 omega = Covariance(["CL", "V"], matrix=[[0.09, 0.03], [0.03, 0.04]], scale="log")
-print(correlation.matrix, omega.correlation_matrix())
+print(correlation.matrix)
+print(omega.correlation_matrix())
 ```
 
-The draws are correlated through their normal scores (a Gaussian copula): for normal values this is the multivariate normal of the covariance, for log-normal values the multivariate normal of their logarithms, and a covariance of log-normal values on the linear scale is converted exactly. The variances of a covariance must be the variances of the marginals.
+```text title="Output"
+[[1.  0.4]
+ [0.4 1. ]]
+[[1.  0.5]
+ [0.5 1. ]]
+```
+
+Every matrix is checked: it must be symmetric and positive semi-definite, and a correlation matrix must have ones on the diagonal. `nearest=True` replaces a correlation matrix that is not positive semi-definite by the nearest one that is (Higham 2002).
+
+The draws are correlated through their normal scores, a Gaussian copula (Nelsen 2006). For normal values this is the multivariate normal of the covariance, for log-normal values the multivariate normal of their logarithms; a linear-scale covariance of log-normal values is converted exactly. The variances in a covariance must match the variances of the distributions.
 
 ## Propagation
 
-`propagate` runs what an `UncertaintyModel` declares uncertain through one simulation or several scenarios: the uncertain values of the simulations and the parameters with their distributions. The draws are one dimension of a scan, so the model is compiled once and the simulations run on the scan core (in the pool for many draws); they are quasi-random (scrambled Sobol points), correlated by the covariances. Several scenarios get the same draws (common random numbers), so a ratio between them is paired; an uncertain value of one target whose distribution differs between the scenarios, e.g. a dose of 100 mg in one and of 200 mg in another, is drawn at the same quantile of each. A parameter is drawn in every scenario, so a scenario must not set it: a draw would replace the value of the scenario, which raises; a scenario sets another target instead, as the inhibitor below sets the activity `LI__MIDOH_f` of the uncertain `LI__MIDOH_Vmax`. Without `n` the number of draws doubles until the intervals of the mean, the SD and the 5 % and 95 % quantiles of the outputs are narrower than `rel_tol` (0.1) times their SD, after the adaptive procedure of GUM Supplement 1 (JCGM 101:2008). A Latin hypercube (`design="lhs"`) has no continuation and needs `n`; Sobol and random points continue their sequence, so a result of more draws starts with the draws of fewer.
+An `UncertaintyModel` collects what is uncertain: the uncertain values in the simulations and extra `parameters` with their distributions. `propagate` draws them, simulates every draw in every scenario and returns an `UncertaintyResult`:
 
 ```python
 from sbmlsim.uncertainty import UncertaintyModel, propagate
@@ -80,30 +104,79 @@ uq = UncertaintyModel(
     parameters={"LI__MIDOH_Vmax": Uncertain(0.005, cv=0.3)},
     covariance=[correlation],
 )
+observables = [
+    Formula("mid", "[Cve_mid] * Mr_mid", unit="ng/ml"),
+    PK("pk", "mid", dose="PODOSE_mid", route="oral"),
+]
 res = propagate(
     MIDAZOLAM_SBML,
     {"control": simulation(), "inhibitor": simulation(activity=0.3)},
     uq,
-    [PK("pk", "[Cve_mid]", dose="PODOSE_mid", route="oral")],
+    observables,
     outputs=["pk.auc_last", "pk.cmax"],
     n=512,
     seed=1234,
 )
-print(
-    res.summary(["pk.auc_last"])[
-        ["scenario", "mean", "mean_se", "sd", "q0.05", "q0.95"]
-    ]
-)
-print(res.contributions("pk.auc_last", scenario="control"))
+summary = res.summary(["pk.auc_last"])
+print(summary[["scenario", "mean", "mean_se", "sd", "q0.05", "q0.95"]].round(0))
+print(res.contributions("pk.auc_last", scenario="control").round(2))
 ```
 
-`summary` gives every output which is one value per draw with its Monte Carlo errors (a timecourse raises, it is reduced by an observable, e.g. `at`, `max` or a `PK` parameter): the standard errors of the mean and of the SD and the distribution-free intervals of the quantiles (Hahn & Meeker 1991). `contributions` ranks the uncertain values by their first-order indices, estimated from the same draws (Plischke et al. 2013); the index of a correlated value includes the effect of the values it is correlated with. `values(output, scenario)` gives the draws, `contrast(output, a, b)` the paired ratio or difference of two scenarios, and `to_netcdf`/`from_netcdf` store a result with its record (the seed, the design, the number of draws, the convergence history, the variables and the covariances).
+```text title="Output"
+    scenario     mean  mean_se      sd    q0.05    q0.95
+0    control   7727.0    134.0  3037.0   3885.0  13355.0
+1  inhibitor  23471.0    374.0  8459.0  12127.0  39570.0
+         variable  index  correlated
+0  LI__MIDOH_Vmax   0.75        True
+1              BW   0.45        True
+2      PODOSE_mid   0.00       False
+```
+
+The inhibitor triples the mean AUC (in ng/ml × min). `summary` gives every output that is one value per draw, with its Monte Carlo errors: the standard errors of the mean (`mean_se`) and of the SD, and distribution-free intervals of the quantiles (Hahn and Meeker 1991). A timecourse raises; reduce it to a value with an observable, e.g. `at`, `max` or a `PK` parameter.
+
+`contributions` ranks the uncertain values by their first-order index, the share of the variance of the output each one explains, estimated from the same draws (Plischke et al. 2013). The index of a correlated value includes the effect of the values it is correlated with, which is why the indices of `LI__MIDOH_Vmax` and `BW` add up to more than 1.
+
+`res.results` holds the result of each scenario, a scan over the dimension `draw`. The timecourses give bands of the prediction with `plot_bands`:
+
+```python
+import matplotlib.pyplot as plt
+
+from sbmlsim.sensitivity.uncertainty import plot_bands
+
+fig, ax = plt.subplots(figsize=(7, 3.5))
+for scenario, result in res.results.items():
+    plot_bands(result.summary("draw", quantiles=[0.05, 0.5, 0.95]), "mid", ax=ax)
+ax.legend(ax.lines, res.scenarios)
+```
+
+![Output figure](images/outputs/uncertainty-05.png)
+
+How the draws are made:
+
+- The draws are quasi-random (scrambled Sobol points, Owen 1998; Joe and Kuo 2008), one dimension of a scan, so the model is compiled once and many draws run in parallel worker processes.
+- All scenarios use the same draws (common random numbers, Glasserman 2003), so a ratio between two scenarios is paired: it compares them at the same draw. When one target has different distributions in different scenarios, e.g. a dose of 100 mg in one and 200 mg in another, it is drawn at the same quantile in each.
+- A parameter of the `UncertaintyModel` is drawn in every scenario, so no scenario may set it; that raises. Set another target instead, as the inhibitor sets the activity `LI__MIDOH_f` rather than the uncertain `LI__MIDOH_Vmax`.
+- Without `n`, the number of draws doubles until the half widths of the 95 % intervals of the mean, the SD and the 5 % and 95 % quantiles of the outputs are below `rel_tol` (0.1) times their SD, the adaptive procedure of GUM Supplement 1 (JCGM 101:2008).
+- Sobol and random points (`design="random"`) continue their sequence, so a result with more draws starts with the draws of a smaller one. A Latin hypercube (`design="lhs"`) cannot be continued and needs `n`.
+
+`values(output, scenario)` gives the draws of an output, `contrast(output, a, b)` the paired ratio (or difference) of two scenarios, and `to_netcdf`/`from_netcdf` store the result with its record: the seed, the design, the number of draws, the convergence history, the variables and the covariances.
 
 ## Probability statements
 
-A question about a prediction is a probability over the draws: `P(H)`, the probability that an output satisfies a hypothesis H given everything that is uncertain, estimated by the fraction of the draws which satisfy H. `P(H)` is a property of the model and of what is uncertain, not of the number of draws: more draws can always be simulated, and they only estimate it more precisely. The statements are built for this, they are anytime valid: their interval is a confidence sequence (Robbins 1970; Lai 1976; Howard et al. 2021), which contains `P(H)` at every number of draws at once with probability 95 %, so a statement may be looked at after every batch and continued with more draws. A confidence interval of a fixed number of draws, e.g. the Wilson interval, misses `P(H)` far more often when it is looked at repeatedly.
+A question about a prediction is a probability over the draws. For example: is the probability that the inhibitor raises the AUC by more than 25 % at least 90 %, and how likely is it to more than triple the AUC? The paired ratio of the AUCs over the draws shows the answers:
 
-A decision against a threshold `at_least=p0` is one of `accepted` (`P(H) >= p0` is shown), `rejected` (`P(H) < p0` is shown), `equivalent` (`P(H)` is shown to be within the `margin` of the threshold, two one-sided tests, Schuirmann 1987) and `undecided`, with the number of draws which would decide it (`n_needed`). More draws only make a statement more precise: an undecided one becomes decided, an equivalent one becomes the direction which is shown later, and a direction once shown is kept, so a decision is never reversed and is wrong with probability at most 5 %. The margin is a difference of probability which does not matter, 0.05 by default; it makes a statement whose probability is the threshold decidable.
+```python
+ratio = res.contrast("pk.auc_last", "inhibitor", "control")
+fig, ax = plt.subplots(figsize=(7, 3.5))
+ax.hist(ratio, bins=30, alpha=0.6)
+ax.axvline(3.0, color="black", linestyle="--", label="ratio 3")
+ax.set(xlabel="AUC inhibitor / AUC control", ylabel="draws")
+ax.legend(loc="upper left")
+```
+
+![Output figure](images/outputs/uncertainty-06.png)
+
+`P(H)` is the probability that the output satisfies a hypothesis H, given everything that is uncertain. It is estimated by the fraction of the draws that satisfy H. `P(H)` is a property of the model and its uncertainties, not of the number of draws; more draws only estimate it more precisely. A `Hypothesis` compares `P(H)` with a threshold `at_least=p0`:
 
 ```python
 from sbmlsim.uncertainty import Hypothesis
@@ -113,17 +186,39 @@ hypotheses = [
         "pk.auc_last", contrast=("inhibitor", "control"), greater=1.25, at_least=0.9
     ),
     Hypothesis("pk.auc_last", contrast=("inhibitor", "control"), greater=3.0),
-    Hypothesis("pk.cmax", scenario="control", less=Q(0.1, "mmol/l"), at_least=0.95),
+    Hypothesis("pk.cmax", scenario="control", less=Q(40, "ng/ml"), at_least=0.95),
 ]
 report = res.test(hypotheses)
-print(report.table()[["hypothesis", "estimate", "low", "high", "decision"]])
-ratio = res.contrast("pk.auc_last", "inhibitor", "control")
+print(report.table()[["hypothesis", "estimate", "low", "high", "decision"]].round(3))
 print(res.probability(ratio, greater=2.0, at_least=0.5).decision)
 ```
 
-A `TestReport` decides `m` statements at the level of Bonferroni, 5 % / `m` each, with their simultaneous intervals, so the probability that any of its decisions is wrong is at most 5 % (`family_error`, the mean of the levels of statements of other levels), whatever the dependence between the statements, which share their draws. Every statement has a true null (both directions at the threshold, the equivalence away from it), so the correct decision of one statement must not relax the level of the others. The decisions of a report are decisions of single statements at a fixed level, so more draws never reverse them either, and the conservative level costs draws only. `propagate(..., hypotheses=hypotheses)` draws until every hypothesis is decided in its report (or `n_max`), which the anytime validity allows; it draws random points by default, for which the statements are exactly valid. The draws which failed (`NaN`) are excluded and counted, infinite values, e.g. a ratio over a zero, are values. The counts of the quasi-random Sobol points of a propagation without hypotheses fluctuate less than the ones of random points, for which the statements are conservative in practice but not by a theorem. A probability statement is about the predictive distribution, i.e. about what is uncertain, not a test of a study: the draws are not subjects.
+```text title="Output"
+                                       hypothesis  estimate    low   high  decision
+0  P(pk.auc_last:inhibitor/control > 1.25) >= 0.9     1.000  0.986  1.000  accepted
+1               pk.auc_last:inhibitor/control > 3     0.838  0.775  0.888  estimate
+2           P(pk.cmax:control < 40 ng/ml) >= 0.95     0.990  0.964  0.999  accepted
+accepted
+```
 
-`examples/uncertainty_midazolam.py` is the analysis of this page with the adaptive number of draws, which draws until its hypotheses are decided.
+`estimate` is the fraction of the draws that satisfy H and `low`/`high` its interval. Every draw raises the AUC by more than 25 %, so the first hypothesis is accepted. About 84 % of the draws more than triple it; the second hypothesis has no `at_least`, so it only gives this estimate. With a threshold, the decision is one of:
+
+- `accepted`: `P(H) >= p0` is shown;
+- `rejected`: `P(H) < p0` is shown;
+- `equivalent`: `P(H)` is shown to be within the `margin` of the threshold (two one-sided tests, Schuirmann 1987). The margin is a difference of probability that does not matter, 0.05 by default; it makes a hypothesis whose probability is exactly the threshold decidable;
+- `undecided`: the draws are not enough, and `n_needed` estimates how many would decide it.
+
+`res.probability(values, ...)` decides one statement about any array of draws. The last line tests the ratio above: a probability of at least 50 % that the AUC more than doubles is `accepted`.
+
+The intervals are confidence sequences (Robbins 1970; Lai 1976; Howard et al. 2021): with probability 95 % they contain `P(H)` at every number of draws at once. This makes the statements anytime valid. You may look at a statement after every batch of draws and continue with more. A confidence interval for a fixed number of draws, e.g. the Wilson interval, misses `P(H)` far more often when it is checked repeatedly. More draws only make a statement more precise: an undecided one becomes decided, an equivalent one becomes the direction shown later, and a direction once shown is kept. A decision is therefore never reversed, and it is wrong with probability at most 5 %.
+
+A `TestReport` decides `m` hypotheses together at the Bonferroni level of 5 % / `m` each, with simultaneous intervals, so the probability that any of its decisions is wrong is at most 5 % (`family_error`), whatever the dependence between the hypotheses, which share their draws. The level is not relaxed after a correct decision, because every hypothesis has a true null hypothesis of its own. This costs draws but never reverses a decision of the report either.
+
+`propagate(..., hypotheses=hypotheses)` draws until every hypothesis of the report is decided, or `n_max` is reached. It uses random points by default, for which the statements hold exactly. The counts of the quasi-random Sobol points of a propagation without hypotheses fluctuate less than those of random points; the statements are then conservative in practice, but not by a theorem. Failed draws (`NaN`) are excluded and counted; infinite values, e.g. a ratio over zero, are values.
+
+A probability statement is about the predictive distribution, i.e. about what is uncertain (Gelman et al. 2013). It is not a test of a study: the draws are not subjects.
+
+`examples/uncertainty_midazolam.py` runs the analysis of this page with an adaptive number of draws, which draws until its hypotheses are decided.
 
 ## References
 

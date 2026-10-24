@@ -1392,7 +1392,11 @@ class MatplotlibFigureSerializer:
         the padding of both. The plots begin right below the band whatever the
         height of the figure; the fraction of matplotlib capped them, so the
         gap below the title grew with the height, 3.6 in above the plots of a
-        figure of six rows (#312).
+        figure of six rows (#312). The band has the line of the title of a
+        plot only if a plot of the first row shows one, the titles of the
+        plots of the later rows are in the gaps between the rows; without one,
+        the band has the half line by which the top tick label of a y axis,
+        centered on the top of its panel, reaches above it.
         """
         cols, rows = figure.num_cols, figure.num_rows
         margins = {
@@ -1402,8 +1406,13 @@ class MatplotlibFigureSerializer:
             "top": 1.0 - (1.0 - float(rcParams["figure.subplot.top"])) / rows,
         }
         if figure.name:
-            band = (
-                1.2 * (settings.fig_titlesize + settings.axes_titlesize) + 12.0
-            ) / 72.0
+            plot_titles = any(
+                subplot.row == 1 and subplot.plot.name and subplot.plot.title_visible
+                for subplot in figure.subplots
+            )
+            line = (
+                settings.axes_titlesize if plot_titles else settings.ytick_labelsize / 2
+            )
+            band = (1.2 * (settings.fig_titlesize + line) + 12.0) / 72.0
             margins["top"] = 0.98 - band / figure.size(settings)[1]
         return margins

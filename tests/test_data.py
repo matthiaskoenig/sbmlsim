@@ -1,5 +1,6 @@
 """Testing DataSet and Data functionality."""
 
+import logging
 import re
 from pathlib import Path
 
@@ -268,6 +269,44 @@ def test_from_df_unit_column_converts_rows_to_the_first_unit() -> None:
     assert dset.uinfo["mean"] == "mg"
     assert dset["mean"].dropna().tolist() == pytest.approx([1000.0, 2000.0])
     assert dset["mean_sd"].dropna().tolist() == pytest.approx([100.0, 500.0])
+
+
+@pytest.mark.parametrize(
+    "errors",
+    [
+        {"mean_sd": [0.1, 0.2]},
+        {"sd": [0.1, 0.2]},
+        {"sd": [0.1, float("nan")], "mean_sd": [0.1, float("nan")]},
+    ],
+)
+def test_from_df_the_sd_of_the_mean_is_read_silently(
+    errors: dict[str, list[float]], caplog: pytest.LogCaptureFixture
+) -> None:
+    """The SD of a mean is `sd` or `mean_sd`, both are read without a warning.
+
+    The dataset names it `mean_sd`, and a table which already does, or has
+    both columns with the same values, loses nothing.
+    """
+    df = pd.DataFrame({"mean": [1.0, 2.0], **errors, "unit": ["mg/l", "mg/l"]})
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert caplog.records == []
+    assert "sd" not in dset.columns
+    assert dset["mean_sd"].tolist()[0] == pytest.approx(0.1)
+
+
+def test_from_df_two_different_sds_of_the_mean_warn(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Of two different SDs of the mean, `sd` is used and the loss is reported."""
+    df = pd.DataFrame({"mean": [1.0], "sd": [0.1], "mean_sd": [0.2], "unit": ["mg/l"]})
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.data"):
+        dset = DataSet.from_df(df, ureg=UnitRegistry(on_redefinition="ignore"))
+    assert [r.getMessage() for r in caplog.records] == [
+        "The columns 'sd' and 'mean_sd' are both the SD of 'mean' and differ, "
+        "'sd' is used."
+    ]
+    assert dset["mean_sd"].tolist() == pytest.approx([0.1])
 
 
 def test_from_df_incompatible_units_raise() -> None:
