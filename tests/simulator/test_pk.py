@@ -371,3 +371,24 @@ def test_points_of_similar_lengths_are_analysed_together(
                 float(alone.ds[parameter].values[0]),
                 rtol=1e-12,
             )
+
+
+def test_the_points_of_a_manual_terminal_phase_count_from_the_last_time_point(
+    plans: dict[str, Plan],
+) -> None:
+    """pkpdutils indexes the given points in the columns of a row.
+
+    A negative index counts from the end of the row, which the padding would
+    move into the `NaN` behind the last time point.
+    """
+    options = pk.NCAOptions(
+        terminal=pk.TerminalPhase(method="manual", points=(-3, -2, -1))
+    )
+    node, _ = _compile(
+        PK("c", "[C]", dose="PODOSE", route="oral", options=options), plans["single"]
+    )
+    t = np.linspace(0.0, 48.0, 20)
+    values = concentration(t, 100.0)
+    out = evaluate_pk(node, t[None, :], values[None, :], [plans["single"]])
+
+    assert out["c.lambda_z"][0, 0] == pytest.approx(KE, rel=1e-6)

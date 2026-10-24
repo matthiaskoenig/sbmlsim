@@ -327,6 +327,19 @@ def _padded(n_points: int) -> int:
     return max(MIN_PADDED_LENGTH, 1 << max(0, int(n_points) - 1).bit_length())
 
 
+def _manual_terminal_phase(options: Any) -> bool:
+    """Check whether the options regress given points of the terminal phase.
+
+    pkpdutils indexes the points in the columns of a row, a negative index from
+    its end, so the rows of such an analysis are not padded.
+    """
+    if options is None:
+        return False
+    from pkpdutils.nca.options import TerminalMethod
+
+    return options.terminal.method is TerminalMethod.MANUAL
+
+
 def _pad(rows: np.ndarray, length: int) -> np.ndarray:
     """Get the rows cut or padded with `NaN` to a length."""
     padded = np.full((rows.shape[0], length), np.nan)
@@ -349,6 +362,8 @@ def evaluate_pk(
     number of time points; a group per number was a call of pkpdutils per
     point, half the time of a scan of midazolam over three doses, the
     padding changes a parameter by at most a few units in the last place.
+    The points of a manual terminal phase index the columns of a row, such an
+    analysis groups the points by their number of time points unpadded.
 
     Args:
         node: the observable.
@@ -373,7 +388,8 @@ def evaluate_pk(
     doses = [empty if node.dose is None else doses_of(p, node.dose) for p in plans]
     counts = np.array([times.size for times, _ in doses], dtype=int)
     points = finite.sum(axis=1)
-    lengths = np.array([_padded(n) for n in points], dtype=int)
+    manual = _manual_terminal_phase(node.options)
+    lengths = np.array([n if manual else _padded(n) for n in points], dtype=int)
     groups = np.unique(np.stack([counts, lengths], axis=1), axis=0)
     for count, length in groups:
         rows = np.flatnonzero((counts == count) & (lengths == length) & (points > 0))
