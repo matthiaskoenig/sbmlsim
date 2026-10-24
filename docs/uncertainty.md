@@ -53,7 +53,6 @@ def simulation(activity: float = 1.0) -> Simulation:
     return Simulation(
         end=24,
         time_unit="hr",
-        steps=96,
         preinit_changes={"BW": weight, "LI__MIDOH_f": activity},
         changes=[Change(0, {"PODOSE_mid": dose})],
     )
@@ -95,9 +94,11 @@ The draws are correlated through their normal scores, a Gaussian copula (Nelsen 
 
 ## Propagation
 
-An `UncertaintyModel` collects what is uncertain: the uncertain values in the simulations and extra `parameters` with their distributions. `propagate` draws them, simulates every draw in every scenario and returns an `UncertaintyResult`:
+An `UncertaintyModel` collects what is uncertain: the uncertain values in the simulations and extra `parameters` with their distributions. `propagate` draws them, simulates every draw in every scenario and returns an `UncertaintyResult`. `time=` puts the timecourses of all draws on one grid of times, which the bands below need:
 
 ```python
+import numpy as np
+
 from sbmlsim.uncertainty import UncertaintyModel, propagate
 
 uq = UncertaintyModel(
@@ -116,6 +117,7 @@ res = propagate(
     outputs=["pk.auc_last", "pk.cmax"],
     n=512,
     seed=1234,
+    time=Q(np.linspace(0, 24, 97), "hr"),
 )
 summary = res.summary(["pk.auc_last"])
 print(summary[["scenario", "mean", "mean_se", "sd", "q0.05", "q0.95"]].round(0))
@@ -124,7 +126,7 @@ print(res.contributions("pk.auc_last", scenario="control").round(2))
 
 ```text title="Output"
     scenario     mean  mean_se      sd    q0.05    q0.95
-0    control   7727.0    134.0  3037.0   3885.0  13355.0
+0    control   7728.0    134.0  3037.0   3886.0  13356.0
 1  inhibitor  23471.0    374.0  8459.0  12127.0  39570.0
          variable  index  correlated
 0  LI__MIDOH_Vmax   0.75        True
@@ -132,21 +134,28 @@ print(res.contributions("pk.auc_last", scenario="control").round(2))
 2      PODOSE_mid   0.00       False
 ```
 
-The inhibitor triples the mean AUC (in ng/ml × min). `summary` gives every output that is one value per draw, with its Monte Carlo errors: the standard errors of the mean (`mean_se`) and of the SD, and distribution-free intervals of the quantiles (Hahn and Meeker 1991). A timecourse raises; reduce it to a value with an observable, e.g. `at`, `max` or a `PK` parameter.
+The inhibitor triples the mean AUC (in ng/ml × min). The PK parameters are computed from the steps of the integrator, before the timecourses are interpolated onto the grid. `summary` gives every output that is one value per draw, with its Monte Carlo errors: the standard errors of the mean (`mean_se`) and of the SD, and distribution-free intervals of the quantiles (Hahn and Meeker 1991). A timecourse raises; reduce it to a value with an observable, e.g. `at`, `max` or a `PK` parameter.
 
 `contributions` ranks the uncertain values by their first-order index, the share of the variance of the output each one explains, estimated from the same draws (Plischke et al. 2013). The index of a correlated value includes the effect of the values it is correlated with, which is why the indices of `LI__MIDOH_Vmax` and `BW` add up to more than 1.
 
-`res.results` holds the result of each scenario, a scan over the dimension `draw`. The timecourses give bands of the prediction with `plot_bands`:
+`res.results` holds the result of each scenario, a scan over the dimension `draw`. The quantiles of its summary over the draws are bands of the prediction:
 
 ```python
 import matplotlib.pyplot as plt
 
-from sbmlsim.sensitivity.uncertainty import plot_bands
+from sbmlsim.plot import label_axes
 
 fig, ax = plt.subplots(figsize=(7, 3.5))
 for scenario, result in res.results.items():
-    plot_bands(result.summary("draw", quantiles=[0.05, 0.5, 0.95]), "mid", ax=ax)
-ax.legend(ax.lines, res.scenarios)
+    bands = result.summary(quantiles=[0.05, 0.5, 0.95])
+    hours = bands.q["time"].to("hr")
+    low, median, high = (
+        bands.sel(statistic=s).q["mid"] for s in ("q0.05", "q0.5", "q0.95")
+    )
+    ax.plot(hours, median, label=scenario)
+    ax.fill_between(hours, low, high, alpha=0.3)
+label_axes(ax, "time", "midazolam plasma")
+ax.legend()
 ```
 
 ![Output figure](images/outputs/uncertainty-05.png)
@@ -196,7 +205,7 @@ print(res.probability(ratio, greater=2.0, at_least=0.5).decision)
 ```text title="Output"
                                        hypothesis  estimate    low   high  decision
 0  P(pk.auc_last:inhibitor/control > 1.25) >= 0.9     1.000  0.986  1.000  accepted
-1               pk.auc_last:inhibitor/control > 3     0.838  0.775  0.888  estimate
+1               pk.auc_last:inhibitor/control > 3     0.836  0.773  0.887  estimate
 2           P(pk.cmax:control < 40 ng/ml) >= 0.95     0.990  0.964  0.999  accepted
 accepted
 ```

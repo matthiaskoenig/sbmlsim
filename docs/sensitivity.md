@@ -17,7 +17,7 @@ from sbmlsim.simulator import Simulator
 
 simulator = Simulator()
 model = simulator.load(REPRESSILATOR_SBML)
-simulation = Simulation(end=200, steps=200)
+simulation = Simulation(end=200)
 parameters = ["n", "tau_prot", "ps_a"]
 observables = [Formula("px_max", "max(PX)"), Formula("px_mean", "mean(PX)")]
 bounds = {pid: Uniform(relative=0.2) for pid in parameters}
@@ -37,9 +37,9 @@ print(local.index("normalized").to_pandas().round(3))
 ```text title="Output"
 observable  px_max  px_mean
 parameter
-n            5.804    3.303
-tau_prot    -0.467    0.562
-ps_a         0.463    0.280
+n            5.811    3.303
+tau_prot    -0.465    0.562
+ps_a         0.465    0.280
 ```
 
 There are two indices:
@@ -131,9 +131,9 @@ tau_prot     0.010    0.043
 ps_a         0.031    0.030
 observable  px_max  px_mean
 parameter
-n           2513.4    389.8
-tau_prot     270.1     64.8
-ps_a         269.8     55.8
+n           2514.6    389.8
+tau_prot     270.7     64.8
+ps_a         269.6     55.8
 ```
 
 `plot_morris` draws `mu_star` against `sigma`, one point per parameter, both axes from 0:
@@ -146,14 +146,19 @@ fig = sensitivity.plot_morris(morris, "px_max")
 
 ## Conditions and time points
 
-The design can be combined with other dimensions of the scan, e.g. doses or conditions. The analysis then computes the indices for every condition. For a timecourse on a common time grid it also computes them at every time point. Here the leak transcription rate `ps_0` is low or high, and `px` is the whole timecourse of `PX`:
+The design can be combined with other dimensions of the scan, e.g. doses or conditions. The analysis then computes the indices for every condition. For a timecourse on a common time grid it also computes them at every time point. Here the leak transcription rate `ps_0` is low or high, and `px` is the whole timecourse of `PX`, every 5 minutes (`time=`):
 
 ```python
+import numpy as np
+
+from sbmlsim import Q
+
 leak = Dimension("leak", values={"ps_0": [0.0005, 0.005]}, labels=["low", "high"])
 result = simulator.run(
     model,
     Scan(simulation, [leak, sampling.local(parameters, 0.01, model=model)]),
     [*observables, Formula("px", "PX")],
+    time=Q(np.linspace(0, 200, 41), "min"),
 )
 by_condition = sensitivity.local(result)
 print(by_condition["px_max.normalized"].to_pandas().round(3))
@@ -165,15 +170,15 @@ print(at_100.index("normalized").to_pandas().round(3))
 ```text title="Output"
 leak         low   high
 parameter
-n          5.804 -0.462
-tau_prot  -0.467  0.306
-ps_a       0.463  0.155
+n          5.811 -0.458
+tau_prot  -0.465  0.304
+ps_a       0.465  0.157
 ('parameter', 'leak', 'time')
 observable     px  px_max  px_mean
 parameter
-n          -5.866   5.804    3.303
-tau_prot   -7.545  -0.467    0.562
-ps_a        1.205   0.463    0.280
+n          -5.866   5.811    3.303
+tau_prot   -7.546  -0.465    0.562
+ps_a        1.205   0.465    0.280
 ```
 
 The plots select one label of every other dimension by keyword:
@@ -188,7 +193,7 @@ fig = sensitivity.plot_heatmap(
 
 With a high leak, `n` has much less effect on the peak, and the sign of its index flips.
 
-A timecourse needs common time points: set `steps` or `times` in the simulation, or pass `time=` to the run. A timecourse with the native time points of the integrator (ragged) raises. Each index is one call of SALib per element, about 10 ms for a Sobol design with `n = 1024` and five parameters. A timecourse of 1000 time points under three conditions therefore takes about half a minute per output, so ask the run only for the time points you need.
+A timecourse needs common time points: pass `time=` to the run, or set `times` in the simulation. A timecourse with the time points of the integrator, which differ between the points of the scan, raises. Each index is one call of SALib per element, about 10 ms for a Sobol design with `n = 1024` and five parameters. A timecourse of 1000 time points under three conditions therefore takes about half a minute per output, so ask the run only for the time points you need.
 
 ## The result
 

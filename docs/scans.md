@@ -12,8 +12,9 @@ A `Dimension` has an id and maps a target, e.g. a parameter, to an array of valu
 import matplotlib.pyplot as plt
 
 from sbmlsim import Q
+from sbmlsim.plot import label_axes
 from sbmlsim.resources import HCTZ_SBML
-from sbmlsim.simulation import Change, Dimension, Scan, Simulation
+from sbmlsim.simulation import Change, Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import Simulator
 
 simulator = Simulator()
@@ -23,7 +24,6 @@ model.set_selections(["time", "[Cve_hctz]", "Aurine_hctz", "PODOSE_hctz", "Ri_hc
 tablet = Simulation(
     time_unit="hr",
     end=24,
-    steps=240,
     changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
 )
 scan = Scan(
@@ -33,25 +33,26 @@ scan = Scan(
 res = simulator.run(model, scan)
 print(res)
 print(res["[Cve_hctz]"].dims)
-print(res["Ka_dis_hctz"].values)
+print(f"{res.q['Ka_dis_hctz']:~}")
 ```
 
 ```text title="Output"
-ScanResult(dissolution: 4, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
-('dissolution', 'time')
-[0.1  0.35 1.   3.  ]
+ScanResult(dissolution: 4, _point: 956; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+('dissolution', '_point')
+[0.1 0.35 1.0 3.0] / h
 ```
 
-The result has the dimensions of the scan first and the time last, here `(dissolution, time)`. The scanned values are a coordinate along their dimension, `Ka_dis_hctz`. The selections keep the result small, see [Simulations](simulation.md#selections-and-integrator-settings).
+The result has the dimensions of the scan first and the time last, here `(dissolution, _point)`. Every simulation keeps the steps of its integrator, so `time` is a variable over `_point` as well, see [The output and the run](#the-output-and-the-run). The scanned values are a coordinate along their dimension, `Ka_dis_hctz`. The selections keep the result small, see [Simulations](simulation.md#selections-and-integrator-settings).
 
-Each point is one curve. `isel` picks a point by its position:
+Each point is one curve. `isel` picks a point by its position, and `point.q[...]` gives its time and concentration as quantities:
 
 ```python
 fig, ax = plt.subplots(figsize=(6, 3.5))
-for k, ka in enumerate(res["Ka_dis_hctz"].values):
+for k, ka in enumerate(res.q["Ka_dis_hctz"]):
     point = res.isel(dissolution=k)
-    ax.plot(point["time"] / 60, point["[Cve_hctz]"] * 1000, label=f"{ka} 1/hr")
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]")
+    hours = point.q["time"].to("hr")
+    ax.plot(hours, point.q["[Cve_hctz]"].to("µM"), label=f"{ka:~gP}")
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend(title="dissolution rate")
 ```
 
@@ -82,8 +83,8 @@ print(list(res.ds.coords))
 ```
 
 ```text title="Output"
-ScanResult(dose: 3, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
-['dose', 'dose.PODOSE_hctz', 'time']
+ScanResult(dose: 3, _point: 897; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+['dose', 'dose.PODOSE_hctz']
 ```
 
 `PODOSE_hctz` is also one of the selections, so the result keeps its timecourse under its own name and stores the scanned values as the coordinate `dose.PODOSE_hctz`, i.e. `<dimension>.<target>`. The `Data` of a simulation experiment always uses that form, see [Data](data.md#selecting-points).
@@ -94,7 +95,6 @@ In a multiple dosing simulation a scanned dose therefore replaces every dose, wh
 infusion = Simulation(
     time_unit="hr",
     end=8,
-    steps=160,
     changes=[Change(0, {"Ri_hctz": Q(25, "mg/hr")}), Change(1, {"Ri_hctz": 0})],
 )
 rates = {"Ri_hctz": Q([10, 25], "mg/hr")}
@@ -106,9 +106,11 @@ for ax, at in zip(axes, [None, 0]):
     res = simulator.run(model, Scan(infusion, [rate]))
     for label in res["rate"].values:
         point = res.sel(rate=label)
-        ax.plot(point["time"] / 60, point["[Cve_hctz]"] * 1000, label=label)
-    ax.set(xlabel="time [hr]", title=f"at={at}")
-axes[0].set_ylabel("HCTZ plasma [µM]")
+        hours = point.q["time"].to("hr")
+        ax.plot(hours, point.q["[Cve_hctz]"].to("µM"), label=label)
+    ax.set_title(f"at={at}")
+label_axes(axes[0], "time", "HCTZ plasma")
+label_axes(axes[1], "time")
 axes[1].legend(title="infusion rate")
 fig.tight_layout()
 ```
@@ -132,22 +134,22 @@ doses = Dimension(
     values={"PODOSE_hctz": Q([12.5, 25, 50], "mg")},
     labels=["12.5 mg", "25 mg", "50 mg"],
 )
-res = simulator.run(model, Scan(tablet, [patients, doses]))
+cmax = Formula("cmax", "max([Cve_hctz])", unit="µM")
+res = simulator.run(model, Scan(tablet, [patients, doses]), [cmax])
 print(res)
-peak = res["[Cve_hctz]"].max("time") * 1000
-print(peak.round(3).to_pandas())
+print(res["cmax"].round(3).to_pandas())
 ```
 
 ```text title="Output"
-ScanResult(patient: 3, dose: 3, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+ScanResult(patient: 3, dose: 3; cmax)
 dose     12.5 mg  25 mg  50 mg
 patient
-A          0.286  0.572  1.145
+A          0.286  0.573  1.145
 B          0.275  0.550  1.101
 C          0.244  0.487  0.974
 ```
 
-The table has the peak plasma concentration in µM for every patient and dose. The points run in C order, the last dimension fastest. A sampled design, e.g. values drawn from a distribution, is one dimension with coupled values, see [Designs](#designs).
+`cmax` is an observable, the peak plasma concentration of every simulation in µM, see [Observables](#observables). The table has it for every patient and dose. The points run in C order, the last dimension fastest. A sampled design, e.g. values drawn from a distribution, is one dimension with coupled values, see [Designs](#designs).
 
 A dimension and a scan never change after you create them; the values are read-only copies. `dataclasses.replace(dimension, at=10)` gives a new dimension with other fields, checked like a new one. It keeps the labels, and `labels=None` takes the default labels.
 
@@ -162,13 +164,11 @@ regimens = Dimension(
         "50 mg once daily": Simulation(
             time_unit="hr",
             end=48,
-            steps=480,
             changes=[Change([0, 24], {"PODOSE_hctz": Q(50, "mg")})],
         ),
         "25 mg twice daily": Simulation(
             time_unit="hr",
             end=48,
-            steps=480,
             changes=[Change([0, 12, 24, 36], {"PODOSE_hctz": Q(25, "mg")})],
         ),
     },
@@ -179,13 +179,14 @@ print(res)
 fig, ax = plt.subplots(figsize=(6, 3.5))
 for label in res["regimen"].values:
     point = res.sel(regimen=label)
-    ax.plot(point["time"] / 60, point["[Cve_hctz]"] * 1000, label=label)
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]")
+    hours = point.q["time"].to("hr")
+    ax.plot(hours, point.q["[Cve_hctz]"].to("µM"), label=label)
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend()
 ```
 
 ```text title="Output"
-ScanResult(regimen: 2, time: 484; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+ScanResult(regimen: 2, _point: 2644; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
 ![Output figure](images/outputs/scans-06.png)
@@ -196,53 +197,46 @@ A dimension of `models` gives every point its own model: `models={"label": model
 
 ## The output and the run
 
-When all simulations have the same output times (`times` or `steps`), the result has the dimension `time`. An output time at a change after the start appears twice, the state before the change and the state after it (see [Simulations](simulation.md#two-rows-at-a-change)). Simulations that differ only in the changes on their grid share the grid, with a time twice where any of them has a change. The regimen result above has 481 grid times plus the change times 12, 24 and 36 hours a second time, 484 in all.
-
-Without `times` and `steps` every simulation keeps the steps of its integrator. The result then has the dimension `_point` instead of `time`, `time` is a variable, and shorter simulations are padded with `NaN`. `res.ragged` tells you which layout you have. `time=` of `Simulator.run` puts every simulation onto a common grid:
+Without `times` and `steps` every simulation keeps the steps of its integrator. This is the recommended output: the integrator puts its points where the curves change, and every change and event of the model is in the output exactly. The result has the dimension `_point` instead of `time`, `time` is a variable, and shorter simulations are padded with `NaN`, which a plot leaves out. `res.ragged` tells you which layout you have. Statistics over the points of a scan, such as `res.summary`, need one time axis. `time=` of `Simulator.run` puts every simulation onto a common grid:
 
 ```python
 import numpy as np
 
-infusion = Simulation(
-    time_unit="hr",
-    end=8,
-    changes=[Change(0, {"Ri_hctz": Q(25, "mg/hr")}), Change(1, {"Ri_hctz": 0})],
-)
 scan = Scan(infusion, [Dimension("rate", values=rates, at=0, labels=rate_labels)])
 res = simulator.run(model, scan)
 print(res.ragged, res["time"].dims)
 
-res_grid = simulator.run(model, scan, time=np.linspace(0, 480, 9))
-print(res_grid.ragged, res_grid["time"].values)
+res_grid = simulator.run(model, scan, time=Q(np.linspace(0, 8, 9), "hr"))
+print(res_grid.ragged, f"{res_grid.q['time'].to('hr'):~}")
 ```
 
 ```text title="Output"
 True ('rate', '_point')
-False [  0.  60. 120. 180. 240. 300. 360. 420. 480.]
+False [0.0 1.0 2.0 3.0 4.0 5.0 6.0 7.0 8.0] h
 ```
 
-`res.interpolate(times)` does the same for a result you already have. Both use the times of the changes, which the result keeps in `res.ds.attrs["changes"]`, and follow these rules:
+With `times` or `steps` of the simulation, all simulations have the same output times and the result has the dimension `time` as well. An output time at a change after the start appears twice, the state before the change and the state after it (see [Simulations](simulation.md#two-rows-at-a-change)). Simulations that differ only in the changes on their grid share the grid, with a time twice where any of them has a change.
+
+`res.interpolate(times)` puts a result you already have on other times. It and `time=` use the times of the changes, which the result keeps in `res.ds.attrs["changes"]`, and follow these rules:
 
 - a time before a change is interpolated toward the state before it,
 - a time at a change sees the state after it,
 - a time that appears twice in the grid sees the state before the change first, then the state after it.
 
 ```python
-grid = res.interpolate([0, 30, 60, 60, 90])
-print((grid["Ri_hctz"] * 60).round(1).to_pandas().T)
+grid = res.interpolate(Q([0, 0.5, 1, 1, 1.5], "hr"))
+print(f"{grid.q['time'].to('hr'):~}")
+for label in grid["rate"].values:
+    print(label, f"{grid.sel(rate=label).q['Ri_hctz'].to('mg/hr').round(1):~}")
 ```
 
 ```text title="Output"
-rate  10 mg/hr  25 mg/hr
-time
-0.0       10.0      25.0
-30.0      10.0      25.0
-60.0      10.0      25.0
-60.0       0.0       0.0
-90.0       0.0       0.0
+[0.0 0.5 1.0 1.0 1.5] h
+10 mg/hr [10.0 10.0 10.0 0.0 0.0] mg / h
+25 mg/hr [25.0 25.0 25.0 0.0 0.0] mg / h
 ```
 
-The infusion stops at 60 minutes, so the grid with 60 twice shows the rate before and after the stop. An event of the model is a jump too: a time at it, or at most the resolution of the time before it, sees the state after it. Jumps closer together than that resolution count as one, and a time at them sees the state after the last one. [The semantics](simulation.md#the-semantics) has the full rules.
+The infusion stops at 1 hour, so the grid with 1 hour twice shows the rate before and after the stop. An event of the model is a jump too: a time at it, or at most the resolution of the time before it, sees the state after it. Jumps closer together than that resolution count as one, and a time at them sees the state after the last one. [The semantics](simulation.md#the-semantics) has the full rules.
 
 Since a time can appear twice, xarray methods which need unique times raise on `res.ds`, e.g. `res.ds.interp(time=...)`, `res.ds.sel(time=..., method="nearest")` and `res.ds.reindex(time=...)`. Use `res.interpolate(times)` to put a result on other times. `res.sel(time=t)` at a change selects both rows, `res.isel(time=k)` one of them. A sensitivity result is different: its `sel(time=t)` selects the state after the change, see [Sensitivity analysis](sensitivity.md#the-result).
 
@@ -263,8 +257,6 @@ By default the first failing point raises a `ScanError` with its labels and valu
 A scan can compute observables from every simulation, e.g. a mass concentration or its maximum. `keep` chooses which of them the result keeps. [Observables](observables.md) covers formulas, PK parameters and custom functions:
 
 ```python
-from sbmlsim.simulation import Formula
-
 observables = [
     Formula("cp", "[Cve_hctz] * Mr_hctz", unit="ng/ml"),
     Formula("cmax", "max(cp)"),
@@ -276,7 +268,7 @@ print(res.ds[["cmax", "cmean"]].to_pandas().round(1))
 ```
 
 ```text title="Output"
-ScanResult(regimen: 2, time: 484; cp, cmax, cmean)
+ScanResult(regimen: 2, _point: 2644; cp, cmax, cmean)
                     cmax  cmean
 regimen
 50 mg once daily   285.4  100.0
@@ -289,7 +281,7 @@ regimen
 
 A `ScanResult` wraps an `xarray.Dataset`, `res.ds`, and keeps the unit of every variable and coordinate. The most common operations:
 
-- `res["[Cve_hctz]"]` is the `xarray.DataArray` of a variable, `res.quantity(key)` its values with the unit.
+- `res["[Cve_hctz]"]` is the `xarray.DataArray` of a variable, `res.q["[Cve_hctz]"]` its values as a quantity, the same as `res.quantity(key)`.
 - `res.sel(patient="A")` selects points by label, `res.isel(patient=0)` by position.
 - `res.summary(dims)` gives statistics over dimensions: mean, sd, cv, min, max and quantiles.
 - `res.interpolate(times)` puts the result on other times.
@@ -301,9 +293,10 @@ from pathlib import Path
 
 from sbmlsim.result import ScanResult
 
-res = simulator.run(model, Scan(tablet, [patients, doses]))
-peak = res.sel(patient="C", dose="25 mg").quantity("[Cve_hctz]").max()
-print(f"{peak.to('µmol/l'):~.3f}")
+time_grid = Q(np.linspace(0, 24, 241), "hr")
+res = simulator.run(model, Scan(tablet, [patients, doses]), time=time_grid)
+peak = res.sel(patient="C", dose="25 mg").q["[Cve_hctz]"].max()
+print(f"{peak.to('µM'):~.3f}")
 
 summary = res.summary("patient")
 print(summary)
@@ -313,12 +306,12 @@ print(ScanResult.from_netcdf(Path("scan.nc")))
 ```
 
 ```text title="Output"
-0.487 μmol / l
+0.487 μM
 ScanResult(statistic: 5, dose: 3, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ScanResult(patient: 3, dose: 3, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
-The summary over `patient` has the statistics as a new dimension `statistic` and keeps `dose` and `time`.
+`time=` puts all points on one grid of 6 minutes, which `summary` needs. The summary over `patient` has the statistics as a new dimension `statistic` and keeps `dose` and `time`.
 
 ## Designs
 
@@ -337,22 +330,19 @@ draws = sampling.lhs(
     seed=1,
     model=model,
 )
-res = simulator.run(model, Scan(tablet, [draws]))
+res = simulator.run(model, Scan(tablet, [draws]), time=time_grid)
 print(res)
 
 summary = res.summary("lhs", quantiles=[0.05, 0.5, 0.95])
-hours = summary["time"] / 60
-cp = summary["[Cve_hctz]"] * 1000
-fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.fill_between(
-    hours,
-    cp.sel(statistic="q0.05"),
-    cp.sel(statistic="q0.95"),
-    alpha=0.3,
-    label="5-95 %",
+hours = summary.q["time"].to("hr")
+low, median, high = (
+    summary.sel(statistic=s).q["[Cve_hctz]"].to("µM")
+    for s in ("q0.05", "q0.5", "q0.95")
 )
-ax.plot(hours, cp.sel(statistic="q0.5"), label="median")
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]")
+fig, ax = plt.subplots(figsize=(6, 3.5))
+ax.fill_between(hours, low, high, alpha=0.3, label="5-95 %")
+ax.plot(hours, median, label="median")
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend()
 ```
 

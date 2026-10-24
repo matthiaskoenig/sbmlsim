@@ -91,6 +91,7 @@ nav = [
     ] },
     { "sbmlsim.plot" = [
       { "plotting" = "api/plot.plotting.md" },
+      { "axes" = "api/plot.axes.md" },
       { "points" = "api/plot.points.md" },
       { "serialization_matplotlib" = "api/plot.serialization_matplotlib.md" },
     ] },

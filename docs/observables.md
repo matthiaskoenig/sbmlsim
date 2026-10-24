@@ -16,13 +16,14 @@ A `Formula` uses the math of PEtab. It reads the variables of the model (`S` is 
 import matplotlib.pyplot as plt
 import numpy as np
 
+from sbmlsim.plot import label_axes
 from sbmlsim.resources import REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import Simulator
 
 simulator = Simulator()
 scan = Scan(
-    Simulation(end=500, steps=500),
+    Simulation(end=500),
     [Dimension("hill", values={"n": np.linspace(1.5, 4.0, 6)})],
 )
 observables = [
@@ -33,22 +34,23 @@ observables = [
     Formula("px_rel", "px / px_max"),
 ]
 res = simulator.run(REPRESSILATOR_SBML, scan, observables)
-print(res["px_max"].values.round(0))
+print(res.q["px_max"].round(0))
 print(res["px_rel"].dims)
 ```
 
 ```text title="Output"
-[ 731. 2363. 5569. 7177. 7860. 8175.]
-('hill', 'time')
+[731.0 2363.0 5572.0 7179.0 7861.0 8176.0] item
+('hill', '_point')
 ```
 
-`px_max` has one value per point of the scan. `px_rel` divides a timecourse by a value per simulation, so every simulation is normalized to its own maximum:
+`px_max` has one value per point of the scan, the number of `PX` molecules at the peak. `px_rel` divides a timecourse by a value per simulation, so every simulation is normalized to its own maximum. Every simulation has its own time points, the steps of the integrator, so `px_rel` is over `_point` and `res.sel(hill=k)` selects the timecourse of one point:
 
 ```python
 fig, ax = plt.subplots(figsize=(7, 3.5))
-for n, curve in zip(res["n"].values, res["px_rel"].values):
-    ax.plot(res["time"], curve, label=f"n = {n:.1f}")
-ax.set(xlabel="time [min]", ylabel="PX / max(PX)")
+for k, n in enumerate(res["n"].values):
+    point = res.sel(hill=k)
+    ax.plot(point.q["time"], point.q["px_rel"], label=f"n = {n:.1f}")
+label_axes(ax, "time", "PX / max(PX)")
 ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
 fig.tight_layout()
 ```
@@ -79,7 +81,6 @@ from sbmlsim.simulation import PK, Change, Custom
 simulation = Simulation(
     time_unit="hr",
     end=24,
-    steps=480,
     changes=[Change(0, {"PODOSE_mid": Q(7.5, "mg")})],
 )
 mass = Formula("mid", "[Cve_mid] * Mr_mid", unit="ng/ml")
@@ -106,7 +107,13 @@ Some rules for units:
 ```python
 doses = Scan(
     simulation,
-    [Dimension("dose", values={"PODOSE_mid": Q([5.0, 7.5, 15.0], "mg")})],
+    [
+        Dimension(
+            "dose",
+            values={"PODOSE_mid": Q([5.0, 7.5, 15.0], "mg")},
+            labels=["5 mg", "7.5 mg", "15 mg"],
+        )
+    ],
 )
 observables = [
     mass,
@@ -114,26 +121,26 @@ observables = [
     Formula("auc_per_cmax", "pk.auc_inf_obs / pk.cmax"),
 ]
 res = simulator.run(MIDAZOLAM_SBML, doses, observables)
-print(res["pk.cmax"].values.round(2), res.units["pk.cmax"])
-print(res["auc_per_cmax"].values.round(1), res.units["auc_per_cmax"])
+print(res.q["pk.cmax"].round(2))
+print(res.q["auc_per_cmax"].to("hr").round(2))
 ```
 
 ```text title="Output"
 [21.17 31.84 64.19] nanogram / milliliter
-[322.9 322.9 322.8] minute
+[5.38 5.38 5.38] hour
 ```
 
-A formula reads a PK parameter by its name: `auc_per_cmax` divides two of them and barely changes with the dose.
+A formula reads a PK parameter by its name: `auc_per_cmax` divides two of them and barely changes with the dose. `res.q[...]` gives a variable with its unit, which `.to(...)` converts.
 
 The peak of every curve is at (`pk.tmax`, `pk.cmax`):
 
 ```python
 fig, ax = plt.subplots(figsize=(7, 3.5))
-for k, dose in enumerate([5.0, 7.5, 15.0]):
-    line = ax.plot(res["time"] / 60, res["mid"][k], label=f"{dose} mg")[0]
-    tmax, cmax = res["pk.tmax"][k] / 60, res["pk.cmax"][k]
-    ax.plot(tmax, cmax, "o", color=line.get_color())
-ax.set(xlabel="time [hr]", ylabel="midazolam plasma [ng/ml]")
+for label in res["dose"].values:
+    point = res.sel(dose=label)
+    (line,) = ax.plot(point.q["time"].to("hr"), point.q["mid"], label=label)
+    ax.plot(point.q["pk.tmax"], point.q["pk.cmax"], "o", color=line.get_color())
+label_axes(ax, "time", "midazolam plasma")
 ax.legend()
 ```
 
@@ -147,7 +154,7 @@ How the doses are found:
 - A value of zero is no dose. A control point with a zero dose gets `NaN` for the parameters that need a dose (e.g. `pk.cl_f`), and the other points keep them.
 - `dose=` may also be a quantity, a fixed dose at the start. Without a dose, the parameters that need one (clearance, volume) are left out.
 
-The parameters are the ones pkpdutils derives for the route and dosing, e.g. `pk.cmax`, `pk.tmax`, `pk.auc_inf_obs`, `pk.thalf`, `pk.cl_f` and `pk.flags`, the flags of the analysis. `parameters=[...]` keeps a subset and `options=pkpdutils.NCAOptions(...)` changes the settings of the analysis. At a change after the start the timecourse has two rows, the states before and after it; the analysis sees the state after it. The analysis is only as exact as the time points of the simulation. The steps of the integrator can be coarse in a smooth elimination phase, so run a non-compartmental analysis on a simulation with `steps` or `times`.
+The parameters are the ones pkpdutils derives for the route and dosing, e.g. `pk.cmax`, `pk.tmax`, `pk.auc_inf_obs`, `pk.thalf`, `pk.cl_f` and `pk.flags`, the flags of the analysis. `parameters=[...]` keeps a subset and `options=pkpdutils.NCAOptions(...)` changes the settings of the analysis. At a change after the start the timecourse has two rows, the states before and after it; the analysis sees the state after it. The analysis uses the time points of the simulation. The steps of the integrator follow the curve within the tolerances of the integrator, so they need no time grid; `times` of the simulation gives the analysis the times of a study instead, e.g. its sampling times.
 
 ## Custom functions
 
@@ -164,11 +171,11 @@ res = simulator.run(
     [mass, Custom("t_above", time_above, "min", symbols=["mid"])],
     keep=["t_above"],
 )
-print(res["t_above"].values)
+print(res.q["t_above"].to("hr").round(1))
 ```
 
 ```text title="Output"
-[  0. 144. 324.]
+[0.0 2.4 5.4] hour
 ```
 
 ## Keep only what you need

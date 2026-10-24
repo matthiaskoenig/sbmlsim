@@ -71,11 +71,10 @@ from sbmlsim.simulation import Change, Simulation
 dose = Simulation(
     time_unit="hr",
     end=24,
-    steps=240,
     changes=[Change(0, {"PODOSE_hctz": Q(0.025, "g")})],
 )
 res = simulator.run(model, dose)
-print(res.quantity("PODOSE_hctz")[0])
+print(res.q["PODOSE_hctz"][0])
 ```
 
 ```text title="Output"
@@ -98,20 +97,12 @@ The simulation: The value '25 millimolar' of 'PODOSE_hctz' cannot be converted i
 
 ## Results with units
 
-A `ScanResult` has the units of its variables in `units`, and `quantity` returns a variable as a pint quantity, so you can report a result in the units of a study. Clinical studies give HCTZ in ng/ml, the model in mmol/l; the molecular weight `Mr_hctz` of the model converts the one into the other:
+A `ScanResult` has the units of its variables in `units`. `res.q[...]` returns a variable or a coordinate as a pint quantity (the same as `res.quantity(...)`), and `.to(...)` converts it, so you report a result in the units of a study. Clinical studies give HCTZ in ng/ml, the model in mmol/l; the molecular weight `Mr_hctz`, a parameter of the model and so a variable of the result, converts the one into the other:
 
 ```python
-import matplotlib.pyplot as plt
-
 print(res.units["[Cve_hctz]"])
-mr = Q(model.loaded_value("Mr_hctz"), model.uinfo["Mr_hctz"])
-plasma = (res.quantity("[Cve_hctz]") * mr).to("ng/ml")
-hours = res.quantity("time").to("hr")
+plasma = (res.q["[Cve_hctz]"] * res.q["Mr_hctz"]).to("ng/ml")
 print(f"cmax = {plasma.max():.1f~P}")
-
-fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.plot(hours.magnitude, plasma.magnitude)
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
 ```
 
 ```text title="Output"
@@ -119,7 +110,19 @@ mmol/litre
 cmax = 134.6 ng/ml
 ```
 
-![Output figure](images/outputs/units-06.png)
+Quantities plot directly with matplotlib. The first quantity on an axis sets its unit and later ones are converted into it. `label_axes` from `sbmlsim.plot` labels each axis with a name and the unit it shows:
+
+```python
+import matplotlib.pyplot as plt
+
+from sbmlsim.plot import label_axes
+
+fig, ax = plt.subplots(figsize=(6, 3.5))
+ax.plot(res.q["time"].to("hr"), plasma)
+label_axes(ax, "time", "HCTZ plasma")
+```
+
+![Output figure](images/outputs/units-07.png)
 
 The statistics of a scan keep the units of their variables (`res.summary(...)`, see [Parameter scans](scans.md)), and `Data` converts simulations and datasets into the units a figure asks for (see [Data](data.md) and [Plots and reports](plotting.md)).
 

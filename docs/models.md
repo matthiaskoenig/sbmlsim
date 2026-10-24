@@ -93,18 +93,19 @@ print(model.loaded_value("BW"), model.loaded_value("[Cve_hctz]"))
 import matplotlib.pyplot as plt
 
 from sbmlsim import Q
+from sbmlsim.plot import label_axes
 from sbmlsim.simulation import Change, Simulation
 
 heavy = RoadrunnerSBMLModel(source=HCTZ_SBML, changes={"BW": Q(100, "kg")})
 
 dose = Simulation(
-    time_unit="hr", end=24, steps=240, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})]
+    time_unit="hr", end=24, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})]
 )
 fig, ax = plt.subplots(figsize=(6, 3.5))
 for m, label in [(model, "75 kg"), (heavy, "100 kg")]:
     res = simulator.run(m, dose)
-    ax.plot(res["time"] / 60, res["[Cve_hctz]"] * 1000, label=label)
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]")
+    ax.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"), label=label)
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend(title="body weight")
 ```
 
@@ -126,7 +127,7 @@ print(simulator.run(small, dose))
 ```
 
 ```text title="Output"
-ScanResult(time: 241; [Cve_hctz], Aurine_hctz)
+ScanResult(_point: 840; [Cve_hctz], Aurine_hctz)
 ```
 
 `model.set_selections([...])` changes the selections of a loaded model.

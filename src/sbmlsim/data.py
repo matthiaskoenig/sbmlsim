@@ -26,6 +26,7 @@ from sbmlsim.units import (
     UnitsInformation,
     international_unit_note,
 )
+from sbmlsim.units import ureg as package_ureg
 
 if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
@@ -40,12 +41,13 @@ ROW = "row"
 REDUCED_DIMS = (TIME, POINT, ROW)
 
 
-def to_quantity(array: xr.DataArray, ureg: UnitRegistry) -> Quantity:
+def to_quantity(array: xr.DataArray, ureg: UnitRegistry | None = None) -> Quantity:
     """Get the values of data as a quantity.
 
     Args:
         array: the values of a `Data`, see `Data.get_data`.
-        ureg: the registry of the quantity, e.g. the one of the experiment.
+        ureg: the registry of the quantity, e.g. the one of the experiment,
+            the one of the package by default.
 
     Returns:
         The values with the unit of `attrs["units"]`.
@@ -60,7 +62,8 @@ def to_quantity(array: xr.DataArray, ureg: UnitRegistry) -> Quantity:
     unit = array.attrs.get("units")
     if unit is None:
         raise ValueError(f"'{array.name}' has no unit, so it is no quantity.")
-    return ureg.Quantity(np.array(array.values, dtype=float), unit)
+    registry = ureg if ureg is not None else package_ureg
+    return registry.Quantity(np.array(array.values, dtype=float), unit)
 
 
 def evaluate_function(

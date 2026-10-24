@@ -12,6 +12,7 @@ Load the model with a `Simulator` and give the simulation an end time. `time_uni
 import matplotlib.pyplot as plt
 
 from sbmlsim import Q
+from sbmlsim.plot import label_axes
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
@@ -30,40 +31,40 @@ ScanResult(_point: 840; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma
 time unit of the result: min
 ```
 
-You read a variable by its roadrunner name: `S` is the amount of a species and `[S]` its concentration. `[Cve_hctz]` is the HCTZ concentration in the venous plasma. The result is always in the units of the model, so the time is in minutes even though the simulation was written in hours, and the concentration is in mmol/l. The plot converts both:
+You read a variable by its roadrunner name: `S` is the amount of a species and `[S]` its concentration. `[Cve_hctz]` is the HCTZ concentration in the venous plasma. The result is in the units of the model, so the time is in minutes even though the simulation was written in hours, and the concentration is in mmol/l. `res.q[...]` gives a variable as a quantity, its values with their unit, and `.to(...)` converts it. Quantities plot directly with matplotlib, and `label_axes` writes the name and the unit of each axis:
 
 ```python
 fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.plot(res["time"] / 60, res["[Cve_hctz]"] * 1000)
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]")
+ax.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
+label_axes(ax, "time", "HCTZ plasma")
 ```
 
 ![Output figure](images/outputs/simulation-02.png)
 
-Without further settings you get the steps the integrator took. They are dense where the curve changes fast and sparse where it is flat. Every simulation has its own number of steps, so the result has the dimension `_point` instead of `time`, and `time` is a variable.
+Without further settings you get the steps the integrator took. They are dense where the curve changes fast and sparse where it is flat, and every change and event of the model is in the output at its exact time. This is the recommended output. Every simulation has its own number of steps, so the result has the dimension `_point` instead of `time`, and `time` is a variable.
 
 ### Output times
 
-Most of the time you want fixed time points. `steps=n` gives `n + 1` evenly spaced points, and `times` gives exactly the time points you list:
+Set output times only when you need them, e.g. the sampling times of a study. `times` gives exactly the time points you list, and `steps=n` gives `n + 1` evenly spaced points. A coarse grid can miss a fast peak, and the curve between two output times is a straight line:
 
 ```python
-res = simulator.run(
-    model, Simulation(time_unit="hr", end=24, steps=48, changes=[tablet])
-)
-print(res["time"].size)
-
 res = simulator.run(
     model,
     Simulation(time_unit="hr", end=24, times=[0, 1, 2, 4, 8, 24], changes=[tablet]),
 )
-print(res["time"].values / 60)
-print((res["[Cve_hctz]"].values * 1000).round(3))
+print(f"{res.q['time'].to('hr'):~}")
+print(f"{res.q['[Cve_hctz]'].to('µM').round(3):~}")
+
+res = simulator.run(
+    model, Simulation(time_unit="hr", end=24, steps=48, changes=[tablet])
+)
+print(res["time"].size)
 ```
 
 ```text title="Output"
+[0.0 1.0 2.0 4.0 8.0 24.0] h
+[0.0 0.342 0.452 0.363 0.194 0.034] μM
 49
-[ 0.  1.  2.  4.  8. 24.]
-[0.    0.342 0.452 0.363 0.194 0.034]
 ```
 
 Output times closer together than the resolution of the time are simulated once, at the smaller time. Digitized data often has times such as `3.99999999999999` and `4.0`, which become one output time. The resolution is `1e-9` times the largest of the absolute start, the absolute end and the length of the simulation. A parameter fit merges the times of its data the same way, so every data point has its output time.
@@ -76,13 +77,13 @@ A value is either a plain number in the unit of its target in the model, or a qu
 doses = Change(range(-120, 1, 12), {"PODOSE_hctz": Q(25, "mg")})
 res = simulator.run(
     model,
-    Simulation(time_unit="hr", start=-120, end=Q(1, "day"), steps=144, changes=[doses]),
+    Simulation(time_unit="hr", start=-120, end=Q(1, "day"), changes=[doses]),
 )
-print(res["time"].values[[0, -1]] / 60)
+print(f"{res.q['time'][[0, -1]].to('hr'):~}")
 ```
 
 ```text title="Output"
-[-120.   24.]
+[-120.0 24.0] h
 ```
 
 This gives eleven doses 12 hours apart, the last one at time 0. The end is a quantity, one day.
@@ -96,7 +97,7 @@ for bw in [75, 100]:
     res = simulator.run(
         model, Simulation(end=10, times=[0], preinit_changes={"BW": bw})
     )
-    print(f"BW {bw} kg: ECF {res['ECF'].values[0]:.2f} l")
+    print(f"BW {bw} kg: ECF {res.q['ECF'][0]:~.2f}")
 ```
 
 ```text title="Output"
@@ -114,27 +115,27 @@ A `Change` sets values at a time. With a list of times it is the same change at 
 infusion = Simulation(
     time_unit="hr",
     end=12,
-    steps=240,
     changes=[Change(0, {"Ri_hctz": Q(25, "mg/hr")}), Change(1, {"Ri_hctz": 0})],
 )
 every_8h = Simulation(
     time_unit="hr",
     end=24,
-    steps=240,
     changes=[Change([0, 8, 16], {"PODOSE_hctz": Q(25, "mg")})],
 )
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.5))
 res = simulator.run(model, infusion)
-ax1.axvspan(0, 1, color="tab:orange", alpha=0.2, label="infusion")
-ax1.plot(res["time"] / 60, res["[Cve_hctz]"] * 1000)
-ax1.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]", title="1 hour infusion")
+ax1.axvspan(Q(0, "hr"), Q(1, "hr"), color="tab:orange", alpha=0.2, label="infusion")
+ax1.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
+ax1.set_title("1 hour infusion")
+label_axes(ax1, "time", "HCTZ plasma")
 ax1.legend()
 res = simulator.run(model, every_8h)
-for t in [0, 8, 16]:
+for t in Q([0, 8, 16], "hr"):
     ax2.axvline(t, color="gray", linestyle=":")
-ax2.plot(res["time"] / 60, res["[Cve_hctz]"] * 1000)
-ax2.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]", title="a tablet every 8 hours")
+ax2.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
+ax2.set_title("a tablet every 8 hours")
+label_axes(ax2, "time", "HCTZ plasma")
 fig.tight_layout()
 ```
 
@@ -150,7 +151,6 @@ A value can also be a formula, a string in the math of PEtab over the symbols of
 step_up = Simulation(
     time_unit="hr",
     end=8,
-    steps=160,
     changes=[
         Change([0, 1, 2, 3], {"Ri_hctz": "Ri_hctz + 5/60"}),  # 5 mg/hr in mg/min
         Change(4, {"Ri_hctz": 0}),
@@ -159,8 +159,8 @@ step_up = Simulation(
 res = simulator.run(model, step_up)
 
 fig, ax = plt.subplots(figsize=(6, 3.5))
-ax.plot(res["time"] / 60, res["Ri_hctz"] * 60)
-ax.set(xlabel="time [hr]", ylabel="infusion rate [mg/hr]")
+ax.plot(res.q["time"].to("hr"), res.q["Ri_hctz"].to("mg/hr"))
+label_axes(ax, "time", "infusion rate")
 ```
 
 ![Output figure](images/outputs/simulation-07.png)
@@ -211,13 +211,12 @@ for label, presimulation in cases.items():
         Simulation(
             time_unit="hr",
             end=48,
-            steps=96,
             preinit_changes={"f_renal_function": 0.3},
             presimulation=presimulation,
         ),
     )
-    ax.plot(res["time"] / 60, res["ECF"], label=label)
-ax.set(xlabel="time [hr]", ylabel="extracellular fluid [l]")
+    ax.plot(res.q["time"].to("hr"), res.q["ECF"], label=label)
+label_axes(ax, "time", "extracellular fluid")
 ax.legend()
 ```
 
@@ -291,26 +290,29 @@ A step that is too large fails the error test of the integrator, so keep it smal
 
 ## Results
 
-`Simulator.run` returns a `ScanResult`, a wrapper of an `xarray.Dataset` (`res.ds`) that keeps the unit of every variable. A single simulation is a scan without dimensions; [Parameter scans](scans.md#working-with-scan-results) shows how to work with the result. You can turn it into a pandas table or store it as netCDF with its units:
+`Simulator.run` returns a `ScanResult`, a wrapper of an `xarray.Dataset` (`res.ds`) that keeps the unit of every variable. `res.q[key]` is a variable or coordinate as a pint quantity, the same as `res.quantity(key)`, and `res[key]` the `xarray.DataArray` in the units of the model. A single simulation is a scan without dimensions; [Parameter scans](scans.md#working-with-scan-results) shows how to work with the result. You can turn it into a pandas table or store it as netCDF with its units:
 
 ```python
 from pathlib import Path
 
+print(f"{res.q['Aurine_hctz'][-1].to('µmol'):~.2f} excreted after 12 hours")
+
 df = res.ds.to_dataframe()
-print(df.head(3))
+print(df.tail(3))
 
 res.to_netcdf(Path("hctz.nc"))
 ```
 
 ```text title="Output"
-      [Cve_hctz]  Aurine_hctz   Ri_hctz
-time
-0.0     0.000000     0.000000  0.416667
-3.0     0.000653     0.000173  0.416667
-6.0     0.001126     0.000694  0.416667
+68.65 μmol excreted after 12 hours
+              time  [Cve_hctz]  Aurine_hctz  Ri_hctz
+_point
+696     700.596589    0.000127     0.068160      0.0
+697     713.069526    0.000125     0.068479      0.0
+698     720.000000    0.000123     0.068654      0.0
 ```
 
-`simulator.simulate(model, simulation)` gives the raw solution of one simulation as a `TimecourseResult`, the array of roadrunner with its column names.
+With the steps of the integrator the table has the index `_point` and the time as a column. `simulator.simulate(model, simulation)` gives the raw solution of one simulation as a `TimecourseResult`, the array of roadrunner with its column names.
 
 ## Serialization
 
@@ -322,7 +324,7 @@ print(Simulation.from_json(json_str))
 ```
 
 ```text title="Output"
-Simulation([0.0, 12] hr, preinit=0, changes=2, steps=240)
+Simulation([0.0, 12] hr, preinit=0, changes=2, integrator)
 ```
 
 ## The semantics

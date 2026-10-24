@@ -611,3 +611,24 @@ def test_the_timecourses_of_pkpdutils_have_the_state_after_a_change() -> None:
     np.testing.assert_array_equal(
         timecourses.ds["value"].values, [[1.0, 2.0, 1.0], [2.0, 4.0, 2.0]]
     )
+
+
+def test_q_gets_a_variable_or_coordinate_as_a_quantity() -> None:
+    """`res.q[key]` is the quantity of `res[key]`, in the unit of the result."""
+    res = _grid()
+    q = res.q["y"]
+    assert str(q.units) == "millimolar"
+    np.testing.assert_array_equal(q.magnitude, res["y"].values)
+    assert res.q["time"].to("s").magnitude.tolist() == [0.0, 60.0, 120.0]
+    assert "y" in res.q and "d" not in res.q
+    with pytest.raises(KeyError, match="no variable"):
+        res.q["x"]
+
+
+def test_q_of_one_point_of_a_ragged_result_has_no_padding() -> None:
+    """A point which keeps its own time points has no `NaN` of the padding."""
+    point = _ragged().sel(d=1)
+    assert point.q["time"].magnitude.tolist() == [0.0, 2.0]
+    assert np.max(point.q["y"].magnitude) == 4.0
+    # every point together keeps the padding, which lines up the points
+    assert np.isnan(_ragged().q["y"].magnitude).sum() == 1

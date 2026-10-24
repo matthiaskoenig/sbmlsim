@@ -15,6 +15,7 @@ A `Simulator` loads and runs models. `load` reads the SBML file into [libroadrun
 import matplotlib.pyplot as plt
 
 from sbmlsim import Q
+from sbmlsim.plot import label_axes
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulator import Simulator
 
@@ -38,7 +39,7 @@ time unit: min
 
 ## Simulate a dose
 
-A `Simulation` says what to simulate: for how long, and what changes when. Here a 25 mg tablet is taken at time 0 and the model runs for one day. `time_unit` is the unit of the times you write, and `steps=240` gives 241 evenly spaced output points:
+A `Simulation` says what to simulate: for how long, and what changes when. Here a 25 mg tablet is taken at time 0 and the model runs for one day. `time_unit` is the unit of the times you write:
 
 ```python
 from sbmlsim.simulation import Change, Simulation
@@ -46,29 +47,28 @@ from sbmlsim.simulation import Change, Simulation
 dose = Simulation(
     time_unit="hr",
     end=24,
-    steps=240,
     changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
 )
 res = simulator.run(model, dose)
 print(res)
-print(res.units["[Cve_hctz]"])
+print(f"peak: {res.q['[Cve_hctz]'].max().to('µM'):~.3g}")
 ```
 
 ```text title="Output"
-ScanResult(time: 241; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma_hctz, Cli_plasma_hctz, ... (190 variables))
-mmol/litre
+ScanResult(_point: 840; na, na_loop, na_urine, cl, cl_loop, cl_urine, Cki_plasma_hctz, Cli_plasma_hctz, ... (190 variables))
+peak: 0.452 μM
 ```
 
-The result has every variable of the model over time, in the units of the model. `[Cve_hctz]` is the HCTZ concentration in the venous plasma, `Aurine_hctz` the amount excreted into the urine so far:
+The result has every variable of the model at the time points the integrator chose: many where the curve changes fast, few where it is flat. `_point` counts them. `res.q[...]` gives a variable as a quantity, its values with their unit. `[Cve_hctz]` is the HCTZ concentration in the venous plasma, `Aurine_hctz` the amount excreted into the urine so far.
+
+Quantities plot directly with matplotlib: the first quantity on an axis sets its unit, and `label_axes` writes the name and the unit of each axis. `.to(...)` converts a quantity into the unit you want to see:
 
 ```python
-hours = res["time"] / 60
-
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 3.5))
-ax1.plot(hours, res["[Cve_hctz]"] * 1000)  # mmol/l to µmol/l
-ax1.set(xlabel="time [hr]", ylabel="HCTZ plasma [µM]")
-ax2.plot(hours, res["Aurine_hctz"])
-ax2.set(xlabel="time [hr]", ylabel="HCTZ urine [mmol]")
+ax1.plot(res.q["time"].to("hr"), res.q["[Cve_hctz]"].to("µM"))
+label_axes(ax1, "time", "HCTZ plasma")
+ax2.plot(res.q["time"].to("hr"), res.q["Aurine_hctz"].to("µmol"))
+label_axes(ax2, "time", "HCTZ urine")
 ```
 
 ![Output figure](images/outputs/tutorial-03.png)
@@ -85,18 +85,24 @@ observables = [
     PK("pk", "cp", dose="PODOSE_hctz", route="oral"),
 ]
 res = simulator.run(model, dose, observables)
-for key in ["pk.cmax", "pk.tmax", "pk.auc_inf_obs", "pk.thalf"]:
-    print(f"{key:15} {res.quantity(key):~.4g}")
+units = {
+    "pk.cmax": "ng/ml",
+    "pk.tmax": "hr",
+    "pk.auc_inf_obs": "ng*hr/ml",
+    "pk.thalf": "hr",
+}
+for key, unit in units.items():
+    print(f"{key:15} {res.q[key].to(unit):~.4g}")
 ```
 
 ```text title="Output"
 pk.cmax         134.6 ng / ml
-pk.tmax         126 min
-pk.auc_inf_obs  7.518e+04 min * ng / ml
-pk.thalf        410.1 min
+pk.tmax         2.078 h
+pk.auc_inf_obs  1253 h * ng / ml
+pk.thalf        6.834 h
 ```
 
-`Mr_hctz` is the molar mass of HCTZ, so `cp` is the mass concentration. `res.quantity` returns a value with its unit. The PK parameters keep the units of the model, so the peak time `tmax` and the half-life `thalf` are in minutes.
+`Mr_hctz` is the molar mass of HCTZ, so `cp` is the mass concentration. The PK parameters come in the units of their timecourse and of the model, e.g. the peak time `tmax` in minutes, and `.to(...)` gives them in the units of a study.
 
 ## Change the model
 
@@ -109,7 +115,6 @@ def daily_dose(renal_function: float) -> Simulation:
     return Simulation(
         time_unit="hr",
         end=7 * 24,
-        steps=7 * 24 * 4,
         preinit_changes={"f_renal_function": renal_function},
         changes=[Change(range(0, 7 * 24, 24), {"PODOSE_hctz": Q(25, "mg")})],
     )
@@ -118,8 +123,9 @@ def daily_dose(renal_function: float) -> Simulation:
 fig, ax = plt.subplots(figsize=(7, 3.5))
 for renal_function in [1.0, 0.3]:
     res = simulator.run(model, daily_dose(renal_function), observables)
-    ax.plot(res["time"] / 60, res["cp"], label=f"renal function {renal_function}")
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
+    label = f"renal function {renal_function}"
+    ax.plot(res.q["time"].to("day"), res.q["cp"], label=label)
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
 ```
 
@@ -155,24 +161,23 @@ print(res["pk.cmax"].round(1).to_pandas())
 ```
 
 ```text title="Output"
-ScanResult(dose: 4, renal: 3, time: 241; cp, pk.cmax, pk.tmax, pk.cmin, pk.tmin, pk.clast, pk.clast_pred, pk.tlast, ... (45 variables))
+ScanResult(dose: 4, renal: 3, _point: 962; cp, pk.cmax, pk.tmax, pk.cmin, pk.tmin, pk.clast, pk.clast_pred, pk.tlast, ... (45 variables))
 renal    normal   mild  severe
 dose
 12.5 mg    67.3   87.1   104.5
 25 mg     134.6  174.1   208.9
-50 mg     269.2  348.2   417.8
-100 mg    538.3  696.5   835.7
+50 mg     269.2  348.2   417.9
+100 mg    538.4  696.5   835.8
 ```
 
-The values of the `dose` dimension replace the 25 mg of the `Change`. The peak concentration doubles with the dose, and it rises as the kidney function drops. `sel` selects points by their labels, here the curves of normal kidney function:
+The values of the `dose` dimension replace the 25 mg of the `Change`. The peak concentration in ng/ml doubles with the dose, and it rises as the kidney function drops. Every simulation keeps its own time points, so `time` is a variable over `_point` and not one shared axis. `sel` selects points by their labels, here the curves of normal kidney function:
 
 ```python
-normal = res.sel(renal="normal")
-
 fig, ax = plt.subplots(figsize=(7, 3.5))
-for label in normal["dose"].values:
-    ax.plot(normal["time"] / 60, normal["cp"].sel(dose=label), label=label)
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
+for label in res["dose"].values:
+    point = res.sel(renal="normal", dose=label)
+    ax.plot(point.q["time"].to("hr"), point.q["cp"], label=label)
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend()
 ```
 
@@ -198,11 +203,11 @@ print(local.index("normalized").to_pandas().round(2))
 ```text title="Output"
 observable      pk.cmax  pk.auc_inf_obs
 parameter
-Ka_dis_hctz        0.62            0.00
+Ka_dis_hctz        0.62            0.01
 GU__F_hctz_abs     1.00            1.00
 KI__HCTZEX_k      -0.42           -0.84
-Kp_hctz           -0.45           -0.00
-BW                -1.10           -1.85
+Kp_hctz           -0.45            0.00
+BW                -1.10           -1.84
 ```
 
 The fraction absorbed (`GU__F_hctz_abs`) scales the whole curve. The dissolution rate (`Ka_dis_hctz`) changes the peak but not the total exposure, the AUC. The excretion rate (`KI__HCTZEX_k`) lowers both. Body weight has the largest effect: in the model, organ volumes and blood flows grow with body weight, and so does the excretion by the kidneys, so a heavier patient has lower concentrations. [Sensitivity analysis](sensitivity.md) covers the global methods Sobol, FAST and Morris.
@@ -252,7 +257,6 @@ class Patel1984(SimulationExperiment):
         po25 = Simulation(
             time_unit="hr",
             end=48,
-            steps=480,
             changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
         )
         return {"po25": po25}
@@ -317,29 +321,25 @@ Ka_dis_hctz   0.297 / h
 KI__HCTZEX_k  0.00511 / ml
 ```
 
-To compare the fitted model with the data, set the fitted values before the start of the simulation:
+To compare the fitted model with the data, set the fitted values before the start of the simulation. The data become quantities as well, so they share the axes with the simulation:
 
 ```python
 fitted_dose = Simulation(
     time_unit="hr",
     end=48,
-    steps=480,
     preinit_changes=fitted_changes,
     changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
 )
 res = simulator.run(model, fitted_dose, observables)
+time = Q(patel1984["time"].to_numpy(), "hr")
+cp = Q(patel1984["cp"].to_numpy(), "ng/ml")
+sd = Q(patel1984["cp_sd"].to_numpy(), "ng/ml")
 
 fig, ax = plt.subplots(figsize=(7, 3.5))
-ax.plot(res["time"] / 60, res["cp"], label="fitted model")
-ax.errorbar(
-    patel1984["time"],
-    patel1984["cp"],
-    yerr=patel1984["cp_sd"],
-    fmt="o",
-    color="black",
-    label="Patel 1984",
-)
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
+ax.plot(res.q["time"].to("hr"), res.q["cp"], label="fitted model")
+ax.vlines(time, cp - sd, cp + sd, color="black")
+ax.plot(time, cp, "o", color="black", label="Patel 1984 (mean ± SD)")
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend()
 ```
 
@@ -361,7 +361,6 @@ def patient(renal_function: float) -> Simulation:
     return Simulation(
         time_unit="hr",
         end=24,
-        steps=240,
         preinit_changes={"BW": weight, "f_renal_function": renal_function},
         changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
     )
@@ -372,9 +371,11 @@ uq = UncertaintyModel(
 )
 ```
 
-`propagate` draws the uncertain values, simulates every draw and summarizes the outputs. Both scenarios use the same draws, so they compare the same virtual patients:
+`propagate` draws the uncertain values, simulates every draw and summarizes the outputs. Both scenarios use the same draws, so they compare the same virtual patients. `time=` puts the concentrations of all draws on one grid of times, which the bands below need:
 
 ```python
+import numpy as np
+
 from sbmlsim.uncertainty import propagate
 
 uncertainty = propagate(
@@ -385,6 +386,7 @@ uncertainty = propagate(
     outputs=["pk.cmax", "pk.auc_inf_obs"],
     n=1024,
     seed=1,
+    time=Q(np.linspace(0, 24, 97), "hr"),
 )
 auc = uncertainty.summary(["pk.auc_inf_obs"])
 print(auc[["scenario", "mean", "sd", "q0.05", "q0.95"]].round(0))
@@ -393,8 +395,8 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 
 ```text title="Output"
    scenario      mean       sd    q0.05     q0.95
-0   healthy   66254.0  26030.0  33719.0  114607.0
-1  impaired  193107.0  84124.0  90809.0  350926.0
+0   healthy   66253.0  26028.0  33722.0  114600.0
+1  impaired  193089.0  84097.0  90798.0  350926.0
        variable  index  correlated
 0            BW   0.54       False
 1  KI__HCTZEX_k   0.36       False
@@ -406,13 +408,14 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 ```python
 fig, ax = plt.subplots(figsize=(7, 3.5))
 for scenario, result in uncertainty.results.items():
-    cp = result.summary(quantiles=[0.05, 0.5, 0.95])["cp"]
-    hours = cp["time"] / 60
-    ax.plot(hours, cp.sel(statistic="q0.5"), label=scenario)
-    ax.fill_between(
-        hours, cp.sel(statistic="q0.05"), cp.sel(statistic="q0.95"), alpha=0.3
+    bands = result.summary(quantiles=[0.05, 0.5, 0.95])
+    hours = bands.q["time"].to("hr")
+    low, median, high = (
+        bands.sel(statistic=s).q["cp"] for s in ("q0.05", "q0.5", "q0.95")
     )
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
+    ax.plot(hours, median, label=scenario)
+    ax.fill_between(hours, low, high, alpha=0.3)
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend()
 ```
 

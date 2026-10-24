@@ -48,7 +48,6 @@ class Patel1984(SimulationExperiment):
         po25 = Simulation(
             time_unit="hr",
             end=36,
-            steps=360,
             changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
         )
         return {"po25": po25}
@@ -136,19 +135,21 @@ To save time, a task only records the variables that the data, figures and fit m
 
 ## Results
 
-With `keep_results=True` the results stay in memory after the run. `experiment.results` holds one `ScanResult` per task. The values are in the units of the model, so the time is in minutes here, and an observable has the unit it declares:
+With `keep_results=True` the results stay in memory after the run. `experiment.results` holds one `ScanResult` per task. The values are in the units of the model, so the time is in minutes here, and an observable has the unit it declares. `res.q[...]` gives a variable as a quantity, which `.to(...)` converts:
 
 ```python
 res = experiment.results["task_po25"]
 print(res)
 print(res.units)
-print(f"peak: {res['cp'].max():.1f} ng/ml")
+print(f"end: {res.q['time'].max().to('hr'):~}")
+print(f"peak: {res.q['cp'].max():~.1f}")
 ```
 
 ```text title="Output"
-ScanResult(time: 361; cp)
+ScanResult(_point: 867; cp)
 {'time': 'min', 'cp': 'nanogram / milliliter'}
-peak: 134.6 ng/ml
+end: 36.0 h
+peak: 134.6 ng / ml
 ```
 
 By default the runner releases the results once it has written the outputs, so a run of many experiments only holds the results of the experiment it is running. `experiment.results` then raises an error. `save_results=True` writes the result of every task as a netCDF file, `<experiment>_<task>.nc`, which `ScanResult.from_netcdf` reads back.
