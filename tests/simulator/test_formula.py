@@ -1,10 +1,12 @@
 """The formulas of the changes of a simulation."""
 
 import re
+import subprocess
+import sys
 
 import pytest
 
-from sbmlsim.simulator.formula import compile_formula
+from sbmlsim.simulator.formula import compile_formula, parse_math
 
 
 def test_formula_with_concentration_and_time() -> None:
@@ -30,3 +32,44 @@ def test_invalid_formula() -> None:
     """A formula which is not math is an error which names it."""
     with pytest.raises(ValueError, match=re.escape("'A +'")):
         compile_formula("A +")
+
+
+def test_compiling_a_formula_does_not_import_petab() -> None:
+    """The parser of the math of PEtab is read without the package petab.
+
+    `petab.v2.math` imported petab, which imports its SciML extension with
+    torch, matplotlib.pyplot and scipy.stats: 1.0 to 1.4 s for the first
+    formula of a process and of every worker of a pool.
+    """
+    code = (
+        "import sys\n"
+        "from sbmlsim.simulator.formula import compile_formula\n"
+        "assert compile_formula('[S] * k + max(a, 2)').symbols == ('[S]', 'a', 'k')\n"
+        "print(sorted(m for m in ('petab', 'torch', 'matplotlib.pyplot', 'scipy.stats')"
+        " if m in sys.modules))\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert out.stdout.strip() == "[]"
+
+
+@pytest.mark.parametrize(
+    "formula",
+    [
+        "-x^2",
+        "2^3^2",
+        "a && b || !c",
+        "piecewise(1, x > 2, 0)",
+        "log(x, 2) + ln(y) + log10(z) + log2(w)",
+        "x == y",
+        "true + false",
+        "abs(sign(-x)) * exp(pi) / inf",
+        "min(a, b) - max(a, b)",
+        "1e-3 * x - 0.5",
+    ],
+)
+def test_the_parser_is_the_one_of_petab(formula: str) -> None:
+    from petab.v2.math import sympify_petab
+
+    assert parse_math(formula) == sympify_petab(formula)
