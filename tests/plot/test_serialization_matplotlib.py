@@ -10,6 +10,7 @@ from matplotlib.figure import Figure as FigureMPL
 matplotlib.use("Agg")
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.backends import backend_agg
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.text import Text
 
@@ -588,3 +589,27 @@ def test_a_label_longer_than_its_axis_is_wrapped() -> None:
     # the figure is as tall as one of a short label
     short = MatplotlibFigureSerializer.to_figure(None, _labelled())
     assert mpl_figure.get_figheight() == pytest.approx(short.get_figheight())
+
+
+def test_a_figure_is_measured_with_one_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The text of a figure is measured with one renderer and the figure is not drawn.
+
+    A text measured without a renderer drew the figure into a renderer of its
+    size, which the text kept: the margins, the wrapping of the labels and the
+    room right of the panels drew a figure dozens of times, half the time of
+    the experiments of a model, and its texts kept 10 GB (0.12.0).
+    """
+    created: list[tuple[float, float]] = []
+
+    class Counted(backend_agg.RendererAgg):
+        def __init__(self, width: float, height: float, dpi: float) -> None:
+            created.append((width, height))
+            super().__init__(width, height, dpi)
+
+    monkeypatch.setattr(backend_agg, "RendererAgg", Counted)
+    long = "the concentration of midazolam in the venous plasma"
+    figure = _labelled(2, 2, ylabel=long, right=True, name="A title")
+    MatplotlibFigureSerializer.to_figure(experiment=None, figure=figure)
+    assert len(created) <= 1
