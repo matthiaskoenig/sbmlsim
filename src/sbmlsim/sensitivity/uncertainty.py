@@ -9,8 +9,14 @@ draw it: `plot_bands` a timecourse as a median and a band per label of the
 other dimensions, `plot_distribution` a value per simulation as a histogram
 or a box per label. They return the figure and never show it; called once per
 scenario with one `ax` and a `label` each, they draw the scenarios into one
-plot with one legend. The units of the labels are the short ones of pint,
-e.g. `ng/ml`.
+plot with one legend.
+
+`plot_bands` draws quantities, `ScanResult.q`: the axes have the units of the
+first quantities drawn into them and convert every other one, so a band
+shares an axis with the lines of `ax.plot(res.q["time"], res.q["cp"])`, and
+`time_unit` and `unit` choose the units, e.g. `time_unit="hr"`. The axes are
+labelled with `sbmlsim.plot.label_axes`, the units in their short form, e.g.
+`ng/ml`; `plot_distribution` converts into `unit` and labels the same way.
 """
 
 from __future__ import annotations
@@ -22,8 +28,9 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
+from sbmlsim.plot.axes import label_axes
 from sbmlsim.result.scan import STATISTIC, TIME, ScanResult
-from sbmlsim.units import unit_label
+from sbmlsim.units import setup_matplotlib, unit_label
 
 
 def _figure(ax: Axes | None) -> tuple[Figure, Axes]:
@@ -80,6 +87,9 @@ def plot_bands(
     ax: Axes | None = None,
     alpha: float = 0.3,
     label: str | None = None,
+    time_unit: str | None = None,
+    unit: str | None = None,
+    name: str | None = None,
 ) -> Figure:
     """Draw a timecourse of a summary as a center line and a band per label.
 
@@ -99,6 +109,11 @@ def plot_bands(
         ax: the axes to draw into, a new figure without.
         alpha: the opacity of the band.
         label: the label of the lines, see above.
+        time_unit: the unit of the time, e.g. `hr`, the one of the summary by
+            default; an axis which has a unit keeps it.
+        unit: the unit of the values, e.g. `ng/ml`, the one of the summary
+            by default; an axis which has a unit keeps it.
+        name: the name of the values on their axis, the key by default.
 
     Returns:
         The figure.
@@ -119,26 +134,26 @@ def plot_bands(
         raise ValueError(
             f"The summary has not the statistics {missing}, add their quantiles."
         )
+    setup_matplotlib()
     figure, axes = _figure(ax)
-    time = data[TIME].values
+    time: Any = summary.q[TIME]
+    if time_unit is not None:
+        time = time.to(time_unit)
     for selection in _labels(data, {STATISTIC, TIME}):
-        curve = data.sel(selection)
-        lines = axes.plot(
-            time,
-            curve.sel({STATISTIC: center}).values,
-            label=_text(selection, label, key),
-        )
+        curve = summary.sel(**selection)
+        # quantities, which the stubs of matplotlib do not know as data
+        bounds: list[Any] = [
+            curve.sel(**{STATISTIC: statistic}).q[key]
+            for statistic in (lower, center, upper)
+        ]
+        if unit is not None:
+            bounds = [q.to(unit) for q in bounds]
+        low, middle, high = bounds
+        lines = axes.plot(time, middle, label=_text(selection, label, key))
         axes.fill_between(
-            time,
-            curve.sel({STATISTIC: lower}).values,
-            curve.sel({STATISTIC: upper}).values,
-            color=lines[0].get_color(),
-            alpha=alpha,
-            linewidth=0,
+            time, low, high, color=lines[0].get_color(), alpha=alpha, linewidth=0
         )
-    units = summary.units
-    axes.set_xlabel(unit_label("time", units.get(TIME)))
-    axes.set_ylabel(unit_label(key, units.get(key)))
+    label_axes(axes, "time", name or key)
     _legend(axes, label)
     return figure
 
@@ -152,6 +167,8 @@ def plot_distribution(
     ax: Axes | None = None,
     bins: int = 30,
     label: str | None = None,
+    unit: str | None = None,
+    name: str | None = None,
 ) -> Figure:
     """Draw a value per simulation over the draws as a histogram or a box per label.
 
@@ -169,6 +186,9 @@ def plot_distribution(
         ax: the axes to draw into, a new figure without.
         bins: the number of bins of a histogram, shared by every label.
         label: the label of the distributions, see above.
+        unit: the unit of the values, e.g. `ng/ml`, the one of the result by
+            default.
+        name: the name of the values on their axis, the key by default.
 
     Returns:
         The figure.
@@ -190,17 +210,21 @@ def plot_distribution(
         raise ValueError(f"'{dim}' is no dimension of '{key}': {list(data.dims)}.")
     figure, axes = _figure(ax)
     selections = _labels(data, {dim})
-    samples = [np.asarray(data.sel(s).values, dtype=float) for s in selections]
+    quantities = [result.sel(**s).q[key] for s in selections]
+    if unit is not None:
+        quantities = [q.to(unit) for q in quantities]
+    samples = [np.asarray(q.magnitude, dtype=float).ravel() for q in quantities]
     samples = [s[np.isfinite(s)] for s in samples]
     names = [_text(s, label, key) for s in selections]
+    text = unit_label(name or key, unit or result.units.get(key))
     if kind == "hist":
         edges = np.histogram_bin_edges(np.concatenate(samples), bins=bins)
-        for values, name in zip(samples, names, strict=True):
-            axes.hist(values, bins=edges, alpha=0.5, label=name)
-        axes.set_xlabel(unit_label(key, result.units.get(key)))
+        for values, sample_name in zip(samples, names, strict=True):
+            axes.hist(values, bins=edges, alpha=0.5, label=sample_name)
+        axes.set_xlabel(text)
         axes.set_ylabel("count")
         _legend(axes, label)
     else:
         axes.boxplot(samples, tick_labels=names)
-        axes.set_ylabel(unit_label(key, result.units.get(key)))
+        axes.set_ylabel(text)
     return figure

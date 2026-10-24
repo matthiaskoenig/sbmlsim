@@ -108,7 +108,7 @@ report              file://./results/hctz_patel/index.html
 
 The metrics are computed separately for the training data and the validation data. `GMFE` is the geometric mean fold error and `within_2fold` the percentage of points whose prediction is within a factor of two of the data, see [Metrics](#metrics). `create` writes the report into `results/hctz_patel`, with `index.html` as its page. `mapping_figures=False` skips the figure of every fit mapping to keep this example fast. Without it, the report has a figure per mapping with the data and the simulated curve.
 
-`report.points` is the table behind the figures of the report: one row per data point with its time `x`, the data `DV`, its standard deviation `DV_SD` and the prediction `IPRED`, all in the units of the model, which `problem.x_units` and `problem.y_units` give for every mapping of `problem.mapping_keys`. To draw the fitted curves against the data, simulate the doses with the fitted values and turn both into quantities:
+`report.points` is the table behind the figures of the report: one row per data point with its time `x`, the data `DV`, its standard deviation `DV_SD` and the prediction `IPRED`, all in the units of the model, which the columns `x_unit` and `unit` give. To draw the fitted curves against the data, simulate the doses with the fitted values and turn both into quantities:
 
 ```python
 import matplotlib.pyplot as plt
@@ -122,7 +122,6 @@ from sbmlsim.simulator import Simulator
 fitted = fit.parameter_set()
 fitted_changes = {pid: Q(v, fitted.units[pid]) for pid, v in fitted.values.items()}
 points = report.points(fitted)
-units = dict(zip(problem.mapping_keys, zip(problem.x_units, problem.y_units)))
 
 simulator = Simulator()
 model = simulator.load(HCTZ_SBML)
@@ -142,10 +141,9 @@ for dose, kind, marker in [(25, "training", "o"), (50, "validation", "s")]:
         label = f"{dose} mg ({kind})"
         (line,) = ax.plot(res.q["time"].to("hr"), res.q[yid].to(unit), label=label)
         data = points[points.mapping == key]
-        x_unit, y_unit = units[key]
-        time = Q(data.x.to_numpy(), x_unit)
-        dv = Q(data.DV.to_numpy(), y_unit)
-        sd = Q(data.DV_SD.to_numpy(), y_unit)
+        time = Q(data.x.to_numpy(), data.x_unit.iloc[0])
+        dv = Q(data.DV.to_numpy(), data.unit.iloc[0])
+        sd = Q(data.DV_SD.to_numpy(), data.unit.iloc[0])
         ax.vlines(time, dv - sd, dv + sd, color=line.get_color())
         ax.plot(time, dv, marker, color=line.get_color())
 label_axes(ax1, "time", "HCTZ plasma")
