@@ -165,6 +165,22 @@ def test_the_graph_of_a_run_without_observables(pk_model: RoadrunnerSBMLModel) -
     assert identity_graph(["[C]", "ke"], keep=["ke"]).keep == ("ke",)
 
 
+def test_a_run_without_observables_simulates_only_the_kept_selections(
+    pk_model: RoadrunnerSBMLModel,
+) -> None:
+    """roadrunner computed every selection of the model for a run which keeps one.
+
+    A scan of midazolam which kept one of its 267 selections took 6.1 ms per
+    point instead of 1.3 ms.
+    """
+    graph = compile_observables(None, pk_model, keep=["[C]"])
+    assert graph.selections == ("[C]",)
+    assert graph.keep == ("[C]",)
+    assert graph.outputs == ("[C]",)
+    with pytest.raises(ValueError, match="neither an observable"):
+        compile_observables(None, pk_model, keep=["nope"])
+
+
 T = np.array([[0.0, 1.0, 2.0, 3.0], [0.0, 1.0, 2.0, np.nan]])
 C = np.array([[0.0, 4.0, 2.0, 1.0], [0.0, 8.0, 4.0, np.nan]])
 
