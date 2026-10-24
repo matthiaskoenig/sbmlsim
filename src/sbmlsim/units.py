@@ -57,11 +57,34 @@ def _create_registry() -> UnitRegistry:
     registry.define("none = count")
     registry.define("item = count")
     registry.define("percent = 0.01*count")
+    # an axis of matplotlib which plots quantities is labelled with the short
+    # form of its unit, e.g. `ng/ml`, see `setup_matplotlib`
+    registry.mpl_formatter = "{:~P}"
     return registry
 
 
 #: the unit registry of the package, every model, experiment and fit uses it
 ureg: UnitRegistry = _create_registry()
+
+#: whether matplotlib plots the quantities of the package, see `setup_matplotlib`
+_matplotlib_ready = False
+
+
+def setup_matplotlib() -> None:
+    """Let matplotlib plot the quantities of the package with their units.
+
+    A quantity of a result, `ScanResult.q`, or of `Q` is plotted in the unit
+    of the first quantity of an axis, every other one is converted into it,
+    and the axis is labelled with the unit, which `sbmlsim.plot.label_axes`
+    puts next to a name. `ScanResult.q` and `sbmlsim.plot` call it, so it is
+    rarely called directly. It imports matplotlib, which the simulations do
+    not need, and is called once.
+    """
+    global _matplotlib_ready
+    if not _matplotlib_ready:
+        ureg.setup_matplotlib(True)
+        _matplotlib_ready = True
+
 
 #: the note of an error of `Q` for a unit pint does not define
 _Q_NOTE = (

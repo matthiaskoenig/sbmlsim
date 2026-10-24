@@ -1,5 +1,8 @@
 """Plotting in sbmlsim."""
 
+from sbmlsim.units import setup_matplotlib
+
+from .axes import label_axes
 from .plotting import (
     Axis,
     Band,
@@ -22,4 +25,8 @@ __all__ = [
     "MarkerType",
     "Plot",
     "SubPlot",
+    "label_axes",
 ]
+
+# the quantities of the package plot with matplotlib in their units
+setup_matplotlib()

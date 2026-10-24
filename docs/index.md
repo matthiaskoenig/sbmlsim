@@ -16,6 +16,7 @@
 import matplotlib.pyplot as plt
 
 from sbmlsim import Q
+from sbmlsim.plot import label_axes
 from sbmlsim.resources import MIDAZOLAM_SBML
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
@@ -24,22 +25,20 @@ simulator = Simulator()
 simulation = Simulation(
     time_unit="hr",
     end=24,
-    steps=480,
     changes=[Change([0, 8, 16], {"PODOSE_mid": Q(7.5, "mg")})],
 )
 res = simulator.run(MIDAZOLAM_SBML, simulation)
 
-hours = res.quantity("time").to("hr").magnitude
 fig, ax = plt.subplots(figsize=(8, 3.5))
 for sid, name in [("[Cve_mid]", "midazolam"), ("[Cve_mid1oh]", "1-hydroxymidazolam")]:
-    ax.plot(hours, res.quantity(sid).to("nM").magnitude, label=name)
-ax.set(xlabel="time [hr]", ylabel="venous blood [nM]")
+    ax.plot(res.q["time"].to("hr"), res.q[sid].to("nM"), label=name)
+label_axes(ax, "time", "venous blood")
 ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
 ```
 
 ![Output figure](images/outputs/index-01.png)
 
-The times are in hours and `sbmlsim` converts them into the minutes of the model. `res` is a `ScanResult` with every variable of the model over time and its unit, so `quantity(...).to("nM")` converts the concentrations from the mmol/l of the model. The [Tutorial](tutorial.md) starts from here and goes step by step through the features with a model of another drug.
+The times are in hours and `sbmlsim` converts them into the minutes of the model. `res` is a `ScanResult` with every variable of the model at the time points the integrator chose. `res.q[...]` gives a variable as a quantity, its values with their unit, so `.to("nM")` converts the concentrations from the mmol/l of the model. Quantities plot directly with matplotlib, and `label_axes` writes the units of the axes into their labels. The [Tutorial](tutorial.md) starts from here and goes step by step through the features with a model of another drug.
 
 ## Features
 

@@ -129,7 +129,6 @@ def oral_dose() -> Simulation:
     return Simulation(
         time_unit="hr",
         end=36,
-        steps=360,
         changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
     )
 
@@ -197,7 +196,7 @@ figures              []
 from sbmlsim.data import to_quantity
 
 conc = Data("[Cve_hctz]", task="task_po25").get_data(experiment, to_units="µmol/l")
-print(conc.dims, conc.attrs["units"], conc.values[:3].round(4))
+print(conc.dims, conc.attrs["units"])
 print(f"{to_quantity(conc, experiment.ureg).max():~.3f}")
 
 measured = Data("cp", dataset="patel1984").get_data(experiment)
@@ -205,12 +204,12 @@ print(measured.dims, measured.attrs["units"], measured.values[:3])
 ```
 
 ```text title="Output"
-('time',) µmol/l [0.     0.0143 0.0459]
+('_point',) µmol/l
 0.452 μmol / l
 ('row',) ng/ml [22.8 71.6 97.9]
 ```
 
-A timecourse has the dimension `time`, a dataset column the dimension `row`. The values of a task are in the units of the model, here mmol/l for the concentration, unless you ask for others.
+A timecourse has the time points the integrator chose, the dimension `_point`, and a dataset column the dimension `row`. A simulation with output `times` has the dimension `time` instead. The values of a task are in the units of the model, here mmol/l for the concentration, unless you ask for others.
 
 ## Selecting points
 
@@ -245,33 +244,39 @@ print(one.dims, two.dims, two["dose.PODOSE_hctz"].values)
 ```
 
 ```text title="Output"
-('time',) ('dose', 'time') [ 12.5 100. ]
+('_point',) ('dose', '_point') [ 12.5 100. ]
 ```
 
 The labels of a dimension are `0, 1, 2, ...` unless the `Dimension` sets `labels=`. A dimension of the scan that the data does not have is skipped, so the same `sel` works for the time and the values of a curve. A dimension or label that does not exist raises an error when the experiment is initialized. For a dataset, `sel={"group": "b"}` keeps the rows whose column `group` is `b`.
 
-Since the arrays are labelled, plotting them with matplotlib takes a few lines:
+In a scan every simulation keeps its own time points, so `time` is data over `(dose, _point)` like `cp`, padded with `NaN` where a simulation has fewer points. `to_quantity` turns the arrays into quantities, which plot with matplotlib in their units, and `label_axes` labels the axes with them:
 
 ```python
 import matplotlib.pyplot as plt
 
-time = Data("time", task="task_doses").get_data(experiment, to_units="hr")
+from sbmlsim.plot import label_axes
+
+time = to_quantity(Data("time", task="task_doses").get_data(experiment), ureg)
 cp = Data("cp", task="task_doses").get_data(experiment)
 
 fig, ax = plt.subplots(figsize=(7, 3.5))
-for mg, curve in zip(cp["dose.PODOSE_hctz"].values, cp):
-    ax.plot(time, curve, label=f"{mg:g} mg")
-data_time = Data("time", dataset="patel1984").get_data(experiment)
-ax.plot(data_time, measured, "o", color="black", label="Patel 1984 (25 mg)")
-ax.set(xlabel="time [hr]", ylabel="HCTZ plasma [ng/ml]")
+for k, mg in enumerate(cp["dose.PODOSE_hctz"].values):
+    ax.plot(time[k].to("hr"), to_quantity(cp[k], ureg), label=f"{mg:g} mg")
+data_time = to_quantity(Data("time", dataset="patel1984").get_data(experiment), ureg)
+ax.plot(
+    data_time,
+    to_quantity(measured, ureg),
+    "o",
+    color="black",
+    label="Patel 1984 (25 mg)",
+)
+label_axes(ax, "time", "HCTZ plasma")
 ax.legend()
 ```
 
 ![Output figure](images/outputs/data-08.png)
 
 For figures that are part of an experiment, see [Plots](plotting.md): a curve with `over="dose"` draws one line per dose.
-
-A scan over the steps of the integrator, where every simulation keeps its own time points, has the dimension `_point` instead of `time`, padded with `NaN` where a simulation has fewer points.
 
 ## Functions of data
 
@@ -284,11 +289,11 @@ cp_norm = Data(
     variables={"cp": Data("cp", task="task_doses")},
 )
 norm = cp_norm.get_data(experiment)
-print(norm.dims, norm.max(dim="time").values)
+print(norm.dims, norm.max(dim="_point").values)
 ```
 
 ```text title="Output"
-('dose', 'time') [1. 1. 1. 1.]
+('dose', '_point') [1. 1. 1. 1.]
 ```
 
 The variables are broadcast by the names of their dimensions, so a function of a scan keeps the scan dimensions. `max` and `min` with one argument reduce it along the time of every simulation, ignoring the `NaN` of padding, so `cp / max(cp)` scales every dose to its own peak. For a dataset column they reduce over the rows. With two or more arguments they are the elementwise maximum and minimum.

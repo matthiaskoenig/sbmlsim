@@ -34,13 +34,13 @@ from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 
 print(sbmlsim.__version__)
-res = Simulator().run(REPRESSILATOR_SBML, Simulation(end=100, steps=10))
+res = Simulator().run(REPRESSILATOR_SBML, Simulation(end=100))
 print(res)
 ```
 
 ```text title="Output"
 0.13.0
-ScanResult(time: 11; PX, PY, PZ, X, Y, Z, eff, n, ... (41 variables))
+ScanResult(_point: 1084; PX, PY, PZ, X, Y, Z, eff, n, ... (41 variables))
 ```
 
 Now continue with the [Tutorial](tutorial.md).

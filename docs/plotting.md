@@ -42,7 +42,6 @@ def oral_dose() -> Simulation:
     return Simulation(
         time_unit="hr",
         end=36,
-        steps=360,
         changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})],
     )
 
@@ -111,9 +110,9 @@ for task, res in experiment.results.items():
 ```
 
 ```text title="Output"
-task_po25 ScanResult(time: 361; cp, Aurine_hctz)
-task_doses ScanResult(dose: 4, time: 361; cp, pk.cmax)
-task_patients ScanResult(patient: 50, time: 361; cp)
+task_po25 ScanResult(_point: 867; cp, Aurine_hctz)
+task_doses ScanResult(dose: 4, _point: 1009; cp, pk.cmax)
+task_patients ScanResult(patient: 50, _point: 904; cp)
 ```
 
 In a real project the figures are returned by the `figures()` method of the experiment, with `Figure(experiment=self, ...)`, and the runner writes them into the output folder (see [Simulation experiments](experiments.md)). While you design a figure it is quicker to draw it on an experiment that already ran: `MatplotlibFigureSerializer.to_figure(experiment, figure)` returns a matplotlib figure, which a notebook shows. A figure drawn this way can only read data the run recorded, which is why the experiment lists the variables in `data()`.
@@ -214,6 +213,7 @@ linear, log = bands.create_plots(
     xaxis=Axis("time", unit="hr"), yaxis=Axis("HCTZ plasma", unit="ng/ml")
 )
 log.yaxis.scale = "log"
+log.yaxis.min = 1
 for plot in [linear, log]:
     plot.band(
         Data("time", task="task_patients"),
@@ -239,11 +239,11 @@ fig_patients = MatplotlibFigureSerializer.to_figure(experiment, bands)
 
 The default quantiles are 5 % and 95 %; `quantiles=(0.25, 0.75)` changes them and `median=False` leaves out the median. `over=` draws one band per point of one other dimension. A band takes `color=` and `alpha=`; without a colour it takes the next colour of the colour cycle. Bands are drawn below the curves.
 
-The quantiles are computed when the figure is drawn, so you need no summary of the result. If every simulation has its own time points (the steps of the integrator), the draws are first interpolated onto 500 time points, dense where the simulations stepped densely.
+The quantiles are computed when the figure is drawn, so you need no summary of the result. Every simulation here has its own time points, the steps of the integrator, so the draws are first interpolated onto 500 time points, dense where the simulations stepped densely.
 
 ## Log axes
 
-Without `steps` or `times` a simulation returns the steps of the integrator, which start with tiny steps. A concentration that starts at zero is tiny there too, and the automatic limits of a log axis would span dozens of decades. A log axis therefore shows at most six decades below its largest value. Limits you set with `min` and `max` are kept. For your own matplotlib figures, `limit_log_axis(ax)` from `sbmlsim.plot.serialization_matplotlib` does the same.
+By default a simulation returns the steps of the integrator, which start with tiny steps. A concentration that starts at zero is tiny there too, and the automatic limits of a log axis would span dozens of decades. A log axis therefore shows at most six decades below its largest value. Limits you set with `min` and `max` are kept, as `log.yaxis.min = 1` in the band figure above. For your own matplotlib figures, `limit_log_axis(ax)` from `sbmlsim.plot.serialization_matplotlib` does the same.
 
 ## Styles
 
@@ -354,7 +354,7 @@ plotly is not a dependency of `sbmlsim`; install it to write pages. Without it, 
 
 ## Your own matplotlib figures
 
-For a figure the description cannot express, override `figures_mpl()` and return matplotlib figures by key. The runner saves them next to the other figures, but they have no interactive version. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures.
+For a figure the description cannot express, override `figures_mpl()` and return matplotlib figures by key. The runner saves them next to the other figures, but they have no interactive version. Read the results with `self.results` and the settings with `FigureSettings.resolve(experiment=self.figure_settings)`; the settings of the run do not reach these figures. A variable of a result as a quantity, `res.q["cp"]`, plots in its unit, and `label_axes` from `sbmlsim.plot` writes the units into the axis labels (see [Units](units.md#results-with-units)).
 
 ## Reports
 

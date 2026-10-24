@@ -56,7 +56,12 @@ from sbmlsim.result.timecourse import (
     interpolate,
     without_states_before,
 )
-from sbmlsim.units import DimensionalityError, Quantity, UnitRegistry
+from sbmlsim.units import (
+    DimensionalityError,
+    Quantity,
+    UnitRegistry,
+    setup_matplotlib,
+)
 from sbmlsim.units import ureg as package_ureg
 
 if TYPE_CHECKING:
@@ -143,12 +148,25 @@ class ScanResult:
         """Check whether the result has a variable or coordinate."""
         return key in self.ds.variables
 
+    @property
+    def q(self) -> _Quantities:
+        """Get the variables and coordinates of the result as quantities.
+
+        `res.q["cp"]` is `res.quantity("cp")`, the values with their unit,
+        e.g. `res.q["time"].to("hr")`. Quantities plot with matplotlib in
+        their units, see `sbmlsim.units.setup_matplotlib`.
+        """
+        setup_matplotlib()
+        return _Quantities(self)
+
     def quantity(self, key: str, ureg: UnitRegistry | None = None) -> Quantity:
         """Get the values of a variable or coordinate with its unit.
 
         The `cv` of a summary is dimensionless; a variable with a dimension
         `statistic` which holds statistics of different units needs a
-        selection of the statistic first.
+        selection of the statistic first. A timecourse of one point of a
+        ragged result, e.g. `res.sel(dose="high")`, is its time points without
+        the padding, so `res.sel(dose="high").q["cp"].max()` is its peak.
 
         Args:
             key: the variable or coordinate.
@@ -174,8 +192,12 @@ class ScanResult:
                     f"statistic first, e.g. sel(statistic='mean')."
                 )
             unit = found.pop()
+        values = np.asarray(array.values, dtype=float)
+        if array.dims == (POINT,) and self.ds[TIME].dims == (POINT,):
+            # one point of a ragged result: its time points, not the padding
+            values = values[~np.isnan(np.asarray(self.ds[TIME].values, dtype=float))]
         registry = ureg if ureg is not None else package_ureg
-        return registry.Quantity(np.asarray(array.values, dtype=float), unit)
+        return registry.Quantity(values, unit)
 
     def nca(self, observable: str) -> NCAResult:
         """Get the analysis of a PK observable as the result of pkpdutils.
@@ -588,3 +610,28 @@ def _statistics(
         parts.append(ds.quantile(q, dim=reduced, skipna=True).drop_vars("quantile"))
         labels.append(f"q{q:g}")
     return parts, labels
+
+
+class _Quantities:
+    """The variables and coordinates of a result as quantities, see `ScanResult.q`."""
+
+    def __init__(self, result: ScanResult) -> None:
+        """Wrap a result."""
+        self._result = result
+
+    def __getitem__(self, key: str) -> Quantity:
+        """Get the values of a variable or coordinate with its unit.
+
+        Raises:
+            KeyError: if the result has no variable or coordinate of the name.
+            ValueError: if it holds labels or has no unit.
+        """
+        return self._result.quantity(key)
+
+    def __contains__(self, key: object) -> bool:
+        """Check whether the result has a variable or coordinate with a unit."""
+        return key in self._result and key in self._result.units
+
+    def __repr__(self) -> str:
+        """Get the representation."""
+        return f"Quantities of {self._result!r}"
