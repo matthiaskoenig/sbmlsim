@@ -73,3 +73,11 @@ def test_the_parser_is_the_one_of_petab(formula: str) -> None:
     from petab.v2.math import sympify_petab
 
     assert parse_math(formula) == sympify_petab(formula)
+
+
+def test_the_math_of_petab_v2_is_the_parser_of_petab_v1() -> None:
+    """`parse_math` reads the parser of `petab.v1.math`, which v2 re-exports."""
+    import petab.v1.math
+    import petab.v2.math
+
+    assert petab.v2.math.sympify_petab is petab.v1.math.sympify_petab
