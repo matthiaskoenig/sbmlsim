@@ -33,10 +33,11 @@ the model if the simulation has none, or a `Quantity`.
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, overload
+from typing import TYPE_CHECKING, Any, TypeIs, overload
 
 import numpy as np
 
@@ -53,8 +54,26 @@ Time = float | Quantity
 Value = float | Quantity | str
 
 
+#: the module of the uncertain values
+UNCERTAIN_MODULE = "sbmlsim.uncertainty.quantity"
+
+
+def _is_uncertain(value: Any) -> TypeIs[Uncertain]:
+    """Check whether a value is an uncertain value, without importing its module.
+
+    An uncertain value exists only once its module was imported, so a value is
+    not uncertain while the module is not imported (or not yet defines the
+    class): the module imports `sbmlsim.uncertainty`, the fit, matplotlib and
+    scipy.stats, about a second which a simulation without an uncertain value
+    does not pay, e.g. in `Scan.to_dict` (#413).
+    """
+    module = sys.modules.get(UNCERTAIN_MODULE)
+    uncertain_type = getattr(module, "Uncertain", None)
+    return uncertain_type is not None and isinstance(value, uncertain_type)
+
+
 def _uncertain_type() -> type[Uncertain]:
-    """Get the class of uncertain values, which imports this module."""
+    """Get the class of uncertain values, which imports its module."""
     from sbmlsim.uncertainty.quantity import Uncertain
 
     return Uncertain
@@ -67,16 +86,10 @@ def _split(
 
     The plain value of an uncertain value is its nominal value.
     """
-    plain_types = (int, float, str, Quantity, np.generic)
-    if all(isinstance(value, plain_types) for value in values.values()):
-        # no uncertain value, and no import of the uncertainty, which imports
-        # the simulator, whose module creates a steady state
-        return dict(values), {}
-    uncertain_type = _uncertain_type()
     plain: dict[str, Value] = {}
     uncertain: dict[str, Uncertain] = {}
     for target, value in values.items():
-        if isinstance(value, uncertain_type):
+        if _is_uncertain(value):
             plain[target] = value.nominal
             uncertain[target] = value
         else:
@@ -554,9 +567,7 @@ class Simulation:
 
 def _encode(value: Any) -> Any:
     """Encode a number, a quantity, a formula or an uncertain value as a JSON type."""
-    if not isinstance(value, (int, float, str, Quantity, np.generic)) and isinstance(
-        value, _uncertain_type()
-    ):
+    if _is_uncertain(value):
         return {"uncertain": value.to_dict()}
     if isinstance(value, Quantity):
         magnitude = value.magnitude
