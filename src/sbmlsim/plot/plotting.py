@@ -900,7 +900,7 @@ class AbstractCurve(BasePlotObject):
         self,
         sid: str | None,
         name: str | None,
-        x: Data | None = None,
+        x: Data,
         order: int | None = None,
         style: Style | None = None,
         yaxis_position: YAxisPosition | None = None,
@@ -916,7 +916,7 @@ class AbstractCurve(BasePlotObject):
             yaxis_position: position of the yaxis for the curve
         """
         super().__init__(sid, name)
-        self.x: Data | None = x
+        self.x: Data = x
         self.order: int | None = order
         self.style: Style | None = style
         self.yaxis_position: YAxisPosition | None = yaxis_position
@@ -989,7 +989,6 @@ class Curve(AbstractCurve):
             style=style,
             yaxis_position=yaxis_position,
         )
-        self.x: Data = x
         self.y: Data = y
 
         # set symmetrical
@@ -1126,7 +1125,6 @@ class ShadedArea(AbstractCurve):
             style=style,
             yaxis_position=yaxis_position,
         )
-        self.x: Data = x
         self.yfrom: Data = yfrom
         self.yto: Data = yto
 
@@ -1238,7 +1236,6 @@ class Band(AbstractCurve):
             raise ValueError(
                 f"The quantiles of a band are increasing within [0, 1], not {quantiles}."
             )
-        self.x: Data = x
         self.y: Data = y
         self.across: str = across
         self.quantiles: tuple[float, float] = (low, high)

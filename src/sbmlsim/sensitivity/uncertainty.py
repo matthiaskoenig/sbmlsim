@@ -218,7 +218,7 @@ def plot_distribution(
     names = [_text(s, label, key) for s in selections]
     text = unit_label(name or key, unit or result.units.get(key))
     if kind == "hist":
-        edges = np.histogram_bin_edges(np.concatenate(samples), bins=bins)
+        edges = np.histogram_bin_edges(np.concatenate(samples), bins=bins).tolist()
         for values, sample_name in zip(samples, names, strict=True):
             axes.hist(values, bins=edges, alpha=0.5, label=sample_name)
         axes.set_xlabel(text)
