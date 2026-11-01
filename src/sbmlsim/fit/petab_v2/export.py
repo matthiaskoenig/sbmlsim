@@ -31,9 +31,9 @@ import libsbml
 import numpy as np
 import petab.v2 as petab_v2
 import sympy as sp
-from petab.models.sbml_model import SbmlModel  # ty: ignore[unresolved-import]
 from petab.v2 import Problem as PetabProblem
 from petab.v2.math import petab_math_str, sympify_petab
+from petab.v2.models.sbml_model import SbmlModel
 
 from sbmlsim.fit.objects import (
     EVALUATED_KINDS,
