@@ -17,8 +17,10 @@
    calling process and in a worker of a pool of `sbmlsim.parallel`; the
    observables are evaluated on the native solutions of the points of a chunk
    before the kept timecourses are interpolated onto a grid.
-4. Assembly: the arrays of the chunks are written into the arrays of the
-   result, a `ScanResult`, and reshaped into the dimensions of the scan.
+4. Assembly: the arrays of a chunk are written into the arrays of the result
+   when the chunk arrives and the chunk is released, see `_Assembly`, so a
+   run holds its result once; the arrays are reshaped into the dimensions of
+   the scan, a `ScanResult`.
 
 The result does not depend on the number of workers or the size of the
 chunks: the values of a scan are fixed before the run. A run which raises
@@ -268,12 +270,18 @@ class Simulator:
         workers = parallel.resolve_workers(self.n_workers, compiled.size)
         chunks = compiled.chunks(workers, on_error)
         show = workers > 1 if progress is None else progress
+        assembly = _Assembly(compiled)
         with _progress(show, compiled.size) as advance:
+
+            def collect(result: ChunkResult) -> None:
+                assembly.add(result)
+                advance(len(result.indices))
+
             if workers == 1:
-                results = self._run_serial(compiled, chunks, advance)
+                self._run_serial(compiled, chunks, collect)
             else:
-                results = self._run_pool(compiled, chunks, workers, advance)
-        return compiled.assemble(results, on_error, self.integrator_settings)
+                self._run_pool(compiled, chunks, workers, collect)
+        return compiled.assemble(assembly, on_error, self.integrator_settings)
 
     def _models(
         self, model: ModelLike | None, scan: Scan
@@ -417,9 +425,9 @@ class Simulator:
         self,
         compiled: _Compiled,
         chunks: Sequence[Chunk],
-        advance: Callable[[int], None],
-    ) -> list[ChunkResult]:
-        """Run the chunks in the calling process.
+        collect: Callable[[ChunkResult], None],
+    ) -> None:
+        """Run the chunks in the calling process, each result to `collect`.
 
         The chunks are in the order of their first point. After a point
         failed, only the chunks which start before it still run: one of them
@@ -429,29 +437,30 @@ class Simulator:
             ScanError: for the first point in the order of the scan which
                 fails, with `on_error="raise"`.
         """
-        results: list[ChunkResult] = []
         failed: ScanPointError | None = None
         for chunk in chunks:
             if failed is not None and int(chunk.indices[0]) > failed.index:
                 break
             try:
-                results.append(run_chunk(chunk, compiled.models[chunk.model]))
+                result = run_chunk(chunk, compiled.models[chunk.model])
             except ScanPointError as err:
                 failed = _first(failed, err)
                 continue
-            advance(len(chunk.indices))
+            collect(result)
         if failed is not None:
             raise compiled.error(failed) from failed
-        return results
 
     def _run_pool(
         self,
         compiled: _Compiled,
         chunks: Sequence[Chunk],
         workers: int,
-        advance: Callable[[int], None],
-    ) -> list[ChunkResult]:
+        collect: Callable[[ChunkResult], None],
+    ) -> None:
         """Run the chunks in the kept pool of `sbmlsim.parallel`.
+
+        Every result goes to `collect` when it arrives, in the order the
+        chunks finish.
 
         After a point failed, the chunks which start after it and did not
         start yet are cancelled and the ones before it still run, see
@@ -469,19 +478,18 @@ class Simulator:
                 replace(spec, source=path)
                 for spec, path in zip(specs, paths, strict=True)
             ]
-            return self._run_pool_chunks(compiled, chunks, workers, advance, shared)
+            self._run_pool_chunks(compiled, chunks, workers, collect, shared)
 
     def _run_pool_chunks(
         self,
         compiled: _Compiled,
         chunks: Sequence[Chunk],
         workers: int,
-        advance: Callable[[int], None],
+        collect: Callable[[ChunkResult], None],
         specs: Sequence[ModelSpec],
-    ) -> list[ChunkResult]:
+    ) -> None:
         """Run bounded pending work while its shared snapshots remain available."""
         executor = parallel.pool(workers)
-        results: list[ChunkResult] = []
         failed: ScanPointError | None = None
         futures: dict[Future[ChunkResult], Chunk] = {}
         pending: set[Future[ChunkResult]] = set()
@@ -520,8 +528,7 @@ class Simulator:
                                 pending.remove(other)
                                 futures.pop(other)
                         continue
-                    results.append(result)
-                    advance(len(result.indices))
+                    collect(result)
         except BrokenProcessPool as err:
             parallel.stop(executor)
             raise RuntimeError(
@@ -538,7 +545,83 @@ class Simulator:
             raise
         if failed is not None:
             raise compiled.error(failed) from failed
-        return results
+
+
+class _Assembly:
+    """The arrays of a result, written chunk by chunk, see `_Compiled.assemble`.
+
+    A run holds its result once (#411): every chunk is written into the
+    arrays of the result and released, instead of keeping every chunk until
+    the last one arrived and copying them then. The cube of the timecourses,
+    `(1 + timecourse, point, row)` with the time first, is allocated without
+    its values and a chunk writes the rows of its points, the padding with
+    `NaN` included, so its memory is used as the chunks arrive. A result on a
+    grid knows its number of rows and writes a chunk when it arrives; a ragged
+    result has the rows of its longest point, known after the last chunk,
+    and keeps its chunks until then, which `finish` writes and releases one
+    at a time. A result without timecourses has no cube.
+
+    Attributes:
+        table: the values per simulation, `(scalar, point)`.
+        status: `0` for a point which ran, `1` for one which failed.
+        errors: the flat index and the error of the points which failed, as
+            the chunks reported them.
+    """
+
+    def __init__(self, compiled: _Compiled) -> None:
+        """Allocate the arrays of the result of a compiled scan."""
+        n = compiled.size
+        self._n_columns = 1 + len(compiled.graph.timecourses)
+        # a result without timecourses has no time axis, also when every
+        # point failed
+        self._timed = bool(compiled.graph.timecourses) or not compiled.observables
+        self._rows = compiled.grid.size if compiled.grid is not None else None
+        self._cube: np.ndarray | None = None
+        self._written = np.zeros(n, dtype=bool)
+        self._pending: list[ChunkResult] = []
+        self.table = np.full((len(compiled.graph.scalars), n), np.nan)
+        self.status = np.zeros(n, dtype=np.int8)
+        self.errors: list[tuple[int, str]] = []
+
+    def add(self, result: ChunkResult) -> None:
+        """Write the arrays of a chunk, or keep it until the rows are known."""
+        self.table[:, result.indices] = result.scalars.T
+        self.status[result.indices] = result.status
+        self.errors.extend(result.errors)
+        if not self._timed:
+            return
+        if self._rows is None:
+            self._pending.append(result)
+        else:
+            self._write(result)
+
+    def finish(self) -> np.ndarray | None:
+        """Write the kept chunks and get the cube, `None` without timecourses."""
+        if not self._timed:
+            return None
+        if self._rows is None:
+            self._rows = max((r.values.shape[1] for r in self._pending), default=0)
+        while self._pending:
+            # released once written, the last kept first
+            self._write(self._pending.pop())
+        cube = self._allocated()
+        cube[:, ~self._written] = np.nan
+        return cube
+
+    def _allocated(self) -> np.ndarray:
+        """Get the cube, allocated on first use without its values."""
+        if self._cube is None:
+            n = self._written.size
+            self._cube = np.empty((self._n_columns, n, self._rows or 0))
+        return self._cube
+
+    def _write(self, result: ChunkResult) -> None:
+        """Write the rows of the points of a chunk, padded with `NaN`."""
+        cube = self._allocated()
+        rows = result.values.shape[1]
+        cube[:, result.indices, :rows] = np.moveaxis(result.values, 2, 0)
+        cube[:, result.indices, rows:] = np.nan
+        self._written[result.indices] = True
 
 
 def _check_coordinates(scan: Scan, outputs: set[str]) -> None:
@@ -685,11 +768,11 @@ class _Compiled:
 
     def assemble(
         self,
-        results: Sequence[ChunkResult],
+        assembly: _Assembly,
         on_error: OnError,
         settings: Mapping[str, Any],
     ) -> ScanResult:
-        """Write the arrays of the chunks into the result, see `ScanResult`.
+        """Build the result from the arrays of the chunks, see `ScanResult`.
 
         A changed target is a coordinate along the first dimension which
         changes it, unless a selection of the same name is a variable: the
@@ -699,27 +782,10 @@ class _Compiled:
         n, shape = self.size, self.scan.shape
         names = self.graph.timecourses
         scalars = self.graph.scalars
-        # A scalar result has no time axis. Do not assemble discarded time
-        # buffers, including when every point failed.
-        timed = bool(names) or not self.observables
-        n_rows = (
-            0
-            if not timed
-            else self.grid.size
-            if self.grid is not None
-            else max((r.values.shape[1] for r in results), default=0)
-        )
-        cube = np.full((1 + len(names), n, n_rows), np.nan) if timed else None
-        table = np.full((len(scalars), n), np.nan)
-        status = np.zeros(n, dtype=np.int8)
-        errors: list[tuple[int, str]] = []
-        for result in results:
-            rows = result.values.shape[1]
-            if cube is not None:
-                cube[:, result.indices, :rows] = np.moveaxis(result.values, 2, 0)
-            table[:, result.indices] = result.scalars.T
-            status[result.indices] = result.status
-            errors.extend(result.errors)
+        cube = assembly.finish()
+        table, status, errors = assembly.table, assembly.status, assembly.errors
+        timed = cube is not None
+        n_rows = cube.shape[2] if cube is not None else 0
 
         first = self.models[0]
         dims = list(self.scan.dims)
