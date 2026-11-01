@@ -94,7 +94,8 @@ class ModelSymbols:
         initial_assignment_order: the entities with an initial assignment, an
             assignment after the ones it reads.
         initial_assignment_dependencies: entity with an initial assignment ->
-            the entities its math reads, through assignment rules.
+            the entities its math or, for a concentration, its compartment
+            depends on, through assignment rules.
         initial_concentration: species whose initial value is a
             concentration, which a change of their compartment before the
             initialization keeps.
@@ -143,10 +144,14 @@ class ModelSymbols:
         }
         dependencies: dict[str, frozenset[str]] = {}
         for assignment in model.getListOfInitialAssignments():
+            symbol = assignment.getSymbol()
             reads = _expand(_names(assignment.getMath()), rule_symbols)
-            # the concentration of a species depends on its compartment
+            # an initial concentration depends on its own compartment, too
+            if symbol in compartment_of:
+                reads |= _expand({compartment_of[symbol]}, rule_symbols)
+            # a concentration read by the math depends on its compartment
             reads |= {compartment_of[s] for s in reads if s in compartment_of}
-            dependencies[assignment.getSymbol()] = frozenset(reads)
+            dependencies[symbol] = frozenset(reads)
         concentration_species = frozenset(compartment_of)
         maths: list[libsbml.ASTNode | None] = [r.getMath() for r in rules]
         maths += [

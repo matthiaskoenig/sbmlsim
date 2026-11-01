@@ -202,6 +202,37 @@ def test_initial_assignment_of_a_concentration_follows_its_compartment() -> None
     assert model.r_loaded["p"] == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(
+    "volume",
+    [
+        "  V := BW * f\n",
+        # the rule reads an initial assignment of the changed parameter
+        "  p = BW * f\n  V := p\n",
+    ],
+    ids=["rule", "rule of an initial assignment"],
+)
+def test_initial_assignment_of_a_concentration_follows_its_rule_compartment(
+    volume: str,
+) -> None:
+    """An initial concentration is its assignment in a changed rule compartment (#344)."""
+    model = RoadrunnerSBMLModel(
+        source=sbml(
+            "model c\n"
+            "  BW = 75; f = 0.1; c0 = 50\n"
+            "  compartment V\n"
+            f"{volume}"
+            "  species S in V\n"
+            "  S = c0\n"
+            "end"
+        )
+    )
+    model.initialize([_a("BW", 71.0)])
+    r = model.r_loaded
+    assert r["V"] == pytest.approx(7.1)
+    assert r["[S]"] == pytest.approx(50.0)
+    assert r["S"] == pytest.approx(50.0 * 7.1)
+
+
 def test_events_and_a_start_other_than_zero_are_reported(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

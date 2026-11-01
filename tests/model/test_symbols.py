@@ -57,7 +57,30 @@ def test_dependencies_with_sciml_imported() -> None:
 
     symbols = ModelSymbols.from_sbml(sbml())
     assert symbols.initial_assignment_dependencies is not None
-    assert symbols.initial_assignment_dependencies["B"] == frozenset({"b0"})
+    assert symbols.initial_assignment_dependencies["B"] == frozenset({"b0", "C"})
+
+
+def test_an_initial_concentration_depends_on_its_compartment() -> None:
+    """An initial concentration depends on its compartment and its rule (#344)."""
+    symbols = ModelSymbols.from_sbml(
+        sbml(
+            "model c\n"
+            "  BW = 75; f = 0.1; c0 = 50\n"
+            "  compartment V, W = 2\n"
+            "  V := BW * f\n"
+            "  species S in V\n"
+            "  species T in W\n"
+            "  substanceOnly species A in V\n"
+            "  S = c0; T = c0; A = c0\n"
+            "end"
+        )
+    )
+    dependencies = symbols.initial_assignment_dependencies
+    assert dependencies is not None
+    assert dependencies["S"] == frozenset({"c0", "V", "BW", "f"})
+    assert dependencies["T"] == frozenset({"c0", "W"})
+    # an amount does not depend on its compartment
+    assert dependencies["A"] == frozenset({"c0"})
 
 
 def test_the_math_of_an_event_has_no_units() -> None:
