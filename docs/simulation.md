@@ -360,4 +360,4 @@ Interpolation onto a grid (`time=` of `Simulator.run`, `ScanResult.interpolate`)
 
 A parameter fit compares data at the time of a change with the state before it by default, see [Parameter fitting](fitting.md#data-at-the-time-of-a-change).
 
-Some events cannot fire right after a change: an event with a delay, and an event whose math `sbmlsim` cannot evaluate, e.g. a trigger with a function definition. They are reported with a warning that names the event. During the integration roadrunner fires them as usual.
+Some events cannot fire right after a change: an event with a delay, and an event whose math `sbmlsim` cannot evaluate, e.g. a trigger with `floor`. They are reported with a warning that names the event. During the integration roadrunner fires them as usual.

@@ -120,7 +120,7 @@ def test_events_which_trigger_each_other_stop_at_the_limit(
     assert f"more than {MAX_EXECUTIONS_PER_EVENT} times" in cycles[0]
 
 
-@pytest.mark.parametrize("priority", ["floor(20.5)", "twice(10)"])
+@pytest.mark.parametrize("priority", ["floor(20.5)", "ceiling(20.5)"])
 def test_a_priority_the_simulator_cannot_evaluate_counts_as_zero(
     priority: str, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -129,7 +129,6 @@ def test_a_priority_the_simulator_cannot_evaluate_counts_as_zero(
         "unknown: at (q > 0), t0=true: X=1;\n"
         "known: at (q > 0), t0=true: X=10;",
         {"unknown": priority, "known": "1"},
-        functions="function twice(x)\n  2*x\nend",
     )
     with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
         assert _run(doc, "X") == [0, 0, 1, 1]
@@ -172,10 +171,9 @@ def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
     """A change cannot fire the event, the warning names it, once per model."""
     doc = _document(
         "q=0; X=0;\n"
-        "unknown: at (twice(q) > 1), t0=true: X=1;\n"
+        "unknown: at (floor(q) > 1), t0=true: X=1;\n"
         "known: at (q > 0), t0=true: X=10;",
         {},
-        functions="function twice(x)\n  2*x\nend",
     )
     model = RoadrunnerSBMLModel(
         source=libsbml.writeSBMLToString(doc), selections=["time", "X"]
@@ -190,7 +188,7 @@ def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
     warnings = [r.getMessage() for r in caplog.records if "trigger" in r.getMessage()]
     assert len(warnings) == 1
     assert "'unknown'" in warnings[0]
-    assert "twice(q) > 1" in warnings[0]
+    assert "floor(q) > 1" in warnings[0]
 
 
 def _fired(doc: libsbml.SBMLDocument, selections: list[str]) -> dict[str, float]:
@@ -244,3 +242,70 @@ def test_a_logarithm_to_a_base_in_an_event() -> None:
     assert _fired(doc, ["X", "Y", "Z"]) == pytest.approx(
         {"X": 3.0, "Y": 2.0, "Z": 3.0}, rel=1e-15
     )
+
+
+def _math(formula: str) -> libsbml.ASTNode:
+    """Parse math with the functions of SBML Level 3 Version 2."""
+    settings = libsbml.L3ParserSettings()
+    settings.setParseL3v2Functions(True)
+    return libsbml.parseL3FormulaWithSettings(formula, settings)
+
+
+@pytest.mark.parametrize(
+    "trigger", ["xor(q > 3, q > 10)", "geq(q, 4, 3)", "twice(q) > 8"]
+)
+def test_a_change_fires_an_event_with_math_which_petab_writes_otherwise(
+    trigger: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`xor`, a relation of three arguments and a function definition (#299)."""
+    doc = _document(
+        "q=0; X=0;\nE: at (q > 3), t0=false: X=1;",
+        {},
+        functions="function twice(x)\n  2*x\nend",
+    )
+    doc.getModel().getEvent("E").getTrigger().setMath(_math(trigger))
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+        assert _fired(doc, ["X"]) == {"X": 1.0}
+    assert not [r for r in caplog.records if "trigger" in r.getMessage()]
+
+
+@pytest.mark.parametrize(
+    "trigger",
+    [
+        "floor(q) > 1",
+        "ceiling(q) > 1",
+        "factorial(q) > 1",
+        "quotient(q, 1) > 1",
+        "rem(q, 7) > 1",
+        "q > notanumber",
+        "rateOf(q) > 1",
+        "root(3, q) > 1",
+    ],
+)
+def test_a_trigger_of_math_which_petab_does_not_express_is_still_reported(
+    trigger: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The math of SBML which #299 does not rewrite is reported, not fired."""
+    doc = _document("q=0; X=0;\nE: at (q > 3), t0=false: X=1;", {})
+    doc.getModel().getEvent("E").getTrigger().setMath(_math(trigger))
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+        _fired(doc, ["X"])
+    warnings = [r.getMessage() for r in caplog.records if "trigger" in r.getMessage()]
+    assert len(warnings) == 1
+    assert "'E'" in warnings[0]
+
+
+@pytest.mark.parametrize("trigger", ["sqrt(q) > 1", "root(3, q) > 1"])
+def test_a_root_of_a_negative_value_in_a_trigger_does_not_raise(
+    trigger: str,
+) -> None:
+    """A root of a negative value is no error of a change."""
+    doc = _document("q=0; X=0;\nE: at (q > 3), t0=false: X=1;", {})
+    doc.getModel().getEvent("E").getTrigger().setMath(_math(trigger))
+    model = RoadrunnerSBMLModel(
+        source=libsbml.writeSBMLToString(doc), selections=["time", "X"]
+    )
+    result = Simulator(n_workers=1).simulate(
+        model, Simulation(end=2, changes=[Change(1, {"q": -8})], times=[0, 1, 2])
+    )
+    assert result["X"].tolist() == [0, 0, 0, 0]

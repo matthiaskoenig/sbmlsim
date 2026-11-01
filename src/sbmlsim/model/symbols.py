@@ -12,6 +12,7 @@ at all.
 
 from __future__ import annotations
 
+import itertools
 import math
 import re
 from dataclasses import dataclass
@@ -32,9 +33,9 @@ class EventSymbols:
         eid: id of the event.
         trigger: the trigger, a formula of selections, see
             `sbmlsim.simulator.formula`, `None` without a trigger. A trigger
-            which is no formula the simulator evaluates, e.g. one with a
-            function definition, is reported by the executor and a change
-            does not fire its event.
+            which is no formula the simulator evaluates, e.g. one with
+            `floor`, is reported by the executor and a change does not fire
+            its event.
         delayed: whether the event has a delay.
         assignments: the selection and the formula of every assignment.
         priority: the priority formula, or `None` without a priority.
@@ -169,7 +170,9 @@ class ModelSymbols:
             time_dependent=any(_reads_time(m) for m in maths)
             or any(event.isSetDelay() for event in model.getListOfEvents()),
             events=tuple(
-                _event_symbols(event, concentration_species)
+                _event_symbols(
+                    event, concentration_species, model.getListOfFunctionDefinitions()
+                )
                 for event in model.getListOfEvents()
             ),
             initial_assignment_order=_order(dependencies),
@@ -336,11 +339,25 @@ _IDENTIFIER = re.compile(r"(?<![\w\[])([A-Za-z_]\w*)(?![\w\]])")
 
 #: the constants of SBML which the math of PEtab reads as identifiers, by
 #: their name; `avogadro` has the value roadrunner evaluates, the one of SBML
-#: Level 3 Version 1
+#: Level 3 Version 1, `infinity` is written as `inf`
 _CONSTANTS: dict[str, float] = {
     "pi": math.pi,
     "exponentiale": math.e,
     "avogadro": 6.02214179e23,
+    "infinity": math.inf,
+}
+
+#: the inverse trigonometric functions which libsbml writes by their names of
+#: SBML Level 1 (`asin`), which are no functions of the math of PEtab
+_ARCS = frozenset({"arcsin", "arccos", "arctan"})
+
+#: the relations of SBML with more than two arguments, by their name
+_RELATIONS: dict[str, int] = {
+    "eq": libsbml.AST_RELATIONAL_EQ,
+    "gt": libsbml.AST_RELATIONAL_GT,
+    "lt": libsbml.AST_RELATIONAL_LT,
+    "geq": libsbml.AST_RELATIONAL_GEQ,
+    "leq": libsbml.AST_RELATIONAL_LEQ,
 }
 
 #: the prefix of the name which stands for a constant while the math is written
@@ -350,15 +367,37 @@ _CONSTANT = "sbmlsim_constant__"
 _AVOGADRO = "http://www.sbml.org/sbml/symbols/avogadro"
 
 
+def _detach(node: libsbml.ASTNode) -> list[libsbml.ASTNode]:
+    """Remove the children of a node, which are returned as copies."""
+    children = [node.getChild(k).deepCopy() for k in range(node.getNumChildren())]
+    while node.getNumChildren():
+        node.removeChild(0, True)
+    return children
+
+
+def _node(kind: int, *children: libsbml.ASTNode) -> libsbml.ASTNode:
+    """Get a new node of an operator with copies of children."""
+    node = libsbml.ASTNode(kind)
+    for child in children:
+        node.addChild(child.deepCopy())
+    return node
+
+
 def _as_petab(node: libsbml.ASTNode) -> None:
     """Rewrite math of SBML in place into the form the math of PEtab reads.
 
-    A constant of SBML (`pi`, `exponentiale`, `avogadro`), which PEtab reads
-    as an identifier, becomes a name which `_selections` replaces by its
-    value. A logarithm to a base has the base first in SBML (`log(2, x)`) and
-    last in PEtab (`log(x, 2)`), so its children are swapped; `log10(x)` is
-    left as it is. The nodes are recognized by their names and definition
-    URLs, not by their types, see `_names`.
+    A constant of SBML (`pi`, `exponentiale`, `avogadro`, `infinity`), which
+    PEtab reads as an identifier, becomes a name which `_selections` replaces
+    by its value. A logarithm to a base has the base first in SBML
+    (`log(2, x)`) and last in PEtab (`log(x, 2)`), so its children are
+    swapped; `log10(x)` is left as it is. `arcsin`, `arccos` and `arctan`
+    keep their names, which libsbml writes as `asin`, `acos` and `atan`. A
+    relation of more than two arguments is the conjunction of its pairs,
+    `geq(a, b, c)` is `a >= b && b >= c`; one of two arguments is left as it
+    is. `xor` is true for an odd number of true arguments, `xor(p, q, r)` is
+    `(p != q) != r`, and `implies(p, q)` is `!p || q`. The nodes are
+    recognized by their names, definition URLs and predicates, not by their
+    types, see `_names`.
 
     Args:
         node: the math, a copy which is changed.
@@ -366,24 +405,50 @@ def _as_petab(node: libsbml.ASTNode) -> None:
     stack = [node]
     while stack:
         n = stack.pop()
-        stack.extend(n.getChild(k) for k in range(n.getNumChildren()))
+        name = n.getName()
         if n.getDefinitionURLString() == _AVOGADRO:
             constant = "avogadro"
-        elif n.isConstant() and not n.isName() and n.getName() in _CONSTANTS:
-            constant = n.getName()
+        elif n.isInfinity():
+            constant = "infinity"
+        elif n.isConstant() and not n.isName() and name in _CONSTANTS:
+            constant = name
         else:
             constant = None
         if constant is not None:
             n.setType(libsbml.AST_NAME)
             n.setName(f"{_CONSTANT}{constant}")
-        elif n.getName() == "log" and n.getNumChildren() == 2 and not n.isLog10():
+        elif name == "log" and n.getNumChildren() == 2 and not n.isLog10():
             base = n.getChild(0)
             n.removeChild(0)
             n.addChild(base)
+        elif n.isFunction() and not n.isUserFunction() and name in _ARCS:
+            n.setType(libsbml.AST_FUNCTION)
+            n.setName(name)
+        elif n.isRelational() and name in _RELATIONS and n.getNumChildren() > 2:
+            children = _detach(n)
+            n.setType(libsbml.AST_LOGICAL_AND)
+            for left, right in itertools.pairwise(children):
+                n.addChild(_node(_RELATIONS[name], left, right))
+        elif n.isLogical() and name == "xor" and n.getNumChildren() >= 2:
+            first, *others, last = _detach(n)
+            for other in others:
+                first = _node(libsbml.AST_RELATIONAL_NEQ, first, other)
+            n.setType(libsbml.AST_RELATIONAL_NEQ)
+            n.addChild(first.deepCopy())
+            n.addChild(last.deepCopy())
+        elif n.isLogical() and name == "implies" and n.getNumChildren() == 2:
+            premise, conclusion = _detach(n)
+            n.setType(libsbml.AST_LOGICAL_OR)
+            n.addChild(_node(libsbml.AST_LOGICAL_NOT, premise))
+            n.addChild(conclusion.deepCopy())
+        # the children after the rewrite, which may have replaced them
+        stack.extend(n.getChild(k) for k in range(n.getNumChildren()))
 
 
 def _selections(
-    math: libsbml.ASTNode | None, concentrations: frozenset[str]
+    math: libsbml.ASTNode | None,
+    concentrations: frozenset[str],
+    functions: libsbml.ListOfFunctionDefinitions | None = None,
 ) -> str | None:
     """Get the math of a model as a formula of selections.
 
@@ -392,12 +457,14 @@ def _selections(
     number is written without its unit, which libsbml writes after the
     number (`0.5 dimensionless`, as on every number of a model of
     sbmlutils), which is no math of PEtab and does not change the value. A
-    constant of SBML is its value, and a logarithm to a base has the base as
-    its second argument, see `_as_petab`.
+    call of a function definition is replaced by its body, also in the body
+    of another, and the functions of SBML which the math of PEtab names
+    otherwise or does not have are rewritten, see `_as_petab`.
 
     Args:
         math: the math.
         concentrations: the species which are concentrations in the math.
+        functions: the function definitions of the model.
 
     Returns:
         The formula, `None` without math.
@@ -405,6 +472,8 @@ def _selections(
     if math is None:
         return None
     petab: libsbml.ASTNode = math.deepCopy()
+    if functions is not None:
+        libsbml.SBMLTransforms.replaceFD(petab, functions)
     _as_petab(petab)
     settings = libsbml.L3ParserSettings()
     settings.setParseUnits(False)
@@ -420,25 +489,27 @@ def _selections(
 
 
 def _event_symbols(
-    event: libsbml.Event, concentrations: frozenset[str]
+    event: libsbml.Event,
+    concentrations: frozenset[str],
+    functions: libsbml.ListOfFunctionDefinitions,
 ) -> EventSymbols:
-    """Read an event of a model."""
+    """Read an event of a model with the function definitions of the model."""
     trigger: libsbml.Trigger | None = event.getTrigger()
     assignments = []
     for assignment in event.getListOfEventAssignments():
         variable = assignment.getVariable()
         target = f"[{variable}]" if variable in concentrations else variable
-        formula = _selections(assignment.getMath(), concentrations)
+        formula = _selections(assignment.getMath(), concentrations, functions)
         if formula is not None:
             assignments.append((target, formula))
     return EventSymbols(
         eid=event.getId(),
         trigger=None
         if trigger is None
-        else _selections(trigger.getMath(), concentrations),
+        else _selections(trigger.getMath(), concentrations, functions),
         delayed=event.isSetDelay(),
         assignments=tuple(assignments),
-        priority=_selections(event.getPriority().getMath(), concentrations)
+        priority=_selections(event.getPriority().getMath(), concentrations, functions)
         if event.isSetPriority()
         else None,
         use_values_from_trigger_time=event.getUseValuesFromTriggerTime(),
