@@ -2,7 +2,7 @@
 
 The [PEtab benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab) is a set of parameter estimation problems of published systems biology models. Each problem has its model, its data and the simulations at the nominal parameters (`simulations.tsv`). Other people wrote these problems, so they test the [PEtab](petab.md) reader of `sbmlsim` on real files, and the simulations of the collection are the reference to compare with.
 
-`sbmlsim` reads PEtab v2 only. The collection has every problem in PEtab v1 and some also in PEtab v2 (`Boehm_JProteomeRes2014` and `Schwen_PONE2014` at the pinned commit): a problem is run in its encoding of PEtab v2 where the collection has one, and converted from PEtab v1 otherwise. Of the 35 problems of the pinned commit, all are read, and 28 agree with the collection and with AMICI. The other seven are explained [below](#problems-that-do-not-pass).
+`sbmlsim` reads PEtab v2 only. The collection has every problem in PEtab v1 and some also in PEtab v2 (`Boehm_JProteomeRes2014` and `Schwen_PONE2014` at the pinned commit): a problem is run in its encoding of PEtab v2 where the collection has one, and converted from PEtab v1 otherwise. The pinned commit is the newest of the collection and the log-likelihoods of AMICI are the ones of its release v1.2.0. Of the 35 problems, `Froehlich_CellSystems2018` is left out, its 9169 experiments with a pre-equilibration each take longer than the 600 seconds a problem gets (`EXCLUDED_PROBLEMS`). The other 34 are read, and 28 agree with the collection and with AMICI. The other six are explained [below](#problems-that-do-not-pass).
 
 ## Running the collection
 
@@ -15,7 +15,7 @@ uv run pytest -m petab_benchmark tests/fit                                      
 tox r -e benchmark                                                                     # download, then run the tests
 ```
 
-`--problems` runs only the named problems. Every problem gets at most 600 seconds.
+`--problems` runs only the named problems, also an excluded one. Every problem gets at most 600 seconds.
 
 `download` fetches the pinned commit into `~/.cache/sbmlsim/petab-benchmark/<commit>/` (`SBMLSIM_BENCHMARK_PATH` points elsewhere), writes every problem in PEtab v2 into `v2/<problem>` (its encoding of PEtab v2, or its encoding of PEtab v1 converted with `petab.v2.petab1to2`) and fetches the log-likelihoods that AMICI reports for the problems. The simulations of the collection are tables of PEtab v1, they are converted with the problem: the problem with the simulations in place of its measurements is converted as well, so the simulations get the experiments of PEtab v2 that the conversion gives the measurements (`sbmlsim.fit.petab_v2.conversion`). After the download nothing reads PEtab v1. A run then reads each problem, simulates it once at the nominal values of its parameter table and compares:
 
@@ -30,18 +30,19 @@ The code is `sbmlsim.fit.petab_v2.benchmark`. The tests are marked `petab_benchm
 
 ## Problems that do not pass
 
-`tests/data/benchmark_baseline.json` lists the seven problems that do not pass, each with the reason. The tests and `run` compare with it in both directions.
+`tests/data/benchmark_baseline.json` lists the six problems that do not pass, each with the reason. The tests and `run` compare with it in both directions.
 
-In five of them the simulations of the collection are wrong, while `sbmlsim` agrees with AMICI or with plain roadrunner:
+In four of them the simulations of the collection are wrong, while `sbmlsim` agrees with AMICI or with an independent integrator; they are reported upstream ([Benchmark-Models-PEtab#278](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/issues/278), [#181](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/issues/181)):
 
-- `Crauste_CellSystems2017`, `Fujita_SciSignal2010` and `Sneyd_PNAS2002`: the simulations of the collection differ, while the log-likelihood agrees with AMICI.
+- `Fujita_SciSignal2010` and `Sneyd_PNAS2002`: the simulations of the collection differ, while the log-likelihood agrees with AMICI; the log-likelihood of the simulations of the collection does not.
 - `Zheng_PNAS2012`: the simulations of the collection are its measurements. The log-likelihood agrees with AMICI.
-- `Perelson_Science1996`: the simulations of the collection are not at the nominal parameters. roadrunner without `sbmlsim` gives the same values as `sbmlsim`.
+- `Perelson_Science1996`: the simulations of the collection are not at the nominal parameters. roadrunner without `sbmlsim` and SciPy give the same values as `sbmlsim`.
 
-The other two:
+`Crauste_CellSystems2017` needs a tighter integrator (`PROBLEM_SETTINGS`, `EarlyEffector` grows towards a blow up in finite time), with which its simulations agree with the collection; its log-likelihood, which the simulations of the collection give as well, differs from the one of AMICI by `1.2e-3`, just above the tolerance.
+
+The other one:
 
 - `Chen_MSB2009`: a few simulations differ by up to 0.28 % and the log-likelihood differs from AMICI. Tighter tolerances do not change it.
-- `Froehlich_CellSystems2018`: 9169 experiments, each with a pre-equilibration, take longer than the 600 seconds a problem gets.
 
 ## Fitting a problem of the collection
 

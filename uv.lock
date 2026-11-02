@@ -2298,7 +2298,7 @@ requires-dist = [
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.9" },
     { name = "numpy", specifier = ">=2.5.3" },
     { name = "pandas", specifier = ">=3.0.6" },
-    { name = "petab", specifier = ">=0.9.0" },
+    { name = "petab", specifier = ">=0.10.0" },
     { name = "petab-sciml", marker = "extra == 'dev'", specifier = ">=0.0.3" },
     { name = "petab-sciml", marker = "extra == 'sciml'", specifier = ">=0.0.3" },
     { name = "pillow", specifier = ">=13.0.0" },

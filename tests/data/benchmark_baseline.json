@@ -1,6 +1,6 @@
 {
   "suite_commit": "c44d5ede9bf979db5aa8ae4e94fc31fba9776675",
-  "n_cases": 35,
+  "n_cases": 34,
   "n_passed": 28,
   "expected_failures": {
     "Chen_MSB2009": {
@@ -9,27 +9,23 @@
     },
     "Crauste_CellSystems2017": {
       "status": "tolerance",
-      "reason": "the simulations of the collection differ by up to 1.7 % (6382 against 6489); the log-likelihood agrees with AMICI (-190.96554 against -190.96522), the simulations of the collection are off"
-    },
-    "Froehlich_CellSystems2018": {
-      "status": "error",
-      "reason": "takes more than the 600 s of the script: 9169 experiments with a pre-equilibration each, 28 s per experiment in the integration to the steady state (reading and initializing take 100 s); phase 4, a Newton steady state and one pre-equilibration per distinct condition"
+      "reason": "the simulations agree with the collection at the tolerances 1e-14 and 1e-12 of the problem (PROBLEM_SETTINGS; EarlyEffector grows towards a blow up in finite time); the log-likelihood -190.96398, which the simulations of the collection give as well, differs from the one of AMICI v1.2.0 (-190.96522) by 1.2e-3, just above the tolerance"
     },
     "Fujita_SciSignal2010": {
       "status": "tolerance",
-      "reason": "the simulations of the collection differ by up to 0.5 % (0.0045); the log-likelihood agrees with AMICI (53.08345 against 53.08378), the simulations of the collection are off"
+      "reason": "the simulations of the collection differ by up to 0.5 % (0.0045) in 15 of 144 measurements of pAkt_tot and pEGFR_tot; the log-likelihood agrees with AMICI (53.08377 against 53.08378 at the tolerances 1e-14 and 1e-12), the one of the simulations of the collection is 52.84, so they are off; reported upstream"
     },
     "Perelson_Science1996": {
       "status": "tolerance",
-      "reason": "the simulations of the collection are not the ones of the model at the nominal parameters: roadrunner without sbmlsim gives V(0.169) = 1.857e6 as sbmlsim does, the collection 2.036e6; AMICI has no log-likelihood of the problem"
+      "reason": "the simulations of the collection are not the ones of the model at the nominal parameters: sbmlsim, roadrunner alone and SciPy (Radau, rtol 1e-12) give V(0.169) = 1.857e6, the collection 2.036e6; AMICI has no log-likelihood of the problem; reported upstream"
     },
     "Sneyd_PNAS2002": {
       "status": "tolerance",
-      "reason": "the simulations of the collection differ in the conditions Ca_dose_response__5 and __6 by up to 0.027; the log-likelihood agrees with AMICI (319.791776 against 319.791778), the simulations of the collection are off"
+      "reason": "the simulations of the collection differ in the conditions Ca_dose_response__5 and __6 by up to 0.027; the log-likelihood agrees with AMICI (319.791777 against 319.791778), the one of the simulations of the collection is 321.36, so they are off; reported upstream"
     },
     "Zheng_PNAS2012": {
       "status": "tolerance",
-      "reason": "the simulations of the collection are its measurements; the log-likelihood agrees with AMICI (278.333556 against 278.333533)"
+      "reason": "the simulations of the collection are its measurements (Benchmark-Models-PEtab#181); the log-likelihood agrees with AMICI (278.333560 against 278.333533)"
     }
   }
 }

@@ -61,9 +61,10 @@ dependencies = [
 	"pint>=0.26.1",
 	"pydantic>=2.14.1",
 	# parameter fitting and sensitivity analysis
-	# `SbmlModel` is imported from `petab.v2.models`, which 0.9.0 has as well;
-	# petab 0.10.0 removed `petab.models`, from which sbmlsim 0.14.0 imported it
-	"petab>=0.9.0",
+	# 0.10.0 converts an observable on the scale `log10` of PEtab v1 to the
+	# log-normal noise of the same density (`petab1to2`), which the test suite
+	# and the benchmark collection compare the log-likelihood of
+	"petab>=0.10.0",
 	"SALib>=1.6.0",
 	# the non-compartmental analysis of the PK observables of a scan, imported
 	# when a PK observable is compiled
