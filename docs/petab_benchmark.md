@@ -32,7 +32,7 @@ The code is `sbmlsim.fit.petab_v2.benchmark`. The tests are marked `petab_benchm
 
 `tests/data/benchmark_baseline.json` lists the six problems that do not pass, each with the reason. The tests and `run` compare with it in both directions.
 
-In four of them the simulations of the collection are wrong, while `sbmlsim` agrees with AMICI or with an independent integrator; they are reported upstream ([Benchmark-Models-PEtab#278](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/issues/278), [#181](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/issues/181)):
+In four of them the simulations of the collection are wrong, while `sbmlsim` agrees with AMICI or with an independent integrator; they are reported upstream ([Benchmark-Models-PEtab#278](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/issues/278), [#181](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/issues/181)) and regenerated in [#343](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/pull/343):
 
 - `Fujita_SciSignal2010` and `Sneyd_PNAS2002`: the simulations of the collection differ, while the log-likelihood agrees with AMICI; the log-likelihood of the simulations of the collection does not.
 - `Zheng_PNAS2012`: the simulations of the collection are its measurements. The log-likelihood agrees with AMICI.
@@ -42,7 +42,7 @@ In four of them the simulations of the collection are wrong, while `sbmlsim` agr
 
 The other one:
 
-- `Chen_MSB2009`: a few simulations differ by up to 0.28 % and the log-likelihood differs from AMICI. Tighter tolerances do not change it.
+- `Chen_MSB2009`: `sbmlsim` agrees with AMICI 1.2.0 on all 120 simulations to `4e-6` and on the log-likelihood, `-130591.753`, which AMICI 1.2.0 computes at every tolerance from `1e-8` to `1e-16`. The simulations of the collection differ by up to 0.28 % in five of them ([Benchmark-Models-PEtab#343](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/pull/343) regenerates them), and the reference log-likelihood of AMICI, `-115700.119`, is stale ([AMICI-dev/AMICI#3503](https://github.com/AMICI-dev/AMICI/issues/3503)).
 
 ## Fitting a problem of the collection
 
