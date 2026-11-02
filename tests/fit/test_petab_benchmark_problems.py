@@ -17,6 +17,7 @@ import yaml
 from sbmlsim.fit.petab_v2.benchmark import (
     BENCHMARK_COMMIT,
     BENCHMARK_SETTINGS,
+    EXCLUDED_PROBLEMS,
     BenchmarkCollection,
     BenchmarkProblem,
     BenchmarkStatus,
@@ -347,3 +348,16 @@ def test_a_time_limit_without_a_posix_timer(
         result = problem.run(timeout=1e-4)
     assert result.status is BenchmarkStatus.PASS, result.message
     assert any("time limit" in r.getMessage() for r in caplog.records)
+
+
+def test_an_excluded_problem_is_not_listed(tmp_path: Path) -> None:
+    """A problem which takes too long is left out unless it is asked for."""
+    _problem(tmp_path, "A_First")
+    (tmp_path / "problems" / "Froehlich_CellSystems2018" / "v1").mkdir(parents=True)
+    collection = BenchmarkCollection(path=tmp_path, commit="abc")
+    assert "Froehlich_CellSystems2018" in EXCLUDED_PROBLEMS
+    assert collection.problem_names() == ["A_First"]
+    assert collection.problem_names(excluded=True) == [
+        "A_First",
+        "Froehlich_CellSystems2018",
+    ]

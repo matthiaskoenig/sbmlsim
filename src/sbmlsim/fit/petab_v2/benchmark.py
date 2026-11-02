@@ -11,7 +11,8 @@ converted with it, see `sbmlsim.fit.petab_v2.conversion`. The problem is read
 with `PetabReader`, simulated at the nominal values of its parameter table
 and compared with the simulations of the collection; where AMICI states the
 log-likelihood of the problem (`tests/benchmark_models/benchmark_models.yaml`
-of AMICI), it is compared too.
+of AMICI), it is compared too. The problems of `EXCLUDED_PROBLEMS` take too
+long and are left out.
 
 | status | meaning |
 | --- | --- |
@@ -73,8 +74,18 @@ BENCHMARK_URL = (
 #: the cache, i.e. at a directory with `problems` and `v2`
 BENCHMARK_PATH_VARIABLE = "SBMLSIM_BENCHMARK_PATH"
 
-#: commit of AMICI whose log-likelihoods of the problems are the references
-AMICI_COMMIT = "71da5627a8a3e6728121a0aa89e2a7d2182d2442"
+#: commit of AMICI whose log-likelihoods of the problems are the references,
+#: the release v1.2.0
+AMICI_COMMIT = "b15fed818801c8eea6fbbfadb18f0ab39c5922b8"
+
+#: the problems of the collection which are not run, with the reason; the
+#: script, the tests and `BenchmarkCollection.run` leave them out unless they
+#: are named
+EXCLUDED_PROBLEMS: dict[str, str] = {
+    "Froehlich_CellSystems2018": "9169 experiments with a pre-equilibration "
+    "each take longer than the 600 s a problem gets (28 s per experiment to "
+    "the steady state)",
+}
 
 #: the log-likelihoods of AMICI at a commit
 AMICI_URL = (
@@ -108,6 +119,20 @@ BENCHMARK_SETTINGS = FitSettings(
     relative_tolerance=1e-8,
     data_at_change=DataAtChangeType.AFTER,
 )
+
+#: the settings of the problems which need a tighter integrator than
+#: `BENCHMARK_SETTINGS`: `EarlyEffector` of `Crauste_CellSystems2017` grows
+#: towards a blow up in finite time, at the tolerances of `BENCHMARK_SETTINGS`
+#: its simulations are off by up to 1.7 %, at these they agree with the
+#: collection
+PROBLEM_SETTINGS: dict[str, FitSettings] = {
+    "Crauste_CellSystems2017": FitSettings(
+        parameter_scale=ParameterScaleType.LINEAR,
+        absolute_tolerance=1e-14,
+        relative_tolerance=1e-12,
+        data_at_change=DataAtChangeType.AFTER,
+    ),
+}
 
 #: the columns which identify the simulation of a measurement
 _KEY_COLUMNS: tuple[str, ...] = ("observableId", "experimentId", "time")
@@ -341,14 +366,15 @@ class BenchmarkProblem:
     def run(
         self,
         llh_reference: float | None = None,
-        settings: FitSettings = BENCHMARK_SETTINGS,
+        settings: FitSettings | None = None,
         timeout: float | None = None,
     ) -> BenchmarkResult:
         """Read, simulate and compare the problem.
 
         Args:
             llh_reference: the log-likelihood of AMICI, which is compared.
-            settings: the settings the problem is simulated with.
+            settings: the settings the problem is simulated with, by default
+                the ones of `PROBLEM_SETTINGS` or `BENCHMARK_SETTINGS`.
             timeout: the seconds the problem may take, a problem which takes
                 longer is an error. The time is measured with the timer
                 `ITIMER_REAL` of the process, so a time limit needs the main
@@ -359,6 +385,8 @@ class BenchmarkProblem:
         Returns:
             The outcome.
         """
+        if settings is None:
+            settings = PROBLEM_SETTINGS.get(self.name, BENCHMARK_SETTINGS)
         if not self.v2_dir.is_dir():
             message = (
                 self.conversion_error.read_text(encoding="utf-8").strip()
@@ -620,15 +648,21 @@ class BenchmarkCollection:
             f"No directory '{PROBLEMS}' in the unpacked collection '{staging}'"
         )
 
-    def problem_names(self) -> list[str]:
-        """Get the names of the problems, sorted."""
+    def problem_names(self, excluded: bool = False) -> list[str]:
+        """Get the names of the problems, sorted.
+
+        Args:
+            excluded: whether the problems of `EXCLUDED_PROBLEMS` are listed,
+                which are neither converted nor run by default.
+        """
         directory = self.path / PROBLEMS
         if not directory.is_dir():
             return []
         return sorted(
             p.name
             for p in directory.iterdir()
-            if (p / V1_DIR).is_dir() or (p / V2_DIR).is_dir()
+            if ((p / V1_DIR).is_dir() or (p / V2_DIR).is_dir())
+            and (excluded or p.name not in EXCLUDED_PROBLEMS)
         )
 
     def problem(self, name: str) -> BenchmarkProblem:
