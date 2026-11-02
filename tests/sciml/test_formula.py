@@ -354,3 +354,22 @@ def test_a_formula_without_a_real_value(formula: str, variables: dict) -> None:
 def test_the_remainder_by_zero_is_not_defined(formula: str) -> None:
     """A literal zero divisor is not simplified away."""
     assert np.isnan(evaluate_formula(formula, {"x": 7.0}))
+
+
+@pytest.mark.parametrize(
+    ("formula", "expected"),
+    [
+        ("q / 49", 1.0),
+        ("rem(q, 49)", 0.0),
+        ("quotient(q, 49)", 1.0),
+        ("1.1e-5 * q", 1.1e-5 * 49.0),
+        ("avogadro / 1e23", 6.02214179e23 / 1e23),
+    ],
+)
+def test_the_operations_of_a_formula_are_kept(formula: str, expected: float) -> None:
+    """A division is no product with the inverse, a number is its double (#420).
+
+    `q * (1/49)` is less than 1 for `q = 49`, the remainder 49 and the
+    quotient 0; the Avogadro constant has the value roadrunner evaluates.
+    """
+    assert evaluate_formula(formula, {"q": 49.0}) == expected
