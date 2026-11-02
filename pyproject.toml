@@ -61,6 +61,8 @@ dependencies = [
 	"pint>=0.26.1",
 	"pydantic>=2.14.1",
 	# parameter fitting and sensitivity analysis
+	# `SbmlModel` is imported from `petab.v2.models`, which 0.9.0 has as well;
+	# petab 0.10.0 removed `petab.models`, from which sbmlsim 0.14.0 imported it
 	"petab>=0.9.0",
 	"SALib>=1.6.0",
 	# the non-compartmental analysis of the PK observables of a scan, imported
@@ -70,6 +72,10 @@ dependencies = [
 	"pyyaml>=6.0.3",
 	# plots and reports
 	"matplotlib>=3.11.2",
+	# not imported: the images of matplotlib; 13.0.0 fixes the advisories of
+	# 12.3.0, among them the critical GHSA-5x8w-8jj5-q52h, GHSA-332p-7hrc-92wf,
+	# GHSA-8g5g-8vmr-9782, GHSA-v9pv-5gc8-w2m6 and GHSA-w889-685w-c8fh
+	"pillow>=13.0.0",
 	"seaborn>=0.13.2",
 	"jinja2>=3.1.6",
 	"rich>=15.0.0",
@@ -96,7 +102,8 @@ dev = [
 	"ruff>=0.16.10",
 	"pre-commit>=4.6.2",
 	"ty>=0.0.85",
-	"tox>=4.64.9",
+	# 4.67.5 rejects its own `.tox/.tmp/package` under umask 002 (tox-dev/tox#4357)
+	"tox>=4.64.9,!=4.67.5",
 	# tox creates its environments with uv, as the continuous integration does;
 	# without the plugin it installs with pip, whose resolver fails on python 3.14
 	"tox-uv>=1.36.1",
