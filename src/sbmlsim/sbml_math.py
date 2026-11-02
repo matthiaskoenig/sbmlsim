@@ -20,6 +20,7 @@ the math is the double of its text.
 from __future__ import annotations
 
 import functools
+from collections.abc import Callable
 from typing import Any
 
 import libsbml
@@ -197,17 +198,22 @@ def math_formula(mathml: str) -> str:
 
 
 @functools.cache
-def compile_math(mathml: str) -> CompiledFormula:
-    """Compile the MathML of SBML whose identifiers are selections, see the module.
+def math_function(mathml: str) -> tuple[tuple[str, ...], Callable[..., Any]]:
+    """Get the numpy function of the MathML of SBML and the names of its arguments.
+
+    The function computes the operations of the math as they are written,
+    `q / 3` and not `(1/3) * q`, and every number is the double of its text.
+    It computes on the values it is given: on numbers python raises for a
+    complex value, an overflow or a division by zero, on arrays numpy gives
+    `nan` and `inf`; `compile_math` gives doubles, as roadrunner computes them.
 
     Args:
-        mathml: the MathML, its identifiers selections of roadrunner, e.g.
-            `[S]` for the concentration of a species; the csymbol of the time
-            is `time`. The units of its numbers are ignored.
+        mathml: the MathML; the csymbol of the time is `time`, the Avogadro
+            constant `AVOGADRO`. The units of its numbers are ignored.
 
     Returns:
-        The compiled math, its `formula` the L3 formula of the math. Its
-        values are doubles, also where numpy would warn or python raise.
+        The names of the identifiers, sorted, and the function of their
+        values, in this order.
 
     Raises:
         ValueError: if the math is not read or uses a function which has no
@@ -249,8 +255,8 @@ def compile_math(mathml: str) -> CompiledFormula:
             }
         )
         symbols = sorted(expression.free_symbols, key=str)
-        # the symbols are arguments by position: a selection is no name of
-        # python
+        # the symbols are arguments by position: an identifier is not always
+        # a name of python, e.g. `lambda` or the selection `[S]`
         arguments = [sympy.Dummy() for _ in symbols]
         function = sympy.lambdify(
             arguments,
@@ -268,13 +274,31 @@ def compile_math(mathml: str) -> CompiledFormula:
                 }
             ),
         )
+    return tuple(str(symbol) for symbol in symbols), function
+
+
+@functools.cache
+def compile_math(mathml: str) -> CompiledFormula:
+    """Compile the MathML of SBML whose identifiers are selections, see the module.
+
+    Args:
+        mathml: the MathML, its identifiers selections of roadrunner, e.g.
+            `[S]` for the concentration of a species, see `math_function`.
+
+    Returns:
+        The compiled math, its `formula` the L3 formula of the math. Its
+        values are doubles, also where numpy would warn or python raise.
+
+    Raises:
+        ValueError: if the math is not read or uses a function which has no
+            value at a time, see `math_function`.
+    """
+    symbols, function = math_function(mathml)
 
     def evaluate(*values: Any) -> Any:
         with np.errstate(all="ignore"):
             return function(*(np.asarray(value, dtype=float) for value in values))
 
     return CompiledFormula(
-        formula=formula,
-        symbols=tuple(str(symbol) for symbol in symbols),
-        _function=evaluate,
+        formula=math_formula(mathml), symbols=symbols, _function=evaluate
     )

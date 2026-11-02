@@ -16,13 +16,34 @@ import libsbml
 import numpy as np
 import sympy
 from sbmlmath import SBMLMathMLPrinter, TimeSymbol
-from sbmlmath.csymbol import SBML_L3V2_AVOGADRO_VALUE, CSymbol
-from sympy import lambdify
+from sbmlmath.csymbol import CSymbol
 
-from sbmlsim.sbml_math import MathMLParser, log10_of_quotient, log_quotient
+from sbmlsim.sbml_math import MathMLParser, log_quotient, math_function
 
 #: the name of the time of the model in the variables of a formula
 TIME = "time"
+
+
+def _mathml(formula: str) -> str:
+    """Get the MathML of an L3 formula of SBML.
+
+    Raises:
+        ValueError: if the formula is empty or is not valid math (units of a
+            number are not).
+    """
+    if not isinstance(formula, str) or not formula.strip():
+        raise ValueError(f"The formula '{formula}' is empty")
+    settings = libsbml.L3ParserSettings()
+    settings.setParseUnits(False)
+    astnode: libsbml.ASTNode | None = libsbml.parseL3FormulaWithSettings(
+        formula, settings
+    )
+    if astnode is None:
+        raise ValueError(
+            f"The formula '{formula}' is not valid math: "
+            f"{libsbml.getLastParseL3Error()}"
+        )
+    return str(libsbml.writeMathMLToString(astnode))
 
 
 def formula_expression(formula: str) -> sympy.Basic:
@@ -47,21 +68,9 @@ def formula_expression(formula: str) -> sympy.Basic:
             number are not) or uses a function which is not a function of
             the MathML of SBML.
     """
-    if not isinstance(formula, str) or not formula.strip():
-        raise ValueError(f"The formula '{formula}' is empty")
-    settings = libsbml.L3ParserSettings()
-    settings.setParseUnits(False)
-    astnode: libsbml.ASTNode | None = libsbml.parseL3FormulaWithSettings(
-        formula, settings
-    )
-    if astnode is None:
-        raise ValueError(
-            f"The formula '{formula}' is not valid math: "
-            f"{libsbml.getLastParseL3Error()}"
-        )
+    mathml = _mathml(formula)
     try:
         # through the text of the MathML, which sbmlmath parses
-        mathml = libsbml.writeMathMLToString(astnode)
         expression = sympy.sympify(MathMLParser(ignore_units=True).parse_str(mathml))
     except Exception as err:
         raise ValueError(
@@ -131,7 +140,9 @@ def _formula_function(formula: str) -> tuple[tuple[str, ...], Any]:
     """Get the function of a formula and the names of its arguments.
 
     The function is built once per formula: a fit evaluates the formulas of
-    its derived changes in every simulation.
+    its derived changes in every simulation. It computes the operations as
+    they are written, `q / 49` and not `q * (1/49)`, and every number is the
+    double of its text, see `sbmlsim.sbml_math.math_function` (#420).
 
     Args:
         formula: the formula.
@@ -144,26 +155,9 @@ def _formula_function(formula: str) -> tuple[tuple[str, ...], Any]:
         ValueError: if the formula is not valid math, see
             `formula_expression`.
     """
-    expression = formula_expression(formula)
-    avogadro = {
-        symbol: sympy.Float(SBML_L3V2_AVOGADRO_VALUE)
-        for symbol in expression.free_symbols
-        if isinstance(symbol, CSymbol)
-    }
-    symbols = _identifiers(expression)
-    # the symbols are arguments by position: an identifier of a model is not
-    # always a name of python, e.g. `lambda`
-    arguments = [sympy.Dummy() for _ in symbols]
-    function = lambdify(
-        args=arguments,
-        expr=log10_of_quotient(
-            expression.xreplace(avogadro).xreplace(
-                dict(zip(symbols, arguments, strict=True))
-            )
-        ),
-        modules=[{"log10": np.log10}, "numpy"],
-    )
-    return tuple(str(symbol) for symbol in symbols), function
+    # the messages of the formula for math which is no math of SBML
+    formula_expression(formula)
+    return math_function(_mathml(formula))
 
 
 def evaluate_formula(formula: str, variables: Mapping[str, Any]) -> Any:
