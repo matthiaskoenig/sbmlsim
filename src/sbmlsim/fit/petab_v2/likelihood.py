@@ -127,6 +127,90 @@ def normalized_residuals(
     return _residual(*_checked(measurement, simulation, sigma, distribution))
 
 
+#: the offset which keeps the square of a residual of the scale of the noise
+#: positive, see `likelihood_residuals`: a scale down to `exp(-50)` is written
+LIKELIHOOD_OFFSET = 100.0
+
+
+def likelihood_offsets(
+    measurement: ArrayLike, distribution: NoiseDistribution = NoiseDistribution.NORMAL
+) -> np.ndarray:
+    """Get the offsets of the residuals of the scale of the noise, see `likelihood_residuals`.
+
+    The offset of a measurement depends on the measurement only, so the sum
+    of the offsets of a problem is the same for every evaluation.
+
+    Args:
+        measurement: the measured values.
+        distribution: distribution of the noise.
+
+    Returns:
+        The offset of every measurement, `LIKELIHOOD_OFFSET` and, for a
+        logarithmic distribution, twice the logarithm of a measurement below
+        `1`, whose density holds the jacobian `1 / m`.
+    """
+    m = np.asarray(measurement, dtype=float)
+    offsets = np.full(m.shape, LIKELIHOOD_OFFSET)
+    if NoiseDistribution(distribution).is_log:
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_m = np.log(m)
+        offsets += np.where(np.isfinite(log_m), np.maximum(0.0, -2.0 * log_m), 0.0)
+    return offsets
+
+
+def likelihood_residuals(
+    measurement: ArrayLike,
+    simulation: ArrayLike,
+    sigma: ArrayLike,
+    distribution: NoiseDistribution = NoiseDistribution.NORMAL,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the residuals whose half sum of squares is the negative log-likelihood.
+
+    A least squares optimizer minimizes `0.5 * sum(r**2)`. The negative log
+    density of a measurement, see `log_density`, is a term of its residual and
+    a term of the scale of its noise, which depends on the parameters when
+    the scale is a parameter of the fit, e.g. `sd_obs`:
+
+        normal, log-normal     -log p = 0.5 res**2 + 0.5 log(2 pi s**2) [+ log m]
+        laplace, log-laplace   -log p = |res|      + log(2 s)          [+ log m]
+
+    with `res` the `normalized_residuals`. Every measurement has two
+    residuals: the one of the data, `res` for the normal distributions and
+    `sign(res) sqrt(2 |res|)` for the Laplace distributions, and the one of the
+    scale, `sqrt(2 t + c)` with `t` the term of the scale and `c` its offset
+    of `likelihood_offsets`, which keeps the square positive. So
+    `0.5 * sum(data**2 + scale**2) - 0.5 * sum(c)` is the negative
+    log-likelihood. A scale whose term is below `-c / 2` (a standard deviation
+    below `exp(-50)`) has the residual 0.
+
+    Args:
+        measurement: the measured values.
+        simulation: the simulated values at the measurements.
+        sigma: scale of the noise, one value or one value per measurement.
+        distribution: distribution of the noise.
+
+    Returns:
+        The residuals of the data and of the scale, one of each per
+        measurement, with the sign of `simulation - measurement`.
+
+    Raises:
+        ValueError: see `log_density`.
+    """
+    m, y, s, distribution = _checked(measurement, simulation, sigma, distribution)
+    residual = -_residual(m, y, s, distribution)
+    term = np.log(s)
+    if distribution.is_log:
+        term = term + np.log(m)
+    if distribution in {NoiseDistribution.NORMAL, NoiseDistribution.LOG_NORMAL}:
+        data = residual
+        term = term + 0.5 * np.log(2.0 * np.pi)
+    else:
+        data = np.sign(residual) * np.sqrt(2.0 * np.abs(residual))
+        term = term + np.log(2.0)
+    scale = np.sqrt(np.maximum(2.0 * term + likelihood_offsets(m, distribution), 0.0))
+    return data, scale
+
+
 def _residual(
     m: np.ndarray, y: np.ndarray, s: np.ndarray, distribution: NoiseDistribution
 ) -> np.ndarray:

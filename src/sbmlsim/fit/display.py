@@ -211,6 +211,7 @@ def settings_table(settings: FitSettings) -> Table:
     )
     table = _table("setting", "value")
     for key, value in [
+        ("objective", settings.objective.value),
         ("residual", settings.residual.name),
         ("loss function", settings.loss_function.name),
         ("weighting curves", weighting_curves),

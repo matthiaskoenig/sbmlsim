@@ -48,7 +48,12 @@ from sbmlsim.fit.objects import (
     Prior,
 )
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
+from sbmlsim.fit.options import (
+    DataAtChangeType,
+    FitSettings,
+    ObjectiveType,
+    ParameterScaleType,
+)
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.petab_v2.extension import (
     SCIML_EXTENSION_ID,
@@ -504,19 +509,25 @@ class PetabReader:
     def settings(self) -> FitSettings:
         """Get the settings of the fit, the defaults without the extension.
 
-        Without the extension a data point at the time of a change is
-        compared with the state after the change, the semantics of PEtab
-        (`DataAtChangeType.AFTER`), and so it is with an extension of a
+        Without the extension the settings are the ones of PEtab: a data
+        point at the time of a change is compared with the state after the
+        change (`DataAtChangeType.AFTER`), and so it is with an extension of a
         version before 0.4.0, whose settings have no `data_at_change`, see
-        `FitSettings.from_dict`.
+        `FitSettings.from_dict`, and the fit minimizes the negative
+        log-likelihood of the noise models (`ObjectiveType.LIKELIHOOD`), so the
+        parameters of the noise are estimated as PEtab defines them.
         """
         if self.extension is None or not self.extension.settings:
             logger.info(
                 "The PEtab problem does not carry the 'sbmlsim' extension, the "
-                "default `FitSettings` with the measurements at the time of a "
-                "change after the change, as PEtab defines them, are used."
+                "`FitSettings` of PEtab are used: the measurements at the time "
+                "of a change after the change and the negative log-likelihood "
+                "as the objective."
             )
-            return FitSettings(data_at_change=DataAtChangeType.AFTER)
+            return FitSettings(
+                data_at_change=DataAtChangeType.AFTER,
+                objective=ObjectiveType.LIKELIHOOD,
+            )
         return FitSettings.from_dict(self.extension.settings)
 
     # --- THE PARTS OF THE SIMULATION EXPERIMENT ---

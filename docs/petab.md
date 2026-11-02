@@ -85,12 +85,12 @@ console.print(gaps_table(gaps_of_problem(problem)))
 The full catalogue is `sbmlsim.fit.petab_v2.gaps`. Each gap has one of three kinds:
 
 - **extension**: PEtab has no place for it and the extension carries it, e.g. the units, the fit settings, the kind of every mapping, the output grid, the metadata of a curve and the integrator settings. This includes the scale the optimizer searches in: PEtab v2 removed the `parameterScale` column, so bounds and start values are written on the linear scale. Another example is `measurement-at-change`: by default `sbmlsim` compares a measurement at the time of a change with the state before the change, while other tools compare it with the state after. The export logs these measurements, and `gaps.measurements_at_changes` lists them per mapping.
-- **lossy**: the information is transformed. The noise model and the priors of PEtab are only evaluated by `sbmlsim`, not fitted. An estimated noise parameter does not change the weighted least squares. The weights of `sbmlsim` are not the standard deviation PEtab uses. The reader builds one simulation experiment for the whole problem, so a task selects the observables of the whole problem (gap `selections`), which changes the cost of the HCTZ example by `7e-6` after a round trip.
+- **lossy**: the information is transformed. A fit of weighted least squares, the default of a fit defined in python, does not use the noise model and the priors of PEtab, and an estimated noise parameter does not change its cost; a fit of `ObjectiveType.LIKELIHOOD` or `POSTERIOR` minimizes them as PEtab defines them, see [The objective](fitting.md#the-objective). The weights of `sbmlsim` are not the standard deviation PEtab uses. The reader builds one simulation experiment for the whole problem, so a task selects the observables of the whole problem (gap `selections`), which changes the cost of the HCTZ example by `7e-6` after a round trip.
 - **unsupported**: the export raises and names the experiments and mappings. This covers an observable that is a python function, a mapping whose x is not the time, a mapping that compares values per simulation or over a scan dimension (`scalar-observable`), and a task that is a scan (`scan-task`).
 
 ## The log-likelihood
 
-PEtab defines the objective as the likelihood of the measurements under a noise model, while `sbmlsim` fits by weighted least squares. `sbmlsim.fit.petab_v2` calculates the log-likelihood and related values so you can evaluate a problem and compare a parameter set with the results of other tools. The optimizer does not use them.
+PEtab defines the objective as the likelihood of the measurements under a noise model. A fit of `sbmlsim` minimizes it with `FitSettings(objective="likelihood")`, or the posterior with the priors with `"posterior"`, which a problem read without the `sbmlsim` extension does by default; the default of a fit defined in python is the weighted least squares, see [The objective](fitting.md#the-objective). `sbmlsim.fit.petab_v2` calculates the log-likelihood and related values so you can evaluate a problem and compare a parameter set with the results of other tools, whatever the objective of the fit.
 
 ```py
 from dataclasses import replace
@@ -160,6 +160,22 @@ The other functions:
 ## Extensions of other tools
 
 A problem can carry extensions of any tool in the `extensions` block of its YAML, each marked as `required` or not. The reader knows the `sbmlsim` extension and, with the `sciml` extra installed, the `sciml` extension of [PEtab SciML](petab_sciml.md). An extension that is not required is ignored, with a message in the log. For a problem that requires an unknown extension, `from_petab` raises a `ValueError` naming it. A problem that requires `sciml` without the extra raises an `ImportError` that tells you to `pip install sbmlsim[sciml]`.
+
+## The tutorial of PEtab v2
+
+The [tutorial of PEtab v2](https://petab.readthedocs.io/en/latest/v2/tutorial/tutorial.html) builds the problem of Boehm et al. 2014, the dimerization of STAT5A and STAT5B after a stimulation with erythropoietin, table by table. `examples/petab/tutorial/experiment.py` defines the same problem in python and is the worked example of the export:
+
+- the simulation `epo_stimulation` sets `Epo_concentration = 1.25e-7` before the initialization, which the export writes as the condition of the experiment at the time 0,
+- every observable is an `ObservableModel`, a formula of the concentrations of the species, e.g. `100 * (2 * [pApA] + [pApB]) / (2 * [pApA] + [pApB] + [STAT5A])`, written as the `observableFormula` of PEtab,
+- its noise is `NoiseModel(formula="pSTAT5A_rel_sigma", placeholders=("pSTAT5A_rel_sigma",), placeholder_values=(("sd_pSTAT5A_rel",),) * 16)`, normal noise whose placeholder every measurement gives the standard deviation of its observable,
+- the standard deviations `sd_pSTAT5A_rel`, `sd_pSTAT5B_rel` and `sd_rSTAT5A_rel` are parameters of the model (`AbstractModel(parameters=...)`) and are estimated with the six kinetic parameters, all within `1e-5` and `1e5`, with `FitSettings(objective="likelihood")`.
+
+```bash
+python -m examples.petab.tutorial
+python -m examples.petab.tutorial --runs=80 --cores=8
+```
+
+The script writes the problem, compares its tables with the ones of the tutorial (the ids of the experiment and of its condition are the ones of the export), reads it back, fits the maximum likelihood estimate and writes the report into `results/petab_tutorial`. The tutorial simplified its observables for illustration, they do not describe the data as the published problem does, whose observables weigh the species with `specC17`; the fit of the published problem is `python -m examples.petab.benchmark --problem=Boehm_JProteomeRes2014`, which reaches the log-likelihood of the benchmark collection, `-138.2`.
 
 ## The example
 

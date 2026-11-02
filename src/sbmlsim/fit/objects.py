@@ -6,7 +6,7 @@ import functools
 import json
 import logging
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
@@ -190,6 +190,27 @@ class Prior:
         Raises:
             ValueError: if the parameters do not fit the distribution.
         """
+        return float(self.log_density_function(lower, upper)(np.asarray(value)))
+
+    def log_density_function(
+        self, lower: float, upper: float
+    ) -> Callable[[np.ndarray], np.ndarray]:
+        """Get the log density of the prior as a function of values.
+
+        The distribution is created once, so a fit which evaluates the prior
+        at every step does not create it again, see `ObjectiveType.POSTERIOR`.
+
+        Args:
+            lower: the lower bound of the parameter.
+            upper: the upper bound of the parameter.
+
+        Returns:
+            The function of the log density of the prior truncated at the
+            bounds, `-inf` outside of them, of one value or an array.
+
+        Raises:
+            ValueError: if the parameters do not fit the distribution.
+        """
         from petab.v2 import Parameter as PetabParameter
 
         distribution = PetabParameter(
@@ -202,8 +223,13 @@ class Prior:
         ).prior_dist
         if distribution is None:
             raise ValueError(f"The prior '{self}' has no distribution.")
-        density = float(distribution.pdf(value))
-        return math.log(density) if density > 0.0 else -math.inf
+
+        def log_density(values: np.ndarray) -> np.ndarray:
+            density = np.asarray(distribution.pdf(values), dtype=float)
+            with np.errstate(divide="ignore"):
+                return np.where(density > 0.0, np.log(density), -np.inf)
+
+        return log_density
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary for serialization."""
@@ -348,9 +374,10 @@ class NoiseParameter:
 class NoiseModel:
     """The noise of the measurements of a fit mapping.
 
-    The noise model does not enter the cost of a fit, which is a weighted
-    least squares fit. It is what the log-likelihood of a problem is
-    calculated with, see `sbmlsim.fit.petab_v2.likelihood`.
+    The noise model is what the log-likelihood of a problem is calculated
+    with, see `sbmlsim.fit.petab_v2.likelihood`, and the objective of a fit
+    of `ObjectiveType.LIKELIHOOD` or `POSTERIOR`; a fit of weighted least
+    squares, the default, does not use it.
 
     Attributes:
         formula: the noise formula in the math of PEtab over the selections of

@@ -45,6 +45,7 @@ from sbmlsim.fit.options import (
     DataAtChangeType,
     FitSettings,
     LossFunctionType,
+    ObjectiveType,
     OptimizationAlgorithmType,
     ParameterScaleType,
     ResidualType,
@@ -581,6 +582,45 @@ def _sd_of_se(
     return se * np.sqrt(np.where(valid, counts, 1.0))
 
 
+#: the residual of a measurement whose simulation or likelihood failed, see
+#: `OptimizationProblem._likelihood_terms`
+LIKELIHOOD_FAILURE_RESIDUAL = 1e3
+
+
+def _prior_functions(
+    parameters: Sequence[FitParameter],
+) -> list[tuple[int, Callable[[np.ndarray], np.ndarray], float]]:
+    """Get the log density of the prior of every parameter which has one.
+
+    Args:
+        parameters: the parameters of a problem.
+
+    Returns:
+        The index of the parameter, the function of its log density and the
+        offset of its residual: twice the largest log density on a grid of
+        its bounds and at the parameters of the prior, see
+        `OptimizationProblem._prior_residuals`, plus one.
+    """
+    functions = []
+    for j, parameter in enumerate(parameters):
+        if parameter.prior is None:
+            continue
+        lower, upper = parameter.lower_bound, parameter.upper_bound
+        log_density = parameter.prior.log_density_function(lower, upper)
+        candidates = [np.asarray(parameter.prior.parameters, dtype=float)]
+        if np.isfinite(lower) and np.isfinite(upper):
+            candidates.append(np.linspace(lower, upper, 2001))
+            if lower > 0.0:
+                candidates.append(np.geomspace(lower, upper, 2001))
+        grid = np.concatenate(candidates)
+        grid = grid[(grid >= lower) & (grid <= upper)]
+        values = log_density(grid) if grid.size else np.array([0.0])
+        finite = values[np.isfinite(values)]
+        largest = float(np.max(finite)) if finite.size else 0.0
+        functions.append((j, log_density, 2.0 * max(largest, 0.0) + 1.0))
+    return functions
+
+
 def _log_sd_of_gsd(gsd: np.ndarray, y: np.ndarray, mapping: str) -> np.ndarray:
     """Get the standard deviations of the logarithm from geometric standard deviations.
 
@@ -739,6 +779,13 @@ class OptimizationProblem(ObjectJSONEncoder):
         # deadline of the running optimization, set by `_optimize_single`
         self._deadline: float | None = None
         self._last_evaluation_failed = False
+        # the constant of the residuals of the last evaluation of a
+        # likelihood, which the cost does not hold, see `_likelihood_terms`
+        self._cost_offset = 0.0
+        # the log densities of the priors, see `_prior_residuals`
+        self._priors: (
+            list[tuple[int, Callable[[np.ndarray], np.ndarray], float]] | None
+        ) = None
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self._reset_mappings()
 
@@ -1043,6 +1090,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         return self.settings_initialized.residual
 
     @property
+    def objective(self) -> ObjectiveType:
+        """What the fit minimizes, see `FitSettings` and `ObjectiveType`."""
+        return self.settings_initialized.objective
+
+    @property
     def loss_function(self) -> LossFunctionType:
         """Loss function of the fit, see `FitSettings`."""
         return self.settings_initialized.loss_function
@@ -1205,6 +1257,16 @@ class OptimizationProblem(ObjectJSONEncoder):
             for p in self.parameters
         ]
         self._validate_parameters()
+        if settings.objective is not ObjectiveType.LEAST_SQUARES and (
+            settings.residual
+            in {ResidualType.ABSOLUTE_TO_BASELINE, ResidualType.NORMALIZED_TO_BASELINE}
+        ):
+            raise ValueError(
+                f"'{self.opid}': the objective '{settings.objective.value}' is the "
+                f"likelihood of the measurements, which the residual "
+                f"'{settings.residual.name}' shifts to the baseline of their "
+                f"curve; choose the residual 'ABSOLUTE' or 'NORMALIZED'."
+            )
         # initialize can be called more than once, e.g. for the report of a fit
         self._reset_mappings()
 
@@ -3191,7 +3253,9 @@ class OptimizationProblem(ObjectJSONEncoder):
                     opt_result = scipy.optimize.least_squares(
                         fun=self.residuals, x0=x0log, bounds=boundslog, **kwargs
                     )
-                self._validate_optimum(opt_result)
+                # the cost of scipy is the half sum of squares, which holds the
+                # offsets of the residuals of a likelihood, see `ObjectiveType`
+                opt_result.cost = self._validate_optimum(opt_result)
             except (RuntimeError, FitTimeout) as err:
                 logger.error(
                     "%s in ODE integration (optimize) for '%s = %s': \n%s",
@@ -3912,11 +3976,119 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
     def cost_least_square(self, xlog: np.ndarray) -> float:
-        """Get least square costs for parameters."""
+        """Get the cost of parameters, `0.5 * sum(r**2)` of the residuals.
+
+        The cost of a likelihood objective is the negative log-likelihood or
+        log posterior, the half sum of squares of its residuals without the
+        constant of their offsets, see `_likelihood_terms`.
+        """
         res_weighted: np.ndarray = self.residuals(xlog)  # ty: ignore[invalid-assignment]
         if self._last_evaluation_failed:
             return float("inf")
-        return float(0.5 * np.sum(np.square(res_weighted)))
+        return float(0.5 * np.sum(np.square(res_weighted))) - self._cost_offset
+
+    def _likelihood_terms(
+        self,
+        k: int,
+        result: DataTimesResult | GroupResult | None,
+        prediction: np.ndarray | None,
+        x: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, bool]:
+        """Get the residuals of the likelihood of a mapping, see `ObjectiveType`.
+
+        The noise of the mapping is its noise model, `noise_model_of`, whose
+        parameters are the values of the parameters of the fit or of the
+        simulation, see `noise_values`. A simulation which failed, a scale of
+        the noise which is not a positive number or a simulation which is not
+        positive under a logarithmic noise give the residuals of a failure.
+
+        Args:
+            k: index of the mapping.
+            result: the simulation of the mapping, `None` when it failed.
+            prediction: the observable at the data, `None` when it failed.
+            x: values of the parameters on the linear scale.
+
+        Returns:
+            The residuals in units of the scale of the noise (`NaN` for a
+            failure), the residuals of the data and of the scale whose half
+            sum of squares minus the offset is the negative log-likelihood of
+            the mapping, see `likelihood_residuals`, the offset, and whether
+            the mapping failed.
+        """
+        from sbmlsim.fit.petab_v2.likelihood import (
+            likelihood_offsets,
+            likelihood_residuals,
+            noise_model_of,
+            noise_values,
+            normalized_residuals,
+        )
+
+        measurement = np.asarray(self.y_references[k], dtype=float)
+        noise = noise_model_of(self, k)
+        offsets = likelihood_offsets(measurement, noise.distribution)
+        offset = 0.5 * float(np.sum(offsets))
+        if result is not None and prediction is not None:
+            try:
+                sigma = noise_values(
+                    noise,
+                    size=measurement.size,
+                    values=dict(zip(self.pids, x, strict=True)),
+                    simulation=prediction,
+                    selections={
+                        s: self._at_data(k, result, s) for s in self.noise_selections[k]
+                    },
+                )
+                data, scale = likelihood_residuals(
+                    measurement, prediction, sigma, noise.distribution
+                )
+                normalized = -normalized_residuals(
+                    measurement, prediction, sigma, noise.distribution
+                )
+                return normalized, data, scale, offset, False
+            except ValueError as err:
+                logger.debug(
+                    "'%s.%s': the likelihood is not defined: %s",
+                    self.experiment_keys[k],
+                    self.mapping_keys[k],
+                    err,
+                )
+        failure = np.full(measurement.size, LIKELIHOOD_FAILURE_RESIDUAL)
+        return (
+            np.full(measurement.size, np.nan),
+            failure,
+            np.sqrt(offsets),
+            offset,
+            True,
+        )
+
+    def _prior_residuals(self, x: np.ndarray) -> tuple[np.ndarray, float]:
+        """Get the residuals of the priors of the parameters, see `ObjectiveType`.
+
+        The residual of a prior is `sqrt(c - 2 log p)`, its offset `c` is twice
+        the largest log density of the prior on a grid of its bounds, so the
+        half sum of squares minus the offsets is the negative log density. A
+        parameter without a prior has the uniform prior over its bounds,
+        which is a constant and has no residual.
+
+        Args:
+            x: values of the parameters on the linear scale.
+
+        Returns:
+            The residuals and the sum of their offsets.
+        """
+        if self._priors is None:
+            self._priors = _prior_functions(self.parameters)
+        residuals = np.zeros(len(self._priors))
+        offset = 0.0
+        for i, (j, log_density, c) in enumerate(self._priors):
+            log_p = float(log_density(np.asarray(x[j], dtype=float)))
+            residuals[i] = (
+                np.sqrt(max(c - 2.0 * log_p, 0.0))
+                if np.isfinite(log_p)
+                else LIKELIHOOD_FAILURE_RESIDUAL
+            )
+            offset += 0.5 * c
+        return residuals, offset
 
     def _validate_optimum(self, result: scipy.optimize.OptimizeResult) -> float:
         """Check the final parameters before reporting optimizer convergence.
@@ -3966,6 +4138,8 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # FIXME: handle parts better
         parts = []
+        # the constant of the residuals of a likelihood, see `_likelihood_terms`
+        offset_total = 0.0
         if complete_data:
             residual_data = defaultdict(list)
 
@@ -4011,6 +4185,43 @@ class OptimizationProblem(ObjectJSONEncoder):
                 }:
                     # subtract simulation baseline
                     y_obsip = y_obsip - y_obsip[0]
+
+            if self.objective is not ObjectiveType.LEAST_SQUARES:
+                failed = result is None or self._not_finite(k, result, y_obsip, x)
+                normalized, data, scale, offset, failed = self._likelihood_terms(
+                    k, None if failed else result, None if failed else y_obsip, x
+                )
+                if self.mapping_kinds[k] is MappingKind.TRAINING:
+                    if failed:
+                        self._last_evaluation_failed = True
+                    parts.append(np.concatenate([data, scale]))
+                    offset_total += offset
+                if complete_data:
+                    if result is None:
+                        raise ValueError(
+                            f"'{mapping_key}': no simulation results, the complete "
+                            f"data of a failed simulation cannot be evaluated."
+                        )
+                    res_abs = y_obsip - self.y_references[k]
+                    mean = np.mean(self.y_references[k])
+                    x_obs, y_obs = self._observed_curve(k, result, curves.get(k))
+                    residual_data["x_obs"].append(x_obs)
+                    residual_data["y_obs"].append(y_obs)
+                    residual_data["y_obsip"].append(y_obsip)
+                    # the residuals in units of the scale of the noise
+                    residual_data["residuals"].append(normalized)
+                    residual_data["weights_curve"].append(self.weights_curves[k])
+                    residual_data["residuals_weighted"].append(data)
+                    residual_data["res_abs"].append(res_abs)
+                    residual_data["res_norm"].append(
+                        res_abs / mean if mean != 0.0 else np.full_like(res_abs, np.nan)
+                    )
+                    # the negative log-likelihood of the mapping
+                    residual_data["cost"].append(
+                        0.5 * float(np.sum(np.square(data)) + np.sum(np.square(scale)))
+                        - offset
+                    )
+                continue
 
             if result is None or self._not_finite(k, result, y_obsip, x):
                 # the integration or an observable failed, setting high
@@ -4083,10 +4294,16 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         if complete_data:
             return residual_data
+        if self.objective is ObjectiveType.POSTERIOR:
+            prior_residuals, prior_offset = self._prior_residuals(x)
+            parts.append(prior_residuals)
+            offset_total += prior_offset
         res_all = np.concatenate(parts)
+        self._cost_offset = offset_total
 
-        # the cost of the step, the trace plot is the only thing which uses it
-        cost = float(0.5 * np.sum(np.power(res_all, 2)))
+        # the cost of the step, the trace plot is the only thing which uses it;
+        # the cost of a likelihood is the negative log-likelihood or posterior
+        cost = float(0.5 * np.sum(np.power(res_all, 2))) - offset_total
         if self._last_evaluation_failed or not np.isfinite(cost):
             cost = float("inf")
         self._trajectory.append(cost)

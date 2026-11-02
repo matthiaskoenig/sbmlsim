@@ -23,6 +23,7 @@ REPO_DIR = Path(__file__).parent.parent.parent
 #: of the examples are sized to show what they do, a test only needs them to run
 ARGUMENTS: dict[str, list[str]] = {
     "examples.petab.benchmark": ["--no-identifiability", "--runs=2"],
+    "examples.petab.tutorial": ["--runs=2"],
     "examples.sciml.lotka_volterra_fit": ["--max-nfev=4"],
     "examples.sensitivity.sensitivity_example": ["--quick", "--cores=1"],
 }
@@ -60,6 +61,7 @@ SCRIPTS = [
     "examples.hctz_fitting.simulations",
     "examples.hctz_fitting.fitting.petab_problem",
     "examples.petab.benchmark",
+    "examples.petab.tutorial",
     "examples.sciml.lotka_volterra_fit",
     "examples.sensitivity.sensitivity_example",
     "examples.comparison.diff_example",
