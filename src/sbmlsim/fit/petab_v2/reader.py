@@ -1199,8 +1199,13 @@ class PetabReader:
                 for measurement in measurements
             ]
             if not all(np.isnan(error) for error in errors):
-                data["value_sd"] = errors
-                data["value_sd_unit"] = value_unit
+                if self._is_log_sd(key):
+                    # the SD of the logarithm of a geometric mean, `log(gsd)`
+                    data["value_gsd"] = np.exp(errors)
+                    data["value_gsd_unit"] = "dimensionless"
+                else:
+                    data["value_sd"] = errors
+                    data["value_sd_unit"] = value_unit
 
             datasets[dataset_id(key)] = DataSet.from_df(
                 pd.DataFrame(data), ureg=self.ureg
@@ -1234,13 +1239,13 @@ class PetabReader:
             )
             observable_xid = info.get("xid_observable") or "time"
 
+            columns = experiment._datasets[dataset_id(key)].columns
             reference = FitData(
                 experiment,
                 xid="time",
                 yid="value",
-                yid_sd="value_sd"
-                if "value_sd" in experiment._datasets[dataset_id(key)].columns
-                else None,
+                yid_sd="value_sd" if "value_sd" in columns else None,
+                yid_gsd="value_gsd" if "value_gsd" in columns else None,
                 dataset=dataset_id(key),
             )
             observable = FitData(
@@ -1361,6 +1366,24 @@ class PetabReader:
                 f"{sorted(self._observable_ids)}."
             )
         return self._observable_ids[key]
+
+    def _is_log_sd(self, key: str) -> bool:
+        """Check whether the noise parameters of a mapping are SDs of logarithms.
+
+        The noise of the observable is log-normal and its formula is its one
+        placeholder, so the noise parameter of a measurement is the standard
+        deviation of the logarithm of its value, `log(gsd)`, which the data
+        has as its geometric standard deviation (#403).
+
+        Args:
+            key: key of the fit mapping, see `noise_model`.
+        """
+        noise = self.noise_model(key)
+        return (
+            noise.distribution is NoiseDistribution.LOG_NORMAL
+            and len(noise.placeholders) == 1
+            and noise.formula.strip() == noise.placeholders[0]
+        )
 
     def noise_model(self, key: str) -> NoiseModel:
         """Get the noise model of a fit mapping of the problem.

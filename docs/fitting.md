@@ -179,6 +179,7 @@ A `FitMapping` is defined in the `fit_mappings()` of a `SimulationExperiment` an
 
 - `xid` and `yid` are the x (usually `time`) and the y of the data.
 - `yid_sd` or `yid_se` is the column of the standard deviation or the standard error of the data. A standard error is converted to a standard deviation with the number of subjects, `count`, an integer or a column of the dataset.
+- `yid_gsd` is the column of the geometric standard deviation of data which are geometric means, a factor without a unit: `log(gmean)` has the standard deviation `log(gsd)`. The fit treats such a point as a mean with the coefficient of variation of the log-normal distribution, `sqrt(exp(log(gsd)^2) - 1)`, i.e. with the standard deviation `gmean * sqrt(exp(log(gsd)^2) - 1)`, so the weights of `ERROR_WEIGHTING` compare it with the means of other data. Its noise in the log-likelihood and in the PEtab export is log-normal with the standard deviation `log(gsd)`, and the report draws its error bars from `gmean / gsd` to `gmean * gsd`. It cannot be combined with `yid_sd` or `yid_se`.
 - `sel` selects labels of the dimensions of a scan, or rows of a dataset by the values of its columns, see [Data](data.md).
 - `FitMapping(metadata=...)` attaches a `MappingMetaData` to describe the curve, e.g. the tissue, the route or the dosing. Filters can select data by it, and reports show it and can group by it. `examples/hctz_fitting/experiments/metadata.py` is an example of a subclass.
 

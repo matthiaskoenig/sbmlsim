@@ -31,6 +31,7 @@ from sbmlsim.fit.helpers import _filters
 from sbmlsim.fit.metrics import metadata_dict
 from sbmlsim.fit.objects import (
     EXTERNAL_PREFIX,
+    GSD_ERROR,
     UNUSED_KINDS,
     FitMapping,
     FitMappingCollection,
@@ -580,6 +581,61 @@ def _sd_of_se(
     return se * np.sqrt(np.where(valid, counts, 1.0))
 
 
+def _log_sd_of_gsd(gsd: np.ndarray, y: np.ndarray, mapping: str) -> np.ndarray:
+    """Get the standard deviations of the logarithm from geometric standard deviations.
+
+    Args:
+        gsd: the geometric standard deviations of the rows, factors of at
+            least 1, `NaN` for a row without one.
+        y: the values of the rows, geometric means.
+        mapping: the key of the mapping, for the message.
+
+    Returns:
+        `log(gsd)`, `NaN` for a row without a geometric SD; a geometric SD of
+        1 is no error, as an SD of 0 is none.
+
+    Raises:
+        ValueError: if a row with a value has a geometric SD below 1, or a
+            row with a geometric SD has a value which is no positive number,
+            which a geometric mean is.
+    """
+    with_error = ~np.isnan(y) & ~np.isnan(gsd)
+    below = np.flatnonzero(with_error & ~(gsd >= 1.0))
+    if below.size:
+        raise ValueError(
+            f"{mapping}: the geometric standard deviation of the rows "
+            f"{below.tolist()} is below 1, it is a factor of at least 1."
+        )
+    negative = np.flatnonzero(with_error & ~(y > 0.0))
+    if negative.size:
+        raise ValueError(
+            f"{mapping}: the rows {negative.tolist()} have a geometric standard "
+            f"deviation, but their values are no positive geometric means."
+        )
+    with np.errstate(invalid="ignore"):
+        return np.log(gsd)
+
+
+def _sd_of_log_sd(log_sd: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Get the standard deviations of geometric means from the SD of their logarithm.
+
+    The SD of a point is the one of a log-normal distribution with the
+    coefficient of variation of the geometric SD, `sqrt(exp(log_sd**2) - 1)`
+    (the geometric CV), around the geometric mean, so that the weights of
+    the errors (`WeightingPointsType.ERROR_WEIGHTING`, the inverse of the
+    coefficient of variation) and the residuals of a fit treat a geometric
+    mean as a mean with that coefficient of variation.
+
+    Args:
+        log_sd: the standard deviations of the logarithms, `log(gsd)`.
+        y: the geometric means.
+
+    Returns:
+        The standard deviations, in the unit of the means.
+    """
+    return np.abs(y) * np.sqrt(np.expm1(np.square(log_sd)))
+
+
 class OptimizationProblem(ObjectJSONEncoder):
     """Parameter optimization problem."""
 
@@ -775,8 +831,20 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.observation_dims: list[str | None] = []
         self.x_references: list[Any] = []
         self.y_references: list[Any] = []
+        #: the error of every data point as a standard deviation, see
+        #: `y_errors_type`
         self.y_errors: list[Any] = []
+        #: the error the data of every mapping has: `SD` for a standard
+        #: deviation or a standard error, `GSD_ERROR` for a geometric standard
+        #: deviation (#403), whose SD is the one of a log-normal distribution
+        #: with the coefficient of variation of the geometric SD,
+        #: `y * sqrt(exp(log(gsd)**2) - 1)`, `None` without errors
         self.y_errors_type: list[str | None] = []
+        #: the standard deviation of the logarithm of every data point,
+        #: `log(gsd)`, of a mapping of geometric standard deviations, `None`
+        #: for the other mappings; its noise is log-normal, see
+        #: `sbmlsim.fit.petab_v2.likelihood.default_noise_model`
+        self.y_errors_log: list[np.ndarray | None] = []
         #: the count of every data point, the number of subjects, `None` for a
         #: mapping without a count, see `FitDataInitialized.count`
         self.y_counts: list[np.ndarray | None] = []
@@ -1062,6 +1130,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             "y_references",
             "y_errors",
             "y_errors_type",
+            "y_errors_log",
             "weights",
             "weights_points",
             "weights_curves",
@@ -1332,11 +1401,22 @@ class OptimizationProblem(ObjectJSONEncoder):
                 y_measured: np.ndarray | None = None
                 # --- errors on data ---
                 # every error is a standard deviation: an SD is used, else an SE
-                # is converted with the count of its row, `SE * sqrt(count)`
+                # is converted with the count of its row, `SE * sqrt(count)`;
+                # a geometric SD is the SD of the logarithm, `log(gsd)`, from
+                # which the SD of the point follows, see `_sd_of_log_sd`
                 y_counts = None if data_ref.count is None else np.array(data_ref.count)
                 y_ref_err = None
                 y_ref_err_type: str | None = None
-                if data_ref.y_sd is not None:
+                y_ref_log_err: np.ndarray | None = None
+                if data_ref.y_gsd is not None:
+                    y_ref_log_err = _log_sd_of_gsd(
+                        np.array(data_ref.y_gsd.to("dimensionless").magnitude),
+                        np.array(data_ref.y.magnitude),
+                        f"{sid}.{mapping_id}",
+                    )
+                    y_ref_err = np.array(y_ref_log_err)
+                    y_ref_err_type = GSD_ERROR
+                elif data_ref.y_sd is not None:
                     y_ref_err = np.array(data_ref.y_sd.to(obs_y_unit).magnitude)
                     y_ref_err_type = "SD"
                 elif data_ref.y_se is not None:
@@ -1372,6 +1452,16 @@ class OptimizationProblem(ObjectJSONEncoder):
                         # some NaNs could exist (err is maximal error of all points)
                         y_measured = ~np.isnan(y_ref_err)
                         y_ref_err[np.isnan(y_ref_err)] = np.nanmax(y_ref_err)
+                if y_ref_err_type == GSD_ERROR:
+                    # the errors are the SD of the logarithm, a missing one is
+                    # the largest relative error of the mapping
+                    y_ref_log_err = y_ref_err
+                    if y_ref_log_err is not None:
+                        y_ref_err = _sd_of_log_sd(
+                            y_ref_log_err, np.array(data_ref.y.magnitude)
+                        )
+                    else:
+                        y_ref_err_type = None
 
                 if (
                     observable_model is not None
@@ -1430,6 +1520,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                         f"of the kind '{observation.kind.value}'."
                     )
                 selections_set.update(noise_selections)
+                if y_ref_log_err is not None:
+                    y_ref_log_err = y_ref_log_err[nonnan_mask]
                 if y_ref_err is not None:
                     y_ref_err = y_ref_err[nonnan_mask]
                     y_measured = (
@@ -1574,6 +1666,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 self.y_references.append(y_ref)
                 self.y_errors.append(y_ref_err)
                 self.y_errors_type.append(y_ref_err_type)
+                self.y_errors_log.append(y_ref_log_err)
                 self.y_counts.append(y_counts)
                 self.y_errors_measured.append(y_measured)
                 self.noise_models.append(noise)
