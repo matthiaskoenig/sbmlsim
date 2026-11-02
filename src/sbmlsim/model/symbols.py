@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
@@ -91,13 +91,22 @@ class ModelSymbols:
         assignment_rules: entities which are the variable of an assignment
             rule.
         rate_rules: entities which are the variable of a rate rule.
-        initial_assignment_order: the entities with an initial assignment, an
-            assignment after the ones it reads.
-        initial_assignment_dependencies: entity with an initial assignment ->
-            the entities its math reads, through assignment rules.
+        initial_assignment_order: the keys of
+            `initial_assignment_dependencies`, an entity after the ones it
+            depends on.
+        initial_assignment_dependencies: entity whose initial value the
+            initialization evaluates again -> the entities it depends on,
+            through assignment rules: the math of an initial assignment, and
+            for a species in a compartment of an assignment rule, whose
+            initial value is converted with the size of the compartment at
+            the initialization, the compartment (#344). Such a species is a
+            key also without an initial assignment.
         initial_concentration: species whose initial value is a
             concentration, which a change of their compartment before the
             initialization keeps.
+        initial_concentration_values: species without an initial assignment
+            -> its initial concentration, which the initialization sets again
+            when the size of its compartment of an assignment rule changed.
         events: the symbols of the events.
         time_dependent: whether a math of the model reads the csymbol time or
             delay, or an event has a delay, see `sbmlsim.simulator.executor`.
@@ -116,6 +125,7 @@ class ModelSymbols:
     initial_assignment_order: tuple[str, ...] = ()
     initial_assignment_dependencies: dict[str, frozenset[str]] | None = None
     initial_concentration: frozenset[str] = frozenset()
+    initial_concentration_values: dict[str, float] = field(default_factory=dict)
     events: tuple[EventSymbols, ...] = ()
     time_dependent: bool = False
 
@@ -141,12 +151,22 @@ class ModelSymbols:
             for sp in species
             if not sp.getHasOnlySubstanceUnits()
         }
+        assigned = frozenset(a.getSymbol() for a in model.getListOfInitialAssignments())
         dependencies: dict[str, frozenset[str]] = {}
         for assignment in model.getListOfInitialAssignments():
             reads = _expand(_names(assignment.getMath()), rule_symbols)
             # the concentration of a species depends on its compartment
             reads |= {compartment_of[s] for s in reads if s in compartment_of}
             dependencies[assignment.getSymbol()] = frozenset(reads)
+        # the initial value of a concentration species is converted into its
+        # amount with the size of its compartment at the initialization, which
+        # an assignment rule may change; a compartment of an initial assignment
+        # or which is set keeps the concentrations itself (#344)
+        for sid, compartment in compartment_of.items():
+            if compartment in rule_symbols and sid not in rule_symbols:
+                dependencies[sid] = dependencies.get(sid, frozenset()) | frozenset(
+                    _expand({compartment}, rule_symbols)
+                )
         concentration_species = frozenset(compartment_of)
         maths: list[libsbml.ASTNode | None] = [r.getMath() for r in rules]
         maths += [
@@ -174,6 +194,13 @@ class ModelSymbols:
             ),
             initial_assignment_order=_order(dependencies),
             initial_assignment_dependencies=dependencies,
+            initial_concentration_values={
+                sp.getId(): sp.getInitialConcentration()
+                for sp in species
+                if sp.getId() in dependencies
+                and sp.isSetInitialConcentration()
+                and sp.getId() not in assigned
+            },
             initial_concentration=frozenset(
                 sp.getId()
                 for sp in species
@@ -184,7 +211,7 @@ class ModelSymbols:
                         and not sp.getHasOnlySubstanceUnits()
                     )
                 )
-                or (sp.getId() in dependencies and not sp.getHasOnlySubstanceUnits())
+                or (sp.getId() in assigned and not sp.getHasOnlySubstanceUnits())
             ),
             parameters=frozenset(p.getId() for p in model.getListOfParameters()),
             compartments=frozenset(c.getId() for c in model.getListOfCompartments()),
@@ -193,9 +220,7 @@ class ModelSymbols:
             only_substance=frozenset(
                 s.getId() for s in species if s.getHasOnlySubstanceUnits()
             ),
-            initial_assignments=frozenset(
-                a.getSymbol() for a in model.getListOfInitialAssignments()
-            ),
+            initial_assignments=assigned,
             assignment_rules=frozenset(
                 r.getVariable() for r in rules if r.isAssignment()
             ),

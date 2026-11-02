@@ -81,3 +81,32 @@ def test_the_math_of_an_event_has_no_units() -> None:
     assert symbols.trigger == "q > 0.5"
     assert symbols.priority == "2"
     assert symbols.assignments == (("X", "1e-3 + q"),)
+
+
+def test_a_concentration_depends_on_its_compartment_of_a_rule() -> None:
+    """The initial value of a species follows its compartment of a rule (#344)."""
+    symbols = ModelSymbols.from_sbml(
+        sbml(
+            "model c\n"
+            "  BW = 75; f = 0.1; c0 = 50\n"
+            "  compartment V; compartment W = BW * f\n"
+            "  V := BW * f\n"
+            "  species S in V; species T in V = 2\n"
+            "  species A in W = 3; substanceOnly species X in V = 4\n"
+            "  S = c0\n"
+            "  R = 2 * S\n"
+            "end"
+        )
+    )
+    dependencies = symbols.initial_assignment_dependencies
+    assert dependencies is not None
+    volume = frozenset({"V", "BW", "f"})
+    assert dependencies["S"] == volume | {"c0"}
+    assert dependencies["T"] == volume
+    # a compartment of an initial assignment keeps the concentrations itself,
+    # a species with only substance units keeps its amount
+    assert "A" not in dependencies
+    assert "X" not in dependencies
+    assert symbols.initial_concentration_values == {"T": 2.0}
+    # an initial assignment which reads the concentration after it
+    assert symbols.initial_assignment_order == ("S", "T", "W", "R")
