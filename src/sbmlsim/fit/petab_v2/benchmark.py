@@ -1,15 +1,17 @@
 """The problems of the PEtab benchmark collection.
 
 The [benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab)
-is a set of published parameter estimation problems in PEtab v1, each in
-`problems/<name>/v1` with the simulations of its measurements at the nominal
-parameters, `simulations.tsv`. A problem is converted to PEtab v2 with
-`petab.v2.petab1to2` and read with `PetabReader`, simulated at the nominal
-values of its parameter table and compared with the simulations of the
-collection; where AMICI states the log-likelihood of the problem
-(`tests/benchmark_models/benchmark_models.yaml` of AMICI), it is compared
-too, unless an observable of the problem is on the scale `log10`, whose
-density the conversion changes.
+is a set of published parameter estimation problems, each in
+`problems/<name>/v1` in PEtab v1 with the simulations of its measurements at
+the nominal parameters, `simulations.tsv`, and some also in
+`problems/<name>/v2` in PEtab v2. `sbmlsim` reads PEtab v2 only: a problem is
+its encoding in PEtab v2 where the collection has one, otherwise it is
+converted from PEtab v1 with `petab.v2.petab1to2`; its simulations are
+converted with it, see `sbmlsim.fit.petab_v2.conversion`. The problem is read
+with `PetabReader`, simulated at the nominal values of its parameter table
+and compared with the simulations of the collection; where AMICI states the
+log-likelihood of the problem (`tests/benchmark_models/benchmark_models.yaml`
+of AMICI), it is compared too.
 
 | status | meaning |
 | --- | --- |
@@ -32,7 +34,6 @@ import signal
 import tempfile
 import time
 import urllib.request
-import warnings
 from collections import defaultdict, deque
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -47,6 +48,12 @@ import yaml
 
 from sbmlsim.comparison.diff import within_tolerance
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
+from sbmlsim.fit.petab_v2.conversion import (
+    SIMULATIONS_FILE,
+    convert_simulations,
+    convert_v1,
+    measurement_table,
+)
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.testsuite import cache
@@ -54,7 +61,7 @@ from sbmlsim.testsuite import cache
 logger = logging.getLogger(__name__)
 
 #: commit of the collection the tests run against
-BENCHMARK_COMMIT = "fcbddf1b900efabdfbdc2b58452c89556e63f1ce"
+BENCHMARK_COMMIT = "c44d5ede9bf979db5aa8ae4e94fc31fba9776675"
 
 #: archive of a commit of the collection
 BENCHMARK_URL = (
@@ -102,16 +109,23 @@ BENCHMARK_SETTINGS = FitSettings(
     data_at_change=DataAtChangeType.AFTER,
 )
 
-#: the columns which identify the simulation of a measurement in PEtab v1,
-#: with the names some problems of the collection use instead. The observable
-#: parameters are not one of them, some problems write their values into the
-#: table of the simulations
-_KEY_COLUMNS: dict[str, tuple[str, ...]] = {
-    "observableId": (),
-    "simulationConditionId": ("simulationCondition",),
-    "preequilibrationConditionId": ("preequilibrationCondition",),
-    "time": (),
+#: the columns which identify the simulation of a measurement
+_KEY_COLUMNS: tuple[str, ...] = ("observableId", "experimentId", "time")
+
+#: the columns of the experiment and the observable, which a table of the
+#: simulations may name otherwise, see `_same_or_renamed`
+_ID_COLUMNS: tuple[str, ...] = ("observableId", "experimentId")
+
+#: the names of the columns of PEtab v1 some tables of the simulations of the
+#: collection use, which are renamed before the conversion
+_V1_ALIASES: dict[str, str] = {
+    "simulationCondition": "simulationConditionId",
+    "preequilibrationCondition": "preequilibrationConditionId",
 }
+
+#: the directory of a problem in PEtab v1 and in PEtab v2 in the collection
+V1_DIR = "v1"
+V2_DIR = "v2"
 
 
 class BenchmarkStatus(StrEnum):
@@ -174,53 +188,22 @@ class BenchmarkResult:
         }
 
 
-def llh_is_comparable(v1_dir: Path) -> bool:
-    """Check whether the log-likelihood survives the conversion to PEtab v2.
-
-    PEtab v2 has no scale `log10` of an observable, `petab1to2` writes such an
-    observable as its logarithm, whose density differs.
-
-    Args:
-        v1_dir: the directory of the problem in PEtab v1.
-
-    Returns:
-        Whether no observable of the problem is on the scale `log10`.
-    """
-    for path in sorted(v1_dir.glob("observable*.tsv")):
-        observables = pd.read_csv(path, sep="\t")
-        if "observableTransformation" not in observables:
-            continue
-        transformations = observables["observableTransformation"].fillna("lin")
-        if (transformations.astype(str) == "log10").any():
-            return False
-    return True
-
-
 def _key_frame(table: pd.DataFrame) -> pd.DataFrame:
     """Get the columns which identify the simulation of a measurement."""
     columns: dict[str, pd.Series] = {}
-    for column, aliases in _KEY_COLUMNS.items():
-        name = next((c for c in (column, *aliases) if c in table), None)
-        if name is None:
+    for column in _KEY_COLUMNS:
+        if column not in table:
             columns[column] = pd.Series([""] * len(table), index=table.index)
         elif column == "time":
-            columns[column] = table[name].astype(float)
+            columns[column] = table[column].astype(float)
         else:
-            columns[column] = table[name].fillna("").astype(str)
+            columns[column] = table[column].astype(object).fillna("").astype(str)
     return pd.DataFrame(columns)
 
 
 def _keys(table: pd.DataFrame) -> list[tuple[Any, ...]]:
-    """Get the key of the simulation of every row of a table of PEtab v1."""
+    """Get the key of the simulation of every row of a table."""
     return list(_key_frame(table).itertuples(index=False, name=None))
-
-
-def _tables(directory: Path, pattern: str) -> pd.DataFrame | None:
-    """Read the tables of a pattern of a directory, `None` without one."""
-    paths = sorted(directory.glob(pattern))
-    if not paths:
-        return None
-    return pd.concat([pd.read_csv(p, sep="\t") for p in paths], ignore_index=True)
 
 
 def _same_or_renamed(ids: np.ndarray, other: np.ndarray) -> bool:
@@ -241,7 +224,7 @@ def _same_or_renamed(ids: np.ndarray, other: np.ndarray) -> bool:
 def _in_order(measurements: pd.DataFrame, expected: pd.DataFrame) -> bool:
     """Check whether the simulations are row by row the ones of the measurements.
 
-    The times agree row by row, and so do the observables and the conditions,
+    The times agree row by row, and so do the observables and the experiments,
     up to a renaming after the simulations were written, see
     `_same_or_renamed`.
     """
@@ -254,11 +237,7 @@ def _in_order(measurements: pd.DataFrame, expected: pd.DataFrame) -> bool:
         return False
     return all(
         _same_or_renamed(keys[column].to_numpy(), other[column].to_numpy())
-        for column in (
-            "observableId",
-            "simulationConditionId",
-            "preequilibrationConditionId",
-        )
+        for column in _ID_COLUMNS
     )
 
 
@@ -274,7 +253,7 @@ def _with_observables_of(
     is exactly one.
 
     Args:
-        measurements: the measurement table of PEtab v1.
+        measurements: the measurement table of the problem.
         expected: the table of the simulations of the collection.
 
     Returns:
@@ -299,7 +278,7 @@ def _match(
     """Find the simulation of the collection of every measurement.
 
     Args:
-        measurements: the measurement table of PEtab v1.
+        measurements: the measurement table of the problem.
         expected: the table of the simulations of the collection.
 
     Returns:
@@ -337,14 +316,22 @@ class BenchmarkProblem:
 
     Attributes:
         name: the name of the problem.
-        v1_dir: the directory of the problem in PEtab v1, with the
-            measurements and the simulations of the collection.
-        v2_dir: the directory of the problem converted to PEtab v2.
+        source_dir: the directory of the problem in the collection, with its
+            encodings `v1` and, for some problems, `v2`.
+        v2_dir: the directory of the problem in PEtab v2 which is run: the
+            encoding of the collection in PEtab v2 or the one converted from
+            PEtab v1, with the simulations of the collection converted to
+            PEtab v2, `SIMULATIONS_FILE`, see `BenchmarkCollection.convert`.
     """
 
     name: str
-    v1_dir: Path
+    source_dir: Path
     v2_dir: Path
+
+    @property
+    def native(self) -> bool:
+        """Check whether the collection has the problem in PEtab v2."""
+        return (self.source_dir / V2_DIR).is_dir()
 
     @property
     def conversion_error(self) -> Path:
@@ -360,8 +347,7 @@ class BenchmarkProblem:
         """Read, simulate and compare the problem.
 
         Args:
-            llh_reference: the log-likelihood of AMICI, which is compared if
-                it survives the conversion, see `llh_is_comparable`.
+            llh_reference: the log-likelihood of AMICI, which is compared.
             settings: the settings the problem is simulated with.
             timeout: the seconds the problem may take, a problem which takes
                 longer is an error. The time is measured with the timer
@@ -382,8 +368,6 @@ class BenchmarkProblem:
             return BenchmarkResult(
                 name=self.name, status=BenchmarkStatus.CONVERSION, message=message
             )
-        if llh_reference is not None and not llh_is_comparable(self.v1_dir):
-            llh_reference = None
         timings: dict[str, float] = {}
         previous = None
         if timeout is not None and not hasattr(signal, "setitimer"):
@@ -482,12 +466,13 @@ class BenchmarkProblem:
     ) -> tuple[list[str], list[str], float | None, int]:
         """Compare the simulation of every measurement with the collection.
 
-        The measurement table of PEtab v2 has the rows of the one of PEtab
-        v1. A table of the simulations which has the observables and the
+        The simulations of the collection are converted to PEtab v2 with the
+        problem. A table of the simulations which has the observables and the
         times of the measurements row by row is in their order, even where
-        the problem renamed its conditions afterwards; otherwise it may have
+        the problem renamed its observables or experiments afterwards, e.g.
+        an encoding in PEtab v2 of the collection; otherwise it may have
         another order and more rows, and a simulation is found by the
-        observable, the conditions and the time of its measurement, the
+        observable, the experiment and the time of its measurement, the
         replicates in their order.
 
         Args:
@@ -498,10 +483,11 @@ class BenchmarkProblem:
             The failures, the notes, the largest difference, `None` without a
             comparison, and the number of simulations which were compared.
         """
-        measurements = _tables(self.v1_dir, "measurement*.tsv")
-        expected = _tables(self.v1_dir, "simulation*.tsv")
-        if measurements is None or expected is None:
+        simulations = self.v2_dir / SIMULATIONS_FILE
+        if not simulations.is_file():
             return [], ["the collection has no simulations of the problem"], None, 0
+        measurements = measurement_table(self.v2_dir)
+        expected = pd.read_csv(simulations, sep="\t")
         if len(measurements) != len(simulated):
             raise ValueError(
                 f"The problem has '{len(simulated)}' measurements, the "
@@ -530,18 +516,18 @@ class BenchmarkProblem:
             table = measurements.iloc[rows]
             keys = _key_frame(table)
             failed = defaultdict(int)
-            for (observable_id, condition_id), ok in zip(
-                zip(keys["observableId"], keys["simulationConditionId"], strict=True),
+            for (observable_id, experiment_id), ok in zip(
+                zip(keys["observableId"], keys["experimentId"], strict=True),
                 agree,
                 strict=True,
             ):
                 if not ok:
-                    failed[(observable_id, condition_id)] += 1
+                    failed[(observable_id, experiment_id)] += 1
             failures.append(
                 f"'{int(np.sum(~agree))}' of '{len(rows)}' simulations differ: "
                 + ", ".join(
-                    f"{observable_id} in {condition_id} ({count})"
-                    for (observable_id, condition_id), count in sorted(failed.items())
+                    f"{observable_id} in {experiment_id or 'no experiment'} ({count})"
+                    for (observable_id, experiment_id), count in sorted(failed.items())
                 )
             )
         finite = difference[np.isfinite(difference)]
@@ -554,8 +540,9 @@ class BenchmarkCollection:
     """A commit of the benchmark collection, converted to PEtab v2.
 
     Attributes:
-        path: the directory with the problems of PEtab v1 in `problems`, the
-            converted problems in `v2` and the references of AMICI.
+        path: the directory with the problems of the collection in
+            `problems`, the problems in PEtab v2 which are run in `v2` and
+            the references of AMICI.
         commit: the commit of the collection.
     """
 
@@ -638,13 +625,17 @@ class BenchmarkCollection:
         directory = self.path / PROBLEMS
         if not directory.is_dir():
             return []
-        return sorted(p.name for p in directory.iterdir() if (p / "v1").is_dir())
+        return sorted(
+            p.name
+            for p in directory.iterdir()
+            if (p / V1_DIR).is_dir() or (p / V2_DIR).is_dir()
+        )
 
     def problem(self, name: str) -> BenchmarkProblem:
         """Get a problem of the collection by its name."""
         return BenchmarkProblem(
             name=name,
-            v1_dir=self.path / PROBLEMS / name / "v1",
+            source_dir=self.path / PROBLEMS / name,
             v2_dir=self.path / V2 / name,
         )
 
@@ -666,10 +657,14 @@ class BenchmarkCollection:
         }
 
     def convert(self, names: Sequence[str] | None = None) -> None:
-        """Convert the problems to PEtab v2 which are not converted yet.
+        """Write the problems in PEtab v2 which are not written yet.
 
-        A problem which cannot be converted gets the file `v2/<name>.error`
-        with the reason, see `BenchmarkProblem.conversion_error`.
+        A problem is its encoding in PEtab v2 of the collection or, without
+        one, its encoding in PEtab v1 converted with `petab1to2`; the
+        simulations of the collection are converted from PEtab v1 in both
+        cases, see `sbmlsim.fit.petab_v2.conversion`. A problem which cannot
+        be converted gets the file `v2/<name>.error` with the reason, see
+        `BenchmarkProblem.conversion_error`.
 
         Args:
             names: the problems, all of them by default.
@@ -705,25 +700,27 @@ class BenchmarkCollection:
 
 
 def _convert(problem: BenchmarkProblem) -> None:
-    """Convert a problem to PEtab v2 into a staging directory and move it."""
-    from petab.v2.petab1to2 import petab1to2
-
+    """Write a problem in PEtab v2 into a staging directory and move it."""
     problem.v2_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(
         tempfile.mkdtemp(prefix=f".{problem.name}.", dir=problem.v2_dir.parent)
     )
+    output = staging / problem.name
     try:
-        yaml_files = sorted(problem.v1_dir.glob("*.yaml"))
-        if not yaml_files:
-            raise ValueError(f"The problem '{problem.v1_dir}' has no YAML file.")
-        with warnings.catch_warnings(record=True) as caught:
-            # e.g. that PEtab v2 has no scales of the parameters, for every
-            # problem
-            warnings.simplefilter("always")
-            petab1to2(yaml_files[0], output_dir=staging)
-        for warning in caught:
-            logger.debug("'%s': %s", problem.name, warning.message)
-        os.replace(staging, problem.v2_dir)
+        v1_dir = problem.source_dir / V1_DIR
+        v1_yaml = _yaml_file(v1_dir) if v1_dir.is_dir() else None
+        simulation_files = _simulation_files(v1_yaml) if v1_yaml is not None else []
+        if problem.native:
+            shutil.copytree(problem.source_dir / V2_DIR, output)
+            if v1_yaml is not None and simulation_files:
+                convert_simulations(v1_yaml, simulation_files).to_csv(
+                    output / SIMULATIONS_FILE, sep="\t", index=False
+                )
+        elif v1_yaml is not None:
+            convert_v1(v1_yaml, output, simulation_files)
+        else:
+            raise ValueError(f"The problem '{problem.name}' has no encoding.")
+        os.replace(output, problem.v2_dir)
     except Exception as err:  # the conversion of the problem is its outcome
         logger.warning("The problem '%s' is not converted: %s", problem.name, err)
         problem.conversion_error.write_text(
@@ -731,6 +728,125 @@ def _convert(problem: BenchmarkProblem) -> None:
         )
     finally:
         shutil.rmtree(staging, ignore_errors=True)
+
+
+def _yaml_file(directory: Path) -> Path:
+    """Get the YAML file of a problem.
+
+    Raises:
+        ValueError: if the directory has no YAML file.
+    """
+    yaml_files = sorted(directory.glob("*.yaml"))
+    if not yaml_files:
+        raise ValueError(f"The problem '{directory}' has no YAML file.")
+    return yaml_files[0]
+
+
+def _simulation_files(v1_yaml: Path) -> list[Path]:
+    """Get the tables of the simulations of a problem of PEtab v1.
+
+    The tables are repaired in place, in the cache, before they are
+    converted: a column which some tables name otherwise is renamed, see
+    `_V1_ALIASES`, and the conditions of a table which names conditions the
+    problem renamed afterwards (`Fujita_SciSignal2010`) are the ones of the
+    measurements, when the table has the observables and the times of the
+    measurements row by row.
+    """
+    v1_dir = v1_yaml.parent
+    paths = sorted(v1_dir.glob("*simulation*.tsv"))
+    measurements = _v1_table(v1_yaml, "measurement_files") if len(paths) == 1 else None
+    for path in paths:
+        table = pd.read_csv(path, sep="\t")
+        aliases = {
+            a: c for a, c in _V1_ALIASES.items() if a in table and c not in table
+        }
+        renamed = table.rename(columns=aliases)
+        repaired = (
+            renamed
+            if measurements is None
+            else _with_conditions_of(
+                measurements, renamed, _v1_table(v1_yaml, "condition_files")
+            )
+        )
+        if aliases or repaired is not renamed:
+            repaired.to_csv(path, sep="\t", index=False)
+    return paths
+
+
+#: the columns of the conditions of a measurement in PEtab v1
+_V1_CONDITIONS: tuple[str, ...] = (
+    "simulationConditionId",
+    "preequilibrationConditionId",
+)
+
+
+def _v1_table(v1_yaml: Path, key: str) -> pd.DataFrame | None:
+    """Get the tables of an entry of a problem of PEtab v1 as one table.
+
+    Args:
+        v1_yaml: the YAML file of the problem.
+        key: the entry of its problems, e.g. `measurement_files`.
+
+    Returns:
+        The tables, `None` without one.
+    """
+    config: dict[str, Any] = yaml.safe_load(v1_yaml.read_text(encoding="utf-8"))
+    names = [
+        name for problem in config.get("problems", []) for name in problem.get(key, [])
+    ]
+    if not names:
+        return None
+    return pd.concat(
+        [pd.read_csv(v1_yaml.parent / name, sep="\t") for name in names],
+        ignore_index=True,
+    )
+
+
+def _with_conditions_of(
+    measurements: pd.DataFrame,
+    simulations: pd.DataFrame,
+    conditions: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Give simulations of renamed conditions the conditions of the measurements.
+
+    Args:
+        measurements: the measurements of the problem.
+        simulations: its simulations, which may name conditions the problem
+            has no more.
+        conditions: the conditions of the problem.
+
+    Returns:
+        The simulations, with the conditions of the measurements when some of
+        their conditions are unknown and they have the observables and the
+        times of the measurements row by row; else the table as it is.
+    """
+    known = set() if conditions is None else set(conditions["conditionId"].astype(str))
+    columns = [c for c in _V1_CONDITIONS if c in simulations]
+    used = {
+        str(value)
+        for column in columns
+        for value in simulations[column].dropna()
+        if str(value)
+    }
+    if used <= known or len(simulations) != len(measurements):
+        return simulations
+    aligned = np.allclose(
+        simulations["time"].to_numpy(dtype=float),
+        measurements["time"].to_numpy(dtype=float),
+        equal_nan=True,
+    ) and _same_or_renamed(
+        measurements["observableId"].astype(str).to_numpy(),
+        simulations["observableId"].astype(str).to_numpy(),
+    )
+    if not aligned:
+        return simulations
+    repaired = simulations.copy()
+    for column in _V1_CONDITIONS:
+        if column in measurements:
+            repaired[column] = measurements[column].to_numpy()
+        elif column in repaired:
+            repaired = repaired.drop(columns=column)
+    return repaired
 
 
 def _fetch_file(url: str, path: Path) -> None:

@@ -304,16 +304,18 @@ GAPS: tuple[Gap, ...] = (
         "raises",
     ),
     Gap(
-        id="sciml-parameter-scale",
+        id="parameter-scale",
         kind=GapKind.EXTENSION,
         sbmlsim="`FitParameter.scale`, the space the optimizer searches one "
-        "parameter in: the elements of a network are negative and zero and "
-        "are searched on the linear scale",
+        "parameter in: the elements of a network are negative and zero, and a "
+        "parameter which a problem estimates as its logarithm, `log10_k`, has "
+        "bounds which are not positive; both are searched on the linear scale",
         petab="PEtab v2 has no scale of a parameter. The problems of PEtab "
         "SciML carry the column `parameterScale` of PEtab v1",
         detail="the reader reads the column of a problem of PEtab SciML, the "
-        "elements of a network are on the linear scale, and the scale of a "
-        "parameter goes to the extension",
+        "elements of a network are on the linear scale, as is a parameter "
+        "whose lower bound is not positive, and the scale of a parameter goes "
+        "to the extension",
     ),
     Gap(
         id="sciml-partial-array",
@@ -556,7 +558,7 @@ def gaps_of_problem(
     if any(parameter.prior is not None for parameter in problem.parameters):
         hits.add("priors")
     if any(parameter.scale is not None for parameter in problem.parameters):
-        hits.add("sciml-parameter-scale")
+        hits.add("parameter-scale")
     for hybridization in problem.hybridizations:
         # the layers of a network of `sbmlsim.sciml`, without importing it
         model = getattr(getattr(hybridization, "network", None), "model", None)

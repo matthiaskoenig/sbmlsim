@@ -16,9 +16,12 @@ from sbmlsim.fit.petab_v2.likelihood import chi2, log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.fit.petab_v2.testsuite import (
     CASE_SETTINGS,
+    FORMAT_VERSION,
     MATH,
     PETAB_SUITE_COMMIT,
     SBML,
+    V1_FORMAT_VERSION,
+    V1_SBML,
     CaseStatus,
     MathCase,
     PetabCase,
@@ -26,6 +29,7 @@ from sbmlsim.fit.petab_v2.testsuite import (
     math_cases,
 )
 from sbmlsim.testsuite import cache
+from tests.fit.petab_v1 import write_v1_problem
 from tests.fit.test_petab_v2_reader import write_problem
 
 
@@ -212,19 +216,71 @@ def test_the_math_cases_of_a_file(tmp_path: Path) -> None:
     assert [case.expected for case in cases] == [1.0, 2]
 
 
+def _v1_case(directory: Path, cid: str) -> Path:
+    """Write a case of PEtab v1 of the decay of `A`, see `write_v1_problem`."""
+    case_dir = directory / cid
+    write_v1_problem(case_dir, f"_{cid}")
+    (case_dir / f"_{cid}_solution.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "llh": float(2 * scipy.stats.norm.logpdf(0.0, scale=0.5)),
+                "chi2": 0.0,
+                "simulation_files": ["_simulations.tsv"],
+                "tol_llh": 1e-3,
+                "tol_chi2": 1e-3,
+                "tol_simulations": 1e-3,
+            }
+        )
+    )
+    return case_dir
+
+
 def test_the_suite_iterates_its_cases(tmp_path: Path) -> None:
-    """The suite runs the cases of the models of SBML and the math cases."""
-    _case(tmp_path / SBML, "9001")
-    (tmp_path / SBML / "README.md").write_text("not a case")
-    (tmp_path / MATH).mkdir()
-    (tmp_path / MATH / "math_tests.yaml").write_text(
+    """The suite runs the cases of PEtab v2, of PEtab v1 and the math cases."""
+    v2 = tmp_path / FORMAT_VERSION
+    _case(v2 / SBML, "9001")
+    (v2 / SBML / "README.md").write_text("not a case")
+    (v2 / MATH).mkdir()
+    (v2 / MATH / "math_tests.yaml").write_text(
         yaml.safe_dump({"cases": [{"expression": "1", "expected": 1.0}]})
     )
+    _v1_case(tmp_path / V1_FORMAT_VERSION / SBML, "9101")
     suite = PetabSuite(path=tmp_path, commit="abc")
+    suite.convert()
     assert suite.case_ids() == ["9001"]
+    assert suite.case_ids(V1_SBML) == ["9101"]
     results = suite.run()
-    assert [result.key for result in results] == [f"{SBML}/9001", f"{MATH}/000"]
-    assert all(result.passed for result in results)
+    assert [result.key for result in results] == [
+        f"{SBML}/9001",
+        f"{V1_SBML}/9101",
+        f"{MATH}/000",
+    ]
+    assert all(result.passed for result in results), [r.message for r in results]
+
+
+def test_a_case_of_petab_v1_is_converted_with_its_simulations(tmp_path: Path) -> None:
+    """The converted case is PEtab v2, its simulations have its experiments."""
+    _v1_case(tmp_path / V1_FORMAT_VERSION / SBML, "9101")
+    suite = PetabSuite(path=tmp_path, commit="abc")
+    suite.convert()
+    case = suite.case("9101", V1_SBML)
+    problem = yaml.safe_load(case.problem_file.read_text())
+    assert problem["format_version"] == "2.0.0"
+    assert case.solution["simulation_files"] == ["simulations.tsv"]
+    simulations = pd.read_csv(case.path / "simulations.tsv", sep="\t")
+    assert "simulationConditionId" not in simulations
+    assert simulations["simulation"].tolist() == pytest.approx([1.0, np.exp(-1.0)])
+
+
+def test_a_case_which_is_not_converted_is_an_error(tmp_path: Path) -> None:
+    """A case of PEtab v1 which `petab1to2` refuses is reported, not raised."""
+    case_dir = _v1_case(tmp_path / V1_FORMAT_VERSION / SBML, "9102")
+    (case_dir / "_model.xml").unlink()
+    suite = PetabSuite(path=tmp_path, commit="abc")
+    suite.convert()
+    result = suite.run_case("9102", V1_SBML)
+    assert result.status is CaseStatus.ERROR
+    assert "not converted" in result.message
 
 
 def test_the_cache_is_per_commit(monkeypatch: pytest.MonkeyPatch) -> None:

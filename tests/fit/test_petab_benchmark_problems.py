@@ -1,8 +1,9 @@
 """Tests of reading and running a problem of the PEtab benchmark collection.
 
 The problems are written by the tests, nothing is downloaded: the problem of
-PEtab v2 is the one the reader tests write, and the tables of PEtab v1 are
-the measurements and the simulations the collection compares with.
+PEtab v2 is the one the reader tests write, with the simulations the
+collection compares with, converted to PEtab v2 as `BenchmarkCollection`
+converts them; a problem of PEtab v1 is converted as the collection is.
 """
 
 import logging
@@ -19,11 +20,12 @@ from sbmlsim.fit.petab_v2.benchmark import (
     BenchmarkCollection,
     BenchmarkProblem,
     BenchmarkStatus,
-    llh_is_comparable,
 )
+from sbmlsim.fit.petab_v2.conversion import SIMULATIONS_FILE
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.petab_v2.reader import PetabReader
 from sbmlsim.testsuite import cache
+from tests.fit.petab_v1 import VALUES, write_v1_problem
 from tests.fit.test_petab_v2_reader import write_problem
 
 NAME = "Lotka_Volterra"
@@ -47,16 +49,8 @@ def _problem(collection: Path, name: str = NAME) -> BenchmarkProblem:
         {"e1": None, "e2": "c2"},
         conditions=[("c2", "prey", "3.0")],
     )
-    v1_dir = collection / "problems" / name / "v1"
-    v1_dir.mkdir(parents=True)
-
-    measurements = pd.read_csv(v2_dir / "measurements.tsv", sep="\t")
-    v1 = measurements.rename(columns={"experimentId": "simulationConditionId"})
-    v1 = v1.drop(columns=["noiseParameters"])
-    v1.to_csv(v1_dir / "measurements.tsv", sep="\t", index=False)
-    pd.DataFrame(
-        [{"observableId": "prey_o", "observableTransformation": "lin"}]
-    ).to_csv(v1_dir / "observables.tsv", sep="\t", index=False)
+    # the problem of the collection, whose encoding is the one above
+    (collection / "problems" / name / "v2").mkdir(parents=True)
 
     reader = PetabReader.from_yaml(v2_dir / "problem.yaml")
     problem = reader.to_optimization_problem()
@@ -64,12 +58,23 @@ def _problem(collection: Path, name: str = NAME) -> BenchmarkProblem:
     nominal = reader.nominal_parameters(problem)
     predictions = problem.predictions(nominal.x(problem.pids))
     index = {key: k for k, key in enumerate(problem.mapping_keys)}
-    simulations = v1.rename(columns={"measurement": "simulation"})
+    measurements = pd.read_csv(v2_dir / "measurements.tsv", sep="\t")
+    simulations = measurements.rename(columns={"measurement": "simulation"})
     simulations["simulation"] = [
         predictions[index[key]][position] for key, position in reader.measurement_rows()
     ]
-    simulations.to_csv(v1_dir / "simulations.tsv", sep="\t", index=False)
-    return BenchmarkProblem(name=name, v1_dir=v1_dir, v2_dir=v2_dir)
+    simulations.to_csv(v2_dir / SIMULATIONS_FILE, sep="\t", index=False)
+    return BenchmarkProblem(
+        name=name, source_dir=collection / "problems" / name, v2_dir=v2_dir
+    )
+
+
+def _simulations(problem: BenchmarkProblem) -> pd.DataFrame:
+    return pd.read_csv(problem.v2_dir / SIMULATIONS_FILE, sep="\t")
+
+
+def _write(problem: BenchmarkProblem, simulations: pd.DataFrame) -> None:
+    simulations.to_csv(problem.v2_dir / SIMULATIONS_FILE, sep="\t", index=False)
 
 
 def _llh(problem: BenchmarkProblem) -> float:
@@ -96,11 +101,11 @@ def test_a_problem_passes(tmp_path: Path) -> None:
 
 
 def test_a_simulation_outside_of_the_tolerance(tmp_path: Path) -> None:
-    """A simulation which differs is named with its observable and condition."""
+    """A simulation which differs is named with its observable and experiment."""
     problem = _problem(tmp_path)
-    simulations = pd.read_csv(problem.v1_dir / "simulations.tsv", sep="\t")
+    simulations = _simulations(problem)
     simulations.loc[12, "simulation"] += 1.0
-    simulations.to_csv(problem.v1_dir / "simulations.tsv", sep="\t", index=False)
+    _write(problem, simulations)
     result = problem.run()
     assert result.status is BenchmarkStatus.TOLERANCE
     assert "prey_o" in result.message
@@ -111,10 +116,9 @@ def test_a_simulation_outside_of_the_tolerance(tmp_path: Path) -> None:
 def test_the_simulations_are_found_by_their_keys(tmp_path: Path) -> None:
     """The table of the simulations may have another order and more rows."""
     problem = _problem(tmp_path)
-    simulations = pd.read_csv(problem.v1_dir / "simulations.tsv", sep="\t")
+    simulations = _simulations(problem)
     extra = simulations.iloc[[0]].assign(time=0.5)
-    simulations = pd.concat([simulations.iloc[::-1], extra], ignore_index=True)
-    simulations.to_csv(problem.v1_dir / "simulations.tsv", sep="\t", index=False)
+    _write(problem, pd.concat([simulations.iloc[::-1], extra], ignore_index=True))
     result = problem.run()
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.n_simulations == 20
@@ -131,19 +135,6 @@ def test_the_log_likelihood_of_amici(tmp_path: Path) -> None:
     result = problem.run(llh_reference=llh + 1.0)
     assert result.status is BenchmarkStatus.TOLERANCE
     assert "llh" in result.message
-
-
-def test_a_log10_observable_has_no_comparable_llh(tmp_path: Path) -> None:
-    """The conversion to PEtab v2 changes the density of a log10 observable."""
-    problem = _problem(tmp_path)
-    assert llh_is_comparable(problem.v1_dir)
-    pd.DataFrame(
-        [{"observableId": "prey_o", "observableTransformation": "log10"}]
-    ).to_csv(problem.v1_dir / "observables.tsv", sep="\t", index=False)
-    assert not llh_is_comparable(problem.v1_dir)
-    result = problem.run(llh_reference=1e6)
-    assert result.status is BenchmarkStatus.PASS, result.message
-    assert result.llh_reference is None
 
 
 def test_a_problem_which_was_not_converted(tmp_path: Path) -> None:
@@ -195,55 +186,46 @@ def test_the_cache_is_per_commit(monkeypatch: pytest.MonkeyPatch) -> None:
     assert BenchmarkCollection.cache_path(BENCHMARK_COMMIT) == Path("/somewhere")
 
 
-def test_simulations_of_renamed_conditions(tmp_path: Path) -> None:
+def test_simulations_without_a_table_of_the_collection(tmp_path: Path) -> None:
+    """A problem without simulations of the collection passes with a note."""
+    problem = _problem(tmp_path)
+    (problem.v2_dir / SIMULATIONS_FILE).unlink()
+    result = problem.run()
+    assert result.status is BenchmarkStatus.PASS, result.message
+    assert "no simulations" in result.message
+    assert result.n_simulations == 0
+
+
+def test_simulations_of_renamed_experiments(tmp_path: Path) -> None:
     """A table of the simulations in the order of the measurements is used as is.
 
-    Some problems of the collection renamed their conditions after the
-    simulations were written (`Fujita_SciSignal2010`).
+    The encoding of PEtab v2 of the collection names its experiments
+    otherwise than the conversion of its problem of PEtab v1, whose
+    simulations are converted (`Boehm_JProteomeRes2014` has none), and some
+    problems renamed their conditions after the simulations were written.
     """
     problem = _problem(tmp_path)
-    simulations = pd.read_csv(problem.v1_dir / "simulations.tsv", sep="\t")
-    simulations["simulationConditionId"] = simulations["simulationConditionId"].map(
+    simulations = _simulations(problem)
+    simulations["experimentId"] = simulations["experimentId"].map(
         {"e1": "model1_data1", "e2": "model1_data2"}
     )
-    simulations.to_csv(problem.v1_dir / "simulations.tsv", sep="\t", index=False)
+    _write(problem, simulations)
     result = problem.run()
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.n_simulations == 20
 
 
-def test_simulations_with_the_values_of_the_parameters(tmp_path: Path) -> None:
-    """The observable parameters of a simulation may be their values.
-
-    `Elowitz_Nature2000` writes the values of the observable parameters into
-    the table of the simulations, which is in another order here.
-    """
-    problem = _problem(tmp_path)
-    measurements = pd.read_csv(problem.v1_dir / "measurements.tsv", sep="\t")
-    measurements["observableParameters"] = "scale;offset"
-    measurements.to_csv(problem.v1_dir / "measurements.tsv", sep="\t", index=False)
-    simulations = pd.read_csv(problem.v1_dir / "simulations.tsv", sep="\t")
-    simulations["observableParameters"] = "1.5;-0.3"
-    simulations.iloc[::-1].to_csv(
-        problem.v1_dir / "simulations.tsv", sep="\t", index=False
-    )
-    result = problem.run()
-    assert result.status is BenchmarkStatus.PASS, result.message
-    assert result.n_simulations == 20
-
-
-def test_simulations_of_the_conditions_in_another_order(tmp_path: Path) -> None:
-    """The observables and the times agree row by row, the conditions not.
+def test_simulations_of_the_experiments_in_another_order(tmp_path: Path) -> None:
+    """The observables and the times agree row by row, the experiments not.
 
     `Liu_IFACPapersOnLine2025` lists the simulations of its second condition
-    first; the conditions are the ones of the measurements, so they are found
-    by their keys and not by their position.
+    first; the experiments are the ones of the measurements, so they are
+    found by their keys and not by their position.
     """
     problem = _problem(tmp_path)
-    simulations = pd.read_csv(problem.v1_dir / "simulations.tsv", sep="\t")
+    simulations = _simulations(problem)
     first, second = simulations.iloc[:10], simulations.iloc[10:]
-    simulations = pd.concat([second, first], ignore_index=True)
-    simulations.to_csv(problem.v1_dir / "simulations.tsv", sep="\t", index=False)
+    _write(problem, pd.concat([second, first], ignore_index=True))
     result = problem.run()
     assert result.status is BenchmarkStatus.PASS, result.message
 
@@ -255,11 +237,11 @@ def test_simulations_of_renamed_observables(tmp_path: Path) -> None:
     of the simulations, `Isensee_JCB2018` adds the parameters and conditions.
     """
     problem = _problem(tmp_path)
-    simulations = pd.read_csv(problem.v1_dir / "simulations.tsv", sep="\t")
+    simulations = _simulations(problem)
     simulations["observableId"] = [
-        f"prey__{condition}" for condition in simulations["simulationConditionId"]
+        f"prey__{experiment}" for experiment in simulations["experimentId"]
     ]
-    simulations.to_csv(problem.v1_dir / "simulations.tsv", sep="\t", index=False)
+    _write(problem, simulations)
     result = problem.run()
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.n_simulations == 20
@@ -268,16 +250,81 @@ def test_simulations_of_renamed_observables(tmp_path: Path) -> None:
 def test_simulations_of_renamed_observables_in_another_order(tmp_path: Path) -> None:
     """A renamed observable is found by the observable it starts with."""
     problem = _problem(tmp_path)
-    simulations = pd.read_csv(problem.v1_dir / "simulations.tsv", sep="\t")
+    simulations = _simulations(problem)
     simulations["observableId"] = [
-        f"prey_o__{condition}" for condition in simulations["simulationConditionId"]
+        f"prey_o__{experiment}" for experiment in simulations["experimentId"]
     ]
-    simulations.iloc[::-1].to_csv(
-        problem.v1_dir / "simulations.tsv", sep="\t", index=False
-    )
+    _write(problem, simulations.iloc[::-1])
     result = problem.run()
     assert result.status is BenchmarkStatus.PASS, result.message
     assert result.n_simulations == 20
+
+
+def _v1_collection(collection: Path, name: str = "Decay") -> Path:
+    """Write a problem of PEtab v1 of a collection, see `write_v1_problem`."""
+    v1_dir = collection / "problems" / name / "v1"
+    write_v1_problem(v1_dir)
+    (v1_dir / "_simulations.tsv").rename(v1_dir / "simulations.tsv")
+    return v1_dir
+
+
+def test_a_problem_of_petab_v1_is_converted_with_its_simulations(
+    tmp_path: Path,
+) -> None:
+    """The problem and its simulations are written in PEtab v2 and pass."""
+    _v1_collection(tmp_path)
+    collection = BenchmarkCollection(path=tmp_path, commit="abc")
+    collection.convert()
+    problem = collection.problem("Decay")
+    assert not problem.native
+    config = yaml.safe_load((problem.v2_dir / "problem.yaml").read_text())
+    assert config["format_version"] == "2.0.0"
+    simulations = _simulations(problem)
+    assert "simulationConditionId" not in simulations
+    assert simulations["simulation"].tolist() == pytest.approx(list(VALUES))
+    result = problem.run()
+    assert result.status is BenchmarkStatus.PASS, result.message
+    assert result.n_simulations == 2
+
+
+def test_the_encoding_of_petab_v2_of_the_collection_is_run(tmp_path: Path) -> None:
+    """A problem with an encoding in PEtab v2 is that encoding, not converted.
+
+    Its simulations are converted from PEtab v1, which the collection has
+    them in.
+    """
+    v1_dir = _v1_collection(tmp_path)
+    native = write_problem(
+        tmp_path / "native",
+        {"prey_o": "prey"},
+        {"e1": None},
+    ).parent
+    native.rename(v1_dir.parent / "v2")
+    collection = BenchmarkCollection(path=tmp_path, commit="abc")
+    collection.convert()
+    problem = collection.problem("Decay")
+    assert problem.native
+    assert (problem.v2_dir / "measurements.tsv").read_text() == (
+        v1_dir.parent / "v2" / "measurements.tsv"
+    ).read_text()
+    assert _simulations(problem)["simulation"].tolist() == pytest.approx(list(VALUES))
+
+
+def test_simulations_of_conditions_which_were_renamed(tmp_path: Path) -> None:
+    """The conditions of simulations the problem renamed are the measurements' ones.
+
+    `Fujita_SciSignal2010` renamed its conditions after the simulations were
+    written, which `petab1to2` cannot convert.
+    """
+    v1_dir = _v1_collection(tmp_path)
+    simulations = pd.read_csv(v1_dir / "simulations.tsv", sep="\t")
+    simulations["simulationConditionId"] = "model1_data1"
+    simulations.to_csv(v1_dir / "simulations.tsv", sep="\t", index=False)
+    collection = BenchmarkCollection(path=tmp_path, commit="abc")
+    collection.convert()
+    result = collection.problem("Decay").run()
+    assert result.status is BenchmarkStatus.PASS, result.message
+    assert result.n_simulations == 2
 
 
 @pytest.mark.skipif(

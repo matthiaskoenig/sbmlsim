@@ -125,6 +125,6 @@ The differences between `sbmlsim` and PEtab SciML are listed in the catalogue of
 - `sciml-model-format`: networks in the formats `pytorch`, `equinox` or `lux.jl` are not read, only the NN YAML.
 - `sciml-layer-sbml`: a layer without MathML cannot sit in the right hand side or in an observable.
 - `sciml-training-mode`: dropout and the normalization layers are evaluated in evaluation mode, while the reference values of the suite for dropout are built in training mode.
-- `sciml-parameter-scale`: the scale of a single parameter has no place in PEtab v2 and goes to the `sbmlsim` extension.
+- `parameter-scale`: the scale of a single parameter has no place in PEtab v2 and goes to the `sbmlsim` extension.
 - `sciml-partial-array`: a fit that estimates only some elements of an array, or bounds them differently, cannot be written; the export raises and names the array.
 - `sciml-input-formula`: an input of a network before the simulation, or with a formula per condition, may only use parameters of the parameter table. Any other model entity, e.g. a compartment, makes the export raise and name the network, the input and the entity.

@@ -8,7 +8,7 @@ from pymetadata.omex import Omex
 from sbmlsim.fit.petab_omex import create_petab_omex
 
 PETAB_DIR = Path(__file__).parent.parent.parent / "examples" / "petab"
-BOEHM_YAML = PETAB_DIR / "Boehm_JProteomeRes2014" / "Boehm_JProteomeRes2014.yaml"
+BOEHM_YAML = PETAB_DIR / "Boehm_JProteomeRes2014" / "problem.yaml"
 
 
 def test_create_petab_omex_boehm(tmp_path: Path) -> None:
@@ -19,10 +19,14 @@ def test_create_petab_omex_boehm(tmp_path: Path) -> None:
 
     omex = Omex.from_omex(omex_file)
     locations = [e.location for e in omex.manifest.entries]
-    assert "./Boehm_JProteomeRes2014.yaml" in locations
-    assert "./parameters_Boehm_JProteomeRes2014.tsv" in locations
-    assert "./model_Boehm_JProteomeRes2014.xml" in locations
-    assert "./measurementData_Boehm_JProteomeRes2014.tsv" in locations
+    # the archive itself and its manifest are entries, too
+    assert sorted(set(locations) - {".", "./manifest.xml"}) == [
+        "./measurements.tsv",
+        "./model.xml",
+        "./observables.tsv",
+        "./parameters.tsv",
+        "./problem.yaml",
+    ]
 
 
 def test_create_petab_omex_single_master(tmp_path: Path) -> None:
@@ -32,7 +36,7 @@ def test_create_petab_omex_single_master(tmp_path: Path) -> None:
 
     omex = Omex.from_omex(omex_file)
     masters = [e.location for e in omex.manifest.entries if e.master]
-    assert masters == ["./Boehm_JProteomeRes2014.yaml"]
+    assert masters == ["./problem.yaml"]
 
 
 def test_create_petab_omex_missing_yaml(tmp_path: Path) -> None:
@@ -42,3 +46,11 @@ def test_create_petab_omex_missing_yaml(tmp_path: Path) -> None:
             omex_file=tmp_path / "missing.omex",
             yaml_file=tmp_path / "missing.yaml",
         )
+
+
+def test_a_problem_of_petab_v1_is_refused(tmp_path: Path) -> None:
+    """A problem of PEtab v1 is converted with `petab1to2` first."""
+    yaml_file = tmp_path / "problem.yaml"
+    yaml_file.write_text("format_version: 1\nparameter_file: parameters.tsv\n")
+    with pytest.raises(ValueError, match="petab1to2"):
+        create_petab_omex(omex_file=tmp_path / "v1.omex", yaml_file=yaml_file)

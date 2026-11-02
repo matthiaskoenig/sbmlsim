@@ -21,8 +21,8 @@ from sbmlsim.fit.petab_v2.testsuite import (
     MATH,
     PETAB_SUITE_COMMIT,
     SBML,
+    V1_SBML,
     CaseResult,
-    PetabCase,
     PetabSuite,
 )
 
@@ -37,10 +37,16 @@ SKIP_REASON = (
 )
 
 
-def _case_ids() -> list[str]:
-    """Get the cases of the models of the cached suite, for the parametrization."""
+def _case_ids() -> list[tuple[str, str]]:
+    """Get the groups and cases of the models of the cached suite.
+
+    The cases of PEtab v1 are the ones converted to PEtab v2, which a
+    download converts.
+    """
     suite = PetabSuite.cached()
-    return [] if suite is None else suite.case_ids(SBML)
+    if suite is None:
+        return []
+    return [(group, cid) for group in (SBML, V1_SBML) for cid in suite.case_ids(group)]
 
 
 def _math_ids() -> list[int]:
@@ -84,11 +90,12 @@ def _check(result: CaseResult, baseline: dict) -> None:
         )
 
 
-@pytest.mark.parametrize("cid", _case_ids())
-def test_case(cid: str, suite: PetabSuite, baseline: dict) -> None:
+@pytest.mark.parametrize(
+    ("group", "cid"), _case_ids(), ids=[f"{g}/{c}" for g, c in _case_ids()]
+)
+def test_case(group: str, cid: str, suite: PetabSuite, baseline: dict) -> None:
     """A case of a model has the outcome the baseline records."""
-    case = PetabCase.from_directory(suite.path / SBML / cid)
-    _check(case.run(), baseline)
+    _check(suite.run_case(cid, group), baseline)
 
 
 @pytest.mark.parametrize("index", _math_ids())
@@ -102,7 +109,8 @@ def test_the_baseline_matches_the_suite(suite: PetabSuite, baseline: dict) -> No
     assert baseline["suite_commit"] == PETAB_SUITE_COMMIT == suite.commit
     assert baseline["n_cases"] == len(_case_ids()) + len(_math_ids())
     assert all(
-        key.split("/")[0] in {SBML, MATH} for key in baseline["expected_failures"]
+        key.rsplit("/", 1)[0] in {SBML, V1_SBML, MATH}
+        for key in baseline["expected_failures"]
     )
     for key, expected in baseline["expected_failures"].items():
         assert expected["reason"] != "reason missing", f"'{key}' has no reason"

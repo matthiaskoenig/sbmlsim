@@ -198,7 +198,14 @@ def test_the_scale_of_a_parameter_of_the_extension(tmp_path: Path) -> None:
     _add_sbmlsim_block(path, {"alpha": {"scale": "LOG"}, "beta": {"unit": None}})
     by_id = {p.pid: p for p in PetabReader.from_yaml(path).fit_parameters()}
     assert by_id["alpha"].scale is ParameterScaleType.LOG
+    # a parameter without a scale whose lower bound is not positive is searched
+    # on the linear scale
+    assert by_id["beta"].scale is ParameterScaleType.LINEAR
     # a parameter without a scale has the scale of the settings
+    parameters = pd.read_csv(path.parent / "parameters.tsv", sep="\t")
+    parameters.loc[parameters["parameterId"] == "beta", "lowerBound"] = 0.1
+    parameters.to_csv(path.parent / "parameters.tsv", sep="\t", index=False)
+    by_id = {p.pid: p for p in PetabReader.from_yaml(path).fit_parameters()}
     assert by_id["beta"].scale is None
 
 
@@ -727,3 +734,13 @@ def test_the_data_of_a_concentration_is_in_the_unit_of_the_concentration(
     assert dataset.uinfo["value"] == "mole/litre"
     problem = reader.to_optimization_problem()
     problem.initialize(SETTINGS)
+
+
+def test_a_problem_of_petab_v1_is_refused(tmp_path: Path) -> None:
+    """sbmlsim reads PEtab v2, a problem of PEtab v1 is converted first."""
+    from sbmlsim.fit.petab_v2.reader import PetabReader
+
+    yaml_file = tmp_path / "problem.yaml"
+    yaml_file.write_text("format_version: 1\nparameter_file: parameters.tsv\n")
+    with pytest.raises(ValueError, match="petab1to2"):
+        PetabReader.from_yaml(yaml_file)

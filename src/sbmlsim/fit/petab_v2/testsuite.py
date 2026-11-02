@@ -1,12 +1,16 @@
-"""The cases of the PEtab v2 test suite on disk.
+"""The cases of the PEtab test suite on disk.
 
 The [test suite](https://github.com/PEtab-dev/petab_test_suite) has a group of
 cases per model format and the cases of the math of PEtab, below
-`petabtests/cases/v2.0.0`:
+`petabtests/cases/v2.0.0`, and the cases of PEtab v1 below
+`petabtests/cases/v1.0.0`. `sbmlsim` reads PEtab v2 only, a case of PEtab v1
+is converted to PEtab v2 with its simulations once, see
+`sbmlsim.fit.petab_v2.conversion`, and run as a case of PEtab v2:
 
 | group | case | compared |
 | --- | --- | --- |
 | `sbml` | `PetabCase` | log-likelihood, chi2, simulations, log prior, log posterior |
+| `v1/sbml` | `PetabCase` | the same, of the case of PEtab v1 converted to PEtab v2 |
 | `math` | `MathCase` | the value of an expression of `math_tests.yaml` |
 
 A case of a model is a directory named by its number with the problem
@@ -15,16 +19,21 @@ names. It is read with `PetabReader`, simulated at the nominal values of its
 parameter table (`PetabReader.nominal_parameters`) and compared with the
 tolerances of its solution. A math case compiles its expression with
 `sbmlsim.simulator.formula.compile_formula`, which is what the formulas of
-conditions, observables and noise are evaluated with.
+conditions, observables and noise are evaluated with. The cases of PySB
+models (`pysb`) are not run, `sbmlsim` simulates SBML.
 
 The suite has no releases, so it is pinned by a commit. `PetabSuite` is the
-directory of the groups with the download and the cache of the commit.
+directory of the cases of both versions with the download, the conversion
+and the cache of the commit.
 """
 
 from __future__ import annotations
 
 import logging
 import math
+import os
+import shutil
+import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
@@ -36,6 +45,7 @@ import pandas as pd
 import yaml
 
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
+from sbmlsim.fit.petab_v2.conversion import convert_v1
 from sbmlsim.fit.petab_v2.likelihood import (
     chi2,
     log_likelihood,
@@ -49,21 +59,37 @@ from sbmlsim.testsuite import cache
 logger = logging.getLogger(__name__)
 
 #: commit of the test suite the tests run against
-PETAB_SUITE_COMMIT = "4c17947afdced710bd1cbb4360bb36177ed07857"
+PETAB_SUITE_COMMIT = "d09985e7bb03280b461599a24337137533d931e2"
 
 #: archive of a commit of the suite
 PETAB_SUITE_URL = "https://github.com/PEtab-dev/petab_test_suite/archive/{commit}.zip"
 
 #: the environment variable which points at the cases when they are not in
-#: the cache, i.e. at the directory `petabtests/cases/v2.0.0` of a checkout
+#: the cache, i.e. at the directory `petabtests/cases` of a checkout
 PETAB_SUITE_PATH_VARIABLE = "SBMLSIM_PETAB_SUITE_PATH"
 
-#: the version of PEtab whose cases are run, a directory of the suite
+#: the directories of the versions of PEtab in the cases of the suite
 FORMAT_VERSION = "v2.0.0"
+V1_FORMAT_VERSION = "v1.0.0"
 
-#: the groups of cases, which are the directories of the version
+#: the directory the cases of PEtab v1 are converted into, next to the
+#: versions
+CONVERTED = "v1.0.0-converted"
+
+#: the groups of cases: the models and the math of PEtab v2, and the models
+#: of PEtab v1 converted to PEtab v2
 SBML = "sbml"
 MATH = "math"
+V1_SBML = "v1/sbml"
+
+#: the directory of every group of models, below the cases of the suite
+GROUP_DIRECTORIES: dict[str, str] = {
+    SBML: f"{FORMAT_VERSION}/{SBML}",
+    V1_SBML: f"{CONVERTED}/{SBML}",
+}
+
+#: the file of a case which could not be converted, with the reason
+CONVERSION_ERROR = "conversion.error"
 
 #: the file of the math cases in the directory `math`
 MATH_FILE = "math_tests.yaml"
@@ -174,9 +200,13 @@ class PetabCase:
             The case.
 
         Raises:
-            ValueError: if the directory has no problem or no solution.
+            ValueError: if the directory has no problem or no solution, or is
+                a case of PEtab v1 which could not be converted.
         """
         cid = path.name
+        if (path / CONVERSION_ERROR).is_file():
+            reason = (path / CONVERSION_ERROR).read_text(encoding="utf-8").strip()
+            raise ValueError(f"The case of PEtab v1 is not converted: {reason}")
         problem_file = path / f"_{cid}.yaml"
         solution_file = path / f"_{cid}_solution.yaml"
         for file in (problem_file, solution_file):
@@ -435,11 +465,12 @@ def math_cases(path: Path) -> list[MathCase]:
 
 @dataclass(frozen=True)
 class PetabSuite:
-    """The cases of a commit of the PEtab v2 test suite.
+    """The cases of a commit of the PEtab test suite.
 
     Attributes:
-        path: the directory which holds the directories of the groups, i.e.
-            `petabtests/cases/v2.0.0` of the suite.
+        path: the directory of the cases of the suite, i.e.
+            `petabtests/cases` with the versions `v1.0.0` and `v2.0.0`, and
+            the cases of PEtab v1 converted to PEtab v2, see `convert`.
         commit: the commit of the suite.
     """
 
@@ -457,7 +488,7 @@ class PetabSuite:
             commit: the commit of the suite.
 
         Returns:
-            The directory the groups of the commit live in.
+            The directory the cases of the commit live in.
         """
         return cache.cache_path(PETAB_SUITE_PATH_VARIABLE, "petab-test-suite", commit)
 
@@ -472,86 +503,171 @@ class PetabSuite:
             The suite, or `None` if it was not downloaded yet.
         """
         path = cls.cache_path(commit)
-        return cls(path=path, commit=commit) if path.is_dir() else None
+        return (
+            cls(path=path, commit=commit) if (path / FORMAT_VERSION).is_dir() else None
+        )
 
     @classmethod
     def load(cls, commit: str = PETAB_SUITE_COMMIT) -> PetabSuite:
-        """Get a commit of the suite, downloading it if it is not cached.
+        """Get a commit of the suite, downloading and converting it once.
 
         Args:
             commit: the commit of the suite.
 
         Returns:
-            The suite with its cases unpacked in the cache.
+            The suite with its cases unpacked in the cache and the cases of
+            PEtab v1 converted to PEtab v2.
 
         Raises:
             OSError: if the commit cannot be downloaded.
         """
         suite = cls.cached(commit)
-        if suite is not None:
-            if not cache.is_overridden(PETAB_SUITE_PATH_VARIABLE):
-                cache.remove_stale(suite.path)
-            return suite
-        path = cls.cache_path(commit)
-        url = PETAB_SUITE_URL.format(commit=commit)
-        logger.info("Downloading the PEtab test suite '%s'", commit)
-        cache.fetch(url, path, select=cls._cases_dir)
-        return cls(path=path, commit=commit)
+        if suite is None:
+            path = cls.cache_path(commit)
+            url = PETAB_SUITE_URL.format(commit=commit)
+            logger.info("Downloading the PEtab test suite '%s'", commit)
+            cache.fetch(url, path, select=cls._cases_dir)
+            suite = cls(path=path, commit=commit)
+        elif not cache.is_overridden(PETAB_SUITE_PATH_VARIABLE):
+            cache.remove_stale(suite.path)
+        suite.convert()
+        return suite
 
     @staticmethod
     def _cases_dir(staging: Path) -> Path:
-        """Get the directory of the groups of an unpacked archive.
+        """Get the directory of the cases of an unpacked archive.
 
         Args:
             staging: directory the archive was unpacked into.
 
         Returns:
-            The directory `cases/v2.0.0`.
+            The directory `petabtests/cases`.
 
         Raises:
             OSError: if the archive holds no such directory.
         """
-        for candidate in sorted(staging.glob(f"**/cases/{FORMAT_VERSION}")):
-            if candidate.is_dir():
+        for candidate in sorted(staging.glob("**/cases")):
+            if (candidate / FORMAT_VERSION).is_dir():
                 return candidate
         raise OSError(
             f"No directory 'cases/{FORMAT_VERSION}' in the unpacked suite '{staging}'"
         )
 
+    def convert(self) -> None:
+        """Convert the cases of PEtab v1 which are not converted yet.
+
+        A case is converted with its simulations into the directory of the
+        group `v1/sbml`, its solution names the converted simulations. A case
+        which cannot be converted gets the file `CONVERSION_ERROR` with the
+        reason instead of its problem, which `PetabCase.run` reports.
+        """
+        source = self.path / V1_FORMAT_VERSION / SBML
+        if not source.is_dir():
+            return
+        target = self.path / GROUP_DIRECTORIES[V1_SBML]
+        for case_dir in sorted(p for p in source.iterdir() if p.name.isdigit()):
+            if (target / case_dir.name).is_dir():
+                continue
+            _convert_case(case_dir, target / case_dir.name)
+
     def case_ids(self, group: str = SBML) -> list[str]:
         """Get the numbers of the cases of a group of models.
 
         Args:
-            group: the group, i.e. the name of its directory.
+            group: the group, see `GROUP_DIRECTORIES`.
 
         Returns:
             The names of the case directories, sorted, empty for a group the
             suite does not have.
         """
-        directory = self.path / group
+        directory = self.path / GROUP_DIRECTORIES[group]
         if not directory.is_dir():
             return []
         return sorted(
             p.name for p in directory.iterdir() if p.is_dir() and p.name.isdigit()
         )
 
+    def case(self, cid: str, group: str = SBML) -> PetabCase:
+        """Get a case of a group of models by its number."""
+        return PetabCase.from_directory(
+            self.path / GROUP_DIRECTORIES[group] / cid, group=group
+        )
+
     def cases(self, group: str = SBML) -> Iterator[PetabCase]:
         """Iterate the cases of a group of models."""
         for cid in self.case_ids(group):
-            yield PetabCase.from_directory(self.path / group / cid, group=group)
+            yield self.case(cid, group)
+
+    def run_case(self, cid: str, group: str = SBML) -> CaseResult:
+        """Run a case of a group of models, `error` for one which cannot be read."""
+        try:
+            case = self.case(cid, group)
+        except ValueError as err:
+            return CaseResult(
+                group=group, cid=cid, status=CaseStatus.ERROR, message=str(err)
+            )
+        return case.run()
 
     def math_cases(self) -> list[MathCase]:
         """Get the math cases, empty for a suite without them."""
-        path = self.path / MATH / MATH_FILE
+        path = self.path / FORMAT_VERSION / MATH / MATH_FILE
         return math_cases(path) if path.is_file() else []
 
     def run(self) -> list[CaseResult]:
         """Run the cases of the suite.
 
         Returns:
-            The results of the group `sbml` and of the math cases, in this
-            order.
+            The results of the groups `sbml` and `v1/sbml` and of the math
+            cases, in this order.
         """
-        results = [case.run() for case in self.cases(SBML)]
+        results = [
+            self.run_case(cid, group)
+            for group in (SBML, V1_SBML)
+            for cid in self.case_ids(group)
+        ]
         results.extend(case.run() for case in self.math_cases())
         return results
+
+
+def _convert_case(source: Path, target: Path) -> None:
+    """Convert a case of PEtab v1 to PEtab v2, with its solution.
+
+    The problem and its simulations are converted into a staging directory,
+    see `sbmlsim.fit.petab_v2.conversion.convert_v1`, which is moved into
+    place, so a case is converted completely or not at all.
+
+    Args:
+        source: the directory of the case of PEtab v1.
+        target: the directory of the converted case.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{source.name}.", dir=target.parent))
+    cid = source.name
+    try:
+        output = staging / "case"
+        solution_file = source / f"_{cid}_solution.yaml"
+        solution: dict[str, Any] = yaml.safe_load(
+            solution_file.read_text(encoding="utf-8")
+        )
+        simulations = convert_v1(
+            source / f"_{cid}.yaml",
+            output,
+            [source / name for name in solution.get("simulation_files", [])],
+        )
+        if simulations is not None:
+            solution["simulation_files"] = [simulations.name]
+        (output / solution_file.name).write_text(
+            yaml.safe_dump(solution), encoding="utf-8"
+        )
+    except Exception as err:  # the conversion of the case is its outcome
+        logger.warning("The case '%s' of PEtab v1 is not converted: %s", cid, err)
+        output = staging / "case"
+        shutil.rmtree(output, ignore_errors=True)
+        output.mkdir()
+        (output / CONVERSION_ERROR).write_text(
+            f"{type(err).__name__}: {err}\n", encoding="utf-8"
+        )
+    try:
+        os.replace(staging / "case", target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)

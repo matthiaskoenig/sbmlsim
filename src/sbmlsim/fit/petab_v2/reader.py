@@ -28,7 +28,6 @@ import libsbml
 import numpy as np
 import pandas as pd
 import petab.v2 as petab_v2
-from petab.v1.yaml import load_yaml
 from petab.v2 import Problem as PetabProblem
 from petab.v2.math import petab_math_str, sympify_petab
 from pydantic import AnyUrl
@@ -370,13 +369,21 @@ class PetabReader:
         Raises:
             ImportError: if the problem has neural networks and the extra
                 `sciml` is not installed.
-            ValueError: if the problem requires an extension `sbmlsim` does
+            ValueError: if the problem is a problem of PEtab v1, which is
+                converted first, or requires an extension `sbmlsim` does
                 not know. The extensions are checked on the YAML, before
                 `petab` reads the problem: it needs the package of an
                 extension to read its files.
         """
         yaml_file = Path(yaml_file)
-        config = load_yaml(yaml_file) or {}
+        config = petab_v2.load_yaml(yaml_file) or {}
+        version = str(config.get("format_version", ""))
+        if version.split(".")[0] == "1":
+            raise ValueError(
+                f"'{yaml_file}' is a problem of PEtab '{version}', sbmlsim reads "
+                f"PEtab v2: convert it with `petab.v2.petab1to2`, see "
+                f"`sbmlsim.fit.petab_v2.conversion.convert_v1`."
+            )
         extensions = dict(config.get("extensions") or {})
         check_extensions(extensions)
         sciml = extensions.pop(SCIML_EXTENSION_ID, None)
@@ -1824,7 +1831,11 @@ class PetabReader:
         PEtab v2 has no scale of a parameter. The `sbmlsim` extension carries
         it by its name, and the problems of PEtab SciML carry the column
         `parameterScale`, which is read for them when the extension does not
-        give the scale.
+        give the scale. Without either, a parameter whose lower bound is not
+        positive is searched on the linear scale, which the logarithmic
+        scales of the settings do not allow: e.g. a parameter which a problem
+        estimates as its logarithm, `log10_k`, as the encodings of PEtab v2 of
+        the benchmark collection and `petab1to2` with `reparametrize` do.
 
         Args:
             parameter: parameter of the parameter table.
@@ -1848,12 +1859,14 @@ class PetabReader:
                     f"{list(ParameterScaleType.__members__)}."
                 )
             return ParameterScaleType[name]
-        if self.sciml is None:
-            return None
-        # the import needs the extra `sciml`
-        from sbmlsim.fit.petab_v2.sciml import parameter_scale
+        if self.sciml is not None:
+            # the import needs the extra `sciml`
+            from sbmlsim.fit.petab_v2.sciml import parameter_scale
 
-        return parameter_scale(parameter)
+            return parameter_scale(parameter)
+        if parameter.lb is not None and not float(parameter.lb) > 0.0:
+            return ParameterScaleType.LINEAR
+        return None
 
     def mapping_collections(
         self, experiment_class: type[SimulationExperiment]

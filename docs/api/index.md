@@ -103,7 +103,7 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.identifiability](fit.identifiability.md) | `profile_likelihood`, the confidence intervals and the classification of the parameters from the profiles |
 | [fit.fisher](fit.fisher.md) | `fisher_information`, the standard errors, correlations and constrained directions from one jacobian |
 | [fit.helpers](fit.helpers.md) | helpers for fitting |
-| [fit.petab_omex](fit.petab_omex.md) | COMBINE archives of PEtab problems |
+| [fit.petab_omex](fit.petab_omex.md) | COMBINE archives of PEtab v2 problems |
 
 PEtab v2, see [PEtab](../petab.md).
 
@@ -114,6 +114,7 @@ PEtab v2, see [PEtab](../petab.md).
 | [fit.petab_v2.extension](fit.petab_v2.extension.md) | the `sbmlsim` block of the problem, i.e., what PEtab does not express |
 | [fit.petab_v2.symbols](fit.petab_v2.symbols.md) | the identifiers and symbols shared by the PEtab layer |
 | [fit.petab_v2.gaps](fit.petab_v2.gaps.md) | the catalogue of the differences between a fit and its PEtab problem |
+| [fit.petab_v2.conversion](fit.petab_v2.conversion.md) | the conversion of a problem of PEtab v1 and its simulations to PEtab v2 |
 | [fit.petab_v2.likelihood](fit.petab_v2.likelihood.md) | the log-likelihood and its gradient, chi2 and the priors, the noise models of PEtab v2 |
 | [fit.petab_v2.testsuite](fit.petab_v2.testsuite.md) | the [PEtab Test Suite](../petab_testsuite.md): its cases of models and of math, and their comparison |
 | [fit.petab_v2.benchmark](fit.petab_v2.benchmark.md) | the [PEtab benchmark collection](../petab_benchmark.md): its problems converted to PEtab v2, simulated and compared with the collection and with AMICI |

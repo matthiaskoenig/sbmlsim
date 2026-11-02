@@ -862,9 +862,9 @@ def test_the_gaps_of_a_hybrid_problem(tmp_path: Path) -> None:
     problem, _ = from_petab(_problem(tmp_path))
     problem.initialize(SETTINGS)
     ids = {gap.id for gap in gaps_of_problem(problem)}
-    assert "sciml-parameter-scale" in ids
+    assert "parameter-scale" in ids
     assert "sciml-training-mode" not in ids
-    assert GAPS_BY_ID["sciml-parameter-scale"].kind is GapKind.EXTENSION
+    assert GAPS_BY_ID["parameter-scale"].kind is GapKind.EXTENSION
     for gap_id in ("sciml-model-format", "sciml-layer-sbml", "sciml-priors"):
         assert GAPS_BY_ID[gap_id].kind is GapKind.UNSUPPORTED
     assert GAPS_BY_ID["sciml-training-mode"].kind is GapKind.LOSSY
