@@ -24,6 +24,7 @@ from rich.table import Table
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
 from sbmlsim.fit.options import (
     DataAtChangeType,
+    ObjectiveType,
     ResidualType,
     WeightingCurvesType,
     WeightingPointsType,
@@ -215,36 +216,38 @@ GAPS: tuple[Gap, ...] = (
     Gap(
         id="noise-parameters",
         kind=GapKind.LOSSY,
-        sbmlsim="a fit estimates the parameters of a model and weights the data "
-        "of a curve, i.e. the spread of the data is data and not a parameter",
+        sbmlsim="a fit of weighted least squares (`ObjectiveType.LEAST_SQUARES`, "
+        "the default of a fit defined in python) estimates the parameters of a "
+        "model and weights the data of a curve, i.e. the spread of the data is "
+        "data and not a parameter",
         petab="the parameters of the noise and of the observables are estimated "
         "with the parameters of the model, e.g. a `sd_<observable>` which the "
         "objective fits",
         detail="a parameter of a problem which is not an entity of a model is a "
         "parameter of the model the fit simulates, and an estimated one is a "
-        "parameter of the fit. The weighted least squares of a fit does not "
-        "depend on a parameter of the noise, so it keeps its start value and the "
-        "data is weighted by `FitSettings.weighting_points` instead: a fit of "
-        "such a problem is not the fit PEtab describes. `log_likelihood` reads "
-        "the parameter from the simulation, i.e. at the value of the parameter "
-        "set it is given",
+        "parameter of the fit. The weighted least squares does not depend on a "
+        "parameter of the noise, so it keeps its start value. A fit with "
+        "`ObjectiveType.LIKELIHOOD` or `POSTERIOR`, the default of a problem "
+        "read without the extension, estimates it as PEtab does and has no "
+        "such gap",
     ),
     Gap(
         id="noise-model",
         kind=GapKind.LOSSY,
-        sbmlsim="the cost of a fit is a weighted sum of squares. The noise "
+        sbmlsim="the cost of a fit of weighted least squares "
+        "(`ObjectiveType.LEAST_SQUARES`) is a weighted sum of squares. The noise "
         "formula and the noise distribution of a fit mapping are kept as its "
-        "`NoiseModel`, which `log_likelihood` evaluates and the optimizer does "
+        "`NoiseModel`, which `log_likelihood` evaluates and this optimizer does "
         "not use",
         petab="`noiseFormula` and `noiseDistribution` per observable are the "
         "objective, i.e. the negative log likelihood of the measurements",
         detail="the noise model of a problem which is read is written as it "
-        "was read, so the tables of a round trip agree and the log-likelihood "
-        "of a problem is compared with the one of other tools. The fit stays a "
-        "least squares fit, i.e. its optimum is not the maximum of the "
-        "likelihood. A fit mapping without a noise model is written with a "
-        "normal noise of the standard deviation of its data, or of `1.0` for "
-        "data without errors, and has that noise model when it is read back",
+        "was read, so the tables of a round trip agree. A fit with "
+        "`ObjectiveType.LIKELIHOOD` or `POSTERIOR` minimizes the negative "
+        "log-likelihood of the noise models and has no such gap. A fit mapping "
+        "without a noise model is written with a normal noise of the standard "
+        "deviation of its data, or of `1.0` for data without errors, and has "
+        "that noise model when it is read back",
     ),
     Gap(
         id="sciml-model-format",
@@ -293,15 +296,16 @@ GAPS: tuple[Gap, ...] = (
     Gap(
         id="priors",
         kind=GapKind.LOSSY,
-        sbmlsim="the objective of a fit is a weighted least squares, without "
-        "priors on the parameters (issue #190)",
+        sbmlsim="the objective of a fit of weighted least squares or of the "
+        "likelihood has no priors on the parameters",
         petab="`priorDistribution` and `priorParameters` of a parameter of "
         "the parameter table",
         detail="the prior of a parameter of the fit is its `FitParameter.prior` "
         "and is written as it was read; `log_prior` and `unnorm_log_posterior` "
-        "evaluate it truncated at the bounds, the optimizer does not use it. A "
-        "prior on the parameters of a network is the gap `sciml-priors`, which "
-        "raises",
+        "evaluate it truncated at the bounds. A fit with "
+        "`ObjectiveType.POSTERIOR` minimizes the negative log posterior with the "
+        "priors and has no such gap. A prior on the parameters of a network is "
+        "the gap `sciml-priors`, which raises",
     ),
     Gap(
         id="parameter-scale",
@@ -540,9 +544,11 @@ def gaps_of_problem(
     fitted = {p.pid for p in problem.parameters} | {
         p.target_id for p in problem.parameters
     }
+    objective = problem.settings_initialized.objective
+    likelihood = objective is not ObjectiveType.LEAST_SQUARES
     for k in exported:
         noise = problem.noise_models[k]
-        if noise is None:
+        if noise is None or likelihood:
             continue
         hits.add("noise-model")
         if any(parameter.estimate for parameter in noise.parameters):
@@ -555,7 +561,9 @@ def gaps_of_problem(
         if symbols & fitted:
             hits.add("noise-parameters")
 
-    if any(parameter.prior is not None for parameter in problem.parameters):
+    if objective is not ObjectiveType.POSTERIOR and any(
+        parameter.prior is not None for parameter in problem.parameters
+    ):
         hits.add("priors")
     if any(parameter.scale is not None for parameter in problem.parameters):
         hits.add("parameter-scale")

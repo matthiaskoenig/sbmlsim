@@ -268,6 +268,37 @@ class DataAtChangeType(StrEnum):
     AFTER = "after"
 
 
+class ObjectiveType(StrEnum):
+    """What a fit minimizes.
+
+    `least_squares` (default) : the weighted sum of squares of the residuals,
+    `0.5 * sum(w * r**2)`, with the residuals of `ResidualType`, the weights of
+    `WeightingPointsType` and `WeightingCurvesType` and the `LossFunctionType`.
+    The spread of the data weights the points, it is data and no parameter.
+
+    `likelihood` : the negative log-likelihood of the training data under
+    the noise model of every fit mapping (`FitMapping.noise`, PEtab v2: the
+    noise formula and the distribution; without one the normal noise of the
+    errors of the data, see `sbmlsim.fit.petab_v2.likelihood`), i.e. the
+    maximum likelihood estimate. A parameter of a noise formula, e.g. the
+    standard deviation `sd_obs` of an observable, is estimated with the
+    parameters of the model. The residuals, the weights and the loss function
+    of the settings do not enter.
+
+    `posterior` : the negative unnormalized log posterior, the negative
+    log-likelihood minus the log density of the priors of the parameters
+    (`FitParameter.prior`), i.e. the maximum a posteriori estimate.
+
+    The likelihood is written as residuals for the least squares optimizer,
+    see `sbmlsim.fit.optimization.likelihood_residuals`, so the cost of a fit
+    is the negative log-likelihood or log posterior itself.
+    """
+
+    LEAST_SQUARES = "least_squares"
+    LIKELIHOOD = "likelihood"
+    POSTERIOR = "posterior"
+
+
 @dataclass(frozen=True)
 class FitSettings:
     """Settings of a parameter fit.
@@ -297,6 +328,10 @@ class FitSettings:
             start is compared with the state before the change (the default,
             except the first point of a curve) or after it, see
             `DataAtChangeType`; a string is converted.
+        objective: what the fit minimizes, the weighted least squares (the
+            default), the negative log-likelihood of the noise models or the
+            negative log posterior, see `ObjectiveType`; a string is
+            converted.
     """
 
     residual: ResidualType = ResidualType.ABSOLUTE
@@ -311,13 +346,23 @@ class FitSettings:
     absolute_tolerance: float | AbsoluteTolerance = 1e-10
     initial_time_step: float = 0.0
     data_at_change: DataAtChangeType = DataAtChangeType.BEFORE
+    objective: ObjectiveType = ObjectiveType.LEAST_SQUARES
 
     def __post_init__(self) -> None:
-        """Normalize the weighting, the absolute tolerance and the data at a change.
+        """Normalize the weighting, the absolute tolerance, the data at a change and the objective.
 
         Raises:
-            ValueError: if `data_at_change` is neither `before` nor `after`.
+            ValueError: if `data_at_change` is neither `before` nor `after`,
+                or the objective is no `ObjectiveType`.
         """
+        try:
+            objective = ObjectiveType(self.objective)
+        except ValueError:
+            raise ValueError(
+                f"'objective' is one of {[member.value for member in ObjectiveType]}, "
+                f"but '{self.objective}' is given."
+            ) from None
+        object.__setattr__(self, "objective", objective)
         if not isinstance(self.weighting_curves, tuple):
             curves: Iterable[WeightingCurvesType] = self.weighting_curves
             object.__setattr__(self, "weighting_curves", tuple(curves))
@@ -349,6 +394,7 @@ class FitSettings:
             ).to_dict(),
             "initial_time_step": self.initial_time_step,
             "data_at_change": self.data_at_change.value,
+            "objective": self.objective.value,
         }
 
     @staticmethod
@@ -381,6 +427,7 @@ class FitSettings:
             # stored settings of 0.8.5 and earlier compared the data at a change
             # with the state after it
             data_at_change=d.get("data_at_change", DataAtChangeType.AFTER.value),
+            objective=d.get("objective", ObjectiveType.LEAST_SQUARES.value),
         )
 
     def __str__(self) -> str:

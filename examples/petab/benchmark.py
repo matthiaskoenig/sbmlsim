@@ -25,7 +25,6 @@ The results are written into `results/<problem>` of the working directory. The w
 
 import argparse
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 # run as a script (the "run file" of an IDE) the repository is not on
@@ -41,7 +40,7 @@ from sbmlsim.fit.identifiability import (
     ProfileSettings,
     profile_likelihood,
 )
-from sbmlsim.fit.options import OptimizationAlgorithmType, ResidualType
+from sbmlsim.fit.options import OptimizationAlgorithmType
 from sbmlsim.fit.petab_v2 import gaps_of_problem, gaps_table
 from sbmlsim.fit.petab_v2.reader import from_petab
 from sbmlsim.fit.report import FitReport
@@ -63,7 +62,7 @@ def main() -> None:
         help="problem of the collection to fit",
     )
     parser.add_argument(
-        "--runs", type=int, default=4, help="number of optimization runs"
+        "--runs", type=int, default=20, help="number of optimization runs"
     )
     parser.add_argument(
         "--cores", type=int, default=1, help="workers of the parallel fit"
@@ -91,11 +90,11 @@ def main() -> None:
     display.link("problem", yaml_file)
 
     # --- READ ---
+    # the settings of PEtab: the fit minimizes the negative log-likelihood of
+    # the noise models of the problem, so the standard deviations of the noise
+    # are estimated with the parameters of the model, e.g. the log-normal noise
+    # of the viral load of Perelson, which spans orders of magnitude
     problem, settings = from_petab(yaml_file, opid=args.problem)
-    # the problem measures a viral load over orders of magnitude, which the
-    # relative residuals describe and the absolute ones do not. PEtab says
-    # log-normal noise here, which `sbmlsim` does not have, see the gaps
-    settings = replace(settings, residual=ResidualType.NORMALIZED)
     problem.initialize(settings)
 
     display.section("Problem", icon=display.ICON_FIT)
@@ -104,7 +103,7 @@ def main() -> None:
             "fit mappings": len(problem.mapping_keys),
             "data points": sum(len(y) for y in problem.y_references),
             "parameters": len(problem.parameters),
-            "residual": settings.residual.name,
+            "objective": settings.objective.value,
             "parameter scale": settings.parameter_scale.name,
         }
     )

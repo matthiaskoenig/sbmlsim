@@ -15,7 +15,7 @@ from petab_sciml.constants import ALL_CONDITION_IDS
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.objects import EXTERNAL_PREFIX
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import DataAtChangeType, ParameterScaleType
+from sbmlsim.fit.options import DataAtChangeType, ObjectiveType, ParameterScaleType
 from sbmlsim.fit.petab_v2 import GapKind, from_petab, gaps_of_problem
 from sbmlsim.fit.petab_v2.gaps import GAPS_BY_ID
 from sbmlsim.fit.petab_v2.likelihood import gradient, log_likelihood
@@ -849,7 +849,9 @@ def test_from_petab(tmp_path: Path) -> None:
     problem, settings = from_petab(path)
     assert problem.hybridizations
     # a problem without the `sbmlsim` extension has the semantics of PEtab
-    assert settings == FitSettings(data_at_change=DataAtChangeType.AFTER)
+    assert settings == FitSettings(
+        data_at_change=DataAtChangeType.AFTER, objective=ObjectiveType.LIKELIHOOD
+    )
     problem.initialize(SETTINGS)
     assert np.isfinite(log_likelihood(problem))
 

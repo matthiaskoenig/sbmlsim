@@ -328,6 +328,7 @@ print_settings(settings)
 ⚙ Settings ─────────────────────────────────────────────────────────────────────
 setting              value
 ─────────────────────────────────────────────────────────────────────────
+objective            least_squares
 residual             NORMALIZED
 loss function        LINEAR
 weighting curves     POINTS
@@ -339,9 +340,19 @@ initial time step    0
 data at a change     before
 ```
 
+### The objective
+
+`objective` decides what the fit minimizes (`ObjectiveType`, a string is converted):
+
+- `least_squares` (default): the weighted least squares of the residuals, see [Residuals and weights](#residuals-and-weights). The spread of the data weights the points, it is data and not a parameter.
+- `likelihood`: the negative log-likelihood of the training data, i.e. the maximum likelihood estimate. Every fit mapping has a noise model, the `noise` of its `FitMapping` (a `NoiseModel`: a noise formula and a distribution, `normal`, `log-normal`, `laplace` or `log-laplace`), or without one the normal noise of the standard deviations of its data, see [The log-likelihood](petab.md#the-log-likelihood). A parameter of a noise formula is estimated with the parameters of the model, e.g. the standard deviation of an observable: `NoiseModel(formula="sd_cp")` with a `FitParameter("sd_cp", ...)`, a parameter the model gets with `AbstractModel(parameters={"sd_cp": 1.0})`. The residual type, the weights and the loss function do not enter.
+- `posterior`: the negative log posterior, the negative log-likelihood minus the log density of the priors of the parameters (`FitParameter(prior=...)`), i.e. the maximum a posteriori estimate. A parameter without a prior has the uniform prior over its bounds, which is a constant.
+
+The cost of a fit of the likelihood is the negative log-likelihood or log posterior itself, so the threshold of the [profile likelihood](identifiability.md) is the one of the likelihood ratio. The least squares optimizer minimizes it as a sum of squares: every data point has the residual of its data, `(y - m) / σ`, and one of the scale of its noise, `sqrt(log(2 π σ²) + c)` with a constant `c`, which is not part of the cost. A problem of PEtab which is read without the `sbmlsim` extension is fitted with `likelihood`, as PEtab defines its objective. A likelihood needs the data as it was measured, it cannot be combined with the residuals relative to the baseline.
+
 ### Residuals and weights
 
-The cost is `0.5 * sum(w * r**2)` over the data points of the training data, with the residuals `r` and the weights `w`:
+The cost of `least_squares` is `0.5 * sum(w * r**2)` over the data points of the training data, with the residuals `r` and the weights `w`:
 
 - `residual`: `ABSOLUTE` (default), the data minus the prediction, or `NORMALIZED`, divided by the mean of the curve. Use `NORMALIZED` when curves of very different magnitude enter one fit.
 - `weighting_curves`: `MAPPING` multiplies a curve by the `weights` of its `FitMappingCollection`, or with `FitMappingCollection(use_mapping_weights=True)` by the `weight` of its `FitMapping`, which defaults to the number of subjects (`count`). `POINTS` divides a curve by its number of points, so that a curve with many points does not dominate. Both can be combined; without either, every point counts the same.
