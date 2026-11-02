@@ -925,13 +925,19 @@ class Units:
             denominator: expression of the denominator, e.g. `l` or `m^3`.
 
         Returns:
-            The expression of the quotient, e.g. `mmol/l`.
+            The expression of the quotient, e.g. `mmol/l`. An empty expression
+            is dimensionless: `item` over a dimensionless volume is `item`,
+            not `item/`, which pint does not read.
         """
 
         def group(expression: str) -> str:
             simple = all(c.isalnum() or c in "_^." for c in expression)
             return expression if simple or _enclosed(expression) else f"({expression})"
 
+        if not denominator.strip():
+            return numerator
+        if not numerator.strip():
+            return f"1/{group(denominator)}"
         return f"{group(numerator)}/{group(denominator)}"
 
 
