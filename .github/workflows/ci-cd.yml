@@ -252,7 +252,11 @@ jobs:
         python-version: "3.14"
         sync: --no-editable
     - name: Run the SBML Test Suite against its newest release
-      # the cases run in one process per core
+      # the cases run in one process per core; the token authenticates the
+      # request of the newest release, which the anonymous rate limit of the
+      # shared addresses of the runners refuses
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       run: uv run --no-sync python scripts/testsuite.py submission --version latest --output submission
     - name: Upload the submission
       uses: actions/upload-artifact@v7

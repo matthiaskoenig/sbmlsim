@@ -34,6 +34,8 @@ jobs:
           sync: --extra dev
       - name: Compare the pinned release with the newest one
         id: versions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           PINNED=$(uv run --no-sync python -c "from sbmlsim.testsuite.cases import SUITE_VERSION; print(SUITE_VERSION)")
           LATEST=$(uv run --no-sync python -c "from sbmlsim.testsuite import SemanticSuite; print(SemanticSuite.latest_version())")
