@@ -50,6 +50,8 @@ dependencies = [
 	# weights of the networks with h5py as well
 	"h5netcdf>=1.6.0",
 	"h5py>=3.16.0",
+	# the zstd filter of HDF5, with which the results are compressed
+	"hdf5plugin>=7.1.0",
 	"scipy>=1.18.1",
 	"sympy>=1.14.0",
 	# the formulas of a model and of a network as sympy expressions;
@@ -156,6 +158,11 @@ include = ["src", "tests", "examples", "scripts"]
 [tool.ty.terminal]
 # warnings are failures: keep the codebase free of any diagnostic
 error-on-warning = true
+
+[tool.uv]
+# the version is read from `__init__.py`: a bump of it refreshes the metadata
+# of the editable install, which `importlib.metadata` reads (the provenance)
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/sbmlsim/__init__.py" }]
 
 [tool.uv.sources]
 # the CPU build of torch: the default build for linux brings 2 GB of CUDA

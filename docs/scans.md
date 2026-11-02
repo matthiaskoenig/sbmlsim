@@ -286,7 +286,7 @@ A `ScanResult` wraps an `xarray.Dataset`, `res.ds`, and keeps the unit of every 
 - `res.summary(dims)` gives statistics over dimensions: mean, sd, cv, min, max and quantiles.
 - `res.interpolate(times)` puts the result on other times.
 - `res.ds.to_dataframe()` is a pandas table.
-- `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store and load the result with its units.
+- `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store and load the result with its units. The file is netCDF4, its variables compressed with zstd, which shrinks a result of many selections about tenfold; `compression="gzip"` writes the filter every HDF5 reader has, `compression=None` none. Another python program reads the file with xarray after `import hdf5plugin`, netCDF-C reads it from version 4.9.
 
 ```python
 from pathlib import Path
