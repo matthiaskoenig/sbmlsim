@@ -409,11 +409,11 @@ wheels = [
 
 [[package]]
 name = "filelock"
-version = "4.2.1"
+version = "4.2.6"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d5/98/771d8ca889f220d7d7e352addf500666368f0fd081c6080a83767580c6e4/filelock-4.2.1.tar.gz", hash = "sha256:c4c937ccac2a813cee448e662a56366cfb374c0f8702e75f295c412cc1c5d5a3", size = 650997, upload-time = "2026-10-17T16:48:14.435Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/6c/730b340182f1fd74d4ef8d3f35431ce84f8f97b1a1f2afd145174b7bb047/filelock-4.2.6.tar.gz", hash = "sha256:ee7af8ede36dcaf12e1016d9f7c3a63ecd5497d46f85dab21b8c779b8f944e97", size = 661339, upload-time = "2026-10-31T15:10:16.889Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/00/db89d339bc4ecdc8087fa7b8607ba22ffc27bf96286f340c9620bea428b3/filelock-4.2.1-py3-none-any.whl", hash = "sha256:7be2662e9e826b9bba28afc0f843a123280d799a2ea44bb5d35ccec67905ae44", size = 162455, upload-time = "2026-10-17T16:48:12.937Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/8d/3f849fcb79359259737bc2d8ddcaee6149ffb773239a260c9ff20179736f/filelock-4.2.6-py3-none-any.whl", hash = "sha256:fd7d4fca497bf3e3d0945a13261f8e684f2aef12ce7cf76aef26e13bf7388b88", size = 164378, upload-time = "2026-10-31T15:10:15.322Z" },
 ]
 
 [[package]]
@@ -1558,21 +1558,22 @@ wheels = [
 
 [[package]]
 name = "pkpdutils"
-version = "1.3.0"
+version = "1.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "matplotlib" },
     { name = "numpy" },
     { name = "pandas" },
+    { name = "pillow" },
     { name = "pint" },
     { name = "pydantic" },
     { name = "rich" },
     { name = "scipy" },
     { name = "xarray" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/f4/f3c34f695676cc945feec731b0ecd11c57aa1703f3c6259445b75af92236/pkpdutils-1.3.0.tar.gz", hash = "sha256:aa3897d753eda8fb79ffb010412a99e3834c52c2a7ae66f4dc31d21ed38f8096", size = 3003876, upload-time = "2026-09-25T11:51:19.939Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/60/2d/71d1f1f526d10fa14b6ffadabea92561fe4d003ee8dd50a5544e14c9fc95/pkpdutils-1.4.0.tar.gz", hash = "sha256:4db5f4797b4455024a115607e9e11d9c1f10aa9cbe3e97de4d59a0a69cca50d3", size = 2841748, upload-time = "2026-11-01T22:54:36.083Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/97/cc/0e448e0ad0567b042b2d6dafe2259403b3cdc1b83301079f175344e72d23/pkpdutils-1.3.0-py3-none-any.whl", hash = "sha256:19e532f9c72a06322b6d3d729f7d8f17f375e5aa74c51a2ebd819e918a79bcb1", size = 353203, upload-time = "2026-09-25T11:51:18.408Z" },
+    { url = "https://files.pythonhosted.org/packages/11/3b/45a1135a47dfe210fa4d4312fc8e77c8ac192d4ea9dc2427dce19b7ed5ee/pkpdutils-1.4.0-py3-none-any.whl", hash = "sha256:4707b7979c07718bdc7f30cf1805a641a0d6793d273c99fef740837766966ad3", size = 365047, upload-time = "2026-11-01T22:54:33.974Z" },
 ]
 
 [[package]]
@@ -1789,7 +1790,7 @@ wheels = [
 
 [[package]]
 name = "pymetadata"
-version = "0.8.2"
+version = "0.8.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -1798,9 +1799,9 @@ dependencies = [
     { name = "rich" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/48/ff/42fad413aed0e67bc01db97960e162a04f83acb808966af3f7f0ccc380b4/pymetadata-0.8.2.tar.gz", hash = "sha256:7d9d1d77827f0015cd23ec2bcdf9ee5976f7fa8db23dfe3a0c5e7213127a5eac", size = 5890893, upload-time = "2026-10-22T06:39:37.066Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/52/e99df5201c1674c63e1c40a9894bc21672986bf7c40f227959690a4bfd7b/pymetadata-0.8.3.tar.gz", hash = "sha256:c9e86edb5cde49877f219891c6c2b286a11592465148b9db7d4ffcdce6884807", size = 5896477, upload-time = "2026-11-01T22:41:19.648Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a3/0a/e2d29bc691c314ab2279cb4e434789298f020a4e0aa6a8cbaff3e2e1b4e2/pymetadata-0.8.2-py3-none-any.whl", hash = "sha256:5a03bf267d7438fc51c3a58080f804c1ff54571482bc344aea02fa97fd392f05", size = 332534, upload-time = "2026-10-22T06:39:35.241Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/34/60b8cd878f76500da8ab2a6ad3340b3a20ccb6a6933c62d1aec4526ac099/pymetadata-0.8.3-py3-none-any.whl", hash = "sha256:cc3eccb4896f760c775687eed9019de5570641e11404ef3a34389a1c100087b0", size = 332541, upload-time = "2026-11-01T22:41:17.534Z" },
 ]
 
 [[package]]
@@ -2241,6 +2242,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "petab" },
+    { name = "pillow" },
     { name = "pint" },
     { name = "pkpdutils" },
     { name = "pydantic" },
@@ -2299,6 +2301,7 @@ requires-dist = [
     { name = "petab", specifier = ">=0.9.0" },
     { name = "petab-sciml", marker = "extra == 'dev'", specifier = ">=0.0.3" },
     { name = "petab-sciml", marker = "extra == 'sciml'", specifier = ">=0.0.3" },
+    { name = "pillow", specifier = ">=13.0.0" },
     { name = "pint", specifier = ">=0.26.1" },
     { name = "pkpdutils", specifier = ">=1.3.0" },
     { name = "plotly", marker = "extra == 'dev'", specifier = ">=7.1.0" },
@@ -2320,7 +2323,7 @@ requires-dist = [
     { name = "sympy", specifier = ">=1.14.0" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'dev'", specifier = ">=2.14.1", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and extra == 'dev'", specifier = ">=2.14.1" },
-    { name = "tox", marker = "extra == 'dev'", specifier = ">=4.64.9" },
+    { name = "tox", marker = "extra == 'dev'", specifier = ">=4.64.9,!=4.67.5" },
     { name = "tox-uv", marker = "extra == 'dev'", specifier = ">=1.36.1" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.85" },
     { name = "typst", specifier = ">=0.13" },
@@ -2331,7 +2334,7 @@ provides-extras = ["dev", "sciml"]
 
 [[package]]
 name = "sbmlutils"
-version = "0.17.0"
+version = "0.17.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "antimony" },
@@ -2350,9 +2353,9 @@ dependencies = [
     { name = "sbmlode" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/28/14/f1c6f1038fed53706888ddcb15847b0bd351f5609216675763d516fc31f3/sbmlutils-0.17.0.tar.gz", hash = "sha256:7e987217a650bad3dc7830969509401beaed50e204f197f17b56c266ee4039ea", size = 3743880, upload-time = "2026-10-22T06:40:49.992Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/30/bf/5e9b06bba991a77ba4e4a72130c99985588521cda0d8ad5f47ea7ae733d4/sbmlutils-0.17.1.tar.gz", hash = "sha256:cb0a8ad64dcf890a9ace61039741487aa04cd6aa0081529d018fb6a1639235c8", size = 3744053, upload-time = "2026-11-01T22:52:54.312Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3e/c6/893a97eda6cca293d55c5527f0385d60a8b2e8da8d4c30544842bebb2441/sbmlutils-0.17.0-py3-none-any.whl", hash = "sha256:643465f777bb0f46aee1c5519b903255e16ec0e332a2a3db4a23014329bed726", size = 3631746, upload-time = "2026-10-22T06:40:47.075Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/14/887a00bf2da4f822a3d24b359676f7ee048e82f40008a660452383ffb13a/sbmlutils-0.17.1-py3-none-any.whl", hash = "sha256:a51e1f2bf20841a9f84e4be1371eb97c514bca4429aff925120d16d2b4b871b4", size = 3631763, upload-time = "2026-11-01T22:52:52.202Z" },
 ]
 
 [[package]]
@@ -2771,7 +2774,7 @@ wheels = [
 
 [[package]]
 name = "virtualenv"
-version = "21.14.6"
+version = "21.15.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "distlib" },
@@ -2780,9 +2783,9 @@ dependencies = [
     { name = "platformdirs" },
     { name = "python-discovery" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/92/f3/589727d02bc832750cfa00ced4315d127535a22a6d7cfcb369b2fe219a2e/virtualenv-21.14.6.tar.gz", hash = "sha256:c6b74616e64bffa9532cfa9dfd54ffbab0dc9b999df2bb8ec0d75e559b983661", size = 5467961, upload-time = "2026-10-08T14:49:57.376Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/38/9e/40c7098240cedd3a2f32e42a74b35c4563c617fdd7e41ae6268d4fdd8915/virtualenv-21.15.2.tar.gz", hash = "sha256:dbd886e6e5689eb4dde6a9bbc478ad14b4fc8ed0852690d8273ccfb8c467f635", size = 5520597, upload-time = "2026-10-30T19:18:04.759Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c9/1f/e5182163bcee149dda4eec823d88b0f51f2c0c531b12da896f666f0b80c1/virtualenv-21.14.6-py3-none-any.whl", hash = "sha256:eb1a20c5878569b69667f6a1af03458a8512b3afa7be771a2dafe92fdca05bb9", size = 5487469, upload-time = "2026-10-08T14:49:54.988Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/d8/09c9d6df253b2016312dd5ccbb962dfa86a5202f2452604b52e0a9844661/virtualenv-21.15.2-py3-none-any.whl", hash = "sha256:fb8c62c7c328e0238061c721068f06b7bc6bd10f7a0f5987195cef1008837ee6", size = 5559530, upload-time = "2026-10-30T19:18:01.134Z" },
 ]
 
 [[package]]
