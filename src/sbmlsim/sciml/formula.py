@@ -15,79 +15,14 @@ from typing import Any
 import libsbml
 import numpy as np
 import sympy
-from sbmlmath import SBMLMathMLParser, SBMLMathMLPrinter, TimeSymbol
+from sbmlmath import SBMLMathMLPrinter, TimeSymbol
 from sbmlmath.csymbol import SBML_L3V2_AVOGADRO_VALUE, CSymbol
 from sympy import lambdify
 
+from sbmlsim.sbml_math import MathMLParser, log10_of_quotient, log_quotient
+
 #: the name of the time of the model in the variables of a formula
 TIME = "time"
-
-
-_MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML"
-
-
-def _truncate(quotient: sympy.Expr) -> sympy.Expr:
-    """Round a quotient towards zero, as `quotient` and `rem` of SBML do.
-
-    Args:
-        quotient: the expression to round.
-
-    Returns:
-        The expression, a piecewise of `floor` and `ceiling`, which the MathML
-        of SBML has.
-    """
-    return sympy.Piecewise(
-        (sympy.floor(quotient), quotient >= 0), (sympy.ceiling(quotient), True)
-    )
-
-
-class _FormulaParser(SBMLMathMLParser):
-    """The MathML parser of `sbmlmath` with the `rem` and `quotient` of SBML.
-
-    `sbmlmath` reads both with the modulo of sympy, which rounds towards
-    negative infinity. The `rem` of SBML is the remainder of the truncated
-    division, `rem(-7, 3)` is -1, and the `quotient` is the truncated
-    quotient, `quotient(-7, 3)` is -2.
-    """
-
-    def handle_apply(self, element: Any) -> sympy.Expr:
-        """Parse an `apply`, `rem` and `quotient` truncate.
-
-        Args:
-            element: the `apply` element.
-
-        Returns:
-            The expression.
-        """
-        operator, *operands = element
-        tag = str(operator.tag).removeprefix(f"{{{_MATHML_NAMESPACE}}}")
-        if tag in ("rem", "quotient") and len(operands) == 2:
-            x, y = (self._parse_element(operand) for operand in operands)
-            if y.is_zero:
-                # not defined; sympy would simplify `x - 0 * zoo` to `x`
-                return sympy.nan
-            truncated = _truncate(x / y)
-            return truncated if tag == "quotient" else x - y * truncated
-        return super().handle_apply(element)
-
-
-def _log_quotient(expression: sympy.Basic) -> sympy.Basic:
-    """Write the logarithms with a base as quotients of natural logarithms.
-
-    `sbmlmath` reads `log(x)`, `log10(x)` and `log(b, x)` as `log(x, b)`,
-    which neither the printer of MathML nor `lambdify` at full precision
-    handle.
-
-    Args:
-        expression: the expression.
-
-    Returns:
-        The expression, in which `log(x, b)` is `log(x) / log(b)`.
-    """
-    return expression.replace(
-        lambda node: isinstance(node, sympy.log) and len(node.args) == 2,
-        lambda node: sympy.log(node.args[0]) / sympy.log(node.args[1]),
-    )
 
 
 def formula_expression(formula: str) -> sympy.Basic:
@@ -127,7 +62,7 @@ def formula_expression(formula: str) -> sympy.Basic:
     try:
         # through the text of the MathML, which sbmlmath parses
         mathml = libsbml.writeMathMLToString(astnode)
-        expression = sympy.sympify(_FormulaParser(ignore_units=True).parse_str(mathml))
+        expression = sympy.sympify(MathMLParser(ignore_units=True).parse_str(mathml))
     except Exception as err:
         raise ValueError(
             f"The formula '{formula}' cannot be evaluated: {type(err).__name__}: {err}"
@@ -145,7 +80,7 @@ def formula_expression(formula: str) -> sympy.Basic:
             f"have no value: they are not functions of the MathML of SBML, or "
             f"functions of a simulation"
         )
-    expression = _log_quotient(expression)
+    expression = log_quotient(expression)
     return expression.subs(
         {
             symbol: sympy.Symbol(TIME)
@@ -191,36 +126,6 @@ def formula_symbols(formula: str) -> set[str]:
     return {str(symbol) for symbol in _identifiers(formula_expression(formula))}
 
 
-def _log10(expression: sympy.Basic) -> sympy.Basic:
-    """Write a quotient with the logarithm of 10 as `log10`.
-
-    `log(1000) / log(10)` is 2.9999999999999996, `log10(1000)` is 3.
-
-    Args:
-        expression: the expression, in which a base is a quotient of
-            logarithms, see `formula_expression`.
-
-    Returns:
-        The expression, in which `log(x) / log(10)` is `log10(x)`.
-    """
-    base = 1 / sympy.log(10)
-    log10: Any = sympy.Function("log10")
-
-    def replace(product: sympy.Mul) -> sympy.Basic:
-        logarithm = next(arg for arg in product.args if isinstance(arg, sympy.log))
-        rest = [arg for arg in product.args if arg not in (logarithm, base)]
-        return sympy.Mul(*rest, log10(logarithm.args[0]))
-
-    return expression.replace(
-        lambda node: (
-            isinstance(node, sympy.Mul)
-            and base in node.args
-            and any(isinstance(arg, sympy.log) for arg in node.args)
-        ),
-        replace,
-    )
-
-
 @functools.lru_cache(maxsize=1024)
 def _formula_function(formula: str) -> tuple[tuple[str, ...], Any]:
     """Get the function of a formula and the names of its arguments.
@@ -251,7 +156,7 @@ def _formula_function(formula: str) -> tuple[tuple[str, ...], Any]:
     arguments = [sympy.Dummy() for _ in symbols]
     function = lambdify(
         args=arguments,
-        expr=_log10(
+        expr=log10_of_quotient(
             expression.xreplace(avogadro).xreplace(
                 dict(zip(symbols, arguments, strict=True))
             )

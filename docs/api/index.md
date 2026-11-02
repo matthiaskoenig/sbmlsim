@@ -10,6 +10,7 @@ The top level modules: data, units and the shared output.
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
+| [sbml_math](sbml_math.md) | the math of SBML as sympy expressions and numpy functions, the math of the events of a model |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
 | [parallel](parallel.md) | the process pools of sbmlsim: the start method, the kept pools and the caches of the workers |
