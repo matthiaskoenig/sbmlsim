@@ -409,7 +409,12 @@ class RoadrunnerSBMLModel(AbstractModel):
         A compartment keeps the concentration of the species whose initial
         value is a concentration, as at the initialization of SBML, and of a
         species which is set as a concentration, and the amount of every
-        other species; a species of an assignment rule follows its rule.
+        other species; a species of an assignment rule follows its rule. So
+        does a compartment of an assignment rule which reads a changed entity
+        (#344): roadrunner evaluates the rule with the new values and keeps
+        the amounts, the concentration of such a species is set again after
+        the entities its compartment depends on, before the initial
+        assignments which read it.
 
         Args:
             assignments: the pre-initialization assignments of a plan. A
@@ -452,17 +457,34 @@ class RoadrunnerSBMLModel(AbstractModel):
                 self._set_compartment(a.target, value, concentrations, amounts)
             else:
                 self._set(a.target, value)
+        # the concentrations which are set, in the size of their compartment
+        # after the initialization
+        set_concentrations = {
+            symbols.entity(a.target): float(a.value)  # ty: ignore[invalid-argument-type]
+            for a in values
+            if a.kind is TargetKind.SPECIES_CONCENTRATION
+        } | {
+            symbols.entity(a.target): value
+            for a, value in evaluated
+            if a.kind is TargetKind.SPECIES_CONCENTRATION
+        }
 
         dependencies = symbols.initial_assignment_dependencies or {}
         changed = set(entities)
         for entity in symbols.initial_assignment_order:
-            if (
-                entity in entities
-                or entity not in self.initial_helpers
-                or not (dependencies[entity] & changed)
-            ):
+            if not (dependencies[entity] & changed):
                 continue
-            value = float(r.getValue(self.initial_helpers[entity]))
+            if entity in set_concentrations:
+                value = set_concentrations[entity]
+            elif entity in entities:
+                continue
+            elif entity in self.initial_helpers:
+                value = float(r.getValue(self.initial_helpers[entity]))
+            elif entity in symbols.initial_concentration_values:
+                value = symbols.initial_concentration_values[entity]
+            else:
+                # an initial amount, which roadrunner keeps
+                continue
             if entity in symbols.compartments:
                 self._set_compartment(entity, value, concentrations, amounts)
             elif entity in symbols.species and entity not in symbols.only_substance:

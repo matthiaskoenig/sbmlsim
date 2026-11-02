@@ -340,7 +340,7 @@ This is what happens in one simulation, in order. The rules are the ones of PEta
 
 Species and compartments:
 
-- When you change a compartment, a species whose initial value is a concentration, or which you set as `[S]`, keeps its concentration. Every other species keeps its amount.
+- When you change a compartment, a species whose initial value is a concentration, or which you set as `[S]`, keeps its concentration. Every other species keeps its amount. The same holds before the initialization for a compartment whose size is an assignment rule, e.g. a volume of the body weight: a species starts at its initial concentration in the new volume.
 - A species defined by an assignment rule always follows its rule.
 
 Output:

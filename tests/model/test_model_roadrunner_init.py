@@ -202,6 +202,86 @@ def test_initial_assignment_of_a_concentration_follows_its_compartment() -> None
     assert model.r_loaded["p"] == pytest.approx(1.0)
 
 
+#: the volume `V` of `_rule_compartment`: a rule of the changed parameter, or
+#: a rule of a parameter whose initial assignment reads it
+RULE_VOLUMES = {
+    "rule": "  V := BW * f\n",
+    "rule of an initial assignment": "  p = BW * f\n  V := p\n",
+}
+
+
+def _rule_compartment(volume: str, weight: float = 75.0) -> str:
+    """Get a model with species in the compartment `V` of an assignment rule.
+
+    `S` has an initial assignment of a concentration, `T` an initial
+    concentration, `U` an initial amount, `q` reads the concentration of `S`.
+    """
+    import libsbml
+
+    doc = libsbml.readSBMLFromString(
+        sbml(
+            "model c\n"
+            f"  BW = {weight}; f = 0.1; c0 = 50\n"
+            "  compartment V\n"
+            f"{volume}"
+            "  species S in V; species T in V = 2; species U in V = 3\n"
+            "  S = c0\n"
+            "  q = 2 * S + BW\n"
+            "end"
+        )
+    )
+    species = doc.getModel().getSpecies("U")
+    species.unsetInitialConcentration()
+    species.setInitialAmount(3.0)
+    return libsbml.writeSBMLToString(doc)
+
+
+@pytest.mark.parametrize("volume", RULE_VOLUMES.values(), ids=RULE_VOLUMES.keys())
+@pytest.mark.parametrize(
+    "changes",
+    [{"BW": 71.0}, {"[T]": 4.0, "BW": 71.0}, {"BW": 71.0, "[T]": 4.0}],
+    ids=["BW", "[T] before BW", "[T] after BW"],
+)
+def test_a_concentration_follows_its_compartment_of_a_rule(
+    volume: str, changes: dict[str, float]
+) -> None:
+    """A changed parameter of a compartment of a rule keeps the concentrations (#344).
+
+    The simulation starts as the model with the parameter in its SBML: an
+    initial concentration, of an initial assignment or set before the
+    initialization, is one in the new volume, an initial amount is kept, and
+    an initial assignment which reads a concentration reads it in the new
+    volume. roadrunner evaluates the rule with the new value and kept the
+    amounts, which scaled the concentrations by the old over the new volume.
+    """
+    from sbmlsim.simulation import Simulation
+    from sbmlsim.simulator import Simulator
+
+    selections = ["time", "V", "[S]", "[T]", "U", "q"]
+
+    def start(source: str, preinit: dict[str, float]) -> np.ndarray:
+        model = RoadrunnerSBMLModel(source=source)
+        model.set_selections(selections)
+        result = Simulator(n_workers=1).simulate(
+            model, Simulation(end=1, preinit_changes=preinit)
+        )
+        return np.array([float(np.asarray(result[s])[0]) for s in selections])
+
+    reference = start(
+        _rule_compartment(volume, weight=71.0),
+        {k: v for k, v in changes.items() if k != "BW"},
+    )
+    np.testing.assert_allclose(
+        start(_rule_compartment(volume), changes), reference, rtol=1e-14
+    )
+    values = dict(zip(selections, reference, strict=True))
+    assert values["V"] == pytest.approx(7.1)
+    assert values["[S]"] == pytest.approx(50.0)
+    assert values["[T]"] == pytest.approx(changes.get("[T]", 2.0))
+    assert values["U"] == pytest.approx(3.0)
+    assert values["q"] == pytest.approx(171.0)
+
+
 def test_events_and_a_start_other_than_zero_are_reported(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
