@@ -832,3 +832,24 @@ def test_a_model_with_a_change_in_a_wrong_unit_raises() -> None:
 
     with pytest.raises(ValueError, match="'X'"):
         RoadrunnerSBMLModel(REPRESSILATOR_SBML, changes={"X": Q(5.0, "s")})
+
+
+@pytest.mark.parametrize(
+    ("numerator", "denominator", "expected"),
+    [
+        ("mmol", "l", "mmol/l"),
+        ("mmol", "m^3", "mmol/m^3"),
+        ("item", "", "item"),
+        ("", "l", "1/l"),
+        ("mg/kg", "l", "(mg/kg)/l"),
+    ],
+)
+def test_the_quotient_of_units_is_read_by_pint(
+    numerator: str, denominator: str, expected: str
+) -> None:
+    """A dimensionless volume gives a concentration of the substance unit."""
+    from sbmlsim.units import ureg
+
+    quotient = Units.quotient(numerator, denominator)
+    assert quotient == expected
+    ureg.parse_expression(quotient)

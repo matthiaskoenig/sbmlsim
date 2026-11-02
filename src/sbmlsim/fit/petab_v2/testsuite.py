@@ -299,7 +299,8 @@ class PetabCase:
             ignore_index=True,
         )
         experiments = (
-            expected["experimentId"].fillna("").astype(str)
+            # a column of only empty cells is read as floats
+            expected["experimentId"].astype(object).fillna("").astype(str)
             if "experimentId" in expected
             else pd.Series([""] * len(expected))
         )
