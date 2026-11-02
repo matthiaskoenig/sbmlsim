@@ -38,7 +38,6 @@ pkpdutils, whose layout `(*dims, time)` the result has.
 from __future__ import annotations
 
 import copy
-import json
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -49,6 +48,7 @@ import pandas as pd
 import xarray as xr
 from numpy.typing import ArrayLike
 
+from sbmlsim.result.netcdf import Compression, read_netcdf, write_netcdf
 from sbmlsim.result.timecourse import (
     GridWeights,
     apply_weights,
@@ -77,8 +77,6 @@ CHANGES = "changes"
 STATISTIC = "statistic"
 #: the statistics of `ScanResult.summary`
 STATISTICS: tuple[str, ...] = ("mean", "sd", "cv", "min", "max")
-#: the attribute of a netCDF file which holds the attributes of the result
-NETCDF_ATTRS = "sbmlsim"
 #: the variable of the outcome of every point, reserved like `TIME`
 STATUS = "status"
 #: the variable of the flags of the analysis of a PK observable, `<id>.flags`
@@ -563,15 +561,18 @@ class ScanResult:
             summary.attrs["statistic_units"] = {"cv": "dimensionless"}
         return ScanResult(summary)
 
-    def to_netcdf(self, path: str | Path) -> None:
-        """Write the result as netCDF4, the attributes as JSON.
+    def to_netcdf(self, path: str | Path, compression: Compression = "zstd") -> None:
+        """Write the result as compressed netCDF4, the attributes as JSON.
 
         The attributes must be JSON serializable, numpy scalars and arrays
         are written as numbers and lists.
+
+        Args:
+            path: the file.
+            compression: `"zstd"`, `"gzip"`, which every reader of HDF5 reads,
+                or `None`, see `sbmlsim.result.netcdf`.
         """
-        ds = self.ds.copy()
-        ds.attrs = {NETCDF_ATTRS: json.dumps(self.ds.attrs, default=_json_default)}
-        ds.to_netcdf(path, engine="h5netcdf")
+        write_netcdf(self.ds, path, compression)
 
     @classmethod
     def from_netcdf(cls, path: str | Path) -> ScanResult:
@@ -580,14 +581,7 @@ class ScanResult:
         Raises:
             ValueError: if the file has no attributes of a result.
         """
-        ds = xr.load_dataset(path, engine="h5netcdf")
-        if NETCDF_ATTRS not in ds.attrs:
-            raise ValueError(
-                f"'{path}' is no result of sbmlsim, it has no '{NETCDF_ATTRS}' "
-                f"attribute."
-            )
-        ds.attrs = json.loads(ds.attrs[NETCDF_ATTRS])
-        return cls(ds)
+        return cls(read_netcdf(path))
 
 
 def time_magnitudes(
@@ -643,15 +637,6 @@ def _resolution(time: np.ndarray) -> float:
     if finite.size == 0:
         return 0.0
     return time_tolerance(float(finite[0]), float(finite[-1]))
-
-
-def _json_default(value: Any) -> Any:
-    """Convert a numpy value of the attributes for JSON."""
-    if isinstance(value, np.generic):
-        return value.item()
-    if isinstance(value, np.ndarray):
-        return value.tolist()
-    raise TypeError(f"{type(value).__name__} is not JSON serializable.")
 
 
 def _statistics(

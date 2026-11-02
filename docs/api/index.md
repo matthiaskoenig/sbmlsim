@@ -67,6 +67,7 @@ Simulation experiments and their results, see [Simulation experiments](../experi
 | [experiment.progress](experiment.progress.md) | `RunProgress` and `PhaseClock`, the progress of a run of experiments and the seconds of their phases |
 | [result.timecourse](result.timecourse.md) | `TimecourseResult`, the array of the selections of a single timecourse simulation |
 | [result.scan](result.scan.md) | `ScanResult`, the result of a scan as an xarray dataset with units |
+| [result.netcdf](result.netcdf.md) | the compressed netCDF files of `ScanResult` and `SensitivityResult` |
 
 ## sbmlsim.plot, sbmlsim.report
 

@@ -80,7 +80,7 @@ pip installs these packages together with `sbmlsim`:
 | [sbmlutils](https://github.com/matthiaskoenig/sbmlutils), [python-libsbml](https://sbml.org/software/libsbml/) | reading, validating and changing SBML models |
 | [pymetadata](https://github.com/matthiaskoenig/pymetadata) | COMBINE archives of PEtab problems |
 | [numpy](https://numpy.org), [pandas](https://pandas.pydata.org), [xarray](https://xarray.dev), [scipy](https://scipy.org), [sympy](https://www.sympy.org) | numerics, data and results |
-| [h5netcdf](https://h5netcdf.org), [h5py](https://www.h5py.org) | the netCDF files of the results |
+| [h5netcdf](https://h5netcdf.org), [h5py](https://www.h5py.org), [hdf5plugin](https://github.com/silx-kit/hdf5plugin) | the netCDF files of the results, compressed with zstd |
 | [sbmlmath](https://github.com/dweindl/sbmlmath) | the math of SBML as sympy expressions |
 | [pint](https://pint.readthedocs.io), [pydantic](https://docs.pydantic.dev) | units and validated data |
 | [petab](https://petab.readthedocs.io), [pyyaml](https://pyyaml.org), [SALib](https://salib.readthedocs.io) | PEtab problems and global sensitivity analysis |

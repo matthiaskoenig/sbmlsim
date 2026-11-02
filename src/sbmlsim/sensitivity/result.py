@@ -11,7 +11,6 @@ provenance of the scan.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -20,7 +19,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from sbmlsim.result.scan import TIME, _json_default
+from sbmlsim.result.netcdf import Compression, read_netcdf, write_netcdf
+from sbmlsim.result.scan import TIME
 from sbmlsim.sensitivity.classification import sensitivity_classification
 
 #: the dimension of the parameters of the design
@@ -28,9 +28,6 @@ PARAMETER = "parameter"
 
 #: the second dimension of the parameters of a second order index
 PARAMETER_2 = "parameter_2"
-
-#: the attribute which carries the attributes as JSON in a netCDF file
-NETCDF_ATTRS = "sbmlsim"
 
 #: the indices without a unit, comparable between parameters and observables;
 #: the others (`raw`, `mu`, `mu_star`, `sigma`, `mu_star_conf`) have the unit
@@ -268,15 +265,15 @@ class SensitivityResult:
         )(data.values)
         return data.copy(data=classes.astype(str))
 
-    def to_netcdf(self, path: str | Path) -> None:
-        """Write the result as netCDF, the attributes as JSON.
+    def to_netcdf(self, path: str | Path, compression: Compression = "zstd") -> None:
+        """Write the result as compressed netCDF4, the attributes as JSON.
 
         Args:
             path: the file.
+            compression: `"zstd"`, `"gzip"` or `None`, see
+                `sbmlsim.result.netcdf`.
         """
-        ds = self.ds.copy()
-        ds.attrs = {NETCDF_ATTRS: json.dumps(self.ds.attrs, default=_json_default)}
-        ds.to_netcdf(path, engine="h5netcdf")
+        write_netcdf(self.ds, path, compression)
 
     @classmethod
     def from_netcdf(cls, path: str | Path) -> SensitivityResult:
@@ -287,8 +284,8 @@ class SensitivityResult:
 
         Returns:
             The result.
+
+        Raises:
+            ValueError: if the file has no attributes of a result.
         """
-        with xr.open_dataset(path, engine="h5netcdf") as ds:
-            loaded = ds.load()
-        loaded.attrs = json.loads(loaded.attrs.pop(NETCDF_ATTRS, "{}"))
-        return cls(loaded)
+        return cls(read_netcdf(path))
