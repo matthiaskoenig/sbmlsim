@@ -56,6 +56,9 @@ The reader builds a `SimulationExperiment` from the tables: the models of the pr
 
 Some things to know about reading:
 
+- `sbmlsim` reads PEtab v2 only, a problem of PEtab v1 raises. Convert it first: `sbmlsim.fit.petab_v2.conversion.convert_v1(yaml_file, output_dir)` runs `petab.v2.petab1to2` and converts tables of reference simulations of PEtab v1 with it, which is how the [test suite](petab_testsuite.md) and the [benchmark collection](petab_benchmark.md) read their problems of PEtab v1.
+- PEtab v2 has no scale of a parameter. A parameter without one in the `sbmlsim` extension is searched in `FitSettings.parameter_scale`, unless its lower bound is not positive: a parameter which the problem estimates as its logarithm, e.g. `log10_k_phos` with the bounds `-5` and `5`, is searched on the linear scale.
+
 - A problem with the `sbmlsim` extension gets the settings it was written with. A problem without it gets the default `FitSettings`, except that a measurement at the time of a change is compared with the state after the change, as PEtab defines it (`data_at_change=DataAtChangeType.AFTER`, see [Data at the time of a change](fitting.md#data-at-the-time-of-a-change)).
 - An observable that is the identifier of a model entity becomes the selection of that entity, with its unit. Any other observable is read as an `ObservableModel` (`sbmlsim.fit.objects`): the formula over roadrunner selections, evaluated on the simulation at the measurements. `log` is the natural logarithm and a concentration based species is its concentration `[S]`. The `observableParameters` of a measurement fill the placeholders. The model itself is not changed.
 - Models the reader generates, e.g. a model with neural networks, are written next to the source model. Pass `derived_dir=` to `from_petab` or `PetabReader.from_yaml` to write them to another directory, e.g. when the source directory is read-only.
@@ -171,4 +174,4 @@ python -m examples.hctz_fitting.fitting.petab_problem --subset=PK --portable
 
 ## COMBINE archives
 
-`sbmlsim.fit.petab_omex.create_petab_omex(omex_file, yaml_file)` packages a PEtab problem as a COMBINE archive, with the YAML file as its master entry.
+`sbmlsim.fit.petab_omex.create_petab_omex(omex_file, yaml_file)` packages a PEtab v2 problem as a COMBINE archive, with the YAML file as its master entry, its models and its tables.

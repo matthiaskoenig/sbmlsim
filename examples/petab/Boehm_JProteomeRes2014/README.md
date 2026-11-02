@@ -6,7 +6,7 @@ The PEtab problem of
 > *Identification of isoform-specific dynamics in phosphorylation-dependent STAT5 dimerization by quantitative mass spectrometry and mathematical modeling.*
 > J Proteome Res. 2014;13(12):5685-94. https://doi.org/10.1021/pr5006923
 
-as it is published in the [PEtab benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/tree/master/Benchmark-Models/Boehm_JProteomeRes2014), which is licensed BSD-3-Clause. The files are the **PEtab 1.0** problem of the collection, unchanged.
+as it is published in the [PEtab benchmark collection](https://github.com/Benchmarking-Initiative/Benchmark-Models-PEtab/tree/c44d5ede9bf979db5aa8ae4e94fc31fba9776675/problems/Boehm_JProteomeRes2014), which is licensed BSD-3-Clause. The files are the **PEtab v2** encoding of the collection, `problems/Boehm_JProteomeRes2014/v2` at the commit `c44d5ede`, unchanged. It estimates the logarithms of the rates and of the noise, `log10_k_phos`, whose bounds are not positive, so `sbmlsim` searches them on the linear scale.
 
 The model is the dimerization of STAT5A and STAT5B after stimulation with erythropoietin. Its three observables are the relative amounts of the phosphorylated and of the total protein, i.e. **formulas over several species** such as
 
@@ -14,6 +14,4 @@ The model is the dimerization of STAT5A and STAT5B after stimulation with erythr
 
 which is what makes it interesting here: `sbmlsim` reads every such observable as an `ObservableModel` (`sbmlsim.fit.objects`), the formula in the selections of roadrunner, which the fit evaluates on the simulation at the measurements.
 
-Simulated at the nominal parameters, the observables agree with the
-`simulatedData_Boehm_JProteomeRes2014.tsv` of the collection to `2e-4` at a
-relative tolerance of `1e-9` of the integrator.
+Simulated at the nominal parameters, the observables agree with the simulations of the collection, see `scripts/petab_benchmark.py`.

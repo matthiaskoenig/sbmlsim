@@ -1,3 +1,2 @@
-conditionId	conditionName	icg_ext
-icg1	icg1	1.0
-
+conditionId	targetId	targetValue
+icg1	icg_ext	1.0

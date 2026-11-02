@@ -9,7 +9,6 @@ from typing import Any
 import libsbml
 import numpy as np
 import pandas as pd
-from petab.v1.conditions import get_condition_df
 
 
 class Change:
@@ -51,33 +50,28 @@ class Condition:
 
     @classmethod
     def parse_conditions_from_file(cls, conditions_path: Path) -> list[Condition]:
-        """Parse conditions from file."""
-        df = get_condition_df(condition_file=str(conditions_path))
+        """Parse the conditions of a condition table of PEtab v2."""
+        df = pd.read_csv(conditions_path, sep="\t")
         return cls.parse_conditions(df)
 
     @staticmethod
     def parse_conditions(df: pd.DataFrame) -> list[Condition]:
-        """Parse conditions from DataFrame."""
-        conditions: list[Condition] = []
-        columns = df.columns
-        target_ids = [col for col in columns if col not in {"conditionName"}]
-        for condition_id, row in df.iterrows():
-            changes: list[Change] = []
-            for tid in target_ids:
-                changes.append(
-                    Change(
-                        target_id=tid,
-                        value=row[tid],
-                        unit=None,
-                    )
-                )
-            condition = Condition(
-                sid=str(condition_id),
-                name=row["conditionName"] if "conditionName" in columns else None,
-                changes=changes,
-            )
-            conditions.append(condition)
+        """Parse the conditions of a condition table of PEtab v2.
 
+        Every row assigns `targetValue` to `targetId` in the condition
+        `conditionId`, the conditions are in the order of their first row.
+        """
+        conditions: list[Condition] = []
+        for condition_id, rows in df.groupby("conditionId", sort=False):
+            changes = [
+                Change(target_id=str(target_id), value=value, unit=None)
+                for target_id, value in zip(
+                    rows["targetId"], rows["targetValue"], strict=True
+                )
+            ]
+            conditions.append(
+                Condition(sid=str(condition_id), name=None, changes=changes)
+            )
         return conditions
 
 

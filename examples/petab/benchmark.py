@@ -10,18 +10,16 @@ which are vendored next to this module, see their `README.md`:
   observables, each a formula over several species, which the fit evaluates
   on the simulation, see `sbmlsim.fit.objects.ObservableModel`.
 
-The collection is PEtab 1.0 and `sbmlsim` reads PEtab 2.0, so the example
-converts a problem with `petab.v2.petab1to2` first: the files of the collection
-stay as they are and the conversion is part of the example. The problem is then
-read into an `OptimizationProblem`, fitted, analysed with the profile
-likelihood and reported.
+Both are PEtab v2: `Boehm_JProteomeRes2014` is the encoding of the collection
+in PEtab v2, `Perelson_Science1996` its problem of PEtab v1 converted with
+`petab.v2.petab1to2`. The problem is read into an `OptimizationProblem`,
+fitted, analysed with the profile likelihood and reported.
 
     python -m examples.petab.benchmark
     python -m examples.petab.benchmark --problem=Boehm_JProteomeRes2014
     python -m examples.petab.benchmark --runs=8 --no-identifiability
 
-The converted problem and the results are written into `results/<problem>` of
-the working directory. The whole collection is read and simulated by
+The results are written into `results/<problem>` of the working directory. The whole collection is read and simulated by
 `scripts/petab_benchmark.py`, see `sbmlsim.fit.petab_v2.benchmark`.
 """
 
@@ -34,8 +32,6 @@ from pathlib import Path
 # `sys.path`, so the `examples` package is not found
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-
-from petab.v2.petab1to2 import petab1to2
 
 from sbmlsim.console import console
 from sbmlsim.fit import display
@@ -51,14 +47,14 @@ from sbmlsim.fit.petab_v2.reader import from_petab
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.runner import run_optimization
 
-#: the problems of the collection which are vendored here, PEtab 1.0
+#: the problems of the collection which are vendored here, in PEtab v2
 PROBLEMS: tuple[str, ...] = ("Perelson_Science1996", "Boehm_JProteomeRes2014")
 
 ICON_PETAB = ":package:"
 
 
 def main() -> None:
-    """Convert, read, fit and analyse the problem of the collection."""
+    """Read, fit and analyse the problem of the collection."""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--problem",
@@ -82,20 +78,15 @@ def main() -> None:
         "--output-dir",
         type=Path,
         default=None,
-        help="directory of the converted problem and the results",
+        help="directory of the results",
     )
     args = parser.parse_args()
 
-    problem_dir = Path(__file__).parent / args.problem
-    problem_yaml = f"{args.problem}.yaml"
+    yaml_file = Path(__file__).parent / args.problem / "problem.yaml"
     output_dir = Path(args.output_dir or Path("results") / args.problem)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # --- CONVERT ---
-    display.section("PEtab 1.0 -> 2.0", icon=ICON_PETAB)
-    petab2_dir = output_dir / "petab_v2"
-    petab1to2(problem_dir / problem_yaml, output_dir=petab2_dir)
-    yaml_file = petab2_dir / problem_yaml
+    display.section("PEtab v2", icon=ICON_PETAB)
     display.key_values({"collection": args.problem})
     display.link("problem", yaml_file)
 

@@ -1,36 +1,35 @@
-"""COMBINE archive for PEtab problems."""
+"""COMBINE archives of PEtab v2 problems."""
 
 import logging
 from pathlib import Path
+from typing import Any
 
-import numpy as np
-from petab.v1 import (
-    CONDITION_FILES,
-    MEASUREMENT_FILES,
-    OBSERVABLE_FILES,
-    PARAMETER_FILE,
-    PROBLEMS,
-    SBML_FILES,
-    VISUALIZATION_FILES,
-)
-from petab.v1.yaml import load_yaml
+import yaml
 from pymetadata.omex import EntryFormat, ManifestEntry, Omex
 
 logger = logging.getLogger(__name__)
 
-TABLE_FIELDS = (
-    MEASUREMENT_FILES,
-    OBSERVABLE_FILES,
-    VISUALIZATION_FILES,
-    CONDITION_FILES,
+#: the entries of the YAML file of a problem which list tables
+TABLE_FIELDS: tuple[str, ...] = (
+    "parameter_files",
+    "condition_files",
+    "experiment_files",
+    "measurement_files",
+    "observable_files",
+    "mapping_files",
 )
+
+#: the format of a model in the archive by its language
+MODEL_FORMATS: dict[str, EntryFormat] = {"sbml": EntryFormat.SBML}
 
 
 def create_petab_omex(omex_file: Path, yaml_file: Path) -> None:
-    """Create a COMBINE archive for a PEtab problem.
+    """Create a COMBINE archive for a PEtab v2 problem.
 
-    The YAML file of the PEtab problem is the master entry of the archive, all
-    files it references are added relative to the directory of the YAML file.
+    The YAML file of the PEtab problem is the master entry of the archive, the
+    models and the tables it references are added relative to the directory of
+    the YAML file. A problem of PEtab v1 is converted with
+    `petab.v2.petab1to2` first, see `sbmlsim.fit.petab_v2.conversion`.
 
     Args:
         omex_file: path of the COMBINE archive to write.
@@ -38,17 +37,23 @@ def create_petab_omex(omex_file: Path, yaml_file: Path) -> None:
 
     Raises:
         FileNotFoundError: if the YAML file or a referenced file does not exist.
+        ValueError: if the problem is no problem of PEtab v2.
     """
     yaml_file = Path(yaml_file)
     if not yaml_file.exists():
         raise FileNotFoundError(f"PEtab YAML file does not exist: '{yaml_file}'")
+    config: dict[str, Any] = yaml.safe_load(yaml_file.read_text(encoding="utf-8")) or {}
+    version = str(config.get("format_version", ""))
+    if not version.startswith("2"):
+        raise ValueError(
+            f"'{yaml_file}' is a problem of PEtab '{version}', a COMBINE archive "
+            f"is written of a problem of PEtab v2; convert it with "
+            f"`petab.v2.petab1to2` first."
+        )
 
     omex = Omex()
-
     # all locations are relative to the directory of the yaml file
     base_dir: Path = yaml_file.parent
-    yaml_config = load_yaml(yaml_file)
-
     _add_entry(
         omex,
         base_dir=base_dir,
@@ -56,34 +61,22 @@ def create_petab_omex(omex_file: Path, yaml_file: Path) -> None:
         entry_format=EntryFormat.YAML,
         master=True,
     )
-
-    # parameter table(s); a single file name or a list of file names
-    for parameter_file in np.array(yaml_config[PARAMETER_FILE]).flat:
+    for model in (config.get("model_files") or {}).values():
+        language = str(model.get("language", "")).lower()
         _add_entry(
             omex,
             base_dir=base_dir,
-            location=str(parameter_file),
-            entry_format=EntryFormat.TSV,
+            location=str(model["location"]),
+            entry_format=MODEL_FORMATS.get(language, EntryFormat.XML),
         )
-
-    for problem in yaml_config[PROBLEMS]:
-        for sbml_file in problem.get(SBML_FILES, []):
+    for field in TABLE_FIELDS:
+        for table_file in config.get(field) or []:
             _add_entry(
                 omex,
                 base_dir=base_dir,
-                location=sbml_file,
-                entry_format=EntryFormat.SBML,
+                location=str(table_file),
+                entry_format=EntryFormat.TSV,
             )
-
-        for field in TABLE_FIELDS:
-            for table_file in problem.get(field, []):
-                _add_entry(
-                    omex,
-                    base_dir=base_dir,
-                    location=table_file,
-                    entry_format=EntryFormat.TSV,
-                )
-
     omex.to_omex(Path(omex_file))
 
 

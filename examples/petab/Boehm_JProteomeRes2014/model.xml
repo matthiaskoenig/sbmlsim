@@ -55,15 +55,21 @@
       <species id="nucpBpB" name="nucpBpB" compartment="nuc" initialConcentration="0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
     </listOfSpecies>
     <listOfParameters>
-      <parameter id="Epo_degradation_BaF3" value="0.0269738286367359" constant="true"/>
-      <parameter id="k_exp_hetero" value="1.00094251286741e-05" constant="true"/>
-      <parameter id="k_exp_homo" value="0.00617193081581346" constant="true"/>
-      <parameter id="k_imp_hetero" value="0.0163708512310568" constant="true"/>
-      <parameter id="k_imp_homo" value="96945.5391768823" constant="true"/>
-      <parameter id="k_phos" value="15766.8336642826" constant="true"/>
+      <parameter id="Epo_degradation_BaF3" value="0.0269738286367359" constant="false"/>
+      <parameter id="k_exp_hetero" value="1.00094251286741e-05" constant="false"/>
+      <parameter id="k_exp_homo" value="0.00617193081581346" constant="false"/>
+      <parameter id="k_imp_hetero" value="0.0163708512310568" constant="false"/>
+      <parameter id="k_imp_homo" value="96945.5391768823" constant="false"/>
+      <parameter id="k_phos" value="15766.8336642826" constant="false"/>
       <parameter id="ratio" value="0.693" constant="true"/>
       <parameter id="specC17" value="0.107" constant="true"/>
       <parameter id="BaF3_Epo" value="1.25e-07" constant="false"/>
+      <parameter id="log10_Epo_degradation_BaF3" value="-1.5689175884" constant="true"/>
+      <parameter id="log10_k_exp_hetero" value="-4.9997048936" constant="true"/>
+      <parameter id="log10_k_exp_homo" value="-2.20969878170002" constant="true"/>
+      <parameter id="log10_k_imp_hetero" value="-1.78600654750001" constant="true"/>
+      <parameter id="log10_k_imp_homo" value="4.9901140088" constant="true"/>
+      <parameter id="log10_k_phos" value="4.1977354885" constant="true"/>
     </listOfParameters>
     <listOfInitialAssignments>
       <initialAssignment symbol="STAT5A">
@@ -104,6 +110,60 @@
                 <csymbol encoding="text" definitionURL="http://www.sbml.org/sbml/symbols/time"> t </csymbol>
               </apply>
             </apply>
+          </apply>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="Epo_degradation_BaF3">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply>
+            <power/>
+            <cn type="integer"> 10 </cn>
+            <ci> log10_Epo_degradation_BaF3 </ci>
+          </apply>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="k_exp_hetero">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply>
+            <power/>
+            <cn type="integer"> 10 </cn>
+            <ci> log10_k_exp_hetero </ci>
+          </apply>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="k_exp_homo">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply>
+            <power/>
+            <cn type="integer"> 10 </cn>
+            <ci> log10_k_exp_homo </ci>
+          </apply>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="k_imp_hetero">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply>
+            <power/>
+            <cn type="integer"> 10 </cn>
+            <ci> log10_k_imp_hetero </ci>
+          </apply>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="k_imp_homo">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply>
+            <power/>
+            <cn type="integer"> 10 </cn>
+            <ci> log10_k_imp_homo </ci>
+          </apply>
+        </math>
+      </assignmentRule>
+      <assignmentRule variable="k_phos">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply>
+            <power/>
+            <cn type="integer"> 10 </cn>
+            <ci> log10_k_phos </ci>
           </apply>
         </math>
       </assignmentRule>

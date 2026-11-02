@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-from petab.v1.yaml import load_yaml, write_yaml
+import yaml
 
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.objects import NoiseDistribution, NoiseModel, NoiseParameter
@@ -85,9 +85,9 @@ def _add_sigma(petab_dir: Path) -> None:
 def _add_extension(petab_dir: Path, extension_id: str, block: dict[str, Any]) -> None:
     """Add the block of an extension to the YAML of a problem."""
     yaml_file = petab_dir / "problem.yaml"
-    config = load_yaml(yaml_file)
+    config = yaml.safe_load(yaml_file.read_text())
     config.setdefault("extensions", {})[extension_id] = block
-    write_yaml(config, yaml_file)
+    yaml_file.write_text(yaml.safe_dump(config))
 
 
 # --- THE NOISE MODEL ---
