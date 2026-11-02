@@ -272,23 +272,39 @@ def noise_values(
     return sigma
 
 
-def default_noise_model(errors: ArrayLike | None) -> NoiseModel:
+def default_noise_model(
+    errors: ArrayLike | None, log_errors: ArrayLike | None = None
+) -> NoiseModel:
     """Get the noise model of a fit mapping which does not define one.
 
     The noise is normal and its standard deviation is the error of the
     reference data as the problem resolves it (the SD, the SE without one, the
     largest error of the curve for a point without one), through the
     placeholder `NOISE_PLACEHOLDER`, and `DEFAULT_SIGMA` for data without
-    errors. This is what the export writes for such a mapping, so
+    errors. Geometric means with geometric standard deviations have the
+    log-normal noise of the standard deviations of their logarithms,
+    `log(gsd)` (#403). This is what the export writes for such a mapping, so
     the log-likelihood of a problem and of its PEtab problem agree.
 
     Args:
         errors: the errors of the reference data of the mapping, i.e.
             `OptimizationProblem.y_errors[k]`, `None` if it has none.
+        log_errors: the standard deviations of the logarithms of the
+            reference data, i.e. `OptimizationProblem.y_errors_log[k]`, `None`
+            for data without geometric standard deviations.
 
     Returns:
         The noise model.
     """
+    if log_errors is not None:
+        return NoiseModel(
+            formula=NOISE_PLACEHOLDER,
+            distribution=NoiseDistribution.LOG_NORMAL,
+            placeholders=(NOISE_PLACEHOLDER,),
+            placeholder_values=tuple(
+                (float(error),) for error in np.asarray(log_errors, dtype=float)
+            ),
+        )
     if errors is None:
         return NoiseModel(formula=repr(DEFAULT_SIGMA))
     return NoiseModel(
@@ -316,7 +332,7 @@ def noise_model_of(problem: OptimizationProblem, k: int) -> NoiseModel:
     noise = problem.noise_models[k]
     if noise is not None:
         return noise
-    return default_noise_model(problem.y_errors[k])
+    return default_noise_model(problem.y_errors[k], problem.y_errors_log[k])
 
 
 def nominal_parameters(problem: OptimizationProblem) -> ParameterSet:

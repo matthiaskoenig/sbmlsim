@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 from pint.errors import PintError, UndefinedUnitError
 
-from sbmlsim.data import Data, to_quantity
+from sbmlsim.data import Data, DataSet, to_quantity
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.serialization import to_json
 from sbmlsim.simulator.formula import compile_formula
@@ -87,6 +87,11 @@ EVALUATED_KINDS: tuple[MappingKind, ...] = (
 
 #: kinds which a fit does not use at all, i.e. which are not even resolved
 UNUSED_KINDS: tuple[MappingKind, ...] = (MappingKind.EXCLUDED,)
+
+
+#: the error type of the data of a mapping of geometric standard deviations,
+#: see `FitData` and `OptimizationProblem.y_errors_type`
+GSD_ERROR = "GSD"
 
 
 class NoiseDistribution(StrEnum):
@@ -1264,6 +1269,7 @@ class FitData:
         xid_se: str | None = None,
         yid_sd: str | None = None,
         yid_se: str | None = None,
+        yid_gsd: str | None = None,
         count: int | str | None = None,
         dataset: str | None = None,
         task: str | None = None,
@@ -1281,6 +1287,13 @@ class FitData:
             xid_se: index of the standard error of the x data.
             yid_sd: index of the standard deviation of the y data.
             yid_se: index of the standard error of the y data.
+            yid_gsd: index of the geometric standard deviation of the y data,
+                a factor without a unit, of `y` which are geometric means
+                (#403): `log(y)` has the standard deviation `log(gsd)`. A
+                fit weights such a point by the standard deviation
+                `y * sqrt(exp(log(gsd)**2) - 1)`, the coefficient of variation
+                of the log-normal distribution, and its noise is log-normal,
+                see `OptimizationProblem.y_errors`.
             count: number of subjects, either an integer or a column of the
                 dataset. The count of every row of the data converts a standard
                 error to a standard deviation, see `FitDataInitialized.count`.
@@ -1291,8 +1304,16 @@ class FitData:
                 of a dataset, for every data of the fit data, see `Data`.
 
         Raises:
-            ValueError: if `count` is set without a dataset or has a wrong type.
+            ValueError: if `count` is set without a dataset or has a wrong
+                type, or if a geometric standard deviation is set with another
+                error of the y data.
         """
+        if yid_gsd and (yid_sd or yid_se):
+            raise ValueError(
+                f"The y data '{yid}' has the geometric standard deviation "
+                f"'{yid_gsd}', the error of a geometric mean, and the error "
+                f"'{yid_sd or yid_se}': set one error."
+            )
         self.experiment = experiment
         self.dset_id = dataset
         self.task_id = task
@@ -1309,6 +1330,7 @@ class FitData:
         self.x_se = self._error_data(xid_se, error_type="se")
         self.y_sd = self._error_data(yid_sd, error_type="sd")
         self.y_se = self._error_data(yid_se, error_type="se")
+        self.y_gsd = self._data(yid_gsd) if yid_gsd else None
 
     def _data(self, index: str) -> Data:
         """Create the data promise for an index."""
@@ -1405,6 +1427,8 @@ class FitData:
         Numerical values are resolved using the executed simulation experiment.
         """
         result = FitDataInitialized()
+        if self.y_gsd is not None:
+            self._dimensionless(self.y_gsd)
         for key in FitDataInitialized.KEYS:
             logger.debug("FitData.get_data: %s.%s", self, key)
             d: Data | None = getattr(self, key)
@@ -1416,6 +1440,25 @@ class FitData:
                 )
         result.count = self._counts(result.y)
         return result
+
+    def _dimensionless(self, data: Data) -> None:
+        """Give a column of factors without a unit of the dataset no unit.
+
+        A geometric standard deviation is a factor, a dataset has it without a
+        unit, e.g. the `gsd` of pkpdsim, whose `add_gmean_unit` gives only the
+        geometric mean its unit (#403).
+        """
+        if self.dset_id is None:
+            return
+        if not self.experiment._datasets:
+            self.experiment._datasets = self.experiment.datasets()
+        dataset = self.experiment._datasets.get(self.dset_id)
+        if (
+            isinstance(dataset, DataSet)
+            and data.index in dataset.columns
+            and data.index not in dataset.uinfo
+        ):
+            dataset.uinfo[data.index] = "dimensionless"
 
     def _counts(self, y: Quantity | None) -> np.ndarray | None:
         """Get the count of every row of the data, `None` without a count.
@@ -1445,7 +1488,7 @@ class FitDataInitialized:
     the number of subjects, see `FitData`.
     """
 
-    KEYS = ("x", "y", "x_sd", "x_se", "y_sd", "y_se")
+    KEYS = ("x", "y", "x_sd", "x_se", "y_sd", "y_se", "y_gsd")
 
     x: Quantity | None = None
     y: Quantity | None = None
@@ -1453,6 +1496,8 @@ class FitDataInitialized:
     x_se: Quantity | None = None
     y_sd: Quantity | None = None
     y_se: Quantity | None = None
+    #: the geometric standard deviation of `y`, a factor, see `FitData`
+    y_gsd: Quantity | None = None
     count: np.ndarray | None = None
 
     def __str__(self) -> str:

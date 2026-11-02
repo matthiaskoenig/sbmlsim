@@ -73,6 +73,7 @@ from sbmlsim.fit.metrics import (
 )
 from sbmlsim.fit.objects import (
     EVALUATED_KINDS,
+    GSD_ERROR,
     FitParameter,
     MappingKind,
     describe_array,
@@ -2308,11 +2309,15 @@ class FitReport:
         """Get the label of the data of mapping `k`, with its error and its count.
 
         `data (mean ± SD, N = 12)`: the error is a standard deviation, see
-        `OptimizationProblem.y_errors`, and `N` is the count of the subjects,
-        one number when every data point has the same, else the range.
+        `OptimizationProblem.y_errors`, or a geometric standard deviation of
+        geometric means, `gmean ×/÷ GSD`, and `N` is the count of the
+        subjects, one number when every data point has the same, else the
+        range.
         """
         parts: list[str] = []
-        if self.problem.y_errors[k] is not None:
+        if self.problem.y_errors_type[k] == GSD_ERROR:
+            parts.append("gmean ×/÷ GSD")
+        elif self.problem.y_errors[k] is not None:
             parts.append("mean ± SD")
         counts = self.problem.y_counts[k]
         if counts is not None:
@@ -2337,8 +2342,13 @@ class FitReport:
         y_ref = self.problem.y_references[k]
         y_ref_err = self.problem.y_errors[k]
         measured = self.problem.y_errors_measured[k]
+        log_err = self.problem.y_errors_log[k]
+        if log_err is not None:
+            # a geometric mean divided and multiplied by its geometric SD
+            factor = np.exp(np.asarray(log_err, dtype=float))
+            y_ref_err = np.array([y_ref - y_ref / factor, y_ref * factor - y_ref])
         if y_ref_err is not None and measured is not None:
-            # an error which the weights filled is no SD of the data
+            # an error which the weights filled is no error of the data
             y_ref_err = np.where(measured, y_ref_err, np.nan)
         scalar = self._is_scalar(k)
         dimension = self.problem.observation_kinds[k] is ObservationKind.DIMENSION
