@@ -4,6 +4,7 @@ import libsbml
 import pytest
 
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
+from sbmlsim.sbml_math import compile_math, math_formula
 from tests.simulator.models import sbml
 
 
@@ -64,7 +65,7 @@ def test_the_math_of_an_event_has_no_units() -> None:
     """A number with a unit is the number in a formula of the simulator (#293).
 
     sbmlutils writes a unit on every number, libsbml writes it after the
-    number, e.g. `0.5 dimensionless`, which is no math of PEtab.
+    number, e.g. `0.5 dimensionless`; the MathML of the events has none.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(
         sbml(
@@ -78,9 +79,14 @@ def test_the_math_of_an_event_has_no_units() -> None:
     event.getEventAssignment("X").setMath(libsbml.parseL3Formula("1e-3 mole + q"))
     assert "dimensionless" in libsbml.writeSBMLToString(doc)
     (symbols,) = ModelSymbols.from_sbml(libsbml.writeSBMLToString(doc)).events
-    assert symbols.trigger == "q > 0.5"
-    assert symbols.priority == "2"
-    assert symbols.assignments == (("X", "1e-3 + q"),)
+    assert symbols.trigger is not None
+    assert symbols.priority is not None
+    assert "units" not in symbols.trigger + symbols.priority
+    assert math_formula(symbols.trigger) == "q > 0.5"
+    assert math_formula(symbols.priority) == "2"
+    ((target, assignment),) = symbols.assignments
+    assert (target, math_formula(assignment)) == ("X", "1e-3 + q")
+    assert compile_math(assignment).evaluate([2.0]) == 1e-3 + 2.0
 
 
 def test_a_concentration_depends_on_its_compartment_of_a_rule() -> None:

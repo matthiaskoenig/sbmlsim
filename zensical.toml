@@ -48,6 +48,7 @@ nav = [
     { "sbmlsim" = [
       { "data" = "api/data.md" },
       { "units" = "api/units.md" },
+      { "sbml_math" = "api/sbml_math.md" },
       { "serialization" = "api/serialization.md" },
       { "utils" = "api/utils.md" },
       { "parallel" = "api/parallel.md" },

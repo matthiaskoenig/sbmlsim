@@ -120,22 +120,37 @@ def test_events_which_trigger_each_other_stop_at_the_limit(
     assert f"more than {MAX_EXECUTIONS_PER_EVENT} times" in cycles[0]
 
 
-@pytest.mark.parametrize("priority", ["floor(20.5)", "twice(10)"])
 def test_a_priority_the_simulator_cannot_evaluate_counts_as_zero(
-    priority: str, caplog: pytest.LogCaptureFixture
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     doc = _document(
         "q=0; X=0;\n"
         "unknown: at (q > 0), t0=true: X=1;\n"
         "known: at (q > 0), t0=true: X=10;",
-        {"unknown": priority, "known": "1"},
-        functions="function twice(x)\n  2*x\nend",
+        {"unknown": "rateOf(q) + 20", "known": "1"},
     )
     with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
         assert _run(doc, "X") == [0, 0, 1, 1]
     warnings = [r.getMessage() for r in caplog.records if "priority" in r.getMessage()]
     assert len(warnings) == 1
     assert "'unknown'" in warnings[0]
+
+
+@pytest.mark.parametrize("priority", ["floor(20.5)", "twice(10)", "factorial(4)"])
+def test_a_priority_of_the_math_of_sbml_is_evaluated(
+    priority: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A function of SBML or a function definition is evaluated (#299)."""
+    doc = _document(
+        "q=0; X=0;\n"
+        "first: at (q > 0), t0=true: X=1;\n"
+        "second: at (q > 0), t0=true: X=10;",
+        {"first": priority, "second": "1"},
+        functions="function twice(x)\n  2*x\nend",
+    )
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+        assert _run(doc, "X") == [0, 0, 10, 10]
+    assert not caplog.records
 
 
 #: the event of necrosis of the model of the liver of pvl in pkdb_models: an
@@ -172,10 +187,9 @@ def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
     """A change cannot fire the event, the warning names it, once per model."""
     doc = _document(
         "q=0; X=0;\n"
-        "unknown: at (twice(q) > 1), t0=true: X=1;\n"
+        "unknown: at (q + rateOf(q) > 1), t0=true: X=1;\n"
         "known: at (q > 0), t0=true: X=10;",
         {},
-        functions="function twice(x)\n  2*x\nend",
     )
     model = RoadrunnerSBMLModel(
         source=libsbml.writeSBMLToString(doc), selections=["time", "X"]
@@ -190,7 +204,7 @@ def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
     warnings = [r.getMessage() for r in caplog.records if "trigger" in r.getMessage()]
     assert len(warnings) == 1
     assert "'unknown'" in warnings[0]
-    assert "twice(q) > 1" in warnings[0]
+    assert "(q + rateOf(q)) > 1" in warnings[0]
 
 
 def _fired(doc: libsbml.SBMLDocument, selections: list[str]) -> dict[str, float]:
@@ -244,3 +258,49 @@ def test_a_logarithm_to_a_base_in_an_event() -> None:
     assert _fired(doc, ["X", "Y", "Z"]) == pytest.approx(
         {"X": 3.0, "Y": 2.0, "Z": 3.0}, rel=1e-15
     )
+
+
+#: triggers of math which the math of PEtab names otherwise or does not have
+TRIGGERS = [
+    "xor(q > 3, q > 10)",
+    "geq(q, 4, 3)",
+    "twice(q) > 9",
+    "floor(q / 2) == 2",
+    "implies(q < 3, q < 0)",
+]
+
+
+@pytest.mark.parametrize("trigger", TRIGGERS)
+def test_a_change_fires_an_event_of_the_math_of_sbml(
+    trigger: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A change fires the event as roadrunner fires it in the integration (#299).
+
+    The trigger is false before the change to `q = 5` and true after it, the
+    assignments are functions of SBML and a function definition.
+    """
+    doc = _document(
+        "q=0; X=0; Y=0; Z=0;\nE: at (q > 3), t0=false: X=1, Y=1, Z=1;",
+        {},
+        functions="function twice(x)\n  2*x\nend",
+    )
+    model: libsbml.Model = doc.getModel()
+    settings = libsbml.L3ParserSettings()
+    settings.setModel(model)
+    event: libsbml.Event = model.getEvent("E")
+    event.getTrigger().setMath(libsbml.parseL3FormulaWithSettings(trigger, settings))
+    for target, formula in {
+        "X": "factorial(q - 2) + rem(q, 3)",
+        "Y": "twice(ceiling(q / 2))",
+        "Z": "root(3, -q)",
+    }.items():
+        event.getEventAssignment(target).setMath(
+            libsbml.parseL3FormulaWithSettings(formula, settings)
+        )
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+        fired = _fired(doc, ["X", "Y", "Z"])
+    assert not caplog.records
+    assert fired["X"] == 6 + 2
+    assert fired["Y"] == 6
+    # the root of a negative number is not a number, as in roadrunner
+    assert math.isnan(fired["Z"])

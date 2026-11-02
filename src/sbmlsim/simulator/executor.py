@@ -933,10 +933,10 @@ def _triggers(
 ) -> list[bool | None]:
     """Evaluate the triggers of the events, `None` for one which is not evaluated.
 
-    A trigger which is no formula the simulator evaluates, e.g. one with a
-    function definition, is not evaluated, so a change does not fire its
-    event; it is reported once per event of a model instance, so once per
-    worker of a pool, which loads its own instance.
+    A trigger which is no math the simulator evaluates, one with `rateOf` or
+    `delay`, see `sbmlsim.sbml_math.compile_math`, is not evaluated, so a
+    change does not fire its event; it is reported once per event of a model
+    instance, so once per worker of a pool, which loads its own instance.
 
     Args:
         events: the events of the model.
@@ -947,22 +947,25 @@ def _triggers(
     Returns:
         The value of every trigger.
     """
+    # sbmlmath is imported by the first model with events, see `sbml_math`
+    from sbmlsim.sbml_math import compile_math, math_formula
+
     values: list[bool | None] = []
     for event in events:
         if event.trigger is None:
             values.append(None)
             continue
         try:
-            formula = compile_formula(event.trigger)
+            formula = compile_math(event.trigger)
         except ValueError as err:
             values.append(None)
             if event.eid not in model.reported_triggers:
                 model.reported_triggers.add(event.eid)
                 logger.warning(
                     "The trigger '%s' of the event '%s' of the model '%s' is no "
-                    "formula the simulator evaluates, a change of a simulation "
+                    "math the simulator evaluates, a change of a simulation "
                     "does not fire the event: %s",
-                    event.trigger,
+                    math_formula(event.trigger),
                     event.eid,
                     model.sid or r.model.getModelName(),
                     err,
@@ -1000,9 +1003,9 @@ def _fire_events(
     is cancelled if its trigger becomes false. Assignment values are captured
     at the trigger or evaluated at execution, as the event specifies. An event
     with a delay is reported and not fired, an event whose priority is no
-    formula the simulator evaluates is reported and fires with the priority 0,
+    math the simulator evaluates is reported and fires with the priority 0,
     the one of an event without a priority, and an event whose trigger or
-    assignments are no formulas the simulator evaluates is reported and not
+    assignments are no math the simulator evaluates is reported and not
     fired, see `_triggers`.
 
     Args:
@@ -1015,9 +1018,10 @@ def _fire_events(
     Returns:
         The number of the events which fired.
     """
+    from sbmlsim.sbml_math import compile_math
 
-    def evaluate(formula: str) -> float:
-        compiled = compile_formula(formula)
+    def evaluate(mathml: str) -> float:
+        compiled = compile_math(mathml)
         return compiled.evaluate(
             [time if s == "time" else r.getValue(s) for s in compiled.symbols]
         )
@@ -1034,7 +1038,7 @@ def _fire_events(
     count = 0
     executions = [0] * len(events)
     pending: dict[int, list[tuple[str, float]] | None] = {}
-    # events whose priority is no formula the simulator evaluates
+    # events whose priority is no math the simulator evaluates
     unprioritized: set[int] = set()
     while True:
         after = _triggers(events, r, time, model)
@@ -1058,15 +1062,15 @@ def _fire_events(
                 continue
             try:
                 # Compile all assignments even when their values are deferred.
-                for _, formula in event.assignments:
-                    compile_formula(formula)
+                for _, mathml in event.assignments:
+                    compile_math(mathml)
                 pending[index] = (
                     assignments(event) if event.use_values_from_trigger_time else None
                 )
             except ValueError as err:
                 logger.warning(
                     "The event '%s' of the model '%s' is triggered by a change at "
-                    "the time %s, its assignments are no formulas the simulator "
+                    "the time %s, its assignments are no math the simulator "
                     "evaluates: %s",
                     event.eid,
                     model.sid or r.model.getModelName(),
@@ -1076,12 +1080,12 @@ def _fire_events(
                 continue
             if event.priority is not None and index not in unprioritized:
                 try:
-                    compile_formula(event.priority)
+                    compile_math(event.priority)
                 except ValueError as err:
                     unprioritized.add(index)
                     logger.warning(
                         "The event '%s' of the model '%s' is triggered by a change "
-                        "at the time %s, its priority is no formula the simulator "
+                        "at the time %s, its priority is no math the simulator "
                         "evaluates, it fires with the priority 0: %s",
                         event.eid,
                         model.sid or r.model.getModelName(),
