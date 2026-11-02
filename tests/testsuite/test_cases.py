@@ -1,12 +1,15 @@
 """Tests of reading a case of the SBML Test Suite."""
 
+import io
+import json
+import urllib.request
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from sbmlsim.result import TimecourseResult
-from sbmlsim.testsuite.cases import SemanticCase, SemanticSuite
+from sbmlsim.testsuite.cases import LATEST_RELEASE_URL, SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import compare_case
 
 SETTINGS = """start: 0
@@ -127,6 +130,37 @@ def test_the_cache_is_per_release(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("SBMLSIM_TEST_SUITE_PATH", "/elsewhere/semantic")
     assert SemanticSuite.cache_path("3.5.0") == Path("/elsewhere/semantic")
+
+
+@pytest.mark.parametrize(
+    ("variable", "authorization"),
+    [("GITHUB_TOKEN", "Bearer abc"), ("GH_TOKEN", "Bearer abc"), (None, None)],
+)
+def test_the_newest_release_is_requested_with_a_token(
+    monkeypatch: pytest.MonkeyPatch, variable: str | None, authorization: str | None
+) -> None:
+    """A token in the environment authenticates the request of the newest release.
+
+    The anonymous rate limit of GitHub refused the request on the shared
+    addresses of the runners of GitHub Actions, which failed the submission of
+    the release of 0.14.1.
+    """
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    if variable is not None:
+        monkeypatch.setenv(variable, "abc")
+    requests: list[urllib.request.Request] = []
+
+    def urlopen(request: urllib.request.Request, timeout: float) -> io.BytesIO:
+        requests.append(request)
+        return io.BytesIO(json.dumps({"tag_name": "3.6.0"}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+    assert SemanticSuite.latest_version() == "3.6.0"
+    (request,) = requests
+    assert request.full_url == LATEST_RELEASE_URL
+    assert request.get_header("Authorization") == authorization
 
 
 # ---------------------------------------------------------------------------

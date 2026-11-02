@@ -340,12 +340,24 @@ class SemanticSuite:
     def latest_version(cls) -> str:
         """Get the newest release of the suite from GitHub.
 
+        The request is authenticated with the token in `GITHUB_TOKEN` or
+        `GH_TOKEN` when one is set: GitHub allows 60 anonymous requests per
+        hour and address, which the shared addresses of the runners of GitHub
+        Actions exhaust (`HTTP Error 403: rate limit exceeded`).
+
         Returns:
             The tag of the newest release, e.g. `3.5.0`.
         """
         import json
+        import os
 
-        with urllib.request.urlopen(LATEST_RELEASE_URL, timeout=60) as response:
+        request = urllib.request.Request(
+            LATEST_RELEASE_URL, headers={"Accept": "application/vnd.github+json"}
+        )
+        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
+        with urllib.request.urlopen(request, timeout=60) as response:
             release = json.load(response)
         version: str = release["tag_name"]
         return version
