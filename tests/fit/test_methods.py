@@ -327,6 +327,23 @@ def test_differential_evolution(fitted: Fitted) -> None:
     assert "best1bin" in html
     assert "trust region reflective" not in html
     assert "L-BFGS-B" in html
+    # the default of scipy, which the records before the deferred default have
+    assert "after every trial vector" in html
+
+
+def test_differential_evolution_once_per_generation(fitted: Fitted) -> None:
+    """The default of a fit, which evaluates the generations on workers."""
+    _, result = fitted
+    metadata = _optimizer_metadata(
+        OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION,
+        {"rng": 1, "updating": "deferred"},
+    )
+    for fit in result.fits:
+        fit.algorithm = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION.name
+        fit.optimizer_kwargs = metadata
+    html = _html(_section(fitted))
+    assert "updated once per generation" in html
+    assert "after every trial vector" not in html
 
 
 def test_identifiability(fitted: Fitted) -> None:

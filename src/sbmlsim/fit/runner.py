@@ -6,6 +6,12 @@ one worker process per core, and every repeat of the fit goes to the worker
 which is free. The pool is stopped after the fit, so the workers do not keep the
 initialized problem, and it is started again, a few times, when a worker dies.
 
+A worker cannot start workers of its own, so the workers of a fit go either to
+its repeats or to the population of differential evolution, see `split_cores`:
+a fit of differential evolution with fewer repeats than workers runs them one
+after another, and every repeat evaluates the members of its population on all
+workers (`PopulationPool`), so a single global optimization uses every core.
+
 The `OptimizationProblem` is pickled and sent to the workers, so it must be
 picklable: every worker initializes it once and runs repeats on it. The start
 values are created by the runner, so a fit with a seed gives the same result
@@ -30,6 +36,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import numpy as np
 from rich.progress import (
     BarColumn,
     MofNCompleteColumn,
@@ -47,7 +54,12 @@ from sbmlsim import parallel
 from sbmlsim.console import console
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import hook_summaries
-from sbmlsim.fit.optimization import OptimizationProblem, RuntimeErrorOptimizeResult
+from sbmlsim.fit.optimization import (
+    FitTimeout,
+    OptimizationProblem,
+    PoolError,
+    RuntimeErrorOptimizeResult,
+)
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.fit.result import OptimizationResult
@@ -78,6 +90,52 @@ def resolve_n_cores(n_cores: int | None) -> int:
         )
         return max(1, cpu_count - 1)
     return max(1, n_cores)
+
+
+def split_cores(
+    algorithm: OptimizationAlgorithmType,
+    size: int,
+    n_cores: int,
+    kwargs: Mapping[str, Any],
+) -> tuple[int, int]:
+    """Split the workers of a fit between its runs and a population.
+
+    The workers of a fit are the processes of one pool, and a worker cannot
+    start workers of its own, so a run is either a task of the pool or it
+    evaluates the members of its population on the pool, never both. The runs
+    are the tasks as long as there are as many of them as workers or more:
+    every worker optimizes a run of its own, without waiting for the others.
+    Differential evolution with fewer runs than workers runs its runs one after
+    another instead, and every run evaluates the members of its population on
+    all workers (`PopulationPool`), so a single global optimization uses every
+    core; the polishing of the best member at the end evaluates its steps on
+    the workers one after another. Least squares runs its runs in parallel only.
+
+    A population is evaluated on the workers only if it is updated once per
+    generation, `updating="deferred"` (the default of the fit, see
+    `OptimizationProblem.optimizer_arguments`), and its objective is not
+    `vectorized`. The result of a seed is the same either way: a run evaluates
+    every generation together, in its worker or on all workers.
+
+    Args:
+        algorithm: optimization algorithm.
+        size: number of runs.
+        n_cores: number of workers, see `resolve_n_cores`.
+        kwargs: additional arguments of the optimizer.
+
+    Returns:
+        The workers of the runs and the workers of the population of a run;
+        one of them is one, both are one for a serial fit.
+    """
+    n_cores = max(int(n_cores), 1)
+    if (
+        algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+        and size < n_cores
+        and kwargs.get("updating", "deferred") == "deferred"
+        and not kwargs.get("vectorized", False)
+    ):
+        return 1, n_cores
+    return max(min(n_cores, size), 1), 1
 
 
 def estimate_total_time(
@@ -217,7 +275,11 @@ def run_optimization(
         algorithm: optimization algorithm to use.
         seed: random seed (for sampling of the start values).
         n_cores: number of workers, `None` uses all available cores but one;
-            one worker fits without starting a process.
+            one worker fits without starting a process. The workers optimize
+            the runs in parallel, or, for differential evolution with fewer
+            runs than workers, the runs run one after another and every run
+            evaluates its population on all workers, see `split_cores`. The
+            result of a seed does not depend on the number of workers.
         serial: run the optimization in a serial fashion (debugging), whatever
             `n_cores` says.
         show_progress: show the progress of the runs on the console.
@@ -274,9 +336,43 @@ def run_optimization(
 
     # a worker without a repeat only costs the start of a process, and one
     # worker is a serial fit without the start of a process
-    workers = 1 if serial else min(resolve_n_cores(n_cores), size)
+    workers, population_workers = split_cores(
+        algorithm=algorithm,
+        size=size,
+        n_cores=1 if serial else resolve_n_cores(n_cores),
+        kwargs=kwargs,
+    )
+    if max(workers, population_workers) > 1 and parallel.in_worker():
+        # a worker which runs the fit again starts workers of its own
+        raise RuntimeError(
+            f"'{problem.opid}': a worker process started a parallel fit, "
+            f"i.e., the script ran again when it was imported. "
+            f"{parallel.GUARD_MESSAGE}"
+        )
     opt_result: OptimizationResult
-    if workers <= 1:
+    if population_workers > 1:
+        display.key_values(
+            {"runs": size, "workers": f"{population_workers} (population of a run)"}
+        )
+        with (
+            optimization_progress("optimizing", size, show_progress) as progress,
+            worker_pool(problem, settings, population_workers) as pool,
+        ):
+            opt_result = _run_optimization_serial(
+                problem=problem,
+                settings=settings,
+                size=size,
+                algorithm=algorithm,
+                seed=seed,
+                sampling=sampling,
+                timeout=timeout,
+                runs_dir=runs_dir,
+                provenance=provenance,
+                on_progress=lambda: _advance(progress),
+                population=PopulationPool(pool),
+                **kwargs,
+            )
+    elif workers <= 1:
         display.key_values({"runs": size, "workers": "1 (serial)"})
         with optimization_progress("optimizing", size, show_progress) as progress:
             opt_result = _run_optimization_serial(
@@ -293,13 +389,6 @@ def run_optimization(
                 **kwargs,
             )
     else:
-        if parallel.in_worker():
-            # a worker which runs the fit again starts workers of its own
-            raise RuntimeError(
-                f"'{problem.opid}': a worker process started a parallel fit, "
-                f"i.e., the script ran again when it was imported. "
-                f"{parallel.GUARD_MESSAGE}"
-            )
         display.key_values({"runs": size, "workers": workers})
         opt_result = _run_optimization_parallel(
             problem=problem,
@@ -373,16 +462,14 @@ def worker_problem(
         The initialized problem.
 
     Raises:
-        RuntimeError: if the worker could not initialize the problem, with the
-            error of the initialization.
+        PoolError: if the worker could not initialize the problem, with the
+            error of the initialization; a `RuntimeError`.
     """
     initialized = parallel.worker_cache(
         ("fit", token), lambda: _initialized(problem, settings)
     )
     if isinstance(initialized, str):
-        raise RuntimeError(
-            f"the worker could not initialize the problem: {initialized}"
-        )
+        raise PoolError(f"the worker could not initialize the problem: {initialized}")
     return initialized
 
 
@@ -417,12 +504,79 @@ def _worker_run(
     return run, fit, trajectory
 
 
+def _worker_cost(
+    token: str,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    task: dict[str, Any],
+) -> float:
+    """Evaluate the cost of a member of a population in a worker process.
+
+    Args:
+        token: identifies the fit, see `FitPool`.
+        problem: the problem of the fit.
+        settings: the settings of the fit.
+        task: the member `x`, in the space the optimizer searches.
+
+    Returns:
+        The cost of the member, see `OptimizationProblem.evaluate_cost`.
+
+    Raises:
+        PoolError: if the worker could not initialize the problem.
+    """
+    return worker_problem(token, problem, settings).evaluate_cost(task["x"])
+
+
+def _worker_warm(
+    token: str,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    task: dict[str, Any],
+) -> None:
+    """Initialize the problem of a fit in a worker process, see `PopulationPool`.
+
+    Args:
+        token: identifies the fit, see `FitPool`.
+        problem: the problem of the fit.
+        settings: the settings of the fit.
+        task: nothing, one task per worker.
+
+    Raises:
+        PoolError: if the worker could not initialize the problem.
+    """
+    worker_problem(token, problem, settings)
+
+
+class WorkerDied(PoolError):
+    """A task failed because its worker died while it ran, see `FitPool.run`.
+
+    Attributes:
+        alone: whether the task ran alone on the pool when its worker died, so
+            it killed the worker itself; otherwise it was one of the tasks in
+            flight at a crash after the restarts were spent, and which of them
+            killed the worker is not known.
+    """
+
+    def __init__(self, message: str, alone: bool = False) -> None:
+        """Initialize the failure of a task.
+
+        Args:
+            message: what happened.
+            alone: whether the task ran alone on the pool.
+        """
+        super().__init__(message)
+        self.alone = alone
+
+
 #: seconds added to the timeout of a fit before its pending repeats are given up
 START_GRACE = 60.0
 
 #: the number of restarts of the pool of a run after which the tasks which were
 #: running at a crash are no longer run again alone to find the one which killed
-#: its worker: they fail at once. A worker which dies (a crash in the integrator,
+#: its worker: they fail at once. `FitPool.restarts` counts them over the calls
+#: of `FitPool.run`, i.e. over a fit of runs as tasks or a profile; the
+#: population of differential evolution counts them per generation, see
+#: `PopulationPool`. A worker which dies (a crash in the integrator,
 #: the kernel killing it for memory) breaks the whole pool and with it every task
 #: in flight. The pool is still started again, so the tasks which did not run
 #: complete, and every crash after the cap fails the tasks which were running.
@@ -444,7 +598,10 @@ class FitPool:
         settings: the settings the workers initialize the problem with.
         n_cores: the number of workers.
         preload: the modules the forkserver imports, see `_preload`.
-        restarts: how often the pool was started again.
+        restarts: how often the pool was started again after a crash, for the
+            cap `MAX_POOL_RESTARTS`.
+        stopped: whether the workers are stopped, e.g. after a crash with no
+            task left or by `stop`; the next `run` starts new ones.
     """
 
     executor: ProcessPoolExecutor
@@ -454,6 +611,23 @@ class FitPool:
     n_cores: int = 1
     preload: Sequence[str] = ()
     restarts: int = 0
+    stopped: bool = False
+
+    def stop(self) -> None:
+        """Stop the workers with the tasks they run, the next `run` starts new ones."""
+        parallel.stop(self.executor)
+        self.stopped = True
+
+    def start(self) -> None:
+        """Start new workers, if they are stopped; no restart after a crash.
+
+        Raises:
+            RuntimeError: if the workers do not start, see
+                `sbmlsim.parallel.start_pool`.
+        """
+        if self.stopped:
+            self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
+            self.stopped = False
 
     def submit(self, function: Callable[..., Any], task: dict[str, Any]) -> Future[Any]:
         """Run `function(token, problem, settings, task)` in a worker."""
@@ -466,7 +640,8 @@ class FitPool:
         function: Callable[..., Any],
         tasks: Mapping[int, dict[str, Any]],
         timeout: float | None = None,
-    ) -> Iterator[tuple[int, Any]]:
+        deadline: float | None = None,
+    ) -> Generator[tuple[int, Any]]:
         """Run the tasks and hand out their results as they finish.
 
         At most `n_cores` tasks are in flight, the next is submitted when one
@@ -480,7 +655,12 @@ class FitPool:
         again the same way, with no suspect if nothing was running; after
         `MAX_POOL_RESTARTS` restarts with no suspect and no result in between
         the run ends there. If the pool cannot be started again, or the run
-        ends, the tasks which did not run fail.
+        ends, the tasks which did not run fail with a `PoolError`. A task which
+        fails because its worker died fails with `WorkerDied`, which tells
+        whether it ran alone. A crash which leaves no task to run stops the
+        pool and marks it `stopped`, so the next call starts new workers
+        without counting a crash; stopped workers are started at the start of
+        a call.
 
         Args:
             function: called in the worker as
@@ -489,6 +669,10 @@ class FitPool:
             timeout: seconds without any result after which the tasks which are
                 running or waiting fail, `START_GRACE` s are added for the
                 start; no limit if `None`.
+            deadline: the time of `time.monotonic` at which the tasks which did
+                not finish fail with a `TimeoutError`, without a grace; the
+                tasks which are running are left to the workers, which the
+                caller stops. No limit if `None`.
 
         Yields:
             The key of a task and its result, or the exception which failed it.
@@ -500,8 +684,32 @@ class FitPool:
         # the restarts with no suspect since the last result, the run ends after
         # MAX_POOL_RESTARTS of them; a result shows the pool makes progress
         idle_restarts = 0
+        if self.stopped and queue:
+            try:
+                self.start()
+            except RuntimeError as err:
+                logger.error(
+                    "'%s': the pool could not be started (%s), the tasks %s are "
+                    "given up.",
+                    self.problem.opid,
+                    err,
+                    sorted(queue),
+                )
+                for key in sorted(queue):
+                    yield key, PoolError(str(err))
+                return
         last = time.monotonic()
         while queue or alone or running:
+            if deadline is not None and time.monotonic() >= deadline:
+                lost = sorted([*running.values(), *alone, *queue])
+                logger.debug(
+                    "'%s': the deadline passed, the tasks %s are given up.",
+                    self.problem.opid,
+                    lost,
+                )
+                for key in lost:
+                    yield key, TimeoutError("the deadline passed")
+                return
             submit_broken = False
             try:
                 if alone:
@@ -526,7 +734,13 @@ class FitPool:
                     if timeout is None
                     else max(1.0, last + timeout + START_GRACE - time.monotonic())
                 )
+                if deadline is not None:
+                    left = max(0.0, deadline - time.monotonic())
+                    remaining = left if remaining is None else min(remaining, left)
                 done, _ = wait(running, timeout=remaining, return_when=FIRST_COMPLETED)
+                if not done and deadline is not None and time.monotonic() >= deadline:
+                    # handed out at the start of the next round
+                    continue
                 if not done:
                     lost = sorted([*running.values(), *alone, *queue])
                     logger.error(
@@ -569,7 +783,7 @@ class FitPool:
             # the tasks which were in flight are the suspects
             suspects = sorted(running.values())
             running.clear()
-            parallel.stop(self.executor)
+            self.stop()
             if not suspects and idle_restarts >= MAX_POOL_RESTARTS:
                 lost = sorted([*alone, *queue])
                 logger.error(
@@ -578,7 +792,7 @@ class FitPool:
                     lost,
                 )
                 for key in lost:
-                    yield key, RuntimeError("the pool keeps breaking")
+                    yield key, PoolError("the pool keeps breaking")
                 return
             if suspects and (solo or self.restarts >= MAX_POOL_RESTARTS):
                 if solo:
@@ -596,7 +810,7 @@ class FitPool:
                     )
                     failure = "a worker died while the task was running"
                 for key in suspects:
-                    yield key, RuntimeError(failure)
+                    yield key, WorkerDied(failure, alone=solo)
             elif suspects:
                 logger.error(
                     "'%s': a worker died; restarting the pool, the tasks %s which "
@@ -611,10 +825,11 @@ class FitPool:
                     "'%s': a worker died; restarting the pool.", self.problem.opid
                 )
             if not (queue or alone):
+                # stopped, the next call starts new workers
                 return
             self.restarts += 1
             try:
-                self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
+                self.start()
             except RuntimeError as err:
                 lost = sorted([*alone, *queue])
                 logger.error(
@@ -625,7 +840,7 @@ class FitPool:
                     lost,
                 )
                 for key in lost:
-                    yield key, err
+                    yield key, PoolError(str(err))
                 return
             last = time.monotonic()
 
@@ -683,7 +898,123 @@ def worker_pool(
         yield pool
     finally:
         # the pool of the fit, which may be another one than the one it started
-        parallel.stop(pool.executor)
+        pool.stop()
+
+
+@dataclass
+class PopulationPool:
+    """Evaluates the population of differential evolution on the workers of a fit.
+
+    It is the `PopulationEvaluator` of a run, see
+    `OptimizationProblem.optimize_run`: every member is a task of the pool,
+    `_worker_cost`, so at most one member per worker is in flight and a worker
+    takes the next member when it is free; the run gets the costs as they
+    finish and returns them to scipy in the order of the members. The workers
+    initialize the problem once per fit, see `worker_problem`, so the runs of a
+    fit share them; `start` initializes them before the budget of a run.
+
+    A member whose worker dies runs again alone on a new pool, see
+    `FitPool.run`, and the cap `MAX_POOL_RESTARTS` counts per generation, so
+    crashes spread over a fit lose no member. A member which kills its worker
+    when it runs alone is a failed simulation, its cost is infinite. Members
+    which fail together, once the restarts of a generation are spent, end the
+    run with a `PoolError`: which of them killed the worker is not known, and
+    an infinite cost for all of them would make the result depend on the
+    timing of the crashes. Any other error of a worker ends the run with that
+    error, as in a serial run. The members which are not evaluated at the
+    deadline of the run are given up. After a deadline, an error or an
+    interrupt the workers are stopped, so no member which is still in flight
+    holds them, and the next generation, or the next run, starts new ones.
+
+    Attributes:
+        pool: the workers of the fit.
+        warmed: the pool whose workers initialized the problem, see `start`.
+    """
+
+    pool: FitPool
+    warmed: ProcessPoolExecutor | None = None
+
+    def start(self) -> None:
+        """Start the workers and initialize the problem in every one of them.
+
+        One task per worker initializes the problem, which the members of the
+        run then find initialized; it runs before the budget of a run, see
+        `OptimizationProblem._optimize_single`. A worker which takes a second
+        task before another started initializes the problem with its first
+        member instead. A worker which fails to initialize the problem fails
+        the members of the run with that error, so the failure is left to them.
+
+        Raises:
+            RuntimeError: if the workers do not start.
+        """
+        self.pool.start()
+        if self.warmed is self.pool.executor:
+            return
+        for _ in self.pool.run(_worker_warm, {k: {} for k in range(self.pool.n_cores)}):
+            pass
+        self.warmed = self.pool.executor
+
+    def __call__(
+        self, members: Sequence[np.ndarray], deadline: float | None
+    ) -> Iterator[tuple[int, float]]:
+        """Evaluate the cost of every member on the workers.
+
+        Args:
+            members: the parameter vectors in the space the optimizer searches.
+            deadline: the time of `time.monotonic` at which the members which
+                are not evaluated are given up, no limit if `None`.
+
+        Yields:
+            The index of a member and its cost, as they finish.
+
+        Raises:
+            FitTimeout: if the deadline passed before every member was evaluated.
+            PoolError: if the workers failed, see the class.
+        """
+        # the cap of the restarts counts per generation
+        self.pool.restarts = 0
+        outcomes = self.pool.run(
+            _worker_cost,
+            {k: {"x": member, "member": k} for k, member in enumerate(members)},
+            deadline=deadline,
+        )
+        timed_out = finished = False
+        try:
+            for k, outcome in outcomes:
+                if isinstance(outcome, TimeoutError):
+                    timed_out = True
+                    break
+                if isinstance(outcome, WorkerDied) and outcome.alone:
+                    logger.error(
+                        "'%s': the member %s of the population killed its worker, "
+                        "its cost is infinite.",
+                        self.pool.problem.opid,
+                        k,
+                    )
+                    yield k, float("inf")
+                    continue
+                if isinstance(outcome, WorkerDied):
+                    raise PoolError(
+                        f"the member {k} of the population failed with the "
+                        f"members in flight after {MAX_POOL_RESTARTS} restarts "
+                        f"of the pool in one generation: {outcome}"
+                    )
+                if isinstance(outcome, Exception):
+                    raise outcome
+                yield k, float(outcome)
+            else:
+                finished = True
+        finally:
+            outcomes.close()
+            if not finished:
+                # the members still in flight, after a deadline, an error or an
+                # interrupt, would hold the workers of the next generation
+                self.pool.stop()
+        if timed_out:
+            raise FitTimeout(
+                f"'{self.pool.problem.opid}': the optimization did not finish in "
+                f"its budget."
+            )
 
 
 def _run_optimization_parallel(
@@ -854,12 +1185,15 @@ def _run_optimization_serial(
     on_progress: Callable[[], None] | None = None,
     run_prefix: str = "run",
     provenance: FitProvenance | None = None,
+    population: PopulationPool | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
 
     This function should not be called directly, `run_optimization` executes the
-    optimizations. See `run_optimization` for the arguments.
+    optimizations. See `run_optimization` for the arguments; `population`
+    evaluates the population of differential evolution on the workers of the
+    fit, the runs run one after another.
     """
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
@@ -891,6 +1225,7 @@ def _run_optimization_serial(
             algorithm=algorithm,
             timeout=timeout,
             on_run_finished=on_run_finished,
+            population=population,
             **kwargs,
         )
     except KeyboardInterrupt:

@@ -835,6 +835,17 @@ def _differential_evolution(
         parts.append(", with ")
         parts.extend(_join(options))
     parts.append(".")
+    updating = kwargs.get("updating")
+    if updating == "deferred":
+        parts.append(
+            " The population was updated once per generation, the scheme of Storn "
+            "and Price, so the result of a seed does not depend on the number of "
+            "workers which evaluated it."
+        )
+    elif updating == "immediate":
+        parts.append(
+            " The best member of the population was updated after every trial vector."
+        )
     init = kwargs.get("init")
     if isinstance(init, str):
         parts.append(" The initial population of a run was drawn ")
