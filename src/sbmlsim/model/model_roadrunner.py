@@ -848,6 +848,7 @@ class RoadrunnerSBMLModel(SBMLModel):
             selections=None if selections is None else list(selections),
             exclude=set(self.parameters),
         )
+        self.selections_given = selections is not None
 
     @override
     def value(self, selection: str) -> float:

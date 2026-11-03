@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, ClassVar
 import libsbml
 from pint.facets.plain import PlainUnit
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, resolve_engine
 from sbmlsim.model.event_rows import MARKER_PREFIX
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.symbols import ModelSymbols
@@ -63,6 +63,10 @@ class SBMLModel(AbstractModel, ABC):
             `sbmlsim.simulator.changes`.
         warned_start: whether the start of a simulation was reported, see
             `sbmlsim.simulator.executor`.
+        selections_given: whether the selections were given, `False` for
+            the default selections of the engine, see `default_selections`;
+            a model loaded in another engine gets that engine's defaults, see
+            `load_model`.
     """
 
     engine: ClassVar[Engine]
@@ -123,6 +127,7 @@ class SBMLModel(AbstractModel, ABC):
 
         self.warned_start: bool = False
         self.reported_triggers: set[str] = set()
+        self.selections_given: bool = selections is not None
 
         # normalize model changes
         self.uinfo: UnitsInformation = self.parse_units(
@@ -197,13 +202,19 @@ class SBMLModel(AbstractModel, ABC):
     def default_selections(self) -> list[str]:
         """Get the selections of a model loaded without selections.
 
-        Every entity of the model which has a value: the time, the amounts of
-        the floating and of the boundary species, the global parameters, the
-        reactions and the compartments with a size, then the concentrations
-        of the floating and of the boundary species, each in the order of the
-        SBML. A compartment without a size (`NaN`), e.g. a membrane whose area
-        the model does not use, has no value to record; the parameters added
-        to the model and the helpers of sbmlsim are not selected.
+        Every entity of the model which has a value, the selections roadrunner
+        makes by default (as sets, the order may differ): the time, the
+        amounts of the floating and of the boundary species, the global
+        parameters, the species references with an id whose species is a
+        boundary species (roadrunner's global parameters, the other ones are
+        entries of the stoichiometry matrix), the reactions and the
+        compartments, then the concentrations of the floating and of the
+        boundary species, each in the order of the SBML. A compartment whose
+        size is `NaN` and set by no initial assignment or rule, e.g. a
+        membrane whose area the model does not use, has no value to record (a
+        compartment without a size has the size 1 in roadrunner); the
+        parameters added to the model and the helpers of sbmlsim are not
+        selected.
 
         Returns:
             The selections.
@@ -220,7 +231,13 @@ class SBMLModel(AbstractModel, ABC):
         compartments = [
             c.getId()
             for c in model.getListOfCompartments()
-            if c.getId() in sized or (c.isSetSize() and not math.isnan(c.getSize()))
+            if c.getId() in sized or not (c.isSetSize() and math.isnan(c.getSize()))
+        ]
+        stoichiometries = [
+            sr.getId()
+            for reaction in model.getListOfReactions()
+            for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts())
+            if sr.isSetId() and sr.getSpecies() in boundary
         ]
         return [
             "time",
@@ -231,6 +248,7 @@ class SBMLModel(AbstractModel, ABC):
                 for p in model.getListOfParameters()
                 if not _is_helper(p.getId()) and p.getId() not in self.parameters
             ],
+            *stoichiometries,
             *[r.getId() for r in model.getListOfReactions()],
             *compartments,
             *[f"[{sid}]" for sid in (*floating, *boundary)],
@@ -298,7 +316,8 @@ class SBMLModel(AbstractModel, ABC):
         """Set the selections of the simulations of the model.
 
         Args:
-            selections: the selections, `default_selections` for `None`.
+            selections: the selections, `default_selections` for `None`,
+                see `selections_given`.
         """
 
     @abstractmethod
@@ -331,21 +350,24 @@ class SBMLModel(AbstractModel, ABC):
 
 def load_model(
     model: AbstractModel | str | Path,
-    engine: Engine,
+    engine: Engine | str,
     *,
     ureg: UnitRegistry | None = None,
     jit_optimization: JitOptimization | str | None = None,
 ) -> SBMLModel:
     """Load a model in an engine.
 
-    A model of the engine is the model itself. A model of another engine is
+    A model of the engine is the model itself, as it is: `ureg` and
+    `jit_optimization` do not apply to it. A model of another engine is
     loaded again from what does not depend on its engine: its `sbml`, its
-    added parameters, its changes, its selections, its id and its base path;
-    a state set on the model of the other engine is not carried over.
+    added parameters, its changes, its selections (none for the default
+    selections, so the engine selects its own defaults, see
+    `SBMLModel.selections_given`), its id, its name and its base path; a
+    state set on the model of the other engine is not carried over.
 
     Args:
         model: a loaded model, the description of a model or its path or SBML.
-        engine: the engine.
+        engine: the engine or its name.
         ureg: the unit registry of the units of the model, the registry of
             the package without one; a model of another engine keeps its own.
         jit_optimization: the optimization level of the compilation of a
@@ -356,8 +378,10 @@ def load_model(
         The model of the engine.
 
     Raises:
+        ValueError: for a name which is no engine.
         ImportError: for the engine COPASI without python-copasi.
     """
+    engine = resolve_engine(engine)
     if isinstance(model, SBMLModel):
         if model.engine is engine:
             return model
@@ -369,7 +393,11 @@ def load_model(
             name=model.name,
             base_path=model.base_path,
             changes=dict(model.changes),
-            selections=None if model.selections is None else list(model.selections),
+            selections=(
+                list(model.selections)
+                if model.selections_given and model.selections is not None
+                else None
+            ),
             parameters=model.parameters,
         )
     if engine is Engine.ROADRUNNER:
@@ -383,12 +411,14 @@ def load_model(
         return RoadrunnerSBMLModel(
             source=model, ureg=ureg, jit_optimization=jit_optimization
         )
-    # COPASI is an optional extra, imported when a model is loaded in it
-    from sbmlsim.model.model_copasi import CopasiSBMLModel  # ty: ignore[unresolved-import]
+    if engine is Engine.COPASI:
+        # COPASI is an optional extra, imported when a model is loaded in it
+        from sbmlsim.model.model_copasi import CopasiSBMLModel  # ty: ignore[unresolved-import]
 
-    if isinstance(model, AbstractModel):
-        return CopasiSBMLModel.from_abstract_model(abstract_model=model, ureg=ureg)
-    return CopasiSBMLModel(source=model, ureg=ureg)
+        if isinstance(model, AbstractModel):
+            return CopasiSBMLModel.from_abstract_model(abstract_model=model, ureg=ureg)
+        return CopasiSBMLModel(source=model, ureg=ureg)
+    raise ValueError(f"The engine '{engine}' loads no models.")
 
 
 def _is_helper(sid: str) -> bool:
