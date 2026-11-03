@@ -364,7 +364,10 @@ def test_the_step_of_the_jacobian_is_the_root_of_the_tolerance() -> None:
 def test_a_least_squares_fit_gets_the_step_of_its_tolerance(
     op_hctz_pk: OptimizationProblem,
 ) -> None:
-    """A given step, the global optimizer and a jacobian function keep theirs."""
+    """A given step, the global optimizer and a jacobian function keep theirs.
+
+    Differential evolution gets `updating="deferred"` instead, unless given.
+    """
     op_hctz_pk.initialize(FitSettings(relative_tolerance=1e-8))
     lsq = OptimizationAlgorithmType.LEAST_SQUARE
     assert op_hctz_pk.optimizer_arguments(lsq, {"xtol": 1e-6}) == {
@@ -374,7 +377,11 @@ def test_a_least_squares_fit_gets_the_step_of_its_tolerance(
     assert op_hctz_pk.optimizer_arguments(lsq, {"diff_step": 0.1}) == {"diff_step": 0.1}
     assert op_hctz_pk.optimizer_arguments(lsq, {"jac": len}) == {"jac": len}
     de = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
-    assert op_hctz_pk.optimizer_arguments(de, {}) == {}
+    # the population is updated once per generation, for any number of workers
+    assert op_hctz_pk.optimizer_arguments(de, {}) == {"updating": "deferred"}
+    assert op_hctz_pk.optimizer_arguments(de, {"updating": "immediate"}) == {
+        "updating": "immediate"
+    }
 
 
 def test_a_fit_records_the_step_of_its_jacobian(

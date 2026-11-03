@@ -377,7 +377,8 @@ The first point of a curve is the exception: if a curve has later points, its fi
 - `diff_step`: the relative step of the finite differences of the Jacobian of the least squares optimizer. It defaults to the square root of `relative_tolerance` of the settings, `1e-3` for the default `1e-6`: a simulation is exact only to the tolerance of the integrator, and a smaller step, such as the default of SciPy, measures the noise of the integrator instead of the slope, so the optimizer stops next to its start.
 - `sampling`: how the start points are drawn within the bounds, `SamplingType.UNIFORM` (default, from `sbmlsim.fit.sampling`), `LOGUNIFORM` and their Latin hypercube variants `UNIFORM_LHS` and `LOGUNIFORM_LHS`. `START` starts every run from the start values, to improve a known solution; one run is then enough for the local optimizer. Setting `problem.x0` changes the start values of a problem.
 - `seed`: the seed of the start points. The start points are drawn before the runs start, so the result does not depend on the number of workers.
-- `n_cores`: the number of worker processes; `1` (default) runs in the calling process, `None` uses all cores but one. `serial=True` runs serially whatever `n_cores` says, which is what a debugger needs.
+- `n_cores`: the number of worker processes; `1` (default) runs in the calling process, `None` uses all cores but one. `serial=True` runs serially whatever `n_cores` says, which is what a debugger needs. A worker cannot start workers of its own, so the workers go either to the runs or to the population of differential evolution (`split_cores` of `sbmlsim.fit.runner`): with as many runs as workers or more, every worker optimizes a run of its own; differential evolution with fewer runs than workers, e.g. a single global optimization, runs its runs one after another and every run evaluates the members of its population on all workers, and the polishing of the best member evaluates its steps there one after another. Least squares runs its runs in parallel only. Every worker holds the problem, the memory of a fit grows with `n_cores` either way.
+- `updating`: differential evolution updates its population once per generation (`updating="deferred"`, the scheme of Storn and Price), which the fit sets unless it is given, so a seed gives the same result for any number of workers. `updating="immediate"`, the default of SciPy, updates the best member after every trial vector and evaluates the population serially; `workers` of SciPy is refused, `n_cores` gives the workers.
 - `timeout`: seconds per run; a run which runs out of time keeps the best parameters it reached.
 - `runs_dir`: a directory every run is written to as JSON as soon as it finishes, so an interrupted fit keeps its finished runs. `OptimizationResult.from_directory` reads them back.
 
@@ -397,7 +398,7 @@ EOF
 python fit.py
 ```
 
-A worker which crashes loses only the run it was working on. While the runs go on, the console shows how many are done and an estimate of the total time.
+A worker which crashes loses only the run it was working on; a member of a population which crashes its worker again when it runs alone counts as a failed simulation, with an infinite cost. While the runs go on, the console shows how many are done and an estimate of the total time.
 
 ## Results and parameter sets
 
