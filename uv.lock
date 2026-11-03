@@ -1864,6 +1864,35 @@ wheels = [
 ]
 
 [[package]]
+name = "python-copasi"
+version = "4.48.311"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/83/0e48b606ad0b12b819d5da2bc05ae4ef69b92cdafbe5619037efaf976416/python_copasi-4.48.311.tar.gz", hash = "sha256:e330ab178e0e7cf7213bf2036ab9c0979c96d87a997c3ce79e60cc51e6c5b4f2", size = 43308011, upload-time = "2026-10-23T07:04:44.933Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/13/fc1ced20890aa978cc14ea6aa7124839866f08922a3b943758ed8aea85a1/python_copasi-4.48.311-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:3827808c5cc51af609a8c7a0b5605610a32eb806f9cd4abd47271ee6532c5b0c", size = 8679100, upload-time = "2026-10-23T07:04:04.876Z" },
+    { url = "https://files.pythonhosted.org/packages/10/e1/e07146250b18e7ebb6e9e4f759abcfeb185333d3c0d99e7ba18e4e10af27/python_copasi-4.48.311-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:81d843859474ce8654a4120cb9c038a9c833b120c7e70779fbb5928c006f63a3", size = 8120158, upload-time = "2026-10-23T07:04:06.826Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/34/1f35bd3a93e3961d05310d3d8f2eb24bd03915bd09538478ef5dd2c4b4fa/python_copasi-4.48.311-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:21d57c98ebb48ebfd9e12e8e4a9253722bb64efbf41e40e677758ca2540d2897", size = 11783318, upload-time = "2026-10-23T07:04:08.507Z" },
+    { url = "https://files.pythonhosted.org/packages/6e/9c/2e09b2374ffda548a6f9a5ff4434ccae8c0d592266bdbc93440ada34e9d0/python_copasi-4.48.311-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:cc9e6bcbbac21d8d9552431c154e9a6aeb59b129fa0d95756faea7fa0af87708", size = 13125257, upload-time = "2026-10-23T07:04:10.608Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/62/ebf373c8b71b57a8ca5f543ca71515cc2882cff3d73a03689c8bd280ca35/python_copasi-4.48.311-cp313-cp313-pyemscripten_2025_0_wasm32.whl", hash = "sha256:b748e1f02d851e79c312869327de2a4056a301bf2b8daec4f94083b3535dabf7", size = 5800825, upload-time = "2026-10-23T07:04:12.964Z" },
+    { url = "https://files.pythonhosted.org/packages/66/4b/325a3f2c6775e2cb09b4117a6e9e9544f577d2fda88eec948b2bdf04b1a4/python_copasi-4.48.311-cp313-cp313-win_amd64.whl", hash = "sha256:f2eda0361d3bab2b4e2f39f27c565340e6bb3ebec6bf8b189d9d352209fa8797", size = 7131175, upload-time = "2026-10-23T07:04:14.595Z" },
+    { url = "https://files.pythonhosted.org/packages/54/a4/4a6ae20c82bf3cb9d264f169e69af9a092704839325918e89da810b2a1d8/python_copasi-4.48.311-cp313-cp313-win_arm64.whl", hash = "sha256:1c73e576c2febfda8e9fa5a6ef0657472a804a9b1f64413a3a39c89db946c625", size = 6909765, upload-time = "2026-10-23T07:04:16.393Z" },
+    { url = "https://files.pythonhosted.org/packages/af/9d/b2d49a57cfd769e1753f6c3b6e95a92273f647527db5e330095482e677d4/python_copasi-4.48.311-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:45154d67dd5860d4e90740c6a21bbc532bc864ba151f2dc8e6304578af86f993", size = 8680752, upload-time = "2026-10-23T07:04:18.323Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/69/312b1625d7f96bf77e9e10c652fd03684a20480563d798e9330e9fadf8e6/python_copasi-4.48.311-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:85fc9261b0681ba4483b1063bbd9537e183f7c3a499feaf27aff315ca66a2bc2", size = 8122671, upload-time = "2026-10-23T07:04:20.413Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/9e/0ad80dce6eb39924164ab6e2d6865ccc68455f8f91f3babfe1438684d4f3/python_copasi-4.48.311-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:dfba32664f8dc33ae027021dc0df0d0ac112612dd02cbd53145f3e8ff2d024dc", size = 11783870, upload-time = "2026-10-23T07:04:22.391Z" },
+    { url = "https://files.pythonhosted.org/packages/82/be/cd9ec3ff5f524f786e4059affb18f57cb8b4aa68b63f89383f0d15c3c815/python_copasi-4.48.311-cp314-cp314-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9aef943cdfaaa7e3403cf62e79c6a43cd27060072a805af2de4f42a57c2cd2ec", size = 13126255, upload-time = "2026-10-23T07:04:24.54Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/38/cbd3e5187b6aa1eeb1f340e98878d9be94abfd8ececb6cbfb7d0b6583adc/python_copasi-4.48.311-cp314-cp314-pyemscripten_2026_0_wasm32.whl", hash = "sha256:9ac6d2189d90b5358ef18401c4a0f5777c977223e7a9d82b628d2c2a6b42986a", size = 5806822, upload-time = "2026-10-23T07:04:26.787Z" },
+    { url = "https://files.pythonhosted.org/packages/31/2a/c52ff85b726a2383a88ad68379150edbda743962b3fc3e8362a0da21e4c9/python_copasi-4.48.311-cp314-cp314-win_amd64.whl", hash = "sha256:a45ace45c3def2953e5f6bcfdf6013e3db9ca7834c2a04ae0c35c0604cfb155f", size = 7324375, upload-time = "2026-10-23T07:04:28.26Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/e5/a465328b0e1aede3d65f8d05a491ab92e0339c8bfd4c1cc6293b6ba9c454/python_copasi-4.48.311-cp314-cp314-win_arm64.whl", hash = "sha256:ee0542c2c86ba579f557ed9f9eefb64138d6c9083e7927a99a9d76b1b29ab940", size = 7104425, upload-time = "2026-10-23T07:04:29.835Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/6c/65a7b49d4414074e0ad07b923925b29d78a1b8b59daced26751e3bb27c56/python_copasi-4.48.311-cp315-cp315-macosx_10_15_x86_64.whl", hash = "sha256:53fc1f372a675699ce102d154c7d23a901b1442336b8f216343a7ecc5732127f", size = 8680751, upload-time = "2026-10-23T07:04:31.491Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/c2/838e28af16e979b2aeda1737418361672266a16b5e5424c6fe85fe0918e2/python_copasi-4.48.311-cp315-cp315-macosx_11_0_arm64.whl", hash = "sha256:c25671a39d9b40808d1883dffd95853b852d92b5b2fc474aae67cef18a681ce1", size = 8122703, upload-time = "2026-10-23T07:04:33.426Z" },
+    { url = "https://files.pythonhosted.org/packages/03/24/1e0477dbb242b93de3414aa5b6e47645fdab3bb25768081e99e6d13d4b90/python_copasi-4.48.311-cp315-cp315-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:d9a602a90a451ccb8e7fd4eb5e17641f1de51cb8106bab1f1e7b454164fe18c4", size = 11783714, upload-time = "2026-10-23T07:04:35.185Z" },
+    { url = "https://files.pythonhosted.org/packages/01/62/08f40645d106b56b30c255fc544d69f4ddceae185a6825234bea82a3e8f8/python_copasi-4.48.311-cp315-cp315-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f510b782d35fc076cccd2f071a19cc919bc10b045e04db57188bc4cf2d4ba0d2", size = 13126191, upload-time = "2026-10-23T07:04:37.504Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/b9/afc7ef0b39938b6b8c5e91157eb32a0ea0e233188432e5a86b5de2c59a42/python_copasi-4.48.311-cp315-cp315-pyemscripten_2026_5_wasm32.whl", hash = "sha256:eb48e6d7a9019a36174735ae1a3fe0edbe1b45eb6065adab5fcffc1c675d33fb", size = 5805764, upload-time = "2026-10-23T07:04:39.267Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/b5/b5be6be4248353e0d4f6e0a826775fa5a2b5d750e876ba61bd1b6f9437aa/python_copasi-4.48.311-cp315-cp315-win_amd64.whl", hash = "sha256:d78df68a4f35a719e6f1e59266c2da3035c3a04bc19e8b6fb2cac1c7fcb9beed", size = 7323222, upload-time = "2026-10-23T07:04:40.712Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/21/608fb35fa9e4690cb3bebd891402a23c46b11e8e03e9e8ccacd9309749c3/python_copasi-4.48.311-cp315-cp315-win_arm64.whl", hash = "sha256:c0fe1e3ff30c5f999df31188216992274f56cb29d1069c81f99e93524b61cc65", size = 7104967, upload-time = "2026-10-23T07:04:42.277Z" },
+]
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -2261,6 +2290,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+copasi = [
+    { name = "python-copasi" },
+]
 dev = [
     { name = "antimony" },
     { name = "bump-my-version" },
@@ -2271,6 +2303,7 @@ dev = [
     { name = "pypdf" },
     { name = "pytest" },
     { name = "pytest-xdist" },
+    { name = "python-copasi" },
     { name = "ruff" },
     { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
@@ -2311,6 +2344,8 @@ requires-dist = [
     { name = "pypdf", marker = "extra == 'dev'", specifier = ">=6.21.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=9.1.1" },
     { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.8.0" },
+    { name = "python-copasi", marker = "extra == 'copasi'", specifier = ">=4.48.311" },
+    { name = "python-copasi", marker = "extra == 'dev'", specifier = ">=4.48.311" },
     { name = "python-libsbml", specifier = ">=5.21.2" },
     { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "rich", specifier = ">=15.0.0" },
@@ -2330,7 +2365,7 @@ requires-dist = [
     { name = "xarray", specifier = ">=2026.9.0" },
     { name = "zensical", marker = "extra == 'dev'", specifier = ">=0.0.68" },
 ]
-provides-extras = ["dev", "sciml"]
+provides-extras = ["copasi", "dev", "sciml"]
 
 [[package]]
 name = "sbmlutils"

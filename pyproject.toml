@@ -95,8 +95,12 @@ dependencies = [
 sciml = [
 	"petab-sciml>=0.0.3",
 ]
+# COPASI as a second engine of the simulator, see sbmlsim.engine
+copasi = [
+	"python-copasi>=4.48.311",
+]
 dev = [
-	"sbmlsim[sciml]",
+	"sbmlsim[sciml,copasi]",
 	# the reference of the forward pass in the tests, never imported by the package
 	"torch>=2.14.1",
 	"bump-my-version>=1.5.1",
