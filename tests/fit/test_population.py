@@ -18,7 +18,7 @@ import numpy as np
 import pytest
 
 from sbmlsim.fit import FitSettings, runner
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import OptimizationProblem, PoolError
 from sbmlsim.fit.options import ObjectiveType, OptimizationAlgorithmType
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.runner import run_optimization, split_cores
@@ -27,6 +27,27 @@ DE = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
 LSQ = OptimizationAlgorithmType.LEAST_SQUARE
 
 _REAL_WORKER_COST = runner._worker_cost
+_REAL_WORKER_WARM = runner._worker_warm
+#: the calls on which `kill_on_spread_calls` kills its worker, in different
+#: generations, more than `MAX_POOL_RESTARTS` of them
+SPREAD_KILLS = {3, 15, 27, 39}
+#: the calls on which `kill_on_calls_5_and_7` kills its worker: 7 is the first
+#: member which runs alone after the crash of 5
+ALONE_KILLS = {5, 7}
+#: the last member of a population of 2 x 3 parameters
+LAST_MEMBER = 5
+
+
+def _claim(token: str) -> int:
+    """Claim the number of the next evaluation of a fit, across its workers."""
+    n = 1
+    while True:
+        try:
+            os.close(os.open(f"{token}.call.{n}", os.O_CREAT | os.O_EXCL))
+        except FileExistsError:
+            n += 1
+            continue
+        return n
 
 
 def cost_with_pid(token: str, problem: Any, settings: Any, task: dict[str, Any]) -> Any:
@@ -41,6 +62,53 @@ def die_once(token: str, problem: Any, settings: Any, task: dict[str, Any]) -> A
     if not died.exists():
         died.touch()
         os._exit(1)
+    return _REAL_WORKER_COST(token, problem, settings, task)
+
+
+def kill_on_spread_calls(
+    token: str, problem: Any, settings: Any, task: dict[str, Any]
+) -> Any:
+    """Kill the worker on the calls of `SPREAD_KILLS`, the token is a path."""
+    if _claim(token) in SPREAD_KILLS:
+        os._exit(1)
+    return _REAL_WORKER_COST(token, problem, settings, task)
+
+
+def kill_on_calls_5_and_7(
+    token: str, problem: Any, settings: Any, task: dict[str, Any]
+) -> Any:
+    """Kill the worker on the calls of `ALONE_KILLS`, the token is a path."""
+    if _claim(token) in ALONE_KILLS:
+        os._exit(1)
+    return _REAL_WORKER_COST(token, problem, settings, task)
+
+
+def kill_the_last_member(
+    token: str, problem: Any, settings: Any, task: dict[str, Any]
+) -> Any:
+    """Kill the worker of the last member of the first generation, every time.
+
+    The first generation is evaluated in the calls up to 8: its six members
+    and the two which run again alone after the crash.
+    """
+    call = _claim(token)
+    if task["member"] == LAST_MEMBER and call <= 8:
+        os._exit(1)
+    return _REAL_WORKER_COST(token, problem, settings, task)
+
+
+def warm_slowly(token: str, problem: Any, settings: Any, task: dict[str, Any]) -> Any:
+    """Initialize the problem in a worker which takes 3 s to start."""
+    time.sleep(3.0)
+    return _REAL_WORKER_WARM(token, problem, settings, task)
+
+
+def sleep_from_member_2(
+    token: str, problem: Any, settings: Any, task: dict[str, Any]
+) -> Any:
+    """Evaluate the members 0 and 1, never answer for the others."""
+    if task["member"] >= 2:
+        time.sleep(120)
     return _REAL_WORKER_COST(token, problem, settings, task)
 
 
@@ -240,11 +308,164 @@ def test_a_population_on_workers_keeps_the_timeout(
     monkeypatch.setattr(runner, "_worker_cost", sleep_long)
     start = time.monotonic()
     result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=1.0)
-    assert time.monotonic() - start < 60.0
+    # the members sleep 120 s, the run ends at its timeout and not after them
+    assert time.monotonic() - start < 15.0
     fit = result.fits[0]
     assert not fit.success
     assert "FitTimeout" in fit.message
     assert not multiprocessing.active_children()
+
+
+def test_the_next_run_after_a_timeout_starts_new_workers(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workers of a run which timed out are stopped, the next run has new ones.
+
+    Without the stop, the second run would wait for the members in flight of
+    the first, which sleep 120 s.
+    """
+    monkeypatch.setattr(runner, "_worker_cost", sleep_long)
+    start = time.monotonic()
+    result = _de(op_hctz_pk, fit_settings, size=2, n_cores=3, timeout=1.0)
+    assert time.monotonic() - start < 20.0
+    assert result.size == 2
+    for fit in result.fits:
+        assert "FitTimeout" in fit.message
+    assert not multiprocessing.active_children()
+
+
+def test_a_timeout_keeps_the_members_which_were_evaluated(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The members which came back before the deadline are in the trajectory."""
+    monkeypatch.setattr(runner, "_worker_cost", sleep_from_member_2)
+    result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=2.0)
+    fit = result.fits[0]
+    assert "FitTimeout" in fit.message
+    trajectory = result.trajectories[0]
+    assert len(trajectory) == 2
+    assert all(np.isfinite(trajectory))
+    # the best member which was evaluated is kept
+    assert fit.cost == min(trajectory)
+
+
+def test_the_start_of_the_workers_is_not_charged_to_the_timeout(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workers initialize the problem before the budget of a run starts."""
+    monkeypatch.setattr(runner, "_worker_warm", warm_slowly)
+    result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=2.0, polish=False)
+    fit = result.fits[0]
+    assert "FitTimeout" not in fit.message
+    assert np.isfinite(fit.cost)
+    assert len(result.trajectories[0]) == fit.nfev + 1
+
+
+def test_crashes_spread_over_generations_lose_no_member(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    fit_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The cap of the restarts counts per generation, not over the fit.
+
+    Four crashes in different generations, one more than `MAX_POOL_RESTARTS`:
+    the members in flight at every crash run again alone, so the fit equals
+    the serial fit.
+    """
+    assert len(SPREAD_KILLS) > runner.MAX_POOL_RESTARTS
+    serial = _de(op_hctz_pk, fit_settings, n_cores=1, polish=False, maxiter=6)
+    monkeypatch.setattr(runner, "_worker_cost", kill_on_spread_calls)
+    pooled = _de(op_hctz_pk, fit_settings, n_cores=2, polish=False, maxiter=6)
+    assert _claim(fit_token) > max(SPREAD_KILLS)
+    _assert_same_fits(pooled, serial)
+    assert caplog.text.count("restarting the pool") == len(SPREAD_KILLS)
+    assert "killed its worker" not in caplog.text
+    assert not multiprocessing.active_children()
+
+
+@pytest.mark.usefixtures("fit_token")
+def test_a_member_which_kills_its_worker_alone_has_an_infinite_cost(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The member of call 7 kills its worker alone, the run goes on without it.
+
+    The pool is restarted once for the crash of call 5; whichever member was
+    the last to run alone, the next generation counts no crash.
+    """
+    monkeypatch.setattr(runner, "_worker_cost", kill_on_calls_5_and_7)
+    pooled = _de(op_hctz_pk, fit_settings, n_cores=2, polish=False)
+    trajectory = pooled.trajectories[0]
+    assert sum(1 for cost in trajectory if not np.isfinite(cost)) == 1
+    assert np.isfinite(pooled.fits[0].cost)
+    assert len(trajectory) == pooled.fits[0].nfev + 1
+    assert caplog.text.count("restarting the pool") == 1
+    assert caplog.text.count("killed its worker, its cost is infinite") == 1
+    assert not multiprocessing.active_children()
+
+
+@pytest.mark.usefixtures("fit_token")
+def test_a_last_member_which_kills_its_worker_leaves_no_broken_pool(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The next generation starts new workers and counts no phantom crash."""
+    monkeypatch.setattr(runner, "_worker_cost", kill_the_last_member)
+    pooled = _de(op_hctz_pk, fit_settings, n_cores=2, polish=False)
+    trajectory = pooled.trajectories[0]
+    # the last member of the first generation
+    assert not np.isfinite(trajectory[LAST_MEMBER])
+    assert sum(1 for cost in trajectory if not np.isfinite(cost)) == 1
+    assert caplog.text.count("restarting the pool") == 1
+    assert "a worker died; restarting the pool." not in caplog.text
+    assert not multiprocessing.active_children()
+
+
+def _fake_pool(*outcomes: Any) -> Any:
+    """A pool whose run hands out the given outcomes of the members."""
+
+    def run(function: Any, tasks: Any, deadline: Any = None) -> Any:
+        yield from enumerate(outcomes)
+
+    return SimpleNamespace(
+        run=run,
+        restarts=0,
+        stopped=False,
+        problem=SimpleNamespace(opid="p"),
+        stop=lambda: None,
+    )
+
+
+def test_only_a_member_which_died_alone_has_an_infinite_cost() -> None:
+    """A member killed alone is a failed simulation, its cost is infinite."""
+    population = runner.PopulationPool(
+        _fake_pool(1.0, runner.WorkerDied("the task killed its worker", alone=True))
+    )
+    assert list(population([np.zeros(1)] * 2, None)) == [(0, 1.0), (1, np.inf)]
+
+
+def test_members_in_flight_at_the_cap_end_the_run() -> None:
+    """Members which failed with others at the cap of the restarts are no result.
+
+    Which of them killed the worker is not known, so the run ends with a
+    `PoolError` instead of an infinite cost, which would depend on the timing.
+    """
+    died = runner.WorkerDied("a worker died while the task was running", alone=False)
+    population = runner.PopulationPool(_fake_pool(1.0, died))
+    with pytest.raises(PoolError, match="a worker died while the task was running"):
+        list(population([np.zeros(1)] * 2, None))
 
 
 def test_a_population_on_workers_which_fail_fails_the_run(
@@ -264,9 +485,15 @@ def test_a_population_on_workers_which_fail_fails_the_run(
 def test_the_workers_of_the_population_belong_to_the_fit(
     op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
 ) -> None:
-    """`workers` of scipy is refused, `n_cores` gives the workers."""
+    """`workers` of scipy is refused, `n_cores` gives the workers.
+
+    `workers=1`, the default of scipy, is accepted, with one or more workers.
+    """
     with pytest.raises(ValueError, match="n_cores"):
         _de(op_hctz_pk, fit_settings, n_cores=1, workers=2)
+    serial = _de(op_hctz_pk, fit_settings, n_cores=1, polish=False, workers=1)
+    pooled = _de(op_hctz_pk, fit_settings, n_cores=2, polish=False, workers=1)
+    _assert_same_fits(pooled, serial)
 
 
 def test_a_member_is_evaluated_without_a_record(

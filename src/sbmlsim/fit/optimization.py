@@ -1,5 +1,6 @@
 """Optimization of parameter fitting problem."""
 
+import functools
 import inspect
 import logging
 import time
@@ -505,6 +506,16 @@ class FitTimeout(Exception):
     """
 
 
+class PoolError(RuntimeError):
+    """The workers which evaluate the population of a run failed.
+
+    E.g. a worker could not initialize the problem, the pool could not be
+    started again, or workers died while several members were in flight once
+    the restarts of a generation were spent, see `sbmlsim.fit.runner.FitPool`.
+    The run ends and keeps the best parameters it reached.
+    """
+
+
 class PopulationEvaluator(Protocol):
     """Evaluates the members of a population of differential evolution.
 
@@ -513,6 +524,14 @@ class PopulationEvaluator(Protocol):
     The run records the costs it returns in its trajectory, see
     `OptimizationProblem.optimize_run`.
     """
+
+    def start(self) -> None:
+        """Prepare the workers before the budget of a run starts.
+
+        E.g. start the workers and initialize the problem in them, so the
+        timeout of a run is not spent on the start of its workers.
+        """
+        ...
 
     def __call__(
         self, members: Sequence[np.ndarray], deadline: float | None
@@ -3094,8 +3113,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 "Optimizer 'loss' and 'f_scale' cannot change the fit objective. "
                 "Configure the loss with FitSettings.loss_function instead."
             )
-        if algorithm is OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION and (
-            "workers" in arguments
+        if (
+            algorithm is OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+            and isinstance(arguments, Mapping)
+            and arguments.get("workers", 1) != 1
         ):
             raise ValueError(
                 "Optimizer 'workers' is set by the fit: it evaluates the population "
@@ -3128,7 +3149,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         evolution updates its population once per generation,
         `updating="deferred"`, unless `updating` is given: the members of a
         generation are evaluated together, serially or on workers, so the
-        result of a seed does not depend on the number of workers.
+        result of a seed does not depend on the number of workers. Its
+        `workers=1`, the default of scipy, is dropped; the fit sets the workers.
 
         Args:
             algorithm: optimization algorithm.
@@ -3148,6 +3170,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             )
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
             arguments.setdefault("updating", "deferred")
+            if arguments.get("workers", 1) == 1:
+                arguments.pop("workers", None)
         return arguments
 
     def optimize_run(
@@ -3255,6 +3279,9 @@ class OptimizationProblem(ObjectJSONEncoder):
             ValueError: if the algorithm is not supported or start values are
                 required and missing.
         """
+        if population is not None:
+            # before the budget: the start of the workers is no part of the run
+            population.start()
         self._deadline = None if timeout is None else time.monotonic() + timeout
         self._trajectory = []
         self._best = None
@@ -3360,13 +3387,19 @@ class OptimizationProblem(ObjectJSONEncoder):
                     )
                 )
                 if population is not None:
-                    # the map of scipy, which evaluates the members of a
-                    # generation and the steps of the polishing
-                    kwargs["workers"] = self._population_map(population)
+                    self._population_arguments(population, kwargs)
                 opt_result = scipy.optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
                 opt_result.cost = self._validate_optimum(opt_result)
+            except PoolError as err:
+                logger.error(
+                    "%s: the workers of the population failed, the run keeps the "
+                    "best parameters it reached: %s",
+                    self.opid,
+                    err,
+                )
+                opt_result = self._interrupted_result(err, x0log)
             except (RuntimeError, FitTimeout) as err:
                 logger.error(
                     "%s in ODE integration (optimize) for '%s = %s': \n%s",
@@ -4212,6 +4245,34 @@ class OptimizationProblem(ObjectJSONEncoder):
         if self._deadline is not None and time.monotonic() > self._deadline:
             raise FitTimeout(
                 f"'{self.opid}': the optimization did not finish in its budget."
+            )
+
+    def _population_arguments(
+        self, population: PopulationEvaluator, kwargs: dict[str, Any]
+    ) -> None:
+        """Set the arguments of differential evolution for a population evaluator.
+
+        The map of the evaluator is the `workers` of scipy, which evaluates the
+        members of every generation. The polishing by L-BFGS-B, the default of
+        scipy without constraints, gets the map as the `workers` of its finite
+        differences, so the points of a gradient are evaluated together; its
+        line search evaluates in the calling process. Both evaluate the same
+        points as a serial run, in the same order, so the result does not
+        change. A polishing function of the caller, or with constraints, is
+        left to scipy, which evaluates it on the map one point at a time.
+
+        Args:
+            population: evaluates the costs of the members.
+            kwargs: the arguments of `scipy.optimize.differential_evolution`,
+                which are changed.
+        """
+        population_map = self._population_map(population)
+        kwargs["workers"] = population_map
+        if kwargs.get("polish", True) is True and not kwargs.get("constraints"):
+            kwargs["polish"] = functools.partial(
+                scipy.optimize.minimize,
+                method="L-BFGS-B",
+                options={"workers": population_map},
             )
 
     def _population_map(
