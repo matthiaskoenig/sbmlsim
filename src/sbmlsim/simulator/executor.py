@@ -9,9 +9,11 @@ The semantics are the ones of PEtab v2:
 3. The interval is split at the times of the events. At the start of a
    segment the events of its time are applied: every value is evaluated
    first, with the state at that time, then every target is set; a
-   compartment keeps the concentration of the concentration species in it.
+   compartment keeps the concentration of the concentration species in it,
+   see `sbmlsim.simulator.changes.apply_changes`.
 4. After a change at a time after the start, the events whose triggers the
-   change made true fire, which roadrunner does not see.
+   change made true fire, which roadrunner does not see, see
+   `sbmlsim.simulator.changes.fire_events`.
 5. A segment is integrated with the output of the plan and ends in its
    state at its end, which the next change is applied to; for the steps of
    the integrator see `_steps`, which has an event of the model as two rows
@@ -65,13 +67,11 @@ from sbmlsim.model.model_roadrunner import (
     RoadrunnerSBMLModel,
     apply_pending_step_event,
 )
-from sbmlsim.model.symbols import EventSymbols, TargetKind
 from sbmlsim.result.timecourse import TimecourseResult
-from sbmlsim.simulator.formula import compile_formula
+from sbmlsim.simulator.changes import apply_changes, fire_events, triggers
 from sbmlsim.simulator.plan import (
     OutputMode,
     Plan,
-    PlanEvent,
     SteadyStatePlan,
     preinit_targets,
     time_tolerance,
@@ -273,13 +273,13 @@ def _simulate(
                 # not integrated, so an event of the time fires once, and the
                 # end of the steady state for the change at the start
                 before = float(r.model.getTime()) if a == plan.start else stopped
-                triggers = _triggers(model_events, r, a if local else before, model)
-                _apply(events[a], r, plan)
-                _fire_events(model_events, triggers, r, a, model)
+                triggered = triggers(model_events, r, a if local else before, model)
+                apply_changes(events[a], r, plan)
+                fire_events(model_events, triggered, r, a, model)
             else:
                 # at the start after a reset roadrunner evaluates the triggers
                 # itself
-                _apply(events[a], r, plan)
+                apply_changes(events[a], r, plan)
 
         # the segment in the time of roadrunner, from 0 in local time
         offset = a if local else 0.0
@@ -288,7 +288,7 @@ def _simulate(
         # the change (PEtab v2, reinitialization), and an event at the end has
         # the state before it as a row: the integration stops just before the
         # end of the segment, where roadrunner does not fire it, see
-        # `_fire_events` and `_event_at_the_end`
+        # `fire_events` and `_event_at_the_end`
         end_stop = _stop(start, end) if model_events else end
         # a segment too short for CVODE keeps the state at its start
         held = not _integrable(start, end_stop)
@@ -372,12 +372,12 @@ def _simulate(
         # is not integrated fire at its end, as after a change
         fired = 0
         if model_events and plan.end > plan.start:
-            triggers = _triggers(model_events, r, end if local else stopped, model)
+            triggered = triggers(model_events, r, end if local else stopped, model)
             if changed:
-                _apply(events[plan.end], r, plan)
-            fired = _fire_events(model_events, triggers, r, plan.end, model)
+                apply_changes(events[plan.end], r, plan)
+            fired = fire_events(model_events, triggered, r, plan.end, model)
         elif changed:
-            _apply(events[plan.end], r, plan)
+            apply_changes(events[plan.end], r, plan)
         if at_end and (changed or fired):
             state = _state(r, columns, plan.end)
             if plan.end > plan.start and (
@@ -884,236 +884,6 @@ def _saved_state(r: roadrunner.RoadRunner) -> Generator[Callable[[], None]]:
 def _state(r: roadrunner.RoadRunner, columns: list[str], time: float) -> np.ndarray:
     """Get the current values of the selections."""
     return np.array([time if c == "time" else r.getValue(c) for c in columns])
-
-
-def _apply(event: PlanEvent, r: roadrunner.RoadRunner, plan: Plan) -> None:
-    """Apply the assignments of an event, see the module."""
-    values: list[tuple[str, TargetKind, float]] = []
-    for a in event.assignments:
-        if a.value is not None:
-            value = a.value
-        elif a.formula is None:
-            raise ValueError(f"The assignment of '{a.target}' has no value.")
-        else:
-            formula = compile_formula(a.formula)
-            value = formula.evaluate(
-                [event.time if s == "time" else r.getValue(s) for s in formula.symbols]
-            )
-        values.append((a.target, a.kind, value))
-
-    symbols = plan.symbols
-    targets = {symbols.entity(target) for target, _, _ in values}
-    for target, kind, value in values:
-        if kind is not TargetKind.COMPARTMENT:
-            continue
-        # PEtab: the concentration of a concentration species is kept,
-        # roadrunner keeps the amount of every species; a species of an
-        # assignment rule follows its rule, roadrunner refuses to set it (#300)
-        kept = {
-            s: r.getValue(f"[{s}]")
-            for s, c in symbols.species_compartment.items()
-            if c == target
-            and s not in symbols.only_substance
-            and s not in symbols.assignment_rules
-            and s not in targets
-        }
-        r.setValue(target, value)
-        for species, concentration in kept.items():
-            r.setValue(f"[{species}]", concentration)
-    for target, kind, value in values:
-        if kind is not TargetKind.COMPARTMENT:
-            r.setValue(target, value)
-
-
-def _triggers(
-    events: Sequence[EventSymbols],
-    r: roadrunner.RoadRunner,
-    time: float,
-    model: RoadrunnerSBMLModel,
-) -> list[bool | None]:
-    """Evaluate the triggers of the events, `None` for one which is not evaluated.
-
-    A trigger which is no math the simulator evaluates, one with `rateOf` or
-    `delay`, see `sbmlsim.sbml_math.compile_math`, is not evaluated, so a
-    change does not fire its event; it is reported once per event of a model
-    instance, so once per worker of a pool, which loads its own instance.
-
-    Args:
-        events: the events of the model.
-        r: the roadrunner instance.
-        time: the time of the model.
-        model: the model, for the messages.
-
-    Returns:
-        The value of every trigger.
-    """
-    # sbmlmath is imported by the first model with events, see `sbml_math`
-    from sbmlsim.sbml_math import compile_math, math_formula
-
-    values: list[bool | None] = []
-    for event in events:
-        if event.trigger is None:
-            values.append(None)
-            continue
-        try:
-            formula = compile_math(event.trigger)
-        except ValueError as err:
-            values.append(None)
-            if event.eid not in model.reported_triggers:
-                model.reported_triggers.add(event.eid)
-                logger.warning(
-                    "The trigger '%s' of the event '%s' of the model '%s' is no "
-                    "math the simulator evaluates, a change of a simulation "
-                    "does not fire the event: %s",
-                    math_formula(event.trigger),
-                    event.eid,
-                    model.sid or r.model.getModelName(),
-                    err,
-                )
-            continue
-        values.append(
-            bool(
-                formula.evaluate(
-                    [time if s == "time" else r.getValue(s) for s in formula.symbols]
-                )
-            )
-        )
-    return values
-
-
-#: the most times one event fires after a change, to stop event cycles without
-#: limiting the number of independent simultaneous events
-MAX_EXECUTIONS_PER_EVENT = 100
-
-
-def _fire_events(
-    events: Sequence[EventSymbols],
-    before: list[bool | None],
-    r: roadrunner.RoadRunner,
-    time: float,
-    model: RoadrunnerSBMLModel,
-) -> int:
-    """Fire the events whose triggers a change made true.
-
-    roadrunner does not see a trigger which becomes true by a value which is
-    set between two integrations, so the executor fires such events (PEtab
-    v2, reinitialization: the events are applied after the changes): the
-    events execute one at a time in priority order. Priorities and triggers
-    are evaluated again after every event, and a nonpersistent pending event
-    is cancelled if its trigger becomes false. Assignment values are captured
-    at the trigger or evaluated at execution, as the event specifies. An event
-    with a delay is reported and not fired, an event whose priority is no
-    math the simulator evaluates is reported and fires with the priority 0,
-    the one of an event without a priority, and an event whose trigger or
-    assignments are no math the simulator evaluates is reported and not
-    fired, see `_triggers`.
-
-    Args:
-        events: the events of the model.
-        before: the triggers before the change.
-        r: the roadrunner instance, in the state after the change.
-        time: the time of the change.
-        model: the model, for the messages.
-
-    Returns:
-        The number of the events which fired.
-    """
-    from sbmlsim.sbml_math import compile_math
-
-    def evaluate(mathml: str) -> float:
-        compiled = compile_math(mathml)
-        return compiled.evaluate(
-            [time if s == "time" else r.getValue(s) for s in compiled.symbols]
-        )
-
-    def assignments(event: EventSymbols) -> list[tuple[str, float]]:
-        return [(target, evaluate(formula)) for target, formula in event.assignments]
-
-    def priority(index: int) -> float:
-        formula = events[index].priority
-        if formula is None or index in unprioritized:
-            return 0.0
-        return evaluate(formula)
-
-    count = 0
-    executions = [0] * len(events)
-    pending: dict[int, list[tuple[str, float]] | None] = {}
-    # events whose priority is no math the simulator evaluates
-    unprioritized: set[int] = set()
-    while True:
-        after = _triggers(events, r, time, model)
-        for index in list(pending):
-            if not events[index].persistent and after[index] is False:
-                del pending[index]
-        for index, (event, old, new) in enumerate(
-            zip(events, before, after, strict=True)
-        ):
-            if old is not False or new is not True or index in pending:
-                continue
-            if event.delayed:
-                logger.warning(
-                    "The event '%s' of the model '%s' is triggered by a change at "
-                    "the time %s and has a delay, which the simulator does not "
-                    "schedule: it does not fire.",
-                    event.eid,
-                    model.sid or r.model.getModelName(),
-                    time,
-                )
-                continue
-            try:
-                # Compile all assignments even when their values are deferred.
-                for _, mathml in event.assignments:
-                    compile_math(mathml)
-                pending[index] = (
-                    assignments(event) if event.use_values_from_trigger_time else None
-                )
-            except ValueError as err:
-                logger.warning(
-                    "The event '%s' of the model '%s' is triggered by a change at "
-                    "the time %s, its assignments are no math the simulator "
-                    "evaluates: %s",
-                    event.eid,
-                    model.sid or r.model.getModelName(),
-                    time,
-                    err,
-                )
-                continue
-            if event.priority is not None and index not in unprioritized:
-                try:
-                    compile_math(event.priority)
-                except ValueError as err:
-                    unprioritized.add(index)
-                    logger.warning(
-                        "The event '%s' of the model '%s' is triggered by a change "
-                        "at the time %s, its priority is no math the simulator "
-                        "evaluates, it fires with the priority 0: %s",
-                        event.eid,
-                        model.sid or r.model.getModelName(),
-                        time,
-                        err,
-                    )
-        if not pending:
-            return count
-        # the first of the highest priority in document order
-        index = max(sorted(pending), key=priority)
-        if executions[index] >= MAX_EXECUTIONS_PER_EVENT:
-            logger.warning(
-                "The event '%s' of the model '%s' fires more than %s times at the "
-                "time %s, the events trigger each other in a cycle.",
-                events[index].eid,
-                model.sid or r.model.getModelName(),
-                MAX_EXECUTIONS_PER_EVENT,
-                time,
-            )
-            return count
-        values = pending.pop(index)
-        if values is None:
-            values = assignments(events[index])
-        for target, value in values:
-            r.setValue(target, value)
-        count += 1
-        executions[index] += 1
-        before = after
 
 
 def steady_state(
