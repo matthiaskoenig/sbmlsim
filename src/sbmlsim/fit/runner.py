@@ -57,6 +57,7 @@ from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.optimization import (
     FitTimeout,
     OptimizationProblem,
+    PoolError,
     RuntimeErrorOptimizeResult,
 )
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
@@ -461,16 +462,14 @@ def worker_problem(
         The initialized problem.
 
     Raises:
-        RuntimeError: if the worker could not initialize the problem, with the
-            error of the initialization.
+        PoolError: if the worker could not initialize the problem, with the
+            error of the initialization; a `RuntimeError`.
     """
     initialized = parallel.worker_cache(
         ("fit", token), lambda: _initialized(problem, settings)
     )
     if isinstance(initialized, str):
-        raise RuntimeError(
-            f"the worker could not initialize the problem: {initialized}"
-        )
+        raise PoolError(f"the worker could not initialize the problem: {initialized}")
     return initialized
 
 
@@ -523,13 +522,50 @@ def _worker_cost(
         The cost of the member, see `OptimizationProblem.evaluate_cost`.
 
     Raises:
-        RuntimeError: if the worker could not initialize the problem.
+        PoolError: if the worker could not initialize the problem.
     """
     return worker_problem(token, problem, settings).evaluate_cost(task["x"])
 
 
-class WorkerDied(RuntimeError):
-    """A task failed because its worker died while it ran, see `FitPool.run`."""
+def _worker_warm(
+    token: str,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    task: dict[str, Any],
+) -> None:
+    """Initialize the problem of a fit in a worker process, see `PopulationPool`.
+
+    Args:
+        token: identifies the fit, see `FitPool`.
+        problem: the problem of the fit.
+        settings: the settings of the fit.
+        task: nothing, one task per worker.
+
+    Raises:
+        PoolError: if the worker could not initialize the problem.
+    """
+    worker_problem(token, problem, settings)
+
+
+class WorkerDied(PoolError):
+    """A task failed because its worker died while it ran, see `FitPool.run`.
+
+    Attributes:
+        alone: whether the task ran alone on the pool when its worker died, so
+            it killed the worker itself; otherwise it was one of the tasks in
+            flight at a crash after the restarts were spent, and which of them
+            killed the worker is not known.
+    """
+
+    def __init__(self, message: str, alone: bool = False) -> None:
+        """Initialize the failure of a task.
+
+        Args:
+            message: what happened.
+            alone: whether the task ran alone on the pool.
+        """
+        super().__init__(message)
+        self.alone = alone
 
 
 #: seconds added to the timeout of a fit before its pending repeats are given up
@@ -537,7 +573,10 @@ START_GRACE = 60.0
 
 #: the number of restarts of the pool of a run after which the tasks which were
 #: running at a crash are no longer run again alone to find the one which killed
-#: its worker: they fail at once. A worker which dies (a crash in the integrator,
+#: its worker: they fail at once. `FitPool.restarts` counts them over the calls
+#: of `FitPool.run`, i.e. over a fit of runs as tasks or a profile; the
+#: population of differential evolution counts them per generation, see
+#: `PopulationPool`. A worker which dies (a crash in the integrator,
 #: the kernel killing it for memory) breaks the whole pool and with it every task
 #: in flight. The pool is still started again, so the tasks which did not run
 #: complete, and every crash after the cap fails the tasks which were running.
@@ -559,7 +598,10 @@ class FitPool:
         settings: the settings the workers initialize the problem with.
         n_cores: the number of workers.
         preload: the modules the forkserver imports, see `_preload`.
-        restarts: how often the pool was started again.
+        restarts: how often the pool was started again after a crash, for the
+            cap `MAX_POOL_RESTARTS`.
+        stopped: whether the workers are stopped, e.g. after a crash with no
+            task left or by `stop`; the next `run` starts new ones.
     """
 
     executor: ProcessPoolExecutor
@@ -569,6 +611,23 @@ class FitPool:
     n_cores: int = 1
     preload: Sequence[str] = ()
     restarts: int = 0
+    stopped: bool = False
+
+    def stop(self) -> None:
+        """Stop the workers with the tasks they run, the next `run` starts new ones."""
+        parallel.stop(self.executor)
+        self.stopped = True
+
+    def start(self) -> None:
+        """Start new workers, if they are stopped; no restart after a crash.
+
+        Raises:
+            RuntimeError: if the workers do not start, see
+                `sbmlsim.parallel.start_pool`.
+        """
+        if self.stopped:
+            self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
+            self.stopped = False
 
     def submit(self, function: Callable[..., Any], task: dict[str, Any]) -> Future[Any]:
         """Run `function(token, problem, settings, task)` in a worker."""
@@ -596,8 +655,12 @@ class FitPool:
         again the same way, with no suspect if nothing was running; after
         `MAX_POOL_RESTARTS` restarts with no suspect and no result in between
         the run ends there. If the pool cannot be started again, or the run
-        ends, the tasks which did not run fail. A task which fails because its
-        worker died fails with `WorkerDied`.
+        ends, the tasks which did not run fail with a `PoolError`. A task which
+        fails because its worker died fails with `WorkerDied`, which tells
+        whether it ran alone. A crash which leaves no task to run stops the
+        pool and marks it `stopped`, so the next call starts new workers
+        without counting a crash; stopped workers are started at the start of
+        a call.
 
         Args:
             function: called in the worker as
@@ -621,6 +684,20 @@ class FitPool:
         # the restarts with no suspect since the last result, the run ends after
         # MAX_POOL_RESTARTS of them; a result shows the pool makes progress
         idle_restarts = 0
+        if self.stopped and queue:
+            try:
+                self.start()
+            except RuntimeError as err:
+                logger.error(
+                    "'%s': the pool could not be started (%s), the tasks %s are "
+                    "given up.",
+                    self.problem.opid,
+                    err,
+                    sorted(queue),
+                )
+                for key in sorted(queue):
+                    yield key, PoolError(str(err))
+                return
         last = time.monotonic()
         while queue or alone or running:
             if deadline is not None and time.monotonic() >= deadline:
@@ -706,7 +783,7 @@ class FitPool:
             # the tasks which were in flight are the suspects
             suspects = sorted(running.values())
             running.clear()
-            parallel.stop(self.executor)
+            self.stop()
             if not suspects and idle_restarts >= MAX_POOL_RESTARTS:
                 lost = sorted([*alone, *queue])
                 logger.error(
@@ -715,7 +792,7 @@ class FitPool:
                     lost,
                 )
                 for key in lost:
-                    yield key, RuntimeError("the pool keeps breaking")
+                    yield key, PoolError("the pool keeps breaking")
                 return
             if suspects and (solo or self.restarts >= MAX_POOL_RESTARTS):
                 if solo:
@@ -733,7 +810,7 @@ class FitPool:
                     )
                     failure = "a worker died while the task was running"
                 for key in suspects:
-                    yield key, WorkerDied(failure)
+                    yield key, WorkerDied(failure, alone=solo)
             elif suspects:
                 logger.error(
                     "'%s': a worker died; restarting the pool, the tasks %s which "
@@ -748,10 +825,11 @@ class FitPool:
                     "'%s': a worker died; restarting the pool.", self.problem.opid
                 )
             if not (queue or alone):
+                # stopped, the next call starts new workers
                 return
             self.restarts += 1
             try:
-                self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
+                self.start()
             except RuntimeError as err:
                 lost = sorted([*alone, *queue])
                 logger.error(
@@ -762,7 +840,7 @@ class FitPool:
                     lost,
                 )
                 for key in lost:
-                    yield key, err
+                    yield key, PoolError(str(err))
                 return
             last = time.monotonic()
 
@@ -820,7 +898,7 @@ def worker_pool(
         yield pool
     finally:
         # the pool of the fit, which may be another one than the one it started
-        parallel.stop(pool.executor)
+        pool.stop()
 
 
 @dataclass
@@ -833,24 +911,48 @@ class PopulationPool:
     takes the next member when it is free; the run gets the costs as they
     finish and returns them to scipy in the order of the members. The workers
     initialize the problem once per fit, see `worker_problem`, so the runs of a
-    fit share them.
+    fit share them; `start` initializes them before the budget of a run.
 
     A member whose worker dies runs again alone on a new pool, see
-    `FitPool.run`; a member which kills its worker when it runs alone is a
-    failed simulation, its cost is infinite. Any other error of a worker ends
-    the run with that error, as in a serial run. The members which are not
-    evaluated at the deadline of the run are given up. After a deadline, an
-    error or an interrupt the workers are stopped, so no member which is still
-    in flight holds them, and the next generation, of the next run, starts new
-    ones.
+    `FitPool.run`, and the cap `MAX_POOL_RESTARTS` counts per generation, so
+    crashes spread over a fit lose no member. A member which kills its worker
+    when it runs alone is a failed simulation, its cost is infinite. Members
+    which fail together, once the restarts of a generation are spent, end the
+    run with a `PoolError`: which of them killed the worker is not known, and
+    an infinite cost for all of them would make the result depend on the
+    timing of the crashes. Any other error of a worker ends the run with that
+    error, as in a serial run. The members which are not evaluated at the
+    deadline of the run are given up. After a deadline, an error or an
+    interrupt the workers are stopped, so no member which is still in flight
+    holds them, and the next generation, or the next run, starts new ones.
 
     Attributes:
         pool: the workers of the fit.
-        stopped: whether the workers were stopped at a deadline.
+        warmed: the pool whose workers initialized the problem, see `start`.
     """
 
     pool: FitPool
-    stopped: bool = False
+    warmed: ProcessPoolExecutor | None = None
+
+    def start(self) -> None:
+        """Start the workers and initialize the problem in every one of them.
+
+        One task per worker initializes the problem, which the members of the
+        run then find initialized; it runs before the budget of a run, see
+        `OptimizationProblem._optimize_single`. A worker which takes a second
+        task before another started initializes the problem with its first
+        member instead. A worker which fails to initialize the problem fails
+        the members of the run with that error, so the failure is left to them.
+
+        Raises:
+            RuntimeError: if the workers do not start.
+        """
+        self.pool.start()
+        if self.warmed is self.pool.executor:
+            return
+        for _ in self.pool.run(_worker_warm, {k: {} for k in range(self.pool.n_cores)}):
+            pass
+        self.warmed = self.pool.executor
 
     def __call__(
         self, members: Sequence[np.ndarray], deadline: float | None
@@ -867,16 +969,13 @@ class PopulationPool:
 
         Raises:
             FitTimeout: if the deadline passed before every member was evaluated.
-            RuntimeError: if the pool cannot be started again.
+            PoolError: if the workers failed, see the class.
         """
-        if self.stopped:
-            self.pool.executor = parallel.start_pool(
-                self.pool.n_cores, preload=self.pool.preload
-            )
-            self.stopped = False
+        # the cap of the restarts counts per generation
+        self.pool.restarts = 0
         outcomes = self.pool.run(
             _worker_cost,
-            {k: {"x": member} for k, member in enumerate(members)},
+            {k: {"x": member, "member": k} for k, member in enumerate(members)},
             deadline=deadline,
         )
         timed_out = finished = False
@@ -885,7 +984,7 @@ class PopulationPool:
                 if isinstance(outcome, TimeoutError):
                     timed_out = True
                     break
-                if isinstance(outcome, WorkerDied):
+                if isinstance(outcome, WorkerDied) and outcome.alone:
                     logger.error(
                         "'%s': the member %s of the population killed its worker, "
                         "its cost is infinite.",
@@ -894,6 +993,12 @@ class PopulationPool:
                     )
                     yield k, float("inf")
                     continue
+                if isinstance(outcome, WorkerDied):
+                    raise PoolError(
+                        f"the member {k} of the population failed with the "
+                        f"members in flight after {MAX_POOL_RESTARTS} restarts "
+                        f"of the pool in one generation: {outcome}"
+                    )
                 if isinstance(outcome, Exception):
                     raise outcome
                 yield k, float(outcome)
@@ -904,8 +1009,7 @@ class PopulationPool:
             if not finished:
                 # the members still in flight, after a deadline, an error or an
                 # interrupt, would hold the workers of the next generation
-                parallel.stop(self.pool.executor)
-                self.stopped = True
+                self.pool.stop()
         if timed_out:
             raise FitTimeout(
                 f"'{self.pool.problem.opid}': the optimization did not finish in "
