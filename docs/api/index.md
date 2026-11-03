@@ -25,6 +25,7 @@ Models and the changes of a model, see [Models](../models.md).
 | module | description |
 | --- | --- |
 | [model.model](model.model.md) | `AbstractModel`, the model of a simulation experiment with its changes and selections |
+| [model.model_sbml](model.model_sbml.md) | `SBMLModel`, the SBML model independent of its engine, and `load_model`, which loads a model in an engine |
 | [model.model_roadrunner](model.model_roadrunner.md) | `RoadrunnerSBMLModel`, the roadrunner instance of an SBML model with its units and parameter changes |
 | [model.model_resources](model.model_resources.md) | `Source`, resolving the source of a model, i.e., a file or the SBML itself |
 | [model.event_rows](model.event_rows.md) | `with_event_markers`, the markers which tell the rows of the events of the model, and `at_event_times`, which gives the two rows of an event in the steps of the integrator the time of the event |

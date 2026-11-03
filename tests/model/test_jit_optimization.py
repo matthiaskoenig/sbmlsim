@@ -129,6 +129,10 @@ def test_a_runner_compiles_its_models_at_its_level(tmp_path: Path) -> None:
         jit_optimization="O1",
     )
     assert runner.jit_optimization is JitOptimization.O1
-    assert [model.jit_optimization for model in runner.models.values()] == [
-        JitOptimization.O1
-    ]
+    models = list(runner.models.values())
+    assert all(isinstance(model, RoadrunnerSBMLModel) for model in models)
+    assert [
+        model.jit_optimization
+        for model in models
+        if isinstance(model, RoadrunnerSBMLModel)
+    ] == [JitOptimization.O1]

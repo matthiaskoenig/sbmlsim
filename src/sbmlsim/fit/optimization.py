@@ -57,7 +57,7 @@ from sbmlsim.fit.parameter_mapping import ParameterMapping
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.fit.provenance import data_files
 from sbmlsim.fit.sampling import SamplingType, create_samples
-from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model import SBMLModel
 from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
 from sbmlsim.result import TimecourseResult
 from sbmlsim.result.scan import TIME
@@ -238,9 +238,7 @@ def minimal_result(
     )
 
 
-def _check_symbols(
-    model: RoadrunnerSBMLModel, observable: ObservableModel, name: str
-) -> None:
+def _check_symbols(model: SBMLModel, observable: ObservableModel, name: str) -> None:
     """Check that the symbols of an observable model are selections of a model.
 
     Args:
@@ -261,7 +259,7 @@ def _check_symbols(
 
 
 def _noise_selections(
-    model: RoadrunnerSBMLModel, noise: NoiseModel | None, name: str
+    model: SBMLModel, noise: NoiseModel | None, name: str
 ) -> tuple[str, ...]:
     """Get the symbols of a noise model which the simulation selects.
 
@@ -1400,7 +1398,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
                 task_id = mapping.observable.task_id
                 task = sim_experiment._tasks[task_id]
-                model: RoadrunnerSBMLModel = sim_experiment._models[task.model_id]
+                model: SBMLModel = sim_experiment._models[task.model_id]
                 simulation, scan = self._simulation_of(
                     f"{sid}.{mapping_id}",
                     task.model_id,
@@ -2005,7 +2003,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         model_id: str,
         simulation_id: str,
         experiment: SimulationExperiment,
-        model: RoadrunnerSBMLModel,
+        model: SBMLModel,
     ) -> tuple[Simulation, Scan | None]:
         """Get the simulation of a task with the changes of its model.
 
@@ -2058,7 +2056,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         name: str,
         mapping: FitMapping,
         experiment: SimulationExperiment,
-        model: RoadrunnerSBMLModel,
+        model: SBMLModel,
         simulation: Simulation,
         scan: Scan | None,
     ) -> _Observation:
@@ -2312,7 +2310,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         before = self.settings_initialized.data_at_change is DataAtChangeType.BEFORE
         for k_group, group in enumerate(self.mapping_groups):
             k0 = group[0]
-            model: RoadrunnerSBMLModel = self.models[k0]
+            model: SBMLModel = self.models[k0]
             plan = compile_simulation(self.simulations[k0], model.symbols, model.uinfo)
             points = None
             scan = self.scans[k0]
@@ -2590,7 +2588,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         group = self.mapping_groups[k_group]
         k0 = group[0]
-        model: RoadrunnerSBMLModel = self.models[k0]
+        model: SBMLModel = self.models[k0]
         experiment = self.runner_initialized.experiments[self.experiment_keys[k0]]
         outputs = [self.yid_observable[k] for k in group if self._observed[k]]
         selections: list[str] = []
@@ -2752,7 +2750,7 @@ class OptimizationProblem(ObjectJSONEncoder):
     def _unit_factor(
         self,
         index: int,
-        model: RoadrunnerSBMLModel,
+        model: SBMLModel,
         unit: str | None,
         to_model: bool = True,
     ) -> float:
@@ -2808,10 +2806,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         entity of the model starts from its start value.
 
         Raises:
-            ValueError: if a model is not loaded in roadrunner, if a
-                parameter which is not an entity of the model has no start
-                value, or if the target of a parameter is not an entity of
-                the model.
+            ValueError: if a parameter which is not an entity of the model
+                has no start value, or if the target of a parameter is not an
+                entity of the model.
             UndefinedUnitError: if the unit of a parameter is not a unit of
                 pint and of the unit ids of the model, see `_unit_factor`.
             DimensionalityError: if the unit of a parameter and the unit of
@@ -2820,9 +2817,6 @@ class OptimizationProblem(ObjectJSONEncoder):
         # `models` holds the model of every fit mapping, a model is read once
         models = list({id(model): model for model in self.models}.values())
         for k_model, model in enumerate(models):
-            if model.r is None:
-                raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
-
             for k, parameter in enumerate(self.parameters):
                 target = parameter.target_id
                 if parameter.is_external:

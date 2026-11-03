@@ -60,7 +60,8 @@ from rich.progress import (
 
 from sbmlsim import parallel
 from sbmlsim.console import console
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel
+from sbmlsim.model.model_sbml import IntegratorSetting
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result.scan import (
     CHANGES,
@@ -94,9 +95,6 @@ logger = logging.getLogger(__name__)
 
 #: the most points of a chunk
 MAX_CHUNK: int = 1000
-
-#: a setting of the integrator, see `RoadrunnerSBMLModel.set_integrator_settings`
-IntegratorSetting = float | int | bool | AbsoluteTolerance
 
 #: a model the simulator runs: a loaded model, its description or its path
 ModelLike = RoadrunnerSBMLModel | AbstractModel | str | Path
@@ -177,7 +175,7 @@ class Simulator:
         loaded.set_integrator_settings(**self.integrator_settings)
         return loaded
 
-    def compile(self, model: RoadrunnerSBMLModel, simulation: Simulation) -> Plan:
+    def compile(self, model: SBMLModel, simulation: Simulation) -> Plan:
         """Compile a simulation against a model.
 
         The changes of the model are defaults of the pre-initialization
@@ -378,7 +376,7 @@ class Simulator:
                 raise ValueError(
                     f"The selections {reserved} are names of the result "
                     f"({sorted(RESERVED)}), select other entities, see "
-                    f"`RoadrunnerSBMLModel.set_selections`."
+                    f"`SBMLModel.set_selections`."
                 )
         for loaded, label in zip(models[1:], labels[1:], strict=True):
             _check_model(loaded, label, first, (*selections, *graph.doses))
@@ -865,7 +863,7 @@ class _Compiled:
 
 
 def scan_point_plans(
-    scan: Scan, model: RoadrunnerSBMLModel, plan: Plan, positions: np.ndarray
+    scan: Scan, model: SBMLModel, plan: Plan, positions: np.ndarray
 ) -> list[Plan]:
     """Get the plans of points of a scan of value dimensions on a compiled plan.
 
@@ -899,7 +897,7 @@ def scan_point_plans(
 
 
 def scan_point_values(
-    scan: Scan, model: RoadrunnerSBMLModel, plan: Plan, positions: np.ndarray
+    scan: Scan, model: SBMLModel, plan: Plan, positions: np.ndarray
 ) -> tuple[dict[str, np.ndarray], dict[float, dict[str, np.ndarray]]]:
     """Get the values and times of points of a scan of value dimensions.
 
@@ -1023,28 +1021,23 @@ def _settings(settings: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _check_model(
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     label: str,
-    first: RoadrunnerSBMLModel,
+    first: SBMLModel,
     selections: Sequence[str],
 ) -> None:
     """Check that a model of a dimension has the selections and units of the first.
 
     Raises:
-        ValueError: if roadrunner has no selection of a name in the model, or
-            the model has another unit of the time or of a selection.
+        ValueError: if the model has no selection of a name, or the model has
+            another unit of the time or of a selection.
     """
-    r = model.r_loaded
-    current = list(r.timeCourseSelections)
-    try:
-        r.timeCourseSelections = list(selections)
-    except RuntimeError as err:
+    missing = [s for s in dict.fromkeys(selections) if not model.has_selection(s)]
+    if missing:
         raise ValueError(
             f"The model '{label}' has not every selection of the first model of "
-            f"the dimension: {err}"
-        ) from err
-    finally:
-        r.timeCourseSelections = current
+            f"the dimension, it has no selection {missing}."
+        )
     for name in dict.fromkeys(selections):
         unit = model.uinfo.get(name, "") or ""
         expected = first.uinfo.get(name, "") or ""
@@ -1064,7 +1057,7 @@ def _where(scan: Scan, s: int, label: str) -> str:
 
 
 def _at_times(
-    scan: Scan, simulation: Simulation, model: RoadrunnerSBMLModel, plan: Plan
+    scan: Scan, simulation: Simulation, model: SBMLModel, plan: Plan
 ) -> list[float | None]:
     """Get the time of every dimension with `at` in the time unit of a model.
 
@@ -1097,9 +1090,7 @@ def _at_times(
     return times
 
 
-def _vectors(
-    scan: Scan, model: RoadrunnerSBMLModel, label: str
-) -> list[dict[str, np.ndarray]]:
+def _vectors(scan: Scan, model: SBMLModel, label: str) -> list[dict[str, np.ndarray]]:
     """Get the values of every dimension in the units of a model.
 
     Raises:
@@ -1127,7 +1118,7 @@ def _grid(
     plans: Mapping[tuple[int, int], Plan],
     at_times: Mapping[tuple[int, int], Sequence[float | None]],
     time: ArrayLike | Quantity | None,
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
 ) -> tuple[np.ndarray | None, bool]:
     """Get the grid of the result and whether the workers interpolate onto it.
 

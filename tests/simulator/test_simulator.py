@@ -337,8 +337,11 @@ def test_a_model_without_a_selection_is_an_error(
         Simulation(end=1, steps=2),
         [Dimension("model", models={"probe": model, "blowup": blowup})],
     )
-    with pytest.raises(ValueError, match="'blowup'"):
+    selections = list(blowup.r_loaded.timeCourseSelections)
+    with pytest.raises(ValueError, match=r"'blowup' has not every selection.*\['"):
         simulator.run(None, scan)
+    # the check reads the model, it does not change its selections
+    assert list(blowup.r_loaded.timeCourseSelections) == selections
 
 
 def test_models_with_other_units_are_an_error(

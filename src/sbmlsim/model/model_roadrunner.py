@@ -3,39 +3,40 @@
 import logging
 import os
 import weakref
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, override
 
 import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
-from pint.facets.plain import PlainUnit
 from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
-from sbmlsim.model import AbstractModel
-from sbmlsim.model.event_rows import MARKER_PREFIX, with_event_markers
+from sbmlsim.engine import Engine
+from sbmlsim.model.event_rows import with_event_markers
+from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.model.symbols import ModelSymbols, TargetKind
+from sbmlsim.model.model_sbml import (
+    INITIAL_SUFFIX,
+    IntegratorSetting,
+    SBMLModel,
+    _is_helper,
+)
+from sbmlsim.model.symbols import TargetKind
 from sbmlsim.model.tolerances import (
     AbsoluteTolerance,
     StateTolerance,
     state_tolerances,
 )
-from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
-from sbmlsim.units import ureg as package_ureg
+from sbmlsim.units import UnitRegistry
 from sbmlsim.utils import md5_for_path
 
 if TYPE_CHECKING:
     from sbmlsim.simulator.plan import Assignment
-
-#: suffix of the parameter whose assignment rule is the math of an initial
-#: assignment, see `RoadrunnerSBMLModel.initialize`
-INITIAL_SUFFIX = "__initial"
 
 #: what `RoadRunner.resetAll` resets: every variable to its initial value, with
 #: the initial assignments evaluated
@@ -224,8 +225,10 @@ def load_roadrunner(
 logger = logging.getLogger(__name__)
 
 
-class RoadrunnerSBMLModel(AbstractModel):
-    """Roadrunner model wrapper."""
+class RoadrunnerSBMLModel(SBMLModel):
+    """The model of an SBML model in roadrunner, see `SBMLModel`."""
+
+    engine = Engine.ROADRUNNER
 
     def __init__(
         self,
@@ -249,41 +252,15 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         super().__init__(
             source=source,
-            language_type=AbstractModel.LanguageType.SBML,
+            base_path=base_path,
             changes=changes,
             sid=sid,
             name=name,
-            base_path=base_path,
             selections=selections,
+            ureg=ureg,
             parameters=parameters,
         )
-
-        # check SBML
-        if self.language_type != AbstractModel.LanguageType.SBML:
-            raise ValueError(f"language_type not supported '{self.language_type}'.")
-
-        # the SBML of the model and its symbols, read once
-        sbml: str = (
-            self.source.content
-            if self.source.content is not None
-            else Path(str(self.source.path)).read_text(encoding="utf-8")
-        )
-        # roadrunner looks for the package comp in the text of the <sbml> tag
-        # and misses it in a file with the line endings of Windows and in the
-        # SBML as a string, it then simulates a hierarchical model unflattened;
-        # the model is flattened here, the symbols are the ones it simulates
-        hierarchical = _is_hierarchical(sbml)
-        if hierarchical:
-            sbml = _flatten(sbml, path=self.source.path, base_path=self.base_path)
-        #: the SBML of the model as sbmlsim hands it to roadrunner, flattened,
-        #: before the added parameters and the helpers of the initial
-        #: assignments: the units of the model are read from it and a worker
-        #: loads it, so it derives the symbols and the units the parent has,
-        #: see `sbmlsim.simulator.worker.ModelSpec`
-        self.sbml: str = sbml
-        if self.parameters:
-            sbml = _with_parameters(sbml, self.parameters)
-        self.symbols: ModelSymbols = ModelSymbols.from_sbml(sbml)
+        sbml = self._take_engine_sbml()
         #: entity with an initial assignment -> the parameter whose
         #: assignment rule is the math of the initial assignment, see
         #: `initialize`
@@ -306,7 +283,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         # load model
         self.r: roadrunner.RoadRunner | None = (
             load_roadrunner(sbml, self.jit_optimization)
-            if hierarchical
+            if self.hierarchical
             or self.initial_helpers
             or self.event_markers
             or self.parameters
@@ -330,15 +307,8 @@ class RoadrunnerSBMLModel(AbstractModel):
         #: last regeneration reached, `inf` before any, see
         #: `discard_pending_events`
         self._reached: float = np.inf
-        #: whether the start of a simulation was reported, see `executor`
-        self.warned_start: bool = False
-        #: the events whose trigger was reported as no formula the simulator
-        #: evaluates, once per event of this instance (a worker of a pool loads
-        #: its own instance and reports it once as well), see `executor`
-        self.reported_triggers: set[str] = set()
 
         # set selections
-        # logger.info("set selections")
         self.selections = self.set_timecourse_selections(
             self.r, selections=self.selections, exclude=set(self.parameters)
         )
@@ -369,10 +339,6 @@ class RoadrunnerSBMLModel(AbstractModel):
             **{"absolute_tolerance": AbsoluteTolerance(), **(settings or {})}
         )
 
-        # normalize model changes
-        self.uinfo = self.parse_units(ureg if ureg is not None else package_ureg)
-        self.normalize(uinfo=self.uinfo)
-
     @property
     def r_loaded(self) -> roadrunner.RoadRunner:
         """Get the roadrunner instance of the model.
@@ -384,6 +350,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             raise ValueError(f"The model '{self.sid}' is not loaded.")
         return self.r
 
+    @override
     def initialize(self, assignments: Sequence["Assignment"]) -> None:
         """Initialize the model with values before its initialization.
 
@@ -520,6 +487,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             self._reset_pending = True
         self._restore_loaded_state()
 
+    @override
     def reset(self) -> None:
         """Set the model to the state it was loaded in, bitwise, without a simulation.
 
@@ -535,6 +503,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         """
         self._reset()
 
+    @override
     def loaded_value(self, selection: str) -> float:
         """Get the value of a parameter, a compartment or a species of the model as loaded.
 
@@ -636,6 +605,7 @@ class RoadrunnerSBMLModel(AbstractModel):
         for k in changed:
             r.setValue(state.ids[k], float(state.values[k]))
 
+    @override
     def simulated(self) -> None:
         """Record that the model was simulated since its last initialization.
 
@@ -805,37 +775,6 @@ class RoadrunnerSBMLModel(AbstractModel):
         md5 = md5_for_path(sbml_path)
         return Path(f"{sbml_path}_rr{roadrunner.__version__}_{md5}.state")
 
-    def Q(self, value: Any, unit: str | PlainUnit | None = None) -> Quantity:
-        """Create a quantity in a unit of pint and of the unit ids of the model.
-
-        A unit id of the model is its expression, e.g. `mg_per_min/kg` is a
-        milligram per minute and kilogram for a model whose unit definition
-        `mg_per_min` is a milligram per minute, see
-        `UnitsInformation.quantity`. `sbmlsim.Q` takes the units of pint only.
-        A unit of pint, e.g. the `units` of a quantity, is taken as it is.
-
-        Args:
-            value: the magnitude, a number or an array.
-            unit: the unit, a string or a unit of pint, dimensionless without
-                one.
-
-        Returns:
-            The quantity.
-
-        Raises:
-            UndefinedUnitError: for a unit which is neither a unit of pint nor
-                a unit id of the model.
-        """
-        return self.uinfo.quantity(value, unit)
-
-    def parse_units(self, ureg: UnitRegistry) -> UnitsInformation:
-        """Parse the units of the model from its SBML, see `sbml`.
-
-        A hierarchical model has the units of its flattened SBML, which include
-        the ones of its submodels.
-        """
-        return UnitsInformation.from_sbml(sbml=self.sbml, ureg=ureg)
-
     @classmethod
     def set_timecourse_selections(
         cls,
@@ -892,6 +831,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             r.timeCourseSelections = selections
         return list(r.timeCourseSelections)
 
+    @override
     def set_selections(self, selections: Sequence[str] | None) -> None:
         """Set the selections of the simulations of the model.
 
@@ -909,6 +849,23 @@ class RoadrunnerSBMLModel(AbstractModel):
             exclude=set(self.parameters),
         )
 
+    @override
+    def value(self, selection: str) -> float:
+        """Get the current value of a selection of roadrunner.
+
+        Args:
+            selection: the selection, e.g. `S`, `[S]`, a parameter or a
+                reaction.
+
+        Returns:
+            The value in the current state of the model.
+
+        Raises:
+            RuntimeError: if roadrunner has no selection of the name.
+        """
+        return float(self.r_loaded.getValue(selection))
+
+    @override
     def has_selection(self, selection: str) -> bool:
         """Check whether roadrunner has a selection of a name in the model.
 
@@ -924,9 +881,8 @@ class RoadrunnerSBMLModel(AbstractModel):
             return False
         return True
 
-    def set_integrator_settings(
-        self, **kwargs: float | int | bool | AbsoluteTolerance
-    ) -> roadrunner.Integrator:
+    @override
+    def set_integrator_settings(self, **kwargs: IntegratorSetting) -> None:
         """Set settings of the integrator.
 
         Every setting of the integrator of roadrunner is passed on, for CVODE
@@ -946,9 +902,6 @@ class RoadrunnerSBMLModel(AbstractModel):
 
         Args:
             **kwargs: the settings by their names in roadrunner.
-
-        Returns:
-            The integrator.
 
         Raises:
             ValueError: if the integrator has no setting of a name, or an
@@ -972,7 +925,26 @@ class RoadrunnerSBMLModel(AbstractModel):
             elif integrator.getValue(key) != value:
                 integrator.setValue(key, value)
                 logger.debug("Integrator setting: '%s = %s'", key, value)
-        return integrator
+
+    @override
+    def integrator_state(self) -> tuple[str, tuple[tuple[str, Any], ...]]:
+        """Get the name of the integrator of the model and every one of its settings.
+
+        The absolute tolerance is the `AbsoluteTolerance` of the model, from
+        which `set_integrator_settings` computes the tolerance of every
+        state, and not the vector of the integrator.
+
+        Returns:
+            The name of the integrator and its settings, sorted by name.
+        """
+        integrator: roadrunner.Integrator = self.r_loaded.getIntegrator()
+        settings: list[tuple[str, Any]] = []
+        for name in sorted(str(name) for name in integrator.getSettings()):
+            if name == "absolute_tolerance":
+                settings.append((name, self.absolute_tolerance))
+            else:
+                settings.append((name, integrator.getValue(name)))
+        return str(integrator.getName()), tuple(settings)
 
     def _has_absolute_tolerance(
         self, tolerance: AbsoluteTolerance, integrator: roadrunner.Integrator
@@ -1061,6 +1033,7 @@ class RoadrunnerSBMLModel(AbstractModel):
             )
         return self._sbml_ids_of[1]
 
+    @override
     def state_ids(self) -> list[str]:
         """Get the ids of the states which the integrator integrates.
 
@@ -1314,16 +1287,6 @@ def _floats(values: Sequence[float] | np.ndarray) -> list[float]:
     return np.asarray(values, dtype=float).tolist()
 
 
-def _is_helper(sid: str) -> bool:
-    """Whether a parameter is a helper of sbmlsim and no parameter of the model.
-
-    The helpers are the parameters of the initial assignments, see
-    `_with_initial_helpers`, and the markers of the events, see
-    `sbmlsim.model.event_rows`.
-    """
-    return sid.endswith(INITIAL_SUFFIX) or sid.startswith(MARKER_PREFIX)
-
-
 def _with_initial_helpers(sbml: str) -> tuple[str, dict[str, str]]:
     """Add a helper parameter for every initial assignment of a model.
 
@@ -1363,85 +1326,3 @@ def _with_initial_helpers(sbml: str) -> tuple[str, dict[str, str]]:
         rule.setMath(assignment.getMath().deepCopy())
         helpers[entity] = helper
     return libsbml.writeSBMLToString(doc), helpers
-
-
-def _is_hierarchical(sbml: str) -> bool:
-    """Check whether a model uses the package `comp` of hierarchical models."""
-    if "comp" not in sbml:
-        return False
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
-    return bool(doc.isPackageEnabled("comp"))
-
-
-def _flatten(sbml: str, path: Path | None, base_path: Path | None = None) -> str:
-    """Flatten a hierarchical model.
-
-    The model is read from its file if it has one, so that libsbml resolves
-    its external model definitions relative to the file. Inline SBML resolves
-    external models relative to its base directory.
-
-    Args:
-        sbml: the SBML of the model.
-        path: the file of the model, `None` for the SBML as a string.
-        base_path: the resource directory of inline SBML, the current working
-            directory by default.
-
-    Returns:
-        The SBML of the flattened model.
-
-    Raises:
-        ValueError: if the model cannot be flattened.
-    """
-    doc: libsbml.SBMLDocument = (
-        libsbml.readSBMLFromFile(str(path))
-        if path is not None
-        else libsbml.readSBMLFromString(sbml)
-    )
-    if path is None:
-        # libsbml accepts native absolute paths as location URIs, as used by
-        # readSBMLFromFile. It does not decode escaped spaces in file:// URIs.
-        location = (base_path or Path.cwd()).resolve() / "__sbmlsim_inline__.xml"
-        doc.setLocationURI(str(location))
-    properties = libsbml.ConversionProperties()
-    properties.addOption("flatten comp", True)
-    properties.addOption("performValidation", False)
-    if doc.convert(properties) != libsbml.LIBSBML_OPERATION_SUCCESS:
-        errors = [
-            doc.getError(k).getMessage().strip()
-            for k in range(doc.getNumErrors())
-            if doc.getError(k).getSeverity() >= libsbml.LIBSBML_SEV_ERROR
-        ]
-        raise ValueError(
-            f"The hierarchical model '{path or sbml[:200]}' cannot be flattened: "
-            + "; ".join(errors)
-        )
-    return libsbml.writeSBMLToString(doc)
-
-
-def _with_parameters(sbml: str, parameters: Mapping[str, float]) -> str:
-    """Add constant parameters to a model.
-
-    Args:
-        sbml: the SBML of the model.
-        parameters: the parameters by their id and value.
-
-    Returns:
-        The SBML with the parameters.
-
-    Raises:
-        ValueError: if the model already has an entity of the id of a
-            parameter.
-    """
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
-    model: libsbml.Model = doc.getModel()
-    for pid, value in parameters.items():
-        if model.getElementBySId(pid) is not None:
-            raise ValueError(
-                f"The parameter '{pid}' which is added to the model is an entity "
-                f"of the model already."
-            )
-        parameter: libsbml.Parameter = model.createParameter()
-        parameter.setId(pid)
-        parameter.setValue(float(value))
-        parameter.setConstant(True)
-    return libsbml.writeSBMLToString(doc)

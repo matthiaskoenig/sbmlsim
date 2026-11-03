@@ -26,7 +26,7 @@ from typing import Any
 
 import numpy as np
 
-from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
+from sbmlsim.model.model_sbml import SBMLModel
 from sbmlsim.result.scan import TIME
 from sbmlsim.simulation.observables import (
     PK,
@@ -314,7 +314,7 @@ def identity_graph(
 
 def compile_observables(
     observables: Sequence[Observable] | None,
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     *,
     keep: Sequence[str] | None = None,
     plans: Sequence[Plan] = (),
@@ -477,7 +477,7 @@ def _order(definitions: Mapping[str, Observable]) -> list[str]:
 def _resolve(
     symbol: str,
     name: str,
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     definitions: Mapping[str, Observable],
     outputs: Mapping[str, tuple[str, ...]],
     kinds: dict[str, ObservableKind],
@@ -678,7 +678,7 @@ def _compile_formula(
 
 def _compile_pk(
     observable: PK,
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     kinds: Mapping[str, ObservableKind],
     units: Mapping[str, str],
     plans: Sequence[Plan],
@@ -743,7 +743,7 @@ def _keep(
 def _kept_selections(
     keep: Sequence[str] | None,
     outputs: Sequence[str],
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
 ) -> tuple[str, ...]:
     """Get the selections of the model which `keep` names next to the observables.
 

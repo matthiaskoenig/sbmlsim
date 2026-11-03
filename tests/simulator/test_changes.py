@@ -50,6 +50,10 @@ class FakeModel:
         self.sid = sid
         self.reported_triggers: set[str] = set()
 
+    @property
+    def label(self) -> str:
+        return self.sid or "model"
+
 
 EVENT_MODEL = """
 model events

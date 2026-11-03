@@ -65,12 +65,9 @@ from sbmlsim.experiment.progress import (
     show_timings,
     total_seconds,
 )
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
-from sbmlsim.model.model_roadrunner import (
-    JitOptimization,
-    _is_hierarchical,
-    resolve_jit_optimization,
-)
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel
+from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
+from sbmlsim.model.model_sbml import _is_hierarchical
 from sbmlsim.plot import FigureSettings
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulation import Scan
@@ -115,7 +112,7 @@ def model_key(abstract_model: AbstractModel) -> ModelKey:
     they are applied to the roadrunner instance when it is created. The source
     of a file is its resolved path, the one of inline SBML its content and, for
     a hierarchical model, the directory its external models are resolved
-    against, see `RoadrunnerSBMLModel`. The key is
+    against, see `SBMLModel`. The key is
     the description of the model and not the object: an experiment builds its
     own `AbstractModel`, which has no equality of its own, so caching on the
     object would never find anything and every experiment would load and
@@ -201,7 +198,7 @@ class ExperimentRunner:
         self.jit_optimization: JitOptimization = resolve_jit_optimization(
             jit_optimization
         )
-        self.models: dict[ModelKey, RoadrunnerSBMLModel] = {}
+        self.models: dict[ModelKey, SBMLModel] = {}
         self.simulator: Simulator | None = None
         # the sids of the experiments in the order of their classes
         self._order: list[str] = []
@@ -1034,7 +1031,7 @@ def _run_job(job: _Job) -> _Outcome:
     The models of the experiments of the worker are kept for the next
     experiment, as the runner of the parent keeps them.
     """
-    models: dict[ModelKey, RoadrunnerSBMLModel] = parallel.worker_cache(
+    models: dict[ModelKey, SBMLModel] = parallel.worker_cache(
         ("experiment models", job.jit_optimization), dict
     )
     for name, level in job.levels.items():

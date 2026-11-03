@@ -55,10 +55,10 @@ class SBMLModelLike(Protocol):
     sid: str | None
     reported_triggers: set[str]
 
-
-def _name(model: SBMLModelLike) -> str:
-    """Get the name of a model in a message."""
-    return model.sid or "model"
+    @property
+    def label(self) -> str:
+        """Get the name of the model in a message, see `SBMLModel.label`."""
+        ...
 
 
 def apply_changes(event: PlanEvent, values: ModelValues, plan: Plan) -> None:
@@ -158,7 +158,7 @@ def triggers(
                     "does not fire the event: %s",
                     math_formula(event.trigger),
                     event.eid,
-                    _name(model),
+                    model.label,
                     err,
                 )
             continue
@@ -246,7 +246,7 @@ def fire_events(
                     "the time %s and has a delay, which the simulator does not "
                     "schedule: it does not fire.",
                     event.eid,
-                    _name(model),
+                    model.label,
                     time,
                 )
                 continue
@@ -263,7 +263,7 @@ def fire_events(
                     "the time %s, its assignments are no math the simulator "
                     "evaluates: %s",
                     event.eid,
-                    _name(model),
+                    model.label,
                     time,
                     err,
                 )
@@ -278,7 +278,7 @@ def fire_events(
                         "at the time %s, its priority is no math the simulator "
                         "evaluates, it fires with the priority 0: %s",
                         event.eid,
-                        _name(model),
+                        model.label,
                         time,
                         err,
                     )
@@ -291,7 +291,7 @@ def fire_events(
                 "The event '%s' of the model '%s' fires more than %s times at the "
                 "time %s, the events trigger each other in a cycle.",
                 events[index].eid,
-                _name(model),
+                model.label,
                 MAX_EXECUTIONS_PER_EVENT,
                 time,
             )

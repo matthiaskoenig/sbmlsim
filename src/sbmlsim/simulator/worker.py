@@ -102,8 +102,8 @@ class ModelSpec:
         """Get the spec of a loaded model and of the state of its integrator.
 
         The integrator and its settings are read from the model after the
-        simulator set its own, see `integrator_state`, so a setting of the
-        model which the simulator does not set, e.g. one of
+        simulator set its own, see `SBMLModel.integrator_state`, so a setting
+        of the model which the simulator does not set, e.g. one of
         `RoadrunnerSBMLModel(settings=...)` or of `set_integrator_settings`,
         holds in a worker as well.
         """
@@ -115,7 +115,7 @@ class ModelSpec:
             sorted((str(k), float(v)) for k, v in (model.parameters or {}).items())
         )
         jit_optimization = model.jit_optimization
-        integrator, settings = integrator_state(model)
+        integrator, settings = model.integrator_state()
         digest = hashlib.sha256(
             repr(
                 (source, parameters, str(jit_optimization), integrator, settings)
@@ -142,31 +142,6 @@ class ModelSpec:
             r.setIntegrator(self.integrator)
         model.set_integrator_settings(**dict(self.settings))
         return model
-
-
-def integrator_state(
-    model: RoadrunnerSBMLModel,
-) -> tuple[str, tuple[tuple[str, Any], ...]]:
-    """Get the name of the integrator of a model and every one of its settings.
-
-    The absolute tolerance is the `AbsoluteTolerance` of the model, from which
-    `RoadrunnerSBMLModel.set_integrator_settings` computes the tolerance of
-    every state, and not the vector of the integrator.
-
-    Args:
-        model: the loaded model.
-
-    Returns:
-        The name of the integrator and its settings, sorted by name.
-    """
-    integrator: roadrunner.Integrator = model.r_loaded.getIntegrator()
-    settings: list[tuple[str, Any]] = []
-    for name in sorted(str(name) for name in integrator.getSettings()):
-        if name == "absolute_tolerance":
-            settings.append((name, model.absolute_tolerance))
-        else:
-            settings.append((name, integrator.getValue(name)))
-    return str(integrator.getName()), tuple(settings)
 
 
 def point_plan(

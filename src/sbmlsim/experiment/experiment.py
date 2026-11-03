@@ -20,7 +20,7 @@ from sbmlsim.experiment import progress
 from sbmlsim.experiment.progress import Phase, PhaseClock
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, SBMLModel
 from sbmlsim.plot import Figure, FigureSettings
 from sbmlsim.plot.points import point_linestyles
 from sbmlsim.plot.serialization_matplotlib import (
@@ -123,7 +123,7 @@ class SimulationExperiment:
         self.settings = kwargs
 
         # init variables
-        self._models: dict[str, RoadrunnerSBMLModel] = {}
+        self._models: dict[str, SBMLModel] = {}
         self._data: dict[str, Data] = {}
         self._datasets: dict[str, DataSet] = {}
         self._fit_mappings: dict[str, FitMapping] = {}
@@ -1059,11 +1059,7 @@ class SimulationExperiment:
         if index in _coordinates(self._simulations[task.simulation_id]):
             return "coordinate"
         model = self._models.get(task.model_id)
-        if (
-            isinstance(model, RoadrunnerSBMLModel)
-            and model.r is not None
-            and not model.has_selection(index)
-        ):
+        if isinstance(model, SBMLModel) and not model.has_selection(index):
             raise ValueError(
                 f"{d} of the experiment '{self.sid}' reads '{index}', which is "
                 f"neither an observable of the experiment "
