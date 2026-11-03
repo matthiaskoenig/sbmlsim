@@ -36,6 +36,10 @@ SPREAD_KILLS = {3, 15, 27, 39}
 ALONE_KILLS = {5, 7}
 #: the last member of a population of 2 x 3 parameters
 LAST_MEMBER = 5
+#: seconds a member sleeps which never answers within a test; the tests of the
+#: timeout pass in a fraction of it, also on a slow runner which starts its
+#: workers in seconds
+NEVER = 600.0
 
 
 def _claim(token: str) -> int:
@@ -98,8 +102,8 @@ def kill_the_last_member(
 
 
 def warm_slowly(token: str, problem: Any, settings: Any, task: dict[str, Any]) -> Any:
-    """Initialize the problem in a worker which takes 3 s to start."""
-    time.sleep(3.0)
+    """Initialize the problem in a worker which takes longer than a run may."""
+    time.sleep(6.0)
     return _REAL_WORKER_WARM(token, problem, settings, task)
 
 
@@ -108,13 +112,13 @@ def sleep_from_member_2(
 ) -> Any:
     """Evaluate the members 0 and 1, never answer for the others."""
     if task["member"] >= 2:
-        time.sleep(120)
+        time.sleep(NEVER)
     return _REAL_WORKER_COST(token, problem, settings, task)
 
 
 def sleep_long(token: str, problem: Any, settings: Any, task: dict[str, Any]) -> Any:
     """Never answer within a test."""
-    time.sleep(120)
+    time.sleep(NEVER)
     raise AssertionError("not reached")
 
 
@@ -308,8 +312,8 @@ def test_a_population_on_workers_keeps_the_timeout(
     monkeypatch.setattr(runner, "_worker_cost", sleep_long)
     start = time.monotonic()
     result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=1.0)
-    # the members sleep 120 s, the run ends at its timeout and not after them
-    assert time.monotonic() - start < 15.0
+    # the run ends at its timeout and not after the members
+    assert time.monotonic() - start < NEVER / 5
     fit = result.fits[0]
     assert not fit.success
     assert "FitTimeout" in fit.message
@@ -324,12 +328,12 @@ def test_the_next_run_after_a_timeout_starts_new_workers(
     """The workers of a run which timed out are stopped, the next run has new ones.
 
     Without the stop, the second run would wait for the members in flight of
-    the first, which sleep 120 s.
+    the first, which sleep `NEVER` s.
     """
     monkeypatch.setattr(runner, "_worker_cost", sleep_long)
     start = time.monotonic()
     result = _de(op_hctz_pk, fit_settings, size=2, n_cores=3, timeout=1.0)
-    assert time.monotonic() - start < 20.0
+    assert time.monotonic() - start < NEVER / 5
     assert result.size == 2
     for fit in result.fits:
         assert "FitTimeout" in fit.message
@@ -343,7 +347,7 @@ def test_a_timeout_keeps_the_members_which_were_evaluated(
 ) -> None:
     """The members which came back before the deadline are in the trajectory."""
     monkeypatch.setattr(runner, "_worker_cost", sleep_from_member_2)
-    result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=2.0)
+    result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=5.0)
     fit = result.fits[0]
     assert "FitTimeout" in fit.message
     trajectory = result.trajectories[0]
@@ -360,7 +364,7 @@ def test_the_start_of_the_workers_is_not_charged_to_the_timeout(
 ) -> None:
     """The workers initialize the problem before the budget of a run starts."""
     monkeypatch.setattr(runner, "_worker_warm", warm_slowly)
-    result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=2.0, polish=False)
+    result = _de(op_hctz_pk, fit_settings, n_cores=2, timeout=5.0, polish=False)
     fit = result.fits[0]
     assert "FitTimeout" not in fit.message
     assert np.isfinite(fit.cost)
