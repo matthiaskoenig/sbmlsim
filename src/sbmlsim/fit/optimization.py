@@ -4,12 +4,12 @@ import inspect
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from copy import copy, deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -501,6 +501,34 @@ class FitTimeout(Exception):
     once the budget is spent, which ends the optimization. The runs which
     finished are kept, see `OptimizationProblem.optimize`.
     """
+
+
+class PopulationEvaluator(Protocol):
+    """Evaluates the members of a population of differential evolution.
+
+    A fit which evaluates the population of differential evolution on its
+    workers hands one to the run, see `sbmlsim.fit.runner.PopulationPool`.
+    The run records the costs it returns in its trajectory, see
+    `OptimizationProblem.optimize_run`.
+    """
+
+    def __call__(
+        self, members: Sequence[np.ndarray], deadline: float | None
+    ) -> Iterator[tuple[int, float]]:
+        """Evaluate the cost of every member, `cost_least_square`.
+
+        Args:
+            members: the parameter vectors in the space the optimizer searches.
+            deadline: the time of `time.monotonic` at which the members which
+                are not evaluated are given up, no limit if `None`.
+
+        Yields:
+            The index of a member and its cost, in any order, as they finish.
+
+        Raises:
+            FitTimeout: if the deadline passed before every member was evaluated.
+        """
+        ...
 
 
 class RuntimeErrorOptimizeResult(scipy.optimize.OptimizeResult):
@@ -2760,6 +2788,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         on_run_finished: (
             Callable[[int, scipy.optimize.OptimizeResult, list[float]], None] | None
         ) = None,
+        population: PopulationEvaluator | None = None,
         **kwargs: Any,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list[list[float]]]:
         """Run parameter optimization.
@@ -2777,6 +2806,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             on_run_finished: called with the index, the fit and the trajectory
                 of every finished optimization, i.e., to report the progress of
                 a fit and to store the runs while it runs.
+            population: evaluates the population of differential evolution,
+                e.g. on the workers of a fit, see `optimize_run`.
             **kwargs: additional arguments of the optimizer.
 
         Returns:
@@ -2799,6 +2830,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 run=k,
                 size=size,
                 run_seed=seeds[k],
+                population=population,
                 **kwargs,
             )
             fits.append(fit)
@@ -2907,6 +2939,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                 "Optimizer 'loss' and 'f_scale' cannot change the fit objective. "
                 "Configure the loss with FitSettings.loss_function instead."
             )
+        if algorithm is OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION and (
+            "workers" in arguments
+        ):
+            raise ValueError(
+                "Optimizer 'workers' is set by the fit: it evaluates the population "
+                "of differential evolution on the workers of 'n_cores' when it has "
+                "fewer runs than workers, see sbmlsim.fit.runner.split_cores."
+            )
         arguments = tuple(arguments)
         accepted = set(inspect.signature(optimizer).parameters) - {
             "fun",
@@ -2929,7 +2969,11 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         A least squares optimization with a jacobian of finite differences
         gets the step `default_diff_step` of the relative tolerance of the
-        integrator of the settings, unless `diff_step` is given.
+        integrator of the settings, unless `diff_step` is given. Differential
+        evolution updates its population once per generation,
+        `updating="deferred"`, unless `updating` is given: the members of a
+        generation are evaluated together, serially or on workers, so the
+        result of a seed does not depend on the number of workers.
 
         Args:
             algorithm: optimization algorithm.
@@ -2947,6 +2991,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             arguments["diff_step"] = default_diff_step(
                 self.settings_initialized.relative_tolerance
             )
+        if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
+            arguments.setdefault("updating", "deferred")
         return arguments
 
     def optimize_run(
@@ -2957,6 +3003,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         run: int = 0,
         size: int = 1,
         run_seed: int | None = None,
+        population: PopulationEvaluator | None = None,
         **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list[float]]:
         """Run a single optimization, which never raises.
@@ -2974,6 +3021,13 @@ class OptimizationProblem(ObjectJSONEncoder):
             run: index of the run, for the log messages.
             size: number of runs, for the log messages.
             run_seed: seed of the run, `None` if it does not need one.
+            population: evaluates the members of the population of
+                differential evolution, e.g. on the workers of a fit, instead
+                of the calling process; it is the `workers` of scipy. The run
+                records the cost of every member in its trajectory and keeps
+                the best parameters, its timeout gives up the members which are
+                not evaluated. The population needs `updating="deferred"`, the
+                default, which makes the result independent of the workers.
             **kwargs: additional arguments of the optimizer.
 
         Returns:
@@ -2991,7 +3045,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         logger.debug("[%s/%s] x0=%s", run + 1, size, x0)
         try:
             fit, trajectory = self._optimize_single(
-                x0=x0, algorithm=algorithm, timeout=timeout, **kwargs
+                x0=x0,
+                algorithm=algorithm,
+                timeout=timeout,
+                population=population,
+                **kwargs,
             )
         except Exception as err:
             # one run must not lose the results of the other runs
@@ -3022,6 +3080,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         timeout: float | None = None,
+        population: PopulationEvaluator | None = None,
         **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
@@ -3030,6 +3089,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             x0: parameter start vector (important for deterministic optimizers).
             algorithm: optimization algorithm and method.
             timeout: seconds the optimization may run, no limit if `None`.
+            population: evaluates the population of differential evolution, see
+                `optimize_run`.
             **kwargs: additional arguments of the optimizer.
 
         Returns:
@@ -3043,7 +3104,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         self._trajectory = []
         self._best = None
         try:
-            return self._optimize_single_run(x0=x0, algorithm=algorithm, **kwargs)
+            return self._optimize_single_run(
+                x0=x0, algorithm=algorithm, population=population, **kwargs
+            )
         finally:
             # the deadline is the budget of this run, the residuals are
             # evaluated again when the fit is reported
@@ -3053,16 +3116,28 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
+        population: PopulationEvaluator | None = None,
         **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run a single optimization, see `_optimize_single`.
 
         Raises:
-            ValueError: if the algorithm is not supported or start values are
-                required and missing.
+            ValueError: if the algorithm is not supported, start values are
+                required and missing, or a population evaluator is given for
+                another algorithm than differential evolution or for a
+                population which is updated after every member.
         """
         self.check_optimizer_arguments(algorithm, kwargs)
         kwargs = self.optimizer_arguments(algorithm, kwargs)
+        if population is not None and (
+            algorithm != OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+            or kwargs.get("updating") != "deferred"
+        ):
+            raise ValueError(
+                f"{self.opid}: a population evaluator is for differential evolution "
+                f"with updating='deferred', not for '{algorithm}' with "
+                f"{kwargs.get('updating')!r}."
+            )
         if x0 is None:
             if algorithm == OptimizationAlgorithmType.LEAST_SQUARE and any(
                 value is None for value in self.x0
@@ -3127,6 +3202,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                         strict=True,
                     )
                 )
+                if population is not None:
+                    # the map of scipy, which evaluates the members of a
+                    # generation and the steps of the polishing
+                    kwargs["workers"] = self._population_map(population)
                 opt_result = scipy.optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
@@ -3825,6 +3904,88 @@ class OptimizationProblem(ObjectJSONEncoder):
             return float("inf")
         return float(0.5 * np.sum(np.square(res_weighted)))
 
+    def evaluate_cost(self, xlog: np.ndarray) -> float:
+        """Get the cost of parameters without recording it, `cost_least_square`.
+
+        This is what a worker evaluates for a member of the population of
+        differential evolution, the run in the parent records the cost, see
+        `_population_map`. The trajectory and the best parameters of the
+        problem are left as they are.
+
+        Args:
+            xlog: the parameters in the space the optimizer searches.
+
+        Returns:
+            The cost, infinite for a simulation which failed.
+        """
+        trajectory, best = self._trajectory, self._best
+        self._trajectory = []
+        try:
+            return self.cost_least_square(xlog)
+        finally:
+            self._trajectory, self._best = trajectory, best
+
+    def _record(self, x: np.ndarray, cost: float) -> None:
+        """Record the cost of an evaluation and keep the best parameters.
+
+        Args:
+            x: the parameters in the units of the parameters.
+            cost: the cost of the evaluation; a cost which is not finite is
+                recorded as infinite, the cost of a failed simulation.
+        """
+        if not np.isfinite(cost):
+            cost = float("inf")
+        self._trajectory.append(cost)
+        if np.isfinite(cost) and (self._best is None or cost < self._best[1]):
+            # the parameters of the best step, kept for a run which is
+            # interrupted; storing them for every step is what a trajectory
+            # used to do and no report reads them
+            self._best = (np.array(x, dtype=float), cost)
+
+    def _check_deadline(self) -> None:
+        """Raise `FitTimeout` if the budget of the run is spent."""
+        if self._deadline is not None and time.monotonic() > self._deadline:
+            raise FitTimeout(
+                f"'{self.opid}': the optimization did not finish in its budget."
+            )
+
+    def _population_map(
+        self, population: PopulationEvaluator
+    ) -> Callable[[Any, Iterable[np.ndarray]], list[float]]:
+        """Get the map of scipy which evaluates members with a population evaluator.
+
+        The map of `scipy.optimize.differential_evolution` (its `workers`) gets
+        the objective and the members of a generation, or a step of the
+        polishing. The objective is `cost_least_square` of this problem, which
+        the evaluator evaluates instead, e.g. on the workers of a fit. The
+        costs are returned in the order of the members, so the result does not
+        depend on the order in which they finish, and recorded in that order,
+        like the evaluations of a serial run. A generation which starts after
+        the deadline of the run raises `FitTimeout`, like a serial evaluation,
+        and the evaluator gives up the members which are not evaluated at the
+        deadline; the members which were evaluated are recorded.
+
+        Args:
+            population: evaluates the costs of the members.
+
+        Returns:
+            The map, `map(func, members)` with the costs of the members.
+        """
+
+        def evaluate(func: Any, members: Iterable[np.ndarray]) -> list[float]:
+            vectors = [np.asarray(member, dtype=float) for member in members]
+            self._check_deadline()
+            costs: dict[int, float] = {}
+            try:
+                for k, cost in population(vectors, self._deadline):
+                    costs[k] = float(cost)
+            finally:
+                for k in sorted(costs):
+                    self._record(self.from_scale(vectors[k]), costs[k])
+            return [costs[k] for k in range(len(vectors))]
+
+        return evaluate
+
     def _validate_optimum(self, result: scipy.optimize.OptimizeResult) -> float:
         """Check the final parameters before reporting optimizer convergence.
 
@@ -3864,10 +4025,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if no simulator is set or the residuals are not supported.
         """
-        if self._deadline is not None and time.monotonic() > self._deadline:
-            raise FitTimeout(
-                f"'{self.opid}': the optimization did not finish in its budget."
-            )
+        self._check_deadline()
         x = self.from_scale(xlog)
         self._last_evaluation_failed = False
 
@@ -3994,12 +4152,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         # the cost of the step, the trace plot is the only thing which uses it
         cost = float(0.5 * np.sum(np.power(res_all, 2)))
-        if self._last_evaluation_failed or not np.isfinite(cost):
+        if self._last_evaluation_failed:
             cost = float("inf")
-        self._trajectory.append(cost)
-        if np.isfinite(cost) and (self._best is None or cost < self._best[1]):
-            # the parameters of the best step, kept for a run which is
-            # interrupted; storing them for every step is what a trajectory
-            # used to do and no report reads them
-            self._best = (x.copy(), cost)
+        self._record(x, cost)
         return res_all
