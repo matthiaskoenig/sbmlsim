@@ -234,15 +234,18 @@ class SBMLModel(AbstractModel, ABC):
         """Get the selections of a model loaded without selections.
 
         Every entity of the model which has a value, the selections roadrunner
-        makes by default (as sets, the order may differ): the time, the
-        amounts of the floating and of the boundary species, the global
-        parameters, the species references with an id whose species is a
-        boundary species (roadrunner's global parameters, the other ones are
-        entries of the stoichiometry matrix), the reactions and the
-        compartments, then the concentrations of the floating and of the
-        boundary species, each in the order of the SBML. The rule of the
-        species references was determined empirically, against roadrunner on
-        every case of the SBML Test Suite. A compartment whose
+        makes by default in its order: the time, the amounts of the floating
+        and of the boundary species, the global parameters, the species
+        references with an id whose species is a boundary species
+        (roadrunner's global parameters, the other ones are entries of the
+        stoichiometry matrix), the reactions and the compartments, then the
+        concentrations of the floating and of the boundary species. The
+        species, the parameters and the compartments are each in the order
+        of the SBML with the entities without a rule first and the ones of a
+        rate or an assignment rule after them, as roadrunner orders them
+        (an initial assignment or an event assignment is no rule). The rule
+        of the species references was determined empirically, against
+        roadrunner on every case of the SBML Test Suite. A compartment whose
         size is `NaN` and set by no initial assignment or rule, e.g. a
         membrane whose area the model does not use, has no value to record (a
         compartment without a size has the size 1 in roadrunner); the
@@ -254,18 +257,27 @@ class SBMLModel(AbstractModel, ABC):
         """
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(self.sbml)
         model: libsbml.Model = doc.getModel()
+        ruled = {r.getVariable() for r in model.getListOfRules() if not r.isAlgebraic()}
+
+        def ordered(ids: list[str]) -> list[str]:
+            return [
+                *(i for i in ids if i not in ruled),
+                *(i for i in ids if i in ruled),
+            ]
+
         floating: list[str] = []
         boundary: list[str] = []
         for s in model.getListOfSpecies():
             (boundary if s.getBoundaryCondition() else floating).append(s.getId())
-        sized = {a.getSymbol() for a in model.getListOfInitialAssignments()} | {
-            r.getVariable() for r in model.getListOfRules() if not r.isAlgebraic()
-        }
-        compartments = [
-            c.getId()
-            for c in model.getListOfCompartments()
-            if c.getId() in sized or not (c.isSetSize() and math.isnan(c.getSize()))
-        ]
+        floating, boundary = ordered(floating), ordered(boundary)
+        sized = {a.getSymbol() for a in model.getListOfInitialAssignments()} | ruled
+        compartments = ordered(
+            [
+                c.getId()
+                for c in model.getListOfCompartments()
+                if c.getId() in sized or not (c.isSetSize() and math.isnan(c.getSize()))
+            ]
+        )
         stoichiometries = [
             sr.getId()
             for reaction in model.getListOfReactions()
@@ -276,11 +288,13 @@ class SBMLModel(AbstractModel, ABC):
             "time",
             *floating,
             *boundary,
-            *[
-                p.getId()
-                for p in model.getListOfParameters()
-                if not _is_helper(p.getId()) and p.getId() not in self.parameters
-            ],
+            *ordered(
+                [
+                    p.getId()
+                    for p in model.getListOfParameters()
+                    if not _is_helper(p.getId()) and p.getId() not in self.parameters
+                ]
+            ),
             *stoichiometries,
             *[r.getId() for r in model.getListOfReactions()],
             *compartments,
