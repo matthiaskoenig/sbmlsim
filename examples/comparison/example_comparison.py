@@ -3,8 +3,8 @@
 Every condition of a PEtab condition table is simulated by every simulator at
 the same time points and with the same tolerances, as in a parameter fit, and
 the results of AMICI and COPASI are compared with the results of roadrunner.
-AMICI and COPASI (via basico) are not dependencies of sbmlsim, a simulator which
-is not installed is skipped.
+COPASI is the engine `copasi` of sbmlsim, the optional extra `copasi`; AMICI is
+not a dependency of sbmlsim. A simulator which is not installed is skipped.
 """
 
 from pathlib import Path
@@ -13,9 +13,11 @@ import numpy as np
 import pandas as pd
 
 from examples.comparison.simulate import Condition, SimulateSBML
+from examples.comparison.simulate_copasi import SimulateCopasiSBML
 from examples.comparison.simulate_roadrunner import SimulateRoadrunnerSBML
 from sbmlsim.comparison.diff import DataSetsComparison
 from sbmlsim.console import console
+from sbmlsim.engine import import_copasi
 
 #: the simulator the others are compared with
 REFERENCE = "roadrunner"
@@ -31,11 +33,11 @@ def simulator_classes() -> dict[str, type[SimulateSBML]]:
     except ImportError:
         console.print("AMICI is not installed, it is not compared.")
     try:
-        from examples.comparison.simulate_copasi import SimulateCopasiSBML
-
-        classes["copasi"] = SimulateCopasiSBML
+        import_copasi()
     except ImportError:
-        console.print("basico is not installed, COPASI is not compared.")
+        console.print("The extra `copasi` is not installed, COPASI is not compared.")
+    else:
+        classes["copasi"] = SimulateCopasiSBML
     return classes
 
 

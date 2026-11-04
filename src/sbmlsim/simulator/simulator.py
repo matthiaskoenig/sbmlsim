@@ -40,12 +40,11 @@ executor of the engine, see `sbmlsim.simulator.engines`. The engine is the
 attribute `engine` of the result. A feature the engine does not simulate
 raises its `NotImplementedError`, also with `on_error="flag"`, when the scan
 is compiled, before a point runs or a pool starts, see
-`sbmlsim.simulator.engines.check_plan`. A result of
-COPASI depends on the number of workers within the integration and not
-bitwise: COPASI sums the rates of the reactions of a species in an order which
-depends on the memory its process allocated before, so two loads of a model in
-the parent and in a worker differ in the last bit of a rate, which the
-integration amplifies.
+`sbmlsim.simulator.engines.check_plan`. A result of COPASI depends on the
+number of workers within the integration and not bitwise: COPASI sums the
+rates of the reactions of a species in an order which depends on the memory
+its process allocated before, so two loads of a model in the parent and in a
+worker differ in the last bit of a rate, which the integration amplifies.
 """
 
 from __future__ import annotations
@@ -149,9 +148,9 @@ class Simulator:
                 `absolute_tolerance` is a float or an `AbsoluteTolerance`. A
                 dictionary of settings is an `IntegratorSettings`, and one of
                 other names, e.g. of another integrator of roadrunner, is set
-                with `set_integrator_settings`. The defaults are `AbsoluteTolerance()`
-                and `relative_tolerance=1e-10`. COPASI ignores a setting of
-                roadrunner it has no equivalent of, see
+                with `set_integrator_settings`. The defaults are
+                `AbsoluteTolerance()` and `relative_tolerance=1e-10`. COPASI
+                ignores a setting of roadrunner it has no equivalent of, see
                 `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
 
         Raises:

@@ -41,8 +41,7 @@ comparable:
    as two rows, an output time at the end the state after it. The steady
    state after the end starts after it.
 
-Known differences to roadrunner, where the executor of roadrunner follows a
-limitation of roadrunner which COPASI has not:
+Known differences to roadrunner:
 
 - roadrunner evaluates the triggers of the events when the model is
   initialized, at the time 0, also for a simulation from a negative start;

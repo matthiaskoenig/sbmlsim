@@ -47,12 +47,13 @@ Now continue with the [Tutorial](tutorial.md).
 
 ## Optional packages
 
-Two features need packages which are not installed with `sbmlsim`:
+Three features need packages which are not installed with `sbmlsim`:
 
 | feature | install |
 | --- | --- |
 | interactive HTML figures of experiments (`figure_formats=["html"]`, see [Plots and reports](plotting.md)) | `pip install plotly` |
 | hybrid models with neural networks ([PEtab SciML](petab_sciml.md)) | `pip install "sbmlsim[sciml]"` |
+| COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [Engines](simulation.md#engines)) | `pip install "sbmlsim[copasi]"` |
 
 ## Development version
 

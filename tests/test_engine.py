@@ -27,7 +27,7 @@ def test_import_copasi_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_sbmlsim_does_not_import_copasi() -> None:
     """Importing the package does not import COPASI."""
     code = "import sys, sbmlsim, sbmlsim.simulator; assert 'COPASI' not in sys.modules"
-    subprocess.run([sys.executable, "-c", code], check=True)
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
 
 
 def test_import_copasi_keeps_the_locale() -> None:

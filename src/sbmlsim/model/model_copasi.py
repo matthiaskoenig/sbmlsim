@@ -880,9 +880,9 @@ class CopasiSBMLModel(SBMLModel):
         COPASI has one absolute tolerance, the smallest tolerance of an
         `AbsoluteTolerance` (of the kinds and of the overrides, reported once
         when they differ) times `COPASI_ATOL_FACTOR`, so COPASI integrates at
-        least as accurately as roadrunner at equal settings. A setting of roadrunner which COPASI has no
-        equivalent of, e.g. `variable_step_size`, is ignored and reported
-        once per model.
+        least as accurately as roadrunner at equal settings. A setting of
+        roadrunner which COPASI has no equivalent of, e.g.
+        `variable_step_size`, is ignored and reported once per model.
 
         Args:
             **settings: the settings by their names in roadrunner.
@@ -963,7 +963,9 @@ class CopasiSBMLModel(SBMLModel):
         """Get the name of the integrator of the model and every one of its settings.
 
         The settings have the names of roadrunner, the absolute tolerance is
-        the `AbsoluteTolerance` of the model, see `set_integrator_settings`.
+        the `AbsoluteTolerance` of the model as it was set; the one absolute
+        tolerance of LSODA is its smallest tolerance times
+        `COPASI_ATOL_FACTOR`, see `set_integrator_settings`.
 
         Returns:
             The name of the integrator and its settings, sorted by name.

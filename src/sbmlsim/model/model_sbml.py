@@ -239,7 +239,9 @@ class SBMLModel(AbstractModel, ABC):
         boundary species (roadrunner's global parameters, the other ones are
         entries of the stoichiometry matrix), the reactions and the
         compartments, then the concentrations of the floating and of the
-        boundary species, each in the order of the SBML. A compartment whose
+        boundary species, each in the order of the SBML. The rule of the
+        species references was determined empirically, against roadrunner on
+        every case of the SBML Test Suite. A compartment whose
         size is `NaN` and set by no initial assignment or rule, e.g. a
         membrane whose area the model does not use, has no value to record (a
         compartment without a size has the size 1 in roadrunner); the

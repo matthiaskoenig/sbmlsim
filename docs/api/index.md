@@ -10,6 +10,7 @@ The top level modules: data, units and the shared output.
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
+| [engine](engine.md) | `Engine`, the engines which simulate a model, roadrunner and COPASI, and the import of the optional COPASI |
 | [sbml_math](sbml_math.md) | the math of SBML as sympy expressions and numpy functions, the math of the events of a model |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
@@ -27,6 +28,7 @@ Models and the changes of a model, see [Models](../models.md).
 | [model.model](model.model.md) | `AbstractModel`, the model of a simulation experiment with its changes and selections |
 | [model.model_sbml](model.model_sbml.md) | `SBMLModel`, the SBML model independent of its engine, and `load_model`, which loads a model in an engine |
 | [model.model_roadrunner](model.model_roadrunner.md) | `RoadrunnerSBMLModel`, the roadrunner instance of an SBML model with its units and parameter changes |
+| [model.model_copasi](model.model_copasi.md) | `CopasiSBMLModel`, an SBML model loaded in COPASI, with the values and selections of roadrunner |
 | [model.model_resources](model.model_resources.md) | `Source`, resolving the source of a model, i.e., a file or the SBML itself |
 | [model.event_rows](model.event_rows.md) | `with_event_markers`, the markers which tell the rows of the events of the model, and `at_event_times`, which gives the two rows of an event in the steps of the integrator the time of the event |
 | [model.symbols](model.symbols.md) | `ModelSymbols`, the entities of a model a simulation changes and its initial assignments |
@@ -52,6 +54,9 @@ Execution of simulations.
 | [simulator.simulator](simulator.simulator.md) | `Simulator`, simulations and scans of models, serially or in a pool of processes |
 | [simulator.plan](simulator.plan.md) | `Plan`, a simulation compiled against a model, without units |
 | [simulator.executor](simulator.executor.md) | `execute`, running a plan on roadrunner with the semantics of PEtab v2 |
+| [simulator.executor_copasi](simulator.executor_copasi.md) | `execute`, running a plan on COPASI with the semantics of the roadrunner executor, and the known differences |
+| [simulator.engines](simulator.engines.md) | `execute_plan`, running a plan with the executor of the engine of a model |
+| [simulator.changes](simulator.changes.md) | the changes of a plan and the events a change fires, shared by the engines |
 | [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation |
 | [simulator.worker](simulator.worker.md) | the chunks of a scan, run on one plan and one model in a worker |
 | [simulator.observables](simulator.observables.md) | the compiled observables of a scan and their evaluation on the native solutions |
