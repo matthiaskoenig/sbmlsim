@@ -1078,7 +1078,7 @@ INFUSION = """
 model infusion
   A = 0
   tend = 10
-  A' = piecewise(2, time <= tend, 0) - 0.1 * A
+  A' = piecewise(2, CONDITION, 0) - 0.1 * A
   n = 0
   D: at (time >= tend), t0=true: A = A + 5, n = n + 1
 end
@@ -1089,9 +1089,30 @@ end
 SWITCH_OF_THE_TIME = """
 model switch_of_the_time
   A = 0
-  A' = piecewise(1, time OP 10, 0)
+  A' = piecewise(1, CONDITION, 0)
   p = 0
   EVENT
+end
+"""
+
+#: a rate which a piecewise of the time switches at the start 0, the lag 0
+SWITCH_AT_THE_START = """
+model switch_at_the_start
+  A = 0
+  tlag = 0
+  A' = piecewise(1, CONDITION, 0) + 0.5
+end
+"""
+
+#: a rate which a piecewise of the difference of a state and a parameter
+#: switches, the parameter set to the state by a change
+SWITCH_OF_A_DIFFERENCE = """
+model switch_of_a_difference
+  A = 1
+  A' = 1
+  B = 100
+  X = 0
+  X' = piecewise(1, CONDITION, 0)
 end
 """
 
@@ -1124,18 +1145,22 @@ def assert_equal_after_event(
 
 
 @pytest.mark.parametrize("times", [[0, 10, 20, 30], None])
+@pytest.mark.parametrize("condition", ["time <= tend", "time - tend <= 0"])
 def test_an_infusion_ended_by_a_piecewise_at_the_time_of_a_dose(
-    times: list[float] | None,
+    condition: str, times: list[float] | None
 ) -> None:
     """`piecewise(2, time <= tend, 0)` is 0 after `tend`, from which the integration starts again after the dose.
 
     AMICI evaluates the comparison at its threshold at the start of an
     integration as written, `time <= tend` true, and keeps it; the executor
     shifts it, so AMICI finds the crossing right after the start, see the
-    module.
+    module. The shift of `time - tend <= 0` is sized by the terms `time` and
+    `tend`, not by the operands 0, so the explicit root of AMICI at
+    `tend + shift` is after `tend`.
     """
     simulation = Simulation(end=30, times=times)
-    amici, roadrunner = both(sbml(INFUSION), simulation, ["time", "A", "n"])
+    model = INFUSION.replace("CONDITION", condition)
+    amici, roadrunner = both(sbml(model), simulation, ["time", "A", "n"])
     assert amici["n"][-1] == 1.0
     np.testing.assert_allclose(amici["A"][-1], roadrunner["A"][-1], rtol=1e-6)
     assert amici["A"][-1] < 3.0
@@ -1145,17 +1170,28 @@ def test_an_infusion_ended_by_a_piecewise_at_the_time_of_a_dose(
 
 @pytest.mark.parametrize("times", [[0, 5, 10, 15, 20], None])
 @pytest.mark.parametrize("at", ["event", "change"])
-@pytest.mark.parametrize("op", ["<=", "<", ">=", ">"])
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "time <= 10",
+        "time < 10",
+        "time >= 10",
+        "time > 10",
+        "time - 10 > 0",
+        "time - 10 <= 0",
+    ],
+)
 def test_a_piecewise_of_the_time_switches_at_the_time_of_an_event_or_a_change(
-    op: str, at: str, times: list[float] | None
+    condition: str, at: str, times: list[float] | None
 ) -> None:
     """The rate switches at 10 as roadrunner evaluates it, also from a start at 10.
 
     An event or a change at 10 starts the integration again at the time of
-    the switch, where every comparison of the time is at its threshold.
+    the switch, where every comparison of the time is at its threshold,
+    `time - 10` compared with 0 as well.
     """
     event = "E: at (time >= 10), t0=true: p = 1" if at == "event" else ""
-    model = SWITCH_OF_THE_TIME.replace("OP", op).replace("EVENT", event)
+    model = SWITCH_OF_THE_TIME.replace("CONDITION", condition).replace("EVENT", event)
     changes = [Change(10, {"p": 1.0})] if at == "change" else []
     simulation = Simulation(end=20, times=times, changes=changes)
     amici, roadrunner = both(sbml(model), simulation, ["time", "A", "p"])
@@ -1192,4 +1228,54 @@ def test_a_piecewise_of_a_state_set_to_its_threshold_by_a_change(
     simulation = Simulation(end=20, times=times, changes=[Change(5, {"B": 10.0})])
     amici, roadrunner = both(sbml(model), simulation, ["time", "A", "B"])
     np.testing.assert_allclose(amici["A"][-1], expected, rtol=1e-6)
+    assert_agree(amici, roadrunner, times, changes=[5.0])
+
+
+@pytest.mark.parametrize("times", [[0, 5, 20], None])
+@pytest.mark.parametrize(
+    ("condition", "expected"),
+    [
+        ("time > tlag", 30.0),
+        ("time >= tlag", 30.0),
+        ("time <= tlag", 10.0),
+        ("time < tlag", 10.0),
+    ],
+    ids=["gt", "geq", "leq", "lt"],
+)
+def test_a_piecewise_of_the_time_at_the_start(
+    condition: str, expected: float, times: list[float] | None
+) -> None:
+    """A comparison of the time at its threshold at the start 0 switches right after it.
+
+    A lag of 0 is a common default of a model: the shift of the comparison
+    is at least the resolution of the time, so the explicit root of AMICI
+    is after the start 0 (a shift of the units in the last place of 0 is
+    behind it for CVODES).
+    """
+    model = SWITCH_AT_THE_START.replace("CONDITION", condition)
+    amici, roadrunner = both(
+        sbml(model), Simulation(end=20, times=times), ["time", "A"]
+    )
+    np.testing.assert_allclose(amici["A"][-1], expected, rtol=1e-6)
+    assert_agree(amici, roadrunner, times)
+
+
+@pytest.mark.parametrize("times", [[0, 5, 10, 20], None])
+@pytest.mark.parametrize(
+    ("condition", "expected"),
+    [("A - B > 0", 15.0), ("A - B <= 0", 5.0)],
+    ids=["gt", "leq"],
+)
+def test_a_piecewise_of_a_difference_at_its_threshold_after_a_change(
+    condition: str, expected: float, times: list[float] | None
+) -> None:
+    """A comparison of a difference of states at its threshold after a change switches as the states move.
+
+    `B` is 100 and set to `A` at 5, so `A - B` is exactly 0 there and rises
+    after it; the shift is sized by the terms `A` and `B`.
+    """
+    model = SWITCH_OF_A_DIFFERENCE.replace("CONDITION", condition)
+    simulation = Simulation(end=20, times=times, changes=[Change(5, {"B": "A"})])
+    amici, roadrunner = both(sbml(model), simulation, ["time", "A", "B", "X"])
+    np.testing.assert_allclose(amici["X"][-1], expected, rtol=1e-6)
     assert_agree(amici, roadrunner, times, changes=[5.0])

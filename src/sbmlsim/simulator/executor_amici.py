@@ -52,18 +52,20 @@ It has the semantics of the executor of roadrunner, see
    start); one which fired at the start, e.g. `time > 10` at the end of a
    horizon of a steady state, stays true for AMICI and does not fire again.
    Every other comparison at its threshold is shifted by `THRESHOLD_ULPS`
-   units in the last place of its operands, so AMICI finds the crossing when
-   it comes: an event which sets its own trigger back to its threshold,
+   units in the last place of the largest term of its operands
+   (`_Course._shift`), so AMICI finds the crossing when it comes: an event which sets its own trigger back to its threshold,
    `Y > 2` by `Y = 2`, fires again when `Y` rises above 2 later, as in
    roadrunner. A comparison of a math of the model, e.g. the condition of a
    piecewise in a rate, `piecewise(2, time <= tend, 0)`, is compiled shifted
    as well (`AmiciSBMLModel.switches`); before every integration from a
    time at which it is exactly at its threshold, e.g. from the time `tend`
-   after an event or a change there, the executor shifts it by
-   `THRESHOLD_ULPS` units in the last place of its operands
-   (`_Course._arm_switches`), so it keeps its value until the operands move
-   by the shift in the direction which changes it, `time <= tend` false
-   right after `tend`, as roadrunner evaluates it at every step.
+   after an event or a change there, the executor shifts it the same way
+   (`_Course._arm_switches`, for a comparison of the time by at least the
+   resolution of the time, so the explicit root of AMICI at the shifted
+   time is after the start, also `time > tlag` with `tlag = 0` at the start
+   0), so it keeps its value until the operands move by the shift in the
+   direction which changes it, `time <= tend` false right after `tend`, as
+   roadrunner evaluates it at every step.
 6. AMICI finds the root of a trigger where it crosses its threshold, so the
    event is at its time; a strict trigger of the time is at its time
    exactly. The events of a root within the resolution of the time of a
@@ -173,20 +175,36 @@ from sbmlsim.simulator.segments import steady_state as integrate_to_steady_state
 #: the integrator, see the module
 STEPS = 100
 
-#: the units in the last place of the operands of a strict comparison exactly
-#: at its threshold by which it is shifted, so that AMICI evaluates it as
-#: false at the start of an integration and finds its crossing, see the module
+#: the units in the last place of the largest term of the operands of a
+#: comparison exactly at its threshold by which it is shifted, so that AMICI
+#: evaluates it as written at the start of an integration and finds its
+#: crossing, see the module and `_Course._shift`
 THRESHOLD_ULPS = 2.0
 
-#: the smallest shift, a normal number, for the operands 0
+#: the smallest shift, a normal number, for the terms 0
 SMALLEST_SHIFT = sys.float_info.min
 
 #: the prefix of the symbols of the tolerances of the comparisons of a
 #: trigger at the events, see `_Course._visible`
 _TOLERANCE = "__sbmlsim_tolerance_"
 
-#: the compiled operands of a comparison
-_Operands = tuple[CompiledFormula, CompiledFormula]
+
+@dataclass(frozen=True)
+class _Comparison:
+    """The compiled operands of a comparison of a trigger or of a math, see `_compile_operands`.
+
+    Attributes:
+        left: the left operand.
+        right: the right operand.
+        terms: the additive terms of the operands, whose magnitudes size the
+            shift of the comparison at its threshold, see `_Course._shift`.
+        reads_time: whether an operand reads the time.
+    """
+
+    left: CompiledFormula
+    right: CompiledFormula
+    terms: tuple[CompiledFormula, ...]
+    reads_time: bool
 
 
 @dataclass(frozen=True)
@@ -241,8 +259,8 @@ class _Course:
         #: the compiled operands of the comparisons and of the switches,
         #: `None` for a comparison whose operand the simulator does not
         #: evaluate
-        self._operands: list[_Operands | None] | None = None
-        self._switch_operands: list[_Operands | None] | None = None
+        self._operands: list[_Comparison | None] | None = None
+        self._switch_operands: list[_Comparison | None] | None = None
         #: the time the executor fired events last and the events
         self._fired: tuple[float, frozenset[int]] = (np.nan, frozenset())
         #: the comparisons at their threshold since the executor fired their
@@ -516,9 +534,9 @@ class _Course:
                 head = state_row(model, self.selections, time)
                 result.append(self._fire(time, due, head, visible=False))
                 continue
-            for j, left, _ in held:
+            for j, _, _ in held:
                 if j not in known:
-                    shifts[j] = _shift(left)
+                    shifts[j] = self._shift(self._operands, j, time)
             break
         model.set_shifts(shifts)
         return result
@@ -527,10 +545,9 @@ class _Course:
         """Shift every comparison of the maths of the model which is exactly at its threshold, see the module.
 
         Before every integration from the current state at a time: a
-        comparison at its threshold is shifted by `THRESHOLD_ULPS` units in
-        the last place of its operands, so that it keeps its value until the
-        operands move and AMICI finds the crossing, every other one is as
-        written.
+        comparison at its threshold is shifted (`_shift`), so that it keeps
+        its value until the operands move and AMICI finds the crossing,
+        every other one is as written.
 
         Args:
             time: the time of the start of the integration.
@@ -542,9 +559,45 @@ class _Course:
                 (s.left, s.right) for s in self.switches
             )
         shifts = [0.0] * len(self.switches)
-        for j, left, _ in self._at_threshold(self._switch_operands, time):
-            shifts[j] = _shift(left)
+        for j, _, _ in self._at_threshold(self._switch_operands, time):
+            shifts[j] = self._shift(self._switch_operands, j, time)
         self.model.set_switch_shifts(shifts)
+
+    def _shift(
+        self, comparisons: Sequence[_Comparison | None] | None, j: int, time: float
+    ) -> float:
+        """Get the shift of a comparison exactly at its threshold at a time.
+
+        `THRESHOLD_ULPS` units in the last place of the largest magnitude of
+        the additive terms of its operands, so that the shifted operand
+        differs from the operand in the arithmetic of the terms (`time - 10`
+        compared with 0 at the time 10 is shifted by the units of 10, not of
+        0), and for an operand which reads the time at least the resolution
+        of the time at the time, so that the explicit root of AMICI at the
+        shifted time, e.g. `tlag + shift` with `tlag = 0` at the start 0, is
+        after the time for CVODES; at least `SMALLEST_SHIFT`.
+
+        Args:
+            comparisons: the compiled comparisons, see `_compile_operands`.
+            j: the position of the comparison, which is compiled.
+            time: the time.
+        """
+        assert comparisons is not None
+        comparison = comparisons[j]
+        assert comparison is not None
+        values = self.model.values
+        magnitude = max(
+            abs(
+                f.evaluate(
+                    [time if s == "time" else values.getValue(s) for s in f.symbols]
+                )
+            )
+            for f in (comparison.left, *comparison.terms)
+        )
+        shift = max(THRESHOLD_ULPS * float(np.spacing(magnitude)), SMALLEST_SHIFT)
+        if comparison.reads_time:
+            shift = max(shift, self._ahead(time))
+        return shift
 
     def _held(self, time: float) -> list[tuple[int, float, float]]:
         """Get the strict comparisons exactly at their threshold, with the values of their operands."""
@@ -555,7 +608,7 @@ class _Course:
         return self._at_threshold(self._operands, time)
 
     def _at_threshold(
-        self, operands: Sequence[_Operands | None], time: float
+        self, operands: Sequence[_Comparison | None], time: float
     ) -> list[tuple[int, float, float]]:
         """Get the comparisons exactly at their threshold at a time, from the current state.
 
@@ -572,7 +625,7 @@ class _Course:
                 f.evaluate(
                     [time if s == "time" else values.getValue(s) for s in f.symbols]
                 )
-                for f in pair
+                for f in (pair.left, pair.right)
             )
             if left == right:
                 result.append((j, left, right))
@@ -837,29 +890,60 @@ class _Course:
 
 def _compile_operands(
     pairs: Iterable[tuple[str, str]],
-) -> list[_Operands | None]:
+) -> list[_Comparison | None]:
     """Compile the operands of comparisons, MathML of selections, see `sbmlsim.sbml_math.compile_math`.
 
     Returns:
-        The compiled operands of every comparison, `None` for one which the
-        simulator does not evaluate, e.g. of `rateOf`, which is left to
-        AMICI as written.
+        The compiled operands of every comparison with their additive terms
+        (`_terms`), `None` for one which the simulator does not evaluate,
+        e.g. of `rateOf`, which is left to AMICI as written.
     """
     # sbmlmath is imported by the first model with events, see `sbml_math`
     from sbmlsim.sbml_math import compile_math
 
-    result: list[_Operands | None] = []
+    result: list[_Comparison | None] = []
     for left, right in pairs:
         try:
-            result.append((compile_math(left), compile_math(right)))
+            compiled_left, compiled_right = compile_math(left), compile_math(right)
+            terms = tuple(
+                compile_math(term) for term in (*_terms(left), *_terms(right))
+            )
         except ValueError:
             result.append(None)
+            continue
+        result.append(
+            _Comparison(
+                compiled_left,
+                compiled_right,
+                terms,
+                any("time" in f.symbols for f in (compiled_left, compiled_right)),
+            )
+        )
     return result
 
 
-def _shift(value: float) -> float:
-    """Get the shift of a comparison at its threshold, `THRESHOLD_ULPS` units in the last place of its operands."""
-    return max(THRESHOLD_ULPS * float(np.spacing(abs(value))), SMALLEST_SHIFT)
+def _terms(mathml: str) -> list[str]:
+    """Get the additive terms of a math, MathML of selections, as MathML.
+
+    The operands of the sums and differences of the math, through the nested
+    ones, e.g. `time` and `tend` of `time - tend`; a math which is no sum or
+    difference is its own term.
+
+    Raises:
+        ValueError: if the MathML is not read.
+    """
+    node: libsbml.ASTNode | None = libsbml.readMathMLFromString(mathml)
+    if node is None:
+        raise ValueError(f"The math {mathml!r} cannot be read.")
+    terms: list[str] = []
+    stack = [node]
+    while stack:
+        n = stack.pop()
+        if n.getType() in (libsbml.AST_PLUS, libsbml.AST_MINUS):
+            stack.extend(n.getChild(k) for k in range(n.getNumChildren()))
+        else:
+            terms.append(str(libsbml.writeMathMLToString(n)))
+    return terms
 
 
 def _tolerant_trigger(mathml: str) -> tuple[str, list[tuple[str, str]]]:
