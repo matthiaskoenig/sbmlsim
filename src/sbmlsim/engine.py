@@ -12,6 +12,7 @@ class Engine(StrEnum):
 
     ROADRUNNER = "roadrunner"
     COPASI = "copasi"
+    AMICI = "amici"
 
 
 def resolve_engine(engine: Engine | str) -> Engine:
@@ -53,6 +54,33 @@ def import_copasi() -> ModuleType:
         raise ImportError(
             "The engine 'copasi' needs python-copasi, install it with "
             "`pip install sbmlsim[copasi]`."
+        ) from err
+    finally:
+        locale.setlocale(locale.LC_CTYPE, before)
+
+
+def import_amici() -> ModuleType:
+    """Import AMICI, the optional extra `amici`.
+
+    AMICI is built from source on installation (a C++ compiler, CMake, SWIG,
+    a BLAS and HDF5) and needs `ninja` on the path to compile a model.
+
+    :return: the module `amici`
+    :raises ImportError: when AMICI is not installed
+    """
+    module = sys.modules.get("amici")
+    if module is not None:
+        return module
+    before = locale.setlocale(locale.LC_CTYPE)
+    try:
+        return importlib.import_module("amici")
+    except ImportError as err:
+        raise ImportError(
+            "The engine 'amici' needs AMICI, install it with "
+            "`pip install sbmlsim[amici]`. AMICI is built from source and needs "
+            "a C++ compiler, CMake, SWIG, a BLAS library and HDF5 (e.g. "
+            "`apt install build-essential cmake swig libopenblas-dev "
+            "libhdf5-dev`)."
         ) from err
     finally:
         locale.setlocale(locale.LC_CTYPE, before)

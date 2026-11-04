@@ -6,15 +6,16 @@ import sys
 
 import pytest
 
-from sbmlsim.simulator import Engine, import_copasi, resolve_engine
+from sbmlsim.simulator import Engine, import_amici, import_copasi, resolve_engine
 
 
 def test_resolve_engine() -> None:
     """An engine is resolved from its name or itself."""
     assert resolve_engine("copasi") is Engine.COPASI
     assert resolve_engine(Engine.ROADRUNNER) is Engine.ROADRUNNER
-    with pytest.raises(ValueError, match="roadrunner, copasi"):
-        resolve_engine("amici")
+    assert resolve_engine("amici") is Engine.AMICI
+    with pytest.raises(ValueError, match="roadrunner, copasi, amici"):
+        resolve_engine("cvode")
 
 
 def test_import_copasi_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -48,6 +49,37 @@ def test_import_copasi_keeps_the_locale() -> None:
         "import_copasi()\n"
         "assert locale.setlocale(locale.LC_CTYPE) == before\n"
         "assert locale.setlocale(locale.LC_NUMERIC) == 'C'\n"
+        "assert locale.getpreferredencoding(False) == encoding\n"
+    )
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+
+
+def test_import_amici_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing AMICI names the extra which installs it and its build requirements."""
+    monkeypatch.setitem(sys.modules, "amici", None)
+    with pytest.raises(ImportError, match=r"sbmlsim\[amici\]") as info:
+        import_amici()
+    assert "swig" in str(info.value)
+
+
+def test_sbmlsim_does_not_import_amici() -> None:
+    """Importing the package does not import AMICI."""
+    code = "import sys, sbmlsim, sbmlsim.simulator; assert 'amici' not in sys.modules"
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+
+
+def test_import_amici_keeps_the_locale() -> None:
+    """`import_amici` leaves the locale of the process as it was."""
+    if importlib.util.find_spec("amici") is None:
+        pytest.skip("AMICI is not installed")
+    code = (
+        "import locale\n"
+        "before = {c: locale.setlocale(c) for c in (locale.LC_CTYPE, locale.LC_NUMERIC)}\n"
+        "encoding = locale.getpreferredencoding(False)\n"
+        "from sbmlsim.engine import import_amici\n"
+        "import_amici()\n"
+        "assert locale.setlocale(locale.LC_CTYPE) == before[locale.LC_CTYPE]\n"
+        "assert locale.setlocale(locale.LC_NUMERIC) == before[locale.LC_NUMERIC]\n"
         "assert locale.getpreferredencoding(False) == encoding\n"
     )
     subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)

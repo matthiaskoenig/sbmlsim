@@ -97,22 +97,47 @@ jobs:
       working-directory: ${{ runner.temp }}
       run: '"$RUNNER_TEMP/plain/bin/python" -I "$GITHUB_WORKSPACE/scripts/plain_install.py"'
 
+  amici:
+    # the engine AMICI is an optional extra which is built from source
+    # (a C++ compiler, CMake, SWIG, a BLAS library and HDF5), so it is not in
+    # the environment of the test matrix; this job installs it and runs the
+    # tests of the engine, every test file with `amici` in its name
+    name: amici engine
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Install the build requirements of AMICI
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake swig libopenblas-dev libhdf5-dev
+    - name: Set up the environment
+      uses: ./.github/actions/setup
+      with:
+        python-version: "3.14"
+        sync: --extra dev --extra amici
+    - name: Test
+      # the engine tests, in parallel (`addopts` of pyproject.toml)
+      run: uv run --no-sync pytest --skip-slow tests/test_engine.py $(find tests -name 'test_*amici*.py')
+
   tests:
     # the one check the branch protection requires; the names of the matrix
     # jobs change with the matrix, this name does not, see .github/rulesets/
     name: tests
-    needs: [test, install]
+    needs: [test, install, amici]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - name: Check the results of the test matrix and of the plain install
+    - name: Check the results of the test matrix, of the plain install and of the amici engine
       env:
         RESULT: ${{ needs.test.result }}
         INSTALL: ${{ needs.install.result }}
+        AMICI: ${{ needs.amici.result }}
       run: |
-        echo "test matrix: $RESULT, plain install: $INSTALL"
-        test "$RESULT" = "success" && test "$INSTALL" = "success"
+        echo "test matrix: $RESULT, plain install: $INSTALL, amici engine: $AMICI"
+        test "$RESULT" = "success" && test "$INSTALL" = "success" && test "$AMICI" = "success"
 
   tested:
     # a release does not run the test matrix again. The tag is on a commit of

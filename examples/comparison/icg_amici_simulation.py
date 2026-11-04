@@ -2,9 +2,10 @@
 
 from pathlib import Path
 
-import amici  # ty: ignore[unresolved-import]
+import amici
 import numpy as np
 import pandas as pd
+from amici.sim.sundials import run_simulation
 
 output_dir: Path = Path(__file__).parent / "results"
 model_mids: list[str] = ["icg_body_flat", "icg_body_events_flat"]
@@ -20,22 +21,22 @@ for mid in model_mids:
     # load the model module
     model_module = amici.import_model_module(mid, model_dir)
     # instantiate model
-    model = model_module.getModel()
+    model = model_module.get_model()
 
     # model properties
-    print("Model parameters:", list(model.getParameterIds()), "\n")
-    print("Model const parameters:", list(model.getFixedParameterIds()), "\n")
-    print("Model outputs:", list(model.getObservableIds()), "\n")
-    print("Model states:", list(model.getStateIds()), "\n")
+    print("Model parameters:", list(model.get_free_parameter_ids()), "\n")
+    print("Model const parameters:", list(model.get_fixed_parameter_ids()), "\n")
+    print("Model outputs:", list(model.get_observable_ids()), "\n")
+    print("Model states:", list(model.get_state_ids()), "\n")
 
     # instantiate solver
-    solver = model.getSolver()
-    solver.setAbsoluteTolerance(1e-10)
+    solver = model.create_solver()
+    solver.set_absolute_tolerance(1e-10)
 
     # run forward simulation
     t = np.linspace(0, 20, num=5)
-    model.setTimepoints(t)
-    rdata = amici.runAmiciSimulation(model, solver)
+    model.set_timepoints(t)
+    rdata = run_simulation(model, solver)
     print(t)
     print(rdata.x)
 
