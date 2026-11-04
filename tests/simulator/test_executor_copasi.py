@@ -1206,9 +1206,10 @@ def test_a_model_whose_events_set_no_threshold_runs_in_one_piece() -> None:
         end: float,
         past: bool,
         grid: np.ndarray | None,
+        halvings: int = 0,
     ) -> np.ndarray:
         calls.append((start, end))
-        return once(course, start, end, past, grid)
+        return once(course, start, end, past, grid, halvings)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(executor_copasi._TimeCourse, "_once", counted)
@@ -1391,3 +1392,46 @@ def test_the_walk_of_a_run_is_linear_in_its_events() -> None:
     assert counts[1] <= 2 * counts[0] + 4
     assert counts[2] <= 2 * counts[1] + 4
     assert counts[2] <= 3 * 200
+
+
+#: an event of the time which moves its own trigger, so its model lands, see
+#: `CopasiSBMLModel.lands`
+MOVED = """
+model moved
+  tn = TN
+  n = 0
+  total = 0
+  total' = -0.1 * total
+  E: at (time >= tn), t0=false: total = total + 10, n = n + 1, tn = tn + 5
+end
+"""
+
+
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+@pytest.mark.parametrize("start", [-1.0, -3.3, -0.5, -1e-3, 0.0])
+@pytest.mark.parametrize("tn", [0.0, 0.5])
+def test_a_walk_from_a_negative_start_reaches_its_output_times(
+    tn: float, start: float, times: bool
+) -> None:
+    """The walk of a run in pieces reaches an output time right after an event of the model with the steps of LSODA.
+
+    LSODA exceeds its internal step limit on an output time it is set to
+    one resolution after an event, see `executor_copasi._TimeCourse._piece`.
+    roadrunner evaluates the triggers at the time 0 also from a negative
+    start, a known difference for the event at 0, whose state after it
+    COPASI has from the time 0.
+    """
+    source = sbml(MOVED.replace("TN", repr(tn)))
+    grid = [start, *(t for t in (0.0, 0.5, 1.0, 2.0) if t > start)]
+    simulation = Simulation(start=start, end=2, times=grid if times else None)
+    copasi, roadrunner = both(source, simulation, ["time", "n", "total"])
+    assert copasi["n"][-1] == 1.0
+    if tn == 0.0 and start < 0.0:
+        after = copasi.time > 0.0
+        np.testing.assert_allclose(
+            copasi["total"][after], 10.0 * np.exp(-0.1 * copasi.time[after]), rtol=1e-6
+        )
+    elif times:
+        assert_equal_results(copasi, roadrunner)
+    else:
+        assert_equal_rows(copasi, roadrunner, events=[tn] if tn > start else [])

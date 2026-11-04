@@ -28,7 +28,6 @@ from sbmlsim.simulation import (
 )
 from sbmlsim.simulation.observables import ObservableKind
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.simulator import ScanError
 from sbmlsim.simulator.worker import ModelSpec
 from tests.engines import OTHER_ENGINES, model_class, require
 from tests.simulator.models import (
@@ -312,6 +311,19 @@ STARTS: dict[str, dict] = {
     "steady state after the end": {"end": 2},
 }
 
+#: the cases of `STARTS` with output times and with the steps of the
+#: integrator, the steady state after the end with output times only, it is
+#: an output time
+START_CASES = [
+    (case, times)
+    for case in STARTS
+    for times in (True, False)
+    if times or case != "steady state after the end"
+]
+
+#: the ids of `START_CASES`
+START_IDS = [f"{case}-{'times' if times else 'steps'}" for case, times in START_CASES]
+
 
 def _start_simulation(
     case: str, times: bool, preinit_changes: dict[str, float] | None = None
@@ -319,8 +331,7 @@ def _start_simulation(
     """Get a simulation of `STARTS` with output times or the steps of the integrator."""
     kwargs = dict(STARTS[case])
     if case == "steady state after the end":
-        if not times:
-            pytest.skip("the steady state after the end is an output time")
+        assert times, "the steady state after the end is an output time"
         kwargs["times"] = [0, 1, 2, float("inf")]
     elif times:
         start = kwargs.get("start", 0)
@@ -341,8 +352,7 @@ def _first_row(result: ScanResult) -> dict[str, float]:
     return {name: float(result.ds[name].values[0]) for name in ("total", "n")}
 
 
-@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
-@pytest.mark.parametrize("case", list(STARTS))
+@pytest.mark.parametrize(("case", "times"), START_CASES, ids=START_IDS)
 @pytest.mark.parametrize("reset", ["", ", dose = 0"], ids=["kept", "reset"])
 def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
     other_engine: Engine, reset: str, case: str, times: bool
@@ -375,9 +385,16 @@ def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
             assert total[-1] == pytest.approx(0.0, abs=1e-6)
 
 
-@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
-@pytest.mark.parametrize("case", list(STARTS))
-@pytest.mark.parametrize("reset", ["", ", tn = tn + 5"], ids=["kept", "moved"])
+@pytest.mark.parametrize(
+    ("reset", "case", "times"),
+    [
+        pytest.param(reset, case, times, id=f"{name}-{label}")
+        for reset, name in (("", "kept"), (", tn = tn + 5", "moved"))
+        for (case, times), label in zip(START_CASES, START_IDS, strict=True)
+        # a dose every 5 time units has no steady state
+        if not reset or case not in ("presimulation", "steady state after the end")
+    ],
+)
 def test_an_event_at_the_start_agrees_with_roadrunner(
     other_engine: Engine, reset: str, case: str, times: bool
 ) -> None:
@@ -387,23 +404,8 @@ def test_an_event_at_the_start_agrees_with_roadrunner(
     start, COPASI and AMICI at the start, so from a negative start the event
     fires when the time reaches 0, see the known differences.
     """
-    if reset and case in ("presimulation", "steady state after the end"):
-        # every engine integrates up to `max_time`, an event every 5
-        pytest.skip("a dose every 5 time units has no steady state")
     model = TIME_EVENT.replace("RESET", reset)
     simulation = _start_simulation(case, times)
-    if (other_engine, reset, case, times) == (
-        Engine.COPASI,
-        ", tn = tn + 5",
-        "negative start",
-        True,
-    ):
-        # LSODA of COPASI exceeds its internal step limit on the piece of the
-        # walk of the run which ends one resolution after the event at 0,
-        # also before this branch (`executor_copasi._TimeCourse._walk`)
-        with pytest.raises(ScanError, match="Internal step limit exceeded"):
-            _engine_run(other_engine, model, simulation)
-        pytest.xfail("COPASI fails the walk of a run from a negative start")
     res = _engine_run(other_engine, model, simulation)
     first = _first_row(res)
     time = res.ds["time"].values
@@ -432,8 +434,7 @@ def test_an_event_at_the_start_agrees_with_roadrunner(
             )
 
 
-@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
-@pytest.mark.parametrize("case", list(STARTS))
+@pytest.mark.parametrize(("case", "times"), START_CASES, ids=START_IDS)
 def test_copasi_and_amici_agree_on_a_dose_of_the_pre_initialization(
     case: str, times: bool
 ) -> None:

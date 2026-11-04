@@ -487,18 +487,7 @@ class _TimeCourse:
                 rows = steps
             else:
                 model.restore(snapshot)
-                if grid is None:
-                    rows = self._once(a, stop, False, None)
-                else:
-                    rows = self._once(
-                        a,
-                        stop,
-                        past if stop >= end else True,
-                        _piece_grid(grid, a, stop),
-                    )
-                    if stop not in grid:
-                        # the row at the stop, which is no output time
-                        rows = rows[:-1]
+                rows = self._piece(a, stop, end, past, grid)
             blocks.append(rows if not blocks else rows[1:])
             at_threshold, missed = model.landed()
             if missed:
@@ -534,6 +523,63 @@ class _TimeCourse:
             blocks.append(after[np.newaxis, :])
         elif time in grid:
             blocks[-1][-1, :] = after
+
+    def _piece(
+        self,
+        start: float,
+        stop: float,
+        end: float,
+        past: bool,
+        grid: np.ndarray | None,
+        halvings: int = 0,
+    ) -> np.ndarray:
+        """Integrate a piece of a run from `start` to a stop the executor chose, see `_walk` and `_once`.
+
+        The piece is integrated with output at its output times and at its
+        stop, whose row is dropped if it is no output time. LSODA can exceed
+        its internal step limit on an output time it is set to right after an
+        event, e.g. the stop one resolution after an event of the model at 0
+        from a negative start; the piece is then integrated again from its
+        start, with output at its output times only, and once more to its
+        stop with the steps of LSODA, which reach it, for the state there.
+
+        Args:
+            start: the start, the state of the model.
+            stop: the stop of the piece.
+            end: the end of the run.
+            past: whether the run may end after the end, see `_duration`.
+            grid: the output times of the run, `None` for the steps of LSODA.
+            halvings: the halvings of the run so far, see `_once`.
+
+        Returns:
+            The values of the piece, as `_once` gives them: the steps of LSODA,
+            or a row at the start and a row per output time in the piece.
+
+        Raises:
+            RuntimeError: if COPASI fails to integrate, with its message.
+        """
+        model = self.model
+        if grid is None:
+            return self._once(start, stop, False, None, halvings)
+        inner = grid[(grid > start) & (grid <= stop)]
+        times = inner if inner.size and inner[-1] == stop else np.append(inner, stop)
+        snapshot = model.snapshot()
+        try:
+            rows = self._once(
+                start, stop, past if stop >= end else True, times, halvings
+            )
+        except RuntimeError as err:
+            if "Internal step limit" not in str(err):
+                raise
+        else:
+            return rows if stop in grid else rows[:-1]
+        model.restore(snapshot)
+        rows = state_row(model, self.selections, start)[np.newaxis, :]
+        if inner.size:
+            rows = self._once(start, float(inner[-1]), True, inner, halvings)
+            model.restore(snapshot)
+        self._once(start, stop, False, None, halvings)
+        return rows
 
     def _resolution(self, start: float, end: float) -> float:
         """Get the resolution of the time of a run, of the simulation if known."""
@@ -573,16 +619,10 @@ class _TimeCourse:
                 raise
         model.restore(snapshot)
         middle = start + 0.5 * (end - start)
-        if grid is None:
-            first = self._once(start, middle, False, None, halvings + 1)
-        else:
-            first = self._once(
-                start, middle, True, _piece_grid(grid, start, middle), halvings + 1
-            )
-            if middle not in grid:
-                first = first[:-1]
+        resolution = self._resolution(start, end)
+        first = self._piece(start, middle, end, past, grid, halvings + 1)
         model.set_time(middle)
-        model.shift_comparisons(self._resolution(start, end))
+        model.shift_comparisons(resolution)
         rest = None if grid is None else grid[grid > middle]
         second = self._once(middle, end, past, rest, halvings + 1)
         return np.concatenate([first, second[1:]], axis=0)
@@ -642,14 +682,6 @@ class _TimeCourse:
             [list(handler.getNthRow(k)) for k in range(n)], dtype=float
         ).reshape(n, len(self.names))
         return self._transform(rows)
-
-
-def _piece_grid(grid: np.ndarray, start: float, stop: float) -> np.ndarray:
-    """Get the output times of a piece of a run, ending with its stop, see `_TimeCourse._integrate`."""
-    piece = grid[(grid > start) & (grid <= stop)]
-    if piece.size == 0 or piece[-1] != stop:
-        piece = np.append(piece, stop)
-    return piece
 
 
 def _duration(start: float, end: float, past: bool) -> float:
