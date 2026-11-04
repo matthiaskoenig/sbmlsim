@@ -93,9 +93,11 @@ priority and every trigger persistent, which AMICI imports.
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import hashlib
 import importlib
 import io
+import itertools
 import logging
 import math
 import os
@@ -457,9 +459,7 @@ class AmiciSBMLModel(SBMLModel):
         }
 
         #: the free parameters as loaded, the parameters of sbmlsim 0
-        self._loaded_parameters: np.ndarray = np.array(
-            amodel.get_free_parameters(), dtype=float
-        )
+        self._loaded_parameters: np.ndarray = vector_array(amodel.get_free_parameters())
         self._time: float = 0.0
         self._x: np.ndarray = np.zeros(0)
         self._p: np.ndarray = self._loaded_parameters.copy()
@@ -620,7 +620,7 @@ class AmiciSBMLModel(SBMLModel):
         # no custom initial state, AMICI evaluates it from the parameters
         amodel.set_initial_state([])
         self._p = parameters
-        self._x = np.array(amodel.get_initial_state(), dtype=float)
+        self._x = vector_array(amodel.get_initial_state())
         self.set_time(0.0)
 
     def _expressions(self) -> np.ndarray:
@@ -655,12 +655,10 @@ class AmiciSBMLModel(SBMLModel):
                 f"AMICI cannot evaluate the model '{self.label}' at the "
                 f"time {self._time}, status {rdata.status}."
             )
-        self._w = (
-            np.array(rdata.w, dtype=float).reshape(1, amodel.nw)[0]
-            if amodel.nw
-            else np.zeros(0)
-        )
-        self._xdot = np.array(rdata.xdot, dtype=float)
+        # the SWIG object of the return data, whose vectors `vector_array` copies
+        data = rdata.ptr
+        self._w = vector_array(data.w)
+        self._xdot = vector_array(data.xdot)
 
     def rates(self, states: Sequence[str]) -> np.ndarray:
         """Get the current rates of change of states.
@@ -2096,3 +2094,99 @@ def run_simulation() -> Callable[[Any, Any], Any]:
             _INTEGRATING.reset(token)
 
     return run
+
+
+#: the number of the first elements of a vector of AMICI which `vector_array`
+#: compares with the elements of the vector, besides the last one
+VECTOR_PROBES = 8
+
+#: whether `vector_array` copied a vector of AMICI element by element, which it
+#: logs once per process
+_VECTOR_FALLBACK = threading.Event()
+
+
+def vector_array(vector: Any) -> np.ndarray:
+    """Copy a vector of doubles of AMICI into a new array, bitwise.
+
+    A field of AMICI's `ReturnData`, e.g. `rdata.ptr.x` (`ptr` is the SWIG
+    object of the `ReturnDataView` of `run_simulation`), is a SWIG proxy of a
+    `std::vector<double>` (`DoubleVector`), which numpy reads element by
+    element through the iterator of the proxy in python, about 0.25 µs per
+    element (30 ms for the expressions of 1500 time points of HCTZ), and so
+    does the `ReturnDataView` (`_field_as_numpy`). AMICI's `stdVec2ndarray`,
+    which wraps the data of a vector, crashes in amici 1.2: its wrapper
+    releases the GIL (SWIG `-threads`) and it creates an array without it.
+
+    The function copies the data of the vector with one `memmove` instead:
+    it reads the pointers to the begin, the end and the end of the storage of
+    the vector from the object of the vector (the layout of libstdc++,
+    libc++ and the STL of MSVC without debug iterators) and uses them only
+    when they are consistent with the length of the vector, and compares the
+    copy bitwise with the first `VECTOR_PROBES` elements and the last one read
+    through the proxy; the elements between are the contiguous storage of the
+    vector from the first to the last. A vector which fails a check is copied
+    element by element, which is logged once per process; the result is
+    never another than that of `np.array(vector, dtype=float)`. Another
+    sequence, e.g. the tuple AMICI returns for a vector it returns by value
+    such as `Model.get_initial_state()`, is converted with `np.array`.
+
+    The vector must be alive and unchanged during the call: the caller keeps
+    the object which owns it, e.g. the `ReturnDataView`.
+
+    Args:
+        vector: a `DoubleVector` of AMICI or a sequence of numbers.
+
+    Returns:
+        A new array of the values, one dimensional.
+    """
+    if not isinstance(vector, _double_vector()):
+        return np.array(vector, dtype=float)
+    values = _vector_data(vector)
+    if values is None:
+        if not _VECTOR_FALLBACK.is_set():
+            _VECTOR_FALLBACK.set()
+            logger.debug(
+                "The data of a vector of AMICI is not where sbmlsim reads it, "
+                "its vectors are copied element by element."
+            )
+        return np.array(vector, dtype=float)
+    return values
+
+
+def _double_vector() -> type:
+    """Get the class `DoubleVector` of AMICI, the proxy of a `std::vector<double>`."""
+    return importlib.import_module("amici.sim.sundials").DoubleVector
+
+
+def _vector_data(vector: Any) -> np.ndarray | None:
+    """Copy the data of a `DoubleVector` of AMICI, see `vector_array`.
+
+    Returns:
+        The copy, or `None` when the pointers of the vector or the copy do not
+        agree with the vector.
+    """
+    size = len(vector)
+    if size == 0:
+        return np.zeros(0)
+    if ctypes.sizeof(ctypes.c_size_t) != ctypes.sizeof(ctypes.c_void_p):
+        return None
+    item = ctypes.sizeof(ctypes.c_double)
+    begin, end, capacity = (ctypes.c_size_t * 3).from_address(int(vector.this))
+    if (
+        begin == 0
+        or begin % ctypes.alignment(ctypes.c_double)
+        or end - begin != size * item
+        or capacity < end
+    ):
+        return None
+    values = np.empty(size)
+    ctypes.memmove(values.ctypes.data, begin, size * item)
+    # the first elements through the iterator of the proxy and the last one;
+    # `__getitem__` of the proxy raises a `TypeError` once libsbml was imported
+    # before the extension of AMICI, which `import amici` does
+    head = min(size, VECTOR_PROBES)
+    expected = np.array([*itertools.islice(vector, head), vector.back()], dtype=float)
+    copied = np.concatenate([values[:head], values[-1:]])
+    if not np.array_equal(copied.view(np.int64), expected.view(np.int64)):
+        return None
+    return values

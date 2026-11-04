@@ -4,12 +4,14 @@ import logging
 import math
 import os
 import shutil
+import struct
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import libsbml
+import numpy as np
 import pytest
 
 pytest.importorskip("amici")
@@ -33,6 +35,7 @@ from sbmlsim.model.model_amici import (
     cache_key,
     compiled_dir,
     using_cache,
+    vector_array,
 )
 from sbmlsim.model.symbols import EVENT_PREFIX, ModelSymbols, TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -1092,3 +1095,95 @@ def test_only_the_debug_messages_of_cvodes_of_an_integration_are_moved() -> None
         assert passes(record(logging.DEBUG, "[AMICI:simulation] another message"))
     finally:
         model_amici._INTEGRATING.reset(token)
+
+
+def _double_vector(values: list[float]) -> object:
+    """Get a `DoubleVector` of AMICI of values."""
+    from amici.sim.sundials import DoubleVector
+
+    return DoubleVector(values)
+
+
+def _bitwise(a: np.ndarray, b: np.ndarray) -> bool:
+    """Whether two arrays of doubles are equal bit for bit."""
+    return a.shape == b.shape and np.array_equal(a.view(np.int64), b.view(np.int64))
+
+
+#: values whose bits a conversion could change: a NaN with a payload, the
+#: negative zero, the infinities and the smallest subnormal number
+SPECIAL_VALUES = [
+    struct.unpack("<d", struct.pack("<Q", 0x7FF8_0000_0000_1234))[0],
+    -0.0,
+    math.inf,
+    -math.inf,
+    5e-324,
+    1 / 3,
+]
+
+
+@pytest.mark.parametrize("size", [0, 1, 2, 8, 9, 10, 1000])
+def test_a_vector_of_amici_is_copied_from_its_data_bitwise(size: int) -> None:
+    """`vector_array` copies the data of a vector, the values of `np.array` of it bit for bit."""
+    values = (SPECIAL_VALUES * (size // len(SPECIAL_VALUES) + 1))[:size]
+    vector = _double_vector(values)
+    if size:
+        # the copy of the data, not the fallback element by element
+        assert model_amici._vector_data(vector) is not None
+    array = vector_array(vector)
+    assert _bitwise(array, np.array(vector, dtype=float))
+    assert _bitwise(array, np.array(values, dtype=float))
+    assert array.dtype == np.float64
+    assert array.flags.owndata
+    assert array.flags.writeable
+    if size:
+        array[0] = 42.0
+        assert _bitwise(vector_array(vector), np.array(values, dtype=float))
+
+
+def test_a_vector_whose_data_does_not_agree_is_copied_element_by_element(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A vector which fails a check is `np.array` of it, logged once per process."""
+    from amici.sim.sundials import DoubleVector
+
+    class Elements(DoubleVector):
+        """Elements other than its data."""
+
+        def __iter__(self) -> Iterator[float]:
+            return (value + 1.0 for value in DoubleVector.__iter__(self))
+
+    class Shorter(DoubleVector):
+        """A length other than the one of its data."""
+
+        def __len__(self) -> int:
+            return DoubleVector.__len__(self) - 1
+
+    monkeypatch.setattr(model_amici, "_VECTOR_FALLBACK", model_amici.threading.Event())
+    values = [float(k) for k in range(20)]
+    with caplog.at_level(logging.DEBUG, logger=model_amici.__name__):
+        for kind in (Elements, Shorter):
+            vector = kind(values)
+            assert model_amici._vector_data(vector) is None
+            assert _bitwise(vector_array(vector), np.array(vector, dtype=float))
+    assert _bitwise(vector_array(Elements(values)), np.array(values) + 1.0)
+    fallbacks = [r for r in caplog.records if "element by element" in r.getMessage()]
+    assert len(fallbacks) == 1
+
+
+def test_a_sequence_which_is_no_vector_of_amici_is_an_array() -> None:
+    """A tuple, which AMICI returns for a vector it returns by value, is `np.array` of it."""
+    values = tuple(SPECIAL_VALUES)
+    assert _bitwise(vector_array(values), np.array(values, dtype=float))
+    assert vector_array(()).shape == (0,)
+
+
+def test_the_results_of_amici_are_copied_from_their_data() -> None:
+    """The states, expressions and rates of a `ReturnData` are copied from their data, as AMICI converts them."""
+    model = AmiciSBMLModel(source=sbml(EVENTS))
+    model.prepare([0.0, 0.5, 1.0, 1.5, 2.0])
+    rdata = model_amici.run_simulation()(model.amici_model, model.solver)
+    assert rdata.status == 0
+    for field in ("x", "w", "xdot"):
+        vector = getattr(rdata.ptr, field)
+        assert model_amici._vector_data(vector) is not None
+        assert _bitwise(vector_array(vector), np.asarray(rdata[field]).ravel())

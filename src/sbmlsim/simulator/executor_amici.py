@@ -178,7 +178,7 @@ import libsbml
 import numpy as np
 
 from sbmlsim.model.comparisons import COMPARISONS, trigger_comparisons
-from sbmlsim.model.model_amici import AmiciSBMLModel, run_simulation
+from sbmlsim.model.model_amici import AmiciSBMLModel, run_simulation, vector_array
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.changes import fire_events, fire_start_events, triggers
 from sbmlsim.simulator.formula import CompiledFormula
@@ -1159,17 +1159,12 @@ class _Course:
                 f"{grid[0]} to {grid[-1]}: "
                 f"{sundials.simulation_status_to_str(rdata.status)}, {messages}"
             )
-        # a model without states, e.g. of assignment rules only, has no `x`
-        x = (
-            np.array(rdata.x, dtype=float).reshape(grid.size, amodel.nx_rdata)
-            if amodel.nx_rdata
-            else np.zeros((grid.size, 0))
-        )
-        w = (
-            np.array(rdata.w, dtype=float).reshape(grid.size, amodel.nw)
-            if amodel.nw
-            else np.zeros((grid.size, 0))
-        )
+        # the SWIG object of the return data, whose vectors `vector_array`
+        # copies at once; a model without states, e.g. of assignment rules
+        # only, has an empty `x`
+        data = rdata.ptr
+        x = vector_array(data.x).reshape(grid.size, amodel.nx_rdata)
+        w = vector_array(data.w).reshape(grid.size, amodel.nw)
         return x, w
 
 
