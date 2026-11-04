@@ -18,6 +18,10 @@ from pathlib import Path
 
 import libsbml
 
+#: the prefix of the id sbmlsim gives an event of a model without one, by its
+#: position among the events of the model, see `EventSymbols.eid`
+EVENT_PREFIX = "__sbmlsim_event_"
+
 
 @dataclass(frozen=True)
 class EventSymbols:
@@ -27,7 +31,9 @@ class EventSymbols:
     true, which roadrunner does not, see `sbmlsim.simulator.executor`.
 
     Attributes:
-        eid: id of the event.
+        eid: id of the event, `EVENT_PREFIX` and the position of the event
+            among the events of the model for an event without an id, the
+            id the engines give it and the messages name it by.
         trigger: the trigger, MathML of selections which
             `sbmlsim.sbml_math.compile_math` compiles, `None` without a
             trigger. A trigger which it does not compile, one with `rateOf`
@@ -189,10 +195,11 @@ class ModelSymbols:
             events=tuple(
                 _event_symbols(
                     event,
+                    k,
                     concentration_species,
                     model.getListOfFunctionDefinitions(),
                 )
-                for event in model.getListOfEvents()
+                for k, event in enumerate(model.getListOfEvents())
             ),
             initial_assignment_order=_order(dependencies),
             initial_assignment_dependencies=dependencies,
@@ -402,10 +409,11 @@ def selection_math(
 
 def _event_symbols(
     event: libsbml.Event,
+    position: int,
     concentrations: frozenset[str],
     functions: libsbml.ListOfFunctionDefinitions,
 ) -> EventSymbols:
-    """Read an event of a model."""
+    """Read an event of a model, an event without an id named `EVENT_PREFIX` and its position."""
     trigger: libsbml.Trigger | None = event.getTrigger()
     assignments = []
     for assignment in event.getListOfEventAssignments():
@@ -415,7 +423,7 @@ def _event_symbols(
         if math is not None:
             assignments.append((target, math))
     return EventSymbols(
-        eid=event.getId(),
+        eid=event.getId() or f"{EVENT_PREFIX}{position}",
         trigger=None
         if trigger is None
         else selection_math(trigger.getMath(), concentrations, functions),

@@ -32,8 +32,9 @@ from sbmlsim.model.model_amici import (
     amici_sbml,
     cache_key,
     compiled_dir,
+    using_cache,
 )
-from sbmlsim.model.symbols import ModelSymbols, TargetKind
+from sbmlsim.model.symbols import EVENT_PREFIX, ModelSymbols, TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import (
     DEMO_SBML,
@@ -135,9 +136,7 @@ def test_loads_with_the_selections_of_roadrunner(source: Path) -> None:
     model = AmiciSBMLModel(source=source)
     assert model.engine is Engine.AMICI
     assert model.selections is not None
-    assert set(model.selections) == set(
-        RoadrunnerSBMLModel(source=source).selections or ()
-    )
+    assert model.selections == RoadrunnerSBMLModel(source=source).selections
     assert model.selections == model.default_selections()
     assert not model.selections_given
 
@@ -601,11 +600,6 @@ def _rate_of(model: libsbml.Model) -> None:
         (_rate_of, r"the csymbol rateOf in the assignment rule of 'b0'"),
         (_event(_delayed), "the delay of the event 'E'"),
         (
-            _event(_not_persistent),
-            "the trigger of the event 'E', which is not persistent",
-        ),
-        (_event(_priority), "the priority of the event 'E', which is no number"),
-        (
             _event(_equality),
             r"the trigger of the event 'E', which compares for equality \('time == 1'\)",
         ),
@@ -632,6 +626,37 @@ def test_an_unsupported_feature_raises(
     """A feature AMICI does not simulate as roadrunner raises before AMICI compiles."""
     with pytest.raises(ValueError, match=match):
         AmiciSBMLModel(source=_probe_with(edit))
+
+
+def test_a_priority_which_is_a_formula_and_a_trigger_which_is_not_persistent_are_the_executors() -> (
+    None
+):
+    """AMICI imports neither; the compiled SBML has no priority and every trigger persistent, the executor has both from the symbols."""
+
+    def edit(event: libsbml.Event) -> None:
+        _priority(event)
+        _not_persistent(event)
+
+    model = AmiciSBMLModel(source=_probe_with(_event(edit)))
+    compiled: libsbml.SBMLDocument = libsbml.readSBMLFromString(
+        amici_sbml(model.sbml, model.symbols, model.label).sbml
+    )
+    event: libsbml.Event = compiled.getModel().getEvent("E")
+    assert not event.isSetPriority()
+    assert event.getTrigger().getPersistent()
+    (symbols,) = model.symbols.events
+    assert symbols.priority is not None and not symbols.persistent
+
+
+def test_an_event_without_an_id_is_named_by_its_position() -> None:
+    """The id AMICI compiles an event without an id with is the one of its symbols."""
+
+    def unset(event: libsbml.Event) -> None:
+        event.unsetId()
+
+    unnamed = AmiciSBMLModel(source=_probe_with(_event(unset)))
+    assert unnamed.event_ids == (f"{EVENT_PREFIX}0",)
+    assert unnamed.symbols.events[0].eid == f"{EVENT_PREFIX}0"
 
 
 def test_a_stoichiometry_math_raises() -> None:
@@ -778,23 +803,29 @@ end
 """
 
 
+@pytest.fixture(scope="module")
+def cached(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, str, str]:
+    """A cache of the tests of the cache with `CACHED` compiled once: its root, the key of the model and the SBML AMICI compiled."""
+    root = tmp_path_factory.mktemp("amici-cache")
+    with using_cache(root):
+        model = AmiciSBMLModel(source=sbml(CACHED.format(k=0.25)))
+    compiled = amici_sbml(model.sbml, model.symbols, model.label).sbml
+    return root, cache_key(compiled), compiled
+
+
 def test_the_cache_reuses_a_compiled_model(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cached: tuple[Path, str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv(CACHE_ENV, str(tmp_path))
-    source = sbml(CACHED.format(k=0.25))
-    model = AmiciSBMLModel(source=source)
-    key = cache_key(amici_sbml(model.sbml, model.symbols, model.label).sbml)
-    assert [p.name for p in tmp_path.iterdir() if p.is_dir()] == [key]
-    assert compiled_dir(amici_sbml(model.sbml, model.symbols, model.label).sbml) == (
-        tmp_path / key
-    )
+    root, key, compiled = cached
+    monkeypatch.setenv(CACHE_ENV, str(root))
+    assert [p.name for p in root.iterdir() if p.is_dir()] == [key]
+    assert compiled_dir(compiled) == root / key
 
     def fail(*args: object, **kwargs: object) -> None:
         raise AssertionError("compiled again")
 
     monkeypatch.setattr(model_amici, "_compile", fail)
-    again = AmiciSBMLModel(source=source)
+    again = AmiciSBMLModel(source=sbml(CACHED.format(k=0.25)))
     assert again.value("k") == 0.25
     # another model is compiled
     with pytest.raises(AssertionError, match="compiled again"):
@@ -802,20 +833,22 @@ def test_the_cache_reuses_a_compiled_model(
 
 
 def test_a_compilation_which_did_not_end_is_removed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cached: tuple[Path, str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The directory of a compilation of a process which was killed is removed."""
+    root, key, compiled = cached
     monkeypatch.setenv(CACHE_ENV, str(tmp_path))
-    source = sbml(CACHED.format(k=0.125))
-    model = AmiciSBMLModel(source=source, selections=["S"])
-    compiled = amici_sbml(model.sbml, model.symbols, model.label).sbml
-    key = cache_key(compiled)
-    shutil.rmtree(tmp_path / key)
+
+    def copy(sbml_: str, key_: str, target: Path, label: str) -> None:
+        shutil.copytree(root / key, target)
+
+    monkeypatch.setattr(model_amici, "_compile", copy)
     left = tmp_path / f"{key}.left_over"
     (left / "build").mkdir(parents=True)
     assert compiled_dir(compiled) == tmp_path / key
     assert not left.exists()
     assert (tmp_path / f"{key}.lock").is_file()
+    assert AmiciSBMLModel(source=sbml(CACHED.format(k=0.25))).value("k") == 0.25
 
 
 def test_a_missing_build_tool_is_named(

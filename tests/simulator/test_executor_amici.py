@@ -2,7 +2,8 @@
 
 Every test runs a plan on both engines and compares them on the output
 times, see `tests.simulator.engine_comparison`; the steps of the integrator
-of AMICI are a grid with the events, see `sbmlsim.simulator.executor_amici`.
+of AMICI are a refined grid with the events, which interpolate as the steps
+of roadrunner, see `sbmlsim.simulator.executor_amici`.
 """
 
 import time
@@ -16,6 +17,7 @@ import pytest
 
 pytest.importorskip("amici")
 
+from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.model_amici import (
     SHIFT_PREFIX,
     AmiciSBMLModel,
@@ -29,9 +31,11 @@ from sbmlsim.resources import (
     REPRESSILATOR_SBML,
 )
 from sbmlsim.result import TimecourseResult
+from sbmlsim.result.timecourse import interpolate
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.simulator import engines, executor_amici
-from sbmlsim.simulator.executor import SteadyStateError
+from sbmlsim.simulator.executor import SteadyStateError, execute
+from sbmlsim.simulator.plan import compile_simulation, time_tolerance
 from tests.simulator import engine_comparison
 from tests.simulator.engine_comparison import (
     AT_SIX,
@@ -136,6 +140,60 @@ def assert_agree(
         assert_equal_results(amici, roadrunner)
 
 
+def assert_interpolates(
+    result: TimecourseResult,
+    source: str | Path,
+    simulation: dict[str, Any],
+    grid: np.ndarray,
+    tolerance: float,
+    changes: Sequence[float] = (),
+    columns: Sequence[str] | None = None,
+) -> None:
+    """Interpolate the steps of the integrator onto a grid and compare with the exact output of roadrunner at the grid.
+
+    Every column within `tolerance` of its largest magnitude, as the
+    consumers of the steps interpolate them (`time=` of a run, the bands,
+    `ScanResult.interpolate`); a column of a math which jumps, e.g. of a
+    piecewise, is left out, no linear interpolation has its jump.
+
+    Args:
+        result: the steps of the integrator of AMICI.
+        source: the model.
+        simulation: the arguments of the `Simulation` of the result, which
+            roadrunner runs with the grid as its output times.
+        grid: the times.
+        tolerance: the largest error relative to the largest magnitude.
+        changes: the times of the changes after the start.
+        columns: the columns compared, all for `None`.
+    """
+    model = RoadrunnerSBMLModel(source=source, settings=SETTINGS)
+    # a change is two rows of the exact output, its time is left out
+    grid = grid[~np.isin(grid, changes)]
+    plan = compile_simulation(
+        Simulation(times=grid.tolist(), **simulation), model.symbols, model.uinfo
+    )
+    exact = execute(plan, model, list(result.columns))
+    assert np.array_equal(exact.time, grid)
+    interpolated = interpolate(
+        result.time,
+        result.values,
+        grid,
+        time_tolerance(plan.start, plan.end),
+        np.asarray(changes, dtype=float),
+    )
+    for k, column in enumerate(result.columns):
+        if columns is not None and column not in columns:
+            continue
+        # the largest magnitude of the column, the one of the state after a
+        # change included, which the grid leaves out
+        scale = np.max(np.abs(result.values[:, k]))
+        if scale == 0.0:
+            np.testing.assert_array_equal(interpolated[:, k], 0.0, err_msg=column)
+            continue
+        error = np.max(np.abs(interpolated[:, k] - exact.values[:, k])) / scale
+        assert error <= tolerance, f"{column}: {error:.2e} of its largest value"
+
+
 @pytest.mark.parametrize(
     ("source", "simulation"),
     [
@@ -163,17 +221,117 @@ def test_output_times_of_the_packaged_models(
     assert_equal_results(amici, roadrunner)
 
 
-def test_the_steps_of_a_packaged_model() -> None:
-    """The substitute of the steps: a grid per segment, two rows at a change."""
-    selections = ["time", "[Cve_hctz]", "PODOSE_hctz"]
-    simulation = Simulation(end=24 * 60, changes=[Change(60, {"PODOSE_hctz": 25.0})])
+@pytest.mark.parametrize("dose", ["PODOSE_hctz", "IVDOSE_hctz"])
+def test_the_steps_of_a_packaged_model(dose: str) -> None:
+    """The substitute of the steps: a refined grid per segment, two rows at a change, which interpolates as the steps of roadrunner.
+
+    The grid of 100 intervals alone interpolates the concentration after an
+    intravenous dose to `7.7e-1` of its peak, the steps of roadrunner to
+    `3e-5`; the refined rows interpolate within `1e-5`.
+    """
+    selections = ["time", "[Cve_hctz]", "Cve_hctz", dose]
+    arguments: dict[str, Any] = {
+        "end": 24 * 60,
+        "changes": [Change(60, {dose: 25.0})],
+    }
+    simulation = Simulation(**arguments)
     amici, roadrunner = both(HCTZ_SBML, simulation, selections)
-    assert amici.time.size == 2 * (executor_amici.STEPS + 1)
-    np.testing.assert_allclose(
-        amici.time[: executor_amici.STEPS + 1],
-        np.linspace(0, 60, executor_amici.STEPS + 1),
-    )
     assert_equal_rows(amici, roadrunner, changes=[60.0])
+    # the grid of the first segment, refined where the curves bend
+    grid = amici.time[: executor_amici.STEPS + 1]
+    assert np.all(np.isin(np.linspace(0, 60, executor_amici.STEPS + 1), grid))
+    assert amici.time.size > 2 * (executor_amici.STEPS + 1)
+    assert amici.time.size < 3 * roadrunner.time.size
+    assert_interpolates(
+        amici,
+        HCTZ_SBML,
+        arguments,
+        np.linspace(0, 24 * 60, 2401),
+        tolerance=1e-5,
+        changes=[60.0],
+    )
+
+
+#: an oral dose with a lag, absorbed by a rate a piecewise of the time
+#: switches on at `tlag`; `ka = 20` is absorbed within minutes
+ORAL_LAG = """
+model oral_lag
+  compartment Vc = 10
+  species A_gut = 0
+  species C in Vc = 0
+  ka = KA
+  CL = 2
+  tlag = 0.5
+  ka_eff := piecewise(ka, time > tlag, 0)
+  absorption: A_gut -> C; ka_eff * A_gut
+  elimination: C -> ; CL * C
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 0.25, 0.5, 0.75, 1, 2, 6, 24], None])
+@pytest.mark.parametrize("ka", [1.2, 20.0])
+def test_an_oral_dose_with_a_lag(ka: float, times: list[float] | None) -> None:
+    """A fast absorption after a lag: the row at `tlag` has the rate as written, the steps interpolate within `1e-5`.
+
+    An output row exactly at the time the piecewise switches has the rate
+    and the flux of the SBML, `ka_eff = 0` at `tlag` for `time > tlag`, as
+    roadrunner, not the ones AMICI evaluates after the root.
+    """
+    source = sbml(ORAL_LAG.replace("KA", repr(ka)))
+    arguments: dict[str, Any] = {"end": 24, "changes": [Change(0, {"A_gut": 100.0})]}
+    simulation = Simulation(times=times, **arguments)
+    selections = ["time", "[C]", "A_gut", "ka_eff", "absorption"]
+    amici, roadrunner = both(source, simulation, selections)
+    assert_agree(amici, roadrunner, times)
+    if times is not None:
+        at_lag = rows_at(amici, 0.5)
+        assert at_lag.shape[0] == 1
+        assert at_lag[0, 3] == 0.0 and at_lag[0, 4] == 0.0
+        np.testing.assert_array_equal(at_lag[0, 3:], rows_at(roadrunner, 0.5)[0, 3:])
+    else:
+        assert_interpolates(
+            amici,
+            source,
+            arguments,
+            np.linspace(0, 24, 2401),
+            tolerance=1e-5,
+            columns=["[C]", "A_gut"],
+        )
+
+
+#: an infusion of the length `tend` by a piecewise of the time in an
+#: assignment rule, the rate of the flux into `C`
+INFUSION_RATE = """
+model infusion_rate
+  compartment Vc = 10
+  species C in Vc = 0
+  Ri = 5
+  tend = 1
+  CL = 2
+  Rate := piecewise(Ri, time <= tend, 0)
+  Jin: -> C; Rate
+  elimination: C -> ; CL * C
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 1, 1.5, 2, 4], None])
+def test_the_row_at_the_end_of_an_infusion_has_the_rate_as_written(
+    times: list[float] | None,
+) -> None:
+    """The row at `tend` has `Rate = Ri` and `Jin = Ri`, the values of `time <= tend` as written, as roadrunner.
+
+    A change at `tend` ends a segment exactly there in both output modes.
+    """
+    simulation = Simulation(end=4, times=times, changes=[Change(1, {"CL": 3.0})])
+    selections = ["time", "[C]", "Rate", "Jin", "CL"]
+    amici, roadrunner = both(sbml(INFUSION_RATE), simulation, selections)
+    before, after = rows_at(amici, 1.0)
+    assert before[2] == 5.0 and before[3] == 5.0
+    assert after[2] == 5.0 and after[3] == 5.0
+    assert_agree(amici, roadrunner, times, changes=[1.0])
+    np.testing.assert_allclose(rows_at(amici, 1.0), rows_at(roadrunner, 1.0), rtol=1e-6)
 
 
 @pytest.mark.parametrize("times", [[0, 0.25, 0.5, 1, 2], None])
@@ -1052,8 +1210,9 @@ def test_the_cost_is_linear_in_the_number_of_events(times: list[float] | None) -
 
     `X` is set back to 0 at 0.001: 1000 events per unit of the time. The
     integrations of a run are counted, so the test does not depend on the
-    speed of the machine; the time of 200 events is at most a few times
-    the time of 100.
+    speed of the machine (about three per event, and one per piece between
+    two events which checks the refinement of the steps); the time of 200
+    events is at most a few times the time of 100.
     """
     model = "model sawtooth\n  X = 0\n  X' = 1\n  n = 0\n"
     model += "  E: at (X >= 0.001), t0=true: X = 0, n = n + 1\nend"
@@ -1064,7 +1223,7 @@ def test_the_cost_is_linear_in_the_number_of_events(times: list[float] | None) -
     two_hundred, t_two_hundred = _integrations(
         source, Simulation(end=0.2, times=None if times is None else [0, 0.1, 0.2])
     )
-    assert hundred <= 3 * 100 + 10
+    assert hundred <= 4 * 100 + 10
     assert two_hundred <= 2 * hundred + 10
     assert t_two_hundred <= 4.0 * t_hundred + 0.05
 
@@ -1323,3 +1482,62 @@ def test_a_piecewise_of_a_difference_at_its_threshold_after_a_change(
     amici, roadrunner = both(sbml(model), simulation, ["time", "A", "B", "X"])
     np.testing.assert_allclose(amici["X"][-1], expected, rtol=1e-6)
     assert_agree(amici, roadrunner, times, changes=[5.0])
+
+
+#: two events at one time whose priorities are formulas of a parameter, the
+#: higher one fires first
+FORMULA_PRIORITIES = """
+model formula_priorities
+  X = 0
+  X' = 1
+  p = P
+  n = 0
+  E1: at (X >= 2), t0=false, fromTrigger=false, priority=p: n = 2 * n + 1
+  E2: at (X >= 2), t0=false, fromTrigger=false, priority=2 * p: n = 2 * n + 10
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2, 3], None])
+@pytest.mark.parametrize(("p", "n"), [(1.0, 21.0), (-1.0, 12.0)])
+def test_events_with_priorities_which_are_formulas(
+    p: float, n: float, times: list[float] | None
+) -> None:
+    """The executor orders simultaneous events by their priorities, which AMICI does not import as formulas."""
+    amici, roadrunner = both(
+        sbml(FORMULA_PRIORITIES.replace("P", repr(p))),
+        Simulation(end=3, times=times),
+        ["time", "X", "n"],
+    )
+    assert amici["n"][-1] == roadrunner["n"][-1] == n
+    assert_agree(amici, roadrunner, times, events=[2.0])
+
+
+#: an event whose trigger is not persistent, cancelled by the event of a
+#: higher priority at the same time, which sets its trigger back to false
+NOT_PERSISTENT = """
+model not_persistent
+  X = 0
+  X' = 1
+  n = 0
+  m = 0
+  E: at (X >= 1), t0=false, persistent=PERSISTENT, priority=1: n = n + 1
+  F: at (X >= 1), t0=false, priority=2: X = 0, m = m + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 1, 1.5, 2, 2.5], None])
+@pytest.mark.parametrize(("persistent", "n"), [("false", 0.0), ("true", 2.0)])
+def test_an_event_whose_trigger_is_not_persistent_is_cancelled(
+    persistent: str, n: float, times: list[float] | None
+) -> None:
+    """The executor cancels a pending event whose trigger became false, which AMICI does not import."""
+    amici, roadrunner = both(
+        sbml(NOT_PERSISTENT.replace("PERSISTENT", persistent)),
+        Simulation(end=2.5, times=times),
+        ["time", "X", "n", "m"],
+    )
+    assert amici["m"][-1] == roadrunner["m"][-1] == 2.0
+    assert amici["n"][-1] == roadrunner["n"][-1] == n
+    assert_agree(amici, roadrunner, times, events=[1.0, 2.0])

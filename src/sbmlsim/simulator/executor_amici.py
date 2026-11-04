@@ -66,7 +66,11 @@ It has the semantics of the executor of roadrunner, see
    at the start 0, and the comparison turns at most about the resolution
    late whatever its scale, `time/86400 > tlag`), so it keeps its value until the operands move by the shift in the
    direction which changes it, `time <= tend` false right after `tend`, as
-   roadrunner evaluates it at every step.
+   roadrunner evaluates it at every step. An output row exactly at the
+   threshold of such a comparison, e.g. at `tend`, has the rates and the
+   assignment rules evaluated with the comparison as written, the value of
+   the SBML, as roadrunner and COPASI have it (`Rate = Ri` at `tend`); AMICI
+   evaluates the expressions of the row after the root (`_Course._switch_rows`).
 6. AMICI finds the root of a trigger where it crosses its threshold, so the
    event is at its time; a strict trigger of the time is at its time
    exactly. The events of a root within the resolution of the time of a
@@ -79,14 +83,26 @@ It has the semantics of the executor of roadrunner, see
    reaches 2, as in roadrunner, where a strict trigger fires in the first
    step after the time. A root AMICI finds again at the start of the next
    integration within the resolution of the time, the crossing fired for, is
-   no event: the integration starts again from it (`_Course._advance`).
+   no event: the integration starts again from it (`_Course._advance`). A
+   trigger which an integration makes true within the rounding of its stop,
+   without a root reported by AMICI, fires at the stop, where the next
+   integration would start with the trigger true.
 7. The output of `OutputMode.TIMES` are the plan times of a segment. AMICI
    outputs the states at given times only, so the steps of the integrator
-   (`OutputMode.INTEGRATOR`) are a substitute: `STEPS` intervals of the same
-   length per segment, and every event of the model as two rows at its
-   time, the states before and after it (`_Course.steps`); the rows at the
-   changes, at the events and at the end correspond to the ones of
-   roadrunner.
+   (`OutputMode.INTEGRATOR`) are a substitute: a grid of `STEPS` intervals
+   of the same length per segment, refined where the linear interpolation
+   between two rows misses the solution at their midpoint by more than the
+   square root of the relative tolerance of the integrator times the
+   largest magnitude of the selection in the segment, so the rows
+   interpolate as accurately as the steps of roadrunner, whose density
+   CVODE chose (`_Course.steps`, `_Course._refine`: `1e-5` of the largest
+   value at the default tolerances, `6e-6` on the HCTZ model against `3e-5`
+   with the steps of roadrunner, at about twice the rows of roadrunner and
+   one integration per round of the refinement and piece between two
+   events, three to four times the cost of the grid alone), and every event
+   of the model as two rows at its time, the states before and after it;
+   the rows at the changes, at the events and at the end correspond to the
+   ones of roadrunner.
 8. The integration from a time runs to the end of the segment, after an
    event over the distance between the last two events, doubled after every
    integration without an event (`_Course._advance`): the integration past
@@ -106,8 +122,8 @@ Known differences to roadrunner:
 - roadrunner integrates a model which does not read the time in local time,
   every segment from its time 0; AMICI integrates every model in absolute
   time.
-- The steps of the integrator are a grid with the events, see above; the
-  steps of CVODES in AMICI are not exposed.
+- The steps of the integrator are the refined grid with the events, see
+  7.; the steps of CVODES in AMICI are not exposed.
 - AMICI has one absolute tolerance for every state, a concentration species
   in its concentration, see `AmiciSBMLModel.set_integrator_settings`; the
   steps differ between the engines, the rows at the changes, at the events
@@ -151,8 +167,11 @@ not simulate as roadrunner are refused when the model is loaded, see
 from __future__ import annotations
 
 import importlib
+import itertools
+import logging
+import math
 import sys
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 import libsbml
@@ -173,9 +192,15 @@ from sbmlsim.simulator.plan import (
 from sbmlsim.simulator.segments import simulate_segments, state_row
 from sbmlsim.simulator.segments import steady_state as integrate_to_steady_state
 
-#: the intervals of the grid of a segment of the substitute of the steps of
-#: the integrator, see the module
+logger = logging.getLogger(__name__)
+
+#: the intervals of the grid of a segment which the substitute of the steps
+#: of the integrator starts from, see the module and `_Course.steps`
 STEPS = 100
+
+#: the rows of a segment of the substitute of the steps of the integrator at
+#: most, see `_Course._refine`
+MAX_STEPS = 100_000
 
 #: the units in the last place of the largest term of the operands of a
 #: comparison exactly at its threshold by which it is shifted, so that AMICI
@@ -210,20 +235,35 @@ class _Comparison:
 
 
 @dataclass(frozen=True)
+class _Point:
+    """A row of the output with the state of AMICI it was computed from.
+
+    Attributes:
+        time: the time.
+        row: the values of the selections.
+        state: the states of AMICI.
+    """
+
+    time: float
+    row: np.ndarray
+    state: np.ndarray
+
+
+@dataclass(frozen=True)
 class _Event:
     """Events of the model at one time in the output.
 
     Attributes:
         time: the time.
-        before: the row of the state before the events.
-        after: the row of the state after them.
+        before: the state before the events, with its row.
+        after: the state after them, with its row.
         visible: whether an output time at the time has the state after the
             events, i.e. a trigger is true at the time, see the module.
     """
 
     time: float
-    before: np.ndarray
-    after: np.ndarray
+    before: _Point
+    after: _Point
     visible: bool
 
 
@@ -263,8 +303,19 @@ class _Course:
         #: evaluate
         self._operands: list[_Comparison | None] | None = None
         self._switch_operands: list[_Comparison | None] | None = None
+        #: the shifts of the switches as armed last, see `_arm_switches`
+        self._armed_switches: list[float] = [0.0] * len(self.switches)
+        #: the selections the operands of the switches read, with their
+        #: transform, see `_switch_rows`
+        self._switch_columns: (
+            tuple[list[str], Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]]
+            | None
+        ) = None
         #: the time the executor fired events last and the events
         self._fired: tuple[float, frozenset[int]] = (np.nan, frozenset())
+        #: the events fired at that time whose trigger was true at it and
+        #: false after their assignments, armed again, see `_fire`
+        self._rearmed: tuple[float, frozenset[int]] = (np.nan, frozenset())
         #: the comparisons at their threshold since the executor fired their
         #: events, with the values of their operands, see `_arm`
         self._seen: dict[int, tuple[float, float]] = {}
@@ -315,22 +366,23 @@ class _Course:
                 f"AMICI gave {len(rows)} rows at the {times.size} output times "
                 f"of the model '{self.model.label}' from the time {start}."
             )
-        result = np.vstack([head, *rows])
+        result = np.vstack([head, *(point.row for point in rows)])
         at = np.concatenate([[start], times])
         for event in events:
             index = np.flatnonzero(at == event.time)
             if event.visible and index.size:
-                result[index[0]] = event.after
+                result[index[0]] = event.after.row
         return result
 
     def steps(self, start: float, end: float) -> np.ndarray:
         """Integrate from `start` to `end` with the substitute of the steps of the integrator.
 
-        The output times are `STEPS` intervals of the same length; the events
-        of the model at a time are two rows at it, the states before and
-        after them, the row before them left out when the row before it is
-        at the time already (the row of a grid time or of the events before
-        them at the time).
+        The output times are a grid of `STEPS` intervals of the same length,
+        refined until the linear interpolation between the rows is accurate
+        (`_refine`); the events of the model at a time are two rows at it,
+        the states before and after them, the row before them left out when
+        the row before it is at the time already (the row of a grid time or
+        of the events before them at the time).
 
         Returns:
             The values, a row per time, the first at the start and the last
@@ -338,22 +390,113 @@ class _Course:
         """
         grid = np.linspace(start, end, STEPS + 1)[1:]
         grid[-1] = end
-        head = state_row(self.model, self.selections, start)
+        model = self.model
+        head = _Point(start, state_row(model, self.selections, start), model.state)
         rows, events = self._advance(start, end, grid)
         # the rows in the order of their times, the events after the row of
         # a grid time
-        points = [(float(t), 0, k) for k, t in enumerate(grid[: len(rows)])]
-        points += [(event.time, 1, k) for k, event in enumerate(events)]
-        points.sort(key=lambda point: point[:2])
-        result = [head]
-        for time, kind, k in points:
+        order = [(point.time, 0, k) for k, point in enumerate(rows)]
+        order += [(event.time, 1, k) for k, event in enumerate(events)]
+        order.sort(key=lambda point: point[:2])
+        points = [head]
+        for time, kind, k in order:
             if kind == 0:
-                result.append(rows[k])
+                points.append(rows[k])
                 continue
-            if result[-1][0] != time:
-                result.append(events[k].before)
-            result.append(events[k].after)
-        return np.vstack(result)
+            if points[-1].time != time:
+                points.append(events[k].before)
+            points.append(events[k].after)
+        return np.vstack([point.row for point in self._refine(points)])
+
+    def _refine(self, points: list[_Point]) -> list[_Point]:
+        """Refine the rows of a segment until the linear interpolation between them is accurate.
+
+        The rows are a piecewise linear curve, which every consumer of the
+        steps of the integrator interpolates (a `time=` grid of a run, the
+        bands, `ScanResult.interpolate`, the figures, the NCA), as the steps
+        of roadrunner, whose density CVODE chose. Every interval between two
+        rows at different times (two rows at one time are a jump, the states
+        before and after the events there) is checked at its midpoint, which
+        is integrated from the state of its first row: where the value of a
+        selection differs from the mean of the two rows by more than the
+        tolerance, the midpoint becomes a row and both halves are checked
+        again, until every interval passes or its halves would be shorter
+        than the resolution of the time (`_splits`). The tolerance is the
+        square root of the relative tolerance of the integrator (`1e-5` at
+        the default `1e-10`) times the largest magnitude of the selection in
+        the segment: the chord error of the rows of roadrunner is `2e-5` to
+        `1e-4` of the largest value at the defaults on the HCTZ model, the
+        tolerance of the integrator itself would need thousands of rows per
+        time constant. One integration per round and per piece between two
+        jumps checks the midpoints of all its pending intervals, so a
+        segment costs a handful of integrations more than its grid. A
+        segment of more than `MAX_STEPS` rows is reported and refined no
+        further.
+
+        Args:
+            points: the rows of the segment in the order of the output.
+
+        Returns:
+            The rows with the ones added, in the order of the output.
+        """
+        model = self.model
+        held = (model.time, model.state, self._armed_switches)
+        tolerance = math.sqrt(float(model.solver.get_relative_tolerance()))
+        scale = np.max(np.abs(np.vstack([point.row for point in points])), axis=0)
+        # the piece of every point, which a jump starts, and the pending
+        # intervals of every piece
+        pieces: dict[int, list[tuple[_Point, _Point]]] = {}
+        piece = 0
+        for a, b in itertools.pairwise(points):
+            if a.time == b.time:
+                piece += 1
+            elif self._splits(a, b):
+                pieces.setdefault(piece, []).append((a, b))
+        added: list[_Point] = []
+        while pieces and len(points) + len(added) < MAX_STEPS:
+            pending, pieces = pieces, {}
+            for piece, intervals in pending.items():
+                intervals.sort(key=lambda pair: pair[0].time)
+                first = intervals[0][0]
+                midpoints = np.array(
+                    [a.time + (b.time - a.time) / 2.0 for a, b in intervals]
+                )
+                model.set_state(first.time, first.state)
+                values, x = self._integrate(first.time, midpoints)
+                for k, (a, b) in enumerate(intervals):
+                    middle = _Point(float(midpoints[k]), values[k + 1], x[k + 1])
+                    scale = np.maximum(scale, np.abs(middle.row))
+                    chord = (a.row + b.row) / 2.0
+                    if np.all(np.abs(middle.row - chord) <= tolerance * scale):
+                        continue
+                    added.append(middle)
+                    for pair in ((a, middle), (middle, b)):
+                        if self._splits(*pair):
+                            pieces.setdefault(piece, []).append(pair)
+        if pieces:
+            logger.warning(
+                "The steps of the integrator of the model '%s' between the times "
+                "%s and %s have %s rows, the substitute of AMICI is refined no "
+                "further.",
+                model.label,
+                points[0].time,
+                points[-1].time,
+                len(points) + len(added),
+            )
+        model.set_state(held[0], held[1])
+        self._set_switch_shifts(held[2])
+        # the rows added are strictly between the rows they refine, the rows
+        # of a jump keep their order
+        return sorted([*points, *added], key=lambda point: point.time)
+
+    def _splits(self, a: _Point, b: _Point) -> bool:
+        """Whether the interval between two rows is long enough to be refined at its midpoint.
+
+        Both halves are longer than the resolution of the time, so no two
+        rows are within the resolution, which the interpolation of a grid
+        takes as one time, see `sbmlsim.result.timecourse.grid_weights`.
+        """
+        return (b.time - a.time) / 2.0 > self._ahead(b.time)
 
     def event_at_the_end(
         self, start: float, end: float, tolerance: float
@@ -364,7 +507,7 @@ class _Course:
         end, the events in it fired, see `_advance`.
         """
         _, events = self._advance(start, end + tolerance, np.empty(0))
-        return events[-1].after.copy() if events else None
+        return events[-1].after.row.copy() if events else None
 
     def horizon(self, start: float, end: float) -> None:
         """Integrate from `start` to `end` without output, see `sbmlsim.simulator.segments.Course`."""
@@ -380,7 +523,7 @@ class _Course:
 
     def _advance(
         self, start: float, end: float, times: np.ndarray
-    ) -> tuple[list[np.ndarray], list[_Event]]:
+    ) -> tuple[list[_Point], list[_Event]]:
         """Integrate from the current state at `start` to `end`, firing the events of the model.
 
         The model is integrated from `start` with AMICI, see the module: the
@@ -394,7 +537,14 @@ class _Course:
         integration runs to the end or, after an event, over the distance
         between the last two events, doubled after every integration without
         an event, so the part past the first root, which is discarded, is at
-        most as long as the one before it.
+        most as long as the one before it. A root within the resolution of
+        the time after the stop of the integration before is at the stop,
+        whose state that integration gave (an output time there has the
+        state after the events, as at a grid time), and a trigger which an
+        integration makes true within the rounding of its stop without a
+        root reported by AMICI, e.g. `X >= 1` with `X` at 1 up to its last
+        bit at the stop, fires at the stop: the next integration would
+        start with the trigger true and never find its root.
 
         Args:
             start: the start.
@@ -404,18 +554,20 @@ class _Course:
                 end.
 
         Returns:
-            The rows at the output times, the state before the events at a
-            time, and the events, by their times.
+            The rows at the output times with their states, the state before
+            the events at a time, and the events, by their times.
 
         Raises:
             RuntimeError: if AMICI fails to integrate, with its messages.
         """
         model = self.model
-        rows: list[np.ndarray] = []
+        rows: list[_Point] = []
         events: list[_Event] = []
         t = start
         previous: float | None = None
         chunk: float | None = None
+        # whether `t` is the stop of the integration before, without a root
+        stopped = False
         while t < end:
             events += self._arm(t)
             stop = end if chunk is None else min(end, t + chunk)
@@ -429,13 +581,45 @@ class _Course:
                 if wanted.size and wanted[-1] == stop
                 else np.append(wanted, stop)
             )
+            started = triggers(self.events, model.values, t, model)
             values, x = self._integrate(t, grid)
             found = self._root(x[-1], t)
             if found is None:
-                rows += list(values[1 : wanted.size + 1])
+                rows += _points(grid, values, x, wanted.size)
+                # a trigger which the integration made true within the
+                # rounding of its stop, whose root AMICI did not report: the
+                # root is at the stop, which the next integration would start
+                # past, the trigger true from its start; a strict comparison
+                # at its threshold since its event fired is true, see `_arm`,
+                # and an event which fired at the start fired for the
+                # crossing right after it unless its assignments set its
+                # trigger back, see `_fire`
+                reached = triggers(self.events, model.values, stop, model)
+                crossed = {self.comparisons[j].event for j in self._seen}
+                fired_here, rearmed = self._fired_at(t), self._rearmed_at(t)
+                due = [
+                    k
+                    for k in range(len(self.events))
+                    if started[k] is False
+                    and reached[k] is True
+                    and k not in crossed
+                    and (k not in fired_here or k in rearmed)
+                ]
+                if due:
+                    stopped = False
+                    events += self._fire_due(
+                        stop, [(stop, k) for k in due], _Point(stop, values[-1], x[-1])
+                    )
+                    chunk = max(
+                        stop - (start if previous is None else previous),
+                        self._ahead(stop),
+                    )
+                    previous = t = stop
+                    continue
                 if chunk is not None:
                     chunk *= 2.0
                 t = stop
+                stopped = True
                 continue
             root, flagged = found
             # the crossing an event fired for at the start, which AMICI finds
@@ -445,14 +629,16 @@ class _Course:
             silent = flagged[0][1] in self._fired_at(t) and root <= t + self._ahead(t)
             # the rows before the root are the ones of the model; the events
             # are at a grid time within the resolution of the time of the
-            # root, whose state the integration gave, else at the root, whose
-            # state is integrated from the last grid time before it
+            # root, whose state the integration gave, at the start for a root
+            # within the resolution after it (the stop of the integration
+            # before, a hair before the root), else at the root, whose state
+            # is integrated from the last grid time before it
             at = int(np.argmin(np.abs(grid - root)))
             if abs(float(grid[at]) - root) <= self._ahead(root) and not (
                 silent and grid[at] < root
             ):
                 time, row, state = float(grid[at]), values[at + 1], x[at + 1]
-            elif root <= t:
+            elif root <= t or (stopped and not silent and root <= t + self._ahead(t)):
                 time, row, state = t, values[0], x[0]
             else:
                 time = root
@@ -461,11 +647,13 @@ class _Course:
                 model.set_state(last, x[at])
                 between, y = self._integrate(last, np.array([root]))
                 row, state = between[-1], y[-1]
+            stopped = False
             kept = int(np.searchsorted(wanted, time, side="left"))
-            rows += list(values[1 : kept + 1])
+            rows += _points(grid, values, x, kept)
             model.set_state(time, state)
+            before = _Point(time, row, state)
             if kept < wanted.size and wanted[kept] == time:
-                rows.append(row)
+                rows.append(before)
             if silent:
                 # the events fired at the start are the ones fired at the root
                 self._fired = (time, self._fired_at(t))
@@ -473,7 +661,9 @@ class _Course:
                 continue
             # the roots up to the time, one after the other
             limit = max(root, time)
-            events += self._fire_due(time, [d for d in flagged if d[0] <= limit], row)
+            events += self._fire_due(
+                time, [d for d in flagged if d[0] <= limit], before
+            )
             chunk = max(
                 time - (start if previous is None else previous), self._ahead(time)
             )
@@ -535,7 +725,9 @@ class _Course:
             )
             due = [k for k in candidates if ahead[k] is True]
             if due:
-                head = state_row(model, self.selections, time)
+                head = _Point(
+                    time, state_row(model, self.selections, time), model.state
+                )
                 result.append(self._fire(time, due, head, visible=False))
                 continue
             for j, _, _ in held:
@@ -565,7 +757,13 @@ class _Course:
         shifts = [0.0] * len(self.switches)
         for j, _, _ in self._at_threshold(self._switch_operands, time):
             shifts[j] = self._shift(self._switch_operands, j, time)
-        self.model.set_switch_shifts(shifts)
+        self._set_switch_shifts(shifts)
+
+    def _set_switch_shifts(self, shifts: list[float]) -> None:
+        """Set the shifts of the comparisons of the maths of the model and keep them, see `_arm_switches`."""
+        self._armed_switches = shifts
+        if self.switches:
+            self.model.set_switch_shifts(shifts)
 
     def _shift(
         self, comparisons: Sequence[_Comparison | None] | None, j: int, time: float
@@ -756,7 +954,7 @@ class _Course:
         return flagged[0][0], flagged
 
     def _fire_due(
-        self, time: float, due: Sequence[tuple[float, int]], row: np.ndarray
+        self, time: float, due: Sequence[tuple[float, int]], before: _Point
     ) -> list[_Event]:
         """Fire the events of roots at a time, by their roots, the ones whose trigger is true at the time first.
 
@@ -764,7 +962,7 @@ class _Course:
             time: the time.
             due: the events with the times of their roots, which are at the
                 time within its resolution.
-            row: the row of the state before them.
+            before: the state before them, with its row.
 
         Returns:
             The events, the ones of a root in the order of the roots, the
@@ -778,12 +976,15 @@ class _Course:
             later = [k for k in group if k not in visible]
             for part, seen in ((visible, True), (later, False)):
                 if part:
-                    before = result[-1].after if result else row
-                    result.append(self._fire(time, part, before, seen))
+                    result.append(
+                        self._fire(
+                            time, part, result[-1].after if result else before, seen
+                        )
+                    )
         return result
 
     def _fire(
-        self, time: float, due: Sequence[int], before: np.ndarray, visible: bool
+        self, time: float, due: Sequence[int], before: _Point, visible: bool
     ) -> _Event:
         """Fire events at a time, with the events they trigger, see `sbmlsim.simulator.changes.fire_events`.
 
@@ -796,7 +997,7 @@ class _Course:
         Args:
             time: the time.
             due: the events.
-            before: the row of the state before them.
+            before: the state before them, with its row.
             visible: whether an output time at the time has the state after
                 them, see `_Event`.
         """
@@ -812,11 +1013,20 @@ class _Course:
         # the time as well
         handled = {*due, *fired}
         self._record(time, handled)
+        if visible:
+            # an event whose assignments set its trigger back, false after
+            # them within the tolerance of its threshold, fires again when
+            # the trigger becomes true, also within the rounding of the stop
+            # of an integration, see `_advance`
+            rearmed = frozenset(k for k in handled if not self._visible(k, time))
+            if rearmed:
+                self._rearmed = (time, self._rearmed_at(time) | rearmed)
         for j, left, right in held:
             if self.comparisons[j].event in handled:
                 self._seen[j] = (left, right)
         model.set_time(time)
-        return _Event(time, before, state_row(model, self.selections, time), visible)
+        after = _Point(time, state_row(model, self.selections, time), model.state)
+        return _Event(time, before, after, visible)
 
     def _record(self, time: float, fired: Collection[int]) -> None:
         """Record the events the executor fired at a time."""
@@ -826,6 +1036,10 @@ class _Course:
     def _fired_at(self, time: float) -> frozenset[int]:
         """Get the events the executor fired at a time."""
         return self._fired[1] if self._fired[0] == time else frozenset()
+
+    def _rearmed_at(self, time: float) -> frozenset[int]:
+        """Get the events fired at a time whose assignments set their trigger back, see `_fire`."""
+        return self._rearmed[1] if self._rearmed[0] == time else frozenset()
 
     def _integrate(
         self, start: float, times: np.ndarray
@@ -866,8 +1080,60 @@ class _Course:
                 f"'{model.label}' between the times {start} and {grid[-1]}."
             )
         values = self._transform(grid, x, w)
+        for k in self._switch_rows(grid, x, w):
+            # the expressions at a row exactly at the threshold of a
+            # comparison of a math, with the comparison as written
+            model.set_state(float(grid[k]), x[k])
+            values[k] = state_row(model, self.selections, float(grid[k]))
         model.set_state(float(grid[-1]), x[-1])
         return values, x
+
+    def _switch_rows(self, grid: np.ndarray, x: np.ndarray, w: np.ndarray) -> list[int]:
+        """Get the rows of an integration after its first at which a comparison of a math is exactly at its threshold.
+
+        AMICI evaluates the expressions of an output time at the root of a
+        comparison of a math, e.g. `time <= tend` at `tend`, after the
+        root, so the rates and the assignment rules of the row are the ones
+        after the switch; roadrunner evaluates them with the comparison as
+        written, the value of the SBML. The operands of the comparisons are
+        evaluated on the rows at once; the executor evaluates the rows found
+        again with the comparison as written, see `_integrate`.
+
+        Args:
+            grid: the times of the integration, the start first.
+            x: the states of AMICI, a row per time.
+            w: the expressions of AMICI, a row per time.
+        """
+        if not self.switches or grid.size < 2:
+            return []
+        if self._switch_operands is None:
+            self._switch_operands = _compile_operands(
+                (s.left, s.right) for s in self.switches
+            )
+        if self._switch_columns is None:
+            symbols = sorted(
+                {
+                    symbol
+                    for comparison in self._switch_operands
+                    if comparison is not None
+                    for formula in (comparison.left, comparison.right)
+                    for symbol in formula.symbols
+                }
+            )
+            self._switch_columns = (symbols, self.model.output_transform(symbols))
+        symbols, transform = self._switch_columns
+        columns = transform(grid[1:], x[1:], w[1:])
+        values = {symbol: columns[:, k] for k, symbol in enumerate(symbols)}
+        at = np.zeros(grid.size - 1, dtype=bool)
+        for comparison in self._switch_operands:
+            if comparison is None:
+                continue
+            left, right = (
+                np.asarray(f.apply([values[s] for s in f.symbols]), dtype=float)
+                for f in (comparison.left, comparison.right)
+            )
+            at |= left == right
+        return [int(k) + 1 for k in np.flatnonzero(at)]
 
     def _run(self, grid: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Run AMICI from the current state at the first time of a grid with output at the others.
@@ -905,6 +1171,21 @@ class _Course:
             else np.zeros((grid.size, 0))
         )
         return x, w
+
+
+def _points(
+    times: np.ndarray, values: np.ndarray, x: np.ndarray, count: int
+) -> list[_Point]:
+    """Get the first rows of an integration after its start as points, see `_Point`.
+
+    Args:
+        times: the output times of the integration after its start.
+        values: the values of the selections, a row at the start and a row
+            per time.
+        x: the states of AMICI, a row at the start and a row per time.
+        count: the number of rows after the start.
+    """
+    return [_Point(float(times[k]), values[k + 1], x[k + 1]) for k in range(count)]
 
 
 def _compile_operands(

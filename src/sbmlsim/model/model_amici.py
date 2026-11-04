@@ -84,7 +84,10 @@ start of a simulation, as the ones a change triggers. A feature which AMICI
 does not compile or simulates otherwise than roadrunner raises at the load,
 see `_check_supported`; a trigger which compares for equality, `a == b` or
 `a != b`, is refused there: AMICI has no root of it, and roadrunner fires it
-only where a step of its integrator lands on the equality.
+only where a step of its integrator lands on the equality. The priorities
+of the events and the persistence of their triggers are the executor's, see
+`sbmlsim.simulator.changes.fire_events`, so the compiled SBML has no
+priority and every trigger persistent, which AMICI imports.
 """
 
 from __future__ import annotations
@@ -137,7 +140,12 @@ from sbmlsim.model.model_sbml import (
     sbml_maths,
     variable_features,
 )
-from sbmlsim.model.symbols import ModelSymbols, TargetKind, selection_math
+from sbmlsim.model.symbols import (
+    EVENT_PREFIX,
+    ModelSymbols,
+    TargetKind,
+    selection_math,
+)
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.units import UnitRegistry
 
@@ -171,10 +179,6 @@ IMPORT_OPTIONS: dict[str, Any] = {
 
 #: the id of the event which makes the entities a change sets states of AMICI
 TARGETS_EVENT = "__sbmlsim_targets"
-
-#: the prefix of the id sbmlsim gives an event of the model without one, by
-#: its position among the events of the model
-EVENT_PREFIX = "__sbmlsim_event_"
 
 #: the prefix of the state of AMICI which records that an event of the model
 #: fired in an integration, 1 after its first execution, by the position of
@@ -1272,10 +1276,9 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
     """Check that AMICI simulates a model as roadrunner does.
 
     AMICI does not import the delay csymbol, a delay of an event, a
-    priority of an event which is no number, a trigger which is not
-    persistent, a stoichiometry math and a fast reaction, and fails to build
-    a model which reads the csymbol rateOf (in an assignment rule, AMICI
-    1.2); it integrates a model with algebraic rules as a system of
+    stoichiometry math and a fast reaction, and fails to build a model
+    which reads the csymbol rateOf (in an assignment rule, AMICI 1.2); it
+    integrates a model with algebraic rules as a system of
     differential algebraic equations, which the executor does not, and makes
     the stoichiometry of a species reference which is not constant, which
     roadrunner changes, and an initial assignment of a species reference or
@@ -1319,23 +1322,12 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
                 f"an initial assignment of the conversion factor "
                 f"'{assignment.getSymbol()}'"
             )
-    level = model.getLevel()
     functions: libsbml.ListOfFunctionDefinitions = model.getListOfFunctionDefinitions()
-    for event in model.getListOfEvents():
-        eid = event.getId()
+    for k, event in enumerate(model.getListOfEvents()):
+        eid = event.getId() or f"{EVENT_PREFIX}{k}"
         if event.isSetDelay():
             raise unsupported(f"the delay of the event '{eid}'")
-        if event.isSetPriority():
-            priority = event.getPriority().getMath()
-            if priority is not None and not priority.isNumber():
-                raise unsupported(
-                    f"the priority of the event '{eid}', which is no number"
-                )
         trigger = event.getTrigger()
-        if level >= 3 and trigger is not None and not trigger.getPersistent():
-            raise unsupported(
-                f"the trigger of the event '{eid}', which is not persistent"
-            )
         if trigger is not None and trigger.isSetMath():
             node: libsbml.ASTNode = trigger.getMath().deepCopy()
             if functions.size():
@@ -1460,7 +1452,15 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         if not event.isSetId():
             event.setId(f"{EVENT_PREFIX}{k}")
         events.append(event.getId())
+        # the executor orders the events by their priorities and cancels a
+        # pending event whose trigger is not persistent, AMICI only records
+        # the roots of the triggers, see the module; AMICI imports neither a
+        # priority which is no number nor a trigger which is not persistent
+        if event.isSetPriority():
+            event.unsetPriority()
         trigger = event.getTrigger()
+        if level >= 3 and trigger is not None:
+            trigger.setPersistent(True)
         if trigger is not None and trigger.isSetMath():
             node: libsbml.ASTNode = trigger.getMath().deepCopy()
             if functions.size():
@@ -1898,12 +1898,10 @@ def _compile(sbml: str, key: str, target: Path, label: str) -> None:
     logger.info("AMICI compiles the model '%s' into '%s'.", label, target)
     start = time_module.perf_counter()
     try:
-        try:
-            importer = amici.SbmlImporter(sbml, from_file=False)
-        except sbml_errors as err:
-            raise ValueError(f"AMICI cannot import the model '{label}': {err}") from err
-        # AMICI prints the output of a failed build, which the error carries
+        # the path, the standard output and the level of the logger of AMICI
+        # are the ones of the process, so two threads compile one at a time
         with (
+            _COMPILE_LOCK,
             _build_tools_on_path(),
             _quiet(),
             contextlib.redirect_stdout(io.StringIO()),
@@ -1914,6 +1912,14 @@ def _compile(sbml: str, key: str, target: Path, label: str) -> None:
                     f"path; it is part of the extra amici, `pip install "
                     f"sbmlsim[amici]`."
                 )
+            try:
+                importer = amici.SbmlImporter(sbml, from_file=False)
+            except sbml_errors as err:
+                raise ValueError(
+                    f"AMICI cannot import the model '{label}': {err}"
+                ) from err
+            # AMICI prints the output of a failed build, which the error
+            # carries
             try:
                 importer.sbml2amici(
                     name,
@@ -1951,6 +1957,10 @@ def _compile(sbml: str, key: str, target: Path, label: str) -> None:
         label,
         time_module.perf_counter() - start,
     )
+
+
+#: the lock of the process-global state a compilation changes, see `_compile`
+_COMPILE_LOCK = threading.Lock()
 
 
 @contextlib.contextmanager

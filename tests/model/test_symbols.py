@@ -3,7 +3,7 @@
 import libsbml
 import pytest
 
-from sbmlsim.model.symbols import ModelSymbols, TargetKind
+from sbmlsim.model.symbols import EVENT_PREFIX, ModelSymbols, TargetKind
 from sbmlsim.sbml_math import compile_math, math_formula
 from tests.simulator.models import sbml
 
@@ -116,3 +116,18 @@ def test_a_concentration_depends_on_its_compartment_of_a_rule() -> None:
     assert symbols.initial_concentration_values == {"T": 2.0}
     # an initial assignment which reads the concentration after it
     assert symbols.initial_assignment_order == ("S", "T", "W", "R")
+
+
+def test_an_event_without_an_id_is_named_by_its_position() -> None:
+    """The messages of the executor name an event without an id by `EVENT_PREFIX` and its position."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(
+        sbml(
+            "model unnamed\n  q = 0; X = 0\n"
+            "  E: at (q > 1), t0=false: X = 1\n"
+            "  F: at (q > 2), t0=false: X = 2\nend"
+        )
+    )
+    doc.getModel().getEvent("F").unsetId()
+    first, second = ModelSymbols.from_sbml(libsbml.writeSBMLToString(doc)).events
+    assert first.eid == "E"
+    assert second.eid == f"{EVENT_PREFIX}1"
