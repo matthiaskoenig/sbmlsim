@@ -25,6 +25,13 @@ non-constant and the target of one event which never fires
 (`TARGETS_EVENT`), which makes them part of the state of COPASI; an entity
 whose number in the SBML is not finite (`NaN`) is left out, COPASI integrates
 no state which is not finite, and a change of it raises.
+
+LSODA in COPASI finds no crossing of a comparison whose root function is
+exactly 0 when it starts. In a model with events, the SBML which COPASI loads
+therefore has every comparison of a trigger and of a math COPASI integrates
+shifted by a parameter (`SHIFT_PREFIX`, `SWITCH_PREFIX`), which is 0 but
+before an integration from a state in which a comparison of a trigger is
+exactly at its threshold, see `CopasiSBMLModel.shift_comparisons`.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import math
+import sys
 import weakref
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -43,6 +51,13 @@ import libsbml
 import numpy as np
 
 from sbmlsim.engine import Engine, import_copasi
+from sbmlsim.model.comparisons import (
+    COMPARISONS,
+    STRICT_COMPARISONS,
+    math_comparisons,
+    shift_comparison,
+    trigger_comparisons,
+)
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.model.model_sbml import (
@@ -70,6 +85,30 @@ logger = logging.getLogger(__name__)
 
 #: the id of the event which makes the entities a change sets part of the state
 TARGETS_EVENT = "__sbmlsim_targets"
+
+#: the prefix of the parameter by which a comparison of the trigger of an
+#: event is shifted, by the position of the event and of the comparison in its
+#: trigger, see `CopasiSBMLModel.shift_comparisons`
+SHIFT_PREFIX = "__sbmlsim_shift_"
+
+#: the prefix of the parameter by which a comparison of a math COPASI
+#: integrates is shifted, by its position among them, see
+#: `CopasiSBMLModel.shift_comparisons`
+SWITCH_PREFIX = "__sbmlsim_switch_"
+
+#: the units in the last place of its threshold by which a comparison exactly
+#: at its threshold is shifted, see `CopasiSBMLModel.shift_comparisons`: more
+#: than LSODA steps over after a root of another function which is exactly 0
+#: where LSODA found it, e.g. the end of a plateau of a rate at `time < 1.5`
+#: (`DRCHEK` takes the root functions about a hundred units in the last place
+#: of the time later and misses a crossing in between), for operands which
+#: change by their magnitude over the time, and less than the error of LSODA
+#: in the location of a root
+THRESHOLD_ULPS = 1024.0
+
+#: the shift of a comparison by which its roots are told, see
+#: `CopasiSBMLModel._comparison_roots`
+_PROBE_SHIFT = 1e300
 
 #: the name of the integrator, the method `deterministic` of COPASI
 INTEGRATOR = "lsoda"
@@ -136,6 +175,24 @@ class _Kind(StrEnum):
     CONCENTRATION = "concentration"
     VALUE = "value"
     FLUX = "flux"
+
+
+@dataclass(frozen=True)
+class _Shifted:
+    """A comparison shifted by a parameter, see `_with_shifted_comparisons`.
+
+    Attributes:
+        pid: the id of the parameter of the shift.
+        strict: whether the comparison is strict, `>` or `<`, false at its
+            threshold; `>=` and `<=` are true there.
+        trigger: whether it is a comparison of the trigger of an event, else
+            of a math COPASI integrates, e.g. the condition of a piecewise of
+            a rate.
+    """
+
+    pid: str
+    strict: bool
+    trigger: bool
 
 
 @dataclass(frozen=True)
@@ -268,10 +325,14 @@ class CopasiSBMLModel(SBMLModel):
         # the data model is removed when the model is released, also when the
         # model is never used, see `close`
         self._finalizer = weakref.finalize(self, _remove_datamodel, dm)
+        #: the comparisons of the triggers and of the maths, shifted, see
+        #: `shift_comparisons`
+        self._shifted: tuple[_Shifted, ...]
+        shifted, self._shifted = _with_shifted_comparisons(sbml, self)
         #: the entities whose value in the SBML is not finite, which COPASI
         #: keeps out of its state, see `_with_targets_event`
         self._not_a_number: frozenset[str]
-        targeted, self._not_a_number = _with_targets_event(sbml, self)
+        targeted, self._not_a_number = _with_targets_event(shifted, self)
         try:
             imported = dm.importSBMLFromString(targeted)
         except COPASI.CCopasiException:
@@ -299,6 +360,16 @@ class CopasiSBMLModel(SBMLModel):
             self.reactions[reaction.getSBMLId()] = reaction
         #: the selections resolved in COPASI, see `_selection`
         self._selections: dict[str, _Selection] = {}
+        #: the roots of COPASI of every shifted comparison, see
+        #: `_comparison_roots`
+        self._roots_of: tuple[tuple[int, ...], ...] | None = None
+        #: the position of the states of the roots in the values of the math
+        #: container of COPASI, `None` if not found, see `_comparison_roots`
+        self._states_at: int | None = None
+        #: the values of the roots of COPASI as LSODA saw them last, at the end
+        #: of the last integration or at the initialization, see
+        #: `shift_comparisons`
+        self._seen: np.ndarray | None = None
 
         #: the values of the model as loaded, see `loaded_value`
         self._loaded: dict[str, float] = {}
@@ -667,16 +738,25 @@ class CopasiSBMLModel(SBMLModel):
             self.cmodel.compileIfNecessary()
             drain_messages(self.label)
             self._cleared = cleared
+            self._roots_of = None
             mc = self.mc
             self._loaded_state = COPASI.FloatVector(mc.getCompleteInitialState())
         mc.setCompleteInitialState(self._loaded_state)
         mc.pushInitialState()
 
     def _apply_initial_values(self) -> None:
-        """Make the initial values the current values of the model."""
+        """Make the initial values the current values of the model.
+
+        COPASI evaluates the triggers of the events in the initial state and
+        fires an event whose comparison is exactly at its threshold and turns
+        right after it by the rate of change of its root (a strict one which
+        rises, one which is not strict which falls); the roots are recorded
+        there, see `shift_comparisons`.
+        """
         mc = self.mc
         mc.applyInitialValues()
         _update_current_values(mc)
+        self.record_roots()
 
     @override
     def reset(self) -> None:
@@ -871,6 +951,181 @@ class CopasiSBMLModel(SBMLModel):
         mc = self.mc
         _write_value(mc.getMathObject(self.cmodel.getValueReference()), time)
         _update_current_values(mc)
+
+    def shift_comparisons(self) -> None:
+        """Shift the comparisons which are exactly at their threshold, before an integration.
+
+        LSODA in COPASI finds the root of a comparison where its root
+        function changes its sign. A root function which is exactly 0 when
+        LSODA starts to watch it is masked while it stays 0, and when one is
+        0 LSODA takes every root function at a little after the start
+        (`DRCHEK`), so a comparison of a trigger at its threshold is not found
+        when it turns later, e.g. `X > 2` after a change which sets `X = 2`
+        and a rise of `X` right after the change or after a plateau, which
+        roadrunner fires. COPASI handles such a root only when it applies the
+        initial values, by the sign of its rate of change.
+
+        Every comparison of a trigger and of a math COPASI integrates is
+        compiled shifted by a parameter, see `_with_shifted_comparisons`,
+        which is 0 but before an integration from a state in which a
+        comparison of a trigger is exactly at its threshold with its value as
+        written, e.g. after a change which sets a value to it or the time to
+        the time of a change. Then every comparison at its threshold is
+        shifted, so that no root function of COPASI is 0 at the start and
+        LSODA finds the crossings: a comparison keeps its value as written
+        until the operands move by the shift in the direction which changes
+        it, a comparison of a trigger which COPASI found turned at its
+        threshold where LSODA saw it last (`record_roots`: at the end of the
+        integration before or at the initial values, and the state of its
+        root in COPASI is the turned value), e.g. `time > 10` at the end of a
+        horizon of a steady state at 10, keeps its turned value, so its event
+        does not fire again. The shift is `THRESHOLD_ULPS` units in the last
+        place of the threshold, see `_threshold_shift`. Without such a
+        comparison of a trigger every shift is 0, the model as written.
+
+        Raises:
+            RuntimeError: if the states of the roots are not found in the
+                values of COPASI, see `_root_states_position`.
+        """
+        if not self._shifted:
+            return
+        roots_of = self._comparison_roots()
+        shifts = [self._shift_object(s.pid) for s in self._shifted]
+        for shift in shifts:
+            _write_value(shift, 0.0)
+        roots = self._roots()
+        at_threshold = [any(roots[i] == 0.0 for i in indices) for indices in roots_of]
+        turned = [
+            shifted.trigger and at and self._turned(shifted, indices)
+            for shifted, indices, at in zip(
+                self._shifted, roots_of, at_threshold, strict=True
+            )
+        ]
+        if any(
+            shifted.trigger and at and not t
+            for shifted, at, t in zip(self._shifted, at_threshold, turned, strict=True)
+        ):
+            for j, indices in enumerate(roots_of):
+                if at_threshold[j]:
+                    sign = -1.0 if turned[j] else 1.0
+                    value = self._threshold_shift(shifts[j], indices, sign)
+                    _write_value(shifts[j], value)
+        self.mc.updateRootValues(False)
+
+    def record_roots(self) -> None:
+        """Record the roots of COPASI where LSODA saw them last, after an integration or at the initial values, see `shift_comparisons`."""
+        if self._shifted:
+            self._seen = self._roots()
+
+    def _turned(self, shifted: _Shifted, indices: Sequence[int]) -> bool:
+        """Whether COPASI found a comparison of a trigger at its threshold turned where LSODA saw it last.
+
+        The roots of the comparison were 0 where they were recorded last
+        (`record_roots`), and the states of the roots in COPASI are the
+        values after the crossing, true for a strict comparison and false
+        for one which is not strict; a root COPASI did not find there, or a
+        value set since, has the value as written.
+        """
+        seen, at = self._seen, self._states_at
+        if seen is None or at is None:
+            return False
+        values = self.mc.getValues()
+        turned = 1.0 if shifted.strict else 0.0
+        return all(seen[i] == 0.0 and values.get(at + i) == turned for i in indices)
+
+    def _roots(self) -> np.ndarray:
+        """Get the current values of the roots of COPASI, of the triggers and the discontinuities."""
+        mc = self.mc
+        mc.updateRootValues(False)
+        roots = mc.getRoots()
+        return np.array([roots.get(i) for i in range(roots.size())], dtype=float)
+
+    def _comparison_roots(self) -> tuple[tuple[int, ...], ...]:
+        """Get the positions of the roots of COPASI of every shifted comparison.
+
+        A root of a comparison is one whose value changes with its shift,
+        told once per compilation of the model of COPASI, together with the
+        position of the states of the roots in the values of COPASI, see
+        `_root_states_position`.
+
+        Raises:
+            RuntimeError: if the states of the roots are not found.
+        """
+        if self._roots_of is None:
+            base = self._roots()
+            result: list[tuple[int, ...]] = []
+            self._states_at = None
+            for shifted in self._shifted:
+                shift = self._shift_object(shifted.pid)
+                value = float(shift.getValue())
+                _write_value(shift, _PROBE_SHIFT)
+                roots = self._roots()
+                if self._states_at is None:
+                    self._states_at = _root_states_position(self.mc, roots)
+                _write_value(shift, value)
+                changed = (roots != base) & ~(np.isnan(roots) & np.isnan(base))
+                result.append(tuple(int(i) for i in np.flatnonzero(changed)))
+            self.mc.updateRootValues(False)
+            if self._states_at is None and any(result):
+                raise RuntimeError(
+                    f"The states of the roots of the model '{self.label}' are not "
+                    f"found in the values of COPASI, whose layout sbmlsim reads."
+                )
+            self._roots_of = tuple(result)
+        return self._roots_of
+
+    def _shift_object(self, pid: str) -> Any:
+        """Get the object of COPASI of the value of the parameter of a shift."""
+        return self.mc.getMathObject(self.entities[pid].getValueReference())
+
+    def _threshold_shift(
+        self, shift: Any, indices: Sequence[int], sign: float
+    ) -> float:
+        """Get the shift of a comparison exactly at its threshold, see `shift_comparisons`.
+
+        `THRESHOLD_ULPS` units in the last place of the threshold, at least
+        the absolute tolerance of LSODA, e.g. for a threshold 0. The unit in
+        the last place is the smallest power of two which moves every root of
+        the comparison off 0, found by bisection of the exponent.
+
+        Args:
+            shift: the object of COPASI of the parameter of the shift, 0.
+            indices: the positions of the roots of the comparison.
+            sign: 1 for a shift which keeps the value of the comparison as
+                written at its threshold, -1 for one which keeps the other.
+
+        Returns:
+            The shift with its sign, 0 if no shift moves the roots, e.g. for
+            an operand which is not finite.
+        """
+
+        def moves(exponent: int) -> bool:
+            _write_value(shift, sign * math.ldexp(1.0, exponent))
+            roots = self._roots()
+            return all(roots[i] != 0.0 for i in indices)
+
+        low, high = (
+            sys.float_info.min_exp - sys.float_info.mant_dig,
+            sys.float_info.max_exp - 1,
+        )
+        if not moves(high):
+            _write_value(shift, 0.0)
+            return 0.0
+        # the smallest exponent which moves the roots is in (low, high]
+        if moves(low):
+            high = low
+        while high - low > 1:
+            middle = (low + high) // 2
+            if moves(middle):
+                high = middle
+            else:
+                low = middle
+        method = self.dm.getTask("Time-Course").getMethod()
+        absolute = method.getParameter(LSODA_PARAMETERS["absolute_tolerance"])
+        shifted = max(
+            math.ldexp(1.0, high) * THRESHOLD_ULPS, float(absolute.getDblValue())
+        )
+        return sign * min(shifted, sys.float_info.max)
 
     def rates(self, states: Sequence[str]) -> np.ndarray:
         """Get the current rates of change of states.
@@ -1144,12 +1399,146 @@ def _update_current_values(mc: COPASI.CMathContainer) -> None:
     mc.updateTransientDataValues()
 
 
+def _root_states_position(mc: COPASI.CMathContainer, roots: np.ndarray) -> int | None:
+    """Get the position of the states of the roots in the values of a math container.
+
+    COPASI keeps the values of its roots and, right after them, their states
+    (1 true, 0 false) in the values of its math container, which the API
+    does not give otherwise, after the values of the entities and of the
+    events. The roots are told by a value which the shift of a comparison
+    makes unique, `_PROBE_SHIFT`; the value of the shift itself, an entity,
+    may be the same, so the last block of the values which is the roots
+    followed by states is taken.
+
+    Args:
+        mc: the math container.
+        roots: the current values of the roots, one of them moved by the
+            probe.
+
+    Returns:
+        The position of the state of the first root, `None` if the values
+        are not laid out so.
+    """
+    values = mc.getValues()
+    n = len(roots)
+    count = values.size()
+    moved = np.flatnonzero(np.abs(roots) >= _PROBE_SHIFT / 2)
+    if moved.size == 0:
+        return None
+    probe = int(moved[0])
+    for k in reversed(range(count - 2 * n + 1)):
+        if values.get(k + probe) != roots[probe]:
+            continue
+        laid_out = all(
+            values.get(k + i) == roots[i]
+            or (math.isnan(values.get(k + i)) and math.isnan(roots[i]))
+            for i in range(n)
+        ) and all(values.get(k + n + i) in (0.0, 1.0) for i in range(n))
+        if laid_out:
+            return k + n
+    return None
+
+
 def _vector(references: Sequence[Any]) -> COPASI.ObjectStdVector:
     """Get the vector of COPASI of references to objects."""
     vector = COPASI.ObjectStdVector()
     for reference in references:
         vector.append(reference)
     return vector
+
+
+def _with_shifted_comparisons(
+    sbml: str, model: SBMLModel
+) -> tuple[str, tuple[_Shifted, ...]]:
+    """Shift the comparisons of the triggers and of the maths COPASI integrates by parameters.
+
+    For a model with events, the comparisons through the logical operators of
+    a trigger, `>`, `<`, `>=` and `<=`, and the ones anywhere in a kinetic
+    law, an assignment rule or a rate rule, e.g. the condition of a piecewise
+    of a rate, of which COPASI finds the roots as well, are shifted by a
+    parameter of the value 0, `a > b + shift` (`SHIFT_PREFIX`,
+    `SWITCH_PREFIX`, see `sbmlsim.model.comparisons.shift_comparison`), which
+    a simulation sets at the threshold of the comparison, see
+    `CopasiSBMLModel.shift_comparisons`; a math is rewritten with the
+    function definitions it calls expanded only if it has such a comparison.
+    A shift of 0 is the comparison as written, bitwise. The parameters are
+    made targets of `TARGETS_EVENT` with the other parameters, see
+    `_with_targets_event`.
+
+    Args:
+        sbml: the SBML of the model.
+        model: the model, whose events and label are used.
+
+    Returns:
+        The SBML with the shifted comparisons, and the shifted comparisons
+        in the order of their parameters.
+
+    Raises:
+        ValueError: if the model has an element of the id of a parameter of
+            a shift.
+    """
+    if not model.symbols.events:
+        return sbml, ()
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    sbml_model: libsbml.Model = doc.getModel()
+    functions: libsbml.ListOfFunctionDefinitions = (
+        sbml_model.getListOfFunctionDefinitions()
+    )
+    shifted: list[_Shifted] = []
+
+    def shift(comparison: libsbml.ASTNode, pid: str, trigger: bool) -> None:
+        if sbml_model.getElementBySId(pid) is not None:
+            raise ValueError(
+                f"The model '{model.label}' has the entity '{pid}', the id of a "
+                f"parameter sbmlsim adds for COPASI."
+            )
+        parameter: libsbml.Parameter = sbml_model.createParameter()
+        parameter.setId(pid)
+        parameter.setValue(0.0)
+        parameter.setConstant(False)
+        strict = comparison.getType() in STRICT_COMPARISONS
+        shifted.append(_Shifted(pid=pid, strict=strict, trigger=trigger))
+        shift_comparison(comparison, pid)
+
+    def expanded(math: libsbml.ASTNode) -> libsbml.ASTNode:
+        node: libsbml.ASTNode = math.deepCopy()
+        if functions.size():
+            libsbml.SBMLTransforms.replaceFD(node, functions)
+        return node
+
+    for k, event in enumerate(sbml_model.getListOfEvents()):
+        trigger: libsbml.Trigger | None = event.getTrigger()
+        if trigger is None or not trigger.isSetMath():
+            continue
+        node = expanded(trigger.getMath())
+        found = trigger_comparisons(node, COMPARISONS)
+        for j, (_, _, comparison) in enumerate(found):
+            shift(comparison, f"{SHIFT_PREFIX}{k}_{j}", trigger=True)
+        if found:
+            trigger.setMath(node)
+    if not shifted:
+        return sbml, ()
+
+    elements: list[Any] = [
+        reaction.getKineticLaw()
+        for reaction in sbml_model.getListOfReactions()
+        if reaction.isSetKineticLaw()
+    ]
+    elements += [rule for rule in sbml_model.getListOfRules() if not rule.isAlgebraic()]
+    switches = 0
+    for element in elements:
+        if not element.isSetMath():
+            continue
+        node = expanded(element.getMath())
+        found = math_comparisons(node, COMPARISONS)
+        # a comparison in an operand of another one first, which the shift of
+        # the other one copies
+        for _, _, comparison in reversed(found):
+            shift(comparison, f"{SWITCH_PREFIX}{switches}", trigger=False)
+            switches += 1
+        if found:
+            element.setMath(node)
+    return libsbml.writeSBMLToString(doc), tuple(shifted)
 
 
 def _with_targets_event(sbml: str, model: SBMLModel) -> tuple[str, frozenset[str]]:

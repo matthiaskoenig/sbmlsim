@@ -24,11 +24,18 @@ comparable:
    state the one before it ended in (`processRaw(False)`); the states of the
    triggers are set from the current values before every run
    (`resetEventsFound`), since COPASI does not see the values the executor
-   sets between two runs, see `check_supported` for the delayed events; a
-   delayed event COPASI has scheduled stays pending across the runs, and
-   one closer after the start of a run than LSODA integrates, e.g. at the
-   end after the stop before it, fires at its time from the state at the
-   start (`_TimeCourse.steps`). The output of `OutputMode.TIMES` is the plan
+   sets between two runs, see `check_supported` for the delayed events.
+   LSODA finds no crossing of a comparison whose root function is exactly 0
+   when it starts, so before a run from a state in which a comparison of a
+   trigger is exactly at its threshold with its value as written, e.g. `X > 2`
+   after a change which sets `X = 2`, or `time > 2` from a change at 2, the
+   comparisons at their threshold are shifted by a little
+   (`CopasiSBMLModel.shift_comparisons`) and the event fires when the
+   comparison turns, right after the start or after a plateau, as in
+   roadrunner. A delayed event COPASI has scheduled stays pending across the
+   runs, and one closer after the start of a run than LSODA integrates, e.g.
+   at the end after the stop before it, fires at its time from the state at
+   the start (`_TimeCourse.steps`). The output of `OutputMode.TIMES` is the plan
    times of the segment, of `OutputMode.INTEGRATOR` the steps of LSODA,
    which have an event of the model as two rows at its time, the states
    before and after it. A change after the start, the one at the end included, has two rows
@@ -74,6 +81,11 @@ Known differences to roadrunner:
   false, or loses one which a crossing after the change schedules, which
   roadrunner cancels and schedules. Without such writes COPASI simulates
   the delayed events itself.
+- An event of the model which sets a comparison of a trigger exactly to its
+  threshold, e.g. `X = 2` for `X > 2`, in an integration of COPASI: LSODA
+  finds no crossing when the comparison turns later in the same run, which
+  roadrunner fires; the executor shifts only the comparisons at their
+  threshold at the start of a run.
 - roadrunner does not fire an event whose trigger, e.g. `X > 0.5 && X < 0.8`,
   is true only within one step of CVODE, which finds the roots of both
   comparisons in it; COPASI fires it.
@@ -289,7 +301,9 @@ class _TimeCourse:
         # state); the states are set from the current values, without firing.
         # A delayed event COPASI has scheduled stays in its queue, e.g. across
         # the stop before the end into the events at the end and the steady
-        # state after the end
+        # state after the end. The comparisons at their threshold are shifted
+        # first, so that LSODA finds their crossings
+        model.shift_comparisons()
         model.mc.resetEventsFound()
         self._problem.setDuration(_duration(start, end, past))
         dm = model.dm
@@ -318,6 +332,7 @@ class _TimeCourse:
                 f"COPASI failed to integrate the model '{model.label}' from the "
                 f"time {start} to {end}."
             )
+        model.record_roots()
         n = handler.getNumRowsDuring()
         rows = np.array(
             [list(handler.getNthRow(k)) for k in range(n)], dtype=float

@@ -879,3 +879,200 @@ def test_an_event_at_a_change_from_a_start_of_a_coarser_rounding(
     stop = segment_stop(start, change)
     course.times(start, np.array([stop]), change)
     assert stopped.value("time") == stop
+
+
+#: the rate of `X` of the models at a threshold: held until 1.001, a plateau
+#: after a change at 1, then rising
+PLATEAU = "piecewise(0, time < 1.001, 1)"
+
+
+def at_threshold(
+    trigger: str,
+    rate: str = PLATEAU,
+    x0: float = 0.0,
+    t0: str = "true",
+    persistent: str = "true",
+) -> str:
+    """Get the SBML of a model whose event counts in `n` and keeps its first time in `T1`."""
+    return sbml(
+        f"""
+        model at_threshold
+          X = {x0}
+          X' = {rate}
+          n = 0
+          T1 = -1
+          E: at ({trigger}), t0={t0}, persistent={persistent}: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+        end
+        """
+    )
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.001, 1.002, 5], None])
+@pytest.mark.parametrize(
+    ("trigger", "rate", "x0", "t0", "persistent", "fired"),
+    [
+        ("X > 2", PLATEAU, 0.0, "true", "true", 1.0),
+        ("X > 2", PLATEAU, 0.0, "false", "true", 1.0),
+        ("X > 2", PLATEAU, 0.0, "true", "false", 1.0),
+        ("X > 2", "piecewise(0, time < 1.5, 1)", 0.0, "true", "true", 1.0),
+        ("X > 2", "1", 0.0, "true", "true", 1.0),
+        ("X > 2", "piecewise(0, time < 1, 1)", 0.0, "true", "true", 1.0),
+        ("X >= 2", PLATEAU, 0.0, "true", "true", 1.0),
+        ("X < 2", "piecewise(0, time < 1.001, -1)", 3.0, "true", "true", 1.0),
+        ("X > 2", "piecewise(0, time < 1.001, -1)", 5.0, "true", "true", 0.0),
+        ("X <= 2", "piecewise(0, time < 1.001, -1)", 5.0, "false", "true", 1.0),
+    ],
+    ids=[
+        "plateau",
+        "plateau-t0-false",
+        "plateau-not-persistent",
+        "plateau-to-an-exact-switch",
+        "rising",
+        "rising-from-a-switch",
+        "geq-at-the-change",
+        "less-falling",
+        "falling-away",
+        "leq-falling",
+    ],
+)
+def test_a_trigger_a_change_leaves_at_its_threshold_fires_when_it_turns(
+    trigger: str,
+    rate: str,
+    x0: float,
+    t0: str,
+    persistent: str,
+    fired: float,
+    times: list[float] | None,
+) -> None:
+    """A trigger a change leaves exactly at its threshold fires when it turns later.
+
+    The change sets `X = 2`; LSODA finds no root of a root function which
+    is 0 when it starts, the comparison is shifted, see
+    `CopasiSBMLModel.shift_comparisons`. `X >= 2` fires at the change.
+    """
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    copasi, roadrunner = both(
+        at_threshold(trigger, rate, x0, t0, persistent),
+        simulation,
+        ["time", "X", "n", "T1"],
+    )
+    assert roadrunner["n"][-1] == fired
+    assert copasi["n"][-1] == fired
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[1.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.001, 1.002, 5], None])
+def test_an_event_triggered_by_an_event_at_a_threshold(
+    times: list[float] | None,
+) -> None:
+    """An event whose trigger reads the counter of an event a change left at its threshold."""
+    model = """
+    model chained
+      X = 0
+      X' = piecewise(0, time < 1.001, 1)
+      n = 0
+      m = 0
+      E: at (X > 2), t0=false: n = n + 1
+      F: at (n > 0.5), t0=false: m = m + 1
+    end
+    """
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    copasi, roadrunner = both(sbml(model), simulation, ["time", "X", "n", "m"])
+    assert copasi.values[-1, 2:].tolist() == [1.0, 1.0]
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[1.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.001, 1.002, 5], None])
+@pytest.mark.parametrize("t0", ["true", "false"])
+def test_a_trigger_at_its_threshold_at_the_start(
+    t0: str, times: list[float] | None
+) -> None:
+    """A trigger exactly at its threshold in the initial state fires when it turns."""
+    copasi, roadrunner = both(
+        at_threshold("X > 2", x0=2.0, t0=t0),
+        Simulation(end=5, times=times),
+        ["time", "X", "n", "T1"],
+    )
+    assert copasi["n"][-1] == 1.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner)
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 2, 3, 5], None])
+def test_an_event_of_the_time_at_a_change_fires_right_after_it(
+    times: list[float] | None,
+) -> None:
+    """`time > 2` with a change at 2 fires right after the change, as roadrunner."""
+    simulation = Simulation(end=5, changes=[Change(2, {"X": 5.0})], times=times)
+    copasi, roadrunner = both(
+        at_threshold("time > 2", rate="1"), simulation, ["time", "X", "n", "T1"]
+    )
+    assert copasi["n"][-1] == 1.0
+    assert copasi["T1"][-1] == pytest.approx(2.0, abs=1e-9)
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[2.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 2, 5], None])
+def test_a_trigger_copasi_fired_at_its_threshold_does_not_fire_again(
+    times: list[float] | None,
+) -> None:
+    """A comparison COPASI found turned at its threshold keeps its value when others are shifted.
+
+    `X > 2` is at its threshold in the initial state and rises, COPASI fires
+    `E` at the initial values; `Y > 1` is at its threshold on a plateau,
+    which shifts every comparison at its threshold: `X > 2` keeps its value
+    after the crossing, `E` does not fire again, `F` fires when `Y` rises.
+    """
+    model = """
+    model turned
+      X = 2
+      X' = 1
+      Y = 1
+      Y' = piecewise(0, time < 1, 1)
+      n = 0
+      m = 0
+      E: at (X > 2), t0=true: n = n + 1
+      F: at (Y > 1), t0=true: m = m + 1
+    end
+    """
+    copasi, roadrunner = both(
+        sbml(model), Simulation(end=5, times=times), ["time", "X", "Y", "n", "m"]
+    )
+    assert copasi.values[-1, 3:].tolist() == [1.0, 1.0]
+    if times is None:
+        assert_equal_rows(copasi, roadrunner)
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+def test_known_difference_an_event_of_the_model_which_sets_a_threshold() -> None:
+    """Pin a known difference: an event of the model which sets a trigger to its threshold.
+
+    `E` sets `X = 2` at 1 and `X` rises right after it: roadrunner fires
+    `G: X > 2` right after 1, COPASI fires no event in the integration in
+    which its own event left the comparison exactly at its threshold, which
+    the executor does not see, see the module of the executor.
+    """
+    model = """
+    model internal
+      X = 0
+      X' = 1
+      n = 0
+      E: at (time > 1), t0=true: X = 2
+      G: at (X > 2), t0=true: n = n + 1
+    end
+    """
+    copasi, roadrunner = both(sbml(model), Simulation(end=5, times=[0, 5]), ["n"])
+    assert roadrunner["n"].tolist() == [0.0, 1.0]
+    assert copasi["n"].tolist() == [0.0, 0.0]
