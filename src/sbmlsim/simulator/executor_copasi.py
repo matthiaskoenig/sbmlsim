@@ -135,6 +135,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from sbmlsim.engine import kept_encoding
 from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
@@ -737,22 +738,25 @@ def execute(
     """
     check_supported(plan, model)
     columns = output_columns(selections)
-    model.initialize(preinit_targets(plan))
-    try:
-        if plan.steady_state is not None:
-            start_events(model, 0.0)
-            steady_state(model, plan.steady_state)
-        else:
-            start_events(model, plan.start)
-        values = simulate_segments(
-            plan,
-            model,
-            model.values,
-            columns,
-            _TimeCourse(model, columns, time_tolerance(plan.start, plan.end)),
-        )
-    finally:
-        model.simulated()
+    # COPASI may set the locale of the process when it compiles, see
+    # `kept_encoding`
+    with kept_encoding():
+        model.initialize(preinit_targets(plan))
+        try:
+            if plan.steady_state is not None:
+                start_events(model, 0.0)
+                steady_state(model, plan.steady_state)
+            else:
+                start_events(model, plan.start)
+            values = simulate_segments(
+                plan,
+                model,
+                model.values,
+                columns,
+                _TimeCourse(model, columns, time_tolerance(plan.start, plan.end)),
+            )
+        finally:
+            model.simulated()
     values = output_time(values, columns, plan, model.symbols)
     return TimecourseResult(columns=tuple(columns), values=values)
 
@@ -781,11 +785,18 @@ def start_events(model: CopasiSBMLModel, time: float) -> None:
 
 
 def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
-    """Refuse a plan which writes values while COPASI schedules delayed events.
+    """Refuse a plan which COPASI does not simulate as roadrunner.
 
     `execute` checks every plan, and `Simulator.run` the plan of the first
     point of every simulation and model before it runs a point, see
     `sbmlsim.simulator.engines.check_plan`.
+
+    COPASI multiplies the stoichiometries of the species with a conversion
+    factor by the value of the factor when it imports the model, see
+    `sbmlsim.model.model_copasi._compile_conversion_factors`, so a plan
+    which sets a conversion factor or an entity its initial assignment
+    reads (`CopasiSBMLModel.conversion_factors`), before the initialization
+    or at a time, is refused.
 
     COPASI keeps the events of the model with a delay pending across the
     runs of a plan, and the states of the triggers are set from the values
@@ -797,9 +808,30 @@ def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
     a presimulation.
 
     Raises:
-        NotImplementedError: for a model with a delayed event and a plan with
-            a change after the start or a presimulation.
+        NotImplementedError: for a plan which sets a conversion factor or an
+            entity its initial assignment reads, and for a model with a
+            delayed event and a plan with a change after the start or a
+            presimulation.
     """
+    assignments = (
+        *preinit_targets(plan),
+        *(a for event in plan.events for a in event.assignments),
+    )
+    changed = sorted(
+        {
+            plan.symbols.entity(a.target)
+            for a in assignments
+            if plan.symbols.entity(a.target) in model.conversion_factors
+        }
+    )
+    if changed:
+        factors = sorted({model.conversion_factors[sid] for sid in changed})
+        raise NotImplementedError(
+            f"The engine COPASI does not simulate a change of {changed} of the "
+            f"model '{model.label}', which sets the conversion factor "
+            f"{', '.join(repr(f) for f in factors)}: COPASI multiplies the "
+            f"stoichiometries by the conversion factor as loaded."
+        )
     delayed = [event.eid for event in plan.symbols.events if event.delayed]
     if not delayed:
         return

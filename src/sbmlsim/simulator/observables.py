@@ -19,6 +19,7 @@ evaluated, and the selections only it reads are not selected.
 
 from __future__ import annotations
 
+import functools
 import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -135,14 +136,14 @@ class ObservableGraph:
     outputs: tuple[str, ...]
     doses: tuple[str, ...] = ()
 
-    @property
+    @functools.cached_property
     def timecourses(self) -> tuple[str, ...]:
-        """Get the kept timecourses."""
+        """Get the kept timecourses, computed once."""
         return tuple(k for k in self.keep if self.kinds[k] is TIMECOURSE)
 
-    @property
+    @functools.cached_property
     def scalars(self) -> tuple[str, ...]:
-        """Get the kept values per simulation."""
+        """Get the kept values per simulation, computed once."""
         return tuple(k for k in self.keep if self.kinds[k] is SCALAR)
 
     def evaluate(

@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import sbmlsim.simulator.plan as plan_module
 from sbmlsim import parallel
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.simulation import Scan, Simulation
@@ -161,3 +162,36 @@ def test_a_unit_with_a_factor_has_the_factor_in_its_scale() -> None:
 def test_a_unit_pint_does_not_normalize_is_compared_as_it_is() -> None:
     uinfo = UnitsInformation({"x": "mole/(", "y": "mmol"}, ureg)
     assert model_units(uinfo) == (("x", "mole/(", None), ("y", "mole", 0.001))
+
+
+def test_the_units_of_a_model_are_computed_once_per_content() -> None:
+    uinfo = UnitsInformation({"x": "mmol", "y": "l"}, ureg)
+    contract = model_units(uinfo)
+    assert model_units(uinfo) is contract
+    uinfo["x"] = "mol"
+    assert model_units(uinfo) == (
+        ("x", "mole", 1.0),
+        ("y", "meter ** 3", pytest.approx(1e-3)),
+    )
+    uinfo.udict["y"] = "ml"
+    assert model_units(uinfo)[1] == ("y", "meter ** 3", pytest.approx(1e-6))
+    other = UnitsInformation(dict(uinfo.udict), ureg)
+    assert model_units(other) == model_units(uinfo)
+
+
+def test_a_simulation_checks_the_units_of_its_model_from_the_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    simulator = Simulator(n_workers=1)
+    model = simulator.load(sbml())
+    plan = simulator.compile(model, Simulation(end=1, steps=1))
+    calls: list[str] = []
+    base_unit = plan_module._base_unit
+    monkeypatch.setattr(
+        plan_module,
+        "_base_unit",
+        lambda registry, unit: calls.append(unit) or base_unit(registry, unit),
+    )
+    simulator.simulate(model, plan)
+    simulator.simulate(model, Simulation(end=1, steps=1))
+    assert calls == []

@@ -1,5 +1,6 @@
 """Pytest configuration."""
 
+import locale
 import logging
 import multiprocessing
 import os
@@ -85,6 +86,27 @@ def _package_logging() -> Iterator[None]:
     logger.handlers[:] = handlers
     logger.setLevel(level)
     logger.propagate = propagate
+
+
+@pytest.fixture(autouse=True)
+def _encoding_kept() -> Iterator[None]:
+    """Fail a test after which the encoding of the locale changed.
+
+    COPASI sets the locale of the process to `C` when it is imported and when
+    it compiles some models, which makes the preferred encoding of python
+    ASCII; every later test of the worker which reads a text file without an
+    encoding failed (on the macOS runner of GitHub, #448). The package keeps
+    the category `LC_CTYPE` across the calls of COPASI, see
+    `sbmlsim.engine.kept_encoding`.
+    """
+    before = locale.setlocale(locale.LC_CTYPE)
+    yield
+    after = locale.setlocale(locale.LC_CTYPE)
+    if after != before:
+        locale.setlocale(locale.LC_CTYPE, before)
+        pytest.fail(
+            f"The test changed the locale LC_CTYPE from '{before}' to '{after}'."
+        )
 
 
 @pytest.fixture(autouse=True)
