@@ -1,5 +1,6 @@
 """The model of an SBML model in AMICI."""
 
+import importlib
 import logging
 import math
 import os
@@ -1099,7 +1100,7 @@ def test_only_the_debug_messages_of_cvodes_of_an_integration_are_moved() -> None
 
 def _double_vector(values: list[float]) -> object:
     """Get a `DoubleVector` of AMICI of values."""
-    from amici.sim.sundials import DoubleVector
+    DoubleVector = importlib.import_module("amici.sim.sundials").DoubleVector
 
     return DoubleVector(values)
 
@@ -1144,7 +1145,7 @@ def test_a_vector_whose_data_does_not_agree_is_copied_element_by_element(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """A vector which fails a check is `np.array` of it, logged once per process."""
-    from amici.sim.sundials import DoubleVector
+    DoubleVector = importlib.import_module("amici.sim.sundials").DoubleVector
 
     class Elements(DoubleVector):
         """Elements other than its data."""
