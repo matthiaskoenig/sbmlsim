@@ -4,7 +4,7 @@ import contextlib
 import importlib
 import locale
 import sys
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable
 from enum import StrEnum
 from types import ModuleType
 
@@ -44,13 +44,33 @@ def _import_optional(name: str, message: str) -> ModuleType:
     module = sys.modules.get(name)
     if module is not None:
         return module
+    with kept_encoding():
+        try:
+            return importlib.import_module(name)
+        except ImportError as err:
+            raise ImportError(message) from err
+
+
+@contextlib.contextmanager
+def kept_encoding() -> Generator[None]:
+    """Set the encoding of the locale back to the one before, after calls of COPASI.
+
+    COPASI sets the locale of the process to `C` when it is imported and when
+    it compiles some models, e.g. one whose conversion factor has an initial
+    assignment, which makes the preferred encoding of python ASCII, so every
+    text file and subprocess of the process which is read without an
+    explicit encoding fails on a character which is not ASCII. The category
+    `LC_CTYPE` of the locale, the encoding, is set back to the one before;
+    the numbers keep the locale `C` of COPASI (`LC_NUMERIC`).
+
+    :return: a context manager
+    """
     before = locale.setlocale(locale.LC_CTYPE)
     try:
-        return importlib.import_module(name)
-    except ImportError as err:
-        raise ImportError(message) from err
+        yield
     finally:
-        locale.setlocale(locale.LC_CTYPE, before)
+        if locale.setlocale(locale.LC_CTYPE) != before:
+            locale.setlocale(locale.LC_CTYPE, before)
 
 
 def import_copasi() -> ModuleType:

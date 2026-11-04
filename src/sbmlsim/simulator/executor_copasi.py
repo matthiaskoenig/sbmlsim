@@ -135,6 +135,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
+from sbmlsim.engine import kept_encoding
 from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
@@ -737,22 +738,25 @@ def execute(
     """
     check_supported(plan, model)
     columns = output_columns(selections)
-    model.initialize(preinit_targets(plan))
-    try:
-        if plan.steady_state is not None:
-            start_events(model, 0.0)
-            steady_state(model, plan.steady_state)
-        else:
-            start_events(model, plan.start)
-        values = simulate_segments(
-            plan,
-            model,
-            model.values,
-            columns,
-            _TimeCourse(model, columns, time_tolerance(plan.start, plan.end)),
-        )
-    finally:
-        model.simulated()
+    # COPASI may set the locale of the process when it compiles, see
+    # `kept_encoding`
+    with kept_encoding():
+        model.initialize(preinit_targets(plan))
+        try:
+            if plan.steady_state is not None:
+                start_events(model, 0.0)
+                steady_state(model, plan.steady_state)
+            else:
+                start_events(model, plan.start)
+            values = simulate_segments(
+                plan,
+                model,
+                model.values,
+                columns,
+                _TimeCourse(model, columns, time_tolerance(plan.start, plan.end)),
+            )
+        finally:
+            model.simulated()
     values = output_time(values, columns, plan, model.symbols)
     return TimecourseResult(columns=tuple(columns), values=values)
 

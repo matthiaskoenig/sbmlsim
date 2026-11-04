@@ -64,7 +64,7 @@ from typing import TYPE_CHECKING, Any, override
 import libsbml
 import numpy as np
 
-from sbmlsim.engine import Engine, import_copasi
+from sbmlsim.engine import Engine, import_copasi, kept_encoding
 from sbmlsim.model.comparisons import (
     COMPARISONS,
     STRICT_COMPARISONS,
@@ -389,7 +389,8 @@ class CopasiSBMLModel(SBMLModel):
         started, self.start_events = _with_triggers_true_at_the_start(shifted, self)
         targeted, self._not_a_number = _with_targets_event(started, self)
         try:
-            imported = dm.importSBMLFromString(targeted)
+            with kept_encoding():
+                imported = dm.importSBMLFromString(targeted)
         except COPASI.CCopasiException:
             imported = False
         drain_messages(self.label)
@@ -1574,13 +1575,16 @@ def _compile_conversion_factors(cmodel: COPASI.CModel) -> None:
     compilation forced after the import compiles the stoichiometries with
     the factors. The stoichiometries keep the value of a factor at the
     import, a change of a factor or of an entity its initial assignment
-    reads is refused, see `_conversion_factor_inputs`.
+    reads is refused, see `_conversion_factor_inputs`. The compilation of a
+    model whose conversion factor has an initial assignment sets the locale
+    of the process to `C`, see `kept_encoding`.
 
     Args:
         cmodel: the model of COPASI, right after its import.
     """
     cmodel.setCompileFlag(True)
-    cmodel.compileIfNecessary()
+    with kept_encoding():
+        cmodel.compileIfNecessary()
 
 
 def _conversion_factor_inputs(
