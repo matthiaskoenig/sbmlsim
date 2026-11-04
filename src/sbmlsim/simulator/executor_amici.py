@@ -34,25 +34,36 @@ It has the semantics of the executor of roadrunner, see
    triggers fired by the executor, the stop of a segment just before a
    change and the events at the end. AMICI integrates in absolute time,
    every segment from the state the one before it ended in.
-5. AMICI evaluates a comparison of a trigger which is exactly at its
-   threshold at the start of an integration as true, also a strict one, e.g.
-   `time > 1` from the time 1 after a change there or `X > 2` after a change
-   which sets `X = 2` (its Heaviside variables are 1 for a root function of
-   the value 0), and does not find the crossing when the comparison becomes
-   true. Every strict comparison is compiled shifted by a parameter,
-   `a > b + shift`, which is 0 but at the start of an integration at which
-   the comparison is exactly at its threshold (`_Course._arm`): there the
-   executor integrates the resolution of the time ahead (`_Course._probe`)
-   to tell the events whose trigger is true right after the start. Such an
-   event which did not fire at the start fires there, after the row of the
-   start, as in roadrunner, which fires it in its first step (the steps of
-   the integrator have it as two rows at the start); one which fired at the
-   start, e.g. `time > 10` at the end of a horizon of a steady state, stays
-   true for AMICI and does not fire again. Every other comparison at its
-   threshold is shifted by `THRESHOLD_ULPS` units in the last place of its
-   operands, so AMICI finds the crossing when it comes: an event which sets
-   its own trigger back to its threshold, `Y > 2` by `Y = 2`, fires again
-   when `Y` rises above 2 later, as in roadrunner.
+5. AMICI evaluates a comparison which is exactly at its threshold at the
+   start of an integration as written and keeps the value for the whole
+   integration, since CVODES reports no root at the start and the root
+   function does not change its sign afterwards, see
+   `sbmlsim.model.model_amici`: a comparison of a trigger as true, also a
+   strict one, e.g. `time > 1` from the time 1 after a change there or
+   `X > 2` after a change which sets `X = 2`, and does not find the crossing
+   when the comparison becomes true. Every strict comparison of a trigger is
+   compiled shifted by a parameter, `a > b + shift`, which is 0 but at the
+   start of an integration at which the comparison is exactly at its
+   threshold (`_Course._arm`): there the executor integrates the resolution
+   of the time ahead (`_Course._probe`) to tell the events whose trigger is
+   true right after the start. Such an event which did not fire at the start
+   fires there, after the row of the start, as in roadrunner, which fires it
+   in its first step (the steps of the integrator have it as two rows at the
+   start); one which fired at the start, e.g. `time > 10` at the end of a
+   horizon of a steady state, stays true for AMICI and does not fire again.
+   Every other comparison at its threshold is shifted by `THRESHOLD_ULPS`
+   units in the last place of its operands, so AMICI finds the crossing when
+   it comes: an event which sets its own trigger back to its threshold,
+   `Y > 2` by `Y = 2`, fires again when `Y` rises above 2 later, as in
+   roadrunner. A comparison of a math of the model, e.g. the condition of a
+   piecewise in a rate, `piecewise(2, time <= tend, 0)`, is compiled shifted
+   as well (`AmiciSBMLModel.switches`); before every integration from a
+   time at which it is exactly at its threshold, e.g. from the time `tend`
+   after an event or a change there, the executor shifts it by
+   `THRESHOLD_ULPS` units in the last place of its operands
+   (`_Course._arm_switches`), so it keeps its value until the operands move
+   by the shift in the direction which changes it, `time <= tend` false
+   right after `tend`, as roadrunner evaluates it at every step.
 6. AMICI finds the root of a trigger where it crosses its threshold, so the
    event is at its time; a strict trigger of the time is at its time
    exactly. The events of a root within the resolution of the time of a
@@ -103,10 +114,13 @@ Known differences to roadrunner:
   `time > 10` fires twice in a presimulation and `time > 1` three times in
   a presimulation and a simulation to 1; AMICI fires them once per crossing
   of the time (1 and 2, as COPASI).
-- AMICI evaluates a comparison which is not strict of a piecewise in a rate
-  exactly at its threshold at the start of an integration as true and keeps
-  it, `piecewise(1, time <= 10, 0)` from the time 10 after a change there,
-  where roadrunner evaluates the piecewise at every step.
+- The output row at the exact time of a root of a strict trigger of the time
+  shows the state before the event (the trigger is false at the time, see
+  6.); the row of roadrunner depends on where CVODE lands its root, e.g. the
+  state before at `time > 0.1`, `time > 0.7` and `time > 12` and the state
+  after at `time > 1/3`.
+- A trigger which compares for equality, `a == b` or `a != b`, raises when
+  the model is loaded, see `sbmlsim.model.model_amici`.
 - AMICI 1.2 computes the time of a trigger of the time with a precision of
   about eight digits (`time >= 1 + 1e-8` triggers at 1 in AMICI, with
   `time >= 1`): the executor fires the event when AMICI finds it, after the
@@ -130,7 +144,7 @@ from __future__ import annotations
 
 import importlib
 import sys
-from collections.abc import Collection, Sequence
+from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass
 
 import libsbml
@@ -171,6 +185,9 @@ SMALLEST_SHIFT = sys.float_info.min
 #: trigger at the events, see `_Course._visible`
 _TOLERANCE = "__sbmlsim_tolerance_"
 
+#: the compiled operands of a comparison
+_Operands = tuple[CompiledFormula, CompiledFormula]
+
 
 @dataclass(frozen=True)
 class _Event:
@@ -200,6 +217,8 @@ class _Course:
         events: the events of the model.
         comparisons: the strict comparisons of their triggers, which AMICI
             compiles shifted, see `AmiciSBMLModel.comparisons`.
+        switches: the comparisons of the maths of the model, which AMICI
+            compiles shifted, see `AmiciSBMLModel.switches`.
     """
 
     def __init__(
@@ -218,11 +237,12 @@ class _Course:
                 f"'{model.label}', not {len(self.events)}."
             )
         self.comparisons = model.comparisons
-        #: the compiled operands of the comparisons, `None` for a comparison
-        #: whose operand the simulator does not evaluate
-        self._operands: list[tuple[CompiledFormula, CompiledFormula] | None] | None = (
-            None
-        )
+        self.switches = model.switches
+        #: the compiled operands of the comparisons and of the switches,
+        #: `None` for a comparison whose operand the simulator does not
+        #: evaluate
+        self._operands: list[_Operands | None] | None = None
+        self._switch_operands: list[_Operands | None] | None = None
         #: the time the executor fired events last and the events
         self._fired: tuple[float, frozenset[int]] = (np.nan, frozenset())
         #: the comparisons at their threshold since the executor fired their
@@ -456,11 +476,6 @@ class _Course:
 
         Returns:
             The events which fire right after the time.
-
-        Raises:
-            NotImplementedError: for a comparison `a != b` at its threshold
-                whose event does not become true right after the time, which
-                is not shifted, so AMICI would not find its crossing.
         """
         model = self.model
         model.set_time(time)
@@ -502,57 +517,62 @@ class _Course:
                 result.append(self._fire(time, due, head, visible=False))
                 continue
             for j, left, _ in held:
-                comparison = self.comparisons[j]
-                k = comparison.event
-                if j in known:
-                    continue
-                if not comparison.shifted:
-                    if strict[k] is False:
-                        from sbmlsim.sbml_math import math_formula
-
-                        raise NotImplementedError(
-                            f"The engine AMICI does not simulate the event "
-                            f"'{events[k].eid}' of the model '{model.label}' at the "
-                            f"time {time}: the comparison "
-                            f"'{math_formula(comparison.left)} != "
-                            f"{math_formula(comparison.right)}' of its trigger is "
-                            f"at its threshold and does not become true right "
-                            f"after the time, whose crossing AMICI does not find."
-                        )
-                    continue
-                shifts[j] = max(
-                    THRESHOLD_ULPS * float(np.spacing(abs(left))), SMALLEST_SHIFT
-                )
+                if j not in known:
+                    shifts[j] = _shift(left)
             break
         model.set_shifts(shifts)
         return result
 
+    def _arm_switches(self, time: float) -> None:
+        """Shift every comparison of the maths of the model which is exactly at its threshold, see the module.
+
+        Before every integration from the current state at a time: a
+        comparison at its threshold is shifted by `THRESHOLD_ULPS` units in
+        the last place of its operands, so that it keeps its value until the
+        operands move and AMICI finds the crossing, every other one is as
+        written.
+
+        Args:
+            time: the time of the start of the integration.
+        """
+        if not self.switches:
+            return
+        if self._switch_operands is None:
+            self._switch_operands = _compile_operands(
+                (s.left, s.right) for s in self.switches
+            )
+        shifts = [0.0] * len(self.switches)
+        for j, left, _ in self._at_threshold(self._switch_operands, time):
+            shifts[j] = _shift(left)
+        self.model.set_switch_shifts(shifts)
+
     def _held(self, time: float) -> list[tuple[int, float, float]]:
         """Get the strict comparisons exactly at their threshold, with the values of their operands."""
-        # sbmlmath is imported by the first model with events, see `sbml_math`
-        from sbmlsim.sbml_math import compile_math
-
         if self._operands is None:
-            self._operands = []
-            for comparison in self.comparisons:
-                try:
-                    self._operands.append(
-                        (compile_math(comparison.left), compile_math(comparison.right))
-                    )
-                except ValueError:
-                    # a comparison which the simulator does not evaluate, e.g.
-                    # of `rateOf`, is left to AMICI
-                    self._operands.append(None)
+            self._operands = _compile_operands(
+                (c.left, c.right) for c in self.comparisons
+            )
+        return self._at_threshold(self._operands, time)
+
+    def _at_threshold(
+        self, operands: Sequence[_Operands | None], time: float
+    ) -> list[tuple[int, float, float]]:
+        """Get the comparisons exactly at their threshold at a time, from the current state.
+
+        Returns:
+            The positions of the comparisons whose operands are equal, with
+            the values of their operands.
+        """
         values = self.model.values
         result: list[tuple[int, float, float]] = []
-        for j, operands in enumerate(self._operands):
-            if operands is None:
+        for j, pair in enumerate(operands):
+            if pair is None:
                 continue
             left, right = (
                 f.evaluate(
                     [time if s == "time" else values.getValue(s) for s in f.symbols]
                 )
-                for f in operands
+                for f in pair
             )
             if left == right:
                 result.append((j, left, right))
@@ -794,6 +814,7 @@ class _Course:
         """
         model = self.model
         model.set_time(float(grid[0]))
+        self._arm_switches(float(grid[0]))
         model.prepare(grid)
         amodel = model.amici_model
         rdata = self._run_simulation(amodel, model.solver)
@@ -814,13 +835,40 @@ class _Course:
         return x, w
 
 
+def _compile_operands(
+    pairs: Iterable[tuple[str, str]],
+) -> list[_Operands | None]:
+    """Compile the operands of comparisons, MathML of selections, see `sbmlsim.sbml_math.compile_math`.
+
+    Returns:
+        The compiled operands of every comparison, `None` for one which the
+        simulator does not evaluate, e.g. of `rateOf`, which is left to
+        AMICI as written.
+    """
+    # sbmlmath is imported by the first model with events, see `sbml_math`
+    from sbmlsim.sbml_math import compile_math
+
+    result: list[_Operands | None] = []
+    for left, right in pairs:
+        try:
+            result.append((compile_math(left), compile_math(right)))
+        except ValueError:
+            result.append(None)
+    return result
+
+
+def _shift(value: float) -> float:
+    """Get the shift of a comparison at its threshold, `THRESHOLD_ULPS` units in the last place of its operands."""
+    return max(THRESHOLD_ULPS * float(np.spacing(abs(value))), SMALLEST_SHIFT)
+
+
 def _tolerant_trigger(mathml: str) -> tuple[str, list[tuple[str, str]]]:
     """Get a trigger with every comparison tolerant of its threshold, see `_Course._visible`.
 
     A comparison `a > b` becomes `a > b + T`, `a < b` `a + T < b`, `a >= b`
-    `a >= b - T`, `a <= b` `a <= b + T`, `a != b` `|a - b| > T` and `a == b`
-    `|a - b| <= T`, with `T` the symbol of its tolerance (`_TOLERANCE` and
-    the position of the comparison).
+    `a >= b - T` and `a <= b` `a <= b + T`, with `T` the symbol of its
+    tolerance (`_TOLERANCE` and the position of the comparison); a trigger
+    has no comparison for equality, see `AmiciSBMLModel`.
 
     Args:
         mathml: the MathML of the trigger, of selections.
@@ -855,25 +903,13 @@ def _tolerant_trigger(mathml: str) -> tuple[str, list[tuple[str, str]]]:
             )
         )
         kind = comparison.getType()
-        if kind == libsbml.AST_RELATIONAL_GT:
-            tolerant = apply(kind, left, apply(libsbml.AST_PLUS, right, tolerance))
-        elif kind == libsbml.AST_RELATIONAL_LT:
+        if kind == libsbml.AST_RELATIONAL_LT:
             tolerant = apply(kind, apply(libsbml.AST_PLUS, left, tolerance), right)
         elif kind == libsbml.AST_RELATIONAL_GEQ:
             tolerant = apply(kind, left, apply(libsbml.AST_MINUS, right, tolerance))
-        elif kind == libsbml.AST_RELATIONAL_LEQ:
-            tolerant = apply(kind, left, apply(libsbml.AST_PLUS, right, tolerance))
         else:
-            distance = apply(
-                libsbml.AST_FUNCTION_ABS, apply(libsbml.AST_MINUS, left, right)
-            )
-            tolerant = apply(
-                libsbml.AST_RELATIONAL_GT
-                if kind == libsbml.AST_RELATIONAL_NEQ
-                else libsbml.AST_RELATIONAL_LEQ,
-                distance,
-                tolerance,
-            )
+            # `>` and `<=`
+            tolerant = apply(kind, left, apply(libsbml.AST_PLUS, right, tolerance))
         if parent is None:
             node = tolerant
         else:

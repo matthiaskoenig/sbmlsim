@@ -26,13 +26,14 @@ from sbmlsim.model.model_amici import (
     CACHE_ENV,
     FIRED_PREFIX,
     FIRST_PREFIX,
+    SWITCH_PREFIX,
     TARGETS_EVENT,
     AmiciSBMLModel,
     amici_sbml,
     cache_key,
     compiled_dir,
 )
-from sbmlsim.model.symbols import TargetKind
+from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import (
     DEMO_SBML,
@@ -565,6 +566,14 @@ def _priority(event: libsbml.Event) -> None:
     event.createPriority().setMath(libsbml.parseL3Formula("k1"))
 
 
+def _equality(event: libsbml.Event) -> None:
+    event.getTrigger().setMath(libsbml.parseL3Formula("time == 1"))
+
+
+def _inequality(event: libsbml.Event) -> None:
+    event.getTrigger().setMath(libsbml.parseL3Formula("time > 1 && A != 2"))
+
+
 def _initial_conversion_factor(model: libsbml.Model) -> None:
     model.getSpecies("A").setConversionFactor("k2")
     initial: libsbml.InitialAssignment = model.createInitialAssignment()
@@ -591,6 +600,14 @@ def _rate_of(model: libsbml.Model) -> None:
             "the trigger of the event 'E', which is not persistent",
         ),
         (_event(_priority), "the priority of the event 'E', which is no number"),
+        (
+            _event(_equality),
+            r"the trigger of the event 'E', which compares for equality \('time == 1'\)",
+        ),
+        (
+            _event(_inequality),
+            r"the trigger of the event 'E', which compares for equality \('A != 2'\)",
+        ),
         (_rule_of_the_product("non-constant"), "non-constant species reference 'B_sr'"),
         (_rule_of_the_product("assignment"), "non-constant species reference 'B_sr'"),
         (_rule_of_the_product("rate"), "non-constant species reference 'B_sr'"),
@@ -928,3 +945,60 @@ def test_the_states_of_the_events_are_no_selections() -> None:
         assert not model.has_selection(sid)
     reference = RoadrunnerSBMLModel(source=sbml(EVENTS))
     assert model.default_selections() == reference.default_selections()
+
+
+def _switches(model: libsbml.Model) -> None:
+    """Add comparisons to the maths of the probe: a kinetic law with a local parameter, an assignment rule, a rate rule."""
+    law: libsbml.KineticLaw = model.getReaction("J1").getKineticLaw()
+    local: libsbml.LocalParameter = law.createLocalParameter()
+    local.setId("kl")
+    local.setValue(0.5)
+    law.setMath(libsbml.parseL3Formula("k1 * A * piecewise(1, A > kl, 0)"))
+    model.getParameter("b0").setConstant(False)
+    rule: libsbml.RateRule = model.createRateRule()
+    rule.setVariable("b0")
+    rule.setMath(libsbml.parseL3Formula("piecewise(1, B <= 1 && time != 2, 0)"))
+    assignment: libsbml.AssignmentRule = model.getRule("kk")
+    assignment.setMath(libsbml.parseL3Formula("piecewise(3 * f, f == 2, f)"))
+
+
+def test_the_comparisons_of_the_maths_are_shifted() -> None:
+    """Every comparison of a kinetic law or a rule is compiled shifted by a parameter of AMICI.
+
+    A local parameter of a kinetic law is a number of the operands; a
+    comparison for equality becomes two shifted comparisons of one
+    parameter; the comparisons of a math are numbered from the ones inside
+    the operands of another.
+    """
+    source = _probe_with(_switches)
+    symbols = ModelSymbols.from_sbml(source)
+    compiled = amici_sbml(source, symbols, "probe")
+    formula = libsbml.formulaToL3String
+    switches = {
+        f"{SWITCH_PREFIX}{j}": (
+            formula(libsbml.readMathMLFromString(s.left)),
+            formula(libsbml.readMathMLFromString(s.right)),
+        )
+        for j, s in enumerate(compiled.switches)
+    }
+    assert switches == {
+        f"{SWITCH_PREFIX}0": ("[A]", "0.5"),
+        f"{SWITCH_PREFIX}1": ("f", "2"),
+        f"{SWITCH_PREFIX}2": ("time", "2"),
+        f"{SWITCH_PREFIX}3": ("[B]", "1"),
+    }
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(compiled.sbml)
+    model: libsbml.Model = doc.getModel()
+    assert formula(model.getReaction("J1").getKineticLaw().getMath()) == (
+        f"k1 * A * piecewise(1, A > (0.5 + {SWITCH_PREFIX}0), 0)"
+    )
+    assert formula(model.getRule("b0").getMath()) == (
+        f"piecewise(1, (B <= (1 + {SWITCH_PREFIX}3)) && ((time < (2 - "
+        f"{SWITCH_PREFIX}2)) || (time > (2 + {SWITCH_PREFIX}2))), 0)"
+    )
+    assert formula(model.getRule("kk").getMath()) == (
+        f"piecewise(3 * f, (f <= (2 + {SWITCH_PREFIX}1)) && "
+        f"(f >= (2 - {SWITCH_PREFIX}1)), f)"
+    )
+    parameters = {p.getId(): p.getConstant() for p in model.getListOfParameters()}
+    assert all(parameters[f"{SWITCH_PREFIX}{j}"] for j in range(4))

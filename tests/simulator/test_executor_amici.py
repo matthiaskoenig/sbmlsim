@@ -96,7 +96,7 @@ model strict_state
   X' = 1
   n = 0
   F: at (X > 2), t0=true: n = n + 1
-  G: at (X > 3 && X != 3.5), t0=true: n = n + 10
+  G: at (X > 3), t0=true: n = n + 10
 end
 """
 
@@ -411,12 +411,16 @@ def test_a_strict_trigger_of_the_time_at_a_start_or_a_change_fires_after_it(
     assert_agree(amici, roadrunner, times, changes=[1.0], events=[0.0, 2.0])
 
 
-@pytest.mark.parametrize("value", [2.0, 3.5])
+@pytest.mark.parametrize("value", [2.0, 3.0])
 @pytest.mark.parametrize("times", [[0, 1, 3, 5], None])
 def test_a_strict_trigger_of_a_state_set_to_its_threshold(
     value: float, times: list[float] | None
 ) -> None:
-    """A change which sets a state to the threshold of a strict trigger fires it after it."""
+    """A change which sets a state to the threshold of a strict trigger fires it after it.
+
+    `X = 2` is the threshold of `F`, `X = 3` the one of `G`, which the
+    change triggers `F` with; both fire once.
+    """
     simulation = Simulation(end=5, changes=[Change(1, {"X": value})], times=times)
     amici, roadrunner = both(sbml(STRICT_STATE), simulation, ["time", "X", "n"])
     assert amici["n"][-1] == 11.0
@@ -432,15 +436,10 @@ def test_the_strict_comparisons_of_the_triggers_are_shifted() -> None:
             c.event,
             formula(libsbml.readMathMLFromString(c.left)),
             formula(libsbml.readMathMLFromString(c.right)),
-            c.shifted,
         )
         for c in model.comparisons
     ]
-    assert comparisons == [
-        (0, "X", "2", True),
-        (1, "X", "3", True),
-        (1, "X", "3.5", False),
-    ]
+    assert comparisons == [(0, "X", "2"), (1, "X", "3")]
     assert shift_ids(model.comparisons) == [
         f"{SHIFT_PREFIX}0_0",
         f"{SHIFT_PREFIX}1_0",
@@ -453,7 +452,7 @@ def test_the_strict_comparisons_of_the_triggers_are_shifted() -> None:
     ]
     assert triggers[:2] == [
         f"X > (2 + {SHIFT_PREFIX}0_0)",
-        f"(X > (3 + {SHIFT_PREFIX}1_0)) && true",
+        f"X > (3 + {SHIFT_PREFIX}1_0)",
     ]
     free = [str(p) for p in model.amici_model.get_free_parameter_ids()]
     assert set(shift_ids(model.comparisons)) <= set(free)
@@ -1071,3 +1070,126 @@ def test_many_doses_at_strict_triggers_of_the_time(times: list[float] | None) ->
     )
     assert amici["n"][-1] == roadrunner["n"][-1] == 20.0
     assert_agree(amici, roadrunner, times, events=[1.0, 21.0, 39.0])
+
+
+#: an infusion which a piecewise of the time ends at `tend`, with a dose at
+#: `tend`, after which the integration starts again at the switch
+INFUSION = """
+model infusion
+  A = 0
+  tend = 10
+  A' = piecewise(2, time <= tend, 0) - 0.1 * A
+  n = 0
+  D: at (time >= tend), t0=true: A = A + 5, n = n + 1
+end
+"""
+
+#: a rate which a piecewise of the time switches at 10, with an event or a
+#: change there
+SWITCH_OF_THE_TIME = """
+model switch_of_the_time
+  A = 0
+  A' = piecewise(1, time OP 10, 0)
+  p = 0
+  EVENT
+end
+"""
+
+#: a rate which a piecewise of a state switches, the state set to the
+#: threshold of the comparison by a change
+SWITCH_OF_A_STATE = """
+model switch_of_a_state
+  A = 0
+  B = 0
+  B' = 1
+  A' = RATE
+end
+"""
+
+
+def assert_equal_after_event(
+    amici: TimecourseResult, roadrunner: TimecourseResult, marker: str
+) -> None:
+    """Compare the first rows after an event of the model, the ones at which a marker is 1.
+
+    roadrunner steps within the resolution of the time before an event at a
+    switch of a piecewise, which `assert_equal_rows` would pair with the row
+    of the event.
+    """
+
+    def first(result: TimecourseResult) -> np.ndarray:
+        return result.values[result[marker] == 1.0][0]
+
+    np.testing.assert_allclose(first(amici), first(roadrunner), rtol=1e-6, atol=1e-6)
+
+
+@pytest.mark.parametrize("times", [[0, 10, 20, 30], None])
+def test_an_infusion_ended_by_a_piecewise_at_the_time_of_a_dose(
+    times: list[float] | None,
+) -> None:
+    """`piecewise(2, time <= tend, 0)` is 0 after `tend`, from which the integration starts again after the dose.
+
+    AMICI evaluates the comparison at its threshold at the start of an
+    integration as written, `time <= tend` true, and keeps it; the executor
+    shifts it, so AMICI finds the crossing right after the start, see the
+    module.
+    """
+    simulation = Simulation(end=30, times=times)
+    amici, roadrunner = both(sbml(INFUSION), simulation, ["time", "A", "n"])
+    assert amici["n"][-1] == 1.0
+    np.testing.assert_allclose(amici["A"][-1], roadrunner["A"][-1], rtol=1e-6)
+    assert amici["A"][-1] < 3.0
+    assert_agree(amici, roadrunner, times)
+    assert_equal_after_event(amici, roadrunner, "n")
+
+
+@pytest.mark.parametrize("times", [[0, 5, 10, 15, 20], None])
+@pytest.mark.parametrize("at", ["event", "change"])
+@pytest.mark.parametrize("op", ["<=", "<", ">=", ">"])
+def test_a_piecewise_of_the_time_switches_at_the_time_of_an_event_or_a_change(
+    op: str, at: str, times: list[float] | None
+) -> None:
+    """The rate switches at 10 as roadrunner evaluates it, also from a start at 10.
+
+    An event or a change at 10 starts the integration again at the time of
+    the switch, where every comparison of the time is at its threshold.
+    """
+    event = "E: at (time >= 10), t0=true: p = 1" if at == "event" else ""
+    model = SWITCH_OF_THE_TIME.replace("OP", op).replace("EVENT", event)
+    changes = [Change(10, {"p": 1.0})] if at == "change" else []
+    simulation = Simulation(end=20, times=times, changes=changes)
+    amici, roadrunner = both(sbml(model), simulation, ["time", "A", "p"])
+    np.testing.assert_allclose(amici["A"][-1], 10.0, rtol=1e-6)
+    assert amici["p"][-1] == 1.0
+    assert_agree(amici, roadrunner, times, changes=[10.0] if at == "change" else [])
+    if at == "event":
+        assert_equal_after_event(amici, roadrunner, "p")
+
+
+@pytest.mark.parametrize("times", [[0, 5, 12, 20], None])
+@pytest.mark.parametrize(
+    ("rate", "expected"),
+    [
+        ("piecewise(1, B <= 10, 0)", 5.0),
+        ("piecewise(1, B < 10, 0)", 5.0),
+        ("piecewise(1, B >= 10, 0)", 15.0),
+        ("piecewise(1, B > 10, 0)", 15.0),
+        ("piecewise(0, B == 10, 1)", 20.0),
+        ("piecewise(1, B != 10, 0)", 20.0),
+    ],
+    ids=["leq", "lt", "geq", "gt", "eq", "neq"],
+)
+def test_a_piecewise_of_a_state_set_to_its_threshold_by_a_change(
+    rate: str, expected: float, times: list[float] | None
+) -> None:
+    """A comparison of a state at its threshold after a change keeps its value until the state moves.
+
+    `B` is set to 10 at 5 and rises from there: `B <= 10` and `B == 10` are
+    true at 5 and false right after it, `B > 10` and `B != 10` false and
+    true, as roadrunner evaluates them at every step.
+    """
+    model = SWITCH_OF_A_STATE.replace("RATE", rate)
+    simulation = Simulation(end=20, times=times, changes=[Change(5, {"B": 10.0})])
+    amici, roadrunner = both(sbml(model), simulation, ["time", "A", "B"])
+    np.testing.assert_allclose(amici["A"][-1], expected, rtol=1e-6)
+    assert_agree(amici, roadrunner, times, changes=[5.0])

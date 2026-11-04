@@ -57,18 +57,34 @@ of its assignments, sets two states of AMICI, that it fired in the
 integration and the time of its first execution (`FIRED_PREFIX`,
 `FIRST_PREFIX`, `fired`, `first_times`), which the executor sets to 0 before
 every integration (`reset_events`), so the first root of an integration is
-known exactly and the state of the model is the one before it. Every strict
+known exactly and the state of the model is the one before it. AMICI
+evaluates a comparison exactly at its threshold at the start of an
+integration as written (`time <= 10` at the time 10 true, `time > 10` false:
+its Heaviside variables are initialized from the sign of the root functions,
+a root of 0 as true) and keeps the value for the whole integration, since
+CVODES does not report a root at the start and the root function does not
+change its sign afterwards. The executor therefore shifts every comparison
+which is exactly at its threshold at the start of an integration by a little,
+so that AMICI finds the crossing when the operands move: every strict
 comparison of a trigger, `a > b` or `a < b`, is compiled shifted by a free
 parameter of AMICI, `a > b + shift` (`SHIFT_PREFIX`, `comparisons`,
-`set_shifts`): AMICI evaluates a comparison exactly at its threshold at the
-start of an integration as true, also a strict one, and would not find the
-crossing when it becomes true, which a positive shift makes it find. The
+`set_shifts`), and so is every comparison of the maths AMICI integrates, the
+kinetic laws, the assignment rules and the rate rules, e.g. the condition of
+a piecewise in a rate (`SWITCH_PREFIX`, `switches`, `set_switch_shifts`,
+`Switch`): `a > b + shift`, `a + shift < b`, `a >= b - shift` and
+`a <= b + shift`, so a shifted comparison keeps its value at its threshold
+until the operands move by the shift in the direction which changes it, as
+roadrunner evaluates it at every step; `a == b` and `a != b` of a math are
+compiled as `a <= b + shift && a >= b - shift` and `a < b - shift ||
+a > b + shift`, which is how AMICI compiles them without the shift. The
 trigger of every event starts true in the compiled SBML, so AMICI fires no
 event at the start of an integration; the events whose trigger is false
 before the time 0 (`initial_value_false`) are fired by the executor at the
 start of a simulation, as the ones a change triggers. A feature which AMICI
 does not compile or simulates otherwise than roadrunner raises at the load,
-see `_check_supported`.
+see `_check_supported`; a trigger which compares for equality, `a == b` or
+`a != b`, is refused there: AMICI has no root of it, and roadrunner fires it
+only where a step of its integrator lands on the equality.
 """
 
 from __future__ import annotations
@@ -163,6 +179,11 @@ FIRST_PREFIX = "__sbmlsim_first_"
 #: comparison in its trigger, see `StrictComparison`
 SHIFT_PREFIX = "__sbmlsim_shift_"
 
+#: the prefix of the free parameter of AMICI by which a comparison of a math
+#: of the model is shifted, by the position of the comparison among them, see
+#: `Switch`
+SWITCH_PREFIX = "__sbmlsim_switch_"
+
 #: the prefix of the free parameter of the value of an entity which a
 #: pre-initialization sets, see the module
 VALUE_PREFIX = "__sbmlsim_value_"
@@ -227,6 +248,8 @@ class AmiciSBML:
             are named by its position (`FIRED_PREFIX`, `FIRST_PREFIX`).
         comparisons: the strict comparisons of the triggers of the events,
             in the order of the shift parameters (`SHIFT_PREFIX`).
+        switches: the comparisons of the maths of the model, in the order of
+            their shift parameters (`SWITCH_PREFIX`).
     """
 
     sbml: str
@@ -235,6 +258,7 @@ class AmiciSBML:
     initial_value_false: tuple[str, ...]
     events: tuple[str, ...] = ()
     comparisons: tuple[StrictComparison, ...] = ()
+    switches: tuple[Switch, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -246,20 +270,34 @@ class StrictComparison:
     `sbmlsim.sbml_math.compile_math` compiles, so the executor tells where
     the comparison is exactly at its threshold, `a == b`.
 
-    A comparison `a != b` is listed as well, which is not shifted (it has no
-    parameter): the executor tells it from its operands only.
-
     Attributes:
         event: the position of the event among the events of the model.
         left: the MathML of the left operand `a`.
         right: the MathML of the right operand `b`.
-        shifted: whether the comparison is shifted by a parameter.
     """
 
     event: int
     left: str
     right: str
-    shifted: bool = True
+
+
+@dataclass(frozen=True)
+class Switch:
+    """A comparison of a math AMICI integrates, e.g. the condition of a piecewise in a rate.
+
+    AMICI compiles it shifted by a free parameter so that it keeps its value
+    at its threshold until the operands move, see the module; the operands
+    are MathML of selections, which `sbmlsim.sbml_math.compile_math`
+    compiles, so the executor tells where the comparison is exactly at its
+    threshold, `a == b`, and shifts it there.
+
+    Attributes:
+        left: the MathML of the left operand `a`.
+        right: the MathML of the right operand `b`.
+    """
+
+    left: str
+    right: str
 
 
 class AmiciSBMLModel(SBMLModel):
@@ -276,6 +314,8 @@ class AmiciSBMLModel(SBMLModel):
             of the SBML, see `AmiciSBML.events`.
         comparisons: the strict comparisons of the triggers of the events,
             see `StrictComparison` and `set_shifts`.
+        switches: the comparisons of the maths of the model, see `Switch`
+            and `set_switch_shifts`.
         absolute_tolerance: the absolute tolerance set last, see
             `set_integrator_settings`.
     """
@@ -335,6 +375,7 @@ class AmiciSBMLModel(SBMLModel):
         self.initial_value_false: tuple[str, ...] = compiled.initial_value_false
         self.event_ids: tuple[str, ...] = compiled.events
         self.comparisons: tuple[StrictComparison, ...] = compiled.comparisons
+        self.switches: tuple[Switch, ...] = compiled.switches
         self._flagged: frozenset[str] = compiled.flagged
         self._not_a_number: frozenset[str] = compiled.not_a_number
         module = load_module(compiled.sbml, self.label)
@@ -416,11 +457,14 @@ class AmiciSBMLModel(SBMLModel):
             [state_ids.index(f"{FIRST_PREFIX}{k}") for k in range(len(self.event_ids))],
             dtype=int,
         )
-        #: the free parameters of the shifts of the strict comparisons, -1
-        #: for a comparison which is not shifted
-        ids = iter(shift_ids(self.comparisons))
+        #: the free parameters of the shifts of the strict comparisons of the
+        #: triggers
         self._shifts: np.ndarray = np.array(
-            [free_ids.index(next(ids)) if c.shifted else -1 for c in self.comparisons],
+            [free_ids.index(pid) for pid in shift_ids(self.comparisons)], dtype=int
+        )
+        #: the free parameters of the shifts of the comparisons of the maths
+        self._switch_shifts: np.ndarray = np.array(
+            [free_ids.index(pid) for pid in switch_ids(len(self.switches))],
             dtype=int,
         )
         self._start(self._loaded_parameters.copy())
@@ -675,11 +719,20 @@ class AmiciSBMLModel(SBMLModel):
 
         Args:
             shifts: a shift per comparison, in the order of `comparisons`, 0
-                for a comparison as written; the one of a comparison which
-                is not shifted is ignored.
+                for a comparison as written.
         """
-        shifted = self._shifts >= 0
-        self._p[self._shifts[shifted]] = np.asarray(shifts, dtype=float)[shifted]
+        self._p[self._shifts] = np.asarray(shifts, dtype=float)
+        self._w = None
+        self._xdot = None
+
+    def set_switch_shifts(self, shifts: Sequence[float]) -> None:
+        """Set the shifts of the comparisons of the maths of the model, see `Switch`.
+
+        Args:
+            shifts: a shift per comparison, in the order of `switches`, 0 for
+                a comparison as written.
+        """
+        self._p[self._switch_shifts] = np.asarray(shifts, dtype=float)
         self._w = None
         self._xdot = None
 
@@ -1210,7 +1263,11 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
     the stoichiometry of a species reference which is not constant, which
     roadrunner changes, and an initial assignment of a species reference or
     of a conversion factor a math which follows its parameters during a
-    simulation instead of a number. These raise before AMICI compiles the
+    simulation instead of a number. A trigger which compares for equality,
+    `a == b` or `a != b`, has no root AMICI finds (the root function of
+    `a - b` touches 0 without a change of its sign), and roadrunner fires it
+    only where a step of its integrator lands on the equality, so its result
+    depends on the output times. These raise before AMICI compiles the
     model; an error of AMICI on another feature raises when it imports the
     model, see `_compile`.
 
@@ -1246,6 +1303,7 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
                 f"'{assignment.getSymbol()}'"
             )
     level = model.getLevel()
+    functions: libsbml.ListOfFunctionDefinitions = model.getListOfFunctionDefinitions()
     for event in model.getListOfEvents():
         eid = event.getId()
         if event.isSetDelay():
@@ -1261,6 +1319,15 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
             raise unsupported(
                 f"the trigger of the event '{eid}', which is not persistent"
             )
+        if trigger is not None and trigger.isSetMath():
+            node: libsbml.ASTNode = trigger.getMath().deepCopy()
+            if functions.size():
+                libsbml.SBMLTransforms.replaceFD(node, functions)
+            for _, _, comparison in math_comparisons(node, EQUALITIES):
+                raise unsupported(
+                    f"the trigger of the event '{eid}', which compares for "
+                    f"equality ('{libsbml.formulaToL3String(comparison)}')"
+                )
     for where, ast in sbml_maths(model):
         if reads_rate_of(ast):
             raise unsupported(f"the csymbol rateOf in the {where}")
@@ -1381,49 +1448,12 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
             node: libsbml.ASTNode = trigger.getMath().deepCopy()
             if functions.size():
                 libsbml.SBMLTransforms.replaceFD(node, functions)
-            shifted = 0
-            for parent, position, comparison in trigger_comparisons(node):
-                strict = comparison.getType() != libsbml.AST_RELATIONAL_NEQ
-                comparisons.append(
-                    StrictComparison(
-                        event=k,
-                        left=str(
-                            selection_math(
-                                comparison.getChild(0), concentrations, functions
-                            )
-                        ),
-                        right=str(
-                            selection_math(
-                                comparison.getChild(1), concentrations, functions
-                            )
-                        ),
-                        shifted=strict,
-                    )
-                )
-                if not strict:
-                    # `a != b` is true for AMICI, whose root function of it
-                    # reports a crossing where the operands are equal; the
-                    # executor evaluates it
-                    true = libsbml.ASTNode(libsbml.AST_CONSTANT_TRUE)
-                    if parent is None:
-                        node = true
-                    else:
-                        parent.replaceChild(position, true, True)
-                    continue
+            for shifted, (_, _, comparison) in enumerate(trigger_comparisons(node)):
+                left, right = _operands(comparison, concentrations, functions)
+                comparisons.append(StrictComparison(event=k, left=left, right=right))
                 pid = f"{SHIFT_PREFIX}{k}_{shifted}"
-                shifted += 1
                 parameter(pid, constant=True)
-                # `a > b` becomes `a > b + shift`, `a < b` `a + shift < b`
-                index = 1 if comparison.getType() == libsbml.AST_RELATIONAL_GT else 0
-                comparison.replaceChild(
-                    index,
-                    _apply(
-                        libsbml.AST_PLUS,
-                        comparison.getChild(index).deepCopy(),
-                        _name(pid),
-                    ),
-                    True,
-                )
+                _shift_comparison(comparison, pid)
             trigger.setMath(node)
         while event.getNumEventAssignments():
             event.removeEventAssignment(0)
@@ -1453,6 +1483,48 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
                 ),
             )
         )
+
+    # every comparison of a math AMICI integrates is shifted by a parameter,
+    # so that it keeps its value at its threshold until the operands move,
+    # see the module
+    switches: list[Switch] = []
+    maths: list[tuple[Any, libsbml.ASTNode, dict[str, float]]] = []
+    for reaction in model.getListOfReactions():
+        law: libsbml.KineticLaw | None = reaction.getKineticLaw()
+        if law is not None and law.isSetMath():
+            maths.append(
+                (
+                    law,
+                    law.getMath(),
+                    {p.getId(): p.getValue() for p in law.getListOfLocalParameters()},
+                )
+            )
+    for rule in model.getListOfRules():
+        if rule.isSetMath() and not rule.isAlgebraic():
+            maths.append((rule, rule.getMath(), {}))
+    for element, math_, local in maths:
+        node = math_.deepCopy()
+        if functions.size():
+            libsbml.SBMLTransforms.replaceFD(node, functions)
+        _substitute_numbers(node, local)
+        found = math_comparisons(node, (*COMPARISONS, *EQUALITIES))
+        if not found:
+            continue
+        # the comparisons inside the operands of another one first, so the
+        # replacement of the other one copies them shifted
+        for parent, position, comparison in reversed(found):
+            pid = f"{SWITCH_PREFIX}{len(switches)}"
+            switches.append(Switch(*_operands(comparison, concentrations, functions)))
+            parameter(pid, constant=True)
+            if comparison.getType() in COMPARISONS:
+                _shift_comparison(comparison, pid)
+                continue
+            replacement = _shifted_equality(comparison, pid)
+            if parent is None:
+                node = replacement
+            else:
+                parent.replaceChild(position, replacement, True)
+        element.setMath(node)
 
     if targets:
         for sid in targets:
@@ -1486,6 +1558,7 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         initial_value_false=tuple(initial_value_false),
         events=tuple(events),
         comparisons=tuple(comparisons),
+        switches=tuple(switches),
     )
 
 
@@ -1494,59 +1567,171 @@ def shift_ids(comparisons: Sequence[StrictComparison]) -> list[str]:
     counts: dict[int, int] = {}
     ids = []
     for comparison in comparisons:
-        if not comparison.shifted:
-            continue
         j = counts.get(comparison.event, 0)
         counts[comparison.event] = j + 1
         ids.append(f"{SHIFT_PREFIX}{comparison.event}_{j}")
     return ids
 
 
+def switch_ids(count: int) -> list[str]:
+    """Get the ids of the parameters of the shifts of the comparisons of the maths, see `SWITCH_PREFIX`."""
+    return [f"{SWITCH_PREFIX}{j}" for j in range(count)]
+
+
 #: the strict comparisons of a trigger, see `trigger_comparisons`
-STRICT_COMPARISONS = (
-    libsbml.AST_RELATIONAL_GT,
-    libsbml.AST_RELATIONAL_LT,
-    libsbml.AST_RELATIONAL_NEQ,
-)
+STRICT_COMPARISONS = (libsbml.AST_RELATIONAL_GT, libsbml.AST_RELATIONAL_LT)
 
 #: every comparison of a trigger, see `trigger_comparisons`
 COMPARISONS = (
     *STRICT_COMPARISONS,
     libsbml.AST_RELATIONAL_GEQ,
     libsbml.AST_RELATIONAL_LEQ,
-    libsbml.AST_RELATIONAL_EQ,
 )
+
+#: the comparisons for equality, which a trigger must not have, see
+#: `_check_supported`
+EQUALITIES = (libsbml.AST_RELATIONAL_EQ, libsbml.AST_RELATIONAL_NEQ)
+
+#: a comparison found in a math: its parent (`None` for the math itself), its
+#: position in the parent and the node
+_Found = tuple["libsbml.ASTNode | None", int, "libsbml.ASTNode"]
 
 
 def trigger_comparisons(
     trigger: libsbml.ASTNode, kinds: Sequence[int] = STRICT_COMPARISONS
-) -> list[tuple[libsbml.ASTNode | None, int, libsbml.ASTNode]]:
+) -> list[_Found]:
     """Get the comparisons of a trigger of given kinds, through its logical operators.
 
     Args:
         trigger: the math of the trigger.
         kinds: the types of the nodes of the comparisons, the strict ones
-            `>`, `<` and `!=` by default (`STRICT_COMPARISONS`), or every
+            `>` and `<` by default (`STRICT_COMPARISONS`), or every
             comparison (`COMPARISONS`).
 
     Returns:
         The comparisons in the order of the math, each with its parent
         (`None` for the trigger itself) and its position in it.
     """
-    found: list[tuple[libsbml.ASTNode | None, int, libsbml.ASTNode]] = []
-    stack: list[tuple[libsbml.ASTNode | None, int, libsbml.ASTNode]] = [
-        (None, 0, trigger)
-    ]
+    return _comparisons(trigger, kinds, logical=True)
+
+
+def math_comparisons(math: libsbml.ASTNode, kinds: Sequence[int]) -> list[_Found]:
+    """Get the comparisons of given kinds anywhere in a math, e.g. in the conditions of its piecewises.
+
+    Args:
+        math: the math.
+        kinds: the types of the nodes of the comparisons.
+
+    Returns:
+        The comparisons in the order of the math, a comparison before the
+        ones in its operands, each with its parent (`None` for the math
+        itself) and its position in it.
+    """
+    return _comparisons(math, kinds, logical=False)
+
+
+def _comparisons(
+    math: libsbml.ASTNode, kinds: Sequence[int], logical: bool
+) -> list[_Found]:
+    """Get the comparisons of given kinds of a math, see `trigger_comparisons` and `math_comparisons`.
+
+    Args:
+        math: the math.
+        kinds: the types of the nodes of the comparisons.
+        logical: whether to look through the logical operators only, else
+            through every node, the operands of a comparison included.
+    """
+    found: list[_Found] = []
+    stack: list[_Found] = [(None, 0, math)]
     while stack:
         parent, index, node = stack.pop()
-        if node.getType() in kinds and node.getNumChildren() == 2:
+        comparison = node.getType() in kinds and node.getNumChildren() == 2
+        if comparison:
             found.append((parent, index, node))
-        elif node.isLogical():
+        if not logical or (not comparison and node.isLogical()):
             stack.extend(
                 (node, k, node.getChild(k))
                 for k in reversed(range(node.getNumChildren()))
             )
     return found
+
+
+def _operands(
+    comparison: libsbml.ASTNode,
+    concentrations: frozenset[str],
+    functions: libsbml.ListOfFunctionDefinitions,
+) -> tuple[str, str]:
+    """Get the operands of a comparison as MathML of selections, see `selection_math`."""
+    return (
+        str(selection_math(comparison.getChild(0), concentrations, functions)),
+        str(selection_math(comparison.getChild(1), concentrations, functions)),
+    )
+
+
+def _shift_comparison(comparison: libsbml.ASTNode, pid: str) -> None:
+    """Shift a comparison by a parameter so that it keeps its value at its threshold.
+
+    `a > b` becomes `a > b + shift`, `a < b` `a + shift < b`, `a >= b`
+    `a >= b - shift` and `a <= b` `a <= b + shift`, see the module.
+
+    Args:
+        comparison: the node of the comparison, changed in place.
+        pid: the id of the parameter of the shift.
+    """
+    kind = comparison.getType()
+    index = 0 if kind == libsbml.AST_RELATIONAL_LT else 1
+    operation = (
+        libsbml.AST_MINUS if kind == libsbml.AST_RELATIONAL_GEQ else libsbml.AST_PLUS
+    )
+    comparison.replaceChild(
+        index,
+        _apply(operation, comparison.getChild(index).deepCopy(), _name(pid)),
+        True,
+    )
+
+
+def _shifted_equality(comparison: libsbml.ASTNode, pid: str) -> libsbml.ASTNode:
+    """Get a comparison for equality shifted by a parameter, see the module.
+
+    `a == b` becomes `a <= b + shift && a >= b - shift` and `a != b`
+    `a < b - shift || a > b + shift`.
+
+    Args:
+        comparison: the node of the comparison.
+        pid: the id of the parameter of the shift.
+    """
+    equal = comparison.getType() == libsbml.AST_RELATIONAL_EQ
+    left: libsbml.ASTNode = comparison.getChild(0)
+    right: libsbml.ASTNode = comparison.getChild(1)
+    plus, minus = libsbml.AST_PLUS, libsbml.AST_MINUS
+    below = _apply(
+        libsbml.AST_RELATIONAL_LEQ if equal else libsbml.AST_RELATIONAL_LT,
+        left.deepCopy(),
+        _apply(plus if equal else minus, right.deepCopy(), _name(pid)),
+    )
+    above = _apply(
+        libsbml.AST_RELATIONAL_GEQ if equal else libsbml.AST_RELATIONAL_GT,
+        left.deepCopy(),
+        _apply(minus if equal else plus, right.deepCopy(), _name(pid)),
+    )
+    return _apply(
+        libsbml.AST_LOGICAL_AND if equal else libsbml.AST_LOGICAL_OR, below, above
+    )
+
+
+def _substitute_numbers(math: libsbml.ASTNode, numbers: dict[str, float]) -> None:
+    """Replace identifiers of a math by numbers, e.g. the local parameters of a kinetic law."""
+    if not numbers:
+        return
+    stack = [math]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
+        if node.isName() and not node.getDefinitionURLString():
+            value = numbers.get(node.getName())
+            if value is not None:
+                node.setType(libsbml.AST_REAL)
+                node.setValue(float(value))
 
 
 def _name(sid: str) -> libsbml.ASTNode:
