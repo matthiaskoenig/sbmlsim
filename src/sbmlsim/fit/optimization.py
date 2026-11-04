@@ -18,6 +18,7 @@ import scipy
 from scipy import interpolate
 
 from sbmlsim.console import console
+from sbmlsim.engine import Engine, resolve_engine
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.derived import (
     DerivedChanges,
@@ -734,6 +735,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         data_path: Path | Sequence[Path] | None = None,
         hybridizations: Sequence[DerivedChanges] | None = None,
         jit_optimization: JitOptimization | str | None = None,
+        engine: Engine | str = Engine.ROADRUNNER,
     ):
         """Optimization problem.
 
@@ -757,10 +759,15 @@ class OptimizationProblem(ObjectJSONEncoder):
             jit_optimization: the optimization level the models are compiled
                 with, see `RoadrunnerSBMLModel`. It is resolved here, so the
                 workers of a parallel fit compile at the level of the parent.
+            engine: the engine or its name which the problem simulates with,
+                roadrunner by default; `initialize` loads the models in it,
+                `set_simulator` with a simulator of another engine loads them
+                again. It is pickled with the problem, so the workers of a
+                parallel fit and a report evaluate with it.
 
         Raises:
             ValueError: if the problem has no parameters or two parameters of
-                one id.
+                one id, or the engine is no engine.
             TypeError: if a hybridization does not provide the derived
                 changes.
         """
@@ -812,6 +819,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         self.jit_optimization: JitOptimization = resolve_jit_optimization(
             jit_optimization
         )
+        #: the engine the models are loaded in and simulated with
+        self.engine: Engine = resolve_engine(engine)
 
         # set in initialization
         self.runner: ExperimentRunner | None = None
@@ -890,6 +899,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             data_path=self.data_path,
             hybridizations=self.hybridizations,
             jit_optimization=self.jit_optimization,
+            engine=self.engine,
         )
         return fresh.__dict__
 
@@ -1321,10 +1331,14 @@ class OptimizationProblem(ObjectJSONEncoder):
             collection.experiment_class for collection in self.mapping_collections
         }
 
+        # the simulator of the experiments loads the models in the engine of
+        # the problem
+        simulator = self._simulator(settings)
         self.runner = ExperimentRunner(
             experiment_classes=list(exp_classes),
             base_path=self.base_path,
             data_path=self.data_path,
+            simulator=simulator,
             # a fit needs every experiment, its definition errors are raised
             on_error="raise",
             jit_optimization=self.jit_optimization,
@@ -1825,20 +1839,33 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         self._group_derived_changes()
 
-        # the simulator of the experiments with the integrator settings of the
-        # fit; serial, since the fit runs its plans in a pool of its own and an
-        # experiment initialized in a worker of that pool runs in the worker
-        simulator = Simulator(
+        self._apply_integrator_settings(simulator)
+        self._compile_plans()
+
+    def _simulator(self, settings: FitSettings) -> Simulator:
+        """Get the simulator of the experiments of the problem.
+
+        It has the engine of the problem and the integrator settings of the
+        fit; serial, since the fit runs its plans in a pool of its own and an
+        experiment initialized in a worker of that pool runs in the worker.
+        """
+        return Simulator(
             n_workers=1,
+            engine=self.engine,
             absolute_tolerance=settings.absolute_tolerance,
             relative_tolerance=settings.relative_tolerance,
             variable_step_size=settings.variable_step_size,
             initial_time_step=settings.initial_time_step,
         )
-        self.set_simulator(simulator)
+
+    def _apply_integrator_settings(self, simulator: Simulator) -> None:
+        """Set the integrator settings of a simulator on every model of the fit.
+
+        The evaluations run the plans on the models directly, see
+        `execute_plan`, with the settings of the models.
+        """
         for model in {id(m): m for m in self.models}.values():
             model.set_integrator_settings(**simulator.integrator_settings)
-        self._compile_plans()
 
     @property
     def parameter_scale(self) -> ParameterScaleType:
@@ -2921,8 +2948,36 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
 
     def set_simulator(self, simulator: Simulator | None) -> None:
-        """Set the simulator on the runner and the experiments."""
-        self.runner_initialized.set_simulator(simulator)
+        """Set the simulator on the runner and the experiments.
+
+        A simulator of another engine than the one of the problem loads the
+        models again in its engine, see `ExperimentRunner.set_simulator`: the
+        engine of the simulator becomes the engine of the problem, which a
+        pickled problem keeps, the models of the mappings are the ones of the
+        runner, with the integrator settings of the fit, and the plans are
+        compiled against them. A simulator of the same engine keeps the
+        models. `None` keeps the simulator.
+
+        Args:
+            simulator: the simulator of the experiments.
+
+        Raises:
+            ValueError: if the problem was not initialized.
+        """
+        runner = self.runner_initialized
+        if simulator is None or simulator.engine is self.engine:
+            runner.set_simulator(simulator)
+            return
+        runner.set_simulator(simulator)
+        self.engine = simulator.engine
+        # the models of the runner replace the ones of the other engine, one
+        # for one, so the groups of the mappings are kept
+        self.models = [
+            runner.experiments[sid]._models[model_id]
+            for sid, model_id in zip(self.experiment_keys, self.model_keys, strict=True)
+        ]
+        self._apply_integrator_settings(self._simulator(self.settings_initialized))
+        self._compile_plans()
 
     @property
     def runner_initialized(self) -> ExperimentRunner:
@@ -3499,6 +3554,10 @@ class OptimizationProblem(ObjectJSONEncoder):
             selections = [TIME, *graph.selections]
         try:
             output = execute_plan(plan, self.models[group[0]], selections)
+        except NotImplementedError:
+            # a feature the engine does not simulate fails for every value of
+            # the parameters, it is no failed integration
+            raise
         except (RuntimeError, SteadyStateError) as err:
             self._log_integration_error(x, err)
             return None
@@ -3562,6 +3621,9 @@ class OptimizationProblem(ObjectJSONEncoder):
             solutions = [
                 execute_plan(point, model, selections).values for point in plans
             ]
+        except NotImplementedError:
+            # a feature the engine does not simulate, see `_simulate_at_data`
+            raise
         except (RuntimeError, SteadyStateError) as err:
             self._log_integration_error(x, err)
             return None

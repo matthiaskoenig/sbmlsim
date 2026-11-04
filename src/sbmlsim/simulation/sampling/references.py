@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Collection, Sequence
 
+from sbmlsim.engine import Engine
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.sampling.distributions import Number
@@ -23,11 +24,16 @@ ZERO: float = 1e-8
 
 
 def _loaded(model: ModelLike) -> RoadrunnerSBMLModel:
-    """Get a loaded model; a loaded one is used as it is, with its settings."""
+    """Get a loaded model of roadrunner, which the references are read with.
+
+    A loaded model of roadrunner is used as it is, with its settings. A model
+    of another engine, e.g. of COPASI, is loaded again in roadrunner from its
+    description (`sbmlsim.model.model_sbml.load_model`), without the state
+    set on it; so are a description and a source.
+    """
     if isinstance(model, RoadrunnerSBMLModel) and model.r is not None:
         return model
-    # the references are read with roadrunner, the engine of `Simulator()`
-    loaded = Simulator().load(model)
+    loaded = Simulator(engine=Engine.ROADRUNNER).load(model)
     if not isinstance(loaded, RoadrunnerSBMLModel):
         raise TypeError(f"The model '{loaded.label}' is no model of roadrunner.")
     return loaded
@@ -50,6 +56,10 @@ def references(
     is; the model is reset after the values are read, so it keeps no value of
     the pre-initialization, which e.g. the start values of a fit would read
     (#315).
+
+    The values are read with roadrunner whatever the engine of the model, so
+    the draws of a design are the same for every engine; a model of another
+    engine is loaded again in roadrunner, see `_loaded`.
 
     Args:
         model: the model, loaded or a source.
