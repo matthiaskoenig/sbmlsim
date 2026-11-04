@@ -39,7 +39,16 @@ It has the semantics of the executor of roadrunner, see
    trigger which stays at its threshold for all of `LOOK_AHEAD` raises a
    `NotImplementedError` naming the events; an event AMICI itself fires
    within the time ahead changes the state the trigger is evaluated in
-   there (not worked around). A horizon of a steady state does not fire an
+   there (not worked around). The same holds after an event: an event
+   (of AMICI in an integration, or of the executor at a start) which leaves
+   a strict trigger at its threshold, e.g. its own trigger `Y > 2` by
+   `Y = 2`, keeps it true for AMICI or makes AMICI fire it. After every
+   event the executor fires, the start is evaluated again (an event which
+   fired at the start does not fire again there); in a model with a strict
+   trigger every execution of an event by AMICI is located and the model
+   integrated again to just after it (`_Course._run_once`): a strict
+   trigger at its threshold there raises a `NotImplementedError` naming the
+   events. A horizon of a steady state does not fire an
    event again which AMICI fired at the end of the horizon before it, at
    its root of 0 (`_Course.horizon`): the time is continuous across the
    horizons.
@@ -84,7 +93,9 @@ Known differences to roadrunner:
   to 1; AMICI fires them once per crossing of the time (1 and 2, as
   COPASI). AMICI fires a strict trigger at its root, e.g. `time > 100` at
   the end 100 of a steady state which is reached there, where COPASI does
-  not (roadrunner does as well).
+  not (roadrunner does as well), and an output time at the root of a
+  strict trigger of the time (`time > 1` at 1) has the state after the
+  event in AMICI and the state before it in roadrunner.
 - AMICI 1.2 does not import a trigger with a negation of a comparison
   (`!(X <= 3)`), the model raises when it is loaded.
 
@@ -183,6 +194,7 @@ class _Course:
                 f"'{model.label}', not {len(self.events)}."
             )
         self._relaxed: list[str | None] | None = None
+        self._strict: bool | None = None
         #: the events whose trigger at its threshold at the last start becomes
         #: true later, by their times, which the integrations from the start
         #: fire (`_integrate`)
@@ -259,24 +271,57 @@ class _Course:
         if not events:
             return None
         values = model.values
-        strict = triggers(events, values, time, model)
-        relaxed = self._relaxed_triggers(time)
-        zero = [
-            k
-            for k in range(len(events))
-            if strict[k] is False and relaxed[k] is True and k not in executed
-        ]
-        if not zero:
-            return None
+        head: np.ndarray | None = None
+        # the events which fired at the time, which do not fire again at it:
+        # their triggers are true right after it, as for AMICI
+        fired: set[int] = set()
+        while True:
+            strict = triggers(events, values, time, model)
+            relaxed = self._relaxed_triggers(time)
+            zero = [
+                k
+                for k in range(len(events))
+                if strict[k] is False and relaxed[k] is True and k not in executed
+            ]
+            fire, pending = self._look_ahead(time, end, zero) if zero else ([], [])
+            self._pending = sorted(pending)
+            fire = [k for k in fire if k not in fired]
+            if not fire:
+                return head
+            if head is None:
+                head = state_row(model, self.selections, time)
+            after = list(strict)
+            for k in fire:
+                after[k] = True
+            fire_events(events, strict, values, time, model, after=after)
+            model.set_time(time)
+            fired.update(fire)
+
+    def _look_ahead(
+        self, time: float, end: float, zero: Sequence[int]
+    ) -> tuple[list[int], list[tuple[float, int]]]:
+        """Tell the events whose triggers at their threshold become true right after a time or later.
+
+        See `restart`.
+
+        Returns:
+            The events whose triggers are true at the resolution after the
+            time, and the times the triggers of the others become true at,
+            with their events.
+
+        Raises:
+            NotImplementedError: for a trigger still at its threshold after
+                `LOOK_AHEAD` steps ahead before the end.
+        """
         fire: list[int] = []
         pending: list[tuple[float, int]] = []
         resolution = max(self.resolution, TIME_RTOL * abs(time))
         ahead, previous = resolution, time
+        zero = list(zero)
         for _ in range(LOOK_AHEAD):
             later = min(time + ahead, end)
             if not integrable(time, later):
-                zero = []
-                break
+                return fire, pending
             strict_later, relaxed_later = self._triggers_at(time, later)
             for k in zero:
                 if strict_later[k] is not True:
@@ -293,28 +338,16 @@ class _Course:
                 if strict_later[k] is not True and relaxed_later[k] is True
             ]
             if not zero or later >= end:
-                zero = []
-                break
+                return fire, pending
             previous = later
             ahead *= 10.0
-        if zero:
-            raise NotImplementedError(
-                f"The engine AMICI does not simulate the events "
-                f"{[events[k].eid for k in zero]} of the model '{model.label}' at "
-                f"the time {time}: AMICI evaluates their triggers at their "
-                f"threshold as true, which stay at it longer than "
-                f"{ahead / 10.0:.3g} after the time."
-            )
-        self._pending = sorted(pending)
-        if not fire:
-            return None
-        after = list(strict)
-        for k in fire:
-            after[k] = True
-        head = state_row(model, self.selections, time)
-        fire_events(events, strict, values, time, model, after=after)
-        model.set_time(time)
-        return head
+        raise NotImplementedError(
+            f"The engine AMICI does not simulate the events "
+            f"{[self.events[k].eid for k in zero]} of the model "
+            f"'{self.model.label}' at the time {time}: AMICI evaluates their "
+            f"triggers at their threshold as true, which stay at it longer than "
+            f"{ahead / 10.0:.3g} after the time."
+        )
 
     def _crossing(
         self, time: float, lo: float, hi: float, k: int, resolution: float
@@ -448,6 +481,7 @@ class _Course:
         values, x = self._run_once(start, np.append(times[times < crossing], crossing))
         before = values[-1].copy()
         self._fire_pending(crossing, [k for t, k in due if t == crossing])
+        self._check_after_event(crossing, crossing, self.model.state)
         after = state_row(self.model, self.selections, crossing)
         pending = self._pending
         self._pending = [(t, k) for t, k in pending if t > crossing]
@@ -460,13 +494,24 @@ class _Course:
         return np.vstack([values[:-1], rest[1:]]), np.vstack([x[:-1], y[1:]])
 
     def _fire_pending(self, time: float, pending: Sequence[int]) -> None:
-        """Fire events of `_pending` at their time, if their triggers are true, with the events they trigger."""
+        """Fire events of `_pending` at their time, with the events they trigger.
+
+        Raises:
+            RuntimeError: if the trigger of an event is not true at its time,
+                e.g. after an event of AMICI before it which `restart` did not
+                see; AMICI would miss the event.
+        """
         model = self.model
         model.set_time(time)
         values = model.values
         current = triggers(self.events, values, time, model)
-        if not any(current[k] is True for k in pending):
-            return
+        missed = [self.events[k].eid for k in pending if current[k] is not True]
+        if missed:
+            raise RuntimeError(
+                f"The triggers of the events {missed} of the model '{model.label}' "
+                f"are not true at the time {time} at which they become true after "
+                f"their threshold; AMICI would miss the events."
+            )
         before = list(current)
         for k in pending:
             before[k] = False
@@ -476,7 +521,151 @@ class _Course:
     def _run_once(
         self, start: float, times: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Integrate from the current state at `start` with output at times, see `_integrate`.
+        """Integrate from the current state at `start` with output at times, checking the events of AMICI.
+
+        AMICI evaluates a trigger at a root of the value 0 as true also after
+        one of its events in an integration: an event which leaves a strict
+        trigger exactly at its threshold, e.g. its own trigger `Y > 2` by
+        `Y = 2`, keeps it true for AMICI (which misses its next crossing) or
+        fires it (which roadrunner does not, while it stays at its
+        threshold). For a model with a strict trigger every execution of an
+        event by AMICI is located (`_first_execution`), the model is
+        integrated again to `AFTER_THE_EVENT` units in the last place after
+        it, and the integration continues from there if no strict trigger
+        is at its threshold; else it raises. An event closer than that to
+        the last time is left to the start of the next integration
+        (`restart`).
+
+        Args:
+            start: the start.
+            times: the output times, sorted, from the start on.
+
+        Returns:
+            The values of the selections and the states of AMICI, a row at
+            the start and a row per time.
+
+        Raises:
+            NotImplementedError: for a strict trigger at its threshold after
+                an event of AMICI.
+            RuntimeError: if AMICI fails to integrate, with its messages.
+        """
+        model = self.model
+        if not self._strict_triggers():
+            return self._run_amici(start, times)
+        state = model.state
+        initial = model.event_counts(state)
+        values, x = self._run_amici(start, times)
+        counts = model.event_counts(x)
+        if np.array_equal(counts[-1], initial):
+            return values, x
+        grid = np.concatenate([[start], times])
+        if not np.array_equal(counts[0], initial):
+            # AMICI fired an event of the time within the rounding of the
+            # time at the start, the integration is not repeated from it
+            self._check_after_event(start, start, x[0])
+        changed = np.flatnonzero(np.any(counts[1:] != counts[:-1], axis=1)) + 1
+        if changed.size == 0:
+            return values, x
+        i = int(changed[0])
+        executed, lo, lo_state = self._first_execution(grid[i - 1], x[i - 1], grid[i])
+        after = executed + AFTER_THE_EVENT * float(
+            np.spacing(max(abs(executed), abs(lo)))
+        )
+        if after > grid[-1]:
+            # an event at the end of the integration, the start of the next
+            # one evaluates the triggers, see `restart`
+            return values, x
+        middle = grid[(grid > lo) & (grid <= after)]
+        model.set_state(lo, lo_state)
+        between, y = self._run_amici(lo, np.append(middle, after))
+        if np.any(model.event_counts(y[-1]) > counts[i]):
+            raise RuntimeError(
+                f"AMICI fires more events of the model '{model.label}' between "
+                f"{lo} and {after} in a repeated integration."
+            )
+        self._check_after_event(executed, after, y[-1])
+        later = times[times > after]
+        rest, z = self._run_once(after, later)
+        kept = grid.size - later.size - middle.size
+        rows = np.vstack([values[:kept], between[1:-1]])
+        states = np.vstack([x[:kept], y[1:-1]])
+        return np.vstack([rows, rest[1:]]), np.vstack([states, z[1:]])
+
+    def _strict_triggers(self) -> bool:
+        """Whether a trigger has a comparison AMICI evaluates otherwise at a root of 0, see `_relaxed`."""
+        if self._strict is None:
+            self._strict = any(
+                event.trigger is not None
+                and _relaxed(event.trigger)
+                != libsbml.writeMathMLToString(
+                    libsbml.readMathMLFromString(event.trigger)
+                )
+                for event in self.events
+            )
+        return self._strict
+
+    def _first_execution(
+        self, lo: float, lo_state: np.ndarray, hi: float
+    ) -> tuple[float, float, np.ndarray]:
+        """Locate the first execution of an event by AMICI between two times.
+
+        The interval is split until one event executes in it once (its time
+        the time of its last execution, `EVENT_TIME_PREFIX`), or it is
+        shorter than the resolution of the time (the first time of the
+        executions in it).
+
+        Returns:
+            The time of the execution, and the time and the states of AMICI of
+            the start of the interval which contains it.
+        """
+        model = self.model
+        resolution = max(self.resolution, TIME_RTOL * abs(hi))
+        for _ in range(MAX_SPLITS + 1):
+            model.set_state(lo, lo_state)
+            grid = np.linspace(lo, hi, 9)[1:]
+            _, y = self._run_amici(lo, grid)
+            counts = model.event_counts(y)
+            j = int(np.flatnonzero(np.any(counts[1:] != counts[:-1], axis=1))[0]) + 1
+            executions = counts[j] - counts[j - 1]
+            times = np.concatenate([[lo], grid])
+            if executions.sum() == 1 or times[j] - times[j - 1] <= resolution:
+                executed = float(np.min(model.event_times(y[j])[executions > 0]))
+                return executed, float(times[j - 1]), y[j - 1]
+            lo, lo_state, hi = float(times[j - 1]), y[j - 1], float(times[j])
+        raise RuntimeError(
+            f"AMICI fires the events of the model '{self.model.label}' too often "
+            f"at the time {lo} to tell their times."
+        )
+
+    def _check_after_event(
+        self, executed: float, time: float, state: np.ndarray
+    ) -> None:
+        """Refuse a strict trigger at its threshold after an event of AMICI, see `_run_once`.
+
+        Raises:
+            NotImplementedError: naming the events.
+        """
+        model = self.model
+        model.set_state(time, state)
+        strict = triggers(self.events, model.values, time, model)
+        relaxed = self._relaxed_triggers(time)
+        held = [
+            event.eid
+            for event, s, r in zip(self.events, strict, relaxed, strict=True)
+            if s is False and r is True
+        ]
+        if held:
+            raise NotImplementedError(
+                f"The engine AMICI does not simulate the events {held} of the model "
+                f"'{model.label}' after the event at the time {executed}: their "
+                f"triggers stay at their threshold, which AMICI evaluates as true "
+                f"in an integration."
+            )
+
+    def _run_amici(
+        self, start: float, times: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Integrate from the current state at `start` with output at times with AMICI, see `_run_once`.
 
         Args:
             start: the start.

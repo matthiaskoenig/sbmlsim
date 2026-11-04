@@ -812,3 +812,68 @@ def test_a_strict_trigger_at_a_change_at_the_end(times: list[float] | None) -> N
     amici, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
     assert amici.values[-1].tolist() == [5.0, 101.0, 1.0]
     assert_agree(amici, roadrunner, times, changes=[5.0])
+
+
+#: an event which sets its own strict trigger to its threshold, where it stays
+#: until 20 (`Y` rises from 2 after 20): roadrunner fires it again after 20
+HOLD = """
+model hold
+  Y = 3
+  Y' = piecewise(0, time < 20, piecewise(1, Y < 3, 0))
+  n = 0
+  E: at ((time > 10) && (Y > 2)), t0=true: n = n + 1, Y = piecewise(2, n < 0.5, 10)
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 30], None])
+@pytest.mark.parametrize("changes", [[], [Change(10, {"n": 0.0})]])
+def test_an_event_which_leaves_its_strict_trigger_at_its_threshold_raises(
+    times: list[float] | None, changes: list[Change]
+) -> None:
+    """AMICI evaluates the trigger at its threshold after its event as true and misses its next crossing.
+
+    The event fires in an integration of AMICI, or at the start of a segment
+    after a change, and leaves its trigger at its threshold longer than the
+    look ahead: the executor raises, naming the event.
+    """
+    source = sbml(HOLD)
+    plan = plan_of(source, Simulation(end=30, times=times, changes=changes))
+    with pytest.raises(NotImplementedError, match=r"\['E'\].*'hold'.*time 10"):
+        executor_amici.execute(plan, AmiciSBMLModel(source=source), ["time", "n"])
+
+
+#: an event which sets a state to the threshold of a strict trigger of
+#: another event, which it crosses right after
+CROSSING = """
+model crossing
+  Y = 0
+  Y' = 1
+  n = 0
+  E: at (time > 1), t0=true: Y = 2
+  F: at (Y > 2), t0=true: n = n + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 2, 3], None])
+def test_an_event_which_sets_a_strict_trigger_to_its_threshold(
+    times: list[float] | None,
+) -> None:
+    """The trigger crosses right after the event of AMICI, which fires its event, as roadrunner.
+
+    AMICI fires both events at 1 (one pair of rows in the steps), roadrunner
+    the second one right after the first.
+    """
+    amici, roadrunner = both(
+        sbml(CROSSING), Simulation(end=3, times=times), ["time", "Y", "n"]
+    )
+    assert amici["n"][-1] == 1.0
+    if times is None:
+        pairs = np.flatnonzero(np.diff(amici.time) == 0.0)
+        np.testing.assert_allclose(
+            amici.values[pairs[0] : pairs[0] + 2], [[1, 1, 0], [1, 2, 1]], atol=1e-8
+        )
+        np.testing.assert_allclose(amici.values[-1], roadrunner.values[-1], atol=1e-6)
+    else:
+        assert_equal_results(amici, roadrunner)
