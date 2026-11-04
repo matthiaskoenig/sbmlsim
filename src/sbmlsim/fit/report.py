@@ -754,7 +754,9 @@ class FitReport:
             self.opt_result.to_tsv(path=results_dir / "optimization_result.tsv")
         if self.fisher:
             fisher_json = results_dir / "fisher.json"
-            fisher_json.write_text(json.dumps(self.fisher.to_dict(), indent=2))
+            fisher_json.write_text(
+                json.dumps(self.fisher.to_dict(), indent=2), encoding="utf-8"
+            )
             self._fisher_summary_df().to_csv(
                 results_dir / "fisher.tsv", sep="\t", index=False
             )

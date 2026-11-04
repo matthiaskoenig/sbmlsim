@@ -40,7 +40,7 @@ def test_the_report_of_a_run(script: ModuleType, tmp_path: Path) -> None:
     """The report is a markdown table with a row per problem."""
     script.write_results(RESULTS, tmp_path)
     path = script.report(tmp_path)
-    lines = path.read_text().splitlines()
+    lines = path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 4
     assert lines[2].startswith("| A_First | pass | 3 | 1.00e-06 | -1.5 |")
     assert "ValueError: a / b" in lines[3]
@@ -62,7 +62,10 @@ def test_run_fails_when_a_problem_differs_from_the_baseline(
 ) -> None:
     """`run` returns 1 when a problem does not have the outcome of the baseline."""
     path = tmp_path / "baseline.json"
-    path.write_text(json.dumps({"suite_commit": "abc", "expected_failures": failures}))
+    path.write_text(
+        json.dumps({"suite_commit": "abc", "expected_failures": failures}),
+        encoding="utf-8",
+    )
     collection = SimpleNamespace(commit="abc", path=tmp_path)
     monkeypatch.setattr(script.BenchmarkCollection, "load", lambda commit: collection)
     monkeypatch.setattr(script, "run", lambda c, names, processes: RESULTS)

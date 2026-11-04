@@ -678,7 +678,7 @@ def test_a_figure_is_measured_with_one_renderer(
 
 
 def _svg_size(path: Path) -> tuple[float, float]:
-    head = path.read_text()[:2000]
+    head = path.read_text(encoding="utf-8")[:2000]
     width = re.search(r'width="([0-9.]+)pt"', head)
     height = re.search(r'height="([0-9.]+)pt"', head)
     assert width is not None and height is not None

@@ -140,7 +140,7 @@ def test_the_noise_of_a_geometric_sd_is_log_normal(tmp_path: Path) -> None:
 def test_a_geometric_sd_round_trips_through_petab(tmp_path: Path) -> None:
     """The export writes log-normal noise, the reader reads geometric SDs."""
     model_path = tmp_path / "pk.xml"
-    model_path.write_text(sbml_pk())
+    model_path.write_text(sbml_pk(), encoding="utf-8")
 
     class Study(GmeanStudy):
         def models(self) -> dict[str, AbstractModel | Path]:

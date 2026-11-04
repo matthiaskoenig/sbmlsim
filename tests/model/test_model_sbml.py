@@ -262,11 +262,11 @@ def test_the_description_of_a_model_keeps_its_file_and_its_sbml(
 ) -> None:
     """The SBML as loaded with the path of its file, so a rewrite changes nothing."""
     path = tmp_path / "model.xml"
-    path.write_text(probe_sbml())
+    path.write_text(probe_sbml(), encoding="utf-8")
     model = RoadrunnerSBMLModel(source=path, selections=["time", "A"])
     rewritten = probe_sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1"))
     assert rewritten != model.sbml
-    path.write_text(rewritten)
+    path.write_text(rewritten, encoding="utf-8")
 
     described = description(model)
     assert described.source.path == path.resolve()

@@ -41,12 +41,12 @@ def _case(path: Path, cid: str = "00001", settings: str = SETTINGS) -> Path:
     """Write a case directory with its metadata and an l3v2 and an l2v1 model."""
     directory = path / cid
     directory.mkdir(parents=True)
-    (directory / f"{cid}-settings.txt").write_text(settings)
-    (directory / f"{cid}-model.m").write_text(MODEL_M)
-    (directory / f"{cid}-sbml-l3v2.xml").write_text("<sbml/>")
-    (directory / f"{cid}-sbml-l2v1.xml").write_text("<sbml/>")
+    (directory / f"{cid}-settings.txt").write_text(settings, encoding="utf-8")
+    (directory / f"{cid}-model.m").write_text(MODEL_M, encoding="utf-8")
+    (directory / f"{cid}-sbml-l3v2.xml").write_text("<sbml/>", encoding="utf-8")
+    (directory / f"{cid}-sbml-l2v1.xml").write_text("<sbml/>", encoding="utf-8")
     (directory / f"{cid}-results.csv").write_text(
-        "time,S1,S2\n0,1.0,0.0\n1,0.5,0.5\n2,0.25,0.75\n"
+        "time,S1,S2\n0,1.0,0.0\n1,0.5,0.5\n2,0.25,0.75\n", encoding="utf-8"
     )
     return directory
 
@@ -100,7 +100,9 @@ def test_a_directory_without_settings_is_not_a_case(tmp_path: Path) -> None:
 def test_the_time_column_is_normalized(tmp_path: Path) -> None:
     """Some cases spell the time column `Time`, which is renamed."""
     directory = _case(tmp_path)
-    (directory / "00001-results.csv").write_text("Time,S1,S2\n0,1.0,0.0\n")
+    (directory / "00001-results.csv").write_text(
+        "Time,S1,S2\n0,1.0,0.0\n", encoding="utf-8"
+    )
     case = SemanticCase.from_directory(directory)
     assert case is not None
     assert "time" in case.expected().columns
@@ -204,7 +206,7 @@ def test_an_undefined_value_agrees_with_an_undefined_value(tmp_path: Path) -> No
     """A value which is expected to be undefined may come out undefined."""
     directory = _case(tmp_path)
     (directory / "00001-results.csv").write_text(
-        "time,S1,S2\n0,1.0,0.0\n1,nan,0.5\n2,0.25,0.75\n"
+        "time,S1,S2\n0,1.0,0.0\n1,nan,0.5\n2,0.25,0.75\n", encoding="utf-8"
     )
     case = SemanticCase.from_directory(directory)
     assert case is not None
@@ -252,7 +254,7 @@ def _time_case(path: Path) -> Path:
     """Write a case whose variables are named like the time column."""
     directory = _case(path, cid="01820", settings=TIME_SETTINGS)
     (directory / "01820-results.csv").write_text(
-        "Time,time,Time,TIME\n0,0,1,2\n5,5,6,7\n10,10,11,12\n"
+        "Time,time,Time,TIME\n0,0,1,2\n5,5,6,7\n10,10,11,12\n", encoding="utf-8"
     )
     return directory
 
@@ -314,7 +316,7 @@ def test_results_which_do_not_carry_one_column_per_variable_are_refused(
 ) -> None:
     """Naming the columns by position needs the results to have that shape."""
     directory = _time_case(tmp_path)
-    (directory / "01820-results.csv").write_text("Time,time\n0,0\n")
+    (directory / "01820-results.csv").write_text("Time,time\n0,0\n", encoding="utf-8")
     case = SemanticCase.from_directory(directory)
     assert case is not None
     with pytest.raises(ValueError, match="not the time and one column per variable"):

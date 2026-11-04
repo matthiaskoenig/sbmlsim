@@ -310,6 +310,84 @@ def test_selections_without_time_get_it() -> None:
     assert res.columns == ("time", "[A]")
 
 
+#: a model which reads the time, integrated in absolute time, with an event
+TIME_EVENT = """
+model time_event
+  A = 1; k1 = 0.8
+  J1: A -> ; k1*A
+  E: at (time > 2): A = A + 1
+end
+"""
+
+#: a parameter `tt` which the tests rename to `time`, as in case 01820
+ENTITY_TIME = """
+model entity_time
+  A = 1; k1 = 0.8
+  J1: A -> ; k1*A
+  tt = 10
+end
+"""
+
+#: simulations with rows of the steps, of the changes and of the steady state
+#: after the end, by their ids
+TIME_COLUMN_SIMULATIONS = {
+    "steps": Simulation(end=3, changes=[Change([1.5, 3], {"k1": 2.0})]),
+    "times": Simulation(
+        end=3, changes=[Change([1.5, 3], {"k1": 2.0})], times=[0, 1, 1.5, 3, np.inf]
+    ),
+    "time shift": Simulation(
+        end=3, changes=[Change([1.5, 3], {"k1": 2.0})], time_shift=10.0
+    ),
+    "negative start": Simulation(
+        start=-2, end=3, changes=[Change(1.5, {"k1": 2.0})], times=[-2, 0, 1.5, 3]
+    ),
+    "presimulation": Simulation(
+        end=3, changes=[Change(1.5, {"k1": 2.0})], presimulation=SteadyState()
+    ),
+}
+
+
+@pytest.mark.parametrize("model", ["local", "absolute"])
+@pytest.mark.parametrize(
+    "selections", [["A", "time"], ["A", "time", "k1"], ["time", "A", "time"]]
+)
+@pytest.mark.parametrize("simulation", TIME_COLUMN_SIMULATIONS)
+def test_a_later_time_column_is_the_time_of_the_rows(
+    model: str, selections: list[str], simulation: str
+) -> None:
+    """A selection `time` after the first column is the time of every row (#445).
+
+    roadrunner reads it in its own time, the local time of a segment, and
+    without the time shift; the state after a change is no row of
+    roadrunner.
+    """
+    source = sbml() if model == "local" else sbml(TIME_EVENT)
+    res = run_on(
+        RoadrunnerSBMLModel(source=source),
+        TIME_COLUMN_SIMULATIONS[simulation],
+        selections,
+    )
+    later = [k for k, c in enumerate(res.columns) if c == "time" and k > 0]
+    assert later
+    for k in later:
+        np.testing.assert_array_equal(res.values[:, k], res.time)
+
+
+@pytest.mark.parametrize("times", [None, [0, 1.5, 3, np.inf]])
+def test_a_later_time_column_of_an_entity_time_is_its_value(
+    times: list[float] | None,
+) -> None:
+    """A selection `time` of a model with an entity `time` is its value (case 01820)."""
+    model = RoadrunnerSBMLModel(
+        source=sbml(ENTITY_TIME).replace('id="tt"', 'id="time"')
+    )
+    assert "time" in model.symbols.parameters
+    simulation = Simulation(end=3, changes=[Change([1.5, 3], {"k1": 2.0})], times=times)
+    res = run_on(model, simulation, ["time", "time", "A"])
+    assert res.time[-1] == (3.0 if times is None else np.inf)
+    np.testing.assert_array_equal(res.values[:, 1], 10.0)
+
+
 def test_integrator_setting_is_restored() -> None:
     """The output mode does not change the setting of the model."""
     model = RoadrunnerSBMLModel(source=sbml())
@@ -374,6 +452,121 @@ def test_only_the_steady_state_is_an_output() -> None:
     """A simulation whose only output is the steady state has one row."""
     res = run(Simulation(end=1, times=[np.inf]))
     assert res.time.tolist() == [np.inf]
+
+
+#: an event of the time which counts its firings, `TRIGGER` its trigger
+TIME_TRIGGER = """
+model time_trigger
+  X = 1
+  X' = -0.1*X
+  n = 0
+  E: at (TRIGGER), t0=false: n = n + 1
+end
+"""
+
+#: the steady state after the end of a simulation from 0 to 1 starts at the
+#: resolution of the time after the end, see `_event_at_the_end`
+AFTER_THE_END = 1.0 + time_tolerance(0.0, 1.0)
+
+#: simulations with a steady state whose first horizons end at 1, 10 and 100
+#: after its start, by their ids, and the start of the steady state
+HORIZON_SIMULATIONS = {
+    "presimulation": (Simulation(end=0.5, presimulation=SteadyState()), 0.0),
+    "after the end": (Simulation(end=1, times=[0, 1, np.inf]), AFTER_THE_END),
+}
+
+
+def _horizon_run(
+    trigger: str, simulation: str, caplog: pytest.LogCaptureFixture
+) -> tuple[float, bool]:
+    """Run a simulation of `HORIZON_SIMULATIONS` with a trigger of the time.
+
+    Returns:
+        The number of firings at the end and whether the plan ran again with
+        exact output at the end of a horizon.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(TIME_TRIGGER.replace("TRIGGER", trigger)))
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.simulator.executor"):
+        res = run_on(model, HORIZON_SIMULATIONS[simulation][0], ["time", "n", "X"])
+    again = any("exact output at its end" in m for m in caplog.messages)
+    assert res["X"][-1] == pytest.approx(0.0, abs=1e-6)
+    return float(res["n"][-1]), again
+
+
+@pytest.mark.parametrize("simulation", HORIZON_SIMULATIONS)
+@pytest.mark.parametrize("horizon", [1.0, 10.0, 100.0])
+def test_a_strict_trigger_of_the_time_fires_once_at_the_end_of_a_horizon(
+    simulation: str, horizon: float, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A strict trigger of the time at the end of a horizon of a steady state fires once (#444).
+
+    CVODE finds the root a little before the end, roadrunner fires the event
+    there and evaluates the trigger, still false, again at the start of the
+    next horizon, where it fired a second time; the horizon is integrated
+    again with exact output at its end.
+    """
+    time = HORIZON_SIMULATIONS[simulation][1] + horizon
+    n, again = _horizon_run(f"time > {time!r}", simulation, caplog)
+    assert n == 1.0
+    assert again
+
+
+@pytest.mark.parametrize("simulation", HORIZON_SIMULATIONS)
+@pytest.mark.parametrize("operator", [">", ">="])
+@pytest.mark.parametrize("after", [1e-9, 1e-6, 1e-3, 0.1])
+def test_a_trigger_of_the_time_after_the_end_of_a_horizon_fires_once(
+    simulation: str, operator: str, after: float, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A trigger of the time a little after the end of a horizon fires once (#444).
+
+    The last step of CVODE after the end of the horizon finds its root and
+    roadrunner keeps the event pending; `_to_the_end` fires it after the
+    end, and the next horizon starts at the time of the model after it.
+    From the end of the horizon its trigger was false again and the event
+    fired a second time.
+    """
+    time = HORIZON_SIMULATIONS[simulation][1] + 10.0 + after
+    n, again = _horizon_run(f"time {operator} {time!r}", simulation, caplog)
+    assert n == 1.0
+    assert not again
+
+
+@pytest.mark.parametrize("simulation", HORIZON_SIMULATIONS)
+def test_a_trigger_true_at_the_end_of_a_horizon_keeps_the_steps(
+    simulation: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A trigger which is true at the end of a horizon fires once in its steps."""
+    time = HORIZON_SIMULATIONS[simulation][1] + 10.0
+    n, again = _horizon_run(f"time >= {time!r}", simulation, caplog)
+    assert n == 1.0
+    assert not again
+
+
+#: an event which fires every 0.01 and records its time, which makes its
+#: trigger false (case 00953 of the SBML Test Suite)
+PERIODIC = """
+model periodic
+  X = 1
+  X' = -0.1*X
+  last = 0
+  n = 0
+  E: at (time - last >= 0.01), t0=false, persistent=false: last = time, n = n + 1
+end
+"""
+
+
+def test_an_event_which_makes_its_trigger_false_keeps_the_steps_of_a_horizon(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An event at the end of a horizon whose assignments make its trigger false is no event before its time."""
+    model = RoadrunnerSBMLModel(source=sbml(PERIODIC))
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.simulator.executor"):
+        res = run_on(
+            model, Simulation(end=0.5, presimulation=SteadyState()), ["time", "n"]
+        )
+    assert not any("exact output at its end" in m for m in caplog.messages)
+    assert res["n"][-1] > 100
 
 
 #: a concentration S with dS/dt = 1 in a compartment C, and an event which

@@ -18,7 +18,7 @@ def test_provenance_cannot_escape_the_export_directory(source_kind: str) -> None
     with TemporaryDirectory() as directory:
         root = Path(directory)
         sentinel = root / "sentinel.xml"
-        sentinel.write_text("Keep this harmless sentinel.")
+        sentinel.write_text("Keep this harmless sentinel.", encoding="utf-8")
         source_name = {
             "parent": "../sentinel.xml",
             "absolute": str(sentinel),
@@ -34,7 +34,7 @@ def test_provenance_cannot_escape_the_export_directory(source_kind: str) -> None
         problem.initialize(SETTINGS)
         with pytest.raises(ValueError, match="filename"):
             to_petab(problem, root / "exported")
-        assert sentinel.read_text() == "Keep this harmless sentinel."
+        assert sentinel.read_text(encoding="utf-8") == "Keep this harmless sentinel."
 
 
 @pytest.mark.parametrize("filename", ["lv.xml", "measurements.tsv", "problem.yaml"])
@@ -43,7 +43,7 @@ def test_export_rejects_destination_symlinks_outside_directory(filename: str) ->
     with TemporaryDirectory() as directory:
         root = Path(directory)
         sentinel = root / "sentinel.txt"
-        sentinel.write_text("Keep this harmless sentinel.")
+        sentinel.write_text("Keep this harmless sentinel.", encoding="utf-8")
         output = root / "exported"
         output.mkdir()
         (output / filename).symlink_to(sentinel)
@@ -53,5 +53,5 @@ def test_export_rejects_destination_symlinks_outside_directory(filename: str) ->
         problem.initialize(SETTINGS)
         with pytest.raises(ValueError, match="outside the export directory"):
             to_petab(problem, output)
-        assert sentinel.read_text() == "Keep this harmless sentinel."
+        assert sentinel.read_text(encoding="utf-8") == "Keep this harmless sentinel."
         assert list(output.iterdir()) == [output / filename]

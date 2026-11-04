@@ -91,12 +91,12 @@ def test_the_overview_shows_the_network_and_its_arrays(tmp_path: Path) -> None:
     # one collection per simulation, one class
     assert report.fit_info()["experiments"] == "LotkaVolterra"
     path = report.create(tmp_path / "out", name="report")
-    html = (path / "index.html").read_text()
+    html = (path / "index.html").read_text(encoding="utf-8")
     # the overview summarizes the arrays, the report document lists them
     overview = html[html.index('<section id="overview">') :]
     assert "net1.layer1.weight" in overview
     assert "net1__layer1__weight__0_0" not in overview
-    text = (path / "report.txt").read_text()
+    text = (path / "report.txt").read_text(encoding="utf-8")
     assert "1 of the 3 elements of 'net1.layer1.bias'" in text
 
 
@@ -108,13 +108,13 @@ def test_a_fit_of_elements_only_has_no_parameters_table(tmp_path: Path) -> None:
         "nominal: !1 of the 3 elements of 'net1.layer1.bias' within 5% of a bound!"
     ]
     path = report.create(tmp_path / "out", name="report")
-    html = (path / "index.html").read_text()
+    html = (path / "index.html").read_text(encoding="utf-8")
     # the overview, after the report document, which has a table of the elements
     overview = html.index('<section id="overview">')
     assert "<h3>Parameters</h3>" not in html[overview:]
     networks = html.index("<h3>Networks</h3>", overview)
     assert html.index("of &#39;net1.layer1.bias&#39; within 5%", networks) > networks
-    text = (path / "report.txt").read_text()
+    text = (path / "report.txt").read_text(encoding="utf-8")
     assert "Empty DataFrame" not in text
     assert "1 of the 3 elements of 'net1.layer1.bias'" in text
 
@@ -194,7 +194,7 @@ def test_the_text_report_has_one_row_per_array(tmp_path: Path) -> None:
         mapping_figures=False,
     )
     path = report.create(tmp_path / "out", name="report")
-    text = (path / "report.txt").read_text()
+    text = (path / "report.txt").read_text(encoding="utf-8")
     # no element is listed, neither of the problem, nor of the sets, nor of the fit
     assert "net1__layer" not in text
     for label in ("net1.layer1.weight", "net1.layer2.bias"):

@@ -452,3 +452,89 @@ def test_copasi_and_amici_agree_on_a_dose_of_the_pre_initialization(
         assert values[0][-1] == pytest.approx(values[1][-1], rel=1e-6, abs=1e-9)
         if times:
             np.testing.assert_allclose(*values, rtol=1e-6, atol=1e-9)
+
+
+#: a simulation with changes after the start and at the end, from a negative
+#: start, with a time shift and the steady state after the end
+LATER_TIME = Simulation(
+    start=-1, end=3, changes=[Change([1.5, 3], {"k1": 2.0})], time_shift=10.0
+)
+
+
+@pytest.mark.parametrize("times", [None, [-1, 0, 1.5, 3, float("inf")]])
+def test_a_later_time_column_is_the_time_of_the_rows(
+    other_engine: Engine, times: list[float] | None
+) -> None:
+    """A selection `time` after the first column is the time of every row in every engine (#445)."""
+    model = AbstractModel(source=sbml(), selections=["A", "time"])
+    simulation = (
+        LATER_TIME
+        if times is None
+        else Simulation(
+            start=-1,
+            end=3,
+            changes=list(LATER_TIME.changes),
+            time_shift=10.0,
+            times=times,
+        )
+    )
+    results = {
+        engine: Simulator(engine=engine).simulate(model, simulation)
+        for engine in (Engine.ROADRUNNER, other_engine)
+    }
+    for result in results.values():
+        assert result.columns == ("time", "A", "time")
+        assert np.count_nonzero(result.time == 11.5) == 2
+        np.testing.assert_array_equal(result.values[:, 2], result.time)
+    if times is not None:
+        np.testing.assert_array_equal(
+            results[other_engine].time, results[Engine.ROADRUNNER].time
+        )
+
+
+#: an event of the time at `T` which counts its firings, `OPERATOR` the
+#: comparison of its trigger
+TIME_TRIGGER = """
+model time_trigger
+  X = 1
+  X' = -0.1*X
+  n = 0
+  T = 1
+  E: at (time OPERATOR T), t0=false: n = n + 1
+end
+"""
+
+#: the start of the steady state of a simulation in roadrunner: a
+#: presimulation from 0, and the steady state after the end of a simulation
+#: from 0 to 1 from the resolution of the time after the end
+HORIZON_STARTS = {"presimulation": 0.0, "steady state after the end": 1.0 + 1e-9}
+
+
+@pytest.mark.parametrize("operator", [">", ">="])
+@pytest.mark.parametrize("output", HORIZON_STARTS)
+def test_a_trigger_of_the_time_at_the_horizons_of_a_steady_state_fires_once(
+    other_engine: Engine, output: str, operator: str
+) -> None:
+    """A trigger of the time at or a little after the end of a horizon fires once in every engine (#444).
+
+    The horizons of a steady state of roadrunner end at 1, 10 and 100 after
+    its start.
+    """
+    model = AbstractModel(
+        source=sbml(TIME_TRIGGER.replace("OPERATOR", operator)),
+        selections=["time", "n", "X"],
+    )
+    for after in (0.0, 1e-3, 0.1):
+        time = HORIZON_STARTS[output] + 10.0 + after
+        if output == "presimulation":
+            simulation = Simulation(
+                end=0.5, presimulation=SteadyState(), preinit_changes={"T": time}
+            )
+        else:
+            simulation = Simulation(
+                end=1, times=[0, 1, float("inf")], preinit_changes={"T": time}
+            )
+        for engine in (Engine.ROADRUNNER, other_engine):
+            result = Simulator(engine=engine).simulate(model, simulation)
+            assert result["n"][-1] == 1.0, (engine, after)
+            assert result["X"][-1] == pytest.approx(0.0, abs=1e-6)

@@ -23,7 +23,9 @@ def test_loading_a_description_keeps_its_resolved_file(
     for directory, rate in [("first", 0.8), ("second", 0.1)]:
         path = tmp_path / directory
         path.mkdir()
-        (path / "model.xml").write_text(sbml(PROBE.replace("k1 = 0.8", f"k1 = {rate}")))
+        (path / "model.xml").write_text(
+            sbml(PROBE.replace("k1 = 0.8", f"k1 = {rate}")), encoding="utf-8"
+        )
     monkeypatch.chdir(tmp_path / "first")
     description = AbstractModel("model.xml", selections=["time", "k1"])
     monkeypatch.chdir(tmp_path / "second")

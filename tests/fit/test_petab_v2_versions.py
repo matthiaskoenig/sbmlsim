@@ -59,7 +59,7 @@ def write_problem(
         The YAML file of the problem.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "model.xml").write_text(sbml(RELAX))
+    (directory / "model.xml").write_text(sbml(RELAX), encoding="utf-8")
 
     def table(name: str, rows: list[dict[str, Any]]) -> None:
         pd.DataFrame(rows).to_csv(directory / f"{name}.tsv", sep="\t", index=False)
@@ -122,12 +122,13 @@ def write_problem(
                 "parameter_files": ["parameters.tsv"],
             },
             sort_keys=False,
-        )
+        ),
+        encoding="utf-8",
     )
     if with_extension:
-        config = yaml.safe_load(path.read_text())
+        config = yaml.safe_load(path.read_text(encoding="utf-8"))
         config["extensions"] = {"sbmlsim": {"version": "0.4.0", "required": True}}
-        path.write_text(yaml.safe_dump(config))
+        path.write_text(yaml.safe_dump(config), encoding="utf-8")
     return path
 
 
@@ -215,9 +216,9 @@ def _write_two_model_problem(tmp_path: Path, with_extension: bool) -> Path:
     document = libsbml.readSBMLFromFile(str(tmp_path / "model.xml"))
     document.getModel().getSpecies("S").setHasOnlySubstanceUnits(True)
     libsbml.writeSBMLToFile(document, str(tmp_path / "amount.xml"))
-    config = yaml.safe_load(path.read_text())
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
     config["model_files"]["amount"] = {"location": "amount.xml", "language": "sbml"}
-    path.write_text(yaml.safe_dump(config))
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
     measurements = pd.read_csv(tmp_path / "measurements.tsv", sep="\t")
     measurements["modelId"] = "relax"
     second = measurements.assign(experimentId="e2", modelId="amount")

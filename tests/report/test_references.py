@@ -66,7 +66,7 @@ def test_captions_are_scanned_and_bibtex_round_trips(tmp_path: Path) -> None:
     assert cited_keys(doc) == ["Storn1997", "McKay1979"]
     refs = bibliography(doc)
     path = tmp_path / "references.bib"
-    path.write_text(to_bibtex(refs))
+    path.write_text(to_bibtex(refs), encoding="utf-8")
     assert tuple(load_references(path).values()) == refs
 
 
@@ -109,7 +109,7 @@ def test_every_bundled_reference_compiles_in_typst(tmp_path: Path) -> None:
     doc = replace(doc, references=bibliography(doc, versions={"sbmlsim": "1.0"}))
     write_bibliography(doc.references, tmp_path)
     typ = tmp_path / "report.typ"
-    typ.write_text(TypstRenderer().render(doc))
+    typ.write_text(TypstRenderer().render(doc), encoding="utf-8")
     assert compile_pdf(typ).read_bytes().startswith(b"%PDF")
 
 
@@ -132,9 +132,9 @@ def test_the_pdf_lists_the_versions_of_the_software(tmp_path: Path) -> None:
     doc = replace(doc, references=bibliography(doc, versions=versions))
     bib, csl = write_bibliography(doc.references, tmp_path)
     assert (bib.name, csl.name) == ("references.bib", "references.csl")
-    assert "note = {Version 0.10.0}" in bib.read_text()
+    assert "note = {Version 0.10.0}" in bib.read_text(encoding="utf-8")
     typ = tmp_path / "report.typ"
-    typ.write_text(TypstRenderer().render(doc))
+    typ.write_text(TypstRenderer().render(doc), encoding="utf-8")
 
     text = _pdf_text(compile_pdf(typ))
     assert "SBML simulation made easy" in text

@@ -224,7 +224,7 @@ def test_fit_report_of_stored_parameters(
     assert all(isinstance(model, cls) for model in report.problem.models)
     index = report.create(tmp_path, name=other_engine.value) / "index.html"
     assert index.is_file()
-    assert "hctz_pk" in index.read_text()
+    assert "hctz_pk" in index.read_text(encoding="utf-8")
 
 
 def test_the_residuals_of_a_pk_observable_equal_roadrunner(
@@ -315,7 +315,9 @@ def test_the_engine_is_in_the_provenance(
         mapping_figures=False,
     )
     assert report.fit_info()["engine"] == engine.value
-    html = (report.create(tmp_path, name=engine.value) / "index.html").read_text()
+    html = (report.create(tmp_path, name=engine.value) / "index.html").read_text(
+        encoding="utf-8"
+    )
     assert f'<dt>engine</dt><dd class="mono">{engine.value}</dd>' in html
     # the methods of the report name the engine and its integrator
     assert f"its integrator {INTEGRATORS[engine]} " in html

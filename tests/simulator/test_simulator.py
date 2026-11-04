@@ -295,7 +295,7 @@ def test_a_dimension_of_models(
     simulator: Simulator, model: RoadrunnerSBMLModel, tmp_path: Path
 ) -> None:
     slow = tmp_path / "slow.xml"
-    slow.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")))
+    slow.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")), encoding="utf-8")
     scan = Scan(
         Simulation(end=1, steps=2),
         [Dimension("model", models={"fast": model, "slow": slow})],
@@ -754,7 +754,7 @@ def test_the_changes_of_a_model_are_defaults(
     simulator: Simulator, tmp_path: Path
 ) -> None:
     path = tmp_path / "probe.xml"
-    path.write_text(sbml())
+    path.write_text(sbml(), encoding="utf-8")
     abstract = AbstractModel(source=path, changes={"b0": 3.0})
     res = simulator.run(abstract, Simulation(end=1, steps=2))
     assert res["[B]"].values[0] == pytest.approx(3.0)
@@ -835,7 +835,7 @@ def _vector(model: RoadrunnerSBMLModel) -> dict[str, float]:
 def test_integrator_settings_are_passed_on_and_kept(tmp_path: Path) -> None:
     """Every setting of the integrator reaches roadrunner, also for a later model."""
     path = tmp_path / "probe.xml"
-    path.write_text(sbml())
+    path.write_text(sbml(), encoding="utf-8")
     simulator = Simulator(n_workers=1, initial_time_step=1e-9)
     simulator.set_integrator_settings(maximum_num_steps=1234)
     # a new model, as for every task of an experiment; the model keeps the
@@ -850,7 +850,7 @@ def test_integrator_settings_are_passed_on_and_kept(tmp_path: Path) -> None:
 def test_the_tolerance_of_every_state_reaches_cvode(tmp_path: Path) -> None:
     """The tolerances per state are the vector of CVODE, after a new model too."""
     path = tmp_path / "tolerances.xml"
-    path.write_text(sbml(TOLERANCE_PROBE))
+    path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
     tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)
     simulator = Simulator(n_workers=1, absolute_tolerance=tolerance)
     # A and S are concentration species in C = 2 and U = 1e-12 (raised to
@@ -872,7 +872,7 @@ def test_the_tolerance_of_every_state_reaches_cvode(tmp_path: Path) -> None:
 def test_the_tolerances_name_the_compartment_of_every_species(tmp_path: Path) -> None:
     """An amount species has its compartment, only a concentration a volume."""
     path = tmp_path / "tolerances.xml"
-    path.write_text(sbml(TOLERANCE_PROBE))
+    path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
     model = roadrunner_model(Simulator(n_workers=1).load(path))
     table = model.tolerances().set_index("sid")
 
@@ -891,7 +891,7 @@ def test_the_tolerances_name_the_compartment_of_every_species(tmp_path: Path) ->
 def test_a_float_tolerance_is_the_same_for_every_kind(tmp_path: Path) -> None:
     """The scaling of roadrunner by the initial values is not used."""
     path = tmp_path / "tolerances.xml"
-    path.write_text(sbml(TOLERANCE_PROBE))
+    path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
     model = roadrunner_model(
         Simulator(n_workers=1, absolute_tolerance=1e-10).load(path)
     )
@@ -915,7 +915,7 @@ end
 def test_the_tolerance_of_a_state_controls_that_state(tmp_path: Path) -> None:
     """A loose tolerance of one state does not loosen the error of another."""
     path = tmp_path / "decay.xml"
-    path.write_text(sbml(DECAY))
+    path.write_text(sbml(DECAY), encoding="utf-8")
     tolerance = AbsoluteTolerance(
         amount=1e-12, concentration=1e-12, other=1e-12, ids={"P": 1e-2}
     )
@@ -933,7 +933,7 @@ def test_a_degenerate_compartment_is_logged(
 ) -> None:
     """A compartment whose volume is raised to the floor is logged once per model."""
     path = tmp_path / "tolerances.xml"
-    path.write_text(sbml(TOLERANCE_PROBE))
+    path.write_text(sbml(TOLERANCE_PROBE), encoding="utf-8")
     with caplog.at_level("WARNING"):
         simulator = Simulator(n_workers=1)
         model = simulator.load(path)
@@ -1081,7 +1081,7 @@ def test_a_simulation_does_not_depend_on_another_instance_of_its_model(
     source: str | Path = sbml(PIECEWISE_SWITCH)
     if from_file:
         source = tmp_path / "piecewise_switch.xml"
-        source.write_text(sbml(PIECEWISE_SWITCH))
+        source.write_text(sbml(PIECEWISE_SWITCH), encoding="utf-8")
     np.testing.assert_array_equal(
         _piecewise_switch(True, source), _piecewise_switch(False, source)
     )

@@ -50,7 +50,7 @@ def test_an_archive_is_unpacked_into_place(tmp_path: Path) -> None:
     path = cache.fetch(url, target, select=lambda staging: staging / "suite-1.0/cases")
 
     assert path == target
-    assert (target / "001" / "a.txt").read_text() == "a"
+    assert (target / "001" / "a.txt").read_text(encoding="utf-8") == "a"
     assert [p.name for p in target.parent.iterdir()] == ["1.0"]
 
 
@@ -65,7 +65,7 @@ def test_a_failed_download_leaves_nothing(tmp_path: Path) -> None:
 
 def test_a_file_which_is_not_an_archive(tmp_path: Path) -> None:
     """A download which is not a zip archive is an error and leaves nothing."""
-    (tmp_path / "page.zip").write_text("<html>not found</html>")
+    (tmp_path / "page.zip").write_text("<html>not found</html>", encoding="utf-8")
     target = tmp_path / "cache" / "suite" / "1.0"
     with pytest.raises(zipfile.BadZipFile):
         cache.fetch((tmp_path / "page.zip").as_uri(), target, select=lambda s: s)
@@ -119,7 +119,7 @@ def test_two_fetches_of_one_target(tmp_path: Path) -> None:
     assert cache.fetch(url, target, select=select) == target
 
     assert len(set(stagings)) == 2
-    assert (target / "001" / "a.txt").read_text() == "a"
+    assert (target / "001" / "a.txt").read_text(encoding="utf-8") == "a"
     assert [p.name for p in target.parent.iterdir()] == ["1.0"]
 
 
@@ -152,7 +152,7 @@ def test_a_member_outside_of_the_archive_stays_inside(
 
     cache.fetch(url, target, select=lambda staging: staging / "suite-1.0/cases")
 
-    assert (target / "001" / "a.txt").read_text() == "a"
+    assert (target / "001" / "a.txt").read_text(encoding="utf-8") == "a"
     assert list(tmp_path.rglob("evil.txt")) == []
 
 
@@ -166,7 +166,7 @@ def test_a_stale_staging_directory_is_removed(tmp_path: Path) -> None:
     target.parent.mkdir(parents=True)
     stale = target.parent / ".1.0.abc.incomplete"
     stale.mkdir()
-    (stale / "archive.zip").write_text("x")
+    (stale / "archive.zip").write_text("x", encoding="utf-8")
     old = time.time() - 2 * cache.STALE_AFTER
     os.utime(stale, (old, old))
     fresh = target.parent / ".1.0.def.incomplete"
@@ -190,7 +190,7 @@ def _killed_staging(parent: Path, name: str) -> Path:
     staging = parent / name
     staging.mkdir(parents=True)
     (staging / cache.LOCK_NAME).touch()
-    (staging / "archive.zip").write_text("partial")
+    (staging / "archive.zip").write_text("partial", encoding="utf-8")
     return staging
 
 
@@ -300,7 +300,9 @@ def test_a_suite_elsewhere_leaves_its_neighbours_alone(
     """The directory of an override is not the cache, its parent is not scanned."""
     elsewhere = tmp_path / "elsewhere" / "semantic"
     (elsewhere / "00001").mkdir(parents=True)
-    (elsewhere / "00001" / "00001-settings.txt").write_text("start: 0")
+    (elsewhere / "00001" / "00001-settings.txt").write_text(
+        "start: 0", encoding="utf-8"
+    )
     neighbour = _killed_staging(elsewhere.parent, ".semantic.abc.incomplete")
     monkeypatch.setenv("SBMLSIM_TEST_SUITE_PATH", str(elsewhere))
 

@@ -247,7 +247,9 @@ def test_another_start_method_is_used_as_it_is(monkeypatch: pytest.MonkeyPatch) 
 def test_a_script_without_the_guard_is_reported(tmp_path: Path) -> None:
     """The workers import the script again and die, the parent names the guard."""
     script = tmp_path / "unguarded.py"
-    script.write_text("from sbmlsim import parallel\n\nparallel.pool(2)\n")
+    script.write_text(
+        "from sbmlsim import parallel\n\nparallel.pool(2)\n", encoding="utf-8"
+    )
     result = subprocess.run(
         [sys.executable, str(script)],
         capture_output=True,
@@ -382,7 +384,7 @@ def test_ctrl_c_while_the_workers_start(method: str, tmp_path: Path) -> None:
     for the next run. Such a worker must neither print a traceback nor die.
     """
     script = tmp_path / "starting.py"
-    script.write_text(STARTING_SCRIPT)
+    script.write_text(STARTING_SCRIPT, encoding="utf-8")
     process = subprocess.Popen(
         [sys.executable, str(script), method],
         stdout=subprocess.PIPE,
@@ -453,7 +455,7 @@ def _running(pid: int) -> bool:
     if not stat.parent.exists():
         return True
     try:
-        return stat.read_text().rsplit(")", 1)[1].split()[0] != "Z"
+        return stat.read_text(encoding="utf-8").rsplit(")", 1)[1].split()[0] != "Z"
     except OSError:
         return False
 
@@ -461,7 +463,12 @@ def _running(pid: int) -> bool:
 def _start_time(pid: int) -> str | None:
     """Get the start time of a process on linux, which tells a reused pid apart."""
     try:
-        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+        return (
+            Path(f"/proc/{pid}/stat")
+            .read_text(encoding="utf-8")
+            .rsplit(")", 1)[1]
+            .split()[19]
+        )
     except (OSError, IndexError):
         return None
 
@@ -482,9 +489,9 @@ def test_the_processes_of_a_pool_end_with_its_main_process(
     end one after the other from the last one.
     """
     script = tmp_path / "dying.py"
-    script.write_text(DYING_SCRIPT)
+    script.write_text(DYING_SCRIPT, encoding="utf-8")
     path = tmp_path / "pids.json"
-    with (tmp_path / "output.txt").open("w") as output:
+    with (tmp_path / "output.txt").open("w", encoding="utf-8") as output:
         process = subprocess.Popen(
             [sys.executable, str(script), method, name, str(path)],
             stdout=output,
@@ -497,9 +504,9 @@ def test_the_processes_of_a_pool_end_with_its_main_process(
             if process.poll() is None:
                 process.kill()
                 process.wait()
-    output = (tmp_path / "output.txt").read_text()
+    output = (tmp_path / "output.txt").read_text(encoding="utf-8")
     assert path.exists(), output
-    pids = json.loads(path.read_text())
+    pids = json.loads(path.read_text(encoding="utf-8"))
     started = {pid: _start_time(pid) for pid in pids}
     try:
         left = pids

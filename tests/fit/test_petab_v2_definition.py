@@ -168,7 +168,7 @@ def test_two_models_of_one_file_name_are_two_files(
             problem.models[k] = model
 
     yaml_file = to_petab(problem, tmp_path / "export")
-    config = yaml.safe_load(yaml_file.read_text())
+    config = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
     locations = [entry["location"] for entry in config["model_files"].values()]
     assert len(locations) == len(set(locations)) == 2
     names = {
@@ -190,14 +190,14 @@ def test_the_info_of_a_mapping_falls_back_to_the_observable_only_before_0_2(
     problem, _ = from_petab(path)
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
     yaml_file = to_petab(problem, tmp_path / "export")
-    config = yaml.safe_load(yaml_file.read_text())
+    config = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
     block = config["extensions"]["sbmlsim"]
     block["observables"] = {"prey_o": block["observables"]["prey_o_e1"]}
-    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False))
+    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     assert PetabReader.from_yaml(yaml_file).observable_info("prey_o_e1") == {}
 
     block["version"] = "0.1.0"
-    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False))
+    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     info = PetabReader.from_yaml(yaml_file).observable_info("prey_o_e1")
     assert info["mapping"] == "prey_o_e1"
 
@@ -317,10 +317,10 @@ def test_a_model_named_model(tmp_path: Path) -> None:
     measurements.drop(columns=["experimentId"]).to_csv(
         tmp_path / "problem" / "measurements.tsv", sep="\t", index=False
     )
-    config = yaml.safe_load(path.read_text())
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
     config.pop("experiment_files")
     config["model_files"] = {"model": config["model_files"]["lv"]}
-    path.write_text(yaml.safe_dump(config, sort_keys=False))
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     # the default experiment and the model do not share the key `model`
     problem, _ = from_petab(path)
     problem.initialize(FitSettings(parameter_scale=ParameterScaleType.LINEAR))
