@@ -66,7 +66,7 @@ from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import ObservableKind, Scan, Simulation
 from sbmlsim.simulation.scan import DimensionKind
-from sbmlsim.simulator import Simulator
+from sbmlsim.simulator import IntegratorSettings, Simulator
 from sbmlsim.simulator.engines import execute_plan
 from sbmlsim.simulator.executor import SteadyStateError
 from sbmlsim.simulator.formula import reduce_formula
@@ -1205,6 +1205,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         ]:
             d[key] = self.__dict__[key]
         d["hybridizations"] = [describe(h) for h in self.hybridizations]
+        d["engine"] = self.engine.value
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -1226,6 +1227,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         all_info = [
             core_info,
             str(self.settings_initialized),
+            f"Engine: {self.engine.value}",
             f"Mappings: {len(self.mapping_keys)} ({counts})",
             "Data",
         ]
@@ -1848,15 +1850,19 @@ class OptimizationProblem(ObjectJSONEncoder):
         It has the engine of the problem and the integrator settings of the
         fit; serial, since the fit runs its plans in a pool of its own and an
         experiment initialized in a worker of that pool runs in the worker.
+        The settings of CVODE which COPASI has no equivalent of, the variable
+        step size and the initial time step, are settings of roadrunner only,
+        which a model of COPASI would report as ignored in every evaluation,
+        see `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
         """
-        return Simulator(
-            n_workers=1,
-            engine=self.engine,
-            absolute_tolerance=settings.absolute_tolerance,
-            relative_tolerance=settings.relative_tolerance,
-            variable_step_size=settings.variable_step_size,
-            initial_time_step=settings.initial_time_step,
-        )
+        integrator: IntegratorSettings = {
+            "absolute_tolerance": settings.absolute_tolerance,
+            "relative_tolerance": settings.relative_tolerance,
+        }
+        if self.engine is Engine.ROADRUNNER:
+            integrator["variable_step_size"] = settings.variable_step_size
+            integrator["initial_time_step"] = settings.initial_time_step
+        return Simulator(n_workers=1, engine=self.engine, **integrator)
 
     def _apply_integrator_settings(self, simulator: Simulator) -> None:
         """Set the integrator settings of a simulator on every model of the fit.
@@ -2954,9 +2960,15 @@ class OptimizationProblem(ObjectJSONEncoder):
         models again in its engine, see `ExperimentRunner.set_simulator`: the
         engine of the simulator becomes the engine of the problem, which a
         pickled problem keeps, the models of the mappings are the ones of the
-        runner, with the integrator settings of the fit, and the plans are
-        compiled against them. A simulator of the same engine keeps the
-        models. `None` keeps the simulator.
+        runner and the plans are compiled against them. A simulator of the
+        same engine keeps the models. `None` keeps the simulator.
+
+        The evaluations of the problem integrate with the settings of the
+        integrator of its `FitSettings` of `initialize`, not with the ones of
+        the simulator: the models of another engine get the settings of the
+        fit as well, see `_simulator`.
+
+        A failure leaves the problem and its runner as they were.
 
         Args:
             simulator: the simulator of the experiments.
@@ -2968,16 +2980,41 @@ class OptimizationProblem(ObjectJSONEncoder):
         if simulator is None or simulator.engine is self.engine:
             runner.set_simulator(simulator)
             return
-        runner.set_simulator(simulator)
-        self.engine = simulator.engine
-        # the models of the runner replace the ones of the other engine, one
-        # for one, so the groups of the mappings are kept
-        self.models = [
-            runner.experiments[sid]._models[model_id]
-            for sid, model_id in zip(self.experiment_keys, self.model_keys, strict=True)
-        ]
-        self._apply_integrator_settings(self._simulator(self.settings_initialized))
-        self._compile_plans()
+        # the runner and the experiments replace their models and simulator,
+        # they are set back from these on a failure
+        before = (
+            runner.models,
+            runner.simulator,
+            {
+                sid: (experiment._models, experiment.simulator)
+                for sid, experiment in runner.experiments.items()
+            },
+        )
+        candidate = object.__new__(type(self))
+        candidate.__dict__ = self.__dict__.copy()
+        try:
+            runner.set_simulator(simulator)
+            candidate.engine = simulator.engine
+            # the models of the runner replace the ones of the other engine,
+            # one for one, so the groups of the mappings are kept
+            candidate.models = [
+                runner.experiments[sid]._models[model_id]
+                for sid, model_id in zip(
+                    self.experiment_keys, self.model_keys, strict=True
+                )
+            ]
+            candidate._apply_integrator_settings(
+                candidate._simulator(self.settings_initialized)
+            )
+            candidate._compile_plans()
+        except BaseException:
+            runner.models, runner.simulator, experiments = before
+            for sid, (models, experiment_simulator) in experiments.items():
+                runner.experiments[sid]._models = models
+                runner.experiments[sid].simulator = experiment_simulator
+            raise
+        self.__dict__.clear()
+        self.__dict__.update(candidate.__dict__)
 
     @property
     def runner_initialized(self) -> ExperimentRunner:

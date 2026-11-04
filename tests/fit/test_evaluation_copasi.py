@@ -9,6 +9,7 @@ recomputed with a second engine.
 """
 
 import dataclasses
+import logging
 import pickle
 from pathlib import Path
 from typing import Any
@@ -17,11 +18,19 @@ import numpy as np
 import pytest
 
 from sbmlsim.engine import Engine
-from sbmlsim.fit import FitMappingCollection, FitMetrics, FitParameter, FitSettings
+from sbmlsim.fit import (
+    FitMappingCollection,
+    FitMetrics,
+    FitParameter,
+    FitSettings,
+    cli,
+    methods,
+)
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.report import FitReport
 from sbmlsim.model.model_copasi import CopasiSBMLModel
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
+from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulator import Simulator
 from tests.fit.scalar_experiment import ScalarStudy
 
@@ -70,9 +79,12 @@ def test_residuals_with_copasi_equal_roadrunner(
     magnitude, 21 of them 0 in both engines. Measured at
     `absolute_tolerance=1e-12` and `relative_tolerance=1e-10`: the largest
     absolute difference of a residual is 4.3e-9 and the largest relative
-    difference 1.4e-7, within `rtol=1e-5` and `atol=1e-8` with a margin of
-    two orders of magnitude. At the settings of the fit, `1e-6` each, the
-    relative difference is up to 3.8e-3, the error of the integrators.
+    difference 1.4e-7. The largest difference is 1.3 % of what `rtol=1e-5`
+    and `atol=1e-8` allow, `atol + rtol * |r|`, a margin of a factor 80; the
+    absolute difference alone is a factor 2.3 below `atol`, the relative
+    difference a factor 70 below `rtol`. At the settings of the fit, `1e-6`
+    each, the relative difference is up to 3.8e-3, the error of the
+    integrators.
     """
     op_hctz_pk.initialize(settings_tight)
     assert op_hctz_pk.engine is Engine.ROADRUNNER
@@ -185,7 +197,8 @@ def test_metrics_ipred_with_copasi(
 
     Measured at the settings of `test_residuals_with_copasi_equal_roadrunner`:
     the largest relative difference of a prediction of the 255 data points
-    is 6.8e-9, the largest absolute difference 6.3e-11 of at most 0.41.
+    is 6.8e-9, the largest absolute difference 6.3e-11 of at most 0.41; the
+    largest difference is 0.026 % of what the tolerances allow.
     """
     op_hctz_pk.initialize(settings_tight)
     pset = op_hctz_pk.parameter_set_model()
@@ -302,3 +315,200 @@ def test_an_unsupported_feature_raises_instead_of_failing_the_evaluation(
             problem.residuals(x)
         with pytest.raises(NotImplementedError, match="does not simulate"):
             problem.residuals(x, complete_data=True)
+
+
+def test_a_copasi_evaluation_logs_no_warning(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The settings of roadrunner only are not given to the models of COPASI.
+
+    `FitSettings` always has a variable step size and an initial time step,
+    which COPASI has no equivalent of; a model of COPASI would report them as
+    ignored on `set_simulator`, in the copy of a report and in every worker.
+    """
+    op_hctz_pk.initialize(fit_settings)
+    x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
+    with caplog.at_level(logging.WARNING):
+        op_hctz_pk.set_simulator(Simulator(n_workers=1, engine="copasi"))
+        op_hctz_pk.residuals(x)
+        report = FitReport(
+            problem=op_hctz_pk,
+            settings=fit_settings,
+            parameter_sets=op_hctz_pk.parameter_set_model(),
+            mapping_figures=False,
+        )
+        report.metrics(report.parameter_sets[0]).datapoints_df()
+    assert [
+        r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING
+    ] == []
+    for problem in (op_hctz_pk, report.problem):
+        simulator = problem.runner_initialized.simulator
+        assert simulator is not None
+        assert "variable_step_size" not in simulator.integrator_settings
+        assert "initial_time_step" not in simulator.integrator_settings
+
+
+def test_a_problem_of_roadrunner_keeps_the_settings_of_cvode(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    simulator = op_hctz_pk.runner_initialized.simulator
+    assert simulator is not None
+    assert simulator.integrator_settings["variable_step_size"] is (
+        fit_settings.variable_step_size
+    )
+    assert simulator.integrator_settings["initial_time_step"] == (
+        fit_settings.initial_time_step
+    )
+
+
+@pytest.mark.parametrize("engine", ["roadrunner", "copasi"])
+def test_the_engine_is_in_the_provenance(
+    engine: str,
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dictionary, the text, the console and the report name the engine."""
+    problem = _copasi_problem(op_hctz_pk) if engine == "copasi" else op_hctz_pk
+    assert problem.to_dict()["engine"] == engine
+    problem.initialize(fit_settings)
+    assert f"\nEngine: {engine}\n" in problem.report(print_output=False)
+
+    report = FitReport(
+        problem=problem,
+        settings=fit_settings,
+        parameter_sets=problem.parameter_set_model(),
+        mapping_figures=False,
+    )
+    assert report.fit_info()["engine"] == engine
+    html = (report.create(tmp_path, name=engine) / "index.html").read_text()
+    assert f'<dt>engine</dt><dd class="mono">{engine}</dd>' in html
+    # the methods of the report name the engine and its integrator
+    integrator = "LSODA" if engine == "copasi" else "CVODE"
+    assert f"its integrator {integrator}" in html
+
+    shown: list[dict[str, Any]] = []
+    monkeypatch.setattr(cli.display, "key_values", shown.append)
+    monkeypatch.setattr(cli.display, "print_parameters", lambda *a, **k: None)
+    monkeypatch.setattr(cli.display, "print_settings", lambda *a: None)
+    cli._display_records(report, "PK", [], tmp_path)
+    assert shown[0]["engine"] == engine
+
+
+def test_the_methods_name_the_engine(fit_settings: FitSettings) -> None:
+    """COPASI integrates with LSODA, without the settings of CVODE."""
+    from sbmlsim.report.document import Document, Section
+    from sbmlsim.report.render import HTMLRenderer
+
+    def html(paragraph: Any) -> str:
+        section = Section("Methods", (paragraph,))
+        return HTMLRenderer().render(Document("t", (section,)))
+
+    roadrunner = html(methods._integrator(fit_settings))
+    assert roadrunner == html(methods._integrator(fit_settings, Engine.ROADRUNNER))
+    assert "libRoadRunner" in roadrunner and "CVODE" in roadrunner
+    copasi = html(methods._integrator(fit_settings, Engine.COPASI))
+    assert "COPASI" in copasi and "LSODA" in copasi
+    assert "CVODE" not in copasi and "libRoadRunner" not in copasi
+    assert "variable step size" not in copasi
+    # the tolerance COPASI integrates with, the one of the fit times the factor
+    assert AbsoluteTolerance.of(fit_settings.absolute_tolerance).amount == 1e-6
+    assert "<mn>8</mn>" in copasi
+    assert "the smallest absolute tolerance of the fit times 0.01" in copasi
+
+
+def test_a_failed_set_simulator_leaves_the_problem_as_it_was(
+    op_hctz_pk: OptimizationProblem,
+    fit_settings: FitSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    op_hctz_pk.initialize(fit_settings)
+    x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
+    r = np.asarray(op_hctz_pk.residuals(x), dtype=float)
+    runner = op_hctz_pk.runner_initialized
+    models, plans = list(op_hctz_pk.models), list(op_hctz_pk.plans)
+    runner_models, runner_simulator = runner.models, runner.simulator
+    experiments = {
+        sid: (experiment._models, experiment.simulator)
+        for sid, experiment in runner.experiments.items()
+    }
+
+    def fail(self: OptimizationProblem) -> None:
+        raise ValueError("the plans do not compile")
+
+    monkeypatch.setattr(OptimizationProblem, "_compile_plans", fail)
+    with pytest.raises(ValueError, match="do not compile"):
+        op_hctz_pk.set_simulator(Simulator(n_workers=1, engine="copasi"))
+    monkeypatch.undo()
+
+    assert op_hctz_pk.engine is Engine.ROADRUNNER
+    assert all(a is b for a, b in zip(op_hctz_pk.models, models, strict=True))
+    assert all(a is b for a, b in zip(op_hctz_pk.plans, plans, strict=True))
+    assert runner.models is runner_models
+    assert runner.simulator is runner_simulator
+    assert runner.engine is Engine.ROADRUNNER
+    for sid, experiment in runner.experiments.items():
+        assert experiment._models is experiments[sid][0]
+        assert experiment.simulator is experiments[sid][1]
+    np.testing.assert_array_equal(np.asarray(op_hctz_pk.residuals(x), float), r)
+
+
+def test_initialize_after_set_simulator_keeps_the_engine(
+    op_hctz_pk: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """Other settings initialize the problem again, in its engine."""
+    op_hctz_pk.initialize(fit_settings)
+    op_hctz_pk.set_simulator(Simulator(n_workers=1, engine="copasi"))
+    other = dataclasses.replace(fit_settings, relative_tolerance=1e-8)
+    op_hctz_pk.initialize(other)
+    assert op_hctz_pk.engine is Engine.COPASI
+    assert op_hctz_pk.runner_initialized.engine is Engine.COPASI
+    assert all(isinstance(model, CopasiSBMLModel) for model in op_hctz_pk.models)
+    for model in _unique_models(op_hctz_pk):
+        assert _relative_tolerance(model) == 1e-8
+
+
+def test_the_complete_data_with_copasi_equal_roadrunner(
+    op_hctz_pk: OptimizationProblem, settings_tight: FitSettings
+) -> None:
+    """The curves and the predictions of an evaluation agree.
+
+    The curves of the 35 mappings are output at the same times by both
+    engines, 47565 points. Measured at the settings of
+    `test_residuals_with_copasi_equal_roadrunner`: the largest difference of
+    a curve relative to its largest value is 7.0e-9, the two curves which
+    are 0 differ by at most 2e-16; the comparison allows `1e-6` of the
+    largest value of a curve and `1e-14`. The predictions at the data
+    differ by at most 6.8e-9 relative and the costs of the mappings by
+    5.5e-8 relative.
+    """
+    op_hctz_pk.initialize(settings_tight)
+    x = op_hctz_pk.to_scale(op_hctz_pk.xmodel)
+    roadrunner = op_hctz_pk.residuals(x, complete_data=True)
+    op_hctz_pk.set_simulator(Simulator(n_workers=1, engine="copasi"))
+    copasi = op_hctz_pk.residuals(x, complete_data=True)
+    assert isinstance(roadrunner, dict) and isinstance(copasi, dict)
+    assert sorted(copasi) == sorted(roadrunner)
+    curves = zip(
+        roadrunner["x_obs"],
+        roadrunner["y_obs"],
+        copasi["x_obs"],
+        copasi["y_obs"],
+        strict=True,
+    )
+    for x_rr, y_rr, x_cp, y_cp in curves:
+        np.testing.assert_array_equal(np.asarray(x_cp), np.asarray(x_rr))
+        y_rr, y_cp = np.asarray(y_rr, float), np.asarray(y_cp, float)
+        assert np.all(np.isfinite(y_cp))
+        largest = float(np.max(np.abs(y_rr)))
+        np.testing.assert_allclose(y_cp, y_rr, rtol=0, atol=1e-6 * largest + 1e-14)
+    for key in ("y_obsip", "res_abs"):
+        for a, b in zip(copasi[key], roadrunner[key], strict=True):
+            np.testing.assert_allclose(
+                np.asarray(a, float), np.asarray(b, float), rtol=1e-5, atol=1e-12
+            )
+    np.testing.assert_allclose(copasi["cost"], roadrunner["cost"], rtol=1e-5)

@@ -22,6 +22,7 @@ from typing import Any
 
 import libsbml
 
+from sbmlsim.engine import Engine
 from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import Identifiability, IdentifiabilityResult
@@ -653,7 +654,7 @@ def _optimization(
     if result is not None and result.fits:
         blocks.extend(_runs(problem, result))
 
-    blocks.append(_integrator(settings))
+    blocks.append(_integrator(settings, problem.engine))
     if problem.hybridizations:
         summaries = hook_summaries(problem.hybridizations)
         blocks.append(
@@ -895,8 +896,19 @@ def _tolerance(tolerance: AbsoluteTolerance) -> list[Part]:
     return parts
 
 
-def _integrator(settings: FitSettings) -> Paragraph:
-    """Write the simulator and its integrator."""
+def _integrator(settings: FitSettings, engine: Engine = Engine.ROADRUNNER) -> Paragraph:
+    """Write the simulator and its integrator.
+
+    Args:
+        settings: the settings of the fit, with the settings of the integrator.
+        engine: the engine the problem simulates with, see
+            `OptimizationProblem.engine`.
+
+    Returns:
+        The paragraph.
+    """
+    if engine is Engine.COPASI:
+        return _integrator_copasi(settings)
     step = (
         " It ran with the variable step size of libRoadRunner, i.e. with an output "
         "at every step of the integrator."
@@ -928,6 +940,37 @@ def _integrator(settings: FitSettings) -> Paragraph:
         " " + _text(DATA_AT_CHANGE_TEXT, settings.data_at_change, "data at a change")
     )
     return p(*parts)
+
+
+def _integrator_copasi(settings: FitSettings) -> Paragraph:
+    """Write the simulator COPASI and its integrator LSODA.
+
+    COPASI has one absolute tolerance, the smallest of the tolerances of the
+    kinds and of the states times `COPASI_ATOL_FACTOR`, see
+    `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`; it
+    has no variable step size and no initial time step of CVODE.
+    """
+    # a problem of the engine COPASI has imported COPASI already
+    from sbmlsim.model.model_copasi import COPASI_ATOL_FACTOR
+
+    tolerance = AbsoluteTolerance.of(settings.absolute_tolerance)
+    smallest = min(
+        {tolerance.amount, tolerance.concentration, tolerance.other}
+        | set(dict(tolerance.ids).values())
+    )
+    return p(
+        "The models were simulated with COPASI ",
+        Cite(("Hoops2006",)),
+        " and its integrator LSODA ",
+        Cite(("Petzold1983",)),
+        " with the relative tolerance ",
+        _number(settings.relative_tolerance),
+        " and the absolute tolerance ",
+        _number(smallest * COPASI_ATOL_FACTOR),
+        f", the smallest absolute tolerance of the fit times {COPASI_ATOL_FACTOR:g}, "
+        "which COPASI scales for every state. ",
+        _text(DATA_AT_CHANGE_TEXT, settings.data_at_change, "data at a change"),
+    )
 
 
 def _metrics(problem: OptimizationProblem, settings: FitSettings) -> Section:

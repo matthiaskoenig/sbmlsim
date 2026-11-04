@@ -577,6 +577,7 @@ def _display_records(
     display.key_values(
         {
             "problem": subset,
+            "engine": problem.engine.value,
             "parameters": ", ".join(str(p) for p in parameters),
             "sets": ", ".join(pset.sid for pset in report.parameter_sets),
             "records": ", ".join(names) if names else "none",

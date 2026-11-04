@@ -13,6 +13,7 @@ from collections.abc import Callable, Collection, Sequence
 
 from sbmlsim.engine import Engine
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.model_sbml import load_model
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.sampling.distributions import Number
 from sbmlsim.simulator.plan import preinit_targets
@@ -33,7 +34,7 @@ def _loaded(model: ModelLike) -> RoadrunnerSBMLModel:
     """
     if isinstance(model, RoadrunnerSBMLModel) and model.r is not None:
         return model
-    loaded = Simulator(engine=Engine.ROADRUNNER).load(model)
+    loaded = load_model(model, Engine.ROADRUNNER)
     if not isinstance(loaded, RoadrunnerSBMLModel):
         raise TypeError(f"The model '{loaded.label}' is no model of roadrunner.")
     return loaded
