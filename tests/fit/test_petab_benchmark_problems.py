@@ -145,7 +145,7 @@ def test_a_problem_which_was_not_converted(tmp_path: Path) -> None:
     for path in problem.v2_dir.iterdir():
         path.unlink()
     problem.v2_dir.rmdir()
-    error.write_text("ValueError: the conversion failed")
+    error.write_text("ValueError: the conversion failed", encoding="utf-8")
     result = problem.run()
     assert result.status is BenchmarkStatus.CONVERSION
     assert "the conversion failed" in result.message
@@ -154,7 +154,7 @@ def test_a_problem_which_was_not_converted(tmp_path: Path) -> None:
 def test_a_problem_which_cannot_be_read(tmp_path: Path) -> None:
     """An error while the problem is read or simulated is the status `error`."""
     problem = _problem(tmp_path)
-    (problem.v2_dir / "observables.tsv").write_text("nothing\n")
+    (problem.v2_dir / "observables.tsv").write_text("nothing\n", encoding="utf-8")
     result = problem.run()
     assert result.status is BenchmarkStatus.ERROR
     assert result.message
@@ -165,7 +165,8 @@ def test_the_collection(tmp_path: Path) -> None:
     first = _problem(tmp_path, "A_First")
     _problem(tmp_path, "B_Second")
     (tmp_path / "amici.yaml").write_text(
-        yaml.safe_dump({"A_First": {"llh": _llh(first), "t_sim": 0.1}})
+        yaml.safe_dump({"A_First": {"llh": _llh(first), "t_sim": 0.1}}),
+        encoding="utf-8",
     )
     collection = BenchmarkCollection(path=tmp_path, commit="abc")
     assert collection.problem_names() == ["A_First", "B_Second"]
@@ -278,7 +279,9 @@ def test_a_problem_of_petab_v1_is_converted_with_its_simulations(
     collection.convert()
     problem = collection.problem("Decay")
     assert not problem.native
-    config = yaml.safe_load((problem.v2_dir / "problem.yaml").read_text())
+    config = yaml.safe_load(
+        (problem.v2_dir / "problem.yaml").read_text(encoding="utf-8")
+    )
     assert config["format_version"] == "2.0.0"
     simulations = _simulations(problem)
     assert "simulationConditionId" not in simulations
@@ -305,9 +308,9 @@ def test_the_encoding_of_petab_v2_of_the_collection_is_run(tmp_path: Path) -> No
     collection.convert()
     problem = collection.problem("Decay")
     assert problem.native
-    assert (problem.v2_dir / "measurements.tsv").read_text() == (
+    assert (problem.v2_dir / "measurements.tsv").read_text(encoding="utf-8") == (
         v1_dir.parent / "v2" / "measurements.tsv"
-    ).read_text()
+    ).read_text(encoding="utf-8")
     assert _simulations(problem)["simulation"].tolist() == pytest.approx(list(VALUES))
 
 

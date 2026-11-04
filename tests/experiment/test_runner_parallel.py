@@ -40,7 +40,8 @@ class _Recorded(_Base):
                     "pid": os.getpid(),
                     "linewidth": matplotlib.rcParams["lines.linewidth"],
                 }
-            )
+            ),
+            encoding="utf-8",
         )
         return result
 
@@ -99,7 +100,7 @@ def _runner(
 
 
 def _process(path: Path, sid: str) -> dict[str, Any]:
-    return json.loads((path / sid / PROCESS_FILE).read_text())
+    return json.loads((path / sid / PROCESS_FILE).read_text(encoding="utf-8"))
 
 
 def _outcome(result: ExperimentResult) -> tuple[Any, ...]:

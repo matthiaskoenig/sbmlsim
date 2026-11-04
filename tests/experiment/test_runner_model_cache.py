@@ -42,7 +42,7 @@ def test_relative_model_names_in_different_directories_are_distinct(
         cls.model_directory = tmp_path / cls.__name__
         cls.model_directory.mkdir()
         (cls.model_directory / "model.xml").write_text(
-            sbml(PROBE.replace("k1 = 0.8", f"k1 = {rate}"))
+            sbml(PROBE.replace("k1 = 0.8", f"k1 = {rate}")), encoding="utf-8"
         )
     runner = ExperimentRunner(
         [First, Second],
@@ -60,7 +60,7 @@ def test_relative_model_names_in_different_directories_are_distinct(
 
 def test_absolute_and_relative_names_share_the_same_model_key(tmp_path: Path) -> None:
     path = tmp_path / "model.xml"
-    path.write_text(sbml())
+    path.write_text(sbml(), encoding="utf-8")
     absolute = AbstractModel(path)
     relative = AbstractModel("model.xml", base_path=tmp_path)
     assert relative.source.path == path.resolve()

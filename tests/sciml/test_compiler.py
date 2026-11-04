@@ -127,9 +127,9 @@ def test_the_rules_are_the_forward_pass(
 
 def test_the_model_which_was_compiled_is_not_changed(model_path: Path) -> None:
     """The network is written into a copy."""
-    before = model_path.read_text()
+    before = model_path.read_text(encoding="utf-8")
     compile_network(model_path, [_hybridization()], compiled_path(model_path))
-    assert model_path.read_text() == before
+    assert model_path.read_text(encoding="utf-8") == before
 
 
 @pytest.mark.parametrize("activation", sorted(ACTIVATIONS))

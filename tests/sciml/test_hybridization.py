@@ -813,7 +813,7 @@ def test_a_model_which_cannot_be_read(tmp_path: Path) -> None:
     with pytest.raises(NetworkHybridizationError, match=r"'net1'.*does not exist"):
         _hybridization().validate(tmp_path / "missing.xml")
     path = tmp_path / "empty.xml"
-    path.write_text("<sbml/>")
+    path.write_text("<sbml/>", encoding="utf-8")
     with pytest.raises(NetworkHybridizationError, match=r"'net1'.*holds no SBML model"):
         _hybridization().validate(path)
 

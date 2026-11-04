@@ -58,5 +58,7 @@ def test_a_worker_loads_the_models_from_the_cache_of_the_run(
 
     assert outcome.error is None
     assert not any(empty.iterdir())
-    written = json.loads((tmp_path / "out" / SID / f"{SID}.json").read_text())
+    written = json.loads(
+        (tmp_path / "out" / SID / f"{SID}.json").read_text(encoding="utf-8")
+    )
     assert written["engine"] == "amici"

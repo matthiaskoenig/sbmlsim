@@ -134,7 +134,7 @@ class GeometricExperiment(DecayExperiment):
 def _problem(tmp_path: Path, experiment: type[DecayExperiment]) -> OptimizationProblem:
     """Get the initialized problem which fits `k`."""
     MODEL_PATH["path"] = tmp_path / "decay.xml"
-    MODEL_PATH["path"].write_text(sbml(DECAY))
+    MODEL_PATH["path"].write_text(sbml(DECAY), encoding="utf-8")
     problem = OptimizationProblem(
         opid="decay",
         mapping_collections=[

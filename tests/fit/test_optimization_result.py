@@ -285,7 +285,7 @@ def test_the_tsv_of_a_result_has_one_line_per_run(tmp_path: Path) -> None:
     path = tmp_path / "optimization_result.tsv"
     result.to_tsv(path)
 
-    assert len(path.read_text().splitlines()) == 1 + 3
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 1 + 3
     df = pd.read_csv(path, sep="\t")
     assert len(df) == 3
     assert "x" not in df.columns and "x0" not in df.columns

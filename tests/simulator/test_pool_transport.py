@@ -59,7 +59,7 @@ def test_reused_pool_gets_small_snapshot_descriptors_and_correct_models(
 
     monkeypatch.setattr(ProcessPoolExecutor, "submit", recording)
     path = tmp_path / "model.xml"
-    path.write_text(sbml())
+    path.write_text(sbml(), encoding="utf-8")
     model = RoadrunnerSBMLModel(path, selections=["time", "A", "k1"])
     simulator = Simulator(n_workers=2)
     serial = Simulator(n_workers=1).run(model, _scan())

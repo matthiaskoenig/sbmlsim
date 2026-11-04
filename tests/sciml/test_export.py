@@ -70,7 +70,9 @@ def _tables(petab_dir: Path) -> dict[str, Any]:
         )
         for name in ("parameters", "observables", "experiments", "mapping")
     }
-    tables["config"] = yaml.safe_load((petab_dir / "problem.yaml").read_text())
+    tables["config"] = yaml.safe_load(
+        (petab_dir / "problem.yaml").read_text(encoding="utf-8")
+    )
     return tables
 
 
@@ -346,10 +348,9 @@ def test_a_network_in_the_right_hand_side(tmp_path: Path) -> None:
     config = _tables(tmp_path / "petab")["config"]
     # the model of the problem is the model without the network
     assert config["model_files"]["lv"]["location"] == "lotka_volterra.xml"
-    assert (
-        "net1__output0__0"
-        not in (tmp_path / "petab" / "lotka_volterra.xml").read_text()
-    )
+    assert "net1__output0__0" not in (
+        tmp_path / "petab" / "lotka_volterra.xml"
+    ).read_text(encoding="utf-8")
     assert (tmp_path / "petab" / "net1.yaml").is_file()
     assert (tmp_path / "petab" / "net1_arrays.hdf5").is_file()
     assert (tmp_path / "petab" / "hybridization.tsv").is_file()

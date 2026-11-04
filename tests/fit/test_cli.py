@@ -246,10 +246,14 @@ def test_report_cli_describes_the_fit_with_its_stored_settings(
     records = tmp_path / "records"
     records.mkdir()
     shutil.copy(report_dir / "parameters.json", records)
-    stored = json.loads((report_dir / "optimization_result.json").read_text())
+    stored = json.loads(
+        (report_dir / "optimization_result.json").read_text(encoding="utf-8")
+    )
     assert stored["settings"]["loss_function"] == "LINEAR"
     stored["settings"]["loss_function"] = "SOFT_L1"
-    (records / "optimization_result.json").write_text(json.dumps(stored))
+    (records / "optimization_result.json").write_text(
+        json.dumps(stored), encoding="utf-8"
+    )
 
     with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.cli"):
         results_dir = report_cli(

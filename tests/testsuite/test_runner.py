@@ -74,15 +74,17 @@ def _case(path: Path, cid: str, model: str = MODEL_SBML, k1: float = 0.5) -> Non
     """Write a case of the decay of S1 into S2 with its analytic results."""
     directory = path / cid
     directory.mkdir(parents=True)
-    (directory / f"{cid}-settings.txt").write_text(SETTINGS)
-    (directory / f"{cid}-model.m").write_text(MODEL_M)
+    (directory / f"{cid}-settings.txt").write_text(SETTINGS, encoding="utf-8")
+    (directory / f"{cid}-model.m").write_text(MODEL_M, encoding="utf-8")
     (directory / f"{cid}-sbml-l3v2.xml").write_text(
-        model.replace('value="0.5"', f'value="{k1}"')
+        model.replace('value="0.5"', f'value="{k1}"'), encoding="utf-8"
     )
     time = np.linspace(0.0, 2.0, 21)
     s1 = np.exp(-k1 * time)
     rows = "".join(f"{t},{a},{1 - a}\n" for t, a in zip(time, s1, strict=True))
-    (directory / f"{cid}-results.csv").write_text("time,S1,S2\n" + rows)
+    (directory / f"{cid}-results.csv").write_text(
+        "time,S1,S2\n" + rows, encoding="utf-8"
+    )
 
 
 def _suite(path: Path) -> SemanticSuite:
@@ -143,12 +145,12 @@ def _events_case(path: Path) -> SemanticCase:
 
     directory = path / "01757"
     directory.mkdir(parents=True)
-    (directory / "01757-settings.txt").write_text(EVENTS_SETTINGS)
-    (directory / "01757-model.m").write_text(MODEL_M)
-    (directory / "01757-sbml-l3v2.xml").write_text(sbml(EVENTS_AT_T0))
+    (directory / "01757-settings.txt").write_text(EVENTS_SETTINGS, encoding="utf-8")
+    (directory / "01757-model.m").write_text(MODEL_M, encoding="utf-8")
+    (directory / "01757-sbml-l3v2.xml").write_text(sbml(EVENTS_AT_T0), encoding="utf-8")
     p1 = [1.5, 1.5, 5.0] + [25.0] * 8
     rows = "".join(f"{t},{v}\n" for t, v in zip(range(11), p1, strict=True))
-    (directory / "01757-results.csv").write_text("time,P1\n" + rows)
+    (directory / "01757-results.csv").write_text("time,P1\n" + rows, encoding="utf-8")
     case = SemanticCase.from_directory(directory)
     assert case is not None
     return case
@@ -202,10 +204,12 @@ def _delayed_event_rule_case(path: Path) -> SemanticCase:
     directory = path / "00622"
     directory.mkdir(parents=True)
     (directory / "00622-settings.txt").write_text(
-        EVENTS_SETTINGS.replace("variables: P1", "variables: A, R")
+        EVENTS_SETTINGS.replace("variables: P1", "variables: A, R"), encoding="utf-8"
     )
-    (directory / "00622-model.m").write_text(MODEL_M)
-    (directory / "00622-sbml-l3v2.xml").write_text(sbml(DELAYED_EVENT_RULE))
+    (directory / "00622-model.m").write_text(MODEL_M, encoding="utf-8")
+    (directory / "00622-sbml-l3v2.xml").write_text(
+        sbml(DELAYED_EVENT_RULE), encoding="utf-8"
+    )
     case = SemanticCase.from_directory(directory)
     assert case is not None
     simulator = Simulator(
@@ -215,7 +219,7 @@ def _delayed_event_rule_case(path: Path) -> SemanticCase:
         case, simulator, simulator.load(AbstractModel(source=case.model_path))
     )
     rows = "".join(f"{t},{a},{r}\n" for t, a, r in np.asarray(result.values))
-    (directory / "00622-results.csv").write_text("time,A,R\n" + rows)
+    (directory / "00622-results.csv").write_text("time,A,R\n" + rows, encoding="utf-8")
     return case
 
 

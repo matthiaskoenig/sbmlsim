@@ -179,7 +179,7 @@ def page_markdown(page: Page) -> str:
         The source markdown, or the generated API markdown for the pages of the
         API reference.
     """
-    markdown = (DOCS_DIR / page.path).read_text()
+    markdown = (DOCS_DIR / page.path).read_text(encoding="utf-8")
     match = DIRECTIVE.search(markdown) if page.path.startswith("api/") else None
     return api_markdown(match.group("module")) if match else markdown
 
@@ -234,7 +234,7 @@ def write_llms_txt(pages: dict[Page, str], config: dict[str, Any]) -> None:
         "reference as a sphinx inventory.",
         "",
     ]
-    (SITE_DIR / "llms.txt").write_text("\n".join(lines))
+    (SITE_DIR / "llms.txt").write_text("\n".join(lines), encoding="utf-8")
 
 
 def write_llms_full_txt(pages: dict[Page, str], config: dict[str, Any]) -> None:
@@ -262,7 +262,7 @@ def write_llms_full_txt(pages: dict[Page, str], config: dict[str, Any]) -> None:
             markdown.strip(),
             "",
         ]
-    (SITE_DIR / "llms-full.txt").write_text("\n".join(lines))
+    (SITE_DIR / "llms-full.txt").write_text("\n".join(lines), encoding="utf-8")
 
 
 def write_markdown(pages: dict[Page, str]) -> None:
@@ -274,7 +274,7 @@ def write_markdown(pages: dict[Page, str]) -> None:
     for page, markdown in pages.items():
         path = SITE_DIR / page.path
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(markdown)
+        path.write_text(markdown, encoding="utf-8")
 
 
 def main() -> None:

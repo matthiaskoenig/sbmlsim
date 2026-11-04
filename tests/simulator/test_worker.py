@@ -231,10 +231,13 @@ def test_a_worker_sees_a_rewritten_model(
 ) -> None:
     monkeypatch.setattr(parallel, "_CACHE", OrderedDict())
     path = tmp_path / "blowup.xml"
-    path.write_text(sbml(BLOWUP))
+    path.write_text(sbml(BLOWUP), encoding="utf-8")
     first = RoadrunnerSBMLModel(source=path)
     spec = ModelSpec.of(first)
-    path.write_text(sbml(BLOWUP.replace("species S in C = 1", "species S in C = 0.5")))
+    path.write_text(
+        sbml(BLOWUP.replace("species S in C = 1", "species S in C = 0.5")),
+        encoding="utf-8",
+    )
     second = RoadrunnerSBMLModel(source=path)
     other = ModelSpec.of(second)
     assert other.key != spec.key

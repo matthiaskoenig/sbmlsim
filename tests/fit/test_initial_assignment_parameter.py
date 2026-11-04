@@ -57,7 +57,7 @@ class IAExperiment(SimulationExperiment):
 def problem(tmp_path: Path) -> OptimizationProblem:
     """Get a problem which fits b0 of the probe model."""
     MODEL_PATH["path"] = tmp_path / "probe.xml"
-    MODEL_PATH["path"].write_text(sbml())
+    MODEL_PATH["path"].write_text(sbml(), encoding="utf-8")
     problem = OptimizationProblem(
         opid="ia",
         mapping_collections=[
@@ -119,7 +119,7 @@ class ShiftedExperiment(IAExperiment):
 def test_fit_with_a_time_shift(tmp_path: Path) -> None:
     """The data of a shifted simulation is found at its times, without rounding."""
     MODEL_PATH["path"] = tmp_path / "probe.xml"
-    MODEL_PATH["path"].write_text(sbml())
+    MODEL_PATH["path"].write_text(sbml(), encoding="utf-8")
     problem = OptimizationProblem(
         opid="shifted",
         mapping_collections=[
@@ -164,7 +164,7 @@ class NoisyTimesExperiment(IAExperiment):
 def test_fit_with_near_identical_data_times(tmp_path: Path) -> None:
     """Data times closer than the resolution of the time are one output time (#261)."""
     MODEL_PATH["path"] = tmp_path / "probe.xml"
-    MODEL_PATH["path"].write_text(sbml())
+    MODEL_PATH["path"].write_text(sbml(), encoding="utf-8")
     problem = OptimizationProblem(
         opid="noisy",
         mapping_collections=[
@@ -217,7 +217,7 @@ class PkdbExperiment(IAExperiment):
 def test_fit_with_digitized_times_after_the_last_dose(tmp_path: Path) -> None:
     """Data times which differ by noise collide once shifted to the plan (#261)."""
     MODEL_PATH["path"] = tmp_path / "probe.xml"
-    MODEL_PATH["path"].write_text(sbml())
+    MODEL_PATH["path"].write_text(sbml(), encoding="utf-8")
     problem = OptimizationProblem(
         opid="pkdb",
         mapping_collections=[
@@ -262,7 +262,7 @@ class SteadyExperiment(IAExperiment):
 def test_fit_with_data_at_steady_state(tmp_path: Path) -> None:
     """A measurement at `inf` is the steady state of its simulation."""
     MODEL_PATH["path"] = tmp_path / "probe.xml"
-    MODEL_PATH["path"].write_text(sbml())
+    MODEL_PATH["path"].write_text(sbml(), encoding="utf-8")
     problem = OptimizationProblem(
         opid="steady",
         mapping_collections=[

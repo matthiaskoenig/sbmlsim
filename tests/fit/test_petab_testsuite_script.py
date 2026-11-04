@@ -65,7 +65,10 @@ def test_run_fails_when_a_case_differs_from_the_baseline(
 ) -> None:
     """`run` returns 1 when a case does not have the outcome of the baseline."""
     path = tmp_path / "baseline.json"
-    path.write_text(json.dumps({"suite_commit": "abc", "expected_failures": failures}))
+    path.write_text(
+        json.dumps({"suite_commit": "abc", "expected_failures": failures}),
+        encoding="utf-8",
+    )
     monkeypatch.setattr(script.PetabSuite, "load", lambda commit: FakeSuite(RESULTS))
     monkeypatch.setattr(script, "BASELINE_PATH", path)
     assert script.main(["run"]) == code
@@ -78,7 +81,7 @@ def test_the_baseline_is_written(
     monkeypatch.setattr(script.PetabSuite, "load", lambda commit: FakeSuite(RESULTS))
     monkeypatch.setattr(script, "BASELINE_PATH", tmp_path / "baseline.json")
     assert script.main(["baseline"]) == 0
-    baseline = json.loads((tmp_path / "baseline.json").read_text())
+    baseline = json.loads((tmp_path / "baseline.json").read_text(encoding="utf-8"))
     assert baseline == {
         "suite_commit": "abc",
         "n_cases": 2,

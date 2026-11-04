@@ -85,9 +85,9 @@ def _add_sigma(petab_dir: Path) -> None:
 def _add_extension(petab_dir: Path, extension_id: str, block: dict[str, Any]) -> None:
     """Add the block of an extension to the YAML of a problem."""
     yaml_file = petab_dir / "problem.yaml"
-    config = yaml.safe_load(yaml_file.read_text())
+    config = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
     config.setdefault("extensions", {})[extension_id] = block
-    yaml_file.write_text(yaml.safe_dump(config))
+    yaml_file.write_text(yaml.safe_dump(config), encoding="utf-8")
 
 
 # --- THE NOISE MODEL ---

@@ -30,7 +30,7 @@ def write_v1_problem(directory: Path, prefix: str = "") -> Path:
     """
     directory.mkdir(parents=True)
     (directory / "_model.xml").write_text(
-        sbml("model decay\n  A = 1; k = 0.1\n  J: A -> ; k*A\nend")
+        sbml("model decay\n  A = 1; k = 0.1\n  J: A -> ; k*A\nend"), encoding="utf-8"
     )
     rows = {
         "observableId": ["obs_a"] * len(TIMES),
@@ -74,6 +74,7 @@ def write_v1_problem(directory: Path, prefix: str = "") -> Path:
                     }
                 ],
             }
-        )
+        ),
+        encoding="utf-8",
     )
     return yaml_file

@@ -74,7 +74,9 @@ def test_repressilator_experiment_runs_with_the_engine(
             )
     # the JSON of the experiment records the engine which ran its tasks
     for compared in (Engine.ROADRUNNER, other_engine):
-        written = json.loads((tmp_path / compared.value / f"{SID}.json").read_text())
+        written = json.loads(
+            (tmp_path / compared.value / f"{SID}.json").read_text(encoding="utf-8")
+        )
         assert written["engine"] == compared.value
 
 
@@ -151,7 +153,7 @@ def test_a_worker_loads_the_models_in_the_engine_of_the_run(
     )
     assert models
     assert all(isinstance(m, model_class(other_engine)) for m in models.values())
-    written = json.loads((tmp_path / SID / f"{SID}.json").read_text())
+    written = json.loads((tmp_path / SID / f"{SID}.json").read_text(encoding="utf-8"))
     assert written["engine"] == other_engine.value
 
 
@@ -184,7 +186,9 @@ def test_run_experiments_in_a_pool_with_the_engine(
         # the engine of the simulator of the worker; the models the worker
         # loads are tested on `_run_job` in this process, see
         # `test_a_worker_loads_the_models_in_the_engine_of_the_run`
-        written = json.loads((tmp_path / sid / f"{sid}.json").read_text())
+        written = json.loads(
+            (tmp_path / sid / f"{sid}.json").read_text(encoding="utf-8")
+        )
         assert written["engine"] == other_engine.value
         assert (tmp_path / sid / f"{sid}_fig1.svg").exists()
 

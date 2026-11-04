@@ -135,7 +135,9 @@ def test_the_report_shows_the_target_of_a_versioned_parameter(
         parameter_sets=problem.parameter_set_model(),
         mapping_figures=False,
     )
-    html = (report.create(tmp_path, name="versioned") / "index.html").read_text()
+    html = (report.create(tmp_path, name="versioned") / "index.html").read_text(
+        encoding="utf-8"
+    )
     assert ">target</th>" in html
     assert "Ka_dis_hctz" in html
 
@@ -151,7 +153,9 @@ def test_the_report_of_an_ordinary_fit_has_no_target_column(
         parameter_sets=op_hctz_iv.parameter_set_model(),
         mapping_figures=False,
     )
-    html = (report.create(tmp_path, name="ordinary") / "index.html").read_text()
+    html = (report.create(tmp_path, name="ordinary") / "index.html").read_text(
+        encoding="utf-8"
+    )
     assert ">target</th>" not in html
     # a fit without networks has no section of them, and no line in its place
     assert "Networks" not in html
@@ -181,7 +185,9 @@ def test_the_report_shows_every_data_path(
     info = report.fit_info()
     assert info["data path"] == f"{data_path}\n{data_path.parent}"
     assert info["base path"] == str(op_hctz_iv.base_path)
-    html = (report.create(tmp_path, name="paths") / "index.html").read_text()
+    html = (report.create(tmp_path, name="paths") / "index.html").read_text(
+        encoding="utf-8"
+    )
     assert "PosixPath" not in html and "WindowsPath" not in html
 
 
@@ -876,7 +882,7 @@ def test_the_report_explains_its_values(
         mapping_figures=False,
     )
     report.create(tmp_path, name="hints")
-    html = (tmp_path / "hints" / "index.html").read_text()
+    html = (tmp_path / "hints" / "index.html").read_text(encoding="utf-8")
 
     # the metrics of the summary, i.e. what the tables of the report show
     for column in ["MSE", "RMSE", "R2", "AIC", "BIC"]:
@@ -906,7 +912,7 @@ def test_the_report_of_the_fisher_information(
     assert (results_dir / "fisher.json").exists()
     assert (results_dir / "fisher.tsv").exists()
 
-    html = (results_dir / "index.html").read_text()
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert "Fisher information" in html
     assert "Correlation" in html
     for pid in op_hctz_iv.pids:
@@ -960,7 +966,7 @@ def test_report_writes_all_formats(report_dir: Path) -> None:
         "references.bib",
     ]:
         assert (report_dir / name).exists(), name
-    html = (report_dir / "index.html").read_text()
+    html = (report_dir / "index.html").read_text(encoding="utf-8")
     assert 'data-tab="report"' in html and 'data-tab="mappings"' in html
     assert "<math" in html
 
@@ -977,7 +983,9 @@ def test_pdf_failure_keeps_the_fit(monkeypatch, tmp_path, fitted) -> None:
         output_dir=tmp_path
     )
     assert (out / "report.typ").exists() and not (out / "report.pdf").exists()
-    assert "PDF could not be created" in (out / "index.html").read_text()
+    assert "PDF could not be created" in (out / "index.html").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_a_failed_pdf_is_stated_with_its_reason(
@@ -1076,16 +1084,16 @@ def test_latex_includes_the_png_figures(report_dir: Path) -> None:
     pngs = {path.stem for path in plots_dir.glob("*.png")}
     assert pngs == set(DOCUMENT_FIGURES)
 
-    tex = (report_dir / "report.tex").read_text()
+    tex = (report_dir / "report.tex").read_text(encoding="utf-8")
     included = re.findall(r"\\includegraphics\[[^]]*\]\{([^}]+)\}", tex)
     assert len(included) == len(DOCUMENT_FIGURES)
     for path in included:
         assert path.endswith(".png") and (report_dir / path).exists(), path
     assert "\\bibliography{references}" in tex
-    standalone = (report_dir / "report_standalone.tex").read_text()
+    standalone = (report_dir / "report_standalone.tex").read_text(encoding="utf-8")
     assert standalone.startswith("\\documentclass")
     assert tex.strip() in standalone
-    bib = (report_dir / "references.bib").read_text()
+    bib = (report_dir / "references.bib").read_text(encoding="utf-8")
     assert f"note = {{Version {__version__}}}" in bib
 
 
@@ -1101,12 +1109,12 @@ def _non_ascii(text: str) -> set[str]:
 def test_the_latex_has_no_unicode_symbols(report_dir: Path) -> None:
     """The LaTeX of a report has its symbols as commands, pdflatex reads it."""
     for name in ["report.tex", "report_standalone.tex"]:
-        tex = (report_dir / name).read_text()
+        tex = (report_dir / name).read_text(encoding="utf-8")
         assert not _non_ascii(tex), (name, _non_ascii(tex))
-    standalone = (report_dir / "report_standalone.tex").read_text()
+    standalone = (report_dir / "report_standalone.tex").read_text(encoding="utf-8")
     assert "\\usepackage[T1]{fontenc}" in standalone
     assert "\\usepackage[utf8]{inputenc}" in standalone
-    tex = (report_dir / "report.tex").read_text()
+    tex = (report_dir / "report.tex").read_text(encoding="utf-8")
     assert "\\chi" in tex and "\\alpha" in tex
 
 
@@ -1147,7 +1155,7 @@ def test_a_png_report_has_no_copies(tmp_path: Path, fitted) -> None:
     plots = sorted(path.name for path in (out / "plots").iterdir())
     assert "traces.png" in plots
     assert not [name for name in plots if name.endswith(".svg")]
-    assert "plots/traces.png" in (out / "report.tex").read_text()
+    assert "plots/traces.png" in (out / "report.tex").read_text(encoding="utf-8")
 
 
 def test_the_document_of_a_report(fitted_report) -> None:
@@ -1174,7 +1182,9 @@ def test_the_context_of_a_report(tmp_path: Path, fitted) -> None:
     html = _html_of(out)
     assert "Methods: Pharmacokinetics of HCTZ" in html
     assert "The absorption and the elimination of HCTZ." in html
-    assert "Pharmacokinetics of HCTZ" in (out / "report.typ").read_text()
+    assert "Pharmacokinetics of HCTZ" in (out / "report.typ").read_text(
+        encoding="utf-8"
+    )
 
 
 def _tabs(html: str) -> tuple[str, str]:
@@ -1233,7 +1243,7 @@ def test_the_figures_and_metrics_of_the_mappings_are_in_their_tab(
         assert f"plots/{name}.svg" in report, name
     # no document format refers to the moved figures, every reference resolves
     for name in ["report.typ", "report.tex", "report_standalone.tex"]:
-        text = (report_dir / name).read_text()
+        text = (report_dir / name).read_text(encoding="utf-8")
         assert "cost_bar" not in text and "residual_boxplot" not in text, name
     for label in re.findall(r'<a href="#([^"]+)">', html):
         assert f'id="{label}"' in html, label
@@ -1246,7 +1256,7 @@ def test_the_figures_of_the_mappings_grow_with_the_mappings(
     problem, _ = fitted
     n = len(problem.mapping_keys)
     for name in ["cost_bar", "residual_boxplot"]:
-        svg = (report_dir / "plots" / f"{name}.svg").read_text()
+        svg = (report_dir / "plots" / f"{name}.svg").read_text(encoding="utf-8")
         match = re.search(r'height="([0-9.]+)pt"', svg)
         assert match is not None, name
         height = float(match.group(1))
