@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import math
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, TypedDict
@@ -464,7 +464,8 @@ def load_model(
 
     Raises:
         ValueError: for a name which is no engine.
-        ImportError: for the engine COPASI without python-copasi.
+        ImportError: for the engine COPASI without python-copasi, AMICI without
+            AMICI.
     """
     engine = resolve_engine(engine)
     if isinstance(model, SBMLModel):
@@ -491,6 +492,13 @@ def load_model(
         if isinstance(model, AbstractModel):
             return CopasiSBMLModel.from_abstract_model(abstract_model=model, ureg=ureg)
         return CopasiSBMLModel(source=model, ureg=ureg)
+    if engine is Engine.AMICI:
+        # AMICI is an optional extra, imported when a model is loaded in it
+        from sbmlsim.model.model_amici import AmiciSBMLModel
+
+        if isinstance(model, AbstractModel):
+            return AmiciSBMLModel.from_abstract_model(abstract_model=model, ureg=ureg)
+        return AmiciSBMLModel(source=model, ureg=ureg)
     raise ValueError(f"The engine '{engine}' loads no models.")
 
 
@@ -584,3 +592,47 @@ def _with_parameters(sbml: str, parameters: Mapping[str, float]) -> str:
         parameter.setValue(float(value))
         parameter.setConstant(True)
     return libsbml.writeSBMLToString(doc)
+
+
+def sbml_maths(model: libsbml.Model) -> Iterator[tuple[str, libsbml.ASTNode]]:
+    """Get every math of a model with the name of its element, e.g. for a message."""
+    for function in model.getListOfFunctionDefinitions():
+        yield f"function definition '{function.getId()}'", function.getMath()
+    for assignment in model.getListOfInitialAssignments():
+        yield f"initial assignment of '{assignment.getSymbol()}'", assignment.getMath()
+    for rule in model.getListOfRules():
+        kind = "rate rule" if rule.isRate() else "assignment rule"
+        if rule.isAlgebraic():
+            kind = "algebraic rule"
+        yield f"{kind} of '{rule.getVariable()}'", rule.getMath()
+    for constraint in model.getListOfConstraints():
+        yield "constraint", constraint.getMath()
+    for reaction in model.getListOfReactions():
+        if reaction.isSetKineticLaw():
+            law = reaction.getKineticLaw()
+            yield f"kinetic law of the reaction '{reaction.getId()}'", law.getMath()
+    for event in model.getListOfEvents():
+        where = f"event '{event.getId()}'"
+        if event.isSetTrigger():
+            yield where, event.getTrigger().getMath()
+        if event.isSetDelay():
+            yield where, event.getDelay().getMath()
+        if event.isSetPriority():
+            yield where, event.getPriority().getMath()
+        for assignment in event.getListOfEventAssignments():
+            yield where, assignment.getMath()
+
+
+#: the definition URL of the delay csymbol
+DELAY_URL = "http://www.sbml.org/sbml/symbols/delay"
+
+
+def reads_delay(math: libsbml.ASTNode | None) -> bool:
+    """Whether a math reads the delay csymbol, found by its definition URL."""
+    stack = [math] if math is not None else []
+    while stack:
+        node = stack.pop()
+        if node.getDefinitionURLString() == DELAY_URL:
+            return True
+        stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
+    return False

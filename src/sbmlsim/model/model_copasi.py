@@ -33,7 +33,7 @@ import ctypes
 import logging
 import math
 import weakref
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -45,7 +45,12 @@ import numpy as np
 from sbmlsim.engine import Engine, import_copasi
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
-from sbmlsim.model.model_sbml import IntegratorSetting, SBMLModel
+from sbmlsim.model.model_sbml import (
+    IntegratorSetting,
+    SBMLModel,
+    reads_delay,
+    sbml_maths,
+)
 from sbmlsim.model.symbols import TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.units import UnitRegistry
@@ -1227,53 +1232,9 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
                 f"'{assignment.getSymbol()}', which COPASI evaluates once into a "
                 f"constant"
             )
-    for where, ast in _maths(model):
-        if _reads_delay(ast):
+    for where, ast in sbml_maths(model):
+        if reads_delay(ast):
             raise unsupported(f"the delay csymbol in the {where}")
-
-
-def _maths(model: libsbml.Model) -> Iterator[tuple[str, libsbml.ASTNode]]:
-    """Get every math of a model with the name of its element."""
-    for function in model.getListOfFunctionDefinitions():
-        yield f"function definition '{function.getId()}'", function.getMath()
-    for assignment in model.getListOfInitialAssignments():
-        yield f"initial assignment of '{assignment.getSymbol()}'", assignment.getMath()
-    for rule in model.getListOfRules():
-        kind = "rate rule" if rule.isRate() else "assignment rule"
-        if rule.isAlgebraic():
-            kind = "algebraic rule"
-        yield f"{kind} of '{rule.getVariable()}'", rule.getMath()
-    for constraint in model.getListOfConstraints():
-        yield "constraint", constraint.getMath()
-    for reaction in model.getListOfReactions():
-        if reaction.isSetKineticLaw():
-            law = reaction.getKineticLaw()
-            yield f"kinetic law of the reaction '{reaction.getId()}'", law.getMath()
-    for event in model.getListOfEvents():
-        where = f"event '{event.getId()}'"
-        if event.isSetTrigger():
-            yield where, event.getTrigger().getMath()
-        if event.isSetDelay():
-            yield where, event.getDelay().getMath()
-        if event.isSetPriority():
-            yield where, event.getPriority().getMath()
-        for assignment in event.getListOfEventAssignments():
-            yield where, assignment.getMath()
-
-
-#: the definition URL of the delay csymbol
-_DELAY = "http://www.sbml.org/sbml/symbols/delay"
-
-
-def _reads_delay(math: libsbml.ASTNode | None) -> bool:
-    """Whether a math reads the delay csymbol, found by its definition URL."""
-    stack = [math] if math is not None else []
-    while stack:
-        node = stack.pop()
-        if node.getDefinitionURLString() == _DELAY:
-            return True
-        stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
-    return False
 
 
 def _remove_datamodel(dm: COPASI.CDataModel) -> None:
