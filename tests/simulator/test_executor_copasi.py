@@ -12,6 +12,7 @@ import locale
 from collections.abc import Generator, Sequence
 from pathlib import Path
 
+import libsbml
 import numpy as np
 import pytest
 
@@ -22,7 +23,7 @@ with contextlib.suppress(ImportError):
     import_copasi()
 COPASI = pytest.importorskip("COPASI")
 
-from sbmlsim.model import RoadrunnerSBMLModel, model_copasi  # noqa: E402
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, model_copasi  # noqa: E402
 from sbmlsim.model.model_copasi import (  # noqa: E402
     COPASI_ATOL_FACTOR,
     CopasiSBMLModel,
@@ -35,7 +36,7 @@ from sbmlsim.resources import (  # noqa: E402
 )
 from sbmlsim.result import TimecourseResult  # noqa: E402
 from sbmlsim.simulation import Change, Simulation, SteadyState  # noqa: E402
-from sbmlsim.simulator import executor_copasi  # noqa: E402
+from sbmlsim.simulator import Simulator, executor_copasi  # noqa: E402
 from sbmlsim.simulator.executor import (  # noqa: E402
     SteadyStateError,
     execute,
@@ -1526,3 +1527,121 @@ def test_an_event_of_the_time_before_zero_from_a_negative_start(times: bool) -> 
     if times:
         at = rows_at(copasi, -0.5)
         assert at.shape[0] == 1 and at[0, 1] == 1.0 and at[0, 2] == 10.0
+
+
+#: `A -> B` at the rate `k * A`, whose species `A` (or whose model) has the
+#: conversion factor `cf`, with a rate rule and an event which read `A`
+CONVERSION_FACTOR = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+<model id="conversion_factor" {model_cf}>
+<listOfCompartments>
+  <compartment id="c" size="2" spatialDimensions="3" constant="true"/>
+</listOfCompartments>
+<listOfSpecies>
+  <species id="A" compartment="c" initialAmount="10" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false" {species_cf}/>
+  <species id="B" compartment="c" initialAmount="0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+</listOfSpecies>
+<listOfParameters>
+  <parameter id="k" value="0.1" constant="true"/>
+  <parameter id="cf" value="{cf}" constant="true"/>
+  <parameter id="n" value="0" constant="false"/>
+</listOfParameters>
+<listOfReactions>
+  <reaction id="R" reversible="false">
+    <listOfReactants><speciesReference species="A" stoichiometry="1" constant="true"/></listOfReactants>
+    <listOfProducts><speciesReference species="B" stoichiometry="2" constant="true"/></listOfProducts>
+    <kineticLaw><math xmlns="http://www.w3.org/1998/Math/MathML"><apply><times/><ci>k</ci><ci>A</ci></apply></math></kineticLaw>
+  </reaction>
+</listOfReactions>
+<listOfEvents>
+  <event id="E" useValuesFromTriggerTime="true">
+    <trigger initialValue="false" persistent="true"><math xmlns="http://www.w3.org/1998/Math/MathML"><apply><lt/><ci>A</ci><cn>4</cn></apply></math></trigger>
+    <listOfEventAssignments><eventAssignment variable="n"><math xmlns="http://www.w3.org/1998/Math/MathML"><apply><plus/><ci>n</ci><cn>1</cn></apply></math></eventAssignment></listOfEventAssignments>
+  </event>
+</listOfEvents>
+</model></sbml>"""
+
+
+def _simulator(engine: str) -> Simulator:
+    """Get a simulator of an engine at the tolerances `SETTINGS`."""
+    return Simulator(
+        engine=engine,
+        relative_tolerance=SETTINGS["relative_tolerance"],
+        absolute_tolerance=SETTINGS["absolute_tolerance"],
+    )
+
+
+def conversion_factor(on: str, cf: str = "0.5") -> str:
+    """Get the SBML of `CONVERSION_FACTOR` with the conversion factor on the model or on `A`."""
+    return CONVERSION_FACTOR.format(
+        model_cf='conversionFactor="cf"' if on == "model" else "",
+        species_cf='conversionFactor="cf"' if on == "species" else "",
+        cf=cf,
+    )
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2, 3, 5, 8, 12, 20], None])
+@pytest.mark.parametrize("on", ["model", "species"])
+def test_a_conversion_factor_is_simulated_as_by_roadrunner(
+    on: str, times: list[float] | None
+) -> None:
+    """COPASI simulates the conversion factor of a species or of the model as roadrunner, also after a change."""
+    simulation = Simulation(end=20, changes=[Change(3, {"A": 8.0})], times=times)
+    source = conversion_factor(on)
+    selections = ["time", "A", "B", "[A]", "[B]", "n", "R"]
+    copasi, roadrunner = both(source, simulation, selections)
+    assert roadrunner["n"][-1] == 1.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[3.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("on", ["model", "species"])
+def test_a_conversion_factor_is_simulated_by_the_simulator(on: str) -> None:
+    """A model with a conversion factor is simulated with the engine COPASI as with roadrunner."""
+    model = AbstractModel(source=conversion_factor(on))
+    simulation = Simulation(end=10, times=[0, 2.5, 5, 10])
+    copasi = _simulator("copasi").simulate(model, simulation)
+    roadrunner = _simulator("roadrunner").simulate(model, simulation)
+    np.testing.assert_allclose(copasi["[B]"], roadrunner["[B]"], rtol=1e-6, atol=1e-9)
+    # the conversion factor changes the results
+    ignored = _simulator("roadrunner").simulate(
+        AbstractModel(source=conversion_factor("none")), simulation
+    )
+    assert not np.allclose(copasi["[B]"], ignored["[B]"], rtol=1e-3)
+
+
+@pytest.mark.parametrize(
+    "simulation",
+    [
+        Simulation(end=5, preinit_changes={"cf": 2.0}),
+        Simulation(end=5, changes=[Change(1, {"cf": 2.0})]),
+    ],
+)
+def test_a_change_of_a_conversion_factor_raises(simulation: Simulation) -> None:
+    """COPASI multiplies the stoichiometries by the conversion factor as loaded, a change of it raises."""
+    model = AbstractModel(source=conversion_factor("species"))
+    with pytest.raises(NotImplementedError, match="conversion factor 'cf'"):
+        _simulator("copasi").simulate(model, simulation)
+
+
+def test_a_conversion_factor_of_an_initial_assignment_is_simulated() -> None:
+    """A conversion factor of an initial assignment has its value as loaded, a change of what it reads raises."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(conversion_factor("species"))
+    model: libsbml.Model = doc.getModel()
+    p: libsbml.Parameter = model.createParameter()
+    p.setId("p")
+    p.setValue(1.0)
+    p.setConstant(True)
+    assignment: libsbml.InitialAssignment = model.createInitialAssignment()
+    assignment.setSymbol("cf")
+    assignment.setMath(libsbml.parseL3Formula("2 * p"))
+    source = AbstractModel(source=libsbml.writeSBMLToString(doc))
+    simulation = Simulation(end=10, times=[0, 2.5, 5, 10])
+    copasi = _simulator("copasi").simulate(source, simulation)
+    roadrunner = _simulator("roadrunner").simulate(source, simulation)
+    np.testing.assert_allclose(copasi.values, roadrunner.values, rtol=1e-6, atol=1e-9)
+    changed = Simulation(end=10, preinit_changes={"p": 2.0})
+    with pytest.raises(NotImplementedError, match=r"\['p'\].*conversion factor 'cf'"):
+        _simulator("copasi").simulate(source, changed)

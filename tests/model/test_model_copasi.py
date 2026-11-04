@@ -450,8 +450,10 @@ def test_a_delay_raises() -> None:
 
 
 @pytest.mark.parametrize("on", ["model", "species"])
-def test_a_conversion_factor_raises(on: str) -> None:
-    """A time course of COPASI ignores the conversion factors."""
+def test_a_conversion_factor_multiplies_the_rates(
+    on: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The rates of a species of a conversion factor are multiplied by it, without a warning."""
 
     def edit(model: libsbml.Model) -> None:
         if on == "model":
@@ -459,9 +461,15 @@ def test_a_conversion_factor_raises(on: str) -> None:
         else:
             model.getSpecies("A").setConversionFactor("k1")
 
-    element = "model" if on == "model" else "species 'A'"
-    with pytest.raises(ValueError, match=f"conversion factor 'k1' of the {element}"):
-        CopasiSBMLModel(source=_probe_with(edit))
+    plain = CopasiSBMLModel(source=_probe_with(lambda model: None))
+    with caplog.at_level(logging.WARNING, logger="sbmlsim"):
+        model = CopasiSBMLModel(source=_probe_with(edit))
+    assert not caplog.records
+    assert model.conversion_factors == {"k1": "k1"}
+    rates, plain_rates = model.rates(["A", "B"]), plain.rates(["A", "B"])
+    assert rates[0] == pytest.approx(0.8 * plain_rates[0], rel=1e-14)
+    factor = 0.8 if on == "model" else 1.0
+    assert rates[1] == pytest.approx(factor * plain_rates[1], rel=1e-14)
 
 
 def test_a_libsbml_error_raises() -> None:

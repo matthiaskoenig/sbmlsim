@@ -15,7 +15,11 @@ roadrunner). The model checks after the import that every plain initial
 number of the SBML is the one of COPASI and raises otherwise, e.g. for an
 amount whose particle number is not finite. It raises as well for an error of
 the import (of COPASI or of libsbml) and for the features COPASI loads and
-simulates otherwise than roadrunner, see `_check_supported`.
+simulates otherwise than roadrunner, see `_check_supported`. COPASI
+multiplies the stoichiometries of a species by its conversion factor when it
+imports a model, so a model with conversion factors is compiled again after
+the import and a plan which changes a conversion factor is refused, see
+`_compile_conversion_factors`.
 
 COPASI folds a constant entity into the constants of its model, a value
 written into it during a simulation is not seen. The SBML which COPASI loads
@@ -153,9 +157,12 @@ COPASI_ATOL_FACTOR: float = 1e-2
 #: species and of the model which COPASI does not import and whose numbers it
 #: keeps (25, 66), a compartment without a size, which has the size 1 as in
 #: roadrunner (45), a compartment without spatial dimensions, which COPASI
-#: reads as one of three, whose size is the same number (90), an unknown
+#: reads as one of three, whose size is the same number (90), the
+#: stoichiometries COPASI multiplies by the conversion factors, which the
+#: model compiles (100, see `_compile_conversion_factors`), an unknown
 #: annotation and the warnings of libsbml
 BENIGN_MESSAGES = (
+    "SBML (100)",
     "SBML (90)",
     "SBML (91)",
     "SBML (92)",
@@ -388,6 +395,15 @@ class CopasiSBMLModel(SBMLModel):
         drain_messages(self.label)
         if not imported:
             raise ValueError(f"COPASI cannot load the model '{self.label}'.")
+        #: the conversion factors of the model and the entities their initial
+        #: assignments read, by entity the conversion factor it sets, which a
+        #: plan must not change, see `_compile_conversion_factors`
+        self.conversion_factors: dict[str, str] = _conversion_factor_inputs(
+            conversion_factors(sbml_model), self.symbols.initial_assignment_dependencies
+        )
+        if self.conversion_factors:
+            _compile_conversion_factors(dm.getModel())
+            drain_messages(self.label)
 
         cmodel: COPASI.CModel = dm.getModel()
         self.entities: dict[str, Any] = {}
@@ -1512,11 +1528,11 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
     """Check that COPASI simulates a model as roadrunner does.
 
     COPASI loads the following without an error and simulates them otherwise
-    than roadrunner: it ignores algebraic rules and the conversion factors
-    of the model and of the species in a time course, makes the stoichiometry
-    of a non-constant species reference, of a stoichiometry math and of an
-    initial assignment of a species reference a constant, and simulates the
-    delay csymbol otherwise.
+    than roadrunner: it ignores algebraic rules, makes the stoichiometry of a
+    non-constant species reference, of a stoichiometry math and of an initial
+    assignment of a species reference a constant, and simulates the delay
+    csymbol otherwise. The conversion factors are simulated after a
+    compilation of the model, see `_compile_conversion_factors`.
 
     Args:
         model: the model of the SBML.
@@ -1544,19 +1560,60 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
     for feature, element in features:
         if feature is Feature.ALGEBRAIC_RULE:
             raise unsupported(element + reasons[feature])
-    if model.isSetConversionFactor():
-        raise unsupported(
-            f"the conversion factor '{model.getConversionFactor()}' of the model, "
-            f"which a time course of COPASI ignores"
-        )
-    for species in model.getListOfSpecies():
-        if species.isSetConversionFactor():
-            raise unsupported(
-                f"the conversion factor '{species.getConversionFactor()}' of the "
-                f"species '{species.getId()}', which a time course of COPASI ignores"
-            )
     for feature, element in features:
         raise unsupported(element + reasons.get(feature, ""))
+
+
+def _compile_conversion_factors(cmodel: COPASI.CModel) -> None:
+    """Compile a model of COPASI with conversion factors again after its import.
+
+    The import of COPASI multiplies the stoichiometries of the species with a
+    conversion factor by the value of the factor (`SBML (100)`), after it
+    compiled the model, without marking the model for a compilation: a time
+    course integrates the stoichiometries of the SBML (copasi/basico#82). A
+    compilation forced after the import compiles the stoichiometries with
+    the factors. The stoichiometries keep the value of a factor at the
+    import, a change of a factor or of an entity its initial assignment
+    reads is refused, see `_conversion_factor_inputs`.
+
+    Args:
+        cmodel: the model of COPASI, right after its import.
+    """
+    cmodel.setCompileFlag(True)
+    cmodel.compileIfNecessary()
+
+
+def _conversion_factor_inputs(
+    factors: set[str] | frozenset[str],
+    dependencies: dict[str, frozenset[str]] | None,
+) -> dict[str, str]:
+    """Get the conversion factors and the entities their initial values depend on.
+
+    COPASI multiplies the stoichiometries by the initial value of a
+    conversion factor when it imports the model, see
+    `_compile_conversion_factors`, so neither the factor nor an entity which
+    its initial assignment reads, also through other initial assignments,
+    may change afterwards.
+
+    Args:
+        factors: the conversion factors of the model.
+        dependencies: entity -> the entities its initial assignment reads, see
+            `ModelSymbols.initial_assignment_dependencies`.
+
+    Returns:
+        Entity -> the conversion factor whose value depends on it, a factor
+        itself included.
+    """
+    inputs: dict[str, str] = {}
+    for factor in sorted(factors):
+        pending = [factor]
+        while pending:
+            sid = pending.pop()
+            if sid in inputs:
+                continue
+            inputs[sid] = factor
+            pending.extend(sorted((dependencies or {}).get(sid, frozenset())))
+    return inputs
 
 
 def _remove_datamodel(dm: COPASI.CDataModel) -> None:

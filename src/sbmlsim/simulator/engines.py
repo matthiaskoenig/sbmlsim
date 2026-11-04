@@ -68,8 +68,8 @@ def check_plan(plan: Plan, model: SBMLModel) -> None:
     A feature the engine does not simulate is the same for every point of a
     plan, so a run checks it once before it runs a point, serially or in a
     pool; the executor checks every plan as well. roadrunner simulates every
-    plan, COPASI refuses a delayed event of the model in a plan which sets
-    values between two runs, see
+    plan, COPASI refuses a change of a conversion factor and a delayed event
+    of the model in a plan which sets values between two runs, see
     `sbmlsim.simulator.executor_copasi.check_supported`, and AMICI a change
     of a compartment it keeps out of its states, see
     `sbmlsim.simulator.executor_amici.check_supported`.
