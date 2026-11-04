@@ -38,12 +38,12 @@ def _spawn_workers(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize("action", ["rewrite", "delete"])
 def test_a_loaded_file_is_unchanged_in_workers(action: str, tmp_path: Path) -> None:
     path = tmp_path / "model.xml"
-    path.write_text(sbml())
+    path.write_text(sbml(), encoding="utf-8")
     model = RoadrunnerSBMLModel(
         source=path, parameters={"extra": 3}, selections=["k1", "pinit", "extra", "[A]"]
     )
     if action == "rewrite":
-        path.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")))
+        path.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")), encoding="utf-8")
     else:
         path.unlink()
     for preinit in ({"f": 4}, {}):
@@ -61,10 +61,11 @@ def test_a_worker_snapshot_includes_external_models(tmp_path: Path) -> None:
     dependency = tmp_path / "inner.xml"
     dependency.write_text(
         '<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core" '
-        f'level="3" version="1">{inner}</sbml>'
+        f'level="3" version="1">{inner}</sbml>',
+        encoding="utf-8",
     )
     path = tmp_path / "top.xml"
-    path.write_text(EXTERNAL_SBML)
+    path.write_text(EXTERNAL_SBML, encoding="utf-8")
     model = RoadrunnerSBMLModel(source=path, selections=["sub__A1"])
     dependency.unlink()
     path.unlink()

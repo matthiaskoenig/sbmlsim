@@ -515,7 +515,7 @@ def test_the_noise_formula_in_the_selections(
     """
     from tests.simulator.models import sbml
 
-    (tmp_path / "probe.xml").write_text(sbml())
+    (tmp_path / "probe.xml").write_text(sbml(), encoding="utf-8")
 
     def table(name: str, rows: list[dict[str, Any]]) -> None:
         pd.DataFrame(rows).to_csv(tmp_path / f"{name}.tsv", sep="\t", index=False)
@@ -563,7 +563,8 @@ def test_the_noise_formula_in_the_selections(
                 "parameter_files": ["parameters.tsv"],
             },
             sort_keys=False,
-        )
+        ),
+        encoding="utf-8",
     )
     reader = PetabReader.from_yaml(path)
     with caplog.at_level(logging.WARNING, logger="sbmlsim.fit.petab_v2.reader"):
@@ -741,6 +742,8 @@ def test_a_problem_of_petab_v1_is_refused(tmp_path: Path) -> None:
     from sbmlsim.fit.petab_v2.reader import PetabReader
 
     yaml_file = tmp_path / "problem.yaml"
-    yaml_file.write_text("format_version: 1\nparameter_file: parameters.tsv\n")
+    yaml_file.write_text(
+        "format_version: 1\nparameter_file: parameters.tsv\n", encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="petab1to2"):
         PetabReader.from_yaml(yaml_file)

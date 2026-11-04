@@ -51,6 +51,8 @@ def test_create_petab_omex_missing_yaml(tmp_path: Path) -> None:
 def test_a_problem_of_petab_v1_is_refused(tmp_path: Path) -> None:
     """A problem of PEtab v1 is converted with `petab1to2` first."""
     yaml_file = tmp_path / "problem.yaml"
-    yaml_file.write_text("format_version: 1\nparameter_file: parameters.tsv\n")
+    yaml_file.write_text(
+        "format_version: 1\nparameter_file: parameters.tsv\n", encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="petab1to2"):
         create_petab_omex(omex_file=tmp_path / "v1.omex", yaml_file=yaml_file)

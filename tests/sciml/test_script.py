@@ -55,7 +55,8 @@ def _baseline(path: Path, failures: dict[str, dict[str, str]]) -> Path:
                 "n_passed": 2 - len(failures),
                 "expected_failures": failures,
             }
-        )
+        ),
+        encoding="utf-8",
     )
     return path
 
@@ -132,7 +133,7 @@ def test_the_baseline_keeps_a_reason_of_the_same_status(
         {"ml_model_import/002": {"status": "tolerance", "reason": REASON}},
     )
     script.write_baseline(RESULTS, FakeSuite(RESULTS), path)
-    baseline = json.loads(path.read_text())
+    baseline = json.loads(path.read_text(encoding="utf-8"))
     assert baseline["expected_failures"] == {
         "ml_model_import/002": {"status": "tolerance", "reason": REASON}
     }
@@ -148,7 +149,7 @@ def test_the_baseline_drops_the_reason_of_a_changed_status(
         {"ml_model_import/002": {"status": "shape", "reason": REASON}},
     )
     script.write_baseline(RESULTS, FakeSuite(RESULTS), path)
-    baseline = json.loads(path.read_text())
+    baseline = json.loads(path.read_text(encoding="utf-8"))
     assert baseline["expected_failures"]["ml_model_import/002"] == {
         "status": "tolerance",
         "reason": script.MISSING_REASON,

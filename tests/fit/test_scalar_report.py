@@ -75,7 +75,7 @@ def test_the_report_files_of_both_kinds(report: FitReport, tmp_path: Path) -> No
         assert not (plots / f"fit_{sid}_{mapping}.svg").exists()
     assert (plots / "goodness_of_fit.svg").exists()
     assert (plots / "bland_altman.svg").exists()
-    html = (results_dir / "index.html").read_text()
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert "fm_cmax" in html
     assert "fm_dose" in html
 
@@ -152,7 +152,7 @@ def test_metrics_of_mappings_with_one_key_in_two_experiments(tmp_path: Path) -> 
     results_dir = report.create(output_dir=tmp_path / "out", name="shared")
     table = pd.read_csv(results_dir / "metrics_mappings.tsv", sep="\t")
     assert sorted(table["n"]) == [1, 3]
-    html = (results_dir / "index.html").read_text()
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
     assert html.count("fm_cmax") >= 2
 
 

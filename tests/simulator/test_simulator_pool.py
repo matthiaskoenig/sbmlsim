@@ -144,7 +144,7 @@ def test_chunks_of_several_points_give_every_point_alone() -> None:
 
 def test_a_scan_over_models_in_the_pool(tmp_path: Path) -> None:
     slow = tmp_path / "slow.xml"
-    slow.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")))
+    slow.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")), encoding="utf-8")
     scan = Scan(
         Simulation(end=1, steps=4),
         [
@@ -266,7 +266,7 @@ def test_the_tolerances_reach_the_workers() -> None:
 def test_every_model_of_a_dimension_gets_the_tolerances(tmp_path: Path) -> None:
     """Each model of a dimension of models has its own vector, the same in a worker."""
     slow = tmp_path / "slow.xml"
-    slow.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")))
+    slow.write_text(sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1")), encoding="utf-8")
     tolerance = AbsoluteTolerance(amount=1e-12, concentration=1e-9, ids={"A": 1e-14})
     simulator = Simulator(n_workers=2, absolute_tolerance=tolerance)
     scan = Scan(
@@ -499,9 +499,9 @@ def test_ctrl_c_in_a_terminal(mode: str, tmp_path: Path) -> None:
     left.
     """
     script = tmp_path / "ctrl_c.py"
-    script.write_text(CTRL_C_SCRIPT)
+    script.write_text(CTRL_C_SCRIPT, encoding="utf-8")
     blowup = tmp_path / "blowup.xml"
-    blowup.write_text(sbml(BLOWUP))
+    blowup.write_text(sbml(BLOWUP), encoding="utf-8")
     process = subprocess.Popen(
         [sys.executable, str(script), mode, str(blowup)],
         stdout=subprocess.PIPE,

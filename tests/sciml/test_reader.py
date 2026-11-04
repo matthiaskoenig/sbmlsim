@@ -669,9 +669,9 @@ def test_two_array_files_of_a_network(tmp_path: Path) -> None:
     """The values of a network are in one array file, two would be a guess."""
     path = _problem(tmp_path)
     shutil.copy(tmp_path / "arrays.hdf5", tmp_path / "arrays2.hdf5")
-    config = yaml.safe_load(path.read_text())
+    config = yaml.safe_load(path.read_text(encoding="utf-8"))
     config["extensions"]["sciml"]["array_files"].append("arrays2.hdf5")
-    path.write_text(yaml.safe_dump(config))
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
     with pytest.raises(
         SciMLProblemError,
         match=r"Network 'net1': the array files \['arrays\.hdf5', "

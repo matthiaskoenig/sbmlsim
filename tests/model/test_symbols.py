@@ -48,7 +48,7 @@ def test_entity(symbols: ModelSymbols) -> None:
 def test_symbols_from_a_file(tmp_path) -> None:
     """A model is read from a file as well."""
     path = tmp_path / "probe.xml"
-    path.write_text(sbml())
+    path.write_text(sbml(), encoding="utf-8")
     assert ModelSymbols.from_sbml(path).kind("k2") is TargetKind.PARAMETER
 
 

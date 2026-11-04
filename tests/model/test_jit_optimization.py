@@ -120,7 +120,7 @@ class _Experiment(SimulationExperiment):
 
 def test_a_runner_compiles_its_models_at_its_level(tmp_path: Path) -> None:
     _Experiment.model_path = tmp_path / "model.xml"
-    _Experiment.model_path.write_text(sbml())
+    _Experiment.model_path.write_text(sbml(), encoding="utf-8")
     runner = ExperimentRunner(
         _Experiment,
         base_path=tmp_path,

@@ -38,7 +38,7 @@ def _probe(
             unit.setScale(scale)
             unit.setExponent(exponent)
     model.getParameter("f").setUnits(f_unit)
-    path.write_text(libsbml.writeSBMLToString(doc))
+    path.write_text(libsbml.writeSBMLToString(doc), encoding="utf-8")
     return path
 
 

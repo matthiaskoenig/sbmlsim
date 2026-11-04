@@ -414,7 +414,7 @@ def test_the_pdf_builds(fitted: Fitted, tmp_path: Path) -> None:
     doc = replace(doc, references=bibliography(doc))
     write_bibliography(doc.references, tmp_path)
     typ = tmp_path / "methods.typ"
-    typ.write_text(TypstRenderer().render(doc))
+    typ.write_text(TypstRenderer().render(doc), encoding="utf-8")
     assert compile_pdf(typ).stat().st_size > 0
 
 

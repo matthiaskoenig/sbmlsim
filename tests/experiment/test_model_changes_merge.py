@@ -48,7 +48,7 @@ def _experiment(path: Path) -> type[SimulationExperiment]:
 def test_model_changes_merge_into_preinit(tmp_path: Path) -> None:
     """A change of the model applies unless the simulation or the scan sets it."""
     path = tmp_path / "probe.xml"
-    path.write_text(sbml())
+    path.write_text(sbml(), encoding="utf-8")
     exp_class = _experiment(path)
     runner = ExperimentRunner(
         [exp_class], base_path=tmp_path, data_path=tmp_path, on_error="raise"

@@ -67,7 +67,9 @@ def _case(directory: Path, cid: str = "9001", **solution: Any) -> Path:
         "tol_simulations": 1e-3,
     }
     content.update(solution)
-    (case_dir / f"_{cid}_solution.yaml").write_text(yaml.safe_dump(content))
+    (case_dir / f"_{cid}_solution.yaml").write_text(
+        yaml.safe_dump(content), encoding="utf-8"
+    )
     return case_dir
 
 
@@ -94,9 +96,9 @@ def test_a_value_outside_of_the_tolerance(tmp_path: Path, entry: str) -> None:
     """The message names the value which differs."""
     case_dir = _case(tmp_path)
     solution_file = case_dir / "_9001_solution.yaml"
-    solution = yaml.safe_load(solution_file.read_text())
+    solution = yaml.safe_load(solution_file.read_text(encoding="utf-8"))
     solution[entry] += 1.0
-    solution_file.write_text(yaml.safe_dump(solution))
+    solution_file.write_text(yaml.safe_dump(solution), encoding="utf-8")
     result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.TOLERANCE
     assert entry in result.message
@@ -123,7 +125,7 @@ def test_the_priors_of_a_case(tmp_path: Path) -> None:
     parameters["priorParameters"] = ["1.0;0.5", ""]
     parameters.to_csv(case_dir / "parameters.tsv", sep="\t", index=False)
     solution_file = case_dir / "_9001_solution.yaml"
-    solution = yaml.safe_load(solution_file.read_text())
+    solution = yaml.safe_load(solution_file.read_text(encoding="utf-8"))
     # the normal distribution truncated at the bounds [0, 15]
     alpha = scipy.stats.truncnorm.logpdf(
         1.3, (0.0 - 1.0) / 0.5, (15.0 - 1.0) / 0.5, loc=1.0, scale=0.5
@@ -134,12 +136,12 @@ def test_the_priors_of_a_case(tmp_path: Path) -> None:
         solution["llh"] + solution["log_prior"]["alpha"] + solution["log_prior"]["beta"]
     )
     solution["tol_unnorm_log_posterior"] = 1e-3
-    solution_file.write_text(yaml.safe_dump(solution))
+    solution_file.write_text(yaml.safe_dump(solution), encoding="utf-8")
     result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.PASS, result.message
 
     solution["log_prior"]["beta"] = 0.0
-    solution_file.write_text(yaml.safe_dump(solution))
+    solution_file.write_text(yaml.safe_dump(solution), encoding="utf-8")
     result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.TOLERANCE
     assert "beta" in result.message
@@ -148,7 +150,7 @@ def test_the_priors_of_a_case(tmp_path: Path) -> None:
 def test_a_case_which_cannot_be_read(tmp_path: Path) -> None:
     """An error while the case is read or run is the status `error`."""
     case_dir = _case(tmp_path)
-    (case_dir / "observables.tsv").write_text("nothing\n")
+    (case_dir / "observables.tsv").write_text("nothing\n", encoding="utf-8")
     result = PetabCase.from_directory(case_dir).run()
     assert result.status is CaseStatus.ERROR
     assert result.message
@@ -197,7 +199,8 @@ def test_the_math_cases_of_a_file(tmp_path: Path) -> None:
     path.write_text(
         yaml.safe_dump(
             {"cases": [{"expression": "1", "expected": 1.0}, {"expression": "a"}]}
-        )
+        ),
+        encoding="utf-8",
     )
     with pytest.raises(ValueError, match="expected"):
         math_cases(path)
@@ -209,7 +212,8 @@ def test_the_math_cases_of_a_file(tmp_path: Path) -> None:
                     {"expression": "2", "expected": 2},
                 ]
             }
-        )
+        ),
+        encoding="utf-8",
     )
     cases = math_cases(path)
     assert [case.index for case in cases] == [0, 1]
@@ -230,7 +234,8 @@ def _v1_case(directory: Path, cid: str) -> Path:
                 "tol_chi2": 1e-3,
                 "tol_simulations": 1e-3,
             }
-        )
+        ),
+        encoding="utf-8",
     )
     return case_dir
 
@@ -239,10 +244,11 @@ def test_the_suite_iterates_its_cases(tmp_path: Path) -> None:
     """The suite runs the cases of PEtab v2, of PEtab v1 and the math cases."""
     v2 = tmp_path / FORMAT_VERSION
     _case(v2 / SBML, "9001")
-    (v2 / SBML / "README.md").write_text("not a case")
+    (v2 / SBML / "README.md").write_text("not a case", encoding="utf-8")
     (v2 / MATH).mkdir()
     (v2 / MATH / "math_tests.yaml").write_text(
-        yaml.safe_dump({"cases": [{"expression": "1", "expected": 1.0}]})
+        yaml.safe_dump({"cases": [{"expression": "1", "expected": 1.0}]}),
+        encoding="utf-8",
     )
     _v1_case(tmp_path / V1_FORMAT_VERSION / SBML, "9101")
     suite = PetabSuite(path=tmp_path, commit="abc")
@@ -264,7 +270,7 @@ def test_a_case_of_petab_v1_is_converted_with_its_simulations(tmp_path: Path) ->
     suite = PetabSuite(path=tmp_path, commit="abc")
     suite.convert()
     case = suite.case("9101", V1_SBML)
-    problem = yaml.safe_load(case.problem_file.read_text())
+    problem = yaml.safe_load(case.problem_file.read_text(encoding="utf-8"))
     assert problem["format_version"] == "2.0.0"
     assert case.solution["simulation_files"] == ["simulations.tsv"]
     simulations = pd.read_csv(case.path / "simulations.tsv", sep="\t")

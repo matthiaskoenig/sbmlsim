@@ -33,7 +33,7 @@ def repo(tmp_path: Path) -> Path:
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "user.email", "t@example.org")
     _git(tmp_path, "config", "user.name", "t")
-    (tmp_path / "model.xml").write_text("<sbml/>")
+    (tmp_path / "model.xml").write_text("<sbml/>", encoding="utf-8")
     _git(tmp_path, "add", "model.xml")
     _git(tmp_path, "commit", "-q", "-m", "model")
     return tmp_path
@@ -77,7 +77,7 @@ def test_versions_of_a_fit_name_the_package_of_its_engine(
 def test_git_info_of_a_clean_and_a_dirty_tree(repo: Path) -> None:
     clean = git_info(repo / "model.xml")
     assert clean is not None and len(clean.sha) == 40 and not clean.dirty
-    (repo / "model.xml").write_text("<sbml>changed</sbml>")
+    (repo / "model.xml").write_text("<sbml>changed</sbml>", encoding="utf-8")
     dirty = git_info(repo)
     assert dirty is not None and dirty.dirty
 
@@ -105,7 +105,7 @@ def test_checksum_keys_are_posix_paths() -> None:
 
 def test_nested_checksum_keys_use_slashes(repo: Path) -> None:
     (repo / "data").mkdir()
-    (repo / "data" / ".study.tsv").write_text("a\tb\n")
+    (repo / "data" / ".study.tsv").write_text("a\tb\n", encoding="utf-8")
     sums = file_checksums([repo / "data" / ".study.tsv"], root=repo)
     assert list(sums) == ["data/.study.tsv"]
 
@@ -114,14 +114,16 @@ def _data_with_clutter(tmp_path: Path) -> Path:
     """Copy the HCTZ data and add files no experiment reads."""
     data = tmp_path / "data"
     shutil.copytree(DATA_PATH, data)
-    (data / "__init__.py").write_text("")
-    (data / "collect_data.py").write_text("")
+    (data / "__init__.py").write_text("", encoding="utf-8")
+    (data / "collect_data.py").write_text("", encoding="utf-8")
     (data / "__pycache__").mkdir()
     (data / "__pycache__" / "collect_data.cpython-314.pyc").write_bytes(b"\0")
     (data / ".ipynb_checkpoints").mkdir()
-    (data / ".ipynb_checkpoints" / ".Beermann1976_Fig1-checkpoint.tsv").write_text("")
+    (data / ".ipynb_checkpoints" / ".Beermann1976_Fig1-checkpoint.tsv").write_text(
+        "", encoding="utf-8"
+    )
     (data / ".DS_Store").write_bytes(b"\0")
-    (data / "Beermann1976" / ".gitignore").write_text("*.png\n")
+    (data / "Beermann1976" / ".gitignore").write_text("*.png\n", encoding="utf-8")
     return data
 
 

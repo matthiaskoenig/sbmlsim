@@ -38,7 +38,9 @@ def test_the_missing_extra_is_named() -> None:
 def test_a_missing_module_of_the_extra_is_not_the_extra(tmp_path: Path) -> None:
     """A module which `petab_sciml` misses is reported as it is."""
     (tmp_path / "petab_sciml").mkdir()
-    (tmp_path / "petab_sciml" / "__init__.py").write_text("import not_a_module_xyz\n")
+    (tmp_path / "petab_sciml" / "__init__.py").write_text(
+        "import not_a_module_xyz\n", encoding="utf-8"
+    )
     result = _python("import sbmlsim.sciml", path=tmp_path)
     assert result.returncode != 0
     assert "No module named 'not_a_module_xyz'" in result.stderr
@@ -86,7 +88,7 @@ def _imported_modules(path: Path) -> set[str]:
 def test_the_imports_of_a_module(tmp_path: Path, code: str, imported: bool) -> None:
     """The imports are read from the syntax tree, not from the text."""
     path = tmp_path / "module.py"
-    path.write_text(code)
+    path.write_text(code, encoding="utf-8")
     assert ("torch" in _imported_modules(path)) == imported
 
 

@@ -21,7 +21,7 @@ def test_submodel_units_support_quantities_and_result_metadata(
     source: str | Path = text
     if file_source:
         source = tmp_path / "hierarchical.xml"
-        source.write_text(text)
+        source.write_text(text, encoding="utf-8")
     registry = _create_registry()
     model = RoadrunnerSBMLModel(source=source, ureg=registry)
     assert model.uinfo.ureg is registry

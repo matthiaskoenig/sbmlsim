@@ -147,7 +147,7 @@ class ObservableExperiment(SimulationExperiment):
 def problem(tmp_path: Path) -> OptimizationProblem:
     """Get a problem which fits `f` of the probe model with the observable."""
     MODEL_PATH["path"] = tmp_path / "probe.xml"
-    MODEL_PATH["path"].write_text(sbml())
+    MODEL_PATH["path"].write_text(sbml(), encoding="utf-8")
     problem = OptimizationProblem(
         opid="observable",
         mapping_collections=[

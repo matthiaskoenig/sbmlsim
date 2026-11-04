@@ -306,7 +306,7 @@ def test_several_outputs() -> None:
 def test_a_yaml_which_is_not_a_network(tmp_path: Path, content: str) -> None:
     """A file which is not a NN YAML is an error of the import naming the file."""
     path = tmp_path / "net.yaml"
-    path.write_text(content)
+    path.write_text(content, encoding="utf-8")
     with pytest.raises(NetworkImportError, match=r"net\.yaml") as e:
         Network.from_files(path)
     assert e.value.__cause__ is not None
@@ -315,7 +315,7 @@ def test_a_yaml_which_is_not_a_network(tmp_path: Path, content: str) -> None:
 def test_an_array_file_which_is_not_hdf5(tmp_path: Path) -> None:
     """A file which is not HDF5 is an error of the import naming the file."""
     _write(tmp_path, _parameters())
-    (tmp_path / "ps.hdf5").write_text("not hdf5")
+    (tmp_path / "ps.hdf5").write_text("not hdf5", encoding="utf-8")
     with pytest.raises(NetworkImportError, match=r"ps\.hdf5") as e:
         Network.from_files(tmp_path / "net1.yaml", tmp_path / "ps.hdf5")
     assert isinstance(e.value.__cause__, OSError)

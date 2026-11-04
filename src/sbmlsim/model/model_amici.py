@@ -2021,7 +2021,7 @@ def _locked(path: Path) -> Generator[None]:
     else:
         import fcntl
 
-        with path.open("a") as handle:
+        with path.open("a", encoding="utf-8") as handle:
             fcntl.flock(handle, fcntl.LOCK_EX)
             try:
                 yield

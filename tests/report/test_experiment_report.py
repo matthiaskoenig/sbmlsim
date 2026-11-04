@@ -247,7 +247,9 @@ def test_markdown_experiment_page(report_dir: Path) -> None:
 def test_latex_report_includes_every_figure(report_dir: Path) -> None:
     """The LaTeX report includes the copied images of the figures."""
     tex = report_dir / "index.tex"
-    graphics = re.findall(r"\\includegraphics\[[^]]*\]\{([^}]+)\}", tex.read_text())
+    graphics = re.findall(
+        r"\\includegraphics\[[^]]*\]\{([^}]+)\}", tex.read_text(encoding="utf-8")
+    )
     assert graphics == [f"index_figures/Beermann1976_{fig}.png" for fig in FIGURES]
     assert [g for g in graphics if not (report_dir / g).exists()] == []
 
@@ -279,7 +281,7 @@ class Sourceless(SimulationExperiment):
     def models(self):
         return {
             "m": AbstractModel(source=REPRESSILATOR_SBML),
-            "inline": AbstractModel(source=REPRESSILATOR_SBML.read_text()),
+            "inline": AbstractModel(source=REPRESSILATOR_SBML.read_text(encoding="utf-8")),
         }
 
     def simulations(self):

@@ -121,7 +121,7 @@ def _model_import_case(
         "output_order_py": ["W"],
         **solutions,
     }
-    (directory / "solutions.yaml").write_text(yaml.safe_dump(content))
+    (directory / "solutions.yaml").write_text(yaml.safe_dump(content), encoding="utf-8")
     return directory
 
 
@@ -171,27 +171,31 @@ def _initialization_case(
                     }
                 },
             }
-        )
+        ),
+        encoding="utf-8",
     )
     (petab / "parameters.tsv").write_text(
         "parameterId\tparameterScale\tlowerBound\tupperBound\tnominalValue\testimate\n"
         "alpha\tlin\t0.0\t15.0\t1.3\ttrue\n"
         "net1_part\tlin\t-inf\tinf\t0.0\ttrue\n"
-        "net1_ps\tlin\t-inf\tinf\tarray\ttrue\n"
+        "net1_ps\tlin\t-inf\tinf\tarray\ttrue\n",
+        encoding="utf-8",
     )
     (petab / "mapping.tsv").write_text(
         "petabEntityId\tmodelEntityId\n"
         "net1_input1\tnet1.inputs[0][0]\n"
         "net1_output1\tnet1.outputs[0][0]\n"
         "net1_ps\tnet1.parameters\n"
-        f"net1_part\t{entity}\n"
+        f"net1_part\t{entity}\n",
+        encoding="utf-8",
     )
     _h5(
         directory / "net1_ref.hdf5",
         {f"parameters/net1/layer1/{name}": array for name, array in reference.items()},
     )
     (directory / "solutions.yaml").write_text(
-        yaml.safe_dump({"tol": 0.001, "parameter_files": {"net1": "net1_ref.hdf5"}})
+        yaml.safe_dump({"tol": 0.001, "parameter_files": {"net1": "net1_ref.hdf5"}}),
+        encoding="utf-8",
     )
     return directory
 
@@ -220,11 +224,15 @@ def test_a_model_import_case_is_read(tmp_path: Path) -> None:
 def test_a_case_with_several_inputs(tmp_path: Path) -> None:
     """The inputs of a network with two inputs are listed per argument."""
     directory = _model_import_case(tmp_path)
-    solutions = yaml.safe_load((directory / "solutions.yaml").read_text())
+    solutions = yaml.safe_load(
+        (directory / "solutions.yaml").read_text(encoding="utf-8")
+    )
     del solutions["net_input"]
     solutions["net_input_arg1"] = ["b_1.hdf5", "b_2.hdf5"]
     solutions["net_input_arg0"] = ["a_1.hdf5", "a_2.hdf5"]
-    (directory / "solutions.yaml").write_text(yaml.safe_dump(solutions))
+    (directory / "solutions.yaml").write_text(
+        yaml.safe_dump(solutions), encoding="utf-8"
+    )
 
     case = ModelImportCase.from_directory(directory)
     assert [[p.name for p in row] for row in case.inputs] == [
@@ -289,7 +297,7 @@ def test_a_directory_which_is_not_a_case(tmp_path: Path) -> None:
     """A directory without `solutions.yaml` is not read."""
     with pytest.raises(ValueError, match=r"no 'solutions.yaml'"):
         ModelImportCase.from_directory(tmp_path)
-    (tmp_path / "solutions.yaml").write_text("net_file: net.yaml\n")
+    (tmp_path / "solutions.yaml").write_text("net_file: net.yaml\n", encoding="utf-8")
     with pytest.raises(ValueError, match=r"no inputs or no outputs"):
         ModelImportCase.from_directory(tmp_path)
 
@@ -427,7 +435,9 @@ def test_the_solutions_of_an_initialization_case(
     """A key which is missing is named."""
     directory = tmp_path / "001"
     directory.mkdir()
-    (directory / "solutions.yaml").write_text(yaml.safe_dump(solutions))
+    (directory / "solutions.yaml").write_text(
+        yaml.safe_dump(solutions), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match=message):
         InitializationCase.from_directory(directory)
 
@@ -449,7 +459,10 @@ def test_a_network_in_another_format(tmp_path: Path) -> None:
         tmp_path, "net1.parameters[layer1]", {"weight": WEIGHT, "bias": BIAS}
     )
     problem = directory / "petab" / "problem.yaml"
-    problem.write_text(problem.read_text().replace("format: YAML", "format: equinox"))
+    problem.write_text(
+        problem.read_text(encoding="utf-8").replace("format: YAML", "format: equinox"),
+        encoding="utf-8",
+    )
     result = InitializationCase.from_directory(directory).run()
     assert result.status == CaseStatus.ERROR
     assert "'equinox' is not supported" in result.message
@@ -472,7 +485,8 @@ def test_a_problem_import_case_is_read(tmp_path: Path) -> None:
                 "simulation_files": ["simulations.tsv"],
                 "grad_files": {"mech": "grad_mech.tsv", "net1": "grad_net1.hdf5"},
             }
-        )
+        ),
+        encoding="utf-8",
     )
     case = ProblemImportCase.from_directory(directory)
     assert (case.llh, case.log_posterior) == (33.5, None)
@@ -502,7 +516,9 @@ def test_the_tolerances_of_a_problem_import_case(
         del solutions[key]
     directory = tmp_path / "007"
     directory.mkdir()
-    (directory / "solutions.yaml").write_text(yaml.safe_dump(solutions))
+    (directory / "solutions.yaml").write_text(
+        yaml.safe_dump(solutions), encoding="utf-8"
+    )
     with pytest.raises(ValueError, match=rf"007'.*{message}"):
         ProblemImportCase.from_directory(directory)
 
@@ -519,7 +535,8 @@ def test_a_problem_import_case_with_priors(tmp_path: Path) -> None:
                 "simulation_files": [],
                 "grad_files": {},
             }
-        )
+        ),
+        encoding="utf-8",
     )
     case = ProblemImportCase.from_directory(tmp_path)
     assert (case.llh, case.log_posterior, case.tol_llh) == (None, -12.5, 0.01)
@@ -534,7 +551,9 @@ def test_the_suite_iterates_its_groups(tmp_path: Path) -> None:
     _initialization_case(
         tmp_path, "net1.parameters[layer1]", {"weight": 0 * WEIGHT, "bias": 0 * BIAS}
     )
-    (tmp_path / "ml_model_import" / "README.md").write_text("not a case")
+    (tmp_path / "ml_model_import" / "README.md").write_text(
+        "not a case", encoding="utf-8"
+    )
     suite = SciMLSuite(path=tmp_path, commit="0" * 40)
 
     assert suite.case_ids("ml_model_import") == ["001"]

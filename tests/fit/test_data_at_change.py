@@ -446,7 +446,7 @@ def _problem(
     tmp_path: Path,
     data_at_change: DataAtChangeType = DataAtChangeType.BEFORE,
 ) -> OptimizationProblem:
-    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True))
+    (tmp_path / MODEL_FILE).write_text(sbml_pk(urine=True), encoding="utf-8")
     problem = OptimizationProblem(
         "urine",
         [FitMappingCollection(experiment=UrineStudy, mappings=mappings)],
@@ -1042,7 +1042,7 @@ def test_an_extension_before_0_4_0_compares_the_data_after_a_change(
     yaml_file = to_petab(
         problem, tmp_path / "petab", settings=problem.settings_initialized
     )
-    config = yaml.safe_load(yaml_file.read_text())
+    config = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
     block = config["extensions"]["sbmlsim"]
     assert block["version"] == EXTENSION_VERSION == "0.4.0"
     assert block["settings"]["data_at_change"] == DataAtChangeType.BEFORE.value
@@ -1052,7 +1052,7 @@ def test_an_extension_before_0_4_0_compares_the_data_after_a_change(
 
     block["version"] = "0.3.0"
     del block["settings"]["data_at_change"]
-    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False))
+    yaml_file.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     assert PetabReader.from_yaml(yaml_file).settings.data_at_change is (
         DataAtChangeType.AFTER
     )
@@ -1160,7 +1160,7 @@ def sawtooth_prediction(tmp_path: Path, task: str, trigger: str) -> np.ndarray:
         The prediction of `X` at the times of the data.
     """
     model = SAWTOOTH.replace("k = 1", "k = 1\n  p = 1").replace("at (X >= 1)", trigger)
-    (tmp_path / SAWTOOTH_FILE).write_text(sbml(model))
+    (tmp_path / SAWTOOTH_FILE).write_text(sbml(model), encoding="utf-8")
     problem = OptimizationProblem(
         "sawtooth",
         [

@@ -91,7 +91,8 @@ def test_special_characters_are_literal() -> None:
 def test_typst_compiles(tmp_path: Path) -> None:
     (tmp_path / "plots").mkdir()
     (tmp_path / "plots" / "waterfall.svg").write_text(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>'
+        '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>',
+        encoding="utf-8",
     )
     doc = _doc()
     doc = replace(
@@ -101,7 +102,7 @@ def test_typst_compiles(tmp_path: Path) -> None:
     doc = replace(doc, references=bibliography(doc))
     write_bibliography(doc.references, tmp_path)
     typ = tmp_path / "report.typ"
-    typ.write_text(TypstRenderer().render(doc))
+    typ.write_text(TypstRenderer().render(doc), encoding="utf-8")
     pdf = compile_pdf(typ)
     assert pdf.read_bytes().startswith(b"%PDF")
 
@@ -145,7 +146,7 @@ def test_table_alignment_is_checked() -> None:
 
 def test_compile_failure_raises_runtime_error(tmp_path: Path) -> None:
     typ = tmp_path / "bad.typ"
-    typ.write_text("#unknown_function()")
+    typ.write_text("#unknown_function()", encoding="utf-8")
     with pytest.raises(RuntimeError, match=r"could not compile 'bad\.typ'"):
         compile_pdf(typ)
 
@@ -157,7 +158,7 @@ def test_typst_ref_followed_by_text_compiles(tmp_path: Path, after: str) -> None
     out = TypstRenderer().render(doc)
     assert f"#ref(<tab:p>){after}" in out
     typ = tmp_path / "report.typ"
-    typ.write_text(out)
+    typ.write_text(out, encoding="utf-8")
     assert compile_pdf(typ).read_bytes().startswith(b"%PDF")
 
 
@@ -184,7 +185,7 @@ def _long_table_doc(n: int = 150) -> Document:
 def test_typst_long_table_breaks_across_pages(tmp_path: Path) -> None:
     pypdf = pytest.importorskip("pypdf")
     typ = tmp_path / "long.typ"
-    typ.write_text(TypstRenderer().render(_long_table_doc()))
+    typ.write_text(TypstRenderer().render(_long_table_doc()), encoding="utf-8")
     reader = pypdf.PdfReader(compile_pdf(typ))
     texts = [page.extract_text() for page in reader.pages]
     assert len(texts) > 2, "150 rows do not fit on two pages"
@@ -254,7 +255,7 @@ def test_typst_keeps_the_text_after_an_inline_call(tmp_path: Path) -> None:
     doc = replace(doc, references=bibliography(doc))
     write_bibliography(doc.references, tmp_path)
     typ = tmp_path / "report.typ"
-    typ.write_text(TypstRenderer().render(doc))
+    typ.write_text(TypstRenderer().render(doc), encoding="utf-8")
     text = pypdf.PdfReader(compile_pdf(typ)).pages[0].extract_text()
     assert "wt-models-review; their SHA-256 checksums" in text
     assert "; then x(y) z" in text
