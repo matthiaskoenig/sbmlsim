@@ -153,12 +153,8 @@ from dataclasses import dataclass
 import libsbml
 import numpy as np
 
-from sbmlsim.model.model_amici import (
-    COMPARISONS,
-    AmiciSBMLModel,
-    run_simulation,
-    trigger_comparisons,
-)
+from sbmlsim.model.comparisons import COMPARISONS, trigger_comparisons
+from sbmlsim.model.model_amici import AmiciSBMLModel, run_simulation
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.changes import fire_events, triggers
 from sbmlsim.simulator.formula import CompiledFormula

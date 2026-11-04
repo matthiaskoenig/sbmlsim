@@ -32,7 +32,9 @@ comparable:
    comparisons at their threshold are shifted by a little
    (`CopasiSBMLModel.shift_comparisons`) and the event fires when the
    comparison turns, right after the start or after a plateau, as in
-   roadrunner. A delayed event COPASI has scheduled stays pending across the
+   roadrunner; so are the ones which an event of the model sets to their
+   threshold in a run, which is then integrated again in pieces
+   (`_TimeCourse._integrate`). A delayed event COPASI has scheduled stays pending across the
    runs, and one closer after the start of a run than LSODA integrates, e.g.
    at the end after the stop before it, fires at its time from the state at
    the start (`_TimeCourse.steps`). The output of `OutputMode.TIMES` is the plan
@@ -82,10 +84,16 @@ Known differences to roadrunner:
   roadrunner cancels and schedules. Without such writes COPASI simulates
   the delayed events itself.
 - An event of the model which sets a comparison of a trigger exactly to its
-  threshold, e.g. `X = 2` for `X > 2`, in an integration of COPASI: LSODA
-  finds no crossing when the comparison turns later in the same run, which
-  roadrunner fires; the executor shifts only the comparisons at their
-  threshold at the start of a run.
+  threshold in an integration of COPASI, e.g. `E: X = 0` and `G: X > 0`:
+  the run is integrated again in pieces which end two resolutions of the
+  time after the events of the model, so `G` fires up to that much later
+  than in roadrunner, see `_TimeCourse._integrate`. In a model with a
+  delayed event a crossing COPASI missed this way raises, one which is
+  undone by the end of the run is not seen.
+- A comparison of a trigger which a change sets to its threshold turns up
+  to one resolution of the time late, at least by two units in the last
+  place of its threshold over the rate of its operands, see
+  `CopasiSBMLModel._threshold_shift`.
 - roadrunner does not fire an event whose trigger, e.g. `X > 0.5 && X < 0.8`,
   is true only within one step of CVODE, which finds the roots of both
   comparisons in it; COPASI fires it.
@@ -112,13 +120,25 @@ import numpy as np
 from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
+from sbmlsim.simulator.changes import fire_events, triggers
 from sbmlsim.simulator.executor import (
     integrable,
     intermediate_time,
 )
-from sbmlsim.simulator.plan import Plan, SteadyStatePlan, preinit_targets
+from sbmlsim.simulator.plan import (
+    Plan,
+    SteadyStatePlan,
+    preinit_targets,
+    time_tolerance,
+)
 from sbmlsim.simulator.segments import simulate_segments, state_row
 from sbmlsim.simulator.segments import steady_state as integrate_to_steady_state
+
+#: the resolutions of the time after an event of the model at which a piece of
+#: a run ends, see `_TimeCourse._integrate`: more than the change of a
+#: comparison over one resolution, by which `CopasiSBMLModel.landed` tells a
+#: missed crossing
+PIECE_RESOLUTIONS = 2.0
 
 #: the output of a run of COPASI into a data handler, without the report of
 #: the task, which has no file and of which COPASI warns otherwise; SWIG sets
@@ -133,11 +153,20 @@ class _TimeCourse:
         model: the model.
         names: the common names of the values of the selections, see
             `CopasiSBMLModel.output_cns`.
+        resolution: the resolution of the time of the simulation, see
+            `sbmlsim.simulator.plan.time_tolerance`, `None` for the one of
+            every run.
     """
 
-    def __init__(self, model: CopasiSBMLModel, selections: Sequence[str]) -> None:
+    def __init__(
+        self,
+        model: CopasiSBMLModel,
+        selections: Sequence[str],
+        resolution: float | None = None,
+    ) -> None:
         """Set up the task of a model for runs which continue one another."""
         self.model = model
+        self.resolution = resolution
         self.selections = list(selections)
         self.names = model.output_cns(selections)
         self._transform = model.output_transform(selections)
@@ -163,10 +192,6 @@ class _TimeCourse:
             The values, a row per step, the first at the start and the last
             at the end, an event of the model as two rows at its time.
         """
-        problem = self._problem
-        problem.setAutomaticStepSize(True)
-        problem.setOutputEvent(True)
-        problem.setUseValues(False)
         model = self.model
         blocks: list[np.ndarray] = []
         pending = model.pending_event_time()
@@ -219,20 +244,18 @@ class _TimeCourse:
         between = intermediate_time(previous, grid[-1], end)
         if between is not None:
             grid.insert(len(grid) - 1, between)
-        problem = self._problem
-        problem.setAutomaticStepSize(False)
-        problem.setOutputEvent(False)
-        # the overload of a vector keeps six digits of a time, the text is
-        # read exactly and independent of the locale
-        problem.setValues(" ".join(repr(t) for t in grid))
-        problem.setUseValues(True)
-        values = self._run(start, grid[-1], past=True)
+        values = self._run(start, grid[-1], past=True, grid=np.asarray(grid))
         if between is not None:
             values = np.delete(values, values.shape[0] - 2, axis=0)
         # the first column is the time, a row is at its time within the
-        # rounding of the sum
+        # rounding of the sum, or within the resolution of the time after it
+        # where COPASI ends the output at a root of an event right after the
+        # output time, before the event
         expected = np.concatenate([[start], times])
-        rounding = 4.0 * EPSILON * float(np.max(np.abs(expected)))
+        rounding = max(
+            4.0 * EPSILON * float(np.max(np.abs(expected))),
+            self._resolution(start, end),
+        )
         if values.shape[0] != expected.size or not np.allclose(
             values[:, 0], expected, rtol=0.0, atol=rounding
         ):
@@ -281,31 +304,226 @@ class _TimeCourse:
         """Integrate the model from a time until its rates of change vanish, see `steady_state`."""
         return steady_state(self.model, plan, start=start)
 
-    def _run(self, start: float, end: float, past: bool = False) -> np.ndarray:
+    def _run(
+        self,
+        start: float,
+        end: float,
+        past: bool = False,
+        grid: np.ndarray | None = None,
+    ) -> np.ndarray:
         """Integrate from `start` to `end` from the current state of the model.
+
+        COPASI keeps the states of the triggers of the events from the end of
+        the run before, which a change, an event the executor fired or the
+        time set since then made stale: an event would fire again, or not
+        when its trigger crosses next (the root of COPASI toggles the stale
+        state); the states are set from the current values, without firing.
+        A delayed event COPASI has scheduled stays in its queue, e.g. across
+        the stop before the end into the events at the end and the steady
+        state after the end. The comparisons at their threshold are shifted
+        first, so that LSODA finds their crossings, see
+        `CopasiSBMLModel.shift_comparisons`, and so are the ones an event of
+        the model sets to their threshold in the run, see `_integrate`.
 
         Args:
             start: the start.
             end: the end.
             past: whether the run may end after the end, see `_duration`.
+            grid: the output times, sorted, after the start, the last one the
+                end, see `times`; `None` for the steps of LSODA.
+
+        Raises:
+            RuntimeError: if COPASI fails to integrate, with its message.
+            NotImplementedError: if an event of a model with a delayed event
+                sets a comparison of a trigger to its threshold, see
+                `_integrate`.
+        """
+        model = self.model
+        resolution = self._resolution(start, end)
+        model.set_time(start)
+        model.shift_comparisons(resolution)
+        return self._integrate(start, end, past, grid, resolution)
+
+    def _integrate(
+        self,
+        start: float,
+        end: float,
+        past: bool,
+        grid: np.ndarray | None,
+        resolution: float,
+    ) -> np.ndarray:
+        """Integrate a run whose comparisons are shifted, see `_run`.
+
+        An event of the model which COPASI fires in the run may set a
+        comparison of a trigger exactly to its threshold, e.g. `E: X = 0` and
+        `G: X > 0`, which LSODA, restarting there, does not find when it
+        turns, see `CopasiSBMLModel.shift_comparisons`; COPASI then misses
+        or misplaces the event roadrunner fires. In a model whose events
+        assign an entity a comparison of a trigger reads
+        (`CopasiSBMLModel.lands`), a run in which COPASI fires an event of
+        the model is integrated again in pieces, each to `PIECE_RESOLUTIONS`
+        resolutions of the time after an event (told from the steps of
+        LSODA), and a piece after which a comparison of a trigger is at its
+        threshold or COPASI missed a crossing (`CopasiSBMLModel.landed`)
+        continues from there as a run of its own, the comparisons shifted
+        with their values as written and the missed events fired by the
+        executor, see `sbmlsim.simulator.changes.fire_events`, as roadrunner
+        fires them in its first step after the event; the steps of LSODA
+        have them as two rows at the end of the piece. Without such a piece
+        the run is the one in one piece, bitwise. A model with a delayed
+        event, whose pending executions COPASI does not set back, is not
+        integrated again: a crossing it misses raises.
+
+        Raises:
+            RuntimeError: if COPASI fails to integrate, with its message.
+            NotImplementedError: if COPASI misses a crossing in a model with
+                a delayed event.
+        """
+        model = self.model
+        if not model.lands:
+            return self._once(start, end, past, grid)
+        if any(event.delayed for event in model.symbols.events):
+            rows = self._once(start, end, past, grid)
+            if model.landed(resolution)[1]:
+                raise NotImplementedError(
+                    f"The engine COPASI does not simulate an event of the model "
+                    f"'{model.label}' which sets a comparison of a trigger exactly "
+                    f"to its threshold in an integration of COPASI, in a model "
+                    f"with a delayed event, whose pending executions COPASI keeps."
+                )
+            return rows
+        before = model.snapshot()
+        rows = self._once(start, end, past, grid)
+        after = model.snapshot()
+        steps = rows
+        if grid is not None:
+            model.restore(before)
+            steps = self._once(start, end, past, None)
+        events = steps[:-1, 0][steps[1:, 0] == steps[:-1, 0]]
+        events = np.unique(events[(events >= start) & (events < end)])
+        if events.size:
+            model.restore(before)
+            pieces = self._in_pieces(start, end, past, grid, resolution, events)
+            if pieces is not None:
+                return pieces
+        model.restore(after)
+        return rows
+
+    def _in_pieces(
+        self,
+        start: float,
+        end: float,
+        past: bool,
+        grid: np.ndarray | None,
+        resolution: float,
+        events: np.ndarray,
+    ) -> np.ndarray | None:
+        """Integrate a run in pieces which end after the events of the model, see `_integrate`.
+
+        Args:
+            start: the start, the state of the model, its comparisons shifted.
+            end: the end.
+            past: whether the run may end after the end, see `_duration`.
+            grid: the output times, see `_run`.
+            resolution: the resolution of the time.
+            events: the times of the events of the model in the run.
+
+        Returns:
+            The values of the run, as `_once` gives them; `None` if no piece
+            sets a comparison of a trigger to its threshold, the model then in
+            the state of the last piece.
+        """
+        model = self.model
+        blocks: list[np.ndarray] = []
+        a = start
+        for event in events:
+            stop = min(float(event) + PIECE_RESOLUTIONS * resolution, end)
+            if stop <= a:
+                continue
+            if grid is None:
+                rows = self._once(a, stop, past, None)
+            else:
+                rows = self._once(a, stop, past, _piece_grid(grid, a, stop))
+                if stop not in grid:
+                    # the row at the stop, which is no output time
+                    rows = rows[:-1]
+            blocks.append(rows if not blocks else rows[1:])
+            landed, missed = model.landed(resolution)
+            if landed or missed:
+                if missed:
+                    self._fire(missed, stop, blocks, grid)
+                if stop < end:
+                    model.set_time(stop)
+                    model.shift_comparisons(resolution, written=True)
+                    rest = self._integrate(
+                        stop,
+                        end,
+                        past,
+                        None if grid is None else grid[grid > stop],
+                        resolution,
+                    )
+                    blocks.append(rest[1:])
+                return np.concatenate(blocks, axis=0)
+            if stop >= end:
+                return None
+            a = stop
+            model.set_time(a)
+            model.shift_comparisons(resolution)
+        return None
+
+    def _fire(
+        self,
+        missed: Sequence[int],
+        time: float,
+        blocks: list[np.ndarray],
+        grid: np.ndarray | None,
+    ) -> None:
+        """Fire the events whose crossing COPASI missed at the end of a piece, see `_integrate`.
+
+        The steps of LSODA get the state after the events as a row of their
+        own at the time, an output time at the time the state after them.
+        """
+        model = self.model
+        events = model.symbols.events
+        before = triggers(events, model.values, time, model)
+        for k in missed:
+            before[k] = False
+        fire_events(events, before, model.values, time, model)
+        after = state_row(model, self.selections, time)
+        if grid is None:
+            blocks.append(after[np.newaxis, :])
+        elif time in grid:
+            blocks[-1][-1, :] = after
+
+    def _resolution(self, start: float, end: float) -> float:
+        """Get the resolution of the time of a run, of the simulation if known."""
+        if self.resolution is not None:
+            return self.resolution
+        return time_tolerance(start, end)
+
+    def _once(
+        self, start: float, end: float, past: bool, grid: np.ndarray | None
+    ) -> np.ndarray:
+        """Integrate once from `start` to `end` from the current state, its comparisons shifted, see `_run`.
 
         Raises:
             RuntimeError: if COPASI fails to integrate, with its message.
         """
         model = self.model
-        model.set_time(start)
-        # COPASI keeps the states of the triggers of the events from the end of
-        # the run before, which a change, an event the executor fired or the
-        # time set since then made stale: an event would fire again, or not
-        # when its trigger crosses next (the root of COPASI toggles the stale
-        # state); the states are set from the current values, without firing.
-        # A delayed event COPASI has scheduled stays in its queue, e.g. across
-        # the stop before the end into the events at the end and the steady
-        # state after the end. The comparisons at their threshold are shifted
-        # first, so that LSODA finds their crossings
-        model.shift_comparisons()
+        problem = self._problem
+        if grid is None:
+            problem.setAutomaticStepSize(True)
+            problem.setOutputEvent(True)
+            problem.setUseValues(False)
+        else:
+            problem.setAutomaticStepSize(False)
+            problem.setOutputEvent(False)
+            # the overload of a vector keeps six digits of a time, the text is
+            # read exactly and independent of the locale
+            problem.setValues(" ".join(repr(float(t)) for t in grid))
+            problem.setUseValues(True)
         model.mc.resetEventsFound()
-        self._problem.setDuration(_duration(start, end, past))
+        problem.setDuration(_duration(start, end, past))
         dm = model.dm
         handler = COPASI.CDataHandler()
         for name in self.names:
@@ -338,6 +556,14 @@ class _TimeCourse:
             [list(handler.getNthRow(k)) for k in range(n)], dtype=float
         ).reshape(n, len(self.names))
         return self._transform(rows)
+
+
+def _piece_grid(grid: np.ndarray, start: float, stop: float) -> np.ndarray:
+    """Get the output times of a piece of a run, ending with its stop, see `_TimeCourse._integrate`."""
+    piece = grid[(grid > start) & (grid <= stop)]
+    if piece.size == 0 or piece[-1] != stop:
+        piece = np.append(piece, stop)
+    return piece
 
 
 def _duration(start: float, end: float, past: bool) -> float:
@@ -398,7 +624,11 @@ def execute(
         if plan.steady_state is not None:
             steady_state(model, plan.steady_state)
         values = simulate_segments(
-            plan, model, model.values, columns, _TimeCourse(model, columns)
+            plan,
+            model,
+            model.values,
+            columns,
+            _TimeCourse(model, columns, time_tolerance(plan.start, plan.end)),
         )
     finally:
         model.simulated()
@@ -461,4 +691,5 @@ def steady_state(
         SteadyStateError: if the steady state is not reached by `max_time`.
         RuntimeError: if COPASI fails to integrate, with its message.
     """
-    return integrate_to_steady_state(model, _TimeCourse(model, []), plan, start)
+    course = _TimeCourse(model, [], time_tolerance(start, start + plan.max_time))
+    return integrate_to_steady_state(model, course, plan, start)

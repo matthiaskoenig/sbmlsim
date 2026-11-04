@@ -21,6 +21,7 @@ with contextlib.suppress(ImportError):
     import_copasi()
 COPASI = pytest.importorskip("COPASI")
 
+from sbmlsim.model import RoadrunnerSBMLModel  # noqa: E402
 from sbmlsim.model.model_copasi import (  # noqa: E402
     COPASI_ATOL_FACTOR,
     CopasiSBMLModel,
@@ -36,8 +37,10 @@ from sbmlsim.simulation import Change, Simulation, SteadyState  # noqa: E402
 from sbmlsim.simulator import executor_copasi  # noqa: E402
 from sbmlsim.simulator.executor import (  # noqa: E402
     SteadyStateError,
+    execute,
     segment_stop,
 )
+from sbmlsim.simulator.plan import compile_simulation, time_tolerance  # noqa: E402
 from tests.simulator import engine_comparison  # noqa: E402
 from tests.simulator.engine_comparison import (  # noqa: E402
     AT_SIX,
@@ -1016,7 +1019,8 @@ def test_an_event_of_the_time_at_a_change_fires_right_after_it(
         at_threshold("time > 2", rate="1"), simulation, ["time", "X", "n", "T1"]
     )
     assert copasi["n"][-1] == 1.0
-    assert copasi["T1"][-1] == pytest.approx(2.0, abs=1e-9)
+    # at most about one resolution of the time late, see `_threshold_shift`
+    assert 2.0 < copasi["T1"][-1] <= 2.0 + 2.0 * time_tolerance(0.0, 5.0)
     if times is None:
         assert_equal_rows(copasi, roadrunner, changes=[2.0])
     else:
@@ -1056,23 +1060,156 @@ def test_a_trigger_copasi_fired_at_its_threshold_does_not_fire_again(
         assert_equal_results(copasi, roadrunner)
 
 
-def test_known_difference_an_event_of_the_model_which_sets_a_threshold() -> None:
-    """Pin a known difference: an event of the model which sets a trigger to its threshold.
-
-    `E` sets `X = 2` at 1 and `X` rises right after it: roadrunner fires
-    `G: X > 2` right after 1, COPASI fires no event in the integration in
-    which its own event left the comparison exactly at its threshold, which
-    the executor does not see, see the module of the executor.
-    """
-    model = """
+#: models whose event sets a comparison of another trigger exactly to its
+#: threshold in an integration of COPASI, `T1` the time `G` fires first
+LANDING = {
+    "set-to-the-threshold": """
     model internal
       X = 0
       X' = 1
       n = 0
+      T1 = -1
       E: at (time > 1), t0=true: X = 2
-      G: at (X > 2), t0=true: n = n + 1
+      G: at (X > 2), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
     end
+    """,
+    "reset-to-zero": """
+    model reset
+      X = 5
+      X' = 1
+      n = 0
+      T1 = -1
+      E: at (time > 1), t0=true: X = 0
+      G: at (X > 0), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+    "reset-on-a-plateau": """
+    model plateau
+      X = 5
+      X' = piecewise(0, time < 2, 1)
+      n = 0
+      T1 = -1
+      E: at (time > 1), t0=true: X = 0
+      G: at (X > 0), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+    "dose-to-the-threshold": """
+    model dose
+      X = 0
+      X' = -0.1*X
+      n = 0
+      T1 = -1
+      D: at (time > 1), t0=true: X = X + 10
+      G: at (X < 10), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+    "two-resets": """
+    model resets
+      X = 5
+      X' = 1
+      n = 0
+      T1 = -1
+      E: at (time > 1), t0=true: X = 0
+      F: at (time > 2.5), t0=true: X = 0
+      G: at (X > 0), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+}
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.5, 3, 5], [0, 4, 5], None])
+@pytest.mark.parametrize("name", LANDING)
+def test_an_event_of_the_model_which_sets_a_threshold(
+    name: str, times: list[float] | None
+) -> None:
+    """An event COPASI fires which sets another trigger exactly to its threshold.
+
+    `G` fires when its comparison turns, right after the event or after a
+    plateau, as in roadrunner: the run is integrated again in pieces, see
+    `executor_copasi._TimeCourse._integrate`. A change at 0.5 is a write
+    between two runs.
     """
-    copasi, roadrunner = both(sbml(model), Simulation(end=5, times=[0, 5]), ["n"])
-    assert roadrunner["n"].tolist() == [0.0, 1.0]
-    assert copasi["n"].tolist() == [0.0, 0.0]
+    simulation = Simulation(end=5, changes=[Change(0.5, {"n": 0.0})], times=times)
+    copasi, roadrunner = both(sbml(LANDING[name]), simulation, ["time", "X", "n", "T1"])
+    assert copasi["n"][-1] == roadrunner["n"][-1] >= 1.0
+    assert copasi["T1"][-1] == pytest.approx(roadrunner["T1"][-1], abs=1e-6)
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[0.5])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+def test_a_model_whose_events_set_no_threshold_runs_in_one_piece() -> None:
+    """A run without a comparison at its threshold after an event is the run in one piece, bitwise."""
+    model = CopasiSBMLModel(source=sbml(M1), settings=SETTINGS)
+    assert model.lands
+    plan = plan_of(sbml(M1), Simulation(end=20, times=[0, 5, 10, 20]))
+    once = executor_copasi._TimeCourse._once
+    calls: list[tuple[float, float]] = []
+
+    def counted(
+        course: executor_copasi._TimeCourse,
+        start: float,
+        end: float,
+        past: bool,
+        grid: np.ndarray | None,
+    ) -> np.ndarray:
+        calls.append((start, end))
+        return once(course, start, end, past, grid)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(executor_copasi._TimeCourse, "_once", counted)
+        pieces = executor_copasi.execute(plan, model, ["time", "X", "n"])
+    one = CopasiSBMLModel(source=sbml(M1), settings=SETTINGS)
+    one.lands = False
+    np.testing.assert_array_equal(
+        pieces.values, executor_copasi.execute(plan, one, ["time", "X", "n"]).values
+    )
+    assert len(calls) > 2
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2, 5], None])
+@pytest.mark.parametrize(
+    ("threshold", "rate", "x0"), [("2", "1e-9", 0.0), ("0", "1e-12", 5.0)]
+)
+def test_a_slow_comparison_at_its_threshold_fires_in_time(
+    threshold: str, rate: str, x0: float, times: list[float] | None
+) -> None:
+    """A comparison whose operands move slowly after a change sets them to its threshold fires in time, at the defaults.
+
+    The shift is the change of the comparison over the resolution of the
+    time, at least two units in the last place of the threshold, see
+    `CopasiSBMLModel._threshold_shift`.
+    """
+    source = at_threshold(f"X > {threshold}", rate=rate, x0=x0)
+    simulation = Simulation(
+        end=5, changes=[Change(1, {"X": float(threshold)})], times=times
+    )
+    copasi_model = CopasiSBMLModel(source=source)
+    roadrunner_model = RoadrunnerSBMLModel(source=source)
+    plan = compile_simulation(
+        simulation, roadrunner_model.symbols, roadrunner_model.uinfo
+    )
+    selections = ["time", "X", "n", "T1"]
+    copasi = executor_copasi.execute(plan, copasi_model, selections)
+    roadrunner = execute(plan, roadrunner_model, selections)
+    assert copasi["n"][-1] == roadrunner["n"][-1] == 1.0
+    assert copasi["T1"][-1] == pytest.approx(roadrunner["T1"][-1], abs=1e-6)
+
+
+def test_the_states_of_the_roots_are_found_for_one_root() -> None:
+    """The position of the states of the roots is told by their values, also for a single root.
+
+    The shift of `time >= 2` probed far is the value of its shift parameter
+    as well, which comes earlier in the values of COPASI.
+    """
+    model = CopasiSBMLModel(source=sbml(AT_SIX.replace("6", "2")), settings=SETTINGS)
+    at = model._states_at
+    assert at is not None
+    model.initialize([])
+    model.set_time(1.0)
+    model.mc.resetEventsFound()
+    assert model.mc.getValues().get(at) == 0.0
+    model.set_time(3.0)
+    model.mc.resetEventsFound()
+    assert model.mc.getValues().get(at) == 1.0
