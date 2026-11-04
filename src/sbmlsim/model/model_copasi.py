@@ -46,10 +46,14 @@ from sbmlsim.engine import Engine, import_copasi
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.model.model_sbml import (
+    EngineSettings,
+    EngineValues,
+    Feature,
     IntegratorSetting,
     SBMLModel,
-    reads_delay,
-    sbml_maths,
+    conversion_factors,
+    rate_rule_entities,
+    variable_features,
 )
 from sbmlsim.model.symbols import TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -94,22 +98,6 @@ LSODA_PARAMETERS: dict[str, str] = {
 #: `Simulator` (1e-10 and 1e-10), COPASI 1.4e-6 with the tolerance as it is
 #: (3.6e-4 relative to a value) and 1.8e-8 with 1e-12, i.e. the factor 1e-2.
 COPASI_ATOL_FACTOR: float = 1e-2
-
-#: the settings of roadrunner which COPASI has no equivalent of, ignored with
-#: a warning: the settings of CVODE and the optimization of the compilation
-ROADRUNNER_ONLY_SETTINGS = frozenset(
-    {
-        "initial_time_step",
-        "jit_optimization",
-        "max_output_rows",
-        "maximum_adams_order",
-        "maximum_bdf_order",
-        "minimum_time_step",
-        "multiple_steps",
-        "stiff",
-        "variable_step_size",
-    }
-)
 
 #: the messages of COPASI which do not change the numbers of a model, logged
 #: at the level `DEBUG`: the default units of the model (91, 92), the units of
@@ -213,26 +201,6 @@ def _write_value(math_object: Any, value: float) -> None:
         value: the value.
     """
     ctypes.c_double.from_address(int(math_object.getValuePointer())).value = value
-
-
-class CopasiValues:
-    """The current values of a model of COPASI in the selections of roadrunner.
-
-    The `ModelValues` of `sbmlsim.simulator.changes`, with which an executor
-    reads and sets values between two integrations.
-    """
-
-    def __init__(self, model: CopasiSBMLModel) -> None:
-        """Get the values of a model."""
-        self._model = model
-
-    def getValue(self, selection: str, /) -> float:
-        """Get the current value of a selection, see `CopasiSBMLModel.value`."""
-        return self._model.value(selection)
-
-    def setValue(self, selection: str, value: float, /) -> None:
-        """Set the current value of a selection, see `CopasiSBMLModel.set_value`."""
-        self._model.set_value(selection, value)
 
 
 class CopasiSBMLModel(SBMLModel):
@@ -361,10 +329,8 @@ class CopasiSBMLModel(SBMLModel):
         task = dm.getTask("Time-Course")
         task.setMethodType(COPASI.CTaskEnum.Method_deterministic)
         self.absolute_tolerance: AbsoluteTolerance = AbsoluteTolerance()
-        #: the settings of roadrunner which were reported as ignored
-        self._ignored_reported: set[str] = set()
-        #: whether the absolute tolerance was reported as one number
-        self._tolerance_reported: bool = False
+        #: the settings of roadrunner, which reports the ignored ones once
+        self._settings = EngineSettings("COPASI", INTEGRATOR, self.label, logger)
 
         self.set_selections(selections)
         self.set_integrator_settings(
@@ -393,9 +359,9 @@ class CopasiSBMLModel(SBMLModel):
         return self.cmodel.getMathContainer()
 
     @property
-    def values(self) -> CopasiValues:
+    def values(self) -> EngineValues:
         """Get the current values of the model in the selections of roadrunner."""
-        return CopasiValues(self)
+        return EngineValues(self)
 
     def close(self) -> None:
         """Release the data model of COPASI, the model cannot be used afterwards.
@@ -1025,72 +991,18 @@ class CopasiSBMLModel(SBMLModel):
             ValueError: if neither COPASI nor roadrunner has a setting of a
                 name, or a value is not valid.
         """
-        unknown = sorted(
-            set(settings) - LSODA_PARAMETERS.keys() - ROADRUNNER_ONLY_SETTINGS
-        )
-        if unknown:
-            raise ValueError(
-                f"The integrator '{INTEGRATOR}' of COPASI has no settings {unknown}, "
-                f"its settings are {sorted(LSODA_PARAMETERS)}."
-            )
-        ignored = sorted(
-            (set(settings) & ROADRUNNER_ONLY_SETTINGS) - self._ignored_reported
-        )
-        if ignored:
-            self._ignored_reported.update(ignored)
-            logger.warning(
-                "COPASI has no equivalent of the settings %s of roadrunner, the "
-                "model '%s' ignores them.",
-                ignored,
-                self.label,
-            )
         method = self.dm.getTask("Time-Course").getMethod()
-        for key, value in settings.items():
-            if key not in LSODA_PARAMETERS:
-                continue
+        for key, value in self._settings.checked(settings).items():
             parameter = method.getParameter(LSODA_PARAMETERS[key])
-            if key == "absolute_tolerance":
-                if isinstance(value, bool):
-                    raise ValueError("The absolute tolerance is a number.")
-                tolerance = AbsoluteTolerance.of(value)
-                parameter.setDblValue(self._scalar_tolerance(tolerance))
-                self.absolute_tolerance = tolerance
+            if isinstance(value, AbsoluteTolerance):
+                parameter.setDblValue(
+                    self._settings.scalar_tolerance(value, COPASI_ATOL_FACTOR)
+                )
+                self.absolute_tolerance = value
             elif key == "maximum_num_steps":
-                if (
-                    isinstance(value, bool | AbsoluteTolerance)
-                    or not float(value).is_integer()
-                    or value < 1
-                ):
-                    raise ValueError(
-                        f"The maximum number of steps is a positive integer, not "
-                        f"{value}."
-                    )
                 parameter.setUIntValue(int(value))
             else:
-                if isinstance(value, bool | AbsoluteTolerance) or not value >= 0:
-                    raise ValueError(f"The setting '{key}' is a number, not {value}.")
                 parameter.setDblValue(float(value))
-
-    def _scalar_tolerance(self, tolerance: AbsoluteTolerance) -> float:
-        """Get the one absolute tolerance of COPASI of a tolerance per kind.
-
-        The smallest tolerance of the kinds and of the overrides, reported
-        once per model when they differ, times `COPASI_ATOL_FACTOR`.
-        """
-        values = {tolerance.amount, tolerance.concentration, tolerance.other}
-        values |= set(dict(tolerance.ids).values())
-        smallest = min(values)
-        if len(values) > 1 and not self._tolerance_reported:
-            self._tolerance_reported = True
-            logger.warning(
-                "COPASI has one absolute tolerance, the model '%s' integrates "
-                "with the smallest one of %s, %s, times %s.",
-                self.label,
-                tolerance,
-                smallest,
-                COPASI_ATOL_FACTOR,
-            )
-        return smallest * COPASI_ATOL_FACTOR
 
     @override
     def integrator_state(self) -> tuple[str, tuple[tuple[str, Any], ...]]:
@@ -1156,14 +1068,7 @@ class CopasiSBMLModel(SBMLModel):
                 for s in sbml_model.getListOfSpecies()
                 if self.entities[s.getId()].getStatus() in integrated
             ]
-            states += [
-                e.getId()
-                for e in (
-                    *sbml_model.getListOfParameters(),
-                    *sbml_model.getListOfCompartments(),
-                )
-                if e.getId() in self.symbols.rate_rules
-            ]
+            states += rate_rule_entities(sbml_model, self.symbols)
             self._state_ids = tuple(states)
         return list(self._state_ids)
 
@@ -1192,9 +1097,18 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
             f"roadrunner, the model cannot be simulated with COPASI."
         )
 
-    for rule in model.getListOfRules():
-        if rule.isAlgebraic():
-            raise unsupported("an algebraic rule, which COPASI ignores")
+    features = list(variable_features(model))
+    reasons = {
+        Feature.ALGEBRAIC_RULE: ", which COPASI ignores",
+        Feature.STOICHIOMETRY_MATH: ", which COPASI makes a constant",
+        Feature.NON_CONSTANT_REFERENCE: ", whose stoichiometry COPASI makes a constant",
+        Feature.REFERENCE_INITIAL_ASSIGNMENT: (
+            ", which COPASI evaluates once into a constant"
+        ),
+    }
+    for feature, element in features:
+        if feature is Feature.ALGEBRAIC_RULE:
+            raise unsupported(element + reasons[feature])
     if model.isSetConversionFactor():
         raise unsupported(
             f"the conversion factor '{model.getConversionFactor()}' of the model, "
@@ -1206,35 +1120,8 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
                 f"the conversion factor '{species.getConversionFactor()}' of the "
                 f"species '{species.getId()}', which a time course of COPASI ignores"
             )
-    level = model.getLevel()
-    references: set[str] = set()
-    for reaction in model.getListOfReactions():
-        for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts()):
-            if sr.isSetId():
-                references.add(sr.getId())
-            if sr.isSetStoichiometryMath():
-                raise unsupported(
-                    f"the stoichiometry math of the species '{sr.getSpecies()}' in "
-                    f"the reaction '{reaction.getId()}', which COPASI makes a "
-                    f"constant"
-                )
-            if level >= 3 and sr.isSetConstant() and not sr.getConstant():
-                name = sr.getId() or sr.getSpecies()
-                raise unsupported(
-                    f"the non-constant species reference '{name}' of the reaction "
-                    f"'{reaction.getId()}', whose stoichiometry COPASI makes a "
-                    f"constant"
-                )
-    for assignment in model.getListOfInitialAssignments():
-        if assignment.getSymbol() in references:
-            raise unsupported(
-                f"an initial assignment of the species reference "
-                f"'{assignment.getSymbol()}', which COPASI evaluates once into a "
-                f"constant"
-            )
-    for where, ast in sbml_maths(model):
-        if reads_delay(ast):
-            raise unsupported(f"the delay csymbol in the {where}")
+    for feature, element in features:
+        raise unsupported(element + reasons.get(feature, ""))
 
 
 def _remove_datamodel(dm: COPASI.CDataModel) -> None:
@@ -1291,13 +1178,7 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> tuple[str, frozenset[str
     sbml_model: libsbml.Model = doc.getModel()
     symbols = model.symbols
     # a conversion factor is a constant parameter in SBML
-    constants = {
-        species.getConversionFactor()
-        for species in sbml_model.getListOfSpecies()
-        if species.isSetConversionFactor()
-    }
-    if sbml_model.isSetConversionFactor():
-        constants.add(sbml_model.getConversionFactor())
+    constants = conversion_factors(sbml_model)
     targets: list[str] = []
     not_a_number: set[str] = set()
     for entity in (

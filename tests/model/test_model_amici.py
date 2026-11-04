@@ -3,6 +3,7 @@
 import logging
 import math
 import os
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
@@ -174,6 +175,35 @@ def test_values_are_the_ones_of_roadrunner_as_loaded(source: Path | str) -> None
     for s in r.selections:
         assert a.value(s) == pytest.approx(r.value(s), rel=1e-12, abs=1e-300), s
         assert a.has_selection(s)
+
+
+#: a model which SBML level 1 and level 2 version 1 have, without initial
+#: assignments and rules
+PLAIN = """
+model plain
+  compartment C = 2
+  species A in C = 1
+  species B in C = 0.5
+  k1 = 0.8
+  J1: A -> B; k1*A
+end
+"""
+
+
+@pytest.mark.parametrize(("level", "version"), [(2, 1), (1, 2)])
+def test_a_model_of_an_older_level_is_converted(level: int, version: int) -> None:
+    """AMICI compiles the model in level 3, its values are the ones of roadrunner."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PLAIN))
+    assert doc.setLevelAndVersion(level, version, False)
+    source = libsbml.writeSBMLToString(doc)
+    a, r = AmiciSBMLModel(source=source), RoadrunnerSBMLModel(source=source)
+    assignments = [_a("k1", 2.0), _a("C", 4.0, TargetKind.COMPARTMENT)]
+    for model in (a, r):
+        model.initialize(assignments)
+    assert r.selections is not None
+    assert set(a.selections or ()) == set(r.selections)
+    for s in r.selections:
+        assert a.value(s) == pytest.approx(r.value(s), rel=1e-12), s
 
 
 def test_preinit_overrides_an_initial_assignment_and_updates_dependents() -> None:
@@ -408,6 +438,14 @@ def test_a_value_which_is_not_a_number_is_no_state() -> None:
         model.values.setValue("V", 1.0)
     with pytest.raises(NotImplementedError, match=r"'V'.*not a number"):
         model.initialize([_a("V", 3.0, TargetKind.COMPARTMENT)])
+    # also with a formula, which reads the values which are set
+    with pytest.raises(NotImplementedError, match=r"'V'.*not a number"):
+        model.initialize(
+            [
+                _a("V", 3.0, TargetKind.COMPARTMENT),
+                Assignment("p", TargetKind.PARAMETER, formula="2 * X"),
+            ]
+        )
     model.initialize([_a("p", 3.0)])
     assert model.value("p") == 3.0
     model.values.setValue("p", 2.0)
@@ -446,7 +484,10 @@ def test_species_in_units_other_than_the_model_keep_their_numbers() -> None:
 
 
 def test_a_conversion_factor_is_a_parameter() -> None:
-    """AMICI applies the conversion factors as roadrunner, a parameter of AMICI."""
+    """A conversion factor is a free parameter of AMICI, which is set as in roadrunner.
+
+    Its effect on the rates is compared by the tests of the executor.
+    """
 
     def edit(model: libsbml.Model) -> None:
         model.getSpecies("A").setConversionFactor("k2")
@@ -538,6 +579,13 @@ def _priority(event: libsbml.Event) -> None:
     event.createPriority().setMath(libsbml.parseL3Formula("k1"))
 
 
+def _initial_conversion_factor(model: libsbml.Model) -> None:
+    model.getSpecies("A").setConversionFactor("k2")
+    initial: libsbml.InitialAssignment = model.createInitialAssignment()
+    initial.setSymbol("k2")
+    initial.setMath(libsbml.parseL3Formula("2 * f"))
+
+
 def _rate_of(model: libsbml.Model) -> None:
     model.getParameter("b0").setConstant(False)
     rule: libsbml.AssignmentRule = model.createAssignmentRule()
@@ -563,6 +611,10 @@ def _rate_of(model: libsbml.Model) -> None:
         (
             _rule_of_the_product("initial"),
             "initial assignment of the species reference 'B_sr'",
+        ),
+        (
+            _initial_conversion_factor,
+            "initial assignment of the conversion factor 'k2'",
         ),
     ],
 )
@@ -592,24 +644,24 @@ def test_a_fast_reaction_raises() -> None:
         AmiciSBMLModel(source=libsbml.writeSBMLToString(doc))
 
 
-def _with_a_constant_species_reference_id() -> str:
-    """Get the probe model whose product `B`, a boundary species, has the id `B_sr`."""
+def test_a_species_reference_is_its_stoichiometry() -> None:
+    """A constant species reference with an id is its number, which AMICI folds in."""
 
     def edit(model: libsbml.Model) -> None:
         model.getSpecies("B").setBoundaryCondition(True)
         model.getReaction("J1").getProduct(0).setId("B_sr")
+        model.getReaction("J1").getProduct(0).setStoichiometry(2.0)
+        model.getReaction("J1").getReactant(0).setId("A_sr")
 
-    return _probe_with(edit)
-
-
-def test_a_species_reference_has_no_selection() -> None:
-    """AMICI has no value of a species reference, the default selections raise."""
-    source = _with_a_constant_species_reference_id()
-    assert "B_sr" in (RoadrunnerSBMLModel(source=source).selections or ())
-    with pytest.raises(ValueError, match=r"no selection 'B_sr'.*species reference"):
-        AmiciSBMLModel(source=source)
-    model = AmiciSBMLModel(source=source, selections=["A"])
-    assert not model.has_selection("B_sr")
+    source = _probe_with(edit)
+    a, r = AmiciSBMLModel(source=source), RoadrunnerSBMLModel(source=source)
+    assert r.selections is not None and "B_sr" in r.selections
+    assert a.selections == a.default_selections()
+    for s in [*r.selections, "A_sr"]:
+        assert a.value(s) == pytest.approx(r.value(s), rel=1e-12), s
+    assert a.value("B_sr") == 2.0
+    with pytest.raises(RuntimeError, match="cannot set 'B_sr'"):
+        a.values.setValue("B_sr", 3.0)
 
 
 def test_roadrunner_only_settings_warn_once(caplog: pytest.LogCaptureFixture) -> None:
@@ -735,6 +787,73 @@ def test_the_cache_reuses_a_compiled_model(
     # another model is compiled
     with pytest.raises(AssertionError, match="compiled again"):
         AmiciSBMLModel(source=sbml(CACHED.format(k=0.5)))
+
+
+def test_a_compilation_which_did_not_end_is_removed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The directory of a compilation of a process which was killed is removed."""
+    monkeypatch.setenv(CACHE_ENV, str(tmp_path))
+    source = sbml(CACHED.format(k=0.125))
+    model = AmiciSBMLModel(source=source, selections=["S"])
+    compiled = amici_sbml(model.sbml, model.symbols, model.label).sbml
+    key = cache_key(compiled)
+    shutil.rmtree(tmp_path / key)
+    left = tmp_path / f"{key}.left_over"
+    (left / "build").mkdir(parents=True)
+    assert compiled_dir(compiled) == tmp_path / key
+    assert not left.exists()
+    assert (tmp_path / f"{key}.lock").is_file()
+
+
+def test_a_missing_build_tool_is_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A model is not blamed for a build environment without ninja."""
+    monkeypatch.setenv(CACHE_ENV, str(tmp_path))
+    real_which = shutil.which
+
+    def which(cmd: str, *args: object, **kwargs: object) -> str | None:
+        return None if cmd == "ninja" else real_which(cmd)
+
+    monkeypatch.setattr(model_amici.shutil, "which", which)
+    with pytest.raises(RuntimeError, match="builds a model with 'ninja'"):
+        AmiciSBMLModel(source=sbml(CACHED.format(k=0.0625)))
+    assert [p for p in tmp_path.iterdir() if p.is_dir()] == []
+
+
+def _segment(model: AmiciSBMLModel, timepoints: list[float]) -> dict[str, list[float]]:
+    """Integrate a model from its current state, see `AmiciSBMLModel.prepare`."""
+    model.prepare(timepoints)
+    rdata = model_amici._run_simulation()(model.amici_model, model.solver)
+    assert rdata.status == 0
+    states = list(model.amici_model.get_state_ids())
+    x = [list(row) for row in rdata.x]
+    model.set_state(timepoints[-1], x[-1])
+    return {sid: [row[k] for row in x] for k, sid in enumerate(states)}
+
+
+def test_an_integration_after_a_restart_fires_the_crossings_only() -> None:
+    """AMICI fires no event at the start of a segment, and every crossing in it.
+
+    A trigger which a change makes true (`A > 5`, `A > 7`) or which is true
+    already (`time > 1`) does not fire at the start of the next segment; a
+    trigger which becomes true in a segment fires, also after a restart.
+    """
+    model = AmiciSBMLModel(source=sbml(EVENTS))
+    assert _segment(model, [0.0, 0.5, 1.5, 2.0])["n"] == [0.0, 0.0, 1.0, 1.0]
+    assert _segment(model, [2.0, 3.0])["n"] == [1.0, 1.0]
+    model.values.setValue("[A]", 10.0)
+    assert _segment(model, [3.0, 3.5])["n"] == [1.0, 1.0]
+    # A rises above 5 and 7 from B
+    model.values.setValue("[A]", 4.0)
+    model.values.setValue("[B]", 20.0)
+    model.set_time(6.0)
+    assert _segment(model, [6.0, 6.5, 8.0])["n"] == [1.0, 11.0, 111.0]
+    # the time event in a segment which starts before its time
+    model.initialize([])
+    assert _segment(model, [0.0, 0.5])["n"] == [0.0, 0.0]
+    assert _segment(model, [0.5, 1.5])["n"] == [0.0, 1.0]
 
 
 #: the script of a process which loads a model in AMICI and reports whether

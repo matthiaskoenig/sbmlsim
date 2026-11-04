@@ -5,8 +5,13 @@
 and owns an instance of the compiled model and of its solver, CVODES. Its
 values are read and written in the selections of roadrunner, `S` the amount
 of a species, `[S]` its concentration, the id of a parameter or a
-compartment, the id of a reaction its rate and `time`, with the numbers of
-the SBML, which AMICI keeps as they are.
+compartment, the id of a reaction its rate, the id of a species reference
+its stoichiometry (a number, which AMICI folds into its equations) and
+`time`, with the numbers of the SBML, which AMICI keeps as they are. Every
+selection roadrunner makes by default is a state, a free parameter or an
+expression of AMICI or a number of the SBML, so the model is compiled
+without observables. A model of SBML level 1 or 2 is converted to level 3
+version 2 first.
 
 AMICI integrates the concentration of a species whose `hasOnlySubstanceUnits`
 is false and the amount of the other species, folds a compartment without a
@@ -62,6 +67,8 @@ import io
 import logging
 import math
 import os
+import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -82,10 +89,16 @@ from sbmlsim.engine import Engine, import_amici
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
 from sbmlsim.model.model_sbml import (
+    EngineSettings,
+    EngineValues,
+    Feature,
     IntegratorSetting,
     SBMLModel,
-    reads_delay,
+    conversion_factors,
+    rate_rule_entities,
+    reads_rate_of,
     sbml_maths,
+    variable_features,
 )
 from sbmlsim.model.symbols import ModelSymbols, TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -132,36 +145,8 @@ _KIND_SBML, _KIND_VALUE, _KIND_CONCENTRATION = 0.0, 1.0, 2.0
 #: the name of the integrator, CVODES of SUNDIALS
 INTEGRATOR = "cvodes"
 
-#: the settings of roadrunner which the solver of AMICI has
-SOLVER_SETTINGS = frozenset(
-    {
-        "absolute_tolerance",
-        "maximum_num_steps",
-        "maximum_time_step",
-        "relative_tolerance",
-    }
-)
-
-#: the settings of roadrunner which AMICI has no equivalent of, ignored with
-#: a warning: the settings of CVODE which the solver of AMICI does not set,
-#: the method (AMICI integrates with BDF, roadrunner's default `stiff`) and
-#: the optimization of the compilation of roadrunner
-ROADRUNNER_ONLY_SETTINGS = frozenset(
-    {
-        "initial_time_step",
-        "jit_optimization",
-        "max_output_rows",
-        "maximum_adams_order",
-        "maximum_bdf_order",
-        "minimum_time_step",
-        "multiple_steps",
-        "stiff",
-        "variable_step_size",
-    }
-)
-
-#: the definition URL of the csymbol rateOf
-RATE_OF_URL = "http://www.sbml.org/sbml/symbols/rateOf"
+#: the tool with which AMICI builds a model, see `_build_tools_on_path`
+BUILD_TOOL = "ninja"
 
 #: the compiled models of the process by the name of their module, a module
 #: of a name is imported once
@@ -195,26 +180,6 @@ class AmiciSBML:
     flagged: frozenset[str]
     not_a_number: frozenset[str]
     initial_value_false: tuple[str, ...]
-
-
-class AmiciValues:
-    """The current values of a model of AMICI in the selections of roadrunner.
-
-    The `ModelValues` of `sbmlsim.simulator.changes`, with which an executor
-    reads and sets values between two integrations.
-    """
-
-    def __init__(self, model: AmiciSBMLModel) -> None:
-        """Get the values of a model."""
-        self._model = model
-
-    def getValue(self, selection: str, /) -> float:
-        """Get the current value of a selection, see `AmiciSBMLModel.value`."""
-        return self._model.value(selection)
-
-    def setValue(self, selection: str, value: float, /) -> None:
-        """Set the current value of a selection, see `AmiciSBMLModel.set_value`."""
-        self._model.set_value(selection, value)
 
 
 class AmiciSBMLModel(SBMLModel):
@@ -270,13 +235,14 @@ class AmiciSBMLModel(SBMLModel):
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
         sbml_model: libsbml.Model = doc.getModel()
         _check_supported(sbml_model, self.label)
-        #: the ids of the species references, which AMICI has no values of
-        self._species_references: frozenset[str] = frozenset(
-            sr.getId()
+        #: the stoichiometries of the species references with an id, which are
+        #: constant (`_check_supported`) and AMICI folds into its equations
+        self._stoichiometries: dict[str, float] = {
+            sr.getId(): float(sr.getStoichiometry())
             for reaction in sbml_model.getListOfReactions()
             for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts())
             if sr.isSetId()
-        )
+        }
         self._state_ids: tuple[str, ...] = _integrated(sbml_model, self.symbols)
 
         compiled = amici_sbml(sbml, self.symbols, self.label)
@@ -297,8 +263,13 @@ class AmiciSBMLModel(SBMLModel):
         expression_ids = [str(e) for e in amodel.get_expression_ids()]
         for k, eid in enumerate(expression_ids):
             self._where.setdefault(eid, (_Store.EXPRESSION, k))
-        for cid in self._not_a_number:
-            self._where[cid] = (_Store.NUMBER, -1)
+        #: the numbers of the SBML which AMICI folds into its equations
+        self._numbers: dict[str, float] = {
+            **dict.fromkeys(self._not_a_number, math.nan),
+            **self._stoichiometries,
+        }
+        for sid_ in self._numbers:
+            self._where[sid_] = (_Store.NUMBER, -1)
         reactions = [r.getId() for r in sbml_model.getListOfReactions()]
         #: the index of the expression of the rate of every reaction, the
         #: rates are the last expressions of AMICI in the order of the SBML
@@ -306,10 +277,7 @@ class AmiciSBMLModel(SBMLModel):
             rid: len(expression_ids) - len(reactions) + k
             for k, rid in enumerate(reactions)
         }
-        if any(
-            not expression_ids[k].startswith(f"flux_{rid}")
-            for rid, k in self._fluxes.items()
-        ):
+        if any(expression_ids[k] != f"flux_{rid}" for rid, k in self._fluxes.items()):
             raise ValueError(
                 f"AMICI has no rates of the reactions of the model '{self.label}' "
                 f"in its last expressions {expression_ids[-len(reactions) :]}."
@@ -358,10 +326,8 @@ class AmiciSBMLModel(SBMLModel):
             self._loaded[f"[{sid_}]"] = self.value(f"[{sid_}]")
 
         self.absolute_tolerance: AbsoluteTolerance = AbsoluteTolerance()
-        #: the settings of roadrunner which were reported as ignored
-        self._ignored_reported: set[str] = set()
-        #: whether the absolute tolerance was reported as one number
-        self._tolerance_reported: bool = False
+        #: the settings of roadrunner, which reports the ignored ones once
+        self._settings = EngineSettings("AMICI", INTEGRATOR, self.label, logger)
 
         self.set_selections(selections)
         self.set_integrator_settings(
@@ -369,9 +335,9 @@ class AmiciSBMLModel(SBMLModel):
         )
 
     @property
-    def values(self) -> AmiciValues:
+    def values(self) -> EngineValues:
         """Get the current values of the model in the selections of roadrunner."""
-        return AmiciValues(self)
+        return EngineValues(self)
 
     @staticmethod
     def from_abstract_model(
@@ -507,7 +473,7 @@ class AmiciSBMLModel(SBMLModel):
             return float(self._p[index])
         if store is _Store.EXPRESSION:
             return float(self._expressions()[index])
-        return math.nan
+        return self._numbers[sid]
 
     def _volume(self, species: str) -> float:
         """Get the current size of the compartment of a species."""
@@ -529,16 +495,15 @@ class AmiciSBMLModel(SBMLModel):
 
     def _selection_error(self, selection: str) -> str:
         """Get the message of a selection AMICI has not."""
-        reason = (
-            ", the stoichiometry of a species reference, which AMICI has no value of"
-            if selection in self._species_references
-            else ""
-        )
-        return f"AMICI has no selection '{selection}'{reason}."
+        return f"AMICI has no selection '{selection}'."
 
     def _resolves(self, selection: str) -> bool:
         """Whether AMICI has a selection of a name."""
-        if selection == "time" or selection in self._fluxes:
+        if (
+            selection == "time"
+            or selection in self._fluxes
+            or selection in self._stoichiometries
+        ):
             return True
         if selection.startswith("[") and selection.endswith("]"):
             return selection[1:-1] in self.symbols.species
@@ -598,7 +563,11 @@ class AmiciSBMLModel(SBMLModel):
             raise RuntimeError(self._selection_error(selection))
         concentration = selection.startswith("[")
         entity = selection[1:-1] if concentration else selection
-        if selection == "time" or selection in self._fluxes:
+        if (
+            selection == "time"
+            or selection in self._fluxes
+            or selection in self._stoichiometries
+        ):
             raise RuntimeError(f"AMICI cannot set '{selection}'.")
         if entity in self.symbols.assignment_rules:
             raise RuntimeError(
@@ -630,8 +599,12 @@ class AmiciSBMLModel(SBMLModel):
         store, index = self._where[entity]
         if store is _Store.STATE:
             self._x[index] = number
-        else:
+        elif store is _Store.FREE:
             self._p[index] = number
+        else:
+            raise RuntimeError(
+                f"AMICI cannot set '{selection}', it is {store.value} of AMICI."
+            )
         self._w = None
         for sid in kept:
             volume = self._volume(sid)
@@ -670,6 +643,15 @@ class AmiciSBMLModel(SBMLModel):
                 AMICI, see the module.
         """
         symbols = self.symbols
+        outside = sorted(
+            {symbols.entity(a.target) for a in assignments} & self._not_a_number
+        )
+        if outside:
+            raise NotImplementedError(
+                f"AMICI cannot set {outside} before the initialization of the "
+                f"model '{self.label}', its value in the SBML is not a number, "
+                f"which AMICI keeps out of its states."
+            )
         set_values: list[tuple[Assignment, float]] = [
             (a, float(a.value)) for a in assignments if a.value is not None
         ]
@@ -690,12 +672,6 @@ class AmiciSBMLModel(SBMLModel):
             entity = symbols.entity(a.target)
             if entity in symbols.assignment_rules:
                 continue
-            if entity in self._not_a_number:
-                raise NotImplementedError(
-                    f"AMICI cannot set '{entity}' before the initialization of the "
-                    f"model '{self.label}', its value in the SBML is not a number, "
-                    f"which AMICI keeps out of its states."
-                )
             if entity in self._flagged:
                 parameters[self._value_index[entity]] = value
                 parameters[self._kind_index[entity]] = (
@@ -704,7 +680,13 @@ class AmiciSBMLModel(SBMLModel):
                     else _KIND_VALUE
                 )
             else:
-                parameters[self._where[entity][1]] = value
+                store, index = self._where[entity]
+                if store is not _Store.FREE:
+                    raise RuntimeError(
+                        f"AMICI cannot set '{entity}' before the initialization of "
+                        f"the model '{self.label}', it is {store.value} of AMICI."
+                    )
+                parameters[index] = value
         self._start(parameters)
 
     def _formula_values(
@@ -840,71 +822,17 @@ class AmiciSBMLModel(SBMLModel):
             ValueError: if neither AMICI nor roadrunner has a setting of a
                 name, or a value is not valid.
         """
-        unknown = sorted(set(settings) - SOLVER_SETTINGS - ROADRUNNER_ONLY_SETTINGS)
-        if unknown:
-            raise ValueError(
-                f"The integrator '{INTEGRATOR}' of AMICI has no settings {unknown}, "
-                f"its settings are {sorted(SOLVER_SETTINGS)}."
-            )
-        ignored = sorted(
-            (set(settings) & ROADRUNNER_ONLY_SETTINGS) - self._ignored_reported
-        )
-        if ignored:
-            self._ignored_reported.update(ignored)
-            logger.warning(
-                "AMICI has no equivalent of the settings %s of roadrunner, the "
-                "model '%s' ignores them.",
-                ignored,
-                self.label,
-            )
         solver = self.solver
-        for key, value in settings.items():
-            if key not in SOLVER_SETTINGS:
-                continue
-            if key == "absolute_tolerance":
-                if isinstance(value, bool):
-                    raise ValueError("The absolute tolerance is a number.")
-                tolerance = AbsoluteTolerance.of(value)
-                solver.set_absolute_tolerance(self._scalar_tolerance(tolerance))
-                self.absolute_tolerance = tolerance
+        for key, value in self._settings.checked(settings).items():
+            if isinstance(value, AbsoluteTolerance):
+                solver.set_absolute_tolerance(self._settings.scalar_tolerance(value))
+                self.absolute_tolerance = value
             elif key == "maximum_num_steps":
-                if (
-                    isinstance(value, bool | AbsoluteTolerance)
-                    or not float(value).is_integer()
-                    or value < 1
-                ):
-                    raise ValueError(
-                        f"The maximum number of steps is a positive integer, not "
-                        f"{value}."
-                    )
                 solver.set_max_steps(int(value))
+            elif key == "relative_tolerance":
+                solver.set_relative_tolerance(float(value))
             else:
-                if isinstance(value, bool | AbsoluteTolerance) or not value >= 0:
-                    raise ValueError(f"The setting '{key}' is a number, not {value}.")
-                if key == "relative_tolerance":
-                    solver.set_relative_tolerance(float(value))
-                else:
-                    solver.set_max_step_size(float(value))
-
-    def _scalar_tolerance(self, tolerance: AbsoluteTolerance) -> float:
-        """Get the one absolute tolerance of AMICI of a tolerance per kind.
-
-        The smallest tolerance of the kinds and of the overrides, reported
-        once per model when they differ.
-        """
-        values = {tolerance.amount, tolerance.concentration, tolerance.other}
-        values |= set(dict(tolerance.ids).values())
-        smallest = min(values)
-        if len(values) > 1 and not self._tolerance_reported:
-            self._tolerance_reported = True
-            logger.warning(
-                "AMICI has one absolute tolerance, the model '%s' integrates "
-                "with the smallest one of %s, %s.",
-                self.label,
-                tolerance,
-                smallest,
-            )
-        return smallest
+                solver.set_max_step_size(float(value))
 
     @override
     def integrator_state(self) -> tuple[str, tuple[tuple[str, Any], ...]]:
@@ -969,11 +897,7 @@ def _integrated(model: libsbml.Model, symbols: ModelSymbols) -> tuple[str, ...]:
             or not (s.getBoundaryCondition() or s.getConstant())
         )
     ]
-    states += [
-        e.getId()
-        for e in (*model.getListOfParameters(), *model.getListOfCompartments())
-        if e.getId() in symbols.rate_rules
-    ]
+    states += rate_rule_entities(model, symbols)
     return tuple(states)
 
 
@@ -1007,49 +931,24 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
             f"roadrunner, the model cannot be simulated with AMICI."
         )
 
-    for rule in model.getListOfRules():
-        if rule.isAlgebraic():
-            raise unsupported(
-                "an algebraic rule, which AMICI integrates as a differential "
-                "algebraic equation"
-            )
-    level = model.getLevel()
-    references: set[str] = set()
+    for feature, element in variable_features(model):
+        reason = (
+            ", which AMICI integrates as a differential algebraic equation"
+            if feature is Feature.ALGEBRAIC_RULE
+            else ""
+        )
+        raise unsupported(element + reason)
     for reaction in model.getListOfReactions():
         if reaction.isSetFast() and reaction.getFast():
             raise unsupported(f"the fast reaction '{reaction.getId()}'")
-        for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts()):
-            if sr.isSetId():
-                references.add(sr.getId())
-            if sr.isSetStoichiometryMath():
-                raise unsupported(
-                    f"the stoichiometry math of the species '{sr.getSpecies()}' in "
-                    f"the reaction '{reaction.getId()}'"
-                )
-            if level >= 3 and sr.isSetConstant() and not sr.getConstant():
-                name = sr.getId() or sr.getSpecies()
-                raise unsupported(
-                    f"the non-constant species reference '{name}' of the reaction "
-                    f"'{reaction.getId()}'"
-                )
-    factors = {
-        s.getConversionFactor()
-        for s in model.getListOfSpecies()
-        if s.isSetConversionFactor()
-    }
-    if model.isSetConversionFactor():
-        factors.add(model.getConversionFactor())
+    factors = conversion_factors(model)
     for assignment in model.getListOfInitialAssignments():
-        if assignment.getSymbol() in references:
-            raise unsupported(
-                f"an initial assignment of the species reference "
-                f"'{assignment.getSymbol()}'"
-            )
         if assignment.getSymbol() in factors:
             raise unsupported(
                 f"an initial assignment of the conversion factor "
                 f"'{assignment.getSymbol()}'"
             )
+    level = model.getLevel()
     for event in model.getListOfEvents():
         eid = event.getId()
         if event.isSetDelay():
@@ -1066,24 +965,8 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
                 f"the trigger of the event '{eid}', which is not persistent"
             )
     for where, ast in sbml_maths(model):
-        if reads_delay(ast):
-            raise unsupported(f"the delay csymbol in the {where}")
-        if _reads_rate_of(ast):
+        if reads_rate_of(ast):
             raise unsupported(f"the csymbol rateOf in the {where}")
-
-
-def _reads_rate_of(math_: libsbml.ASTNode | None) -> bool:
-    """Whether a math reads the csymbol rateOf, by its type or its definition URL."""
-    stack = [math_] if math_ is not None else []
-    while stack:
-        node = stack.pop()
-        if (
-            node.getType() == libsbml.AST_FUNCTION_RATE_OF
-            or node.getDefinitionURLString() == RATE_OF_URL
-        ):
-            return True
-        stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
-    return False
 
 
 def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
@@ -1099,19 +982,23 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
 
     Raises:
         ValueError: if the model has an entity of the id of a parameter of
-            sbmlsim.
+            sbmlsim, or a model of a level before 3 cannot be converted to
+            level 3.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    if doc.getLevel() < 3 and not doc.setLevelAndVersion(3, 2, False):
+        # the initial assignments and the attributes of the triggers which
+        # sbmlsim sets are elements of level 3 (initial assignments from
+        # level 2 version 2), libsbml converts the semantics of the levels
+        raise ValueError(
+            f"The model '{label}' of level {doc.getLevel()} version "
+            f"{doc.getVersion()} cannot be converted to SBML level 3 version 2 "
+            f"for AMICI."
+        )
     model: libsbml.Model = doc.getModel()
     level = doc.getLevel()
     rules = symbols.assignment_rules
-    factors = {
-        s.getConversionFactor()
-        for s in model.getListOfSpecies()
-        if s.isSetConversionFactor()
-    }
-    if model.isSetConversionFactor():
-        factors.add(model.getConversionFactor())
+    factors = conversion_factors(model)
     event_targets = {
         assignment.getVariable()
         for event in model.getListOfEvents()
@@ -1296,7 +1183,7 @@ def cache_key(sbml: str) -> str:
     """Get the key of a compiled model in the cache.
 
     The SHA-256 of the SBML AMICI compiles, the version of AMICI, the
-    version and the implementation of python, the options of the
+    version and the implementation of python, the machine, the options of the
     compilation and `CACHE_FORMAT`.
 
     Args:
@@ -1312,6 +1199,7 @@ def cache_key(sbml: str) -> str:
         str(amici.__version__),
         sys.version,
         sys.implementation.cache_tag or "",
+        platform.machine(),
         repr(sorted(IMPORT_OPTIONS.items())),
         str(CACHE_FORMAT),
     ):
@@ -1353,6 +1241,12 @@ def compiled_dir(sbml: str, label: str = "model") -> Path:
     root.mkdir(parents=True, exist_ok=True)
     with _locked(root / f"{key}.lock"):
         if not target.is_dir():
+            # the directories of a compilation of the key which did not end,
+            # e.g. of a process which was killed; no other process compiles
+            # the key while the lock is held
+            for left in root.glob(f"{key}.*"):
+                if left.is_dir():
+                    shutil.rmtree(left, ignore_errors=True)
             _compile(sbml, key, target, label)
     return target
 
@@ -1391,9 +1285,17 @@ def _compile(sbml: str, key: str, target: Path, label: str) -> None:
 
     Raises:
         ValueError: if AMICI cannot import the model.
-        RuntimeError: if AMICI fails to compile the model.
+        RuntimeError: if a tool of the build is missing, or AMICI fails to
+            compile the model.
     """
     amici = import_amici()
+    sbml_errors = (
+        importlib.import_module("amici.importers.utils").SBMLException,
+        NotImplementedError,
+        ValueError,
+        KeyError,
+        TypeError,
+    )
     name = module_name(key)
     building = Path(tempfile.mkdtemp(prefix=f"{key}.", dir=target.parent))
     logger.info("AMICI compiles the model '%s' into '%s'.", label, target)
@@ -1401,7 +1303,7 @@ def _compile(sbml: str, key: str, target: Path, label: str) -> None:
     try:
         try:
             importer = amici.SbmlImporter(sbml, from_file=False)
-        except Exception as err:
+        except sbml_errors as err:
             raise ValueError(f"AMICI cannot import the model '{label}': {err}") from err
         # AMICI prints the output of a failed build, which the error carries
         with (
@@ -1409,16 +1311,33 @@ def _compile(sbml: str, key: str, target: Path, label: str) -> None:
             _quiet(),
             contextlib.redirect_stdout(io.StringIO()),
         ):
+            if shutil.which(BUILD_TOOL) is None:
+                raise RuntimeError(
+                    f"AMICI builds a model with '{BUILD_TOOL}', which is not on the "
+                    f"path; it is part of the extra amici, `pip install "
+                    f"sbmlsim[amici]`."
+                )
             try:
                 importer.sbml2amici(
                     name, building, verbose=logging.ERROR, **IMPORT_OPTIONS
                 )
             except subprocess.CalledProcessError as err:
                 output = err.output.decode("utf-8", "replace") if err.output else ""
+                missing = re.search(r"Required command '([^']+)' not found", output)
+                if missing:
+                    raise RuntimeError(
+                        f"AMICI builds a model with '{missing.group(1)}', which is "
+                        f"not on the path."
+                    ) from err
                 raise RuntimeError(
                     f"AMICI fails to compile the model '{label}': {output[-2000:]}"
                 ) from err
-            except Exception as err:
+            except OSError as err:
+                raise RuntimeError(
+                    f"AMICI cannot build the model '{label}', a tool of the build "
+                    f"is missing or fails: {err}"
+                ) from err
+            except sbml_errors as err:
                 raise ValueError(
                     f"AMICI cannot import the model '{label}': {err}"
                 ) from err

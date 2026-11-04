@@ -14,9 +14,10 @@ import logging
 import math
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Mapping, Sequence
+from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar, TypedDict
+from typing import TYPE_CHECKING, Any, ClassVar, Protocol, TypedDict
 
 import libsbml
 from pint.facets.plain import PlainUnit
@@ -626,13 +627,304 @@ def sbml_maths(model: libsbml.Model) -> Iterator[tuple[str, libsbml.ASTNode]]:
 #: the definition URL of the delay csymbol
 DELAY_URL = "http://www.sbml.org/sbml/symbols/delay"
 
+#: the definition URL of the csymbol rateOf
+RATE_OF_URL = "http://www.sbml.org/sbml/symbols/rateOf"
 
-def reads_delay(math: libsbml.ASTNode | None) -> bool:
-    """Whether a math reads the delay csymbol, found by its definition URL."""
-    stack = [math] if math is not None else []
+
+def reads_csymbol(math_: libsbml.ASTNode | None, url: str, kind: int) -> bool:
+    """Whether a math reads a csymbol, found by its type or its definition URL.
+
+    libsbml gives some csymbols no definition URL, e.g. rateOf, so a node is
+    the csymbol if it has its type or its URL.
+
+    Args:
+        math_: the math, `None` for none.
+        url: the definition URL of the csymbol.
+        kind: the type of libsbml of the csymbol, e.g. `AST_FUNCTION_DELAY`.
+
+    Returns:
+        Whether a node of the math is the csymbol.
+    """
+    stack = [math_] if math_ is not None else []
     while stack:
         node = stack.pop()
-        if node.getDefinitionURLString() == DELAY_URL:
+        if node.getType() == kind or node.getDefinitionURLString() == url:
             return True
         stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
     return False
+
+
+def reads_delay(math_: libsbml.ASTNode | None) -> bool:
+    """Whether a math reads the delay csymbol, see `reads_csymbol`."""
+    return reads_csymbol(math_, DELAY_URL, libsbml.AST_FUNCTION_DELAY)
+
+
+def reads_rate_of(math_: libsbml.ASTNode | None) -> bool:
+    """Whether a math reads the csymbol rateOf, see `reads_csymbol`."""
+    return reads_csymbol(math_, RATE_OF_URL, libsbml.AST_FUNCTION_RATE_OF)
+
+
+def conversion_factors(model: libsbml.Model) -> set[str]:
+    """Get the conversion factors of a model and of its species, constants of SBML."""
+    factors = {
+        s.getConversionFactor()
+        for s in model.getListOfSpecies()
+        if s.isSetConversionFactor()
+    }
+    if model.isSetConversionFactor():
+        factors.add(model.getConversionFactor())
+    return factors
+
+
+def rate_rule_entities(model: libsbml.Model, symbols: ModelSymbols) -> list[str]:
+    """Get the parameters and compartments of rate rules, in the order of the SBML.
+
+    The states an engine integrates after its species, see
+    `SBMLModel.state_ids`.
+    """
+    return [
+        e.getId()
+        for e in (*model.getListOfParameters(), *model.getListOfCompartments())
+        if e.getId() in symbols.rate_rules
+    ]
+
+
+class Feature(StrEnum):
+    """A feature of SBML which an engine other than roadrunner may not simulate."""
+
+    ALGEBRAIC_RULE = "algebraic rule"
+    STOICHIOMETRY_MATH = "stoichiometry math"
+    NON_CONSTANT_REFERENCE = "non-constant species reference"
+    REFERENCE_INITIAL_ASSIGNMENT = "initial assignment of a species reference"
+    DELAY = "delay csymbol"
+
+
+def variable_features(model: libsbml.Model) -> Iterator[tuple[Feature, str]]:
+    """Get the features of a model which COPASI and AMICI do not simulate as roadrunner.
+
+    The algebraic rules, the stoichiometry maths, the species references
+    which are not constant, the initial assignments of species references
+    and the delay csymbol, each with its element for a message, e.g. `the
+    non-constant species reference 'B_sr' of the reaction 'J1'`; an engine
+    adds why it does not simulate it.
+
+    Args:
+        model: the model of the SBML.
+
+    Yields:
+        The feature and its element.
+    """
+    for rule in model.getListOfRules():
+        if rule.isAlgebraic():
+            yield Feature.ALGEBRAIC_RULE, "an algebraic rule"
+    level = model.getLevel()
+    references: set[str] = set()
+    for reaction in model.getListOfReactions():
+        for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts()):
+            if sr.isSetId():
+                references.add(sr.getId())
+            if sr.isSetStoichiometryMath():
+                yield (
+                    Feature.STOICHIOMETRY_MATH,
+                    f"the stoichiometry math of the species '{sr.getSpecies()}' in "
+                    f"the reaction '{reaction.getId()}'",
+                )
+            if level >= 3 and sr.isSetConstant() and not sr.getConstant():
+                name = sr.getId() or sr.getSpecies()
+                yield (
+                    Feature.NON_CONSTANT_REFERENCE,
+                    f"the non-constant species reference '{name}' of the reaction "
+                    f"'{reaction.getId()}'",
+                )
+    for assignment in model.getListOfInitialAssignments():
+        if assignment.getSymbol() in references:
+            yield (
+                Feature.REFERENCE_INITIAL_ASSIGNMENT,
+                f"an initial assignment of the species reference "
+                f"'{assignment.getSymbol()}'",
+            )
+    for where, ast in sbml_maths(model):
+        if reads_delay(ast):
+            yield Feature.DELAY, f"the delay csymbol in the {where}"
+
+
+#: the settings of roadrunner which COPASI and AMICI take as well
+PORTABLE_SETTINGS = frozenset(
+    {
+        "absolute_tolerance",
+        "maximum_num_steps",
+        "maximum_time_step",
+        "relative_tolerance",
+    }
+)
+
+#: the settings of roadrunner which COPASI and AMICI have no equivalent of,
+#: ignored with a warning: the settings of CVODE which they do not set, e.g.
+#: the method (both integrate stiff systems) and the optimization of the
+#: compilation of roadrunner
+ROADRUNNER_ONLY_SETTINGS = frozenset(
+    {
+        "initial_time_step",
+        "jit_optimization",
+        "max_output_rows",
+        "maximum_adams_order",
+        "maximum_bdf_order",
+        "minimum_time_step",
+        "multiple_steps",
+        "stiff",
+        "variable_step_size",
+    }
+)
+
+
+class EngineSettings:
+    """The settings of roadrunner in an engine which takes `PORTABLE_SETTINGS`.
+
+    Checks and validates the settings and reports, once per model, the ones
+    the engine ignores and an absolute tolerance per kind which it takes as
+    one number.
+    """
+
+    def __init__(
+        self, engine: str, integrator: str, label: str, log: logging.Logger
+    ) -> None:
+        """Create the settings of a model.
+
+        Args:
+            engine: the name of the engine in a message, e.g. `COPASI`.
+            integrator: the name of its integrator.
+            label: the name of the model in a message.
+            log: the logger of the engine, which reports.
+        """
+        self.engine = engine
+        self.integrator = integrator
+        self.label = label
+        self._log = log
+        self._ignored: set[str] = set()
+        self._tolerance_reported = False
+
+    def checked(
+        self, settings: Mapping[str, IntegratorSetting]
+    ) -> dict[str, float | int | AbsoluteTolerance]:
+        """Check settings and get the ones the engine takes, validated.
+
+        A setting of roadrunner which the engine has no equivalent of is
+        reported once per model and left out.
+
+        Args:
+            settings: the settings by their names in roadrunner.
+
+        Returns:
+            The settings of `PORTABLE_SETTINGS`: the absolute tolerance an
+            `AbsoluteTolerance`, the maximum number of steps an integer, the
+            others floats.
+
+        Raises:
+            ValueError: if neither the engine nor roadrunner has a setting of
+                a name, or a value is not valid.
+        """
+        unknown = sorted(set(settings) - PORTABLE_SETTINGS - ROADRUNNER_ONLY_SETTINGS)
+        if unknown:
+            raise ValueError(
+                f"The integrator '{self.integrator}' of {self.engine} has no settings "
+                f"{unknown}, its settings are {sorted(PORTABLE_SETTINGS)}."
+            )
+        ignored = sorted((set(settings) & ROADRUNNER_ONLY_SETTINGS) - self._ignored)
+        if ignored:
+            self._ignored.update(ignored)
+            self._log.warning(
+                "%s has no equivalent of the settings %s of roadrunner, the "
+                "model '%s' ignores them.",
+                self.engine,
+                ignored,
+                self.label,
+            )
+        checked: dict[str, float | int | AbsoluteTolerance] = {}
+        for key, value in settings.items():
+            if key not in PORTABLE_SETTINGS:
+                continue
+            if key == "absolute_tolerance":
+                if isinstance(value, bool):
+                    raise ValueError("The absolute tolerance is a number.")
+                checked[key] = AbsoluteTolerance.of(value)
+            elif key == "maximum_num_steps":
+                if (
+                    isinstance(value, bool | AbsoluteTolerance)
+                    or not float(value).is_integer()
+                    or value < 1
+                ):
+                    raise ValueError(
+                        f"The maximum number of steps is a positive integer, not "
+                        f"{value}."
+                    )
+                checked[key] = int(value)
+            else:
+                if isinstance(value, bool | AbsoluteTolerance) or not value >= 0:
+                    raise ValueError(f"The setting '{key}' is a number, not {value}.")
+                checked[key] = float(value)
+        return checked
+
+    def scalar_tolerance(
+        self, tolerance: AbsoluteTolerance, factor: float = 1.0
+    ) -> float:
+        """Get the one absolute tolerance of the engine of a tolerance per kind.
+
+        The smallest tolerance of the kinds and of the overrides, reported
+        once per model when they differ, times a factor of the engine.
+
+        Args:
+            tolerance: the tolerance per kind.
+            factor: the factor of the engine, e.g. `COPASI_ATOL_FACTOR`.
+
+        Returns:
+            The absolute tolerance.
+        """
+        values = {tolerance.amount, tolerance.concentration, tolerance.other}
+        values |= set(dict(tolerance.ids).values())
+        smallest = min(values)
+        if len(values) > 1 and not self._tolerance_reported:
+            self._tolerance_reported = True
+            times = f", times {factor}" if factor != 1.0 else ""
+            self._log.warning(
+                "%s has one absolute tolerance, the model '%s' integrates "
+                "with the smallest one of %s, %s%s.",
+                self.engine,
+                self.label,
+                tolerance,
+                smallest,
+                times,
+            )
+        return smallest * factor
+
+
+class _ValuesOf(Protocol):
+    """A model whose current values are read and set in the selections of roadrunner."""
+
+    def value(self, selection: str) -> float:
+        """Get the current value of a selection."""
+        ...
+
+    def set_value(self, selection: str, value: float) -> None:
+        """Set the current value of a selection."""
+        ...
+
+
+class EngineValues:
+    """The current values of a model of an engine in the selections of roadrunner.
+
+    The `ModelValues` of `sbmlsim.simulator.changes`, with which an executor
+    reads and sets values between two integrations, of a model with `value`
+    and `set_value`, e.g. `CopasiSBMLModel`.
+    """
+
+    def __init__(self, model: _ValuesOf) -> None:
+        """Get the values of a model."""
+        self._model = model
+
+    def getValue(self, selection: str, /) -> float:
+        """Get the current value of a selection, see the `value` of the model."""
+        return self._model.value(selection)
+
+    def setValue(self, selection: str, value: float, /) -> None:
+        """Set the current value of a selection, see the `set_value` of the model."""
+        self._model.set_value(selection, value)
