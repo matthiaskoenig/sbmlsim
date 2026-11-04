@@ -3511,6 +3511,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         quantities: Sequence[Quantity],
         evaluated: set[int],
         x: np.ndarray,
+        factors: Mapping[str, float] | None = None,
     ) -> dict[int, DataTimesResult | GroupResult | None]:
         """Simulate the groups of fit mappings for the given parameters.
 
@@ -3536,6 +3537,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 parameter vector, for the derived changes; empty without them.
             evaluated: indices of the fit mappings which are evaluated.
             x: parameter values in the units of the parameters.
+            factors: the factors of the values of targets of a subject, see
+                `evaluated_plan`.
 
         Returns:
             The result of the simulation of every evaluated mapping, `None` if
@@ -3551,14 +3554,16 @@ class OptimizationProblem(ObjectJSONEncoder):
 
             result: DataTimesResult | GroupResult | None
             if graph is not None:
-                result = self._simulate_points(k_group, graph, x, quantities)
+                result = self._simulate_points(k_group, graph, x, quantities, factors)
                 for k in indices:
                     results[k] = result
                 continue
             # a simulation, or the one point of a scan which a group without
             # observables reads, see `_observation_of`
             result = self._simulate_at_data(
-                k_group, self.evaluated_plan(k_group, x, quantities), x
+                k_group,
+                self.evaluated_plan(k_group, x, quantities, factors=factors),
+                x,
             )
 
             for k in indices:
@@ -3633,6 +3638,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         graph: ObservableGraph,
         x: np.ndarray,
         quantities: Sequence[Quantity],
+        factors: Mapping[str, float] | None = None,
     ) -> GroupResult | None:
         """Simulate the points of a group which reads observables.
 
@@ -3642,6 +3648,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             x: parameter values in the units of the parameters.
             quantities: the quantity of every parameter, for the derived
                 changes; empty without them.
+            factors: the factors of the values of targets of a subject, see
+                `evaluated_plan`.
 
         Returns:
             The time and the outputs of every point, `None` if the integration
@@ -3649,7 +3657,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         points = self._group_points[k_group]
         plans = [
-            self.evaluated_plan(k_group, x, quantities, point=i)
+            self.evaluated_plan(k_group, x, quantities, point=i, factors=factors)
             for i in range(1 if points is None else points.size)
         ]
         model = self.models[self.mapping_groups[k_group][0]]
@@ -3719,13 +3727,17 @@ class OptimizationProblem(ObjectJSONEncoder):
         quantities: Sequence[Quantity] | None = None,
         point: int = 0,
         curve: bool = False,
+        factors: Mapping[str, float] | None = None,
     ) -> Plan:
         """Get the plan a group is simulated with for the given parameters.
 
         The values of the parameters are applied first; for a group of a scan
         the values of the point follow, so a dimension wins over a fitted
         value of its target; the derived changes come last and read the
-        values of the point, e.g. a covariate of a population dimension.
+        values of the point, e.g. a covariate of a population dimension. The
+        factors of a subject apply last, to the values of their targets the
+        plan has then, see `Plan.scaled`, and to the value of the model of a
+        target which it does not set.
 
         Args:
             k_group: index of the simulation group.
@@ -3737,10 +3749,19 @@ class OptimizationProblem(ObjectJSONEncoder):
             curve: the plan of the output of the simulation of a group which
                 outputs the times of its data, the curve of its evaluation,
                 see `residuals`.
+            factors: target -> the factor of its value, the inputs of a
+                subject relative to the inputs of the simulation, see
+                `sbmlsim.fit.variability`.
 
         Returns:
             The plan of the group with the values of the parameters, of the
-            point and the derived changes in the units of the model.
+            point and the derived changes in the units of the model, times the
+            factors.
+
+        Raises:
+            ValueError: if the group keeps its output and a curve is asked
+                for, or a target of the factors is set by a formula or is no
+                target of the model, see `Plan.scaled`.
         """
         values: dict[str, float] = {
             target: float(x[index]) * factor
@@ -3760,6 +3781,20 @@ class OptimizationProblem(ObjectJSONEncoder):
             if not quantities:
                 _, quantities = self._simulator_and_quantities(np.asarray(x))
             plan = plan.with_values(self._derived_changes(k_group, plan, quantities))
+        if factors:
+            model = self.models[self.mapping_groups[k_group][0]]
+            defaults: dict[str, float] = {}
+            for target in factors:
+                if target in plan.assigned:
+                    continue
+                try:
+                    defaults[target] = model.loaded_value(target)
+                except KeyError as err:
+                    raise ValueError(
+                        f"'{self.opid}': the factor of '{target}' has no target "
+                        f"in the model of the group {k_group}."
+                    ) from err
+            plan = plan.scaled(factors, defaults)
         return plan
 
     def _derived_changes(
@@ -4043,7 +4078,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         return simulator, quantities
 
     def predictions(
-        self, x: np.ndarray, indices: Sequence[int] | None = None
+        self,
+        x: np.ndarray,
+        indices: Sequence[int] | None = None,
+        *,
+        factors: Mapping[str, float] | None = None,
     ) -> dict[int, np.ndarray]:
         """Get the simulation of fit mappings at their reference data.
 
@@ -4054,6 +4093,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             x: values of the parameters in the units of the model.
             indices: indices of the fit mappings, the training data by
                 default.
+            factors: the factors of the values of targets of a subject, see
+                `evaluations`.
 
         Returns:
             The prediction at the reference data of every mapping, by the
@@ -4061,11 +4102,15 @@ class OptimizationProblem(ObjectJSONEncoder):
         """
         return {
             k: evaluation.prediction
-            for k, evaluation in self.evaluations(x, indices).items()
+            for k, evaluation in self.evaluations(x, indices, factors=factors).items()
         }
 
     def evaluations(
-        self, x: np.ndarray, indices: Sequence[int] | None = None
+        self,
+        x: np.ndarray,
+        indices: Sequence[int] | None = None,
+        *,
+        factors: Mapping[str, float] | None = None,
     ) -> dict[int, MappingEvaluation]:
         """Get the simulation of fit mappings at their reference data.
 
@@ -4081,6 +4126,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                 linear scale, in the order of the parameters of the problem.
             indices: indices of the fit mappings, the training data by
                 default.
+            factors: target -> the factor of its value in every simulation,
+                the inputs of a subject relative to the inputs of the
+                simulations (e.g. a body weight 1.2 times the one of every
+                study group), applied after the parameters, see
+                `evaluated_plan`; `None` for the simulations as defined.
 
         Returns:
             The prediction and the selections of the noise model at the
@@ -4089,8 +4139,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         Raises:
             ValueError: if the problem is not initialized, if no simulator is
                 set, if `x` does not have a value for every parameter, if an
-                index is not the index of a fit mapping or if the integration
-                of a simulation failed.
+                index is not the index of a fit mapping, if the integration
+                of a simulation failed or a target of the factors cannot be
+                scaled, see `Plan.scaled`.
         """
         values = np.asarray(x, dtype=float)
         if values.shape != (len(self.pids),):
@@ -4110,7 +4161,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"'{len(valid) - 1}'."
             )
         results = self._simulate_groups(
-            simulator=simulator, quantities=quantities, evaluated=evaluated, x=values
+            simulator=simulator,
+            quantities=quantities,
+            evaluated=evaluated,
+            x=values,
+            factors=factors,
         )
 
         evaluations: dict[int, MappingEvaluation] = {}

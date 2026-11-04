@@ -108,6 +108,7 @@ Parameter fitting, see [Parameter fitting](../fitting.md).
 | [fit.metrics](fit.metrics.md) | `FitMetrics` and the metrics of a fit: PRED, IPRED, residuals, MSE, RMSE, R² and AIC |
 | [fit.identifiability](fit.identifiability.md) | `profile_likelihood`, the confidence intervals and the classification of the parameters from the profiles |
 | [fit.fisher](fit.fisher.md) | `fisher_information`, the standard errors, correlations and constrained directions from one jacobian |
+| [fit.variability](fit.variability.md) | `Variability`, the relative distributions of the subjects of a fit problem; `subject_predictions` and `predictive_check`, the visual predictive check of the mappings with virtual groups |
 | [fit.helpers](fit.helpers.md) | helpers for fitting |
 | [fit.petab_omex](fit.petab_omex.md) | COMBINE archives of PEtab v2 problems |
 

@@ -270,6 +270,15 @@ class Plan:
             )
 
     @property
+    def assigned(self) -> frozenset[str]:
+        """Get the targets the plan assigns, before the initialization, in the steady state or at a time."""
+        targets = {a.target for e in self.events for a in e.assignments}
+        targets |= {a.target for a in self.preinit}
+        if self.steady_state is not None:
+            targets |= {a.target for a in self.steady_state.preinit}
+        return frozenset(targets)
+
+    @property
     def change_times(self) -> tuple[float, ...]:
         """Get the times of the changes after the start, sorted.
 
@@ -362,16 +371,82 @@ class Plan:
         steady_state = self.steady_state
         if steady_state is not None:
             steady_state = replace(steady_state, preinit=replaced(steady_state.preinit))
-        set_targets = {a.target for e in self.events for a in e.assignments}
-        set_targets |= {a.target for a in self.preinit}
-        if self.steady_state is not None:
-            set_targets |= {a.target for a in self.steady_state.preinit}
+        set_targets = self.assigned
         preinit = list(replaced(self.preinit))
         for target, value in values.items():
             if target in set_targets:
                 continue
             preinit.append(
                 Assignment(target, self.symbols.kind(target), value=float(value))
+            )
+        return replace(
+            self, preinit=tuple(preinit), events=events, steady_state=steady_state
+        )
+
+    def scaled(
+        self, factors: Mapping[str, float], defaults: Mapping[str, float]
+    ) -> Plan:
+        """Get the plan with the values of targets multiplied by factors.
+
+        Every value the plan assigns to a target, before the initialization,
+        in the steady state and at every time, is multiplied by the factor of
+        the target, so a subject of a variability keeps the inputs of its
+        simulation relative to each other; a target which the plan does not
+        set gets its default times the factor before the initialization.
+
+        Args:
+            factors: target -> its factor.
+            defaults: target -> its value in the unit of the model, the value
+                of the model, for every target of `factors` which the plan
+                does not set.
+
+        Returns:
+            The new plan, this one is not changed.
+
+        Raises:
+            ValueError: if the plan sets a target of `factors` by a formula,
+                which has no value to scale, a target the plan does not set
+                has no default, or a target is not a target of the model.
+        """
+        if not factors:
+            return self
+
+        def scaled(assignments: tuple[Assignment, ...]) -> tuple[Assignment, ...]:
+            result: list[Assignment] = []
+            for a in assignments:
+                if a.target not in factors:
+                    result.append(a)
+                    continue
+                if a.value is None:
+                    raise ValueError(
+                        f"The plan sets '{a.target}' by the formula '{a.formula}', "
+                        f"which has no value to scale by its factor."
+                    )
+                result.append(replace(a, value=a.value * float(factors[a.target])))
+            return tuple(result)
+
+        events = tuple(
+            PlanEvent(event.time, scaled(event.assignments)) for event in self.events
+        )
+        steady_state = self.steady_state
+        if steady_state is not None:
+            steady_state = replace(steady_state, preinit=scaled(steady_state.preinit))
+        set_targets = self.assigned
+        preinit = list(scaled(self.preinit))
+        for target, factor in factors.items():
+            if target in set_targets:
+                continue
+            if target not in defaults:
+                raise ValueError(
+                    f"The plan does not set '{target}' and has no default of it "
+                    f"to scale by its factor."
+                )
+            preinit.append(
+                Assignment(
+                    target,
+                    self.symbols.kind(target),
+                    value=float(defaults[target]) * float(factor),
+                )
             )
         return replace(
             self, preinit=tuple(preinit), events=events, steady_state=steady_state

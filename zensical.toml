@@ -122,6 +122,7 @@ nav = [
       { "metrics" = "api/fit.metrics.md" },
       { "evaluation" = "api/fit.evaluation.md" },
       { "fisher" = "api/fit.fisher.md" },
+      { "variability" = "api/fit.variability.md" },
       { "identifiability" = "api/fit.identifiability.md" },
       { "sampling" = "api/fit.sampling.md" },
       { "helpers" = "api/fit.helpers.md" },
