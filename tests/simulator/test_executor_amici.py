@@ -1145,7 +1145,9 @@ def assert_equal_after_event(
 
 
 @pytest.mark.parametrize("times", [[0, 10, 20, 30], None])
-@pytest.mark.parametrize("condition", ["time <= tend", "time - tend <= 0"])
+@pytest.mark.parametrize(
+    "condition", ["time <= tend", "time - tend <= 0", "(time - tend) * 1e10 <= 0"]
+)
 def test_an_infusion_ended_by_a_piecewise_at_the_time_of_a_dose(
     condition: str, times: list[float] | None
 ) -> None:
@@ -1156,7 +1158,8 @@ def test_an_infusion_ended_by_a_piecewise_at_the_time_of_a_dose(
     shifts it, so AMICI finds the crossing right after the start, see the
     module. The shift of `time - tend <= 0` is sized by the terms `time` and
     `tend`, not by the operands 0, so the explicit root of AMICI at
-    `tend + shift` is after `tend`.
+    `tend + shift` is after `tend`; the one of the product by its change
+    over the resolution of the time, so the root is not absorbed by `1e10`.
     """
     simulation = Simulation(end=30, times=times)
     model = INFUSION.replace("CONDITION", condition)
@@ -1231,32 +1234,55 @@ def test_a_piecewise_of_a_state_set_to_its_threshold_by_a_change(
     assert_agree(amici, roadrunner, times, changes=[5.0])
 
 
-@pytest.mark.parametrize("times", [[0, 5, 20], None])
+@pytest.mark.parametrize("output", ["times", "steps"])
 @pytest.mark.parametrize(
-    ("condition", "expected"),
+    ("condition", "end", "expected"),
     [
-        ("time > tlag", 30.0),
-        ("time >= tlag", 30.0),
-        ("time <= tlag", 10.0),
-        ("time < tlag", 10.0),
+        ("time > tlag", 20.0, 30.0),
+        ("time >= tlag", 20.0, 30.0),
+        ("time <= tlag", 20.0, 10.0),
+        ("time < tlag", 20.0, 10.0),
+        ("time / 86400 > tlag", 172800.0, 259200.0),
+        ("time * 1e-6 > tlag", 20.0, 30.0),
     ],
-    ids=["gt", "geq", "leq", "lt"],
+    ids=["gt", "geq", "leq", "lt", "days", "micro"],
 )
 def test_a_piecewise_of_the_time_at_the_start(
-    condition: str, expected: float, times: list[float] | None
+    condition: str, end: float, expected: float, output: str
 ) -> None:
     """A comparison of the time at its threshold at the start 0 switches right after it.
 
     A lag of 0 is a common default of a model: the shift of the comparison
-    is at least the resolution of the time, so the explicit root of AMICI
-    is after the start 0 (a shift of the units in the last place of 0 is
-    behind it for CVODES).
+    is at least its change over the resolution of the time, so the explicit
+    root of AMICI is after the start 0 (a shift of the units in the last
+    place of 0 is behind it for CVODES) and a comparison of the scaled time
+    turns at most the resolution of the time late.
     """
+    times = [0, end / 4, end] if output == "times" else None
     model = SWITCH_AT_THE_START.replace("CONDITION", condition)
+    amici, roadrunner = both(
+        sbml(model), Simulation(end=end, times=times), ["time", "A"]
+    )
+    np.testing.assert_allclose(amici["A"][-1], expected, rtol=1e-6)
+    assert_agree(amici, roadrunner, times)
+
+
+@pytest.mark.parametrize("times", [[0, 5, 20], None])
+def test_a_piecewise_of_a_state_against_the_scaled_time(
+    times: list[float] | None,
+) -> None:
+    """`C > 1e-12 * time` with `C' = 2e-12` from 0 turns right after the start.
+
+    The shift of the comparison is its change over the resolution of the
+    time, in the units of `C`, not the resolution of the time itself, which
+    `C` would never reach.
+    """
+    model = "model scaled\n  C = 0\n  C' = 2e-12\n  A = 0\n"
+    model += "  A' = piecewise(1, C > 1e-12 * time, 0)\nend"
     amici, roadrunner = both(
         sbml(model), Simulation(end=20, times=times), ["time", "A"]
     )
-    np.testing.assert_allclose(amici["A"][-1], expected, rtol=1e-6)
+    np.testing.assert_allclose(amici["A"][-1], 20.0, rtol=1e-6)
     assert_agree(amici, roadrunner, times)
 
 

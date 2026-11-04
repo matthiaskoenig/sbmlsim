@@ -60,10 +60,11 @@ It has the semantics of the executor of roadrunner, see
    as well (`AmiciSBMLModel.switches`); before every integration from a
    time at which it is exactly at its threshold, e.g. from the time `tend`
    after an event or a change there, the executor shifts it the same way
-   (`_Course._arm_switches`, for a comparison of the time by at least the
-   resolution of the time, so the explicit root of AMICI at the shifted
-   time is after the start, also `time > tlag` with `tlag = 0` at the start
-   0), so it keeps its value until the operands move by the shift in the
+   (`_Course._arm_switches`, for a comparison of the time by at least its
+   change over the resolution of the time, so the explicit root of AMICI at
+   the shifted time is after the start, also `time > tlag` with `tlag = 0`
+   at the start 0, and the comparison turns at most about the resolution
+   late whatever its scale, `time/86400 > tlag`), so it keeps its value until the operands move by the shift in the
    direction which changes it, `time <= tend` false right after `tend`, as
    roadrunner evaluates it at every step.
 6. AMICI finds the root of a trigger where it crosses its threshold, so the
@@ -572,10 +573,14 @@ class _Course:
         the additive terms of its operands, so that the shifted operand
         differs from the operand in the arithmetic of the terms (`time - 10`
         compared with 0 at the time 10 is shifted by the units of 10, not of
-        0), and for an operand which reads the time at least the resolution
-        of the time at the time, so that the explicit root of AMICI at the
-        shifted time, e.g. `tlag + shift` with `tlag = 0` at the start 0, is
-        after the time for CVODES; at least `SMALLEST_SHIFT`.
+        0), and for an operand which reads the time at least the change of
+        the difference of the operands over the resolution of the time at
+        the time, the time advanced and the states held (`time/86400 > tlag`
+        is shifted by the resolution over 86400), so that the explicit root
+        of AMICI at the shifted time, e.g. `tlag + shift` with `tlag = 0` at
+        the start 0, is after the time for CVODES and the comparison turns
+        at most about the resolution of the time late whatever its scale;
+        at least `SMALLEST_SHIFT`.
 
         Args:
             comparisons: the compiled comparisons, see `_compile_operands`.
@@ -586,17 +591,23 @@ class _Course:
         comparison = comparisons[j]
         assert comparison is not None
         values = self.model.values
-        magnitude = max(
-            abs(
-                f.evaluate(
-                    [time if s == "time" else values.getValue(s) for s in f.symbols]
-                )
+
+        def evaluate(f: CompiledFormula, at: float) -> float:
+            return f.evaluate(
+                [at if s == "time" else values.getValue(s) for s in f.symbols]
             )
-            for f in (comparison.left, *comparison.terms)
+
+        magnitude = max(
+            abs(evaluate(f, time)) for f in (comparison.left, *comparison.terms)
         )
         shift = max(THRESHOLD_ULPS * float(np.spacing(magnitude)), SMALLEST_SHIFT)
         if comparison.reads_time:
-            shift = max(shift, self._ahead(time))
+            later = time + self._ahead(time)
+            difference = [
+                evaluate(comparison.left, at) - evaluate(comparison.right, at)
+                for at in (time, later)
+            ]
+            shift = max(shift, abs(difference[1] - difference[0]))
         return shift
 
     def _held(self, time: float) -> list[tuple[int, float, float]]:
