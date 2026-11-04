@@ -17,6 +17,11 @@ the report is created from, and logs the messages of the workers in the order
 of the experiments. A run is serial when an experiment cannot be sent to a
 worker, see `ExperimentRunner._serial_reason`.
 
+The models of the experiments are loaded in the engine of the simulator of the
+runner, roadrunner without one, see `ExperimentRunner.engine`: a simulator of
+another engine loads them again, and a worker loads them in the engine of the
+run.
+
 A run shows its progress on the console and ends with a table of the seconds
 every experiment took in every phase, see `sbmlsim.experiment.progress`: the
 phases are measured where they run, in a worker too, and the result of every
@@ -26,7 +31,6 @@ of the parent forwards to the display.
 """
 
 import contextlib
-import copy
 import dataclasses
 import inspect
 import logging
@@ -41,11 +45,12 @@ from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.queues import Queue
 from pathlib import Path
-from typing import Any, Literal, cast, override
+from typing import Any, Literal, NamedTuple, cast, override
 
 import matplotlib
 
 from sbmlsim import parallel
+from sbmlsim.engine import Engine, resolve_engine
 from sbmlsim.experiment import progress
 from sbmlsim.experiment.experiment import (
     DATASETS_DIR,
@@ -65,9 +70,9 @@ from sbmlsim.experiment.progress import (
     show_timings,
     total_seconds,
 )
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel
+from sbmlsim.model import AbstractModel, SBMLModel
 from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
-from sbmlsim.model.model_sbml import _is_hierarchical
+from sbmlsim.model.model_sbml import IntegratorSetting, _is_hierarchical, load_model
 from sbmlsim.plot import FigureSettings
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulation import Scan
@@ -92,24 +97,31 @@ EXPERIMENTS_PER_WORKER: int = 4
 FIGURE_COST: int = 30
 
 
-#: the model of an experiment, i.e. what decides whether two experiments can
-#: share one loaded roadrunner instance
-ModelKey = tuple[
-    tuple[str, str | None],
-    str,
-    tuple[tuple[str, str], ...],
-    tuple[tuple[str, float], ...],
-    tuple[str, ...] | None,
-]
+class ModelKey(NamedTuple):
+    """The model of an experiment in an engine, see `model_key`.
+
+    It decides whether two experiments can share one loaded model.
+    """
+
+    #: the engine the model is loaded in
+    engine: Engine
+    #: the source and, for a hierarchical model of inline SBML, its directory
+    identity: tuple[str, str | None]
+    language: str
+    changes: tuple[tuple[str, str], ...]
+    parameters: tuple[tuple[str, float], ...]
+    selections: tuple[str, ...] | None
 
 
-def model_key(abstract_model: AbstractModel) -> ModelKey:
+def model_key(
+    abstract_model: AbstractModel, engine: Engine | str = Engine.ROADRUNNER
+) -> ModelKey:
     """Get the key a loaded model is cached under.
 
     Two experiments share a loaded model when they resolve to the same source,
     the same language, the same changes, the same added parameters and the
-    same selections; the changes and the selections are part of it because
-    they are applied to the roadrunner instance when it is created. The source
+    same selections in the same engine; the changes and the selections are
+    part of it because they are applied to the model when it is loaded. The source
     of a file is its resolved path, the one of inline SBML its content and, for
     a hierarchical model, the directory its external models are resolved
     against, see `SBMLModel`. The key is
@@ -120,9 +132,11 @@ def model_key(abstract_model: AbstractModel) -> ModelKey:
 
     Args:
         abstract_model: the model of an experiment.
+        engine: the engine the model is loaded in.
 
     Returns:
-        The key, hashable and equal for two descriptions of the same model.
+        The key, hashable and equal for two descriptions of the same model in
+        the same engine.
     """
     changes = tuple(
         sorted((key, str(value)) for key, value in abstract_model.changes.items())
@@ -137,12 +151,39 @@ def model_key(abstract_model: AbstractModel) -> ModelKey:
     else:
         identity = (source.content, None)
     selections = abstract_model.selections
-    return (
-        identity,
-        str(abstract_model.language_type),
-        changes,
-        tuple(sorted(abstract_model.parameters.items())),
-        tuple(selections) if selections is not None else None,
+    return ModelKey(
+        engine=resolve_engine(engine),
+        identity=identity,
+        language=str(abstract_model.language_type),
+        changes=changes,
+        parameters=tuple(sorted(abstract_model.parameters.items())),
+        selections=tuple(selections) if selections is not None else None,
+    )
+
+
+def _description(model: AbstractModel) -> AbstractModel:
+    """Get the description of a model of an experiment, which the runner loads.
+
+    A model which the experiment loaded itself is loaded again as from its
+    description, with the unit registry and the optimization level of the
+    runner, in the engine of the runner.
+    """
+    if not isinstance(model, SBMLModel):
+        return model
+    source = model.source.content
+    if source is None:
+        source = model.source.path
+    if source is None:
+        raise ValueError("The model description has no resolved source.")
+    return AbstractModel(
+        source=source,
+        sid=model.sid,
+        name=model.name,
+        language_type=model.language_type,
+        base_path=model.base_path,
+        changes=model.changes,
+        selections=model.selections,
+        parameters=model.parameters,
     )
 
 
@@ -169,7 +210,8 @@ class ExperimentRunner:
                 e.g. for experiments whose models are absolute paths.
             data_path: path or paths of the datasets of the simulation
                 experiments, `None` for experiments without datasets of files.
-            simulator: the simulator of the tasks.
+            simulator: the simulator of the tasks, the models are loaded in
+                its engine, see `engine`.
             ureg: the unit registry of the experiments.
             on_error: what an error in the definition of an experiment does (its
                 models, datasets, simulations, tasks, data, figures, fit mappings
@@ -199,7 +241,9 @@ class ExperimentRunner:
             jit_optimization
         )
         self.models: dict[ModelKey, SBMLModel] = {}
-        self.simulator: Simulator | None = None
+        # before the experiments are initialized, which load the models in
+        # its engine
+        self.simulator: Simulator | None = simulator
         # the sids of the experiments in the order of their classes
         self._order: list[str] = []
         # the settings every experiment was created with, which a worker
@@ -217,17 +261,58 @@ class ExperimentRunner:
         self.initialize(classes, **kwargs)
         self.set_simulator(simulator)
 
+    @property
+    def engine(self) -> Engine:
+        """Get the engine the models are loaded in: the one of the simulator.
+
+        Roadrunner without a simulator.
+        """
+        return (
+            self.simulator.engine if self.simulator is not None else Engine.ROADRUNNER
+        )
+
     def set_simulator(self, simulator: Simulator | None) -> None:
-        """Set simulator on the runner and experiments."""
+        """Set the simulator on the runner and the experiments.
+
+        A simulator of another engine than the one of the loaded models loads
+        them again in its engine, the models of the runner and of every
+        experiment, see `sbmlsim.model.model_sbml.load_model`; a state set on
+        a model of the other engine is not carried over. A simulator of the
+        same engine keeps them. `None` keeps the simulator.
+        """
         if simulator is None:
             logger.debug(
                 "No simulator set in ExperimentRunner. This warning can be "
                 "ignored in parameter fitting."
             )
-        else:
-            self.simulator = simulator
-            for experiment in self.experiments.values():
-                experiment.simulator = simulator
+            return
+        self.simulator = simulator
+        self._load_models_in(simulator.engine)
+        for experiment in self.experiments.values():
+            experiment.simulator = simulator
+
+    def _load_models_in(self, engine: Engine) -> None:
+        """Load the models of another engine in the engine, see `set_simulator`."""
+        loaded: dict[int, SBMLModel] = {}
+        models: dict[ModelKey, SBMLModel] = {}
+        for key, model in self.models.items():
+            if model.engine is not engine:
+                loaded[id(model)] = load_model(
+                    model,
+                    engine,
+                    ureg=self.ureg,
+                    jit_optimization=self.jit_optimization,
+                )
+            models[key._replace(engine=engine)] = loaded.get(id(model), model)
+        if not loaded:
+            return
+        logger.debug("The models are loaded again in %s: %s", engine, len(loaded))
+        self.models = models
+        for experiment in self.experiments.values():
+            experiment._models = {
+                model_id: loaded.get(id(model), model)
+                for model_id, model in experiment._models.items()
+            }
 
     def initialize(
         self,
@@ -293,7 +378,8 @@ class ExperimentRunner:
     ) -> None:
         """Resolve the models of an experiment and initialize it.
 
-        The models are loaded once per runner, see `model_key`.
+        The models are loaded once per runner in the engine of the runner,
+        see `model_key` and `engine`.
 
         Args:
             experiment: the experiment, created from its class.
@@ -308,14 +394,15 @@ class ExperimentRunner:
                 if isinstance(source, AbstractModel)
                 else AbstractModel(source=source)
             )
-            key = keys[model_id] = model_key(abstract_model)
+            key = keys[model_id] = model_key(abstract_model, self.engine)
             if key not in self.models:
                 new.setdefault(key, abstract_model)
         if new:
             with clock.phase(Phase.MODELS, "loading models", len(new)):
                 for key, abstract_model in new.items():
-                    self.models[key] = RoadrunnerSBMLModel.from_abstract_model(
-                        abstract_model=abstract_model,
+                    self.models[key] = load_model(
+                        _description(abstract_model),
+                        self.engine,
                         ureg=self.ureg,
                         jit_optimization=self.jit_optimization,
                     )
@@ -534,7 +621,12 @@ class ExperimentRunner:
                 data_path=self.data_path,
                 jit_optimization=self.jit_optimization,
                 on_error=self.on_error,
-                simulator=self.simulator,
+                engine=self.engine,
+                integrator_settings=(
+                    dict(self.simulator.integrator_settings)
+                    if self.simulator is not None
+                    else None
+                ),
                 output_path=output_path / sid,
                 formats=formats,
                 figure_formats=figure_formats,
@@ -614,8 +706,10 @@ class ExperimentRunner:
         import, is not found; nor is one of the main script which is defined
         behind its guard `if __name__ == "__main__":`, which the worker does
         not run, so an experiment of the main script runs here. The figures
-        shown and the results kept are in the worker, and a worker has the
-        unit registry of the package.
+        shown and the results kept are in the worker, a worker has the unit
+        registry of the package, and it builds a `Simulator` of the engine and
+        the settings of the simulator of the runner, see `_Job`, which a
+        subclass of `Simulator` is not.
         """
         if parallel.in_worker():
             return "a worker starts no pool"
@@ -625,6 +719,11 @@ class ExperimentRunner:
             return "the results of the experiments are kept"
         if self.ureg is not package_ureg:
             return "the runner has a unit registry of its own"
+        if self.simulator is not None and type(self.simulator) is not Simulator:
+            return (
+                f"the simulator is a '{type(self.simulator).__name__}', a worker "
+                f"builds a 'Simulator'"
+            )
         for job in jobs.values():
             cls = job.experiment_class
             if cls.__module__ == "__main__":
@@ -891,7 +990,12 @@ class _Job:
     data_path: Path | Iterable[Path] | None
     jit_optimization: JitOptimization
     on_error: Literal["raise", "log"]
-    simulator: Simulator | None
+    #: the engine of the run, which the worker loads the models in and
+    #: simulates them with, see `ExperimentRunner.engine`
+    engine: Engine
+    #: the settings of the integrator of the simulator of the run, `None` for
+    #: a runner without a simulator
+    integrator_settings: dict[str, IntegratorSetting] | None
     output_path: Path
     formats: list[str]
     figure_formats: list[str] | None
@@ -1029,10 +1133,10 @@ def _run_job(job: _Job) -> _Outcome:
     """Run an experiment in a worker, see the module.
 
     The models of the experiments of the worker are kept for the next
-    experiment, as the runner of the parent keeps them.
+    experiment, as the runner of the parent keeps them, per engine.
     """
     models: dict[ModelKey, SBMLModel] = parallel.worker_cache(
-        ("experiment models", job.jit_optimization), dict
+        ("experiment models", job.engine, job.jit_optimization), dict
     )
     for name, level in job.levels.items():
         logging.getLogger(name or None).setLevel(level)
@@ -1042,10 +1146,12 @@ def _run_job(job: _Job) -> _Outcome:
     handler = _Collect()
     handlers = logging.root.handlers[:]
     logging.root.handlers[:] = [handler]
-    simulator = copy.copy(job.simulator)
-    if simulator is not None:
-        # a worker runs the scans of its experiment itself
-        simulator.n_workers = 1
+    simulator: Simulator | None = None
+    if job.integrator_settings is not None:
+        # a worker runs the scans of its experiment itself; the simulator of
+        # COPASI imports it through sbmlsim, see `sbmlsim.engine.import_copasi`
+        simulator = Simulator(n_workers=1, engine=job.engine)
+        simulator.set_integrator_settings(**job.integrator_settings)
     try:
         with (
             matplotlib.rc_context(job.rc),
@@ -1170,6 +1276,7 @@ def run_experiments(
     figure_settings: FigureSettings | Mapping[str, Any] | None = None,
     n_workers: int | None = None,
     progress: bool | None = None,
+    simulator: Simulator | None = None,
 ) -> list[ExperimentResult]:
     """Run simulation experiments and write their report to the output path.
 
@@ -1188,6 +1295,8 @@ def run_experiments(
             `ExperimentRunner.run_experiments`.
         progress: show the progress and the timings of the run, see
             `ExperimentRunner.run_experiments`.
+        simulator: the simulator of the tasks, `Simulator()` without one; the
+            models are loaded in its engine, e.g. `Simulator(engine="copasi")`.
 
     Returns:
         The results of the experiments.
@@ -1197,7 +1306,8 @@ def run_experiments(
     """
     if not isinstance(experiments, (list, tuple)):
         experiments = [experiments]
-    simulator = Simulator()
+    if simulator is None:
+        simulator = Simulator()
 
     runner = ExperimentRunner(
         experiments,
