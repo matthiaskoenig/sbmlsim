@@ -32,7 +32,9 @@ The semantics are the ones of PEtab v2:
    time, is not integrated: its state is the one at its start, and the
    triggers before the next change are evaluated at the time the model is
    at, its start, so an event of the time in it fires once, after it, see
-   `integrable`.
+   `integrable`. A delayed event which roadrunner keeps pending closer after
+   the start of an integration than CVODE integrates holds the state at the
+   start likewise, see `_integrate`.
 6. An event of the model within the resolution of the time after the end is
    at the end, see `_event_at_the_end`: the steps of the integrator have it
    as two rows, the states before and after it, an output time at the end
@@ -90,6 +92,10 @@ VARIABLE_STEP_SIZE = "variable_step_size"
 #: without its rows (`CVODEIntegrator::integrate` of libroadrunner 2.11), and
 #: an event at the end is found from the stop, see `_event_at_the_end`
 STOP = 4.0 * EPSILON
+
+#: the error of CVODE for an output time closer to the time of the integrator
+#: than it integrates, see `integrable`
+TOO_CLOSE = "CV_TOO_CLOSE"
 
 
 class SteadyStateError(RuntimeError):
@@ -709,14 +715,89 @@ def _variable_steps(r: roadrunner.RoadRunner, start: float, end: float) -> np.nd
     """
     r.getIntegrator().setValue(VARIABLE_STEP_SIZE, True)
     if end >= 0.0:
-        return np.array(r.simulate(start, end), dtype=float)
+        return _integrate(r, [start, end], steps=True)
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
             message="Simulation requested end time point",
             category=UserWarning,
         )
-        return np.array(r.simulate(start, end), dtype=float)
+        return _integrate(r, [start, end], steps=True)
+
+
+def _integrate(r: roadrunner.RoadRunner, times: list[float], steps: bool) -> np.ndarray:
+    """Integrate from the first time, past an event pending too close after it.
+
+    roadrunner integrates to the time of an event of the model it keeps
+    pending, a delayed event, before the next output time. CVODE rejects that
+    time if it is closer to the start than it integrates (`CV_TOO_CLOSE`, the
+    condition of `integrable`), e.g. an event at the end pending at the stop
+    before it, see `_event_at_the_end`, or a unit in the last place after a
+    change. As for a segment which is not integrated, the state is the one at
+    the start up to the first time CVODE integrates to from it, from which
+    roadrunner integrates again and fires the event in its first step, late
+    as every delayed event of roadrunner (#1382). An event pending too close
+    before a later output time is not handled: roadrunner fails after it
+    integrated to the event.
+
+    Args:
+        r: the roadrunner instance in the state at the start.
+        times: the start and the end for the steps of the integrator, else the
+            output times, the start first.
+        steps: whether the output is the steps of the integrator.
+
+    Returns:
+        The values, the first row at the start; the steps of the integrator
+        past such an event have a row at the first time integrated from, the
+        state at the start, before the steps.
+    """
+
+    def run(times: list[float]) -> np.ndarray:
+        if steps:
+            return np.array(r.simulate(times[0], times[-1]), dtype=float)
+        return np.array(r.simulate(times=times), dtype=float)
+
+    start = times[0]
+    try:
+        return run(times)
+    except RuntimeError as err:
+        # the integration failed before it left the start
+        if (
+            TOO_CLOSE not in str(err)
+            or len(times) < 2
+            or float(r.model.getTime()) != start
+            or not integrable(start, times[1])
+        ):
+            raise
+    # the model is in the state at the start, the event pending
+    first = _held(r, np.array([start]))
+    held = _first_integrable(start)
+    logger.debug(
+        "An event of the model is pending closer after the time %s than CVODE "
+        "integrates, the state is held to the time %s.",
+        start,
+        held,
+    )
+    values = run([held, *times[1:]])
+    if steps:
+        return np.vstack([first, values])
+    return np.vstack([first, values[1:]])
+
+
+def _first_integrable(start: float) -> float:
+    """Get the first time after `start` which CVODE integrates to from it.
+
+    Args:
+        start: the start of an integration in the time of roadrunner.
+
+    Returns:
+        The least time `t` of `integrable(start, t)`, a few units in the last
+        place after the start.
+    """
+    stop = float(np.nextafter(start, np.inf))
+    while not integrable(start, stop):
+        stop = float(np.nextafter(stop, np.inf))
+    return stop
 
 
 def _to_the_end(r: roadrunner.RoadRunner, end: float, events: bool) -> bool:
@@ -851,7 +932,7 @@ def _simulate_times(
         between = intermediate_time(times[-2], times[-1], end)
         if between is not None:
             times.insert(len(times) - 1, between)
-    values = np.array(r.simulate(times=times), dtype=float)
+    values = _integrate(r, times, steps=False)
     if between is not None:
         values = np.delete(values, values.shape[0] - 2, axis=0)
     return values
