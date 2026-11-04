@@ -297,8 +297,8 @@ class SBMLModel(AbstractModel, ABC):
             The value in the current state of the model.
 
         Raises:
-            RuntimeError: if the model has no selection of the name, the
-                error of roadrunner; `ValueError` for COPASI.
+            RuntimeError: if the model has no selection of the name, in
+                every engine.
         """
 
     @abstractmethod

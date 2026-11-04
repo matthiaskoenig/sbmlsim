@@ -36,8 +36,9 @@ def import_copasi() -> ModuleType:
     Importing COPASI sets the locale of the process to `C`, which makes the
     preferred encoding of python ASCII, so every text file and subprocess of
     the process which is read without an explicit encoding fails on a
-    character which is not ASCII. The locale of the process is set back to
-    the one before the import; COPASI keeps working with it.
+    character which is not ASCII. The category `LC_CTYPE` of the locale, the
+    encoding, is set back to the one before the import; the numbers keep the
+    locale `C` of COPASI (`LC_NUMERIC`).
 
     :return: the module `COPASI`
     :raises ImportError: when python-copasi is not installed
@@ -45,7 +46,7 @@ def import_copasi() -> ModuleType:
     module = sys.modules.get("COPASI")
     if module is not None:
         return module
-    before = locale.setlocale(locale.LC_ALL)
+    before = locale.setlocale(locale.LC_CTYPE)
     try:
         return importlib.import_module("COPASI")
     except ImportError as err:
@@ -54,4 +55,4 @@ def import_copasi() -> ModuleType:
             "`pip install sbmlsim[copasi]`."
         ) from err
     finally:
-        locale.setlocale(locale.LC_ALL, before)
+        locale.setlocale(locale.LC_CTYPE, before)

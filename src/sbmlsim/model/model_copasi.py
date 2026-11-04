@@ -14,7 +14,8 @@ the SBML (a species in other units than the model keeps its number, as in
 roadrunner). The model checks after the import that every plain initial
 number of the SBML is the one of COPASI and raises otherwise, e.g. for an
 amount whose particle number is not finite. It raises as well for an error of
-the import and for algebraic rules, which COPASI ignores.
+the import (of COPASI or of libsbml) and for the features COPASI loads and
+simulates otherwise than roadrunner, see `_check_supported`.
 
 COPASI folds a constant entity into the constants of its model, a value
 written into it during a simulation is not seen. The SBML which COPASI loads
@@ -30,7 +31,7 @@ import ctypes
 import logging
 import math
 import weakref
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -85,6 +86,21 @@ ROADRUNNER_ONLY_SETTINGS = frozenset(
     }
 )
 
+#: the messages of COPASI which do not change the numbers of a model, logged
+#: at the level `DEBUG`: the default units of the model (91, 92), the units of
+#: species and of the model which COPASI does not import and whose numbers it
+#: keeps (25, 66), a compartment without a size, which has the size 1 as in
+#: roadrunner (45), an unknown annotation and the warnings of libsbml
+BENIGN_MESSAGES = (
+    "SBML (91)",
+    "SBML (92)",
+    "SBML (25)",
+    "SBML (66)",
+    "SBML (45)",
+    "CAnnotation (4)",
+    "LIBSBML WARNING",
+)
+
 #: the types of the messages of COPASI which are errors
 _ERROR_TYPES = frozenset(
     {
@@ -126,8 +142,11 @@ def drain_messages(label: str) -> None:
     """Take the messages of COPASI, raise for an error and log the others.
 
     COPASI collects its messages in a queue of the process instead of
-    printing them; the messages which are no errors are logged at the level
-    `DEBUG`, so the messages of a call of COPASI are taken right after it.
+    printing them, so the messages of a call of COPASI are taken right after
+    it. An error of COPASI and an error of libsbml, which COPASI passes on as
+    a message of another type, raise; a message which is known not to change
+    the numbers (`BENIGN_MESSAGES`) is logged at the level `DEBUG`, every
+    other one as a warning.
 
     Args:
         label: the name of the model in a message.
@@ -139,10 +158,12 @@ def drain_messages(label: str) -> None:
     while COPASI.CCopasiMessage.size():
         message = COPASI.CCopasiMessage.getFirstMessage()
         text = str(message.getText()).strip()
-        if message.getType() in _ERROR_TYPES:
+        if message.getType() in _ERROR_TYPES or "LIBSBML ERROR" in text:
             errors.append(text)
-        else:
+        elif any(benign in text for benign in BENIGN_MESSAGES):
             logger.debug("COPASI on the model '%s': %s", label, text)
+        else:
+            logger.warning("COPASI on the model '%s': %s", label, text)
     if errors:
         raise ValueError(
             f"COPASI reports errors on the model '{label}': " + " ".join(errors)
@@ -236,11 +257,7 @@ class CopasiSBMLModel(SBMLModel):
         sbml = self._take_engine_sbml()
         doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
         sbml_model: libsbml.Model = doc.getModel()
-        if any(rule.isAlgebraic() for rule in sbml_model.getListOfRules()):
-            raise ValueError(
-                f"The model '{self.label}' has algebraic rules, which COPASI "
-                f"ignores; it cannot be simulated with COPASI."
-            )
+        _check_supported(sbml_model, self.label)
         #: the ids of the species references, which COPASI has no values of
         self._species_references: frozenset[str] = frozenset(
             sr.getId()
@@ -274,6 +291,8 @@ class CopasiSBMLModel(SBMLModel):
         for k in range(cmodel.getNumMetabs()):
             entity = cmodel.getMetabolite(k)
             self.entities[entity.getSBMLId()] = entity
+        #: the states, read once, see `state_ids`
+        self._state_ids: tuple[str, ...] | None = None
         self.reactions: dict[str, Any] = {}
         for k in range(cmodel.getNumReactions()):
             reaction = cmodel.getReaction(k)
@@ -390,7 +409,9 @@ class CopasiSBMLModel(SBMLModel):
         SBML gives.
 
         Raises:
-            ValueError: if COPASI reads a number otherwise.
+            ValueError: if COPASI reads a number otherwise: in other units, or
+                as a particle number out of the range of a double, e.g. an
+                amount of `1e300` mole.
         """
         symbols = self.symbols
         computed = symbols.initial_assignments | symbols.assignment_rules
@@ -417,9 +438,10 @@ class CopasiSBMLModel(SBMLModel):
                 or (math.isnan(value) and math.isnan(number))
             ):
                 raise ValueError(
-                    f"COPASI reads '{sid}' of the model '{self.label}' in other "
-                    f"units: {number!r} in the SBML, {value!r} in COPASI (COPASI "
-                    f"holds the amounts as particle numbers)."
+                    f"COPASI reads '{sid}' of the model '{self.label}' otherwise: "
+                    f"{number!r} in the SBML, {value!r} in COPASI; COPASI reads it "
+                    f"in other units, or its particle number (COPASI holds the "
+                    f"amounts as particle numbers) is out of the range of a double."
                 )
 
     @override
@@ -640,6 +662,18 @@ class CopasiSBMLModel(SBMLModel):
         self._selections[selection] = resolved
         return resolved
 
+    def _current(self, selection: str) -> _Selection:
+        """Resolve a selection of a current value, see `_selection`.
+
+        Raises:
+            RuntimeError: if COPASI has no such selection, the error of
+                roadrunner.
+        """
+        try:
+            return self._selection(selection)
+        except ValueError as err:
+            raise RuntimeError(str(err)) from None
+
     @override
     def value(self, selection: str) -> float:
         """Get the current value of a selection.
@@ -652,9 +686,10 @@ class CopasiSBMLModel(SBMLModel):
             The value in the current state of the model.
 
         Raises:
-            ValueError: if COPASI has no selection of the name.
+            RuntimeError: if COPASI has no selection of the name, as
+                roadrunner.
         """
-        resolved = self._selection(selection)
+        resolved = self._current(selection)
         mc = self.mc
         value = float(mc.getMathObject(resolved.reference).getValue())
         if resolved.kind == _Kind.AMOUNT:
@@ -674,15 +709,15 @@ class CopasiSBMLModel(SBMLModel):
             value: the value.
 
         Raises:
-            ValueError: if COPASI has no selection of the name, or it cannot
+            RuntimeError: if COPASI has no selection of the name, or it cannot
                 be set: the time, a reaction or the variable of an assignment
-                rule.
+                rule, as roadrunner.
         """
-        resolved = self._selection(selection)
+        resolved = self._current(selection)
         if resolved.entity is None or resolved.kind == _Kind.FLUX:
-            raise ValueError(f"COPASI cannot set '{selection}'.")
+            raise RuntimeError(f"COPASI cannot set '{selection}'.")
         if resolved.entity in self.symbols.assignment_rules:
-            raise ValueError(
+            raise RuntimeError(
                 f"COPASI cannot set '{selection}', it is the variable of an "
                 f"assignment rule."
             )
@@ -890,28 +925,143 @@ class CopasiSBMLModel(SBMLModel):
 
         The species which reactions or a rate rule change, in the order of
         the SBML, then the other targets of rate rules, in the order of the
-        SBML.
+        SBML; read once, the states of a model do not change.
         """
-        integrated = (
-            COPASI.CModelEntity.Status_REACTIONS,
-            COPASI.CModelEntity.Status_ODE,
-        )
-        doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(self.sbml)
-        sbml_model: libsbml.Model = doc.getModel()
-        states = [
-            s.getId()
-            for s in sbml_model.getListOfSpecies()
-            if self.entities[s.getId()].getStatus() in integrated
-        ]
-        others = [
-            e.getId()
-            for e in (
-                *sbml_model.getListOfParameters(),
-                *sbml_model.getListOfCompartments(),
+        if self._state_ids is None:
+            integrated = (
+                COPASI.CModelEntity.Status_REACTIONS,
+                COPASI.CModelEntity.Status_ODE,
             )
-            if e.getId() in self.symbols.rate_rules
-        ]
-        return states + others
+            doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(self.sbml)
+            sbml_model: libsbml.Model = doc.getModel()
+            states = [
+                s.getId()
+                for s in sbml_model.getListOfSpecies()
+                if self.entities[s.getId()].getStatus() in integrated
+            ]
+            states += [
+                e.getId()
+                for e in (
+                    *sbml_model.getListOfParameters(),
+                    *sbml_model.getListOfCompartments(),
+                )
+                if e.getId() in self.symbols.rate_rules
+            ]
+            self._state_ids = tuple(states)
+        return list(self._state_ids)
+
+
+def _check_supported(model: libsbml.Model, label: str) -> None:
+    """Check that COPASI simulates a model as roadrunner does.
+
+    COPASI loads the following without an error and simulates them otherwise
+    than roadrunner: it ignores algebraic rules and the conversion factors
+    of the model and of the species in a time course, makes the stoichiometry
+    of a non-constant species reference, of a stoichiometry math and of an
+    initial assignment of a species reference a constant, and simulates the
+    delay csymbol otherwise.
+
+    Args:
+        model: the model of the SBML.
+        label: the name of the model in a message.
+
+    Raises:
+        ValueError: naming the feature and its element, for a model with one.
+    """
+
+    def unsupported(feature: str) -> ValueError:
+        return ValueError(
+            f"The model '{label}' has {feature}; COPASI does not simulate it as "
+            f"roadrunner, the model cannot be simulated with COPASI."
+        )
+
+    for rule in model.getListOfRules():
+        if rule.isAlgebraic():
+            raise unsupported("an algebraic rule, which COPASI ignores")
+    if model.isSetConversionFactor():
+        raise unsupported(
+            f"the conversion factor '{model.getConversionFactor()}' of the model, "
+            f"which a time course of COPASI ignores"
+        )
+    for species in model.getListOfSpecies():
+        if species.isSetConversionFactor():
+            raise unsupported(
+                f"the conversion factor '{species.getConversionFactor()}' of the "
+                f"species '{species.getId()}', which a time course of COPASI ignores"
+            )
+    level = model.getLevel()
+    references: set[str] = set()
+    for reaction in model.getListOfReactions():
+        for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts()):
+            if sr.isSetId():
+                references.add(sr.getId())
+            if sr.isSetStoichiometryMath():
+                raise unsupported(
+                    f"the stoichiometry math of the species '{sr.getSpecies()}' in "
+                    f"the reaction '{reaction.getId()}', which COPASI makes a "
+                    f"constant"
+                )
+            if level >= 3 and sr.isSetConstant() and not sr.getConstant():
+                name = sr.getId() or sr.getSpecies()
+                raise unsupported(
+                    f"the non-constant species reference '{name}' of the reaction "
+                    f"'{reaction.getId()}', whose stoichiometry COPASI makes a "
+                    f"constant"
+                )
+    for assignment in model.getListOfInitialAssignments():
+        if assignment.getSymbol() in references:
+            raise unsupported(
+                f"an initial assignment of the species reference "
+                f"'{assignment.getSymbol()}', which COPASI evaluates once into a "
+                f"constant"
+            )
+    for where, ast in _maths(model):
+        if _reads_delay(ast):
+            raise unsupported(f"the delay csymbol in the {where}")
+
+
+def _maths(model: libsbml.Model) -> Iterator[tuple[str, libsbml.ASTNode]]:
+    """Get every math of a model with the name of its element."""
+    for function in model.getListOfFunctionDefinitions():
+        yield f"function definition '{function.getId()}'", function.getMath()
+    for assignment in model.getListOfInitialAssignments():
+        yield f"initial assignment of '{assignment.getSymbol()}'", assignment.getMath()
+    for rule in model.getListOfRules():
+        kind = "rate rule" if rule.isRate() else "assignment rule"
+        if rule.isAlgebraic():
+            kind = "algebraic rule"
+        yield f"{kind} of '{rule.getVariable()}'", rule.getMath()
+    for constraint in model.getListOfConstraints():
+        yield "constraint", constraint.getMath()
+    for reaction in model.getListOfReactions():
+        if reaction.isSetKineticLaw():
+            law = reaction.getKineticLaw()
+            yield f"kinetic law of the reaction '{reaction.getId()}'", law.getMath()
+    for event in model.getListOfEvents():
+        where = f"event '{event.getId()}'"
+        if event.isSetTrigger():
+            yield where, event.getTrigger().getMath()
+        if event.isSetDelay():
+            yield where, event.getDelay().getMath()
+        if event.isSetPriority():
+            yield where, event.getPriority().getMath()
+        for assignment in event.getListOfEventAssignments():
+            yield where, assignment.getMath()
+
+
+#: the definition URL of the delay csymbol
+_DELAY = "http://www.sbml.org/sbml/symbols/delay"
+
+
+def _reads_delay(math: libsbml.ASTNode | None) -> bool:
+    """Whether a math reads the delay csymbol, found by its definition URL."""
+    stack = [math] if math is not None else []
+    while stack:
+        node = stack.pop()
+        if node.getDefinitionURLString() == _DELAY:
+            return True
+        stack.extend(node.getChild(k) for k in range(node.getNumChildren()))
+    return False
 
 
 def _remove_datamodel(dm: COPASI.CDataModel) -> None:
@@ -946,7 +1096,8 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> str:
     """Make the entities a change can set part of the state of COPASI.
 
     Every parameter, compartment and species which is not the variable of an
-    assignment rule is made non-constant and the target of an event which
+    assignment rule or a conversion factor, which SBML requires to be
+    constant, is made non-constant and the target of an event which
     never fires (`TARGETS_EVENT`), which assigns it its own value, see the
     module.
 
@@ -962,13 +1113,21 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> str:
         doc.setLevelAndVersion(2, 4)
     sbml_model: libsbml.Model = doc.getModel()
     symbols = model.symbols
+    # a conversion factor is a constant parameter in SBML
+    constants = {
+        species.getConversionFactor()
+        for species in sbml_model.getListOfSpecies()
+        if species.isSetConversionFactor()
+    }
+    if sbml_model.isSetConversionFactor():
+        constants.add(sbml_model.getConversionFactor())
     targets: list[str] = []
     for entity in (
         *sbml_model.getListOfParameters(),
         *sbml_model.getListOfCompartments(),
         *sbml_model.getListOfSpecies(),
     ):
-        if entity.getId() in symbols.assignment_rules:
+        if entity.getId() in symbols.assignment_rules or entity.getId() in constants:
             continue
         entity.setConstant(False)
         targets.append(entity.getId())

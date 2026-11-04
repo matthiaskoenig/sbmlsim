@@ -4,6 +4,7 @@ import contextlib
 import gc
 import logging
 import math
+from collections.abc import Callable
 from pathlib import Path
 
 import libsbml
@@ -28,7 +29,6 @@ from sbmlsim.resources import (  # noqa: E402
     REPRESSILATOR_SBML,
 )
 from sbmlsim.simulator.plan import Assignment  # noqa: E402
-from tests.model.test_model_sbml import _with_species_reference_ids  # noqa: E402
 from tests.simulator.models import (  # noqa: E402
     PROBE,
     SPECIES_KINDS,
@@ -249,11 +249,11 @@ def test_the_current_values_are_set_through_the_state() -> None:
     assert values.getValue("[A]") == pytest.approx(1.0, rel=1e-15)
     values.setValue("f", 5.0)
     assert values.getValue("kk") == 15.0  # an assignment rule follows
-    with pytest.raises(ValueError, match="assignment rule"):
+    with pytest.raises(RuntimeError, match="assignment rule"):
         values.setValue("kk", 1.0)
-    with pytest.raises(ValueError, match="no selection 'nope'"):
+    with pytest.raises(RuntimeError, match="no selection 'nope'"):
         values.getValue("nope")
-    with pytest.raises(ValueError, match="cannot set 'J1'"):
+    with pytest.raises(RuntimeError, match="cannot set 'J1'"):
         values.setValue("J1", 1.0)
     # the initialization restores the values as loaded
     model.initialize([])
@@ -290,7 +290,10 @@ def test_species_in_units_other_than_the_model_keep_their_numbers() -> None:
 
 def test_a_number_copasi_reads_otherwise_raises() -> None:
     """COPASI keeps amounts as particle numbers, `1e300` mole are infinite."""
-    with pytest.raises(ValueError, match="COPASI reads 'A' of the model 'other_units'"):
+    with pytest.raises(
+        ValueError,
+        match=r"COPASI reads 'A' of the model 'other_units' otherwise.*out of the range",
+    ):
         CopasiSBMLModel(source=OTHER_UNITS.replace("AMOUNT", "1e300"))
 
 
@@ -316,12 +319,148 @@ def test_algebraic_rules_raise() -> None:
         CopasiSBMLModel(source=libsbml.writeSBMLToString(doc))
 
 
+def _with_a_constant_species_reference_id() -> str:
+    """Get the probe model whose product `B`, a boundary species, has the id `B_sr`."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PROBE))
+    model: libsbml.Model = doc.getModel()
+    model.getSpecies("B").setBoundaryCondition(True)
+    model.getReaction("J1").getProduct(0).setId("B_sr")
+    return libsbml.writeSBMLToString(doc)
+
+
 def test_a_species_reference_has_no_selection() -> None:
     """COPASI has no value of a species reference, the default selections raise."""
+    source = _with_a_constant_species_reference_id()
+    assert "B_sr" in (RoadrunnerSBMLModel(source=source).selections or ())
     with pytest.raises(ValueError, match="no selection 'B_sr'"):
-        CopasiSBMLModel(source=_with_species_reference_ids())
-    model = CopasiSBMLModel(source=_with_species_reference_ids(), selections=["A"])
+        CopasiSBMLModel(source=source)
+    model = CopasiSBMLModel(source=source, selections=["A"])
     assert not model.has_selection("B_sr")
+
+
+def _probe_with(edit: Callable[[libsbml.Model], None]) -> str:
+    """Get the probe model with an edit of its model."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PROBE))
+    edit(doc.getModel())
+    return libsbml.writeSBMLToString(doc)
+
+
+def _rule_of_the_product(rule: str) -> Callable[[libsbml.Model], None]:
+    """Get the edit which sets the stoichiometry of the product of J1 by a rule."""
+
+    def edit(model: libsbml.Model) -> None:
+        product: libsbml.SpeciesReference = model.getReaction("J1").getProduct(0)
+        product.setId("B_sr")
+        product.setConstant(rule == "initial")
+        if rule == "assignment":
+            assignment: libsbml.AssignmentRule = model.createAssignmentRule()
+            assignment.setVariable("B_sr")
+            assignment.setMath(libsbml.parseL3Formula("1 + time"))
+        elif rule == "rate":
+            rate: libsbml.RateRule = model.createRateRule()
+            rate.setVariable("B_sr")
+            rate.setMath(libsbml.parseL3Formula("1"))
+        elif rule == "initial":
+            initial: libsbml.InitialAssignment = model.createInitialAssignment()
+            initial.setSymbol("B_sr")
+            initial.setMath(libsbml.parseL3Formula("2 * f"))
+        elif rule == "event":
+            event: libsbml.Event = model.createEvent()
+            event.setId("E")
+            event.setUseValuesFromTriggerTime(True)
+            trigger: libsbml.Trigger = event.createTrigger()
+            trigger.setMath(libsbml.parseL3Formula("time > 1"))
+            trigger.setInitialValue(False)
+            trigger.setPersistent(True)
+            assignment_e: libsbml.EventAssignment = event.createEventAssignment()
+            assignment_e.setVariable("B_sr")
+            assignment_e.setMath(libsbml.parseL3Formula("2"))
+
+    return edit
+
+
+@pytest.mark.parametrize(
+    ("rule", "match"),
+    [
+        ("non-constant", "non-constant species reference 'B_sr'"),
+        ("assignment", "non-constant species reference 'B_sr'"),
+        ("rate", "non-constant species reference 'B_sr'"),
+        ("event", "non-constant species reference 'B_sr'"),
+        ("initial", "initial assignment of the species reference 'B_sr'"),
+    ],
+)
+def test_a_variable_stoichiometry_raises(rule: str, match: str) -> None:
+    """COPASI makes the stoichiometry of a species reference a constant."""
+    with pytest.raises(ValueError, match=match):
+        CopasiSBMLModel(source=_probe_with(_rule_of_the_product(rule)))
+
+
+def test_a_stoichiometry_math_raises() -> None:
+    """COPASI makes the stoichiometry math of SBML level 2 a constant."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PROBE))
+    doc.setLevelAndVersion(2, 4)
+    product: libsbml.SpeciesReference = doc.getModel().getReaction("J1").getProduct(0)
+    math: libsbml.StoichiometryMath = product.createStoichiometryMath()
+    math.setMath(libsbml.parseL3Formula("2 * f"))
+    with pytest.raises(ValueError, match="stoichiometry math of the species 'B'"):
+        CopasiSBMLModel(source=libsbml.writeSBMLToString(doc))
+
+
+def test_a_delay_raises() -> None:
+    """COPASI does not simulate the delay csymbol as roadrunner."""
+
+    def edit(model: libsbml.Model) -> None:
+        model.getParameter("b0").setConstant(False)
+        rule: libsbml.AssignmentRule = model.createAssignmentRule()
+        rule.setVariable("b0")
+        rule.setMath(libsbml.parseL3Formula("delay(A, 1)"))
+
+    with pytest.raises(ValueError, match=r"delay.*assignment rule of 'b0'"):
+        CopasiSBMLModel(source=_probe_with(edit))
+
+
+@pytest.mark.parametrize("on", ["model", "species"])
+def test_a_conversion_factor_raises(on: str) -> None:
+    """A time course of COPASI ignores the conversion factors."""
+
+    def edit(model: libsbml.Model) -> None:
+        if on == "model":
+            model.setConversionFactor("k1")
+        else:
+            model.getSpecies("A").setConversionFactor("k1")
+
+    element = "model" if on == "model" else "species 'A'"
+    with pytest.raises(ValueError, match=f"conversion factor 'k1' of the {element}"):
+        CopasiSBMLModel(source=_probe_with(edit))
+
+
+def test_a_libsbml_error_raises() -> None:
+    """COPASI reports the errors of libsbml as messages of another type."""
+
+    def edit(model: libsbml.Model) -> None:
+        # a species reference of a species which does not exist
+        model.getReaction("J1").getProduct(0).setSpecies("missing")
+
+    with pytest.raises(ValueError, match="LIBSBML ERROR"):
+        CopasiSBMLModel(source=_probe_with(edit))
+
+
+def test_a_warning_of_copasi_which_is_not_known_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A warning of COPASI which may change the semantics is logged as a warning."""
+
+    def edit(model: libsbml.Model) -> None:
+        # COPASI sets a species without an initial value to 1
+        model.getSpecies("A").unsetInitialAmount()
+        model.getSpecies("A").unsetInitialConcentration()
+        model.removeInitialAssignment("A")
+
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.model.model_copasi"):
+        CopasiSBMLModel(source=_probe_with(edit))
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("SBML (41)" in w for w in warnings), warnings
+    assert not any("SBML (91)" in w for w in warnings), warnings
 
 
 def test_roadrunner_only_settings_warn_once(caplog: pytest.LogCaptureFixture) -> None:
