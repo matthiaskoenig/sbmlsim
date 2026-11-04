@@ -22,7 +22,10 @@ comparable:
 4. COPASI integrates (LSODA) in absolute time: the first segment from the
    state the model is initialized to, every later one continues from the
    state the one before it ended in (`processRaw(False)`), so an event of the
-   model which COPASI scheduled with a delay fires in a later segment. The
+   model which COPASI scheduled with a delay fires in a later segment; the
+   states of the triggers are set from the current values before every run
+   (`resetEventsFound`), since COPASI does not see the values the executor
+   sets between two runs. The
    output of `OutputMode.TIMES` is the plan times of the segment, of
    `OutputMode.INTEGRATOR` the steps of LSODA, which have an event of the
    model as two rows at its time, the states before and after it. A change
@@ -54,6 +57,11 @@ limitation of roadrunner which COPASI has not:
 - roadrunner integrates a model which does not read the time in local time,
   every segment from its time 0; COPASI integrates every model in absolute
   time.
+- An event whose trigger becomes true within the rounding of the state one
+  unit in the last place before the end (e.g. `X >= 8` of `X' = 1` from 2 at
+  the end 6) fires before it in roadrunner, whose steps have one row at the
+  end, the state after it; COPASI fires it at the end, its steps have the
+  states before and after it at the end.
 - COPASI integrates with LSODA and one absolute tolerance for every state,
   see `CopasiSBMLModel.set_integrator_settings`; the steps of the integrator
   differ between the engines, the rows at the changes, at the events and at
@@ -75,7 +83,12 @@ from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.changes import apply_changes, fire_events, triggers
-from sbmlsim.simulator.executor import SteadyStateError, integrable, segment_stop
+from sbmlsim.simulator.executor import (
+    SteadyStateError,
+    integrable,
+    intermediate_time,
+    segment_stop,
+)
 from sbmlsim.simulator.plan import (
     OutputMode,
     Plan,
@@ -135,8 +148,9 @@ class _TimeCourse:
         with events, see `sbmlsim.simulator.executor.segment_stop`, may round
         to the end, where an event of the model at the time of the change
         fires before the change. Such a last interval gets a time between,
-        from which the sum is exact, as in the executor of roadrunner; its
-        row is not returned.
+        from which the sum is exact, see
+        `sbmlsim.simulator.executor.intermediate_time`; its row is not
+        returned.
 
         Args:
             start: the time of the current state.
@@ -151,18 +165,9 @@ class _TimeCourse:
             RuntimeError: if COPASI does not give the rows at the times.
         """
         grid = [float(t) for t in times]
-        between: float | None = None
-        last = grid[-1]
         previous = grid[-2] if len(grid) > 1 else start
-        if last < end and previous + (last - previous) >= end:
-            # the difference to a time of the same sign within a factor of two
-            # is exact, and so is the sum
-            between = last / 2.0 if last > 0.0 else 2.0 * last
-            if not previous < between < last or between + (last - between) >= end:
-                raise RuntimeError(
-                    f"The integration from {previous} to {last} reaches the end "
-                    f"{end} of the segment."
-                )
+        between = intermediate_time(previous, grid[-1], end)
+        if between is not None:
             grid.insert(len(grid) - 1, between)
         problem = self._problem
         problem.setAutomaticStepSize(False)
@@ -171,7 +176,7 @@ class _TimeCourse:
         # read exactly and independent of the locale
         problem.setValues(" ".join(repr(t) for t in grid))
         problem.setUseValues(True)
-        values = self._run(start, last, past=True)
+        values = self._run(start, grid[-1], past=True)
         if between is not None:
             values = np.delete(values, values.shape[0] - 2, axis=0)
         # the first column is the time, a row is at its time within the
@@ -201,6 +206,12 @@ class _TimeCourse:
         """
         model = self.model
         model.set_time(start)
+        # COPASI keeps the states of the triggers of the events from the end of
+        # the run before, which a change, an event the executor fired or the
+        # time set since then made stale: an event would fire again, or not
+        # when its trigger crosses next (the root of COPASI toggles the stale
+        # state); the states are set from the current values, without firing
+        model.mc.resetEventsFound()
         self._problem.setDuration(_duration(start, end, past))
         dm = model.dm
         handler = COPASI.CDataHandler()

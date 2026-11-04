@@ -847,22 +847,49 @@ def _simulate_times(
     r.getIntegrator().setValue(VARIABLE_STEP_SIZE, False)
     times = [float(t) for t in grid]
     between: float | None = None
-    if events and len(times) > 1 and times[-1] < end:
-        last, previous = times[-1], times[-2]
-        if previous + (last - previous) >= end:
-            # the difference to a time of the same sign within a factor of two
-            # is exact, and so is the sum
-            between = last / 2.0 if last > 0.0 else 2.0 * last
-            if not previous < between < last or between + (last - between) >= end:
-                raise RuntimeError(
-                    f"The integration from {previous} to {last} reaches the end "
-                    f"{end} of the segment."
-                )
+    if events and len(times) > 1:
+        between = intermediate_time(times[-2], times[-1], end)
+        if between is not None:
             times.insert(len(times) - 1, between)
     values = np.array(r.simulate(times=times), dtype=float)
     if between is not None:
         values = np.delete(values, values.shape[0] - 2, axis=0)
     return values
+
+
+def intermediate_time(previous: float, last: float, end: float) -> float | None:
+    """Get a time between two output times from which the last one is exact.
+
+    An integrator integrates an output time from the one before it, to
+    `previous + (last - previous)`, which can round up by one unit in the
+    last place: a last time before the end of a segment, its stop, can round
+    to the end, where an event of the model at the time of a change fires
+    before the change. From a time between them of the same sign within a
+    factor of two of the last time the difference is exact, and so is the
+    sum. Both executors share it, see `_simulate_times` and
+    `sbmlsim.simulator.executor_copasi`.
+
+    Args:
+        previous: the output time before the last one.
+        last: the last output time.
+        end: the end of the segment, which the integration must not reach.
+
+    Returns:
+        The time between, `None` if the last time is not before the end or
+        the sum does not reach the end.
+
+    Raises:
+        RuntimeError: if no time between keeps the integration before the end.
+    """
+    if not last < end or previous + (last - previous) < end:
+        return None
+    between = last / 2.0 if last > 0.0 else 2.0 * last
+    if not previous < between < last or between + (last - between) >= end:
+        raise RuntimeError(
+            f"The integration from {previous} to {last} reaches the end {end} of "
+            f"the segment."
+        )
+    return between
 
 
 @contextmanager

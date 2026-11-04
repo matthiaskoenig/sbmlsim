@@ -152,15 +152,17 @@ def rows_at(result: TimecourseResult, time: float) -> np.ndarray:
     return result.values[result.time == time]
 
 
-def pairs_at(result: TimecourseResult, times: Sequence[float]) -> np.ndarray:
+def pairs_at(
+    result: TimecourseResult, times: Sequence[float], tolerance: float
+) -> np.ndarray:
     """Get the two rows of a change or an event at times, and the last row.
 
-    The pair of a time is its first row within `1e-6` and the row after it,
-    the states before and after the change or the event.
+    The pair of a time is its first row within `tolerance` and the row after
+    it, the states before and after the change or the event.
     """
     rows = []
     for time in times:
-        first = np.flatnonzero(np.abs(result.time - time) <= 1e-6)[0]
+        first = np.flatnonzero(np.abs(result.time - time) <= tolerance)[0]
         rows.append(result.values[first : first + 2])
     rows.append(result.values[-1:])
     return np.concatenate(rows)
@@ -174,15 +176,19 @@ def assert_equal_rows(
 ) -> None:
     """Compare the steps of the integrator at the changes, the events and the end.
 
-    roadrunner gives the rows of an event of the model times within the
-    resolution of the time after the event, see `sbmlsim.model.event_rows`,
-    whose states differ by the rates times that offset.
+    The rows of a change are at its time in both engines. roadrunner gives
+    the rows of an event of the model times within the resolution of the
+    time after the event, see `sbmlsim.model.event_rows`, whose states
+    differ by the rates times that offset.
     """
     assert copasi.columns == roadrunner.columns
-    for times, atol in ((changes, 1e-9), (events, 1e-6)):
-        c, r = pairs_at(copasi, times), pairs_at(roadrunner, times)
-        np.testing.assert_allclose(c[:, 0], r[:, 0], rtol=0, atol=1e-6)
-        np.testing.assert_allclose(c[:, 1:], r[:, 1:], rtol=1e-6, atol=atol)
+    c, r = pairs_at(copasi, changes, 0.0), pairs_at(roadrunner, changes, 0.0)
+    np.testing.assert_array_equal(c[:, 0], r[:, 0])
+    np.testing.assert_array_equal(c[:-1, 0], np.repeat(changes, 2))
+    np.testing.assert_allclose(c[:, 1:], r[:, 1:], rtol=1e-6, atol=1e-9)
+    c, r = pairs_at(copasi, events, 1e-6), pairs_at(roadrunner, events, 1e-6)
+    np.testing.assert_allclose(c[:, 0], r[:, 0], rtol=0, atol=1e-6)
+    np.testing.assert_allclose(c[:, 1:], r[:, 1:], rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.parametrize(
@@ -677,12 +683,16 @@ def test_the_stop_before_a_change_is_not_rounded_to_the_change() -> None:
     assert model.value("time") == stop
 
 
-def test_an_event_at_the_time_of_a_change_within_the_root_tolerance() -> None:
-    """An event of the time at a change, within the root tolerance of the stop.
+def test_known_defect_an_event_at_a_change_within_the_root_tolerance() -> None:
+    """Pin a known defect of both engines: an event at a change fires before it.
 
-    LSODA, as CVODE, finds a root within about a hundred units in the last
-    place of the time and the step of the integrator: the event fires at the
-    stop before the change in both engines.
+    PEtab v2 applies the change first and then the event (`C` 4 before and
+    16 after the change). LSODA, as CVODE, finds a root within about a
+    hundred units in the last place of the time and the step of the
+    integrator, so the event of the time fires at the stop one unit before
+    the change, in both engines (`C` 8 before and after). The defect is in
+    the executor of roadrunner as well (`segment_stop`) and out of the scope
+    of the engine of COPASI; the test pins that both engines agree.
     """
     model = f"""
     model rounding
@@ -700,3 +710,137 @@ def test_an_event_at_the_time_of_a_change_within_the_root_tolerance() -> None:
     copasi, roadrunner = both(sbml(model), simulation, ["time", "C", "X"])
     assert rows_at(copasi, ROUNDED_TO)[:, 1].tolist() == [8.0, 8.0]
     assert_equal_results(copasi, roadrunner)
+
+
+#: an event which a change makes true, of an assignment rule which no rate
+#: reads (the review of the executor)
+STALE = """
+model stale
+  X = 0
+  X' = 1
+  Z := 2*X
+  n = 0
+  E: at (Z < 1), t0=T0: n = n + 1
+end
+"""
+
+#: an event which fires at 2, whose trigger a change sets back
+REARM = """
+model rearm
+  X = 0
+  X' = 1
+  n = 0
+  E: at (X > 2), t0=false: n = n + 1
+end
+"""
+
+#: an event of the time which fires in the presimulation and in the simulation
+PRESIMULATED = """
+model presim
+  X = 1
+  X' = -X
+  n = 0
+  E: at (time >= 2), t0=true: n = n + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 3, 5], None])
+@pytest.mark.parametrize(("t0", "fired"), [("true", 1.0), ("false", 2.0)])
+def test_an_event_a_change_makes_true_fires_once(
+    times: list[float] | None, t0: str, fired: float
+) -> None:
+    """COPASI does not fire an event again which the executor fired after a change."""
+    simulation = Simulation(end=5, changes=[Change(3, {"X": 0.0})], times=times)
+    copasi, roadrunner = both(
+        sbml(STALE.replace("T0", t0)), simulation, ["time", "X", "Z", "n"]
+    )
+    assert copasi["n"][-1] == fired
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[3.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 3, 6], None])
+def test_an_event_whose_trigger_a_change_sets_back_fires_again(
+    times: list[float] | None,
+) -> None:
+    """An event whose trigger a change makes false fires at its next crossing."""
+    simulation = Simulation(end=6, changes=[Change(3, {"X": 0.0})], times=times)
+    copasi, roadrunner = both(sbml(REARM), simulation, ["time", "X", "n"])
+    assert copasi["n"][-1] == 2.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[3.0], events=[2.0, 5.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 1, 3, 5], None])
+def test_an_event_of_the_time_fires_after_a_presimulation(
+    times: list[float] | None,
+) -> None:
+    """The time set back after the presimulation does not keep its triggers."""
+    simulation = Simulation(end=5, presimulation=SteadyState(), times=times)
+    copasi, roadrunner = both(sbml(PRESIMULATED), simulation, ["time", "n"])
+    assert copasi["n"][0] == 1.0
+    assert copasi["n"][-1] == 2.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, events=[2.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+def test_an_event_at_the_end_in_the_rounding_of_the_state() -> None:
+    """A known difference: an event within the rounding of the state at the end.
+
+    `X >= 8` of `X' = 1` from 2 at the end 6: roadrunner fires it before the
+    end and its steps have one row at the end, the state after it; COPASI
+    has the states before and after it at the end. The states at the end
+    agree.
+    """
+    copasi, roadrunner = both(sbml(M1), Simulation(end=6), ["time", "X", "n"])
+    np.testing.assert_allclose(
+        copasi.values[-2:], [[6.0, 8.0, 0.0], [6.0, 0.0, 1.0]], atol=1e-9
+    )
+    assert roadrunner.time[-2] < 6.0
+    np.testing.assert_allclose(copasi.values[-1], roadrunner.values[-1], atol=1e-9)
+
+
+@pytest.mark.parametrize("change", [-0.007312715117751976, -3.3])
+@pytest.mark.parametrize("times", [True, False])
+def test_an_event_at_a_change_from_a_start_of_a_coarser_rounding(
+    change: float, times: bool
+) -> None:
+    """The segment from a start of a larger magnitude stops before the change.
+
+    COPASI ends a run of output times at its last time, the stop, not at
+    `start + duration`, which may be after it.
+    """
+    start = -4898.619485211566
+    model = f"""
+    model coarse
+      C = 4
+      X = 0
+      X' = 1
+      E: at (time >= {change!r}), t0=true: C = 2 * C
+    end
+    """
+    simulation = Simulation(
+        start=start,
+        end=0.0,
+        changes=[Change(change, {"C": 8.0})],
+        times=[start, change, 0.0] if times else None,
+    )
+    copasi, roadrunner = both(sbml(model), simulation, ["time", "C"])
+    assert rows_at(copasi, change)[:, 1].tolist() == [4.0, 16.0]
+    if times:
+        assert_equal_results(copasi, roadrunner)
+    else:
+        assert_equal_rows(copasi, roadrunner, changes=[change])
+    stopped = CopasiSBMLModel(source=sbml(model), settings=SETTINGS)
+    stopped.initialize([])
+    course = executor_copasi._TimeCourse(stopped, ["time", "C"])
+    stop = segment_stop(start, change)
+    course.times(start, np.array([stop]), change)
+    assert stopped.value("time") == stop
