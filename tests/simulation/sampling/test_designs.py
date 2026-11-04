@@ -18,7 +18,7 @@ from sbmlsim.simulation.sampling import (
 from sbmlsim.simulation.sampling.designs import _iman_conover
 from sbmlsim.simulation.scan import Design
 from sbmlsim.simulator import Simulator
-from tests.simulator.models import sbml, sbml_minutes
+from tests.simulator.models import roadrunner_model, sbml, sbml_minutes
 
 
 def record(dimension: Dimension) -> Design:
@@ -29,7 +29,7 @@ def record(dimension: Dimension) -> Design:
 
 @pytest.fixture(scope="module")
 def model() -> RoadrunnerSBMLModel:
-    return Simulator().load(sbml())
+    return roadrunner_model(Simulator().load(sbml()))
 
 
 def test_local_varies_every_target_around_its_reference(

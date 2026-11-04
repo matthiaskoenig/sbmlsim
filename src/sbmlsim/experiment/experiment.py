@@ -16,11 +16,12 @@ from pint.errors import UndefinedUnitError
 from pint.facets.plain import PlainUnit
 
 from sbmlsim.data import Data, DataSet, check_sel
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import progress
 from sbmlsim.experiment.progress import Phase, PhaseClock
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, SBMLModel
 from sbmlsim.plot import Figure, FigureSettings
 from sbmlsim.plot.points import point_linestyles
 from sbmlsim.plot.serialization_matplotlib import (
@@ -123,7 +124,7 @@ class SimulationExperiment:
         self.settings = kwargs
 
         # init variables
-        self._models: dict[str, RoadrunnerSBMLModel] = {}
+        self._models: dict[str, SBMLModel] = {}
         self._data: dict[str, Data] = {}
         self._datasets: dict[str, DataSet] = {}
         self._fit_mappings: dict[str, FitMapping] = {}
@@ -134,6 +135,8 @@ class SimulationExperiment:
         self._results: dict[str, ScanResult] = {}
         # the results were released after the run wrote its outputs
         self._results_released: bool = False
+        # the engine of the simulator which ran the tasks, see `to_dict`
+        self._engine: Engine | None = None
 
     def initialize(self) -> None:
         """Initialize SimulationExperiment.
@@ -793,6 +796,7 @@ class SimulationExperiment:
             )
         if self._results is None:
             self._results = {}
+        self._engine = simulator.engine
         model_tasks: dict[str, list[str]] = defaultdict(list)
         for task_key, task in self._tasks.items():
             model_tasks[task.model_id].append(task_key)
@@ -1059,11 +1063,7 @@ class SimulationExperiment:
         if index in _coordinates(self._simulations[task.simulation_id]):
             return "coordinate"
         model = self._models.get(task.model_id)
-        if (
-            isinstance(model, RoadrunnerSBMLModel)
-            and model.r is not None
-            and not model.has_selection(index)
-        ):
+        if isinstance(model, SBMLModel) and not model.has_selection(index):
             raise ValueError(
                 f"{d} of the experiment '{self.sid}' reads '{index}', which is "
                 f"neither an observable of the experiment "
@@ -1180,11 +1180,13 @@ class SimulationExperiment:
     def to_dict(self):
         """Convert to dictionary.
 
-        This is the basis for the JSON serialization.
+        This is the basis for the JSON serialization. `engine` is the engine
+        of the simulator which ran the tasks, `None` before they ran.
         """
         # FIXME: resolve paths relative to base_paths
         return {
             "experiment_id": self.sid,
+            "engine": self._engine.value if self._engine is not None else None,
             "base_path": str(self.base_path) if self.base_path else None,
             "data_path": [str(p) for p in self.data_path] if self.data_path else None,
             "models": {k: v.to_dict() for k, v in self._models.items()},

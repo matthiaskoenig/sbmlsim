@@ -1775,6 +1775,8 @@ class FitReport:
         """Get the key facts of the fit, the same the console reports."""
         info: dict[str, str] = {
             "problem": self.problem.opid,
+            # the engine which simulated the evaluations of the report
+            "engine": self.problem.engine.value,
             "parameter sets": ", ".join(pset.sid for pset in self.parameter_sets),
             "fit mappings": ", ".join(
                 f"{count} {kind.value}"

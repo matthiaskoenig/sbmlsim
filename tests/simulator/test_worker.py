@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from sbmlsim import parallel
-from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model import RoadrunnerSBMLModel, SBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulation.observables import Custom, Formula
@@ -31,7 +31,13 @@ from sbmlsim.simulator.worker import (
     run_chunk,
     run_chunk_in_worker,
 )
-from tests.simulator.models import BLOWUP, fails_for_large_k1, sbml, sbml_pk
+from tests.simulator.models import (
+    BLOWUP,
+    fails_for_large_k1,
+    roadrunner_model,
+    sbml,
+    sbml_pk,
+)
 
 posix = pytest.mark.skipif(
     sys.platform == "win32", reason="the streams of C are flushed with POSIX ctypes"
@@ -260,7 +266,7 @@ def test_the_spec_of_a_model_loads_it_with_the_settings(
     )
     spec = ModelSpec.of(model)
     assert spec.integrator == "cvode"
-    loaded = spec.load()
+    loaded = roadrunner_model(spec.load())
     np.testing.assert_allclose(
         loaded.r_loaded.getIntegrator().getAbsoluteToleranceVector(),
         model.r_loaded.getIntegrator().getAbsoluteToleranceVector(),
@@ -286,7 +292,7 @@ def test_a_worker_loads_a_model_once(
     loads: list[str] = []
     load = ModelSpec.load
 
-    def counting(self: ModelSpec) -> RoadrunnerSBMLModel:
+    def counting(self: ModelSpec) -> SBMLModel:
         loads.append(self.key)
         return load(self)
 
@@ -449,7 +455,7 @@ def _large_cmax(time: np.ndarray, values: dict[str, Any]) -> float:
 
 def _pk_points(doses: list[float]) -> tuple[RoadrunnerSBMLModel, list[Plan], list[Any]]:
     simulator = Simulator()
-    model = simulator.load(sbml_pk())
+    model = roadrunner_model(simulator.load(sbml_pk()))
     simulation = Simulation(end=24, steps=48, changes=[Change(0, {"PODOSE": 0.0})])
     plan = simulator.compile(model, simulation)
     scan = Scan(simulation, [Dimension("dose", values={"PODOSE": np.array(doses)})])

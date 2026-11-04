@@ -9,7 +9,7 @@ import pytest
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.simulation import Change, Simulation
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.executor import MAX_EXECUTIONS_PER_EVENT
+from sbmlsim.simulator.changes import MAX_EXECUTIONS_PER_EVENT
 from tests.simulator.models import sbml
 
 
@@ -113,7 +113,7 @@ def test_events_which_trigger_each_other_stop_at_the_limit(
         "off: at (X > 0.5), t0=true: X=0;",
         {},
     )
-    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.changes"):
         _run(doc, "X")
     cycles = [r.getMessage() for r in caplog.records if "cycle" in r.getMessage()]
     assert len(cycles) == 1
@@ -129,7 +129,7 @@ def test_a_priority_the_simulator_cannot_evaluate_counts_as_zero(
         "known: at (q > 0), t0=true: X=10;",
         {"unknown": "rateOf(q) + 20", "known": "1"},
     )
-    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.changes"):
         assert _run(doc, "X") == [0, 0, 1, 1]
     warnings = [r.getMessage() for r in caplog.records if "priority" in r.getMessage()]
     assert len(warnings) == 1
@@ -148,7 +148,7 @@ def test_a_priority_of_the_math_of_sbml_is_evaluated(
         {"first": priority, "second": "1"},
         functions="function twice(x)\n  2*x\nend",
     )
-    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator"):
         assert _run(doc, "X") == [0, 0, 10, 10]
     assert not caplog.records
 
@@ -198,7 +198,7 @@ def test_a_trigger_the_simulator_cannot_evaluate_is_reported_once(
     simulation = Simulation(
         end=3, changes=[Change(1, {"q": 1}), Change(2, {"q": 2})], times=[0, 1, 2, 3]
     )
-    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.changes"):
         simulator.simulate(model, simulation)
         simulator.simulate(model, simulation)
     warnings = [r.getMessage() for r in caplog.records if "trigger" in r.getMessage()]
@@ -297,7 +297,7 @@ def test_a_change_fires_an_event_of_the_math_of_sbml(
         event.getEventAssignment(target).setMath(
             libsbml.parseL3FormulaWithSettings(formula, settings)
         )
-    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.executor"):
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator"):
         fired = _fired(doc, ["X", "Y", "Z"])
     assert not caplog.records
     assert fired["X"] == 6 + 2

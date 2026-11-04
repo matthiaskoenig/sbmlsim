@@ -25,7 +25,7 @@ import numpy as np
 
 from sbmlsim import parallel
 from sbmlsim.comparison.diff import within_tolerance
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Simulation, SteadyState
 from sbmlsim.simulator import Simulator
@@ -161,10 +161,33 @@ def case_simulation(
     )
 
 
+def load_case_model(case: SemanticCase, simulator: Simulator) -> RoadrunnerSBMLModel:
+    """Load the model of a case with roadrunner, which the checks of a case use.
+
+    Args:
+        case: the case.
+        simulator: the simulator with the tolerances of the test suite, of
+            the engine roadrunner.
+
+    Returns:
+        The model of the case.
+
+    Raises:
+        TypeError: if the simulator does not load the model in roadrunner.
+    """
+    model = simulator.load(AbstractModel(source=case.model_path))
+    if not isinstance(model, RoadrunnerSBMLModel):
+        raise TypeError(
+            f"The cases of the test suite run with roadrunner, not with the "
+            f"engine '{model.engine}'."
+        )
+    return model
+
+
 def simulate_case(
     case: SemanticCase,
     simulator: Simulator,
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     simulation: Simulation | None = None,
 ) -> TimecourseResult:
     """Simulate a case with the selections and the output of its settings.
@@ -306,7 +329,7 @@ def repeat_check(
     if difference and not (random and compare_case(case, third).valid):
         return difference
 
-    fresh = simulator.load(AbstractModel(source=case.model_path))
+    fresh = load_case_model(case, simulator)
     expected = _steady_state(case, simulator, fresh)
     observed = _steady_state(case, simulator, model)
     what = "a steady state after the simulations of the loaded model"
@@ -426,7 +449,7 @@ def run_case(case: SemanticCase) -> CaseResult:
         variable_step_size=False,
     )
     try:
-        model = simulator.load(AbstractModel(source=case.model_path))
+        model = load_case_model(case, simulator)
     except Exception as err:
         logger.debug("'%s': the model could not be read: %s", case.cid, err)
         return result(CaseStatus.NOT_READ, str(err).strip().splitlines()[0][:300])

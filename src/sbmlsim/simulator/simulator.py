@@ -32,6 +32,19 @@ of a run, every model of a dimension of models and every model a worker
 loads, each with its own tolerance per state. A setting of a model which the
 simulator does not set stays, and a worker loads the model with the
 integrator and the settings the model has in the calling process.
+
+The engine of a simulator, roadrunner by default or COPASI, simulates every
+model it runs: a model of another engine is loaded again in the engine of the
+simulator, see `sbmlsim.model.model_sbml.load_model`, and a plan runs with the
+executor of the engine, see `sbmlsim.simulator.engines`. The engine is the
+attribute `engine` of the result. A feature the engine does not simulate
+raises its `NotImplementedError`, also with `on_error="flag"`, when the scan
+is compiled, before a point runs or a pool starts, see
+`sbmlsim.simulator.engines.check_plan`. A result of COPASI depends on the
+number of workers within the integration and not bitwise: COPASI sums the
+rates of the reactions of a species in an order which depends on the memory
+its process allocated before, so two loads of a model in the parent and in a
+worker differ in the last bit of a rate, which the integration amplifies.
 """
 
 from __future__ import annotations
@@ -45,7 +58,7 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Unpack
 
 import numpy as np
 import xarray as xr
@@ -60,7 +73,9 @@ from rich.progress import (
 
 from sbmlsim import parallel
 from sbmlsim.console import console
-from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
+from sbmlsim.engine import Engine, import_copasi, resolve_engine
+from sbmlsim.model import AbstractModel, SBMLModel, load_model
+from sbmlsim.model.model_sbml import IntegratorSetting, IntegratorSettings
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result.scan import (
     CHANGES,
@@ -74,7 +89,7 @@ from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.observables import Observable
 from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
-from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.engines import check_plan, execute_plan
 from sbmlsim.simulator.observables import ObservableGraph, compile_observables
 from sbmlsim.simulator.plan import Plan, compile_simulation, model_time, target_values
 from sbmlsim.simulator.worker import (
@@ -95,11 +110,8 @@ logger = logging.getLogger(__name__)
 #: the most points of a chunk
 MAX_CHUNK: int = 1000
 
-#: a setting of the integrator, see `RoadrunnerSBMLModel.set_integrator_settings`
-IntegratorSetting = float | int | bool | AbsoluteTolerance
-
 #: a model the simulator runs: a loaded model, its description or its path
-ModelLike = RoadrunnerSBMLModel | AbstractModel | str | Path
+ModelLike = SBMLModel | AbstractModel | str | Path
 
 
 class ScanError(RuntimeError):
@@ -112,11 +124,15 @@ class Simulator:
     Attributes:
         n_workers: the processes of a run, see
             `sbmlsim.parallel.resolve_workers`.
+        engine: the engine which simulates every model.
         integrator_settings: the settings of the integrator of every model.
     """
 
     def __init__(
-        self, n_workers: int | None = None, **integrator_settings: IntegratorSetting
+        self,
+        n_workers: int | None = None,
+        engine: Engine | str = Engine.ROADRUNNER,
+        **integrator_settings: Unpack[IntegratorSettings],
     ) -> None:
         """Create a simulator.
 
@@ -125,17 +141,28 @@ class Simulator:
                 `None` uses every CPU for a scan of
                 `sbmlsim.parallel.POOL_THRESHOLD` points or more and runs a
                 smaller one serially.
-            **integrator_settings: every setting of the integrator of
-                roadrunner by its name, e.g. `relative_tolerance` or
-                `variable_step_size`; `absolute_tolerance` is a float or an
-                `AbsoluteTolerance`. The defaults are `AbsoluteTolerance()`
-                and `relative_tolerance=1e-10`.
+            engine: the engine or its name, `roadrunner` or `copasi`.
+            **integrator_settings: the settings of the integrator by their
+                names in roadrunner, see `IntegratorSettings`, e.g.
+                `relative_tolerance` or `variable_step_size`;
+                `absolute_tolerance` is a float or an `AbsoluteTolerance`. A
+                dictionary of settings is an `IntegratorSettings`, and one of
+                other names, e.g. of another integrator of roadrunner, is set
+                with `set_integrator_settings`. The defaults are
+                `AbsoluteTolerance()` and `relative_tolerance=1e-10`. COPASI
+                ignores a setting of roadrunner it has no equivalent of, see
+                `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
 
         Raises:
-            ValueError: if `n_workers` is less than 1.
+            ValueError: if `n_workers` is less than 1 or the engine is
+                unknown.
+            ImportError: for the engine COPASI without python-copasi.
         """
         parallel.check_workers(n_workers)
         self.n_workers = n_workers
+        self.engine: Engine = resolve_engine(engine)
+        if self.engine is Engine.COPASI:
+            import_copasi()
         self.integrator_settings: dict[str, IntegratorSetting] = {
             "absolute_tolerance": AbsoluteTolerance(),
             "relative_tolerance": 1e-10,
@@ -144,40 +171,41 @@ class Simulator:
 
     def __repr__(self) -> str:
         """Get the representation."""
-        return f"Simulator(n_workers={self.n_workers}, {self.integrator_settings})"
+        return (
+            f"Simulator(n_workers={self.n_workers}, engine={self.engine}, "
+            f"{self.integrator_settings})"
+        )
 
     def set_integrator_settings(self, **integrator_settings: IntegratorSetting) -> None:
         """Set settings of the integrator for every model run after.
+
+        Every name is taken, also one which is no `IntegratorSettings`, e.g. a
+        setting of another integrator of roadrunner, so a dictionary
+        `dict[str, IntegratorSetting]` is set here.
 
         A name the integrator does not have raises when a model is loaded,
         i.e. before a pool starts.
         """
         self.integrator_settings.update(integrator_settings)
 
-    def load(self, model: ModelLike) -> RoadrunnerSBMLModel:
-        """Get a loaded model with the integrator settings of the simulator.
+    def load(self, model: ModelLike) -> SBMLModel:
+        """Get a model of the engine with the integrator settings of the simulator.
 
-        A `RoadrunnerSBMLModel` is used as it is and gets the settings; an
-        `AbstractModel`, with its selections, or a path is loaded.
+        A model of the engine is used as it is and gets the settings; a model
+        of another engine, an `AbstractModel`, with its selections, or a path
+        is loaded in the engine, see `sbmlsim.model.model_sbml.load_model`.
 
         Raises:
             ValueError: if the model is of no supported type, or the
                 integrator has no setting of a name.
         """
-        if isinstance(model, RoadrunnerSBMLModel):
-            loaded = model
-        elif isinstance(model, AbstractModel):
-            loaded = RoadrunnerSBMLModel.from_abstract_model(
-                abstract_model=model, selections=model.selections
-            )
-        elif isinstance(model, (str, Path)):
-            loaded = RoadrunnerSBMLModel(source=model)
-        else:
+        if not isinstance(model, (AbstractModel, str, Path)):
             raise ValueError(f"Unsupported model type: {type(model)}")
+        loaded = load_model(model, self.engine)
         loaded.set_integrator_settings(**self.integrator_settings)
         return loaded
 
-    def compile(self, model: RoadrunnerSBMLModel, simulation: Simulation) -> Plan:
+    def compile(self, model: SBMLModel, simulation: Simulation) -> Plan:
         """Compile a simulation against a model.
 
         The changes of the model are defaults of the pre-initialization
@@ -202,7 +230,8 @@ class Simulator:
 
         Raises:
             ValueError: if the simulation does not fit the model.
-            RuntimeError: if roadrunner fails to integrate.
+            RuntimeError: if the engine fails to integrate.
+            NotImplementedError: for a feature the engine does not simulate.
         """
         loaded = self.load(model)
         plan = (
@@ -211,7 +240,7 @@ class Simulator:
             else self.compile(loaded, simulation)
         )
         plan.check_model(loaded.symbols, loaded.uinfo)
-        return execute(plan, loaded, loaded.selections or [TIME])
+        return execute_plan(plan, loaded, loaded.selections or [TIME])
 
     def run(
         self,
@@ -252,7 +281,8 @@ class Simulator:
                 the order of the scan which fails; `"flag"` sets every value of
                 a point which fails to `NaN` and records it in the variable
                 `status`. A failing point is reported by its error, not by the
-                log of roadrunner.
+                log of roadrunner. A feature the engine does not simulate is
+                no failing point, it raises with either.
             progress: show a progress bar; `None` shows it for a run in a pool.
 
         Returns:
@@ -263,6 +293,8 @@ class Simulator:
                 or the integrator has no setting of a name.
             ScanError: for a point which fails with `on_error="raise"`.
             RuntimeError: if a worker of the pool dies.
+            NotImplementedError: for a feature the engine does not simulate,
+                see `sbmlsim.simulator.executor_copasi`.
         """
         if on_error not in ("raise", "flag"):
             raise ValueError(f"'on_error' is 'raise' or 'flag', not '{on_error}'.")
@@ -281,11 +313,13 @@ class Simulator:
                 self._run_serial(compiled, chunks, collect)
             else:
                 self._run_pool(compiled, chunks, workers, collect)
-        return compiled.assemble(assembly, on_error, self.integrator_settings)
+        return compiled.assemble(
+            assembly, on_error, self.integrator_settings, self.engine
+        )
 
     def _models(
         self, model: ModelLike | None, scan: Scan
-    ) -> tuple[list[RoadrunnerSBMLModel], list[str]]:
+    ) -> tuple[list[SBMLModel], list[str]]:
         """Get the loaded models of a run and their labels.
 
         Raises:
@@ -367,7 +401,12 @@ class Simulator:
                 values, timed = _values_of(
                     scan, positions, vectors[m], at_times[(s, m)], indices[:1]
                 )
-                point_plans.append(point_plan(plan, values, timed, 0))
+                first_point = point_plan(plan, values, timed, 0)
+                # a feature the engine does not simulate raises before a point
+                # runs; the points of a plan share its changes and the times of
+                # the dimensions with `at`
+                check_plan(first_point, models[m])
+                point_plans.append(first_point)
         graph = compile_observables(observables, first, keep=keep, plans=point_plans)
         # the time is the first column, also where the model selects it
         # elsewhere, e.g. last in the sorted selections of an experiment
@@ -378,7 +417,7 @@ class Simulator:
                 raise ValueError(
                     f"The selections {reserved} are names of the result "
                     f"({sorted(RESERVED)}), select other entities, see "
-                    f"`RoadrunnerSBMLModel.set_selections`."
+                    f"`SBMLModel.set_selections`."
                 )
         for loaded, label in zip(models[1:], labels[1:], strict=True):
             _check_model(loaded, label, first, (*selections, *graph.doses))
@@ -688,7 +727,7 @@ class _Compiled:
     """
 
     scan: Scan
-    models: list[RoadrunnerSBMLModel]
+    models: list[SBMLModel]
     plans: dict[tuple[int, int], Plan]
     vectors: list[list[dict[str, np.ndarray]]]
     at_times: dict[tuple[int, int], list[float | None]]
@@ -771,8 +810,12 @@ class _Compiled:
         assembly: _Assembly,
         on_error: OnError,
         settings: Mapping[str, Any],
+        engine: Engine,
     ) -> ScanResult:
         """Build the result from the arrays of the chunks, see `ScanResult`.
+
+        The engine and the integrator settings are the provenance of the
+        result, the attributes `engine` and `integrator_settings`.
 
         A changed target is a coordinate along the first dimension which
         changes it, unless a selection of the same name is a variable: the
@@ -840,6 +883,7 @@ class _Compiled:
             "dims": dims,
             "units": units,
             "scan": self.scan.to_dict(),
+            "engine": engine.value,
             "integrator_settings": _settings(settings),
             CHANGES: self.change_times(),
         }
@@ -865,7 +909,7 @@ class _Compiled:
 
 
 def scan_point_plans(
-    scan: Scan, model: RoadrunnerSBMLModel, plan: Plan, positions: np.ndarray
+    scan: Scan, model: SBMLModel, plan: Plan, positions: np.ndarray
 ) -> list[Plan]:
     """Get the plans of points of a scan of value dimensions on a compiled plan.
 
@@ -899,7 +943,7 @@ def scan_point_plans(
 
 
 def scan_point_values(
-    scan: Scan, model: RoadrunnerSBMLModel, plan: Plan, positions: np.ndarray
+    scan: Scan, model: SBMLModel, plan: Plan, positions: np.ndarray
 ) -> tuple[dict[str, np.ndarray], dict[float, dict[str, np.ndarray]]]:
     """Get the values and times of points of a scan of value dimensions.
 
@@ -1023,28 +1067,23 @@ def _settings(settings: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _check_model(
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     label: str,
-    first: RoadrunnerSBMLModel,
+    first: SBMLModel,
     selections: Sequence[str],
 ) -> None:
     """Check that a model of a dimension has the selections and units of the first.
 
     Raises:
-        ValueError: if roadrunner has no selection of a name in the model, or
-            the model has another unit of the time or of a selection.
+        ValueError: if the model has no selection of a name, or the model has
+            another unit of the time or of a selection.
     """
-    r = model.r_loaded
-    current = list(r.timeCourseSelections)
-    try:
-        r.timeCourseSelections = list(selections)
-    except RuntimeError as err:
+    missing = [s for s in dict.fromkeys(selections) if not model.has_selection(s)]
+    if missing:
         raise ValueError(
             f"The model '{label}' has not every selection of the first model of "
-            f"the dimension: {err}"
-        ) from err
-    finally:
-        r.timeCourseSelections = current
+            f"the dimension, it has no selection {missing}."
+        )
     for name in dict.fromkeys(selections):
         unit = model.uinfo.get(name, "") or ""
         expected = first.uinfo.get(name, "") or ""
@@ -1064,7 +1103,7 @@ def _where(scan: Scan, s: int, label: str) -> str:
 
 
 def _at_times(
-    scan: Scan, simulation: Simulation, model: RoadrunnerSBMLModel, plan: Plan
+    scan: Scan, simulation: Simulation, model: SBMLModel, plan: Plan
 ) -> list[float | None]:
     """Get the time of every dimension with `at` in the time unit of a model.
 
@@ -1097,9 +1136,7 @@ def _at_times(
     return times
 
 
-def _vectors(
-    scan: Scan, model: RoadrunnerSBMLModel, label: str
-) -> list[dict[str, np.ndarray]]:
+def _vectors(scan: Scan, model: SBMLModel, label: str) -> list[dict[str, np.ndarray]]:
     """Get the values of every dimension in the units of a model.
 
     Raises:
@@ -1127,7 +1164,7 @@ def _grid(
     plans: Mapping[tuple[int, int], Plan],
     at_times: Mapping[tuple[int, int], Sequence[float | None]],
     time: ArrayLike | Quantity | None,
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
 ) -> tuple[np.ndarray | None, bool]:
     """Get the grid of the result and whether the workers interpolate onto it.
 

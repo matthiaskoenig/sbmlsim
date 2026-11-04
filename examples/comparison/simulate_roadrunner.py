@@ -62,10 +62,10 @@ class SimulateRoadrunnerSBML(SimulateSBML):
                     # concentration
                     target = f"init([{tid}])"
                 self.r.setValue(target, value)
-                console.print(f"{target} = {value}")
+                console.print(f"{target} = {value}", markup=False)
             else:
                 self.r.setValue(tid, value)
-                console.print(f"{tid} = {value}")
+                console.print(f"{tid} = {value}", markup=False)
 
         # simulate
         s = self.r.simulate(times=timepoints)

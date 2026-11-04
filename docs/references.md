@@ -6,7 +6,7 @@ The methods report of a fit, see [Report of a fit](fitting.md#report-of-a-fit), 
 
 ## Simulation
 
-**libRoadRunner.** The SBML simulation engine all simulations run on.
+**libRoadRunner.** The default SBML simulation engine.
 
 > Welsh C, Xu J, Smith L, König M, Choi K, Sauro HM.
 > **libRoadRunner 2.0: a high performance SBML simulation and analysis library.**
@@ -17,6 +17,18 @@ The methods report of a fit, see [Report of a fit](fitting.md#report-of-a-fit), 
 > **libRoadRunner: a high performance SBML simulation and analysis library.**
 > *Bioinformatics.* 2015;31(20):3315-3321.
 > [doi:10.1093/bioinformatics/btv363](https://doi.org/10.1093/bioinformatics/btv363)
+
+**COPASI.** The second simulation engine, see [Engines](simulation.md#engines), with its integrator LSODA.
+
+> Hoops S, Sahle S, Gauges R, Lee C, Pahle J, Simus N, Singhal M, Xu L, Mendes P, Kummer U.
+> **COPASI - a COmplex PAthway SImulator.**
+> *Bioinformatics.* 2006;22(24):3067-3074.
+> [doi:10.1093/bioinformatics/btl485](https://doi.org/10.1093/bioinformatics/btl485)
+
+> Petzold L.
+> **Automatic selection of methods for solving stiff and nonstiff systems of ordinary differential equations.**
+> *SIAM Journal on Scientific and Statistical Computing.* 1983;4(1):136-148.
+> [doi:10.1137/0904010](https://doi.org/10.1137/0904010)
 
 ## Standards
 

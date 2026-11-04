@@ -11,6 +11,8 @@ from typing import Any
 import antimony
 import numpy as np
 
+from sbmlsim.model import RoadrunnerSBMLModel, SBMLModel
+
 PROBE = """
 model probe
   compartment C = 2;
@@ -347,3 +349,9 @@ def wrong_length(covariates: dict[str, Any]) -> dict[str, Any]:
 def covariate_as_target(covariates: dict[str, Any]) -> dict[str, Any]:
     """A wrong population function, which returns a covariate."""
     return {"BW": covariates["BW"]}
+
+
+def roadrunner_model(model: SBMLModel) -> RoadrunnerSBMLModel:
+    """Get a model which a simulator of roadrunner loaded as a model of roadrunner."""
+    assert isinstance(model, RoadrunnerSBMLModel)
+    return model

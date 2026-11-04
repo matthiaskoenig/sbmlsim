@@ -32,7 +32,7 @@ class AbstractModel:
 
     def __init__(
         self,
-        source: str | Path,
+        source: str | Path | Source,
         sid: str | None = None,
         name: str | None = None,
         language: str | None = None,
@@ -45,7 +45,9 @@ class AbstractModel:
         """Initialize the model description.
 
         Args:
-            source: path of the model, or the SBML itself.
+            source: path of the model, the SBML itself, or a resolved
+                `Source`, e.g. the SBML of a loaded model with the path of its
+                file, see `sbmlsim.model.model_sbml.description`.
             sid: id of the model.
             name: name of the model.
             language: language of the model, e.g. `sbml`.

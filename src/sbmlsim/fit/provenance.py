@@ -18,8 +18,18 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePath
 from typing import Any
 
-#: the packages whose versions a fit records
+from sbmlsim.engine import Engine
+
+#: the packages whose versions a fit records; roadrunner also with the engine
+#: COPASI, which draws the designs of the sampling
 PACKAGES: tuple[str, ...] = ("sbmlsim", "libroadrunner", "scipy", "numpy")
+
+#: the packages whose versions a fit records in addition to `PACKAGES` by the
+#: engine of its problem
+ENGINE_PACKAGES: dict[Engine, tuple[str, ...]] = {
+    Engine.ROADRUNNER: (),
+    Engine.COPASI: ("python-copasi",),
+}
 
 #: directories below a data path which hold no data: caches of python, of
 #: notebooks and of version control
@@ -110,14 +120,18 @@ class FitProvenance:
         )
 
 
-def collect_versions() -> dict[str, str]:
+def collect_versions(engine: Engine = Engine.ROADRUNNER) -> dict[str, str]:
     """Get the versions of python and of the simulation stack.
+
+    Args:
+        engine: the engine of the fit, whose packages are recorded too, see
+            `ENGINE_PACKAGES`.
 
     Returns:
         The version by package, "not installed" for a package which is missing.
     """
     versions = {"python": platform.python_version()}
-    for package in PACKAGES:
+    for package in PACKAGES + ENGINE_PACKAGES[engine]:
         try:
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
@@ -234,6 +248,7 @@ def create_provenance(
     files: Iterable[Path],
     start_values: Mapping[str, float | None],
     fixed_values: Mapping[str, float] | None = None,
+    engine: Engine = Engine.ROADRUNNER,
 ) -> FitProvenance:
     """Create the provenance of a fit before it starts.
 
@@ -246,6 +261,7 @@ def create_provenance(
         start_values: start value of every fit parameter.
         fixed_values: values of the model which the caller keeps fixed;
             recorded, not applied.
+        engine: the engine of the problem, see `collect_versions`.
 
     Returns:
         The provenance.
@@ -257,7 +273,7 @@ def create_provenance(
         arguments=dict(arguments),
         seed=seed,
         run_seeds=list(run_seeds),
-        versions=collect_versions(),
+        versions=collect_versions(engine),
         git=git,
         files=file_checksums(files, root=root),
         start_values=dict(start_values),

@@ -9,9 +9,11 @@ The semantics are the ones of PEtab v2:
 3. The interval is split at the times of the events. At the start of a
    segment the events of its time are applied: every value is evaluated
    first, with the state at that time, then every target is set; a
-   compartment keeps the concentration of the concentration species in it.
+   compartment keeps the concentration of the concentration species in it,
+   see `sbmlsim.simulator.changes.apply_changes`.
 4. After a change at a time after the start, the events whose triggers the
-   change made true fire, which roadrunner does not see.
+   change made true fire, which roadrunner does not see, see
+   `sbmlsim.simulator.changes.fire_events`.
 5. A segment is integrated with the output of the plan and ends in its
    state at its end, which the next change is applied to; for the steps of
    the integrator see `_steps`, which has an event of the model as two rows
@@ -23,13 +25,16 @@ The semantics are the ones of PEtab v2:
    of the integrator at every change, an output of times at its times which
    are changes. A segment of a model with events stops just before its end,
    a unit in the last place of the larger magnitude of its start and end
-   and at least four machine epsilons, see `_stop` and `_simulate_times`, so
-   an event of the model at the time of a change fires after the change and
-   an event at the end after the state before it. A segment too short for
-   CVODE, a few units in the last place in absolute time, is not
-   integrated: its state is the one at its start, and the triggers before
-   the next change are evaluated at the time the model is at, its start, so
-   an event of the time in it fires once, after it, see `_integrable`.
+   and at least four machine epsilons, see `segment_stop` and
+   `_simulate_times`, so an event of the model at the time of a change fires
+   after the change and an event at the end after the state before it. A
+   segment too short for CVODE, a few units in the last place in absolute
+   time, is not integrated: its state is the one at its start, and the
+   triggers before the next change are evaluated at the time the model is
+   at, its start, so an event of the time in it fires once, after it, see
+   `integrable`. A delayed event which roadrunner keeps pending closer after
+   the start of an integration than CVODE integrates holds the state at the
+   start likewise, see `_integrate`.
 6. An event of the model within the resolution of the time after the end is
    at the end, see `_event_at_the_end`: the steps of the integrator have it
    as two rows, the states before and after it, an output time at the end
@@ -65,13 +70,11 @@ from sbmlsim.model.model_roadrunner import (
     RoadrunnerSBMLModel,
     apply_pending_step_event,
 )
-from sbmlsim.model.symbols import EventSymbols, TargetKind
 from sbmlsim.result.timecourse import TimecourseResult
-from sbmlsim.simulator.formula import compile_formula
+from sbmlsim.simulator.changes import apply_changes, fire_events, triggers
 from sbmlsim.simulator.plan import (
     OutputMode,
     Plan,
-    PlanEvent,
     SteadyStatePlan,
     preinit_targets,
     time_tolerance,
@@ -89,6 +92,10 @@ VARIABLE_STEP_SIZE = "variable_step_size"
 #: without its rows (`CVODEIntegrator::integrate` of libroadrunner 2.11), and
 #: an event at the end is found from the stop, see `_event_at_the_end`
 STOP = 4.0 * EPSILON
+
+#: the error of CVODE for an output time closer to the time of the integrator
+#: than it integrates, see `integrable`
+TOO_CLOSE = "CV_TOO_CLOSE"
 
 
 class SteadyStateError(RuntimeError):
@@ -273,13 +280,13 @@ def _simulate(
                 # not integrated, so an event of the time fires once, and the
                 # end of the steady state for the change at the start
                 before = float(r.model.getTime()) if a == plan.start else stopped
-                triggers = _triggers(model_events, r, a if local else before, model)
-                _apply(events[a], r, plan)
-                _fire_events(model_events, triggers, r, a, model)
+                triggered = triggers(model_events, r, a if local else before, model)
+                apply_changes(events[a], r, plan)
+                fire_events(model_events, triggered, r, a, model)
             else:
                 # at the start after a reset roadrunner evaluates the triggers
                 # itself
-                _apply(events[a], r, plan)
+                apply_changes(events[a], r, plan)
 
         # the segment in the time of roadrunner, from 0 in local time
         offset = a if local else 0.0
@@ -288,10 +295,10 @@ def _simulate(
         # the change (PEtab v2, reinitialization), and an event at the end has
         # the state before it as a row: the integration stops just before the
         # end of the segment, where roadrunner does not fire it, see
-        # `_fire_events` and `_event_at_the_end`
-        end_stop = _stop(start, end) if model_events else end
+        # `fire_events` and `_event_at_the_end`
+        end_stop = segment_stop(start, end) if model_events else end
         # a segment too short for CVODE keeps the state at its start
-        held = not _integrable(start, end_stop)
+        held = not integrable(start, end_stop)
         if held:
             if plan.output is OutputMode.INTEGRATOR:
                 block = _held(r, np.array([a, b]))
@@ -372,12 +379,12 @@ def _simulate(
         # is not integrated fire at its end, as after a change
         fired = 0
         if model_events and plan.end > plan.start:
-            triggers = _triggers(model_events, r, end if local else stopped, model)
+            triggered = triggers(model_events, r, end if local else stopped, model)
             if changed:
-                _apply(events[plan.end], r, plan)
-            fired = _fire_events(model_events, triggers, r, plan.end, model)
+                apply_changes(events[plan.end], r, plan)
+            fired = fire_events(model_events, triggered, r, plan.end, model)
         elif changed:
-            _apply(events[plan.end], r, plan)
+            apply_changes(events[plan.end], r, plan)
         if at_end and (changed or fired):
             state = _state(r, columns, plan.end)
             if plan.end > plan.start and (
@@ -481,7 +488,7 @@ def _steps(
     return block, True
 
 
-def _stop(start: float, end: float) -> float:
+def segment_stop(start: float, end: float) -> float:
     """Get the time just before the end of a segment where its integration stops.
 
     It is one unit in the last place of the times of the segment before its
@@ -502,7 +509,7 @@ def _stop(start: float, end: float) -> float:
     return end - max(float(np.spacing(max(abs(start), abs(end)))), STOP)
 
 
-def _integrable(start: float, stop: float) -> bool:
+def integrable(start: float, stop: float) -> bool:
     """Whether CVODE integrates from the start of a segment to its stop.
 
     CVODE rejects an output time closer to the start than twice its rounding
@@ -512,11 +519,12 @@ def _integrable(start: float, stop: float) -> bool:
     a few units in the last place apart, is not integrated. Its state is the
     one at its start, which differs from the integrated one by the rate times
     its duration, and the events of the time in it fire after it, see
-    `_simulate`.
+    `_simulate`. LSODA of COPASI has the same condition (`TOUT too close to
+    T`), see `sbmlsim.simulator.executor_copasi`.
 
     Args:
         start: the start of the segment in the time of roadrunner.
-        stop: where its integration stops, see `_stop`.
+        stop: where its integration stops, see `segment_stop`.
 
     Returns:
         Whether the segment is integrated, the condition of CVODE.
@@ -526,7 +534,7 @@ def _integrable(start: float, stop: float) -> bool:
 
 
 def _held(r: roadrunner.RoadRunner, times: np.ndarray) -> np.ndarray:
-    """Get the rows of a segment which is not integrated, see `_integrable`.
+    """Get the rows of a segment which is not integrated, see `integrable`.
 
     Args:
         r: the roadrunner instance, in the state at the start of the segment.
@@ -707,14 +715,89 @@ def _variable_steps(r: roadrunner.RoadRunner, start: float, end: float) -> np.nd
     """
     r.getIntegrator().setValue(VARIABLE_STEP_SIZE, True)
     if end >= 0.0:
-        return np.array(r.simulate(start, end), dtype=float)
+        return _integrate(r, [start, end], steps=True)
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
             message="Simulation requested end time point",
             category=UserWarning,
         )
-        return np.array(r.simulate(start, end), dtype=float)
+        return _integrate(r, [start, end], steps=True)
+
+
+def _integrate(r: roadrunner.RoadRunner, times: list[float], steps: bool) -> np.ndarray:
+    """Integrate from the first time, past an event pending too close after it.
+
+    roadrunner integrates to the time of an event of the model it keeps
+    pending, a delayed event, before the next output time. CVODE rejects that
+    time if it is closer to the start than it integrates (`CV_TOO_CLOSE`, the
+    condition of `integrable`), e.g. an event at the end pending at the stop
+    before it, see `_event_at_the_end`, or a unit in the last place after a
+    change. As for a segment which is not integrated, the state is the one at
+    the start up to the first time CVODE integrates to from it, from which
+    roadrunner integrates again and fires the event in its first step, late
+    as every delayed event of roadrunner (#1382). An event pending too close
+    before a later output time is not handled: roadrunner fails after it
+    integrated to the event.
+
+    Args:
+        r: the roadrunner instance in the state at the start.
+        times: the start and the end for the steps of the integrator, else the
+            output times, the start first.
+        steps: whether the output is the steps of the integrator.
+
+    Returns:
+        The values, the first row at the start; the steps of the integrator
+        past such an event have a row at the first time integrated from, the
+        state at the start, before the steps.
+    """
+
+    def run(times: list[float]) -> np.ndarray:
+        if steps:
+            return np.array(r.simulate(times[0], times[-1]), dtype=float)
+        return np.array(r.simulate(times=times), dtype=float)
+
+    start = times[0]
+    try:
+        return run(times)
+    except RuntimeError as err:
+        # the integration failed before it left the start
+        if (
+            TOO_CLOSE not in str(err)
+            or len(times) < 2
+            or float(r.model.getTime()) != start
+            or not integrable(start, times[1])
+        ):
+            raise
+    # the model is in the state at the start, the event pending
+    first = _held(r, np.array([start]))
+    held = _first_integrable(start)
+    logger.debug(
+        "An event of the model is pending closer after the time %s than CVODE "
+        "integrates, the state is held to the time %s.",
+        start,
+        held,
+    )
+    values = run([held, *times[1:]])
+    if steps:
+        return np.vstack([first, values])
+    return np.vstack([first, values[1:]])
+
+
+def _first_integrable(start: float) -> float:
+    """Get the first time after `start` which CVODE integrates to from it.
+
+    Args:
+        start: the start of an integration in the time of roadrunner.
+
+    Returns:
+        The least time `t` of `integrable(start, t)`, a few units in the last
+        place after the start.
+    """
+    stop = float(np.nextafter(start, np.inf))
+    while not integrable(start, stop):
+        stop = float(np.nextafter(stop, np.inf))
+    return stop
 
 
 def _to_the_end(r: roadrunner.RoadRunner, end: float, events: bool) -> bool:
@@ -845,22 +928,49 @@ def _simulate_times(
     r.getIntegrator().setValue(VARIABLE_STEP_SIZE, False)
     times = [float(t) for t in grid]
     between: float | None = None
-    if events and len(times) > 1 and times[-1] < end:
-        last, previous = times[-1], times[-2]
-        if previous + (last - previous) >= end:
-            # the difference to a time of the same sign within a factor of two
-            # is exact, and so is the sum
-            between = last / 2.0 if last > 0.0 else 2.0 * last
-            if not previous < between < last or between + (last - between) >= end:
-                raise RuntimeError(
-                    f"The integration from {previous} to {last} reaches the end "
-                    f"{end} of the segment."
-                )
+    if events and len(times) > 1:
+        between = intermediate_time(times[-2], times[-1], end)
+        if between is not None:
             times.insert(len(times) - 1, between)
-    values = np.array(r.simulate(times=times), dtype=float)
+    values = _integrate(r, times, steps=False)
     if between is not None:
         values = np.delete(values, values.shape[0] - 2, axis=0)
     return values
+
+
+def intermediate_time(previous: float, last: float, end: float) -> float | None:
+    """Get a time between two output times from which the last one is exact.
+
+    An integrator integrates an output time from the one before it, to
+    `previous + (last - previous)`, which can round up by one unit in the
+    last place: a last time before the end of a segment, its stop, can round
+    to the end, where an event of the model at the time of a change fires
+    before the change. From a time between them of the same sign within a
+    factor of two of the last time the difference is exact, and so is the
+    sum. Both executors share it, see `_simulate_times` and
+    `sbmlsim.simulator.executor_copasi`.
+
+    Args:
+        previous: the output time before the last one.
+        last: the last output time.
+        end: the end of the segment, which the integration must not reach.
+
+    Returns:
+        The time between, `None` if the last time is not before the end or
+        the sum does not reach the end.
+
+    Raises:
+        RuntimeError: if no time between keeps the integration before the end.
+    """
+    if not last < end or previous + (last - previous) < end:
+        return None
+    between = last / 2.0 if last > 0.0 else 2.0 * last
+    if not previous < between < last or between + (last - between) >= end:
+        raise RuntimeError(
+            f"The integration from {previous} to {last} reaches the end {end} of "
+            f"the segment."
+        )
+    return between
 
 
 @contextmanager
@@ -884,236 +994,6 @@ def _saved_state(r: roadrunner.RoadRunner) -> Generator[Callable[[], None]]:
 def _state(r: roadrunner.RoadRunner, columns: list[str], time: float) -> np.ndarray:
     """Get the current values of the selections."""
     return np.array([time if c == "time" else r.getValue(c) for c in columns])
-
-
-def _apply(event: PlanEvent, r: roadrunner.RoadRunner, plan: Plan) -> None:
-    """Apply the assignments of an event, see the module."""
-    values: list[tuple[str, TargetKind, float]] = []
-    for a in event.assignments:
-        if a.value is not None:
-            value = a.value
-        elif a.formula is None:
-            raise ValueError(f"The assignment of '{a.target}' has no value.")
-        else:
-            formula = compile_formula(a.formula)
-            value = formula.evaluate(
-                [event.time if s == "time" else r.getValue(s) for s in formula.symbols]
-            )
-        values.append((a.target, a.kind, value))
-
-    symbols = plan.symbols
-    targets = {symbols.entity(target) for target, _, _ in values}
-    for target, kind, value in values:
-        if kind is not TargetKind.COMPARTMENT:
-            continue
-        # PEtab: the concentration of a concentration species is kept,
-        # roadrunner keeps the amount of every species; a species of an
-        # assignment rule follows its rule, roadrunner refuses to set it (#300)
-        kept = {
-            s: r.getValue(f"[{s}]")
-            for s, c in symbols.species_compartment.items()
-            if c == target
-            and s not in symbols.only_substance
-            and s not in symbols.assignment_rules
-            and s not in targets
-        }
-        r.setValue(target, value)
-        for species, concentration in kept.items():
-            r.setValue(f"[{species}]", concentration)
-    for target, kind, value in values:
-        if kind is not TargetKind.COMPARTMENT:
-            r.setValue(target, value)
-
-
-def _triggers(
-    events: Sequence[EventSymbols],
-    r: roadrunner.RoadRunner,
-    time: float,
-    model: RoadrunnerSBMLModel,
-) -> list[bool | None]:
-    """Evaluate the triggers of the events, `None` for one which is not evaluated.
-
-    A trigger which is no math the simulator evaluates, one with `rateOf` or
-    `delay`, see `sbmlsim.sbml_math.compile_math`, is not evaluated, so a
-    change does not fire its event; it is reported once per event of a model
-    instance, so once per worker of a pool, which loads its own instance.
-
-    Args:
-        events: the events of the model.
-        r: the roadrunner instance.
-        time: the time of the model.
-        model: the model, for the messages.
-
-    Returns:
-        The value of every trigger.
-    """
-    # sbmlmath is imported by the first model with events, see `sbml_math`
-    from sbmlsim.sbml_math import compile_math, math_formula
-
-    values: list[bool | None] = []
-    for event in events:
-        if event.trigger is None:
-            values.append(None)
-            continue
-        try:
-            formula = compile_math(event.trigger)
-        except ValueError as err:
-            values.append(None)
-            if event.eid not in model.reported_triggers:
-                model.reported_triggers.add(event.eid)
-                logger.warning(
-                    "The trigger '%s' of the event '%s' of the model '%s' is no "
-                    "math the simulator evaluates, a change of a simulation "
-                    "does not fire the event: %s",
-                    math_formula(event.trigger),
-                    event.eid,
-                    model.sid or r.model.getModelName(),
-                    err,
-                )
-            continue
-        values.append(
-            bool(
-                formula.evaluate(
-                    [time if s == "time" else r.getValue(s) for s in formula.symbols]
-                )
-            )
-        )
-    return values
-
-
-#: the most times one event fires after a change, to stop event cycles without
-#: limiting the number of independent simultaneous events
-MAX_EXECUTIONS_PER_EVENT = 100
-
-
-def _fire_events(
-    events: Sequence[EventSymbols],
-    before: list[bool | None],
-    r: roadrunner.RoadRunner,
-    time: float,
-    model: RoadrunnerSBMLModel,
-) -> int:
-    """Fire the events whose triggers a change made true.
-
-    roadrunner does not see a trigger which becomes true by a value which is
-    set between two integrations, so the executor fires such events (PEtab
-    v2, reinitialization: the events are applied after the changes): the
-    events execute one at a time in priority order. Priorities and triggers
-    are evaluated again after every event, and a nonpersistent pending event
-    is cancelled if its trigger becomes false. Assignment values are captured
-    at the trigger or evaluated at execution, as the event specifies. An event
-    with a delay is reported and not fired, an event whose priority is no
-    math the simulator evaluates is reported and fires with the priority 0,
-    the one of an event without a priority, and an event whose trigger or
-    assignments are no math the simulator evaluates is reported and not
-    fired, see `_triggers`.
-
-    Args:
-        events: the events of the model.
-        before: the triggers before the change.
-        r: the roadrunner instance, in the state after the change.
-        time: the time of the change.
-        model: the model, for the messages.
-
-    Returns:
-        The number of the events which fired.
-    """
-    from sbmlsim.sbml_math import compile_math
-
-    def evaluate(mathml: str) -> float:
-        compiled = compile_math(mathml)
-        return compiled.evaluate(
-            [time if s == "time" else r.getValue(s) for s in compiled.symbols]
-        )
-
-    def assignments(event: EventSymbols) -> list[tuple[str, float]]:
-        return [(target, evaluate(formula)) for target, formula in event.assignments]
-
-    def priority(index: int) -> float:
-        formula = events[index].priority
-        if formula is None or index in unprioritized:
-            return 0.0
-        return evaluate(formula)
-
-    count = 0
-    executions = [0] * len(events)
-    pending: dict[int, list[tuple[str, float]] | None] = {}
-    # events whose priority is no math the simulator evaluates
-    unprioritized: set[int] = set()
-    while True:
-        after = _triggers(events, r, time, model)
-        for index in list(pending):
-            if not events[index].persistent and after[index] is False:
-                del pending[index]
-        for index, (event, old, new) in enumerate(
-            zip(events, before, after, strict=True)
-        ):
-            if old is not False or new is not True or index in pending:
-                continue
-            if event.delayed:
-                logger.warning(
-                    "The event '%s' of the model '%s' is triggered by a change at "
-                    "the time %s and has a delay, which the simulator does not "
-                    "schedule: it does not fire.",
-                    event.eid,
-                    model.sid or r.model.getModelName(),
-                    time,
-                )
-                continue
-            try:
-                # Compile all assignments even when their values are deferred.
-                for _, mathml in event.assignments:
-                    compile_math(mathml)
-                pending[index] = (
-                    assignments(event) if event.use_values_from_trigger_time else None
-                )
-            except ValueError as err:
-                logger.warning(
-                    "The event '%s' of the model '%s' is triggered by a change at "
-                    "the time %s, its assignments are no math the simulator "
-                    "evaluates: %s",
-                    event.eid,
-                    model.sid or r.model.getModelName(),
-                    time,
-                    err,
-                )
-                continue
-            if event.priority is not None and index not in unprioritized:
-                try:
-                    compile_math(event.priority)
-                except ValueError as err:
-                    unprioritized.add(index)
-                    logger.warning(
-                        "The event '%s' of the model '%s' is triggered by a change "
-                        "at the time %s, its priority is no math the simulator "
-                        "evaluates, it fires with the priority 0: %s",
-                        event.eid,
-                        model.sid or r.model.getModelName(),
-                        time,
-                        err,
-                    )
-        if not pending:
-            return count
-        # the first of the highest priority in document order
-        index = max(sorted(pending), key=priority)
-        if executions[index] >= MAX_EXECUTIONS_PER_EVENT:
-            logger.warning(
-                "The event '%s' of the model '%s' fires more than %s times at the "
-                "time %s, the events trigger each other in a cycle.",
-                events[index].eid,
-                model.sid or r.model.getModelName(),
-                MAX_EXECUTIONS_PER_EVENT,
-                time,
-            )
-            return count
-        values = pending.pop(index)
-        if values is None:
-            values = assignments(events[index])
-        for target, value in values:
-            r.setValue(target, value)
-        count += 1
-        executions[index] += 1
-        before = after
 
 
 def steady_state(

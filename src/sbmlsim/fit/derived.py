@@ -32,7 +32,7 @@ from sbmlsim.units import Q, Quantity
 if TYPE_CHECKING:
     from sbmlsim.fit.objects import FitParameter
     from sbmlsim.fit.optimization import OptimizationProblem
-    from sbmlsim.model import RoadrunnerSBMLModel
+    from sbmlsim.model import SBMLModel
     from sbmlsim.units import UnitsInformation
 
 logger = logging.getLogger(__name__)
@@ -381,7 +381,7 @@ def _group_derived_changes(
     where: str,
     hooks: Sequence[DerivedChanges],
     parameters: Sequence[FitParameter],
-    model: RoadrunnerSBMLModel,
+    model: SBMLModel,
     changes: Mapping[str, Any],
 ) -> GroupDerivedChanges:
     """Check the hooks of a simulation group and read their values of the model.
@@ -473,16 +473,14 @@ def _group_derived_changes(
     return derived
 
 
-def model_values(
-    model: RoadrunnerSBMLModel, symbols: Collection[str]
-) -> dict[str, float]:
+def model_values(model: SBMLModel, symbols: Collection[str]) -> dict[str, float]:
     """Get the values of the entities of a model which are symbols.
 
     The values are the ones of the model as loaded, with its changes
-    (`RoadrunnerSBMLModel.loaded_value`): the current values are the ones a
+    (`SBMLModel.loaded_value`): the current values are the ones a
     simulation before left, e.g. one in `simulations()` of an experiment, as
     for the start values of a fit (#315). A symbol which is no parameter,
-    compartment or species, e.g. a reaction, has the value roadrunner
+    compartment or species, e.g. a reaction, has the value the engine
     gives for the current state.
 
     Args:
@@ -493,11 +491,8 @@ def model_values(
         id -> value of the symbols which are entities of the model.
 
     Raises:
-        ValueError: if the model is not loaded in roadrunner, or if
-            roadrunner has no value for an entity.
+        ValueError: if the engine has no value for an entity.
     """
-    if model.r is None:
-        raise ValueError(f"Model '{model}' is not loaded in roadrunner.")
     values: dict[str, float] = {}
     for symbol in sorted(symbols):
         if symbol not in model.uinfo:
@@ -515,7 +510,7 @@ def model_values(
         except KeyError:
             pass
         try:
-            values[symbol] = float(model.r[symbol])
+            values[symbol] = model.value(symbol)
         except (RuntimeError, TypeError, ValueError) as err:
             raise ValueError(
                 f"Model '{model}': the entity '{symbol}' has no value: {err}"

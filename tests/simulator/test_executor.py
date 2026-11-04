@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model.event_rows import EVENT_TRIGGER_PREFIX
 from sbmlsim.result import TimecourseResult
 from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.simulator import Simulator
@@ -1617,3 +1618,91 @@ def test_an_event_which_the_integrator_keeps_pending_does_not_reach_the_next_sim
     first = np.asarray(simulator.simulate(model, simulation)["Q"])
     second = np.asarray(simulator.simulate(model, simulation)["Q"])
     np.testing.assert_array_equal(first, second)
+
+
+#: a delayed event of the time, `X` approaches 10
+DELAYED = """
+model delayed
+  X = 0.5
+  X' = 10 - X
+  p = 0
+  E: at 123.5 after (time >= 654.5): p = p + 1
+end
+"""
+
+
+def _delayed(trigger: float, delay: float) -> RoadrunnerSBMLModel:
+    """Get the model of a delayed event, the numbers of its math exactly."""
+    # antimony writes 15 digits
+    source = (
+        sbml(DELAYED)
+        .replace(" 123.5 ", f" {delay!r} ")
+        .replace(" 654.5 ", f" {trigger!r} ")
+    )
+    return RoadrunnerSBMLModel(source=source, settings={"relative_tolerance": 1e-10})
+
+
+def _pending_at(
+    trigger: float, pending: float, simulation: Simulation
+) -> tuple[RoadrunnerSBMLModel, float]:
+    """Get the model whose delayed event roadrunner keeps pending at a time.
+
+    CVODE finds the root of the trigger a little after it, at a time which
+    depends on the platform and on the integration, e.g. with exact output
+    of a segment past its end: a first simulation with the nominal delay
+    reads it from the marker of the event, see `sbmlsim.model.event_rows`,
+    and the delay is the time from it to `pending`, exactly.
+
+    Returns:
+        The model and the time of the trigger.
+    """
+    probe = _delayed(trigger, pending - trigger)
+    execute(compile_simulation(simulation, probe.symbols, probe.uinfo), probe, ["X"])
+    found = float(probe.r_loaded.getValue(f"{EVENT_TRIGGER_PREFIX}E"))
+    delay = pending - found
+    assert found + delay == pending
+    return _delayed(trigger, delay), found
+
+
+@pytest.mark.parametrize("times", [None, [0, 1, 2, 3, 4], [0, 2, 4, np.inf]])
+@pytest.mark.parametrize(
+    ("trigger", "pending", "change"),
+    [
+        # at the stop before the end, two units in the last place before it,
+        # roadrunner fails from the stop to the events at the end
+        pytest.param(3.75, 4.0, None, id="at the end"),
+        # two units in the last place after a change, roadrunner fails from it
+        pytest.param(
+            1.75,
+            float(np.nextafter(np.nextafter(2.0, 3.0), 3.0)),
+            Change(2.0, {"X": 5.0}),
+            id="after a change",
+        ),
+    ],
+)
+def test_a_delayed_event_pending_closer_after_the_start_than_cvode_integrates(
+    trigger: float, pending: float, change: Change | None, times: list[float] | None
+) -> None:
+    """An event pending closer after the start of an integration than CVODE integrates.
+
+    roadrunner integrates to the time of the pending event first, which CVODE
+    rejects (`CV_TOO_CLOSE`); the state is held to the first time CVODE
+    integrates to, from which the event fires, see `executor._integrate`.
+    """
+    simulation = Simulation(end=4, changes=[change] if change else [], times=times)
+    model, found = _pending_at(trigger, pending, simulation)
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    result = execute(plan, model, ["time", "X", "p"])
+    # the event fired once, of the trigger found before
+    assert model.r_loaded.getValue(f"{EVENT_TRIGGER_PREFIX}E") == found
+    assert result["p"][-1] == 1.0
+    if change is None and times is None:
+        # the states before and after the event at the end
+        np.testing.assert_array_equal(result.time[-2:], [4.0, 4.0])
+        np.testing.assert_array_equal(result["p"][-2:], [0.0, 1.0])
+    elif change is None:
+        assert result["p"][result.time == 4.0][-1] == 1.0
+    else:
+        # the event fires after the change
+        np.testing.assert_array_equal(result["p"][result.time <= 2.0], 0.0)
+        assert np.all(result["p"][result.time >= 3.0] == 1.0)

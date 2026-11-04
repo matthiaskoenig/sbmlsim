@@ -240,7 +240,7 @@ print(res.variables)
 ['[Cve_hctz]', 'Aurine_hctz', 'Ri_hctz']
 ```
 
-The integrator settings of roadrunner go to the `Simulator`, or you set them later. Every setting is passed on to the integrator, and a name it does not know is an error. The settings apply to every model the simulator runs, also in worker processes:
+The integrator settings of roadrunner go to the `Simulator`, or you set them later. Every setting is passed on to the integrator, and a name it does not know is an error. The settings apply to every model the simulator runs, also in worker processes. [Engines](#engines) lists the settings COPASI takes:
 
 ```python
 simulator = Simulator(absolute_tolerance=1e-10, relative_tolerance=1e-10)
@@ -312,7 +312,7 @@ _point
 698     720.000000    0.000123     0.068654      0.0
 ```
 
-With the steps of the integrator the table has the index `_point` and the time as a column. `simulator.simulate(model, simulation)` gives the raw solution of one simulation as a `TimecourseResult`, the array of roadrunner with its column names.
+With the steps of the integrator the table has the index `_point` and the time as a column. `simulator.simulate(model, simulation)` gives the raw solution of one simulation as a `TimecourseResult`, the array of the engine with its column names.
 
 ## Serialization
 
@@ -326,6 +326,83 @@ print(Simulation.from_json(json_str))
 ```text title="Output"
 Simulation([0.0, 12] hr, preinit=0, changes=2, integrator)
 ```
+
+## Engines
+
+`sbmlsim` simulates with [libroadrunner](https://libroadrunner.org) by default. [COPASI](https://copasi.org) is a second engine. It comes with the optional extra `copasi`, which installs python-copasi:
+
+```bash
+pip install "sbmlsim[copasi]"
+```
+
+The engine is a setting of the `Simulator`, and every model it runs is simulated with that engine. A model loaded with roadrunner is loaded again in COPASI from the same SBML, with its changes and selections, but without a state you set on it. Selecting COPASI without the extra raises an `ImportError` that names the install command. Everything that runs through a simulator can use COPASI:
+
+- Simulations and scans: `Simulator(engine="copasi").run(model, simulation)`.
+- Simulation experiments: `ExperimentRunner(experiments, simulator=Simulator(engine="copasi"))` or `run_experiments(experiments, output_path, simulator=Simulator(engine="copasi"))`. The worker processes of a run use the engine of the simulator too.
+- Parameter fits: `OptimizationProblem(..., engine="copasi")`, or `problem.set_simulator(Simulator(engine="copasi"))` on an initialized problem. The problem then computes its residuals, metrics and reports with COPASI, also in the workers of a parallel fit. This is made for evaluating stored parameters with a second engine, e.g. to check the predictions of a fit, and not for optimizing with COPASI.
+
+The engine is part of the provenance: a `ScanResult` has it in `res.ds.attrs["engine"]`, the JSON of a simulation experiment and of a fit problem stores it, and the report of a fit names it. The roadrunner path never imports COPASI.
+
+Both engines run the same compiled plan, so every rule of [The semantics](#the-semantics) holds for both: the pre-initialization, the changes and the events a change fires, the two rows at a change, and an event of the model as two rows in the steps of the integrator. COPASI integrates with LSODA. The steps of the integrator differ between the engines, while the rows at the changes, at the events and at the end correspond. Use output times to compare the engines point by point.
+
+The integrator settings keep their roadrunner names. COPASI takes `relative_tolerance`, `absolute_tolerance`, `maximum_num_steps` and `maximum_time_step`. It ignores the other settings of roadrunner, e.g. `variable_step_size`, `initial_time_step`, `maximum_bdf_order` or `jit_optimization`, with one warning per model. A name neither engine knows is an error. COPASI has a single absolute tolerance: the smallest tolerance of an `AbsoluteTolerance` times `COPASI_ATOL_FACTOR` (`1e-2`, in `sbmlsim.model.model_copasi`). LSODA scales that tolerance with the initial value of every state, and the factor makes COPASI at least as accurate as roadrunner at equal settings. A parameter fit evaluates with the tolerances of the `FitSettings` it is initialized with, in either engine.
+
+### Differences between the engines
+
+COPASI refuses what it would simulate differently from roadrunner, with an error that names the feature:
+
+- A model with an algebraic rule, a conversion factor, a stoichiometry math, a non-constant species reference, an initial assignment of a species reference or the `delay` csymbol raises a `ValueError` when it is loaded.
+- A model with a delayed event (an event with a `delay`) raises a `NotImplementedError` in a simulation with a change after the start or with a presimulation, before any point of a scan runs. Without these, COPASI simulates delayed events itself.
+
+Other differences come from the integrators and how they handle events:
+
+- roadrunner fires a delayed event late in the steps of the integrator, at the end of the next step of CVODE. COPASI fires it at its time. The steps of LSODA can fail on a delayed event with "TCRIT behind TCUR", which raises a `RuntimeError`; output times work.
+- roadrunner does not fire an event whose trigger is true only within one step of CVODE, e.g. `X > 0.5 && X < 0.8`. COPASI fires it.
+- An event whose trigger becomes true within the rounding of the state just before the end fires before the end in roadrunner, which has one row at the end. COPASI fires it at the end, and its steps have the states before and after it there.
+- roadrunner evaluates the triggers of the events at time 0, also for a simulation with a negative start. COPASI evaluates them at the start.
+- A value that roadrunner computes as exactly 0 can be a tiny number in COPASI, about `1e-19` to `2e-16`. Compare such values with an absolute tolerance.
+- A COPASI result is not bitwise reproducible across loads of a model. COPASI sums the rates of the reactions of a species in an order that depends on the memory of its process, so two loads differ in the last bit of a rate, and the integration amplifies it. A scan in worker processes agrees with a serial run within the integration. With roadrunner the two are equal bitwise.
+
+The reference values of a sampling design, see [Sampling](sampling.md), are read with roadrunner whatever the engine, so a design draws the same values for both engines.
+
+### Comparing the engines
+
+At the default tolerances of the simulator, how closely the engines agree depends on the model: the largest difference relative to the largest value of a variable is about `1.3e-7` on the HCTZ model and `5e-5` on the midazolam model (`GU__MIDIM`). Verify a model in both engines with tight tolerances, e.g. `absolute_tolerance=1e-12` and `relative_tolerance=1e-10` as below, so that the comparison measures the engines and not the integration error.
+
+`DataSetsComparison` of `sbmlsim.comparison.diff` compares results column by column, row by row. The infusion runs once per engine at the same output times and with tight tolerances. Both results have the two rows at the stop of the infusion after 1 hour:
+
+```python
+from sbmlsim.comparison.diff import DataSetsComparison
+
+sampled = Simulation(
+    time_unit="hr", end=12, times=[0, 0.5, 1, 2, 4, 8, 12], changes=infusion.changes
+)
+results = {
+    engine: Simulator(
+        engine=engine, absolute_tolerance=1e-12, relative_tolerance=1e-10
+    ).run(model, sampled)
+    for engine in ("roadrunner", "copasi")
+}
+copasi = results["copasi"]
+print(copasi.ds.attrs["engine"])
+print(f"{copasi.q['[Cve_hctz]'].to('µM').round(3):~}")
+
+comparison = DataSetsComparison({engine: res.ds for engine, res in results.items()})
+print("equal:", comparison.is_equal())
+print(comparison.diff_rel.max().to_string())
+```
+
+```text title="Output"
+copasi
+[0.0 2.721 3.282 3.282 0.417 0.27 0.183 0.123] μM
+equal: True
+time           0.000000e+00
+Aurine_hctz    4.398536e-10
+Ri_hctz        0.000000e+00
+[Cve_hctz]     7.446912e-09
+```
+
+`is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences. Verify with tight tolerances. With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.
 
 ## The semantics
 

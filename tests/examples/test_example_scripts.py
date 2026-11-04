@@ -4,10 +4,13 @@ Every example is run as a module in a temporary working directory, so the
 files it writes do not end up in the repository. An example which breaks
 fails the test suite.
 
-The examples which need optional tools (the AMICI and COPASI scripts of
-`examples.comparison`) are not run here, see `examples/README.md`.
+The examples which need tools which are no extra of sbmlsim (the AMICI
+scripts of `examples.comparison`) are not run here, see `examples/README.md`;
+`examples.comparison.example_comparison` compares roadrunner with COPASI, the
+extra `copasi`, and skips AMICI when it is not installed.
 """
 
+import importlib.util
 import os
 import re
 import subprocess
@@ -65,6 +68,7 @@ SCRIPTS = [
     "examples.sciml.lotka_volterra_fit",
     "examples.sensitivity.sensitivity_example",
     "examples.comparison.diff_example",
+    "examples.comparison.example_comparison",
     "examples.demo.demo",
     "examples.repressilator.repressilator",
     "examples.repressilator.repressilator_scans",
@@ -77,6 +81,13 @@ def run_example(
     """Run an example as a module in `cwd`."""
     if module.startswith("examples.sciml"):
         pytest.importorskip("petab_sciml", reason="the extra `sciml` is not installed")
+    # COPASI is not imported here, which would set the locale of the test
+    # process, see `sbmlsim.engine.import_copasi`
+    if (
+        module == "examples.comparison.example_comparison"
+        and importlib.util.find_spec("COPASI") is None
+    ):
+        pytest.skip("the extra `copasi` is not installed")
     # the output of rich is utf-8 on every platform, the locale of windows is not;
     # its lines are not wrapped, so a message is found in the output
     env = dict(

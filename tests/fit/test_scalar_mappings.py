@@ -332,15 +332,15 @@ def test_several_rows_compare_with_one_value(tmp_path: Path) -> None:
 
 
 def _count_simulations(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    """Count the simulations of the fit, which the groups run through `execute`."""
+    """Count the simulations of the fit, which the groups run through `execute_plan`."""
     calls: list[int] = []
-    execute = optimization_module.execute
+    execute_plan = optimization_module.execute_plan
 
     def counted(*args: Any, **kwargs: Any) -> Any:
         calls.append(1)
-        return execute(*args, **kwargs)
+        return execute_plan(*args, **kwargs)
 
-    monkeypatch.setattr(optimization_module, "execute", counted)
+    monkeypatch.setattr(optimization_module, "execute_plan", counted)
     return calls
 
 
@@ -387,7 +387,7 @@ def test_a_failed_observable_gives_the_failure_residual(
     def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("CVODE failed")
 
-    monkeypatch.setattr(optimization_module, "execute", fail)
+    monkeypatch.setattr(optimization_module, "execute_plan", fail)
     residuals = problem.residuals(np.array([TRUE_V]))
     assert isinstance(residuals, np.ndarray)
     np.testing.assert_allclose(residuals, 5.0 * problem.y_references[0])

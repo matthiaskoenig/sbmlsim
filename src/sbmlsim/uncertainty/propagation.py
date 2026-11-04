@@ -57,6 +57,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from sbmlsim.engine import Engine
+from sbmlsim.model.model_sbml import load_model
 from sbmlsim.result.scan import ScanResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.scan import Design, Dimension, Scan
@@ -606,6 +608,14 @@ def propagate(
         )
     simulator = simulator if simulator is not None else Simulator()
     loaded = simulator.load(model)
+    # the references of the relative distributions are read with roadrunner,
+    # see `sbmlsim.simulation.sampling.references`: a model of another engine
+    # is loaded in roadrunner once, not once per batch and scenario, and only
+    # for a relative distribution
+    relative = any(
+        v.marginal(name).is_relative for v in variables for name in scenarios
+    )
+    reference_model = load_model(loaded, Engine.ROADRUNNER) if relative else loaded
     if seed is None:
         seed = int(np.random.default_rng().integers(2**31))
 
@@ -623,7 +633,7 @@ def propagate(
                 design=design,
                 seed=seed,
                 start=start,
-                model=loaded,
+                model=reference_model,
                 simulation=scenario,
                 scenario=name,
             )

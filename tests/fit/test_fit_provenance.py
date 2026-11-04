@@ -1,5 +1,6 @@
 """Tests of the provenance of a fit."""
 
+import importlib.metadata
 import shutil
 import subprocess
 from pathlib import Path, PureWindowsPath
@@ -7,6 +8,7 @@ from pathlib import Path, PureWindowsPath
 import pytest
 
 from examples.hctz_fitting import DATA_PATH
+from sbmlsim.engine import Engine
 from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.provenance import (
@@ -40,6 +42,29 @@ def repo(tmp_path: Path) -> Path:
 def test_versions_name_the_simulation_stack() -> None:
     versions = collect_versions()
     assert {"python", "sbmlsim", "libroadrunner", "scipy", "numpy"} <= set(versions)
+    assert "python-copasi" not in versions
+
+
+def test_versions_of_a_fit_with_copasi_name_python_copasi(repo: Path) -> None:
+    """A fit with COPASI records its version, roadrunner draws the designs."""
+    try:
+        expected = importlib.metadata.version("python-copasi")
+    except importlib.metadata.PackageNotFoundError:
+        expected = "not installed"
+    versions = collect_versions(Engine.COPASI)
+    assert versions["python-copasi"] == expected
+    assert {"sbmlsim", "libroadrunner", "scipy", "numpy"} <= set(versions)
+    provenance = create_provenance(
+        arguments={},
+        seed=None,
+        run_seeds=[None],
+        base_path=repo,
+        files=[],
+        start_values={},
+        engine=Engine.COPASI,
+    )
+    assert provenance.versions["python-copasi"] == expected
+    assert FitProvenance.from_dict(provenance.to_dict()) == provenance
 
 
 def test_git_info_of_a_clean_and_a_dirty_tree(repo: Path) -> None:
@@ -150,6 +175,7 @@ def test_a_fit_stores_its_provenance(
     assert provenance.files, "the models and the data have checksums"
     assert provenance.start_values
     assert provenance.fixed_values == {"x": 1.5}
+    assert "python-copasi" not in provenance.versions
     paths = sorted((tmp_path / run.problem.opid / "runs").glob("*.json"))
     assert len(paths) == 2
     for path in paths:

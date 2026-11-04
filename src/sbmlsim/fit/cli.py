@@ -337,6 +337,7 @@ def run_fit(
             files=problem.files(),
             start_values={p.pid: p.start_value for p in problem.parameters},
             fixed_values=fixed_values,
+            engine=problem.engine,
         )
         result = run_optimization(
             problem=problem,
@@ -577,6 +578,7 @@ def _display_records(
     display.key_values(
         {
             "problem": subset,
+            "engine": problem.engine.value,
             "parameters": ", ".join(str(p) for p in parameters),
             "sets": ", ".join(pset.sid for pset in report.parameter_sets),
             "records": ", ".join(names) if names else "none",
