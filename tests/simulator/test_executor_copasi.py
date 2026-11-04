@@ -1427,7 +1427,9 @@ def test_a_walk_from_a_negative_start_reaches_its_output_times(
     copasi, roadrunner = both(source, simulation, ["time", "n", "total"])
     assert copasi["n"][-1] == 1.0
     if tn == 0.0 and start < 0.0:
-        after = copasi.time > 0.0
+        before, after = copasi.time < 0.0, copasi.time > 0.0
+        assert np.all(copasi["n"][before] == 0.0)
+        assert np.all(copasi["total"][before] == 0.0)
         np.testing.assert_allclose(
             copasi["total"][after], 10.0 * np.exp(-0.1 * copasi.time[after]), rtol=1e-6
         )
@@ -1435,3 +1437,29 @@ def test_a_walk_from_a_negative_start_reaches_its_output_times(
         assert_equal_results(copasi, roadrunner)
     else:
         assert_equal_rows(copasi, roadrunner, events=[tn] if tn > start else [])
+
+
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+def test_an_event_of_the_time_before_zero_from_a_negative_start(times: bool) -> None:
+    """`time >= -0.5` from the start -1 fires at -0.5, the rows before it untouched.
+
+    roadrunner evaluates the triggers at the time 0 also from a negative
+    start, a known difference: it fires the event at the start.
+    """
+    source = sbml(MOVED.replace("TN", "-0.5"))
+    grid = [-1.0, -0.75, -0.5, -0.25, 0.0, 1.0, 2.0]
+    simulation = Simulation(start=-1, end=2, times=grid if times else None)
+    copasi, _ = both(source, simulation, ["time", "n", "total"])
+    assert copasi["n"][-1] == 1.0
+    before, after = copasi.time < -0.5, copasi.time > -0.5
+    assert np.all(copasi["n"][before] == 0.0)
+    assert np.all(copasi["total"][before] == 0.0)
+    assert np.all(copasi["n"][after] == 1.0)
+    np.testing.assert_allclose(
+        copasi["total"][after],
+        10.0 * np.exp(-0.1 * (copasi.time[after] + 0.5)),
+        rtol=1e-6,
+    )
+    if times:
+        at = rows_at(copasi, -0.5)
+        assert at.shape[0] == 1 and at[0, 1] == 1.0 and at[0, 2] == 10.0
