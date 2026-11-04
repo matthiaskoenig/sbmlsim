@@ -79,7 +79,7 @@ compiled as `a <= b + shift && a >= b - shift` and `a < b - shift ||
 a > b + shift`, which is how AMICI compiles them without the shift. The
 trigger of every event starts true in the compiled SBML, so AMICI fires no
 event at the start of an integration; the events whose trigger is false
-before the time 0 (`initial_value_false`) are fired by the executor at the
+before the time 0 (`start_events`) are fired by the executor at the
 start of a simulation, as the ones a change triggers. A feature which AMICI
 does not compile or simulates otherwise than roadrunner raises at the load,
 see `_check_supported`; a trigger which compares for equality, `a == b` or
@@ -103,6 +103,7 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
+import threading
 import time as time_module
 from collections.abc import Callable, Generator, Sequence
 from contextvars import ContextVar
@@ -251,8 +252,8 @@ class AmiciSBML:
             through the parameters `VALUE_PREFIX` and `KIND_PREFIX`.
         not_a_number: the compartments which are numbers of AMICI, their
             number in the SBML is not finite.
-        initial_value_false: the events whose trigger is false before the
-            time 0 in the SBML of the model, in the order of the SBML.
+        start_events: by the position of an event of the model, whether its
+            trigger is false before the time 0 in the SBML of the model.
         events: the ids of the events of the model in AMICI, in the order of
             the SBML, `EVENT_PREFIX` and the position of an event without an
             id; the states which record that an event fired and when first
@@ -266,7 +267,7 @@ class AmiciSBML:
     sbml: str
     flagged: frozenset[str]
     not_a_number: frozenset[str]
-    initial_value_false: tuple[str, ...]
+    start_events: tuple[bool, ...]
     events: tuple[str, ...] = ()
     comparisons: tuple[StrictComparison, ...] = ()
     switches: tuple[Switch, ...] = ()
@@ -318,9 +319,10 @@ class AmiciSBMLModel(SBMLModel):
         amici_model: the model of AMICI, whose free parameters, time and
             initial state an integration sets.
         solver: the solver of AMICI, CVODES.
-        initial_value_false: the events whose trigger is false before the
-            time 0, which the executor fires at the start of a simulation
-            when their trigger is true, see the module.
+        start_events: by the position of an event of the model, whether its
+            trigger is false before the time 0, which the executor fires at
+            the start of a simulation when it is true, see the module and
+            `sbmlsim.simulator.changes.fire_start_events`.
         event_ids: the ids of the events of the model in AMICI, in the order
             of the SBML, see `AmiciSBML.events`.
         comparisons: the strict comparisons of the triggers of the events,
@@ -383,7 +385,7 @@ class AmiciSBMLModel(SBMLModel):
         self._state_ids: tuple[str, ...] = _integrated(sbml_model, self.symbols)
 
         compiled = amici_sbml(sbml, self.symbols, self.label)
-        self.initial_value_false: tuple[str, ...] = compiled.initial_value_false
+        self.start_events: tuple[bool, ...] = compiled.start_events
         self.event_ids: tuple[str, ...] = compiled.events
         self.comparisons: tuple[StrictComparison, ...] = compiled.comparisons
         self.switches: tuple[Switch, ...] = compiled.switches
@@ -1556,21 +1558,21 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
             target.setVariable(sid)
             target.setMath(_name(sid))
 
-    initial_value_false: list[str] = []
-    if level >= 3:
-        for event in model.getListOfEvents():
-            trigger = event.getTrigger()
-            if trigger is None:
-                continue
-            if not trigger.getInitialValue() and event.getId() != TARGETS_EVENT:
-                initial_value_false.append(event.getId())
+    start_events: list[bool] = []
+    for event in model.getListOfEvents():
+        trigger = event.getTrigger()
+        if event.getId() != TARGETS_EVENT:
+            start_events.append(
+                level >= 3 and trigger is not None and not trigger.getInitialValue()
+            )
+        if level >= 3 and trigger is not None:
             trigger.setInitialValue(True)
 
     return AmiciSBML(
         sbml=libsbml.writeSBMLToString(doc),
         flagged=frozenset(flagged),
         not_a_number=frozenset(not_a_number),
-        initial_value_false=tuple(initial_value_false),
+        start_events=tuple(start_events),
         events=tuple(events),
         comparisons=tuple(comparisons),
         switches=tuple(switches),
@@ -2019,23 +2021,42 @@ def _locked(path: Path) -> Generator[None]:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
 
+#: whether the current thread integrates a model of sbmlsim with AMICI, see
+#: `_DebugMessages`
+_INTEGRATING: ContextVar[bool] = ContextVar("sbmlsim_amici_integrating", default=False)
+
+#: the lock of the installation of `_DebugMessages` on the logger of AMICI
+_FILTER_LOCK = threading.Lock()
+
+#: the debug messages of CVODES, e.g. `[cvodes:CVode:WARNING] At the end of
+#: the first step, ...`, by the identifier AMICI gives them
+_CVODES_MESSAGE = re.compile(r"\[cvodes:", re.IGNORECASE)
+
+
 class _DebugMessages(logging.Filter):
-    """Log the debug messages of an integration of AMICI with the logger of sbmlsim.
+    """Log the debug messages of CVODES of an integration of sbmlsim with the logger of sbmlsim.
 
     AMICI logs the messages of CVODES of an integration at the level `DEBUG`
     into a handler of its own on the standard error, which prints them
     whatever the configuration of logging, e.g. that a root function is 0 at
     the start of an integration, which the executor sets up on purpose, see
-    `sbmlsim.simulator.executor_amici`. The filter logs them with the logger
-    of this module at `DEBUG` instead; a warning and an error of AMICI pass.
+    `sbmlsim.simulator.executor_amici`. The filter logs such a message with
+    the logger of this module at `DEBUG` instead, while the current thread
+    integrates a model of sbmlsim (`_INTEGRATING`, a context variable, so
+    another thread and an integration of AMICI outside sbmlsim are not
+    affected); every other record of AMICI, its information, warnings and
+    errors, passes as it is.
     """
 
     @override
     def filter(self, record: logging.LogRecord) -> bool:
-        """Keep a warning or an error, log a debug message with sbmlsim."""
-        if record.levelno >= logging.WARNING:
+        """Keep a record, but a debug message of CVODES of an integration of sbmlsim."""
+        if not _INTEGRATING.get() or record.levelno != logging.DEBUG:
             return True
-        logger.debug("AMICI: %s", record.getMessage())
+        message = record.getMessage()
+        if _CVODES_MESSAGE.search(message) is None:
+            return True
+        logger.debug("AMICI: %s", message)
         return False
 
 
@@ -2045,20 +2066,23 @@ _DEBUG_MESSAGES = _DebugMessages()
 def run_simulation() -> Callable[[Any, Any], Any]:
     """Get `run_simulation` of AMICI, which integrates a model with a solver.
 
-    The debug messages of the integration are logged with sbmlsim, see
-    `_DebugMessages`.
+    The debug messages of CVODES of the integration are logged with sbmlsim,
+    see `_DebugMessages`, which is installed once on the logger of AMICI.
     """
     import_amici()
     simulate = importlib.import_module("amici.sim.sundials").run_simulation
     # the logger of the messages, the module `run_simulation` is defined in
     amici_logger = logging.getLogger(simulate.__module__)
+    with _FILTER_LOCK:
+        if _DEBUG_MESSAGES not in amici_logger.filters:
+            amici_logger.addFilter(_DEBUG_MESSAGES)
 
     def run(model: Any, solver: Any) -> Any:
         """Integrate a model with a solver, see `run_simulation`."""
-        amici_logger.addFilter(_DEBUG_MESSAGES)
+        token = _INTEGRATING.set(True)
         try:
             return simulate(model, solver)
         finally:
-            amici_logger.removeFilter(_DEBUG_MESSAGES)
+            _INTEGRATING.reset(token)
 
     return run

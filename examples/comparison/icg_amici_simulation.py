@@ -25,7 +25,11 @@ MODELS: list[Path] = [
 
 def compare_engines(model_path: Path) -> DataSetsComparison:
     """Simulate a model with roadrunner and AMICI and compare the results."""
-    # an intravenous dose of 10 mg of ICG after 1 min, simulated for 20 min
+    # an intravenous dose of 10 mg of ICG after 1 min, simulated for 20 min.
+    # The dose of `icg_events_sd` is the event `IVDOSE_icg > 0`: a change at
+    # the start fires no event, and a pre-initialization of the dose fires it
+    # in AMICI and not in roadrunner (#439), so the dose is a change after
+    # the start, which fires the event in every engine
     simulation = Simulation(
         start=0,
         end=20,

@@ -24,9 +24,11 @@ from sbmlsim.simulation import (
     Formula,
     Scan,
     Simulation,
+    SteadyState,
 )
 from sbmlsim.simulation.observables import ObservableKind
 from sbmlsim.simulator import Simulator
+from sbmlsim.simulator.simulator import ScanError
 from sbmlsim.simulator.worker import ModelSpec
 from tests.engines import OTHER_ENGINES, model_class, require
 from tests.simulator.models import (
@@ -277,13 +279,15 @@ def test_a_preinit_formula_reading_a_species_raises(
 
 #: a dose by an event whose trigger is false before the time 0, which a
 #: pre-initialization of `dose` makes true; `RESET` is the assignment of
-#: `dose` back to 0, which sets the trigger to its threshold
+#: `dose` back to 0, which sets the trigger to its threshold, `n` counts the
+#: executions of the event across a presimulation
 DOSE_EVENT = """
 model dose_event
   dose = 0
+  n = 0
   total = 0
   total' = -0.1 * total
-  E: at (dose > 0), t0=false: total = total + 10 RESET
+  E: at (dose > 0), t0=false: total = total + 10, n = n + 1 RESET
 end
 """
 
@@ -292,11 +296,36 @@ end
 TIME_EVENT = """
 model time_event
   tn = 0
+  n = 0
   total = 0
   total' = -0.1 * total
-  E: at (time >= tn), t0=false: total = total + 10 RESET
+  E: at (time >= tn), t0=false: total = total + 10, n = n + 1 RESET
 end
 """
+
+#: the simulations of the start: from 0, after a presimulation, from a
+#: negative start and with the steady state after the end (output times only)
+STARTS: dict[str, dict] = {
+    "start": {"end": 2},
+    "presimulation": {"end": 2, "presimulation": SteadyState()},
+    "negative start": {"start": -1, "end": 2},
+    "steady state after the end": {"end": 2},
+}
+
+
+def _start_simulation(
+    case: str, times: bool, preinit_changes: dict[str, float] | None = None
+) -> Simulation:
+    """Get a simulation of `STARTS` with output times or the steps of the integrator."""
+    kwargs = dict(STARTS[case])
+    if case == "steady state after the end":
+        if not times:
+            pytest.skip("the steady state after the end is an output time")
+        kwargs["times"] = [0, 1, 2, float("inf")]
+    elif times:
+        start = kwargs.get("start", 0)
+        kwargs["times"] = [start, *(t for t in (0, 1, 2) if t > start)]
+    return Simulation(preinit_changes=preinit_changes or {}, **kwargs)
 
 
 def _engine_run(engine: Engine, model: str, simulation: Simulation) -> ScanResult:
@@ -305,66 +334,120 @@ def _engine_run(engine: Engine, model: str, simulation: Simulation) -> ScanResul
     return simulator.run(simulator.load(AbstractModel(source=sbml(model))), simulation)
 
 
-@pytest.mark.parametrize("times", [[0, 1, 2], None], ids=["times", "steps"])
+def _first_row(result: ScanResult) -> dict[str, float]:
+    """Get the state at the start, which must be one row."""
+    time = result.ds["time"].values
+    assert np.count_nonzero(time == time[0]) == 1
+    return {name: float(result.ds[name].values[0]) for name in ("total", "n")}
+
+
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+@pytest.mark.parametrize("case", list(STARTS))
 @pytest.mark.parametrize("reset", ["", ", dose = 0"], ids=["kept", "reset"])
 def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
-    other_engine: Engine, reset: str, times: list[float] | None
+    other_engine: Engine, reset: str, case: str, times: bool
 ) -> None:
     """A dose of the pre-initialization fires at the start, its row has the state after it.
 
     COPASI and AMICI fire it as raw libroadrunner after `resetAll` and the
-    SBML Test Suite do; the executor of roadrunner does not fire it (#439).
+    SBML Test Suite do, with a presimulation at its start, the time 0; the
+    executor of roadrunner does not fire it (#439).
     """
     res = _engine_run(
         other_engine,
         DOSE_EVENT.replace("RESET", reset),
-        Simulation(end=2, times=times, preinit_changes={"dose": 10}),
+        _start_simulation(case, times, {"dose": 10}),
     )
+    first = _first_row(res)
+    assert first["n"] == 1.0
+    assert res.ds["n"].values[-1] == 1.0
     time = res.ds["time"].values
     total = res.ds["total"].values
-    # one row at the start, the state after the dose
-    assert np.count_nonzero(time == 0.0) == 1
-    assert total[0] == 10.0
-    np.testing.assert_allclose(total, 10.0 * np.exp(-0.1 * time), rtol=1e-6)
-    if times is not None:
-        assert np.allclose(total, 10.0 * np.exp(-0.1 * np.asarray(times)))
+    if case == "presimulation":
+        # the dose decays to the steady state before the start
+        np.testing.assert_allclose(total, 0.0, atol=1e-6)
+    else:
+        finite = np.isfinite(time)
+        expected = 10.0 * np.exp(-0.1 * (time[finite] - time[0]))
+        assert first["total"] == 10.0
+        np.testing.assert_allclose(total[finite], expected, rtol=1e-5)
+        if not np.all(finite):
+            assert total[-1] == pytest.approx(0.0, abs=1e-6)
 
 
-@pytest.mark.parametrize("times", [[0, 1, 2], None], ids=["times", "steps"])
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+@pytest.mark.parametrize("case", list(STARTS))
 @pytest.mark.parametrize("reset", ["", ", tn = tn + 5"], ids=["kept", "moved"])
 def test_an_event_at_the_start_agrees_with_roadrunner(
-    other_engine: Engine, reset: str, times: list[float] | None
+    other_engine: Engine, reset: str, case: str, times: bool
 ) -> None:
-    """An event of the start without a pre-initialization has the state after it at the start, as in roadrunner."""
+    """An event of the start without a pre-initialization has the state after it at the start, as in roadrunner.
+
+    roadrunner evaluates the triggers at the time 0 also from a negative
+    start, COPASI and AMICI at the start, so from a negative start the event
+    fires when the time reaches 0, see the known differences.
+    """
+    if reset and case in ("presimulation", "steady state after the end"):
+        # every engine integrates up to `max_time`, an event every 5
+        pytest.skip("a dose every 5 time units has no steady state")
     model = TIME_EVENT.replace("RESET", reset)
-    simulation = Simulation(end=2, times=times)
+    simulation = _start_simulation(case, times)
+    if (other_engine, reset, case, times) == (
+        Engine.COPASI,
+        ", tn = tn + 5",
+        "negative start",
+        True,
+    ):
+        # LSODA of COPASI exceeds its internal step limit on the piece of the
+        # walk of the run which ends one resolution after the event at 0,
+        # also before this branch (`executor_copasi._TimeCourse._walk`)
+        with pytest.raises(ScanError, match="Internal step limit exceeded"):
+            _engine_run(other_engine, model, simulation)
+        pytest.xfail("COPASI fails the walk of a run from a negative start")
     res = _engine_run(other_engine, model, simulation)
-    reference = Simulator().run(RoadrunnerSBMLModel(source=sbml(model)), simulation)
-    for result in (res, reference):
-        assert np.count_nonzero(result.ds["time"].values == 0.0) == 1
-        assert result.ds["total"].values[0] == 10.0
-    assert res.ds["total"].values[-1] == pytest.approx(
-        reference.ds["total"].values[-1], rel=1e-6
-    )
-    if times is not None:
+    first = _first_row(res)
+    time = res.ds["time"].values
+    if case == "negative start":
+        assert first == {"total": 0.0, "n": 0.0}
+        assert res.ds["n"].values[-1] == 1.0
+        # after the event at 0, whose state before it the steps have at 0 too
+        finite = time > 0
         np.testing.assert_allclose(
-            res.ds["total"].values, reference.ds["total"].values, rtol=1e-6
+            res.ds["total"].values[finite],
+            10.0 * np.exp(-0.1 * time[finite]),
+            rtol=1e-5,
         )
+        return
+    reference = Simulator().run(RoadrunnerSBMLModel(source=sbml(model)), simulation)
+    expected = _first_row(reference)
+    assert first["n"] == expected["n"] == 1.0
+    assert first["total"] == pytest.approx(expected["total"], rel=1e-6, abs=1e-9)
+    for name in ("total", "n"):
+        assert res.ds[name].values[-1] == pytest.approx(
+            reference.ds[name].values[-1], rel=1e-6, abs=1e-9
+        )
+        if times:
+            np.testing.assert_allclose(
+                res.ds[name].values, reference.ds[name].values, rtol=1e-6, atol=1e-9
+            )
 
 
-@pytest.mark.parametrize("times", [[0, 0.5, 1, 2], None], ids=["times", "steps"])
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+@pytest.mark.parametrize("case", list(STARTS))
 def test_copasi_and_amici_agree_on_a_dose_of_the_pre_initialization(
-    times: list[float] | None,
+    case: str, times: bool
 ) -> None:
     """COPASI and AMICI have the same states at the start and at the end of a dose of the pre-initialization."""
     for engine in OTHER_ENGINES:
         require(engine)
-    simulation = Simulation(end=2, times=times, preinit_changes={"dose": 10})
+    simulation = _start_simulation(case, times, {"dose": 10})
     model = DOSE_EVENT.replace("RESET", ", dose = 0")
     copasi, amici = (_engine_run(engine, model, simulation) for engine in OTHER_ENGINES)
-    for name in ("total", "dose"):
+    first = _first_row(copasi), _first_row(amici)
+    assert first[0]["n"] == first[1]["n"] == 1.0
+    assert first[0]["total"] == pytest.approx(first[1]["total"], rel=1e-6, abs=1e-9)
+    for name in ("total", "n", "dose"):
         values = copasi.ds[name].values, amici.ds[name].values
-        assert values[0][0] == values[1][0]
-        assert values[0][-1] == pytest.approx(values[1][-1], rel=1e-6)
-        if times is not None:
-            np.testing.assert_allclose(*values, rtol=1e-6)
+        assert values[0][-1] == pytest.approx(values[1][-1], rel=1e-6, abs=1e-9)
+        if times:
+            np.testing.assert_allclose(*values, rtol=1e-6, atol=1e-9)

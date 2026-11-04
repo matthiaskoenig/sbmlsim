@@ -448,7 +448,12 @@ def test_the_events_start_with_their_trigger_true() -> None:
     executor fires them at the start of a simulation.
     """
     model = AmiciSBMLModel(source=sbml(EVENTS))
-    assert model.initial_value_false == ("E1", "E2")
+    started = [
+        event.eid
+        for event, start in zip(model.symbols.events, model.start_events, strict=True)
+        if start
+    ]
+    assert started == ["E1", "E2"]
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(
         amici_sbml(model.sbml, model.symbols, model.label).sbml
     )
@@ -1035,3 +1040,22 @@ def test_the_debug_messages_of_amici_are_logged_with_sbmlsim(
         for record in caplog.records
         if record.name == model_amici.__name__
     )
+
+
+def test_only_the_debug_messages_of_cvodes_of_an_integration_are_moved() -> None:
+    """Every other record of AMICI passes its handler, and so does one outside an integration of sbmlsim."""
+
+    def record(level: int, message: str) -> logging.LogRecord:
+        return logging.LogRecord("amici", level, __file__, 1, message, None, None)
+
+    cvodes = "[cvodes:CVode:WARNING] At the end of the first step"
+    passes = model_amici._DEBUG_MESSAGES.filter
+    assert passes(record(logging.DEBUG, cvodes))
+    token = model_amici._INTEGRATING.set(True)
+    try:
+        assert not passes(record(logging.DEBUG, cvodes))
+        assert passes(record(logging.INFO, cvodes))
+        assert passes(record(logging.WARNING, cvodes))
+        assert passes(record(logging.DEBUG, "[AMICI:simulation] another message"))
+    finally:
+        model_amici._INTEGRATING.reset(token)

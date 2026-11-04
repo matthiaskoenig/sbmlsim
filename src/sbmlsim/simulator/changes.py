@@ -175,6 +175,39 @@ def triggers(
     return result
 
 
+def fire_start_events(
+    events: Sequence[EventSymbols],
+    start: Sequence[bool],
+    values: ModelValues,
+    time: float,
+    model: SBMLModelLike,
+) -> list[int]:
+    """Fire the events whose trigger is false before the time 0 and true at the start.
+
+    roadrunner fires them at the start in the initial state, with the events
+    they trigger in the order of their priorities, before a change at the
+    start; the executors of COPASI and AMICI fire them with this function,
+    their engines get the triggers of such events true before the time 0,
+    see `sbmlsim.model.model_copasi` and `sbmlsim.model.model_amici`.
+
+    Args:
+        events: the events of the model.
+        start: by the position of an event, whether its trigger is false
+            before the time 0 (`initialValue="false"`), see the `start_events`
+            of the models of COPASI and AMICI.
+        values: the values of the model, in its initial state.
+        time: the time of the start.
+        model: the model, for the messages.
+
+    Returns:
+        The events which fired, by their positions, see `fire_events`.
+    """
+    if not any(start):
+        return []
+    before: list[bool | None] = [not false_before for false_before in start]
+    return fire_events(events, before, values, time, model)
+
+
 def fire_events(
     events: Sequence[EventSymbols],
     before: list[bool | None],

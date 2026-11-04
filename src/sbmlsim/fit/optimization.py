@@ -914,6 +914,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         The directory the problem loads its models from, see
         `sbmlsim.engine.amici_cache`; `None` for another engine.
         """
+        if self.engine is not Engine.AMICI:
+            # a problem whose engine `set_simulator` switched carries no
+            # directory of AMICI on
+            return None
         if self._amici_cache is not None:
             return self._amici_cache
         models = self.runner.models.values() if self.runner is not None else ()

@@ -21,7 +21,7 @@ It has the semantics of the executor of roadrunner, see
    `AmiciSBMLModel.initialize`, from the free parameters as loaded, so
    nothing of an earlier simulation is left.
 2. The events whose trigger is false before the time 0
-   (`AmiciSBMLModel.initial_value_false`) and true in the initial state fire
+   (`AmiciSBMLModel.start_events`) and true in the initial state fire
    at the start, in the initial state before a change at the start, with
    the events they trigger, as in roadrunner (`_Course.start_events`); AMICI
    fires no event at the start of an integration, see
@@ -161,7 +161,7 @@ import numpy as np
 from sbmlsim.model.comparisons import COMPARISONS, trigger_comparisons
 from sbmlsim.model.model_amici import AmiciSBMLModel, run_simulation
 from sbmlsim.result.timecourse import TimecourseResult
-from sbmlsim.simulator.changes import fire_events, triggers
+from sbmlsim.simulator.changes import fire_events, fire_start_events, triggers
 from sbmlsim.simulator.formula import CompiledFormula
 from sbmlsim.simulator.plan import (
     TIME_RTOL,
@@ -287,14 +287,16 @@ class _Course:
         Args:
             time: the time of the start.
         """
-        if not self.events:
-            return
         model = self.model
+        if not any(model.start_events):
+            return
         model.set_time(time)
-        before: list[bool | None] = [
-            eid not in model.initial_value_false for eid in model.event_ids
-        ]
-        self._record(time, fire_events(self.events, before, model.values, time, model))
+        self._record(
+            time,
+            fire_start_events(
+                self.events, model.start_events, model.values, time, model
+            ),
+        )
 
     def times(self, start: float, times: np.ndarray, end: float) -> np.ndarray:
         """Integrate from `start` with output at times, see `sbmlsim.simulator.segments.Course`.

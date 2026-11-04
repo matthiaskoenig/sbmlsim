@@ -48,3 +48,17 @@ def test_a_worker_of_a_fit_loads_the_models_from_the_cache_of_the_parent(
         assert isinstance(loaded, AmiciSBMLModel)
         assert loaded.cache_root == model.cache_root
     assert not any(empty.iterdir())
+
+
+def test_a_problem_switched_to_another_engine_carries_no_cache_of_amici(
+    fit_settings: FitSettings, tmp_path: Path
+) -> None:
+    """A problem of AMICI which `set_simulator` switched to roadrunner pickles without the directory of AMICI."""
+    from sbmlsim.simulator import Simulator
+
+    copy = pickle.loads(pickle.dumps(scalar_problem(tmp_path, Engine.AMICI)))
+    assert copy._amici_cache is not None
+    copy.initialize(fit_settings)
+    copy.set_simulator(Simulator())
+    assert copy.engine is Engine.ROADRUNNER
+    assert pickle.loads(pickle.dumps(copy))._amici_cache is None

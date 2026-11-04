@@ -138,7 +138,7 @@ import numpy as np
 from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
-from sbmlsim.simulator.changes import fire_events, triggers
+from sbmlsim.simulator.changes import fire_events, fire_start_events, triggers
 from sbmlsim.simulator.executor import (
     integrable,
     intermediate_time,
@@ -744,8 +744,9 @@ def start_events(model: CopasiSBMLModel, time: float) -> None:
     if not any(model.start_events):
         return
     model.set_time(time)
-    before: list[bool | None] = [not start for start in model.start_events]
-    fire_events(model.symbols.events, before, model.values, time, model)
+    fire_start_events(
+        model.symbols.events, model.start_events, model.values, time, model
+    )
 
 
 def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
@@ -802,5 +803,7 @@ def steady_state(
         SteadyStateError: if the steady state is not reached by `max_time`.
         RuntimeError: if COPASI fails to integrate, with its message.
     """
-    course = _TimeCourse(model, [], time_tolerance(start, start + plan.max_time))
+    # the time is the first column of every run, which the walk of a run
+    # reads, see `_TimeCourse._walk`
+    course = _TimeCourse(model, ["time"], time_tolerance(start, start + plan.max_time))
     return integrate_to_steady_state(model, course, plan, start)

@@ -99,7 +99,8 @@ jobs:
 
   amici:
     # the engine AMICI is an optional extra which is built from source
-    # (a C++ compiler, CMake, SWIG, a BLAS library and HDF5), so it is not in
+    # (a C++ compiler, a BLAS library and the headers of HDF5 from the
+    # system, CMake, SWIG and ninja from PyPI), so it is not in
     # the environment of the test matrix; this job installs it and runs the
     # tests of the engine, every test file with `amici` in its name and the
     # tests of every engine besides roadrunner, `test_*_engines.py`
@@ -112,7 +113,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Install the build requirements of AMICI
-      run: sudo apt-get update && sudo apt-get install -y build-essential cmake libopenblas-dev libhdf5-dev
+      run: sudo apt-get update && sudo apt-get install -y build-essential libopenblas-dev libhdf5-dev
     - name: Set up the environment
       uses: ./.github/actions/setup
       with:

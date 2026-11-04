@@ -76,8 +76,9 @@ def import_copasi() -> ModuleType:
 def import_amici() -> ModuleType:
     """Import AMICI, the optional extra `amici`.
 
-    AMICI is built from source on installation (a C++ compiler, CMake, SWIG,
-    a BLAS and HDF5) and needs `ninja` on the path to compile a model.
+    AMICI is built from source on installation: a C++ compiler, a BLAS
+    library and the headers of HDF5 come from the system, CMake and SWIG from
+    PyPI; it needs `ninja`, which the extra installs, to compile a model.
 
     :return: the module `amici`
     :raises ImportError: when AMICI is not installed
@@ -86,9 +87,8 @@ def import_amici() -> ModuleType:
         "amici",
         "The engine 'amici' needs AMICI, install it with "
         "`pip install sbmlsim[amici]`. AMICI is built from source and needs "
-        "a C++ compiler, CMake, SWIG, a BLAS library and HDF5 (e.g. "
-        "`apt install build-essential cmake swig libopenblas-dev "
-        "libhdf5-dev`).",
+        "a C++ compiler, a BLAS library and the headers of HDF5 (e.g. "
+        "`apt install build-essential libopenblas-dev libhdf5-dev`).",
     )
 
 

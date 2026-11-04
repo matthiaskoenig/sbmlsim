@@ -59,7 +59,9 @@ def test_import_amici_names_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "amici", None)
     with pytest.raises(ImportError, match=r"sbmlsim\[amici\]") as info:
         import_amici()
-    assert "swig" in str(info.value)
+    # the build requirements from the system, CMake and SWIG come from PyPI
+    assert "libopenblas-dev libhdf5-dev" in str(info.value)
+    assert "swig" not in str(info.value)
 
 
 def test_sbmlsim_does_not_import_amici() -> None:
