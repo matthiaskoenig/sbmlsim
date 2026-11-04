@@ -477,6 +477,42 @@ print(report.metrics(fitted).mappings_df()[columns].round(2))
 
 The functions of `sbmlsim.fit.metrics` also work on plain arrays, e.g. `within_fold(data, predictions, fold=2.0)` and `rmse(residuals)`. `summary_df()` has one row per kind of data, `mappings_df()` one per fit mapping and `observables_df()` one per observable, e.g. plasma and urine. There is no row over all data, which would pool the data the fit was fitted to with data it dropped. A report writes these tables as TSV.
 
+## Variability and the predictive check
+
+A fit predicts every curve with one subject, the typical subject of its study group, while the subjects of a study differ from each other. `Variability` (from `sbmlsim.fit.variability`) declares how: a relative distribution per target, e.g. `LogNormal(cv=0.3)`, a factor with the median 1 and a coefficient of variation of 30 %. A subject has every target at its factor times the value its simulation gives the target, the value of the study group, of a fitted parameter or of the model, so the inputs of the studies stay as they are and the subjects vary around them (`problem.predictions(x, factors={...})`). `Covariance`s of [the uncertainty](uncertainty.md#covariances) correlate the factors, e.g. the omega matrix of the logarithms with `scale="log"`.
+
+`predictive_check` evaluates the mappings for many subjects and compares every data point with the distribution of its prediction over them. A data point of `N` subjects, the count of a group, is a mean, so it is compared with the means of virtual groups of `N` subjects (the geometric mean for data with a geometric standard deviation); a point without a count is one subject. The quantiles of the distribution are the band of a visual predictive check, and the coverage is the share of the data inside the outer quantiles, about 90 % for a model whose variability is the one of the data. Given several parameter vectors, e.g. draws of the uncertainty of the fit, the subjects are nested in them and the distributions pooled:
+
+```python
+import numpy as np
+
+from sbmlsim.fit.variability import Variability, predictive_check
+from sbmlsim.simulation.sampling import LogNormal
+
+variability = Variability(
+    {"Ka_dis_hctz": LogNormal(cv=0.5), "KI__HCTZEX_k": LogNormal(cv=0.3)}
+)
+x = np.array([fitted.values[pid] for pid in problem.pids])
+check = predictive_check(problem, x, variability, n_subjects=64, seed=1)
+print(check.points[["mapping", "x", "N", "DV", "q5", "q50", "q95", "inside"]].head(4))
+print(check.coverage_by_mapping().round(2))
+```
+
+```text title="Output"
+     mapping      x   N        DV        q5       q50       q95  inside
+0  fm_25_tab   30.0  12  0.000077  0.000123  0.000150  0.000186   False
+1  fm_25_tab   60.0  12  0.000241  0.000240  0.000289  0.000351    True
+2  fm_25_tab   90.0  12  0.000329  0.000296  0.000349  0.000416    True
+3  fm_25_tab  120.0  12  0.000359  0.000313  0.000364  0.000421    True
+  experiment          mapping   n  coverage
+0  Patel1984        fm_25_tab  11      0.45
+1  Patel1984  fm_25_tab_urine  10      0.50
+2  Patel1984        fm_50_tab  11      0.64
+3  Patel1984  fm_50_tab_urine  10      0.40
+```
+
+The band of a mean of 12 subjects is narrow, about a third of the one of a single subject, so it tests the means of the studies hard: here about half of them lie outside, e.g. the first point of the plasma below its band. The scatter of the means of a study is the variability of its subjects plus the error of its measurement and of the model, which a variability of the subjects alone does not cover. The subjects of a vector are evaluated one after the other, so a check costs `n_subjects` times the vectors evaluations of the mappings. `check.points` has a row per data point with its band, the prediction `PRED` of the typical subject and whether the point is inside, `check.subjects` the factors and the predictions of every subject.
+
 ## Identifiability
 
 A fit always returns numbers, but the data may not determine them. The profile likelihood and the Fisher information answer how well each parameter is determined, see [Identifiability](identifiability.md).
