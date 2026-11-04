@@ -584,6 +584,21 @@ class ExperimentRunner:
             raise ExperimentRunError(exp_results)
         return exp_results
 
+    def _amici_cache(self) -> str | None:
+        """Get the directory of the compiled models of AMICI the workers load from.
+
+        The directory the models of the runner were loaded from, see
+        `sbmlsim.model.model_amici.using_cache`; `None` for another engine.
+        """
+        if self.engine is not Engine.AMICI:
+            return None
+        from sbmlsim.model.model_amici import AmiciSBMLModel, cache_root
+
+        for model in self.models.values():
+            if isinstance(model, AmiciSBMLModel):
+                return str(model.cache_root)
+        return str(cache_root())
+
     def _jobs(
         self,
         output_path: Path,
@@ -593,6 +608,7 @@ class ExperimentRunner:
     ) -> dict[str, "_Job"]:
         """Get what a worker needs to run every experiment, see `_run_job`."""
         rc, levels = _changed_rc_params(), _logger_levels()
+        amici_cache = self._amici_cache()
         return {
             sid: _Job(
                 experiment_class=type(self.experiments[sid]),
@@ -602,6 +618,7 @@ class ExperimentRunner:
                 jit_optimization=self.jit_optimization,
                 on_error=self.on_error,
                 engine=self.engine,
+                amici_cache=amici_cache,
                 integrator_settings=(
                     dict(self.simulator.integrator_settings)
                     if self.simulator is not None
@@ -973,6 +990,10 @@ class _Job:
     #: the engine of the run, which the worker loads the models in and
     #: simulates them with, see `ExperimentRunner.engine`
     engine: Engine
+    #: the directory of the compiled models of AMICI of the run, which the
+    #: worker loads the models from, see `_amici_cache`; `None` for the
+    #: other engines
+    amici_cache: str | None
     #: the settings of the integrator of the simulator of the run, `None` for
     #: a runner without a simulator
     integrator_settings: dict[str, IntegratorSetting] | None
@@ -1136,6 +1157,7 @@ def _run_job(job: _Job) -> _Outcome:
         with (
             matplotlib.rc_context(job.rc),
             reporting(_EVENTS.put if _EVENTS is not None else None),
+            _using_amici_cache(job.amici_cache),
         ):
             runner = ExperimentRunner(
                 [],
@@ -1169,6 +1191,15 @@ def _run_job(job: _Job) -> _Outcome:
         records=handler.records,
         timings=result.timings,
     )
+
+
+def _using_amici_cache(root: str | None) -> contextlib.AbstractContextManager[None]:
+    """Load the models of AMICI of a worker from the directory of the run."""
+    if root is None:
+        return contextlib.nullcontext()
+    from sbmlsim.model.model_amici import using_cache
+
+    return using_cache(root)
 
 
 #: the queue of a worker to the display of the parent, see `_set_events`

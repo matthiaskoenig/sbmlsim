@@ -879,10 +879,8 @@ class EngineSettings:
         Returns:
             The absolute tolerance.
         """
-        values = {tolerance.amount, tolerance.concentration, tolerance.other}
-        values |= set(dict(tolerance.ids).values())
-        smallest = min(values)
-        if len(values) > 1 and not self._tolerance_reported:
+        smallest = tolerance.smallest()
+        if len(tolerance.distinct_values()) > 1 and not self._tolerance_reported:
             self._tolerance_reported = True
             times = f", times {factor}" if factor != 1.0 else ""
             self._log.warning(

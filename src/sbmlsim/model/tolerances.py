@@ -107,6 +107,20 @@ class AbsoluteTolerance:
         """Get the tolerance of a kind of state."""
         return float(getattr(self, kind.value))
 
+    def distinct_values(self) -> set[float]:
+        """Get the distinct tolerances of the kinds and of the single states."""
+        return {self.amount, self.concentration, self.other} | set(
+            self.overrides.values()
+        )
+
+    def smallest(self) -> float:
+        """Get the smallest tolerance of the kinds and of the single states.
+
+        The one absolute tolerance of an engine which has no tolerance per
+        state, COPASI and AMICI, is derived from it.
+        """
+        return min(self.distinct_values())
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON serializable values."""
         return {

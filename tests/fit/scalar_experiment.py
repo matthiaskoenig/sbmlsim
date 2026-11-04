@@ -15,8 +15,16 @@ import pandas as pd
 
 from sbmlsim import Q
 from sbmlsim.data import DataSet
+from sbmlsim.engine import Engine
 from sbmlsim.experiment import SimulationExperiment
-from sbmlsim.fit import FitData, FitMapping, FitSettings
+from sbmlsim.fit import (
+    FitData,
+    FitMapping,
+    FitMappingCollection,
+    FitParameter,
+    FitSettings,
+)
+from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.model import AbstractModel
 from sbmlsim.simulation import PK, Change, Dimension, Observable, Scan, Simulation
 from sbmlsim.simulation.sampling import local
@@ -108,6 +116,29 @@ class ScalarStudy(PKStudy):
                 observable=FitData(self, task="task_single", xid=None, yid="pk.cmax"),
             )
         }
+
+
+def scalar_problem(
+    path: Path, engine: Engine | str = Engine.ROADRUNNER
+) -> OptimizationProblem:
+    """Get the problem of the cmax of `ScalarStudy` at the volume 30 l.
+
+    Args:
+        path: the base path and the data path of the problem.
+        engine: the engine of the problem.
+    """
+    return OptimizationProblem(
+        "scalar",
+        [FitMappingCollection(experiment=ScalarStudy, mappings=["fm_cmax"])],
+        [
+            FitParameter(
+                pid="V", lower_bound=1.0, upper_bound=100.0, start_value=30.0, unit="l"
+            )
+        ],
+        base_path=path,
+        data_path=path,
+        engine=engine,
+    )
 
 
 class LocalScanStudy(ScalarStudy):

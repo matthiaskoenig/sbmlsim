@@ -46,8 +46,9 @@ rates of the reactions of a species in an order which depends on the memory
 its process allocated before, so two loads of a model in the parent and in a
 worker differ in the last bit of a rate, which the integration amplifies. A
 result of AMICI does not depend on the number of workers: a worker imports
-the module the parent compiled, from the cache of the compiled models, see
-`sbmlsim.model.model_amici`.
+the module the parent compiled, from the directory of compiled models the
+parent loaded it from (`ModelSpec.cache`), whatever the environment of the
+worker says, see `sbmlsim.model.model_amici.using_cache`.
 """
 
 from __future__ import annotations

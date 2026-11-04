@@ -886,7 +886,12 @@ class _Course:
                 f"{grid[0]} to {grid[-1]}: "
                 f"{sundials.simulation_status_to_str(rdata.status)}, {messages}"
             )
-        x = np.array(rdata.x, dtype=float).reshape(grid.size, -1)
+        # a model without states, e.g. of assignment rules only, has no `x`
+        x = (
+            np.array(rdata.x, dtype=float).reshape(grid.size, amodel.nx_rdata)
+            if amodel.nx_rdata
+            else np.zeros((grid.size, 0))
+        )
         w = (
             np.array(rdata.w, dtype=float).reshape(grid.size, amodel.nw)
             if amodel.nw

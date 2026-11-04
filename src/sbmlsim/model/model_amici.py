@@ -105,6 +105,7 @@ import sysconfig
 import tempfile
 import time as time_module
 from collections.abc import Callable, Generator, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -147,6 +148,10 @@ logger = logging.getLogger(__name__)
 #: the environment variable of the directory of the compiled models, see
 #: `cache_root`
 CACHE_ENV = "SBMLSIM_AMICI_CACHE"
+
+#: the directory of the compiled models a worker loads the models of its
+#: parent from, see `using_cache`
+_CACHE: ContextVar[Path | None] = ContextVar("sbmlsim_amici_cache", default=None)
 
 #: the version of the way sbmlsim compiles a model with AMICI, part of the key
 #: of the cache: a change of the options or of the files of a compiled model
@@ -384,7 +389,11 @@ class AmiciSBMLModel(SBMLModel):
         self.switches: tuple[Switch, ...] = compiled.switches
         self._flagged: frozenset[str] = compiled.flagged
         self._not_a_number: frozenset[str] = compiled.not_a_number
-        module = load_module(compiled.sbml, self.label)
+        directory = compiled_dir(compiled.sbml, self.label)
+        #: the directory of the compiled models the model was loaded from,
+        #: which a worker loads it from as well, see `using_cache`
+        self.cache_root: Path = directory.parent
+        module = load_module(directory)
         self.amici_model: Any = module.get_model()
         self.solver: Any = self.amici_model.create_solver()
 
@@ -1732,12 +1741,39 @@ def _initial_math(entity: Any, initial: libsbml.ASTNode | None) -> libsbml.ASTNo
 def cache_root() -> Path:
     """Get the directory of the compiled models.
 
+    The directory of `using_cache` while it is used, else
     `SBMLSIM_AMICI_CACHE` if it is set, else `~/.cache/sbmlsim/amici`.
     """
-    root = os.environ.get(CACHE_ENV)
-    if root:
-        return Path(root)
+    root = _CACHE.get()
+    if root is not None:
+        return root
+    env = os.environ.get(CACHE_ENV)
+    if env:
+        return Path(env)
     return Path.home() / ".cache" / "sbmlsim" / "amici"
+
+
+@contextlib.contextmanager
+def using_cache(root: Path | str | None) -> Generator[None]:
+    """Load and compile the models of AMICI in a directory of compiled models.
+
+    A worker of a pool loads a model from the directory its parent loaded it
+    from, whatever its own environment says: a kept pool, and the forkserver
+    its workers are started from, keep the environment of the time they
+    started, so a worker would otherwise compile the model again into
+    another directory after the parent changed `SBMLSIM_AMICI_CACHE`.
+
+    Args:
+        root: the directory, `None` for the one of `cache_root`.
+    """
+    if root is None:
+        yield
+        return
+    token = _CACHE.set(Path(root))
+    try:
+        yield
+    finally:
+        _CACHE.reset(token)
 
 
 def cache_key(sbml: str) -> str:
@@ -1812,19 +1848,17 @@ def compiled_dir(sbml: str, label: str = "model") -> Path:
     return target
 
 
-def load_module(sbml: str, label: str = "model") -> ModuleType:
-    """Get the module of the compiled model of an SBML, see `compiled_dir`.
+def load_module(directory: Path) -> ModuleType:
+    """Get the module of a compiled model, see `compiled_dir`.
 
     A module is imported once per process.
 
     Args:
-        sbml: the SBML AMICI compiles, see `amici_sbml`.
-        label: the name of the model in a message.
+        directory: the directory of the compiled model in the cache.
 
     Returns:
         The module of the model, whose `get_model` creates a model of AMICI.
     """
-    directory = compiled_dir(sbml, label)
     name = module_name(directory.name)
     module = _MODULES.get(name)
     if module is None:

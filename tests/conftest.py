@@ -14,9 +14,11 @@ import pytest
 import roadrunner
 
 from sbmlsim import parallel
+from sbmlsim.engine import Engine
 from sbmlsim.log import PACKAGE_LOGGER
 from sbmlsim.model.model_amici import CACHE_ENV
 from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
+from tests.engines import OTHER_ENGINES, require
 
 data_dir = Path(__file__).parent / "data"
 
@@ -44,6 +46,18 @@ def _amici_cache(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     with pytest.MonkeyPatch.context() as mp:
         mp.setenv(CACHE_ENV, str(root))
         yield root
+
+
+@pytest.fixture(scope="module", params=OTHER_ENGINES, ids=str)
+def other_engine(request: pytest.FixtureRequest) -> Engine:
+    """Get an engine besides roadrunner, see `tests.engines`.
+
+    A test of an engine whose extra is not installed is skipped. The fixture
+    has the scope of the module, so a fixture of a module may depend on it.
+    """
+    engine: Engine = request.param
+    require(engine)
+    return engine
 
 
 @pytest.fixture(autouse=True)

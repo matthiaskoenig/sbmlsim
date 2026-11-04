@@ -100,6 +100,10 @@ class ModelSpec:
         integrator: the name of the integrator, e.g. `cvode` or `lsoda`.
         settings: every setting of the integrator by its name, the absolute
             tolerance as the `AbsoluteTolerance` of the model.
+        cache: the directory of the compiled models a model of AMICI was
+            loaded from, which a worker loads it from as well, see
+            `sbmlsim.model.model_amici.using_cache`; `None` for the other
+            engines.
     """
 
     key: str
@@ -109,6 +113,7 @@ class ModelSpec:
     jit_optimization: JitOptimization | None
     integrator: str
     settings: tuple[tuple[str, Any], ...]
+    cache: str | None = None
 
     @classmethod
     def of(cls, model: SBMLModel) -> ModelSpec:
@@ -134,6 +139,13 @@ class ModelSpec:
             model.jit_optimization if isinstance(model, RoadrunnerSBMLModel) else None
         )
         integrator, settings = model.integrator_state()
+        cache: str | None = None
+        if model.engine is Engine.AMICI:
+            # a model of AMICI imports the module of AMICI only when it loads
+            from sbmlsim.model.model_amici import AmiciSBMLModel
+
+            if isinstance(model, AmiciSBMLModel):
+                cache = str(model.cache_root)
         digest = hashlib.sha256(
             repr(
                 (
@@ -154,15 +166,24 @@ class ModelSpec:
             jit_optimization=jit_optimization,
             integrator=integrator,
             settings=settings,
+            cache=cache,
         )
 
     def load(self) -> SBMLModel:
         """Load the model in its engine with the integrator and its settings."""
-        model = load_model(
-            AbstractModel(source=self.source, parameters=dict(self.parameters) or None),
-            self.engine,
-            jit_optimization=self.jit_optimization,
-        )
+        context: AbstractContextManager[None] = nullcontext()
+        if self.cache is not None:
+            from sbmlsim.model.model_amici import using_cache
+
+            context = using_cache(self.cache)
+        with context:
+            model = load_model(
+                AbstractModel(
+                    source=self.source, parameters=dict(self.parameters) or None
+                ),
+                self.engine,
+                jit_optimization=self.jit_optimization,
+            )
         model.set_integrator_state((self.integrator, self.settings))
         return model
 

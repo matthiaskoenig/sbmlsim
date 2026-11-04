@@ -656,6 +656,24 @@ def test_conversion_factors_scale_the_rates_as_in_roadrunner(
     assert_agree(amici, roadrunner, times, changes=[1.0])
 
 
+#: a model without states, of parameters and an assignment rule
+STATELESS = """
+model stateless
+  a = 2; b = 3
+  y := a^2 * b^(-1)
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 1], None])
+def test_a_model_without_states(times: list[float] | None) -> None:
+    """AMICI has no states of the model, its rules follow the changes."""
+    simulation = Simulation(end=1, changes=[Change(0.5, {"a": 1.0})], times=times)
+    amici, roadrunner = both(sbml(STATELESS), simulation, ["time", "a", "b", "y"])
+    assert amici["y"][-1] == pytest.approx(1 / 3)
+    assert_agree(amici, roadrunner, times, changes=[0.5])
+
+
 def test_a_change_of_a_compartment_which_is_no_number_raises() -> None:
     """A compartment whose size is not a number is refused in a plan which sets it."""
     doc = libsbml.readSBMLFromString(sbml())

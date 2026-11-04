@@ -955,7 +955,7 @@ def _integrator_copasi(settings: FitSettings) -> Paragraph:
     # a problem of the engine COPASI has imported COPASI already
     from sbmlsim.model.model_copasi import COPASI_ATOL_FACTOR
 
-    smallest = _smallest_tolerance(settings)
+    smallest = AbsoluteTolerance.of(settings.absolute_tolerance).smallest()
     return p(
         "The models were simulated with COPASI ",
         Cite(("Hoops2006",)),
@@ -982,7 +982,7 @@ def _integrator_amici(settings: FitSettings) -> Paragraph:
     # the module of the model of AMICI does not import AMICI
     from sbmlsim.model.model_amici import AMICI_ATOL_FACTOR
 
-    smallest = _smallest_tolerance(settings)
+    smallest = AbsoluteTolerance.of(settings.absolute_tolerance).smallest()
     return p(
         "The models were compiled and simulated with AMICI ",
         Cite(("Froehlich2021",)),
@@ -995,15 +995,6 @@ def _integrator_amici(settings: FitSettings) -> Paragraph:
         f", the smallest absolute tolerance of the fit times {AMICI_ATOL_FACTOR:g}, "
         "which AMICI applies to every state. ",
         _text(DATA_AT_CHANGE_TEXT, settings.data_at_change, "data at a change"),
-    )
-
-
-def _smallest_tolerance(settings: FitSettings) -> float:
-    """Get the smallest absolute tolerance of the kinds and the states of a fit."""
-    tolerance = AbsoluteTolerance.of(settings.absolute_tolerance)
-    return min(
-        {tolerance.amount, tolerance.concentration, tolerance.other}
-        | set(dict(tolerance.ids).values())
     )
 
 
