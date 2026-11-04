@@ -1132,7 +1132,9 @@ def test_an_event_of_the_model_which_sets_a_threshold(
     simulation = Simulation(end=5, changes=[Change(0.5, {"n": 0.0})], times=times)
     copasi, roadrunner = both(sbml(LANDING[name]), simulation, ["time", "X", "n", "T1"])
     assert copasi["n"][-1] == roadrunner["n"][-1] >= 1.0
-    assert copasi["T1"][-1] == pytest.approx(roadrunner["T1"][-1], abs=1e-6)
+    # at most one resolution of the time after roadrunner
+    late = copasi["T1"][-1] - roadrunner["T1"][-1]
+    assert late <= time_tolerance(0.0, 5.0)
     if times is None:
         assert_equal_rows(copasi, roadrunner, changes=[0.5])
     else:
@@ -1213,3 +1215,128 @@ def test_the_states_of_the_roots_are_found_for_one_root() -> None:
     model.set_time(3.0)
     model.mc.resetEventsFound()
     assert model.mc.getValues().get(at) == 1.0
+
+
+#: a sawtooth whose reset `E` sets `G` to its threshold in every period
+SAWTOOTH = """
+model sawtooth
+  X = 0
+  X' = 1.1
+  n = 0
+  m = 0
+  E: at (X > 1), t0=true: X = 0, n = n + 1
+  G: at (X > 0), t0=true: m = m + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 1, 1.5, 2.5], None])
+@pytest.mark.parametrize(
+    ("x0", "reset"),
+    [(0.0, "E: at (X > 1), t0=true: X = 0"), (2.0, "E: at (X > 3), t0=true: X = 2")],
+)
+def test_a_trigger_at_its_threshold_at_the_start_of_a_model_which_resets_it(
+    x0: float, reset: str, times: list[float] | None
+) -> None:
+    """The event COPASI fires at the initial values is kept in a model whose events reset the trigger.
+
+    COPASI executes it at the start of the first integration, which the
+    walk of the run in pieces repeats, so it is executed first, see
+    `executor_copasi._TimeCourse._integrate`.
+    """
+    threshold = f"{x0:g}"
+    model = f"""
+    model reset
+      X = {x0}
+      X' = 1.1
+      m = 0
+      G: at (X > {threshold}), t0=true: m = m + 1
+      {reset}
+    end
+    """
+    copasi, roadrunner = both(
+        sbml(model), Simulation(end=2.5, times=times), ["time", "X", "m"]
+    )
+    assert copasi["m"][-1] == roadrunner["m"][-1] == 3.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner)
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("end", [5.0, 10.0])
+@pytest.mark.parametrize("times", [True, False])
+def test_a_change_at_the_time_of_an_event_of_the_model_which_resets(
+    end: float, times: bool
+) -> None:
+    """A change at the time of an event of the model, whose run LSODA fails with a critical time behind its output time, is integrated in halves.
+
+    See `executor_copasi._TimeCourse._once`.
+    """
+    model = """
+    model reset
+      X = 5
+      X' = 1
+      n = 0
+      E: at (time > 1), t0=true: X = 0
+      G: at (X > 0.5), t0=true: n = n + 1
+    end
+    """
+    simulation = Simulation(
+        end=end,
+        changes=[Change(1, {"X": 2.0})],
+        times=[0, 1, 2.5, end] if times else None,
+    )
+    copasi, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
+    assert copasi.values[-1, 1:].tolist() == pytest.approx([end - 1.0, 1.0])
+    if times:
+        assert_equal_results(copasi, roadrunner)
+    else:
+        assert_equal_rows(copasi, roadrunner, changes=[1.0])
+
+
+@pytest.mark.parametrize("times", [True, False])
+def test_two_thousand_resets_of_a_threshold(times: bool) -> None:
+    """A run with 2000 events which set a trigger to its threshold, walked in pieces without recursion."""
+    end = 2000 / 1.1 + 0.5
+    simulation = Simulation(end=end, times=[0.0, end / 2, end] if times else None)
+    copasi = executor_copasi.execute(
+        plan_of(sbml(SAWTOOTH), simulation),
+        CopasiSBMLModel(source=sbml(SAWTOOTH), settings=SETTINGS),
+        ["time", "n", "m"],
+    )
+    assert copasi.values[-1, 1:].tolist() == [2000.0, 2001.0]
+
+
+def test_the_walk_of_a_run_is_linear_in_its_events() -> None:
+    """The integrations of the walk of a run grow with the number of its events, not with its square."""
+    once = executor_copasi._TimeCourse._integrate_once
+    calls = [0]
+
+    def counted(
+        course: executor_copasi._TimeCourse,
+        start: float,
+        end: float,
+        past: bool,
+        grid: np.ndarray | None,
+    ) -> np.ndarray:
+        calls[0] += 1
+        return once(course, start, end, past, grid)
+
+    counts = []
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(executor_copasi._TimeCourse, "_integrate_once", counted)
+        for periods in (50, 100, 200):
+            calls[0] = 0
+            simulation = Simulation(end=periods / 1.1 + 0.5)
+            copasi = executor_copasi.execute(
+                plan_of(sbml(SAWTOOTH), simulation),
+                CopasiSBMLModel(source=sbml(SAWTOOTH), settings=SETTINGS),
+                ["time", "m"],
+            )
+            assert copasi["m"][-1] == periods + 1
+            counts.append(calls[0])
+    # about two integrations per event
+    assert counts[1] <= 2 * counts[0] + 4
+    assert counts[2] <= 2 * counts[1] + 4
+    assert counts[2] <= 3 * 200

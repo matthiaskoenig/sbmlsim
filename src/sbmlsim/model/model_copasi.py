@@ -954,6 +954,30 @@ class CopasiSBMLModel(SBMLModel):
         except ValueError as err:
             raise RuntimeError(str(err)) from None
 
+    def fire_queued_events(self, time: float) -> None:
+        """Execute the events COPASI queued at a time, e.g. at the initial values, and the events they trigger.
+
+        COPASI executes them at the start of an integration, the ones of a
+        comparison for equality first (`processQueue(false)`, then `true`,
+        as `CTrajectoryTask::processStep`).
+
+        Args:
+            time: the time of the events, the current time.
+
+        Raises:
+            RuntimeError: if COPASI reports an error, with its message.
+        """
+        self.set_time(time)
+        mc = self.mc
+        # the flags of the changes of the state, see `fire_pending_events`
+        mc.processQueue(False).disown()
+        mc.processQueue(True).disown()
+        _update_current_values(mc)
+        try:
+            drain_messages(self.label)
+        except ValueError as err:
+            raise RuntimeError(str(err)) from None
+
     def set_time(self, time: float) -> None:
         """Set the current time of the model, between two integrations.
 
@@ -1040,7 +1064,7 @@ class CopasiSBMLModel(SBMLModel):
         if self._shifted:
             self._seen = self._roots()
 
-    def landed(self, resolution: float) -> tuple[bool, list[int]]:
+    def landed(self) -> tuple[bool, list[int]]:
         """Tell the comparisons of the triggers an integration left at their threshold or whose crossing COPASI missed.
 
         An event of the model which COPASI fires in an integration may set a
@@ -1048,11 +1072,8 @@ class CopasiSBMLModel(SBMLModel):
         after `E: X = 0`, which LSODA does not find when it turns, see
         `shift_comparisons`: after the integration the comparison is at its
         threshold, or, if it turned, the state of its root in COPASI is not
-        its value by more than its rate of change over the resolution of the
-        time.
-
-        Args:
-            resolution: the resolution of the time of the simulation.
+        its value. COPASI processes a root it finds at once, so a state which
+        differs from the sign of its root is a crossing it missed.
 
         Returns:
             Whether a comparison of a trigger is exactly at its threshold, and
@@ -1063,7 +1084,6 @@ class CopasiSBMLModel(SBMLModel):
             return False, []
         roots = self._roots()
         values = self.mc.getValues()
-        rates: np.ndarray | None = None
         at_threshold = False
         missed: set[int] = set()
         for shifted, indices in zip(
@@ -1075,13 +1095,7 @@ class CopasiSBMLModel(SBMLModel):
                 root = roots[i]
                 if root == 0.0:
                     at_threshold = True
-                    continue
-                true = root > 0.0
-                if (values.get(self._states_at + i) == 1.0) == true:
-                    continue
-                if rates is None:
-                    rates = self._root_rates(len(roots))
-                if abs(root) > abs(rates[i]) * resolution:
+                elif (values.get(self._states_at + i) == 1.0) != (root > 0.0):
                     missed.add(shifted.event)
         return at_threshold, sorted(missed)
 
