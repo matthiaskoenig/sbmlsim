@@ -312,16 +312,19 @@ def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
     solutions: list[np.ndarray] = []
     plans: list[Plan] = []
     observed = bool(chunk.graph.nodes)
+    selections = chunk.selections
+    # the first column of every selection, without a search per selection
+    position: dict[str, int] = {}
+    for j, selection in enumerate(selections):
+        position.setdefault(selection, j)
     columns = (
-        []
-        if observed
-        else [chunk.selections.index(s) for s in (TIME, *chunk.graph.timecourses)]
+        [] if observed else [position[s] for s in (TIME, *chunk.graph.timecourses)]
     )
     for k in range(n):
         # a definition which does not fit the plan is no failed point
         plan = chunk.plan_of(k)
         try:
-            result = execute_plan(plan, model, chunk.selections)
+            result = execute_plan(plan, model, selections)
         except NotImplementedError:
             raise
         except Exception as err:

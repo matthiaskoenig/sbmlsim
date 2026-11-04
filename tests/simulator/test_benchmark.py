@@ -30,9 +30,15 @@ pytestmark = pytest.mark.benchmark
 #: benchmarks; reported, the time of the machine is not asserted
 BASE_SIMULATE_MS = 0.711
 
-#: the most `Simulator.simulate` may cost more than the work of
-#: 0.8.5 `simulate`, i.e. the settings of the integrator
-SIMULATE_OVERHEAD = 0.03
+#: the most `Simulator.simulate` may cost more than the work of 0.8.5
+#: `simulate`, as a fraction of it: the settings of the integrator, which it
+#: compares with the ones of roadrunner, and the check of the plan against the
+#: units of the model, about 15 to 30 µs per call. Measured 2.0 to 2.5 % for
+#: the repressilator and 2.6 to 3.2 % for midazolam, a simulation of 0.7 and
+#: 0.9 ms; the limit leaves room for the noise of the machine and fails for a
+#: check which computes the units of the model again on every call, 0.1 ms or
+#: 10 to 16 % for midazolam
+SIMULATE_OVERHEAD = 0.05
 
 #: s per 0.8.5 `run_scan` of the 1e3 points of `_scan(1000)`,
 #: measured in the same pre-flight; reported, not asserted
@@ -111,8 +117,9 @@ def test_a_simulation(name: str) -> None:
     """`Simulator.simulate` costs little more than the execution of its plan.
 
     0.8.5 `simulate` compiled the simulation and executed the plan,
-    `Simulator.simulate` adds the settings of the integrator, which
-    it sets only when they changed: a simulation costs at most
+    `Simulator.simulate` adds the settings of the integrator, which it sets
+    only when they changed, and the check of the plan against the model,
+    whose units it computes once per model: a simulation costs at most
     `SIMULATE_OVERHEAD` more than the compile and the execution of its plan,
     and a plan at most that more than its execution. The times are measured
     in the same process, the result does not depend on the speed of the
@@ -141,7 +148,7 @@ def test_a_simulation(name: str) -> None:
         f"\nSimulator.simulate of the {name}: {times['simulation'] * 1e3:.3f} ms"
         f"{base}, {simulation_overhead * 100:+.1f} % against compile and execute; "
         f"of its plan {times['plan'] * 1e3:.3f} ms, {plan_overhead * 100:+.1f} % "
-        f"against execute"
+        f"against execute ({(times['plan'] - times['execute']) * 1e6:+.0f} µs)"
     )
     assert simulation_overhead <= SIMULATE_OVERHEAD
     assert plan_overhead <= SIMULATE_OVERHEAD

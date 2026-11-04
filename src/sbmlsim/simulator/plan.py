@@ -69,10 +69,28 @@ def _base_unit(registry: UnitRegistry, unit: str) -> tuple[str, float | None]:
     return units[unit]
 
 
+@dataclass(frozen=True)
+class _Contract:
+    """The units contract of a units information and what it was computed from."""
+
+    registry: UnitRegistry
+    udict: dict[str, str]
+    contract: UnitsContract
+
+
+#: id of a units information -> its contract, removed with the units
+#: information, see `model_units`
+_CONTRACTS: dict[int, _Contract] = {}
+
+
 def model_units(uinfo: UnitsInformation) -> UnitsContract:
     """Get the base unit and the scale of the unit of every entity of a model.
 
-    The contract keeps no registry, so a plan which carries it pickles.
+    The contract keeps no registry, so a plan which carries it pickles. It is
+    computed once per units information and again when its units or its
+    registry changed, since every compile and every check of a plan asks for
+    it (0.1 ms for the 270 entities of a model of the size of midazolam,
+    against 0.002 ms for the comparison with the units it was computed from).
 
     Args:
         uinfo: the units of the model.
@@ -80,12 +98,24 @@ def model_units(uinfo: UnitsInformation) -> UnitsContract:
     Returns:
         The units of the model, see `UnitsContract`.
     """
-    return tuple(
+    uid = id(uinfo)
+    cached = _CONTRACTS.get(uid)
+    if (
+        cached is not None
+        and cached.registry is uinfo.ureg
+        and cached.udict == uinfo.udict
+    ):
+        return cached.contract
+    contract = tuple(
         (str(key), None, None)
         if unit is None
         else (str(key), *_base_unit(uinfo.ureg, unit))
         for key, unit in sorted(uinfo.items())
     )
+    if cached is None:
+        weakref.finalize(uinfo, _CONTRACTS.pop, uid, None).atexit = False
+    _CONTRACTS[uid] = _Contract(uinfo.ureg, dict(uinfo.udict), contract)
+    return contract
 
 
 #: the tolerances of the steady state of an output at the time `inf`
