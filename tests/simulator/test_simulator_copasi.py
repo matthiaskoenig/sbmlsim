@@ -304,3 +304,80 @@ def test_the_executor_of_the_engine_of_a_model(
         execute_plan(plan, model, ["time"])
     with pytest.raises(ValueError, match="The engine 'other' has no executor"):
         check_plan(plan, model)
+
+
+#: a pre-initialization formula reads parameters: `q` is set, `p` follows it
+#: by an initial assignment, `u` is unrelated, `rq` and `rp` follow `q` and `p`
+#: by assignment rules and `rc` and `ra` the concentration and the amount of
+#: `S`, whose compartment `c` is set
+PREINIT_FORMULAS = """
+model preinit_formulas
+  compartment c = 1
+  species S in c
+  S = 2
+  q = 1
+  p = 2 * q
+  u = 7
+  rq := 3 * q
+  rp := 3 * p
+  rc := S
+  ra := S * c
+  y = 0
+  k = 0.1
+  J: S -> ; k * S
+end
+"""
+
+
+@pytest.mark.parametrize(
+    "formula",
+    [
+        pytest.param("q", id="a target"),
+        pytest.param("p", id="a dependent of a target"),
+        pytest.param("u", id="an unrelated parameter"),
+        pytest.param("rq", id="a rule of a target"),
+        pytest.param("rp", id="a rule of a dependent of a target"),
+        pytest.param("rc + ra", id="rules of a species in a set compartment"),
+        pytest.param("2 * q + p - u", id="several parameters"),
+    ],
+)
+def test_preinit_formulas_read_what_they_read_in_roadrunner(formula: str) -> None:
+    """A formula reads the values set and as loaded, as in roadrunner (PEtab v2)."""
+    simulation = Simulation(
+        end=10,
+        times=[0, 5, 10],
+        preinit_changes={"q": 5, "c": 2, "y": formula},
+    )
+    source = sbml(PREINIT_FORMULAS)
+    r = Simulator().simulate(source, simulation)
+    c = Simulator(engine="copasi").simulate(source, simulation)
+    assert sorted(c.columns) == sorted(r.columns)
+    for name in r.columns:
+        np.testing.assert_allclose(c[name], r[name], rtol=1e-6, atol=1e-10)
+
+
+@pytest.mark.parametrize("formula", ["S", "[S]"], ids=["an amount", "a concentration"])
+@pytest.mark.parametrize("engine", ["roadrunner", "copasi"])
+def test_a_preinit_formula_reading_a_species_raises(engine: str, formula: str) -> None:
+    """Nothing but a parameter has a value before the initialization."""
+    simulation = Simulation(end=10, preinit_changes={"q": 5, "y": formula})
+    with pytest.raises(ValueError, match="which is not a parameter"):
+        Simulator(engine=engine).simulate(sbml(PREINIT_FORMULAS), simulation)
+
+
+def test_a_preinit_formula_reading_a_rule_while_a_value_outside_the_state_is_set() -> (
+    None
+):
+    """COPASI keeps a parameter whose value is not a number out of its state."""
+    source = sbml(PREINIT_FORMULAS.replace("  u = 7\n", "  u = NaN\n  ru := 3 * u\n"))
+    simulation = Simulation(end=10, preinit_changes={"u": 5, "y": "ru"})
+    Simulator().simulate(source, simulation)
+    with pytest.raises(
+        NotImplementedError, match=r"reads the assignment rules \['ru'\]"
+    ):
+        Simulator(engine="copasi").simulate(source, simulation)
+    # a formula which reads no rule reads the value which is set
+    simulation = Simulation(end=10, times=[0, 10], preinit_changes={"u": 5, "y": "u"})
+    r = Simulator().simulate(source, simulation)
+    c = Simulator(engine="copasi").simulate(source, simulation)
+    np.testing.assert_allclose(c["y"], r["y"])

@@ -24,11 +24,14 @@ comparable:
    state the one before it ended in (`processRaw(False)`); the states of the
    triggers are set from the current values before every run
    (`resetEventsFound`), since COPASI does not see the values the executor
-   sets between two runs, see `check_supported` for the delayed
-   events. The output of `OutputMode.TIMES` is the plan times of the
-   segment, of `OutputMode.INTEGRATOR` the steps of LSODA, which have an
-   event of the model as two rows at its time, the states before and after
-   it. A change after the start, the one at the end included, has two rows
+   sets between two runs, see `check_supported` for the delayed events; a
+   delayed event COPASI has scheduled stays pending across the runs, and
+   one closer after the start of a run than LSODA integrates, e.g. at the
+   end after the stop before it, fires at its time from the state at the
+   start (`_TimeCourse.steps`). The output of `OutputMode.TIMES` is the plan
+   times of the segment, of `OutputMode.INTEGRATOR` the steps of LSODA,
+   which have an event of the model as two rows at its time, the states
+   before and after it. A change after the start, the one at the end included, has two rows
    at its time, the state before the change, which ends the segment before
    it, and the state after it, which starts the next one.
 5. A segment of a model with events stops just before its end, see
@@ -127,6 +130,7 @@ class _TimeCourse:
     def __init__(self, model: CopasiSBMLModel, selections: Sequence[str]) -> None:
         """Set up the task of a model for runs which continue one another."""
         self.model = model
+        self.selections = list(selections)
         self.names = model.output_cns(selections)
         self._transform = model.output_transform(selections)
         self._task: COPASI.CTrajectoryTask = model.dm.getTask("Time-Course")
@@ -141,6 +145,12 @@ class _TimeCourse:
     def steps(self, start: float, end: float) -> np.ndarray:
         """Integrate from `start` to `end` with the output of the steps of LSODA.
 
+        A delayed event of the model which COPASI has scheduled closer after
+        the start than LSODA integrates (`TOUT too close to T`, the condition
+        of `integrable`), e.g. at the end after the stop before it, fires at
+        its time with the state at the start, as the events at the end of a
+        segment which is not integrated; the integration continues from it.
+
         Returns:
             The values, a row per step, the first at the start and the last
             at the end, an event of the model as two rows at its time.
@@ -149,7 +159,27 @@ class _TimeCourse:
         problem.setAutomaticStepSize(True)
         problem.setOutputEvent(True)
         problem.setUseValues(False)
-        return self._run(start, end)
+        model = self.model
+        blocks: list[np.ndarray] = []
+        pending = model.pending_event_time()
+        while start < pending <= end and not integrable(start, pending):
+            # the state at the start, before the event at its time
+            blocks.append(_state(model, self.selections, start)[np.newaxis, :])
+            blocks.append(_state(model, self.selections, pending)[np.newaxis, :])
+            model.fire_pending_events(pending)
+            start = pending
+            pending = model.pending_event_time()
+        if not blocks:
+            return self._run(start, end)
+        if integrable(start, end):
+            blocks.append(self._run(start, end))
+        else:
+            # the state after the events, at the start and at the end
+            blocks += [
+                _state(model, self.selections, t)[np.newaxis, :]
+                for t in sorted({start, end})
+            ]
+        return np.concatenate(blocks, axis=0)
 
     def times(self, start: float, times: np.ndarray, end: float) -> np.ndarray:
         """Integrate from `start` with output at times, the last one the stop.
@@ -222,7 +252,10 @@ class _TimeCourse:
         # the run before, which a change, an event the executor fired or the
         # time set since then made stale: an event would fire again, or not
         # when its trigger crosses next (the root of COPASI toggles the stale
-        # state); the states are set from the current values, without firing
+        # state); the states are set from the current values, without firing.
+        # A delayed event COPASI has scheduled stays in its queue, e.g. across
+        # the stop before the end into the events at the end and the steady
+        # state after the end
         model.mc.resetEventsFound()
         self._problem.setDuration(_duration(start, end, past))
         dm = model.dm

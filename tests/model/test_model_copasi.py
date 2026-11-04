@@ -580,3 +580,19 @@ def test_loading_prints_nothing(capfd: pytest.CaptureFixture[str]) -> None:
     CopasiSBMLModel(source=HCTZ_SBML).initialize([_a("BW", 80.0)])
     out, err = capfd.readouterr()
     assert out == "" and err == ""
+
+
+def test_a_compartment_without_spatial_dimensions_logs_no_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """COPASI reads a compartment without spatial dimensions as one of three (90)."""
+
+    def edit(model: libsbml.Model) -> None:
+        model.getCompartment("C").unsetSpatialDimensions()
+
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.model.model_copasi"):
+        model = CopasiSBMLModel(source=_probe_with(edit))
+    assert "SBML (90)" in caplog.text
+    warnings = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
+    assert not warnings, warnings
+    assert model.value("C") == RoadrunnerSBMLModel(source=_probe_with(edit)).value("C")

@@ -337,6 +337,7 @@ def run_fit(
             files=problem.files(),
             start_values={p.pid: p.start_value for p in problem.parameters},
             fixed_values=fixed_values,
+            engine=problem.engine,
         )
         result = run_optimization(
             problem=problem,

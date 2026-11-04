@@ -110,8 +110,11 @@ ROADRUNNER_ONLY_SETTINGS = frozenset(
 #: at the level `DEBUG`: the default units of the model (91, 92), the units of
 #: species and of the model which COPASI does not import and whose numbers it
 #: keeps (25, 66), a compartment without a size, which has the size 1 as in
-#: roadrunner (45), an unknown annotation and the warnings of libsbml
+#: roadrunner (45), a compartment without spatial dimensions, which COPASI
+#: reads as one of three, whose size is the same number (90), an unknown
+#: annotation and the warnings of libsbml
 BENIGN_MESSAGES = (
+    "SBML (90)",
     "SBML (91)",
     "SBML (92)",
     "SBML (25)",
@@ -473,9 +476,12 @@ class CopasiSBMLModel(SBMLModel):
         evaluates the initial assignments and the assignment rules which read
         them again; a target replaces its own initial assignment, whose
         initial expression is removed in COPASI while a target sets it. A
-        formula reads the parameters after the values are set and their
-        dependents are evaluated; roadrunner evaluates an initial assignment
-        of a parameter a formula reads after the formulas.
+        formula reads the parameters as in roadrunner, the values which are
+        set and otherwise the values as loaded, before the initial
+        assignments are evaluated again (a parameter of an initial assignment
+        has its value as loaded, also when an entity it depends on is set) and
+        an assignment rule on that state, see `_formula_values`; the values
+        of all formulas are evaluated before any of them is set (PEtab v2).
 
         A compartment whose size changes keeps the concentration of the
         species whose initial value is a concentration and of a species which
@@ -496,28 +502,117 @@ class CopasiSBMLModel(SBMLModel):
                 references.append(self._set_initial(a.target, a.kind, float(a.value)))
         formulas = [a for a in assignments if a.formula is not None]
         if formulas:
-            self._update_initial_values(references, targets)
             # the package of the simulator imports the models
             from sbmlsim.simulator.formula import compile_formula
 
-            evaluated: list[tuple[Assignment, float]] = []
-            for a in formulas:
-                formula = compile_formula(str(a.formula))
-                evaluated.append(
-                    (
-                        a,
-                        formula.evaluate(
-                            [
-                                self.entities[s].getInitialValue()
-                                for s in formula.symbols
-                            ]
-                        ),
-                    )
-                )
+            compiled = [(a, compile_formula(str(a.formula))) for a in formulas]
+            values = self._formula_values(
+                assignments, {s for _, f in compiled for s in f.symbols}
+            )
+            evaluated = [
+                (a, f.evaluate([values[s] for s in f.symbols])) for a, f in compiled
+            ]
             for a, value in evaluated:
                 references.append(self._set_initial(a.target, a.kind, value))
         self._update_initial_values(references, targets)
         self._apply_initial_values()
+
+    def _formula_values(
+        self, assignments: Sequence[Assignment], symbols: set[str]
+    ) -> dict[str, float]:
+        """Get the values of the parameters the formulas of an initialization read.
+
+        A formula reads what it reads in roadrunner
+        (`RoadrunnerSBMLModel.initialize`): the values which are set and
+        otherwise the values as loaded, before the initial assignments are
+        evaluated again and before the value of any formula is set, so a
+        parameter of an initial assignment has its value as loaded, also when
+        an entity it depends on is set. The variable of an assignment rule
+        follows its rule on that state, which COPASI evaluates on the current
+        state of the model (`_values_set`).
+
+        Args:
+            assignments: the pre-initialization assignments.
+            symbols: the parameters the formulas read.
+
+        Returns:
+            The value of every symbol.
+        """
+        values = {
+            self.symbols.entity(a.target): float(a.value)
+            for a in assignments
+            if a.value is not None
+        }
+        read = {s: values.get(s, self._loaded[s]) for s in symbols}
+        rules = sorted(s for s in symbols if s in self.symbols.assignment_rules)
+        if rules:
+            self._values_set(assignments, rules)
+            read |= {s: self.value(s) for s in rules}
+        return read
+
+    def _values_set(self, assignments: Sequence[Assignment], rules: list[str]) -> None:
+        """Set the values of an initialization as the current values of COPASI.
+
+        The current state is the one as loaded with the values set as
+        roadrunner sets them (`RoadrunnerSBMLModel.initialize`): the
+        compartments first, which keep the concentration of their species
+        whose initial value is a concentration or which are set as a
+        concentration and the amount of every other species, then the other
+        values; the assignment rules are evaluated on it. The initial state
+        is not changed, the initialization applies it after.
+
+        Args:
+            assignments: the pre-initialization assignments.
+            rules: the variables of assignment rules a formula reads.
+
+        Raises:
+            NotImplementedError: if an entity which is set is not part of the
+                state of COPASI, its value in the SBML is not a number.
+        """
+        symbols = self.symbols
+        values = [a for a in assignments if a.value is not None]
+        outside = sorted(
+            symbols.entity(a.target)
+            for a in values
+            if symbols.entity(a.target) in self._not_a_number
+        )
+        if outside:
+            raise NotImplementedError(
+                f"COPASI cannot evaluate a formula before the initialization "
+                f"which reads the assignment rules {rules} while {outside} is "
+                f"set, whose value in the SBML is not a number, which COPASI "
+                f"keeps out of its state."
+            )
+        mc = self.mc
+        mc.applyInitialValues()
+        _update_current_values(mc)
+        amounts = {
+            symbols.entity(a.target)
+            for a in assignments
+            if a.kind is TargetKind.SPECIES_AMOUNT
+        }
+        concentrations = {
+            symbols.entity(a.target)
+            for a in assignments
+            if a.kind is TargetKind.SPECIES_CONCENTRATION
+        }
+        for a in values:
+            if a.kind is not TargetKind.COMPARTMENT:
+                continue
+            kept = {
+                sid: self.value(f"[{sid}]")
+                for sid, cid in symbols.species_compartment.items()
+                if cid == a.target
+                and sid not in amounts
+                and sid not in symbols.assignment_rules
+                and (sid in symbols.initial_concentration or sid in concentrations)
+            }
+            self.set_value(a.target, float(a.value))  # ty: ignore[invalid-argument-type]
+            for sid, concentration in kept.items():
+                self.set_value(f"[{sid}]", concentration)
+        for a in values:
+            if a.kind is not TargetKind.COMPARTMENT:
+                self.set_value(a.target, float(a.value))  # ty: ignore[invalid-argument-type]
 
     def _set_initial(self, target: str, kind: TargetKind, value: float) -> Any:
         """Set the initial value of a target, see `initialize`.
@@ -758,6 +853,40 @@ class CopasiSBMLModel(SBMLModel):
             number = value * size * mc.getQuantity2NumberFactor()
         _write_value(mc.getMathObject(entity.getValueReference()), number)
         _update_current_values(mc)
+
+    def pending_event_time(self) -> float:
+        """Get the time of the next delayed event COPASI has scheduled.
+
+        Returns:
+            The time at which the next scheduled event executes, infinity
+            without one.
+        """
+        return float(self.mc.getProcessQueueExecutionTime())
+
+    def fire_pending_events(self, time: float) -> None:
+        """Execute the delayed events COPASI has scheduled at a time.
+
+        The model is set to the time and COPASI executes the events of its
+        queue which are due, in the current state, and the events they
+        trigger; the values which depend on the state are updated.
+
+        Args:
+            time: the time of the events, see `pending_event_time`.
+
+        Raises:
+            RuntimeError: if COPASI reports an error, with its message.
+        """
+        self.set_time(time)
+        mc = self.mc
+        # the flags of the changes of the state, a type SWIG has no destructor
+        # of: disowned, its few bytes are left to the process instead of a
+        # report of a leak on stdout per call
+        mc.processQueue(True).disown()
+        _update_current_values(mc)
+        try:
+            drain_messages(self.label)
+        except ValueError as err:
+            raise RuntimeError(str(err)) from None
 
     def set_time(self, time: float) -> None:
         """Set the current time of the model, between two integrations.

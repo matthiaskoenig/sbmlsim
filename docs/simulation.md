@@ -367,6 +367,8 @@ The reference values of a sampling design, see [Sampling](sampling.md), are read
 
 ### Comparing the engines
 
+At the default tolerances of the simulator, how closely the engines agree depends on the model: the largest difference relative to the largest value of a variable is about `1.3e-7` on the HCTZ model and `5e-5` on the midazolam model (`GU__MIDIM`). Verify a model in both engines with tight tolerances, e.g. `absolute_tolerance=1e-12` and `relative_tolerance=1e-10` as below, so that the comparison measures the engines and not the integration error.
+
 `DataSetsComparison` of `sbmlsim.comparison.diff` compares results column by column, row by row. The infusion runs once per engine at the same output times and with tight tolerances. Both results have the two rows at the stop of the infusion after 1 hour:
 
 ```python

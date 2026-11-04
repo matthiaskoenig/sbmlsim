@@ -475,6 +475,64 @@ def test_a_delayed_event_with_writes_raises(
         executor_copasi.execute(plan, model, ["time", "Y"])
 
 
+#: a delayed event of the time, `X` approaches 10, so a steady state follows
+#: the end
+DELAYED_AT = """
+model delayed_at
+  X = 0.5
+  X' = 10 - X
+  p = 0
+  E: at DELAY after (time >= TRIGGER): p = p + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 2, 4], [0, 2, 4, np.inf], None])
+@pytest.mark.parametrize(
+    ("trigger", "delay"),
+    [
+        pytest.param(3.9, 0.2, id="pending across the end"),
+        pytest.param(3.75, 0.25, id="at the end"),
+        pytest.param(3.75, 0.25 + 1e-13, id="within the resolution after the end"),
+        pytest.param(3.5, 0.49999999999999956, id="between the stop and the end"),
+    ],
+)
+def test_a_delayed_event_pending_across_the_stop_before_the_end(
+    trigger: float, delay: float, times: list[float] | None
+) -> None:
+    """A delayed event pending at the stop before the end fires as in roadrunner.
+
+    The last segment stops just before the end and the events at the end are
+    integrated from the stop (`_event_at_the_end`), the steady state after the
+    end from there; the states of the triggers are set from the current values
+    before every run (`resetEventsFound`), which keeps the pending event. An
+    event at the end, closer to the stop than LSODA integrates, fires at the
+    start of the run.
+    """
+    # the numbers of the math exactly, antimony writes 15 digits
+    source = (
+        sbml(DELAYED_AT.replace("DELAY", "123.5").replace("TRIGGER", "654.5"))
+        .replace(" 123.5 ", f" {delay!r} ")
+        .replace(" 654.5 ", f" {trigger!r} ")
+    )
+    simulation = Simulation(start=0, end=4, times=times)
+    copasi, roadrunner = both(source, simulation, ["time", "X", "p"])
+    fired = 0.0 if trigger + delay > 4 + 1e-12 else 1.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, events=[4.0] if fired else [])
+        assert copasi["p"][-1] == fired
+        if fired:
+            # the states before and after the event at the end
+            np.testing.assert_array_equal(copasi.time[-2:], [4.0, 4.0])
+            np.testing.assert_array_equal(copasi["p"][-2:], [0.0, 1.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+        assert copasi["p"][times.index(4)] == fired
+        if np.inf in times:
+            # the event pending across the end fires in the steady state
+            assert copasi["p"][-1] == 1.0
+
+
 def test_known_difference_an_event_whose_trigger_is_true_within_a_step() -> None:
     """Pin a known difference: roadrunner misses a trigger true within one step.
 
