@@ -40,7 +40,7 @@ The mean of the weight is a little above 75 kg because the distribution is cut a
 
 A positive value given with an SD or a CV, e.g. a dose, a body weight, a volume or a rate, is log-normal by default, because a normal distribution with a large CV gives negative values. Its median is `mean / sqrt(1 + cv²)` and its logarithm has the standard deviation `sqrt(ln(1 + cv²))` (Limpert et al. 2001). `shape="normal"` asks for the normal distribution instead.
 
-`kind` is `uncertainty` (something not known about a value) or `variability` (a value that differs between subjects). Using one object twice, or two objects with the same `name`, gives one random variable.
+`kind` is `uncertainty` (something not known about a value) or `variability` (a value that differs between subjects). Using one object twice, or two objects with the same `name`, gives one random variable. The variability between the subjects of a fit, relative to the inputs of every study group, and its predictive check are on the page [Fitting](fitting.md#variability-and-the-predictive-check).
 
 A simulation always simulates the nominal values, so declaring a value uncertain changes nothing until you propagate it. The simulations of this page differ in the activity of the enzyme, `LI__MIDOH_f`:
 

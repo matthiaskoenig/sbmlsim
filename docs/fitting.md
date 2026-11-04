@@ -477,6 +477,43 @@ print(report.metrics(fitted).mappings_df()[columns].round(2))
 
 The functions of `sbmlsim.fit.metrics` also work on plain arrays, e.g. `within_fold(data, predictions, fold=2.0)` and `rmse(residuals)`. `summary_df()` has one row per kind of data, `mappings_df()` one per fit mapping and `observables_df()` one per observable, e.g. plasma and urine. There is no row over all data, which would pool the data the fit was fitted to with data it dropped. A report writes these tables as TSV.
 
+## Variability and the predictive check
+
+A fit predicts every curve with one subject, the typical subject of its study group, while the subjects of a study differ from each other. `Variability` (from `sbmlsim.fit.variability`) declares how: a relative distribution per target, e.g. `LogNormal(cv=0.3)`, a factor with the median 1 and a coefficient of variation of 30 %. A subject has every target at its factor times the value its simulation gives the target, the value of the study group, of a fitted parameter or of the model, so the inputs of the studies stay as they are and the subjects vary around them (`problem.predictions(x, factors={...})`). `Covariance`s of [the uncertainty](uncertainty.md#covariances) correlate the factors, e.g. the omega matrix of the logarithms with `scale="log"`. The studies differ as well, in their populations, assays and protocols: `between=Variability(...)` is the variability between the studies, a factor per target which all subjects of a study share and multiply with their own.
+
+`predictive_check` evaluates the mappings for many subjects and compares every data point with the distribution of its prediction over them. A data point of `N` subjects, the count of a group, is a mean, so it is compared with the means of virtual groups of `N` subjects (the geometric mean for data with a geometric standard deviation); a point without a count is one subject. The quantiles of the distribution are the band of a visual predictive check, and the coverage is the share of the data inside the outer quantiles, about 90 % for a model whose variability is the one of the data. With a variability between the studies the subjects of a parameter vector are `studies` studies of `n_subjects` subjects each, and a virtual group is drawn from one study. Given several parameter vectors, e.g. draws of the uncertainty of the fit, the studies and their subjects are nested in them and the distributions pooled:
+
+```python
+import numpy as np
+
+from sbmlsim.fit.variability import Variability, predictive_check
+from sbmlsim.simulation.sampling import LogNormal
+
+variability = Variability(
+    {"Ka_dis_hctz": LogNormal(cv=0.5), "KI__HCTZEX_k": LogNormal(cv=0.3)},
+    between=Variability({"KI__HCTZEX_k": LogNormal(cv=0.2)}),
+)
+x = np.array([fitted.values[pid] for pid in problem.pids])
+check = predictive_check(problem, x, variability, n_subjects=16, studies=8, seed=1)
+print(check.points[["mapping", "x", "N", "DV", "q5", "q50", "q95", "inside"]].head(4))
+print(check.coverage_by_mapping().round(2))
+```
+
+```text title="Output"
+     mapping      x   N        DV        q5       q50       q95  inside
+0  fm_25_tab   30.0  12  0.000077  0.000119  0.000151  0.000191   False
+1  fm_25_tab   60.0  12  0.000241  0.000230  0.000290  0.000362    True
+2  fm_25_tab   90.0  12  0.000329  0.000282  0.000351  0.000433    True
+3  fm_25_tab  120.0  12  0.000359  0.000296  0.000365  0.000442    True
+  experiment          mapping   n  coverage
+0  Patel1984        fm_25_tab  11      0.82
+1  Patel1984  fm_25_tab_urine  10      0.50
+2  Patel1984        fm_50_tab  11      0.82
+3  Patel1984  fm_50_tab_urine  10      0.50
+```
+
+The subjects alone give the mean of 12 subjects a band of about a third of the one of a single subject, the variability between the studies widens it. Here the bands hold 82 % of the points of the plasma and half of the points of the urine; the first point of the plasma lies below its band. The scatter of the means of the studies is the variability of their subjects and between them plus the error of the measurements and of the model, so a low coverage says that the declared variability does not explain the data, or that the typical predictions are biased. The subjects of a vector are evaluated one after the other, so a check costs `n_subjects` times the vectors evaluations of the mappings. `check.points` has a row per data point with its band, the prediction `PRED` of the typical subject and whether the point is inside, `check.subjects` the factors and the predictions of every subject.
+
 ## Identifiability
 
 A fit always returns numbers, but the data may not determine them. The profile likelihood and the Fisher information answer how well each parameter is determined, see [Identifiability](identifiability.md).
