@@ -297,7 +297,8 @@ class SBMLModel(AbstractModel, ABC):
             The value in the current state of the model.
 
         Raises:
-            RuntimeError: if the model has no selection of the name.
+            RuntimeError: if the model has no selection of the name, the
+                error of roadrunner; `ValueError` for COPASI.
         """
 
     @abstractmethod
@@ -413,7 +414,7 @@ def load_model(
         )
     if engine is Engine.COPASI:
         # COPASI is an optional extra, imported when a model is loaded in it
-        from sbmlsim.model.model_copasi import CopasiSBMLModel  # ty: ignore[unresolved-import]
+        from sbmlsim.model.model_copasi import CopasiSBMLModel
 
         if isinstance(model, AbstractModel):
             return CopasiSBMLModel.from_abstract_model(abstract_model=model, ureg=ureg)
