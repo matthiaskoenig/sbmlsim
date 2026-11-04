@@ -5,8 +5,7 @@
 `sbmlsim.simulator.executor_copasi` for COPASI and
 `sbmlsim.simulator.executor_amici` for AMICI, which are imported when a model
 of their engine runs, so a run of roadrunner never imports COPASI or AMICI.
-Every
-simulation of the package outside the executors runs through it: the
+Every simulation of the package outside the executors runs through it: the
 simulator, the workers of a scan and the evaluation of a fit.
 """
 
@@ -121,7 +120,11 @@ def _copasi(model: SBMLModel) -> CopasiSBMLModel:
 
 
 def _amici(model: SBMLModel) -> AmiciSBMLModel:
-    """Get a model of the engine AMICI as its class, imports AMICI."""
+    """Get a model of the engine AMICI as its class.
+
+    The module of the model does not import AMICI, a model of AMICI which is
+    loaded has imported it.
+    """
     from sbmlsim.model.model_amici import AmiciSBMLModel
 
     if not isinstance(model, AmiciSBMLModel):

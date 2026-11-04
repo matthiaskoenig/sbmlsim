@@ -25,11 +25,17 @@ It has the semantics of the executor of roadrunner, see
    0 at the start of an integration, also a strict comparison, e.g.
    `time > 1` at the time 1 (its Heaviside variables are 1 for a root
    function of the value 0), and would miss the event when the trigger
-   becomes true right after the start. At the start of every segment such
-   an event fires after the row of the start if its trigger is true at the
-   resolution of the time after it, see `_Course.restart`: the steps of the
-   integrator have it as two rows at the start, an output time at the start
-   the state before it, as in roadrunner, which fires it in its first step.
+   becomes true right after the start. At the start of every segment and of
+   every horizon of a steady state such an event fires after the row of the
+   start if its trigger is true at a time ahead, the resolution of the time
+   after it first and then ten times as far, `LOOK_AHEAD` times at most and
+   not beyond the end of the integration, see `_Course.restart`: the steps
+   of the integrator have it as two rows at the start, an output time at the
+   start the state before it, as in roadrunner, which fires it in its first
+   step. A trigger which stays at its threshold for all of `LOOK_AHEAD`
+   raises a `NotImplementedError` naming the events; an event AMICI itself
+   fires within the time ahead changes the state the trigger is evaluated
+   in there (not worked around).
 6. AMICI outputs the states at given times only. The output of
    `OutputMode.TIMES` are the plan times of a segment. The steps of the
    integrator (`OutputMode.INTEGRATOR`) are a substitute: `STEPS` intervals
@@ -89,7 +95,7 @@ import numpy as np
 from sbmlsim.model.model_amici import AmiciSBMLModel, run_simulation
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.changes import fire_events, triggers
-from sbmlsim.simulator.executor import SteadyStateError
+from sbmlsim.simulator.executor import integrable
 from sbmlsim.simulator.plan import (
     TIME_RTOL,
     Plan,
@@ -97,7 +103,8 @@ from sbmlsim.simulator.plan import (
     preinit_targets,
     time_tolerance,
 )
-from sbmlsim.simulator.segments import simulate_segments
+from sbmlsim.simulator.segments import simulate_segments, state_row
+from sbmlsim.simulator.segments import steady_state as integrate_to_steady_state
 
 #: the intervals of the grid of a segment of the substitute of the steps of
 #: the integrator, see the module
@@ -107,6 +114,11 @@ STEPS = 100
 #: of the state after it, more than CVODES varies the time of a root between
 #: two integrations, see `_Course.event_at_the_end`
 AFTER_THE_EVENT = 1024
+
+#: the most times the model is integrated ahead of a start to tell whether a
+#: trigger at its threshold becomes true, the resolution of the time and then
+#: ten times as far every time, see `_Course.restart`
+LOOK_AHEAD = 7
 
 #: the most times the intervals of the grid of the steps are split to tell
 #: the times of the events which fire more than once in one, see
@@ -176,23 +188,34 @@ class _Course:
         ]
         fire_events(self.events, before, model.values, time, model)
 
-    def restart(self, time: float) -> np.ndarray | None:
+    def restart(self, time: float, end: float) -> np.ndarray | None:
         """Fire the events whose trigger becomes true right after a time, which AMICI misses.
 
         AMICI evaluates a trigger at the start of an integration with its
         comparisons at a root of the value 0 as true, also a strict one
-        (`_relaxed`). An event whose trigger is false at the time but true
-        for AMICI fires if its trigger is true at the resolution of the time
-        after it, as in roadrunner, and with it the events it triggers; the
-        state after it starts the integration.
+        (`_relaxed`). For an event whose trigger is false at the time but
+        true for AMICI, the model is integrated ahead, the resolution of the
+        time first and then ten times as far, at most `LOOK_AHEAD` times, and
+        not beyond the end: the event fires at the time, after its row and
+        with the events it triggers, if its trigger is true at a time ahead,
+        as in roadrunner, which fires it in its first step; it is left to
+        AMICI if its trigger as AMICI evaluates it is false ahead (AMICI finds
+        the crossing after it) or still at its threshold at the end (the next
+        start evaluates it again). The state after the events starts the
+        integration.
 
         Args:
             time: the time of the current state, after the changes and the
                 events of the time.
+            end: the end of the integration which starts at the time.
 
         Returns:
             The values of the selections before the events, `None` if no
             event fires.
+
+        Raises:
+            NotImplementedError: for a trigger still at its threshold after
+                `LOOK_AHEAD` steps ahead before the end.
         """
         model = self.model
         model.set_time(time)
@@ -207,13 +230,38 @@ class _Course:
         ]
         if not zero:
             return None
-        later = self._triggers_after(time)
-        after = list(strict)
-        for k in zero:
-            after[k] = later[k]
-        if not any(after[k] for k in zero):
+        fire: list[int] = []
+        ahead = max(self.resolution, TIME_RTOL * abs(time))
+        for _ in range(LOOK_AHEAD):
+            later = min(time + ahead, end)
+            if not integrable(time, later):
+                zero = []
+                break
+            strict_later, relaxed_later = self._triggers_at(time, later)
+            fire += [k for k in zero if strict_later[k] is True]
+            zero = [
+                k
+                for k in zero
+                if strict_later[k] is not True and relaxed_later[k] is True
+            ]
+            if not zero or later >= end:
+                zero = []
+                break
+            ahead *= 10.0
+        if zero:
+            raise NotImplementedError(
+                f"The engine AMICI does not simulate the events "
+                f"{[events[k].eid for k in zero]} of the model '{model.label}' at "
+                f"the time {time}: AMICI evaluates their triggers at their "
+                f"threshold as true, which stay at it longer than "
+                f"{ahead / 10.0:.3g} after the time."
+            )
+        if not fire:
             return None
-        head = self.state(time)
+        after = list(strict)
+        for k in fire:
+            after[k] = True
+        head = state_row(model, self.selections, time)
         fire_events(events, strict, values, time, model, after=after)
         model.set_time(time)
         return head
@@ -251,24 +299,31 @@ class _Course:
             )
         return result
 
-    def _triggers_after(self, time: float) -> list[bool | None]:
-        """Evaluate the triggers at the resolution of the time after a time.
+    def _triggers_at(
+        self, time: float, later: float
+    ) -> tuple[list[bool | None], list[bool | None]]:
+        """Evaluate the triggers at a later time, and as AMICI evaluates them.
 
         The model is integrated to it and set back to its state at the time.
         """
         model = self.model
         state = model.state
-        later = time + self.resolution
         self._integrate(time, np.array([later]))
-        result = triggers(self.events, model.values, later, model)
+        result = (
+            triggers(self.events, model.values, later, model),
+            self._relaxed_triggers(later),
+        )
         model.set_state(time, state)
         return result
 
-    def state(self, time: float) -> np.ndarray:
-        """Get the current values of the selections, `time` the given time."""
-        return np.array(
-            [time if c == "time" else self.model.value(c) for c in self.selections]
-        )
+    def horizon(self, start: float, end: float) -> None:
+        """Integrate from `start` to `end` without output, see `sbmlsim.simulator.segments.Course`."""
+        self.restart(start, end)
+        self._integrate(start, np.array([end]))
+
+    def rates(self, states: Sequence[str]) -> np.ndarray:
+        """Get the current rates of change of states, see `AmiciSBMLModel.rates`."""
+        return self.model.rates(states)
 
     def _integrate(
         self, start: float, times: np.ndarray
@@ -393,12 +448,12 @@ class _Course:
             np.concatenate([grid[~inside], [t for pair in bounds for t in pair]])
         )
         model.set_state(start, state)
-        head = self.state(start)
+        head = state_row(model, self.selections, start)
         values, x = self._integrate(start, output)
         times = np.concatenate([[start], output])
         counted = model.event_counts(x).sum(axis=1)
-        if bounds[0][0] == start:
-            # the state before an event at the start
+        if np.any(model.event_counts(x[0]) != initial):
+            # the state before an event AMICI fired at the start
             values = np.vstack([head, values])
             times = np.concatenate([[start], times])
             counted = np.concatenate([[initial.sum()], counted])
@@ -427,38 +482,39 @@ class _Course:
     ) -> np.ndarray | None:
         """Get the state after the events of the model at the end, see `sbmlsim.simulator.segments.Course`.
 
-        The model is integrated from `start` to the resolution after the end,
-        after the events right after the start (`restart`); an event AMICI
-        fires is counted (`COUNT_PREFIX`). The state after it is the one
-        `AFTER_THE_EVENT` units in the last place after the last execution of
-        an event (`EVENT_TIME_PREFIX`), from a second integration, if AMICI
-        fires every event before it again, else the one at the resolution
-        after the end.
+        The events right after the start fire first (`restart`), the state
+        after them is the state after the events if AMICI fires none. The
+        model is integrated from `start` to the resolution after the end; an
+        event AMICI fires is counted (`COUNT_PREFIX`). The state after it is
+        the one `AFTER_THE_EVENT` units in the last place after the last
+        execution of an event (`EVENT_TIME_PREFIX`), from a second
+        integration, if AMICI fires every event before it again, else, or for
+        an event closer than that before the resolution after the end, the
+        one at the resolution after the end.
         """
         model = self.model
-        fired = self.restart(start) is not None
+        stop = end + tolerance
+        fired = self.restart(start, stop) is not None
+        after_start = state_row(model, self.selections, start) if fired else None
         # AMICI fires an event of the time within the rounding of the time
         # after the start at the start
         state = model.state
         initial = model.event_counts(state)
-        values, x = self._integrate(start, np.array([end + tolerance]))
+        values, x = self._integrate(start, np.array([stop]))
         counts = model.event_counts(x[-1]) - initial
-        if not fired and not counts.any():
-            return None
-        if counts.any():
-            last = float(np.max(model.event_times(x[-1])[counts > 0]))
-            after = last + AFTER_THE_EVENT * float(
-                np.spacing(max(abs(last), abs(start)))
-            )
-            if start < after < end + tolerance:
-                at_the_end = x[-1]
-                model.set_state(start, state)
-                exact, y = self._integrate(start, np.array([after]))
-                if np.array_equal(
-                    model.event_counts(y[-1]), model.event_counts(at_the_end)
-                ):
-                    return exact[-1].copy()
-                model.set_state(end + tolerance, at_the_end)
+        if not counts.any():
+            return after_start
+        last = float(np.max(model.event_times(x[-1])[counts > 0]))
+        after = last + AFTER_THE_EVENT * float(np.spacing(max(abs(last), abs(start))))
+        if after < stop:
+            at_the_end = x[-1]
+            model.set_state(start, state)
+            exact, y = self._integrate(start, np.array([after]))
+            if np.array_equal(
+                model.event_counts(y[-1]), model.event_counts(at_the_end)
+            ):
+                return exact[-1].copy()
+            model.set_state(stop, at_the_end)
         return values[-1].copy()
 
     def steady_state(self, plan: SteadyStatePlan, start: float) -> float:
@@ -556,8 +612,9 @@ def execute(
     try:
         course = _Course(model, columns, time_tolerance(plan.start, plan.end))
         if plan.steady_state is not None:
+            # the horizons of the steady state start with the events AMICI
+            # misses at their threshold, see `_Course.restart`
             course.start_events(0.0)
-            course.restart(0.0)
             steady_state(model, plan.steady_state)
         else:
             course.start_events(plan.start)
@@ -602,12 +659,10 @@ def check_supported(plan: Plan, model: AmiciSBMLModel) -> None:
 def steady_state(
     model: AmiciSBMLModel, plan: SteadyStatePlan, start: float = 0.0
 ) -> float:
-    """Integrate a model until its rates of change vanish.
+    """Integrate a model until its rates of change vanish, see `sbmlsim.simulator.segments.steady_state`.
 
-    The algorithm and the criterion of `sbmlsim.simulator.executor.steady_state`:
-    the model is integrated over horizons which grow by a factor of ten, from
-    `start`, until `|dx/dt| <= absolute_tolerance + relative_tolerance * |x|`
-    for every state, the species in amounts, events active.
+    Every horizon starts with the events whose trigger AMICI evaluates as
+    true at their threshold, see `_Course.restart`.
 
     Args:
         model: the model in the state the integration starts from.
@@ -621,22 +676,4 @@ def steady_state(
         SteadyStateError: if the steady state is not reached by `max_time`.
         RuntimeError: if AMICI fails to integrate, with its message.
     """
-    course = _Course(model, [], TIME_RTOL)
-    states = model.state_ids()
-    time = start
-    horizon = 1.0
-    while True:
-        end = start + min(horizon, plan.max_time)
-        course.times(time, np.array([end]), end)
-        time = end
-        rates = np.abs(model.rates(states))
-        state = np.abs(np.array([model.value(sid) for sid in states], dtype=float))
-        if np.all(rates <= plan.absolute_tolerance + plan.relative_tolerance * state):
-            return time
-        if time - start >= plan.max_time:
-            worst = float(np.max(rates)) if rates.size else 0.0
-            raise SteadyStateError(
-                f"The model '{model.label}' did not reach a steady state up to the "
-                f"time {plan.max_time}, the largest rate of change is {worst:.3g}."
-            )
-        horizon *= 10.0
+    return integrate_to_steady_state(model, _Course(model, [], 0.0), plan, start)

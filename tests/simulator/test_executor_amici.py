@@ -671,3 +671,82 @@ def test_the_steps_of_events_which_fire_more_often_than_the_grid() -> None:
     np.testing.assert_allclose(amici["X"][pairs + 1], 0.0, atol=1e-8)
     np.testing.assert_array_equal(np.diff(amici["n"][pairs]), 1.0)
     np.testing.assert_allclose(amici.values[-1], roadrunner.values[-1], atol=1e-6)
+
+
+def test_an_event_within_the_resolution_after_a_change_in_the_steps() -> None:
+    """An event right after a change is two rows after the two rows of the change.
+
+    AMICI fires the event in the integration after the change, not at its
+    start, so the rows at the change are the ones of roadrunner.
+    """
+    model = "model near\n  X = 0\n  X' = 1\n  n = 0\n"
+    model += "  E: at (time >= 1.000000000001), t0=true: n = n + 1, X = 10\nend"
+    amici, roadrunner = both(
+        sbml(model),
+        Simulation(end=2, changes=[Change(1, {"X": 5.0})]),
+        ["time", "X", "n"],
+    )
+    near_amici = amici.values[np.abs(amici.time - 1.0) < 1e-6]
+    near_roadrunner = roadrunner.values[np.abs(roadrunner.time - 1.0) < 1e-6]
+    assert near_amici[:, 0].tolist() == [1.0, 1.0, 1.000000000001, 1.000000000001]
+    np.testing.assert_allclose(near_amici, near_roadrunner, rtol=1e-6, atol=1e-6)
+
+
+#: a state whose rate is 0 at the time a change sets it to the threshold of a
+#: strict trigger, `RISE` the time from which it rises
+FLAT = """
+model flat
+  X = 0
+  X' = RATE
+  n = 0
+  E: at (X > 2), t0=true: n = n + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 1, 3, 5], None])
+def test_a_strict_trigger_at_its_threshold_with_a_rate_of_zero(
+    times: list[float] | None,
+) -> None:
+    """The trigger becomes true later than the resolution after the change; it fires."""
+    model = FLAT.replace("RATE", "(time - 1)^2")
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    amici, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
+    assert amici["n"][-1] == 1.0
+    assert_agree(amici, roadrunner, times, changes=[1.0])
+
+
+def test_a_strict_trigger_which_stays_at_its_threshold_raises() -> None:
+    """A trigger at its threshold longer than the look ahead raises, naming the event.
+
+    `X` stays 2 until 1.5 and rises after it: roadrunner fires the event
+    after 1.5, AMICI would miss it.
+    """
+    model = FLAT.replace("RATE", "piecewise(0, time < 1.5, 1)")
+    source = sbml(model)
+    plan = plan_of(source, Simulation(end=5, changes=[Change(1, {"X": 2.0})]))
+    with pytest.raises(NotImplementedError, match=r"\['E'\].*'flat'.*time 1"):
+        executor_amici.execute(plan, AmiciSBMLModel(source=source), ["time", "n"])
+
+
+@pytest.mark.parametrize("trigger", ["time > 10", "time >= 10", "time > 5"])
+def test_a_strict_trigger_at_a_horizon_of_the_steady_state(trigger: str) -> None:
+    """The horizons of a steady state start with the events AMICI misses at their threshold.
+
+    The horizons end at 1, 10, 100, ... after the start of the presimulation.
+    """
+    model = f"model horizon\n  X = 1\n  X' = -X\n  n = 0\n  E: at ({trigger}), t0=true: n = n + 1\nend"
+    simulation = Simulation(end=1, times=[0, 1], presimulation=SteadyState())
+    amici, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
+    assert_equal_results(amici, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 5], None])
+def test_a_strict_trigger_at_a_change_at_the_end(times: list[float] | None) -> None:
+    """An event right after a change at the end has the state after it at the end."""
+    model = "model last\n  X = 0\n  X' = 1\n  n = 0\n"
+    model += "  E: at (time > 5), t0=true: n = n + 1, X = X + 100\nend"
+    simulation = Simulation(end=5, changes=[Change(5, {"X": 1.0})], times=times)
+    amici, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
+    assert amici.values[-1].tolist() == [5.0, 101.0, 1.0]
+    assert_agree(amici, roadrunner, times, changes=[5.0])

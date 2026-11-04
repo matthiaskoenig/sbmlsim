@@ -18,15 +18,15 @@ import numpy as np
 
 from sbmlsim.model.model_sbml import SBMLModel
 from sbmlsim.simulator.changes import ModelValues, apply_changes, fire_events, triggers
-from sbmlsim.simulator.executor import integrable, segment_stop
+from sbmlsim.simulator.executor import SteadyStateError, integrable, segment_stop
 from sbmlsim.simulator.plan import OutputMode, Plan, SteadyStatePlan, time_tolerance
 
 
 class Course(Protocol):
     """The integrations of a model of an engine which continue one another."""
 
-    def restart(self, time: float) -> np.ndarray | None:
-        """Prepare an integration from the current state at a time, after its changes.
+    def restart(self, time: float, end: float) -> np.ndarray | None:
+        """Prepare an integration from the current state at a time to an end, after its changes.
 
         Returns:
             The row of the state at the time before the events which the
@@ -82,8 +82,16 @@ class Course(Protocol):
         """
         ...
 
+    def horizon(self, start: float, end: float) -> None:
+        """Integrate from `start` to `end` without output, events active."""
+        ...
+
+    def rates(self, states: Sequence[str]) -> np.ndarray:
+        """Get the current rates of change of states, the species in amounts."""
+        ...
+
     def steady_state(self, plan: SteadyStatePlan, start: float) -> float:
-        """Integrate the model from a time until its rates of change vanish.
+        """Integrate the model from a time until its rates of change vanish, see `steady_state`.
 
         Returns:
             The time the steady state was reached at.
@@ -159,11 +167,10 @@ def simulate_segments(
             else:
                 # the triggers at the start are the ones of the initial state
                 apply_changes(events[a], values, plan)
-        head = course.restart(a) if model_events else None
-
         # an event of the model at the time of the next change fires after the
         # change, an event at the end has the state before it as a row
         end_stop = segment_stop(a, b) if model_events else b
+        head = course.restart(a, end_stop) if model_events else None
         held = not integrable(a, end_stop)
         if held:
             if plan.output is OutputMode.INTEGRATOR:
@@ -258,6 +265,49 @@ def simulate_segments(
     if not blocks:
         return np.empty((0, len(columns)))
     return np.concatenate(blocks, axis=0)
+
+
+def steady_state(
+    model: SBMLModel, course: Course, plan: SteadyStatePlan, start: float = 0.0
+) -> float:
+    """Integrate a model until its rates of change vanish.
+
+    The algorithm and the criterion of `sbmlsim.simulator.executor.steady_state`:
+    the model is integrated over horizons which grow by a factor of ten, from
+    `start`, until `|dx/dt| <= absolute_tolerance + relative_tolerance * |x|`
+    for every state, the species in amounts, events active.
+
+    Args:
+        model: the model in the state the integration starts from.
+        course: the integrations of the model.
+        plan: the steady state.
+        start: the time the integration starts at.
+
+    Returns:
+        The time the steady state was reached at.
+
+    Raises:
+        SteadyStateError: if the steady state is not reached by `max_time`.
+        RuntimeError: if the engine fails to integrate, with its message.
+    """
+    states = model.state_ids()
+    time = start
+    horizon = 1.0
+    while True:
+        end = start + min(horizon, plan.max_time)
+        course.horizon(time, end)
+        time = end
+        rates = np.abs(course.rates(states))
+        state = np.abs(np.array([model.value(sid) for sid in states], dtype=float))
+        if np.all(rates <= plan.absolute_tolerance + plan.relative_tolerance * state):
+            return time
+        if time - start >= plan.max_time:
+            worst = float(np.max(rates)) if rates.size else 0.0
+            raise SteadyStateError(
+                f"The model '{model.label}' did not reach a steady state up to the "
+                f"time {plan.max_time}, the largest rate of change is {worst:.3g}."
+            )
+        horizon *= 10.0
 
 
 def held_rows(

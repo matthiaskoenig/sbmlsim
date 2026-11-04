@@ -24,6 +24,8 @@ from sbmlsim.model import (
 from sbmlsim.model.model_amici import (
     AMICI_ATOL_FACTOR,
     CACHE_ENV,
+    COUNT_PREFIX,
+    EVENT_TIME_PREFIX,
     TARGETS_EVENT,
     AmiciSBMLModel,
     amici_sbml,
@@ -887,3 +889,19 @@ def test_two_processes_compile_a_model_once(tmp_path: Path) -> None:
     assert all(out.split()[1] == "0.75" for out, _ in outputs)
     entries = sorted(p.name for p in cache.iterdir() if p.is_dir())
     assert len(entries) == 1, entries
+
+
+def test_the_states_of_the_events_are_no_selections() -> None:
+    """The counters and times of the events sbmlsim adds are states of AMICI only."""
+    model = AmiciSBMLModel(source=sbml(EVENTS))
+    added = {
+        f"{prefix}{k}" for prefix in (COUNT_PREFIX, EVENT_TIME_PREFIX) for k in range(3)
+    }
+    assert added <= {str(s) for s in model.amici_model.get_state_ids()}
+    assert model.selections is not None
+    for listed in (model.selections, model.default_selections(), model.state_ids()):
+        assert not added & set(listed)
+    for sid in added:
+        assert not model.has_selection(sid)
+    reference = RoadrunnerSBMLModel(source=sbml(EVENTS))
+    assert model.default_selections() == reference.default_selections()

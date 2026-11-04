@@ -101,12 +101,12 @@ from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.executor import (
-    SteadyStateError,
     integrable,
     intermediate_time,
 )
 from sbmlsim.simulator.plan import Plan, SteadyStatePlan, preinit_targets
 from sbmlsim.simulator.segments import simulate_segments, state_row
+from sbmlsim.simulator.segments import steady_state as integrate_to_steady_state
 
 #: the output of a run of COPASI into a data handler, without the report of
 #: the task, which has no file and of which COPASI warns otherwise; SWIG sets
@@ -231,7 +231,7 @@ class _TimeCourse:
         values[:, 0] = expected
         return values
 
-    def restart(self, time: float) -> np.ndarray | None:
+    def restart(self, time: float, end: float) -> np.ndarray | None:
         """Prepare an integration at a time: COPASI fires the events of the model itself.
 
         Returns:
@@ -265,6 +265,14 @@ class _TimeCourse:
         if pairs.size == 0:
             return None
         return block[pairs[-1] + 1].copy()
+
+    def horizon(self, start: float, end: float) -> None:
+        """Integrate from `start` to `end` with the steps of LSODA, without output."""
+        self.steps(start, end)
+
+    def rates(self, states: Sequence[str]) -> np.ndarray:
+        """Get the current rates of change of states, see `CopasiSBMLModel.rates`."""
+        return self.model.rates(states)
 
     def steady_state(self, plan: SteadyStatePlan, start: float) -> float:
         """Integrate the model from a time until its rates of change vanish, see `steady_state`."""
@@ -433,12 +441,7 @@ def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
 def steady_state(
     model: CopasiSBMLModel, plan: SteadyStatePlan, start: float = 0.0
 ) -> float:
-    """Integrate a model until its rates of change vanish.
-
-    The algorithm and the criterion of `sbmlsim.simulator.executor.steady_state`:
-    the model is integrated over horizons which grow by a factor of ten, from
-    `start`, until `|dx/dt| <= absolute_tolerance + relative_tolerance * |x|`
-    for every state, the species in amounts, events active.
+    """Integrate a model until its rates of change vanish, see `sbmlsim.simulator.segments.steady_state`.
 
     Args:
         model: the model in the state the integration starts from.
@@ -452,22 +455,4 @@ def steady_state(
         SteadyStateError: if the steady state is not reached by `max_time`.
         RuntimeError: if COPASI fails to integrate, with its message.
     """
-    course = _TimeCourse(model, [])
-    states = model.state_ids()
-    time = start
-    horizon = 1.0
-    while True:
-        end = start + min(horizon, plan.max_time)
-        course.steps(time, end)
-        time = end
-        rates = np.abs(model.rates(states))
-        state = np.abs(np.array([model.value(sid) for sid in states], dtype=float))
-        if np.all(rates <= plan.absolute_tolerance + plan.relative_tolerance * state):
-            return time
-        if time - start >= plan.max_time:
-            worst = float(np.max(rates)) if rates.size else 0.0
-            raise SteadyStateError(
-                f"The model '{model.label}' did not reach a steady state up to the "
-                f"time {plan.max_time}, the largest rate of change is {worst:.3g}."
-            )
-        horizon *= 10.0
+    return integrate_to_steady_state(model, _TimeCourse(model, []), plan, start)
