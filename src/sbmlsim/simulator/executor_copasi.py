@@ -8,9 +8,14 @@ comparable:
    `CopasiSBMLModel.initialize`, which sets the initial state as loaded back
    first, so nothing of an earlier simulation is left, also no event of the
    model which was pending at its end.
-2. A presimulation integrates from the time 0 until the rates of change
+2. The events whose trigger is false before the time 0 and true in the
+   initial state fire at the start, in the initial state before a change at
+   the start, with the events they trigger, see `start_events`; with a
+   presimulation at its start, the time 0. The output at the start has the
+   state after them, as in roadrunner and AMICI.
+3. A presimulation integrates from the time 0 until the rates of change
    vanish, see `steady_state`.
-3. The interval is split at the times of the changes. At the start of a
+4. The interval is split at the times of the changes. At the start of a
    segment the changes of its time are applied, every value evaluated with
    the state at that time before any target is set, see
    `sbmlsim.simulator.changes.apply_changes`; after a change after the start
@@ -19,7 +24,7 @@ comparable:
    `sbmlsim.simulator.changes.fire_events`. At the start COPASI evaluates the
    triggers of the events in the initial state, as roadrunner after its
    reset, so a change at the start does not fire an event.
-4. COPASI integrates (LSODA) in absolute time: the first segment from the
+5. COPASI integrates (LSODA) in absolute time: the first segment from the
    state the model is initialized to, every later one continues from the
    state the one before it ended in (`processRaw(False)`); the states of the
    triggers are set from the current values before every run
@@ -43,17 +48,17 @@ comparable:
    before and after it. A change after the start, the one at the end included, has two rows
    at its time, the state before the change, which ends the segment before
    it, and the state after it, which starts the next one.
-5. A segment of a model with events stops just before its end, see
+6. A segment of a model with events stops just before its end, see
    `sbmlsim.simulator.executor.segment_stop`, so an event of the model at the
    time of a change fires after the change; a segment too short for LSODA,
    whose condition is the one of CVODE, is not integrated, its state is the
    one at its start, see `sbmlsim.simulator.executor.integrable`.
-6. An event of the model within the resolution of the time after the end is
+7. An event of the model within the resolution of the time after the end is
    at the end, see `_TimeCourse.event_at_the_end`: the steps of the
    integrator have it as two rows, an output time at the end the state after
    it. The steady state after the end starts after it.
 
-Steps 3, 5 and 6 are the segments of `sbmlsim.simulator.segments`, which the
+Steps 4, 6 and 7 are the segments of `sbmlsim.simulator.segments`, which the
 executor of AMICI shares.
 
 Known differences to roadrunner:
@@ -61,6 +66,11 @@ Known differences to roadrunner:
 - roadrunner evaluates the triggers of the events when the model is
   initialized, at the time 0, also for a simulation from a negative start;
   COPASI evaluates them at the start.
+- An event whose trigger is false before the time 0 and which a
+  pre-initialization makes true, e.g. a dose `dose > 0` with `dose` set
+  before the initialization, fires at the start in COPASI and AMICI, as in
+  libroadrunner after `resetAll` and in the SBML Test Suite; the executor of
+  roadrunner does not fire it (#439).
 - roadrunner fires a delayed event of the model late in the steps of the
   integrator, at the end of the next step of CVODE (roadrunner #1382);
   COPASI at its time.
@@ -698,7 +708,10 @@ def execute(
     model.initialize(preinit_targets(plan))
     try:
         if plan.steady_state is not None:
+            start_events(model, 0.0)
             steady_state(model, plan.steady_state)
+        else:
+            start_events(model, plan.start)
         values = simulate_segments(
             plan,
             model,
@@ -711,6 +724,28 @@ def execute(
     if plan.time_shift != 0.0:
         values[:, 0] += plan.time_shift
     return TimecourseResult(columns=tuple(columns), values=values)
+
+
+def start_events(model: CopasiSBMLModel, time: float) -> None:
+    """Fire the events whose trigger is false before the time 0 and true at the start.
+
+    roadrunner fires them at the start in the initial state, with the events
+    they trigger in the order of their priorities, before a change at the
+    start, so the output at the start has the state after them; COPASI
+    does not fire them, their triggers are true before the time 0 in the
+    SBML it loads, see `CopasiSBMLModel.start_events`. Also an event which a
+    pre-initialization makes true, e.g. a dose `dose > 0`, fires, which the
+    executor of roadrunner does not (#439).
+
+    Args:
+        model: the model, initialized.
+        time: the time of the start.
+    """
+    if not any(model.start_events):
+        return
+    model.set_time(time)
+    before: list[bool | None] = [not start for start in model.start_events]
+    fire_events(model.symbols.events, before, model.values, time, model)
 
 
 def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:

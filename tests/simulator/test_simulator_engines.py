@@ -13,7 +13,7 @@ import pytest
 from sbmlsim import Q
 from sbmlsim.comparison.diff import DataSetsComparison
 from sbmlsim.engine import Engine
-from sbmlsim.model import RoadrunnerSBMLModel
+from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.result.scan import ScanResult
 from sbmlsim.simulation import (
@@ -28,7 +28,7 @@ from sbmlsim.simulation import (
 from sbmlsim.simulation.observables import ObservableKind
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.worker import ModelSpec
-from tests.engines import model_class
+from tests.engines import OTHER_ENGINES, model_class, require
 from tests.simulator.models import (
     PREINIT_FORMULAS,
     auc_of_c,
@@ -273,3 +273,98 @@ def test_a_preinit_formula_reading_a_species_raises(
     for engine in (Engine.ROADRUNNER, other_engine):
         with pytest.raises(ValueError, match="which is not a parameter"):
             Simulator(engine=engine).simulate(sbml(PREINIT_FORMULAS), simulation)
+
+
+#: a dose by an event whose trigger is false before the time 0, which a
+#: pre-initialization of `dose` makes true; `RESET` is the assignment of
+#: `dose` back to 0, which sets the trigger to its threshold
+DOSE_EVENT = """
+model dose_event
+  dose = 0
+  total = 0
+  total' = -0.1 * total
+  E: at (dose > 0), t0=false: total = total + 10 RESET
+end
+"""
+
+#: an event of the start, `time >= tn` true at the start and false before it;
+#: `RESET` moves `tn`, which the trigger reads
+TIME_EVENT = """
+model time_event
+  tn = 0
+  total = 0
+  total' = -0.1 * total
+  E: at (time >= tn), t0=false: total = total + 10 RESET
+end
+"""
+
+
+def _engine_run(engine: Engine, model: str, simulation: Simulation) -> ScanResult:
+    """Run a simulation of an antimony model with an engine, serially."""
+    simulator = Simulator(n_workers=1, engine=engine)
+    return simulator.run(simulator.load(AbstractModel(source=sbml(model))), simulation)
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2], None], ids=["times", "steps"])
+@pytest.mark.parametrize("reset", ["", ", dose = 0"], ids=["kept", "reset"])
+def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
+    other_engine: Engine, reset: str, times: list[float] | None
+) -> None:
+    """A dose of the pre-initialization fires at the start, its row has the state after it.
+
+    COPASI and AMICI fire it as raw libroadrunner after `resetAll` and the
+    SBML Test Suite do; the executor of roadrunner does not fire it (#439).
+    """
+    res = _engine_run(
+        other_engine,
+        DOSE_EVENT.replace("RESET", reset),
+        Simulation(end=2, times=times, preinit_changes={"dose": 10}),
+    )
+    time = res.ds["time"].values
+    total = res.ds["total"].values
+    # one row at the start, the state after the dose
+    assert np.count_nonzero(time == 0.0) == 1
+    assert total[0] == 10.0
+    np.testing.assert_allclose(total, 10.0 * np.exp(-0.1 * time), rtol=1e-6)
+    if times is not None:
+        assert np.allclose(total, 10.0 * np.exp(-0.1 * np.asarray(times)))
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2], None], ids=["times", "steps"])
+@pytest.mark.parametrize("reset", ["", ", tn = tn + 5"], ids=["kept", "moved"])
+def test_an_event_at_the_start_agrees_with_roadrunner(
+    other_engine: Engine, reset: str, times: list[float] | None
+) -> None:
+    """An event of the start without a pre-initialization has the state after it at the start, as in roadrunner."""
+    model = TIME_EVENT.replace("RESET", reset)
+    simulation = Simulation(end=2, times=times)
+    res = _engine_run(other_engine, model, simulation)
+    reference = Simulator().run(RoadrunnerSBMLModel(source=sbml(model)), simulation)
+    for result in (res, reference):
+        assert np.count_nonzero(result.ds["time"].values == 0.0) == 1
+        assert result.ds["total"].values[0] == 10.0
+    assert res.ds["total"].values[-1] == pytest.approx(
+        reference.ds["total"].values[-1], rel=1e-6
+    )
+    if times is not None:
+        np.testing.assert_allclose(
+            res.ds["total"].values, reference.ds["total"].values, rtol=1e-6
+        )
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 1, 2], None], ids=["times", "steps"])
+def test_copasi_and_amici_agree_on_a_dose_of_the_pre_initialization(
+    times: list[float] | None,
+) -> None:
+    """COPASI and AMICI have the same states at the start and at the end of a dose of the pre-initialization."""
+    for engine in OTHER_ENGINES:
+        require(engine)
+    simulation = Simulation(end=2, times=times, preinit_changes={"dose": 10})
+    model = DOSE_EVENT.replace("RESET", ", dose = 0")
+    copasi, amici = (_engine_run(engine, model, simulation) for engine in OTHER_ENGINES)
+    for name in ("total", "dose"):
+        values = copasi.ds[name].values, amici.ds[name].values
+        assert values[0][0] == values[1][0]
+        assert values[0][-1] == pytest.approx(values[1][-1], rel=1e-6)
+        if times is not None:
+            np.testing.assert_allclose(*values, rtol=1e-6)

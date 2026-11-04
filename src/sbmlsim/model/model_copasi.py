@@ -351,7 +351,12 @@ class CopasiSBMLModel(SBMLModel):
         #: the entities whose value in the SBML is not finite, which COPASI
         #: keeps out of its state, see `_with_targets_event`
         self._not_a_number: frozenset[str]
-        targeted, self._not_a_number = _with_targets_event(shifted, self)
+        #: by the position of an event of the model, whether the executor
+        #: fires it at the start, its trigger false before the time 0, see
+        #: `_with_triggers_true_at_the_start`
+        self.start_events: tuple[bool, ...]
+        started, self.start_events = _with_triggers_true_at_the_start(shifted, self)
+        targeted, self._not_a_number = _with_targets_event(started, self)
         try:
             imported = dm.importSBMLFromString(targeted)
         except COPASI.CCopasiException:
@@ -1756,6 +1761,54 @@ def _assigns_operands(sbml_model: libsbml.Model, operands: set[str]) -> bool:
         for event in sbml_model.getListOfEvents()
         for assignment in event.getListOfEventAssignments()
     )
+
+
+def _with_triggers_true_at_the_start(
+    sbml: str, model: SBMLModel
+) -> tuple[str, tuple[bool, ...]]:
+    """Make the trigger of every event true before the time 0, the executor fires the events of the start.
+
+    COPASI queues an event whose trigger is false before the time 0
+    (`initialValue="false"`) and true in the initial state at the initial
+    values, together with an event whose comparison is exactly at its
+    threshold and turns right after the start, see
+    `CopasiSBMLModel._apply_initial_values`; the executor executes the queue
+    of the start of a run whose events may set a trigger to its threshold
+    first and has the state before it at the start, see
+    `sbmlsim.simulator.executor_copasi._TimeCourse._integrate`, while an
+    event of the start has the state after it there, as in roadrunner and
+    AMICI. The triggers of such events are therefore true before the time 0
+    in the SBML which COPASI loads, so COPASI does not fire them at the
+    start, and the executor fires them in the initial state, see
+    `sbmlsim.simulator.executor_copasi.execute`. A model with a delayed
+    event is left as it is, its delayed events of the start COPASI
+    schedules itself; so is a model of level 1 or 2, whose triggers are
+    true before the time 0.
+
+    Args:
+        sbml: the SBML of the model.
+        model: the model, whose symbols are used.
+
+    Returns:
+        The SBML and, by the position of an event of the model, whether its
+        trigger was false before the time 0.
+    """
+    events = model.symbols.events
+    if not events or any(event.delayed for event in events):
+        return sbml, tuple(False for _ in events)
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    if doc.getLevel() < 3:
+        return sbml, tuple(False for _ in events)
+    sbml_model: libsbml.Model = doc.getModel()
+    start: list[bool] = []
+    for event in sbml_model.getListOfEvents():
+        trigger: libsbml.Trigger | None = event.getTrigger()
+        start.append(trigger is not None and not trigger.getInitialValue())
+        if trigger is not None:
+            trigger.setInitialValue(True)
+    if not any(start):
+        return sbml, tuple(start)
+    return libsbml.writeSBMLToString(doc), tuple(start)
 
 
 def _with_targets_event(sbml: str, model: SBMLModel) -> tuple[str, frozenset[str]]:
