@@ -19,12 +19,12 @@ A pull request can only be merged once the four required checks are green:
 
 | check   | workflow      | content                                                              |
 | ------- | ------------- | -------------------------------------------------------------------- |
-| `tests` | `ci-cd.yml`   | the test matrix, python 3.14 on linux, macos and windows and python 3.15 on linux, and the plain install |
+| `tests` | `ci-cd.yml`   | the test matrix, python 3.14 on linux, macos and windows and python 3.15 on linux, the plain install and the engine AMICI |
 | `ruff`  | `lint.yml`    | `ruff check` and `ruff format --check`, with the ruff of `uv.lock`    |
 | `ty`    | `lint.yml`    | `ty check`                                                            |
 | `docs`  | `docs.yml`    | the zensical build including the api reference and the agent files    |
 
-`tests` aggregates the test matrix and the job `plain install` into a single job, so the name of the required check stays the same when the matrix changes. `plain install` installs the package without extras, as `pip install sbmlsim` does, and runs `scripts/plain_install.py`, a scan whose result is written as netCDF and read back: the test matrix has the extras of `dev`, which would hide a dependency the package needs and does not declare. It is the one job which does not use the lock, see [Dependencies](#dependencies).
+`tests` aggregates the test matrix, the job `plain install` and the job `amici engine` into a single job, so the name of the required check stays the same when the matrix changes. `plain install` installs the package without extras, as `pip install sbmlsim` does, and runs `scripts/plain_install.py`, a scan whose result is written as netCDF and read back: the test matrix has the extras of `dev`, which would hide a dependency the package needs and does not declare. It is the one job which does not use the lock, see [Dependencies](#dependencies). `amici engine` runs on linux only: the extra `amici` is built from source, so it is not part of `dev` and of the test matrix; the job installs the build requirements of AMICI (a C++ compiler, CMake, BLAS and the headers of HDF5), syncs with `--extra dev --extra amici` and runs the tests of the engines, `tests/test_engine.py`, every test file with `amici` in its name and the tests of every engine besides roadrunner, `test_*_engines.py`.
 
 Every job sets up its environment with the action `.github/actions/setup`: uv with its cache of the packages and the interpreters, the python of the job, the libpython roadrunner needs on linux, and `uv sync --locked` with the extras of the job, i.e. the versions of `uv.lock`, see [Dependencies](#dependencies). The key of the cache of uv has the os and the python version but not the job, so jobs on the same os and python would race to save it and warn `Unable to reserve cache`: only the jobs of the test matrix save the cache (`save-cache: "true"`, each entry has a key of its own), the others restore it. The jobs run the same commands as a local environment (`pytest`, `ty check`, `zensical build`), the tests against the package installed as a wheel (`uv sync --no-editable`). A run of a pull request is cancelled by the next push to it; a push to `develop` or `main` is never cancelled, a release waits for the run of its commit. The release builds the distributions without the cache (`cache: "false"`).
 
@@ -72,7 +72,7 @@ A single sync creates the virtual environment in `.venv`, installs `sbmlsim` int
 uv sync --extra dev
 ```
 
-The `dev` extra contains everything used below, i.e., pytest, ruff, ty, tox with tox-uv, pre-commit, zensical and bump-my-version, so nothing has to be installed separately. The python version is taken from `.python-version` (currently 3.14); to work against the oldest supported version instead use `uv sync --extra dev --python 3.13`, which replaces the environment.
+The `dev` extra contains everything used below, i.e., pytest, ruff, ty, tox with tox-uv, pre-commit, zensical and bump-my-version, so nothing has to be installed separately. The engine AMICI is not part of it, since AMICI is built from source: `uv sync --extra dev --extra amici` adds it, with the build requirements of [Optional packages](installation.md#optional-packages) installed, and the tests of AMICI, which are skipped without it, then run as well. The python version is taken from `.python-version` (currently 3.14); to work against the oldest supported version instead use `uv sync --extra dev --python 3.13`, which replaces the environment.
 
 The tools are then run either with `uv run <command>`, which uses the environment without activating it, or from the activated environment:
 

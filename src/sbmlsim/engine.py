@@ -1,8 +1,10 @@
 """The engines which simulate a model."""
 
+import contextlib
 import importlib
 import locale
 import sys
+from collections.abc import Iterable
 from enum import StrEnum
 from types import ModuleType
 
@@ -88,3 +90,39 @@ def import_amici() -> ModuleType:
         "`apt install build-essential cmake swig libopenblas-dev "
         "libhdf5-dev`).",
     )
+
+
+def amici_cache(engine: Engine, models: Iterable[object]) -> str | None:
+    """Get the directory of the compiled models of AMICI the workers of a pool load from.
+
+    The directory the first model of AMICI of `models` was loaded from, else
+    the one of the process, see `sbmlsim.model.model_amici.cache_root`, so a
+    worker does not compile the models again into the directory of its own
+    environment, see `sbmlsim.model.model_amici.using_cache`.
+
+    :param engine: the engine of the models
+    :param models: the models of the parent
+    :return: the directory, `None` for another engine
+    """
+    if engine is not Engine.AMICI:
+        return None
+    # the module of the model of AMICI does not import AMICI
+    from sbmlsim.model.model_amici import AmiciSBMLModel, cache_root
+
+    for model in models:
+        if isinstance(model, AmiciSBMLModel):
+            return str(model.cache_root)
+    return str(cache_root())
+
+
+def using_amici_cache(root: str | None) -> contextlib.AbstractContextManager[None]:
+    """Load the models of AMICI from the directory of compiled models of a parent.
+
+    :param root: the directory, see `amici_cache`; `None` changes nothing
+    :return: the context in which the models are loaded from it
+    """
+    if root is None:
+        return contextlib.nullcontext()
+    from sbmlsim.model.model_amici import using_cache
+
+    return using_cache(root)

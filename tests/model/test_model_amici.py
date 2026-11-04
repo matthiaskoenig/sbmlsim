@@ -1002,3 +1002,36 @@ def test_the_comparisons_of_the_maths_are_shifted() -> None:
     )
     parameters = {p.getId(): p.getConstant() for p in model.getListOfParameters()}
     assert all(parameters[f"{SWITCH_PREFIX}{j}"] for j in range(4))
+
+
+#: a dose of 0, a strict trigger of a constant at its threshold: its root
+#: function is 0 at the start, which CVODES reports
+NO_DOSE = """
+model no_dose
+  X = 0
+  X' = 1
+  dose = 0
+  n = 0
+  E: at (dose > 0), t0=false: n = n + 1
+end
+"""
+
+
+def test_the_debug_messages_of_amici_are_logged_with_sbmlsim(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The messages of CVODES of a run do not reach the handler of AMICI."""
+    from sbmlsim.simulation import Simulation
+    from sbmlsim.simulator import Simulator
+
+    simulator = Simulator(n_workers=1, engine="amici")
+    model = simulator.load(AbstractModel(source=sbml(NO_DOSE)))
+    with caplog.at_level(logging.DEBUG, logger=model_amici.__name__):
+        res = simulator.run(model, Simulation(start=0, end=2, times=[0, 1, 2]))
+    assert res.ds["n"].values.tolist() == [0, 0, 0]
+    assert not any(record.name.startswith("amici") for record in caplog.records)
+    assert any(
+        "root functions identically 0" in record.getMessage()
+        for record in caplog.records
+        if record.name == model_amici.__name__
+    )

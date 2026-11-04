@@ -2019,7 +2019,46 @@ def _locked(path: Path) -> Generator[None]:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def run_simulation() -> Any:
-    """Get `run_simulation` of AMICI, which integrates a model with a solver."""
+class _DebugMessages(logging.Filter):
+    """Log the debug messages of an integration of AMICI with the logger of sbmlsim.
+
+    AMICI logs the messages of CVODES of an integration at the level `DEBUG`
+    into a handler of its own on the standard error, which prints them
+    whatever the configuration of logging, e.g. that a root function is 0 at
+    the start of an integration, which the executor sets up on purpose, see
+    `sbmlsim.simulator.executor_amici`. The filter logs them with the logger
+    of this module at `DEBUG` instead; a warning and an error of AMICI pass.
+    """
+
+    @override
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Keep a warning or an error, log a debug message with sbmlsim."""
+        if record.levelno >= logging.WARNING:
+            return True
+        logger.debug("AMICI: %s", record.getMessage())
+        return False
+
+
+_DEBUG_MESSAGES = _DebugMessages()
+
+
+def run_simulation() -> Callable[[Any, Any], Any]:
+    """Get `run_simulation` of AMICI, which integrates a model with a solver.
+
+    The debug messages of the integration are logged with sbmlsim, see
+    `_DebugMessages`.
+    """
     import_amici()
-    return importlib.import_module("amici.sim.sundials").run_simulation
+    simulate = importlib.import_module("amici.sim.sundials").run_simulation
+    # the logger of the messages, the module `run_simulation` is defined in
+    amici_logger = logging.getLogger(simulate.__module__)
+
+    def run(model: Any, solver: Any) -> Any:
+        """Integrate a model with a solver, see `run_simulation`."""
+        amici_logger.addFilter(_DEBUG_MESSAGES)
+        try:
+            return simulate(model, solver)
+        finally:
+            amici_logger.removeFilter(_DEBUG_MESSAGES)
+
+    return run

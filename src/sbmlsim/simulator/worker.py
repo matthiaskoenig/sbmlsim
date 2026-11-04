@@ -42,7 +42,7 @@ import numpy as np
 import roadrunner
 
 from sbmlsim import parallel
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, amici_cache, using_amici_cache
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
@@ -139,13 +139,7 @@ class ModelSpec:
             model.jit_optimization if isinstance(model, RoadrunnerSBMLModel) else None
         )
         integrator, settings = model.integrator_state()
-        cache: str | None = None
-        if model.engine is Engine.AMICI:
-            # a model of AMICI imports the module of AMICI only when it loads
-            from sbmlsim.model.model_amici import AmiciSBMLModel
-
-            if isinstance(model, AmiciSBMLModel):
-                cache = str(model.cache_root)
+        cache = amici_cache(model.engine, (model,))
         digest = hashlib.sha256(
             repr(
                 (
@@ -171,12 +165,7 @@ class ModelSpec:
 
     def load(self) -> SBMLModel:
         """Load the model in its engine with the integrator and its settings."""
-        context: AbstractContextManager[None] = nullcontext()
-        if self.cache is not None:
-            from sbmlsim.model.model_amici import using_cache
-
-            context = using_cache(self.cache)
-        with context:
+        with using_amici_cache(self.cache):
             model = load_model(
                 AbstractModel(
                     source=self.source, parameters=dict(self.parameters) or None

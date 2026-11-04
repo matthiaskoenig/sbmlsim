@@ -1,6 +1,5 @@
 """Optimization of parameter fitting problem."""
 
-import contextlib
 import functools
 import inspect
 import logging
@@ -19,7 +18,7 @@ import scipy
 from scipy import interpolate
 
 from sbmlsim.console import console
-from sbmlsim.engine import Engine, resolve_engine
+from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.derived import (
     DerivedChanges,
@@ -909,33 +908,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         fresh._amici_cache = self._worker_amici_cache()
         return fresh.__dict__
 
-    def _using_amici_cache(self) -> contextlib.AbstractContextManager[None]:
-        """Load the models of AMICI from the directory of the parent of a worker."""
-        if self._amici_cache is None:
-            return contextlib.nullcontext()
-        from sbmlsim.model.model_amici import using_cache
-
-        return using_cache(self._amici_cache)
-
     def _worker_amici_cache(self) -> str | None:
         """Get the directory of the compiled models of AMICI a worker loads from.
 
-        The directory the models of the problem were loaded from, else the
-        one of the process, see `sbmlsim.model.model_amici.using_cache`, so a
-        worker of a parallel fit does not compile the models again into the
-        directory of its own environment; `None` for another engine.
+        The directory the problem loads its models from, see
+        `sbmlsim.engine.amici_cache`; `None` for another engine.
         """
-        if self.engine is not Engine.AMICI:
-            return None
         if self._amici_cache is not None:
             return self._amici_cache
-        from sbmlsim.model.model_amici import AmiciSBMLModel, cache_root
-
-        if self.runner is not None:
-            for model in self.runner.models.values():
-                if isinstance(model, AmiciSBMLModel):
-                    return str(model.cache_root)
-        return str(cache_root())
+        models = self.runner.models.values() if self.runner is not None else ()
+        return amici_cache(self.engine, models)
 
     def _reset_mappings(self) -> None:
         """Reset the data collected for the fit mappings.
@@ -1370,7 +1352,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         # the simulator of the experiments loads the models in the engine of
         # the problem
         simulator = self._simulator(settings)
-        with self._using_amici_cache():
+        with using_amici_cache(self._amici_cache):
             self.runner = ExperimentRunner(
                 experiment_classes=list(exp_classes),
                 base_path=self.base_path,
