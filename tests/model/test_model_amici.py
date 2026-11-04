@@ -24,8 +24,8 @@ from sbmlsim.model import (
 from sbmlsim.model.model_amici import (
     AMICI_ATOL_FACTOR,
     CACHE_ENV,
-    COUNT_PREFIX,
-    EVENT_TIME_PREFIX,
+    FIRED_PREFIX,
+    FIRST_PREFIX,
     TARGETS_EVENT,
     AmiciSBMLModel,
     amici_sbml,
@@ -823,27 +823,50 @@ def _segment(model: AmiciSBMLModel, timepoints: list[float]) -> dict[str, list[f
     return {sid: [row[k] for row in x] for k, sid in enumerate(states)}
 
 
-def test_an_integration_after_a_restart_fires_the_crossings_only() -> None:
-    """AMICI fires no event at the start of a segment, and every crossing in it.
+def test_an_integration_after_a_restart_records_the_crossings_only() -> None:
+    """AMICI fires no event at the start of a segment and records every crossing in it.
 
+    AMICI does not apply the assignments of an event (`n` stays 0), see the
+    module: the records tell the events which fired in an integration and
+    the times of their first executions, set back before every integration.
     A trigger which a change makes true (`A > 5`, `A > 7`) or which is true
     already (`time > 1`) does not fire at the start of the next segment; a
     trigger which becomes true in a segment fires, also after a restart.
     """
     model = AmiciSBMLModel(source=sbml(EVENTS))
-    assert _segment(model, [0.0, 0.5, 1.5, 2.0])["n"] == [0.0, 0.0, 1.0, 1.0]
-    assert _segment(model, [2.0, 3.0])["n"] == [1.0, 1.0]
+
+    def crossings(
+        timepoints: list[float],
+    ) -> tuple[list[bool], list[float], list[float]]:
+        model.reset_events()
+        rows = _segment(model, timepoints)
+        state = model.state
+        return (
+            model.fired(state).tolist(),
+            model.first_times(state).tolist(),
+            rows["n"],
+        )
+
+    assert crossings([0.0, 0.5, 1.5, 2.0]) == (
+        [True, False, False],
+        [1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+    )
+    assert crossings([2.0, 3.0])[0] == [False, False, False]
     model.values.setValue("[A]", 10.0)
-    assert _segment(model, [3.0, 3.5])["n"] == [1.0, 1.0]
+    assert crossings([3.0, 3.5])[0] == [False, False, False]
     # A rises above 5 and 7 from B
     model.values.setValue("[A]", 4.0)
     model.values.setValue("[B]", 20.0)
     model.set_time(6.0)
-    assert _segment(model, [6.0, 6.5, 8.0])["n"] == [1.0, 11.0, 111.0]
+    fired, first, n = crossings([6.0, 6.5, 8.0])
+    assert fired == [False, True, True]
+    assert 6.0 < first[1] < 6.5 < first[2] < 8.0
+    assert n == [0.0, 0.0, 0.0]
     # the time event in a segment which starts before its time
     model.initialize([])
-    assert _segment(model, [0.0, 0.5])["n"] == [0.0, 0.0]
-    assert _segment(model, [0.5, 1.5])["n"] == [0.0, 1.0]
+    assert crossings([0.0, 0.5])[0] == [False, False, False]
+    assert crossings([0.5, 1.5]) == ([True, False, False], [1.0, 0.0, 0.0], [0.0, 0.0])
 
 
 #: the script of a process which loads a model in AMICI and reports whether
@@ -892,10 +915,10 @@ def test_two_processes_compile_a_model_once(tmp_path: Path) -> None:
 
 
 def test_the_states_of_the_events_are_no_selections() -> None:
-    """The counters and times of the events sbmlsim adds are states of AMICI only."""
+    """The records of the events sbmlsim adds are states of AMICI only."""
     model = AmiciSBMLModel(source=sbml(EVENTS))
     added = {
-        f"{prefix}{k}" for prefix in (COUNT_PREFIX, EVENT_TIME_PREFIX) for k in range(3)
+        f"{prefix}{k}" for prefix in (FIRED_PREFIX, FIRST_PREFIX) for k in range(3)
     }
     assert added <= {str(s) for s in model.amici_model.get_state_ids()}
     assert model.selections is not None

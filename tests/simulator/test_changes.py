@@ -69,13 +69,13 @@ def _events() -> tuple[EventSymbols, ...]:
 
 def test_fire_events_fires_an_event_a_change_triggers() -> None:
     values = FakeValues({"X": 10.0, "n": 0.0})
-    assert fire_events(_events(), [False], values, 3.0, FakeModel()) == 1
+    assert fire_events(_events(), [False], values, 3.0, FakeModel()) == [0]
     assert values["X"] == 0.0 and values["n"] == 1.0
 
 
 def test_fire_events_does_not_fire_an_event_whose_trigger_was_true() -> None:
     values = FakeValues({"X": 10.0, "n": 0.0})
-    assert fire_events(_events(), [True], values, 3.0, FakeModel()) == 0
+    assert fire_events(_events(), [True], values, 3.0, FakeModel()) == []
     assert values["X"] == 10.0 and values["n"] == 0.0
 
 

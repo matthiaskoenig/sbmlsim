@@ -182,7 +182,7 @@ def fire_events(
     time: float,
     model: SBMLModelLike,
     after: Sequence[bool | None] | None = None,
-) -> int:
+) -> list[int]:
     """Fire the events whose triggers a change made true.
 
     An engine does not see a trigger which becomes true by a value which is
@@ -211,7 +211,8 @@ def fire_events(
             change, see `sbmlsim.simulator.executor_amici`.
 
     Returns:
-        The number of the events which fired.
+        The events which fired, by their positions, in the order of their
+        executions; an event which fired twice is listed twice.
     """
     from sbmlsim.sbml_math import compile_math
 
@@ -230,7 +231,7 @@ def fire_events(
             return 0.0
         return evaluate(formula)
 
-    count = 0
+    fired: list[int] = []
     executions = [0] * len(events)
     pending: dict[int, list[tuple[str, float]] | None] = {}
     # events whose priority is no math the simulator evaluates
@@ -292,7 +293,7 @@ def fire_events(
                         err,
                     )
         if not pending:
-            return count
+            return fired
         # the first of the highest priority in document order
         index = max(sorted(pending), key=priority)
         if executions[index] >= MAX_EXECUTIONS_PER_EVENT:
@@ -304,12 +305,12 @@ def fire_events(
                 MAX_EXECUTIONS_PER_EVENT,
                 time,
             )
-            return count
+            return fired
         assigned = pending.pop(index)
         if assigned is None:
             assigned = assignments(events[index])
         for target, value in assigned:
             values.setValue(target, value)
-        count += 1
+        fired.append(index)
         executions[index] += 1
         before = current

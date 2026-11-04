@@ -358,7 +358,7 @@ def _order(dependencies: dict[str, frozenset[str]]) -> tuple[str, ...]:
     return tuple(order)
 
 
-def _math(
+def selection_math(
     math: libsbml.ASTNode | None,
     concentrations: frozenset[str],
     functions: libsbml.ListOfFunctionDefinitions,
@@ -411,17 +411,19 @@ def _event_symbols(
     for assignment in event.getListOfEventAssignments():
         variable = assignment.getVariable()
         target = f"[{variable}]" if variable in concentrations else variable
-        math = _math(assignment.getMath(), concentrations, functions)
+        math = selection_math(assignment.getMath(), concentrations, functions)
         if math is not None:
             assignments.append((target, math))
     return EventSymbols(
         eid=event.getId(),
         trigger=None
         if trigger is None
-        else _math(trigger.getMath(), concentrations, functions),
+        else selection_math(trigger.getMath(), concentrations, functions),
         delayed=event.isSetDelay(),
         assignments=tuple(assignments),
-        priority=_math(event.getPriority().getMath(), concentrations, functions)
+        priority=selection_math(
+            event.getPriority().getMath(), concentrations, functions
+        )
         if event.isSetPriority()
         else None,
         use_values_from_trigger_time=event.getUseValuesFromTriggerTime(),

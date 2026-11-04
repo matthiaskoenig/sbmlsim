@@ -5,8 +5,10 @@ times, see `tests.simulator.engine_comparison`; the steps of the integrator
 of AMICI are a grid with the events, see `sbmlsim.simulator.executor_amici`.
 """
 
+import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import libsbml
 import numpy as np
@@ -14,7 +16,12 @@ import pytest
 
 pytest.importorskip("amici")
 
-from sbmlsim.model.model_amici import AmiciSBMLModel
+from sbmlsim.model.model_amici import (
+    SHIFT_PREFIX,
+    AmiciSBMLModel,
+    amici_sbml,
+    shift_ids,
+)
 from sbmlsim.resources import (
     DEMO_SBML,
     HCTZ_SBML,
@@ -416,16 +423,40 @@ def test_a_strict_trigger_of_a_state_set_to_its_threshold(
     assert_agree(amici, roadrunner, times, changes=[1.0])
 
 
-def test_the_relaxed_trigger_is_the_one_of_amici() -> None:
-    """A trigger as AMICI evaluates it at a root: strict comparisons are not strict."""
+def test_the_strict_comparisons_of_the_triggers_are_shifted() -> None:
+    """Every strict comparison of a trigger is compiled shifted by a parameter of AMICI."""
     model = AmiciSBMLModel(source=sbml(STRICT_STATE))
-    relaxed = [
-        libsbml.formulaToL3String(
-            libsbml.readMathMLFromString(executor_amici._relaxed(str(e.trigger)))
+    formula = libsbml.formulaToL3String
+    comparisons = [
+        (
+            c.event,
+            formula(libsbml.readMathMLFromString(c.left)),
+            formula(libsbml.readMathMLFromString(c.right)),
+            c.shifted,
         )
-        for e in model.symbols.events
+        for c in model.comparisons
     ]
-    assert relaxed == ["X >= 2", "(X >= 3) && true"]
+    assert comparisons == [
+        (0, "X", "2", True),
+        (1, "X", "3", True),
+        (1, "X", "3.5", False),
+    ]
+    assert shift_ids(model.comparisons) == [
+        f"{SHIFT_PREFIX}0_0",
+        f"{SHIFT_PREFIX}1_0",
+    ]
+    doc = libsbml.readSBMLFromString(
+        amici_sbml(model.sbml, model.symbols, model.label).sbml
+    )
+    triggers = [
+        formula(e.getTrigger().getMath()) for e in doc.getModel().getListOfEvents()
+    ]
+    assert triggers[:2] == [
+        f"X > (2 + {SHIFT_PREFIX}0_0)",
+        f"(X > (3 + {SHIFT_PREFIX}1_0)) && true",
+    ]
+    free = [str(p) for p in model.amici_model.get_free_parameter_ids()]
+    assert set(shift_ids(model.comparisons)) <= set(free)
 
 
 def test_formula_values_of_a_change_are_evaluated_simultaneously() -> None:
@@ -716,17 +747,27 @@ def test_a_strict_trigger_at_its_threshold_with_a_rate_of_zero(
     assert_agree(amici, roadrunner, times, changes=[1.0])
 
 
-def test_a_strict_trigger_which_stays_at_its_threshold_raises() -> None:
-    """A trigger at its threshold longer than the look ahead raises, naming the event.
+@pytest.mark.parametrize("times", [[0, 1, 1.4, 1.6, 5], None])
+def test_a_strict_trigger_which_stays_at_its_threshold_fires_when_it_rises(
+    times: list[float] | None,
+) -> None:
+    """A trigger at its threshold which stays there fires when it becomes true.
 
-    `X` stays 2 until 1.5 and rises after it: roadrunner fires the event
-    after 1.5, AMICI would miss it.
+    `X` stays 2 until 1.5 and rises after it: the shifted comparison makes
+    AMICI find the crossing at 1.5, where roadrunner fires the event.
     """
     model = FLAT.replace("RATE", "piecewise(0, time < 1.5, 1)")
-    source = sbml(model)
-    plan = plan_of(source, Simulation(end=5, changes=[Change(1, {"X": 2.0})]))
-    with pytest.raises(NotImplementedError, match=r"\['E'\].*'flat'.*time 1"):
-        executor_amici.execute(plan, AmiciSBMLModel(source=source), ["time", "n"])
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    amici, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
+    assert amici["n"][-1] == roadrunner["n"][-1] == 1.0
+    if times is not None:
+        assert amici["n"].tolist() == [0, 0, 0, 0, 1, 1]
+    if times is None:
+        # roadrunner fires a hair before 1.5, after the tiny steps of CVODE
+        # at the switch of the piecewise
+        rows = amici.values[np.abs(amici.time - 1.5) <= 1e-6]
+        np.testing.assert_allclose(rows[:, 1:], [[2, 0], [2, 1]], atol=1e-6)
+    assert_agree(amici, roadrunner, times, changes=[1.0])
 
 
 @pytest.mark.parametrize(
@@ -826,21 +867,50 @@ end
 """
 
 
-@pytest.mark.parametrize("times", [[0, 30], None])
+@pytest.mark.parametrize("times", [[0, 10, 15, 25, 30], None])
 @pytest.mark.parametrize("changes", [[], [Change(10, {"n": 0.0})]])
-def test_an_event_which_leaves_its_strict_trigger_at_its_threshold_raises(
+def test_an_event_which_leaves_its_strict_trigger_at_its_threshold_fires_again(
     times: list[float] | None, changes: list[Change]
 ) -> None:
-    """AMICI evaluates the trigger at its threshold after its event as true and misses its next crossing.
+    """An event which sets its trigger back to its threshold fires again when it crosses it.
 
-    The event fires in an integration of AMICI, or at the start of a segment
-    after a change, and leaves its trigger at its threshold longer than the
-    look ahead: the executor raises, naming the event.
+    The event fires at 10, in an integration of AMICI or at the start of a
+    segment after a change, and leaves `Y` at 2, the threshold of `Y > 2`,
+    which AMICI evaluates as true: the shifted comparison makes it find the
+    crossing at 20, where roadrunner fires the event again.
     """
-    source = sbml(HOLD)
-    plan = plan_of(source, Simulation(end=30, times=times, changes=changes))
-    with pytest.raises(NotImplementedError, match=r"\['E'\].*'hold'.*time 10"):
-        executor_amici.execute(plan, AmiciSBMLModel(source=source), ["time", "n"])
+    simulation = Simulation(end=30, times=times, changes=changes)
+    amici, roadrunner = both(sbml(HOLD), simulation, ["time", "Y", "n"])
+    assert amici["n"][-1] == roadrunner["n"][-1] == 2.0
+    assert amici["Y"][-1] == 10.0
+    if times is not None:
+        assert amici["n"].tolist() == (
+            [0, 0, 0, 1, 2, 2] if changes else [0, 0, 1, 2, 2]
+        )
+    else:
+        # roadrunner fires the second event a hair before 20, after the tiny
+        # steps of CVODE at the switch of the piecewise
+        rows = amici.values[np.abs(amici.time - 20.0) <= 1e-6]
+        np.testing.assert_allclose(rows[:, 1:], [[2, 1], [10, 2]], atol=1e-6)
+    assert_agree(
+        amici, roadrunner, times, changes=[10.0] if changes else [], events=[10.0]
+    )
+
+
+def test_an_event_at_a_horizon_of_the_steady_state_which_sets_its_trigger_back() -> (
+    None
+):
+    """An event at the end of a horizon which leaves its trigger at its threshold fires again when it crosses it.
+
+    `E` fires at 10, the end of a horizon of the presimulation, and sets `Y`
+    to the threshold of `Y > 2`, which rises above it at 20: both engines
+    fire it twice.
+    """
+    model = HOLD.replace("Y = 3", "X = 1\n  X' = -X\n  Y = 3")
+    simulation = Simulation(end=1, times=[0, 1], presimulation=SteadyState())
+    amici, roadrunner = both(sbml(model), simulation, ["time", "X", "Y", "n"])
+    assert amici["n"][-1] == roadrunner["n"][-1] == 2.0
+    assert_equal_results(amici, roadrunner)
 
 
 #: an event which sets a state to the threshold of a strict trigger of
@@ -862,18 +932,142 @@ def test_an_event_which_sets_a_strict_trigger_to_its_threshold(
 ) -> None:
     """The trigger crosses right after the event of AMICI, which fires its event, as roadrunner.
 
-    AMICI fires both events at 1 (one pair of rows in the steps), roadrunner
-    the second one right after the first.
+    Both engines fire the second event right after the first: the steps of
+    AMICI have three rows at 1, the states before, between and after them.
     """
     amici, roadrunner = both(
         sbml(CROSSING), Simulation(end=3, times=times), ["time", "Y", "n"]
     )
     assert amici["n"][-1] == 1.0
     if times is None:
-        pairs = np.flatnonzero(np.diff(amici.time) == 0.0)
-        np.testing.assert_allclose(
-            amici.values[pairs[0] : pairs[0] + 2], [[1, 1, 0], [1, 2, 1]], atol=1e-8
-        )
+        rows = amici.values[np.abs(amici.time - 1.0) <= 1e-9]
+        np.testing.assert_allclose(rows, [[1, 1, 0], [1, 2, 0], [1, 2, 1]], atol=1e-8)
         np.testing.assert_allclose(amici.values[-1], roadrunner.values[-1], atol=1e-6)
     else:
         assert_equal_results(amici, roadrunner)
+
+
+#: a dose at a strict trigger of the time, as a model of pharmacokinetics
+DOSE = """
+model dose
+  A = 0
+  A' = -0.3 * A
+  n = 0
+  D: at (time OP 12), t0=true: A = A + 10, n = n + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 6, 12, 24], None])
+@pytest.mark.parametrize("op", [">", ">="])
+def test_a_trigger_of_the_time_at_an_output_time(
+    times: list[float] | None, op: str
+) -> None:
+    """An output time at the root of a trigger of the time.
+
+    The output time 12 is a stop of the integration where AMICI finds the
+    root: a strict trigger (`time > 12`) fires after it, so the row at 12 has
+    the state before the event, as in roadrunner; one which is not strict
+    fires at 12, the row has the state after it. The steps have the event as
+    two rows at 12.
+    """
+    simulation = Simulation(end=24, times=times)
+    amici, roadrunner = both(
+        sbml(DOSE.replace("OP", op)), simulation, ["time", "A", "n"]
+    )
+    assert amici["n"][-1] == 1.0
+    if times is not None:
+        assert rows_at(amici, 12.0)[0, 2] == (0.0 if op == ">" else 1.0)
+    else:
+        rows = amici.values[np.abs(amici.time - 12.0) <= 1e-9]
+        assert rows.shape[0] == 2
+        np.testing.assert_allclose(rows[:, 1:], [[0.0, 0.0], [10.0, 1.0]], atol=1e-9)
+    assert_agree(amici, roadrunner, times, events=[12.0])
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 2], None])
+def test_two_events_closer_than_the_resolution_fire_one_after_the_other(
+    times: list[float] | None,
+) -> None:
+    """Two roots a little apart are two events, each with the state after the one before.
+
+    Both events assign `n`; fired one after the other `n` is 11, fired as
+    simultaneous events with the values at the trigger it would be 10. AMICI
+    1.2 computes the trigger time of `F` as 1, the executor fires it after
+    `E` with the state after it.
+    """
+    model = "model close\n  X = 0\n  X' = 1\n  n = 0\n"
+    model += "  E: at (time >= 1), t0=true: n = n + 1\n"
+    model += "  F: at (time >= 1 + 1e-8), t0=true: n = n + 10\nend"
+    amici, roadrunner = both(
+        sbml(model), Simulation(end=2, times=times), ["time", "X", "n"]
+    )
+    assert amici["n"][-1] == roadrunner["n"][-1] == 11.0
+    assert_agree(amici, roadrunner, times, events=[1.0])
+
+
+def _integrations(source: str, simulation: Simulation) -> tuple[int, float]:
+    """Run a simulation with AMICI, counting its integrations and the time it takes."""
+    model = AmiciSBMLModel(source=source, settings=SETTINGS)
+    plan = plan_of(source, simulation)
+    integrate = executor_amici._Course._integrate
+    calls = 0
+
+    def counted(self: executor_amici._Course, start: float, times: np.ndarray) -> Any:
+        nonlocal calls
+        calls += 1
+        return integrate(self, start, times)
+
+    executor_amici._Course._integrate = counted
+    try:
+        executor_amici.execute(plan, model, ["time", "X", "n"])
+        started = time.perf_counter()
+        result = executor_amici.execute(plan, model, ["time", "X", "n"])
+    finally:
+        executor_amici._Course._integrate = integrate
+    assert abs(result["n"][-1] - simulation.end * 1000.0) <= 1.0
+    return calls // 2, time.perf_counter() - started
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2], None])
+def test_the_cost_is_linear_in_the_number_of_events(times: list[float] | None) -> None:
+    """A model with periodic events integrates once per event, and the time grows linearly.
+
+    `X` is set back to 0 at 0.001: 1000 events per unit of the time. The
+    integrations of a run are counted, so the test does not depend on the
+    speed of the machine; the time of 200 events is at most a few times
+    the time of 100.
+    """
+    model = "model sawtooth\n  X = 0\n  X' = 1\n  n = 0\n"
+    model += "  E: at (X >= 0.001), t0=true: X = 0, n = n + 1\nend"
+    source = sbml(model)
+    hundred, t_hundred = _integrations(
+        source, Simulation(end=0.1, times=None if times is None else [0, 0.05, 0.1])
+    )
+    two_hundred, t_two_hundred = _integrations(
+        source, Simulation(end=0.2, times=None if times is None else [0, 0.1, 0.2])
+    )
+    assert hundred <= 3 * 100 + 10
+    assert two_hundred <= 2 * hundred + 10
+    assert t_two_hundred <= 4.0 * t_hundred + 0.05
+
+
+@pytest.mark.parametrize("times", [list(range(0, 43, 3)), None])
+def test_many_doses_at_strict_triggers_of_the_time(times: list[float] | None) -> None:
+    """Twenty doses at `time > 1, 3, ..., 39`, every one a root at the end of a chunk.
+
+    The grid of the steps has a time within the rounding of a dose (21 at
+    the time 20.999999999999996), for which AMICI gives a row of NaN as the
+    last output time of an integration; the executor integrates the row
+    again, see `_Course._integrate`.
+    """
+    doses = "\n  ".join(
+        f"D{k}: at (time > {2 * k + 1}), t0=true: A = A + 10, n = n + 1"
+        for k in range(20)
+    )
+    model = f"model doses\n  A = 0\n  A' = -0.3 * A\n  n = 0\n  {doses}\nend"
+    amici, roadrunner = both(
+        sbml(model), Simulation(end=42, times=times), ["time", "A", "n"]
+    )
+    assert amici["n"][-1] == roadrunner["n"][-1] == 20.0
+    assert_agree(amici, roadrunner, times, events=[1.0, 21.0, 39.0])

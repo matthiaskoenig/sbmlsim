@@ -25,24 +25,14 @@ from sbmlsim.simulator.plan import OutputMode, Plan, SteadyStatePlan, time_toler
 class Course(Protocol):
     """The integrations of a model of an engine which continue one another."""
 
-    def restart(self, time: float, end: float) -> np.ndarray | None:
-        """Prepare an integration from the current state at a time to an end, after its changes.
-
-        Returns:
-            The row of the state at the time before the events which the
-            engine fires right after it, see
-            `sbmlsim.simulator.executor_amici`, `None` without such an event:
-            the output has it as the row at the time, the integration starts
-            from the state after them.
-        """
-        ...
-
     def steps(self, start: float, end: float) -> np.ndarray:
         """Integrate from `start` to `end` with the output of the steps of the integrator.
 
         Returns:
             The values, a row per step, the first at the start and the last
-            at the end, an event of the model as two rows at its time.
+            at the end, an event of the model as two rows at its time; an
+            event right after the start has its row after the row of the
+            start.
         """
         ...
 
@@ -56,7 +46,8 @@ class Course(Protocol):
                 reach if the last time is before it.
 
         Returns:
-            The values, a row at the start and a row per time, at the times.
+            The values, a row at the start, the state before an event right
+            after it, and a row per time, at the times.
         """
         ...
 
@@ -170,7 +161,6 @@ def simulate_segments(
         # an event of the model at the time of the next change fires after the
         # change, an event at the end has the state before it as a row
         end_stop = segment_stop(a, b) if model_events else b
-        head = course.restart(a, end_stop) if model_events else None
         held = not integrable(a, end_stop)
         if held:
             if plan.output is OutputMode.INTEGRATOR:
@@ -197,8 +187,6 @@ def simulate_segments(
             grid = np.unique(np.concatenate([capped, [end_stop]]))
             grid = grid[grid > a]
             result = course.times(a, grid, b)
-            if head is not None:
-                result[0] = head
             block = result[np.isin(np.concatenate([[a], grid]), capped)]
             if block.shape[0] != wanted.size:
                 raise RuntimeError(
@@ -212,9 +200,6 @@ def simulate_segments(
                 state = result[-1].copy()
                 state[0] = b
                 block = np.vstack([block, state])
-        if head is not None and plan.output is OutputMode.INTEGRATOR:
-            # the state before the events right after the start of the segment
-            block = np.vstack([head, block])
         stopped = a if held else model.value("time")
         blocks.append(block)
 

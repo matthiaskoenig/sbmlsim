@@ -48,14 +48,27 @@ raises.
 The current state of the model is its time, the states of AMICI and its free
 parameters, which the executor sets between two integrations; the values of
 the assignment rules and the rates of the reactions are the expressions of
-AMICI, which an integration of no length at the current time evaluates. The
-trigger of every event starts true in the SBML AMICI compiles, so AMICI fires
-no event at the start of an integration, also not at the start of a segment
-after a change; the events whose trigger is false before the time 0
-(`initial_value_false`) are fired by the executor at the start of a
-simulation, as the ones a change triggers. A feature which AMICI does not
-compile or simulates otherwise than roadrunner raises at the load, see
-`_check_supported`.
+AMICI, which an integration of no length at the current time evaluates.
+
+AMICI finds the roots of the triggers of the events of the model, the
+executor fires the events, see `sbmlsim.simulator.executor_amici`: every
+event of the model keeps its trigger in the SBML AMICI compiles and, instead
+of its assignments, sets two states of AMICI, that it fired in the
+integration and the time of its first execution (`FIRED_PREFIX`,
+`FIRST_PREFIX`, `fired`, `first_times`), which the executor sets to 0 before
+every integration (`reset_events`), so the first root of an integration is
+known exactly and the state of the model is the one before it. Every strict
+comparison of a trigger, `a > b` or `a < b`, is compiled shifted by a free
+parameter of AMICI, `a > b + shift` (`SHIFT_PREFIX`, `comparisons`,
+`set_shifts`): AMICI evaluates a comparison exactly at its threshold at the
+start of an integration as true, also a strict one, and would not find the
+crossing when it becomes true, which a positive shift makes it find. The
+trigger of every event starts true in the compiled SBML, so AMICI fires no
+event at the start of an integration; the events whose trigger is false
+before the time 0 (`initial_value_false`) are fired by the executor at the
+start of a simulation, as the ones a change triggers. A feature which AMICI
+does not compile or simulates otherwise than roadrunner raises at the load,
+see `_check_supported`.
 """
 
 from __future__ import annotations
@@ -100,7 +113,7 @@ from sbmlsim.model.model_sbml import (
     sbml_maths,
     variable_features,
 )
-from sbmlsim.model.symbols import ModelSymbols, TargetKind
+from sbmlsim.model.symbols import ModelSymbols, TargetKind, selection_math
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.units import UnitRegistry
 
@@ -116,7 +129,7 @@ CACHE_ENV = "SBMLSIM_AMICI_CACHE"
 #: the version of the way sbmlsim compiles a model with AMICI, part of the key
 #: of the cache: a change of the options or of the files of a compiled model
 #: raises it
-CACHE_FORMAT = 2
+CACHE_FORMAT = 3
 
 #: the options of AMICI's compilation of a model: no observables (the values
 #: are the states and the expressions; AMICI 1.2 fails to build an event
@@ -135,13 +148,20 @@ TARGETS_EVENT = "__sbmlsim_targets"
 #: its position among the events of the model
 EVENT_PREFIX = "__sbmlsim_event_"
 
-#: the prefix of the counter of the executions of an event of the model by
-#: AMICI, a state of AMICI, by the position of the event, see `event_counts`
-COUNT_PREFIX = "__sbmlsim_count_"
+#: the prefix of the state of AMICI which records that an event of the model
+#: fired in an integration, 1 after its first execution, by the position of
+#: the event, see `AmiciSBMLModel.fired`
+FIRED_PREFIX = "__sbmlsim_fired_"
 
-#: the prefix of the time of the last execution of an event of the model by
-#: AMICI, a state of AMICI, by the position of the event, see `event_times`
-EVENT_TIME_PREFIX = "__sbmlsim_time_"
+#: the prefix of the state of AMICI of the time of the first execution of an
+#: event of the model in an integration, by the position of the event, see
+#: `AmiciSBMLModel.first_times`
+FIRST_PREFIX = "__sbmlsim_first_"
+
+#: the prefix of the free parameter of AMICI by which a strict comparison of
+#: the trigger of an event is shifted, by the position of the event and of the
+#: comparison in its trigger, see `StrictComparison`
+SHIFT_PREFIX = "__sbmlsim_shift_"
 
 #: the prefix of the free parameter of the value of an entity which a
 #: pre-initialization sets, see the module
@@ -203,9 +223,10 @@ class AmiciSBML:
             time 0 in the SBML of the model, in the order of the SBML.
         events: the ids of the events of the model in AMICI, in the order of
             the SBML, `EVENT_PREFIX` and the position of an event without an
-            id; the counter of the executions of an event and the time of its
-            last execution are named by its position (`COUNT_PREFIX`,
-            `EVENT_TIME_PREFIX`).
+            id; the states which record that an event fired and when first
+            are named by its position (`FIRED_PREFIX`, `FIRST_PREFIX`).
+        comparisons: the strict comparisons of the triggers of the events,
+            in the order of the shift parameters (`SHIFT_PREFIX`).
     """
 
     sbml: str
@@ -213,6 +234,32 @@ class AmiciSBML:
     not_a_number: frozenset[str]
     initial_value_false: tuple[str, ...]
     events: tuple[str, ...] = ()
+    comparisons: tuple[StrictComparison, ...] = ()
+
+
+@dataclass(frozen=True)
+class StrictComparison:
+    """A strict comparison of the trigger of an event, `a > b` or `a < b`.
+
+    AMICI compiles it shifted, `a > b + shift` or `a + shift < b`, see the
+    module; the operands are MathML of selections, which
+    `sbmlsim.sbml_math.compile_math` compiles, so the executor tells where
+    the comparison is exactly at its threshold, `a == b`.
+
+    A comparison `a != b` is listed as well, which is not shifted (it has no
+    parameter): the executor tells it from its operands only.
+
+    Attributes:
+        event: the position of the event among the events of the model.
+        left: the MathML of the left operand `a`.
+        right: the MathML of the right operand `b`.
+        shifted: whether the comparison is shifted by a parameter.
+    """
+
+    event: int
+    left: str
+    right: str
+    shifted: bool = True
 
 
 class AmiciSBMLModel(SBMLModel):
@@ -227,6 +274,8 @@ class AmiciSBMLModel(SBMLModel):
             when their trigger is true, see the module.
         event_ids: the ids of the events of the model in AMICI, in the order
             of the SBML, see `AmiciSBML.events`.
+        comparisons: the strict comparisons of the triggers of the events,
+            see `StrictComparison` and `set_shifts`.
         absolute_tolerance: the absolute tolerance set last, see
             `set_integrator_settings`.
     """
@@ -285,6 +334,7 @@ class AmiciSBMLModel(SBMLModel):
         compiled = amici_sbml(sbml, self.symbols, self.label)
         self.initial_value_false: tuple[str, ...] = compiled.initial_value_false
         self.event_ids: tuple[str, ...] = compiled.events
+        self.comparisons: tuple[StrictComparison, ...] = compiled.comparisons
         self._flagged: frozenset[str] = compiled.flagged
         self._not_a_number: frozenset[str] = compiled.not_a_number
         module = load_module(compiled.sbml, self.label)
@@ -356,17 +406,21 @@ class AmiciSBMLModel(SBMLModel):
         self._w: np.ndarray | None = None
         self._xdot: np.ndarray | None = None
         state_ids = [str(x) for x in amodel.get_state_ids()]
-        #: the states of the counters of the executions of the events
-        self._counters: np.ndarray = np.array(
-            [state_ids.index(f"{COUNT_PREFIX}{k}") for k in range(len(self.event_ids))],
+        #: the states which record that the events fired in an integration
+        self._fired: np.ndarray = np.array(
+            [state_ids.index(f"{FIRED_PREFIX}{k}") for k in range(len(self.event_ids))],
             dtype=int,
         )
-        #: the states of the times of the last executions of the events
-        self._executed: np.ndarray = np.array(
-            [
-                state_ids.index(f"{EVENT_TIME_PREFIX}{k}")
-                for k in range(len(self.event_ids))
-            ],
+        #: the states of the times of the first executions of the events
+        self._first: np.ndarray = np.array(
+            [state_ids.index(f"{FIRST_PREFIX}{k}") for k in range(len(self.event_ids))],
+            dtype=int,
+        )
+        #: the free parameters of the shifts of the strict comparisons, -1
+        #: for a comparison which is not shifted
+        ids = iter(shift_ids(self.comparisons))
+        self._shifts: np.ndarray = np.array(
+            [free_ids.index(next(ids)) if c.shifted else -1 for c in self.comparisons],
             dtype=int,
         )
         self._start(self._loaded_parameters.copy())
@@ -462,12 +516,27 @@ class AmiciSBMLModel(SBMLModel):
 
         The free parameters, the start time (the current time) and the
         initial state (the current states) of the model of AMICI are the
-        ones of the model; the integration outputs at the time points.
+        ones of the model; the integration outputs at the time points. The
+        solver is a new one with the settings of the one before: CVODES keeps
+        a root function which is exactly 0 at the start of an integration
+        and still 0 after its first small step out of the root finding of
+        its memory (`gactive` of `cvRcheck1`), which AMICI reuses for the
+        next integration without setting it back (`CVodeRootInit` with the
+        same function returns at once), so the trigger would not be found
+        again, e.g. after an integration from a change which set a state to
+        the threshold of a trigger.
 
         Args:
             timepoints: the output times, from the current time on.
         """
         amodel = self.amici_model
+        before = self.solver
+        solver = amodel.create_solver()
+        solver.set_relative_tolerance(before.get_relative_tolerance())
+        solver.set_absolute_tolerance(before.get_absolute_tolerance())
+        solver.set_max_steps(before.get_max_steps())
+        solver.set_max_step_size(before.get_max_step_size())
+        self.solver = solver
         amodel.set_free_parameters(self._p.tolist())
         amodel.set_t0(self._time)
         amodel.set_initial_state(self._x.tolist())
@@ -571,30 +640,48 @@ class AmiciSBMLModel(SBMLModel):
             result.append(value)
         return np.array(result, dtype=float)
 
-    def event_counts(self, states: np.ndarray) -> np.ndarray:
-        """Get the numbers of the executions of the events by AMICI in states of AMICI.
+    def fired(self, states: np.ndarray) -> np.ndarray:
+        """Tell the events AMICI fired in an integration from states of AMICI.
 
         Args:
             states: states of AMICI, a row or an array of rows.
 
         Returns:
-            The counters of the events, in the order of `event_ids`, of every
-            row.
+            Whether every event, in the order of `event_ids`, fired since the
+            records were set back (`reset_events`), of every row.
         """
-        return np.asarray(states, dtype=float)[..., self._counters]
+        return np.asarray(states, dtype=float)[..., self._fired] > 0.5
 
-    def event_times(self, states: np.ndarray) -> np.ndarray:
-        """Get the times of the last executions of the events by AMICI in states of AMICI.
+    def first_times(self, states: np.ndarray) -> np.ndarray:
+        """Get the times of the first executions of the events by AMICI from states of AMICI.
 
         Args:
             states: states of AMICI, a row or an array of rows.
 
         Returns:
-            The time of the last execution of every event, in the order of
-            `event_ids`, of every row; 0 for an event which was not executed,
-            see `event_counts`.
+            The time of the first execution of every event, in the order of
+            `event_ids`, since the records were set back (`reset_events`), of
+            every row; 0 for an event which did not fire, see `fired`.
         """
-        return np.asarray(states, dtype=float)[..., self._executed]
+        return np.asarray(states, dtype=float)[..., self._first]
+
+    def reset_events(self) -> None:
+        """Set the records of the events back, before an integration, see `fired`."""
+        self._x[self._fired] = 0.0
+        self._x[self._first] = 0.0
+
+    def set_shifts(self, shifts: Sequence[float]) -> None:
+        """Set the shifts of the strict comparisons of the triggers, see `StrictComparison`.
+
+        Args:
+            shifts: a shift per comparison, in the order of `comparisons`, 0
+                for a comparison as written; the one of a comparison which
+                is not shifted is ignored.
+        """
+        shifted = self._shifts >= 0
+        self._p[self._shifts[shifted]] = np.asarray(shifts, dtype=float)[shifted]
+        self._w = None
+        self._xdot = None
 
     @property
     def not_a_number(self) -> frozenset[str]:
@@ -1261,37 +1348,111 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         assignment.setSymbol(sid)
         assignment.setMath(math_)
 
-    # every execution of an event of the model by AMICI counts and records its
-    # time, so the executor sees which events AMICI fired in an integration
+    # AMICI finds the roots of the triggers, the executor fires the events,
+    # see the module: an event keeps its trigger, with every strict comparison
+    # shifted by a parameter, and records instead of its assignments that it
+    # fired and the time of its first execution
     events: list[str] = []
+    comparisons: list[StrictComparison] = []
+    concentrations = frozenset(symbols.species - symbols.only_substance)
+    functions: libsbml.ListOfFunctionDefinitions = model.getListOfFunctionDefinitions()
+
+    def added(sid: str) -> None:
+        if model.getElementBySId(sid) is not None:
+            raise ValueError(
+                f"The model '{label}' has the entity '{sid}', the id of an "
+                f"element sbmlsim adds for AMICI."
+            )
+
+    def parameter(sid: str, constant: bool) -> None:
+        added(sid)
+        parameter: libsbml.Parameter = model.createParameter()
+        parameter.setId(sid)
+        parameter.setValue(0.0)
+        parameter.setConstant(constant)
+
     for k, event in enumerate(model.getListOfEvents()):
-        for sid in (
-            f"{COUNT_PREFIX}{k}",
-            f"{EVENT_TIME_PREFIX}{k}",
-            f"{EVENT_PREFIX}{k}",
-        ):
-            if model.getElementBySId(sid) is not None:
-                raise ValueError(
-                    f"The model '{label}' has the entity '{sid}', the id of an "
-                    f"element sbmlsim adds for AMICI."
-                )
+        added(f"{EVENT_PREFIX}{k}")
         if not event.isSetId():
             event.setId(f"{EVENT_PREFIX}{k}")
         events.append(event.getId())
-        counter: libsbml.Parameter = model.createParameter()
-        counter.setId(f"{COUNT_PREFIX}{k}")
-        counter.setValue(0.0)
-        counter.setConstant(False)
-        count: libsbml.EventAssignment = event.createEventAssignment()
-        count.setVariable(f"{COUNT_PREFIX}{k}")
-        count.setMath(_apply(libsbml.AST_PLUS, _name(f"{COUNT_PREFIX}{k}"), _real(1.0)))
-        last: libsbml.Parameter = model.createParameter()
-        last.setId(f"{EVENT_TIME_PREFIX}{k}")
-        last.setValue(0.0)
-        last.setConstant(False)
-        executed: libsbml.EventAssignment = event.createEventAssignment()
-        executed.setVariable(f"{EVENT_TIME_PREFIX}{k}")
-        executed.setMath(libsbml.ASTNode(libsbml.AST_NAME_TIME))
+        trigger = event.getTrigger()
+        if trigger is not None and trigger.isSetMath():
+            node: libsbml.ASTNode = trigger.getMath().deepCopy()
+            if functions.size():
+                libsbml.SBMLTransforms.replaceFD(node, functions)
+            shifted = 0
+            for parent, position, comparison in trigger_comparisons(node):
+                strict = comparison.getType() != libsbml.AST_RELATIONAL_NEQ
+                comparisons.append(
+                    StrictComparison(
+                        event=k,
+                        left=str(
+                            selection_math(
+                                comparison.getChild(0), concentrations, functions
+                            )
+                        ),
+                        right=str(
+                            selection_math(
+                                comparison.getChild(1), concentrations, functions
+                            )
+                        ),
+                        shifted=strict,
+                    )
+                )
+                if not strict:
+                    # `a != b` is true for AMICI, whose root function of it
+                    # reports a crossing where the operands are equal; the
+                    # executor evaluates it
+                    true = libsbml.ASTNode(libsbml.AST_CONSTANT_TRUE)
+                    if parent is None:
+                        node = true
+                    else:
+                        parent.replaceChild(position, true, True)
+                    continue
+                pid = f"{SHIFT_PREFIX}{k}_{shifted}"
+                shifted += 1
+                parameter(pid, constant=True)
+                # `a > b` becomes `a > b + shift`, `a < b` `a + shift < b`
+                index = 1 if comparison.getType() == libsbml.AST_RELATIONAL_GT else 0
+                comparison.replaceChild(
+                    index,
+                    _apply(
+                        libsbml.AST_PLUS,
+                        comparison.getChild(index).deepCopy(),
+                        _name(pid),
+                    ),
+                    True,
+                )
+            trigger.setMath(node)
+        while event.getNumEventAssignments():
+            event.removeEventAssignment(0)
+        fired_id, first_id = f"{FIRED_PREFIX}{k}", f"{FIRST_PREFIX}{k}"
+        parameter(fired_id, constant=False)
+        parameter(first_id, constant=False)
+        fired: libsbml.EventAssignment = event.createEventAssignment()
+        fired.setVariable(fired_id)
+        fired.setMath(_real(1.0))
+        # the time at the first execution, unchanged by the later ones:
+        # `first + (time - first) * (1 - fired)`, the values of the state at
+        # the trigger
+        first: libsbml.EventAssignment = event.createEventAssignment()
+        first.setVariable(first_id)
+        first.setMath(
+            _apply(
+                libsbml.AST_PLUS,
+                _name(first_id),
+                _apply(
+                    libsbml.AST_TIMES,
+                    _apply(
+                        libsbml.AST_MINUS,
+                        libsbml.ASTNode(libsbml.AST_NAME_TIME),
+                        _name(first_id),
+                    ),
+                    _apply(libsbml.AST_MINUS, _real(1.0), _name(fired_id)),
+                ),
+            )
+        )
 
     if targets:
         for sid in targets:
@@ -1324,7 +1485,68 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         not_a_number=frozenset(not_a_number),
         initial_value_false=tuple(initial_value_false),
         events=tuple(events),
+        comparisons=tuple(comparisons),
     )
+
+
+def shift_ids(comparisons: Sequence[StrictComparison]) -> list[str]:
+    """Get the ids of the parameters of the shifts of strict comparisons, see `SHIFT_PREFIX`."""
+    counts: dict[int, int] = {}
+    ids = []
+    for comparison in comparisons:
+        if not comparison.shifted:
+            continue
+        j = counts.get(comparison.event, 0)
+        counts[comparison.event] = j + 1
+        ids.append(f"{SHIFT_PREFIX}{comparison.event}_{j}")
+    return ids
+
+
+#: the strict comparisons of a trigger, see `trigger_comparisons`
+STRICT_COMPARISONS = (
+    libsbml.AST_RELATIONAL_GT,
+    libsbml.AST_RELATIONAL_LT,
+    libsbml.AST_RELATIONAL_NEQ,
+)
+
+#: every comparison of a trigger, see `trigger_comparisons`
+COMPARISONS = (
+    *STRICT_COMPARISONS,
+    libsbml.AST_RELATIONAL_GEQ,
+    libsbml.AST_RELATIONAL_LEQ,
+    libsbml.AST_RELATIONAL_EQ,
+)
+
+
+def trigger_comparisons(
+    trigger: libsbml.ASTNode, kinds: Sequence[int] = STRICT_COMPARISONS
+) -> list[tuple[libsbml.ASTNode | None, int, libsbml.ASTNode]]:
+    """Get the comparisons of a trigger of given kinds, through its logical operators.
+
+    Args:
+        trigger: the math of the trigger.
+        kinds: the types of the nodes of the comparisons, the strict ones
+            `>`, `<` and `!=` by default (`STRICT_COMPARISONS`), or every
+            comparison (`COMPARISONS`).
+
+    Returns:
+        The comparisons in the order of the math, each with its parent
+        (`None` for the trigger itself) and its position in it.
+    """
+    found: list[tuple[libsbml.ASTNode | None, int, libsbml.ASTNode]] = []
+    stack: list[tuple[libsbml.ASTNode | None, int, libsbml.ASTNode]] = [
+        (None, 0, trigger)
+    ]
+    while stack:
+        parent, index, node = stack.pop()
+        if node.getType() in kinds and node.getNumChildren() == 2:
+            found.append((parent, index, node))
+        elif node.isLogical():
+            stack.extend(
+                (node, k, node.getChild(k))
+                for k in reversed(range(node.getNumChildren()))
+            )
+    return found
 
 
 def _name(sid: str) -> libsbml.ASTNode:

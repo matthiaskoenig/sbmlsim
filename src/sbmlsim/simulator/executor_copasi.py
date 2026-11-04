@@ -231,15 +231,6 @@ class _TimeCourse:
         values[:, 0] = expected
         return values
 
-    def restart(self, time: float, end: float) -> np.ndarray | None:
-        """Prepare an integration at a time: COPASI fires the events of the model itself.
-
-        Returns:
-            `None`, COPASI fires no event right after the time which it does
-            not see, see `sbmlsim.simulator.segments.Course`.
-        """
-        return None
-
     def event_at_the_end(
         self, start: float, end: float, tolerance: float
     ) -> np.ndarray | None:
