@@ -946,17 +946,17 @@ def test_a_strict_trigger_which_stays_at_its_threshold_fires_when_it_rises(
 
 
 @pytest.mark.parametrize(
-    ("trigger", "fired", "roadrunner_fired"),
+    ("trigger", "fired"),
     [
-        ("time > 10", 1.0, 2.0),
-        ("time >= 10", 1.0, 1.0),
-        ("time > 5", 1.0, 1.0),
-        ("time > 1", 2.0, 3.0),
-        ("time > 1.0000000001", 2.0, 3.0),
+        ("time > 10", 1.0),
+        ("time >= 10", 1.0),
+        ("time > 5", 1.0),
+        ("time > 1", 2.0),
+        ("time > 1.0000000001", 2.0),
     ],
 )
 def test_a_strict_trigger_of_the_time_at_a_horizon_of_the_steady_state(
-    trigger: str, fired: float, roadrunner_fired: float
+    trigger: str, fired: float
 ) -> None:
     """A trigger of the time fires once in the presimulation, also at the end of a horizon.
 
@@ -964,14 +964,13 @@ def test_a_strict_trigger_of_the_time_at_a_horizon_of_the_steady_state(
     the time is continuous across them; after the presimulation the time is
     set back to 0 and `time > 1` fires again after the end 1. AMICI fires a
     strict trigger at its root at the end of a horizon, the next horizon does
-    not fire it again (`_Course.horizon`). A known difference: roadrunner
-    fires such a trigger at the end of the horizon and again in the next one.
+    not fire it again (`_Course.horizon`); roadrunner fires it once as well
+    (#444, `sbmlsim.simulator.executor._EventAtTheHorizon`).
     """
     model = f"model horizon\n  X = 1\n  X' = -X\n  n = 0\n  E: at ({trigger}), t0=true: n = n + 1\nend"
     simulation = Simulation(end=1, times=[0, 1], presimulation=SteadyState())
     amici, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
-    assert amici["n"][-1] == fired
-    assert roadrunner["n"][-1] == roadrunner_fired
+    assert amici["n"][-1] == roadrunner["n"][-1] == fired
     np.testing.assert_allclose(amici["X"], roadrunner["X"], rtol=1e-6, atol=1e-9)
 
 

@@ -142,6 +142,8 @@ from sbmlsim.simulator.changes import fire_events, fire_start_events, triggers
 from sbmlsim.simulator.executor import (
     integrable,
     intermediate_time,
+    output_columns,
+    output_time,
 )
 from sbmlsim.simulator.plan import (
     Plan,
@@ -734,9 +736,7 @@ def execute(
         RuntimeError: if COPASI fails to integrate, with its message.
     """
     check_supported(plan, model)
-    columns = list(selections)
-    if not columns or columns[0] != "time":
-        columns = ["time", *columns]
+    columns = output_columns(selections)
     model.initialize(preinit_targets(plan))
     try:
         if plan.steady_state is not None:
@@ -753,8 +753,7 @@ def execute(
         )
     finally:
         model.simulated()
-    if plan.time_shift != 0.0:
-        values[:, 0] += plan.time_shift
+    values = output_time(values, columns, plan, model.symbols)
     return TimecourseResult(columns=tuple(columns), values=values)
 
 
