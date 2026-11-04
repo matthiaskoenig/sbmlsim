@@ -83,3 +83,32 @@ def test_import_amici_keeps_the_locale() -> None:
         "assert locale.getpreferredencoding(False) == encoding\n"
     )
     subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=60)
+
+
+def test_an_amici_simulator_without_amici_names_the_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The simulator imports the engine when it is created, not at the first run."""
+    from sbmlsim.simulator import Simulator
+
+    monkeypatch.setitem(sys.modules, "amici", None)
+    with pytest.raises(ImportError, match=r"sbmlsim\[amici\]"):
+        Simulator(engine="amici")
+
+
+def test_the_runs_of_the_other_engines_do_not_import_amici() -> None:
+    """A run of roadrunner, and of COPASI where it is installed, needs no AMICI."""
+    engines = ["roadrunner"]
+    if importlib.util.find_spec("COPASI") is not None:
+        engines.append("copasi")
+    code = (
+        "import sys\n"
+        "from sbmlsim.resources import DEMO_SBML\n"
+        "from sbmlsim.simulation import Scan, Simulation, Dimension\n"
+        "from sbmlsim.simulator import Simulator\n"
+        "scan = Scan(Simulation(end=10), [Dimension('d', values={'Km_A': [1, 2]})])\n"
+        f"for engine in {engines!r}:\n"
+        "    Simulator(n_workers=1, engine=engine).run(DEMO_SBML, scan)\n"
+        "assert 'amici' not in sys.modules\n"
+    )
+    subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=120)

@@ -1850,10 +1850,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         It has the engine of the problem and the integrator settings of the
         fit; serial, since the fit runs its plans in a pool of its own and an
         experiment initialized in a worker of that pool runs in the worker.
-        The settings of CVODE which COPASI has no equivalent of, the variable
-        step size and the initial time step, are settings of roadrunner only,
-        which a model of COPASI would report as ignored in every evaluation,
-        see `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
+        The settings of CVODE which COPASI and AMICI have no equivalent of,
+        the variable step size and the initial time step, are settings of
+        roadrunner only, which a model of COPASI or AMICI would report as
+        ignored in every evaluation, see
+        `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`
+        and `sbmlsim.model.model_amici.AmiciSBMLModel.set_integrator_settings`.
         """
         integrator: IntegratorSettings = {
             "absolute_tolerance": settings.absolute_tolerance,

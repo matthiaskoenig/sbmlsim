@@ -1129,7 +1129,7 @@ def _run_job(job: _Job) -> _Outcome:
     simulator: Simulator | None = None
     if job.integrator_settings is not None:
         # a worker runs the scans of its experiment itself; the simulator of
-        # COPASI imports it through sbmlsim, see `sbmlsim.engine.import_copasi`
+        # COPASI or AMICI imports it through sbmlsim, see `sbmlsim.engine`
         simulator = Simulator(n_workers=1, engine=job.engine)
         simulator.set_integrator_settings(**job.integrator_settings)
     try:
@@ -1276,7 +1276,8 @@ def run_experiments(
         progress: show the progress and the timings of the run, see
             `ExperimentRunner.run_experiments`.
         simulator: the simulator of the tasks, `Simulator()` without one; the
-            models are loaded in its engine, e.g. `Simulator(engine="copasi")`.
+            models are loaded in its engine, e.g. `Simulator(engine="copasi")`
+            or `Simulator(engine="amici")`.
 
     Returns:
         The results of the experiments.

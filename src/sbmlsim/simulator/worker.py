@@ -19,7 +19,7 @@ and kept, see `sbmlsim.parallel.worker_cache`, in the engine of the model of
 the parent, with its integrator and every one of its settings, those of the
 simulator and those set on the model, so a worker integrates as the parent
 does and the result does not depend on the number of workers (bitwise with
-roadrunner, within the integration with COPASI, see
+roadrunner and AMICI, within the integration with COPASI, see
 `sbmlsim.simulator.simulator`).
 
 A point which fails is reported once, by its error: roadrunner logs the error
@@ -95,7 +95,8 @@ class ModelSpec:
         jit_optimization: the optimization level the model is compiled with,
             see `RoadrunnerSBMLModel.jit_optimization`: a worker compiles it
             at the level of the parent, whatever its environment says;
-            `None` for a model of COPASI, which compiles nothing.
+            `None` for a model of COPASI or AMICI, which roadrunner does not
+            compile.
         integrator: the name of the integrator, e.g. `cvode` or `lsoda`.
         settings: every setting of the integrator by its name, the absolute
             tolerance as the `AbsoluteTolerance` of the model.

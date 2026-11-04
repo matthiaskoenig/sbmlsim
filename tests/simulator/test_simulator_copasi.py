@@ -39,7 +39,7 @@ from sbmlsim.simulator.worker import (  # noqa: E402
     OnError,
     run_chunk,
 )
-from tests.simulator.models import sbml  # noqa: E402
+from tests.simulator.models import PREINIT_FORMULAS, sbml  # noqa: E402
 
 #: the delayed event of the model fires across a change after the start,
 #: which COPASI does not simulate, see `executor_copasi.check_supported`
@@ -304,29 +304,6 @@ def test_the_executor_of_the_engine_of_a_model(
         execute_plan(plan, model, ["time"])
     with pytest.raises(ValueError, match="The engine 'other' has no executor"):
         check_plan(plan, model)
-
-
-#: a pre-initialization formula reads parameters: `q` is set, `p` follows it
-#: by an initial assignment, `u` is unrelated, `rq` and `rp` follow `q` and `p`
-#: by assignment rules and `rc` and `ra` the concentration and the amount of
-#: `S`, whose compartment `c` is set
-PREINIT_FORMULAS = """
-model preinit_formulas
-  compartment c = 1
-  species S in c
-  S = 2
-  q = 1
-  p = 2 * q
-  u = 7
-  rq := 3 * q
-  rp := 3 * p
-  rc := S
-  ra := S * c
-  y = 0
-  k = 0.1
-  J: S -> ; k * S
-end
-"""
 
 
 @pytest.mark.parametrize(

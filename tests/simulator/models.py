@@ -27,6 +27,28 @@ model probe
 end
 """
 
+#: a pre-initialization formula reads parameters: `q` is set, `p` follows it
+#: by an initial assignment, `u` is unrelated, `rq` and `rp` follow `q` and `p`
+#: by assignment rules and `rc` and `ra` the concentration and the amount of
+#: `S`, whose compartment `c` is set
+PREINIT_FORMULAS = """
+model preinit_formulas
+  compartment c = 1
+  species S in c
+  S = 2
+  q = 1
+  p = 2 * q
+  u = 7
+  rq := 3 * q
+  rp := 3 * p
+  rc := S
+  ra := S * c
+  y = 0
+  k = 0.1
+  J: S -> ; k * S
+end
+"""
+
 
 def sbml(model: str = PROBE) -> str:
     """Get the SBML of an antimony model.
