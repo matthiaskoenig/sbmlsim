@@ -314,3 +314,30 @@ def test_the_predictive_check_of_geometric_means(tmp_path: Path) -> None:
     typical = 2.0 * np.exp(-0.5 * TIMES)
     np.testing.assert_allclose(points["q50"] / typical, 1.0, atol=0.03)
     assert check.coverage == 1.0
+
+
+def test_the_variability_between_the_studies(problem: OptimizationProblem) -> None:
+    between = Variability({"a0": LogNormal(cv=0.3)})
+    variability = Variability({"a0": LogNormal(cv=0.01)}, between=between)
+    assert variability.all_targets == ("a0",)
+    with pytest.raises(ValueError, match="no variability between studies of its own"):
+        Variability({}, between=variability)
+    check = predictive_check(problem, X, variability, 8, seed=5, studies=256, groups=20)
+    assert (check.n_studies, len(check.subjects)) == (256, 256)
+    # the subjects of a study share its factor
+    first = check.subjects[0]
+    assert set(first.study) == {"a0"}
+    np.testing.assert_allclose(first.factors[:, 0], first.study["a0"], rtol=0.05)
+    # the mean of six subjects keeps the factor of its study
+    typical = 2.0 * np.exp(-0.5 * TIMES)
+    sigma = np.sqrt(np.log1p(0.09))
+    np.testing.assert_allclose(
+        check.points["q95"] / typical, np.exp(1.645 * sigma), rtol=0.05
+    )
+    with pytest.raises(ValueError, match="studies must be positive"):
+        predictive_check(problem, X, variability, 4, seed=5, studies=0)
+    # without a variability between the studies there is one study
+    alone = predictive_check(
+        problem, X, Variability({"a0": LogNormal(cv=0.1)}), 4, seed=5, studies=8
+    )
+    assert alone.n_studies == 1

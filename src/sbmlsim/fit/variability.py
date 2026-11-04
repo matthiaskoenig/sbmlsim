@@ -12,17 +12,22 @@ vary around them (`OptimizationProblem.evaluations(..., factors=)`, see
 `sbmlsim.simulator.plan.Plan.scaled`). The factors are correlated by
 `Covariance`s of the targets: a correlation of their normal scores, or the
 covariance of the logarithms of log-normal factors (`scale="log"`, the omega
-matrix of a population analysis), see `sbmlsim.uncertainty.draws`.
+matrix of a population analysis), see `sbmlsim.uncertainty.draws`. The
+studies differ as well, in their populations, assays and protocols:
+`Variability(between=Variability(...))` is the variability between the
+studies, the factors of a study, which all its subjects share and multiply
+with their own.
 
 `subject_predictions` evaluates the mappings of a problem for `n` subjects of
 a variability at one parameter vector. `predictive_check` nests the subjects
 in the parameter vectors it is given, e.g. draws of the uncertainty of the
 fitted parameters (uncertainty outside, variability inside), and compares
 every observation with the distribution its prediction has over the
-subjects: a data point of a group of `N` subjects (the count of the data
+subjects: with a variability between the studies the subjects of a vector are
+`studies` studies of `n_subjects` subjects each. A data point of a group of `N` subjects (the count of the data
 point) is a mean of `N` subjects, so it is compared with the distribution of
 the mean of virtual groups of `N` subjects drawn from the subjects of a
-parameter vector (the geometric mean for a mapping of geometric standard
+study (the geometric mean for a mapping of geometric standard
 deviations); a data point without a count is one subject. The distributions
 of all parameter vectors are pooled, the predictive distribution of the
 observation, and its quantiles are the band of a visual predictive check
@@ -99,14 +104,19 @@ class Variability:
             since a subject varies around the value of its simulation.
         covariance: the correlations or covariances of the factors, by
             their targets.
+        between: the variability between the studies, whose factors the
+            subjects of a study share; `None` for studies which differ in the
+            inputs of their simulations only.
 
     Raises:
-        ValueError: for a distribution which is not relative, or a covariance
-            of targets which are no factors.
+        ValueError: for a distribution which is not relative, a covariance of
+            targets which are no factors, or a variability between the studies
+            which has one between its studies.
     """
 
     factors: Mapping[str, Distribution]
     covariance: Sequence[Covariance] = field(default_factory=tuple)
+    between: Variability | None = None
 
     def __post_init__(self) -> None:
         """Check the distributions and the covariances."""
@@ -119,6 +129,11 @@ class Variability:
             )
         if self.covariance and not self.factors:
             raise ValueError("A variability without factors has no covariance.")
+        if self.between is not None and self.between.between is not None:
+            raise ValueError(
+                "The variability between the studies has no variability between "
+                "studies of its own."
+            )
         if self.factors:
             # the correlation is checked once, named by the targets
             normal_score_correlation(self._variables(), self.covariance)
@@ -127,6 +142,12 @@ class Variability:
     def targets(self) -> tuple[str, ...]:
         """Get the targets of the factors, in their order."""
         return tuple(self.factors)
+
+    @property
+    def all_targets(self) -> tuple[str, ...]:
+        """Get the targets of the factors and of the factors between the studies."""
+        between = () if self.between is None else self.between.targets
+        return tuple(dict.fromkeys([*self.targets, *between]))
 
     def _variables(self) -> list[Variable]:
         """Get the factors as the variables of a draw."""
@@ -185,16 +206,19 @@ class SubjectPredictions:
     Attributes:
         targets: the targets of the factors.
         factors: the factors of every subject, one row per subject and one
-            column per target.
+            column per target, the factors of its study included.
         predictions: the index of a mapping -> its predictions at its data,
             one row per subject; `NaN` for a subject whose simulation failed.
         failed: the subjects whose simulation failed.
+        study: the factors of the study of the subjects by target, empty
+            without a variability between the studies.
     """
 
     targets: tuple[str, ...]
     factors: np.ndarray
     predictions: Mapping[int, np.ndarray]
     failed: int
+    study: Mapping[str, float] = field(default_factory=dict)
 
 
 def _check_factors(
@@ -225,6 +249,7 @@ def subject_predictions(
     seed: int,
     design: Literal["sobol", "lhs", "random"] = "sobol",
     start: int = 0,
+    study: Mapping[str, float] | None = None,
 ) -> SubjectPredictions:
     """Evaluate the mappings of a problem for `n` subjects of a variability.
 
@@ -237,6 +262,8 @@ def subject_predictions(
         seed: the seed of the factors.
         design: the design of the factors, see `Variability.draw`.
         start: the index of the first subject of the sequence.
+        study: the factors of the study of the subjects by target, which
+            multiply the factors of every subject; `None` for none.
 
     Returns:
         The factors and the predictions of every subject.
@@ -250,15 +277,30 @@ def subject_predictions(
         raise ValueError(f"The number of subjects must be positive, not {n}.")
     values = np.asarray(x, dtype=float)
     chosen = list(problem.indices() if indices is None else indices)
-    _check_factors(problem, values, chosen, variability.targets)
-    factors = variability.draw(n, seed=seed, design=design, start=start)
+    shared = dict(study or {})
+    targets = tuple(dict.fromkeys([*variability.targets, *shared]))
+    _check_factors(problem, values, chosen, targets)
+    own = variability.draw(n, seed=seed, design=design, start=start)
+    factors = (
+        np.column_stack(
+            [
+                (
+                    own[:, variability.targets.index(target)]
+                    if target in variability.factors
+                    else np.ones(n)
+                )
+                * shared.get(target, 1.0)
+                for target in targets
+            ]
+        )
+        if targets
+        else np.ones((n, 0))
+    )
     sizes = {k: len(problem.y_references[k]) for k in chosen}
     predictions = {k: np.full((n, sizes[k]), np.nan) for k in chosen}
     failed = 0
     for i in range(n):
-        subject = {
-            target: float(factors[i, j]) for j, target in enumerate(variability.targets)
-        }
+        subject = {target: float(factors[i, j]) for j, target in enumerate(targets)}
         try:
             evaluated = problem.predictions(values, chosen, factors=subject)
         except ValueError as err:
@@ -269,10 +311,11 @@ def subject_predictions(
         for k, prediction in evaluated.items():
             predictions[k][i] = prediction
     return SubjectPredictions(
-        targets=variability.targets,
+        targets=targets,
         factors=factors,
         predictions=predictions,
         failed=failed,
+        study=shared,
     )
 
 
@@ -312,9 +355,11 @@ class PredictiveCheck:
 
     Attributes:
         quantiles: the quantiles of the bands, ascending.
-        n_subjects: the subjects of every parameter vector.
+        n_subjects: the subjects of every study of a parameter vector.
         n_vectors: the parameter vectors.
-        groups: the virtual groups of a data point of a group per vector.
+        n_studies: the studies of every parameter vector, 1 without a
+            variability between the studies.
+        groups: the virtual groups of a data point of a group per study.
         seed: the seed of the subjects and the groups.
         targets: the targets of the variability.
         failed: the failed subjects over all parameter vectors.
@@ -326,12 +371,14 @@ class PredictiveCheck:
             values of its distribution), a column per quantile (`q<percent>`,
             e.g. `q5`, `q50`, `q95`) and `inside` (the observation between
             the outer quantiles, `None` without a band).
-        subjects: the predictions of the subjects of every parameter vector.
+        subjects: the predictions of the subjects of every study of every
+            parameter vector, the studies of a vector one after the other.
     """
 
     quantiles: tuple[float, ...]
     n_subjects: int
     n_vectors: int
+    n_studies: int
     groups: int
     seed: int
     targets: tuple[str, ...]
@@ -379,6 +426,7 @@ def predictive_check(
     groups: int = 1000,
     seed: int | None = None,
     design: Literal["sobol", "lhs", "random"] = "sobol",
+    studies: int = 16,
 ) -> PredictiveCheck:
     """Get the predictive check of the mappings of a problem, see the module.
 
@@ -388,21 +436,25 @@ def predictive_check(
             per vector, e.g. draws of the uncertainty of the fitted
             parameters; one vector for the variability alone.
         variability: the variability of the subjects.
-        n_subjects: the subjects of every parameter vector.
+        n_subjects: the subjects of every parameter vector, of every study
+            with a variability between the studies.
         indices: the indices of the mappings, every mapping by default.
         quantiles: the quantiles of the bands, at least two, in `(0, 1)`.
-        groups: the virtual groups of a data point of a group per vector.
+        groups: the virtual groups of a data point of a group per study.
         seed: the seed, `None` draws one, which the result keeps.
         design: the design of the factors, see `Variability.draw`; the
-            subjects of the vectors are consecutive points of one sequence.
+            subjects of the vectors (and of their studies) are consecutive
+            points of one sequence.
+        studies: the studies of every parameter vector with a variability
+            between the studies (`Variability.between`), one without.
 
     Returns:
         The bands and the coverage of the data points.
 
     Raises:
         ValueError: for no parameter vector, quantiles which are not in
-            `(0, 1)` or fewer than two, a number of groups which is not
-            positive, see `subject_predictions`.
+            `(0, 1)` or fewer than two, a number of groups or of studies
+            which is not positive, see `subject_predictions`.
     """
     vectors = np.atleast_2d(np.asarray(parameters, dtype=float))
     if vectors.shape[0] == 0:
@@ -416,8 +468,18 @@ def predictive_check(
         raise ValueError(
             f"The number of virtual groups must be positive, not {groups}."
         )
+    if studies < 1:
+        raise ValueError(f"The number of studies must be positive, not {studies}.")
     if seed is None:
         seed = int(np.random.SeedSequence().generate_state(1)[0])
+    between = variability.between
+    n_studies = 1 if between is None else studies
+    # the factors of the studies, a sequence of their own
+    study_factors = (
+        np.ones((len(vectors) * n_studies, 0))
+        if between is None
+        else between.draw(len(vectors) * n_studies, seed=seed + 1, design=design)
+    )
     chosen = list(problem.indices() if indices is None else indices)
     subjects = tuple(
         subject_predictions(
@@ -428,9 +490,18 @@ def predictive_check(
             indices=chosen,
             seed=seed,
             design=design,
-            start=o * n_subjects,
+            start=(o * n_studies + s) * n_subjects,
+            study=(
+                None
+                if between is None
+                else {
+                    target: float(study_factors[o * n_studies + s, j])
+                    for j, target in enumerate(between.targets)
+                }
+            ),
         )
         for o, vector in enumerate(vectors)
+        for s in range(n_studies)
     )
     typical = problem.predictions(vectors[0], chosen)
     rng = np.random.default_rng(seed)
@@ -516,6 +587,7 @@ def predictive_check(
         quantiles=qs,
         n_subjects=n_subjects,
         n_vectors=len(vectors),
+        n_studies=n_studies,
         groups=groups,
         seed=seed,
         targets=variability.targets,
