@@ -377,13 +377,134 @@ def test_multiple_dosing(times: list[float] | None) -> None:
         assert_equal_results(copasi, roadrunner)
 
 
-def test_a_delayed_event_fires_across_a_change() -> None:
-    """COPASI schedules a delayed event of the model, also across a change."""
-    simulation = Simulation(
-        end=3, changes=[Change(1, {"X": 0.0})], times=[0, 1, 1.4, 1.6, 3]
+#: delayed events which COPASI schedules as roadrunner in a plan without
+#: changes after the start: a delay, assignments of the trigger and of the
+#: execution and a decay
+DELAYED_EVENTS = {
+    "delay": DELAYED,
+    "values of the trigger": DELAYED.replace(
+        "t0=true: Y = Y + 1", "t0=true, fromTrigger=true: Y = X"
+    ),
+    "values of the execution": DELAYED.replace(
+        "t0=true: Y = Y + 1", "t0=true, fromTrigger=false: Y = X"
+    ),
+    "decay": """
+    model decay
+      X = 1
+      X' = -X
+      Y = 0
+      E: at 2 after (X < 0.5), t0=true: Y = 1
+    end
+    """,
+}
+
+
+@pytest.mark.parametrize("name", DELAYED_EVENTS)
+@pytest.mark.parametrize("times", [[0, 1, 1.4, 1.6, 2, 3, 5], [0, 2, 5, np.inf], None])
+def test_delayed_events_without_writes(name: str, times: list[float] | None) -> None:
+    """COPASI schedules the delayed events of a plan without writes itself.
+
+    A change at the start is no write between two runs. roadrunner fires a
+    delayed event late in the steps of the integrator (#1382), the values of
+    its execution are compared in an output of times only.
+    """
+    if times is None and name == "values of the execution":
+        pytest.skip("roadrunner #1382")
+    source = sbml(DELAYED_EVENTS[name])
+    for changes in ([], [Change(0, {"Y": 0.0})]):
+        simulation = Simulation(end=5, changes=changes, times=times)
+        copasi, roadrunner = both(source, simulation, ["time", "X", "Y"])
+        if times is None:
+            assert_equal_rows(copasi, roadrunner)
+        else:
+            assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize(("persistent", "fired"), [("false", 0.0), ("true", 1.0)])
+def test_a_delayed_event_whose_trigger_becomes_false(
+    persistent: str, fired: float
+) -> None:
+    """A non-persistent delayed event is cancelled, a persistent one fires.
+
+    The trigger is true from 0.5 to 1.2, the event is due at 1.5. The output
+    times keep the steps of CVODE small enough that roadrunner sees the
+    trigger, see `test_known_difference_an_event_whose_trigger_is_true_within_a_step`.
+    """
+    source = sbml(
+        DELAYED.replace(
+            "(X > 0.5), t0=true:",
+            f"(X > 0.5 && X < 1.2), t0=true, persistent={persistent}:",
+        )
     )
-    copasi, roadrunner = both(sbml(DELAYED), simulation, ["time", "X", "Y"])
-    assert copasi["Y"].tolist() == [0.0, 0.0, 0.0, 0.0, 1.0, 1.0]
+    simulation = Simulation(end=5, times=[0, 1, 1.4, 1.6, 2, 3, 5])
+    copasi, roadrunner = both(source, simulation, ["time", "X", "Y"])
+    assert copasi["Y"][-1] == fired
+    assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2, 3], None])
+@pytest.mark.parametrize(
+    ("changes", "presimulation", "feature"),
+    [
+        ([Change(1, {"X": 0.0})], None, "a change after the start"),
+        ([Change(3, {"W": 1.0})], None, "a change after the start"),
+        ([], SteadyState(max_time=1), "a presimulation"),
+    ],
+)
+def test_a_delayed_event_with_writes_raises(
+    times: list[float] | None,
+    changes: list[Change],
+    presimulation: SteadyState | None,
+    feature: str,
+) -> None:
+    """A delayed event in a plan with a change after the start or a presimulation.
+
+    COPASI keeps the event pending across the values the executor sets
+    between two runs, where roadrunner cancels or schedules it again.
+    """
+    source = sbml(DELAYED.replace("Y = 0", "Y = 0\n  W = 0"))
+    model = CopasiSBMLModel(source=source)
+    plan = plan_of(
+        source,
+        Simulation(end=3, changes=changes, presimulation=presimulation, times=times),
+    )
+    with pytest.raises(NotImplementedError, match=rf"\['E'\].*{feature}"):
+        executor_copasi.execute(plan, model, ["time", "Y"])
+
+
+def test_known_difference_an_event_whose_trigger_is_true_within_a_step() -> None:
+    """Pin a known difference: roadrunner misses a trigger true within one step.
+
+    `X > 0.5 && X < 0.8` is true for 0.3 of the time, within one step of
+    CVODE, which finds the roots of both comparisons in it; roadrunner does
+    not fire the event, COPASI does, as SBML.
+    """
+    model = "model narrow\n  X = 0\n  X' = 1\n  Y = 0\n"
+    model += "  E: at (X > 0.5 && X < 0.8), t0=true: Y = Y + 1\nend"
+    copasi, roadrunner = both(
+        sbml(model), Simulation(end=3, times=[0, 3]), ["time", "Y"]
+    )
+    assert copasi["Y"].tolist() == [0.0, 1.0]
+    assert roadrunner["Y"].tolist() == [0.0, 0.0]
+
+
+def test_known_defect_lsoda_fails_on_a_delayed_event_in_its_steps() -> None:
+    """Pin a known defect of COPASI: its steps fail on a delayed event.
+
+    The event `X = 0` 0.3 after `X > 1` is scheduled at 1.3, which LSODA has
+    stepped past when it sets the time as its critical time: COPASI fails
+    (`TCRIT behind TCUR`), the executor raises its message; an output of
+    times agrees with roadrunner.
+    """
+    model = "model sawtooth\n  X = 0\n  X' = 1\n  n = 0\n"
+    model += "  E: at 0.3 after (X > 1), t0=true: X = 0, n = n + 1\nend"
+    source = sbml(model)
+    plan = plan_of(source, Simulation(end=5))
+    with pytest.raises(RuntimeError, match="TCRIT"):
+        executor_copasi.execute(plan, CopasiSBMLModel(source=source), ["time"])
+    copasi, roadrunner = both(
+        source, Simulation(end=5, times=[0, 1, 2, 3, 5]), ["time", "X", "n"]
+    )
     assert_equal_results(copasi, roadrunner)
 
 

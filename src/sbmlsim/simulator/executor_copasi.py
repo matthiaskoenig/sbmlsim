@@ -21,17 +21,16 @@ comparable:
    reset, so a change at the start does not fire an event.
 4. COPASI integrates (LSODA) in absolute time: the first segment from the
    state the model is initialized to, every later one continues from the
-   state the one before it ended in (`processRaw(False)`), so an event of the
-   model which COPASI scheduled with a delay fires in a later segment; the
-   states of the triggers are set from the current values before every run
+   state the one before it ended in (`processRaw(False)`); the states of the
+   triggers are set from the current values before every run
    (`resetEventsFound`), since COPASI does not see the values the executor
-   sets between two runs. The
-   output of `OutputMode.TIMES` is the plan times of the segment, of
-   `OutputMode.INTEGRATOR` the steps of LSODA, which have an event of the
-   model as two rows at its time, the states before and after it. A change
-   after the start, the one at the end included, has two rows at its time,
-   the state before the change, which ends the segment before it, and the
-   state after it, which starts the next one.
+   sets between two runs, see `_check_delayed_events` for the delayed
+   events. The output of `OutputMode.TIMES` is the plan times of the
+   segment, of `OutputMode.INTEGRATOR` the steps of LSODA, which have an
+   event of the model as two rows at its time, the states before and after
+   it. A change after the start, the one at the end included, has two rows
+   at its time, the state before the change, which ends the segment before
+   it, and the state after it, which starts the next one.
 5. A segment of a model with events stops just before its end, see
    `sbmlsim.simulator.executor.segment_stop`, so an event of the model at the
    time of a change fires after the change; a segment too short for LSODA,
@@ -62,14 +61,28 @@ limitation of roadrunner which COPASI has not:
   the end 6) fires before it in roadrunner, whose steps have one row at the
   end, the state after it; COPASI fires it at the end, its steps have the
   states before and after it at the end.
+- A model with a delayed event (an SBML `delay` of an event) is refused in
+  a simulation with a change after the start or a presimulation
+  (`NotImplementedError`): COPASI keeps a delayed event pending across the
+  values the executor sets between two runs, and setting the states of the
+  triggers from them brings back an event whose trigger a change made
+  false, or loses one which a crossing after the change schedules, which
+  roadrunner cancels and schedules. Without such writes COPASI simulates
+  the delayed events itself.
+- roadrunner does not fire an event whose trigger, e.g. `X > 0.5 && X < 0.8`,
+  is true only within one step of CVODE, which finds the roots of both
+  comparisons in it; COPASI fires it.
+- The steps of LSODA in COPASI can fail on a delayed event whose time LSODA
+  has stepped past when it becomes its critical time (`TCRIT behind TCUR`),
+  which raises a `RuntimeError` with the message of COPASI; an output of
+  times integrates such a model.
 - COPASI integrates with LSODA and one absolute tolerance for every state,
   see `CopasiSBMLModel.set_integrator_settings`; the steps of the integrator
   differ between the engines, the rows at the changes, at the events and at
   the end correspond.
 
 The `delay` csymbol is refused when the model is loaded, see
-`CopasiSBMLModel`; an event whose trigger a change makes true and which has a
-delay is reported and not fired, as by the executor of roadrunner.
+`CopasiSBMLModel`.
 """
 
 from __future__ import annotations
@@ -295,6 +308,7 @@ def execute(
         SteadyStateError: if the presimulation does not reach a steady state.
         RuntimeError: if COPASI fails to integrate, with its message.
     """
+    _check_delayed_events(plan, model)
     columns = list(selections)
     if not columns or columns[0] != "time":
         columns = ["time", *columns]
@@ -308,6 +322,39 @@ def execute(
     if plan.time_shift != 0.0:
         values[:, 0] += plan.time_shift
     return TimecourseResult(columns=tuple(columns), values=values)
+
+
+def _check_delayed_events(plan: Plan, model: CopasiSBMLModel) -> None:
+    """Refuse a plan which writes values while COPASI schedules delayed events.
+
+    COPASI keeps the events of the model with a delay pending across the
+    runs of a plan, and the states of the triggers are set from the values
+    the executor writes between two runs (`resetEventsFound`), which brings
+    a pending event back whose trigger a change made false, or loses the
+    one a crossing after the change schedules, where roadrunner cancels and
+    schedules them. A model with a delayed event is simulated natively in a
+    plan without such writes, without a change after the start and without
+    a presimulation.
+
+    Raises:
+        NotImplementedError: for a model with a delayed event and a plan with
+            a change after the start or a presimulation.
+    """
+    delayed = [event.eid for event in plan.symbols.events if event.delayed]
+    if not delayed:
+        return
+    writes: list[str] = []
+    if any(event.time > plan.start for event in plan.events):
+        writes.append("a change after the start")
+    if plan.steady_state is not None:
+        writes.append("a presimulation")
+    if writes:
+        raise NotImplementedError(
+            f"The engine COPASI does not simulate the delayed events {delayed} of "
+            f"the model '{model.label}' in a simulation with "
+            f"{' and '.join(writes)}: COPASI keeps a delayed event pending "
+            f"across the values the executor sets, other than roadrunner."
+        )
 
 
 def _simulate(plan: Plan, model: CopasiSBMLModel, columns: list[str]) -> np.ndarray:
