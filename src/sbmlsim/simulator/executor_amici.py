@@ -133,11 +133,6 @@ Known differences to roadrunner:
   it, at a distance which depends on the last step of CVODE.
 - Simultaneous events of the same priority execute in the order of the
   document, roadrunner orders them at random.
-- roadrunner fires a strict trigger of the time at the end of a horizon of
-  a steady state (`time > 10` at 10) and again in the next horizon, so
-  `time > 10` fires twice in a presimulation and `time > 1` three times in
-  a presimulation and a simulation to 1; AMICI fires them once per crossing
-  of the time (1 and 2, as COPASI).
 - The output row at the exact time of a root of a strict trigger of the time
   shows the state before the event (the trigger is false at the time, see
   6.); the row of roadrunner depends on where CVODE lands its root, e.g. the
@@ -181,6 +176,7 @@ from sbmlsim.model.comparisons import COMPARISONS, trigger_comparisons
 from sbmlsim.model.model_amici import AmiciSBMLModel, run_simulation, vector_array
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.changes import fire_events, fire_start_events, triggers
+from sbmlsim.simulator.executor import output_columns, output_time
 from sbmlsim.simulator.formula import CompiledFormula
 from sbmlsim.simulator.plan import (
     TIME_RTOL,
@@ -1322,9 +1318,7 @@ def execute(
             `check_supported`.
     """
     check_supported(plan, model)
-    columns = list(selections)
-    if not columns or columns[0] != "time":
-        columns = ["time", *columns]
+    columns = output_columns(selections)
     model.initialize(preinit_targets(plan))
     try:
         course = _Course(model, columns, time_tolerance(plan.start, plan.end))
@@ -1336,8 +1330,7 @@ def execute(
         values = simulate_segments(plan, model, model.values, columns, course)
     finally:
         model.simulated()
-    if plan.time_shift != 0.0:
-        values[:, 0] += plan.time_shift
+    values = output_time(values, columns, plan, model.symbols)
     return TimecourseResult(columns=tuple(columns), values=values)
 
 
