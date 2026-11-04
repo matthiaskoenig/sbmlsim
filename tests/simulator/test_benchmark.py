@@ -21,6 +21,7 @@ from sbmlsim.resources import MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import execute
+from tests.simulator.models import roadrunner_model
 
 pytestmark = pytest.mark.benchmark
 
@@ -170,7 +171,7 @@ def test_the_serial_time_of_a_scan_of_1e3_points(
     assert len(calls) == 1
     monkeypatch.undo()
 
-    loaded = simulator.load(model)
+    loaded = roadrunner_model(simulator.load(model))
     plan = simulator.compile(loaded, scan.simulation)
     selections = loaded.selections or []
     values = [float(v) for v in scan.dimensions[0].values["n"]]

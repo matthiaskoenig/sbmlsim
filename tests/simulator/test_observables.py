@@ -17,14 +17,21 @@ from sbmlsim.simulator.observables import (
 )
 from sbmlsim.simulator.plan import Plan
 from sbmlsim.units import ureg
-from tests.simulator.models import auc_of_c, doubled, doubled_c, sbml, sbml_pk
+from tests.simulator.models import (
+    auc_of_c,
+    doubled,
+    doubled_c,
+    roadrunner_model,
+    sbml,
+    sbml_pk,
+)
 
 SCALAR, TIMECOURSE = ObservableKind.SCALAR, ObservableKind.TIMECOURSE
 
 
 @pytest.fixture(scope="module")
 def pk_model() -> RoadrunnerSBMLModel:
-    return Simulator().load(sbml_pk())
+    return roadrunner_model(Simulator().load(sbml_pk()))
 
 
 @pytest.fixture(scope="module")

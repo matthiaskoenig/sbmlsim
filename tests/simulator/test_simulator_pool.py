@@ -26,6 +26,7 @@ from tests.simulator.models import (
     PROBE,
     VOLUME,
     VOLUME_OF_A_RULE,
+    roadrunner_model,
     sbml,
 )
 
@@ -239,7 +240,7 @@ def test_the_errors_are_in_the_order_of_the_scan_in_the_pool(
 
 def _worker_tolerances(spec: ModelSpec) -> list[float]:
     """Get the absolute tolerances of the model a worker keeps."""
-    model = parallel.worker_cache(("model", spec.key), spec.load)
+    model = roadrunner_model(parallel.worker_cache(("model", spec.key), spec.load))
     vector = model.r_loaded.getIntegrator().getAbsoluteToleranceVector()
     return [float(v) for v in vector]
 
@@ -249,7 +250,7 @@ def test_the_tolerances_reach_the_workers() -> None:
         amount=1e-12, concentration=1e-9, other=1e-8, ids={"A": 1e-14}
     )
     simulator = Simulator(n_workers=2, absolute_tolerance=tolerance)
-    model = simulator.load(_model())
+    model = roadrunner_model(simulator.load(_model()))
     expected = [
         float(v) for v in model.r_loaded.getIntegrator().getAbsoluteToleranceVector()
     ]
@@ -273,7 +274,7 @@ def test_every_model_of_a_dimension_gets_the_tolerances(tmp_path: Path) -> None:
         [Dimension("model", models={"fast": _model(), "slow": slow})],
     )
     models, _ = simulator._models(None, scan)
-    for model in models:
+    for model in map(roadrunner_model, models):
         assert model.absolute_tolerance == tolerance
         ids = model.state_ids()
         vector = [
@@ -289,8 +290,14 @@ def test_a_kept_pool_runs_other_settings_with_them() -> None:
     """The workers keep their models per settings, a second run does not reuse them."""
     results = []
     for settings in ({}, {"absolute_tolerance": 1e-4, "relative_tolerance": 1e-4}):
-        serial = Simulator(n_workers=1, **settings).run(_model(), _scan())
-        pooled = Simulator(n_workers=2, **settings).run(_model(), _scan())
+        serial_simulator, pool_simulator = (
+            Simulator(n_workers=1),
+            Simulator(n_workers=2),
+        )
+        serial_simulator.set_integrator_settings(**settings)
+        pool_simulator.set_integrator_settings(**settings)
+        serial = serial_simulator.run(_model(), _scan())
+        pooled = pool_simulator.run(_model(), _scan())
         assert _pools() == [2]
         xr.testing.assert_identical(pooled.ds, serial.ds)
         results.append(pooled)

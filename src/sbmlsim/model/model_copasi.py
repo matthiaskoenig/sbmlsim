@@ -966,6 +966,26 @@ class CopasiSBMLModel(SBMLModel):
         return INTEGRATOR, tuple(settings)
 
     @override
+    def set_integrator_state(
+        self, state: tuple[str, tuple[tuple[str, Any], ...]]
+    ) -> None:
+        """Set the settings of the integrator, see `integrator_state`.
+
+        Args:
+            state: the name of the integrator, `lsoda`, and its settings.
+
+        Raises:
+            ValueError: if the integrator is not the one of COPASI, or it has
+                no setting of a name.
+        """
+        integrator, settings = state
+        if integrator != INTEGRATOR:
+            raise ValueError(
+                f"COPASI integrates with '{INTEGRATOR}', not with '{integrator}'."
+            )
+        self.set_integrator_settings(**dict(settings))
+
+    @override
     def state_ids(self) -> list[str]:
         """Get the ids of the states which the integrator integrates.
 

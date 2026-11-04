@@ -26,7 +26,11 @@ def _loaded(model: ModelLike) -> RoadrunnerSBMLModel:
     """Get a loaded model; a loaded one is used as it is, with its settings."""
     if isinstance(model, RoadrunnerSBMLModel) and model.r is not None:
         return model
-    return Simulator().load(model)
+    # the references are read with roadrunner, the engine of `Simulator()`
+    loaded = Simulator().load(model)
+    if not isinstance(loaded, RoadrunnerSBMLModel):
+        raise TypeError(f"The model '{loaded.label}' is no model of roadrunner.")
+    return loaded
 
 
 def _nothing(sid: str) -> bool:

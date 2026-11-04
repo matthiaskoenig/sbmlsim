@@ -110,6 +110,12 @@ class _OtherEngineModel(SBMLModel):
         raise NotImplementedError
 
     @override
+    def set_integrator_state(
+        self, state: tuple[str, tuple[tuple[str, Any], ...]]
+    ) -> None:
+        raise NotImplementedError
+
+    @override
     def state_ids(self) -> list[str]:
         raise NotImplementedError
 

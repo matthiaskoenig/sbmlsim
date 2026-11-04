@@ -590,7 +590,7 @@ def test_gradient_of_a_failed_simulation_raises(
     def fail(*args: object, **kwargs: object) -> None:
         raise RuntimeError("CVODE failed")
 
-    monkeypatch.setattr("sbmlsim.fit.optimization.execute", fail)
+    monkeypatch.setattr("sbmlsim.fit.optimization.execute_plan", fail)
     with pytest.raises(ValueError, match="failed") as excinfo:
         gradient(op_unit_noise)
     # the first mapping which is simulated, at the values of every parameter

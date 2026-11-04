@@ -8,12 +8,12 @@ from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import execute
 from sbmlsim.simulator.simulator import scan_point_plans
-from tests.simulator.models import sbml_pk
+from tests.simulator.models import roadrunner_model, sbml_pk
 
 
 def test_the_plans_of_points_equal_the_points_of_a_run() -> None:
     simulator = Simulator()
-    model = simulator.load(sbml_pk())
+    model = roadrunner_model(simulator.load(sbml_pk()))
     simulation = Simulation(
         end=24, steps=48, changes=[Change(0, {"PODOSE": Q(100, "mg")})]
     )
@@ -57,7 +57,7 @@ def test_a_dimension_of_simulations_raises() -> None:
 
 def test_the_point_of_a_scan_without_dimensions_is_its_simulation() -> None:
     simulator = Simulator()
-    model = simulator.load(sbml_pk())
+    model = roadrunner_model(simulator.load(sbml_pk()))
     simulation = Simulation(
         end=24, steps=48, changes=[Change(0, {"PODOSE": Q(100, "mg")})]
     )

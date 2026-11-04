@@ -2,9 +2,10 @@
 
 `run_chunk` is the same function serially and in a worker process: for every
 point of a chunk it applies the values of the point to the plan of the chunk,
-`Plan.with_values`, and runs the plan with `execute`; the native solutions of
-the points which ran are stacked into arrays padded with `NaN`, the observables
-of the run are evaluated on them, see `sbmlsim.simulator.observables`, and the
+`Plan.with_values`, and runs the plan with the executor of the engine of the
+model, `sbmlsim.simulator.engines.execute_plan`; the native solutions of the
+points which ran are stacked into arrays padded with `NaN`, the observables of
+the run are evaluated on them, see `sbmlsim.simulator.observables`, and the
 kept timecourses are interpolated onto the grid of times of the chunk, if it
 has one. A run without observables needs no native solution: the kept
 selections of every point are interpolated right after its simulation, so the
@@ -14,13 +15,18 @@ Nothing in here uses pint or xarray, and a chunk and its result are numbers,
 strings, a plan and the graph of the observables, so they pickle.
 
 In a worker process the model of a chunk is loaded once from its `ModelSpec`
-and kept, see `sbmlsim.parallel.worker_cache`, with the integrator of the
-model of the parent and every one of its settings, those of the simulator and
-those set on the model, so a worker integrates as the parent does and the
-result does not depend on the number of workers.
+and kept, see `sbmlsim.parallel.worker_cache`, in the engine of the model of
+the parent, with its integrator and every one of its settings, those of the
+simulator and those set on the model, so a worker integrates as the parent
+does and the result does not depend on the number of workers (bitwise with
+roadrunner, within the integration with COPASI, see
+`sbmlsim.simulator.simulator`).
 
 A point which fails is reported once, by its error: roadrunner logs the error
-of CVODE as well, so its log level is lowered while a chunk runs. The
+of CVODE as well, so its log level is lowered while a chunk of a model of
+roadrunner runs. A feature which the engine does not simulate, the
+`NotImplementedError` of an executor, is the same for every point of a model
+and is no failed point: it is raised also with `on_error="flag"`. The
 messages of SUNDIALS follow the log level of roadrunner (libroadrunner 2.11).
 """
 
@@ -28,7 +34,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -36,10 +42,13 @@ import numpy as np
 import roadrunner
 
 from sbmlsim import parallel
+from sbmlsim.engine import Engine
+from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
+from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.result.scan import TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
-from sbmlsim.simulator.executor import execute
+from sbmlsim.simulator.engines import execute_plan
 from sbmlsim.simulator.observables import TIMECOURSE, ObservableError, ObservableGraph
 from sbmlsim.simulator.plan import Plan, time_tolerance
 
@@ -74,31 +83,34 @@ class ModelSpec:
     """What a worker needs to load a model as the parent loaded it.
 
     Attributes:
-        key: identifies the model, its optimization level, its integrator and
-            the settings of the integrator, the key of the model in the cache
-            of a worker.
+        key: identifies the model, its engine, its optimization level, its
+            integrator and the settings of the integrator, the key of the
+            model in the cache of a worker.
+        engine: the engine which simulates the model.
         source: the SBML of the model as the parent loaded it, see
-            `RoadrunnerSBMLModel.sbml`, or the path of the file
+            `SBMLModel.sbml`, or the path of the file
             `parallel.shared_payloads` shares it in. It is flattened and the
             path is absolute, so nothing is resolved against a directory.
         parameters: the parameters added to the model, see `AbstractModel`.
         jit_optimization: the optimization level the model is compiled with,
             see `RoadrunnerSBMLModel.jit_optimization`: a worker compiles it
-            at the level of the parent, whatever its environment says.
-        integrator: the name of the integrator, e.g. `cvode`.
+            at the level of the parent, whatever its environment says;
+            `None` for a model of COPASI, which compiles nothing.
+        integrator: the name of the integrator, e.g. `cvode` or `lsoda`.
         settings: every setting of the integrator by its name, the absolute
             tolerance as the `AbsoluteTolerance` of the model.
     """
 
     key: str
+    engine: Engine
     source: str
     parameters: tuple[tuple[str, float], ...]
-    jit_optimization: JitOptimization
+    jit_optimization: JitOptimization | None
     integrator: str
     settings: tuple[tuple[str, Any], ...]
 
     @classmethod
-    def of(cls, model: RoadrunnerSBMLModel) -> ModelSpec:
+    def of(cls, model: SBMLModel) -> ModelSpec:
         """Get the spec of a loaded model and of the state of its integrator.
 
         The integrator and its settings are read from the model after the
@@ -106,6 +118,9 @@ class ModelSpec:
         of the model which the simulator does not set, e.g. one of
         `RoadrunnerSBMLModel(settings=...)` or of `set_integrator_settings`,
         holds in a worker as well.
+
+        Args:
+            model: the loaded model, of any engine.
         """
         # the key is the SBML the parent loaded and not the path of its file:
         # a worker lives as long as its pool and the file, or a file which a
@@ -114,15 +129,25 @@ class ModelSpec:
         parameters = tuple(
             sorted((str(k), float(v)) for k, v in (model.parameters or {}).items())
         )
-        jit_optimization = model.jit_optimization
+        jit_optimization = (
+            model.jit_optimization if isinstance(model, RoadrunnerSBMLModel) else None
+        )
         integrator, settings = model.integrator_state()
         digest = hashlib.sha256(
             repr(
-                (source, parameters, str(jit_optimization), integrator, settings)
+                (
+                    str(model.engine),
+                    source,
+                    parameters,
+                    str(jit_optimization),
+                    integrator,
+                    settings,
+                )
             ).encode("utf-8")
         ).hexdigest()
         return cls(
             key=digest,
+            engine=model.engine,
             source=source,
             parameters=parameters,
             jit_optimization=jit_optimization,
@@ -130,17 +155,14 @@ class ModelSpec:
             settings=settings,
         )
 
-    def load(self) -> RoadrunnerSBMLModel:
-        """Load the model with the integrator and its settings."""
-        model = RoadrunnerSBMLModel(
-            source=self.source,
-            parameters=dict(self.parameters) or None,
+    def load(self) -> SBMLModel:
+        """Load the model in its engine with the integrator and its settings."""
+        model = load_model(
+            AbstractModel(source=self.source, parameters=dict(self.parameters) or None),
+            self.engine,
             jit_optimization=self.jit_optimization,
         )
-        r = model.r_loaded
-        if r.getIntegrator().getName() != self.integrator:
-            r.setIntegrator(self.integrator)
-        model.set_integrator_settings(**dict(self.settings))
+        model.set_integrator_state((self.integrator, self.settings))
         return model
 
 
@@ -202,7 +224,7 @@ class Chunk:
 
     @property
     def selections(self) -> tuple[str, ...]:
-        """Get the selections of roadrunner, `time` first."""
+        """Get the selections of the engine, `time` first."""
         return (TIME, *self.graph.selections)
 
     def plan_of(self, k: int) -> Plan:
@@ -232,12 +254,12 @@ class ChunkResult:
     errors: tuple[tuple[int, str], ...]
 
 
-def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
+def run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
     """Run the points of a chunk on a loaded model, see the module.
 
     Args:
         chunk: the points.
-        model: the loaded model of the chunk.
+        model: the loaded model of the chunk, of any engine.
 
     Returns:
         The values of every point.
@@ -245,13 +267,18 @@ def run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
     Raises:
         ScanPointError: for the first point which fails, with
             `on_error="raise"`.
+        NotImplementedError: for a feature the engine does not simulate, also
+            with `on_error="flag"`.
     """
     chunk.plan.check_model(model.symbols, model.uinfo)
-    with quiet_roadrunner():
+    quiet: AbstractContextManager[None] = (
+        quiet_roadrunner() if model.engine is Engine.ROADRUNNER else nullcontext()
+    )
+    with quiet:
         return _run_chunk(chunk, model)
 
 
-def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
+def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
     """Run the points of a chunk, see `run_chunk`.
 
     With `on_error="raise"` the first point which fails in the order of the
@@ -263,6 +290,9 @@ def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
     solution are its outputs, which are interpolated onto the grid right after
     the simulation: such a chunk never holds the native solutions of its
     points, which only the observables need.
+
+    The `NotImplementedError` of an executor, a feature the engine does not
+    simulate, is raised as it is, see the module.
     """
     n = len(chunk.indices)
     status = np.zeros(n, dtype=np.int8)
@@ -280,7 +310,9 @@ def _run_chunk(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
         # a definition which does not fit the plan is no failed point
         plan = chunk.plan_of(k)
         try:
-            result = execute(plan, model, chunk.selections)
+            result = execute_plan(plan, model, chunk.selections)
+        except NotImplementedError:
+            raise
         except Exception as err:
             failures.append((k, f"{type(err).__name__}: {err}", err))
             if chunk.on_error == "raise":

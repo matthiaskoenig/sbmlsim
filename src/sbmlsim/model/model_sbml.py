@@ -345,6 +345,23 @@ class SBMLModel(AbstractModel, ABC):
         """
 
     @abstractmethod
+    def set_integrator_state(
+        self, state: tuple[str, tuple[tuple[str, Any], ...]]
+    ) -> None:
+        """Set the integrator of the model and its settings, see `integrator_state`.
+
+        A worker of a pool loads a model with the state of the integrator of
+        the model of the parent, see `sbmlsim.simulator.worker.ModelSpec`.
+
+        Args:
+            state: the name of the integrator and its settings.
+
+        Raises:
+            ValueError: if the engine has no integrator of the name, or the
+                integrator has no setting of a name.
+        """
+
+    @abstractmethod
     def state_ids(self) -> list[str]:
         """Get the ids of the states which the integrator integrates."""
 

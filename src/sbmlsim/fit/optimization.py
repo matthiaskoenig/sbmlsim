@@ -66,7 +66,8 @@ from sbmlsim.serialization import ObjectJSONEncoder, to_json
 from sbmlsim.simulation import ObservableKind, Scan, Simulation
 from sbmlsim.simulation.scan import DimensionKind
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.executor import SteadyStateError, execute
+from sbmlsim.simulator.engines import execute_plan
+from sbmlsim.simulator.executor import SteadyStateError
 from sbmlsim.simulator.formula import reduce_formula
 from sbmlsim.simulator.observables import (
     CustomNode,
@@ -3497,7 +3498,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         else:
             selections = [TIME, *graph.selections]
         try:
-            output = execute(plan, self.models[group[0]], selections)
+            output = execute_plan(plan, self.models[group[0]], selections)
         except (RuntimeError, SteadyStateError) as err:
             self._log_integration_error(x, err)
             return None
@@ -3558,7 +3559,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         model = self.models[self.mapping_groups[k_group][0]]
         selections = (TIME, *graph.selections)
         try:
-            solutions = [execute(point, model, selections).values for point in plans]
+            solutions = [
+                execute_plan(point, model, selections).values for point in plans
+            ]
         except (RuntimeError, SteadyStateError) as err:
             self._log_integration_error(x, err)
             return None

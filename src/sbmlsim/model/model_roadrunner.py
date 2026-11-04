@@ -947,6 +947,24 @@ class RoadrunnerSBMLModel(SBMLModel):
                 settings.append((name, integrator.getValue(name)))
         return str(integrator.getName()), tuple(settings)
 
+    @override
+    def set_integrator_state(
+        self, state: tuple[str, tuple[tuple[str, Any], ...]]
+    ) -> None:
+        """Set the integrator of the model and its settings, see `integrator_state`.
+
+        Args:
+            state: the name of the integrator, e.g. `cvode`, and its settings.
+
+        Raises:
+            ValueError: if the integrator has no setting of a name.
+        """
+        integrator, settings = state
+        r = self.r_loaded
+        if r.getIntegrator().getName() != integrator:
+            r.setIntegrator(integrator)
+        self.set_integrator_settings(**dict(settings))
+
     def _has_absolute_tolerance(
         self, tolerance: AbsoluteTolerance, integrator: roadrunner.Integrator
     ) -> bool:

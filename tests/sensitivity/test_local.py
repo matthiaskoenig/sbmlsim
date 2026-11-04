@@ -16,12 +16,12 @@ from sbmlsim.simulation import Custom, Dimension, Formula, Scan, Simulation, sam
 from sbmlsim.simulator import Simulator
 from sbmlsim.units import ureg
 from tests.sensitivity.models import CHAIN, POWER_LAW, s2_end_fails_for_high_s1_and_k1
-from tests.simulator.models import sbml, sbml_pk
+from tests.simulator.models import roadrunner_model, sbml, sbml_pk
 
 
 @pytest.fixture(scope="module")
 def model() -> RoadrunnerSBMLModel:
-    return Simulator().load(sbml(POWER_LAW))
+    return roadrunner_model(Simulator().load(sbml(POWER_LAW)))
 
 
 def test_the_normalized_sensitivities_are_the_exponents(

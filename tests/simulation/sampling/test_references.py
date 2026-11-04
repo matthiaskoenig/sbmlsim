@@ -13,6 +13,7 @@ from sbmlsim.simulator import Simulator
 from tests.simulator.models import (
     SPECIES_KINDS,
     VOLUME_OF_THE_REST,
+    roadrunner_model,
     sbml,
     sbml_minutes,
     sbml_pk,
@@ -64,7 +65,7 @@ def test_the_ids_of_the_sbml_are_read_once_per_instance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The SBML of an instance of roadrunner is parsed once, not per call (#332)."""
-    model = Simulator().load(sbml())
+    model = roadrunner_model(Simulator().load(sbml()))
     parsed: list[str] = []
     read = libsbml.readSBMLFromString
 
@@ -82,7 +83,7 @@ def test_the_ids_of_the_sbml_are_read_once_per_instance(
 
 def test_the_ids_of_the_sbml_follow_a_replaced_instance() -> None:
     """An instance of roadrunner which replaces `r` is read again (#332)."""
-    model = Simulator().load(sbml())
+    model = roadrunner_model(Simulator().load(sbml()))
     assert "k1" in model.sbml_ids().constant_parameters
     assert "ke" not in parameters_of(model)
     model.r = load_roadrunner(sbml_pk())
@@ -114,7 +115,7 @@ def test_the_references_leave_the_model_as_loaded() -> None:
 
     A fit reads the start values of its parameters from the model.
     """
-    model = Simulator().load(sbml())
+    model = roadrunner_model(Simulator().load(sbml()))
     refs = references(
         model, ["k1", "pinit"], Simulation(end=1, preinit_changes={"f": 5.0, "k1": 2.0})
     )

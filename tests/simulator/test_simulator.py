@@ -36,6 +36,7 @@ from tests.simulator.models import (
     VOLUME,
     VOLUME_OF_A_RULE,
     VOLUME_OF_THE_REST,
+    roadrunner_model,
     sbml,
     sbml_minutes,
 )
@@ -839,7 +840,7 @@ def test_integrator_settings_are_passed_on_and_kept(tmp_path: Path) -> None:
     simulator.set_integrator_settings(maximum_num_steps=1234)
     # a new model, as for every task of an experiment; the model keeps the
     # instance of roadrunner which owns the integrator
-    model = simulator.load(path)
+    model = roadrunner_model(simulator.load(path))
     integrator = model.r_loaded.getIntegrator()
     assert integrator.getValue("initial_time_step") == pytest.approx(1e-9)
     assert integrator.getValue("maximum_num_steps") == 1234
@@ -856,9 +857,9 @@ def test_the_tolerance_of_every_state_reaches_cvode(tmp_path: Path) -> None:
     # 2e-6), X an amount species, D a parameter with a rate rule, which
     # roadrunner integrates before the species
     expected = {"A": 1e-8 * 2, "S": 1e-8 * 2e-6, "X": 1e-9, "D": 1e-7}
-    model = simulator.load(path)
+    model = roadrunner_model(simulator.load(path))
     assert _vector(model) == pytest.approx(expected, rel=1e-12, abs=0)
-    model = simulator.load(path)
+    model = roadrunner_model(simulator.load(path))
     assert _vector(model) == pytest.approx(expected, rel=1e-12, abs=0)
     table = model.tolerances()
     assert list(table["sid"]) == model.state_ids()
@@ -872,7 +873,7 @@ def test_the_tolerances_name_the_compartment_of_every_species(tmp_path: Path) ->
     """An amount species has its compartment, only a concentration a volume."""
     path = tmp_path / "tolerances.xml"
     path.write_text(sbml(TOLERANCE_PROBE))
-    model = Simulator(n_workers=1).load(path)
+    model = roadrunner_model(Simulator(n_workers=1).load(path))
     table = model.tolerances().set_index("sid")
 
     assert table.loc["X", "kind"] == "amount"
@@ -891,7 +892,9 @@ def test_a_float_tolerance_is_the_same_for_every_kind(tmp_path: Path) -> None:
     """The scaling of roadrunner by the initial values is not used."""
     path = tmp_path / "tolerances.xml"
     path.write_text(sbml(TOLERANCE_PROBE))
-    model = Simulator(n_workers=1, absolute_tolerance=1e-10).load(path)
+    model = roadrunner_model(
+        Simulator(n_workers=1, absolute_tolerance=1e-10).load(path)
+    )
     expected = {"A": 1e-10 * 2, "S": 1e-10 * 2e-6, "X": 1e-10, "D": 1e-10}
     assert _vector(model) == pytest.approx(expected, rel=1e-12, abs=0)
 
