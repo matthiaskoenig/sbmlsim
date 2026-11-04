@@ -22,9 +22,10 @@ written into it during a simulation is not seen. The SBML which COPASI loads
 therefore makes every entity which a change can set (the parameters,
 compartments and species which are not the variable of an assignment rule)
 non-constant and the target of one event which never fires
-(`TARGETS_EVENT`), which makes them part of the state of COPASI; an entity
-whose number in the SBML is not finite (`NaN`) is left out, COPASI integrates
-no state which is not finite, and a change of it raises.
+(`TARGETS_EVENT`), which makes them part of the state of COPASI, where a
+change sets them (`_set_current_values`); an entity whose number in the SBML
+is not finite (`NaN`) is left out, COPASI integrates no state which is not
+finite, and a change of it raises.
 
 LSODA in COPASI finds no crossing of a comparison whose root function is
 exactly 0 when it starts. In a model with events, the SBML which COPASI loads
@@ -46,7 +47,6 @@ bitwise reproducible, also when another model is released.
 
 from __future__ import annotations
 
-import ctypes
 import logging
 import math
 import sys
@@ -258,21 +258,45 @@ def drain_messages(label: str) -> None:
         )
 
 
-def _write_value(math_object: Any, value: float) -> None:
-    """Write the value of an object of the math container of COPASI.
+def _set_current_values(
+    mc: COPASI.CMathContainer, values: Sequence[tuple[Any, float]], label: str
+) -> None:
+    """Set current values of the state of a math container of COPASI, between two integrations.
 
-    The python bindings of COPASI have no setter of the current value of an
-    object of the math container, which a change between two integrations
-    sets; the value is the double at the value pointer of the object, written
-    here. This is the only place sbmlsim writes the memory of COPASI. The
-    caller updates the values which depend on it afterwards
+    The python bindings have no setter of a value of the state of a math
+    container (copasi/basico#79): the state is pushed into the objects of the
+    model (`pushState`), the values are set on them, the time with
+    `CModel.setTime` and an entity with `CModelEntity.setValue`, and the state
+    is fetched back (`fetchState`), which copies the doubles, so a value is
+    set bitwise. Every value is read back: a value which COPASI does not take,
+    e.g. of an entity which is not part of its state, raises. The caller
+    updates the values which depend on the state afterwards
     (`_update_current_values`).
 
     Args:
-        math_object: the object of the math container (`CMathObject`).
-        value: the value.
+        mc: the math container.
+        values: the objects of the model, the `CModel` for the time or a
+            `CModelEntity` (a particle number for a species), and their values.
+        label: the name of the model in a message.
+
+    Raises:
+        RuntimeError: if COPASI does not take a value.
     """
-    ctypes.c_double.from_address(int(math_object.getValuePointer())).value = value
+    mc.pushState()
+    for entity, value in values:
+        if isinstance(entity, COPASI.CModel):
+            entity.setTime(value)
+        else:
+            entity.setValue(value)
+    mc.fetchState()
+    for entity, value in values:
+        taken = float(mc.getMathObject(entity.getValueReference()).getValue())
+        if _differs(taken, value):
+            raise RuntimeError(
+                f"COPASI does not take the value {value!r} of "
+                f"'{entity.getObjectName()}' of the model '{label}', it is not "
+                f"part of the state of COPASI."
+            )
 
 
 class CopasiSBMLModel(SBMLModel):
@@ -387,9 +411,10 @@ class CopasiSBMLModel(SBMLModel):
         #: the roots of COPASI of every shifted comparison, see
         #: `_comparison_roots`
         self._roots_of: tuple[tuple[int, ...], ...] | None = None
-        #: the position of the states of the roots in the values of the math
-        #: container of COPASI, `None` if not found, see `_comparison_roots`
-        self._states_at: int | None = None
+        #: the states of the roots in the values of the math container of
+        #: COPASI, `None` without a comparison of a trigger, see
+        #: `_comparison_roots`
+        self._root_states: _RootStates | None = None
         #: the values of the roots of COPASI as LSODA saw them last, at the end
         #: of the last integration or at the initialization, see
         #: `shift_comparisons`
@@ -894,7 +919,7 @@ class CopasiSBMLModel(SBMLModel):
     def set_value(self, selection: str, value: float) -> None:
         """Set the current value of a selection, between two integrations.
 
-        The value is written into the state of COPASI (`_write_value`), the
+        The value is set in the state of COPASI (`_set_current_values`), the
         amount of a species as its particle number, a concentration as the
         amount in the current size of its compartment, and the values which
         depend on it are updated.
@@ -932,7 +957,7 @@ class CopasiSBMLModel(SBMLModel):
             ]
             size = mc.getMathObject(compartment.getValueReference()).getValue()
             number = value * size * mc.getQuantity2NumberFactor()
-        _write_value(mc.getMathObject(entity.getValueReference()), number)
+        _set_current_values(mc, [(entity, number)], self.label)
         _update_current_values(mc)
 
     def pending_event_time(self) -> float:
@@ -1003,7 +1028,7 @@ class CopasiSBMLModel(SBMLModel):
             time: the time.
         """
         mc = self.mc
-        _write_value(mc.getMathObject(self.cmodel.getValueReference()), time)
+        _set_current_values(mc, [(self.cmodel, time)], self.label)
         _update_current_values(mc)
 
     def shift_comparisons(self, resolution: float, written: bool = False) -> None:
@@ -1048,13 +1073,20 @@ class CopasiSBMLModel(SBMLModel):
         if not self._shifted:
             return
         roots_of = self._comparison_roots()
-        shifts = [self._shift_object(s.pid) for s in self._shifted]
-        for shift in shifts:
-            _write_value(shift, 0.0)
+        shifts = [self.entities[s.pid] for s in self._shifted]
+        self._set_shifts([(shift, 0.0) for shift in shifts])
         roots = self._roots()
         at_threshold = [any(roots[i] == 0.0 for i in indices) for indices in roots_of]
+        states = (
+            None
+            if written or self._root_states is None
+            else self._root_states.read(self.mc, roots)
+        )
         turned = [
-            shifted.trigger and at and not written and self._turned(shifted, indices)
+            shifted.trigger
+            and at
+            and states is not None
+            and self._turned(shifted, indices, states)
             for shifted, indices, at in zip(
                 self._shifted, roots_of, at_threshold, strict=True
             )
@@ -1071,8 +1103,16 @@ class CopasiSBMLModel(SBMLModel):
                     value = self._threshold_shift(
                         shifts[j], indices, sign, rate * resolution
                     )
-                    _write_value(shifts[j], value)
+                    self._set_shifts([(shifts[j], value)])
         self.mc.updateRootValues(False)
+
+    def _set_shifts(self, values: Sequence[tuple[Any, float]]) -> None:
+        """Set the current values of parameters of shifts, see `_set_current_values`.
+
+        The values which depend on them are not updated, the roots are, where
+        they are read (`_roots`).
+        """
+        _set_current_values(self.mc, values, self.label)
 
     def record_roots(self) -> None:
         """Record the roots of COPASI where LSODA saw them last, after an integration or at the initial values, see `shift_comparisons`."""
@@ -1095,10 +1135,10 @@ class CopasiSBMLModel(SBMLModel):
             the positions of the events among the events of the model whose
             crossing COPASI missed, in their order.
         """
-        if not self._shifted or self._states_at is None:
+        if not self._shifted or self._root_states is None:
             return False, []
         roots = self._roots()
-        values = self.mc.getValues()
+        states = self._root_states.read(self.mc, roots)
         at_threshold = False
         missed: set[int] = set()
         for shifted, indices in zip(
@@ -1110,7 +1150,7 @@ class CopasiSBMLModel(SBMLModel):
                 root = roots[i]
                 if root == 0.0:
                     at_threshold = True
-                elif (values.get(self._states_at + i) == 1.0) != (root > 0.0):
+                elif (states[i] == 1.0) != (root > 0.0):
                     missed.add(shifted.event)
         return at_threshold, sorted(missed)
 
@@ -1133,21 +1173,22 @@ class CopasiSBMLModel(SBMLModel):
         mc.updateRootValues(False)
         self._seen = None if seen is None else seen.copy()
 
-    def _turned(self, shifted: _Shifted, indices: Sequence[int]) -> bool:
+    def _turned(
+        self, shifted: _Shifted, indices: Sequence[int], states: np.ndarray
+    ) -> bool:
         """Whether COPASI found a comparison of a trigger at its threshold turned where LSODA saw it last.
 
         The roots of the comparison were 0 where they were recorded last
-        (`record_roots`), and the states of the roots in COPASI are the
-        values after the crossing, true for a strict comparison and false
-        for one which is not strict; a root COPASI did not find there, or a
-        value set since, has the value as written.
+        (`record_roots`), and the states of the roots in COPASI (`states`, see
+        `_RootStates`) are the values after the crossing, true for a strict
+        comparison and false for one which is not strict; a root COPASI did
+        not find there, or a value set since, has the value as written.
         """
-        seen, at = self._seen, self._states_at
-        if seen is None or at is None:
+        seen = self._seen
+        if seen is None:
             return False
-        values = self.mc.getValues()
         turned = 1.0 if shifted.strict else 0.0
-        return all(seen[i] == 0.0 and values.get(at + i) == turned for i in indices)
+        return all(seen[i] == 0.0 and states[i] == turned for i in indices)
 
     def _roots(self) -> np.ndarray:
         """Get the current values of the roots of COPASI, of the triggers and the discontinuities."""
@@ -1169,10 +1210,9 @@ class CopasiSBMLModel(SBMLModel):
 
         A root of a comparison is one whose value changes with its shift,
         told once per compilation of the model of COPASI, see
-        `_apply_initial_values`, together with the position of the states of
-        the roots in the values of COPASI, see `_root_states_position`. Each
-        is told with the shift of a comparison moved far in both directions,
-        which changes the values of the states of its roots after
+        `_apply_initial_values`, together with the states of the roots, see
+        `_RootStates.locate`, which moves the shift of a comparison far in
+        both directions and changes the states of its roots after
         `resetEventsFound` to false and true, so the states COPASI keeps are
         set again afterwards.
 
@@ -1185,32 +1225,20 @@ class CopasiSBMLModel(SBMLModel):
             result: list[tuple[int, ...]] = []
             probes: list[tuple[_Shifted, Any, tuple[int, ...]]] = []
             for shifted in self._shifted:
-                shift = self._shift_object(shifted.pid)
-                value = float(shift.getValue())
-                _write_value(shift, _PROBE_SHIFT)
+                shift = self.entities[shifted.pid]
+                value = float(mc.getMathObject(shift.getValueReference()).getValue())
+                self._set_shifts([(shift, _PROBE_SHIFT)])
                 roots = self._roots()
-                _write_value(shift, value)
+                self._set_shifts([(shift, value)])
                 changed = (roots != base) & ~(np.isnan(roots) & np.isnan(base))
                 indices = tuple(int(i) for i in np.flatnonzero(changed))
                 result.append(indices)
                 if indices and shifted.trigger:
                     probes.append((shifted, shift, indices))
-            self._states_at = None
-            if probes:
-                self._states_at = _root_states_position(mc, self, probes)
-                if self._states_at is None:
-                    raise RuntimeError(
-                        f"The states of the roots of the model '{self.label}' are "
-                        f"not found in the values of COPASI, whose layout sbmlsim "
-                        f"reads."
-                    )
+            self._root_states = _RootStates.locate(self, probes) if probes else None
             mc.updateRootValues(False)
             self._roots_of = tuple(result)
         return self._roots_of
-
-    def _shift_object(self, pid: str) -> Any:
-        """Get the object of COPASI of the value of the parameter of a shift."""
-        return self.mc.getMathObject(self.entities[pid].getValueReference())
 
     def _threshold_shift(
         self, shift: Any, indices: Sequence[int], sign: float, change: float
@@ -1232,7 +1260,7 @@ class CopasiSBMLModel(SBMLModel):
         for a threshold 0, whose units in the last place tell nothing.
 
         Args:
-            shift: the object of COPASI of the parameter of the shift, 0.
+            shift: the parameter of the shift in COPASI, at 0.
             indices: the positions of the roots of the comparison.
             sign: 1 for a shift which keeps the value of the comparison as
                 written at its threshold, -1 for one which keeps the other.
@@ -1245,7 +1273,7 @@ class CopasiSBMLModel(SBMLModel):
         """
 
         def moves(exponent: int) -> bool:
-            _write_value(shift, sign * math.ldexp(1.0, exponent))
+            self._set_shifts([(shift, sign * math.ldexp(1.0, exponent))])
             roots = self._roots()
             return all(roots[i] != 0.0 for i in indices)
 
@@ -1254,7 +1282,7 @@ class CopasiSBMLModel(SBMLModel):
             sys.float_info.max_exp - 1,
         )
         if not moves(high):
-            _write_value(shift, 0.0)
+            self._set_shifts([(shift, 0.0)])
             return 0.0
         # the smallest exponent which moves the roots is in (low, high]
         if moves(low):
@@ -1551,63 +1579,116 @@ def _update_current_values(mc: COPASI.CMathContainer) -> None:
     mc.updateTransientDataValues()
 
 
-def _root_states_position(
-    mc: COPASI.CMathContainer,
-    model: CopasiSBMLModel,
-    probes: Sequence[tuple[_Shifted, Any, tuple[int, ...]]],
-) -> int | None:
-    """Get the position of the states of the roots in the values of a math container.
+@dataclass(frozen=True)
+class _RootStates:
+    """The states of the roots of COPASI in the values of its math container.
 
-    COPASI keeps the values of its roots and, right after them, their states
-    (1 true, 0 false) in the values of its math container, which the API
-    does not give otherwise. A candidate is a block of the values equal to
-    the roots followed by states; it is the one if, for every probed
-    comparison with its shift moved far to either side, the states which
-    `resetEventsFound` sets at the candidate are the values of the
-    comparison, false then true for a strict one, true then false for one
-    which is not strict, so another layout raises rather than matches.
+    COPASI keeps the state of every root of the triggers (1 true, 0 false),
+    which tells a crossing it found and how it processed a root at its
+    threshold, but no API gives them (copasi/basico#87). They follow right
+    after the values of the roots in the values of the math container
+    (`getValues`), a layout of COPASI which this class alone reads: it is
+    located once per compilation of the model and validated by probes
+    (`locate`), and every read checks that the values of the roots are still
+    right before the states (`read`), so another layout raises rather than
+    gives wrong states.
 
-    Args:
-        mc: the math container.
-        model: the model, whose roots are read.
-        probes: the comparisons with roots, their shift objects (at 0) and
-            the positions of their roots.
-
-    Returns:
-        The position of the state of the first root, `None` if not found.
+    Attributes:
+        position: the position of the state of the first root in the values.
+        count: the number of roots.
     """
-    roots = model._roots()
-    n = len(roots)
-    values = mc.getValues()
-    count = values.size()
 
-    def equal(a: float, b: float) -> bool:
-        return a == b or (math.isnan(a) and math.isnan(b))
+    position: int
+    count: int
 
-    candidates = [
-        k + n
-        for k in range(count - 2 * n + 1)
-        if all(equal(values.get(k + i), roots[i]) for i in range(n))
-        and all(values.get(k + n + i) in (0.0, 1.0) for i in range(n))
-    ]
-    for at in reversed(candidates):
-        valid = True
-        for shifted, shift, indices in probes:
-            for probe in (_PROBE_SHIFT, -_PROBE_SHIFT):
-                _write_value(shift, probe)
-                mc.updateRootValues(False)
-                mc.resetEventsFound()
-                # a strict comparison shifted forward is false, one which is
-                # not strict true
-                expected = 0.0 if (probe > 0) == shifted.strict else 1.0
-                states = mc.getValues()
-                valid = valid and all(states.get(at + i) == expected for i in indices)
-            _write_value(shift, 0.0)
-        mc.updateRootValues(False)
-        mc.resetEventsFound()
-        if valid:
-            return at
-    return None
+    @staticmethod
+    def locate(
+        model: CopasiSBMLModel,
+        probes: Sequence[tuple[_Shifted, Any, tuple[int, ...]]],
+    ) -> _RootStates:
+        """Locate the states of the roots in the values of the math container of a model.
+
+        A candidate is a block of the values equal to the roots followed by
+        states. It is the one if, for every probed comparison with its shift
+        moved far to either side, the states which `resetEventsFound` sets
+        at the candidate are the values of the comparison, false then true
+        for a strict one, true then false for one which is not strict.
+
+        Args:
+            model: the model, whose roots are read and whose shifts are set.
+            probes: the comparisons with roots, their parameters of the shift
+                (at 0) and the positions of their roots.
+
+        Returns:
+            The states of the roots.
+
+        Raises:
+            RuntimeError: if no candidate validates.
+        """
+        mc = model.mc
+        roots = model._roots()
+        n = len(roots)
+        values = mc.getValues()
+        count = values.size()
+        candidates = [
+            k + n
+            for k in range(count - 2 * n + 1)
+            if not any(_differs(values.get(k + i), roots[i]) for i in range(n))
+            and all(values.get(k + n + i) in (0.0, 1.0) for i in range(n))
+        ]
+        for at in reversed(candidates):
+            valid = True
+            for shifted, shift, indices in probes:
+                for probe in (_PROBE_SHIFT, -_PROBE_SHIFT):
+                    model._set_shifts([(shift, probe)])
+                    mc.updateRootValues(False)
+                    mc.resetEventsFound()
+                    # a strict comparison shifted forward is false, one which
+                    # is not strict true
+                    expected = 0.0 if (probe > 0) == shifted.strict else 1.0
+                    states = mc.getValues()
+                    valid = valid and all(
+                        states.get(at + i) == expected for i in indices
+                    )
+                model._set_shifts([(shift, 0.0)])
+            mc.updateRootValues(False)
+            mc.resetEventsFound()
+            if valid:
+                return _RootStates(at, n)
+        raise RuntimeError(
+            f"The states of the roots of the model '{model.label}' are not found "
+            f"in the values of COPASI, whose layout sbmlsim reads, since COPASI "
+            f"has no API for them (copasi/basico#87)."
+        )
+
+    def read(self, mc: COPASI.CMathContainer, roots: np.ndarray) -> np.ndarray:
+        """Read the states of the roots.
+
+        Args:
+            mc: the math container.
+            roots: the current values of the roots, see
+                `CopasiSBMLModel._roots`.
+
+        Returns:
+            The state of every root, 1 true and 0 false.
+
+        Raises:
+            RuntimeError: if the values of the roots are not right before the
+                states, the layout of COPASI changed.
+        """
+        values = mc.getValues()
+        at, n = self.position, self.count
+        if (
+            len(roots) != n
+            or values.size() < at + n
+            or any(_differs(values.get(at - n + i), roots[i]) for i in range(n))
+        ):
+            raise RuntimeError(
+                "The states of the roots are not where they were found in the "
+                "values of COPASI, whose layout sbmlsim reads, since COPASI has "
+                "no API for them (copasi/basico#87)."
+            )
+        return np.array([values.get(at + i) for i in range(n)], dtype=float)
 
 
 def _vector(references: Sequence[Any]) -> COPASI.ObjectStdVector:

@@ -22,7 +22,7 @@ with contextlib.suppress(ImportError):
     import_copasi()
 COPASI = pytest.importorskip("COPASI")
 
-from sbmlsim.model import RoadrunnerSBMLModel  # noqa: E402
+from sbmlsim.model import RoadrunnerSBMLModel, model_copasi  # noqa: E402
 from sbmlsim.model.model_copasi import (  # noqa: E402
     COPASI_ATOL_FACTOR,
     CopasiSBMLModel,
@@ -1251,6 +1251,69 @@ def test_a_slow_comparison_at_its_threshold_fires_in_time(
     assert copasi["T1"][-1] == pytest.approx(roadrunner["T1"][-1], abs=1e-6)
 
 
+@pytest.mark.parametrize("times", [[0, 1, 2, 5], None])
+def test_values_are_set_with_the_api_of_copasi(
+    times: list[float] | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A change, the time and the shifts of the comparisons are set through the API of COPASI, never through the memory of a value.
+
+    The change sets `X` to the threshold of the trigger, so the comparisons
+    are shifted and their roots probed, see
+    `CopasiSBMLModel.shift_comparisons`.
+    """
+
+    def no_pointer(*args: object) -> None:
+        raise AssertionError("the memory of a value of COPASI is written")
+
+    monkeypatch.setattr(COPASI.CMathObject, "getValuePointer", no_pointer)
+    source = at_threshold("X > 2", rate="1e-9")
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    copasi_model = CopasiSBMLModel(source=source)
+    roadrunner_model = RoadrunnerSBMLModel(source=source)
+    plan = compile_simulation(
+        simulation, roadrunner_model.symbols, roadrunner_model.uinfo
+    )
+    selections = ["time", "X", "n", "T1"]
+    copasi = executor_copasi.execute(plan, copasi_model, selections)
+    roadrunner = execute(plan, roadrunner_model, selections)
+    assert copasi["n"][-1] == roadrunner["n"][-1] == 1.0
+    assert copasi["X"][-1] == pytest.approx(roadrunner["X"][-1], abs=1e-9)
+
+
+def test_a_value_which_copasi_does_not_take_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A value is read back after it is set, one which COPASI does not take raises instead of being lost."""
+    model = CopasiSBMLModel(source=sbml(AT_SIX), settings=SETTINGS)
+    model.initialize([])
+    monkeypatch.setattr(COPASI.CMathContainer, "fetchState", lambda mc: None)
+    with pytest.raises(RuntimeError, match="COPASI does not take the value"):
+        model.set_value("X", 3.0)
+    with pytest.raises(RuntimeError, match="COPASI does not take the value"):
+        model.set_time(1.0)
+
+
+def test_the_states_of_the_roots_raise_if_their_layout_is_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The states of the roots, read from the layout of the values of COPASI, raise if the layout does not validate."""
+    monkeypatch.setattr(COPASI.CMathContainer, "resetEventsFound", lambda mc: None)
+    with pytest.raises(RuntimeError, match="states of the roots"):
+        CopasiSBMLModel(source=sbml(AT_SIX.replace("6", "2")), settings=SETTINGS)
+
+
+def test_the_states_of_the_roots_raise_if_the_values_of_copasi_moved() -> None:
+    """A read of the states of the roots checks that the roots are right before them in the values of COPASI."""
+    model = CopasiSBMLModel(source=sbml(AT_SIX.replace("6", "2")), settings=SETTINGS)
+    model.initialize([])
+    assert model._root_states is not None
+    model._root_states = model_copasi._RootStates(
+        model._root_states.position + 1, model._root_states.count
+    )
+    with pytest.raises(RuntimeError, match="states of the roots"):
+        model.landed()
+
+
 def test_the_states_of_the_roots_are_found_for_one_root() -> None:
     """The position of the states of the roots is told by their values, also for a single root.
 
@@ -1258,8 +1321,8 @@ def test_the_states_of_the_roots_are_found_for_one_root() -> None:
     as well, which comes earlier in the values of COPASI.
     """
     model = CopasiSBMLModel(source=sbml(AT_SIX.replace("6", "2")), settings=SETTINGS)
-    at = model._states_at
-    assert at is not None
+    assert model._root_states is not None
+    at = model._root_states.position
     model.initialize([])
     model.set_time(1.0)
     model.mc.resetEventsFound()
