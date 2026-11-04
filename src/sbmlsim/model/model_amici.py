@@ -75,7 +75,7 @@ import sys
 import sysconfig
 import tempfile
 import time as time_module
-from collections.abc import Generator, Sequence
+from collections.abc import Callable, Generator, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -116,11 +116,12 @@ CACHE_ENV = "SBMLSIM_AMICI_CACHE"
 #: the version of the way sbmlsim compiles a model with AMICI, part of the key
 #: of the cache: a change of the options or of the files of a compiled model
 #: raises it
-CACHE_FORMAT = 1
+CACHE_FORMAT = 2
 
 #: the options of AMICI's compilation of a model: no observables (the values
-#: are the states and the expressions), every species a state (no
-#: conservation laws), no sensitivities
+#: are the states and the expressions; AMICI 1.2 fails to build an event
+#: observable of a model whose trigger reads an assignment rule), every species
+#: a state (no conservation laws), no sensitivities
 IMPORT_OPTIONS: dict[str, Any] = {
     "observation_model": [],
     "compute_conservation_laws": False,
@@ -129,6 +130,18 @@ IMPORT_OPTIONS: dict[str, Any] = {
 
 #: the id of the event which makes the entities a change sets states of AMICI
 TARGETS_EVENT = "__sbmlsim_targets"
+
+#: the prefix of the id sbmlsim gives an event of the model without one, by
+#: its position among the events of the model
+EVENT_PREFIX = "__sbmlsim_event_"
+
+#: the prefix of the counter of the executions of an event of the model by
+#: AMICI, a state of AMICI, by the position of the event, see `event_counts`
+COUNT_PREFIX = "__sbmlsim_count_"
+
+#: the prefix of the time of the last execution of an event of the model by
+#: AMICI, a state of AMICI, by the position of the event, see `event_times`
+EVENT_TIME_PREFIX = "__sbmlsim_time_"
 
 #: the prefix of the free parameter of the value of an entity which a
 #: pre-initialization sets, see the module
@@ -144,6 +157,20 @@ _KIND_SBML, _KIND_VALUE, _KIND_CONCENTRATION = 0.0, 1.0, 2.0
 
 #: the name of the integrator, CVODES of SUNDIALS
 INTEGRATOR = "cvodes"
+
+#: the factor from the absolute tolerance of roadrunner to the one of CVODES
+#: in AMICI, so AMICI integrates at least as accurately as roadrunner at equal
+#: settings. roadrunner gives every state the absolute tolerance of its kind,
+#: a concentration species its tolerance times the volume of its compartment,
+#: see `sbmlsim.model.tolerances`; AMICI has one tolerance, of the
+#: concentration of a species whose state is a concentration and of the amount
+#: of the other species. Measured on the HCTZ model, doses of 10, 25 and 50 mg
+#: over 24 hr (240 output times), against roadrunner at an absolute tolerance
+#: of 1e-16 and a relative one of 1e-12, the largest error relative to the
+#: largest value of a variable: roadrunner 1.5e-7 at the defaults of
+#: `Simulator` (1e-10 and 1e-10), AMICI 9.1e-7 with the tolerance as it is,
+#: 1.5e-7 with 1e-12 and 1.1e-7 with 1e-13, i.e. the factor 1e-3.
+AMICI_ATOL_FACTOR: float = 1e-3
 
 #: the tool with which AMICI builds a model, see `_build_tools_on_path`
 BUILD_TOOL = "ninja"
@@ -174,12 +201,18 @@ class AmiciSBML:
             number in the SBML is not finite.
         initial_value_false: the events whose trigger is false before the
             time 0 in the SBML of the model, in the order of the SBML.
+        events: the ids of the events of the model in AMICI, in the order of
+            the SBML, `EVENT_PREFIX` and the position of an event without an
+            id; the counter of the executions of an event and the time of its
+            last execution are named by its position (`COUNT_PREFIX`,
+            `EVENT_TIME_PREFIX`).
     """
 
     sbml: str
     flagged: frozenset[str]
     not_a_number: frozenset[str]
     initial_value_false: tuple[str, ...]
+    events: tuple[str, ...] = ()
 
 
 class AmiciSBMLModel(SBMLModel):
@@ -192,6 +225,8 @@ class AmiciSBMLModel(SBMLModel):
         initial_value_false: the events whose trigger is false before the
             time 0, which the executor fires at the start of a simulation
             when their trigger is true, see the module.
+        event_ids: the ids of the events of the model in AMICI, in the order
+            of the SBML, see `AmiciSBML.events`.
         absolute_tolerance: the absolute tolerance set last, see
             `set_integrator_settings`.
     """
@@ -238,7 +273,9 @@ class AmiciSBMLModel(SBMLModel):
         #: the stoichiometries of the species references with an id, which are
         #: constant (`_check_supported`) and AMICI folds into its equations
         self._stoichiometries: dict[str, float] = {
-            sr.getId(): float(sr.getStoichiometry())
+            # a reference of level 3 without a stoichiometry has the
+            # stoichiometry 1 in roadrunner and in the equations of AMICI
+            sr.getId(): float(sr.getStoichiometry()) if sr.isSetStoichiometry() else 1.0
             for reaction in sbml_model.getListOfReactions()
             for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts())
             if sr.isSetId()
@@ -247,6 +284,7 @@ class AmiciSBMLModel(SBMLModel):
 
         compiled = amici_sbml(sbml, self.symbols, self.label)
         self.initial_value_false: tuple[str, ...] = compiled.initial_value_false
+        self.event_ids: tuple[str, ...] = compiled.events
         self._flagged: frozenset[str] = compiled.flagged
         self._not_a_number: frozenset[str] = compiled.not_a_number
         module = load_module(compiled.sbml, self.label)
@@ -313,8 +351,24 @@ class AmiciSBMLModel(SBMLModel):
         self._time: float = 0.0
         self._x: np.ndarray = np.zeros(0)
         self._p: np.ndarray = self._loaded_parameters.copy()
-        #: the expressions of the current state, evaluated when they are read
+        #: the expressions and the rates of the states of AMICI of the current
+        #: state, evaluated when they are read
         self._w: np.ndarray | None = None
+        self._xdot: np.ndarray | None = None
+        state_ids = [str(x) for x in amodel.get_state_ids()]
+        #: the states of the counters of the executions of the events
+        self._counters: np.ndarray = np.array(
+            [state_ids.index(f"{COUNT_PREFIX}{k}") for k in range(len(self.event_ids))],
+            dtype=int,
+        )
+        #: the states of the times of the last executions of the events
+        self._executed: np.ndarray = np.array(
+            [
+                state_ids.index(f"{EVENT_TIME_PREFIX}{k}")
+                for k in range(len(self.event_ids))
+            ],
+            dtype=int,
+        )
         self._start(self._loaded_parameters.copy())
 
         #: the values of the model as loaded, see `loaded_value`
@@ -382,6 +436,7 @@ class AmiciSBMLModel(SBMLModel):
         """
         self._time = float(time)
         self._w = None
+        self._xdot = None
 
     def set_state(self, time: float, state: Sequence[float] | np.ndarray) -> None:
         """Set the current time and states of the model, e.g. after an integration.
@@ -445,19 +500,169 @@ class AmiciSBMLModel(SBMLModel):
             RuntimeError: if AMICI fails to evaluate them.
         """
         if self._w is None:
-            amodel = self.amici_model
-            if amodel.nw == 0:
+            if self.amici_model.nw == 0:
                 self._w = np.zeros(0)
             else:
-                self.prepare([self._time])
-                rdata = _run_simulation()(amodel, self.solver)
-                if rdata.status != 0:
-                    raise RuntimeError(
-                        f"AMICI cannot evaluate the model '{self.label}' at the "
-                        f"time {self._time}, status {rdata.status}."
-                    )
-                self._w = np.array(rdata.w, dtype=float)[0]
+                self._evaluate()
+        assert self._w is not None
         return self._w
+
+    def _evaluate(self) -> None:
+        """Evaluate the expressions and the rates of the states of AMICI of the current state.
+
+        Raises:
+            RuntimeError: if AMICI fails to evaluate them.
+        """
+        amodel = self.amici_model
+        self.prepare([self._time])
+        rdata = run_simulation()(amodel, self.solver)
+        if rdata.status != 0:
+            raise RuntimeError(
+                f"AMICI cannot evaluate the model '{self.label}' at the "
+                f"time {self._time}, status {rdata.status}."
+            )
+        self._w = (
+            np.array(rdata.w, dtype=float).reshape(1, amodel.nw)[0]
+            if amodel.nw
+            else np.zeros(0)
+        )
+        self._xdot = np.array(rdata.xdot, dtype=float)
+
+    def rates(self, states: Sequence[str]) -> np.ndarray:
+        """Get the current rates of change of states.
+
+        The rate of a species is the rate of its amount, `V dc/dt + c dV/dt`
+        for a species whose state of AMICI is its concentration `c` in the
+        compartment of the size `V`; `dV/dt` is the rate of a compartment
+        which is a state of AMICI and 0 for one which is not (a number, a
+        free parameter, or an assignment rule, which is constant in a steady
+        state of the states it reads).
+
+        Args:
+            states: the ids of species or of the targets of rate rules, see
+                `state_ids`.
+
+        Returns:
+            The rate of every state.
+
+        Raises:
+            RuntimeError: if AMICI fails to evaluate them.
+        """
+        if self._xdot is None:
+            self._evaluate()
+        xdot = self._xdot
+        assert xdot is not None
+        symbols = self.symbols
+
+        def rate(sid: str) -> float:
+            store, index = self._where[sid]
+            if store is not _Store.STATE:
+                return 0.0
+            return float(xdot[index])
+
+        result = []
+        for sid in states:
+            value = rate(sid)
+            if sid in symbols.species and sid not in symbols.only_substance:
+                compartment = symbols.species_compartment[sid]
+                value = value * self._stored(compartment) + self._stored(sid) * rate(
+                    compartment
+                )
+            result.append(value)
+        return np.array(result, dtype=float)
+
+    def event_counts(self, states: np.ndarray) -> np.ndarray:
+        """Get the numbers of the executions of the events by AMICI in states of AMICI.
+
+        Args:
+            states: states of AMICI, a row or an array of rows.
+
+        Returns:
+            The counters of the events, in the order of `event_ids`, of every
+            row.
+        """
+        return np.asarray(states, dtype=float)[..., self._counters]
+
+    def event_times(self, states: np.ndarray) -> np.ndarray:
+        """Get the times of the last executions of the events by AMICI in states of AMICI.
+
+        Args:
+            states: states of AMICI, a row or an array of rows.
+
+        Returns:
+            The time of the last execution of every event, in the order of
+            `event_ids`, of every row; 0 for an event which was not executed,
+            see `event_counts`.
+        """
+        return np.asarray(states, dtype=float)[..., self._executed]
+
+    @property
+    def not_a_number(self) -> frozenset[str]:
+        """Get the compartments which are numbers of AMICI, their number in the SBML is not finite."""
+        return self._not_a_number
+
+    def output_transform(
+        self, selections: Sequence[str]
+    ) -> Callable[[np.ndarray, np.ndarray, np.ndarray], np.ndarray]:
+        """Get the conversion of the output of AMICI into the values of selections.
+
+        Args:
+            selections: the selections, see `value`.
+
+        Returns:
+            A function of the times, the states and the expressions of AMICI
+            of an output (a row per time), which gives the values of the
+            selections, a row per time and a column per selection, with the
+            current free parameters.
+
+        Raises:
+            ValueError: if AMICI has no selection of a name.
+        """
+        for selection in selections:
+            if not self._resolves(selection):
+                raise ValueError(self._selection_error(selection))
+        symbols = self.symbols
+
+        def stored(sid: str) -> Callable[..., np.ndarray | float]:
+            store, index = self._where[sid]
+            if store is _Store.STATE:
+                return lambda t, x, w: x[:, index]
+            if store is _Store.EXPRESSION:
+                return lambda t, x, w: w[:, index]
+            if store is _Store.FREE:
+                return lambda t, x, w: self._p[index]
+            number = self._numbers[sid]
+            return lambda t, x, w: number
+
+        def column(selection: str) -> Callable[..., np.ndarray | float]:
+            if selection == "time":
+                return lambda t, x, w: t
+            if selection in self._fluxes:
+                index = self._fluxes[selection]
+                return lambda t, x, w: w[:, index]
+            concentration = selection.startswith("[")
+            sid = selection[1:-1] if concentration else selection
+            value = stored(sid)
+            if sid not in symbols.species:
+                return value
+            volume = stored(symbols.species_compartment[sid])
+            only_substance = sid in symbols.only_substance
+            if concentration and only_substance:
+                return lambda t, x, w: value(t, x, w) / volume(t, x, w)
+            if not concentration and not only_substance:
+                return lambda t, x, w: value(t, x, w) * volume(t, x, w)
+            return value
+
+        columns = [column(s) for s in selections]
+
+        def transform(t: np.ndarray, x: np.ndarray, w: np.ndarray) -> np.ndarray:
+            t = np.asarray(t, dtype=float)
+            result = np.empty((t.size, len(columns)))
+            for k, function in enumerate(columns):
+                result[:, k] = function(t, x, w)
+            return result
+
+        return transform
 
     def _stored(self, sid: str) -> float:
         """Get the value AMICI keeps of an entity.
@@ -606,6 +811,7 @@ class AmiciSBMLModel(SBMLModel):
                 f"AMICI cannot set '{selection}', it is {store.value} of AMICI."
             )
         self._w = None
+        self._xdot = None
         for sid in kept:
             volume = self._volume(sid)
             if volume != volumes[sid]:
@@ -811,7 +1017,9 @@ class AmiciSBMLModel(SBMLModel):
         `absolute_tolerance`, `maximum_num_steps` and `maximum_time_step`.
         AMICI has one absolute tolerance, the smallest tolerance of an
         `AbsoluteTolerance` (of the kinds and of the overrides, reported once
-        when they differ). A setting of roadrunner which AMICI has no
+        when they differ) times `AMICI_ATOL_FACTOR`, so AMICI integrates at
+        least as accurately as roadrunner at equal settings. A setting of
+        roadrunner which AMICI has no
         equivalent of, e.g. `variable_step_size`, is ignored and reported
         once per model.
 
@@ -825,7 +1033,9 @@ class AmiciSBMLModel(SBMLModel):
         solver = self.solver
         for key, value in self._settings.checked(settings).items():
             if isinstance(value, AbsoluteTolerance):
-                solver.set_absolute_tolerance(self._settings.scalar_tolerance(value))
+                solver.set_absolute_tolerance(
+                    self._settings.scalar_tolerance(value, AMICI_ATOL_FACTOR)
+                )
                 self.absolute_tolerance = value
             elif key == "maximum_num_steps":
                 solver.set_max_steps(int(value))
@@ -1051,6 +1261,38 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         assignment.setSymbol(sid)
         assignment.setMath(math_)
 
+    # every execution of an event of the model by AMICI counts and records its
+    # time, so the executor sees which events AMICI fired in an integration
+    events: list[str] = []
+    for k, event in enumerate(model.getListOfEvents()):
+        for sid in (
+            f"{COUNT_PREFIX}{k}",
+            f"{EVENT_TIME_PREFIX}{k}",
+            f"{EVENT_PREFIX}{k}",
+        ):
+            if model.getElementBySId(sid) is not None:
+                raise ValueError(
+                    f"The model '{label}' has the entity '{sid}', the id of an "
+                    f"element sbmlsim adds for AMICI."
+                )
+        if not event.isSetId():
+            event.setId(f"{EVENT_PREFIX}{k}")
+        events.append(event.getId())
+        counter: libsbml.Parameter = model.createParameter()
+        counter.setId(f"{COUNT_PREFIX}{k}")
+        counter.setValue(0.0)
+        counter.setConstant(False)
+        count: libsbml.EventAssignment = event.createEventAssignment()
+        count.setVariable(f"{COUNT_PREFIX}{k}")
+        count.setMath(_apply(libsbml.AST_PLUS, _name(f"{COUNT_PREFIX}{k}"), _real(1.0)))
+        last: libsbml.Parameter = model.createParameter()
+        last.setId(f"{EVENT_TIME_PREFIX}{k}")
+        last.setValue(0.0)
+        last.setConstant(False)
+        executed: libsbml.EventAssignment = event.createEventAssignment()
+        executed.setVariable(f"{EVENT_TIME_PREFIX}{k}")
+        executed.setMath(libsbml.ASTNode(libsbml.AST_NAME_TIME))
+
     if targets:
         for sid in targets:
             model.getElementBySId(sid).setConstant(False)
@@ -1081,6 +1323,7 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         flagged=frozenset(flagged),
         not_a_number=frozenset(not_a_number),
         initial_value_false=tuple(initial_value_false),
+        events=tuple(events),
     )
 
 
@@ -1319,7 +1562,10 @@ def _compile(sbml: str, key: str, target: Path, label: str) -> None:
                 )
             try:
                 importer.sbml2amici(
-                    name, building, verbose=logging.ERROR, **IMPORT_OPTIONS
+                    name,
+                    building,
+                    verbose=logging.ERROR,
+                    **IMPORT_OPTIONS,
                 )
             except subprocess.CalledProcessError as err:
                 output = err.output.decode("utf-8", "replace") if err.output else ""
@@ -1421,7 +1667,7 @@ def _locked(path: Path) -> Generator[None]:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def _run_simulation() -> Any:
+def run_simulation() -> Any:
     """Get `run_simulation` of AMICI, which integrates a model with a solver."""
     import_amici()
     return importlib.import_module("amici.sim.sundials").run_simulation

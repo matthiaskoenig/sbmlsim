@@ -40,9 +40,12 @@ comparable:
    whose condition is the one of CVODE, is not integrated, its state is the
    one at its start, see `sbmlsim.simulator.executor.integrable`.
 6. An event of the model within the resolution of the time after the end is
-   at the end, see `_event_at_the_end`: the steps of the integrator have it
-   as two rows, an output time at the end the state after it. The steady
-   state after the end starts after it.
+   at the end, see `_TimeCourse.event_at_the_end`: the steps of the
+   integrator have it as two rows, an output time at the end the state after
+   it. The steady state after the end starts after it.
+
+Steps 3, 5 and 6 are the segments of `sbmlsim.simulator.segments`, which the
+executor of AMICI shares.
 
 Known differences to roadrunner:
 
@@ -97,20 +100,13 @@ import numpy as np
 from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
-from sbmlsim.simulator.changes import apply_changes, fire_events, triggers
 from sbmlsim.simulator.executor import (
     SteadyStateError,
     integrable,
     intermediate_time,
-    segment_stop,
 )
-from sbmlsim.simulator.plan import (
-    OutputMode,
-    Plan,
-    SteadyStatePlan,
-    preinit_targets,
-    time_tolerance,
-)
+from sbmlsim.simulator.plan import Plan, SteadyStatePlan, preinit_targets
+from sbmlsim.simulator.segments import simulate_segments, state_row
 
 #: the output of a run of COPASI into a data handler, without the report of
 #: the task, which has no file and of which COPASI warns otherwise; SWIG sets
@@ -164,8 +160,8 @@ class _TimeCourse:
         pending = model.pending_event_time()
         while start < pending <= end and not integrable(start, pending):
             # the state at the start, before the event at its time
-            blocks.append(_state(model, self.selections, start)[np.newaxis, :])
-            blocks.append(_state(model, self.selections, pending)[np.newaxis, :])
+            blocks.append(state_row(model, self.selections, start)[np.newaxis, :])
+            blocks.append(state_row(model, self.selections, pending)[np.newaxis, :])
             model.fire_pending_events(pending)
             start = pending
             pending = model.pending_event_time()
@@ -176,7 +172,7 @@ class _TimeCourse:
         else:
             # the state after the events, at the start and at the end
             blocks += [
-                _state(model, self.selections, t)[np.newaxis, :]
+                state_row(model, self.selections, t)[np.newaxis, :]
                 for t in sorted({start, end})
             ]
         return np.concatenate(blocks, axis=0)
@@ -234,6 +230,45 @@ class _TimeCourse:
             )
         values[:, 0] = expected
         return values
+
+    def restart(self, time: float) -> np.ndarray | None:
+        """Prepare an integration at a time: COPASI fires the events of the model itself.
+
+        Returns:
+            `None`, COPASI fires no event right after the time which it does
+            not see, see `sbmlsim.simulator.segments.Course`.
+        """
+        return None
+
+    def event_at_the_end(
+        self, start: float, end: float, tolerance: float
+    ) -> np.ndarray | None:
+        """Get the state after the events of the model at the end of a simulation.
+
+        The model is integrated with the steps of the integrator from
+        `start` to the resolution after the end, which have an event as two
+        rows at its time, see `sbmlsim.simulator.segments.Course`.
+
+        Args:
+            start: the start of the integration, just before the end, where
+                the last segment stopped, or the end after a change at the
+                end.
+            end: the end of the simulation.
+            tolerance: the resolution of the time.
+
+        Returns:
+            The state after the last event within the resolution after the
+            end, `None` without one.
+        """
+        block = self.steps(start, end + tolerance)
+        pairs = np.flatnonzero(block[1:, 0] == block[:-1, 0])
+        if pairs.size == 0:
+            return None
+        return block[pairs[-1] + 1].copy()
+
+    def steady_state(self, plan: SteadyStatePlan, start: float) -> float:
+        """Integrate the model from a time until its rates of change vanish, see `steady_state`."""
+        return steady_state(self.model, plan, start=start)
 
     def _run(self, start: float, end: float, past: bool = False) -> np.ndarray:
         """Integrate from `start` to `end` from the current state of the model.
@@ -348,7 +383,9 @@ def execute(
     try:
         if plan.steady_state is not None:
             steady_state(model, plan.steady_state)
-        values = _simulate(plan, model, columns)
+        values = simulate_segments(
+            plan, model, model.values, columns, _TimeCourse(model, columns)
+        )
     finally:
         model.simulated()
     if plan.time_shift != 0.0:
@@ -391,184 +428,6 @@ def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
             f"{' and '.join(writes)}: COPASI keeps a delayed event pending "
             f"across the values the executor sets, other than roadrunner."
         )
-
-
-def _simulate(plan: Plan, model: CopasiSBMLModel, columns: list[str]) -> np.ndarray:
-    """Integrate the segments of a plan, see the module.
-
-    Args:
-        plan: the plan.
-        model: the model, initialized, after the presimulation.
-        columns: the selections.
-
-    Returns:
-        The values, a row per output time and a column per selection, two
-        rows at the time of a change after the start which is an output
-        time.
-    """
-    events = {event.time: event for event in plan.events}
-    points = sorted({plan.start, plan.end, *events})
-    model_events = plan.symbols.events
-    times = np.asarray(plan.times, dtype=float)
-    tolerance = time_tolerance(plan.start, plan.end)
-    values = model.values
-    course = _TimeCourse(model, columns)
-
-    blocks: list[np.ndarray] = []
-    # whether the last segment is not integrated, and the time the model is at
-    # after it: where its integration stopped, the start of a segment which is
-    # not integrated
-    held, stopped = False, plan.start
-    for k in range(len(points) - 1):
-        a, b = points[k], points[k + 1]
-        # the segment ends at a change, whose state before it is its last row
-        before_change = b in events
-        if a in events:
-            if model_events and (a > plan.start or plan.steady_state is not None):
-                # the triggers at the time the model is at before the change,
-                # the end of the steady state for a change at the start
-                before = model.value("time") if a == plan.start else stopped
-                triggered = triggers(model_events, values, before, model)
-                apply_changes(events[a], values, plan)
-                fire_events(model_events, triggered, values, a, model)
-            else:
-                # COPASI evaluates the triggers at the start itself
-                apply_changes(events[a], values, plan)
-
-        # an event of the model at the time of the next change fires after the
-        # change, an event at the end has the state before it as a row
-        end_stop = segment_stop(a, b) if model_events else b
-        held = not integrable(a, end_stop)
-        if held:
-            if plan.output is OutputMode.INTEGRATOR:
-                block = _held(model, columns, np.array([a, b]))
-            else:
-                wanted = times[
-                    (times >= a) & ((times < b) if before_change else (times <= b))
-                ]
-                if before_change and np.any(times == b):
-                    # the state before the change at `b`
-                    wanted = np.append(wanted, b)
-                block = _held(model, columns, wanted)
-        elif plan.output is OutputMode.INTEGRATOR:
-            block = course.steps(a, end_stop)
-            # the state at the end of the simulation, or the state before the
-            # change at `b`, whose state after it starts the next segment
-            block[-1, 0] = b
-        else:
-            wanted = times[
-                (times >= a) & ((times < b) if before_change else (times <= b))
-            ]
-            # an output time between the stop and the end is the stop
-            capped = np.minimum(wanted, end_stop)
-            grid = np.unique(np.concatenate([capped, [end_stop]]))
-            grid = grid[grid > a]
-            result = course.times(a, grid, b)
-            block = result[np.isin(np.concatenate([[a], grid]), capped)]
-            if block.shape[0] != wanted.size:
-                raise RuntimeError(
-                    f"The output times of the segment [{a}, {b}] are not distinct "
-                    f"before its stop."
-                )
-            block[:, 0] = wanted
-            if before_change and np.any(times == b):
-                # the state before the change at `b`, the next segment starts
-                # with the state after it
-                state = result[-1].copy()
-                state[0] = b
-                block = np.vstack([block, state])
-        stopped = a if held else model.value("time")
-        blocks.append(block)
-
-    end = plan.end
-    changed = end in events
-    at_end = bool(blocks) and blocks[-1].shape[0] > 0 and blocks[-1][-1, 0] == end
-    after = False
-    if changed or (held and model_events):
-        # a change at the end is applied after the integration, the output at
-        # the end has the state before it and the state after it and the
-        # events it triggers; the events of the time in a last segment which
-        # is not integrated fire at its end, as after a change
-        fired = 0
-        if model_events:
-            triggered = triggers(model_events, values, stopped, model)
-            if changed:
-                apply_changes(events[end], values, plan)
-            fired = fire_events(model_events, triggered, values, end, model)
-        elif changed:
-            apply_changes(events[end], values, plan)
-        if at_end and (changed or fired):
-            state = _state(model, columns, end)
-            if changed or plan.output is OutputMode.INTEGRATOR:
-                blocks[-1] = np.vstack([blocks[-1], state])
-            else:
-                blocks[-1][-1, :] = state
-            after = True
-
-    if model_events and at_end:
-        # the events at the end, from the stop before it, or from the end
-        # after a change there or a last segment which is not integrated
-        state = _event_at_the_end(
-            course, end if changed or held else stopped, end, tolerance
-        )
-        if state is not None:
-            state[0] = end
-            if after or plan.output is OutputMode.TIMES:
-                blocks[-1][-1, :] = state
-            else:
-                blocks[-1] = np.vstack([blocks[-1], state])
-
-    if plan.steady_state_output is not None:
-        # the steady state after the end, PEtab's measurement at `inf`, from
-        # the time of the model after the events at the end
-        steady_state(model, plan.steady_state_output, start=model.value("time"))
-        blocks.append(_state(model, columns, np.inf)[np.newaxis, :])
-
-    if not blocks:
-        return np.empty((0, len(columns)))
-    return np.concatenate(blocks, axis=0)
-
-
-def _event_at_the_end(
-    course: _TimeCourse, start: float, end: float, tolerance: float
-) -> np.ndarray | None:
-    """Get the state after the events of the model at the end of a simulation.
-
-    An event within the resolution of the time after the end is at the end,
-    as a time of a grid sees it, see
-    `sbmlsim.result.timecourse.grid_weights`. The model is integrated with the
-    steps of the integrator from `start` to the resolution after the end,
-    which have an event as two rows at its time.
-
-    Args:
-        course: the time course of the model in the state at `start`.
-        start: the start of the integration, just before the end, where the
-            last segment stopped, or the end after a change at the end.
-        end: the end of the simulation.
-        tolerance: the resolution of the time.
-
-    Returns:
-        The state after the last event within the resolution after the end,
-        `None` without one.
-    """
-    block = course.steps(start, end + tolerance)
-    pairs = np.flatnonzero(block[1:, 0] == block[:-1, 0])
-    if pairs.size == 0:
-        return None
-    return block[pairs[-1] + 1].copy()
-
-
-def _held(model: CopasiSBMLModel, columns: list[str], times: np.ndarray) -> np.ndarray:
-    """Get the rows of a segment which is not integrated, the state at its start."""
-    state = _state(model, columns, 0.0)
-    values = np.tile(state, (times.size, 1))
-    values[:, 0] = times
-    return values
-
-
-def _state(model: CopasiSBMLModel, columns: list[str], time: float) -> np.ndarray:
-    """Get the current values of the selections, `time` the given time."""
-    return np.array([time if c == "time" else model.value(c) for c in columns])
 
 
 def steady_state(

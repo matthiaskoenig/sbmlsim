@@ -2,6 +2,7 @@
 
 import logging
 import multiprocessing
+import os
 import re
 import warnings
 from collections.abc import Callable, Iterator
@@ -14,6 +15,7 @@ import roadrunner
 
 from sbmlsim import parallel
 from sbmlsim.log import PACKAGE_LOGGER
+from sbmlsim.model.model_amici import CACHE_ENV
 from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML
 
 data_dir = Path(__file__).parent / "data"
@@ -21,6 +23,27 @@ data_dir = Path(__file__).parent / "data"
 # the message of the warning python 3.12 and later give when a process which runs
 # threads forks
 FORK_OF_THREADS = r"This process .* is multi-threaded, use of fork\(\)"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _amici_cache(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    """Compile every model of the tests once, into a cache of the test session.
+
+    The cache is shared by the workers of pytest-xdist, whose temporary
+    directories are in the one of the session, and which compile a model
+    once under the lock of the cache. A cache given in the environment, e.g.
+    one kept across sessions while a test is developed, is used as it is.
+    """
+    if os.environ.get(CACHE_ENV):
+        yield Path(os.environ[CACHE_ENV])
+        return
+    session = tmp_path_factory.getbasetemp()
+    if "PYTEST_XDIST_WORKER" in os.environ:
+        session = session.parent
+    root = session / "amici-cache"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv(CACHE_ENV, str(root))
+        yield root
 
 
 @pytest.fixture(autouse=True)

@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 
 import libsbml
@@ -22,6 +22,7 @@ from sbmlsim.model import (
     model_amici,
 )
 from sbmlsim.model.model_amici import (
+    AMICI_ATOL_FACTOR,
     CACHE_ENV,
     TARGETS_EVENT,
     AmiciSBMLModel,
@@ -96,23 +97,6 @@ EVENTS = PROBE.replace(
   E3: at (A > 7), t0=true: n = n + 100
 end""",
 )
-
-
-@pytest.fixture(scope="session", autouse=True)
-def _amici_cache(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """Compile every model of the tests once, into a cache of the test session.
-
-    The cache is shared by the workers of pytest-xdist, whose temporary
-    directories are in the one of the session, and which compile a model
-    once under the lock of the cache.
-    """
-    session = tmp_path_factory.getbasetemp()
-    if "PYTEST_XDIST_WORKER" in os.environ:
-        session = session.parent
-    root = session / "amici-cache"
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setenv(CACHE_ENV, str(root))
-        yield root
 
 
 def _a(
@@ -652,14 +636,18 @@ def test_a_species_reference_is_its_stoichiometry() -> None:
         model.getReaction("J1").getProduct(0).setId("B_sr")
         model.getReaction("J1").getProduct(0).setStoichiometry(2.0)
         model.getReaction("J1").getReactant(0).setId("A_sr")
+        # a reference of level 3 without a stoichiometry, 1 in roadrunner
+        model.getReaction("J2").getProduct(0).setId("A2_sr")
+        model.getReaction("J2").getProduct(0).unsetStoichiometry()
 
     source = _probe_with(edit)
     a, r = AmiciSBMLModel(source=source), RoadrunnerSBMLModel(source=source)
     assert r.selections is not None and "B_sr" in r.selections
     assert a.selections == a.default_selections()
-    for s in [*r.selections, "A_sr"]:
+    for s in [*r.selections, "A_sr", "A2_sr"]:
         assert a.value(s) == pytest.approx(r.value(s), rel=1e-12), s
     assert a.value("B_sr") == 2.0
+    assert a.value("A2_sr") == 1.0
     with pytest.raises(RuntimeError, match="cannot set 'B_sr'"):
         a.values.setValue("B_sr", 3.0)
 
@@ -707,7 +695,7 @@ def test_the_settings_of_cvodes(caplog: pytest.LogCaptureFixture) -> None:
     }
     solver = model.solver
     assert solver.get_relative_tolerance() == 1e-8
-    assert solver.get_absolute_tolerance() == 1e-11
+    assert solver.get_absolute_tolerance() == 1e-11 * AMICI_ATOL_FACTOR
     assert solver.get_max_steps() == 5000
     assert solver.get_max_step_size() == 0.5
     # a tolerance per kind is the smallest one, reported once
@@ -715,7 +703,7 @@ def test_the_settings_of_cvodes(caplog: pytest.LogCaptureFixture) -> None:
         tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-12, ids={"A": 1e-8})
         model.set_integrator_settings(absolute_tolerance=tolerance)
         model.set_integrator_settings(absolute_tolerance=tolerance)
-    assert solver.get_absolute_tolerance() == 1e-12
+    assert solver.get_absolute_tolerance() == 1e-12 * AMICI_ATOL_FACTOR
     assert dict(model.integrator_state()[1])["absolute_tolerance"] == tolerance
     assert caplog.text.count("smallest") == 1
     # the state of the integrator is set on another model
@@ -825,7 +813,7 @@ def test_a_missing_build_tool_is_named(
 def _segment(model: AmiciSBMLModel, timepoints: list[float]) -> dict[str, list[float]]:
     """Integrate a model from its current state, see `AmiciSBMLModel.prepare`."""
     model.prepare(timepoints)
-    rdata = model_amici._run_simulation()(model.amici_model, model.solver)
+    rdata = model_amici.run_simulation()(model.amici_model, model.solver)
     assert rdata.status == 0
     states = list(model.amici_model.get_state_ids())
     x = [list(row) for row in rdata.x]

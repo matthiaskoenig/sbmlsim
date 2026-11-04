@@ -181,6 +181,7 @@ def fire_events(
     values: ModelValues,
     time: float,
     model: SBMLModelLike,
+    after: Sequence[bool | None] | None = None,
 ) -> int:
     """Fire the events whose triggers a change made true.
 
@@ -204,6 +205,10 @@ def fire_events(
         values: the values of the model, in the state after the change.
         time: the time of the change.
         model: the model, for the messages.
+        after: the triggers after the change, evaluated in the state after
+            it for `None`; the triggers after an event are always evaluated.
+            An executor gives the triggers right after the time of the
+            change, see `sbmlsim.simulator.executor_amici`.
 
     Returns:
         The number of the events which fired.
@@ -230,13 +235,17 @@ def fire_events(
     pending: dict[int, list[tuple[str, float]] | None] = {}
     # events whose priority is no math the simulator evaluates
     unprioritized: set[int] = set()
+    given = after
     while True:
-        after = triggers(events, values, time, model)
+        current = (
+            list(given) if given is not None else triggers(events, values, time, model)
+        )
+        given = None
         for index in list(pending):
-            if not events[index].persistent and after[index] is False:
+            if not events[index].persistent and current[index] is False:
                 del pending[index]
         for index, (event, old, new) in enumerate(
-            zip(events, before, after, strict=True)
+            zip(events, before, current, strict=True)
         ):
             if old is not False or new is not True or index in pending:
                 continue
@@ -303,4 +312,4 @@ def fire_events(
             values.setValue(target, value)
         count += 1
         executions[index] += 1
-        before = after
+        before = current
