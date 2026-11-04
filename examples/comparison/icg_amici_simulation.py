@@ -1,11 +1,15 @@
 """Simulation of the ICG model with AMICI."""
 
+import importlib
 from pathlib import Path
 
-import amici
 import numpy as np
 import pandas as pd
-from amici.sim.sundials import run_simulation
+
+from sbmlsim.engine import import_amici
+
+amici = import_amici()
+run_simulation = importlib.import_module("amici.sim.sundials").run_simulation
 
 output_dir: Path = Path(__file__).parent / "results"
 model_mids: list[str] = ["icg_body_flat", "icg_body_events_flat"]

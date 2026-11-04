@@ -28,6 +28,8 @@ from sbmlsim.result.scan import ScanResult  # noqa: E402
 from sbmlsim.simulator import Simulator  # noqa: E402
 
 SID = "RepressilatorExperiment"
+# the engines these tests compare, AMICI has its own tests
+ENGINES = (Engine.ROADRUNNER, Engine.COPASI)
 
 #: the options of `SimulationExperiment.run` of a run of the runner
 OPTIONS = {
@@ -75,7 +77,7 @@ def test_repressilator_experiment_runs_with_copasi(tmp_path: Path) -> None:
                 err_msg=f"{key}: {name}",
             )
     # the JSON of the experiment records the engine which ran its tasks
-    for engine in (Engine.ROADRUNNER, Engine.COPASI):
+    for engine in ENGINES:
         written = json.loads((tmp_path / engine.value / f"{SID}.json").read_text())
         assert written["engine"] == engine.value
 
@@ -208,7 +210,7 @@ def test_the_worker_simulates_with_the_settings_of_the_run(tmp_path: Path) -> No
 
 def test_a_model_the_experiment_loaded_is_loaded_again_by_its_description() -> None:
     """The runner loads it with its own registry, the defaults of its engine."""
-    for engine in (Engine.ROADRUNNER, Engine.COPASI):
+    for engine in ENGINES:
         runner = ExperimentRunner(
             DemoExperiment,
             simulator=Simulator(n_workers=1, engine=engine),

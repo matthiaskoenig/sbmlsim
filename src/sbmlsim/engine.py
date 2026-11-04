@@ -31,6 +31,26 @@ def resolve_engine(engine: Engine | str) -> Engine:
         ) from None
 
 
+def _import_optional(name: str, message: str) -> ModuleType:
+    """Import an optional module, setting the encoding of the locale back.
+
+    :param name: the name of the module
+    :param message: the message of the `ImportError` when the module is missing
+    :return: the module
+    :raises ImportError: when the module is not installed
+    """
+    module = sys.modules.get(name)
+    if module is not None:
+        return module
+    before = locale.setlocale(locale.LC_CTYPE)
+    try:
+        return importlib.import_module(name)
+    except ImportError as err:
+        raise ImportError(message) from err
+    finally:
+        locale.setlocale(locale.LC_CTYPE, before)
+
+
 def import_copasi() -> ModuleType:
     """Import COPASI, the optional extra `copasi`.
 
@@ -44,19 +64,11 @@ def import_copasi() -> ModuleType:
     :return: the module `COPASI`
     :raises ImportError: when python-copasi is not installed
     """
-    module = sys.modules.get("COPASI")
-    if module is not None:
-        return module
-    before = locale.setlocale(locale.LC_CTYPE)
-    try:
-        return importlib.import_module("COPASI")
-    except ImportError as err:
-        raise ImportError(
-            "The engine 'copasi' needs python-copasi, install it with "
-            "`pip install sbmlsim[copasi]`."
-        ) from err
-    finally:
-        locale.setlocale(locale.LC_CTYPE, before)
+    return _import_optional(
+        "COPASI",
+        "The engine 'copasi' needs python-copasi, install it with "
+        "`pip install sbmlsim[copasi]`.",
+    )
 
 
 def import_amici() -> ModuleType:
@@ -68,19 +80,11 @@ def import_amici() -> ModuleType:
     :return: the module `amici`
     :raises ImportError: when AMICI is not installed
     """
-    module = sys.modules.get("amici")
-    if module is not None:
-        return module
-    before = locale.setlocale(locale.LC_CTYPE)
-    try:
-        return importlib.import_module("amici")
-    except ImportError as err:
-        raise ImportError(
-            "The engine 'amici' needs AMICI, install it with "
-            "`pip install sbmlsim[amici]`. AMICI is built from source and needs "
-            "a C++ compiler, CMake, SWIG, a BLAS library and HDF5 (e.g. "
-            "`apt install build-essential cmake swig libopenblas-dev "
-            "libhdf5-dev`)."
-        ) from err
-    finally:
-        locale.setlocale(locale.LC_CTYPE, before)
+    return _import_optional(
+        "amici",
+        "The engine 'amici' needs AMICI, install it with "
+        "`pip install sbmlsim[amici]`. AMICI is built from source and needs "
+        "a C++ compiler, CMake, SWIG, a BLAS library and HDF5 (e.g. "
+        "`apt install build-essential cmake swig libopenblas-dev "
+        "libhdf5-dev`).",
+    )

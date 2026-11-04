@@ -111,12 +111,14 @@ jobs:
       with:
         persist-credentials: false
     - name: Install the build requirements of AMICI
-      run: sudo apt-get update && sudo apt-get install -y build-essential cmake swig libopenblas-dev libhdf5-dev
+      run: sudo apt-get update && sudo apt-get install -y build-essential cmake libopenblas-dev libhdf5-dev
     - name: Set up the environment
       uses: ./.github/actions/setup
       with:
         python-version: "3.14"
         sync: --extra dev --extra amici
+        # the built wheel of amici is cached with the packages
+        save-cache: "true"
     - name: Test
       # the engine tests, in parallel (`addopts` of pyproject.toml)
       run: uv run --no-sync pytest --skip-slow tests/test_engine.py $(find tests -name 'test_*amici*.py')

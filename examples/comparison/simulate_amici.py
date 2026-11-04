@@ -4,15 +4,18 @@ sudo apt-get install libatlas-base-dev swig libhdf5-serial-dev
 pip install amici --upgrade
 """
 
+import importlib
 from typing import override
 
-import amici
 import numpy as np
 import pandas as pd
-from amici.sim.sundials import run_simulation
 
 from examples.comparison.simulate import Condition, SimulateSBML
 from sbmlsim.console import console
+from sbmlsim.engine import import_amici
+
+amici = import_amici()
+run_simulation = importlib.import_module("amici.sim.sundials").run_simulation
 
 
 class SimulateAmiciSBML(SimulateSBML):
