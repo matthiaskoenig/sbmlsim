@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, TypedDict
 
 import libsbml
 from pint.facets.plain import PlainUnit
@@ -37,6 +37,35 @@ logger = logging.getLogger(__name__)
 
 #: a setting of the integrator, see `SBMLModel.set_integrator_settings`
 IntegratorSetting = float | int | bool | AbsoluteTolerance
+
+
+class IntegratorSettings(TypedDict, total=False):
+    """The settings of the integrator a simulator takes, by their names in roadrunner.
+
+    The settings of CVODE, the integrator of roadrunner; COPASI takes
+    `relative_tolerance`, `absolute_tolerance`, `maximum_num_steps` and
+    `maximum_time_step` and ignores the others, see
+    `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
+    `sbmlsim.simulator.Simulator(**settings)` checks the names and types of
+    a dictionary of this type; a dictionary of settings of other names or
+    types, `dict[str, IntegratorSetting]`, e.g. of another integrator of
+    roadrunner, is set with `Simulator.set_integrator_settings` or
+    `SBMLModel.set_integrator_settings`, which take every name.
+    """
+
+    absolute_tolerance: float | AbsoluteTolerance
+    relative_tolerance: float
+    stiff: bool
+    variable_step_size: bool
+    initial_time_step: float
+    minimum_time_step: float
+    maximum_time_step: float
+    maximum_num_steps: int
+    maximum_bdf_order: int
+    maximum_adams_order: int
+    multiple_steps: bool
+    max_output_rows: int
+
 
 #: suffix of the parameter whose assignment rule is the math of an initial
 #: assignment, see `RoadrunnerSBMLModel.initialize`

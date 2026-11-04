@@ -22,7 +22,10 @@ with contextlib.suppress(ImportError):
 COPASI = pytest.importorskip("COPASI")
 
 from sbmlsim.model import RoadrunnerSBMLModel  # noqa: E402
-from sbmlsim.model.model_copasi import CopasiSBMLModel  # noqa: E402
+from sbmlsim.model.model_copasi import (  # noqa: E402
+    COPASI_ATOL_FACTOR,
+    CopasiSBMLModel,
+)
 from sbmlsim.resources import (  # noqa: E402
     DEMO_SBML,
     HCTZ_SBML,
@@ -700,7 +703,10 @@ def test_the_event_of_the_targets_does_not_change_the_steps() -> None:
         task.setMethodType(COPASI.CTaskEnum.Method_deterministic)
         method = task.getMethod()
         method.getParameter("Relative Tolerance").setDblValue(1e-10)
-        method.getParameter("Absolute Tolerance").setDblValue(1e-12)
+        # the absolute tolerance the model gives LSODA
+        method.getParameter("Absolute Tolerance").setDblValue(
+            SETTINGS["absolute_tolerance"] * COPASI_ATOL_FACTOR
+        )
         task.setUpdateModel(False)
         problem = task.getProblem()
         problem.setTimeSeriesRequested(False)

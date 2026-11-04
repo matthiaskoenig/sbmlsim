@@ -19,7 +19,10 @@ COPASI = pytest.importorskip("COPASI")
 
 from sbmlsim.engine import Engine  # noqa: E402
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, load_model  # noqa: E402
-from sbmlsim.model.model_copasi import CopasiSBMLModel  # noqa: E402
+from sbmlsim.model.model_copasi import (  # noqa: E402
+    COPASI_ATOL_FACTOR,
+    CopasiSBMLModel,
+)
 from sbmlsim.model.symbols import TargetKind  # noqa: E402
 from sbmlsim.model.tolerances import AbsoluteTolerance  # noqa: E402
 from sbmlsim.resources import (  # noqa: E402
@@ -527,14 +530,19 @@ def test_the_settings_of_lsoda(caplog: pytest.LogCaptureFixture) -> None:
     assert values["maximum_num_steps"] == 5000
     method = model.dm.getTask("Time-Course").getMethod()
     assert method.getParameter("Relative Tolerance").getDblValue() == 1e-8
-    assert method.getParameter("Absolute Tolerance").getDblValue() == 1e-11
+    # the tolerance of LSODA is the one of roadrunner times the factor
+    assert method.getParameter("Absolute Tolerance").getDblValue() == (
+        1e-11 * COPASI_ATOL_FACTOR
+    )
     assert method.getParameter("Max Internal Steps").getUIntValue() == 5000
     # a tolerance per kind is the smallest one, reported once
     with caplog.at_level(logging.WARNING, logger="sbmlsim.model.model_copasi"):
         tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-12, ids={"A": 1e-8})
         model.set_integrator_settings(absolute_tolerance=tolerance)
         model.set_integrator_settings(absolute_tolerance=tolerance)
-    assert method.getParameter("Absolute Tolerance").getDblValue() == 1e-12
+    assert method.getParameter("Absolute Tolerance").getDblValue() == (
+        1e-12 * COPASI_ATOL_FACTOR
+    )
     assert dict(model.integrator_state()[1])["absolute_tolerance"] == tolerance
     assert caplog.text.count("smallest") == 1
 

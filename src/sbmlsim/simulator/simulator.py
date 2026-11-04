@@ -38,7 +38,9 @@ model it runs: a model of another engine is loaded again in the engine of the
 simulator, see `sbmlsim.model.model_sbml.load_model`, and a plan runs with the
 executor of the engine, see `sbmlsim.simulator.engines`. The engine is the
 attribute `engine` of the result. A feature the engine does not simulate
-raises its `NotImplementedError`, also with `on_error="flag"`. A result of
+raises its `NotImplementedError`, also with `on_error="flag"`, when the scan
+is compiled, before a point runs or a pool starts, see
+`sbmlsim.simulator.engines.check_plan`. A result of
 COPASI depends on the number of workers within the integration and not
 bitwise: COPASI sums the rates of the reactions of a species in an order which
 depends on the memory its process allocated before, so two loads of a model in
@@ -57,7 +59,7 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Unpack
 
 import numpy as np
 import xarray as xr
@@ -74,7 +76,7 @@ from sbmlsim import parallel
 from sbmlsim.console import console
 from sbmlsim.engine import Engine, import_copasi, resolve_engine
 from sbmlsim.model import AbstractModel, SBMLModel, load_model
-from sbmlsim.model.model_sbml import IntegratorSetting
+from sbmlsim.model.model_sbml import IntegratorSetting, IntegratorSettings
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result.scan import (
     CHANGES,
@@ -88,7 +90,7 @@ from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.observables import Observable
 from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
-from sbmlsim.simulator.engines import execute_plan
+from sbmlsim.simulator.engines import check_plan, execute_plan
 from sbmlsim.simulator.observables import ObservableGraph, compile_observables
 from sbmlsim.simulator.plan import Plan, compile_simulation, model_time, target_values
 from sbmlsim.simulator.worker import (
@@ -131,7 +133,7 @@ class Simulator:
         self,
         n_workers: int | None = None,
         engine: Engine | str = Engine.ROADRUNNER,
-        **integrator_settings: IntegratorSetting,
+        **integrator_settings: Unpack[IntegratorSettings],
     ) -> None:
         """Create a simulator.
 
@@ -141,10 +143,13 @@ class Simulator:
                 `sbmlsim.parallel.POOL_THRESHOLD` points or more and runs a
                 smaller one serially.
             engine: the engine or its name, `roadrunner` or `copasi`.
-            **integrator_settings: every setting of the integrator of
-                roadrunner by its name, e.g. `relative_tolerance` or
-                `variable_step_size`; `absolute_tolerance` is a float or an
-                `AbsoluteTolerance`. The defaults are `AbsoluteTolerance()`
+            **integrator_settings: the settings of the integrator by their
+                names in roadrunner, see `IntegratorSettings`, e.g.
+                `relative_tolerance` or `variable_step_size`;
+                `absolute_tolerance` is a float or an `AbsoluteTolerance`. A
+                dictionary of settings is an `IntegratorSettings`, and one of
+                other names, e.g. of another integrator of roadrunner, is set
+                with `set_integrator_settings`. The defaults are `AbsoluteTolerance()`
                 and `relative_tolerance=1e-10`. COPASI ignores a setting of
                 roadrunner it has no equivalent of, see
                 `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
@@ -174,6 +179,10 @@ class Simulator:
 
     def set_integrator_settings(self, **integrator_settings: IntegratorSetting) -> None:
         """Set settings of the integrator for every model run after.
+
+        Every name is taken, also one which is no `IntegratorSettings`, e.g. a
+        setting of another integrator of roadrunner, so a dictionary
+        `dict[str, IntegratorSetting]` is set here.
 
         A name the integrator does not have raises when a model is loaded,
         i.e. before a pool starts.
@@ -393,7 +402,12 @@ class Simulator:
                 values, timed = _values_of(
                     scan, positions, vectors[m], at_times[(s, m)], indices[:1]
                 )
-                point_plans.append(point_plan(plan, values, timed, 0))
+                first_point = point_plan(plan, values, timed, 0)
+                # a feature the engine does not simulate raises before a point
+                # runs; the points of a plan share its changes and the times of
+                # the dimensions with `at`
+                check_plan(first_point, models[m])
+                point_plans.append(first_point)
         graph = compile_observables(observables, first, keep=keep, plans=point_plans)
         # the time is the first column, also where the model selects it
         # elsewhere, e.g. last in the sorted selections of an experiment

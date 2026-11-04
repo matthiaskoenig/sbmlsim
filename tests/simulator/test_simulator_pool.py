@@ -18,7 +18,7 @@ from sbmlsim import parallel
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
-from sbmlsim.simulator import ScanError, Simulator
+from sbmlsim.simulator import IntegratorSettings, ScanError, Simulator
 from sbmlsim.simulator.worker import ModelSpec
 from tests.simulator.models import (
     BLOWUP,
@@ -289,15 +289,13 @@ def test_every_model_of_a_dimension_gets_the_tolerances(tmp_path: Path) -> None:
 def test_a_kept_pool_runs_other_settings_with_them() -> None:
     """The workers keep their models per settings, a second run does not reuse them."""
     results = []
-    for settings in ({}, {"absolute_tolerance": 1e-4, "relative_tolerance": 1e-4}):
-        serial_simulator, pool_simulator = (
-            Simulator(n_workers=1),
-            Simulator(n_workers=2),
-        )
-        serial_simulator.set_integrator_settings(**settings)
-        pool_simulator.set_integrator_settings(**settings)
-        serial = serial_simulator.run(_model(), _scan())
-        pooled = pool_simulator.run(_model(), _scan())
+    cases: tuple[IntegratorSettings, ...] = (
+        {},
+        {"absolute_tolerance": 1e-4, "relative_tolerance": 1e-4},
+    )
+    for settings in cases:
+        serial = Simulator(n_workers=1, **settings).run(_model(), _scan())
+        pooled = Simulator(n_workers=2, **settings).run(_model(), _scan())
         assert _pools() == [2]
         xr.testing.assert_identical(pooled.ds, serial.ds)
         results.append(pooled)

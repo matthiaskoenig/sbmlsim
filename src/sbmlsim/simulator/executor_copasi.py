@@ -24,7 +24,7 @@ comparable:
    state the one before it ended in (`processRaw(False)`); the states of the
    triggers are set from the current values before every run
    (`resetEventsFound`), since COPASI does not see the values the executor
-   sets between two runs, see `_check_delayed_events` for the delayed
+   sets between two runs, see `check_supported` for the delayed
    events. The output of `OutputMode.TIMES` is the plan times of the
    segment, of `OutputMode.INTEGRATOR` the steps of LSODA, which have an
    event of the model as two rows at its time, the states before and after
@@ -308,7 +308,7 @@ def execute(
         SteadyStateError: if the presimulation does not reach a steady state.
         RuntimeError: if COPASI fails to integrate, with its message.
     """
-    _check_delayed_events(plan, model)
+    check_supported(plan, model)
     columns = list(selections)
     if not columns or columns[0] != "time":
         columns = ["time", *columns]
@@ -324,8 +324,12 @@ def execute(
     return TimecourseResult(columns=tuple(columns), values=values)
 
 
-def _check_delayed_events(plan: Plan, model: CopasiSBMLModel) -> None:
+def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
     """Refuse a plan which writes values while COPASI schedules delayed events.
+
+    `execute` checks every plan, and `Simulator.run` the plan of the first
+    point of every simulation and model before it runs a point, see
+    `sbmlsim.simulator.engines.check_plan`.
 
     COPASI keeps the events of the model with a delay pending across the
     runs of a plan, and the states of the triggers are set from the values

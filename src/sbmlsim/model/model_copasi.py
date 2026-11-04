@@ -72,6 +72,23 @@ LSODA_PARAMETERS: dict[str, str] = {
     "maximum_time_step": "Max Internal Step Size",
 }
 
+#: the factor from the absolute tolerance of roadrunner to the one of LSODA
+#: in COPASI, so COPASI integrates at least as accurately as roadrunner at
+#: equal settings. roadrunner gives every state the absolute tolerance of its
+#: kind, a concentration species its tolerance times the volume of its
+#: compartment, see `sbmlsim.model.tolerances`. COPASI has one tolerance,
+#: which `CLsodaMethod::initializeAtolVector` scales per state: a species by
+#: `min(V * Q2N, |N0|)` (V the volume of its compartment, Q2N the factor from
+#: amounts to particle numbers, N0 its initial particle number), so its
+#: tolerance shrinks with a small initial amount, and a global quantity or a
+#: compartment by `min(1, |x0|)`. Measured on the HCTZ model, doses of 10,
+#: 25 and 50 mg over 24 hr against roadrunner at an absolute tolerance of
+#: 1e-16 and a relative one of 1e-12, the largest error relative to the
+#: largest value of a variable: roadrunner 7.6e-8 at the defaults of
+#: `Simulator` (1e-10 and 1e-10), COPASI 1.4e-6 with the tolerance as it is
+#: (3.6e-4 relative to a value) and 1.8e-8 with 1e-12, i.e. the factor 1e-2.
+COPASI_ATOL_FACTOR: float = 1e-2
+
 #: the settings of roadrunner which COPASI has no equivalent of, ignored with
 #: a warning: the settings of CVODE and the optimization of the compilation
 ROADRUNNER_ONLY_SETTINGS = frozenset(
@@ -864,9 +881,10 @@ class CopasiSBMLModel(SBMLModel):
 
         The settings have the names of roadrunner: `relative_tolerance`,
         `absolute_tolerance`, `maximum_num_steps` and `maximum_time_step`.
-        COPASI has one absolute tolerance, an `AbsoluteTolerance` is its
-        smallest tolerance (of the kinds and of the overrides), reported once
-        when they differ. A setting of roadrunner which COPASI has no
+        COPASI has one absolute tolerance, the smallest tolerance of an
+        `AbsoluteTolerance` (of the kinds and of the overrides, reported once
+        when they differ) times `COPASI_ATOL_FACTOR`, so COPASI integrates at
+        least as accurately as roadrunner at equal settings. A setting of roadrunner which COPASI has no
         equivalent of, e.g. `variable_step_size`, is ignored and reported
         once per model.
 
@@ -927,7 +945,7 @@ class CopasiSBMLModel(SBMLModel):
         """Get the one absolute tolerance of COPASI of a tolerance per kind.
 
         The smallest tolerance of the kinds and of the overrides, reported
-        once per model when they differ.
+        once per model when they differ, times `COPASI_ATOL_FACTOR`.
         """
         values = {tolerance.amount, tolerance.concentration, tolerance.other}
         values |= set(dict(tolerance.ids).values())
@@ -936,12 +954,13 @@ class CopasiSBMLModel(SBMLModel):
             self._tolerance_reported = True
             logger.warning(
                 "COPASI has one absolute tolerance, the model '%s' integrates "
-                "with the smallest one of %s, %s.",
+                "with the smallest one of %s, %s, times %s.",
                 self.label,
                 tolerance,
                 smallest,
+                COPASI_ATOL_FACTOR,
             )
-        return smallest
+        return smallest * COPASI_ATOL_FACTOR
 
     @override
     def integrator_state(self) -> tuple[str, tuple[tuple[str, Any], ...]]:
