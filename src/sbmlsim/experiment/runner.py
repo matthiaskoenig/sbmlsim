@@ -161,32 +161,6 @@ def model_key(
     )
 
 
-def _description(model: AbstractModel) -> AbstractModel:
-    """Get the description of a model of an experiment, which the runner loads.
-
-    A model which the experiment loaded itself is loaded again as from its
-    description, with the unit registry and the optimization level of the
-    runner, in the engine of the runner.
-    """
-    if not isinstance(model, SBMLModel):
-        return model
-    source = model.source.content
-    if source is None:
-        source = model.source.path
-    if source is None:
-        raise ValueError("The model description has no resolved source.")
-    return AbstractModel(
-        source=source,
-        sid=model.sid,
-        name=model.name,
-        language_type=model.language_type,
-        base_path=model.base_path,
-        changes=model.changes,
-        selections=model.selections,
-        parameters=model.parameters,
-    )
-
-
 class ExperimentRunner:
     """Class for running simulation experiments."""
 
@@ -286,8 +260,10 @@ class ExperimentRunner:
                 "ignored in parameter fitting."
             )
             return
-        self.simulator = simulator
+        # the models first: a model which fails to load leaves the runner as
+        # it was
         self._load_models_in(simulator.engine)
+        self.simulator = simulator
         for experiment in self.experiments.values():
             experiment.simulator = simulator
 
@@ -400,11 +376,15 @@ class ExperimentRunner:
         if new:
             with clock.phase(Phase.MODELS, "loading models", len(new)):
                 for key, abstract_model in new.items():
+                    # a model the experiment loaded itself is loaded again,
+                    # with the unit registry and the optimization level of
+                    # the runner
                     self.models[key] = load_model(
-                        _description(abstract_model),
+                        abstract_model,
                         self.engine,
                         ureg=self.ureg,
                         jit_optimization=self.jit_optimization,
+                        reload=True,
                     )
                     progress.advance()
 

@@ -23,7 +23,7 @@ from sbmlsim.experiment import ExperimentRunner, SimulationExperiment  # noqa: E
 from sbmlsim.experiment.runner import _run_job, model_key, run_experiments  # noqa: E402
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel  # noqa: E402
 from sbmlsim.model.model_copasi import CopasiSBMLModel  # noqa: E402
-from sbmlsim.resources import REPRESSILATOR_SBML  # noqa: E402
+from sbmlsim.resources import DEMO_SBML, REPRESSILATOR_SBML  # noqa: E402
 from sbmlsim.result.scan import ScanResult  # noqa: E402
 from sbmlsim.simulator import Simulator  # noqa: E402
 
@@ -176,6 +176,46 @@ def test_run_experiments_in_a_pool_with_copasi(
             and r.process != os.getpid()
             for r in caplog.records
         )
+        # the engine of the simulator of the worker; the models the worker
+        # loads are tested on `_run_job` in this process, see
+        # `test_a_worker_loads_the_models_in_the_engine_of_the_run`
         written = json.loads((tmp_path / sid / f"{sid}.json").read_text())
         assert written["engine"] == "copasi"
         assert (tmp_path / sid / f"{sid}_fig1.svg").exists()
+
+
+def test_the_worker_simulates_with_the_settings_of_the_run(tmp_path: Path) -> None:
+    """A worker builds its simulator with the engine and settings of the run."""
+    runner = ExperimentRunner(
+        [RepressilatorExperiment, DemoExperiment],
+        simulator=Simulator(n_workers=1, engine="copasi", relative_tolerance=1e-8),
+    )
+    results = runner.run_experiments(
+        output_path=tmp_path, save_results=True, n_workers=2, progress=False
+    )
+
+    assert [r.error for r in results] == [None, None]
+    files = sorted(tmp_path.glob("*/*.nc"))
+    assert {f.parent.name for f in files} == {
+        "RepressilatorExperiment",
+        "DemoExperiment",
+    }
+    for path in files:
+        attrs = ScanResult.from_netcdf(path).ds.attrs
+        assert attrs["engine"] == "copasi"
+        assert attrs["integrator_settings"]["relative_tolerance"] == 1e-8
+
+
+def test_a_model_the_experiment_loaded_is_loaded_again_by_its_description() -> None:
+    """The runner loads it with its own registry, the defaults of its engine."""
+    for engine in Engine:
+        runner = ExperimentRunner(
+            DemoExperiment,
+            simulator=Simulator(n_workers=1, engine=engine),
+            on_error="raise",
+        )
+        model = runner.experiments["DemoExperiment"]._models["model"]
+        assert model.engine is engine
+        # roadrunner's default selections are not given to COPASI
+        assert model.selections_given is False
+        assert model.source.path == DEMO_SBML.resolve()

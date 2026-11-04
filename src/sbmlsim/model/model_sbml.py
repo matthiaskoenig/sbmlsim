@@ -24,6 +24,7 @@ from pint.facets.plain import PlainUnit
 from sbmlsim.engine import Engine, resolve_engine
 from sbmlsim.model.event_rows import MARKER_PREFIX
 from sbmlsim.model.model import AbstractModel
+from sbmlsim.model.model_resources import Source
 from sbmlsim.model.symbols import ModelSymbols
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.units import Quantity, UnitRegistry, UnitsInformation
@@ -102,7 +103,7 @@ class SBMLModel(AbstractModel, ABC):
 
     def __init__(
         self,
-        source: str | Path,
+        source: str | Path | Source,
         base_path: Path | None = None,
         changes: dict | None = None,
         sid: str | None = None,
@@ -395,31 +396,66 @@ class SBMLModel(AbstractModel, ABC):
         """Get the ids of the states which the integrator integrates."""
 
 
+def description(model: SBMLModel) -> AbstractModel:
+    """Get the description of a loaded model, which loads it again in any engine.
+
+    It is what does not depend on the engine of the model: its `sbml` as the
+    source, so a file rewritten or deleted after the model was loaded changes
+    nothing, with the path of its file, its added parameters, its changes, its
+    selections (none for the default selections, so the engine selects its
+    own defaults, see `SBMLModel.selections_given`), its id, its name and its
+    base path; a state set on the model is not part of it.
+
+    Args:
+        model: a loaded model.
+
+    Returns:
+        The description of the model.
+    """
+    return AbstractModel(
+        source=Source(
+            source=model.source.source, path=model.source.path, content=model.sbml
+        ),
+        sid=model.sid,
+        name=model.name,
+        language_type=model.language_type,
+        base_path=model.base_path,
+        changes=dict(model.changes),
+        selections=(
+            list(model.selections)
+            if model.selections_given and model.selections is not None
+            else None
+        ),
+        parameters=model.parameters,
+    )
+
+
 def load_model(
     model: AbstractModel | str | Path,
     engine: Engine | str,
     *,
     ureg: UnitRegistry | None = None,
     jit_optimization: JitOptimization | str | None = None,
+    reload: bool = False,
 ) -> SBMLModel:
     """Load a model in an engine.
 
     A model of the engine is the model itself, as it is: `ureg` and
-    `jit_optimization` do not apply to it. A model of another engine is
-    loaded again from what does not depend on its engine: its `sbml`, its
-    added parameters, its changes, its selections (none for the default
-    selections, so the engine selects its own defaults, see
-    `SBMLModel.selections_given`), its id, its name and its base path; a
-    state set on the model of the other engine is not carried over.
+    `jit_optimization` do not apply to it, unless `reload` loads it again. A
+    model of another engine is loaded again from its `description`; a state
+    set on the model of the other engine is not carried over.
 
     Args:
         model: a loaded model, the description of a model or its path or SBML.
         engine: the engine or its name.
         ureg: the unit registry of the units of the model, the registry of
-            the package without one; a model of another engine keeps its own.
+            the package without one; a loaded model which is loaded again
+            keeps its own without one.
         jit_optimization: the optimization level of the compilation of a
             model of roadrunner, see
             `sbmlsim.model.model_roadrunner.resolve_jit_optimization`.
+        reload: load a model of the engine again as well, e.g. with another
+            unit registry or optimization level.
 
     Returns:
         The model of the engine.
@@ -430,23 +466,11 @@ def load_model(
     """
     engine = resolve_engine(engine)
     if isinstance(model, SBMLModel):
-        if model.engine is engine:
+        if model.engine is engine and not reload:
             return model
         if ureg is None:
             ureg = model.uinfo.ureg
-        model = AbstractModel(
-            source=model.sbml,
-            sid=model.sid,
-            name=model.name,
-            base_path=model.base_path,
-            changes=dict(model.changes),
-            selections=(
-                list(model.selections)
-                if model.selections_given and model.selections is not None
-                else None
-            ),
-            parameters=model.parameters,
-        )
+        model = description(model)
     if engine is Engine.ROADRUNNER:
         # the module of roadrunner imports this module
         from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel

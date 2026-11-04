@@ -205,6 +205,24 @@ def test_a_simulator_with_a_pool_runs_the_experiments_serially_by_default(
     assert _process(tmp_path / "explicit", "First")["pid"] != os.getpid()
 
 
+class _OwnSimulator(Simulator):
+    """A simulator of its own, which a worker does not build."""
+
+
+def test_a_subclass_of_the_simulator_runs_the_experiments_serially(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.DEBUG, logger="sbmlsim.experiment.runner"):
+        results = _run(tmp_path, 2, [First, Second], _OwnSimulator(n_workers=1))
+
+    assert [r.error for r in results] == [None, None]
+    assert _process(tmp_path, "First")["pid"] == os.getpid()
+    assert _process(tmp_path, "Second")["pid"] == os.getpid()
+    assert "the simulator is a '_OwnSimulator', a worker builds a 'Simulator'" in (
+        caplog.text
+    )
+
+
 def test_an_experiment_of_the_main_script_runs_serially(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:

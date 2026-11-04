@@ -44,6 +44,7 @@ import numpy as np
 
 from sbmlsim.engine import Engine, import_copasi
 from sbmlsim.model.model import AbstractModel
+from sbmlsim.model.model_resources import Source
 from sbmlsim.model.model_sbml import IntegratorSetting, SBMLModel
 from sbmlsim.model.symbols import TargetKind
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -241,7 +242,7 @@ class CopasiSBMLModel(SBMLModel):
 
     def __init__(
         self,
-        source: str | Path,
+        source: str | Path | Source,
         base_path: Path | None = None,
         changes: dict | None = None,
         sid: str | None = None,
@@ -405,13 +406,8 @@ class CopasiSBMLModel(SBMLModel):
         settings: dict | None = None,
     ) -> CopasiSBMLModel:
         """Create from AbstractModel, see `CopasiSBMLModel`."""
-        source = abstract_model.source.content
-        if source is None:
-            source = abstract_model.source.path
-        if source is None:
-            raise ValueError("The model description has no resolved source.")
         return CopasiSBMLModel(
-            source=source,
+            source=abstract_model.source,
             changes=abstract_model.changes,
             parameters=abstract_model.parameters,
             sid=abstract_model.sid,

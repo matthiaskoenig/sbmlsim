@@ -20,12 +20,14 @@ class Source:
     def to_dict(self) -> dict[str, str | None]:
         """Convert to dict.
 
-        Used for serialization.
+        Used for serialization. The content of a source with a file is the
+        SBML of the file as it was loaded, see
+        `sbmlsim.model.model_sbml.description`, which the path refers to.
         """
         return {
             "source": str(self.source),
             "path": str(self.path) if self.path else None,
-            "content": self.content,
+            "content": self.content if self.path is None else None,
         }
 
     @classmethod

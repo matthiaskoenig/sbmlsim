@@ -10,12 +10,14 @@ import pytest
 
 from sbmlsim.engine import Engine
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel, load_model
+from sbmlsim.model.model_sbml import description
 from sbmlsim.model.symbols import EventSymbols
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import DEMO_SBML, HCTZ_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
 from sbmlsim.simulator.changes import triggers
 from sbmlsim.simulator.plan import Assignment
 from sbmlsim.units import Quantity, UnitRegistry
+from tests.simulator.models import PROBE
 from tests.simulator.models import sbml as probe_sbml
 
 
@@ -231,6 +233,41 @@ def test_load_model_of_a_path_and_of_the_model_of_the_engine() -> None:
     same = load_model(model, Engine.ROADRUNNER, ureg=ureg, jit_optimization="O2")
     assert same is model
     assert model.jit_optimization == "O0" and model.uinfo.ureg is not ureg
+
+
+def test_reload_loads_a_model_of_the_engine_again() -> None:
+    """With the registry and optimization level given, from its description."""
+    model = load_model(DEMO_SBML, Engine.ROADRUNNER, jit_optimization="O0")
+    ureg = UnitRegistry(on_redefinition="ignore")
+    again = load_model(
+        model, Engine.ROADRUNNER, ureg=ureg, jit_optimization="O2", reload=True
+    )
+    assert isinstance(again, RoadrunnerSBMLModel) and again is not model
+    assert again.jit_optimization == "O2" and again.uinfo.ureg is ureg
+    assert again.sbml == model.sbml
+    assert again.selections == model.selections and not again.selections_given
+
+
+def test_the_description_of_a_model_keeps_its_file_and_its_sbml(
+    tmp_path: Path,
+) -> None:
+    """The SBML as loaded with the path of its file, so a rewrite changes nothing."""
+    path = tmp_path / "model.xml"
+    path.write_text(probe_sbml())
+    model = RoadrunnerSBMLModel(source=path, selections=["time", "A"])
+    rewritten = probe_sbml(PROBE.replace("k1 = 0.8", "k1 = 0.1"))
+    assert rewritten != model.sbml
+    path.write_text(rewritten)
+
+    described = description(model)
+    assert described.source.path == path.resolve()
+    assert described.source.content == model.sbml
+    # the JSON refers to the file
+    assert described.source.to_dict()["content"] is None
+    assert described.selections == ["time", "A"]
+    again = load_model(model, Engine.ROADRUNNER, reload=True)
+    assert again.source.path == path.resolve()
+    assert again.sbml == model.sbml
 
 
 def test_load_model_keeps_the_description() -> None:

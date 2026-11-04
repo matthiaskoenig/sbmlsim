@@ -232,7 +232,7 @@ class RoadrunnerSBMLModel(SBMLModel):
 
     def __init__(
         self,
-        source: str | Path,
+        source: str | Path | Source,
         base_path: Path | None = None,
         changes: dict | None = None,
         sid: str | None = None,
@@ -704,13 +704,8 @@ class RoadrunnerSBMLModel(SBMLModel):
     ):
         """Create from AbstractModel, see `RoadrunnerSBMLModel`."""
         logger.debug("RoadrunnerSBMLModel from AbstractModel")
-        source = abstract_model.source.content
-        if source is None:
-            source = abstract_model.source.path
-        if source is None:
-            raise ValueError("The model description has no resolved source.")
         return RoadrunnerSBMLModel(
-            source=source,
+            source=abstract_model.source,
             changes=abstract_model.changes,
             parameters=abstract_model.parameters,
             sid=abstract_model.sid,
