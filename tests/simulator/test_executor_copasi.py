@@ -7,6 +7,7 @@ and at the end.
 """
 
 import contextlib
+import gc
 import locale
 from collections.abc import Generator, Sequence
 from pathlib import Path
@@ -105,6 +106,56 @@ def test_output_times_of_the_packaged_models(
     assert selections is not None
     copasi, roadrunner = both(source, simulation, selections)
     assert_equal_results(copasi, roadrunner)
+
+
+#: an oral dose of the HCTZ model after the start
+HCTZ_DOSE = Simulation(
+    end=24 * 60, steps=96, changes=[Change(60, {"PODOSE_hctz": 25.0})]
+)
+
+
+def test_releasing_a_model_does_not_change_another_model() -> None:
+    """A released model removes its own data model of COPASI and nothing else.
+
+    A model of HCTZ simulates bitwise the same before and after another model
+    of HCTZ, loaded before it, is released.
+    """
+    released = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    model = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    plan = plan_of(HCTZ_SBML, HCTZ_DOSE)
+    selections = model.selections
+    assert selections is not None
+    before = executor_copasi.execute(plan, model, selections)
+    released.close()
+    gc.collect()
+    after = executor_copasi.execute(plan, model, selections)
+    np.testing.assert_array_equal(after.values, before.values)
+
+
+def test_a_model_loaded_after_a_release_agrees_with_roadrunner() -> None:
+    """A model of HCTZ loaded after one was released simulates as the first.
+
+    The release frees the memory of COPASI, which the next load reuses, so
+    COPASI sums the rates of the reactions of a species in another order, see
+    the module of the model: the two loads agree within the integration and
+    not bitwise, and both agree with roadrunner. Measured at `SETTINGS`, 22
+    loads after a release: at most 31 times `1e-12 + 1e-10 * |x|`, the
+    tolerance of the settings, which is about 1000 times.
+    """
+    roadrunner_model = RoadrunnerSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    plan = compile_simulation(
+        HCTZ_DOSE, roadrunner_model.symbols, roadrunner_model.uinfo
+    )
+    released = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    selections = released.selections
+    assert selections is not None
+    first = executor_copasi.execute(plan, released, selections)
+    released.close()
+    gc.collect()
+    model = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    copasi = executor_copasi.execute(plan, model, selections)
+    np.testing.assert_allclose(copasi.values, first.values, rtol=1e-7, atol=1e-10)
+    assert_equal_results(copasi, execute(plan, roadrunner_model, selections))
 
 
 @pytest.mark.parametrize("times", [[0, 0.25, 0.5, 1, 2], None])

@@ -32,6 +32,16 @@ therefore has every comparison of a trigger and of a math COPASI integrates
 shifted by a parameter (`SHIFT_PREFIX`, `SWITCH_PREFIX`), which is 0 but
 before an integration from a state in which a comparison of a trigger is
 exactly at its threshold, see `CopasiSBMLModel.shift_comparisons`.
+
+A result of COPASI is reproducible within the integration and not bitwise
+across loads of a model: COPASI sums the fluxes of the reactions of a species
+into its rate in an order which depends on the addresses of its objects, i.e.
+on the memory the process allocated and freed before the load (a released
+model, whose data model is removed, or any memory of python), so the rate of
+a species of three or more reactions differs in its last bits and the
+integration amplifies it, on the HCTZ model with a dose to a few tens of
+times the tolerances of the integrator (copasi/basico#77). A loaded model is
+bitwise reproducible, also when another model is released.
 """
 
 from __future__ import annotations
