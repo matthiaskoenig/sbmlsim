@@ -25,17 +25,24 @@ It has the semantics of the executor of roadrunner, see
    0 at the start of an integration, also a strict comparison, e.g.
    `time > 1` at the time 1 (its Heaviside variables are 1 for a root
    function of the value 0), and would miss the event when the trigger
-   becomes true right after the start. At the start of every segment and of
-   every horizon of a steady state such an event fires after the row of the
-   start if its trigger is true at a time ahead, the resolution of the time
-   after it first and then ten times as far, `LOOK_AHEAD` times at most and
-   not beyond the end of the integration, see `_Course.restart`: the steps
-   of the integrator have it as two rows at the start, an output time at the
-   start the state before it, as in roadrunner, which fires it in its first
-   step. A trigger which stays at its threshold for all of `LOOK_AHEAD`
-   raises a `NotImplementedError` naming the events; an event AMICI itself
-   fires within the time ahead changes the state the trigger is evaluated
-   in there (not worked around).
+   becomes true after the start. At the start of every segment and of every
+   horizon of a steady state the model is integrated ahead to tell, the
+   resolution of the time first and then ten times as far, `LOOK_AHEAD`
+   times at most and not beyond the end of the integration, see
+   `_Course.restart`. Such an event whose trigger is true at the resolution
+   after the start fires at the start, after the row of the start, as in
+   roadrunner, which fires it in its first step; the steps of the
+   integrator have it as two rows at the start. One whose trigger becomes
+   true later fires at the time it becomes true, located by bisection to
+   the resolution of the time, where the integration is split
+   (`_Course._integrate`), two rows in the steps of the integrator. A
+   trigger which stays at its threshold for all of `LOOK_AHEAD` raises a
+   `NotImplementedError` naming the events; an event AMICI itself fires
+   within the time ahead changes the state the trigger is evaluated in
+   there (not worked around). A horizon of a steady state does not fire an
+   event again which AMICI fired at the end of the horizon before it, at
+   its root of 0 (`_Course.horizon`): the time is continuous across the
+   horizons.
 6. AMICI outputs the states at given times only. The output of
    `OutputMode.TIMES` are the plan times of a segment. The steps of the
    integrator (`OutputMode.INTEGRATOR`) are a substitute: `STEPS` intervals
@@ -70,6 +77,14 @@ Known differences to roadrunner:
 - Simultaneous events of the same priority which AMICI fires in an
   integration execute in the order of AMICI, the ones the executor fires in
   the order of the document, roadrunner orders them at random.
+- roadrunner fires a strict trigger of the time at the end of a horizon of
+  a steady state (`time > 10` at 10) and again in the next horizon, so
+  `time > 10` fires twice in a presimulation and `time > 1` (or
+  `time > 1.0000000001`) three times in a presimulation and a simulation
+  to 1; AMICI fires them once per crossing of the time (1 and 2, as
+  COPASI). AMICI fires a strict trigger at its root, e.g. `time > 100` at
+  the end 100 of a steady state which is reached there, where COPASI does
+  not (roadrunner does as well).
 - AMICI 1.2 does not import a trigger with a negation of a comparison
   (`!(X <= 3)`), the model raises when it is loaded.
 
@@ -168,6 +183,16 @@ class _Course:
                 f"'{model.label}', not {len(self.events)}."
             )
         self._relaxed: list[str | None] | None = None
+        #: the events whose trigger at its threshold at the last start becomes
+        #: true later, by their times, which the integrations from the start
+        #: fire (`_integrate`)
+        self._pending: list[tuple[float, int]] = []
+        #: the states before and after the events of `_pending` the last
+        #: integration fired, by their times
+        self._fired: list[tuple[float, np.ndarray, np.ndarray]] = []
+        #: the end of the last horizon of a steady state and the counters of
+        #: the events at its start, see `horizon`
+        self._horizon: tuple[float, np.ndarray] | None = None
 
     def start_events(self, time: float) -> None:
         """Fire the events whose trigger is false before the time 0 and true at the start.
@@ -188,30 +213,40 @@ class _Course:
         ]
         fire_events(self.events, before, model.values, time, model)
 
-    def restart(self, time: float, end: float) -> np.ndarray | None:
-        """Fire the events whose trigger becomes true right after a time, which AMICI misses.
+    def restart(
+        self, time: float, end: float, executed: Sequence[int] = ()
+    ) -> np.ndarray | None:
+        """Fire the events whose trigger becomes true after a time, which AMICI misses.
 
         AMICI evaluates a trigger at the start of an integration with its
         comparisons at a root of the value 0 as true, also a strict one
-        (`_relaxed`). For an event whose trigger is false at the time but
-        true for AMICI, the model is integrated ahead, the resolution of the
-        time first and then ten times as far, at most `LOOK_AHEAD` times, and
-        not beyond the end: the event fires at the time, after its row and
-        with the events it triggers, if its trigger is true at a time ahead,
-        as in roadrunner, which fires it in its first step; it is left to
-        AMICI if its trigger as AMICI evaluates it is false ahead (AMICI finds
-        the crossing after it) or still at its threshold at the end (the next
-        start evaluates it again). The state after the events starts the
-        integration.
+        (`_relaxed`), and misses the event when the trigger becomes true. For
+        an event whose trigger is false at the time but true for AMICI, the
+        model is integrated ahead, the resolution of the time first and then
+        ten times as far, at most `LOOK_AHEAD` times, and not beyond the end:
+
+        - if its trigger is true at the resolution after the time, the event
+          fires at the time, after its row and with the events it triggers,
+          as in roadrunner, which fires it in its first step; the state after
+          the events starts the integration;
+        - if its trigger is true at a later time ahead, the time it becomes
+          true is located by bisection to the resolution of the time, and the
+          integrations from the time fire the event there (`_integrate`);
+        - if its trigger as AMICI evaluates it is false ahead, AMICI finds the
+          crossing after it, and if it is still at its threshold at the end,
+          the next start evaluates it again.
 
         Args:
             time: the time of the current state, after the changes and the
                 events of the time.
             end: the end of the integration which starts at the time.
+            executed: the events AMICI fired at the time at the end of the
+                integration before it, which are not fired again, see
+                `horizon`.
 
         Returns:
-            The values of the selections before the events, `None` if no
-            event fires.
+            The values of the selections before the events which fire at the
+            time, `None` if none fires.
 
         Raises:
             NotImplementedError: for a trigger still at its threshold after
@@ -219,6 +254,7 @@ class _Course:
         """
         model = self.model
         model.set_time(time)
+        self._pending = []
         events = self.events
         if not events:
             return None
@@ -226,19 +262,31 @@ class _Course:
         strict = triggers(events, values, time, model)
         relaxed = self._relaxed_triggers(time)
         zero = [
-            k for k in range(len(events)) if strict[k] is False and relaxed[k] is True
+            k
+            for k in range(len(events))
+            if strict[k] is False and relaxed[k] is True and k not in executed
         ]
         if not zero:
             return None
         fire: list[int] = []
-        ahead = max(self.resolution, TIME_RTOL * abs(time))
+        pending: list[tuple[float, int]] = []
+        resolution = max(self.resolution, TIME_RTOL * abs(time))
+        ahead, previous = resolution, time
         for _ in range(LOOK_AHEAD):
             later = min(time + ahead, end)
             if not integrable(time, later):
                 zero = []
                 break
             strict_later, relaxed_later = self._triggers_at(time, later)
-            fire += [k for k in zero if strict_later[k] is True]
+            for k in zero:
+                if strict_later[k] is not True:
+                    continue
+                if previous == time:
+                    fire.append(k)
+                    continue
+                crossing = self._crossing(time, previous, later, k, resolution)
+                if crossing is not None:
+                    pending.append((crossing, k))
             zero = [
                 k
                 for k in zero
@@ -247,6 +295,7 @@ class _Course:
             if not zero or later >= end:
                 zero = []
                 break
+            previous = later
             ahead *= 10.0
         if zero:
             raise NotImplementedError(
@@ -256,6 +305,7 @@ class _Course:
                 f"threshold as true, which stay at it longer than "
                 f"{ahead / 10.0:.3g} after the time."
             )
+        self._pending = sorted(pending)
         if not fire:
             return None
         after = list(strict)
@@ -265,6 +315,30 @@ class _Course:
         fire_events(events, strict, values, time, model, after=after)
         model.set_time(time)
         return head
+
+    def _crossing(
+        self, time: float, lo: float, hi: float, k: int, resolution: float
+    ) -> float | None:
+        """Locate the time a trigger at its threshold at a time becomes true.
+
+        Bisection between a time ahead at which it is still at its threshold
+        and one at which it is true, to the resolution of the time.
+
+        Returns:
+            The first time at which it is true, within the resolution, `None`
+            if its trigger as AMICI evaluates it becomes false between, so
+            that AMICI finds the crossing.
+        """
+        while hi - lo > resolution:
+            middle = lo + (hi - lo) / 2.0
+            strict, relaxed = self._triggers_at(time, middle)
+            if strict[k] is True:
+                hi = middle
+            elif relaxed[k] is not True:
+                return None
+            else:
+                lo = middle
+        return hi
 
     def _relaxed_triggers(self, time: float) -> list[bool | None]:
         """Evaluate the triggers as AMICI at the start of an integration, see `_relaxed`."""
@@ -317,8 +391,26 @@ class _Course:
         return result
 
     def horizon(self, start: float, end: float) -> None:
-        """Integrate from `start` to `end` without output, see `sbmlsim.simulator.segments.Course`."""
-        self.restart(start, end)
+        """Integrate from `start` to `end` without output, see `sbmlsim.simulator.segments.Course`.
+
+        A horizon starts with the events AMICI misses at their threshold
+        (`restart`), but not with an event AMICI fired at the end of the
+        horizon before it, at its root of 0, e.g. `time > 10` at the end 10:
+        the time is continuous across the horizons and the trigger becomes
+        true once.
+        """
+        model = self.model
+        executed: list[int] = []
+        if self._horizon is not None and self._horizon[0] == start:
+            counts = model.event_counts(model.state)
+            times = model.event_times(model.state)
+            executed = [
+                k
+                for k in range(counts.size)
+                if counts[k] > self._horizon[1][k] and times[k] == start
+            ]
+        self.restart(start, end, executed)
+        self._horizon = (end, model.event_counts(model.state))
         self._integrate(start, np.array([end]))
 
     def rates(self, states: Sequence[str]) -> np.ndarray:
@@ -328,9 +420,63 @@ class _Course:
     def _integrate(
         self, start: float, times: np.ndarray
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Integrate from the current state at `start` with output at times.
+        """Integrate from the current state at `start` with output at times, firing the pending events.
 
-        The model is in the state at the last time after it.
+        An event of `_pending` between the start and the last time fires at
+        its time: the integration is split there, an output time at it has
+        the state after it, and the states before and after it are in
+        `_fired`. The model is in the state at the last time after it.
+
+        Args:
+            start: the start.
+            times: the output times, sorted, from the start on.
+
+        Returns:
+            The values of the selections and the states of AMICI, a row at
+            the start and a row per time.
+
+        Raises:
+            RuntimeError: if AMICI fails to integrate, with its messages.
+        """
+        times = np.asarray(times, dtype=float)
+        self._fired = []
+        last = float(times[-1]) if times.size else start
+        due = [(t, k) for t, k in self._pending if start < t <= last]
+        if not due:
+            return self._run_once(start, times)
+        crossing = due[0][0]
+        values, x = self._run_once(start, np.append(times[times < crossing], crossing))
+        before = values[-1].copy()
+        self._fire_pending(crossing, [k for t, k in due if t == crossing])
+        after = state_row(self.model, self.selections, crossing)
+        pending = self._pending
+        self._pending = [(t, k) for t, k in pending if t > crossing]
+        try:
+            rest, y = self._integrate(crossing, times[times >= crossing])
+        finally:
+            fired = [(crossing, before, after), *self._fired]
+            self._pending = pending
+        self._fired = fired
+        return np.vstack([values[:-1], rest[1:]]), np.vstack([x[:-1], y[1:]])
+
+    def _fire_pending(self, time: float, pending: Sequence[int]) -> None:
+        """Fire events of `_pending` at their time, if their triggers are true, with the events they trigger."""
+        model = self.model
+        model.set_time(time)
+        values = model.values
+        current = triggers(self.events, values, time, model)
+        if not any(current[k] is True for k in pending):
+            return
+        before = list(current)
+        for k in pending:
+            before[k] = False
+        fire_events(self.events, before, values, time, model)
+        model.set_time(time)
+
+    def _run_once(
+        self, start: float, times: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Integrate from the current state at `start` with output at times, see `_integrate`.
 
         Args:
             start: the start.
@@ -409,7 +555,7 @@ class _Course:
             values, x = self._integrate(start, grid)
             counts = np.diff(np.vstack([initial, model.event_counts(x)]), axis=0)
             if not counts.any():
-                return values
+                return self._with_fired(values)
             # the intervals of the rows, the first one the start
             times = np.concatenate([[start, start], grid])
             split = np.flatnonzero(
@@ -475,6 +621,14 @@ class _Course:
                 values = np.delete(values, range(before[-1] + 1, after), axis=0)
                 times = np.delete(times, range(before[-1] + 1, after))
                 counted = np.delete(counted, range(before[-1] + 1, after))
+        return self._with_fired(values)
+
+    def _with_fired(self, values: np.ndarray) -> np.ndarray:
+        """Insert the states before and after the pending events the last integration fired, at their times."""
+        for time, before, after in self._fired:
+            index = int(np.searchsorted(values[:, 0], time, side="left"))
+            values = np.insert(values, index, [before, after], axis=0)
+            values[index : index + 2, 0] = time
         return values
 
     def event_at_the_end(
@@ -483,7 +637,8 @@ class _Course:
         """Get the state after the events of the model at the end, see `sbmlsim.simulator.segments.Course`.
 
         The events right after the start fire first (`restart`), the state
-        after them is the state after the events if AMICI fires none. The
+        after them, or after the events the executor fires later
+        (`_integrate`), is the state after the events if AMICI fires none. The
         model is integrated from `start` to the resolution after the end; an
         event AMICI fires is counted (`COUNT_PREFIX`). The state after it is
         the one `AFTER_THE_EVENT` units in the last place after the last
@@ -503,7 +658,8 @@ class _Course:
         values, x = self._integrate(start, np.array([stop]))
         counts = model.event_counts(x[-1]) - initial
         if not counts.any():
-            return after_start
+            # the state after the events the executor fired
+            return self._fired[-1][2].copy() if self._fired else after_start
         last = float(np.max(model.event_times(x[-1])[counts > 0]))
         after = last + AFTER_THE_EVENT * float(np.spacing(max(abs(last), abs(start))))
         if after < stop:

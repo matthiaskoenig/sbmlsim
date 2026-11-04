@@ -729,16 +729,78 @@ def test_a_strict_trigger_which_stays_at_its_threshold_raises() -> None:
         executor_amici.execute(plan, AmiciSBMLModel(source=source), ["time", "n"])
 
 
-@pytest.mark.parametrize("trigger", ["time > 10", "time >= 10", "time > 5"])
-def test_a_strict_trigger_at_a_horizon_of_the_steady_state(trigger: str) -> None:
-    """The horizons of a steady state start with the events AMICI misses at their threshold.
+@pytest.mark.parametrize(
+    ("trigger", "fired", "roadrunner_fired"),
+    [
+        ("time > 10", 1.0, 2.0),
+        ("time >= 10", 1.0, 1.0),
+        ("time > 5", 1.0, 1.0),
+        ("time > 1", 2.0, 3.0),
+        ("time > 1.0000000001", 2.0, 3.0),
+    ],
+)
+def test_a_strict_trigger_of_the_time_at_a_horizon_of_the_steady_state(
+    trigger: str, fired: float, roadrunner_fired: float
+) -> None:
+    """A trigger of the time fires once in the presimulation, also at the end of a horizon.
 
-    The horizons end at 1, 10, 100, ... after the start of the presimulation.
+    The horizons end at 1, 10, 100, ... after the start of the presimulation,
+    the time is continuous across them; after the presimulation the time is
+    set back to 0 and `time > 1` fires again after the end 1. AMICI fires a
+    strict trigger at its root at the end of a horizon, the next horizon does
+    not fire it again (`_Course.horizon`). A known difference: roadrunner
+    fires such a trigger at the end of the horizon and again in the next one.
     """
     model = f"model horizon\n  X = 1\n  X' = -X\n  n = 0\n  E: at ({trigger}), t0=true: n = n + 1\nend"
     simulation = Simulation(end=1, times=[0, 1], presimulation=SteadyState())
     amici, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
-    assert_equal_results(amici, roadrunner)
+    assert amici["n"][-1] == fired
+    assert roadrunner["n"][-1] == roadrunner_fired
+    np.testing.assert_allclose(amici["X"], roadrunner["X"], rtol=1e-6, atol=1e-9)
+
+
+#: a state which a change sets to the threshold of a strict trigger and which
+#: stays there until 1.001, the event records its first time
+LATER = """
+model later
+  X = 0
+  X' = piecewise(0, time < 1.001, 1)
+  n = 0
+  T1 = -1
+  E: at (X > 2), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1), X = 0
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.0005, 1.002, 5], None])
+def test_a_strict_trigger_at_its_threshold_which_becomes_true_later(
+    times: list[float] | None,
+) -> None:
+    """The event fires at the time its trigger becomes true, within the resolution.
+
+    The trigger stays at its threshold for 1e-3 after the change at 1, longer
+    than the resolution of the time: the time it becomes true is located by
+    bisection and the integration fires the event there, as roadrunner.
+    """
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    amici, roadrunner = both(sbml(LATER), simulation, ["time", "X", "n", "T1"])
+    resolution = 5e-9
+    assert amici["T1"][-1] == pytest.approx(1.001, abs=resolution)
+    assert amici["T1"][-1] == pytest.approx(roadrunner["T1"][-1], abs=resolution)
+    assert amici["n"][-1] == roadrunner["n"][-1]
+    if times is None:
+        pairs = np.flatnonzero(np.diff(amici.time) == 0.0)
+        assert amici.time[pairs[1]] == pytest.approx(1.001, abs=resolution)
+        np.testing.assert_allclose(
+            amici.values[pairs[1] : pairs[1] + 2, 1:3],
+            [[2.0, 0.0], [0.0, 1.0]],
+            atol=1e-8,
+        )
+        np.testing.assert_allclose(amici.values[-1], roadrunner.values[-1], atol=1e-6)
+    else:
+        np.testing.assert_allclose(
+            amici.values, roadrunner.values, rtol=1e-6, atol=1e-8
+        )
 
 
 @pytest.mark.parametrize("times", [[0, 5], None])
