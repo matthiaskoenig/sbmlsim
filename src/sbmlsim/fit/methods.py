@@ -909,6 +909,8 @@ def _integrator(settings: FitSettings, engine: Engine = Engine.ROADRUNNER) -> Pa
     """
     if engine is Engine.COPASI:
         return _integrator_copasi(settings)
+    if engine is Engine.AMICI:
+        return _integrator_amici(settings)
     step = (
         " It ran with the variable step size of libRoadRunner, i.e. with an output "
         "at every step of the integrator."
@@ -953,11 +955,7 @@ def _integrator_copasi(settings: FitSettings) -> Paragraph:
     # a problem of the engine COPASI has imported COPASI already
     from sbmlsim.model.model_copasi import COPASI_ATOL_FACTOR
 
-    tolerance = AbsoluteTolerance.of(settings.absolute_tolerance)
-    smallest = min(
-        {tolerance.amount, tolerance.concentration, tolerance.other}
-        | set(dict(tolerance.ids).values())
-    )
+    smallest = AbsoluteTolerance.of(settings.absolute_tolerance).smallest()
     return p(
         "The models were simulated with COPASI ",
         Cite(("Hoops2006",)),
@@ -969,6 +967,33 @@ def _integrator_copasi(settings: FitSettings) -> Paragraph:
         _number(smallest * COPASI_ATOL_FACTOR),
         f", the smallest absolute tolerance of the fit times {COPASI_ATOL_FACTOR:g}, "
         "which COPASI scales for every state. ",
+        _text(DATA_AT_CHANGE_TEXT, settings.data_at_change, "data at a change"),
+    )
+
+
+def _integrator_amici(settings: FitSettings) -> Paragraph:
+    """Write the simulator AMICI and its integrator CVODES.
+
+    AMICI has one absolute tolerance of every state, the smallest of the
+    tolerances of the kinds and of the states times `AMICI_ATOL_FACTOR`, see
+    `sbmlsim.model.model_amici.AmiciSBMLModel.set_integrator_settings`; it has
+    no variable step size and no initial time step of roadrunner.
+    """
+    # the module of the model of AMICI does not import AMICI
+    from sbmlsim.model.model_amici import AMICI_ATOL_FACTOR
+
+    smallest = AbsoluteTolerance.of(settings.absolute_tolerance).smallest()
+    return p(
+        "The models were compiled and simulated with AMICI ",
+        Cite(("Froehlich2021",)),
+        " and its integrator CVODES ",
+        Cite(("Hindmarsh2005",)),
+        " with the relative tolerance ",
+        _number(settings.relative_tolerance),
+        " and the absolute tolerance ",
+        _number(smallest * AMICI_ATOL_FACTOR),
+        f", the smallest absolute tolerance of the fit times {AMICI_ATOL_FACTOR:g}, "
+        "which AMICI applies to every state. ",
         _text(DATA_AT_CHANGE_TEXT, settings.data_at_change, "data at a change"),
     )
 

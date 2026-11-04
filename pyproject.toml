@@ -99,6 +99,13 @@ sciml = [
 copasi = [
 	"python-copasi>=4.48.311",
 ]
+# AMICI as a third engine, built from source on installation (a C++ compiler,
+# a BLAS library and the headers of HDF5 from the system, CMake and SWIG from
+# PyPI) and not part of `dev`; it needs ninja to compile a model
+amici = [
+	"amici>=1.2.0",
+	"ninja",
+]
 dev = [
 	"sbmlsim[sciml,copasi]",
 	# the reference of the forward pass in the tests, never imported by the package

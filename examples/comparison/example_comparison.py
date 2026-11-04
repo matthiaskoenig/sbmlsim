@@ -3,8 +3,8 @@
 Every condition of a PEtab condition table is simulated by every simulator at
 the same time points and with the same tolerances, as in a parameter fit, and
 the results of AMICI and COPASI are compared with the results of roadrunner.
-COPASI is the engine `copasi` of sbmlsim, the optional extra `copasi`; AMICI is
-not a dependency of sbmlsim. A simulator which is not installed is skipped.
+COPASI and AMICI are the engines `copasi` and `amici` of sbmlsim, the optional
+extras of the same names. An engine whose extra is not installed is skipped.
 """
 
 from pathlib import Path
@@ -13,11 +13,11 @@ import numpy as np
 import pandas as pd
 
 from examples.comparison.simulate import Condition, SimulateSBML
-from examples.comparison.simulate_copasi import SimulateCopasiSBML
+from examples.comparison.simulate_engine import SimulateAmiciSBML, SimulateCopasiSBML
 from examples.comparison.simulate_roadrunner import SimulateRoadrunnerSBML
 from sbmlsim.comparison.diff import DataSetsComparison
 from sbmlsim.console import console
-from sbmlsim.engine import import_copasi
+from sbmlsim.engine import import_amici, import_copasi
 
 #: the simulator the others are compared with
 REFERENCE = "roadrunner"
@@ -27,11 +27,11 @@ def simulator_classes() -> dict[str, type[SimulateSBML]]:
     """Get the simulators which are installed, the reference first."""
     classes: dict[str, type[SimulateSBML]] = {REFERENCE: SimulateRoadrunnerSBML}
     try:
-        from examples.comparison.simulate_amici import SimulateAmiciSBML
-
-        classes["amici"] = SimulateAmiciSBML
+        import_amici()
     except ImportError:
-        console.print("AMICI is not installed, it is not compared.")
+        console.print("The extra `amici` is not installed, AMICI is not compared.")
+    else:
+        classes["amici"] = SimulateAmiciSBML
     try:
         import_copasi()
     except ImportError:

@@ -33,7 +33,7 @@ loads, each with its own tolerance per state. A setting of a model which the
 simulator does not set stays, and a worker loads the model with the
 integrator and the settings the model has in the calling process.
 
-The engine of a simulator, roadrunner by default or COPASI, simulates every
+The engine of a simulator, roadrunner by default, COPASI or AMICI, simulates every
 model it runs: a model of another engine is loaded again in the engine of the
 simulator, see `sbmlsim.model.model_sbml.load_model`, and a plan runs with the
 executor of the engine, see `sbmlsim.simulator.engines`. The engine is the
@@ -44,7 +44,11 @@ is compiled, before a point runs or a pool starts, see
 number of workers within the integration and not bitwise: COPASI sums the
 rates of the reactions of a species in an order which depends on the memory
 its process allocated before, so two loads of a model in the parent and in a
-worker differ in the last bit of a rate, which the integration amplifies.
+worker differ in the last bit of a rate, which the integration amplifies. A
+result of AMICI does not depend on the number of workers: a worker imports
+the module the parent compiled, from the directory of compiled models the
+parent loaded it from (`ModelSpec.cache`), whatever the environment of the
+worker says, see `sbmlsim.model.model_amici.using_cache`.
 """
 
 from __future__ import annotations
@@ -73,7 +77,7 @@ from rich.progress import (
 
 from sbmlsim import parallel
 from sbmlsim.console import console
-from sbmlsim.engine import Engine, import_copasi, resolve_engine
+from sbmlsim.engine import Engine, import_amici, import_copasi, resolve_engine
 from sbmlsim.model import AbstractModel, SBMLModel, load_model
 from sbmlsim.model.model_sbml import IntegratorSetting, IntegratorSettings
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -141,7 +145,7 @@ class Simulator:
                 `None` uses every CPU for a scan of
                 `sbmlsim.parallel.POOL_THRESHOLD` points or more and runs a
                 smaller one serially.
-            engine: the engine or its name, `roadrunner` or `copasi`.
+            engine: the engine or its name, `roadrunner`, `copasi` or `amici`.
             **integrator_settings: the settings of the integrator by their
                 names in roadrunner, see `IntegratorSettings`, e.g.
                 `relative_tolerance` or `variable_step_size`;
@@ -150,19 +154,25 @@ class Simulator:
                 other names, e.g. of another integrator of roadrunner, is set
                 with `set_integrator_settings`. The defaults are
                 `AbsoluteTolerance()` and `relative_tolerance=1e-10`. COPASI
-                ignores a setting of roadrunner it has no equivalent of, see
-                `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
+                and AMICI ignore a setting of roadrunner they have no
+                equivalent of, see
+                `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`
+                and
+                `sbmlsim.model.model_amici.AmiciSBMLModel.set_integrator_settings`.
 
         Raises:
             ValueError: if `n_workers` is less than 1 or the engine is
                 unknown.
-            ImportError: for the engine COPASI without python-copasi.
+            ImportError: for the engine COPASI without python-copasi and for
+                the engine AMICI without AMICI.
         """
         parallel.check_workers(n_workers)
         self.n_workers = n_workers
         self.engine: Engine = resolve_engine(engine)
         if self.engine is Engine.COPASI:
             import_copasi()
+        elif self.engine is Engine.AMICI:
+            import_amici()
         self.integrator_settings: dict[str, IntegratorSetting] = {
             "absolute_tolerance": AbsoluteTolerance(),
             "relative_tolerance": 1e-10,
@@ -294,7 +304,8 @@ class Simulator:
             ScanError: for a point which fails with `on_error="raise"`.
             RuntimeError: if a worker of the pool dies.
             NotImplementedError: for a feature the engine does not simulate,
-                see `sbmlsim.simulator.executor_copasi`.
+                see `sbmlsim.simulator.executor_copasi` and
+                `sbmlsim.simulator.executor_amici`.
         """
         if on_error not in ("raise", "flag"):
             raise ValueError(f"'on_error' is 'raise' or 'flag', not '{on_error}'.")

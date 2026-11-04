@@ -18,7 +18,7 @@ import scipy
 from scipy import interpolate
 
 from sbmlsim.console import console
-from sbmlsim.engine import Engine, resolve_engine
+from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit.derived import (
     DerivedChanges,
@@ -821,6 +821,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         )
         #: the engine the models are loaded in and simulated with
         self.engine: Engine = resolve_engine(engine)
+        #: the directory of the compiled models of AMICI of the parent of a
+        #: worker, which a pickled problem loads its models from, see
+        #: `__getstate__`
+        self._amici_cache: str | None = None
 
         # set in initialization
         self.runner: ExperimentRunner | None = None
@@ -901,7 +905,23 @@ class OptimizationProblem(ObjectJSONEncoder):
             jit_optimization=self.jit_optimization,
             engine=self.engine,
         )
+        fresh._amici_cache = self._worker_amici_cache()
         return fresh.__dict__
+
+    def _worker_amici_cache(self) -> str | None:
+        """Get the directory of the compiled models of AMICI a worker loads from.
+
+        The directory the problem loads its models from, see
+        `sbmlsim.engine.amici_cache`; `None` for another engine.
+        """
+        if self.engine is not Engine.AMICI:
+            # a problem whose engine `set_simulator` switched carries no
+            # directory of AMICI on
+            return None
+        if self._amici_cache is not None:
+            return self._amici_cache
+        models = self.runner.models.values() if self.runner is not None else ()
+        return amici_cache(self.engine, models)
 
     def _reset_mappings(self) -> None:
         """Reset the data collected for the fit mappings.
@@ -1336,15 +1356,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         # the simulator of the experiments loads the models in the engine of
         # the problem
         simulator = self._simulator(settings)
-        self.runner = ExperimentRunner(
-            experiment_classes=list(exp_classes),
-            base_path=self.base_path,
-            data_path=self.data_path,
-            simulator=simulator,
-            # a fit needs every experiment, its definition errors are raised
-            on_error="raise",
-            jit_optimization=self.jit_optimization,
-        )
+        with using_amici_cache(self._amici_cache):
+            self.runner = ExperimentRunner(
+                experiment_classes=list(exp_classes),
+                base_path=self.base_path,
+                data_path=self.data_path,
+                simulator=simulator,
+                # a fit needs every experiment, its definition errors are raised
+                on_error="raise",
+                jit_optimization=self.jit_optimization,
+            )
 
         # the fit mappings every versioned parameter selects, by the index of
         # the parameter. The filters need the `FitMapping`, which the problem
@@ -1850,10 +1871,12 @@ class OptimizationProblem(ObjectJSONEncoder):
         It has the engine of the problem and the integrator settings of the
         fit; serial, since the fit runs its plans in a pool of its own and an
         experiment initialized in a worker of that pool runs in the worker.
-        The settings of CVODE which COPASI has no equivalent of, the variable
-        step size and the initial time step, are settings of roadrunner only,
-        which a model of COPASI would report as ignored in every evaluation,
-        see `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`.
+        The settings of CVODE which COPASI and AMICI have no equivalent of,
+        the variable step size and the initial time step, are settings of
+        roadrunner only, which a model of COPASI or AMICI would report as
+        ignored in every evaluation, see
+        `sbmlsim.model.model_copasi.CopasiSBMLModel.set_integrator_settings`
+        and `sbmlsim.model.model_amici.AmiciSBMLModel.set_integrator_settings`.
         """
         integrator: IntegratorSettings = {
             "absolute_tolerance": settings.absolute_tolerance,

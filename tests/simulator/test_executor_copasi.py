@@ -7,6 +7,7 @@ and at the end.
 """
 
 import contextlib
+import gc
 import locale
 from collections.abc import Generator, Sequence
 from pathlib import Path
@@ -40,68 +41,25 @@ from sbmlsim.simulator.executor import (  # noqa: E402
     execute,
     segment_stop,
 )
-from sbmlsim.simulator.plan import Plan, compile_simulation  # noqa: E402
+from sbmlsim.simulator.plan import compile_simulation, time_tolerance  # noqa: E402
+from tests.simulator import engine_comparison  # noqa: E402
+from tests.simulator.engine_comparison import (  # noqa: E402
+    AT_SIX,
+    AT_THE_START,
+    COUNTER,
+    M1,
+    PRESIMULATED,
+    REARM,
+    SEL,
+    SETTINGS,
+    STALE,
+    TIME_EVENT,
+    assert_equal_results,
+    assert_equal_rows,
+    plan_of,
+    rows_at,
+)
 from tests.simulator.models import sbml, sbml_pk  # noqa: E402
-
-#: the tolerances of the integrators of both engines
-SETTINGS = {"relative_tolerance": 1e-10, "absolute_tolerance": 1e-12}
-
-#: the probe model of the executor of roadrunner
-SEL = ["time", "[A]", "[B]", "X", "C", "k1"]
-
-#: `X` grows by `k` and is set back to 0 at 8, `n` counts the events (the
-#: model `m1` of the spike of the engine)
-M1 = """
-model m1
-  compartment c = 1
-  species X in c
-  x0 = 1
-  X = 2*x0
-  k = 1
-  X' = k
-  n = 0
-  E: at (X >= 8), t0=false: X = 0, n = n + 1
-end
-"""
-
-#: an event of the time, which doubles `C` at 10
-TIME_EVENT = """
-model ev_time
-  compartment C = 4
-  species S in C = 3
-  S' = 1
-  E: at (time >= 10), t0=true: C = 2 * C
-end
-"""
-
-#: an event of the time at 6, which sets `X` back to 0
-AT_SIX = """
-model at_six
-  X = 0
-  X' = 1
-  n = 0
-  E: at (time >= 6), t0=false: X = 0, n = n + 1
-end
-"""
-
-#: an event of the time at the start, whose trigger is false before it
-AT_THE_START = """
-model at_start
-  X = 0
-  X' = 1
-  n = 0
-  E: at (time >= 0), t0=false: n = n + 1
-end
-"""
-
-#: an event which counts the crossings of `X` above 1
-COUNTER = """
-model counter
-  var X = 0
-  var Y = 0
-  E1: at (X > 1): Y = Y + 1
-end
-"""
 
 #: a delayed event of the model, which COPASI schedules itself
 DELAYED = """
@@ -114,84 +72,13 @@ end
 """
 
 
-def plan_of(source: str | Path, simulation: Simulation) -> Plan:
-    """Compile a simulation against a model."""
-    model = RoadrunnerSBMLModel(source=source)
-    return compile_simulation(simulation, model.symbols, model.uinfo)
-
-
 def both(
     source: str | Path, simulation: Simulation, selections: Sequence[str]
 ) -> tuple[TimecourseResult, TimecourseResult]:
-    """Run a simulation with COPASI and with roadrunner.
-
-    The simulation is compiled once and executed with both engines at the
-    tolerances `SETTINGS`.
-
-    Returns:
-        The results of COPASI and of roadrunner.
-    """
-    roadrunner_model = RoadrunnerSBMLModel(source=source, settings=SETTINGS)
-    copasi_model = CopasiSBMLModel(source=source, settings=SETTINGS)
-    plan = compile_simulation(
-        simulation, roadrunner_model.symbols, roadrunner_model.uinfo
+    """Run a simulation with COPASI and with roadrunner, see `engine_comparison.both`."""
+    return engine_comparison.both(
+        CopasiSBMLModel, executor_copasi.execute, source, simulation, selections
     )
-    copasi = executor_copasi.execute(plan, copasi_model, selections)
-    roadrunner = execute(plan, roadrunner_model, selections)
-    return copasi, roadrunner
-
-
-def assert_equal_results(
-    copasi: TimecourseResult, roadrunner: TimecourseResult
-) -> None:
-    """Compare two results of an output of times on all rows."""
-    assert copasi.columns == roadrunner.columns
-    np.testing.assert_array_equal(copasi.time, roadrunner.time)
-    np.testing.assert_allclose(copasi.values, roadrunner.values, rtol=1e-6, atol=1e-9)
-
-
-def rows_at(result: TimecourseResult, time: float) -> np.ndarray:
-    """Get the rows of a result at a time."""
-    return result.values[result.time == time]
-
-
-def pairs_at(
-    result: TimecourseResult, times: Sequence[float], tolerance: float
-) -> np.ndarray:
-    """Get the two rows of a change or an event at times, and the last row.
-
-    The pair of a time is its first row within `tolerance` and the row after
-    it, the states before and after the change or the event.
-    """
-    rows = []
-    for time in times:
-        first = np.flatnonzero(np.abs(result.time - time) <= tolerance)[0]
-        rows.append(result.values[first : first + 2])
-    rows.append(result.values[-1:])
-    return np.concatenate(rows)
-
-
-def assert_equal_rows(
-    copasi: TimecourseResult,
-    roadrunner: TimecourseResult,
-    changes: Sequence[float] = (),
-    events: Sequence[float] = (),
-) -> None:
-    """Compare the steps of the integrator at the changes, the events and the end.
-
-    The rows of a change are at its time in both engines. roadrunner gives
-    the rows of an event of the model times within the resolution of the
-    time after the event, see `sbmlsim.model.event_rows`, whose states
-    differ by the rates times that offset.
-    """
-    assert copasi.columns == roadrunner.columns
-    c, r = pairs_at(copasi, changes, 0.0), pairs_at(roadrunner, changes, 0.0)
-    np.testing.assert_array_equal(c[:, 0], r[:, 0])
-    np.testing.assert_array_equal(c[:-1, 0], np.repeat(changes, 2))
-    np.testing.assert_allclose(c[:, 1:], r[:, 1:], rtol=1e-6, atol=1e-9)
-    c, r = pairs_at(copasi, events, 1e-6), pairs_at(roadrunner, events, 1e-6)
-    np.testing.assert_allclose(c[:, 0], r[:, 0], rtol=0, atol=1e-6)
-    np.testing.assert_allclose(c[:, 1:], r[:, 1:], rtol=1e-6, atol=1e-6)
 
 
 @pytest.mark.parametrize(
@@ -219,6 +106,56 @@ def test_output_times_of_the_packaged_models(
     assert selections is not None
     copasi, roadrunner = both(source, simulation, selections)
     assert_equal_results(copasi, roadrunner)
+
+
+#: an oral dose of the HCTZ model after the start
+HCTZ_DOSE = Simulation(
+    end=24 * 60, steps=96, changes=[Change(60, {"PODOSE_hctz": 25.0})]
+)
+
+
+def test_releasing_a_model_does_not_change_another_model() -> None:
+    """A released model removes its own data model of COPASI and nothing else.
+
+    A model of HCTZ simulates bitwise the same before and after another model
+    of HCTZ, loaded before it, is released.
+    """
+    released = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    model = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    plan = plan_of(HCTZ_SBML, HCTZ_DOSE)
+    selections = model.selections
+    assert selections is not None
+    before = executor_copasi.execute(plan, model, selections)
+    released.close()
+    gc.collect()
+    after = executor_copasi.execute(plan, model, selections)
+    np.testing.assert_array_equal(after.values, before.values)
+
+
+def test_a_model_loaded_after_a_release_agrees_with_roadrunner() -> None:
+    """A model of HCTZ loaded after one was released simulates as the first.
+
+    The release frees the memory of COPASI, which the next load reuses, so
+    COPASI sums the rates of the reactions of a species in another order, see
+    the module of the model: the two loads agree within the integration and
+    not bitwise, and both agree with roadrunner. Measured at `SETTINGS`, 22
+    loads after a release: at most 31 times `1e-12 + 1e-10 * |x|`, the
+    tolerance of the settings, which is about 1000 times.
+    """
+    roadrunner_model = RoadrunnerSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    plan = compile_simulation(
+        HCTZ_DOSE, roadrunner_model.symbols, roadrunner_model.uinfo
+    )
+    released = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    selections = released.selections
+    assert selections is not None
+    first = executor_copasi.execute(plan, released, selections)
+    released.close()
+    gc.collect()
+    model = CopasiSBMLModel(source=HCTZ_SBML, settings=SETTINGS)
+    copasi = executor_copasi.execute(plan, model, selections)
+    np.testing.assert_allclose(copasi.values, first.values, rtol=1e-7, atol=1e-10)
+    assert_equal_results(copasi, execute(plan, roadrunner_model, selections))
 
 
 @pytest.mark.parametrize("times", [[0, 0.25, 0.5, 1, 2], None])
@@ -503,7 +440,7 @@ def test_a_delayed_event_pending_across_the_stop_before_the_end(
     """A delayed event pending at the stop before the end fires as in roadrunner.
 
     The last segment stops just before the end and the events at the end are
-    integrated from the stop (`_event_at_the_end`), the steady state after the
+    integrated from the stop (`event_at_the_end`), the steady state after the
     end from there; the states of the triggers are set from the current values
     before every run (`resetEventsFound`), which keeps the pending event. An
     event at the end, closer to the stop than LSODA integrates, fires at the
@@ -897,39 +834,6 @@ def test_known_defect_an_event_at_a_change_within_the_root_tolerance() -> None:
     assert_equal_results(copasi, roadrunner)
 
 
-#: an event which a change makes true, of an assignment rule which no rate
-#: reads (the review of the executor)
-STALE = """
-model stale
-  X = 0
-  X' = 1
-  Z := 2*X
-  n = 0
-  E: at (Z < 1), t0=T0: n = n + 1
-end
-"""
-
-#: an event which fires at 2, whose trigger a change sets back
-REARM = """
-model rearm
-  X = 0
-  X' = 1
-  n = 0
-  E: at (X > 2), t0=false: n = n + 1
-end
-"""
-
-#: an event of the time which fires in the presimulation and in the simulation
-PRESIMULATED = """
-model presim
-  X = 1
-  X' = -X
-  n = 0
-  E: at (time >= 2), t0=true: n = n + 1
-end
-"""
-
-
 @pytest.mark.parametrize("times", [[0, 3, 5], None])
 @pytest.mark.parametrize(("t0", "fired"), [("true", 1.0), ("false", 2.0)])
 def test_an_event_a_change_makes_true_fires_once(
@@ -1029,3 +933,533 @@ def test_an_event_at_a_change_from_a_start_of_a_coarser_rounding(
     stop = segment_stop(start, change)
     course.times(start, np.array([stop]), change)
     assert stopped.value("time") == stop
+
+
+#: the rate of `X` of the models at a threshold: held until 1.001, a plateau
+#: after a change at 1, then rising
+PLATEAU = "piecewise(0, time < 1.001, 1)"
+
+
+def at_threshold(
+    trigger: str,
+    rate: str = PLATEAU,
+    x0: float = 0.0,
+    t0: str = "true",
+    persistent: str = "true",
+) -> str:
+    """Get the SBML of a model whose event counts in `n` and keeps its first time in `T1`."""
+    return sbml(
+        f"""
+        model at_threshold
+          X = {x0}
+          X' = {rate}
+          n = 0
+          T1 = -1
+          E: at ({trigger}), t0={t0}, persistent={persistent}: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+        end
+        """
+    )
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.001, 1.002, 5], None])
+@pytest.mark.parametrize(
+    ("trigger", "rate", "x0", "t0", "persistent", "fired"),
+    [
+        ("X > 2", PLATEAU, 0.0, "true", "true", 1.0),
+        ("X > 2", PLATEAU, 0.0, "false", "true", 1.0),
+        ("X > 2", PLATEAU, 0.0, "true", "false", 1.0),
+        ("X > 2", "piecewise(0, time < 1.5, 1)", 0.0, "true", "true", 1.0),
+        ("X > 2", "1", 0.0, "true", "true", 1.0),
+        ("X > 2", "piecewise(0, time < 1, 1)", 0.0, "true", "true", 1.0),
+        ("X >= 2", PLATEAU, 0.0, "true", "true", 1.0),
+        ("X < 2", "piecewise(0, time < 1.001, -1)", 3.0, "true", "true", 1.0),
+        ("X > 2", "piecewise(0, time < 1.001, -1)", 5.0, "true", "true", 0.0),
+        ("X <= 2", "piecewise(0, time < 1.001, -1)", 5.0, "false", "true", 1.0),
+    ],
+    ids=[
+        "plateau",
+        "plateau-t0-false",
+        "plateau-not-persistent",
+        "plateau-to-an-exact-switch",
+        "rising",
+        "rising-from-a-switch",
+        "geq-at-the-change",
+        "less-falling",
+        "falling-away",
+        "leq-falling",
+    ],
+)
+def test_a_trigger_a_change_leaves_at_its_threshold_fires_when_it_turns(
+    trigger: str,
+    rate: str,
+    x0: float,
+    t0: str,
+    persistent: str,
+    fired: float,
+    times: list[float] | None,
+) -> None:
+    """A trigger a change leaves exactly at its threshold fires when it turns later.
+
+    The change sets `X = 2`; LSODA finds no root of a root function which
+    is 0 when it starts, the comparison is shifted, see
+    `CopasiSBMLModel.shift_comparisons`. `X >= 2` fires at the change.
+    """
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    copasi, roadrunner = both(
+        at_threshold(trigger, rate, x0, t0, persistent),
+        simulation,
+        ["time", "X", "n", "T1"],
+    )
+    assert roadrunner["n"][-1] == fired
+    assert copasi["n"][-1] == fired
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[1.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.001, 1.002, 5], None])
+def test_an_event_triggered_by_an_event_at_a_threshold(
+    times: list[float] | None,
+) -> None:
+    """An event whose trigger reads the counter of an event a change left at its threshold."""
+    model = """
+    model chained
+      X = 0
+      X' = piecewise(0, time < 1.001, 1)
+      n = 0
+      m = 0
+      E: at (X > 2), t0=false: n = n + 1
+      F: at (n > 0.5), t0=false: m = m + 1
+    end
+    """
+    simulation = Simulation(end=5, changes=[Change(1, {"X": 2.0})], times=times)
+    copasi, roadrunner = both(sbml(model), simulation, ["time", "X", "n", "m"])
+    assert copasi.values[-1, 2:].tolist() == [1.0, 1.0]
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[1.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.001, 1.002, 5], None])
+@pytest.mark.parametrize("t0", ["true", "false"])
+def test_a_trigger_at_its_threshold_at_the_start(
+    t0: str, times: list[float] | None
+) -> None:
+    """A trigger exactly at its threshold in the initial state fires when it turns."""
+    copasi, roadrunner = both(
+        at_threshold("X > 2", x0=2.0, t0=t0),
+        Simulation(end=5, times=times),
+        ["time", "X", "n", "T1"],
+    )
+    assert copasi["n"][-1] == 1.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner)
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 2, 3, 5], None])
+def test_an_event_of_the_time_at_a_change_fires_right_after_it(
+    times: list[float] | None,
+) -> None:
+    """`time > 2` with a change at 2 fires right after the change, as roadrunner."""
+    simulation = Simulation(end=5, changes=[Change(2, {"X": 5.0})], times=times)
+    copasi, roadrunner = both(
+        at_threshold("time > 2", rate="1"), simulation, ["time", "X", "n", "T1"]
+    )
+    assert copasi["n"][-1] == 1.0
+    # at most about one resolution of the time late, see `_threshold_shift`
+    assert 2.0 < copasi["T1"][-1] <= 2.0 + 2.0 * time_tolerance(0.0, 5.0)
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[2.0])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("times", [[0, 2, 5], None])
+def test_a_trigger_copasi_fired_at_its_threshold_does_not_fire_again(
+    times: list[float] | None,
+) -> None:
+    """A comparison COPASI found turned at its threshold keeps its value when others are shifted.
+
+    `X > 2` is at its threshold in the initial state and rises, COPASI fires
+    `E` at the initial values; `Y > 1` is at its threshold on a plateau,
+    which shifts every comparison at its threshold: `X > 2` keeps its value
+    after the crossing, `E` does not fire again, `F` fires when `Y` rises.
+    """
+    model = """
+    model turned
+      X = 2
+      X' = 1
+      Y = 1
+      Y' = piecewise(0, time < 1, 1)
+      n = 0
+      m = 0
+      E: at (X > 2), t0=true: n = n + 1
+      F: at (Y > 1), t0=true: m = m + 1
+    end
+    """
+    copasi, roadrunner = both(
+        sbml(model), Simulation(end=5, times=times), ["time", "X", "Y", "n", "m"]
+    )
+    assert copasi.values[-1, 3:].tolist() == [1.0, 1.0]
+    if times is None:
+        assert_equal_rows(copasi, roadrunner)
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+#: models whose event sets a comparison of another trigger exactly to its
+#: threshold in an integration of COPASI, `T1` the time `G` fires first
+LANDING = {
+    "set-to-the-threshold": """
+    model internal
+      X = 0
+      X' = 1
+      n = 0
+      T1 = -1
+      E: at (time > 1), t0=true: X = 2
+      G: at (X > 2), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+    "reset-to-zero": """
+    model reset
+      X = 5
+      X' = 1
+      n = 0
+      T1 = -1
+      E: at (time > 1), t0=true: X = 0
+      G: at (X > 0), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+    "reset-on-a-plateau": """
+    model plateau
+      X = 5
+      X' = piecewise(0, time < 2, 1)
+      n = 0
+      T1 = -1
+      E: at (time > 1), t0=true: X = 0
+      G: at (X > 0), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+    "dose-to-the-threshold": """
+    model dose
+      X = 0
+      X' = -0.1*X
+      n = 0
+      T1 = -1
+      D: at (time > 1), t0=true: X = X + 10
+      G: at (X < 10), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+    "two-resets": """
+    model resets
+      X = 5
+      X' = 1
+      n = 0
+      T1 = -1
+      E: at (time > 1), t0=true: X = 0
+      F: at (time > 2.5), t0=true: X = 0
+      G: at (X > 0), t0=true: n = n + 1, T1 = piecewise(time, n < 0.5, T1)
+    end
+    """,
+}
+
+
+@pytest.mark.parametrize("times", [[0, 1, 1.5, 3, 5], [0, 4, 5], None])
+@pytest.mark.parametrize("name", LANDING)
+def test_an_event_of_the_model_which_sets_a_threshold(
+    name: str, times: list[float] | None
+) -> None:
+    """An event COPASI fires which sets another trigger exactly to its threshold.
+
+    `G` fires when its comparison turns, right after the event or after a
+    plateau, as in roadrunner: the run is integrated again in pieces, see
+    `executor_copasi._TimeCourse._integrate`. A change at 0.5 is a write
+    between two runs.
+    """
+    simulation = Simulation(end=5, changes=[Change(0.5, {"n": 0.0})], times=times)
+    copasi, roadrunner = both(sbml(LANDING[name]), simulation, ["time", "X", "n", "T1"])
+    assert copasi["n"][-1] == roadrunner["n"][-1] >= 1.0
+    # at most one resolution of the time after roadrunner
+    late = copasi["T1"][-1] - roadrunner["T1"][-1]
+    assert late <= time_tolerance(0.0, 5.0)
+    if times is None:
+        assert_equal_rows(copasi, roadrunner, changes=[0.5])
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+def test_a_model_whose_events_set_no_threshold_runs_in_one_piece() -> None:
+    """A run without a comparison at its threshold after an event is the run in one piece, bitwise."""
+    model = CopasiSBMLModel(source=sbml(M1), settings=SETTINGS)
+    assert model.lands
+    plan = plan_of(sbml(M1), Simulation(end=20, times=[0, 5, 10, 20]))
+    once = executor_copasi._TimeCourse._once
+    calls: list[tuple[float, float]] = []
+
+    def counted(
+        course: executor_copasi._TimeCourse,
+        start: float,
+        end: float,
+        past: bool,
+        grid: np.ndarray | None,
+        halvings: int = 0,
+    ) -> np.ndarray:
+        calls.append((start, end))
+        return once(course, start, end, past, grid, halvings)
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(executor_copasi._TimeCourse, "_once", counted)
+        pieces = executor_copasi.execute(plan, model, ["time", "X", "n"])
+    one = CopasiSBMLModel(source=sbml(M1), settings=SETTINGS)
+    one.lands = False
+    np.testing.assert_array_equal(
+        pieces.values, executor_copasi.execute(plan, one, ["time", "X", "n"]).values
+    )
+    assert len(calls) > 2
+
+
+@pytest.mark.parametrize("times", [[0, 1, 2, 5], None])
+@pytest.mark.parametrize(
+    ("threshold", "rate", "x0"), [("2", "1e-9", 0.0), ("0", "1e-12", 5.0)]
+)
+def test_a_slow_comparison_at_its_threshold_fires_in_time(
+    threshold: str, rate: str, x0: float, times: list[float] | None
+) -> None:
+    """A comparison whose operands move slowly after a change sets them to its threshold fires in time, at the defaults.
+
+    The shift is the change of the comparison over the resolution of the
+    time, at least two units in the last place of the threshold, see
+    `CopasiSBMLModel._threshold_shift`.
+    """
+    source = at_threshold(f"X > {threshold}", rate=rate, x0=x0)
+    simulation = Simulation(
+        end=5, changes=[Change(1, {"X": float(threshold)})], times=times
+    )
+    copasi_model = CopasiSBMLModel(source=source)
+    roadrunner_model = RoadrunnerSBMLModel(source=source)
+    plan = compile_simulation(
+        simulation, roadrunner_model.symbols, roadrunner_model.uinfo
+    )
+    selections = ["time", "X", "n", "T1"]
+    copasi = executor_copasi.execute(plan, copasi_model, selections)
+    roadrunner = execute(plan, roadrunner_model, selections)
+    assert copasi["n"][-1] == roadrunner["n"][-1] == 1.0
+    assert copasi["T1"][-1] == pytest.approx(roadrunner["T1"][-1], abs=1e-6)
+
+
+def test_the_states_of_the_roots_are_found_for_one_root() -> None:
+    """The position of the states of the roots is told by their values, also for a single root.
+
+    The shift of `time >= 2` probed far is the value of its shift parameter
+    as well, which comes earlier in the values of COPASI.
+    """
+    model = CopasiSBMLModel(source=sbml(AT_SIX.replace("6", "2")), settings=SETTINGS)
+    at = model._states_at
+    assert at is not None
+    model.initialize([])
+    model.set_time(1.0)
+    model.mc.resetEventsFound()
+    assert model.mc.getValues().get(at) == 0.0
+    model.set_time(3.0)
+    model.mc.resetEventsFound()
+    assert model.mc.getValues().get(at) == 1.0
+
+
+#: a sawtooth whose reset `E` sets `G` to its threshold in every period
+SAWTOOTH = """
+model sawtooth
+  X = 0
+  X' = 1.1
+  n = 0
+  m = 0
+  E: at (X > 1), t0=true: X = 0, n = n + 1
+  G: at (X > 0), t0=true: m = m + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [[0, 0.5, 1, 1.5, 2.5], None])
+@pytest.mark.parametrize(
+    ("x0", "reset"),
+    [(0.0, "E: at (X > 1), t0=true: X = 0"), (2.0, "E: at (X > 3), t0=true: X = 2")],
+)
+def test_a_trigger_at_its_threshold_at_the_start_of_a_model_which_resets_it(
+    x0: float, reset: str, times: list[float] | None
+) -> None:
+    """The event COPASI fires at the initial values is kept in a model whose events reset the trigger.
+
+    COPASI executes it at the start of the first integration, which the
+    walk of the run in pieces repeats, so it is executed first, see
+    `executor_copasi._TimeCourse._integrate`.
+    """
+    threshold = f"{x0:g}"
+    model = f"""
+    model reset
+      X = {x0}
+      X' = 1.1
+      m = 0
+      G: at (X > {threshold}), t0=true: m = m + 1
+      {reset}
+    end
+    """
+    copasi, roadrunner = both(
+        sbml(model), Simulation(end=2.5, times=times), ["time", "X", "m"]
+    )
+    assert copasi["m"][-1] == roadrunner["m"][-1] == 3.0
+    if times is None:
+        assert_equal_rows(copasi, roadrunner)
+    else:
+        assert_equal_results(copasi, roadrunner)
+
+
+@pytest.mark.parametrize("end", [5.0, 10.0])
+@pytest.mark.parametrize("times", [True, False])
+def test_a_change_at_the_time_of_an_event_of_the_model_which_resets(
+    end: float, times: bool
+) -> None:
+    """A change at the time of an event of the model, whose run LSODA fails with a critical time behind its output time, is integrated in halves.
+
+    See `executor_copasi._TimeCourse._once`.
+    """
+    model = """
+    model reset
+      X = 5
+      X' = 1
+      n = 0
+      E: at (time > 1), t0=true: X = 0
+      G: at (X > 0.5), t0=true: n = n + 1
+    end
+    """
+    simulation = Simulation(
+        end=end,
+        changes=[Change(1, {"X": 2.0})],
+        times=[0, 1, 2.5, end] if times else None,
+    )
+    copasi, roadrunner = both(sbml(model), simulation, ["time", "X", "n"])
+    assert copasi.values[-1, 1:].tolist() == pytest.approx([end - 1.0, 1.0])
+    if times:
+        assert_equal_results(copasi, roadrunner)
+    else:
+        assert_equal_rows(copasi, roadrunner, changes=[1.0])
+
+
+@pytest.mark.parametrize("times", [True, False])
+def test_two_thousand_resets_of_a_threshold(times: bool) -> None:
+    """A run with 2000 events which set a trigger to its threshold, walked in pieces without recursion."""
+    end = 2000 / 1.1 + 0.5
+    simulation = Simulation(end=end, times=[0.0, end / 2, end] if times else None)
+    copasi = executor_copasi.execute(
+        plan_of(sbml(SAWTOOTH), simulation),
+        CopasiSBMLModel(source=sbml(SAWTOOTH), settings=SETTINGS),
+        ["time", "n", "m"],
+    )
+    assert copasi.values[-1, 1:].tolist() == [2000.0, 2001.0]
+
+
+def test_the_walk_of_a_run_is_linear_in_its_events() -> None:
+    """The integrations of the walk of a run grow with the number of its events, not with its square."""
+    once = executor_copasi._TimeCourse._integrate_once
+    calls = [0]
+
+    def counted(
+        course: executor_copasi._TimeCourse,
+        start: float,
+        end: float,
+        past: bool,
+        grid: np.ndarray | None,
+    ) -> np.ndarray:
+        calls[0] += 1
+        return once(course, start, end, past, grid)
+
+    counts = []
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(executor_copasi._TimeCourse, "_integrate_once", counted)
+        for periods in (50, 100, 200):
+            calls[0] = 0
+            simulation = Simulation(end=periods / 1.1 + 0.5)
+            copasi = executor_copasi.execute(
+                plan_of(sbml(SAWTOOTH), simulation),
+                CopasiSBMLModel(source=sbml(SAWTOOTH), settings=SETTINGS),
+                ["time", "m"],
+            )
+            assert copasi["m"][-1] == periods + 1
+            counts.append(calls[0])
+    # about two integrations per event
+    assert counts[1] <= 2 * counts[0] + 4
+    assert counts[2] <= 2 * counts[1] + 4
+    assert counts[2] <= 3 * 200
+
+
+#: an event of the time which moves its own trigger, so its model lands, see
+#: `CopasiSBMLModel.lands`
+MOVED = """
+model moved
+  tn = TN
+  n = 0
+  total = 0
+  total' = -0.1 * total
+  E: at (time >= tn), t0=false: total = total + 10, n = n + 1, tn = tn + 5
+end
+"""
+
+
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+@pytest.mark.parametrize("start", [-1.0, -3.3, -0.5, -1e-3, 0.0])
+@pytest.mark.parametrize("tn", [0.0, 0.5])
+def test_a_walk_from_a_negative_start_reaches_its_output_times(
+    tn: float, start: float, times: bool
+) -> None:
+    """The walk of a run in pieces reaches an output time right after an event of the model with the steps of LSODA.
+
+    LSODA exceeds its internal step limit on an output time it is set to
+    one resolution after an event, see `executor_copasi._TimeCourse._piece`.
+    roadrunner evaluates the triggers at the time 0 also from a negative
+    start, a known difference for the event at 0, whose state after it
+    COPASI has from the time 0.
+    """
+    source = sbml(MOVED.replace("TN", repr(tn)))
+    grid = [start, *(t for t in (0.0, 0.5, 1.0, 2.0) if t > start)]
+    simulation = Simulation(start=start, end=2, times=grid if times else None)
+    copasi, roadrunner = both(source, simulation, ["time", "n", "total"])
+    assert copasi["n"][-1] == 1.0
+    if tn == 0.0 and start < 0.0:
+        before, after = copasi.time < 0.0, copasi.time > 0.0
+        assert np.all(copasi["n"][before] == 0.0)
+        assert np.all(copasi["total"][before] == 0.0)
+        np.testing.assert_allclose(
+            copasi["total"][after], 10.0 * np.exp(-0.1 * copasi.time[after]), rtol=1e-6
+        )
+    elif times:
+        assert_equal_results(copasi, roadrunner)
+    else:
+        assert_equal_rows(copasi, roadrunner, events=[tn] if tn > start else [])
+
+
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+def test_an_event_of_the_time_before_zero_from_a_negative_start(times: bool) -> None:
+    """`time >= -0.5` from the start -1 fires at -0.5, the rows before it untouched.
+
+    roadrunner evaluates the triggers at the time 0 also from a negative
+    start, a known difference: it fires the event at the start.
+    """
+    source = sbml(MOVED.replace("TN", "-0.5"))
+    grid = [-1.0, -0.75, -0.5, -0.25, 0.0, 1.0, 2.0]
+    simulation = Simulation(start=-1, end=2, times=grid if times else None)
+    copasi, _ = both(source, simulation, ["time", "n", "total"])
+    assert copasi["n"][-1] == 1.0
+    before, after = copasi.time < -0.5, copasi.time > -0.5
+    assert np.all(copasi["n"][before] == 0.0)
+    assert np.all(copasi["total"][before] == 0.0)
+    assert np.all(copasi["n"][after] == 1.0)
+    np.testing.assert_allclose(
+        copasi["total"][after],
+        10.0 * np.exp(-0.1 * (copasi.time[after] + 0.5)),
+        rtol=1e-6,
+    )
+    if times:
+        at = rows_at(copasi, -0.5)
+        assert at.shape[0] == 1 and at[0, 1] == 1.0 and at[0, 2] == 10.0

@@ -30,6 +30,18 @@ The methods report of a fit, see [Report of a fit](fitting.md#report-of-a-fit), 
 > *SIAM Journal on Scientific and Statistical Computing.* 1983;4(1):136-148.
 > [doi:10.1137/0904010](https://doi.org/10.1137/0904010)
 
+**AMICI.** The third simulation engine, see [Engines](simulation.md#engines), which compiles a model and integrates it with CVODES of SUNDIALS.
+
+> Fröhlich F, Weindl D, Schälte Y, Pathirana D, Paszkowski Ł, Lines GT, Stapor P, Hasenauer J.
+> **AMICI: high-performance sensitivity analysis for large ordinary differential equation models.**
+> *Bioinformatics.* 2021;37(20):3676-3677.
+> [doi:10.1093/bioinformatics/btab227](https://doi.org/10.1093/bioinformatics/btab227)
+
+> Hindmarsh AC, Brown PN, Grant KE, Lee SL, Serban R, Shumaker DE, Woodward CS.
+> **SUNDIALS: suite of nonlinear and differential/algebraic equation solvers.**
+> *ACM Transactions on Mathematical Software.* 2005;31(3):363-396.
+> [doi:10.1145/1089014.1089020](https://doi.org/10.1145/1089014.1089020)
+
 ## Standards
 
 **SBML Level 3.** The format of the models.

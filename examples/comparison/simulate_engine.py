@@ -1,8 +1,8 @@
-"""Simulation of SBML models with COPASI, the engine `copasi` of sbmlsim.
+"""Simulation of SBML models with an engine of sbmlsim, COPASI or AMICI.
 
-The engine is the optional extra `copasi` of sbmlsim, `pip install
-"sbmlsim[copasi]"`; a condition is a timecourse whose changes are set before
-the initialization of the model.
+The engines are the optional extras `copasi` and `amici` of sbmlsim, `pip
+install "sbmlsim[copasi]"` and `pip install "sbmlsim[amici]"`; a condition is
+a timecourse whose changes are set before the initialization of the model.
 """
 
 from typing import override
@@ -17,15 +17,18 @@ from sbmlsim.simulation import Simulation
 from sbmlsim.simulator import Simulator
 
 
-class SimulateCopasiSBML(SimulateSBML):
-    """Class for simulating an SBML model with the engine COPASI of sbmlsim."""
+class SimulateEngineSBML(SimulateSBML):
+    """Class for simulating an SBML model with an engine of sbmlsim."""
+
+    #: the engine of sbmlsim, see `sbmlsim.engine.Engine`
+    engine: str
 
     def __init__(self, **kwargs):
-        """Load the model into COPASI, with the selections of the comparison."""
+        """Load the model into the engine, with the selections of the comparison."""
         super().__init__(**kwargs)
         self.simulator = Simulator(
             n_workers=1,
-            engine="copasi",
+            engine=self.engine,
             absolute_tolerance=self.absolute_tolerance,
             relative_tolerance=self.relative_tolerance,
         )
@@ -48,7 +51,7 @@ class SimulateCopasiSBML(SimulateSBML):
     def simulate_condition(
         self, condition: Condition, timepoints: np.ndarray
     ) -> pd.DataFrame:
-        """Simulate the condition with COPASI."""
+        """Simulate the condition with the engine."""
         console.print(f"simulate condition: {condition.sid}")
         preinit_changes: dict[str, float] = {}
         for change in condition.changes:
@@ -69,3 +72,15 @@ class SimulateCopasiSBML(SimulateSBML):
 
         # the names of the concentration species without brackets
         return df.rename(columns=lambda c: str(c).removeprefix("[").removesuffix("]"))
+
+
+class SimulateCopasiSBML(SimulateEngineSBML):
+    """Class for simulating an SBML model with COPASI, the engine `copasi`."""
+
+    engine = "copasi"
+
+
+class SimulateAmiciSBML(SimulateEngineSBML):
+    """Class for simulating an SBML model with AMICI, the engine `amici`."""
+
+    engine = "amici"

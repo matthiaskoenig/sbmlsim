@@ -50,7 +50,7 @@ from typing import Any, Literal, NamedTuple, cast, override
 import matplotlib
 
 from sbmlsim import parallel
-from sbmlsim.engine import Engine, resolve_engine
+from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
 from sbmlsim.experiment import progress
 from sbmlsim.experiment.experiment import (
     DATASETS_DIR,
@@ -593,6 +593,7 @@ class ExperimentRunner:
     ) -> dict[str, "_Job"]:
         """Get what a worker needs to run every experiment, see `_run_job`."""
         rc, levels = _changed_rc_params(), _logger_levels()
+        cache = amici_cache(self.engine, self.models.values())
         return {
             sid: _Job(
                 experiment_class=type(self.experiments[sid]),
@@ -602,6 +603,7 @@ class ExperimentRunner:
                 jit_optimization=self.jit_optimization,
                 on_error=self.on_error,
                 engine=self.engine,
+                amici_cache=cache,
                 integrator_settings=(
                     dict(self.simulator.integrator_settings)
                     if self.simulator is not None
@@ -973,6 +975,10 @@ class _Job:
     #: the engine of the run, which the worker loads the models in and
     #: simulates them with, see `ExperimentRunner.engine`
     engine: Engine
+    #: the directory of the compiled models of AMICI of the run, which the
+    #: worker loads the models from, see `sbmlsim.engine.amici_cache`; `None` for the
+    #: other engines
+    amici_cache: str | None
     #: the settings of the integrator of the simulator of the run, `None` for
     #: a runner without a simulator
     integrator_settings: dict[str, IntegratorSetting] | None
@@ -1129,13 +1135,14 @@ def _run_job(job: _Job) -> _Outcome:
     simulator: Simulator | None = None
     if job.integrator_settings is not None:
         # a worker runs the scans of its experiment itself; the simulator of
-        # COPASI imports it through sbmlsim, see `sbmlsim.engine.import_copasi`
+        # COPASI or AMICI imports it through sbmlsim, see `sbmlsim.engine`
         simulator = Simulator(n_workers=1, engine=job.engine)
         simulator.set_integrator_settings(**job.integrator_settings)
     try:
         with (
             matplotlib.rc_context(job.rc),
             reporting(_EVENTS.put if _EVENTS is not None else None),
+            using_amici_cache(job.amici_cache),
         ):
             runner = ExperimentRunner(
                 [],
@@ -1276,7 +1283,8 @@ def run_experiments(
         progress: show the progress and the timings of the run, see
             `ExperimentRunner.run_experiments`.
         simulator: the simulator of the tasks, `Simulator()` without one; the
-            models are loaded in its engine, e.g. `Simulator(engine="copasi")`.
+            models are loaded in its engine, e.g. `Simulator(engine="copasi")`
+            or `Simulator(engine="amici")`.
 
     Returns:
         The results of the experiments.

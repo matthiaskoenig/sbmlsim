@@ -105,9 +105,7 @@ def test_loads_with_the_selections_of_roadrunner(source: Path) -> None:
     model = CopasiSBMLModel(source=source)
     assert model.engine is Engine.COPASI
     assert model.selections is not None
-    assert set(model.selections) == set(
-        RoadrunnerSBMLModel(source=source).selections or ()
-    )
+    assert model.selections == RoadrunnerSBMLModel(source=source).selections
     assert not model.selections_given
 
 

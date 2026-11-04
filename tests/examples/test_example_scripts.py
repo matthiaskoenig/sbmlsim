@@ -4,10 +4,10 @@ Every example is run as a module in a temporary working directory, so the
 files it writes do not end up in the repository. An example which breaks
 fails the test suite.
 
-The examples which need tools which are no extra of sbmlsim (the AMICI
-scripts of `examples.comparison`) are not run here, see `examples/README.md`;
+`examples.comparison.icg_amici_simulation` needs the extra `amici`, which
+`dev` does not install, and is skipped without it, see `examples/README.md`;
 `examples.comparison.example_comparison` compares roadrunner with COPASI, the
-extra `copasi`, and skips AMICI when it is not installed.
+extra `copasi`, and with AMICI when the extra `amici` is installed.
 """
 
 import importlib.util
@@ -39,6 +39,7 @@ SLOW = {
     "examples.sensitivity.sensitivity_example",
     "examples.repressilator.repressilator_scans",
     "examples.hctz_fitting.simulations",
+    "examples.comparison.icg_amici_simulation",
 }
 
 #: seconds an example may take, one which hangs, e.g. on a pool, fails its test
@@ -69,6 +70,7 @@ SCRIPTS = [
     "examples.sensitivity.sensitivity_example",
     "examples.comparison.diff_example",
     "examples.comparison.example_comparison",
+    "examples.comparison.icg_amici_simulation",
     "examples.demo.demo",
     "examples.repressilator.repressilator",
     "examples.repressilator.repressilator_scans",
@@ -88,6 +90,11 @@ def run_example(
         and importlib.util.find_spec("COPASI") is None
     ):
         pytest.skip("the extra `copasi` is not installed")
+    if (
+        module == "examples.comparison.icg_amici_simulation"
+        and importlib.util.find_spec("amici") is None
+    ):
+        pytest.skip("the extra `amici` is not installed")
     # the output of rich is utf-8 on every platform, the locale of windows is not;
     # its lines are not wrapped, so a message is found in the output
     env = dict(

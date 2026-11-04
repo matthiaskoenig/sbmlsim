@@ -126,11 +126,20 @@ class _OtherEngineModel(SBMLModel):
     "sbml", [REPRESSILATOR_SBML, DEMO_SBML, MIDAZOLAM_SBML, HCTZ_SBML]
 )
 def test_default_selections_are_the_ones_of_roadrunner(sbml: Path) -> None:
-    """The selections from the SBML are the ones roadrunner selects by default."""
+    """The selections from the SBML are the ones roadrunner selects by default, in its order."""
     model = RoadrunnerSBMLModel(source=sbml)
     assert model.selections is not None
-    assert set(model.default_selections()) == set(model.selections)
-    assert len(model.default_selections()) == len(model.selections)
+    assert model.default_selections() == model.selections
+
+
+def test_default_selections_are_in_the_order_of_roadrunner() -> None:
+    """The entities without a rule come first in every kind, the ones of a rule after them in the order of the SBML."""
+    model = RoadrunnerSBMLModel(source=probe_sbml(RULED))
+    assert model.selections is not None
+    assert model.default_selections() == model.selections
+    assert model.selections[:8] == ["time", "s1", "s4", "s2", "s3", "b2", "b1", "b3"]
+    assert model.selections[8:13] == ["p1", "p4", "p5", "p2", "p3"]
+    assert model.selections[13:17] == ["J1", "c1", "c2", "c3"]
 
 
 def test_default_selections_without_a_compartment_without_a_size() -> None:
@@ -326,3 +335,37 @@ def test_a_message_of_the_events_names_the_sbml_model(
     with caplog.at_level(logging.WARNING, logger="sbmlsim.simulator.changes"):
         assert triggers([event], model.r_loaded, 0.0, model) == [None]
     assert "of the model 'probe'" in caplog.records[0].getMessage()
+
+
+#: entities of every kind with and without rules, in an order which tells the
+#: order of roadrunner apart from the order of the SBML
+RULED = """
+model ruled
+  compartment c1 = 1
+  compartment c2 = 2
+  compartment c3 = 3
+  c2 := 2 * c1
+  c3' = 0.1
+  species s1 in c1 = 1
+  species s2 in c1 = 2
+  species s3 in c1 = 3
+  species s4 in c1 = 4
+  species $b1 in c1 = 5
+  species $b2 in c1 = 6
+  species $b3 in c1 = 7
+  s2 := 2 * s1
+  s3' = 1
+  b1 := 3 * s1
+  b3' = 1
+  p1 = 1
+  p2 = 2
+  p3 = 3
+  p4 = 4
+  p5 = 5
+  p3 := p1 + 1
+  p2' = 1
+  p5 = 3 * p1
+  E: at (time > 1): p4 = 2
+  J1: s1 -> s4; p1 * s1
+end
+"""

@@ -20,8 +20,8 @@ from typing import Any
 
 from sbmlsim.engine import Engine
 
-#: the packages whose versions a fit records; roadrunner also with the engine
-#: COPASI, which draws the designs of the sampling
+#: the packages whose versions a fit records; roadrunner also with the
+#: engines COPASI and AMICI, since roadrunner draws the designs of the sampling
 PACKAGES: tuple[str, ...] = ("sbmlsim", "libroadrunner", "scipy", "numpy")
 
 #: the packages whose versions a fit records in addition to `PACKAGES` by the
@@ -29,6 +29,7 @@ PACKAGES: tuple[str, ...] = ("sbmlsim", "libroadrunner", "scipy", "numpy")
 ENGINE_PACKAGES: dict[Engine, tuple[str, ...]] = {
     Engine.ROADRUNNER: (),
     Engine.COPASI: ("python-copasi",),
+    Engine.AMICI: ("amici",),
 }
 
 #: directories below a data path which hold no data: caches of python, of

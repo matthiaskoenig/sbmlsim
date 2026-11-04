@@ -19,7 +19,7 @@ and kept, see `sbmlsim.parallel.worker_cache`, in the engine of the model of
 the parent, with its integrator and every one of its settings, those of the
 simulator and those set on the model, so a worker integrates as the parent
 does and the result does not depend on the number of workers (bitwise with
-roadrunner, within the integration with COPASI, see
+roadrunner and AMICI, within the integration with COPASI, see
 `sbmlsim.simulator.simulator`).
 
 A point which fails is reported once, by its error: roadrunner logs the error
@@ -42,7 +42,7 @@ import numpy as np
 import roadrunner
 
 from sbmlsim import parallel
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, amici_cache, using_amici_cache
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
@@ -95,10 +95,15 @@ class ModelSpec:
         jit_optimization: the optimization level the model is compiled with,
             see `RoadrunnerSBMLModel.jit_optimization`: a worker compiles it
             at the level of the parent, whatever its environment says;
-            `None` for a model of COPASI, which compiles nothing.
+            `None` for a model of COPASI or AMICI, which roadrunner does not
+            compile.
         integrator: the name of the integrator, e.g. `cvode` or `lsoda`.
         settings: every setting of the integrator by its name, the absolute
             tolerance as the `AbsoluteTolerance` of the model.
+        cache: the directory of the compiled models a model of AMICI was
+            loaded from, which a worker loads it from as well, see
+            `sbmlsim.model.model_amici.using_cache`; `None` for the other
+            engines.
     """
 
     key: str
@@ -108,6 +113,7 @@ class ModelSpec:
     jit_optimization: JitOptimization | None
     integrator: str
     settings: tuple[tuple[str, Any], ...]
+    cache: str | None = None
 
     @classmethod
     def of(cls, model: SBMLModel) -> ModelSpec:
@@ -133,6 +139,7 @@ class ModelSpec:
             model.jit_optimization if isinstance(model, RoadrunnerSBMLModel) else None
         )
         integrator, settings = model.integrator_state()
+        cache = amici_cache(model.engine, (model,))
         digest = hashlib.sha256(
             repr(
                 (
@@ -153,15 +160,19 @@ class ModelSpec:
             jit_optimization=jit_optimization,
             integrator=integrator,
             settings=settings,
+            cache=cache,
         )
 
     def load(self) -> SBMLModel:
         """Load the model in its engine with the integrator and its settings."""
-        model = load_model(
-            AbstractModel(source=self.source, parameters=dict(self.parameters) or None),
-            self.engine,
-            jit_optimization=self.jit_optimization,
-        )
+        with using_amici_cache(self.cache):
+            model = load_model(
+                AbstractModel(
+                    source=self.source, parameters=dict(self.parameters) or None
+                ),
+                self.engine,
+                jit_optimization=self.jit_optimization,
+            )
         model.set_integrator_state((self.integrator, self.settings))
         return model
 

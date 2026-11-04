@@ -43,16 +43,23 @@ def test_versions_name_the_simulation_stack() -> None:
     versions = collect_versions()
     assert {"python", "sbmlsim", "libroadrunner", "scipy", "numpy"} <= set(versions)
     assert "python-copasi" not in versions
+    assert "amici" not in versions
 
 
-def test_versions_of_a_fit_with_copasi_name_python_copasi(repo: Path) -> None:
-    """A fit with COPASI records its version, roadrunner draws the designs."""
+@pytest.mark.parametrize(
+    ("engine", "package"),
+    [(Engine.COPASI, "python-copasi"), (Engine.AMICI, "amici")],
+)
+def test_versions_of_a_fit_name_the_package_of_its_engine(
+    engine: Engine, package: str, repo: Path
+) -> None:
+    """A fit records the version of its engine, roadrunner draws the designs."""
     try:
-        expected = importlib.metadata.version("python-copasi")
+        expected = importlib.metadata.version(package)
     except importlib.metadata.PackageNotFoundError:
         expected = "not installed"
-    versions = collect_versions(Engine.COPASI)
-    assert versions["python-copasi"] == expected
+    versions = collect_versions(engine)
+    assert versions[package] == expected
     assert {"sbmlsim", "libroadrunner", "scipy", "numpy"} <= set(versions)
     provenance = create_provenance(
         arguments={},
@@ -61,9 +68,9 @@ def test_versions_of_a_fit_with_copasi_name_python_copasi(repo: Path) -> None:
         base_path=repo,
         files=[],
         start_values={},
-        engine=Engine.COPASI,
+        engine=engine,
     )
-    assert provenance.versions["python-copasi"] == expected
+    assert provenance.versions[package] == expected
     assert FitProvenance.from_dict(provenance.to_dict()) == provenance
 
 
