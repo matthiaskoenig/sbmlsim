@@ -22,7 +22,9 @@ written into it during a simulation is not seen. The SBML which COPASI loads
 therefore makes every entity which a change can set (the parameters,
 compartments and species which are not the variable of an assignment rule)
 non-constant and the target of one event which never fires
-(`TARGETS_EVENT`), which makes them part of the state of COPASI.
+(`TARGETS_EVENT`), which makes them part of the state of COPASI; an entity
+whose number in the SBML is not finite (`NaN`) is left out, COPASI integrates
+no state which is not finite, and a change of it raises.
 """
 
 from __future__ import annotations
@@ -272,8 +274,12 @@ class CopasiSBMLModel(SBMLModel):
         # the data model is removed when the model is released, also when the
         # model is never used, see `close`
         self._finalizer = weakref.finalize(self, _remove_datamodel, dm)
+        #: the entities whose value in the SBML is not finite, which COPASI
+        #: keeps out of its state, see `_with_targets_event`
+        self._not_a_number: frozenset[str]
+        targeted, self._not_a_number = _with_targets_event(sbml, self)
         try:
-            imported = dm.importSBMLFromString(_with_targets_event(sbml, self))
+            imported = dm.importSBMLFromString(targeted)
         except COPASI.CCopasiException:
             imported = False
         drain_messages(self.label)
@@ -721,6 +727,11 @@ class CopasiSBMLModel(SBMLModel):
                 f"COPASI cannot set '{selection}', it is the variable of an "
                 f"assignment rule."
             )
+        if resolved.entity in self._not_a_number:
+            raise RuntimeError(
+                f"COPASI cannot set '{selection}' during a simulation, its value "
+                f"in the SBML is not a number, which COPASI keeps out of its state."
+            )
         mc = self.mc
         entity = self.entities[resolved.entity]
         number = value
@@ -734,6 +745,41 @@ class CopasiSBMLModel(SBMLModel):
             number = value * size * mc.getQuantity2NumberFactor()
         _write_value(mc.getMathObject(entity.getValueReference()), number)
         _update_current_values(mc)
+
+    def set_time(self, time: float) -> None:
+        """Set the current time of the model, between two integrations.
+
+        An integration of COPASI continues from the current time; the values
+        which depend on the time are updated.
+
+        Args:
+            time: the time.
+        """
+        mc = self.mc
+        _write_value(mc.getMathObject(self.cmodel.getValueReference()), time)
+        _update_current_values(mc)
+
+    def rates(self, states: Sequence[str]) -> np.ndarray:
+        """Get the current rates of change of states.
+
+        Args:
+            states: the ids of species, whose rates are rates of their amounts,
+                or of the targets of rate rules, see `state_ids`.
+
+        Returns:
+            The rate of every state.
+        """
+        mc = self.mc
+        _update_current_values(mc)
+        n2q = 1.0 / mc.getQuantity2NumberFactor()
+        return np.array(
+            [
+                mc.getMathObject(self.entities[sid].getRateReference()).getValue()
+                * (n2q if sid in self.symbols.species else 1.0)
+                for sid in states
+            ],
+            dtype=float,
+        )
 
     @override
     def has_selection(self, selection: str) -> bool:
@@ -1092,21 +1138,25 @@ def _vector(references: Sequence[Any]) -> COPASI.ObjectStdVector:
     return vector
 
 
-def _with_targets_event(sbml: str, model: SBMLModel) -> str:
+def _with_targets_event(sbml: str, model: SBMLModel) -> tuple[str, frozenset[str]]:
     """Make the entities a change can set part of the state of COPASI.
 
     Every parameter, compartment and species which is not the variable of an
     assignment rule or a conversion factor, which SBML requires to be
     constant, is made non-constant and the target of an event which
     never fires (`TARGETS_EVENT`), which assigns it its own value, see the
-    module.
+    module. An entity whose value in the SBML is a number which is not finite
+    (`NaN`, e.g. a compartment of the HCTZ model, or an infinity) and which
+    has no initial assignment is left out: COPASI integrates no state which
+    is not finite (`CTrajectoryMethod (25)`, an invalid state).
 
     Args:
         sbml: the SBML of the model.
         model: the model, whose symbols and label are used.
 
     Returns:
-        The SBML which COPASI loads.
+        The SBML which COPASI loads, and the entities which are left out
+        because their value is not finite.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
     if doc.getLevel() < 2:
@@ -1122,17 +1172,24 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> str:
     if sbml_model.isSetConversionFactor():
         constants.add(sbml_model.getConversionFactor())
     targets: list[str] = []
+    not_a_number: set[str] = set()
     for entity in (
         *sbml_model.getListOfParameters(),
         *sbml_model.getListOfCompartments(),
         *sbml_model.getListOfSpecies(),
     ):
-        if entity.getId() in symbols.assignment_rules or entity.getId() in constants:
+        sid = entity.getId()
+        if sid in symbols.assignment_rules or sid in constants:
+            continue
+        if sid not in symbols.initial_assignments and not math.isfinite(
+            _number(entity)
+        ):
+            not_a_number.add(sid)
             continue
         entity.setConstant(False)
-        targets.append(entity.getId())
+        targets.append(sid)
     if not targets:
-        return sbml
+        return sbml, frozenset(not_a_number)
     event: libsbml.Event = sbml_model.createEvent()
     event.setId(TARGETS_EVENT)
     trigger: libsbml.Trigger = event.createTrigger()
@@ -1145,4 +1202,22 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> str:
         assignment: libsbml.EventAssignment = event.createEventAssignment()
         assignment.setVariable(target)
         assignment.setMath(libsbml.parseL3Formula(target))
-    return libsbml.writeSBMLToString(doc)
+    return libsbml.writeSBMLToString(doc), frozenset(not_a_number)
+
+
+def _number(entity: Any) -> float:
+    """Get the number of a parameter, a compartment or a species in the SBML.
+
+    Returns:
+        The value, size, initial amount or initial concentration, 0 without
+        one.
+    """
+    if isinstance(entity, libsbml.Species):
+        if entity.isSetInitialAmount():
+            return entity.getInitialAmount()
+        if entity.isSetInitialConcentration():
+            return entity.getInitialConcentration()
+        return 0.0
+    if isinstance(entity, libsbml.Compartment):
+        return entity.getSize() if entity.isSetSize() else 0.0
+    return entity.getValue() if entity.isSetValue() else 0.0

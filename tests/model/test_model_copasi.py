@@ -268,6 +268,35 @@ def test_a_state_of_a_rate_rule_is_set() -> None:
     assert model.value("RR") == pytest.approx(3.0 * 15.0, rel=1e-15)
 
 
+def test_a_value_which_is_not_a_number_is_no_state() -> None:
+    """An entity whose value is `NaN` is no state of COPASI, a change cannot set it.
+
+    COPASI integrates no state which is not finite, as the compartments of
+    the HCTZ model whose size is `NaN`; the value is set before the
+    initialization.
+    """
+    source = (
+        sbml(
+            "model undefined_values\n  compartment V = 1\n  p = 1\n  X = 0\n  X' = 1\nend"
+        )
+        .replace('id="p" value="1"', 'id="p" value="NaN"')
+        .replace(
+            'id="V" spatialDimensions="3" size="1"',
+            'id="V" spatialDimensions="3" size="NaN"',
+        )
+    )
+    model = CopasiSBMLModel(source=source)
+    assert math.isnan(model.value("p")) and math.isnan(model.value("V"))
+    with pytest.raises(RuntimeError, match=r"'p'.*not a number"):
+        model.values.setValue("p", 1.0)
+    with pytest.raises(RuntimeError, match=r"'V'.*not a number"):
+        model.values.setValue("V", 1.0)
+    model.initialize([_a("p", 3.0)])
+    assert model.value("p") == 3.0
+    model.values.setValue("X", 2.0)
+    assert model.value("X") == 2.0
+
+
 def test_the_output_names_and_their_transform() -> None:
     model = CopasiSBMLModel(source=sbml(PROBE))
     selections = ["time", "A", "[A]", "k1", "C", "J1"]

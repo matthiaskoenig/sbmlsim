@@ -25,13 +25,14 @@ The semantics are the ones of PEtab v2:
    of the integrator at every change, an output of times at its times which
    are changes. A segment of a model with events stops just before its end,
    a unit in the last place of the larger magnitude of its start and end
-   and at least four machine epsilons, see `_stop` and `_simulate_times`, so
-   an event of the model at the time of a change fires after the change and
-   an event at the end after the state before it. A segment too short for
-   CVODE, a few units in the last place in absolute time, is not
-   integrated: its state is the one at its start, and the triggers before
-   the next change are evaluated at the time the model is at, its start, so
-   an event of the time in it fires once, after it, see `_integrable`.
+   and at least four machine epsilons, see `segment_stop` and
+   `_simulate_times`, so an event of the model at the time of a change fires
+   after the change and an event at the end after the state before it. A
+   segment too short for CVODE, a few units in the last place in absolute
+   time, is not integrated: its state is the one at its start, and the
+   triggers before the next change are evaluated at the time the model is
+   at, its start, so an event of the time in it fires once, after it, see
+   `integrable`.
 6. An event of the model within the resolution of the time after the end is
    at the end, see `_event_at_the_end`: the steps of the integrator have it
    as two rows, the states before and after it, an output time at the end
@@ -289,9 +290,9 @@ def _simulate(
         # the state before it as a row: the integration stops just before the
         # end of the segment, where roadrunner does not fire it, see
         # `fire_events` and `_event_at_the_end`
-        end_stop = _stop(start, end) if model_events else end
+        end_stop = segment_stop(start, end) if model_events else end
         # a segment too short for CVODE keeps the state at its start
-        held = not _integrable(start, end_stop)
+        held = not integrable(start, end_stop)
         if held:
             if plan.output is OutputMode.INTEGRATOR:
                 block = _held(r, np.array([a, b]))
@@ -481,7 +482,7 @@ def _steps(
     return block, True
 
 
-def _stop(start: float, end: float) -> float:
+def segment_stop(start: float, end: float) -> float:
     """Get the time just before the end of a segment where its integration stops.
 
     It is one unit in the last place of the times of the segment before its
@@ -502,7 +503,7 @@ def _stop(start: float, end: float) -> float:
     return end - max(float(np.spacing(max(abs(start), abs(end)))), STOP)
 
 
-def _integrable(start: float, stop: float) -> bool:
+def integrable(start: float, stop: float) -> bool:
     """Whether CVODE integrates from the start of a segment to its stop.
 
     CVODE rejects an output time closer to the start than twice its rounding
@@ -512,11 +513,12 @@ def _integrable(start: float, stop: float) -> bool:
     a few units in the last place apart, is not integrated. Its state is the
     one at its start, which differs from the integrated one by the rate times
     its duration, and the events of the time in it fire after it, see
-    `_simulate`.
+    `_simulate`. LSODA of COPASI has the same condition (`TOUT too close to
+    T`), see `sbmlsim.simulator.executor_copasi`.
 
     Args:
         start: the start of the segment in the time of roadrunner.
-        stop: where its integration stops, see `_stop`.
+        stop: where its integration stops, see `segment_stop`.
 
     Returns:
         Whether the segment is integrated, the condition of CVODE.
@@ -526,7 +528,7 @@ def _integrable(start: float, stop: float) -> bool:
 
 
 def _held(r: roadrunner.RoadRunner, times: np.ndarray) -> np.ndarray:
-    """Get the rows of a segment which is not integrated, see `_integrable`.
+    """Get the rows of a segment which is not integrated, see `integrable`.
 
     Args:
         r: the roadrunner instance, in the state at the start of the segment.
