@@ -47,7 +47,7 @@ class Patel1984(HCTZSimulationExperiment):
             df: pd.DataFrame = self.load_dataframe(fig_id)
             for label_key, df_label in df.groupby("label"):
                 label = str(label_key)
-                dset = DataSet.from_df(df_label, self.ureg)
+                dset = DataSet.from_df(df_label)
                 if label.startswith("hctz"):
                     dset.unit_conversion("mean", 1 / self.Mr.hctz)
                 if label.startswith("amount"):

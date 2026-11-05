@@ -246,7 +246,7 @@ class Patel1984(SimulationExperiment):
     @override
     def datasets(self) -> dict[str, DataSet]:
         units = {"time": "hr", "cp": "ng/ml", "cp_sd": "ng/ml"}
-        return {"hctz25": DataSet.from_df(patel1984, udict=units, ureg=self.ureg)}
+        return {"hctz25": DataSet.from_df(patel1984, udict=units)}
 
     @override
     def models(self) -> dict[str, Path]:
@@ -316,7 +316,7 @@ runs                5
 workers             1 (serial)
 converged           5/5 runs
 best cost           425.867
-optimizer time      0.2 s
+optimizer time      0.3 s
 Ka_dis_hctz   0.297 / h
 KI__HCTZEX_k  0.00511 / ml
 ```

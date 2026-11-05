@@ -92,9 +92,7 @@ class DoseResponseExperiment(SimulationExperiment):
                 "glc": df["glc_unit"].unique()[0],
                 "mean": df["unit"].unique()[0],
             }
-            dsets[hormone_key.lower()] = DataSet.from_df(
-                df, ureg=self.ureg, udict=udict
-            )
+            dsets[hormone_key.lower()] = DataSet.from_df(df, udict=udict)
 
         return dsets
 

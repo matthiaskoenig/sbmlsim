@@ -50,7 +50,7 @@ class Hctz(SimulationExperiment):
     @override
     def datasets(self) -> dict[str, DataSet]:
         units = {"time": "hr", "cp": "ng/ml"}
-        return {"patel1984": DataSet.from_df(patel1984, udict=units, ureg=self.ureg)}
+        return {"patel1984": DataSet.from_df(patel1984, udict=units)}
 
     @override
     def models(self) -> dict[str, Path]:

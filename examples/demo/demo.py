@@ -34,7 +34,7 @@ class DemoExperiment(SimulationExperiment):
     @override
     def models(self) -> dict[str, AbstractModel | Path]:
         """Define models."""
-        return {"model": RoadrunnerSBMLModel(source=DEMO_SBML, ureg=self.ureg)}
+        return {"model": RoadrunnerSBMLModel(source=DEMO_SBML)}
 
     @override
     def simulations(self) -> dict[str, Simulation | Scan]:

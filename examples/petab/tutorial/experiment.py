@@ -103,7 +103,7 @@ class BoehmTutorial(SimulationExperiment):
             index="time", columns="observableId", values="measurement"
         ).reset_index()
         units = {"time": "min", **dict.fromkeys(OBSERVABLES, "dimensionless")}
-        return {"measurement_data": DataSet.from_df(wide, udict=units, ureg=self.ureg)}
+        return {"measurement_data": DataSet.from_df(wide, udict=units)}
 
     def models(self) -> dict[str, AbstractModel | Path]:
         """Get the model with the standard deviations of the noise as parameters."""

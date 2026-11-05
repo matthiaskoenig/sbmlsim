@@ -74,7 +74,7 @@ class Beermann1976(HCTZSimulationExperiment):
             df: pd.DataFrame = self.load_dataframe(fig_id)
             for label_key, df_label in df.groupby("label"):
                 label = str(label_key)
-                dset = DataSet.from_df(df_label, self.ureg)
+                dset = DataSet.from_df(df_label)
                 if fig_id == "Tab1A":
                     dset.unit_conversion("value", 1 / self.Mr.hctz)
                 if fig_id == "Fig3" and label.startswith("hctz"):

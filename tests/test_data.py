@@ -639,3 +639,69 @@ def test_from_df_the_range_of_a_row_is_converted_once() -> None:
     )
     assert units["value_min"].tolist() == pytest.approx([0.5, 1.5])
     assert units["value_max"].tolist() == pytest.approx([1.5, 2.5])
+
+
+def test_from_df_uses_the_registry_of_the_package_by_default() -> None:
+    """A dataset needs no registry: it reads its units with the one of sbmlsim."""
+    from sbmlsim.units import ureg
+
+    dset = DataSet.from_df(pd.DataFrame({"cp": [1.0]}), udict={"cp": "ng/ml"})
+    assert dset.uinfo.ureg is ureg
+    assert dset.get_quantity("cp").to("µg/l").magnitude[0] == pytest.approx(1.0)
+
+
+def test_evaluate_function_uses_the_registry_of_the_package_by_default() -> None:
+    """A function of data is evaluated in the registry of the package by default."""
+    import xarray as xr
+
+    from sbmlsim.data import evaluate_function
+
+    y = xr.DataArray([1.0, 2.0], dims="time", attrs={"units": "mM"})
+    result = evaluate_function("2 * y", {"y": y})
+    assert list(result.values) == [2.0, 4.0]
+
+
+@pytest.mark.parametrize(
+    ("data", "udict", "columns"),
+    [
+        # the units of udict follow their quantity
+        (
+            {"time": [1.0], "cp": [2.0], "cp_sd": [0.5]},
+            {"time": "hr", "cp": "ng/ml"},
+            ["time", "time_unit", "cp", "cp_sd", "cp_unit"],
+        ),
+        # unit columns before their quantity and uncertainties scattered
+        (
+            {
+                "cp_unit": ["ng/ml"],
+                "cp_se": [0.1],
+                "label": ["a"],
+                "time_unit": ["hr"],
+                "cp": [2.0],
+                "time": [1.0],
+                "cp_sd": [0.5],
+            },
+            None,
+            ["label", "cp", "cp_sd", "cp_se", "cp_unit", "time", "time_unit"],
+        ),
+        # the unit of the statistics of a row follows them, sd and se of the mean
+        (
+            {
+                "time": [1.0],
+                "time_unit": ["hr"],
+                "mean": [2.0],
+                "unit": ["mg/l"],
+                "sd": [0.5],
+                "cv": [0.25],
+            },
+            None,
+            ["time", "time_unit", "mean", "mean_sd", "mean_unit", "cv"],
+        ),
+    ],
+)
+def test_from_df_a_quantity_is_followed_by_its_uncertainty_and_unit(
+    data: dict, udict: dict | None, columns: list[str]
+) -> None:
+    """Every quantity is followed by the columns of its uncertainty, then its unit."""
+    dset = DataSet.from_df(pd.DataFrame(data), udict=udict)
+    assert list(dset.columns) == columns

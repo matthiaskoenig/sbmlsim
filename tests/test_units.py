@@ -55,6 +55,15 @@ def test_package_registry() -> None:
     assert ureg("percent").to("dimensionless").magnitude == 0.01
 
 
+def test_units_information_uses_the_registry_of_the_package_by_default() -> None:
+    """Units information needs no registry, it has the one of the package."""
+    from sbmlsim.units import ureg
+
+    uinfo = UnitsInformation({"cp": "ng/ml"})
+    assert uinfo.ureg is ureg
+    assert uinfo.copy().ureg is ureg
+
+
 @pytest.mark.parametrize("unit", ["IU", "IU/ml", "IU_per_ml", "µIU/ml", "mg/IU"])
 def test_the_package_registry_has_no_international_unit(unit: str) -> None:
     """An international unit is specific to a substance, the registry has none (#263).

@@ -34,10 +34,9 @@ class AssignmentExperiment(SimulationExperiment):
     def models(self) -> dict[str, AbstractModel | Path]:
         """Define models, with and without a change of the dose."""
         return {
-            "model": RoadrunnerSBMLModel(source=MODEL_PATH, ureg=self.ureg),
+            "model": RoadrunnerSBMLModel(source=MODEL_PATH),
             "model_changes": RoadrunnerSBMLModel(
                 source=MODEL_PATH,
-                ureg=self.ureg,
                 changes={"D": Q(2.0, "mmole")},
             ),
         }

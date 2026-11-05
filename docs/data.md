@@ -10,7 +10,6 @@ A `DataSet` is created from a data frame and the units of its columns. Here are 
 import pandas as pd
 
 from sbmlsim.data import DataSet
-from sbmlsim.units import ureg
 
 patel1984 = pd.DataFrame(
     {
@@ -19,20 +18,20 @@ patel1984 = pd.DataFrame(
         "cp_sd": [21.9, 32.4, 39.1, 36.0, 29.0, 21.1, 11.6, 9.5, 11.9, 6.3, 5.2],
     }
 )
-dset = DataSet.from_df(patel1984, ureg=ureg, udict={"time": "hr", "cp": "ng/ml"})
+dset = DataSet.from_df(patel1984, udict={"time": "hr", "cp": "ng/ml"})
 print(dset.head(3))
 print(dset.get_quantity("cp")[:3].to("µg/l").round(1))
 ```
 
 ```text title="Output"
-   time    cp  cp_sd time_unit cp_unit
-0   0.5  22.8   21.9        hr   ng/ml
-1   1.0  71.6   32.4        hr   ng/ml
-2   1.5  97.9   39.1        hr   ng/ml
+   time time_unit    cp  cp_sd cp_unit
+0   0.5        hr  22.8   21.9   ng/ml
+1   1.0        hr  71.6   32.4   ng/ml
+2   1.5        hr  97.9   39.1   ng/ml
 [22.8 71.6 97.9] microgram / liter
 ```
 
-`udict` gives the unit of a column, and the columns `cp_sd`, `cp_se`, `cp_min` and `cp_max` share the unit of `cp`. `get_quantity` returns a column as a pint quantity, which converts to any unit of the same dimension. `ureg` is the unit registry of `sbmlsim`; inside an experiment use `self.ureg`.
+`udict` gives the unit of a column, and the columns `cp_sd`, `cp_se`, `cp_min` and `cp_max` share the unit of `cp`. `get_quantity` returns a column as a pint quantity, which converts to any unit of the same dimension. A dataset reads its units with the unit registry of `sbmlsim`, see [Units](units.md); `ureg=` is only needed for a registry of your own.
 
 ### Units in the table
 
@@ -53,7 +52,7 @@ pkdb = pd.DataFrame(
         "unit": ["mg/l", "mg/l", "µg/l"],
     }
 )
-print(DataSet.from_df(pkdb, ureg=ureg))
+print(DataSet.from_df(pkdb))
 ```
 
 ```text title="Output"
@@ -69,6 +68,7 @@ A few more rules:
 
 - A unit with a number in it, as publications write it (`micromol/(0.5*hr)`, `ml/min/(1.73*m^2)`), is read as part of the values: `8.6 micromol/(0.5*hr)` becomes `17.2 micromole/hour`.
 - A column whose rows cannot be brought to one unit raises a `ValueError` that names the column and its units. That happens for units of different dimensions, units with an offset such as `degC`, units the registry does not know (see [Units](units.md#the-unit-registry-and-q)) and values that are not numbers.
+- Every quantity of a dataset is followed by the columns of its uncertainty, `_sd`, `_se`, `_min`, `_max` and `_cv`, and then by its unit, e.g. `time`, `time_unit`, `cp`, `cp_sd`, `cp_unit`, whatever the order of the data frame.
 - `from_df` does not change the data frame you pass in, and a copy or slice of a dataset has its own units.
 
 In an experiment, `datasets()` returns the datasets by key. `load_pkdb_dataframe(sid, data_path)` reads the TSV file of a PK-DB study from the `data_path` of the experiment; `examples/glucose/experiments/dose_response.py` shows it in use.
@@ -137,7 +137,7 @@ class Hctz(SimulationExperiment):
     @override
     def datasets(self) -> dict[str, DataSet]:
         units = {"time": "hr", "cp": "ng/ml"}
-        return {"patel1984": DataSet.from_df(patel1984, udict=units, ureg=self.ureg)}
+        return {"patel1984": DataSet.from_df(patel1984, udict=units)}
 
     @override
     def models(self) -> dict[str, Path]:
@@ -197,7 +197,7 @@ from sbmlsim.data import to_quantity
 
 conc = Data("[Cve_hctz]", task="task_po25").get_data(experiment, to_units="µmol/l")
 print(conc.dims, conc.attrs["units"])
-print(f"{to_quantity(conc, experiment.ureg).max():~.3f}")
+print(f"{to_quantity(conc).max():~.3f}")
 
 measured = Data("cp", dataset="patel1984").get_data(experiment)
 print(measured.dims, measured.attrs["units"], measured.values[:3])
@@ -256,16 +256,16 @@ import matplotlib.pyplot as plt
 
 from sbmlsim.plot import label_axes
 
-time = to_quantity(Data("time", task="task_doses").get_data(experiment), ureg)
+time = to_quantity(Data("time", task="task_doses").get_data(experiment))
 cp = Data("cp", task="task_doses").get_data(experiment)
 
 fig, ax = plt.subplots(figsize=(7, 3.5))
 for k, mg in enumerate(cp["dose.PODOSE_hctz"].values):
-    ax.plot(time[k].to("hr"), to_quantity(cp[k], ureg), label=f"{mg:g} mg")
-data_time = to_quantity(Data("time", dataset="patel1984").get_data(experiment), ureg)
+    ax.plot(time[k].to("hr"), to_quantity(cp[k]), label=f"{mg:g} mg")
+data_time = to_quantity(Data("time", dataset="patel1984").get_data(experiment))
 ax.plot(
     data_time,
-    to_quantity(measured, ureg),
+    to_quantity(measured),
     "o",
     color="black",
     label="Patel 1984 (25 mg)",
