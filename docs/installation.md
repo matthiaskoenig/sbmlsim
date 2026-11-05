@@ -53,7 +53,7 @@ Four features need packages which are not installed with `sbmlsim`:
 | --- | --- |
 | interactive HTML figures of experiments (`figure_formats=["html"]`, see [Plots and reports](plotting.md)) | `pip install plotly` |
 | hybrid models with neural networks ([PEtab SciML](petab_sciml.md)) | `pip install "sbmlsim[sciml]"` |
-| COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [Engines](simulation.md#engines)) | `pip install "sbmlsim[copasi]"` |
+| COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [COPASI](simulation.md#copasi)) | `pip install "sbmlsim[copasi]"` |
 | AMICI as a third simulation engine (`Simulator(engine="amici")`, see [AMICI](simulation.md#amici)) | `pip install "sbmlsim[amici]"` |
 
 AMICI has no wheels and is built from source when it is installed. It needs a C++ compiler, a BLAS library with its `cblas` header and the headers of HDF5 from the system, e.g. on Debian or Ubuntu:

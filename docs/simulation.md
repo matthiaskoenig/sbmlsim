@@ -240,7 +240,7 @@ print(res.variables)
 ['[Cve_hctz]', 'Aurine_hctz', 'Ri_hctz']
 ```
 
-The integrator settings of roadrunner go to the `Simulator`, or you set them later. Every setting is passed on to the integrator, and a name it does not know is an error. The settings apply to every model the simulator runs, also in worker processes. [Engines](#engines) lists the settings COPASI takes:
+The integrator settings of roadrunner go to the `Simulator`, or you set them later. Every setting is passed on to the integrator, and a name it does not know is an error. The settings apply to every model the simulator runs, also in worker processes. [Engines](#engines) lists the settings COPASI and AMICI take:
 
 ```python
 simulator = Simulator(absolute_tolerance=1e-10, relative_tolerance=1e-10)
@@ -329,12 +329,7 @@ Simulation([0.0, 12] hr, preinit=0, changes=2, integrator)
 
 ## Engines
 
-`sbmlsim` simulates with [libroadrunner](https://libroadrunner.org) by default. [COPASI](https://copasi.org) and [AMICI](https://github.com/AMICI-dev/AMICI) are a second and a third engine. Each comes with an optional extra, `copasi` installs python-copasi and `amici` installs AMICI, see [Optional packages](installation.md#optional-packages) for the build requirements of AMICI:
-
-```bash
-pip install "sbmlsim[copasi]"
-pip install "sbmlsim[amici]"
-```
+An engine is the simulator which integrates a model. `sbmlsim` compiles every simulation into one plan, the segments between its changes with the output of each, and an engine runs that plan: it integrates the segments and finds the events of the model, while `sbmlsim` applies the changes and fires the events a change triggers. Since all engines run the same plan, every rule of [The semantics](#the-semantics) holds for each of them: the pre-initialization, the changes and the events a change fires, the two rows at a change, and an event of the model as two rows in the steps of the integrator. The engines differ in their integrators, so the steps of the integrator differ between the engines, while the rows at the changes, at the events and at the end correspond. Use output times to compare the engines point by point.
 
 The engine is a setting of the `Simulator`, and every model it runs is simulated with that engine. A model loaded with roadrunner is loaded again in COPASI or AMICI from the same SBML, with its changes and selections, but without a state you set on it. Selecting an engine without its extra raises an `ImportError` that names the install command. Everything that runs through a simulator can use another engine, shown here for COPASI, and the same with `engine="amici"`:
 
@@ -344,11 +339,45 @@ The engine is a setting of the `Simulator`, and every model it runs is simulated
 
 The engine is part of the provenance: a `ScanResult` has it in `res.ds.attrs["engine"]`, the JSON of a simulation experiment and of a fit problem stores it, and the report of a fit names it with its integrator; a fit with AMICI records the version of AMICI. The roadrunner path never imports COPASI or AMICI.
 
-All engines run the same compiled plan, so every rule of [The semantics](#the-semantics) holds for each of them: the pre-initialization, the changes and the events a change fires, the two rows at a change, and an event of the model as two rows in the steps of the integrator. COPASI integrates with LSODA, AMICI with CVODES of SUNDIALS. The steps of the integrator differ between the engines, while the rows at the changes, at the events and at the end correspond. Use output times to compare the engines point by point.
+The integrator settings keep their roadrunner names. COPASI and AMICI take `relative_tolerance`, `absolute_tolerance`, `maximum_num_steps` and `maximum_time_step`. They ignore the other settings of roadrunner, e.g. `variable_step_size`, `initial_time_step`, `maximum_bdf_order` or `jit_optimization`, with one warning per model. A name no engine knows is an error. COPASI and AMICI have a single absolute tolerance, which is derived from the smallest tolerance of an `AbsoluteTolerance`, see the engines below. A parameter fit evaluates with the tolerances of the `FitSettings` it is initialized with, in every engine.
 
-The integrator settings keep their roadrunner names. COPASI and AMICI take `relative_tolerance`, `absolute_tolerance`, `maximum_num_steps` and `maximum_time_step`. They ignore the other settings of roadrunner, e.g. `variable_step_size`, `initial_time_step`, `maximum_bdf_order` or `jit_optimization`, with one warning per model. A name no engine knows is an error. COPASI and AMICI have a single absolute tolerance: the smallest tolerance of an `AbsoluteTolerance` times `COPASI_ATOL_FACTOR` (`1e-2`, in `sbmlsim.model.model_copasi`) or `AMICI_ATOL_FACTOR` (`1e-3`, in `sbmlsim.model.model_amici`). LSODA scales that tolerance with the initial value of every state, CVODES in AMICI applies it to the concentration of a concentration species and to the amount of the other species, and the factors make both engines at least as accurate as roadrunner at equal settings, measured on the HCTZ model. A parameter fit evaluates with the tolerances of the `FitSettings` it is initialized with, in every engine.
+COPASI and AMICI refuse what they would simulate differently from roadrunner, with an error that names the feature; the sections of the engines list what each of them refuses. The reference values of a sampling design, see [Sampling](sampling.md), are read with roadrunner whatever the engine, so a design draws the same values for every engine.
+
+### roadrunner
+
+[libroadrunner](https://libroadrunner.org) is the default engine, installed with `sbmlsim`, and the reference the other engines are measured against. It compiles a model into machine code when it is loaded, at the optimization level `jit_optimization`, see [Compilation speed](models.md#compilation-speed), and integrates it with CVODE of SUNDIALS. Its absolute tolerance is one tolerance per state, from the kind of the state, see [Absolute tolerances](#absolute-tolerances). roadrunner finds and fires the events of the model during the integration, and `sbmlsim` fires the events a change makes true, which roadrunner does not see.
+
+roadrunner is the fastest engine, the sections of COPASI and AMICI give their cost relative to it. A scan in worker processes gives the results of a serial run bitwise.
+
+### COPASI
+
+[COPASI](https://copasi.org) is the second engine. The extra `copasi` installs python-copasi:
+
+```bash
+pip install "sbmlsim[copasi]"
+```
+
+COPASI integrates with LSODA. Its absolute tolerance is the smallest tolerance of an `AbsoluteTolerance` times `COPASI_ATOL_FACTOR` (`1e-2`, in `sbmlsim.model.model_copasi`). LSODA scales that tolerance with the initial value of every state, and the factor makes COPASI at least as accurate as roadrunner at equal settings, measured on the HCTZ model.
+
+COPASI refuses:
+
+- A model with an algebraic rule, a stoichiometry math, a non-constant species reference, an initial assignment of a species reference or the `delay` csymbol raises a `ValueError` when it is loaded.
+- COPASI simulates conversion factors with the values they have when the model is loaded. A simulation which changes a conversion factor, or an entity its initial assignment reads, raises a `NotImplementedError`.
+- A model with a delayed event (an event with a `delay`) raises a `NotImplementedError` in a simulation with a change after the start or with a presimulation, before any point of a scan runs. Without these, COPASI simulates delayed events itself. In a model with a delayed event, a run in which an event of the model sets a trigger exactly to its threshold and COPASI misses its crossing raises a `NotImplementedError` as well.
+
+A COPASI result is not bitwise reproducible across loads of a model. COPASI sums the rates of the reactions of a species in an order that depends on the memory of its process ([basico#77](https://github.com/copasi/basico/issues/77)), so two loads differ in the last bit of a rate, and the integration amplifies it. Any memory the process freed before a load changes the order, e.g. a released COPASI model or memory of python, so a model loaded after another one was released differs from a first load as well. On the HCTZ model with a dose the loads differ by up to a few tens of times the tolerances of the integrator, while a rounding residue near 0 (see above) can differ in all its digits. A scan in worker processes agrees with a serial run within the integration. With roadrunner and AMICI the two are equal bitwise.
+
+COPASI walks a run in pieces after the events of the model when an event may set a trigger to its threshold, e.g. a dose of the model which moves the time of its next dose, `time > tnext` with `tnext = tnext + 2`: 1000 such doses take about 0.14 seconds, 14 times as long as without the walk.
 
 ### AMICI
+
+[AMICI](https://github.com/AMICI-dev/AMICI) is the third engine. The extra `amici` installs AMICI, see [Optional packages](installation.md#optional-packages) for its build requirements:
+
+```bash
+pip install "sbmlsim[amici]"
+```
+
+AMICI integrates with CVODES of SUNDIALS. Its absolute tolerance is the smallest tolerance of an `AbsoluteTolerance` times `AMICI_ATOL_FACTOR` (`1e-3`, in `sbmlsim.model.model_amici`). CVODES in AMICI applies it to the concentration of a concentration species and to the amount of the other species, and the factor makes AMICI at least as accurate as roadrunner at equal settings, measured on the HCTZ model.
 
 AMICI compiles a model into a python extension before it simulates it, which takes about 9 seconds for the HCTZ model. The compiled models are cached in `~/.cache/sbmlsim/amici`, or in the directory of the environment variable `SBMLSIM_AMICI_CACHE`, keyed on the SBML, the version of AMICI, the python and the machine, so a model is compiled once and loaded from the cache afterwards (0.3 seconds for the HCTZ model). The worker processes of a scan, of a simulation experiment and of a fit load the models from the directory their parent loaded them from, also when the environment variable changed after the pool started. AMICI compiles a model with `ninja`, which the extra installs; `sbmlsim` finds it in the scripts of the python environment also when the environment is not activated ([AMICI#3505](https://github.com/AMICI-dev/AMICI/issues/3505)).
 
@@ -356,23 +385,17 @@ AMICI integrates the model and finds the roots of the triggers of its events, wh
 
 AMICI outputs the states at given times only. The steps of the integrator, the default output of a `Simulation`, are a substitute with AMICI: a grid of 100 intervals of the same length per segment between two changes, refined where the linear interpolation between two rows misses the solution at their midpoint by more than the square root of the relative tolerance of the integrator times the largest value of the column in the segment (`1e-5` at the default `1e-10`), and every event of the model as two rows at its time, the states before and after it. Everything which interpolates the steps, a run with a `time=` grid, a band, `ScanResult.interpolate`, the figures and the NCA, is therefore as accurate as with the steps of roadrunner: on the HCTZ model the interpolated rows are within `6e-6` of the peak concentration, the steps of roadrunner within `3e-5`, at about twice the rows of roadrunner and three to four times the cost of the grid alone. With output times AMICI gives exactly those times.
 
-### Differences between the engines
-
-COPASI and AMICI refuse what they would simulate differently from roadrunner, with an error that names the feature.
-
-COPASI:
-
-- A model with an algebraic rule, a stoichiometry math, a non-constant species reference, an initial assignment of a species reference or the `delay` csymbol raises a `ValueError` when it is loaded.
-- COPASI simulates conversion factors with the values they have when the model is loaded. A simulation which changes a conversion factor, or an entity its initial assignment reads, raises a `NotImplementedError`.
-- A model with a delayed event (an event with a `delay`) raises a `NotImplementedError` in a simulation with a change after the start or with a presimulation, before any point of a scan runs. Without these, COPASI simulates delayed events itself. In a model with a delayed event, a run in which an event of the model sets a trigger exactly to its threshold and COPASI misses its crossing raises a `NotImplementedError` as well.
-
-AMICI:
+AMICI refuses:
 
 - A model with an algebraic rule, a stoichiometry math, a non-constant species reference, an initial assignment of a species reference or of a conversion factor, the `delay` csymbol, the csymbol `rateOf` ([AMICI#3504](https://github.com/AMICI-dev/AMICI/issues/3504)), a fast reaction, a delayed event or a trigger which compares for equality, `a == b` or `a != b`, raises a `ValueError` when it is loaded. AMICI finds no root of an equality, and roadrunner fires such an event only where a step of its integrator lands on the equality.
 - AMICI 1.2 does not import a trigger with a negated comparison, e.g. `!(X <= 3)`, which raises when the model is loaded.
 - A simulation which sets a compartment whose size in the SBML is not a number and which has no initial assignment raises.
 
-Other differences come from the integrators and how they handle events:
+A simulation of the HCTZ model takes about twice as long with AMICI as with roadrunner, and a model with many events 5 to 30 times as long, since `sbmlsim` fires every event between two integrations of AMICI.
+
+### Differences between the engines
+
+Beyond what COPASI and AMICI refuse, the engines differ where their integrators and their handling of events differ:
 
 - roadrunner fires a delayed event late in the steps of the integrator, at the end of the next step of CVODE. COPASI fires it at its time. The steps of LSODA can fail on a delayed event with "TCRIT behind TCUR", which raises a `RuntimeError`; output times work.
 - roadrunner does not fire an event whose trigger is true only within one step of CVODE, e.g. `X > 0.5 && X < 0.8`. COPASI fires it.
@@ -384,11 +407,6 @@ Other differences come from the integrators and how they handle events:
 - AMICI 1.2 computes the time of a trigger of the time with about eight digits: `time >= 1 + 1e-8` fires at 1 in AMICI and at `1 + 1e-8` in roadrunner.
 - Simultaneous events of the same priority execute in the order of the document in AMICI, roadrunner orders them at random.
 - A value that roadrunner computes as exactly 0 can be a tiny number in COPASI, about `1e-19` to `2e-16`. Compare such values with an absolute tolerance.
-- A COPASI result is not bitwise reproducible across loads of a model. COPASI sums the rates of the reactions of a species in an order that depends on the memory of its process ([basico#77](https://github.com/copasi/basico/issues/77)), so two loads differ in the last bit of a rate, and the integration amplifies it. Any memory the process freed before a load changes the order, e.g. a released COPASI model or memory of python, so a model loaded after another one was released differs from a first load as well. On the HCTZ model with a dose the loads differ by up to a few tens of times the tolerances of the integrator, while a rounding residue near 0 (see above) can differ in all its digits. A scan in worker processes agrees with a serial run within the integration. With roadrunner and AMICI the two are equal bitwise.
-
-roadrunner is the fastest engine. A simulation of the HCTZ model takes about twice as long with AMICI, and a model with many events 5 to 30 times as long, since `sbmlsim` fires every event between two integrations of AMICI. COPASI walks a run in pieces after the events of the model when an event may set a trigger to its threshold, e.g. a dose of the model which moves the time of its next dose, `time > tnext` with `tnext = tnext + 2`: 1000 such doses take about 0.14 seconds, 14 times as long as without the walk.
-
-The reference values of a sampling design, see [Sampling](sampling.md), are read with roadrunner whatever the engine, so a design draws the same values for every engine.
 
 ### Comparing the engines
 
@@ -422,9 +440,9 @@ copasi
 [0.0 2.721 3.282 3.282 0.417 0.27 0.183 0.123] μM
 equal: True
 time           0.000000e+00
-Aurine_hctz    4.398536e-10
+Aurine_hctz    4.526183e-10
 Ri_hctz        0.000000e+00
-[Cve_hctz]     7.446912e-09
+[Cve_hctz]     7.452937e-09
 ```
 
 `is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences. With `"amici"` in place of `"copasi"`, AMICI agrees with roadrunner on the infusion to `7.3e-9` relative in `[Cve_hctz]`. With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.
