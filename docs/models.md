@@ -32,6 +32,65 @@ The model is a `RoadrunnerSBMLModel`, and `model.r` is its `roadrunner.RoadRunne
 | `MIDAZOLAM_SBML` | a whole body pharmacokinetics model of midazolam |
 | `HCTZ_SBML` | a whole body pharmacokinetics and pharmacodynamics model of hydrochlorothiazide |
 
+## Models in other formats
+
+`sbmlsim` simulates SBML only. A model in another format is converted to SBML first and then loaded like any other model. These converters write SBML:
+
+| format | converter | installation |
+| --- | --- | --- |
+| [CellML](https://www.cellml.org) | `cellml2sbml` of [sbml2cellml](https://matthiaskoenig.github.io/sbml2cellml/), CellML 2.0 to SBML Level 3 Version 2 | `pip install sbml2cellml` |
+| [XPP](https://sites.pitt.edu/~phase/bard/bardware/xpp/xpp.html) (`.ode`) | `xpp2sbml` of [sbmlutils](https://github.com/matthiaskoenig/sbmlutils) | installed with `sbmlsim` |
+| [Heta](https://hetalang.github.io/) | the [Heta compiler](https://hetalang.github.io/hetacompiler/), `heta build --export=SBML` | `npm i -g heta-compiler` or a standalone binary |
+
+`sbmlsim` reads the units of a model from its SBML, so check the units of a converted model: a model whose format has no units, e.g. XPP, is dimensionless.
+
+### CellML
+
+sbml2cellml converts between SBML and CellML 2.0 in both directions. `cellml2sbml` converts a CellML model and the models it imports into SBML. Every variable of CellML becomes a parameter with a rule, the units are converted and a reset of CellML becomes an event. sbml2cellml supports python 3.13 and 3.14 on linux and macOS, not on windows:
+
+```bash
+pip install sbml2cellml
+cellml2sbml model.cellml -o model.xml
+```
+
+In python, `convert_cellml2sbml(Path("model.cellml"), sbml_path=Path("model.xml"))` of `sbml2cellml.cellml2sbml` does the same and returns the `libsbml.SBMLDocument`. The [documentation of sbml2cellml](https://matthiaskoenig.github.io/sbml2cellml/) lists what is not converted yet.
+
+### XPP
+
+sbmlutils, a dependency of `sbmlsim`, converts the `.ode` files of XPP with `xpp2sbml`: the parameters, initial values, differential equations, auxiliary quantities, functions and global flags, which become events. It does not convert tables, `sum`, `shift`, `set`, boundary conditions, random numbers and arrays. A decay model as an `.ode` file, converted and simulated:
+
+```python
+from pathlib import Path
+
+from sbmlutils.converters.xpp import xpp2sbml
+
+from sbmlsim.simulation import Simulation
+from sbmlsim.simulator import Simulator
+
+Path("decay.ode").write_text(
+    "# first order decay\npar k=0.5\ninit x=10\ndx/dt=-k*x\ndone\n", encoding="utf-8"
+)
+xpp2sbml(xpp_file=Path("decay.ode"), sbml_file=Path("decay.xml"))
+
+res = Simulator().run("decay.xml", Simulation(end=10, times=[0, 5, 10]))
+print(res.q["x"].round(4))
+```
+
+```text title="Output"
+[10.0 0.8208 0.0674] dimensionless
+```
+
+### Heta
+
+[Heta](https://hetalang.github.io/) is a domain-specific language for structured, modular and convertible models. The Heta compiler, a program of Node.js, builds a modeling platform, a directory of Heta modules, into SBML and other formats. It installs with npm (Node.js 18 or newer) or as a standalone binary for linux, macOS on Apple silicon and windows, see its [installation](https://hetalang.github.io/hetacompiler/installation.html). In the directory of the platform, with the model in `index.heta`:
+
+```bash
+npm i -g heta-compiler
+heta build --export=SBML
+```
+
+The compiler writes the SBML into the directory `dist` of the platform.
+
 ## Looking inside a model
 
 `parameter_df` and `species_df` list the parameters and species with their values, SBML units and names:
@@ -109,7 +168,7 @@ label_axes(ax, "time", "HCTZ plasma")
 ax.legend(title="body weight")
 ```
 
-![Output figure](images/outputs/models-05.png)
+![Output figure](images/outputs/models-06.png)
 
 The heavier patient has a larger body, so the same dose gives a lower concentration in the plasma.
 
