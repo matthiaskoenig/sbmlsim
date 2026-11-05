@@ -10,7 +10,7 @@ Observables are evaluated on the full solution of every simulation, before the r
 
 ## Formulas and reductions
 
-A `Formula` uses the math of PEtab. It reads the variables of the model (`S` is the amount of a species, `[S]` its concentration, plus `time`, parameters and reactions) and other observables by their id. Here the repressilator runs for six values of the Hill coefficient `n`:
+A `Formula` uses the math of PEtab. It reads the variables of the model (`S` is the amount of a species, `[S]` its concentration, plus `time`, parameters and reactions) and other observables by their id. Here the repressilator runs for six values of the Hill coefficient `n`, a scan with one dimension, see [Parameter scans](scans.md):
 
 ```python
 import matplotlib.pyplot as plt

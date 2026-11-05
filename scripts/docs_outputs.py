@@ -55,6 +55,7 @@ PAGES: list[str] = [
     "tutorial.md",
     "models.md",
     "simulation.md",
+    "observables.md",
     "units.md",
     "experiments.md",
     "data.md",
@@ -62,7 +63,6 @@ PAGES: list[str] = [
     "scans.md",
     "sampling.md",
     "uncertainty.md",
-    "observables.md",
     "sensitivity.md",
     "fitting.md",
 ]

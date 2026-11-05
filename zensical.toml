@@ -17,6 +17,7 @@ nav = [
   { "Core" = [
     { "Models" = "models.md" },
     { "Simulations" = "simulation.md" },
+    { "Observables" = "observables.md" },
     { "Units" = "units.md" },
     { "Simulation experiments" = "experiments.md" },
     { "Data" = "data.md" },
@@ -26,7 +27,6 @@ nav = [
     { "Parameter scans" = "scans.md" },
     { "Sampling" = "sampling.md" },
     { "Uncertainty" = "uncertainty.md" },
-    { "Observables" = "observables.md" },
     { "Sensitivity analysis" = "sensitivity.md" },
   ] },
   { "Parameter optimization" = [
