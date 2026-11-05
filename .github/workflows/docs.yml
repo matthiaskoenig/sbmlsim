@@ -34,6 +34,12 @@ jobs:
         with:
           python-version: "3.14"
           sync: --extra dev
+      - name: Write the outputs of the code of the pages
+        # what the code of a page prints and draws is written below it again,
+        # so the published pages show the outputs of the code they were built
+        # from even when the committed ones fell behind, e.g. the version
+        # (#447); half a minute
+        run: uv run --no-sync python scripts/docs_outputs.py
       - name: Build the documentation
         # the API reference is rendered from the docstrings by mkdocstrings,
         # so the package has to be importable

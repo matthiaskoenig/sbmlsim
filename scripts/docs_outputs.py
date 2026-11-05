@@ -16,7 +16,8 @@ the blocks of every page as well and fails when a page is out of step with its
 code: a block which prints without an output, an output of a block which
 prints nothing or a figure without its image. It does not compare the text,
 which differs in the last digits between platforms; run this script after a
-change of a page or of what its code prints.
+change of a page or of what its code prints. The `documentation` workflow
+runs it before it builds the site, so the published pages are never stale.
 
 A figure is a figure of pyplot which is open after the block, or a
 `matplotlib.figure.Figure` which a name of the namespace holds and which no
@@ -326,6 +327,11 @@ def main() -> None:
     import matplotlib
 
     matplotlib.use("Agg", force=True)
+    # the blocks import the examples, a package at the root of the repository,
+    # where a reader runs them (`python -m examples.timecourse`) and which the
+    # `conftest.py` at the root puts on the path of the tests; the path of a
+    # script is its own directory
+    sys.path.insert(0, str(REPO_DIR))
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("pages", nargs="*", help="pages relative to docs/")
     args = parser.parse_args()

@@ -215,7 +215,7 @@ uv run python scripts/docs_outputs.py              # every page with code
 uv run python scripts/docs_outputs.py tutorial.md  # one page
 ```
 
-A figure is shown when it is an open figure of pyplot after the block or a `matplotlib.figure.Figure` which a name of the block holds. The outputs and images are committed. `tests/docs/test_docs_code.py` runs the code of every page and fails when a page is out of step with it: a block which prints without an output, an output of a block which prints nothing, a missing image or a page with code which is not in `PAGES` of the script. It does not compare the text, whose last digits differ between platforms, so run the script after changing a page or what its code prints. A page with code is added to `PAGES`; keep the code of a page fast, the tests run it on every platform.
+A figure is shown when it is an open figure of pyplot after the block or a `matplotlib.figure.Figure` which a name of the block holds. The outputs and images are committed. `tests/docs/test_docs_code.py` runs the code of every page and fails when a page is out of step with it: a block which prints without an output, an output of a block which prints nothing, a missing image or a page with code which is not in `PAGES` of the script. It does not compare the text, whose last digits differ between platforms, so run the script after changing a page or what its code prints. The `documentation` workflow runs the script before it builds the site, so the published pages show the outputs of the code they were built from even when the committed ones fell behind, e.g. the version `installation.md` prints (#447), and a pull request checks that the script runs; a release writes them again, see [Release](#release). A page with code is added to `PAGES`; keep the code of a page fast, the tests run it on every platform.
 
 ### Files for agents { #files-for-agents }
 
@@ -237,8 +237,9 @@ A release is made from `develop`. Since `develop` only accepts pull requests, th
 3. make sure everything passes: `tox run-parallel`, `ruff check`, `uv run ty check`
 4. check the version bump: `uvx bump-my-version bump [major|minor|patch] --dry-run -vv`
 5. bump the version: `uvx bump-my-version bump [major|minor|patch]`, which updates `src/sbmlsim/__init__.py` and `CITATION.cff` and commits. It does not create the tag; a squash or rebase merge would rewrite the commit and leave the tag behind on a commit which is not part of `develop`
-6. push the branch, open the pull request against `develop` and merge it once the checks are green
-7. tag the merged commit on `develop` and push the tag:
+6. write the outputs of the pages again with the new version, which `installation.md` prints: `uv run python scripts/docs_outputs.py`, and commit them
+7. push the branch, open the pull request against `develop` and merge it once the checks are green
+8. tag the merged commit on `develop` and push the tag:
 
     ```bash
     git switch develop
@@ -249,11 +250,11 @@ A release is made from `develop`. Since `develop` only accepts pull requests, th
 
     This starts the `CI-CD` workflow, which publishes to [pypi](https://pypi.org/project/sbmlsim/), creates the GitHub release from `release-notes/x.y.z.md` and fast-forwards `main` to the tagged commit. It does not run the test matrix again: the merge into `develop` ran it on the same commit, and the job `tested on develop` waits for that run and stops the release unless it passed, so the tag can be pushed right after the merge. Next to it the SBML Test Suite and the PEtab SciML test suite run against their pins and the submission to the SBML Test Suite Database is written, which the release attaches; a release takes a few minutes once the run on `develop` has finished. Check the version before pushing, a tag cannot be moved or deleted afterwards.
 
-8. test the installation from pypi in a fresh environment:
+9. test the installation from pypi in a fresh environment:
 
     ```bash
     uv venv --python 3.14
     uv pip install sbmlsim
     ```
 
-9. once Zenodo has archived the release, update the citation information, i.e., `date-released` in `CITATION.cff` and the version, date and version DOI of the release in the citation of `README.md` and `docs/index.md`. `bump-my-version` only updates the version, not the date and the DOI, which are only known after the release. These changes go in through a pull request like everything else
+10. once Zenodo has archived the release, update the citation information, i.e., `date-released` in `CITATION.cff` and the version, date and version DOI of the release in the citation of `README.md` and `docs/index.md`. `bump-my-version` only updates the version, not the date and the DOI, which are only known after the release. These changes go in through a pull request like everything else
