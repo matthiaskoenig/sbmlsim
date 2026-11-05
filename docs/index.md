@@ -46,6 +46,7 @@ Core:
 
 - [Models](models.md): load SBML models, inspect them and set default changes.
 - [Simulations](simulation.md): timecourses with changes before the start and at given times, e.g. repeated doses.
+- [Observables](observables.md): values computed from every simulation, such as a peak concentration or a pharmacokinetic analysis.
 - [Units](units.md): give values in the units you have; `sbmlsim` converts them into the units of the model.
 - [Simulation experiments](experiments.md): models, data, simulations and figures of one study in one reproducible python class.
 - [Data](data.md): simulation results and experimental datasets, side by side in matching units.
@@ -56,7 +57,6 @@ Sensitivity and uncertainty:
 - [Parameter scans](scans.md): run a simulation over ranges of values, in parallel if you like.
 - [Sampling](sampling.md): draw parameters from distributions, e.g. a virtual population.
 - [Uncertainty](uncertainty.md): propagate uncertain inputs and test statements about the predictions.
-- [Observables](observables.md): values computed from every simulation, such as a peak concentration or a pharmacokinetic analysis.
 - [Sensitivity analysis](sensitivity.md): local sensitivities and the global Sobol, FAST and Morris methods.
 
 Parameter optimization:
