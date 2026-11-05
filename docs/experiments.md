@@ -231,7 +231,7 @@ print(definition["simulations"]["po25"]["changes"])
 ```
 
 ```text title="Output"
-['experiment_id', 'base_path', 'data_path', 'models', 'tasks', 'observables', 'simulations', 'data', 'figures']
+['experiment_id', 'engine', 'base_path', 'data_path', 'models', 'tasks', 'observables', 'simulations', 'data', 'figures']
 [{'times': [0], 'values': {'PODOSE_hctz': {'value': 25, 'unit': 'milligram'}}}]
 ```
 
