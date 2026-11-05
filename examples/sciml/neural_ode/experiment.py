@@ -68,7 +68,6 @@ class NeuralODE(SimulationExperiment):
                                 "value_unit": "dimensionless",
                             }
                         ),
-                        ureg=self.ureg,
                     )
                 )
         return datasets

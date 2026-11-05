@@ -306,7 +306,7 @@ class UnitsInformation(MutableMapping):
     def __init__(
         self,
         udict: UdictType,
-        ureg: UnitRegistry,
+        ureg: UnitRegistry | None = None,
         *args: Any,
         unit_ids: Mapping[str, str] | None = None,
         **kwargs: str,
@@ -317,14 +317,15 @@ class UnitsInformation(MutableMapping):
 
         Args:
             udict: the unit of every identifier, an expression of pint.
-            ureg: the unit registry of the expressions.
+            ureg: the unit registry of the expressions, the one of the
+                package by default.
             *args: further units, as the arguments of a dict.
             unit_ids: the unit ids of the model and their expressions of pint,
                 see `model_uid_dict`; none for the units of a dataset.
             **kwargs: further units, as the arguments of a dict.
         """
         self.udict: UdictType = udict
-        self.ureg: UnitRegistry = ureg
+        self.ureg: UnitRegistry = ureg if ureg is not None else _package_registry()
         #: unit id of the model -> expression of pint, see `quantity`
         self.unit_ids: dict[str, str] = dict(unit_ids) if unit_ids else {}
         self.update(dict(*args, **kwargs))

@@ -43,7 +43,7 @@ class Weir1998(HCTZSimulationExperiment):
             df: pd.DataFrame = self.load_dataframe(fig_id)
             for label, df_label in df.groupby("label"):
                 label = str(label)
-                dset = DataSet.from_df(df_label, self.ureg)
+                dset = DataSet.from_df(df_label)
                 if label.startswith(("hctz", "amount_", "excretion_")):
                     dset.unit_conversion("mean", 1 / self.Mr.hctz)
                 dsets[f"{fig_id}_{label}"] = dset

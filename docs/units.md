@@ -19,7 +19,7 @@ print(Q(2, "hr").to("min"))
 120 minute
 ```
 
-Every model, simulation, dataset, experiment and fit of `sbmlsim` uses the one unit registry `sbmlsim.units.ureg`, so their quantities combine. It knows the units of pint and adds the counts `none` and `item`, and `percent`.
+Every model, simulation, dataset, experiment and fit of `sbmlsim` uses the one unit registry `sbmlsim.units.ureg`, so their quantities combine. It is the default of every class and function which takes a `ureg`, a `DataSet`, `to_quantity`, a model and an experiment included, so you never import it or pass it around; `ureg=` is only for a registry of your own. It knows the units of pint and adds the counts `none` and `item`, and `percent`.
 
 The registry has no international unit (`IU`). An IU is specific to a substance (an IU of insulin is a different amount than an IU of heparin), so one definition would convert the data of one substance with the factor of another. Define the unit you need under the name of its substance before you use it:
 

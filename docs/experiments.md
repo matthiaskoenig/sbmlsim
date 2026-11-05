@@ -37,7 +37,7 @@ class Patel1984(SimulationExperiment):
     @override
     def datasets(self) -> dict[str, DataSet]:
         units = {"time": "hr", "cp": "ng/ml", "cp_sd": "ng/ml"}
-        return {"hctz25": DataSet.from_df(patel1984, udict=units, ureg=self.ureg)}
+        return {"hctz25": DataSet.from_df(patel1984, udict=units)}
 
     @override
     def models(self) -> dict[str, Path]:

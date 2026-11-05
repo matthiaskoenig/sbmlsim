@@ -69,7 +69,7 @@ def to_quantity(array: xr.DataArray, ureg: UnitRegistry | None = None) -> Quanti
 def evaluate_function(
     formula: str,
     variables: Mapping[str, xr.DataArray | float],
-    ureg: UnitRegistry,
+    ureg: UnitRegistry | None = None,
 ) -> xr.DataArray:
     """Evaluate the formula of a `Data` of type FUNCTION on its data.
 
@@ -90,7 +90,7 @@ def evaluate_function(
         formula: the formula.
         variables: the arrays of the data and the numbers of the parameters,
             by the identifiers of the formula.
-        ureg: the registry of the units.
+        ureg: the registry of the units, the one of the package by default.
 
     Returns:
         The value of the formula over the broadcast dimensions, with its unit.
@@ -100,6 +100,8 @@ def evaluate_function(
             which is not a variable, uses `mean` or `at`, or combines arrays
             with different coordinates of one dimension.
     """
+    if ureg is None:
+        ureg = package_ureg
     reduced = reduce_formula(formula)
     scope: dict[str, xr.DataArray | float] = dict(variables)
     for reduction in reduced.reductions:
@@ -830,6 +832,47 @@ def _unify_units(
     return column_unit
 
 
+#: the suffixes of the columns of the uncertainty of a column, e.g. `cp_sd`
+UNCERTAINTY_SUFFIXES: tuple[str, ...] = ("sd", "se", "min", "max", "cv")
+
+
+def ordered_columns(columns: Sequence[str]) -> list[str]:
+    """Order the columns of a dataset: every quantity with its uncertainty and unit.
+
+    A quantity is followed by the columns of its uncertainty, in the order of
+    `UNCERTAINTY_SUFFIXES`, and then by its unit, e.g. `time`, `time_unit`,
+    `cp`, `cp_sd`, `cp_se`, `cp_unit`. The quantities keep their order, and a
+    unit column without its quantity comes last.
+
+    Args:
+        columns: the columns of the dataset.
+
+    Returns:
+        The columns in that order.
+    """
+    present = set(columns)
+    grouped = {
+        f"{base}_{suffix}"
+        for base in columns
+        for suffix in (*UNCERTAINTY_SUFFIXES, "unit")
+        if f"{base}_{suffix}" in present and f"{base}_{suffix}" != base
+    }
+    order: list[str] = []
+    for column in columns:
+        if column in grouped or column.endswith("_unit"):
+            continue
+        order.append(column)
+        order += [
+            f"{column}_{suffix}"
+            for suffix in UNCERTAINTY_SUFFIXES
+            if f"{column}_{suffix}" in present
+        ]
+        if f"{column}_unit" in present:
+            order.append(f"{column}_unit")
+    placed = set(order)
+    return order + [column for column in columns if column not in placed]
+
+
 def _missing_unit(
     df: pd.DataFrame, keys: Sequence[str], message: str, *args: object
 ) -> None:
@@ -995,7 +1038,10 @@ class DataSet(pd.DataFrame):
 
     @classmethod
     def from_df(
-        cls, df: pd.DataFrame, ureg: UnitRegistry, udict: dict[str, str] | None = None
+        cls,
+        df: pd.DataFrame,
+        ureg: UnitRegistry | None = None,
+        udict: dict[str, str] | None = None,
     ) -> DataSet:
         """Create DataSet from given pandas.DataFrame.
 
@@ -1020,10 +1066,12 @@ class DataSet(pd.DataFrame):
         (`ml/min/(1.73*m^2)`, `micromol/(0.5*hr)`), is read as a number of the
         values: the numbers of its rows are multiplied by the factor, and a column
         whose first unit has a factor gets the unit without it. The data frame of
-        the caller is not changed.
+        the caller is not changed. Every quantity is followed by the columns of
+        its uncertainty and then by its unit, see `ordered_columns`.
 
         :param df: pandas.DataFrame
-        :param ureg: the unit registry
+        :param ureg: the unit registry, the one of the package by default,
+            `sbmlsim.units.ureg`; only a registry of your own is passed
         :param udict: optional units of columns
 
         :return: dataset
@@ -1034,6 +1082,8 @@ class DataSet(pd.DataFrame):
             (another dimension or an offset such as degC), or if a column which is
             converted has values which are no numbers
         """
+        if ureg is None:
+            ureg = package_ureg
         if not isinstance(ureg, UnitRegistry):
             raise ValueError(
                 f"ureg must be a UnitRegistry, but '{ureg}' is '{type(ureg)}'"
@@ -1157,7 +1207,8 @@ class DataSet(pd.DataFrame):
                     if key in df.columns:
                         df[f"{key}_unit"] = unit
 
-        dset = DataSet(df)
+        # every quantity is followed by its uncertainty and its unit
+        dset = DataSet(df[ordered_columns(list(df.columns))])
         dset.uinfo = UnitsInformation(all_udict, ureg=ureg)
         dset.Q_ = dset.uinfo.ureg.Quantity
         return dset

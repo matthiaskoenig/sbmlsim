@@ -108,7 +108,6 @@ class MidazolamDoses(SimulationExperiment):
             "cmax_doses": DataSet.from_df(
                 df,
                 udict={"dose": "mg", "cmax": "ng/ml", "cmax_sd": "ng/ml"},
-                ureg=self.ureg,
             )
         }
 
