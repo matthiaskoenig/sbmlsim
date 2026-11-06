@@ -328,7 +328,7 @@ def test_a_run_of_blocks_writes_the_checkpoints_of_the_blocks(
 ) -> None:
     """Consecutive blocks run in one run per scenario, their files as run alone."""
     if case == "failing":
-        n, size = 32, 4
+        n, size = 32, 8
         arguments = _failing(n=n, block_size=size)
     else:
         n, size = 12, 3
@@ -339,7 +339,8 @@ def test_a_run_of_blocks_writes_the_checkpoints_of_the_blocks(
     pooled_arguments: dict[str, Any] = {
         **arguments,
         "checkpoint": tmp_path / "pooled",
-        "simulator": Simulator(n_workers=2),
+        # a span of all the blocks: a block per worker
+        "simulator": Simulator(n_workers=4),
     }
     pooled = Propagation(**pooled_arguments)
     blocks = pooled.blocks()
@@ -390,3 +391,32 @@ def test_a_run_of_blocks_writes_the_checkpoints_of_the_blocks(
             for path in pooled_files
         }
         assert len(sizes) > 1
+
+
+@pytest.mark.parametrize(
+    ("workers", "runs"), [(1, [2] * 6), (2, [4] * 3), (3, [6] * 2)]
+)
+def test_a_span_of_blocks_has_as_many_blocks_as_workers(
+    workers: int, runs: list[int], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The blocks of a span are kept once it ran, a span of a block per worker."""
+    arguments: dict[str, Any] = _arguments(
+        simulation=_scenarios()["control"],
+        n=12,
+        block_size=2,
+        checkpoint=tmp_path,
+        simulator=Simulator(n_workers=workers),
+    )
+    propagation = Propagation(**arguments)
+    calls: list[int] = []
+    simulate = Simulator.run
+
+    def counted(self: Simulator, model: Any, scan: Any, *args: Any, **kw: Any) -> Any:
+        calls.append(len(scan))
+        return simulate(self, model, scan, *args, **kw)
+
+    monkeypatch.setattr(Simulator, "run", counted)
+    blocks = propagation.blocks()
+    # a block given twice runs once
+    propagation.run_blocks([*blocks, blocks[0]])
+    assert calls == runs

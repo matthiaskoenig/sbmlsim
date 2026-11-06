@@ -9,8 +9,8 @@ is a relative `Path` is relative to `Project.root`.
   consecutive points, `unit_blocks(scan.size)`: a unit writes the result of
   its points, `blocks/points-<start>-<stop>.nc`, and the merge combines them
   into `result.nc` (`ScanResult.combine`), the result of a run of the whole
-  scan, bitwise; a whole run runs the consecutive blocks as one span on its
-  workers, cut into the files of the blocks. The plan records the hash of
+  scan, bitwise; a whole run runs the consecutive blocks in spans of a block
+  per worker, cut into the files of the blocks. The plan records the hash of
   the identity of the scan, `scan_hash`, which every unit and the merge
   compare with the scan they build, and refuses a scan whose records of two
   builds differ, a design which draws other points every time, one without
@@ -22,7 +22,7 @@ is a relative `Path` is relative to `Project.root`.
   analysis (`sbmlsim.uncertainty.Propagation`) with the seed of the plan:
   a given number of draws `n` in one unit per block, `unit_blocks(n)`, the
   checkpoints of the propagation in `checkpoint/`, the consecutive blocks of
-  a whole run in one span on its workers; the adaptive number of
+  a whole run in spans of a block per worker; the adaptive number of
   draws is one unit, whose rounds are its checkpoints. The merge writes the
   result into `uncertainty/` (`UncertaintyResult.to_netcdf`).
 - `simulate` (`SimulateSpec`) runs simulation experiments of the project with
@@ -395,11 +395,16 @@ def _block_file(ctx: RunContext, block: range) -> Path:
     return ctx.out / BLOCKS_DIR / f"points-{block.start}-{block.stop}.nc"
 
 
-def _spans(indices: list[int]) -> list[list[int]]:
-    """Group indices of blocks into runs of consecutive indices, in their order."""
+def _spans(indices: list[int], limit: int) -> list[list[int]]:
+    """Group indices of blocks into runs of consecutive indices, in their order.
+
+    Args:
+        indices: the indices, in any order and with repeats.
+        limit: the most indices of a run, at least 1.
+    """
     spans: list[list[int]] = []
     for index in sorted(set(indices)):
-        if spans and spans[-1][-1] == index - 1:
+        if spans and spans[-1][-1] == index - 1 and len(spans[-1]) < max(1, limit):
             spans[-1].append(index)
         else:
             spans.append([index])
@@ -411,10 +416,12 @@ def _run_blocks(
 ) -> None:
     """Run blocks of points of a scan, each written to its file.
 
-    The consecutive blocks run as one span of points on the workers
-    (`Simulator.run` with `points`), so a whole run is parallel whatever the
-    number of its blocks, and the result of the span is cut into the results
-    of its blocks (`ScanResult.part`), each bitwise the file a unit writes; a
+    The consecutive blocks run in spans of as many blocks as there are
+    workers, a span of points on the workers (`Simulator.run` with `points`),
+    so a whole run is parallel whatever the size of its blocks and keeps the
+    blocks of a span once it ran; the result of a span is cut into the
+    results of its blocks (`ScanResult.part`), each bitwise the file a unit
+    writes; a
     block whose messages of failed points the span does not keep
     (`LostErrors`, more than `MAX_ERRORS` failed points before them) runs
     alone. The events `scan.chunk` count the points of a span, the event
@@ -451,7 +458,7 @@ def _run_blocks(
         )
 
     (ctx.out / BLOCKS_DIR).mkdir(parents=True, exist_ok=True)
-    for span in _spans(indices):
+    for span in _spans(indices, limit=workers):
         blocks = [planned.blocks[index] for index in span]
         result = simulate(range(blocks[0].start, blocks[-1].stop))
         for block in blocks:
@@ -702,7 +709,7 @@ def _compute(
     """Run units of a propagation, which checkpoints them.
 
     A unit of a given number of draws is a block of the propagation, and the
-    consecutive blocks of a whole run run as one span on its workers
+    consecutive blocks of a whole run run in spans of a block per worker
     (`Propagation.run_blocks`); the unit of the adaptive number of draws runs
     its rounds and writes `ADAPTIVE_FILE` once they finished.
 

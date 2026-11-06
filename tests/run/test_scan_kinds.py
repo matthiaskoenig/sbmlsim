@@ -193,27 +193,36 @@ def test_scan_resume_skips_blocks(
 def test_a_whole_scan_runs_its_blocks_on_its_workers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A whole run runs its blocks in one span and writes the files of its units."""
-    from sbmlsim.result.scan import MAX_ERRORS
+    """A whole run runs its blocks in spans and writes the files of its units.
+
+    A block whose messages of failed points its span does not keep runs alone,
+    here the block of the point 23.
+    """
+    from sbmlsim.result.scan import MAX_ERRORS, LostErrors
 
     spec = {"project": f"{__name__}:FAILING", "analysis": "failing"}
     calls: list[range | None] = []
     simulate = Simulator.run
+    part = ScanResult.part
 
     def counted(self: Simulator, *args: Any, **kwargs: Any) -> Any:
         calls.append(kwargs.get("points"))
         assert self.n_workers == 2
         return simulate(self, *args, **kwargs)
 
+    def lost(self: ScanResult, points: range) -> ScanResult:
+        if points == range(23, 24):
+            raise LostErrors("the messages of the point 23 are lost")
+        return part(self, points)
+
     monkeypatch.setattr(Simulator, "run", counted)
+    monkeypatch.setattr(ScanResult, "part", lost)
     whole = tmp_path / "whole"
     summary = run.execute("scan", spec, whole, workers=2)
     monkeypatch.undo()
     assert summary == {"points": 24, "failed": 15}
-    # one span, then the blocks whose messages the span does not keep
-    assert calls[0] == range(24)
-    # the points from 9 fail, the span keeps the messages of 9 to 18
-    assert calls[1:] == [range(k, k + 1) for k in range(9 + MAX_ERRORS, 24)]
+    # a span of two blocks for the two workers, the point 23 again alone
+    assert calls == [range(k, k + 2) for k in range(0, 24, 2)] + [range(23, 24)]
 
     planned = run.plan("scan", spec)
     split = tmp_path / "split"
@@ -231,6 +240,63 @@ def test_a_whole_scan_runs_its_blocks_on_its_workers(
     result = ScanResult.from_netcdf(whole / "result.nc")
     assert "_point" in result.ds.dims
     assert len(result.ds.attrs["errors"]) == MAX_ERRORS
+
+
+def six_scan() -> Scan:
+    """Get 6 renal excretions, 6 blocks of one point."""
+    return Scan(
+        oral_dose(),
+        [Dimension("excretion", values={"KI__HCTZEX_k": np.linspace(0.002, 0.004, 6)})],
+    )
+
+
+#: a ragged scan of 6 points in 6 blocks
+SIX = Project(
+    name="six",
+    root=HCTZ_PATH,
+    scans={"six": ScanAnalysis(model=MODEL_PATH, scan=six_scan)},
+)
+
+
+def test_a_whole_scan_keeps_its_blocks_span_by_span(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A span is as many blocks as the run has workers, its files kept once it ran."""
+    spec = {"project": f"{__name__}:SIX", "analysis": "six"}
+    whole = tmp_path / "whole"
+    calls: list[tuple[range | None, list[str]]] = []
+    simulate = Simulator.run
+
+    def counted(self: Simulator, *args: Any, **kwargs: Any) -> Any:
+        blocks = whole / "blocks"
+        files = sorted(p.name for p in blocks.iterdir()) if blocks.exists() else []
+        calls.append((kwargs.get("points"), files))
+        return simulate(self, *args, **kwargs)
+
+    monkeypatch.setattr(Simulator, "run", counted)
+    run.execute("scan", spec, whole, workers=2)
+    monkeypatch.undo()
+    assert calls == [
+        (range(2), []),
+        (range(2, 4), ["points-0-1.nc", "points-1-2.nc"]),
+        (
+            range(4, 6),
+            ["points-0-1.nc", "points-1-2.nc", "points-2-3.nc", "points-3-4.nc"],
+        ),
+    ]
+
+    planned = run.plan("scan", spec)
+    split = tmp_path / "split"
+    for index in range(run.count_units("scan", planned)):
+        run.compute_unit("scan", planned, index, split)
+    run.merge("scan", planned, split)
+    files = sorted(p.name for p in (whole / "blocks").iterdir())
+    assert len(files) == 6
+    for name in [*(f"blocks/{f}" for f in files), "result.nc"]:
+        xr.testing.assert_identical(
+            ScanResult.from_netcdf(whole / name).ds,
+            ScanResult.from_netcdf(split / name).ds,
+        )
 
 
 def test_scan_merge_names_the_missing_units(tmp_path: Path) -> None:
@@ -398,7 +464,7 @@ def test_uncertainty_split_equals_whole(tmp_path: Path) -> None:
 def test_a_whole_propagation_runs_its_blocks_on_its_workers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The blocks of a whole run are one run of the simulator, as files of units."""
+    """The blocks of a whole run run in spans of two, as files of units."""
     calls: list[int] = []
     simulate = Simulator.run
 
@@ -411,7 +477,7 @@ def test_a_whole_propagation_runs_its_blocks_on_its_workers(
     whole = tmp_path / "whole"
     summary = run.execute("uncertainty", FEW, whole, workers=2)
     monkeypatch.undo()
-    assert calls == [4]
+    assert calls == [2, 2]
 
     planned = run.plan("uncertainty", FEW)
     split = tmp_path / "split"

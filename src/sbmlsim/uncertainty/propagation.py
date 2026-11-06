@@ -43,8 +43,8 @@ of separate instances merge and an interrupted propagation resumes with the
 same result; a block of another propagation (another model, engine,
 integrator settings, observables, kept timecourses, grid of times or draws)
 is refused. A ragged timecourse is padded to the longest block, as a run pads
-it to its longest point. Consecutive blocks of one instance run as one span
-on the workers of its simulator (`Propagation.run_blocks`), whose result is
+it to its longest point. Consecutive blocks of one instance run in spans of a
+block per worker of its simulator (`Propagation.run_blocks`), whose result is
 cut into the results of the blocks, each the one a block run alone gives.
 
 The `UncertaintyResult` has the results of the scenarios, the variables and
@@ -75,6 +75,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from sbmlsim import parallel
 from sbmlsim.atomic import atomic_path
 from sbmlsim.engine import Engine
 from sbmlsim.events import emit
@@ -988,9 +989,11 @@ class Propagation:
         A block which ran or was read before is not run again, and with a
         checkpoint a block whose files exist for every scenario is read, see
         `run_block`. The other blocks which follow each other without a gap
-        run as one span of draws per scenario on the workers of the simulator,
-        so the blocks of a propagation run in parallel whatever their size;
-        the result of a span is cut into the results of its blocks, each
+        run in spans of as many blocks as the simulator has workers (one for a
+        serial simulator), a span one run of its draws per scenario on the
+        workers, so the blocks of a propagation run in parallel whatever their
+        size and are kept once their span ran; a block given twice runs once.
+        The result of a span is cut into the results of its blocks, each
         bitwise the result of `run_block` of the block alone, which are
         written as their checkpoints. A block whose messages of failed draws
         the span does not keep (`LostErrors`) runs alone.
@@ -1005,11 +1008,23 @@ class Propagation:
         """
         for block in blocks:
             self._check_block(block)
-        spans: list[list[range]] = []
-        for block in sorted(blocks, key=lambda b: (b.start, b.stop)):
-            if (block.start, block.stop) in self._results or self.checkpointed(block):
+        pending: list[range] = []
+        for start, stop in sorted({(b.start, b.stop) for b in blocks}):
+            block = range(start, stop)
+            if (start, stop) in self._results or self.checkpointed(block):
                 self.run_block(block)
-            elif spans and spans[-1][-1].stop == block.start:
+            else:
+                pending.append(block)
+        # a span of a block per worker, so its blocks are kept once it ran
+        limit = max(
+            1,
+            parallel.resolve_workers(
+                self._simulator.n_workers, sum(len(b) for b in pending)
+            ),
+        )
+        spans: list[list[range]] = []
+        for block in pending:
+            if spans and spans[-1][-1].stop == block.start and len(spans[-1]) < limit:
                 spans[-1].append(block)
             else:
                 spans.append([block])
