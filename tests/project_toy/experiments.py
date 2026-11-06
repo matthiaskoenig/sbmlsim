@@ -27,7 +27,7 @@ class ToyExperiment(SimulationExperiment):
 
     @override
     def models(self) -> dict[str, AbstractModel | Path]:
-        return {"model": AbstractModel(PROJECT.model_path(self.variant))}
+        return {"model": AbstractModel(PROJECT.variant_path(self.variant))}
 
     @override
     def simulations(self) -> dict[str, Simulation]:

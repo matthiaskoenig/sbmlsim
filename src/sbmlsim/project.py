@@ -799,7 +799,19 @@ class Project(BaseModel):
     # ------------------------------------------------------------------------
     # models
     # ------------------------------------------------------------------------
-    def model_path(self, variant: str | None = None) -> Path:
+    @property
+    def model_path(self) -> Path:
+        """Get the SBML file of the default variant of the model.
+
+        Returns:
+            The path of the first variant.
+
+        Raises:
+            ValueError: if the project has no model variants.
+        """
+        return self.variant_path()
+
+    def variant_path(self, variant: str | None = None) -> Path:
         """Get the SBML file of a variant of the model.
 
         Args:
@@ -840,7 +852,7 @@ class Project(BaseModel):
         from sbmlsim.model import model_roadrunner
 
         return model_roadrunner.load_roadrunner(
-            self.model_path(variant), self.simulator.jit_optimization
+            self.variant_path(variant), self.simulator.jit_optimization
         )
 
     def load_factory(self) -> Callable[[Path], Any]:
