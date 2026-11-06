@@ -2,8 +2,6 @@
 
 import datetime
 import logging
-import os
-import tempfile
 import uuid
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from copy import deepcopy
@@ -14,6 +12,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import OptimizeResult
 
+from sbmlsim.atomic import write_text_atomic
 from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter, describe_array
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
@@ -114,26 +113,6 @@ def bound_warnings(
             f"{rtol:.0%} of a bound!"
         )
     return messages
-
-
-def _write_atomic(path: Path, text: str) -> None:
-    """Write a text file atomically.
-
-    The text goes into a temporary file of the directory of the file, which
-    then replaces the file, so the file is either the old or the new one.
-
-    Args:
-        path: the file to write.
-        text: its content.
-    """
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
 
 
 def _run_index(path: Path) -> int | None:
@@ -262,7 +241,8 @@ class OptimizationResult(ObjectJSONEncoder):
         written atomically: the JSON goes into a temporary file of the
         directory, which replaces the file of the run, so a reader never sees
         a partial run and a run written twice, e.g. by a unit of a fit which
-        runs again, keeps one complete file.
+        runs again, keeps one complete file, with the mode of any file the
+        process writes, see `sbmlsim.atomic`.
 
         Args:
             directory: directory of the runs, created if it does not exist.
@@ -290,7 +270,7 @@ class OptimizationResult(ObjectJSONEncoder):
             units=units,
             provenance=provenance,
         ).to_json()
-        _write_atomic(path, str(text))
+        write_text_atomic(path, str(text))
         return path
 
     @staticmethod

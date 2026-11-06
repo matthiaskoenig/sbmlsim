@@ -311,8 +311,7 @@ def run_optimization(
     Raises:
         ValueError: if a bound or a start value does not suit the scale of
             its parameter or the algorithm, if every worker of a parallel
-            fit failed, or if an index is outside of `range(size)` or given
-            twice.
+            fit failed, or if the indices are invalid, see `run_indices`.
         TypeError: if `kwargs` has an argument which the optimizer of the
             algorithm does not accept, e.g. one of the other optimizer.
         KeyboardInterrupt: if the fit is interrupted (Ctrl-C) before a repeat

@@ -297,7 +297,7 @@ def run_fit(
         The finished fits by optimization id.
 
     Raises:
-        ValueError: if an index is outside of `range(size)` or given twice.
+        ValueError: if the indices are invalid, see `run_indices`.
     """
     # an index outside of the repeats is refused before a problem is built
     run_indices(size, indices)

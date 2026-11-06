@@ -7,6 +7,7 @@ split into units and the merge of the units equals the whole run.
 """
 
 import os
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -152,7 +153,9 @@ def test_from_directory_orders_by_run_index(
     assert [fit.cost for fit in result.fits] == [float(k) for k in range(12)]
 
 
-@pytest.mark.parametrize("indices", [[4], [1, 1], [-1]])
+@pytest.mark.parametrize(
+    "indices", [[4], [1, 1], [-1], [], [1.7], [True], ["1"], [np.int64(1), 1]]
+)
 def test_indices_out_of_range_raise(
     op_hctz_iv: OptimizationProblem,
     fit_settings: FitSettings,
@@ -184,6 +187,26 @@ def test_write_run_leaves_no_temporary_file(
         opid="p",
     )
     assert [p.name for p in tmp_path.iterdir()] == ["p_run_0.json"]
+
+
+def test_write_run_has_the_mode_of_a_new_file(
+    op_hctz_iv: OptimizationProblem, tmp_path: Path
+) -> None:
+    """A run file is readable as any file the process writes, not owner only."""
+    n = len(op_hctz_iv.parameters)
+    reference = tmp_path / "reference.txt"
+    reference.write_text("", encoding="utf-8")
+    path = OptimizationResult.write_run(
+        directory=tmp_path,
+        parameters=op_hctz_iv.parameters,
+        fit=OptimizeResult(
+            x=np.ones(n), x0=np.ones(n), cost=1.0, success=True, duration=0.0
+        ),
+        trajectory=[1.0],
+        sid="p_run_0",
+        opid="p",
+    )
+    assert stat.S_IMODE(path.stat().st_mode) == stat.S_IMODE(reference.stat().st_mode)
 
 
 @pytest.fixture
@@ -256,6 +279,12 @@ def test_profiles_combine_to_the_profile_of_both(
     assert combined.duration == part0.duration + part1.duration
 
     assert [list(part.profiles) for part in reported] == [[pid0], [pid1]]
+    # every part has its own objects, none of the result of the analysis
+    for part in reported:
+        assert part.parameter_set is not whole.parameter_set
+        assert not {id(p) for p in part.parameters} & {id(p) for p in whole.parameters}
+        (profile,) = part.profiles.values()
+        assert all(profile is not other for other in whole.profiles.values())
     assert _without_duration(IdentifiabilityResult.combine(reported)) == (
         _without_duration(whole)
     )

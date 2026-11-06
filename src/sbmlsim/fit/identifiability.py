@@ -626,20 +626,16 @@ class IdentifiabilityResult:
     def _definition(self) -> str:
         """Get what the profiles of a result are computed around, as JSON.
 
-        The parts of an analysis share it, see `combine`; JSON compares the
-        values bitwise and a `NaN` equal to itself.
+        It is `to_dict` without the profiles and the duration, which the
+        parts of an analysis share, see `combine`; JSON compares the values
+        bitwise and a `NaN` equal to itself.
+
+        Raises:
+            TypeError: for a value which is not serializable as JSON.
         """
-        return json.dumps(
-            {
-                "opid": self.opid,
-                "parameter_set": self.parameter_set.to_dict(),
-                "parameters": [p.to_dict() for p in self.parameters],
-                "settings": self.settings.to_dict(),
-                "fit_settings": self.fit_settings.to_dict(),
-                "cost": self.cost,
-            },
-            default=str,
-        )
+        d = self.to_dict()
+        del d["profiles"], d["duration"]
+        return json.dumps(d)
 
     @staticmethod
     def combine(parts: Sequence[IdentifiabilityResult]) -> IdentifiabilityResult:
@@ -1260,12 +1256,13 @@ def profile_likelihood(
             on_profile(
                 IdentifiabilityResult(
                     opid=problem.opid,
-                    parameter_set=result_parameter_set,
-                    parameters=problem.parameters,
-                    settings=profile_settings,
-                    fit_settings=settings,
+                    # copies: a part is the caller's, it shares nothing with
+                    # the result of the analysis, which evaluates its profiles
+                    parameter_set=deepcopy(result_parameter_set),
+                    parameters=deepcopy(problem.parameters),
+                    settings=deepcopy(profile_settings),
+                    fit_settings=deepcopy(settings),
                     cost=cost_optimum,
-                    # a copy: the result of the analysis evaluates its own
                     profiles={pid: deepcopy(assembled[pid])},
                     duration=now - last_finished,
                 )

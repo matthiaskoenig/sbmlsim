@@ -3,6 +3,7 @@
 import functools
 import inspect
 import logging
+import numbers
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -221,10 +222,22 @@ def run_indices(size: int, indices: Sequence[int] | None = None) -> list[int]:
         parallel fit return their repeats in the order of their index.
 
     Raises:
-        ValueError: if an index is outside of `range(size)` or given twice.
+        ValueError: if no index is given, if an index is no integer (a bool is
+            none), or if an index is outside of `range(size)` or given twice.
     """
     if indices is None:
         return list(range(size))
+    indices = list(indices)
+    if not indices:
+        raise ValueError(
+            "The indices select no repeat, a fit runs at least one; `None` "
+            "runs all repeats."
+        )
+    invalid = [
+        k for k in indices if isinstance(k, bool) or not isinstance(k, numbers.Integral)
+    ]
+    if invalid:
+        raise ValueError(f"The indices {invalid} are not integers.")
     selected = [int(k) for k in indices]
     outside = [k for k in selected if not 0 <= k < size]
     if outside:
@@ -3137,7 +3150,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             with its message, the other runs are unaffected.
 
         Raises:
-            ValueError: if an index is outside of `range(size)` or given twice.
+            ValueError: if the indices are invalid, see `run_indices`.
         """
         selected = run_indices(size, indices)
         starts = self.start_values(
