@@ -139,6 +139,24 @@ class ScanResult:
         return tuple(d for d in self.ds.attrs.get("dims", []) if d in self.ds.dims)
 
     @property
+    def is_block(self) -> bool:
+        """Check whether the result is a block of a scan, see `combine`."""
+        return BLOCK in self.ds.attrs
+
+    def _check_whole(self, method: str) -> None:
+        """Check that the result is no block of a scan, for a method.
+
+        Raises:
+            ValueError: for a block of a scan.
+        """
+        if self.is_block:
+            raise ValueError(
+                f"`{method}` needs the result of the whole scan, this one is a "
+                f"block of its points: combine the blocks first, see "
+                f"`ScanResult.combine`."
+            )
+
+    @property
     def ragged(self) -> bool:
         """Check whether every simulation keeps its own time points."""
         return POINT in self.ds.dims
@@ -444,9 +462,11 @@ class ScanResult:
             The result with the dimension `time`.
 
         Raises:
-            ValueError: if the times are a quantity and the result has no
-                unit of time or another one, see `time_magnitudes`.
+            ValueError: if the result is a block of a scan, or the times are a
+                quantity and the result has no unit of time or another one,
+                see `time_magnitudes`.
         """
+        self._check_whole("interpolate")
         grid = self._grid(times)
         tdim = POINT if self.ragged else TIME
         time_dims = self.ds[TIME].dims
@@ -526,10 +546,12 @@ class ScanResult:
             dimensions.
 
         Raises:
-            ValueError: if a dimension is no dimension of the scan, a
-                statistic is unknown, a quantile is outside of [0, 1] or the union
-                of the time points of a ragged result is too large.
+            ValueError: if the result is a block of a scan, a dimension is no
+                dimension of the scan, a statistic is unknown, a quantile is
+                outside of [0, 1] or the union of the time points of a ragged
+                result is too large.
         """
+        self._check_whole("summary")
         reduced = (
             list(self.dims)
             if dims is None
@@ -618,6 +640,11 @@ class ScanResult:
         values along its dimension. The `errors` of a run with
         `on_error="flag"` are the ones of the blocks in their order, at most
         `MAX_ERRORS`.
+
+        A block has the layout of `_index` (see the module) and not the
+        dimensions of the scan: `dims` of a block is empty, `summary` and
+        `interpolate` raise for it, and `to` and `q` treat `_index` as any
+        dimension; they are meant for the combined result.
 
         Args:
             parts: the results of the blocks.

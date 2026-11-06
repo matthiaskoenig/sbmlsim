@@ -1,5 +1,7 @@
 """The pieces of a scan: a run of given points and the merge of their results."""
 
+import logging
+import tracemalloc
 from pathlib import Path
 from typing import Any
 
@@ -10,10 +12,9 @@ import xarray as xr
 from sbmlsim import Q
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import ScanResult
-from sbmlsim.result.scan import INDEX, POINT, STATUS
+from sbmlsim.result.scan import INDEX, MAX_ERRORS, POINT, STATUS
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.worker import MAX_ERRORS
 from tests.simulator.models import sbml
 
 #: two species, `S2` blows up at the time about `1 / kb` for `kb > 0`
@@ -273,3 +274,87 @@ def test_points_with_a_step_raise(
 ) -> None:
     with pytest.raises(ValueError, match="step"):
         simulator.run(model, _scan(), points=range(0, 6, 2))
+
+
+def test_blocks_combine_over_a_dimension_of_models(simulator: Simulator) -> None:
+    models = {
+        "low": RoadrunnerSBMLModel(source=sbml(PIECES)),
+        "high": RoadrunnerSBMLModel(source=sbml(PIECES.replace("S1 = 10", "S1 = 20"))),
+    }
+    scan = Scan(
+        Simulation(end=10),
+        [
+            Dimension("fast", values={"k1": [0.1, 1.0, 5.0]}),
+            Dimension("model", models=models),
+        ],
+    )
+    full = simulator.run(None, scan)
+    parts = [
+        simulator.run(None, scan, points=points)
+        for points in (range(3), range(3, 4), range(4, 6))
+    ]
+    np.testing.assert_array_equal(parts[1].ds["model"], ["high"])
+    xr.testing.assert_identical(ScanResult.combine(parts).ds, full.ds)
+
+
+def test_a_block_allocates_for_its_points_only(
+    simulator: Simulator, model: RoadrunnerSBMLModel
+) -> None:
+    # 10^7 points; their positions alone would take 240 MB
+    scan = Scan(
+        Simulation(end=10),
+        [
+            Dimension("fast", values={"k1": np.linspace(0.1, 5.0, 100)}),
+            Dimension("decay", values={"k2": np.linspace(0.01, 1.0, 1000)}),
+            Dimension("blow", values={"kb": np.zeros(100)}),
+        ],
+    )
+    assert scan.size == 10**7
+    points = range(4_321_000, 4_321_003)
+    tracemalloc.start()
+    try:
+        part = simulator.run(model, scan, points=points, time=np.linspace(0, 10, 11))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 10 * 2**20
+    assert part.ds.sizes[INDEX] == 3
+    np.testing.assert_array_equal(
+        part.ds["fast.k1"], [scan.dimensions[0].values["k1"][43]] * 3
+    )
+
+
+def test_a_block_names_its_points_when_points_fail(
+    simulator: Simulator, model: RoadrunnerSBMLModel, caplog: pytest.LogCaptureFixture
+) -> None:
+    scan = Scan(Simulation(end=10), [Dimension("blow", values={"kb": [0, 1, 1, 0]})])
+    with caplog.at_level(logging.WARNING):
+        simulator.run(model, scan, points=range(1, 3), on_error="flag")
+    assert "2 of the points 1-3 of the 4 points of the scan failed" in caplog.text
+
+
+def test_a_block_has_no_summary_and_no_interpolation(
+    simulator: Simulator, model: RoadrunnerSBMLModel
+) -> None:
+    part = simulator.run(model, _scan(), points=range(3))
+    assert part.is_block
+    with pytest.raises(ValueError, match="combine the blocks first"):
+        part.summary()
+    with pytest.raises(ValueError, match="combine the blocks first"):
+        part.interpolate([0, 1])
+    assert not ScanResult.combine(
+        [simulator.run(model, _scan(), points=range(12))]
+    ).is_block
+
+
+def test_index_is_a_reserved_name(model: RoadrunnerSBMLModel) -> None:
+    with pytest.raises(ValueError, match="_index"):
+        Scan(Simulation(end=1), [Dimension(INDEX, values={"k1": [1.0, 2.0]})])
+    scan = Scan(
+        Simulation(end=1),
+        [Dimension("fast", values={"k1": [1.0, 2.0]}, coordinates={INDEX: [1, 2]})],
+    )
+    with pytest.raises(ValueError, match="_index"):
+        Simulator(n_workers=1).run(model, scan)
+    with pytest.raises(ValueError, match="_index"):
+        Formula(INDEX, "S1")

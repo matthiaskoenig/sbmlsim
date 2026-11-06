@@ -283,7 +283,12 @@ class Simulator:
         indices of its points in C order instead of the dimensions of the scan,
         every coordinate of a dimension along `_index` and the attribute
         `block`, see `ScanResult.combine`, which combines the results of the
-        blocks of a scan to the result of the whole scan, bitwise.
+        blocks of a scan to the result of the whole scan, bitwise. The methods
+        of a result over the dimensions of the scan, `dims`, `summary`,
+        `interpolate`, `to` and `q`, are for the combined result: `summary`
+        and `interpolate` raise for a block. A run of a block allocates per
+        point of the block only, also for a scan of more points than fit
+        into memory.
 
         Args:
             model: the model of the run; `None` for a scan with a dimension
@@ -428,23 +433,21 @@ class Simulator:
             _vectors(scan, loaded, label)
             for loaded, label in zip(models, labels, strict=True)
         ]
-        positions = _positions(scan)
         # the plan of the first point of every simulation and model carries the
         # assignments of the values dimensions and of those with `at`, which
         # give the dose times of the PK observables, see `compile_pk`
         point_plans: list[Plan] = []
         for (s, m), plan in plans.items():
-            indices = _plan_points(scan, positions, s, m)
-            if indices.size:
-                values, timed = _values_of(
-                    scan, positions, vectors[m], at_times[(s, m)], indices[:1]
-                )
-                first_point = point_plan(plan, values, timed, 0)
-                # a feature the engine does not simulate raises before a point
-                # runs; the points of a plan share its changes and the times of
-                # the dimensions with `at`
-                check_plan(first_point, models[m])
-                point_plans.append(first_point)
+            position = _first_position(scan, s, m)
+            values, timed = _values_of(
+                scan, position, vectors[m], at_times[(s, m)], np.zeros(1, dtype=int)
+            )
+            first_point = point_plan(plan, values, timed, 0)
+            # a feature the engine does not simulate raises before a point
+            # runs; the points of a plan share its changes and the times of
+            # the dimensions with `at`
+            check_plan(first_point, models[m])
+            point_plans.append(first_point)
         graph = compile_observables(observables, first, keep=keep, plans=point_plans)
         # the time is the first column, also where the model selects it
         # elsewhere, e.g. last in the sorted selections of an experiment
@@ -803,19 +806,20 @@ class _Compiled:
         """
         block = range(self.size) if block is None else block
         size = _chunk_size(len(block), workers)
-        positions = _positions(self.scan)
+        # the positions of the points of the block only, a scan may have more
+        # points than fit into memory
+        positions = _positions(self.scan, block)
         chunks: list[Chunk] = []
         for (s, m), plan in self.plans.items():
-            indices = _plan_points(self.scan, positions, s, m)
-            indices = indices[(indices >= block.start) & (indices < block.stop)]
-            for start in range(0, indices.size, size):
-                part = indices[start : start + size]
+            rows = _plan_points(self.scan, positions, s, m)
+            for start in range(0, rows.size, size):
+                part = rows[start : start + size]
                 values, timed = _values_of(
                     self.scan, positions, self.vectors[m], self.at_times[(s, m)], part
                 )
                 chunks.append(
                     Chunk(
-                        indices=part,
+                        indices=block.start + part,
                         plan=plan,
                         model=m,
                         graph=self.graph,
@@ -909,7 +913,7 @@ class _Compiled:
         positions: np.ndarray | None = None
         axes, shape = dims, self.scan.shape
         if block is not None:
-            positions = _positions(self.scan)[block.start : block.stop]
+            positions = _positions(self.scan, block)
             axes, shape = [INDEX], (n,)
 
         def along(k: int, values: np.ndarray) -> tuple[str, np.ndarray]:
@@ -993,11 +997,17 @@ class _Compiled:
             ]
             failed = int(status.sum())
             if failed:
+                points = (
+                    f"{n} points of the scan"
+                    if block is None
+                    else f"the points {block.start}-{block.stop} of the "
+                    f"{self.size} points of the scan"
+                )
                 logger.warning(
-                    "%s of %s points of the scan failed, their values are NaN, see "
-                    "the variable 'status': %s",
+                    "%s of %s failed, their values are NaN, see the variable "
+                    "'status': %s",
                     failed,
-                    n,
+                    points,
                     attrs["errors"][0],
                 )
         if block is not None:
@@ -1095,11 +1105,35 @@ def _point_rows(scan: Scan, positions: np.ndarray) -> np.ndarray:
     return positions.reshape(-1, len(scan.dimensions))
 
 
-def _positions(scan: Scan) -> np.ndarray:
-    """Get the index of every point along every dimension, a row per point."""
+def _positions(scan: Scan, block: range | None = None) -> np.ndarray:
+    """Get the index of the points along every dimension, a row per point.
+
+    Args:
+        scan: the scan.
+        block: the flat indices of the points, every point of the scan for
+            `None`.
+    """
+    block = range(scan.size) if block is None else block
     if not scan.dimensions:
-        return np.zeros((1, 0), dtype=int)
-    return np.stack(np.unravel_index(np.arange(scan.size), scan.shape), axis=1)
+        return np.zeros((len(block), 0), dtype=int)
+    flat = np.arange(block.start, block.stop)
+    return np.stack(np.unravel_index(flat, scan.shape), axis=1)
+
+
+def _first_position(scan: Scan, s: int, m: int) -> np.ndarray:
+    """Get the position of the first point of a simulation and a model, a row.
+
+    The first point in C order of the plan of the simulation `s` and the model
+    `m` is at the index 0 along every other dimension.
+    """
+    position = np.zeros((1, len(scan.dimensions)), dtype=int)
+    sim_axis = _axis(scan, DimensionKind.SIMULATIONS)
+    model_axis = _axis(scan, DimensionKind.MODELS)
+    if sim_axis is not None:
+        position[0, sim_axis] = s
+    if model_axis is not None:
+        position[0, model_axis] = m
+    return position
 
 
 def _axis(scan: Scan, kind: DimensionKind) -> int | None:
@@ -1108,8 +1142,8 @@ def _axis(scan: Scan, kind: DimensionKind) -> int | None:
 
 
 def _plan_points(scan: Scan, positions: np.ndarray, s: int, m: int) -> np.ndarray:
-    """Get the flat indices of the points of a simulation and a model."""
-    mask = np.ones(scan.size, dtype=bool)
+    """Get the rows of `positions` of the points of a simulation and a model."""
+    mask = np.ones(len(positions), dtype=bool)
     sim_axis = _axis(scan, DimensionKind.SIMULATIONS)
     model_axis = _axis(scan, DimensionKind.MODELS)
     if sim_axis is not None:
@@ -1126,7 +1160,15 @@ def _values_of(
     at_times: Sequence[float | None],
     part: np.ndarray,
 ) -> tuple[dict[str, np.ndarray], dict[float, dict[str, np.ndarray]]]:
-    """Get the values of points: target -> values, and time -> target -> values."""
+    """Get the values of points: target -> values, and time -> target -> values.
+
+    Args:
+        scan: the scan.
+        positions: the index of points along every dimension, a row per point.
+        vectors: dimension -> target -> the values of the dimension.
+        at_times: dimension -> the time of its values, `None` without `at`.
+        part: the rows of `positions` of the points.
+    """
     values: dict[str, np.ndarray] = {}
     timed: dict[float, dict[str, np.ndarray]] = {}
     for i in range(len(scan.dimensions)):
