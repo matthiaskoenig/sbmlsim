@@ -69,6 +69,28 @@ def fit_subset(opid: str) -> str:
     return match["subset"]
 
 
+def fit_date(opid: str) -> datetime.date:
+    """Get the day a fit ran from its id.
+
+    Args:
+        opid: the id of a fit, e.g. `PK_20261016_185018__3efe3`, see `fit_id`.
+
+    Returns:
+        The date of the id, e.g. 2026-10-16.
+
+    Raises:
+        ValueError: if the id does not have the form of the id of a fit, see
+            `fit_subset`, or its date is no date.
+    """
+    fit_subset(opid)
+    match = FIT_ID.match(opid)
+    text = "" if match is None else match["date"]
+    try:
+        return datetime.datetime.strptime(text, "%Y%m%d").date()
+    except ValueError as err:
+        raise ValueError(f"The date of the fit '{opid}' is no date.") from err
+
+
 def bound_warnings(
     parameters: list[FitParameter],
     x: np.ndarray,

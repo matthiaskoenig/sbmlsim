@@ -26,24 +26,66 @@ excluded beats outlier, outlier beats validation and validation beats training.
 The kind belongs to the selection of the data, not to the fit mappings of a
 simulation experiment: the `MappingMetaData` of a mapping describes its curve,
 and the same curve is training data of one fit and validation data of another.
+
+The filters of the mappings are the ones of `sbmlsim.fit.filters` (by the
+metadata, the observable, the key and the study), which this module exports
+as well; `select_mappings` selects the data of a fit of a
+`sbmlsim.project.Project` with its paths.
 """
 
 import logging
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import display
+from sbmlsim.fit.filters import (
+    KeyFilter,
+    MetadataFilter,
+    NamedFilter,
+    NamedMappings,
+    ObservableFilter,
+    filter_keys,
+    metadata_filter,
+    named,
+    named_filter,
+    observable_filter,
+    observable_id,
+    study,
+)
 from sbmlsim.fit.objects import (
     FitMapping,
     FitMappingCollection,
     MappingKind,
     MappingMetaData,
 )
+
+if TYPE_CHECKING:
+    from sbmlsim.project import Project
+
+__all__ = [
+    "FitMappings",
+    "KeyFilter",
+    "MappingFilter",
+    "MappingSelection",
+    "MetadataFilter",
+    "NamedFilter",
+    "NamedMappings",
+    "ObservableFilter",
+    "filter_keys",
+    "metadata_filter",
+    "named",
+    "named_filter",
+    "observable_filter",
+    "observable_id",
+    "select_mapping_collections",
+    "select_mappings",
+    "study",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -56,28 +98,6 @@ def _filters(filters: MappingFilter | Iterable[MappingFilter]) -> list[MappingFi
     if isinstance(filters, Iterable):
         return list(filters)
     return [filters]
-
-
-def filter_keys(keys: Iterable[str]) -> MappingFilter:
-    """Get a filter which selects the fit mappings of the given ids.
-
-    A selector written by hand says what it means, e.g. "the tablets"; this
-    one says which mappings it resolved to and is what a problem read from
-    PEtab uses, because a condition stores the resolution and not the rule.
-
-    Args:
-        keys: ids of the fit mappings to select.
-
-    Returns:
-        A filter which passes exactly those mappings.
-    """
-    selected = frozenset(keys)
-
-    def _filter(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-        """Select a mapping by its id."""
-        return fit_mapping_key in selected
-
-    return _filter
 
 
 @dataclass
@@ -143,7 +163,7 @@ class FitMappings:
         self,
         experiment_classes: Iterable[type[SimulationExperiment]],
         base_path: Path,
-        data_path: Path | Iterable[Path],
+        data_path: Path | Iterable[Path] | None,
     ):
         """Instantiate the simulation experiments.
 
@@ -151,7 +171,7 @@ class FitMappings:
             experiment_classes: simulation experiment classes with fit mappings.
             base_path: base path of the simulation experiments.
             data_path: path or paths of the datasets of the simulation
-                experiments.
+                experiments, none without datasets.
         """
         self.runner = ExperimentRunner(
             experiment_classes=list(experiment_classes),
@@ -221,7 +241,7 @@ class FitMappings:
         validation_filters: list[MappingFilter]
         if isinstance(validation, Iterable):
             validation_keys = self._check_keys(validation, "validation mappings")
-            validation_filters = [lambda key, fm: key in validation_keys]
+            validation_filters = [KeyFilter(frozenset(validation_keys))]
         else:
             validation_filters = [validation]
 
@@ -320,3 +340,38 @@ def select_mapping_collections(
         validation=validation,
         print_info=print_info,
     ).collections
+
+
+def select_mappings(
+    project: Project,
+    experiment_classes: Iterable[type[SimulationExperiment]],
+    filters: MappingFilter | Iterable[MappingFilter] = (),
+    outliers: Iterable[str] = (),
+    validation: Iterable[str] | MappingFilter = (),
+) -> dict[str, list[FitMappingCollection]]:
+    """Select the data of a fit of a project, see `FitMappings.select`.
+
+    The experiments are created with the paths of the project (its
+    `base_path`, else its `root`, and its `data_path`); the counts of the
+    selected mappings per experiment and kind are printed.
+
+    Args:
+        project: the project.
+        experiment_classes: the experiments with the fit mappings.
+        filters: the filters of the training data.
+        outliers: the keys of the training data which is not usable.
+        validation: the keys or a filter of the validation data.
+
+    Returns:
+        The fit mapping collections of all kinds by experiment id.
+    """
+    fit_mappings = FitMappings(
+        experiment_classes=experiment_classes,
+        base_path=project.base_path or project.root,
+        data_path=project.data_path,
+    )
+    selection = fit_mappings.select(
+        filters=filters, outliers=outliers, validation=validation, print_info=False
+    )
+    selection.print(detail=False)
+    return selection.collections

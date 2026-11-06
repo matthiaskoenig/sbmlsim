@@ -242,7 +242,9 @@ Patel1984      6          2            0         18         26
 total          14         2            1         27         44
 ```
 
-`selection.collections` holds the `FitMappingCollection`s, one per experiment and kind, and `selection.df` a table of every mapping with its kind and metadata. `select_mapping_collections` does it all in one call. `examples/hctz_fitting/fitting/mapping_collections.py` names the outliers and the validation data once and defines each fit as a list of filters on the metadata.
+`selection.collections` holds the `FitMappingCollection`s, one per experiment and kind, and `selection.df` a table of every mapping with its kind and metadata. `select_mapping_collections` does it all in one call, `select_mappings(project, experiment_classes, ...)` with the paths of a [project](run.md#projects). `examples/hctz_fitting/fitting/mapping_collections.py` names the outliers and the validation data once and defines each fit as a list of filters on the metadata.
+
+`sbmlsim.fit.filters` has the filters of the common cases, frozen dataclasses which compare, pickle into the workers of a parallel fit and say what they select: `metadata_filter(HCTZMappingMetaData, route={Route.PO}, excluded={"dosing": {Dosing.MULTI}})` selects by the fields of the metadata of a mapping, a dataclass derived from `MappingMetaData`, and checks the names of the fields and that the values are sets when it is built; `observable_filter({"Cve_hctz"})` selects by the observable of a mapping (`observable_id`, the index of its data), `named_filter({"Beermann1976": {"fm_hctz_iv1_5_urine"}})` by the key of a mapping in its study and `filter_keys` by the key in any study. The value of a field which `metadata_filter` compares is `MappingMetaData.filter_value(name)`, the field itself, which a metadata class overrides for a field it compares in another form, e.g. a sampling site which follows the tissue when it is not stated.
 
 On an initialized problem, `mapping_counts()` gives the number of mappings of each kind.
 
@@ -581,7 +583,13 @@ python -m examples.hctz_fitting.fitting.run_report results/fit/<fit id>/paramete
 python -m examples.hctz_fitting.fitting.run_report run1/parameters.json run2/parameters.json
 ```
 
-Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`, which names its result and its report folder. `sbmlsim.fit.result.fit_subset` reads the problem back from an id. Both tools take `--no-mapping-figures` for a fast report and `--group-by tissue` for the groupings of the report; `--help` lists all options.
+Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`, which names its result and its report folder. `sbmlsim.fit.result.fit_subset` reads the problem back from an id and `fit_date` its day. Both tools take `--no-mapping-figures` for a fast report and `--group-by tissue` for the groupings of the report; `--help` lists all options.
+
+## Adopted fits
+
+The fits of a [project](run.md#projects) whose parameters the model uses are its adopted fits, one per subset. The `fit` kind of the [run layer](run.md#fit) adopts a fit with `adopt`, together with `identifiability`: it writes the record of the fit, its parameters, profiles, Fisher information and report (`sbmlsim.fit.records.adopt_fit`), into `fits/<fit id>` of its output and `adopted.json` with the fit adopted for its subset, which a person commits into the directory of the fit records of the project, `fits_dir`. `Project.fit_records()` reads the records (`AdoptedRecords`): the fitted value of every parameter with its uncertainty, `ParameterUncertainty`, the confidence interval of the profile likelihood (the Fisher information for a parameter without a profile), the standard error of the Fisher information and the distribution of its draws as a formula of distrib, `lognormal(mu, sigma, lower, upper)` on a logarithmic scale, `normal(...)` on the linear one and `uniform(lower, upper)` for a profile open on both sides. A factory gives a parameter of the model its value and its uncertainty with `fit_records().parameter("k", unit=U.per_min)`, the keyword arguments of a `Parameter` of sbmlutils; `sbmlsim.simulation.sampling.parameter_distributions` reads the distributions back from the SBML and `uncertainty_dimension` draws them into a dimension of a scan.
+
+A fit of one subset runs on the models of the project, which carry the values of the adopted fits of the other subsets. With `fix_adopted` the fit records these fits and their values in its provenance and its report names them; `start` starts least squares from a point, a finished fit or an adopted fit; the plan of a fit refuses bounds which let a remainder `1 - a - b` of a model become negative. `sbmlsim.fit.project_fits` has these functions for a script of its own, `report_context` and `records_context` of `sbmlsim.fit.cli` the context of the report of a fit of a project, and the `report` kind with `adopted` reports the adopted fits from their records.
 
 ## PEtab
 
