@@ -928,7 +928,11 @@ def _plan_simulate(spec: SimulateSpec) -> SimulateSpec:
     project, experiments = _experiments(spec)
     update: dict[str, Any] = {"experiments": [cls.__name__ for cls in experiments]}
     if spec.figure_formats is not None:
-        formats = [f.strip().lower() for f in spec.figure_formats if f.strip()]
+        from sbmlsim.project import normalize_formats
+
+        formats = list(
+            normalize_formats([f.strip() for f in spec.figure_formats if f.strip()])
+        )
         if not formats:
             raise ConfigurationError(
                 "The figure formats of a run of experiments are not empty, "

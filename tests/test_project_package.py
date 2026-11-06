@@ -27,6 +27,7 @@ from sbmlsim.project import (
     SimulatorSettings,
     check_reference,
     resolve,
+    same_antimony,
     same_sbml,
     write_adopted,
 )
@@ -335,6 +336,52 @@ def test_the_changed_outputs_of_a_rebuild(tmp_path: Path) -> None:
         Path("models/toy.xml"),
         Path("models/toy_slow.xml"),
     ]
+
+
+ANTIMONY = """model toy
+  k = {k}
+  model created "{date}"
+  model modified "{date}"
+end
+"""
+
+
+def test_a_rebuild_ignores_the_dates_of_the_antimony(tmp_path: Path) -> None:
+    """A factory writes the dates of its run into the antimony of a model."""
+    k = {"value": 0.2}
+
+    def factory(directory: Path) -> None:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "toy.ant").write_text(
+            ANTIMONY.format(k=k["value"], date="2026-11-06T20:00:00Z"),
+            encoding="utf-8",
+        )
+
+    root = tmp_path / "package"
+    (root / "models").mkdir(parents=True)
+    (root / "models" / "toy.ant").write_text(
+        ANTIMONY.format(k=0.2, date="2026-10-17T19:35:15Z"), encoding="utf-8"
+    )
+    assert same_antimony(
+        ANTIMONY.format(k=0.2, date="a"), ANTIMONY.format(k=0.2, date="b")
+    )
+    for outputs in ([Path("models/toy.ant")], []):
+        project = Project(
+            name="toy",
+            root=root,
+            factory=factory,
+            factory_dir=Path("models"),
+            factory_outputs=outputs,
+        )
+        k["value"] = 0.2
+        out = tmp_path / f"same{len(outputs)}"
+        project.create_models(out)
+        assert project.compared_outputs(out) == [Path("models/toy.ant")]
+        assert project.changed_outputs(out) == []
+        k["value"] = 0.3
+        out = tmp_path / f"changed{len(outputs)}"
+        project.create_models(out)
+        assert project.changed_outputs(out) == [Path("models/toy.ant")]
 
 
 def test_the_factory_directory_is_inside_the_root(tmp_path: Path) -> None:
