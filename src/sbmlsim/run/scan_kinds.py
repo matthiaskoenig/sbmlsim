@@ -2,7 +2,7 @@
 
 Every spec names a project, `project` (`module:attribute` of a
 `sbmlsim.project.Project`), and an analysis of it, `analysis` (a key of
-`Project.scans` or `Project.uncertainties`); the model of an analysis which
+`Project.scans`, `Project.sensitivities` or `Project.uncertainties`); the model of an analysis which
 is a relative `Path` is relative to `Project.root`.
 
 - `scan` (`ScanSpec`) runs a scan of the project, one unit per block of
@@ -17,7 +17,14 @@ is a relative `Path` is relative to `Project.root`.
   a seed.
 - `sensitivity` (`SensitivitySpec`) is a scan whose analysis has
   sensitivity indices: the merge also computes the indices of the result,
-  `sensitivity.nc` (`SensitivityResult`).
+  `sensitivity.nc` (`SensitivityResult`). A spec which names a sensitivity
+  analysis of the project over the groups of its simulations
+  (`Project.sensitivities`, `sbmlsim.sensitivity.runner`) runs its analyses
+  into the out, one unit per analysis (and subfolder), each written into its
+  folder atomically, `<analysis>` or `<subfolder>/<analysis>`; the merge
+  writes the table of the parameters, `parameters.tsv` and `.tex`. The plan
+  checks the run (`prepare_run`) and sets the analyses, or the subfolders,
+  which run.
 - `uncertainty` (`UncertaintySpec`) propagates the uncertainty of an
   analysis (`sbmlsim.uncertainty.Propagation`) with the seed of the plan:
   a given number of draws `n` in one unit per block, `unit_blocks(n)`, the
@@ -43,8 +50,6 @@ import hashlib
 import inspect
 import json
 import logging
-import secrets
-import shutil
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -55,7 +60,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from sbmlsim import events
-from sbmlsim.atomic import atomic_path, write_text_atomic
+from sbmlsim.atomic import atomic_directory, atomic_path, write_text_atomic
 from sbmlsim.cgroup import available_cpus
 from sbmlsim.run.kinds import (
     ConfigurationError,
@@ -75,6 +80,7 @@ if TYPE_CHECKING:
     from sbmlsim.project import Project, ScanAnalysis, UncertaintyAnalysis
     from sbmlsim.result import ScanResult
     from sbmlsim.run.context import RunContext
+    from sbmlsim.sensitivity.runner import PreparedRun, SensitivityUnit
     from sbmlsim.simulation import Scan
     from sbmlsim.uncertainty import Propagation, UncertaintyResult
 
@@ -124,10 +130,22 @@ class ScanSpec(SplitSpec):
 
 
 class SensitivitySpec(ScanSpec):
-    """The spec of the sensitivity indices of a scan of a project.
+    """The spec of a sensitivity analysis of a project.
 
-    The scan must have `indices`, see `sbmlsim.project.ScanAnalysis`.
+    The analysis is a scan with `indices` (`sbmlsim.project.ScanAnalysis`) or
+    a sensitivity analysis over the groups of the simulations of the project
+    (`Project.sensitivities`).
+
+    Attributes:
+        analyses: the names of the analyses of a runner of
+            `Project.sensitivities`, its default analyses without; the plan
+            sets them for a single runner.
+        subfolders: the subfolders of the runners by subfolder which run,
+            every one without; the plan sets them.
     """
+
+    analyses: list[str] | None = None
+    subfolders: list[str] | None = None
 
 
 class UncertaintySpec(SplitSpec):
@@ -309,7 +327,10 @@ def _scan_analysis(spec: ScanSpec) -> tuple[Project, ScanAnalysis]:
     try:
         analysis = project.scan(spec.analysis)
     except KeyError as err:
-        raise ConfigurationError(err.args[0] if err.args else str(err)) from err
+        message = err.args[0] if err.args else str(err)
+        if isinstance(spec, SensitivitySpec):
+            message += f" Its sensitivity analyses over groups are {sorted(project.sensitivities)}."
+        raise ConfigurationError(message) from err
     if isinstance(spec, SensitivitySpec):
         _check_indices(spec, analysis)
     return project, analysis
@@ -645,6 +666,176 @@ def _run_scan(spec: ScanSpec, ctx: RunContext) -> dict[str, Any]:
 
 
 # ----------------------------------------------------------------------------
+# sensitivity analyses over the groups of the simulations
+# ----------------------------------------------------------------------------
+def _message(err: BaseException) -> str:
+    """Get the message of an error with its notes."""
+    return " ".join([str(err), *getattr(err, "__notes__", [])])
+
+
+def _project_sensitivity(spec: SensitivitySpec) -> Any | None:
+    """Get the runners of a project sensitivity a spec names, `None` for a scan.
+
+    Raises:
+        ConfigurationError: for an unknown project, a sensitivity which is not
+            resolved, and analyses or subfolders of a scan.
+    """
+    project = _project(spec.project)
+    if spec.analysis not in project.sensitivities:
+        if spec.analyses is not None or spec.subfolders is not None:
+            raise ConfigurationError(
+                f"'{spec.analysis}' of '{spec.project}' is no sensitivity analysis "
+                "of the project over groups: a scan has neither analyses nor "
+                "subfolders."
+            )
+        return None
+    try:
+        return project.sensitivity(spec.analysis)
+    except (ImportError, AttributeError, TypeError, ValueError) as err:
+        raise ConfigurationError(
+            f"The sensitivity analysis '{spec.analysis}' of '{spec.project}' is not "
+            f"resolved: {err}"
+        ) from err
+
+
+def _prepared(spec: SensitivitySpec, target: Any) -> PreparedRun:
+    """Check the run of the runners of a spec, see `prepare_run`.
+
+    Raises:
+        ConfigurationError: for a run which cannot run, naming why.
+    """
+    from sbmlsim.sensitivity.runner import prepare_run
+
+    if spec.scan_hash is not None:
+        raise ConfigurationError(
+            f"The sensitivity analysis '{spec.analysis}' is no scan, it has no "
+            "scan_hash."
+        )
+    try:
+        return prepare_run(target, spec.analyses, spec.subfolders)
+    except (TypeError, ValueError) as err:
+        raise ConfigurationError(
+            f"The sensitivity analysis '{spec.analysis}' of '{spec.project}' "
+            f"cannot run: {_message(err)}"
+        ) from err
+
+
+def _plan_runner(spec: SensitivitySpec, target: Any) -> SensitivitySpec:
+    """Plan a run of the runners of a project sensitivity: what runs and its units."""
+    prepared = _prepared(spec, target)
+    update: dict[str, Any] = {"units": len(prepared.units)}
+    if None in prepared.runners:
+        update["analyses"] = list(prepared.plans[None][0])
+    else:
+        update["subfolders"] = [str(key) for key in prepared.plans]
+    return spec.model_copy(update=update)
+
+
+def _planned_runner(spec: SensitivitySpec, target: Any) -> PreparedRun:
+    """Resolve a planned run of the runners of a project sensitivity.
+
+    Raises:
+        ConfigurationError: for a spec which is not planned.
+        PlanMismatch: for other units than the ones of the plan.
+    """
+    if spec.units is None:
+        raise ConfigurationError(
+            "The spec of the sensitivity analysis is not planned: plan it first."
+        )
+    prepared = _prepared(spec, target)
+    if len(prepared.units) != spec.units:
+        raise PlanMismatch(
+            f"The sensitivity analysis has {spec.units} units, its analyses are "
+            f"{len(prepared.units)}; plan the spec again."
+        )
+    return prepared
+
+
+def _run_analysis(
+    spec: SensitivitySpec,
+    prepared: PreparedRun,
+    unit: SensitivityUnit,
+    ctx: RunContext,
+    workers: int,
+) -> None:
+    """Run an analysis of a project sensitivity into its folder of the out, atomically."""
+    folder = ctx.out / unit.folder
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    with atomic_directory(folder) as temporary:
+        prepared.run_unit(unit, temporary, prepared.simulator(workers))
+    events.emit(
+        "sensitivity.analysis",
+        analysis=spec.analysis,
+        folder=unit.folder.as_posix(),
+    )
+
+
+def _merge_runner(
+    spec: SensitivitySpec, prepared: PreparedRun, ctx: RunContext
+) -> dict[str, Any]:
+    """Write the table of the parameters once every analysis has its folder.
+
+    Raises:
+        MissingUnits: naming the units whose analysis has no folder.
+    """
+    units = prepared.units
+    missing = [
+        k for k, unit in enumerate(units) if not (ctx.out / unit.folder).is_dir()
+    ]
+    if missing:
+        raise MissingUnits(missing, len(units))
+    table = prepared.write_table(ctx.out)
+    summary: dict[str, Any] = {
+        "analyses": [unit.folder.as_posix() for unit in units],
+        "parameters": len(table),
+    }
+    return summary
+
+
+def _plan_sensitivity(spec: SensitivitySpec) -> SensitivitySpec:
+    """Plan a sensitivity analysis: a scan with indices or a project sensitivity."""
+    target = _project_sensitivity(spec)
+    if target is None:
+        return _plan_scan(spec)
+    return _plan_runner(spec, target)
+
+
+def _compute_sensitivity_unit(
+    spec: SensitivitySpec, index: int, ctx: RunContext
+) -> None:
+    """Compute a unit of a sensitivity analysis, unless its result exists."""
+    target = _project_sensitivity(spec)
+    if target is None:
+        _compute_scan_unit(spec, index, ctx)
+        return
+    prepared = _planned_runner(spec, target)
+    unit = prepared.units[index]
+    if not (ctx.out / unit.folder).is_dir():
+        _run_analysis(spec, prepared, unit, ctx, workers=1)
+
+
+def _merge_sensitivity(spec: SensitivitySpec, ctx: RunContext) -> dict[str, Any]:
+    """Merge the units of a sensitivity analysis."""
+    target = _project_sensitivity(spec)
+    if target is None:
+        return _merge_scan(spec, ctx)
+    return _merge_runner(spec, _planned_runner(spec, target), ctx)
+
+
+def _run_sensitivity(spec: SensitivitySpec, ctx: RunContext) -> dict[str, Any]:
+    """Run a sensitivity analysis whole, with `resume` the analyses without a folder."""
+    target = _project_sensitivity(spec)
+    if target is None:
+        return _run_scan(spec, ctx)
+    prepared = _planned_runner(spec, target)
+    workers = _workers(ctx)
+    for unit in prepared.units:
+        if not (ctx.resume and (ctx.out / unit.folder).is_dir()):
+            _run_analysis(spec, prepared, unit, ctx, workers)
+    return _merge_runner(spec, prepared, ctx)
+
+
+# ----------------------------------------------------------------------------
 # uncertainty
 # ----------------------------------------------------------------------------
 def _uncertainty_analysis(spec: UncertaintySpec) -> tuple[Project, UncertaintyAnalysis]:
@@ -848,23 +1039,10 @@ def _replace_directory(result: UncertaintyResult, target: Path) -> None:
 
     The result is written into a temporary directory next to the target,
     which replaces it once it is complete, so the target is a complete
-    result, if any. The directory is created with the mode `0o777` and the
-    umask of the process, as a directory created with `mkdir`.
+    result, if any, see `sbmlsim.atomic.atomic_directory`.
     """
-    temporary = target.with_name(f".{target.name}.{secrets.token_hex(8)}.tmp")
-    temporary.mkdir(mode=0o777)
-    try:
+    with atomic_directory(target) as temporary:
         result.to_netcdf(temporary)
-        if target.exists():
-            previous = target.with_name(f"{temporary.name}.old")
-            target.rename(previous)
-            temporary.rename(target)
-            shutil.rmtree(previous)
-        else:
-            temporary.rename(target)
-    except BaseException:
-        shutil.rmtree(temporary, ignore_errors=True)
-        raise
 
 
 def _merge_uncertainty(spec: UncertaintySpec, ctx: RunContext) -> dict[str, Any]:
@@ -1038,14 +1216,15 @@ SCAN: Kind[ScanSpec] = Kind(
     cost_setting="analysis",
 )
 
-#: the sensitivity indices of a scan of a project, split as the scan
+#: the sensitivity indices of a scan of a project, split as the scan, or a
+#: sensitivity analysis of the project over groups, split into its analyses
 SENSITIVITY: Kind[SensitivitySpec] = Kind(
     name="sensitivity",
     spec=SensitivitySpec,
-    run=_run_scan,
-    plan=_plan_scan,
-    compute_unit=_compute_scan_unit,
-    merge=_merge_scan,
+    run=_run_sensitivity,
+    plan=_plan_sensitivity,
+    compute_unit=_compute_sensitivity_unit,
+    merge=_merge_sensitivity,
     cost_setting="analysis",
 )
 

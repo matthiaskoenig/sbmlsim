@@ -149,6 +149,8 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.classification](sensitivity.classification.md) | classification of sensitivities and uncertainties |
 | [sensitivity.plots](sensitivity.plots.md) | heatmap, bars of the indices and the plane of Morris |
 | [sensitivity.uncertainty](sensitivity.uncertainty.md) | bands and distributions of a scan over draws |
+| [sensitivity.parameters](sensitivity.parameters.md) | the table of the parameters of an analysis, as sbmlsim 0.8 wrote it |
+| [sensitivity.runner](sensitivity.runner.md) | the sensitivity analyses of a project over the groups of its simulations, with the files of sbmlsim 0.8.5 |
 
 ## sbmlsim.sciml
 

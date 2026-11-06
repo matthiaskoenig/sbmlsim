@@ -161,6 +161,8 @@ nav = [
       { "uncertainty" = "api/sensitivity.uncertainty.md" },
       { "classification" = "api/sensitivity.classification.md" },
       { "plots" = "api/sensitivity.plots.md" },
+      { "parameters" = "api/sensitivity.parameters.md" },
+      { "runner" = "api/sensitivity.runner.md" },
     ] },
     { "sbmlsim.uncertainty" = [
       { "quantity" = "api/uncertainty.quantity.md" },

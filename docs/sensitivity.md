@@ -252,3 +252,60 @@ The heatmap leaves out parameters whose values are all below `cutoff`, in the un
 For the spread of outputs over random draws, see `plot_bands` and `plot_distribution` in [Sampling](sampling.md#draw-parameter-values) and [Uncertainty](uncertainty.md).
 
 `examples/sensitivity/sensitivity_example.py` runs all four methods with a dimension of conditions and writes the figures; `--cores` sets the number of workers and `--quick` runs small designs.
+
+## Sensitivity analyses of a project
+
+A model package runs the same analyses over the groups of its simulations, e.g. a control and the degrees of a renal impairment, and keeps their tables and figures next to the model. A `SensitivityRunner` of `sbmlsim.sensitivity.runner` holds what is the model's own: the table of the parameters with their bounds, the outputs (an observable each, also a parameter of a `PK` observable such as `pk.cmax`), the observables or a function building them when a run starts, and the analyses with their groups:
+
+```py
+from sbmlsim.sensitivity.parameters import parameters_from_sbml, set_relative_bounds
+from sbmlsim.sensitivity.runner import (
+    LocalAnalysis,
+    SamplingAnalysis,
+    SensitivityGroup,
+    SensitivityOutput,
+    SensitivityRunner,
+    SobolAnalysis,
+)
+
+
+def parameters():
+    table = parameters_from_sbml(PROJECT.model_path, exclude_ids={"Mr_hctz"})
+    set_relative_bounds(table, 0.15)
+    return table
+
+
+GROUPS = [
+    SensitivityGroup("control", "Control", Simulation(end=24, time_unit="hr")),
+    SensitivityGroup(
+        "female", "Female", Simulation(end=24, time_unit="hr"), variant="female"
+    ),
+]
+
+SENSITIVITY = SensitivityRunner(
+    parameters=parameters,
+    outputs=[SensitivityOutput("cmax", "Cmax", observable="pk.cmax")],
+    observables=observables,
+    analyses={
+        "local": LocalAnalysis(groups=GROUPS),
+        "sampling": SamplingAnalysis(groups=GROUPS, n=1000),
+        "sobol": SobolAnalysis(groups=GROUPS[:1], n=4096),
+    },
+    default=("local",),
+)
+
+PROJECT = Project(..., sensitivities={"pk": ".sensitivity:SENSITIVITY"})
+```
+
+The project lists the runner in `sensitivities`, as an object or a reference, and the kind `sensitivity` of the [run layer](run.md#simulate-scan-sensitivity-and-uncertainty) runs it into its output, one unit per analysis: `python -m sbmlsim.run sensitivity pk.yaml --out results/sensitivity` with `analysis: pk` and optionally `analyses: [local, sampling]`. A runner which a project lists without a `project` of its own runs on that project; a runner with `project=` and `out=` runs from a script as well, `SENSITIVITY.main()`, with the names of the analyses, `--workers` and `--out` on its command line, or `SENSITIVITY.run(["local"], path=...)`. A model with several simulations has a runner per simulation, listed as a mapping by subfolder (`run_subfolders`), which share one table of the parameters.
+
+A group runs a variant of the model of the project (`variant`, the default variant without) and may prepare the scan of every design (`prepare`, e.g. an equilibration). An analysis varies the parameters of the table which no simulation of its groups sets (`free_parameters`); a global design is drawn once and a group of another variant samples it relative to the values of its variant (`design_factors`, `relative_design`), so e.g. a group of women varies the body weight around the female one by the same factors. The designs and indices are the ones above with the seed `1234`; the environment variable `SBMLSIM_SENSITIVITY_N` replaces the numbers of samples for a quick run.
+
+The files are the ones of sbmlsim 0.8.5, which manuscripts read:
+
+| analysis | files |
+| --- | --- |
+| every run | `parameters.tsv` and `parameters.tex`, the table of the parameters with the values of the other variants of the groups, `value_<variant>` |
+| `LocalAnalysis` | `local/local_d<delta>_nvar<n_var>_<k>_<group>.tsv`: the normalized sensitivity `Sij`, the mean over `n_var` steps up to `delta`, with its class, and the heatmap `.png` |
+| `SamplingAnalysis` | a Latin hypercube: `sampling/<group>/samples.tsv`, `sampling/sampling_N<n>.tsv` with the statistics of `ScanResult.summary` per group and output (`mean`, `median`, `std` the sample standard deviation, `cv`, `min`, `q005`, `q095`, `max`, the uncertainty `U = (P97.5 - P2.5) / P50` and its class), `_compact.tsv`, `.tex` and the figures of the samples and the outputs per group |
+| `FastAnalysis`, `SobolAnalysis` | `<analysis>/<group>/<output>.S1.tsv` and `.ST.tsv`, the heatmaps of `S1` and `ST` and the bars of `plot_indices` per output |

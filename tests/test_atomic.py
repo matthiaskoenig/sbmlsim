@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from sbmlsim.atomic import atomic_path, write_text_atomic
+from sbmlsim.atomic import atomic_directory, atomic_path, write_text_atomic
 
 
 def _mode(path: Path) -> int:
@@ -68,3 +68,28 @@ def test_writer_which_replaces_the_temporary_file(tmp_path: Path) -> None:
     assert path.read_bytes() == b"\x01"
     assert _mode(path) == _mode(reference)
     assert sorted(p.name for p in tmp_path.iterdir()) == ["reference.nc", "result.nc"]
+
+
+def test_a_directory_is_replaced_once_it_is_complete(tmp_path: Path) -> None:
+    target = tmp_path / "local"
+    with atomic_directory(target) as temporary:
+        assert not target.exists()
+        (temporary / "a.tsv").write_text("first", encoding="utf-8")
+    assert (target / "a.tsv").read_text(encoding="utf-8") == "first"
+    with atomic_directory(target) as temporary:
+        (temporary / "b.tsv").write_text("second", encoding="utf-8")
+        # the old directory stays until the new one is complete
+        assert (target / "a.tsv").exists()
+    assert sorted(p.name for p in target.iterdir()) == ["b.tsv"]
+    assert [p.name for p in tmp_path.iterdir()] == ["local"]
+
+
+def test_a_failed_directory_leaves_the_old_one(tmp_path: Path) -> None:
+    target = tmp_path / "local"
+    target.mkdir()
+    (target / "a.tsv").write_text("kept", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="failed"), atomic_directory(target) as tmp:
+        (tmp / "b.tsv").write_text("lost", encoding="utf-8")
+        raise RuntimeError("failed")
+    assert sorted(p.name for p in target.iterdir()) == ["a.tsv"]
+    assert [p.name for p in tmp_path.iterdir()] == ["local"]
