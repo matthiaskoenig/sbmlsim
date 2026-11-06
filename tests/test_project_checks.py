@@ -252,7 +252,7 @@ def test_a_package_which_does_not_import_fails() -> None:
         ({"name": "other"}, "is not the name of the package"),
         (
             {"variants": {"default": Path("/elsewhere/model.xml")}},
-            r"variant 'default' /elsewhere/model.xml is not below",
+            r"variant 'default' .*model\.xml is not below",
         ),
         ({"variants": {"default": Path("models/gone.xml")}}, "does not exist"),
         ({"data_path": [Path("/does/not/exist")]}, "does not exist"),
