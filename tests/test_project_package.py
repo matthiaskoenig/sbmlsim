@@ -229,12 +229,19 @@ def test_the_variants_are_relative_to_the_root() -> None:
         "default": TOY_PATH / "models" / "toy.xml",
         "slow": TOY_PATH / "models" / "toy_slow.xml",
     }
-    assert PROJECT.model_path() == TOY_PATH / "models" / "toy.xml"
-    assert PROJECT.model_path("slow") == TOY_PATH / "models" / "toy_slow.xml"
+    assert PROJECT.variant_path() == TOY_PATH / "models" / "toy.xml"
+    assert PROJECT.variant_path("slow") == TOY_PATH / "models" / "toy_slow.xml"
     with pytest.raises(KeyError, match="slow"):
-        PROJECT.model_path("female")
+        PROJECT.variant_path("female")
     with pytest.raises(ValueError, match="no model variants"):
-        PROJECT.replace(variants={}).model_path()
+        PROJECT.replace(variants={}).variant_path()
+
+
+def test_the_model_path_is_the_default_variant() -> None:
+    assert PROJECT.model_path == TOY_PATH / "models" / "toy.xml"
+    assert str(PROJECT.model_path) == str(TOY_PATH / "models" / "toy.xml")
+    with pytest.raises(ValueError, match="no model variants"):
+        _ = PROJECT.replace(variants={}).model_path
 
 
 def test_every_variant_is_a_file_of_its_own() -> None:
@@ -257,7 +264,7 @@ def test_load_roadrunner_at_the_level_of_the_project(
     monkeypatch.setattr(model_roadrunner, "load_roadrunner", recording)
     project = PROJECT.replace(simulator=SimulatorSettings(jit_optimization="O0"))
     r = project.load_roadrunner("slow")
-    assert calls == [(PROJECT.model_path("slow"), JitOptimization.O0)]
+    assert calls == [(PROJECT.variant_path("slow"), JitOptimization.O0)]
     assert r.getValue("k") == pytest.approx(0.1)
     assert PROJECT.load_roadrunner().getValue("k") == pytest.approx(0.2)
 
