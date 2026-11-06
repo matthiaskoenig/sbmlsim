@@ -885,6 +885,22 @@ class MappingMetaData:
         """Convert to dictionary for serialization."""
         return dict(self.__dict__)
 
+    def filter_value(self, name: str) -> Any:
+        """Get the value of a field which a filter of the mappings compares.
+
+        The value of the field itself, see `sbmlsim.fit.filters.metadata_filter`;
+        a subclass overrides it for a field whose value a filter compares in
+        another form, e.g. a sampling site which follows the tissue when it is
+        not stated.
+
+        Args:
+            name: the name of the field.
+
+        Returns:
+            The value the filter compares with its values.
+        """
+        return getattr(self, name)
+
 
 class FitMapping:
     """Mapping of reference data to observable data.

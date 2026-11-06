@@ -157,28 +157,13 @@ def test_fit_resume_runs_the_missing_repeats(
     _assert_same_fits(_result(out), _result(fit_out))
 
 
-def test_fit_adopt_writes_adopted_json_into_out(tmp_path: Path) -> None:
-    def status() -> str:
-        return subprocess.run(
-            ["git", "status", "--porcelain", "examples"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=True,
-        ).stdout
+def test_fit_adopt_needs_the_identifiability() -> None:
+    """An adopted fit carries the uncertainty of its parameters.
 
-    adopted = ROOT / "examples" / "hctz_fitting" / "adopted.json"
-    before = (status(), adopted.exists())
-    out = tmp_path / "out"
-    run.execute(
-        "fit",
-        {**FIT, "repeats": 1, "opid": "IV_adopted", "adopt": True},
-        out,
-        workers=1,
-    )
-    assert _json(out / "adopted.json") == {"fits": {"IV": "IV_adopted"}}
-    assert (out / "IV_adopted" / "parameters.json").exists()
-    assert (status(), adopted.exists()) == before
+    The adoption itself is tested on the toy project, `test_fit_kinds_project`.
+    """
+    with pytest.raises(ConfigurationError, match="identifiability"):
+        run.plan("fit", {**FIT, "repeats": 1, "adopt": True})
 
 
 def test_fit_records_the_provenance_argument(tmp_path: Path) -> None:

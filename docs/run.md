@@ -98,14 +98,23 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 
 | field | default | meaning |
 | --- | --- | --- |
-| `opid` | the subset | the id of the fit, the directory of its records in the output |
+| `opid` | the subset, with `adopt` the id of a fit | the id of the fit, the directory of its records in the output; an adopted fit has the id of a fit of its subset, `<subset>_<date>_<time>__<hash>` |
 | `repeats` | 4 | the number of optimization runs |
 | `algorithm` | `LSQ` | least squares `LSQ` or differential evolution `DE` |
 | `seed` | drawn by the plan | the seed of the start values and of the runs |
 | `studies` | all | the studies of the problem to fit |
 | `timeout` | none | the seconds a single run may take |
 | `optimizer` | `{}` | further arguments of the optimizer, e.g. `{"max_nfev": 50}`, and of the runner, e.g. the sampling of the start values `sampling` by its name (`LOGUNIFORM`, `UNIFORM`, `LOGUNIFORM_LHS`, `UNIFORM_LHS`, `START`); a setting of the spec, e.g. `seed`, is refused here |
-| `adopt` | `false` | write `adopted.json`, the adopted fits of the project with this fit for its subset |
+| `start` | none | the point least squares starts from instead of samples of the bounds: the values by parameter id (`{"k": 0.3}`), a JSON file of them, the directory of the records of a fit or the id of an adopted fit of the project; needs `LSQ` and one repeat |
+| `fix_adopted` | `false` | record the adopted fits of the other subsets, whose values the models of the project carry, and their values in the provenance of the fit and name them in its report |
+| `identifiability` | `false` | compute the profile likelihoods of the parameters of the best run after the fit, `<opid>/identifiability.json` |
+| `profile` | `{}` | the settings of these profiles, the keyword arguments of `ProfileSettings`, e.g. `{"max_points": 10}` |
+| `fisher` | `true` | compute the Fisher information with the profiles, `<opid>/fisher.json` |
+| `report` | `false` | write the report of the fit into `<opid>`, with the title of the project and the fixed adopted fits |
+| `mapping_figures` | `true` | draw the figure of every fit mapping in the report |
+| `adopt` | `false` | adopt the fit, which needs `identifiability`: its record into `fits/<opid>` and `adopted.json`, the adopted fits of the project with this fit for its subset |
+
+The plan refuses a fit whose upper bounds let a remainder of a model of the project become negative, an initial assignment `f_c = 1 - f_a - f_b` whose fitted fractions and the values of the others sum above 1 (`sbmlsim.fit.project_fits.remainder_problems`), and checks the start before a repeat runs.
 
 ### identifiability
 
@@ -129,6 +138,7 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | `fisher` | `step` | of `fisher_information` | the relative step of the finite differences |
 | `report` | `mapping_figures` | `true` | draw the figure of every fit mapping |
 | `report` | `group_by` | the groupings of the problem | the groupings of the report, the columns of one grouping per list |
+| `report` | `adopted` | `false` | report the adopted fit of the subset from its record in the project, of every adopted fit for the subset `all`, into `<subset>/`, without the input `fit` |
 | `petab` | `required_extension` | `true` | mark the extension `sbmlsim` as required |
 
 ### simulate, scan, sensitivity and uncertainty
@@ -173,16 +183,16 @@ The results of the kinds:
 | kind | results |
 | --- | --- |
 | `simulate` | `index.html` and a directory per experiment |
-| `fit` | `<opid>/runs/<opid>_run_<k>.json` (the repeats), `<opid>/optimization_result.json`, `<opid>/parameters.json` (the best run), `<opid>/fits.tsv`, with `adopt` also `adopted.json` |
+| `fit` | `<opid>/runs/<opid>_run_<k>.json` (the repeats), `<opid>/optimization_result.json`, `<opid>/parameters.json` (the best run), `<opid>/fits.tsv`, with `identifiability` also `<opid>/identifiability.json` and `<opid>/fisher.json`, with `report` the report in `<opid>`, with `adopt` also `fits/<opid>` (the record of the adopted fit) and `adopted.json` |
 | `identifiability` | `profiles/<pid>.json` (the profiles), `identifiability.json`, `fisher.json` and a copy of the records of the fit, `optimization_result.json` and `parameters.json` |
 | `fisher` | `fisher.json` and a copy of the records of the fit |
-| `report` | `report/` |
+| `report` | `report/`, with `adopted` a directory per subset |
 | `petab` | `petab/problem.yaml` and its tables |
 | `scan` | `blocks/points-<start>-<stop>.nc` (the points of the units), `result.nc` (the `ScanResult`) |
 | `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`) |
 | `uncertainty` | `checkpoint/<scenario>/draws-<start>-<stop>.nc` (the draws of the units), `uncertainty/` (the `UncertaintyResult`) |
 
-The input `fit` of a kind is the output of a `fit` run, whose records are in its directory `<opid>`, or a directory of records itself, e.g. the output of an `identifiability` or `fisher` run, which copy the records of their fit, so a report shows the fit and its analyses from one directory. Every file is written atomically: a reader sees the old or the new file and never a partial one. A run never writes into the project: even `adopt` writes `adopted.json` into the output, which you copy into the project to adopt the fit.
+The input `fit` of a kind is the output of a `fit` run, whose records are in its directory `<opid>`, or a directory of records itself, e.g. the output of an `identifiability` or `fisher` run, which copy the records of their fit, so a report shows the fit and its analyses from one directory. Every file is written atomically: a reader sees the old or the new file and never a partial one. A run never writes into the project: even `adopt` writes `adopted.json` and the record `fits/<opid>` into the output, which you copy into the directory of the fit records of the project (`fits_dir`) and commit to adopt the fit. A report of a project has its context: the title of the project and the adopted fits the fit kept fixed, as its records name them.
 
 The results are the files of the classes of `sbmlsim`, which read them back: `OptimizationResult.from_json` reads `optimization_result.json` of a fit, `IdentifiabilityResult.from_json` reads `identifiability.json`, `ScanResult.from_netcdf` reads `result.nc` of a scan, `SensitivityResult.from_netcdf` reads `sensitivity.nc` and `UncertaintyResult.from_netcdf` reads the directory `uncertainty/`. The fitted parameters of `parameters.json` are the input of a report or of the [identifiability](identifiability.md) tools.
 
@@ -313,7 +323,7 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 
 | field | meaning |
 | --- | --- |
-| `name`, `description` | the name of the project and what it is |
+| `name`, `title`, `description` | the name of the project, its title in the reports (the name without) and what it is |
 | `root` | the directory of the model package, which relative paths are relative to |
 | `package` | the dotted name of the model package, which relative references are relative to |
 | `variants` | the SBML files of the model by the name of its variant, the first the default: `model_path` (the default variant, a property), `variant_path(variant)` and `load_roadrunner(variant)`, which compiles at the level of the simulator settings |
@@ -321,7 +331,7 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `experiments` | the simulation experiment classes, the kind `simulate`: a sequence of classes, groups of them by name (the group `all` has every experiment, the groups together without it) or a function returning either; `load_experiments()` gives the groups, `experiment_classes(names)` the classes of names of groups or classes, `run_experiments(experiments, out)` runs them with the settings of the project |
 | `base_path`, `data_path` | the base path and the datasets of the experiments |
 | `fits` | the fit problems by their subset, the `FitDefinition`s of [Parameter fitting](fitting.md); `load_fit_definitions()` gives them at the optimization level of the simulator settings |
-| `fits_dir` | the directory of the records of the adopted fits, one directory per fit id, `adopted_record(fit_id)` |
+| `fits_dir` | the directory of the records of the adopted fits, one directory per fit id, `adopted_record(fit_id)`; `fit_records()` reads them, the fitted values with their uncertainty which a factory gives its parameters, `fit_records().parameter("k", unit=U.per_min)` (`sbmlsim.fit.records.AdoptedRecords`) |
 | `adopted` | the file of the adopted fits, `{"fits": {"<subset>": "<fit id>"}}`, `adopted.json` in `fits_dir` without |
 | `credibility` | the declaration of the contexts of use of the model, `load_credibility()` |
 | `scans` | the scans by their name, `ScanAnalysis`: the model, a function building the `Scan`, the observables, `time`, `keep`, `on_error` and, for a sensitivity analysis, `indices` (`local`, `sobol`, `fast` or `morris`) with `index_options` |

@@ -66,6 +66,7 @@ if TYPE_CHECKING:
 
     from sbmlsim.experiment import ExperimentResult, SimulationExperiment
     from sbmlsim.fit.cli import FitDefinition
+    from sbmlsim.fit.records import AdoptedRecords
     from sbmlsim.model.tolerances import AbsoluteTolerance
     from sbmlsim.plot.plotting import FigureSettings
     from sbmlsim.simulator import Simulator
@@ -544,6 +545,8 @@ class Project(BaseModel):
             project are relative to it.
         package: the dotted name of the model package, e.g. `__name__` in its
             `__init__.py`; relative references are relative to it.
+        title: the title of the model in its reports, e.g. the title of the
+            report of a fit; the name without.
         description: what the project is.
         variants: the SBML files of the model by the name of its variant, e.g.
             `{"male": ..., "female": ...}`, the first the default, see
@@ -585,6 +588,7 @@ class Project(BaseModel):
     name: str
     root: Path
     package: str | None = None
+    title: str = ""
     description: str = ""
     variants: Mapping[str, Path] = {}
     factory: Callable[[Path], Any] | str | None = None
@@ -1263,6 +1267,34 @@ class Project(BaseModel):
                 f"The record of the adopted fit '{fit_id}' has no {parameters}."
             )
         return record
+
+    def fit_records(self) -> AdoptedRecords:
+        """Get the records of the adopted fits: the fitted values and their uncertainty.
+
+        A model file of the factory takes the value of a fitted parameter
+        with its uncertainty from them, `fit_records().parameter(pid,
+        unit=...)`, see `sbmlsim.fit.records.AdoptedRecords`.
+
+        Returns:
+            The records of the adopted fits of `adopted_fits`, in `fits_dir`;
+            none for a project without adopted fits.
+
+        Raises:
+            ValueError: if the project has adopted fits and no `fits_dir`, or
+                the file of the adopted fits is no such file.
+            FileNotFoundError: if the record of an adopted fit does not exist.
+        """
+        from sbmlsim.fit.records import AdoptedRecords
+
+        fit_ids = list(self.adopted_fits().values())
+        if self.fits_dir is None:
+            if fit_ids:
+                raise ValueError(
+                    f"The project '{self.name}' has adopted fits {fit_ids} and no "
+                    "directory of fit records, fits_dir."
+                )
+            return AdoptedRecords(self.root, [])
+        return AdoptedRecords(self.fits_dir, fit_ids)
 
     # ------------------------------------------------------------------------
     # analyses

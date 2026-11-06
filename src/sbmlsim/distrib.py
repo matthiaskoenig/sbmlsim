@@ -16,7 +16,7 @@ import math
 import re
 from dataclasses import dataclass
 
-__all__ = ["ARGUMENTS", "DistribFormula", "parse", "support"]
+__all__ = ["ARGUMENTS", "UNCERTAINTY_DIMENSION", "DistribFormula", "parse", "support"]
 
 ARGUMENTS: dict[str, tuple[int, ...]] = {
     "normal": (2, 4),
@@ -25,6 +25,10 @@ ARGUMENTS: dict[str, tuple[int, ...]] = {
 }
 """The distributions and their numbers of arguments; the last two of four are
 the bounds of a truncation."""
+
+UNCERTAINTY_DIMENSION = "uncertainty"
+"""The id of the dimension of the draws of the fitted parameters of a model, see
+`sbmlsim.simulation.sampling.uncertainty_dimension`."""
 
 _CALL = re.compile(r"^\s*(\w+)\s*\((.*)\)\s*$")
 

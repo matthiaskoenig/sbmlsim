@@ -24,7 +24,8 @@ if __name__ == "__main__":
 stored earlier without optimizing again, with the records of the fit next to
 them (`load_fit_records`). The report of a stored fit is `report_from_records`,
 which `report_cli` and `identifiability_cli` use and a caller uses for a report
-of its own, e.g. with the context of its model.
+of its own, e.g. with the context of its model; `report_context` and
+`records_context` are the context of a fit of a `sbmlsim.project.Project`.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sbmlsim import log
 from sbmlsim.fit import display
@@ -64,6 +65,9 @@ from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
 from sbmlsim.utils import paths_text
+
+if TYPE_CHECKING:
+    from sbmlsim.project import Project
 
 logger = logging.getLogger(__name__)
 
@@ -631,6 +635,78 @@ def report_from_records(
         context=context,
         groupings=definition.groupings if groupings is None else groupings,
     )
+
+
+def report_context(
+    project: Project,
+    subset: str,
+    definition: FitDefinition,
+    *,
+    fixed_fits: Sequence[str],
+) -> ReportContext:
+    """Get what the report of a fit of a project says beyond the fit itself.
+
+    Args:
+        project: the project.
+        subset: the fit problem, e.g. `PK`.
+        definition: the definition of the fit problem.
+        fixed_fits: the adopted fits whose parameters the fit kept fixed, the
+            current ones for a fit which runs
+            (`sbmlsim.fit.project_fits.current_fixed_fits`), the recorded ones
+            for a report from a record (`recorded_fixed_fits`).
+
+    Returns:
+        The title of the project (its name without) and the fit, the
+        description of the fit and of its parameters, and a note on the fixed
+        adopted fits, none without them.
+    """
+    noun = "fit" if len(fixed_fits) == 1 else "fits"
+    notes = (
+        (
+            f"The parameters of the adopted {noun} {', '.join(fixed_fits)} were "
+            f"fixed at their fitted values.",
+        )
+        if fixed_fits
+        else ()
+    )
+    return ReportContext(
+        title=f"{project.title or project.name}: fit {subset}",
+        description=definition.description,
+        parameter_descriptions={
+            p.pid: p.description for p in definition.parameters if p.description
+        },
+        notes=notes,
+    )
+
+
+def records_context(
+    project: Project,
+) -> Callable[[str, FitDefinition, FitRecords], ReportContext]:
+    """Get the context of the report of a fit of a project from its records.
+
+    It is the context of `report_cli` and of `report_from_records` for a
+    project: the fixed adopted fits are those the provenance of the record
+    names (`sbmlsim.fit.project_fits.recorded_fixed_fits`), not the adopted
+    fits of the project now.
+
+    Args:
+        project: the project.
+
+    Returns:
+        A function of the subset, its definition and the records of the fit
+        which returns the context of its report (`report_context`).
+    """
+    from sbmlsim.fit.project_fits import recorded_fixed_fits
+
+    def context(
+        subset: str, definition: FitDefinition, records: FitRecords
+    ) -> ReportContext:
+        """Get the context of the report of a record."""
+        return report_context(
+            project, subset, definition, fixed_fits=recorded_fixed_fits(records)
+        )
+
+    return context
 
 
 def _display_records(
