@@ -502,3 +502,17 @@ def test_the_threshold_states_its_assumption(fitted: Fitted) -> None:
     html = _html(_section(fitted, identifiability=_identifiability(problem)))
     assert "negative log-likelihood" in html
     assert "unit variance" in html
+
+
+def test_sources_of_a_snapshot_are_described(fitted: Fitted) -> None:
+    _, result = fitted
+    assert result.provenance is not None
+    result.provenance = replace(
+        result.provenance,
+        git=None,
+        sources=[{"name": "model", "commit": "abcdef1234", "dirty": True}],
+    )
+    html = _html(_section(fitted))
+    assert "abcdef1234" in html and "model" in html
+    assert "not under version control" not in html
+    assert "uncommitted changes" in html

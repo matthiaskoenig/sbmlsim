@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from sbmlsim import parallel
+from sbmlsim import cgroup, parallel
 from sbmlsim.parallel import process_context
 
 REPO = Path(__file__).parents[1]
@@ -128,7 +128,7 @@ def test_less_than_one_worker_is_an_error() -> None:
 
 
 def test_none_is_serial_below_the_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(os, "process_cpu_count", lambda: 8)
+    monkeypatch.setattr(cgroup, "available_cpus", lambda: 8)
     assert parallel.resolve_workers(None, parallel.POOL_THRESHOLD - 1) == 1
     assert parallel.resolve_workers(None, parallel.POOL_THRESHOLD) == 8
     assert parallel.resolve_workers(None, 10**6) == 8

@@ -583,3 +583,44 @@ def test_the_groupings_of_a_definition(
         groupings=[Grouping.by("tissue")],
     )
     assert [grouping.name for grouping in report.groupings] == ["tissue"]
+
+
+def test_report_from_records_of_a_fit_of_some_studies(
+    report_dir: Path, definition_hctz_pk: FitDefinition
+) -> None:
+    """The report of a fit of some studies has the problem of these studies."""
+    import copy
+
+    from sbmlsim.fit.cli import problem_of_records, recorded_study_ids
+    from sbmlsim.fit.provenance import FitProvenance
+
+    records = load_fit_records(report_dir)
+    assert records.opt_result is not None
+    assert recorded_study_ids(records) is None
+    opt_result = copy.deepcopy(records.opt_result)
+    opt_result.provenance = FitProvenance(
+        created="",
+        arguments={"study_ids": ["Beermann1976"]},
+        seed=None,
+        run_seeds=[],
+        versions={},
+        git=None,
+    )
+    records = dataclasses.replace(records, opt_result=opt_result)
+    assert recorded_study_ids(records) == ["Beermann1976"]
+
+    def sids(collections: Any) -> list[str]:
+        return [c.sid for c in collections if not c.exclude]
+
+    studies = sids(definition_hctz_pk.collections(study_ids=["Beermann1976"]))
+    assert len(studies) < len(sids(definition_hctz_pk.collections()))
+    problem = problem_of_records(definition_hctz_pk, records, opid="PK")
+    assert sids(problem.mapping_collections) == studies
+    report = report_from_records(
+        definition_hctz_pk,
+        report_dir,
+        opid="PK",
+        records=records,
+        mapping_figures=False,
+    )
+    assert sids(report.problem.mapping_collections) == studies

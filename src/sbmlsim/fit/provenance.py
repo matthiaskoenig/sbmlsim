@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import importlib.metadata
+import json
+import os
 import platform
 import subprocess
 from collections.abc import Iterable, Mapping, Sequence
@@ -19,6 +21,12 @@ from pathlib import Path, PurePath
 from typing import Any
 
 from sbmlsim.engine import Engine
+
+#: the environment variable of the file simrun writes with the provenance of
+#: the sources of a snapshot, a JSON list of objects with the keys `name`,
+#: `branch`, `commit`, `dirty`, `changed_files`, `diff_sha256`, `snapshot` and
+#: `patch`
+SIMRUN_PROVENANCE = "SIMRUN_PROVENANCE"
 
 #: the packages whose versions a fit records; roadrunner also with the
 #: engines COPASI and AMICI, since roadrunner draws the designs of the sampling
@@ -81,11 +89,14 @@ class FitProvenance:
         seed: seed of the fit, `None` for a fit which is not reproducible.
         run_seeds: seed of every run, `None` for a run which needs none.
         versions: versions of python and of the simulation stack.
-        git: revision of the repository of the model, `None` outside of one.
+        git: revision of the repository of the model, `None` outside of one
+            and for a fit with `sources`.
         files: SHA-256 of the models and the data by path.
         start_values: start value of every fit parameter.
         fixed_values: values of the model which the caller keeps fixed;
             recorded, not applied.
+        sources: provenance of the sources of a snapshot a run on a cluster
+            runs from (`snapshot_provenance`), `None` for a fit of a checkout.
     """
 
     created: str
@@ -97,6 +108,7 @@ class FitProvenance:
     files: dict[str, str] = field(default_factory=dict)
     start_values: dict[str, float | None] = field(default_factory=dict)
     fixed_values: dict[str, float] = field(default_factory=dict)
+    sources: list[dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to a dictionary of JSON types."""
@@ -108,6 +120,7 @@ class FitProvenance:
     def from_dict(d: Mapping[str, Any]) -> FitProvenance:
         """Create from a dictionary of `to_dict`."""
         git = d.get("git")
+        sources = d.get("sources")
         return FitProvenance(
             created=str(d["created"]),
             arguments=dict(d.get("arguments", {})),
@@ -118,6 +131,7 @@ class FitProvenance:
             files=dict(d.get("files", {})),
             start_values=dict(d.get("start_values", {})),
             fixed_values=dict(d.get("fixed_values", {})),
+            sources=[dict(s) for s in sources] if sources is not None else None,
         )
 
 
@@ -138,6 +152,33 @@ def collect_versions(engine: Engine = Engine.ROADRUNNER) -> dict[str, str]:
         except importlib.metadata.PackageNotFoundError:
             versions[package] = "not installed"
     return versions
+
+
+def snapshot_provenance(path: Path | None = None) -> list[dict[str, Any]] | None:
+    """Read the provenance of the sources of a snapshot.
+
+    Args:
+        path: the file simrun wrote; the file the environment variable
+            `SIMRUN_PROVENANCE` names if `None`.
+
+    Returns:
+        The list of the sources, `None` without a path and a variable.
+
+    Raises:
+        ValueError: if the file is no JSON list of objects.
+    """
+    if path is None:
+        name = os.environ.get(SIMRUN_PROVENANCE)
+        if not name:
+            return None
+        path = Path(name)
+    try:
+        sources = json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as err:
+        raise ValueError(f"The provenance '{path}' is no JSON: {err}") from err
+    if not isinstance(sources, list) or not all(isinstance(s, dict) for s in sources):
+        raise ValueError(f"The provenance '{path}' is no list of objects.")
+    return sources
 
 
 def git_info(path: Path) -> GitInfo | None:
@@ -250,6 +291,7 @@ def create_provenance(
     start_values: Mapping[str, float | None],
     fixed_values: Mapping[str, float] | None = None,
     engine: Engine = Engine.ROADRUNNER,
+    sources: list[dict[str, Any]] | None = None,
 ) -> FitProvenance:
     """Create the provenance of a fit before it starts.
 
@@ -263,11 +305,16 @@ def create_provenance(
         fixed_values: values of the model which the caller keeps fixed;
             recorded, not applied.
         engine: the engine of the problem, see `collect_versions`.
+        sources: provenance of the sources of a snapshot; without them the file
+            of the environment variable `SIMRUN_PROVENANCE` is read, if set; with sources there is no git revision (a snapshot has no
+            checkout) and the checksums are relative to `base_path`.
 
     Returns:
         The provenance.
     """
-    git = git_info(base_path)
+    if sources is None:
+        sources = snapshot_provenance()
+    git = git_info(base_path) if sources is None else None
     root = Path(git.root) if git else base_path
     return FitProvenance(
         created=datetime.now(UTC).isoformat(timespec="seconds"),
@@ -279,4 +326,5 @@ def create_provenance(
         files=file_checksums(files, root=root),
         start_values=dict(start_values),
         fixed_values=dict(fixed_values or {}),
+        sources=sources,
     )

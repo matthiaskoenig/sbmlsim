@@ -316,6 +316,7 @@ def test_an_interrupted_serial_fit_keeps_the_repeats_which_finished(
     # the third repeat did not start, the first one is the result
     assert started == [0, 1]
     assert opt_result.size == 1
+    assert opt_result.interrupted
     assert [path.name for path in tmp_path.glob("*.json")] == [
         f"{op_hctz_pk.opid}_run_0.json"
     ]
@@ -385,8 +386,11 @@ def test_an_interrupted_parallel_fit_keeps_the_repeats_which_finished(
         assert returned == []
     else:
         # the first wait may return both repeats, then there is no second one
-        assert fit().size == sum(returned)
+        result = fit()
+        assert result.size == sum(returned)
         assert len(returned) == 1
+        # the fit was interrupted unless both repeats came back
+        assert result.interrupted == (result.size < 2)
     # the pool of the fit is stopped, whatever interrupted it
     assert not multiprocessing.active_children()
 

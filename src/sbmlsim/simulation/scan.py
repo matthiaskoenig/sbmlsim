@@ -38,7 +38,7 @@ from typing import Any
 
 import numpy as np
 
-from sbmlsim.result.scan import POINT, STATISTIC, STATUS, TIME
+from sbmlsim.result.scan import INDEX, POINT, STATISTIC, STATUS, TIME
 from sbmlsim.simulation.definition import Simulation, Time, _encode
 from sbmlsim.units import DimensionalityError, Quantity, ureg
 
@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 #: the names of the dimensions and variables of a result, which no dimension of
 #: a scan takes
-RESERVED: frozenset[str] = frozenset({TIME, POINT, STATISTIC, STATUS})
+RESERVED: frozenset[str] = frozenset({TIME, POINT, INDEX, STATISTIC, STATUS})
 
 
 class DimensionKind(StrEnum):

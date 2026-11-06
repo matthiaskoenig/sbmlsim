@@ -22,6 +22,12 @@
    run holds its result once; the arrays are reshaped into the dimensions of
    the scan, a `ScanResult`.
 
+A run of a block of points (`points=range(start, stop)`) runs only these
+points of the scan, in the same chunks of a plan, and gives a result over the
+dimension `_index` of their flat indices in C order; `ScanResult.combine`
+combines the results of the blocks of a scan to the result of the whole scan,
+bitwise, so a scan runs in pieces, e.g. on several machines.
+
 The result does not depend on the number of workers or the size of the
 chunks: the values of a scan are fixed before the run. A run which raises
 raises the error of the first point in the order of the scan which fails, and
@@ -78,11 +84,15 @@ from rich.progress import (
 from sbmlsim import parallel
 from sbmlsim.console import console
 from sbmlsim.engine import Engine, import_amici, import_copasi, resolve_engine
+from sbmlsim.events import emit
 from sbmlsim.model import AbstractModel, SBMLModel, load_model
 from sbmlsim.model.model_sbml import IntegratorSetting, IntegratorSettings
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.result.scan import (
+    BLOCK,
     CHANGES,
+    INDEX,
+    MAX_ERRORS,
     POINT,
     STATUS,
     TIME,
@@ -97,7 +107,6 @@ from sbmlsim.simulator.engines import check_plan, execute_plan
 from sbmlsim.simulator.observables import ObservableGraph, compile_observables
 from sbmlsim.simulator.plan import Plan, compile_simulation, model_time, target_values
 from sbmlsim.simulator.worker import (
-    MAX_ERRORS,
     Chunk,
     ChunkResult,
     ModelSpec,
@@ -262,12 +271,25 @@ class Simulator:
         keep: Sequence[str] | None = None,
         on_error: OnError = "raise",
         progress: bool | None = None,
+        points: range | None = None,
     ) -> ScanResult:
-        """Run every point of a scan, see the module.
+        """Run every point of a scan, or a block of its points, see the module.
 
         The variables of the result are the kept observables; without
         observables they are the selections of the model, of the first model of
         a dimension of models, each a timecourse of its own name.
+
+        A block of points is a piece of the scan, e.g. a unit of work of a run
+        on several machines: its result has the dimension `_index` of the flat
+        indices of its points in C order instead of the dimensions of the scan,
+        every coordinate of a dimension along `_index` and the attribute
+        `block`, see `ScanResult.combine`, which combines the results of the
+        blocks of a scan to the result of the whole scan, bitwise. The methods
+        of a result over the dimensions of the scan, `dims`, `summary`,
+        `interpolate`, `to` and `q`, are for the combined result: `summary`
+        and `interpolate` raise for a block. A run of a block allocates per
+        point of the block only, also for a scan of more points than fit
+        into memory.
 
         Args:
             model: the model of the run; `None` for a scan with a dimension
@@ -294,13 +316,18 @@ class Simulator:
                 log of roadrunner. A feature the engine does not simulate is
                 no failing point, it raises with either.
             progress: show a progress bar; `None` shows it for a run in a pool.
+            points: the flat indices of the points in C order which run, a
+                `range` of step 1 inside `range(scan.size)` which is not empty;
+                `None` runs the whole scan. A scan without dimensions has the
+                point 0.
 
         Returns:
             The result, see `sbmlsim.result.scan`.
 
         Raises:
             ValueError: if the scan does not fit its models, see `_compile`,
-                or the integrator has no setting of a name.
+                the integrator has no setting of a name, or the points are no
+                block of the scan.
             ScanError: for a point which fails with `on_error="raise"`.
             RuntimeError: if a worker of the pool dies.
             NotImplementedError: for a feature the engine does not simulate,
@@ -309,23 +336,38 @@ class Simulator:
         """
         if on_error not in ("raise", "flag"):
             raise ValueError(f"'on_error' is 'raise' or 'flag', not '{on_error}'.")
-        compiled = self._compile(model, Scan.of(scan), time, observables, keep)
-        workers = parallel.resolve_workers(self.n_workers, compiled.size)
-        chunks = compiled.chunks(workers, on_error)
+        scan = Scan.of(scan)
+        block = _block(points, scan.size)
+        compiled = self._compile(model, scan, time, observables, keep)
+        workers = parallel.resolve_workers(self.n_workers, len(block))
+        chunks = compiled.chunks(workers, on_error, block)
         show = workers > 1 if progress is None else progress
-        assembly = _Assembly(compiled)
-        with _progress(show, compiled.size) as advance:
+        assembly = _Assembly(compiled, block)
+        done = 0
+        with _progress(show, len(block)) as advance:
 
             def collect(result: ChunkResult) -> None:
+                nonlocal done
                 assembly.add(result)
                 advance(len(result.indices))
+                done += len(result.indices)
+                emit(
+                    "scan.chunk",
+                    points=len(result.indices),
+                    done=done,
+                    total=len(block),
+                )
 
             if workers == 1:
                 self._run_serial(compiled, chunks, collect)
             else:
                 self._run_pool(compiled, chunks, workers, collect)
         return compiled.assemble(
-            assembly, on_error, self.integrator_settings, self.engine
+            assembly,
+            on_error,
+            self.integrator_settings,
+            self.engine,
+            block if points is not None else None,
         )
 
     def _models(
@@ -401,23 +443,21 @@ class Simulator:
             _vectors(scan, loaded, label)
             for loaded, label in zip(models, labels, strict=True)
         ]
-        positions = _positions(scan)
         # the plan of the first point of every simulation and model carries the
         # assignments of the values dimensions and of those with `at`, which
         # give the dose times of the PK observables, see `compile_pk`
         point_plans: list[Plan] = []
         for (s, m), plan in plans.items():
-            indices = _plan_points(scan, positions, s, m)
-            if indices.size:
-                values, timed = _values_of(
-                    scan, positions, vectors[m], at_times[(s, m)], indices[:1]
-                )
-                first_point = point_plan(plan, values, timed, 0)
-                # a feature the engine does not simulate raises before a point
-                # runs; the points of a plan share its changes and the times of
-                # the dimensions with `at`
-                check_plan(first_point, models[m])
-                point_plans.append(first_point)
+            position = _first_position(scan, s, m)
+            values, timed = _values_of(
+                scan, position, vectors[m], at_times[(s, m)], np.zeros(1, dtype=int)
+            )
+            first_point = point_plan(plan, values, timed, 0)
+            # a feature the engine does not simulate raises before a point
+            # runs; the points of a plan share its changes and the times of
+            # the dimensions with `at`
+            check_plan(first_point, models[m])
+            point_plans.append(first_point)
         graph = compile_observables(observables, first, keep=keep, plans=point_plans)
         # the time is the first column, also where the model selects it
         # elsewhere, e.g. last in the sorted selections of an experiment
@@ -611,16 +651,21 @@ class _Assembly:
     and keeps its chunks until then, which `finish` writes and releases one
     at a time. A result without timecourses has no cube.
 
+    The arrays hold the points of a block of the scan, every point of the
+    scan for a run of the whole scan: a point is at its flat index minus the
+    start of the block.
+
     Attributes:
         table: the values per simulation, `(scalar, point)`.
         status: `0` for a point which ran, `1` for one which failed.
-        errors: the flat index and the error of the points which failed, as
-            the chunks reported them.
+        errors: the flat index in the scan and the error of the points which
+            failed, as the chunks reported them.
     """
 
-    def __init__(self, compiled: _Compiled) -> None:
-        """Allocate the arrays of the result of a compiled scan."""
-        n = compiled.size
+    def __init__(self, compiled: _Compiled, block: range) -> None:
+        """Allocate the arrays of the result of a block of a compiled scan."""
+        n = len(block)
+        self._start = block.start
         self._n_columns = 1 + len(compiled.graph.timecourses)
         # a result without timecourses has no time axis, also when every
         # point failed
@@ -635,8 +680,9 @@ class _Assembly:
 
     def add(self, result: ChunkResult) -> None:
         """Write the arrays of a chunk, or keep it until the rows are known."""
-        self.table[:, result.indices] = result.scalars.T
-        self.status[result.indices] = result.status
+        at = result.indices - self._start
+        self.table[:, at] = result.scalars.T
+        self.status[at] = result.status
         self.errors.extend(result.errors)
         if not self._timed:
             return
@@ -669,9 +715,10 @@ class _Assembly:
         """Write the rows of the points of a chunk, padded with `NaN`."""
         cube = self._allocated()
         rows = result.values.shape[1]
-        cube[:, result.indices, :rows] = np.moveaxis(result.values, 2, 0)
-        cube[:, result.indices, rows:] = np.nan
-        self._written[result.indices] = True
+        at = result.indices - self._start
+        cube[:, at, :rows] = np.moveaxis(result.values, 2, 0)
+        cube[:, at, rows:] = np.nan
+        self._written[at] = True
 
 
 def _check_coordinates(scan: Scan, outputs: set[str]) -> None:
@@ -752,25 +799,37 @@ class _Compiled:
         """Get the number of points."""
         return self.scan.size
 
-    def chunks(self, workers: int, on_error: OnError) -> list[Chunk]:
-        """Cut the points into chunks which share a plan, see the module.
+    def chunks(
+        self, workers: int, on_error: OnError, block: range | None = None
+    ) -> list[Chunk]:
+        """Cut the points of a block into chunks which share a plan, see the module.
+
+        Args:
+            workers: the number of processes of the run.
+            on_error: what a chunk does about a point which fails.
+            block: the flat indices of the points which run, `None` for the
+                whole scan; the sizes of the chunks follow its number of
+                points.
 
         Returns:
             The chunks in the order of their first point.
         """
-        size = _chunk_size(self.size, workers)
-        positions = _positions(self.scan)
+        block = range(self.size) if block is None else block
+        size = _chunk_size(len(block), workers)
+        # the positions of the points of the block only, a scan may have more
+        # points than fit into memory
+        positions = _positions(self.scan, block)
         chunks: list[Chunk] = []
         for (s, m), plan in self.plans.items():
-            indices = _plan_points(self.scan, positions, s, m)
-            for start in range(0, indices.size, size):
-                part = indices[start : start + size]
+            rows = _plan_points(self.scan, positions, s, m)
+            for start in range(0, rows.size, size):
+                part = rows[start : start + size]
                 values, timed = _values_of(
                     self.scan, positions, self.vectors[m], self.at_times[(s, m)], part
                 )
                 chunks.append(
                     Chunk(
-                        indices=part,
+                        indices=block.start + part,
                         plan=plan,
                         model=m,
                         graph=self.graph,
@@ -822,6 +881,7 @@ class _Compiled:
         on_error: OnError,
         settings: Mapping[str, Any],
         engine: Engine,
+        block: range | None = None,
     ) -> ScanResult:
         """Build the result from the arrays of the chunks, see `ScanResult`.
 
@@ -832,8 +892,24 @@ class _Compiled:
         changes it, unless a selection of the same name is a variable: the
         variable keeps the name (its timecourse) and the values of the
         dimension are stored as `<dimension>.<target>`.
+
+        The result of a block of points, see `Simulator.run`, has the
+        dimension `_index` of the flat indices of its points instead of the
+        dimensions of the scan, every coordinate of a dimension along `_index`
+        with the values of its points, and the attribute `block`: its `start`
+        and `stop`, the `shape` and the `dims` of the scan and the dimension
+        of every coordinate (`coords`), with which `ScanResult.combine`
+        reshapes the blocks into the result of the scan. Every other attribute
+        is the one of the whole scan.
+
+        Args:
+            assembly: the arrays of the chunks.
+            on_error: what the run did about a point which failed.
+            settings: the integrator settings of the run.
+            engine: the engine of the run.
+            block: the points of a block, `None` for the whole scan.
         """
-        n, shape = self.size, self.scan.shape
+        n = assembly.status.size
         names = self.graph.timecourses
         scalars = self.graph.scalars
         cube = assembly.finish()
@@ -843,6 +919,19 @@ class _Compiled:
 
         first = self.models[0]
         dims = list(self.scan.dims)
+        # the dimensions and the shape of the arrays of the points
+        positions: np.ndarray | None = None
+        axes, shape = dims, self.scan.shape
+        if block is not None:
+            positions = _positions(self.scan, block)
+            axes, shape = [INDEX], (n,)
+
+        def along(k: int, values: np.ndarray) -> tuple[str, np.ndarray]:
+            """Get a coordinate of the dimension `k` along the points."""
+            if positions is None:
+                return self.scan.dimensions[k].id, values
+            return INDEX, values[positions[:, k]]
+
         tdim = TIME if self.grid is not None else POINT
         units: dict[str, str] = {}
         data_vars: dict[str, Any] = {}
@@ -851,16 +940,23 @@ class _Compiled:
         if cube is not None:
             units[TIME] = first.uinfo.get(TIME, "") or ""
             if self.grid is None:
-                data_vars[TIME] = ([*dims, POINT], cube[0].reshape(*shape, n_rows))
+                data_vars[TIME] = ([*axes, POINT], cube[0].reshape(*shape, n_rows))
             for j, name in enumerate(names, 1):
-                data_vars[name] = ([*dims, tdim], cube[j].reshape(*shape, n_rows))
+                data_vars[name] = ([*axes, tdim], cube[j].reshape(*shape, n_rows))
                 units[name] = self.graph.units[name]
         for j, name in enumerate(scalars):
-            data_vars[name] = (dims, table[j].reshape(shape))
+            data_vars[name] = (axes, table[j].reshape(shape))
             units[name] = self.graph.units[name]
         coords: dict[str, Any] = {}
-        for dimension in self.scan.dimensions:
-            coords[dimension.id] = np.array(dimension.labels)
+        # the dimension of every coordinate of a dimension, the attribute of a
+        # block
+        owners: dict[str, str] = {}
+        if block is not None:
+            coords[INDEX] = np.arange(block.start, block.stop)
+        for k, dimension in enumerate(self.scan.dimensions):
+            labels = np.array(dimension.labels)
+            coords[dimension.id] = labels if positions is None else along(k, labels)
+            owners[dimension.id] = dimension.id
             # labels carry no unit
             units[dimension.id] = ""
             for target, values in dimension.values.items():
@@ -873,20 +969,22 @@ class _Compiled:
                     continue
                 else:
                     name = target
+                owners[name] = dimension.id
                 if isinstance(values, Quantity):
-                    coords[name] = (dimension.id, np.array(values.magnitude))
+                    coords[name] = along(k, np.array(values.magnitude))
                     units[name] = str(values.units)
                 else:
-                    coords[name] = (dimension.id, np.array(values))
+                    coords[name] = along(k, np.array(values))
                     units[name] = first.uinfo.get(target, "") or ""
             for name, values in dimension.coordinates.items():
                 if name in data_vars or name in coords:
                     continue
+                owners[name] = dimension.id
                 if isinstance(values, Quantity):
-                    coords[name] = (dimension.id, np.array(values.magnitude))
+                    coords[name] = along(k, np.array(values.magnitude))
                     units[name] = str(values.units)
                 else:
-                    coords[name] = (dimension.id, np.array(values))
+                    coords[name] = along(k, np.array(values))
                     units[name] = ""
         if self.grid is not None and timed:
             coords[TIME] = self.grid
@@ -895,13 +993,13 @@ class _Compiled:
             "units": units,
             "scan": self.scan.to_dict(),
             "engine": engine.value,
-            "integrator_settings": _settings(settings),
+            "integrator_settings": settings_record(settings),
             CHANGES: self.change_times(),
         }
         if self.observables:
             attrs["observables"] = [o.to_dict() for o in self.observables]
         if on_error == "flag":
-            data_vars[STATUS] = (dims, status.reshape(shape))
+            data_vars[STATUS] = (axes, status.reshape(shape))
             units[STATUS] = ""
             attrs["errors"] = [
                 f"{self.point_text(i)}: {message}" if self.scan.dimensions else message
@@ -909,13 +1007,27 @@ class _Compiled:
             ]
             failed = int(status.sum())
             if failed:
+                points = (
+                    f"{n} points of the scan"
+                    if block is None
+                    else f"the points {block.start}-{block.stop} of the "
+                    f"{self.size} points of the scan"
+                )
                 logger.warning(
-                    "%s of %s points of the scan failed, their values are NaN, see "
-                    "the variable 'status': %s",
+                    "%s of %s failed, their values are NaN, see the variable "
+                    "'status': %s",
                     failed,
-                    n,
+                    points,
                     attrs["errors"][0],
                 )
+        if block is not None:
+            attrs[BLOCK] = {
+                "start": block.start,
+                "stop": block.stop,
+                "shape": [int(size) for size in self.scan.shape],
+                "dims": dims,
+                "coords": owners,
+            }
         return ScanResult(xr.Dataset(data_vars, coords=coords, attrs=attrs))
 
 
@@ -1003,11 +1115,35 @@ def _point_rows(scan: Scan, positions: np.ndarray) -> np.ndarray:
     return positions.reshape(-1, len(scan.dimensions))
 
 
-def _positions(scan: Scan) -> np.ndarray:
-    """Get the index of every point along every dimension, a row per point."""
+def _positions(scan: Scan, block: range | None = None) -> np.ndarray:
+    """Get the index of the points along every dimension, a row per point.
+
+    Args:
+        scan: the scan.
+        block: the flat indices of the points, every point of the scan for
+            `None`.
+    """
+    block = range(scan.size) if block is None else block
     if not scan.dimensions:
-        return np.zeros((1, 0), dtype=int)
-    return np.stack(np.unravel_index(np.arange(scan.size), scan.shape), axis=1)
+        return np.zeros((len(block), 0), dtype=int)
+    flat = np.arange(block.start, block.stop)
+    return np.stack(np.unravel_index(flat, scan.shape), axis=1)
+
+
+def _first_position(scan: Scan, s: int, m: int) -> np.ndarray:
+    """Get the position of the first point of a simulation and a model, a row.
+
+    The first point in C order of the plan of the simulation `s` and the model
+    `m` is at the index 0 along every other dimension.
+    """
+    position = np.zeros((1, len(scan.dimensions)), dtype=int)
+    sim_axis = _axis(scan, DimensionKind.SIMULATIONS)
+    model_axis = _axis(scan, DimensionKind.MODELS)
+    if sim_axis is not None:
+        position[0, sim_axis] = s
+    if model_axis is not None:
+        position[0, model_axis] = m
+    return position
 
 
 def _axis(scan: Scan, kind: DimensionKind) -> int | None:
@@ -1016,8 +1152,8 @@ def _axis(scan: Scan, kind: DimensionKind) -> int | None:
 
 
 def _plan_points(scan: Scan, positions: np.ndarray, s: int, m: int) -> np.ndarray:
-    """Get the flat indices of the points of a simulation and a model."""
-    mask = np.ones(scan.size, dtype=bool)
+    """Get the rows of `positions` of the points of a simulation and a model."""
+    mask = np.ones(len(positions), dtype=bool)
     sim_axis = _axis(scan, DimensionKind.SIMULATIONS)
     model_axis = _axis(scan, DimensionKind.MODELS)
     if sim_axis is not None:
@@ -1034,7 +1170,15 @@ def _values_of(
     at_times: Sequence[float | None],
     part: np.ndarray,
 ) -> tuple[dict[str, np.ndarray], dict[float, dict[str, np.ndarray]]]:
-    """Get the values of points: target -> values, and time -> target -> values."""
+    """Get the values of points: target -> values, and time -> target -> values.
+
+    Args:
+        scan: the scan.
+        positions: the index of points along every dimension, a row per point.
+        vectors: dimension -> target -> the values of the dimension.
+        at_times: dimension -> the time of its values, `None` without `at`.
+        part: the rows of `positions` of the points.
+    """
     values: dict[str, np.ndarray] = {}
     timed: dict[float, dict[str, np.ndarray]] = {}
     for i in range(len(scan.dimensions)):
@@ -1046,6 +1190,36 @@ def _values_of(
             else:
                 timed.setdefault(at, {})[target] = point_values
     return values, timed
+
+
+def _block(points: range | None, size: int) -> range:
+    """Get the points of a run, every point of the scan for `None`.
+
+    Args:
+        points: the flat indices of the points, see `Simulator.run`.
+        size: the number of points of the scan.
+
+    Raises:
+        ValueError: if the points are no `range` of step 1 inside
+            `range(size)`, or empty.
+    """
+    if points is None:
+        return range(size)
+    if not isinstance(points, range):
+        raise ValueError(
+            f"The points of a run are a range of flat indices, not "
+            f"{type(points).__name__}."
+        )
+    if points.step != 1:
+        raise ValueError(f"The points {points} of a run have the step 1.")
+    if len(points) == 0:
+        raise ValueError(f"The points {points} of a run are empty.")
+    if points.start < 0 or points.stop > size:
+        raise ValueError(
+            f"The points {points} of a run lie in the points range(0, {size}) "
+            f"of the scan."
+        )
+    return points
 
 
 def _chunk_size(n_points: int, workers: int) -> int:
@@ -1069,7 +1243,7 @@ def _first(failed: ScanPointError | None, err: ScanPointError) -> ScanPointError
     return err if failed is None or err.index < failed.index else failed
 
 
-def _settings(settings: Mapping[str, Any]) -> dict[str, Any]:
+def settings_record(settings: Mapping[str, Any]) -> dict[str, Any]:
     """Get the integrator settings as JSON types, the provenance of a result."""
     return {
         key: value.to_dict() if isinstance(value, AbsoluteTolerance) else value

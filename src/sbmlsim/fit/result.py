@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import OptimizeResult
 
+from sbmlsim.atomic import write_text_atomic
 from sbmlsim.console import console
 from sbmlsim.fit.objects import FitParameter, describe_array
 from sbmlsim.fit.options import FitSettings, ParameterScaleType
@@ -114,6 +115,34 @@ def bound_warnings(
     return messages
 
 
+def _run_index(path: Path) -> int | None:
+    """Get the index of a run from its file, the integer after the last `_`."""
+    _, sep, index = path.stem.rpartition("_")
+    if not sep or not (index.isascii() and index.isdigit()):
+        return None
+    return int(index)
+
+
+def _ordered_runs(paths: Iterable[Path]) -> list[Path]:
+    """Order the files of runs by their index, else by their names.
+
+    Args:
+        paths: the JSON files of the runs.
+
+    Returns:
+        The files by the index of their run, `<opid>_run_10` after
+        `<opid>_run_9`, when every file has one, else by their names.
+    """
+    by_name = sorted(paths)
+    indexed: list[tuple[int, Path]] = []
+    for path in by_name:
+        index = _run_index(path)
+        if index is None:
+            return by_name
+        indexed.append((index, path))
+    return [path for _, path in sorted(indexed)]
+
+
 class OptimizationResult(ObjectJSONEncoder):
     """Result of optimization problem."""
 
@@ -189,6 +218,10 @@ class OptimizationResult(ObjectJSONEncoder):
             [float(cost) for cost in trajectory] for trajectory in trajectories
         ]
 
+        #: whether the fit was interrupted (Ctrl-C) after some repeats finished,
+        #: so the result lacks the repeats which did not; not stored
+        self.interrupted: bool = False
+
         # create data frame from results
         self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
         self.df_traces = OptimizationResult.process_traces(self.trajectories)
@@ -208,7 +241,12 @@ class OptimizationResult(ObjectJSONEncoder):
         """Store a single optimization run as JSON.
 
         The runs are stored while the fit runs, so a fit which is interrupted,
-        times out or crashes leaves the runs which finished.
+        times out or crashes leaves the runs which finished. The file is
+        written atomically: the JSON goes into a temporary file of the
+        directory, which replaces the file of the run, so a reader never sees
+        a partial run and a run written twice, e.g. by a unit of a fit which
+        runs again, keeps one complete file, with the mode of any file the
+        process writes, see `sbmlsim.atomic`.
 
         Args:
             directory: directory of the runs, created if it does not exist.
@@ -226,7 +264,7 @@ class OptimizationResult(ObjectJSONEncoder):
         """
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{sid}.json"
-        OptimizationResult(
+        text = OptimizationResult(
             parameters=parameters,
             fits=[fit],
             trajectories=[trajectory],
@@ -235,7 +273,8 @@ class OptimizationResult(ObjectJSONEncoder):
             settings=settings,
             units=units,
             provenance=provenance,
-        ).to_json(path=path)
+        ).to_json()
+        write_text_atomic(path, str(text))
         return path
 
     @staticmethod
@@ -244,7 +283,10 @@ class OptimizationResult(ObjectJSONEncoder):
 
         This is the counterpart of `write_run`: the runs a fit stored are read
         back and combined, which recovers the results of a fit which did not
-        finish.
+        finish, or merges the pieces of a fit which ran its repeats apart.
+        The runs are in the order of their index, the integer after the last
+        `_` of the name of their file (`<opid>_run_<k>.json`), when every file
+        has one, else in the order of the names.
 
         Args:
             directory: directory with the JSON files of the runs.
@@ -256,7 +298,7 @@ class OptimizationResult(ObjectJSONEncoder):
         Raises:
             ValueError: if the directory holds no run.
         """
-        paths = sorted(directory.glob("*.json"))
+        paths = _ordered_runs(directory.glob("*.json"))
         results = [OptimizationResult.from_json(path) for path in paths]
         if not results:
             raise ValueError(f"No optimization run in '{directory}'.")

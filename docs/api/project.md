@@ -1,0 +1,3 @@
+# project
+
+::: sbmlsim.project

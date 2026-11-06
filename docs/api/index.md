@@ -15,6 +15,7 @@ The top level modules: data, units and the shared output.
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
 | [parallel](parallel.md) | the process pools of sbmlsim: the start method, the kept pools and the caches of the workers |
+| [project](project.md) | `Project`, the analyses of a model package: its experiments, fits, scans and uncertainty analyses, which the run layer resolves |
 | [console](console.md) | shared rich console |
 | [display](display.md) | the output of scripts: sections, key/value blocks and links which the terminal opens with a click |
 | [log](log.md) | logging of the package |

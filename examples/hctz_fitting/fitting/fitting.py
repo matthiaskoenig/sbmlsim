@@ -20,13 +20,16 @@ if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
+from examples.hctz_fitting.experiments.metadata import HCTZMappingMetaData, Route
+from examples.hctz_fitting.experiments.studies import Beermann1976
 from examples.hctz_fitting.fitting.mapping_collections import (
     f_collections_pk,
 )
 from examples.hctz_fitting.fitting.parameters import PARAMETERS
-from sbmlsim.fit import FitSettings
+from sbmlsim.fit import FitMapping, FitMappingCollection, FitSettings
 from sbmlsim.fit.cli import FitDefinition, fit_cli
 from sbmlsim.fit.evaluation import Grouping
+from sbmlsim.fit.helpers import select_mapping_collections
 from sbmlsim.fit.options import (
     LossFunctionType,
     ResidualType,
@@ -49,7 +52,30 @@ FIT_SETTINGS = FitSettings(
     absolute_tolerance=1e-6,
 )
 
-#: the fit problems of the HCTZ model, the keys are the `--subset` argument
+
+def filter_iv(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
+    """Only the iv data.
+
+    A module level function, not a lambda, because a filter is called in the
+    workers of a parallel fit, which get the definition pickled.
+    """
+    metadata = fit_mapping.metadata
+    return isinstance(metadata, HCTZMappingMetaData) and metadata.route is Route.IV
+
+
+def f_collections_iv() -> dict[str, list[FitMappingCollection]]:
+    """The iv data of Beermann1976, the rest is excluded."""
+    return select_mapping_collections(
+        experiment_classes=[Beermann1976],
+        base_path=HCTZ_PATH,
+        data_path=DATA_PATH,
+        filters=[filter_iv],
+        print_info=False,
+    )
+
+
+#: the fit problems of the HCTZ model, the keys are the `--subset` argument,
+#: the first one is its default
 FIT_DEFINITIONS: dict[str, FitDefinition] = {
     # all pharmacokinetics data
     "PK": FitDefinition(
@@ -60,6 +86,14 @@ FIT_DEFINITIONS: dict[str, FitDefinition] = {
         settings=FIT_SETTINGS,
         # the reports evaluate the data per tissue: plasma, urine and feces
         groupings=(Grouping.by("tissue"),),
+    ),
+    # the iv data of Beermann1976, a small problem of four training mappings
+    "IV": FitDefinition(
+        mapping_collections=f_collections_iv,
+        parameters=PARAMETERS,
+        base_path=HCTZ_PATH,
+        data_path=DATA_PATH,
+        settings=FIT_SETTINGS,
     ),
 }
 

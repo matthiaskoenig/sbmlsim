@@ -21,6 +21,14 @@ A `ScanResult` wraps one `xarray.Dataset`:
   simulations in the time of the result, and `errors` for a run with
   `on_error="flag"`.
 
+The result of a block of points of a scan, see the argument `points` of
+`Simulator.run`, has the dimension `_index` of the flat indices of its points
+in C order instead of the dimensions of the scan, every coordinate of a
+dimension along `_index` and the attribute `block` (`start`, `stop`, the
+`shape` and `dims` of the scan and the dimension of every coordinate,
+`coords`); `ScanResult.combine` combines the blocks of a scan to the result of
+the scan.
+
 The output of a simulation has two time points at the time of a change after
 the start, the state before the change and the state after it, as at an event
 of the model; the time of a grid then appears twice. The idioms of xarray
@@ -38,6 +46,7 @@ pkpdutils, whose layout `(*dims, time)` the result has.
 from __future__ import annotations
 
 import copy
+import math
 import warnings
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -48,7 +57,12 @@ import pandas as pd
 import xarray as xr
 from numpy.typing import ArrayLike
 
-from sbmlsim.result.netcdf import Compression, read_netcdf, write_netcdf
+from sbmlsim.result.netcdf import (
+    Compression,
+    json_attributes,
+    read_netcdf,
+    write_netcdf,
+)
 from sbmlsim.result.timecourse import (
     GridWeights,
     apply_weights,
@@ -71,6 +85,10 @@ if TYPE_CHECKING:
 TIME = "time"
 #: the dimension of the output points of the ragged layout
 POINT = "_point"
+#: the dimension of the points of a block of a scan, their flat indices in C order
+INDEX = "_index"
+#: the attribute of a block of a scan, see `ScanResult.combine`
+BLOCK = "block"
 #: the attribute of the times of the changes after the start
 CHANGES = "changes"
 #: the dimension of `ScanResult.summary`
@@ -84,8 +102,19 @@ FLAGS = "flags"
 #: the most elements (points of the scan times time points) of the union of the
 #: time points of a ragged result which `ScanResult.summary` interpolates onto
 MAX_UNION_ELEMENTS = 10_000_000
+#: the most messages of failed points a result keeps and a chunk reports
+MAX_ERRORS: int = 10
 #: the most variables the representation of a result names, a model has hundreds
 REPR_VARIABLES = 8
+
+
+class LostErrors(ValueError):
+    """The messages of the failed points of a part are not kept by its result.
+
+    A result keeps the messages of its first `MAX_ERRORS` failed points; a
+    part whose first failed points come after them has messages which only a
+    run of its own points gives.
+    """
 
 
 class ScanResult:
@@ -117,6 +146,24 @@ class ScanResult:
     def dims(self) -> tuple[str, ...]:
         """Get the dimensions of the scan which the result has, in their order."""
         return tuple(d for d in self.ds.attrs.get("dims", []) if d in self.ds.dims)
+
+    @property
+    def is_block(self) -> bool:
+        """Check whether the result is a block of a scan, see `combine`."""
+        return BLOCK in self.ds.attrs
+
+    def _check_whole(self, method: str) -> None:
+        """Check that the result is no block of a scan, for a method.
+
+        Raises:
+            ValueError: for a block of a scan.
+        """
+        if self.is_block:
+            raise ValueError(
+                f"`{method}` needs the result of the whole scan, this one is a "
+                f"block of its points: combine the blocks first, see "
+                f"`ScanResult.combine`."
+            )
 
     @property
     def ragged(self) -> bool:
@@ -424,9 +471,11 @@ class ScanResult:
             The result with the dimension `time`.
 
         Raises:
-            ValueError: if the times are a quantity and the result has no
-                unit of time or another one, see `time_magnitudes`.
+            ValueError: if the result is a block of a scan, or the times are a
+                quantity and the result has no unit of time or another one,
+                see `time_magnitudes`.
         """
+        self._check_whole("interpolate")
         grid = self._grid(times)
         tdim = POINT if self.ragged else TIME
         time_dims = self.ds[TIME].dims
@@ -506,10 +555,12 @@ class ScanResult:
             dimensions.
 
         Raises:
-            ValueError: if a dimension is no dimension of the scan, a
-                statistic is unknown, a quantile is outside of [0, 1] or the union
-                of the time points of a ragged result is too large.
+            ValueError: if the result is a block of a scan, a dimension is no
+                dimension of the scan, a statistic is unknown, a quantile is
+                outside of [0, 1] or the union of the time points of a ragged
+                result is too large.
         """
+        self._check_whole("summary")
         reduced = (
             list(self.dims)
             if dims is None
@@ -582,6 +633,335 @@ class ScanResult:
             ValueError: if the file has no attributes of a result.
         """
         return cls(read_netcdf(path))
+
+    @classmethod
+    def combine(cls, parts: Sequence[ScanResult]) -> ScanResult:
+        """Combine the results of the blocks of a scan to the result of the scan.
+
+        A block is the result of a run of some points of a scan, see the
+        argument `points` of `sbmlsim.simulator.Simulator.run`. The blocks,
+        in any order, in memory or read with `from_netcdf`, cover every point
+        of the scan once; the result is the result of a run of the whole scan,
+        bitwise: the blocks are sorted by their first point, the dimension
+        `_point` of a ragged result is padded with `NaN` to the longest block,
+        the arrays are concatenated along `_index` and reshaped into the
+        dimensions of the scan, and a coordinate of a dimension takes its
+        values along its dimension. The `errors` of a run with
+        `on_error="flag"` are the ones of the blocks in their order, at most
+        `MAX_ERRORS`.
+
+        A block has the layout of `_index` (see the module) and not the
+        dimensions of the scan: `dims` of a block is empty, `summary` and
+        `interpolate` raise for it, and `to` and `q` treat `_index` as any
+        dimension; they are meant for the combined result.
+
+        Args:
+            parts: the results of the blocks.
+
+        Returns:
+            The result of the scan.
+
+        Raises:
+            ValueError: if there is no block, a result is no block of a scan,
+                the blocks are results of other scans (an attribute other than
+                `block` and `errors`, a variable or a coordinate differs), or
+                they miss points of the scan or have a point more than once.
+        """
+        if not parts:
+            raise ValueError("There are no blocks to combine.")
+        for part in parts:
+            if BLOCK not in part.ds.attrs or INDEX not in part.ds.dims:
+                raise ValueError(
+                    "A result to combine is no block of a scan, see the argument "
+                    "`points` of `Simulator.run`."
+                )
+        ordered = sorted(parts, key=lambda part: int(part.ds.attrs[BLOCK]["start"]))
+        _check_same_scan(ordered)
+        first = ordered[0].ds
+        block = first.attrs[BLOCK]
+        shape = tuple(int(size) for size in block["shape"])
+        dims = [str(dim) for dim in block["dims"]]
+        _check_coverage(ordered, math.prod(shape))
+        rows = max(part.ds.sizes.get(POINT, 0) for part in ordered)
+        padded = [pad_points(part.ds, rows) for part in ordered]
+        data_vars: dict[str, xr.Variable] = {}
+        for name, variable in first.data_vars.items():
+            if INDEX not in variable.dims:
+                data_vars[str(name)] = variable.variable
+                continue
+            ordered_dims = variable.transpose(INDEX, ...).dims
+            values = np.concatenate(
+                [ds[name].transpose(INDEX, ...).values for ds in padded]
+            )
+            data_vars[str(name)] = xr.Variable(
+                [*dims, *ordered_dims[1:]],
+                values.reshape(*shape, *values.shape[1:]),
+                attrs=variable.attrs,
+            )
+        coords: dict[str, xr.Variable] = {}
+        for name, coordinate in first.coords.items():
+            if name == INDEX:
+                continue
+            if INDEX not in coordinate.dims:
+                coords[str(name)] = coordinate.variable
+                continue
+            dim = str(block["coords"][name])
+            axis = dims.index(dim)
+            values = np.concatenate([part.ds[name].values for part in ordered])
+            along = tuple(slice(None) if k == axis else 0 for k in range(len(shape)))
+            coords[str(name)] = xr.Variable(
+                dim, values.reshape(shape)[along], attrs=coordinate.attrs
+            )
+        attrs = copy.deepcopy(dict(first.attrs))
+        del attrs[BLOCK]
+        if "errors" in attrs:
+            errors = [e for part in ordered for e in part.ds.attrs.get("errors", [])]
+            attrs["errors"] = errors[:MAX_ERRORS]
+        return cls(xr.Dataset(data_vars, coords=coords, attrs=attrs))
+
+    def part(self, points: range) -> ScanResult:
+        """Get the result of some points of a block, as a run of these points gives it.
+
+        A run of a span of points, e.g. of the blocks of several units, in one
+        pool is cut into the results of its blocks (`points` of
+        `sbmlsim.simulator.Simulator.run`), each bitwise the result of a run of
+        its points alone: its points along `_index`, the dimension `_point` of
+        a ragged result trimmed to its own longest point (`trim_points`), the
+        attribute `block` with its `start` and `stop` and the messages of its
+        own failed points (`part_errors`).
+
+        Args:
+            points: consecutive points of the block, not empty.
+
+        Returns:
+            The result of the points.
+
+        Raises:
+            ValueError: for a result which is no block of a scan, and points
+                which are no consecutive points of the block.
+            LostErrors: if the result does not keep the messages of the failed
+                points of the part.
+        """
+        if not self.is_block or INDEX not in self.ds.dims:
+            raise ValueError(
+                "The result is no block of a scan, see the argument `points` of "
+                "`Simulator.run`; only a block has parts."
+            )
+        block = self.ds.attrs[BLOCK]
+        start, stop = int(block["start"]), int(block["stop"])
+        if (
+            points.step != 1
+            or len(points) == 0
+            or points.start < start
+            or points.stop > stop
+        ):
+            raise ValueError(
+                f"The points {points} are no consecutive points of the block "
+                f"{range(start, stop)}."
+            )
+        within = slice(points.start - start, points.stop - start)
+        ds = trim_points(self.ds.isel({INDEX: within}))
+        attrs = copy.deepcopy(dict(self.ds.attrs))
+        attrs[BLOCK] = {**attrs[BLOCK], "start": points.start, "stop": points.stop}
+        if "errors" in attrs:
+            attrs["errors"] = part_errors(
+                attrs["errors"],
+                self.ds[STATUS].values,
+                within,
+                f"{points.start}-{points.stop}",
+            )
+        ds.attrs = attrs
+        return ScanResult(ds)
+
+
+def trim_points(ds: xr.Dataset) -> xr.Dataset:
+    """Trim the dimension `_point` of a ragged result to its longest point.
+
+    The rows of `_point` after the last row in which a variable or a
+    coordinate has a value are padding, which a run of the points of the
+    result has not: a run pads to the longest point which ran, the reverse of
+    `pad_points`.
+
+    Args:
+        ds: the dataset of a result, e.g. of some points of a larger result.
+
+    Returns:
+        The dataset without the trailing rows of `NaN`, itself without
+        `_point`.
+    """
+    if POINT not in ds.dims or ds.sizes[POINT] == 0:
+        return ds
+    filled = np.zeros(ds.sizes[POINT], dtype=bool)
+    for variable in (*ds.data_vars.values(), *ds.coords.values()):
+        if POINT in variable.dims:
+            values = variable.transpose(..., POINT).values
+            filled |= ~np.isnan(values.reshape(-1, ds.sizes[POINT])).all(axis=0)
+    rows_kept = int(np.flatnonzero(filled)[-1]) + 1 if filled.any() else 0
+    if rows_kept == ds.sizes[POINT]:
+        return ds
+    return ds.isel({POINT: slice(0, rows_kept)})
+
+
+def part_errors(
+    errors: Sequence[str], status: np.ndarray, within: slice, name: str
+) -> list[str]:
+    """Get the messages of the failed points of a part of a result.
+
+    The messages of a result are the ones of its first `MAX_ERRORS` failed
+    points in their order, one per failed point (`status` 1); the ones of a
+    part are the ones of its first failed points.
+
+    Args:
+        errors: the messages of the result, the attribute `errors`.
+        status: the variable `status` of the result, flat in the order of its
+            points.
+        within: the points of the part in the flat points of the result.
+        name: the part, for a message.
+
+    Returns:
+        The messages of the first `MAX_ERRORS` failed points of the part.
+
+    Raises:
+        LostErrors: if the result does not keep them.
+    """
+    failed = np.flatnonzero(np.ravel(status) != 0)
+    ranks = np.flatnonzero((failed >= within.start) & (failed < within.stop))
+    ranks = ranks[:MAX_ERRORS]
+    if ranks.size and int(ranks[-1]) >= len(errors):
+        raise LostErrors(
+            f"The result keeps the messages of its first {len(errors)} failed "
+            f"points, not the ones of the points {name}: run them alone."
+        )
+    return [errors[int(rank)] for rank in ranks]
+
+
+def _definition(ds: xr.Dataset) -> dict[str, Any]:
+    """Get what the blocks of one scan share, see `ScanResult.combine`.
+
+    The attributes but `block` (without its `start` and `stop`) and `errors`,
+    as JSON types, the dimensions of the variables and of the coordinates and
+    the values of the coordinates which are not along `_index`, e.g. the grid
+    of times.
+    """
+    attrs = {k: v for k, v in ds.attrs.items() if k not in (BLOCK, "errors")}
+    block = {k: v for k, v in ds.attrs[BLOCK].items() if k not in ("start", "stop")}
+    definition: dict[str, Any] = json_attributes({**attrs, BLOCK: block})
+    definition["variables"] = {
+        str(name): [str(dim) for dim in variable.dims]
+        for name, variable in ds.data_vars.items()
+    }
+    definition["coordinates"] = {
+        str(name): [str(dim) for dim in coordinate.dims]
+        if INDEX in coordinate.dims
+        else coordinate.values.tolist()
+        for name, coordinate in ds.coords.items()
+    }
+    return definition
+
+
+def _check_same_scan(ordered: Sequence[ScanResult]) -> None:
+    """Check that the blocks are results of one scan, see `ScanResult.combine`.
+
+    Raises:
+        ValueError: if an attribute, a variable or a coordinate differs.
+    """
+    expected = _definition(ordered[0].ds)
+    for part in ordered[1:]:
+        other = _definition(part.ds)
+        differ = sorted(
+            key
+            for key in expected.keys() | other.keys()
+            if expected.get(key) != other.get(key)
+        )
+        if differ:
+            raise ValueError(
+                f"The blocks are results of other scans, they differ in "
+                f"{', '.join(differ)}."
+            )
+
+
+def _check_coverage(ordered: Sequence[ScanResult], size: int) -> None:
+    """Check that the sorted blocks cover the points of a scan once.
+
+    Raises:
+        ValueError: naming the missing points or the points in more than one
+            block, or if a block has not the points of its attribute.
+    """
+    missing: list[range] = []
+    doubled: list[range] = []
+    reached = 0
+    for part in ordered:
+        start = int(part.ds.attrs[BLOCK]["start"])
+        stop = int(part.ds.attrs[BLOCK]["stop"])
+        if part.ds.sizes[INDEX] != stop - start:
+            raise ValueError(
+                f"The block {range(start, stop)} has {part.ds.sizes[INDEX]} points."
+            )
+        if start > reached:
+            missing.append(range(reached, start))
+        elif start < reached:
+            doubled.append(range(start, min(stop, reached)))
+        reached = max(reached, stop)
+    if reached < size:
+        missing.append(range(reached, size))
+    if reached > size:
+        raise ValueError(
+            f"The blocks have points beyond the {size} points of the scan, up to "
+            f"{reached}."
+        )
+    if missing:
+        raise ValueError(
+            f"The blocks miss the points {', '.join(map(str, missing))} of the "
+            f"scan of {size} points."
+        )
+    if doubled:
+        raise ValueError(
+            f"The blocks hold points more than once: {', '.join(map(str, doubled))}."
+        )
+
+
+def pad_points(ds: xr.Dataset, rows: int) -> xr.Dataset:
+    """Pad the dimension `_point` of a ragged result with `NaN` to a number of rows.
+
+    The results of parts of the points of a scan, e.g. its blocks or the
+    batches of a propagation, have the native time points of their longest
+    point; padded to the longest part they concatenate to the result of all
+    the points, which a run pads alike.
+
+    Args:
+        ds: the dataset of a result.
+        rows: the rows of `_point`, at least the ones of the dataset.
+
+    Returns:
+        The dataset with `_point` of `rows`, the dataset itself if it has no
+        `_point` or already `rows` of it.
+
+    Raises:
+        ValueError: for fewer rows than the dataset has.
+    """
+    if POINT not in ds.dims or ds.sizes[POINT] == rows:
+        return ds
+    if ds.sizes[POINT] > rows:
+        raise ValueError(
+            f"The result has {ds.sizes[POINT]} rows of '{POINT}', more than {rows}."
+        )
+
+    def padded(variable: xr.Variable) -> xr.Variable:
+        if POINT not in variable.dims:
+            return variable
+        values = variable.values
+        shape = list(values.shape)
+        shape[variable.dims.index(POINT)] = rows
+        dtype = np.result_type(values.dtype, np.float64)
+        filled = np.full(shape, np.nan, dtype=dtype)
+        filled[tuple(slice(0, size) for size in values.shape)] = values
+        return xr.Variable(variable.dims, filled, attrs=variable.attrs)
+
+    return xr.Dataset(
+        {str(name): padded(v.variable) for name, v in ds.data_vars.items()},
+        coords={str(name): padded(c.variable) for name, c in ds.coords.items()},
+        attrs=ds.attrs,
+    )
 
 
 def time_magnitudes(

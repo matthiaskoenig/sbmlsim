@@ -1365,7 +1365,22 @@ def _provenance(result: OptimizationResult | None) -> Section:
         f" and Python {version('python')} ({seed}). ",
     ]
     git = provenance.git
-    if git is None:
+    if provenance.sources is not None:
+        parts.append("The models and data were those of the sources ")
+        parts.extend(
+            _join(
+                [
+                    [
+                        Code(str(s.get("name", ""))),
+                        " at commit ",
+                        Code(str(s.get("commit", ""))),
+                        " with uncommitted changes" if s.get("dirty") else "",
+                    ]
+                    for s in provenance.sources
+                ]
+            )
+        )
+    elif git is None:
         parts.append("The models and data were not under version control")
     else:
         parts.extend(

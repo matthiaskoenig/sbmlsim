@@ -3,6 +3,7 @@
 import functools
 import inspect
 import logging
+import numbers
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -203,6 +204,51 @@ def default_diff_step(relative_tolerance: float) -> float:
         searches.
     """
     return float(np.sqrt(relative_tolerance))
+
+
+def run_indices(size: int, indices: Sequence[int] | None = None) -> list[int]:
+    """Get the repeats of a fit which run, all of them by default.
+
+    A fit draws the start values and the seeds of all its `size` repeats and
+    runs the given ones of them, every one with its index, so a fit split into
+    pieces of repeats gives the repeats of the whole fit.
+
+    Args:
+        size: number of repeats of the fit.
+        indices: the repeats which run, all if `None`.
+
+    Returns:
+        The indices of the repeats which run, ascending: a serial and a
+        parallel fit return their repeats in the order of their index.
+
+    Raises:
+        ValueError: if no index is given, if an index is no integer (a bool is
+            none), or if an index is outside of `range(size)` or given twice.
+    """
+    if indices is None:
+        return list(range(size))
+    indices = list(indices)
+    if not indices:
+        raise ValueError(
+            "The indices select no repeat, a fit runs at least one; `None` "
+            "runs all repeats."
+        )
+    invalid = [
+        k for k in indices if isinstance(k, bool) or not isinstance(k, numbers.Integral)
+    ]
+    if invalid:
+        raise ValueError(f"The indices {invalid} are not integers.")
+    selected = [int(k) for k in indices]
+    outside = [k for k in selected if not 0 <= k < size]
+    if outside:
+        raise ValueError(
+            f"The indices {outside} are not repeats of a fit of size {size}, "
+            f"the indices are in 'range({size})'."
+        )
+    repeated = sorted({k for k in selected if selected.count(k) > 1})
+    if repeated:
+        raise ValueError(f"The indices {repeated} are given more than once.")
+    return sorted(selected)
 
 
 def _optimizer_metadata(
@@ -3073,6 +3119,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             Callable[[int, scipy.optimize.OptimizeResult, list[float]], None] | None
         ) = None,
         population: PopulationEvaluator | None = None,
+        indices: Sequence[int] | None = None,
         **kwargs: Any,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list[list[float]]]:
         """Run parameter optimization.
@@ -3092,13 +3139,20 @@ class OptimizationProblem(ObjectJSONEncoder):
                 a fit and to store the runs while it runs.
             population: evaluates the population of differential evolution,
                 e.g. on the workers of a fit, see `optimize_run`.
+            indices: the runs which run, all `size` runs if `None`. The start
+                values and the seeds are drawn for all runs, every given run
+                keeps its index, so the runs are the ones of the whole fit.
             **kwargs: additional arguments of the optimizer.
 
         Returns:
-            The fits and the trajectories of the optimizations. A run which
-            failed is a `RuntimeErrorOptimizeResult` with its message, the
-            other runs are unaffected.
+            The fits and the trajectories of the optimizations, in the order
+            of their index. A run which failed is a `RuntimeErrorOptimizeResult`
+            with its message, the other runs are unaffected.
+
+        Raises:
+            ValueError: if the indices are invalid, see `run_indices`.
         """
+        selected = run_indices(size, indices)
         starts = self.start_values(
             size=size, algorithm=algorithm, sampling=sampling, seed=seed
         )
@@ -3106,7 +3160,7 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         fits: list[scipy.optimize.OptimizeResult] = []
         trajectories: list[list[float]] = []
-        for k in range(size):
+        for k in selected:
             fit, trajectory = self.optimize_run(
                 x0=starts[k],
                 algorithm=algorithm,

@@ -50,8 +50,9 @@ from rich.progress import (
 from rich.text import Text
 from scipy.optimize import OptimizeResult
 
-from sbmlsim import parallel
+from sbmlsim import cgroup, parallel
 from sbmlsim.console import console
+from sbmlsim.events import emit
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.optimization import (
@@ -59,6 +60,7 @@ from sbmlsim.fit.optimization import (
     OptimizationProblem,
     PoolError,
     RuntimeErrorOptimizeResult,
+    run_indices,
 )
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.provenance import FitProvenance
@@ -79,7 +81,7 @@ def resolve_n_cores(n_cores: int | None) -> int:
     Returns:
         Number of workers, at least one and at most the number of available cores.
     """
-    cpu_count = os.process_cpu_count() or 1
+    cpu_count = cgroup.available_cpus()
     if n_cores is None:
         return max(1, cpu_count - 1)
     if n_cores > cpu_count:
@@ -257,6 +259,7 @@ def run_optimization(
     runs_dir: Path | None = None,
     sampling: SamplingType = SamplingType.UNIFORM,
     provenance: FitProvenance | None = None,
+    indices: Sequence[int] | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimization of the problem.
@@ -292,19 +295,24 @@ def run_optimization(
         sampling: sampling of the start values, see `sbmlsim.fit.sampling`.
         provenance: what the fit runs with, see `sbmlsim.fit.provenance`; it is
             stored with every run and with the result.
+        indices: the repeats which run, all `size` repeats if `None`. The start
+            values and the seeds are drawn for all `size` repeats and every
+            given repeat keeps its index, i.e. its file `<opid>_run_<k>.json`,
+            so the repeats of pieces of a fit are the repeats of the whole fit
+            and `OptimizationResult.from_directory` merges them.
         kwargs: additional arguments for the optimizer, i.e., for
             `scipy.optimize.least_squares` or
             `scipy.optimize.differential_evolution`, e.g. xtol.
 
     Returns:
-        OptimizationResult with the fits of all repeats. A repeat which failed
+        OptimizationResult with the fits of the repeats. A repeat which failed
         is part of the result and carries its message. A fit which is
         interrupted (Ctrl-C) after some repeats finished returns these.
 
     Raises:
         ValueError: if a bound or a start value does not suit the scale of
-            its parameter or the algorithm, or if every worker of a parallel
-            fit failed.
+            its parameter or the algorithm, if every worker of a parallel
+            fit failed, or if the indices are invalid, see `run_indices`.
         TypeError: if `kwargs` has an argument which the optimizer of the
             algorithm does not accept, e.g. one of the other optimizer.
         KeyboardInterrupt: if the fit is interrupted (Ctrl-C) before a repeat
@@ -312,6 +320,8 @@ def run_optimization(
     """
     if settings is None:
         settings = FitSettings()
+    # checked before anything runs, the pieces of a fit are its repeats
+    selected = run_indices(size, indices)
 
     display.section("Optimization", icon=display.ICON_OPTIMIZATION)
     # initialized here rather than left to the serial/parallel helpers, so
@@ -338,7 +348,7 @@ def run_optimization(
     # worker is a serial fit without the start of a process
     workers, population_workers = split_cores(
         algorithm=algorithm,
-        size=size,
+        size=len(selected),
         n_cores=1 if serial else resolve_n_cores(n_cores),
         kwargs=kwargs,
     )
@@ -352,10 +362,15 @@ def run_optimization(
     opt_result: OptimizationResult
     if population_workers > 1:
         display.key_values(
-            {"runs": size, "workers": f"{population_workers} (population of a run)"}
+            {
+                "runs": _runs_label(size, selected),
+                "workers": f"{population_workers} (population of a run)",
+            }
         )
         with (
-            optimization_progress("optimizing", size, show_progress) as progress,
+            optimization_progress(
+                "optimizing", len(selected), show_progress
+            ) as progress,
             worker_pool(problem, settings, population_workers) as pool,
         ):
             opt_result = _run_optimization_serial(
@@ -370,11 +385,16 @@ def run_optimization(
                 provenance=provenance,
                 on_progress=lambda: _advance(progress),
                 population=PopulationPool(pool),
+                indices=selected,
                 **kwargs,
             )
     elif workers <= 1:
-        display.key_values({"runs": size, "workers": "1 (serial)"})
-        with optimization_progress("optimizing", size, show_progress) as progress:
+        display.key_values(
+            {"runs": _runs_label(size, selected), "workers": "1 (serial)"}
+        )
+        with optimization_progress(
+            "optimizing", len(selected), show_progress
+        ) as progress:
             opt_result = _run_optimization_serial(
                 problem=problem,
                 settings=settings,
@@ -386,10 +406,11 @@ def run_optimization(
                 runs_dir=runs_dir,
                 provenance=provenance,
                 on_progress=lambda: _advance(progress),
+                indices=selected,
                 **kwargs,
             )
     else:
-        display.key_values({"runs": size, "workers": workers})
+        display.key_values({"runs": _runs_label(size, selected), "workers": workers})
         opt_result = _run_optimization_parallel(
             problem=problem,
             settings=settings,
@@ -402,11 +423,19 @@ def run_optimization(
             timeout=timeout,
             runs_dir=runs_dir,
             provenance=provenance,
+            indices=selected,
             **kwargs,
         )
 
     _print_summary(opt_result)
     return opt_result
+
+
+def _runs_label(size: int, selected: Sequence[int]) -> str | int:
+    """Get the runs of a fit for the console, the given ones of a piece."""
+    if len(selected) == size:
+        return size
+    return f"{len(selected)} of {size} ({', '.join(str(k) for k in selected)})"
 
 
 def _print_summary(opt_result: OptimizationResult) -> None:
@@ -1029,6 +1058,7 @@ def _run_optimization_parallel(
     timeout: float | None = None,
     runs_dir: Path | None = None,
     provenance: FitProvenance | None = None,
+    indices: Sequence[int] | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the optimizations in a pool of worker processes.
@@ -1037,8 +1067,10 @@ def _run_optimization_parallel(
     worker which is free, so that repeats of different duration do not leave
     workers idle. The repeats are collected as they finish and ordered by their
     index, and the start values are created here and not in the workers, so a
-    fit with a seed gives the same result for any number of workers.
+    fit with a seed gives the same result for any number of workers. Only the
+    repeats of `indices` are tasks, all `size` repeats if `None`.
     """
+    selected = run_indices(size, indices)
     starts = problem.start_values(
         size=size, algorithm=algorithm, sampling=sampling, seed=seed
     )
@@ -1053,7 +1085,7 @@ def _run_optimization_parallel(
             "timeout": timeout,
             **kwargs,
         }
-        for k in range(size)
+        for k in selected
     ]
 
     failures: list[str] = []
@@ -1062,7 +1094,7 @@ def _run_optimization_parallel(
     collected: dict[int, tuple[OptimizeResult, list[float]]] = {}
     with (
         optimization_progress(
-            "optimizing", size, show_progress, workers=n_cores
+            "optimizing", len(selected), show_progress, workers=n_cores
         ) as progress,
         worker_pool(problem, settings, n_cores) as pool,
     ):
@@ -1085,6 +1117,7 @@ def _run_optimization_parallel(
                     trajectory=trajectory,
                     sid=f"{problem.opid}_run_{k}",
                     provenance=provenance,
+                    run=k,
                 )
                 _advance(progress)
                 collected[k] = (fit, trajectory)
@@ -1106,7 +1139,7 @@ def _run_optimization_parallel(
             "'%s': %s of %s repeats were lost, the fit continues with the others: %s",
             problem.opid,
             len(failures),
-            size,
+            len(selected),
             failures,
         )
     if not fits:
@@ -1118,7 +1151,7 @@ def _run_optimization_parallel(
             f"'{problem.opid}': every repeat failed, there is no result.{stored} "
             f"{failures}"
         )
-    return OptimizationResult(
+    result = OptimizationResult(
         parameters=problem.parameters,
         fits=fits,
         trajectories=trajectories,
@@ -1128,6 +1161,8 @@ def _run_optimization_parallel(
         units=problem.parameter_units,
         provenance=provenance,
     )
+    result.interrupted = interrupted
+    return result
 
 
 def _store_run(
@@ -1138,6 +1173,7 @@ def _store_run(
     trajectory: list[float],
     sid: str,
     provenance: FitProvenance | None = None,
+    run: int | None = None,
 ) -> None:
     """Store a finished repeat, which must never end the fit.
 
@@ -1149,7 +1185,9 @@ def _store_run(
         trajectory: cost of every step of the repeat.
         sid: id of the repeat, the name of its file.
         provenance: what the fit runs with.
+        run: index of the repeat, reported as the event `fit.repeat`.
     """
+    emit("fit.repeat", opid=problem.opid, run=run)
     if runs_dir is None:
         return
     try:
@@ -1186,6 +1224,7 @@ def _run_optimization_serial(
     run_prefix: str = "run",
     provenance: FitProvenance | None = None,
     population: PopulationPool | None = None,
+    indices: Sequence[int] | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
     """Run the given optimization problem in a serial fashion.
@@ -1193,7 +1232,8 @@ def _run_optimization_serial(
     This function should not be called directly, `run_optimization` executes the
     optimizations. See `run_optimization` for the arguments; `population`
     evaluates the population of differential evolution on the workers of the
-    fit, the runs run one after another.
+    fit, the runs run one after another; only the runs of `indices` run, all
+    `size` runs if `None`.
     """
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
@@ -1214,10 +1254,12 @@ def _run_optimization_serial(
             trajectory=trajectory,
             sid=f"{problem.opid}_{run_prefix}_{k}",
             provenance=provenance,
+            run=k,
         )
         if on_progress is not None:
             on_progress()
 
+    interrupted = False
     try:
         problem.optimize(
             size=size,
@@ -1226,19 +1268,21 @@ def _run_optimization_serial(
             timeout=timeout,
             on_run_finished=on_run_finished,
             population=population,
+            indices=indices,
             **kwargs,
         )
     except KeyboardInterrupt:
         # like the pool, which keeps the repeats which came back
         if not fits:
             raise
+        interrupted = True
         logger.warning(
             "'%s': the fit was interrupted, it keeps the %s repeats which finished.",
             problem.opid,
             len(fits),
         )
 
-    return OptimizationResult(
+    result = OptimizationResult(
         parameters=problem.parameters,
         fits=fits,
         trajectories=trajectories,
@@ -1248,3 +1292,5 @@ def _run_optimization_serial(
         units=problem.parameter_units,
         provenance=provenance,
     )
+    result.interrupted = interrupted
+    return result

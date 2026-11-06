@@ -35,6 +35,7 @@ nav = [
     { "PEtab" = "petab.md" },
     { "PEtab SciML" = "petab_sciml.md" },
   ] },
+  { "Analyses" = "run.md" },
   { "Test suites" = [
     { "Overview" = "testsuites.md" },
     { "SBML Test Suite" = "testsuite.md" },
@@ -53,6 +54,9 @@ nav = [
       { "serialization" = "api/serialization.md" },
       { "utils" = "api/utils.md" },
       { "parallel" = "api/parallel.md" },
+      { "project" = "api/project.md" },
+      { "run" = "api/run.md" },
+      { "simrun" = "api/simrun.md" },
       { "console" = "api/console.md" },
       { "display" = "api/display.md" },
       { "log" = "api/log.md" },

@@ -26,6 +26,7 @@ import pandas as pd
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import Identifiability, ParameterProfile
 from sbmlsim.fit.methods import (
+    CHECKSUM_CHARS,
     ReportContext,
     _created,
     _label,
@@ -509,7 +510,21 @@ def _provenance(report: FitReport, fit_id: str) -> Section:
         for package, version in provenance.versions.items()
     )
     git = provenance.git
-    if git is None:
+    if provenance.sources is not None:
+        for source in provenance.sources:
+            name = str(source.get("name", ""))
+            diff = str(source.get("diff_sha256") or "")[:CHECKSUM_CHARS]
+            rows.extend(
+                [
+                    (f"Source {name}", Code(str(source.get("branch", "")))),
+                    (f"Commit of {name}", Code(str(source.get("commit", "")))),
+                    (
+                        f"Uncommitted changes of {name}",
+                        ("yes, diff " + diff) if source.get("dirty") else "no",
+                    ),
+                ]
+            )
+    elif git is None:
         rows.append(("Repository", "not under version control"))
     else:
         rows.extend(

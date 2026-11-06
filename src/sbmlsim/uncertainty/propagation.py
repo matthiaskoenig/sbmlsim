@@ -31,6 +31,22 @@ recorded, and the result of the batches is the one of a single scan of all
 the draws: the same draws of Sobol or random points, the labels, the values
 and the errors of every batch.
 
+**Blocks and checkpoints.** A `Propagation` of a given number of draws runs
+in blocks of draws (`block_size`), which run separately, e.g. as units on
+several machines, and merge to the result of the whole propagation: every
+block takes its rows of the points of the design of all the draws, so a Latin
+hypercube stays one hypercube. With a `checkpoint` directory every block, and
+every batch of the adaptive number of draws, is written as netCDF
+(`<checkpoint>/<scenario>/draws-<start>-<stop>.nc`, the name of the scenario
+percent-encoded) and read instead of simulated when it exists, so the blocks
+of separate instances merge and an interrupted propagation resumes with the
+same result; a block of another propagation (another model, engine,
+integrator settings, observables, kept timecourses, grid of times or draws)
+is refused. A ragged timecourse is padded to the longest block, as a run pads
+it to its longest point. Consecutive blocks of one instance run in spans of a
+block per worker of its simulator (`Propagation.run_blocks`), whose result is
+cut into the results of the blocks, each the one a block run alone gives.
+
 The `UncertaintyResult` has the results of the scenarios, the variables and
 the record (seed, design, number of draws, history, covariances), and gives
 the summaries with their Monte Carlo errors, the values of an output over the
@@ -45,6 +61,7 @@ using a Monte Carlo method.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import logging
 import math
@@ -52,17 +69,30 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
 import xarray as xr
 
+from sbmlsim import parallel
+from sbmlsim.atomic import atomic_path
 from sbmlsim.engine import Engine
-from sbmlsim.model.model_sbml import load_model
-from sbmlsim.result.scan import ScanResult
+from sbmlsim.events import emit
+from sbmlsim.model.model_sbml import SBMLModel, load_model
+from sbmlsim.result.netcdf import json_attributes
+from sbmlsim.result.scan import (
+    POINT,
+    STATUS,
+    LostErrors,
+    ScanResult,
+    pad_points,
+    part_errors,
+    trim_points,
+)
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.scan import Design, Dimension, Scan
-from sbmlsim.simulator.simulator import Simulator
+from sbmlsim.simulator.simulator import Simulator, settings_record
 from sbmlsim.simulator.worker import MAX_ERRORS
 from sbmlsim.uncertainty.draws import draw
 from sbmlsim.uncertainty.sources import UncertaintyModel, Variable
@@ -91,6 +121,13 @@ DEFAULT_SCENARIO: str = "default"
 
 #: the quantiles of a summary by default
 QUANTILES: tuple[float, ...] = (0.025, 0.05, 0.5, 0.95, 0.975)
+
+#: the attribute of a checkpoint file with the configuration of its block
+CHECKPOINT: str = "propagation"
+
+
+class CheckpointMismatch(ValueError):
+    """A checkpoint file is the block of another propagation."""
 
 
 def _magnitudes(values: Any) -> np.ndarray:
@@ -517,6 +554,722 @@ def _merged_attrs(dss: Sequence[xr.Dataset], n: int) -> dict[str, Any]:
     return attrs
 
 
+def _directories(names: Sequence[str]) -> dict[str, str]:
+    """Get the directories of the checkpoints of the scenarios.
+
+    A directory is the name of its scenario percent-encoded, every character
+    but letters, digits and `_.-~` (`urllib.parse.quote`), so the encoding
+    is reversible and has no separator, and `.` and `..` are `%2E` and
+    `%2E%2E`.
+
+    Returns:
+        Scenario -> its directory.
+
+    Raises:
+        ValueError: for an empty name or two names whose directories differ
+            only in case, which a file system may not tell apart.
+    """
+    directories: dict[str, str] = {}
+    folded: dict[str, str] = {}
+    for name in names:
+        if not name:
+            raise ValueError(
+                "A scenario with a checkpoint needs a name, its directory."
+            )
+        directory = quote(name, safe="")
+        if directory in (".", ".."):
+            directory = directory.replace(".", "%2E")
+        other = folded.setdefault(directory.casefold(), name)
+        if other != name:
+            raise ValueError(
+                f"The scenarios '{other}' and '{name}' differ only in case, their "
+                f"directories of the checkpoints may be one directory."
+            )
+        directories[name] = directory
+    return directories
+
+
+def _model_fingerprint(model: SBMLModel) -> str:
+    """Get the SHA-256 of what a loaded model simulates.
+
+    Its engine, the SBML it loaded (`SBMLModel.sbml`), its added parameters,
+    its changes, its selections and its optimization level.
+    """
+    content = repr(
+        (
+            str(model.engine),
+            model.sbml,
+            sorted((str(k), repr(v)) for k, v in (model.parameters or {}).items()),
+            sorted((str(k), str(v)) for k, v in (model.changes or {}).items()),
+            repr(model.selections),
+            str(getattr(model, "jit_optimization", None)),
+        )
+    )
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _time_record(time: Any) -> Any:
+    """Get the grid of times of a run as JSON types, `None` without one."""
+    if time is None:
+        return None
+    if isinstance(time, Quantity):
+        return {
+            "value": np.asarray(time.magnitude, dtype=float).ravel().tolist(),
+            "unit": str(time.units),
+        }
+    return np.asarray(time, dtype=float).ravel().tolist()
+
+
+class Propagation:
+    """A propagation of uncertain values in blocks of draws, see the module.
+
+    A propagation of a given number of draws `n` runs in blocks of draws,
+    `blocks`, which run separately, e.g. on several machines, and merge to the
+    result of the whole propagation (`run`): every block takes its rows of the
+    `n` points of the design, so a Latin hypercube stays one hypercube, and the
+    result of the blocks is the one of a single block of all the draws. The
+    adaptive number of draws runs its rounds one after the other, every round
+    a block of the continued sequence.
+
+    With a `checkpoint` directory every block is written as
+    `<checkpoint>/<scenario>/draws-<start>-<stop>.nc` once it ran, atomically,
+    and a block whose files exist for every scenario is read instead of
+    simulated, so the blocks of separate instances merge and a run resumes
+    from the blocks it finished. The directory of a scenario is its name
+    percent-encoded (`urllib.parse.quote`, `.` and `..` as `%2E` and
+    `%2E%2E`). A file has the configuration of its block, which a read
+    compares and removes, see `_read`. A checkpointed block is used as it is
+    read, so its result does not depend on whether it was simulated or read.
+
+    Attributes:
+        scenarios: the simulations by the name of their scenario.
+        variables: the uncertain variables.
+        seed: the seed, drawn when none was given.
+        design: the design of the draws.
+        n: the number of draws, `None` for the adaptive number.
+        block_size: the draws of a block, `None` for one block of `n`.
+        checkpoint: the directory of the checkpoints, `None` for none.
+    """
+
+    def __init__(
+        self,
+        model: Any,
+        simulation: Simulation | Mapping[str, Simulation],
+        uq: UncertaintyModel,
+        observables: Sequence[Any] = (),
+        *,
+        outputs: Sequence[str] | None = None,
+        hypotheses: Sequence[Hypothesis] = (),
+        adjust: Literal["bonferroni", "none"] = "bonferroni",
+        n: int | None = None,
+        rel_tol: float = 0.1,
+        n_start: int = 256,
+        n_max: int = 16384,
+        design: Literal["sobol", "lhs", "random"] | None = None,
+        seed: int | None = None,
+        simulator: Simulator | None = None,
+        keep: Sequence[str] | None = None,
+        time: Any = None,
+        on_error: Literal["raise", "flag"] = "flag",
+        checkpoint: str | Path | None = None,
+        block_size: int | None = None,
+    ) -> None:
+        """Check the propagation and load its model, see `propagate`.
+
+        Args:
+            model: the model, loaded or a source.
+            simulation: the simulation, or the scenarios by their name.
+            uq: what is uncertain.
+            observables: the observables of the run, e.g. a `PK`.
+            outputs: the outputs of the adaptive stopping and of the summary.
+            hypotheses: the hypotheses of the adaptive stopping.
+            adjust: the adjustment of the hypotheses, see `TestReport`.
+            n: the number of draws; `None` for the adaptive number.
+            rel_tol: the tolerance of the adaptive stopping.
+            n_start: the draws of the first round of the adaptive stopping.
+            n_max: the most draws of the adaptive stopping.
+            design: `sobol`, `lhs` (only with `n`) or `random`.
+            seed: the seed, `None` draws one, which `seed` keeps.
+            simulator: the simulator, `Simulator()` by default.
+            keep: the timecourses the results keep, see `Simulator.run`.
+            time: a grid of times the timecourses are interpolated onto.
+            on_error: `flag` (a failed draw is `NaN` and counted) or `raise`.
+            checkpoint: the directory of the checkpoints of the blocks.
+            block_size: the draws of a block of `n`; one block by default.
+
+        Raises:
+            ValueError: see `propagate`.
+        """
+        scenarios = (
+            {DEFAULT_SCENARIO: simulation}
+            if isinstance(simulation, Simulation)
+            else dict(simulation)
+        )
+        if design is None:
+            design = "random" if hypotheses else "sobol"
+        if n is not None and n < 1:
+            raise ValueError(f"The number of draws `n` {n} must be positive.")
+        if n_start < 1:
+            raise ValueError(f"The first round `n_start` {n_start} must be positive.")
+        if n_max < 1:
+            raise ValueError(f"The most draws `n_max` {n_max} must be positive.")
+        if n is None and design == "lhs":
+            raise ValueError(
+                "A Latin hypercube has no continuation, its points of more draws "
+                "are another hypercube: give the number of draws `n`, or use "
+                "'sobol' or 'random' for the adaptive number of draws."
+            )
+        if block_size is not None:
+            if block_size < 1:
+                raise ValueError(f"The block size {block_size} must be positive.")
+            if n is None:
+                raise ValueError(
+                    "A block size needs the number of draws `n`: the blocks of the "
+                    "adaptive number of draws are its rounds."
+                )
+        self._directories = (
+            _directories(list(scenarios)) if checkpoint is not None else {}
+        )
+        for hypothesis in hypotheses:
+            names = (
+                hypothesis.contrast
+                if hypothesis.contrast is not None
+                else ([hypothesis.scenario] if hypothesis.scenario is not None else [])
+            )
+            unknown = [name for name in names if name not in scenarios]
+            if unknown:
+                raise ValueError(
+                    f"The hypothesis about '{hypothesis.output}' names the scenarios "
+                    f"{unknown}, which are none of {list(scenarios)}."
+                )
+        variables = uq.variables(scenarios)
+        if not variables:
+            raise ValueError(
+                "The analysis has no uncertain values: declare inputs as `Uncertain` "
+                "or give parameters with their distributions."
+            )
+        self.scenarios: dict[str, Simulation] = scenarios
+        self.variables: list[Variable] = list(variables)
+        self.design: Literal["sobol", "lhs", "random"] = design
+        self.n: int | None = n
+        self.block_size: int | None = block_size
+        self.checkpoint: Path | None = (
+            Path(checkpoint) if checkpoint is not None else None
+        )
+        self._uq = uq
+        self._observables = list(observables)
+        self._outputs = list(outputs) if outputs is not None else None
+        self._hypotheses = list(hypotheses)
+        self._adjust: Literal["bonferroni", "none"] = adjust
+        self._rel_tol = rel_tol
+        self._n_start = n_start
+        self._n_max = n_max
+        self._keep = keep
+        self._time = time
+        self._on_error: Literal["raise", "flag"] = on_error
+        self._simulator = simulator if simulator is not None else Simulator()
+        self._loaded = self._simulator.load(model)
+        # what a checkpoint of a block was run with besides its scan, see
+        # `_read`: the observables, the kept timecourses, the grid of times
+        # and the errors give the variables of a block
+        self._configuration: dict[str, Any] = json_attributes(
+            {
+                "model": _model_fingerprint(self._loaded),
+                "engine": self._simulator.engine.value,
+                "integrator_settings": settings_record(
+                    self._simulator.integrator_settings
+                ),
+                "observables": [o.to_dict() for o in self._observables],
+                "keep": list(keep) if keep is not None else None,
+                "time": _time_record(time),
+                "on_error": on_error,
+            }
+        )
+        # the references of the relative distributions are read with
+        # roadrunner, see `sbmlsim.simulation.sampling.references`: a model of
+        # another engine is loaded in roadrunner once, not once per block and
+        # scenario, and only for a relative distribution
+        relative = any(
+            v.marginal(name).is_relative for v in self.variables for name in scenarios
+        )
+        self._reference_model = (
+            load_model(self._loaded, Engine.ROADRUNNER) if relative else self._loaded
+        )
+        self.seed: int = (
+            seed if seed is not None else int(np.random.default_rng().integers(2**31))
+        )
+        # the `n` points of the design per scenario, drawn once
+        self._points: dict[str, dict[str, Any]] = {}
+        # the results of the blocks which ran or were read, per scenario
+        self._results: dict[tuple[int, int], dict[str, xr.Dataset]] = {}
+
+    def blocks(self) -> list[range]:
+        """Get the blocks of the draws of `n`.
+
+        Returns:
+            The draws `[k * block_size, min(n, (k + 1) * block_size))`, one
+            block of all `n` draws without a block size.
+
+        Raises:
+            ValueError: without `n`, whose rounds are not known before they run.
+        """
+        if self.n is None:
+            raise ValueError(
+                "The blocks of a propagation need the number of draws `n`: the "
+                "rounds of the adaptive number of draws are not known before "
+                "they run."
+            )
+        size = self.block_size if self.block_size is not None else self.n
+        return [range(k, min(self.n, k + size)) for k in range(0, self.n, size)]
+
+    def _check_block(self, block: range) -> None:
+        """Check that a block is consecutive draws of the propagation.
+
+        Raises:
+            ValueError: for a block which is empty, has a step or is not
+                within the draws of `n`.
+        """
+        if block.step != 1 or len(block) == 0 or block.start < 0:
+            raise ValueError(
+                f"The block {block} is no range of consecutive draws from 0."
+            )
+        if self.n is not None and block.stop > self.n:
+            raise ValueError(
+                f"The block {block} is not within the {self.n} draws of the "
+                f"propagation."
+            )
+
+    def _draws(self, block: range, name: str) -> dict[str, Any]:
+        """Get the draws of a block of a scenario.
+
+        With `n` the rows of the `n` points of the design, which are drawn
+        once, so a Latin hypercube is one hypercube in every block; without
+        `n` the points of the block continue the sequence.
+        """
+        arguments = {
+            "design": self.design,
+            "seed": self.seed,
+            "model": self._reference_model,
+            "simulation": self.scenarios[name],
+            "scenario": name,
+        }
+        if self.n is None:
+            return draw(
+                self.variables,
+                self._uq.covariance,
+                len(block),
+                start=block.start,
+                **arguments,
+            )
+        if name not in self._points:
+            # the same points in every scenario, each with its own marginals
+            # and the references of its own pre-initialization
+            self._points[name] = draw(
+                self.variables, self._uq.covariance, self.n, start=0, **arguments
+            )
+        return {
+            key: values[block.start : block.stop]
+            for key, values in self._points[name].items()
+        }
+
+    def _scan(self, block: range, name: str) -> Scan:
+        """Get the scan of the draws of a block of a scenario."""
+        scenario = self.scenarios[name]
+        values = _scenario_values(self.variables, self._draws(block, name), scenario)
+        dimension = Dimension(
+            DRAW,
+            values=values,
+            labels=np.arange(block.start, block.stop),
+            design=Design(
+                method="propagation",
+                distributions={
+                    v.key: v.marginal(name).to_dict() for v in self.variables
+                },
+                options={
+                    "seed": self.seed,
+                    "design": self.design,
+                    "start": block.start,
+                    "n": len(block),
+                },
+            ),
+        )
+        return Scan(scenario, [dimension])
+
+    def _path(self, block: range, name: str) -> Path:
+        """Get the checkpoint file of a block of a scenario."""
+        if self.checkpoint is None:
+            raise ValueError("The propagation has no checkpoint.")
+        directory = self._directories[name]
+        return self.checkpoint / directory / f"draws-{block.start}-{block.stop}.nc"
+
+    def _read(self, block: range, name: str) -> xr.Dataset:
+        """Read the checkpoint of a block of a scenario.
+
+        The file has the configuration of its block in the attribute
+        `CHECKPOINT`, which is removed: the model (`_model_fingerprint`), the
+        engine, the integrator settings, the observables, the kept
+        timecourses, the grid of times and `on_error`, which give its
+        variables, and its scan, i.e. the simulation and the draws.
+
+        Raises:
+            CheckpointMismatch: if the file is the block of another
+                propagation, naming what differs.
+        """
+        path = self._path(block, name)
+        ds = ScanResult.from_netcdf(path).ds
+        found = ds.attrs.pop(CHECKPOINT, None)
+        found = found if isinstance(found, dict) else {}
+        expected = self._configuration | json_attributes(
+            {"scan": self._scan(block, name).to_dict()}
+        )
+        found = found | {
+            "scan": json_attributes({"scan": ds.attrs.get("scan")})["scan"]
+        }
+        differ = sorted(k for k in expected if expected[k] != found.get(k))
+        if differ:
+            raise CheckpointMismatch(
+                f"The checkpoint '{path}' is a block of another propagation, it "
+                f"differs in {', '.join(differ)}: use another checkpoint directory."
+            )
+        return ds
+
+    def checkpointed(self, block: range) -> bool:
+        """Check whether a block has its checkpoint files for every scenario.
+
+        Args:
+            block: consecutive draws.
+
+        Returns:
+            Whether the propagation has a checkpoint and the files of the block
+            exist in it for every scenario; whether they are blocks of this
+            propagation is checked when they are read.
+        """
+        return self.checkpoint is not None and all(
+            self._path(block, name).exists() for name in self.scenarios
+        )
+
+    def run_block(self, block: range) -> None:
+        """Run the draws of a block in every scenario.
+
+        A block which ran or was read before is not run again. With a
+        checkpoint a block whose files exist for every scenario is read, else
+        it is simulated and written, see the class.
+
+        Args:
+            block: consecutive draws, within `n` if given.
+
+        Raises:
+            ValueError: for a block which is no consecutive draws of the
+                propagation.
+            CheckpointMismatch: for a checkpoint of another propagation.
+        """
+        self._check_block(block)
+        key = (block.start, block.stop)
+        if key in self._results:
+            return
+        if self.checkpointed(block):
+            logger.info(
+                "The draws %s-%s of the propagation are read from '%s'.",
+                block.start,
+                block.stop,
+                self.checkpoint,
+            )
+            self._results[key] = {
+                name: self._read(block, name) for name in self.scenarios
+            }
+            self._emit_block(block)
+            return
+        self._store(
+            block, {name: self._simulate(block, name) for name in self.scenarios}
+        )
+
+    def run_blocks(self, blocks: Sequence[range]) -> None:
+        """Run blocks of draws in every scenario, consecutive ones in one run.
+
+        A block which ran or was read before is not run again, and with a
+        checkpoint a block whose files exist for every scenario is read, see
+        `run_block`. The other blocks which follow each other without a gap
+        run in spans of as many blocks as the simulator has workers (one for a
+        serial simulator), a span one run of its draws per scenario on the
+        workers, so the blocks of a propagation run in parallel whatever their
+        size and are kept once their span ran; a block given twice runs once.
+        The result of a span is cut into the results of its blocks, each
+        bitwise the result of `run_block` of the block alone, which are
+        written as their checkpoints. A block whose messages of failed draws
+        the span does not keep (`LostErrors`) runs alone.
+
+        Args:
+            blocks: consecutive draws each, within `n` if given.
+
+        Raises:
+            ValueError: for a block which is no consecutive draws of the
+                propagation.
+            CheckpointMismatch: for a checkpoint of another propagation.
+        """
+        for block in blocks:
+            self._check_block(block)
+        pending: list[range] = []
+        for start, stop in sorted({(b.start, b.stop) for b in blocks}):
+            block = range(start, stop)
+            if (start, stop) in self._results or self.checkpointed(block):
+                self.run_block(block)
+            else:
+                pending.append(block)
+        # a span of a block per worker, so its blocks are kept once it ran
+        limit = max(
+            1,
+            parallel.resolve_workers(
+                self._simulator.n_workers, sum(len(b) for b in pending)
+            ),
+        )
+        spans: list[list[range]] = []
+        for block in pending:
+            if spans and spans[-1][-1].stop == block.start and len(spans[-1]) < limit:
+                spans[-1].append(block)
+            else:
+                spans.append([block])
+        for span in spans:
+            if len(span) == 1:
+                self.run_block(span[0])
+                continue
+            draws = range(span[0].start, span[-1].stop)
+            parts: dict[range, dict[str, ScanResult]] = {b: {} for b in span}
+            for name in self.scenarios:
+                result = self._simulate(draws, name)
+                for block in span:
+                    try:
+                        parts[block][name] = self._part(result, draws, block, name)
+                    except LostErrors as err:
+                        logger.info("%s", err)
+                        parts[block][name] = self._simulate(block, name)
+            for block in span:
+                self._store(block, parts[block])
+
+    def _simulate(self, block: range, name: str) -> ScanResult:
+        """Simulate the draws of a block of a scenario."""
+        return self._simulator.run(
+            self._loaded,
+            self._scan(block, name),
+            self._observables or None,
+            time=self._time,
+            keep=self._keep,
+            on_error=self._on_error,
+        )
+
+    def _part(
+        self, result: ScanResult, draws: range, block: range, name: str
+    ) -> ScanResult:
+        """Get the result of a block from the result of a span of draws.
+
+        The draws of the block, `_point` trimmed to its longest draw, the
+        record of its scan and the messages of its failed draws, as a run of
+        the block gives them, see `ScanResult.part`.
+
+        Raises:
+            LostErrors: if the result does not keep the messages of the failed
+                draws of the block.
+        """
+        within = slice(block.start - draws.start, block.stop - draws.start)
+        ds = trim_points(result.ds.isel({DRAW: within}))
+        attrs = copy.deepcopy(dict(result.ds.attrs))
+        attrs["scan"] = self._scan(block, name).to_dict()
+        if "errors" in attrs:
+            attrs["errors"] = part_errors(
+                attrs["errors"],
+                result.ds[STATUS].values,
+                within,
+                f"{block.start}-{block.stop}",
+            )
+        ds.attrs = attrs
+        return ScanResult(ds)
+
+    def _store(self, block: range, results: Mapping[str, ScanResult]) -> None:
+        """Keep the results of a block of every scenario, written as checkpoints.
+
+        With a checkpoint the results are the files as they are read, so they
+        do not depend on whether a block was simulated or read.
+        """
+        stored: dict[str, xr.Dataset] = {}
+        for name, result in results.items():
+            if self.checkpoint is None:
+                stored[name] = result.ds
+                continue
+            path = self._path(block, name)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with atomic_path(path) as temporary:
+                ScanResult(
+                    result.ds.assign_attrs({CHECKPOINT: self._configuration})
+                ).to_netcdf(temporary)
+            stored[name] = self._read(block, name)
+        self._results[(block.start, block.stop)] = stored
+        self._emit_block(block)
+
+    def _emit_block(self, block: range) -> None:
+        """Report a block as computed or read, per scenario."""
+        for name in self.scenarios:
+            emit(
+                "propagation.block",
+                scenario=name,
+                start=block.start,
+                stop=block.stop,
+            )
+
+    def _combined(self, blocks: Sequence[range]) -> dict[str, ScanResult]:
+        """Get the results of the scenarios of consecutive blocks from 0.
+
+        The results of the blocks are the one of a single block of all the
+        draws, see `_merged_attrs`; a ragged timecourse is padded to the
+        longest block, as a run pads it to its longest draw.
+        """
+        total = blocks[-1].stop
+        results = {}
+        for name in self.scenarios:
+            dss = [self._results[(b.start, b.stop)][name] for b in blocks]
+            rows = max(ds.sizes.get(POINT, 0) for ds in dss)
+            dss = [pad_points(ds, rows) for ds in dss]
+            if len(dss) == 1:
+                results[name] = ScanResult(dss[0])
+                continue
+            ds = xr.concat(dss, dim=DRAW, combine_attrs="override", join="outer")
+            ds.attrs = _merged_attrs(dss, total)
+            results[name] = ScanResult(ds)
+        return results
+
+    def _check_outputs(self, block: range) -> None:
+        """Check the outputs on the results of a block.
+
+        Raises:
+            ValueError: for an output which is no variable or no value per draw.
+        """
+        if self._outputs is None:
+            return
+        dss = self._results[(block.start, block.stop)]
+        known = {str(name) for ds in dss.values() for name in ds.data_vars}
+        unknown = [name for name in self._outputs if name not in known]
+        if unknown:
+            raise ValueError(
+                f"The outputs {unknown} are no variables of the result: {sorted(known)}."
+            )
+        first = next(iter(dss.values()))
+        for name in self._outputs:
+            _per_draw(first[name])
+
+    def run(self) -> UncertaintyResult:
+        """Run the propagation: every block of `n` or the adaptive rounds.
+
+        Returns:
+            The result, see `propagate`.
+
+        Raises:
+            ValueError: see `propagate`.
+        """
+        history: list[dict[str, Any]] = []
+        if self.n is not None:
+            blocks = self.blocks()
+            self.run_blocks(blocks)
+            self._check_outputs(blocks[0])
+        else:
+            blocks = [range(min(self._n_start, self._n_max))]
+            self.run_block(blocks[0])
+            self._check_outputs(blocks[0])
+            while True:
+                total = blocks[-1].stop
+                entry = self._judge(self._combined(blocks), total)
+                history.append(entry)
+                if entry["converged"]:
+                    break
+                if total >= self._n_max:
+                    logger.warning(
+                        "The propagation reached %s draws without its tolerance %s "
+                        "or with %s undecided hypotheses, the largest half width "
+                        "of an interval is %s standard deviations.",
+                        total,
+                        self._rel_tol,
+                        entry.get("undecided", 0),
+                        entry.get("precision"),
+                    )
+                    break
+                blocks.append(range(total, total + min(total, self._n_max - total)))
+                self.run_block(blocks[-1])
+        record = {
+            "seed": self.seed,
+            "design": self.design,
+            "n": blocks[-1].stop,
+            "rel_tol": self._rel_tol if self.n is None else None,
+            "history": history,
+            "variables": [_variable_dict(v) for v in self.variables],
+            "covariance": [c.to_dict() for c in self._uq.covariance],
+            "scenarios": list(self.scenarios),
+            "hypotheses": [h.to_dict() for h in self._hypotheses],
+            "adjust": self._adjust,
+        }
+        return UncertaintyResult(self._combined(blocks), list(self.variables), record)
+
+    def _judge(self, results: dict[str, ScanResult], total: int) -> dict[str, Any]:
+        """Judge the draws of a round of the adaptive stopping.
+
+        Returns:
+            The entry of the history: the draws, whether the statistics are
+            precise and the hypotheses decided, the largest relative half
+            width and the number of undecided hypotheses.
+
+        Raises:
+            ValueError: without outputs and hypotheses, for an output without a
+                draw which did not fail or with infinite draws.
+        """
+        result = UncertaintyResult(results)
+        names = (
+            self._outputs
+            if self._outputs is not None
+            else ([] if self._hypotheses else result.outputs())
+        )
+        if not names and not self._hypotheses:
+            raise ValueError(
+                "The adaptive propagation needs outputs which are a value per "
+                "simulation, e.g. of a `PK` observable, or hypotheses; give "
+                "`outputs`, `hypotheses` or `n`."
+            )
+        checks = []
+        for scenario, scenario_result in results.items():
+            for name in names:
+                values = _per_draw(scenario_result.ds[name])
+                if np.isnan(values).all():
+                    raise ValueError(
+                        f"The output '{name}' of the scenario '{scenario}' has no "
+                        f"draw which did not fail, see the attribute 'errors' of "
+                        f"its result."
+                    )
+                if np.isinf(values).any():
+                    raise ValueError(
+                        f"The output '{name}' of the scenario '{scenario}' has "
+                        f"infinite draws, whose mean and standard deviation the "
+                        f"adaptive stopping cannot judge: give `n` or hypotheses "
+                        f"about it."
+                    )
+                checks.append(_precise(values, self._rel_tol))
+        # the hypotheses at the levels of their report, evaluated once
+        m = sum(h.at_least is not None for h in self._hypotheses)
+        undecided = sum(
+            h.evaluate(
+                result.hypothesis_values(h),
+                family_level(h.level, m, self._adjust)
+                if h.at_least is not None
+                else h.level,
+            ).decision
+            == "undecided"
+            for h in self._hypotheses
+        )
+        entry: dict[str, Any] = {
+            "n": total,
+            "converged": all(ok for ok, _ in checks) and undecided == 0,
+        }
+        if checks:
+            entry["precision"] = max(d for _, d in checks)
+        if self._hypotheses:
+            entry["undecided"] = undecided
+        return entry
+
+
 def propagate(
     model: Any,
     simulation: Simulation | Mapping[str, Simulation],
@@ -536,6 +1289,8 @@ def propagate(
     keep: Sequence[str] | None = None,
     time: Any = None,
     on_error: Literal["raise", "flag"] = "flag",
+    checkpoint: str | Path | None = None,
+    block_size: int | None = None,
 ) -> UncertaintyResult:
     """Propagate the uncertain values through a simulation or scenarios, see the module.
 
@@ -564,6 +1319,10 @@ def propagate(
         keep: the timecourses the results keep, see `Simulator.run`.
         time: a grid of times the timecourses are interpolated onto.
         on_error: `flag` (a failed draw is `NaN` and counted) or `raise`.
+        checkpoint: the directory the blocks are written into and read from,
+            see `Propagation`; `None` keeps them in memory only.
+        block_size: the draws of a block of `n`, see `Propagation`; one block
+            of all the draws by default.
 
     Returns:
         The result.
@@ -572,205 +1331,31 @@ def propagate(
         ValueError: without uncertain values, see `UncertaintyModel.variables`,
             for outputs which are no values per draw, without outputs or
             hypotheses for the adaptive stopping, for an output of the
-            adaptive stopping without a draw which did not fail, or for a
-            Latin hypercube of an adaptive number of draws.
+            adaptive stopping without a draw which did not fail, for a Latin
+            hypercube of an adaptive number of draws, for a number of draws or
+            a block size, `n_start` or `n_max` which is not positive, for a
+            block size without `n`, with a checkpoint for an empty scenario
+            name or two which differ only in case, or for a checkpoint of
+            another propagation.
     """
-    scenarios = (
-        {DEFAULT_SCENARIO: simulation}
-        if isinstance(simulation, Simulation)
-        else dict(simulation)
-    )
-    if design is None:
-        design = "random" if hypotheses else "sobol"
-    if n is None and design == "lhs":
-        raise ValueError(
-            "A Latin hypercube has no continuation, its points of more draws are "
-            "another hypercube: give the number of draws `n`, or use 'sobol' or "
-            "'random' for the adaptive number of draws."
-        )
-    for hypothesis in hypotheses:
-        names = (
-            hypothesis.contrast
-            if hypothesis.contrast is not None
-            else ([hypothesis.scenario] if hypothesis.scenario is not None else [])
-        )
-        unknown = [name for name in names if name not in scenarios]
-        if unknown:
-            raise ValueError(
-                f"The hypothesis about '{hypothesis.output}' names the scenarios "
-                f"{unknown}, which are none of {list(scenarios)}."
-            )
-    variables = uq.variables(scenarios)
-    if not variables:
-        raise ValueError(
-            "The analysis has no uncertain values: declare inputs as `Uncertain` "
-            "or give parameters with their distributions."
-        )
-    simulator = simulator if simulator is not None else Simulator()
-    loaded = simulator.load(model)
-    # the references of the relative distributions are read with roadrunner,
-    # see `sbmlsim.simulation.sampling.references`: a model of another engine
-    # is loaded in roadrunner once, not once per batch and scenario, and only
-    # for a relative distribution
-    relative = any(
-        v.marginal(name).is_relative for v in variables for name in scenarios
-    )
-    reference_model = load_model(loaded, Engine.ROADRUNNER) if relative else loaded
-    if seed is None:
-        seed = int(np.random.default_rng().integers(2**31))
-
-    batches: dict[str, list[xr.Dataset]] = {name: [] for name in scenarios}
-    history: list[dict[str, Any]] = []
-
-    def run_batch(start: int, size: int) -> None:
-        for name, scenario in scenarios.items():
-            # the same points in every scenario, each with its own marginals
-            # and the references of its own pre-initialization
-            draws = draw(
-                variables,
-                uq.covariance,
-                size,
-                design=design,
-                seed=seed,
-                start=start,
-                model=reference_model,
-                simulation=scenario,
-                scenario=name,
-            )
-            values = _scenario_values(variables, draws, scenario)
-            dimension = Dimension(
-                DRAW,
-                values=values,
-                labels=np.arange(start, start + size),
-                design=Design(
-                    method="propagation",
-                    distributions={
-                        v.key: v.marginal(name).to_dict() for v in variables
-                    },
-                    options={"seed": seed, "design": design, "start": start, "n": size},
-                ),
-            )
-            result = simulator.run(
-                loaded,
-                Scan(scenario, [dimension]),
-                list(observables) or None,
-                time=time,
-                keep=keep,
-                on_error=on_error,
-            )
-            batches[name].append(result.ds)
-
-    def combined(total: int) -> dict[str, ScanResult]:
-        results = {}
-        for name, dss in batches.items():
-            if len(dss) == 1:
-                results[name] = ScanResult(dss[0])
-                continue
-            ds = xr.concat(dss, dim=DRAW, combine_attrs="override", join="outer")
-            ds.attrs = _merged_attrs(dss, total)
-            results[name] = ScanResult(ds)
-        return results
-
-    def check_outputs() -> None:
-        if outputs is None:
-            return
-        known = {
-            str(name) for ds in next(iter(batches.values())) for name in ds.data_vars
-        }
-        unknown = [name for name in outputs if name not in known]
-        if unknown:
-            raise ValueError(
-                f"The outputs {unknown} are no variables of the result: {sorted(known)}."
-            )
-        for name in outputs:
-            _per_draw(next(iter(batches.values()))[0][name])
-
-    if n is not None:
-        run_batch(0, n)
-        check_outputs()
-        total = n
-    else:
-        total = min(n_start, n_max)
-        run_batch(0, total)
-        check_outputs()
-        while True:
-            results = combined(total)
-            result = UncertaintyResult(results)
-            names = (
-                list(outputs)
-                if outputs is not None
-                else ([] if hypotheses else result.outputs())
-            )
-            if not names and not hypotheses:
-                raise ValueError(
-                    "The adaptive propagation needs outputs which are a value per "
-                    "simulation, e.g. of a `PK` observable, or hypotheses; give "
-                    "`outputs`, `hypotheses` or `n`."
-                )
-            checks = []
-            for scenario, scenario_result in results.items():
-                for name in names:
-                    values = _per_draw(scenario_result.ds[name])
-                    if np.isnan(values).all():
-                        raise ValueError(
-                            f"The output '{name}' of the scenario '{scenario}' has "
-                            f"no draw which did not fail, see the attribute "
-                            f"'errors' of its result."
-                        )
-                    if np.isinf(values).any():
-                        raise ValueError(
-                            f"The output '{name}' of the scenario '{scenario}' has "
-                            f"infinite draws, whose mean and standard deviation "
-                            f"the adaptive stopping cannot judge: give `n` or "
-                            f"hypotheses about it."
-                        )
-                    checks.append(_precise(values, rel_tol))
-            # the hypotheses at the levels of their report, evaluated once
-            m = sum(h.at_least is not None for h in hypotheses)
-            undecided = sum(
-                h.evaluate(
-                    result.hypothesis_values(h),
-                    family_level(h.level, m, adjust)
-                    if h.at_least is not None
-                    else h.level,
-                ).decision
-                == "undecided"
-                for h in hypotheses
-            )
-            converged = all(ok for ok, _ in checks) and undecided == 0
-            entry: dict[str, Any] = {"n": total, "converged": converged}
-            if checks:
-                entry["precision"] = max(d for _, d in checks)
-            if hypotheses:
-                entry["undecided"] = undecided
-            history.append(entry)
-            if converged:
-                break
-            if total >= n_max:
-                logger.warning(
-                    "The propagation reached %s draws without its tolerance %s or "
-                    "with %s undecided hypotheses, the largest half width of an "
-                    "interval is %s standard deviations.",
-                    total,
-                    rel_tol,
-                    undecided,
-                    entry.get("precision"),
-                )
-                break
-            size = min(total, n_max - total)
-            run_batch(total, size)
-            total += size
-
-    record = {
-        "seed": seed,
-        "design": design,
-        "n": total,
-        "rel_tol": rel_tol if n is None else None,
-        "history": history,
-        "variables": [_variable_dict(v) for v in variables],
-        "covariance": [c.to_dict() for c in uq.covariance],
-        "scenarios": list(scenarios),
-        "hypotheses": [h.to_dict() for h in hypotheses],
-        "adjust": adjust,
-    }
-    return UncertaintyResult(combined(total), list(variables), record)
+    return Propagation(
+        model,
+        simulation,
+        uq,
+        observables,
+        outputs=outputs,
+        hypotheses=hypotheses,
+        adjust=adjust,
+        n=n,
+        rel_tol=rel_tol,
+        n_start=n_start,
+        n_max=n_max,
+        design=design,
+        seed=seed,
+        simulator=simulator,
+        keep=keep,
+        time=time,
+        on_error=on_error,
+        checkpoint=checkpoint,
+        block_size=block_size,
+    ).run()
