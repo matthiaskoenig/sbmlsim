@@ -5,7 +5,6 @@ import os
 import weakref
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
-from enum import StrEnum
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, override
@@ -16,7 +15,7 @@ import pandas as pd
 import roadrunner
 from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, JitOptimization
 from sbmlsim.model.event_rows import with_event_markers
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
@@ -105,31 +104,6 @@ def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
     finally:
         integrator.setValue("variable_step_size", variable_step_size)
         roadrunner.Logger.setLevel(level)
-
-
-class JitOptimization(StrEnum):
-    """The optimization level LLJIT compiles the code of a model with (#331).
-
-    The levels of LLVM, `-O0` to `-O3`, which roadrunner calls `NONE`,
-    `LESS`, `DEFAULT` and `AGGRESSIVE` (`LoadSBMLOptions`). A level trades
-    the time of the compilation against the speed of the simulation, measured
-    with libroadrunner 2.11 on the dulaglutide model of pkdb_models: `O0`
-    compiles in 1.1 s, `O1` to `O3` in 3.9 to 4.2 s and MCJIT, roadrunner's
-    default JIT, in 6.7 s, while a serial scan of 300 doses takes 4.5 s at
-    `O0` and 3.9 s at `O2` and with MCJIT (the midazolam model 0.94 s and
-    0.75 s). `O0` gives the results of MCJIT bitwise, the other levels differ
-    from them in the last bits, so a fit can take another path.
-
-    `O2` is the default (`DEFAULT_JIT_OPTIMIZATION`), it simulates as fast as
-    MCJIT. `O0` pays for a run which compiles more than it simulates, e.g.
-    the initialization of experiments: the run of all experiments of
-    dulaglutide takes about 30 s at `O0` against 34 s at `O2`.
-    """
-
-    O0 = "O0"
-    O1 = "O1"
-    O2 = "O2"
-    O3 = "O3"
 
 
 #: the level of a model loaded without one, unless `JIT_OPTIMIZATION_VARIABLE`

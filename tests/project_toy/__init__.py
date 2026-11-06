@@ -4,15 +4,32 @@ The tests of `sbmlsim.project` run the project of the package, `PROJECT`. The
 model has two variants, the decay at the rate 0.2/min (`default`) and at
 0.1/min (`slow`), which the factory (`factory.create_toy_models`) writes into
 `models`. The experiments, the fits, the factory and the credibility
-declaration are references, so importing the package imports none of them.
+declaration are references, so importing the package imports none of them, nor
+roadrunner. The scan `decay` scans the rate of the decay.
 """
 
 from pathlib import Path
 
-from sbmlsim.project import CheckSettings, FigureOutputs, Project, SimulatorSettings
+from sbmlsim.project import (
+    CheckSettings,
+    FigureOutputs,
+    Project,
+    ScanAnalysis,
+    SimulatorSettings,
+)
 from sbmlsim.release.settings import Author, ReleaseSettings
+from sbmlsim.simulation import Dimension, Scan, Simulation
 
 TOY_PATH = Path(__file__).parent
+
+
+def decay_scan() -> Scan:
+    """Get the scan of three rates of the decay [1/min]."""
+    return Scan(
+        Simulation(end=10, steps=20),
+        [Dimension("rate", values={"k": [0.1, 0.2, 0.4]})],
+    )
+
 
 PROJECT = Project(
     name="toy",
@@ -26,7 +43,16 @@ PROJECT = Project(
     fits=".fitting:FIT_DEFINITIONS",
     fits_dir=Path("fits"),
     credibility=".credibility:CREDIBILITY",
-    simulator=SimulatorSettings(absolute_tolerance=1e-10, relative_tolerance=1e-10),
+    scans={
+        "decay": ScanAnalysis(
+            model=Path("models/toy.xml"),
+            scan=decay_scan,
+            description="three rates of the decay",
+        )
+    },
+    simulator=SimulatorSettings(
+        absolute_tolerance=1e-10, relative_tolerance=1e-10, jit_optimization="O0"
+    ),
     figures=FigureOutputs(formats=("svg", "png"), savefig_dpi=30),
     checks=CheckSettings(not_registered={"ToyUnregistered": "a test"}),
     release=ReleaseSettings(

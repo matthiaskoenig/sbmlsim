@@ -309,7 +309,7 @@ PROJECT = Project(
 )
 ```
 
-A relative path of a project (`variants`, `base_path`, `data_path`, `fits_dir`, `adopted`, the model of a scan) is relative to its `root`, while the outputs of a run go where the run is told: `PROJECT.run_experiments(["studies"], "results")` writes into `results` of the current directory.
+A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path`, `fits_dir`, `adopted`, the model of a scan) is relative to its `root` and stored absolute, so `project.replace(root=...)`, which validates a copy, does not move the paths it has; `replace` and not pydantic's `model_copy`, which validates nothing, changes a field. The module `sbmlsim.project` imports neither the experiments, the fits nor roadrunner, so a model package which defines its project imports fast. The outputs of a run go where the run is told: `PROJECT.run_experiments(["studies"], "results")` writes into `results` of the current directory.
 
 | field | meaning |
 | --- | --- |
@@ -317,7 +317,7 @@ A relative path of a project (`variants`, `base_path`, `data_path`, `fits_dir`, 
 | `root` | the directory of the model package, which relative paths are relative to |
 | `package` | the dotted name of the model package, which relative references are relative to |
 | `variants` | the SBML files of the model by the name of its variant, the first the default: `model_path(variant)` and `load_roadrunner(variant)`, which compiles at the level of the simulator settings |
-| `factory`, `factory_outputs` | the function which builds the models, called with the directory it writes into (`create_models(out)`), and the files it writes, relative to `root` |
+| `factory`, `factory_dir`, `factory_outputs` | the function which builds the models, called with the directory it writes into, the directory it writes into in the package (relative to `root`, the directory of the first variant without) and the files it writes, relative to `root`. `create_models()` builds in place, `create_models(out / project.factory_dir.relative_to(project.root))` rebuilds into `out` with the layout of the package, where `factory_paths(out)` are the outputs to compare with `factory_paths()` |
 | `experiments` | the simulation experiment classes, the kind `simulate`: a sequence of classes, groups of them by name (the group `all` has every experiment, the groups together without it) or a function returning either; `load_experiments()` gives the groups, `experiment_classes(names)` the classes of names of groups or classes, `run_experiments(experiments, out)` runs them with the settings of the project |
 | `base_path`, `data_path` | the base path and the datasets of the experiments |
 | `fits` | the fit problems by their subset, the `FitDefinition`s of [Parameter fitting](fitting.md); `load_fit_definitions()` gives them at the optimization level of the simulator settings |

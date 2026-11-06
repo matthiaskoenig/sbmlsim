@@ -46,11 +46,11 @@ def fit_id(name: str | None = None) -> str:
 FIT_ID = re.compile(r"^(?P<subset>.+)_(?P<date>\d{8})_\d{6}__[0-9a-f]{5}$")
 
 
-def fit_subset(fit_id: str) -> str:
+def fit_subset(opid: str) -> str:
     """Get the fit problem a fit belongs to from its id.
 
     Args:
-        fit_id: the id of a fit, e.g. `PK_20261016_185018__3efe3`, see `fit_id`.
+        opid: the id of a fit, e.g. `PK_20261016_185018__3efe3`, see `fit_id`.
 
     Returns:
         The subset, e.g. `PK`. It may contain underscores, `PK_X_...` is `PK_X`.
@@ -60,10 +60,10 @@ def fit_subset(fit_id: str) -> str:
             it holds a path separator or `..`, so that the id is safe as the name
             of a directory.
     """
-    match = FIT_ID.match(fit_id)
-    if match is None or any(part in fit_id for part in ("/", "\\", "..")):
+    match = FIT_ID.match(opid)
+    if match is None or any(part in opid for part in ("/", "\\", "..")):
         raise ValueError(
-            f"'{fit_id}' is not the id of a fit, which has the form "
+            f"'{opid}' is not the id of a fit, which has the form "
             f"'<subset>_<date>_<time>__<hash>', e.g. 'PK_20261016_185018__3efe3'."
         )
     return match["subset"]
