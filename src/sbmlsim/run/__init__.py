@@ -15,7 +15,10 @@ The command line is `python -m sbmlsim.run`, see `sbmlsim.run.cli`:
     python -m sbmlsim.run plan <kind> <spec> [-o FILE]
     python -m sbmlsim.run unit <kind> <spec> <index> --out DIR
     python -m sbmlsim.run merge <kind> <spec> --out DIR [--summary FILE]
-    python -m sbmlsim.run list <project> [--json]
+    python -m sbmlsim.run list <project> [--json] [--experiments]
+
+`--profile` runs a command which writes into `--out` under the sampling
+profiler of python 3.15, see `sbmlsim.run.profiling`.
 
 `import sbmlsim` does not import this package, and this package imports
 nothing of the analyses until it runs one.
@@ -330,11 +333,13 @@ def merge(
     return result
 
 
-def list_analyses(project: str) -> list[dict[str, str]]:
+def list_analyses(project: str, *, experiments: bool = False) -> list[dict[str, str]]:
     """List the analyses of a project, see `sbmlsim.project.Project.analyses`.
 
     Args:
         project: the project, `module:attribute`.
+        experiments: also list the groups of the simulation experiments and
+            every experiment, which imports the experiments.
 
     Returns:
         One entry `{"kind", "name", "description"}` per analysis.
@@ -350,4 +355,4 @@ def list_analyses(project: str) -> list[dict[str, str]]:
         raise ConfigurationError(
             f"The project '{project}' is not loaded: {err}"
         ) from err
-    return the_project.analyses()
+    return the_project.analyses(experiments=experiments)

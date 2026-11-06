@@ -51,6 +51,7 @@ KINDS = (
     "sensitivity",
     "uncertainty",
     "adopt",
+    "factory",
 )
 
 #: a fit of three repeats which stop after a few steps

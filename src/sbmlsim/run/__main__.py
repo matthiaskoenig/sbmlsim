@@ -8,7 +8,9 @@ sets every one which is unset to `1` and runs itself again, once, with the
 flags of its interpreter (`sys.orig_argv`): the new process sees them set. On
 POSIX it replaces itself (`os.execv`); on windows, where `os.execv` starts a
 new process and ends the old one with 0, it runs the new process and exits
-with its code. `MPLBACKEND` is set to `Agg` unless set, so the workers of the
+with its code. A command which runs under the profiler (`--profile`, see
+`sbmlsim.run.profiling`) records its exit code for the profiler, which exits
+with 0 whatever the command did. `MPLBACKEND` is set to `Agg` unless set, so the workers of the
 pools draw with `Agg` as the process does (`matplotlib.use("Agg")`, #317). The
 messages are logged on stderr, so stdout carries only the output of `plan` and
 `list`.
@@ -58,9 +60,16 @@ def main() -> None:
 
     from sbmlsim.log import enable_rich_logging
     from sbmlsim.run.cli import main as cli_main
+    from sbmlsim.run.profiling import record_exit_code
 
     enable_rich_logging(console=Console(stderr=True))
-    sys.exit(cli_main(sys.argv[1:]))
+    try:
+        code = cli_main(sys.argv[1:])
+    except BaseException:
+        record_exit_code(1)
+        raise
+    record_exit_code(code)
+    sys.exit(code)
 
 
 if __name__ == "__main__":
