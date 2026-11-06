@@ -587,3 +587,16 @@ def test_a_scan_compiles_at_the_level_of_the_project(
     assert loaded == [(JitOptimization.O0, JitOptimization.O0)]
     result = ScanResult.from_netcdf(tmp_path / "out" / "result.nc")
     assert result.dims == ("rate",)
+
+
+def test_the_simulate_kind_runs_a_subclass_which_overrides_run_experiments(
+    tmp_path: Path,
+) -> None:
+    from sbmlsim import run
+
+    summary = run.execute(
+        "simulate",
+        {"project": "tests.project_toy.legacy:LEGACY", "experiments": ["ToyDecay"]},
+        tmp_path / "out",
+    )
+    assert summary == {"experiments": 1, "failed": 0}
