@@ -80,6 +80,7 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `fisher` | the Fisher information of a fit | whole | `fit` |
 | `report` | the report of a fit, with its profiles and Fisher information when the input has them | whole | `fit` |
 | `petab` | the fit problem as a PEtab v2 problem, starting from the best parameters of a fit if one is given | whole | `fit` |
+| `adopt` | the adoption of a finished fit: its record and the adopted fits of the project with it | whole | `fit` |
 | `scan` | a scan of the project | blocks of points | |
 | `sensitivity` | a scan with sensitivity indices, and the indices | blocks of points | |
 | `uncertainty` | the propagation of an uncertainty analysis | blocks of draws | |
@@ -91,7 +92,7 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `project` | all | the project, `module:attribute` |
 | `subset` | `fit`, `identifiability`, `fisher`, `report`, `petab` | the fit problem, a key of the fits of the project |
 | `analysis` | `scan`, `sensitivity`, `uncertainty` | the scan or the uncertainty analysis, a key of the project |
-| `fit` | `identifiability`, `fisher`, `report`, `petab` | the records of a fit, the input `fit` |
+| `fit` | `identifiability`, `fisher`, `report`, `petab`, `adopt` | the records of a fit, the input `fit` |
 | `units` | the split kinds | the number of units, set by the plan |
 
 ### fit
@@ -105,12 +106,12 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `studies` | all | the studies of the problem to fit |
 | `timeout` | none | the seconds a single run may take |
 | `optimizer` | `{}` | further arguments of the optimizer, e.g. `{"max_nfev": 50}`, and of the runner, e.g. the sampling of the start values `sampling` by its name (`LOGUNIFORM`, `UNIFORM`, `LOGUNIFORM_LHS`, `UNIFORM_LHS`, `START`); a setting of the spec, e.g. `seed`, is refused here |
-| `start` | none | the point least squares starts from instead of samples of the bounds: the values by parameter id (`{"k": 0.3}`), a JSON file of them, the directory of the records of a fit or the id of an adopted fit of the project; needs `LSQ` and one repeat |
-| `fix_adopted` | `false` | record the adopted fits of the other subsets, whose values the models of the project carry, and their values in the provenance of the fit and name them in its report |
+| `start` | none | the point least squares starts from instead of samples of the bounds: the values by parameter id (`{"k": 0.3}`), a JSON file of them, the directory of the records of a fit or the id of a fit, adopted in the project (`fits_dir`) before a directory of that name; needs `LSQ` and one repeat. The plan resolves it into the values, which the planned spec keeps, so every unit and a resume start from the same point, and keeps the given start in `start_from`, which the provenance of the fit records; a relative path of a spec file is relative to the file |
+| `record_adopted` | `true` | record the adopted fits of the other subsets, whose values the models of the project carry, and these values in the provenance of the fit and name them in its report; nothing is fixed by it, the models carry the values |
 | `identifiability` | `false` | compute the profile likelihoods of the parameters of the best run after the fit, `<opid>/identifiability.json` |
-| `profile` | `{}` | the settings of these profiles, the keyword arguments of `ProfileSettings`, e.g. `{"max_points": 10}` |
+| `profile` | the defaults | the settings of these profiles, the ones of the kind `identifiability` (`ProfileSpec`), e.g. `{"max_points": 10}` |
 | `fisher` | `true` | compute the Fisher information with the profiles, `<opid>/fisher.json` |
-| `report` | `false` | write the report of the fit into `<opid>`, with the title of the project and the fixed adopted fits |
+| `report` | `false`, with `adopt` `true` | write the report of the fit into `<opid>`, with the title of the project and the fixed adopted fits |
 | `mapping_figures` | `true` | draw the figure of every fit mapping in the report |
 | `adopt` | `false` | adopt the fit, which needs `identifiability`: its record into `fits/<opid>` and `adopted.json`, the adopted fits of the project with this fit for its subset |
 
@@ -138,7 +139,10 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | `fisher` | `step` | of `fisher_information` | the relative step of the finite differences |
 | `report` | `mapping_figures` | `true` | draw the figure of every fit mapping |
 | `report` | `group_by` | the groupings of the problem | the groupings of the report, the columns of one grouping per list |
-| `report` | `adopted` | `false` | report the adopted fit of the subset from its record in the project, of every adopted fit for the subset `all`, into `<subset>/`, without the input `fit` |
+| `report` | `adopted` | `false` | report the adopted fit of the subset from its record in the project, of every adopted fit for the subset `all` (no fit subset of a project may be named `all`), into `<fit id>/`, without the input `fit` |
+| `adopt` | `force` | `false` | adopt a fit which the project has adopted already, replacing its record |
+
+`adopt` adopts the fit of its input `fit`, the out of a fit or a records directory: the id of its result, which has the form of the id of a fit of a subset of the project, names the subset; it needs the profiles or the Fisher information of the fit and writes its record into `fits/<fit id>` and `adopted.json` with the fit adopted for its subset, as `fit` with `adopt` does.
 | `petab` | `required_extension` | `true` | mark the extension `sbmlsim` as required |
 
 ### simulate, scan, sensitivity and uncertainty
@@ -186,7 +190,8 @@ The results of the kinds:
 | `fit` | `<opid>/runs/<opid>_run_<k>.json` (the repeats), `<opid>/optimization_result.json`, `<opid>/parameters.json` (the best run), `<opid>/fits.tsv`, with `identifiability` also `<opid>/identifiability.json` and `<opid>/fisher.json`, with `report` the report in `<opid>`, with `adopt` also `fits/<opid>` (the record of the adopted fit) and `adopted.json` |
 | `identifiability` | `profiles/<pid>.json` (the profiles), `identifiability.json`, `fisher.json` and a copy of the records of the fit, `optimization_result.json` and `parameters.json` |
 | `fisher` | `fisher.json` and a copy of the records of the fit |
-| `report` | `report/`, with `adopted` a directory per subset |
+| `report` | `report/`, with `adopted` a directory per adopted fit, `<fit id>/` |
+| `adopt` | `fits/<fit id>` (the record of the fit) and `adopted.json` |
 | `petab` | `petab/problem.yaml` and its tables |
 | `scan` | `blocks/points-<start>-<stop>.nc` (the points of the units), `result.nc` (the `ScanResult`) |
 | `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`) |
@@ -346,7 +351,7 @@ The project of the HCTZ example, [`examples/hctz_fitting/project.py`](https://gi
 
 ## simrun
 
-[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan` and so on; the extra `simrun` installs simrun, which needs python 3.14:
+[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt` and so on; the extra `simrun` installs simrun, which needs python 3.14:
 
 ```bash
 pip install "sbmlsim[simrun]"

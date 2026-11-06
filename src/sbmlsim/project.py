@@ -81,6 +81,7 @@ else:
 
 __all__ = [
     "ADOPTED_FILE",
+    "ALL_SUBSETS",
     "CheckSettings",
     "FigureOutputs",
     "Project",
@@ -100,6 +101,10 @@ ADOPTED_FILE = "adopted.json"
 #: the group of the experiments of a project which has every experiment, see
 #: `Project.load_experiments`
 ALL_EXPERIMENTS = "all"
+
+#: the subset of the report of the adopted fits which reports every adopted
+#: fit, no fit subset of a project
+ALL_SUBSETS = "all"
 
 #: the kinds of the analyses of a fit subset, in the order `Project.analyses`
 #: lists them
@@ -1167,6 +1172,8 @@ class Project(BaseModel):
 
         Raises:
             TypeError: if the fits are no fit definitions by subset.
+            ValueError: for a subset named `ALL_SUBSETS`, which names every
+                adopted fit of a report.
         """
         fits = self._resolve(self.fits)
         if not isinstance(fits, Mapping) or not all(
@@ -1177,6 +1184,11 @@ class Project(BaseModel):
             raise TypeError(
                 f"The fits of '{self.name}' ({self.fits}) are no fit definitions "
                 "by subset."
+            )
+        if ALL_SUBSETS in fits:
+            raise ValueError(
+                f"The project '{self.name}' has a fit subset '{ALL_SUBSETS}', the "
+                "name of every adopted fit of a report: rename the subset."
             )
         level = self.simulator.jit_optimization
         return {

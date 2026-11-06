@@ -19,9 +19,10 @@ fit from one directory.
   `<opid>/fisher.json`, with `report` the report of the fit into `<opid>`,
   and with `adopt` the record of the fit, `fits/<opid>`, and `adopted.json`,
   the adopted fits of the project with the fit adopted for its subset (the
-  files of the project are never written). Least squares starts from `start`
-  instead of samples of the bounds, and with `fix_adopted` the fit records
-  the adopted fits of the other subsets, whose values its models carry, see
+  files of the project are never written). Least squares starts from
+  `start`, which the plan resolves into a point, instead of samples of the
+  bounds, and with `record_adopted` the fit records the adopted fits of the
+  other subsets, whose values its models carry, see
   `sbmlsim.fit.project_fits`; the plan refuses a fit whose bounds let a
   remainder `1 - a - b` of a model of the project become negative.
 - `identifiability` (`IdentifiabilitySpec`) computes the profile likelihoods,
@@ -30,10 +31,12 @@ fit from one directory.
 - `fisher` (`FisherSpec`) computes the Fisher information, `fisher.json`.
 - `report` (`ReportSpec`) writes the report of the records, `report/`, with
   `adopted` the report of the adopted fit of the subset, of every adopted fit
-  for the subset `all`, from its record in the project, into `<subset>/`; a report has the context of the project
-  (`sbmlsim.fit.cli.records_context`).
+  for the subset `all`, from its record in the project into `<fit id>/`; a
+  report has the context of the project (`sbmlsim.fit.cli.records_context`).
 - `petab` (`PetabSpec`) writes the problem as PEtab v2, `petab/problem.yaml`,
   which starts from the best parameters of a fit when one is given.
+- `adopt` (`AdoptSpec`) adopts a finished fit of the input `fit`: its record
+  into `fits/<fit id>` and `adopted.json`, as `fit` with `adopt` does.
 
 Every record file is written atomically, so a unit computed again leaves
 complete files. The modules of the fit are imported when a kind runs, not
@@ -46,7 +49,7 @@ import json
 import logging
 import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 import numpy as np
 from pydantic import Field, model_validator
@@ -74,16 +77,19 @@ if TYPE_CHECKING:
     from sbmlsim.run.context import RunContext
 
 __all__ = [
+    "ADOPT",
     "FISHER",
     "FIT",
     "IDENTIFIABILITY",
     "PETAB",
     "REPORT",
+    "AdoptSpec",
     "FisherSpec",
     "FitProblemSpec",
     "FitSpec",
     "IdentifiabilitySpec",
     "PetabSpec",
+    "ProfileSpec",
     "ReportSpec",
 ]
 
@@ -109,8 +115,6 @@ REPORT_NAME = "report"
 PETAB_DIR = "petab"
 #: the directory of the records of the adopted fits in the out of a fit
 FITS_DIR = "fits"
-#: the subset of a report of the adopted fits which reports every adopted fit
-ALL_SUBSETS = "all"
 
 
 # ----------------------------------------------------------------------------
@@ -128,12 +132,40 @@ class FitProblemSpec(Spec):
     subset: str
 
 
+class ProfileSpec(Spec):
+    """The settings of profile likelihoods, of an analysis or after a fit.
+
+    The settings are the ones of `sbmlsim.fit.identifiability.ProfileSettings`
+    with its defaults.
+
+    Attributes:
+        alpha: the confidence level of the intervals.
+        degrees_of_freedom: the degrees of freedom of the threshold.
+        initial_step: the first step of a scan in decades.
+        min_step: the smallest step in decades.
+        max_step: the largest step in decades.
+        max_points: the largest number of points of a scan in one direction.
+        reoptimize: optimize the other parameters at every point.
+        optimizer: arguments of the least squares optimizer of the other
+            parameters, `ProfileSettings.optimizer_kwargs`.
+    """
+
+    alpha: float = 0.95
+    degrees_of_freedom: int = 1
+    initial_step: float = 0.1
+    min_step: float = 0.01
+    max_step: float = 1.0
+    max_points: int = 50
+    reoptimize: bool = True
+    optimizer: dict[str, Any] = Field(default_factory=dict)
+
+
 class FitSpec(FitProblemSpec, SplitSpec):
     """The spec of a fit: the repeats of the optimization of a problem.
 
     Attributes:
         opid: the id of the fit, the directory of its records; the plan sets
-            the subset without.
+            the subset without, with `adopt` the id of a fit.
         repeats: the number of optimization runs.
         algorithm: the optimizer, least squares `LSQ` or differential
             evolution `DE`.
@@ -146,24 +178,30 @@ class FitSpec(FitProblemSpec, SplitSpec):
             bounds: the values by parameter id, a JSON file of them, the
             directory of the records of a fit or the id of an adopted fit of
             the project, see `sbmlsim.fit.project_fits.start_point`; needs
-            `LSQ` and one repeat.
-        fix_adopted: record the adopted fits of the other subsets of the
-            project, whose values the models carry, and their values in the
-            provenance of the fit, and name them in its report.
+            `LSQ` and one repeat. The plan resolves it into the values, so
+            every unit and a resume start from the same point, and keeps the
+            given start in `start_from`; a relative path of a spec file is
+            relative to the file.
+        start_from: the start as it was given, set by the plan, which the
+            provenance of the fit records.
+        record_adopted: record the adopted fits of the other subsets of the
+            project, whose values the models of the project carry, and these
+            values in the provenance of the fit; its report names them.
         identifiability: compute the profile likelihoods of the parameters of
             the best run after the fit, `<opid>/identifiability.json`.
-        profile: the settings of the profiles, keyword arguments of
-            `sbmlsim.fit.identifiability.ProfileSettings`.
+        profile: the settings of these profiles.
         fisher: compute the Fisher information with the profiles,
             `<opid>/fisher.json`.
         report: write the report of the fit into `<opid>`, with the context
-            of the project.
+            of the project; true by default with `adopt`, so that the record
+            of an adopted fit has its report.
         mapping_figures: draw the figure of every fit mapping in the report.
         adopt: adopt the fit, which needs its `identifiability`: copy its
             record into `fits/<opid>` and write `adopted.json`, the adopted
-            fits of the project with this fit for its subset; the plan sets the
-            id of a fit, `<subset>_<date>_<time>__<hash>`, without an `opid`.
+            fits of the project with this fit for its subset.
     """
+
+    path_strings: ClassVar[tuple[str, ...]] = ("start",)
 
     opid: str | None = None
     repeats: int = Field(default=4, ge=1)
@@ -173,48 +211,55 @@ class FitSpec(FitProblemSpec, SplitSpec):
     timeout: float | None = None
     optimizer: dict[str, Any] = Field(default_factory=dict)
     start: dict[str, float] | str | None = None
-    fix_adopted: bool = False
+    start_from: str | None = None
+    record_adopted: bool = True
     identifiability: bool = False
-    profile: dict[str, Any] = Field(default_factory=dict)
+    profile: ProfileSpec = Field(default_factory=ProfileSpec)
     fisher: bool = True
     report: bool = False
     mapping_figures: bool = True
     adopt: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def _report_of_an_adopted_fit(cls, data: Any) -> Any:
+        """Report an adopted fit unless `report` is given."""
+        if isinstance(data, dict) and data.get("adopt") and "report" not in data:
+            return {**data, "report": True}
+        return data
 
-class IdentifiabilitySpec(FitProblemSpec, SplitSpec):
+
+class AdoptSpec(Spec):
+    """The spec of the adoption of a finished fit.
+
+    Attributes:
+        project: the project, `module:attribute`.
+        fit: the records of the fit, the input `fit`: a records directory or
+            the out of a fit run; the id of the fit is its subset.
+        force: adopt the fit although the project has adopted it already,
+            i.e. replace its record.
+    """
+
+    project: str
+    fit: Path | None = None
+    force: bool = False
+
+
+class IdentifiabilitySpec(FitProblemSpec, SplitSpec, ProfileSpec):
     """The spec of the profile likelihoods of the parameters of a fit.
 
-    The settings are the ones of `sbmlsim.fit.identifiability.ProfileSettings`
-    with its defaults.
+    The settings of the profiles are the ones of `ProfileSpec`.
 
     Attributes:
         fit: the records of the fit, the input `fit`.
         pids: the parameters to profile; the plan sets the ones
             `profile_likelihood` profiles by default, every parameter which is
             no element of a network.
-        alpha: the confidence level of the intervals.
-        degrees_of_freedom: the degrees of freedom of the threshold.
-        initial_step: the first step of a scan in decades.
-        min_step: the smallest step in decades.
-        max_step: the largest step in decades.
-        max_points: the largest number of points of a scan in one direction.
-        reoptimize: optimize the other parameters at every point.
-        optimizer: arguments of the least squares optimizer of the other
-            parameters, `ProfileSettings.optimizer_kwargs`.
         fisher: compute the Fisher information as well, `fisher.json`.
     """
 
     fit: Path | None = None
     pids: list[str] | None = None
-    alpha: float = 0.95
-    degrees_of_freedom: int = 1
-    initial_step: float = 0.1
-    min_step: float = 0.01
-    max_step: float = 1.0
-    max_points: int = 50
-    reoptimize: bool = True
-    optimizer: dict[str, Any] = Field(default_factory=dict)
     fisher: bool = True
 
 
@@ -236,12 +281,13 @@ class ReportSpec(FitProblemSpec):
 
     Attributes:
         subset: the fit problem; with `adopted` the subset whose adopted fit
-            is reported, `all` (`ALL_SUBSETS`) for every adopted fit.
+            is reported, `all` (`sbmlsim.project.ALL_SUBSETS`) for every
+            adopted fit.
         fit: the records, the input `fit`, e.g. the out of an
             identifiability analysis, whose profiles the report shows.
         adopted: report the adopted fits of the project from their records
             (`Project.adopted_record`) instead of the input `fit`, each into
-            the directory of its subset.
+            the directory of its fit id.
         mapping_figures: draw the figure of every fit mapping.
         group_by: the groupings of the report, the columns of one grouping
             per list; the groupings of the fit problem without.
@@ -283,7 +329,7 @@ class PetabSpec(FitProblemSpec):
 # ----------------------------------------------------------------------------
 # what the kinds share
 # ----------------------------------------------------------------------------
-def _project(spec: FitProblemSpec) -> Project:
+def _project(spec: FitProblemSpec | AdoptSpec) -> Project:
     """Get the project a spec names.
 
     Raises:
@@ -566,7 +612,9 @@ def _start_point(spec: FitSpec, definition: FitDefinition) -> dict[str, float]:
         raise ConfigurationError(f"The start of the fit is invalid: {err}") from err
 
 
-def _fixed(spec: FitSpec, definition: FitDefinition) -> tuple[list[str], dict]:
+def _fixed(
+    spec: FitSpec, definition: FitDefinition
+) -> tuple[list[str], dict[str, float]]:
     """Get the adopted fits a fit keeps fixed and their values, see `fixed_values`.
 
     Raises:
@@ -574,7 +622,7 @@ def _fixed(spec: FitSpec, definition: FitDefinition) -> tuple[list[str], dict]:
     """
     from sbmlsim.fit.project_fits import fixed_values
 
-    if not spec.fix_adopted:
+    if not spec.record_adopted:
         return [], {}
     try:
         return fixed_values(_project(spec), spec.subset, definition)
@@ -607,13 +655,13 @@ def _check_start(spec: FitSpec, definition: FitDefinition) -> None:
         raise ConfigurationError(
             "A fit with a start samples no start values, it has no 'sampling'."
         )
-    _start_point(spec, definition)
 
 
 def _check_remainders(spec: FitSpec, definition: FitDefinition) -> None:
     """Check that the bounds of a fit let no remainder of a model become negative.
 
-    Every variant of the project is checked, see `remainder_problems`.
+    Every variant of the project is checked, see `remainder_problems`; a
+    project without model variants has no model to check, which is logged.
 
     Raises:
         ConfigurationError: naming the remainders which can become negative.
@@ -621,6 +669,14 @@ def _check_remainders(spec: FitSpec, definition: FitDefinition) -> None:
     from sbmlsim.fit.project_fits import remainder_problems
 
     project = _project(spec)
+    if not project.variants:
+        logger.info(
+            "'%s': the project '%s' has no model variants, the remainders of "
+            "its models are not checked.",
+            spec.subset,
+            project.name,
+        )
+        return
     _, fixed = _fixed(spec, definition)
     problems = list(
         dict.fromkeys(
@@ -677,8 +733,14 @@ def _plan_fit(spec: FitSpec) -> FitSpec:
     opid = _plan_opid(spec)
     _check_fit_arguments(spec, definition)
     _check_start(spec, definition)
+    start = None if spec.start is None else _start_point(spec, definition)
+    start_from = (
+        spec.start_from
+        if spec.start_from is not None or not isinstance(spec.start, str)
+        else spec.start
+    )
     if spec.identifiability:
-        _profile_settings_of(spec.profile)
+        _profile_settings(spec.profile)
     elif spec.adopt:
         raise ConfigurationError(
             "An adopted fit carries the uncertainty of its parameters: adopt a "
@@ -700,6 +762,8 @@ def _plan_fit(spec: FitSpec) -> FitSpec:
             "seed": seed,
             "units": len(unit_blocks(spec.repeats)),
             "optimizer": optimizer,
+            "start": start,
+            "start_from": start_from,
         }
     )
 
@@ -753,11 +817,18 @@ def _run_repeats(
     optimizer = _optimizer_arguments(spec)
     arguments: dict[str, Any] = {}
     if spec.start is not None:
-        definition = with_start(definition, _start_point(spec, definition))
+        if not isinstance(spec.start, dict):
+            raise ConfigurationError(
+                "The start of the fit is not planned: plan the spec first."
+            )
+        # the point the plan resolved, so every unit and a resume start alike
+        definition = with_start(definition, spec.start)
         optimizer["sampling"] = SamplingType.START
-        arguments["start"] = spec.start
+        arguments["start"] = (
+            spec.start_from if spec.start_from is not None else spec.start
+        )
     fixed_fits, fixed = _fixed(spec, definition)
-    if spec.fix_adopted:
+    if spec.record_adopted:
         arguments[FIXED_FITS] = fixed_fits
     runs = run_fit(
         definition,
@@ -827,7 +898,7 @@ def _merge_fit(spec: FitSpec, ctx: RunContext) -> dict[str, Any]:
     if spec.report:
         _fit_report(spec, opid, records, ctx)
     if spec.adopt:
-        _adopt(spec, opid, records, ctx)
+        _adopt(spec, spec.subset, opid, records, ctx, force=True)
         summary["adopted"] = f"{FITS_DIR}/{opid}"
     return summary
 
@@ -851,7 +922,7 @@ def _fit_identifiability(
             problem=problem,
             settings=settings,
             parameter_set=parameter_set,
-            profile_settings=_profile_settings_of(spec.profile),
+            profile_settings=_profile_settings(spec.profile),
             n_cores=ctx.workers or available_cpus(),
         )
         write_text_atomic(path, str(result.to_json()) + "\n")
@@ -883,27 +954,55 @@ def _fit_report(spec: FitSpec, opid: str, records: Path, ctx: RunContext) -> Non
     report.create(output_dir=ctx.out, name=opid)
 
 
-def _adopt(spec: FitSpec, opid: str, records: Path, ctx: RunContext) -> None:
+def _adopt(
+    spec: FitProblemSpec | AdoptSpec,
+    subset: str,
+    opid: str,
+    records: Path,
+    ctx: RunContext,
+    *,
+    force: bool,
+) -> None:
     """Adopt a fit: its record into `fits/<opid>` and `adopted.json` into the out.
 
+    Args:
+        spec: the spec, it names the project.
+        subset: the subset of the fit.
+        opid: the id of the fit.
+        records: the records of the fit.
+        ctx: the context of the run.
+        force: adopt a fit which the project has adopted already.
+
     Raises:
-        ConfigurationError: if the adopted fits of the project are not read or
+        ConfigurationError: if the adopted fits of the project are not read,
+            the project has adopted the fit already and `force` is not set, or
             the fit has no record of the uncertainty of its parameters.
     """
     from sbmlsim.fit.records import adopt_fit
     from sbmlsim.project import ADOPTED_FILE, write_adopted
 
+    project = _project(spec)
     try:
-        adopted = _project(spec).adopted_fits()
+        adopted = project.adopted_fits()
     except ValueError as err:
         raise ConfigurationError(
             f"The adopted fits of '{spec.project}' are not read: {err}"
         ) from err
+    if (
+        not force
+        and project.fits_dir is not None
+        and (project.fits_dir / opid).exists()
+    ):
+        raise ConfigurationError(
+            f"The fit '{opid}' is adopted already: {project.fits_dir / opid}; "
+            "'force' adopts it again."
+        )
     try:
-        adopt_fit(records, ctx.out / FITS_DIR, force=True)
+        # the out of a resumed run has the record already
+        adopt_fit(records, ctx.out / FITS_DIR, force=True, fit_id=opid)
     except FileNotFoundError as err:
         raise ConfigurationError(f"The fit '{opid}' is not adopted: {err}") from err
-    write_adopted(ctx.out / ADOPTED_FILE, {**adopted, spec.subset: opid})
+    write_adopted(ctx.out / ADOPTED_FILE, {**adopted, subset: opid})
 
 
 def _run_fit(spec: FitSpec, ctx: RunContext) -> dict[str, Any]:
@@ -922,37 +1021,26 @@ def _run_fit(spec: FitSpec, ctx: RunContext) -> dict[str, Any]:
 # ----------------------------------------------------------------------------
 # identifiability
 # ----------------------------------------------------------------------------
-def _profile_settings(spec: IdentifiabilitySpec) -> ProfileSettings:
+def _profile_settings(spec: ProfileSpec) -> ProfileSettings:
     """Get the settings of the profiles of a spec.
 
     Raises:
         ConfigurationError: for settings out of their range.
     """
-    return _profile_settings_of(
-        {
-            "alpha": spec.alpha,
-            "degrees_of_freedom": spec.degrees_of_freedom,
-            "initial_step": spec.initial_step,
-            "min_step": spec.min_step,
-            "max_step": spec.max_step,
-            "max_points": spec.max_points,
-            "reoptimize": spec.reoptimize,
-            "optimizer_kwargs": spec.optimizer,
-        }
-    )
-
-
-def _profile_settings_of(settings: dict[str, Any]) -> ProfileSettings:
-    """Get the settings of profiles from their keyword arguments.
-
-    Raises:
-        ConfigurationError: for an unknown setting or one out of its range.
-    """
     from sbmlsim.fit.identifiability import ProfileSettings
 
     try:
-        return ProfileSettings(**settings)
-    except (TypeError, ValueError) as err:
+        return ProfileSettings(
+            alpha=spec.alpha,
+            degrees_of_freedom=spec.degrees_of_freedom,
+            initial_step=spec.initial_step,
+            min_step=spec.min_step,
+            max_step=spec.max_step,
+            max_points=spec.max_points,
+            reoptimize=spec.reoptimize,
+            optimizer_kwargs=spec.optimizer,
+        )
+    except ValueError as err:
         raise ConfigurationError(f"The profile settings are invalid: {err}") from err
 
 
@@ -1096,6 +1184,7 @@ def _run_report(spec: ReportSpec, ctx: RunContext) -> dict[str, Any]:
     """
     from sbmlsim.fit.cli import load_fit_records, records_context, report_from_records
     from sbmlsim.fit.evaluation import Grouping
+    from sbmlsim.project import ALL_SUBSETS
 
     project = _project(spec)
     context = records_context(project)
@@ -1153,9 +1242,42 @@ def _run_report(spec: ReportSpec, ctx: RunContext) -> dict[str, Any]:
             mapping_figures=spec.mapping_figures,
             groupings=groupings,
         )
-        path = report.create(output_dir=ctx.out, name=subset)
+        path = report.create(output_dir=ctx.out, name=fit_id)
         reports[subset] = path.relative_to(ctx.out).as_posix()
     return {"reports": reports}
+
+
+def _run_adopt(spec: AdoptSpec, ctx: RunContext) -> dict[str, Any]:
+    """Adopt a finished fit: its record into `fits/<fit id>` and `adopted.json`.
+
+    The id of the fit is the id of its result, else the name of its records
+    directory, and has the form of the id of a fit of a subset of the project.
+
+    Raises:
+        ConfigurationError: for an input which is no records of a fit, an id
+            which is no id of a fit of a subset of the project, a fit the
+            project has adopted already without `force`, and a fit without
+            the uncertainty of its parameters.
+    """
+    from sbmlsim.fit.cli import load_fit_records
+    from sbmlsim.fit.result import fit_subset
+
+    records = _records_dir(spec.fit)
+    opid = _fit_opid(load_fit_records(records), records.name)
+    try:
+        subset = fit_subset(opid)
+    except ValueError as err:
+        raise ConfigurationError(f"The fit is not adopted: {err}") from err
+    try:
+        _project(spec).fit(subset)
+    except KeyError as err:
+        raise ConfigurationError(
+            f"The fit '{opid}' is no fit of a subset of '{spec.project}': "
+            f"{err.args[0] if err.args else err}"
+        ) from err
+    _check_opid(opid)
+    _adopt(spec, subset, opid, records, ctx, force=spec.force)
+    return {"subset": subset, "opid": opid, "adopted": f"{FITS_DIR}/{opid}"}
 
 
 def _run_petab(spec: PetabSpec, ctx: RunContext) -> dict[str, Any]:
@@ -1220,5 +1342,10 @@ PETAB: Kind[PetabSpec] = Kind(
     name="petab", spec=PetabSpec, run=_run_petab, inputs=("fit",), uses_cores=False
 )
 
-for _kind in (FIT, IDENTIFIABILITY, FISHER, REPORT, PETAB):
+#: the adoption of a finished fit
+ADOPT: Kind[AdoptSpec] = Kind(
+    name="adopt", spec=AdoptSpec, run=_run_adopt, inputs=("fit",), uses_cores=False
+)
+
+for _kind in (FIT, IDENTIFIABILITY, FISHER, REPORT, PETAB, ADOPT):
     register(_kind)

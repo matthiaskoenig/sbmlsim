@@ -146,6 +146,7 @@ dev = [
 "sbmlsim.scan" = "sbmlsim.simrun:SCAN"
 "sbmlsim.sensitivity" = "sbmlsim.simrun:SENSITIVITY"
 "sbmlsim.uncertainty" = "sbmlsim.simrun:UNCERTAINTY"
+"sbmlsim.adopt" = "sbmlsim.simrun:ADOPT"
 
 [project.urls]
 Homepage = "https://matthiaskoenig.github.io/sbmlsim"

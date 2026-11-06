@@ -50,6 +50,7 @@ KINDS = (
     "scan",
     "sensitivity",
     "uncertainty",
+    "adopt",
 )
 
 #: a fit of three repeats which stop after a few steps

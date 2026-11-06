@@ -22,7 +22,7 @@ import importlib
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, override
+from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel, ConfigDict
 
@@ -69,6 +69,11 @@ class Spec(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    #: the fields which may be a path given as a string next to other values,
+    #: e.g. a fit id or a file: a relative one is resolved against the
+    #: directory of a spec file when it exists there, see `load_spec`
+    path_strings: ClassVar[tuple[str, ...]] = ()
 
 
 class SplitSpec(Spec):

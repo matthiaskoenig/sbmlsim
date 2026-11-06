@@ -149,6 +149,28 @@ def test_a_fit_starts_from_an_adopted_fit(toy_fit: Path, tmp_path: Path) -> None
     }
 
 
+def test_a_fit_id_is_an_adopted_fit_before_a_directory_of_the_cwd(
+    toy_fit: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fits = tmp_path / "fits"
+    shutil.copytree(toy_fit, fits / toy_fit.name)
+    cwd = tmp_path / "cwd"
+    local = cwd / toy_fit.name
+    local.mkdir(parents=True)
+    best: dict[str, object] = {"values": {"k": 0.3}, "units": {"k": "1/min"}}
+    (local / "parameters.json").write_text(
+        json.dumps({"sets": [best]}), encoding="utf-8"
+    )
+    monkeypatch.chdir(cwd)
+    adopted = json.loads((toy_fit / "parameters.json").read_text(encoding="utf-8"))
+    project = PROJECT.replace(fits_dir=fits)
+    assert start_point(project, project.fit("DECAY"), toy_fit.name) == {
+        "k": pytest.approx(adopted["sets"][0]["values"]["k"], rel=1e-12)
+    }
+    # without the adopted fit the directory of the current directory
+    assert start_point(PROJECT, PROJECT.fit("DECAY"), toy_fit.name) == {"k": 0.3}
+
+
 def test_a_start_without_the_unit_of_a_parameter_is_refused(tmp_path: Path) -> None:
     """A value of a fit without its unit cannot be converted into the unit of the fit."""
     definition = PROJECT.fit("DECAY")
