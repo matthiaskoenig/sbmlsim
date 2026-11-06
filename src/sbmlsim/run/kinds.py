@@ -71,9 +71,26 @@ class Spec(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     #: the fields which may be a path given as a string next to other values,
-    #: e.g. a fit id or a file: a relative one is resolved against the
-    #: directory of a spec file when it exists there, see `load_spec`
+    #: e.g. a file or a fit id: a relative one is resolved against the
+    #: directory of a spec file unless it is a name, see `is_name`, so the
+    #: spec of a file does not depend on which files exist
     path_strings: ClassVar[tuple[str, ...]] = ()
+
+    @classmethod
+    def is_name(cls, field: str, value: str) -> bool:
+        """Check whether the string of a field of `path_strings` is a name.
+
+        A name, e.g. the id of a fit, is not resolved against the directory
+        of a spec file; no string is a name by default.
+
+        Args:
+            field: the name of the field.
+            value: its string.
+
+        Returns:
+            Whether the string is a name and no path.
+        """
+        return False
 
 
 class SplitSpec(Spec):

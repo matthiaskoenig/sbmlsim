@@ -83,10 +83,11 @@ def start_point(
 
     The start is a point, the values by parameter id in the units of the fit
     parameters (`FitParameter.unit`), given as a mapping or as a JSON file of
-    one; or a fit: the id of an adopted fit of the project (`Project.fits_dir`)
-    or of a finished fit in `output_dir`, which a name is before a path of the
-    current directory, or the directory of its records, whose best parameters (`parameters.json`, in the units of the model) are
-    converted into the units of the fit parameters. A fit of another problem
+    one; or a fit: the directory of its records, or a name, the id of a fit,
+    which is looked up as an adopted fit of the project (`Project.fits_dir`),
+    then as a finished fit in `output_dir` when one is given, and only then
+    as a path; the best parameters of the fit (`parameters.json`, in the
+    units of the model) are converted into the units of the fit parameters. A fit of another problem
     gives the parameters which the definition fits. A parameter which the
     start does not give keeps its own start value.
 

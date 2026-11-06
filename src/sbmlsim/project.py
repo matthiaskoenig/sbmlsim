@@ -1209,6 +1209,8 @@ class Project(BaseModel):
 
         Raises:
             KeyError: naming the subsets, for an unknown subset.
+            TypeError: if the fits are no fit definitions by subset.
+            ValueError: for a subset named `ALL_SUBSETS`.
         """
         return _named("fit subset", self.load_fit_definitions(), subset)
 

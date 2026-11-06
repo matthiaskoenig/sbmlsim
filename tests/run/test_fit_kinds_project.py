@@ -21,6 +21,7 @@ from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.result import FIT_ID, OptimizationResult
 from sbmlsim.project import Project, write_adopted
 from sbmlsim.run import ConfigurationError
+from sbmlsim.run.context import load_spec
 from sbmlsim.run.fit_kinds import FitSpec, ReportSpec
 from tests.project_toy import PROJECT, TOY_PATH
 
@@ -246,6 +247,22 @@ def test_a_fit_records_the_fixed_adopted_fits(
     assert provenance["fixed_values"] == {}
     typst = (out / "DECAY" / "report.typ").read_text(encoding="utf-8")
     assert "were fixed at their fitted values" in typst
+    planned = FitSpec.model_validate(_json(out / "spec.json"))
+    assert (planned.fixed_fits, planned.fixed_values) == ([OTHER], {})
+
+    # a repeat run again records the fixed fits of the plan, although the
+    # adopted fits of the project changed
+    _with_project(monkeypatch, PROJECT.replace(fits_dir=tmp_path / "empty"))
+    (out / "DECAY" / "runs" / "DECAY_run_0.json").unlink()
+    run.execute(
+        "fit",
+        {**FIT, "report": True, "mapping_figures": False},
+        out,
+        workers=1,
+        resume=True,
+    )
+    provenance = _json(out / "DECAY" / "optimization_result.json")["provenance"]
+    assert provenance["arguments"]["fixed_fits"] == [OTHER]
 
     # without record_adopted nothing is recorded
     plain = tmp_path / "plain"
@@ -317,6 +334,35 @@ def test_a_relative_start_of_a_spec_file_is_relative_to_the_file(
     planned = FitSpec.model_validate(_json(out / "spec.json"))
     assert planned.start == {"k": 0.3}
     assert planned.start_from == str(specs / "start.json")
+
+    # a resume after the start file was deleted is a resume of the same spec,
+    # which starts from the planned point
+    (specs / "start.json").unlink()
+    (out / "DECAY" / "runs" / "DECAY_run_0.json").unlink()
+    run.execute("fit", spec, out, workers=1, resume=True)
+    result = _json(out / "DECAY" / "optimization_result.json")
+    assert result["provenance"]["start_values"] == {"k": 0.3}
+
+
+def test_a_fit_id_of_a_spec_file_stays_an_id(
+    adopted_out: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A start of the form of a fit id is found in the fits of the project."""
+    project = _adopted_project(adopted_out)
+    (fit_id,) = project.adopted_fits().values()
+    _with_project(monkeypatch, project)
+    spec = tmp_path / "fit.json"
+    spec.write_text(json.dumps({**FIT, "start": fit_id}), encoding="utf-8")
+    # a file of that name next to the spec does not make it a path
+    (tmp_path / fit_id).mkdir()
+    loaded = load_spec(run.get_kind("fit"), spec)
+    assert isinstance(loaded, FitSpec)
+    assert loaded.start == fit_id
+    # another name is a path relative to the spec file
+    spec.write_text(json.dumps({**FIT, "start": "point.json"}), encoding="utf-8")
+    relative = load_spec(run.get_kind("fit"), spec)
+    assert isinstance(relative, FitSpec)
+    assert relative.start == str(tmp_path / "point.json")
 
 
 def test_a_resume_starts_from_the_planned_point(
@@ -518,6 +564,16 @@ def test_a_subset_named_all_is_refused(
     _with_project(monkeypatch, project)
     with pytest.raises(ConfigurationError, match="rename the subset"):
         run.plan("fit", {"project": TOY, "subset": "all"})
+
+
+def test_the_adopt_kind_reports_a_project_whose_fits_are_not_read(
+    finished_out: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _with_project(monkeypatch, PROJECT.replace(fits={"all": PROJECT.fit("DECAY")}))
+    with pytest.raises(ConfigurationError, match="rename the subset"):
+        run.execute(
+            "adopt", {"project": TOY}, tmp_path / "out", inputs={"fit": finished_out}
+        )
 
 
 def test_a_project_without_variants_checks_no_remainders(

@@ -37,7 +37,7 @@ import logging
 import math
 import re
 import shutil
-import tempfile
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -124,8 +124,10 @@ def adopt_fit(
     runs, the other figures, the LaTeX sources with the PNG copies of their
     figures and the HTML report stay in the results of the fit.
 
-    The record is copied into a temporary directory next to its place and
-    renamed into it, so a reader sees no record or a complete one.
+    The record is copied into a directory of a unique name next to its place,
+    created with the permissions of the umask, and renamed into it, so a
+    reader sees no record or a complete one; a record it replaces is moved
+    aside first and restored if the rename fails.
 
     Args:
         fit_dir: the directory of the results of the fit, named by its id.
@@ -157,7 +159,9 @@ def adopt_fit(
     if target.exists() and not force:
         raise FileExistsError(f"The fit '{fit_id}' is adopted already: {target}.")
     fits_dir.mkdir(parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix=f".{fit_id}.", dir=fits_dir))
+    # a directory of a unique name, created with the permissions of the umask
+    temporary = fits_dir / f".{fit_id}.{uuid.uuid4().hex}"
+    temporary.mkdir()
     try:
         for name in RECORD_FILES:
             source = fit_dir / name
@@ -168,10 +172,14 @@ def adopt_fit(
             shutil.copy2(fit_dir / figure, temporary / figure)
         if target.exists():
             # the old record is moved aside first, a rename does not replace a
-            # directory which is not empty
-            old = Path(tempfile.mkdtemp(prefix=f".{fit_id}.old.", dir=fits_dir))
-            target.replace(old / fit_id)
-            temporary.replace(target)
+            # directory which is not empty; it comes back if the new one fails
+            old = fits_dir / f".{fit_id}.old.{uuid.uuid4().hex}"
+            target.replace(old)
+            try:
+                temporary.replace(target)
+            except OSError:
+                old.replace(target)
+                raise
             shutil.rmtree(old)
         else:
             temporary.replace(target)
