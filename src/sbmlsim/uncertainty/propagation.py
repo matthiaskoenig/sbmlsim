@@ -37,9 +37,13 @@ several machines, and merge to the result of the whole propagation: every
 block takes its rows of the points of the design of all the draws, so a Latin
 hypercube stays one hypercube. With a `checkpoint` directory every block, and
 every batch of the adaptive number of draws, is written as netCDF
-(`<checkpoint>/<scenario>/draws-<start>-<stop>.nc`) and read instead of
-simulated when it exists, so the blocks of separate instances merge and an
-interrupted propagation resumes with the same result.
+(`<checkpoint>/<scenario>/draws-<start>-<stop>.nc`, the name of the scenario
+percent-encoded) and read instead of simulated when it exists, so the blocks
+of separate instances merge and an interrupted propagation resumes with the
+same result; a block of another propagation (another model, engine,
+integrator settings, observables, kept timecourses, grid of times or draws)
+is refused. A ragged timecourse is padded to the longest block, as a run pads
+it to its longest point.
 
 The `UncertaintyResult` has the results of the scenarios, the variables and
 the record (seed, design, number of draws, history, covariances), and gives
@@ -55,14 +59,15 @@ using a Monte Carlo method.
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import logging
 import math
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -70,12 +75,12 @@ import xarray as xr
 
 from sbmlsim.atomic import atomic_path
 from sbmlsim.engine import Engine
-from sbmlsim.model.model_sbml import load_model
+from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.result.netcdf import json_attributes
-from sbmlsim.result.scan import ScanResult
+from sbmlsim.result.scan import POINT, ScanResult, pad_points
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.scan import Design, Dimension, Scan
-from sbmlsim.simulator.simulator import Simulator
+from sbmlsim.simulator.simulator import Simulator, settings_record
 from sbmlsim.simulator.worker import MAX_ERRORS
 from sbmlsim.uncertainty.draws import draw
 from sbmlsim.uncertainty.sources import UncertaintyModel, Variable
@@ -105,8 +110,8 @@ DEFAULT_SCENARIO: str = "default"
 #: the quantiles of a summary by default
 QUANTILES: tuple[float, ...] = (0.025, 0.05, 0.5, 0.95, 0.975)
 
-#: a scenario name which is a directory of the checkpoints
-_FILE_NAME = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9._-]*")
+#: the attribute of a checkpoint file with the configuration of its block
+CHECKPOINT: str = "propagation"
 
 
 def _magnitudes(values: Any) -> np.ndarray:
@@ -533,27 +538,70 @@ def _merged_attrs(dss: Sequence[xr.Dataset], n: int) -> dict[str, Any]:
     return attrs
 
 
-def _check_file_names(names: Sequence[str]) -> None:
-    """Check that the scenarios are directories of a checkpoint.
+def _directories(names: Sequence[str]) -> dict[str, str]:
+    """Get the directories of the checkpoints of the scenarios.
+
+    A directory is the name of its scenario percent-encoded, every character
+    but letters, digits and `_.-~` (`urllib.parse.quote`), so the encoding
+    is reversible and has no separator, and `.` and `..` are `%2E` and
+    `%2E%2E`.
+
+    Returns:
+        Scenario -> its directory.
 
     Raises:
-        ValueError: for a name which is no safe file name or for two names
-            which differ only in case, which a file system may not tell apart.
+        ValueError: for an empty name or two names whose directories differ
+            only in case, which a file system may not tell apart.
     """
-    for name in names:
-        if not _FILE_NAME.fullmatch(name):
-            raise ValueError(
-                f"The scenario '{name}' is no safe file name for the directory of "
-                f"its checkpoints: use letters, digits, '_', '-' and '.', not first."
-            )
+    directories: dict[str, str] = {}
     folded: dict[str, str] = {}
     for name in names:
-        other = folded.setdefault(name.casefold(), name)
+        if not name:
+            raise ValueError(
+                "A scenario with a checkpoint needs a name, its directory."
+            )
+        directory = quote(name, safe="")
+        if directory in (".", ".."):
+            directory = directory.replace(".", "%2E")
+        other = folded.setdefault(directory.casefold(), name)
         if other != name:
             raise ValueError(
                 f"The scenarios '{other}' and '{name}' differ only in case, their "
                 f"directories of the checkpoints may be one directory."
             )
+        directories[name] = directory
+    return directories
+
+
+def _model_fingerprint(model: SBMLModel) -> str:
+    """Get the SHA-256 of what a loaded model simulates.
+
+    Its engine, the SBML it loaded (`SBMLModel.sbml`), its added parameters,
+    its changes, its selections and its optimization level.
+    """
+    content = repr(
+        (
+            str(model.engine),
+            model.sbml,
+            sorted((str(k), repr(v)) for k, v in (model.parameters or {}).items()),
+            sorted((str(k), str(v)) for k, v in (model.changes or {}).items()),
+            repr(model.selections),
+            str(getattr(model, "jit_optimization", None)),
+        )
+    )
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _time_record(time: Any) -> Any:
+    """Get the grid of times of a run as JSON types, `None` without one."""
+    if time is None:
+        return None
+    if isinstance(time, Quantity):
+        return {
+            "value": np.asarray(time.magnitude, dtype=float).ravel().tolist(),
+            "unit": str(time.units),
+        }
+    return np.asarray(time, dtype=float).ravel().tolist()
 
 
 class Propagation:
@@ -571,8 +619,11 @@ class Propagation:
     `<checkpoint>/<scenario>/draws-<start>-<stop>.nc` once it ran, atomically,
     and a block whose files exist for every scenario is read instead of
     simulated, so the blocks of separate instances merge and a run resumes
-    from the blocks it finished. A checkpointed block is used as it is read,
-    so its result does not depend on whether it was simulated or read.
+    from the blocks it finished. The directory of a scenario is its name
+    percent-encoded (`urllib.parse.quote`, `.` and `..` as `%2E` and
+    `%2E%2E`). A file has the configuration of its block, which a read
+    compares and removes, see `_read`. A checkpointed block is used as it is
+    read, so its result does not depend on whether it was simulated or read.
 
     Attributes:
         scenarios: the simulations by the name of their scenario.
@@ -641,7 +692,11 @@ class Propagation:
         if design is None:
             design = "random" if hypotheses else "sobol"
         if n is not None and n < 1:
-            raise ValueError(f"The number of draws {n} must be positive.")
+            raise ValueError(f"The number of draws `n` {n} must be positive.")
+        if n_start < 1:
+            raise ValueError(f"The first round `n_start` {n_start} must be positive.")
+        if n_max < 1:
+            raise ValueError(f"The most draws `n_max` {n_max} must be positive.")
         if n is None and design == "lhs":
             raise ValueError(
                 "A Latin hypercube has no continuation, its points of more draws "
@@ -656,8 +711,9 @@ class Propagation:
                     "A block size needs the number of draws `n`: the blocks of the "
                     "adaptive number of draws are its rounds."
                 )
-        if checkpoint is not None:
-            _check_file_names(list(scenarios))
+        self._directories = (
+            _directories(list(scenarios)) if checkpoint is not None else {}
+        )
         for hypothesis in hypotheses:
             names = (
                 hypothesis.contrast
@@ -697,6 +753,22 @@ class Propagation:
         self._on_error: Literal["raise", "flag"] = on_error
         self._simulator = simulator if simulator is not None else Simulator()
         self._loaded = self._simulator.load(model)
+        # what a checkpoint of a block was run with besides its scan, see
+        # `_read`: the observables, the kept timecourses, the grid of times
+        # and the errors give the variables of a block
+        self._configuration: dict[str, Any] = json_attributes(
+            {
+                "model": _model_fingerprint(self._loaded),
+                "engine": self._simulator.engine.value,
+                "integrator_settings": settings_record(
+                    self._simulator.integrator_settings
+                ),
+                "observables": [o.to_dict() for o in self._observables],
+                "keep": list(keep) if keep is not None else None,
+                "time": _time_record(time),
+                "on_error": on_error,
+            }
+        )
         # the references of the relative distributions are read with
         # roadrunner, see `sbmlsim.simulation.sampling.references`: a model of
         # another engine is loaded in roadrunner once, not once per block and
@@ -811,23 +883,37 @@ class Propagation:
         """Get the checkpoint file of a block of a scenario."""
         if self.checkpoint is None:
             raise ValueError("The propagation has no checkpoint.")
-        return self.checkpoint / name / f"draws-{block.start}-{block.stop}.nc"
+        directory = self._directories[name]
+        return self.checkpoint / directory / f"draws-{block.start}-{block.stop}.nc"
 
     def _read(self, block: range, name: str) -> xr.Dataset:
         """Read the checkpoint of a block of a scenario.
 
+        The file has the configuration of its block in the attribute
+        `CHECKPOINT`, which is removed: the model (`_model_fingerprint`), the
+        engine, the integrator settings, the observables, the kept
+        timecourses, the grid of times and `on_error`, which give its
+        variables, and its scan, i.e. the simulation and the draws.
+
         Raises:
-            ValueError: if the file is the block of another propagation, i.e.
-                its scan is another one, e.g. of another seed.
+            ValueError: if the file is the block of another propagation,
+                naming what differs.
         """
         path = self._path(block, name)
         ds = ScanResult.from_netcdf(path).ds
-        if json_attributes({"scan": ds.attrs.get("scan")}) != json_attributes(
+        found = ds.attrs.pop(CHECKPOINT, None)
+        found = found if isinstance(found, dict) else {}
+        expected = self._configuration | json_attributes(
             {"scan": self._scan(block, name).to_dict()}
-        ):
+        )
+        found = found | {
+            "scan": json_attributes({"scan": ds.attrs.get("scan")})["scan"]
+        }
+        differ = sorted(k for k in expected if expected[k] != found.get(k))
+        if differ:
             raise ValueError(
-                f"The checkpoint '{path}' is a block of another propagation, its "
-                f"scan differs: use another checkpoint directory."
+                f"The checkpoint '{path}' is a block of another propagation, it "
+                f"differs in {', '.join(differ)}: use another checkpoint directory."
             )
         return ds
 
@@ -876,23 +962,29 @@ class Propagation:
                 path = self._path(block, name)
                 path.parent.mkdir(parents=True, exist_ok=True)
                 with atomic_path(path) as temporary:
-                    result.to_netcdf(temporary)
+                    ScanResult(
+                        result.ds.assign_attrs({CHECKPOINT: self._configuration})
+                    ).to_netcdf(temporary)
                 # the block as it is read, so it does not depend on whether it
                 # was simulated or read
-                result = ScanResult.from_netcdf(path)
-            results[name] = result.ds
+                results[name] = self._read(block, name)
+            else:
+                results[name] = result.ds
         self._results[key] = results
 
     def _combined(self, blocks: Sequence[range]) -> dict[str, ScanResult]:
         """Get the results of the scenarios of consecutive blocks from 0.
 
         The results of the blocks are the one of a single block of all the
-        draws, see `_merged_attrs`.
+        draws, see `_merged_attrs`; a ragged timecourse is padded to the
+        longest block, as a run pads it to its longest draw.
         """
         total = blocks[-1].stop
         results = {}
         for name in self.scenarios:
             dss = [self._results[(b.start, b.stop)][name] for b in blocks]
+            rows = max(ds.sizes.get(POINT, 0) for ds in dss)
+            dss = [pad_points(ds, rows) for ds in dss]
             if len(dss) == 1:
                 results[name] = ScanResult(dss[0])
                 continue
@@ -1100,9 +1192,10 @@ def propagate(
             hypotheses for the adaptive stopping, for an output of the
             adaptive stopping without a draw which did not fail, for a Latin
             hypercube of an adaptive number of draws, for a number of draws or
-            a block size which is not positive, for a block size without `n`,
-            for a scenario which is no safe file name with a checkpoint or for
-            a checkpoint of another propagation.
+            a block size, `n_start` or `n_max` which is not positive, for a
+            block size without `n`, with a checkpoint for an empty scenario
+            name or two which differ only in case, or for a checkpoint of
+            another propagation.
     """
     return Propagation(
         model,

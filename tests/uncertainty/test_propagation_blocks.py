@@ -1,12 +1,16 @@
 """The blocks of draws of a propagation and their checkpoints."""
 
+import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
+import numpy as np
 import pytest
 import xarray as xr
 
 from sbmlsim import Q
+from sbmlsim.result.scan import ScanResult
 from sbmlsim.simulation import PK, Change, Simulation
 from sbmlsim.simulation.sampling import LogNormal
 from sbmlsim.simulator import Simulator
@@ -21,16 +25,19 @@ from tests.simulator.models import sbml_pk
 
 OBSERVABLES = [PK("pk", "[C]", dose="PODOSE", route="oral")]
 DESIGNS = ["sobol", "random", "lhs"]
+#: the designs with a common grid of times and the ragged timecourses
+CASES = [(design, 24) for design in DESIGNS] + [("sobol", None), ("lhs", None)]
 
 
-def _scenarios() -> dict[str, Simulation]:
+def _scenarios(steps: int | None = 24) -> dict[str, Simulation]:
+    """Get the scenarios, ragged timecourses without `steps`."""
     return {
         "control": Simulation(
-            end=24, steps=24, changes=[Change(0, {"PODOSE": Q(100, "mg")})]
+            end=24, steps=steps, changes=[Change(0, {"PODOSE": Q(100, "mg")})]
         ),
         "treatment": Simulation(
             end=24,
-            steps=24,
+            steps=steps,
             changes=[Change(0, {"PODOSE": Uncertain(Q(200, "mg"), cv=0.1)})],
         ),
     }
@@ -55,27 +62,37 @@ def _assert_equal(a: UncertaintyResult, b: UncertaintyResult) -> None:
     assert a.record == b.record
 
 
-@pytest.mark.parametrize("design", DESIGNS)
-def test_blocks_equal_the_whole_propagation(design: str) -> None:
-    whole = propagate(**_arguments(n=24, design=design))
-    blocks = propagate(**_arguments(n=24, design=design, block_size=10))
+@pytest.mark.parametrize(("design", "steps"), CASES)
+def test_blocks_equal_the_whole_propagation(design: str, steps: int | None) -> None:
+    simulation = _scenarios(steps)
+    whole = propagate(**_arguments(n=24, design=design, simulation=simulation))
+    blocks = propagate(
+        **_arguments(n=24, design=design, simulation=simulation, block_size=10)
+    )
     assert whole.results["control"].ds.sizes["draw"] == 24
+    assert ("_point" in whole.results["control"].ds.dims) == (steps is None)
     _assert_equal(whole, blocks)
 
 
-@pytest.mark.parametrize("design", DESIGNS)
+@pytest.mark.parametrize(("design", "steps"), CASES)
 def test_blocks_of_separate_instances_merge(
-    design: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    design: str, steps: int | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    whole = propagate(**_arguments(n=24, design=design))
-    blocks = Propagation(
-        **_arguments(n=24, design=design, checkpoint=tmp_path, block_size=10)
-    ).blocks()
+    simulation = _scenarios(steps)
+    whole = propagate(**_arguments(n=24, design=design, simulation=simulation))
+    arguments = _arguments(
+        n=24, design=design, simulation=simulation, checkpoint=tmp_path, block_size=10
+    )
+    blocks = Propagation(**arguments).blocks()
     assert blocks == [range(0, 10), range(10, 20), range(20, 24)]  # noqa: PIE808
     for block in blocks:
-        Propagation(
-            **_arguments(n=24, design=design, checkpoint=tmp_path, block_size=10)
-        ).run_block(block)
+        Propagation(**arguments).run_block(block)
+    if steps is None:
+        sizes = {
+            ScanResult.from_netcdf(path).ds.sizes["_point"]
+            for path in (tmp_path / "control").iterdir()
+        }
+        assert len(sizes) > 1  # blocks of other lengths
     assert sorted(p.name for p in (tmp_path / "control").iterdir()) == [
         "draws-0-10.nc",
         "draws-10-20.nc",
@@ -86,9 +103,7 @@ def test_blocks_of_separate_instances_merge(
         raise AssertionError("A checkpointed block is simulated again.")
 
     monkeypatch.setattr(Simulator, "run", fail)
-    merged = Propagation(
-        **_arguments(n=24, design=design, checkpoint=tmp_path, block_size=10)
-    ).run()
+    merged = Propagation(**arguments).run()
     _assert_equal(whole, merged)
 
 
@@ -149,6 +164,14 @@ def test_the_blocks_of_n() -> None:
         Propagation(**_arguments(n=24, block_size=0))
 
 
+@pytest.mark.parametrize(
+    ("argument", "value"), [("n", 0), ("n_start", 0), ("n_max", -1)]
+)
+def test_numbers_of_draws_must_be_positive(argument: str, value: int) -> None:
+    with pytest.raises(ValueError, match=f"`{argument}`"):
+        Propagation(**_arguments(**{argument: value}))
+
+
 def test_a_drawn_seed_is_kept() -> None:
     propagation = Propagation(**_arguments(n=4, seed=None))
     assert isinstance(propagation.seed, int)
@@ -161,15 +184,34 @@ def test_a_block_outside_the_draws_raises(block: range) -> None:
         Propagation(**_arguments(n=24)).run_block(block)
 
 
-@pytest.mark.parametrize("name", ["", ".", "..", "a/b", "a\\b", ".hidden", "a b"])
-def test_a_scenario_name_must_be_a_file_name(name: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("name", "directory"),
+    [
+        ("high dose", "high%20dose"),
+        (".", "%2E"),
+        ("..", "%2E%2E"),
+        ("a/b", "a%2Fb"),
+        ("a\\b", "a%5Cb"),
+        (".hidden", ".hidden"),
+        ("dose 50%", "dose%2050%25"),
+    ],
+)
+def test_a_scenario_directory_encodes_its_name(
+    name: str, directory: str, tmp_path: Path
+) -> None:
     simulation = _scenarios()["control"]
-    with pytest.raises(ValueError, match="file name"):
-        Propagation(
-            **_arguments(n=4, simulation={name: simulation}, checkpoint=tmp_path)
-        )
-    # without a checkpoint the name is no file name
-    Propagation(**_arguments(n=4, simulation={name: simulation}))
+    arguments = _arguments(n=4, simulation={name: simulation}, checkpoint=tmp_path)
+    first = propagate(**arguments)
+    assert [p.name for p in tmp_path.iterdir()] == [directory]
+    assert unquote(directory) == name
+    _assert_equal(first, propagate(**arguments))
+
+
+def test_a_scenario_with_a_checkpoint_needs_a_name(tmp_path: Path) -> None:
+    simulation = _scenarios()["control"]
+    with pytest.raises(ValueError, match="needs a name"):
+        Propagation(**_arguments(n=4, simulation={"": simulation}, checkpoint=tmp_path))
+    Propagation(**_arguments(n=4, simulation={"": simulation}))
 
 
 def test_scenario_names_must_differ_in_more_than_case(tmp_path: Path) -> None:
@@ -182,7 +224,38 @@ def test_scenario_names_must_differ_in_more_than_case(tmp_path: Path) -> None:
         )
 
 
-def test_a_checkpoint_of_another_propagation_is_refused(tmp_path: Path) -> None:
-    propagate(**_arguments(n=8, checkpoint=tmp_path))
-    with pytest.raises(ValueError, match="another propagation"):
-        propagate(**_arguments(n=8, seed=4, checkpoint=tmp_path))
+#: a distribution which is not relative, so the draws do not depend on the model
+ABSOLUTE = UncertaintyModel(parameters={"ke": LogNormal(median=0.2, cv=0.2)})
+
+
+@pytest.mark.parametrize(
+    ("changed", "differ"),
+    [
+        ({"seed": 4}, "scan"),
+        ({"observables": [], "keep": ["[C]"]}, "keep, observables"),
+        ({"time": np.linspace(0, 24, 7)}, "time"),
+        (
+            {"simulator": Simulator(n_workers=1, relative_tolerance=1e-8)},
+            "integrator_settings",
+        ),
+        ({"model": sbml_pk(ke=0.3)}, "model"),
+    ],
+)
+def test_a_checkpoint_of_another_propagation_is_refused(
+    changed: dict[str, Any], differ: str, tmp_path: Path
+) -> None:
+    propagate(**_arguments(n=8, uq=ABSOLUTE, checkpoint=tmp_path))
+    path = tmp_path / "control" / "draws-0-8.nc"
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            f"'{path}' is a block of another propagation, it differs in {differ}:"
+        ),
+    ):
+        propagate(**_arguments(n=8, uq=ABSOLUTE, checkpoint=tmp_path, **changed))
+
+
+def test_a_checkpoint_keeps_no_attribute_of_its_own(tmp_path: Path) -> None:
+    result = propagate(**_arguments(n=8, checkpoint=tmp_path))
+    assert "propagation" not in result.results["control"].ds.attrs
+    _assert_equal(propagate(**_arguments(n=8)), result)

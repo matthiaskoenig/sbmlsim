@@ -983,7 +983,7 @@ class _Compiled:
             "units": units,
             "scan": self.scan.to_dict(),
             "engine": engine.value,
-            "integrator_settings": _settings(settings),
+            "integrator_settings": settings_record(settings),
             CHANGES: self.change_times(),
         }
         if self.observables:
@@ -1233,7 +1233,7 @@ def _first(failed: ScanPointError | None, err: ScanPointError) -> ScanPointError
     return err if failed is None or err.index < failed.index else failed
 
 
-def _settings(settings: Mapping[str, Any]) -> dict[str, Any]:
+def settings_record(settings: Mapping[str, Any]) -> dict[str, Any]:
     """Get the integrator settings as JSON types, the provenance of a result."""
     return {
         key: value.to_dict() if isinstance(value, AbsoluteTolerance) else value

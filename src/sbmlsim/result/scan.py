@@ -674,6 +674,7 @@ class ScanResult:
         dims = [str(dim) for dim in block["dims"]]
         _check_coverage(ordered, math.prod(shape))
         rows = max(part.ds.sizes.get(POINT, 0) for part in ordered)
+        padded = [pad_points(part.ds, rows) for part in ordered]
         data_vars: dict[str, xr.Variable] = {}
         for name, variable in first.data_vars.items():
             if INDEX not in variable.dims:
@@ -681,7 +682,7 @@ class ScanResult:
                 continue
             ordered_dims = variable.transpose(INDEX, ...).dims
             values = np.concatenate(
-                [_padded(part.ds[name].transpose(INDEX, ...), rows) for part in ordered]
+                [ds[name].transpose(INDEX, ...).values for ds in padded]
             )
             data_vars[str(name)] = xr.Variable(
                 [*dims, *ordered_dims[1:]],
@@ -795,17 +796,48 @@ def _check_coverage(ordered: Sequence[ScanResult], size: int) -> None:
         )
 
 
-def _padded(variable: xr.DataArray, rows: int) -> np.ndarray:
-    """Get the values of a variable of a block, `_point` padded with `NaN`."""
-    values = variable.values
-    if POINT not in variable.dims or variable.sizes[POINT] == rows:
-        return values
-    axis = variable.dims.index(POINT)
-    shape = list(values.shape)
-    shape[axis] = rows
-    padded = np.full(shape, np.nan, dtype=np.result_type(values.dtype, np.float64))
-    padded[tuple(slice(0, size) for size in values.shape)] = values
-    return padded
+def pad_points(ds: xr.Dataset, rows: int) -> xr.Dataset:
+    """Pad the dimension `_point` of a ragged result with `NaN` to a number of rows.
+
+    The results of parts of the points of a scan, e.g. its blocks or the
+    batches of a propagation, have the native time points of their longest
+    point; padded to the longest part they concatenate to the result of all
+    the points, which a run pads alike.
+
+    Args:
+        ds: the dataset of a result.
+        rows: the rows of `_point`, at least the ones of the dataset.
+
+    Returns:
+        The dataset with `_point` of `rows`, the dataset itself if it has no
+        `_point` or already `rows` of it.
+
+    Raises:
+        ValueError: for fewer rows than the dataset has.
+    """
+    if POINT not in ds.dims or ds.sizes[POINT] == rows:
+        return ds
+    if ds.sizes[POINT] > rows:
+        raise ValueError(
+            f"The result has {ds.sizes[POINT]} rows of '{POINT}', more than {rows}."
+        )
+
+    def padded(variable: xr.Variable) -> xr.Variable:
+        if POINT not in variable.dims:
+            return variable
+        values = variable.values
+        shape = list(values.shape)
+        shape[variable.dims.index(POINT)] = rows
+        dtype = np.result_type(values.dtype, np.float64)
+        filled = np.full(shape, np.nan, dtype=dtype)
+        filled[tuple(slice(0, size) for size in values.shape)] = values
+        return xr.Variable(variable.dims, filled, attrs=variable.attrs)
+
+    return xr.Dataset(
+        {str(name): padded(v.variable) for name, v in ds.data_vars.items()},
+        coords={str(name): padded(c.variable) for name, c in ds.coords.items()},
+        attrs=ds.attrs,
+    )
 
 
 def time_magnitudes(
