@@ -1,17 +1,20 @@
 """The command line of the run layer, `python -m sbmlsim.run`.
 
     python -m sbmlsim.run <kind> <spec> --out DIR [--workers N] [--resume]
-        [--provenance FILE] [--input PORT=PATH ...]
+        [--provenance FILE] [--summary FILE] [--input PORT=PATH ...]
     python -m sbmlsim.run plan <kind> <spec> [-o FILE]
     python -m sbmlsim.run unit <kind> <spec> <index> --out DIR [--input PORT=PATH ...]
-    python -m sbmlsim.run merge <kind> <spec> --out DIR [--input PORT=PATH ...]
+    python -m sbmlsim.run merge <kind> <spec> --out DIR [--summary FILE]
+        [--input PORT=PATH ...]
     python -m sbmlsim.run list <project> [--json]
 
 A kind is the name of a registered kind or `module:attribute` of a kind, a
 spec a YAML or JSON file, an input `PORT=PATH` split at the first `=`, also
 as `--input=PORT=PATH`. `run` is the command when the first argument names no
 other command. `plan` writes the planned spec as JSON, `list` the analyses of
-a project as a table or as JSON.
+a project as a table or as JSON. `--summary FILE` writes the summary of a
+successful run or merge also into a file, e.g. where simrun reads the summary
+of a task.
 
 The exit codes: 0 done, 2 a bad command line, 3 the analysis failed (its
 traceback is logged), also by an invalid object the analysis builds, 4 a
@@ -116,9 +119,19 @@ def _parser() -> argparse.ArgumentParser:
             help="the path of an input field of the spec, repeated per input",
         )
 
+    def summary_file(command: argparse.ArgumentParser) -> None:
+        command.add_argument(
+            "--summary",
+            type=Path,
+            default=None,
+            metavar="FILE",
+            help="write the summary of a successful run also into this file",
+        )
+
     run = commands.add_parser("run", help="run an analysis whole")
     kind_and_spec(run)
     out_and_inputs(run)
+    summary_file(run)
     run.add_argument(
         "--workers",
         type=_positive,
@@ -151,6 +164,7 @@ def _parser() -> argparse.ArgumentParser:
     merge = commands.add_parser("merge", help="merge the units of a planned spec")
     kind_and_spec(merge)
     out_and_inputs(merge)
+    summary_file(merge)
 
     analyses = commands.add_parser("list", help="list the analyses of a project")
     analyses.add_argument("project", help="the project, module:attribute")
@@ -182,6 +196,7 @@ def _command(args: argparse.Namespace) -> None:
             resume=args.resume,
             provenance=args.provenance,
             inputs=inputs,
+            summary=args.summary,
         )
     elif args.command == "plan":
         text = api.plan(args.kind, args.spec).model_dump_json(indent=2) + "\n"
@@ -192,7 +207,7 @@ def _command(args: argparse.Namespace) -> None:
     elif args.command == "unit":
         api.compute_unit(args.kind, args.spec, args.index, args.out, inputs=inputs)
     elif args.command == "merge":
-        api.merge(args.kind, args.spec, args.out, inputs=inputs)
+        api.merge(args.kind, args.spec, args.out, inputs=inputs, summary=args.summary)
     else:
         entries = api.list_analyses(args.project)
         if args.json:

@@ -11,15 +11,19 @@ A splittable kind (`fit`, `identifiability`, `scan`, `sensitivity`,
 `uncertainty`) is split: simrun's workers compute its units with
 `sbmlsim.run.compute_unit` and its merge merges them with `sbmlsim.run.merge`.
 Every other kind (`simulate`, `fisher`, `report`, `petab`) runs as the command
-`python -m sbmlsim.run <kind> <settings> --out <out> --resume`, which
-`simrun-exec` runs; `--resume` lets a retry after an eviction continue the run
-it finds and starts a run in an empty output.
+(`simrun-exec` runs it, `{settings}`, `{out}` and `{input}` filled by simrun)
+
+    python -m sbmlsim.run <kind> {settings} --out {out}/out
+        --summary {out}/summary.json --resume --input={input}
+
+in which `--resume` lets a retry after an eviction continue the run it finds
+and starts a run in an empty output.
 
 A task writes the output of its run into its output port `out`, the directory
 `out/out` of the task (`OUTPUT`), which a task downstream reads as the input
-`<task>.out`, e.g. the fit of an identifiability analysis. The merge of a split
-task also copies the summary of the run to `out/summary.json`, the summary of
-the task which `simrun compare` reads.
+`<task>.out`, e.g. the fit of an identifiability analysis. The run, the command
+of an unsplit task or the merge of a split one, also writes its summary to
+`out/summary.json`, the summary of the task which `simrun compare` reads.
 
 The resource hints are the maximum resident memory of a run on one worker
 (`/usr/bin/time -v`, python 3.14 on linux, the HCTZ project
@@ -38,11 +42,11 @@ it, only simrun's loading of the entry points and the tests do.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from simrun.plugins import ResourceHint, TaskPaths, TaskType
 
 from sbmlsim import run
-from sbmlsim.atomic import write_text_atomic
 from sbmlsim.run.context import SUMMARY_FILE
 from sbmlsim.run.fit_kinds import (
     FisherSpec,
@@ -90,13 +94,8 @@ def _run_out(paths: TaskPaths) -> Path:
 
 def _plan[S: Spec](kind: str, settings: S) -> S:
     """Plan the settings of a task with the plan of its kind."""
-    planned = run.plan(kind, settings)
-    if not isinstance(planned, type(settings)):
-        raise TypeError(
-            f"The plan of the kind '{kind}' returned a '{type(planned).__name__}', "
-            f"not a '{type(settings).__name__}'."
-        )
-    return planned
+    # `sbmlsim.run.plan` checks that the plan returns the spec class of the kind
+    return cast(S, run.plan(kind, settings))
 
 
 def _compute_unit(kind: str, settings: Spec, index: int, paths: TaskPaths) -> None:
@@ -105,11 +104,14 @@ def _compute_unit(kind: str, settings: Spec, index: int, paths: TaskPaths) -> No
 
 
 def _merge(kind: str, settings: Spec, paths: TaskPaths) -> None:
-    """Merge the units of a task and copy its summary to `out/summary.json`."""
-    out = _run_out(paths)
-    run.merge(kind, settings, out, inputs=paths.inputs)
-    summary = (out / SUMMARY_FILE).read_text(encoding="utf-8")
-    write_text_atomic(paths.out / SUMMARY_FILE, summary)
+    """Merge the units of a task, its summary also in `out/summary.json`."""
+    run.merge(
+        kind,
+        settings,
+        _run_out(paths),
+        inputs=paths.inputs,
+        summary=paths.out / SUMMARY_FILE,
+    )
 
 
 def simulate_plan(settings: SimulateSpec) -> SimulateSpec:
@@ -257,7 +259,8 @@ def _task_type(kind_name: str) -> TaskType:
         split = {}
         command = (
             f"python -m sbmlsim.run {kind_name} {{settings}} "
-            f"--out {{out}}/{OUTPUT} --resume --input={{input}}"
+            f"--out {{out}}/{OUTPUT} --summary {{out}}/{SUMMARY_FILE} "
+            "--resume --input={input}"
         )
     return TaskType(
         name=f"sbmlsim.{kind_name}",

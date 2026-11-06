@@ -116,6 +116,50 @@ def test_main_plan_into_a_file_unit_and_merge(tmp_path: Path) -> None:
     assert (out / "summary.json").exists()
 
 
+def test_main_writes_the_summary_into_a_file(tmp_path: Path) -> None:
+    """`--summary` writes the summary of a run or a merge also into a file."""
+    spec = _spec(tmp_path, {"n": 3})
+    out = tmp_path / "out"
+    summary = tmp_path / "task" / "summary.json"
+    assert (
+        cli.main([DUMMY, str(spec), "--out", str(out), "--summary", str(summary)]) == 0
+    )
+    assert summary.read_bytes() == (out / "summary.json").read_bytes()
+
+    planned = tmp_path / "planned.json"
+    assert cli.main(["plan", DUMMY, str(spec), "-o", str(planned)]) == 0
+    split = tmp_path / "split"
+    for index in range(3):
+        assert (
+            cli.main(["unit", DUMMY, str(planned), str(index), "--out", str(split)])
+            == 0
+        )
+    merged = tmp_path / "merged.json"
+    assert (
+        cli.main(
+            [
+                "merge",
+                DUMMY,
+                str(planned),
+                "--out",
+                str(split),
+                "--summary",
+                str(merged),
+            ]
+        )
+        == 0
+    )
+    assert merged.read_bytes() == (split / "summary.json").read_bytes()
+
+
+def test_main_failed_run_writes_no_summary_file(tmp_path: Path) -> None:
+    spec = str(_spec(tmp_path, {"n": 1, "fail": True}))
+    summary = tmp_path / "summary.json"
+    out = str(tmp_path / "out")
+    assert cli.main([DUMMY, spec, "--out", out, "--summary", str(summary)]) == 3
+    assert not summary.exists()
+
+
 def test_main_unit_outside_the_range_exits_4(tmp_path: Path) -> None:
     planned = tmp_path / "planned.json"
     assert (

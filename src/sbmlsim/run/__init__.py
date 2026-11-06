@@ -11,9 +11,10 @@ and the events in `progress.jsonl`.
 The command line is `python -m sbmlsim.run`, see `sbmlsim.run.cli`:
 
     python -m sbmlsim.run <kind> <spec> --out DIR [--workers N] [--resume]
+        [--summary FILE]
     python -m sbmlsim.run plan <kind> <spec> [-o FILE]
     python -m sbmlsim.run unit <kind> <spec> <index> --out DIR
-    python -m sbmlsim.run merge <kind> <spec> --out DIR
+    python -m sbmlsim.run merge <kind> <spec> --out DIR [--summary FILE]
     python -m sbmlsim.run list <project> [--json]
 
 `import sbmlsim` does not import this package, and this package imports
@@ -27,7 +28,9 @@ from pathlib import Path
 from typing import Any
 
 from sbmlsim import events
+from sbmlsim.atomic import write_text_atomic
 from sbmlsim.run.context import (
+    SUMMARY_FILE,
     RunContext,
     check_plan,
     load_spec,
@@ -102,6 +105,15 @@ def _n_units(kind: Kind[Any], spec: Spec) -> int:
     return spec.units
 
 
+def _write_summary(out: Path, summary: Path | None) -> None:
+    """Copy the summary of a run in `out` to the file `summary`, atomically."""
+    if summary is None:
+        return
+    text = (out / SUMMARY_FILE).read_text(encoding="utf-8")
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    write_text_atomic(summary, text)
+
+
 def _check_workers(workers: int | None) -> None:
     """Refuse a number of workers below 1."""
     if workers is not None and workers < 1:
@@ -117,6 +129,7 @@ def execute(
     resume: bool = False,
     provenance: Path | None = None,
     inputs: Mapping[str, Path] | None = None,
+    summary: Path | None = None,
 ) -> dict[str, Any]:
     """Run an analysis whole into an output directory.
 
@@ -145,6 +158,8 @@ def execute(
             `SIMRUN_PROVENANCE` without.
         inputs: the paths of the input fields of the spec by their name,
             resolved to absolute paths.
+        summary: a file the summary of a successful run is also written to,
+            e.g. the summary of a task of simrun outside of `out`.
 
     Returns:
         The summary of the run.
@@ -172,9 +187,11 @@ def execute(
         resume=resume,
         provenance=sources,
     )
-    return record_run(
+    result = record_run(
         the_kind, planned, given_hash, ctx, lambda: the_kind.run(planned, ctx)
     )
+    _write_summary(out, summary)
+    return result
 
 
 def plan(kind: str, spec: SpecLike) -> Spec:
@@ -264,6 +281,7 @@ def merge(
     out: Path,
     *,
     inputs: Mapping[str, Path] | None = None,
+    summary: Path | None = None,
 ) -> dict[str, Any]:
     """Merge the units of a planned spec in an output directory.
 
@@ -274,6 +292,7 @@ def merge(
         spec: the planned spec.
         out: the output directory the units were computed into.
         inputs: the paths of the input fields of the spec by their name.
+        summary: a file the summary of a successful merge is also written to.
 
     Returns:
         The summary of the run.
@@ -300,13 +319,15 @@ def merge(
         resume=True,
         provenance=sources,
     )
-    return record_run(
+    result = record_run(
         the_kind,
         given,
         spec_hash(given, the_kind.inputs),
         ctx,
         lambda: merge_units(given, ctx),
     )
+    _write_summary(out, summary)
+    return result
 
 
 def list_analyses(project: str) -> list[dict[str, str]]:

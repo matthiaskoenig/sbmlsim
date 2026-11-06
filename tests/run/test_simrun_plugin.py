@@ -2,7 +2,9 @@
 
 A fit is computed by the worker of simrun and merged by its merge, and the
 report of it runs as the command of an unsplit task, both into the directories
-of a task of a run store in `tmp_path`.
+of a task of a run store in `tmp_path`. The tests of the worker and of the
+command run on POSIX only: simrun's worker, which `simrun.podspec` and
+`simrun.client` import, uses the signals of POSIX and a forkserver.
 """
 
 import json
@@ -10,29 +12,31 @@ import os
 import subprocess
 import sys
 from datetime import UTC, datetime
+from importlib.metadata import entry_points
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
 
-if sys.platform == "win32":
-    # simrun runs on POSIX: its worker reads the signals and forks with a forkserver
-    pytest.skip("simrun runs on POSIX", allow_module_level=True)
 pytest.importorskip("simrun")
 
-from simrun.plugins import TaskPaths, TaskType, load_task_types
-from simrun.podspec import unsplit_command
-from simrun.snapshot import SourceProvenance
-from simrun.store import RunRecord, RunState, TaskState
-from simrun.worker import run_merge, run_worker
-from simrun.workflow import Priority, Workflow
+from simrun.plugins import ENTRY_POINT_GROUP, TaskPaths, load_task_types, resolve
+from simrun.workflow import Workflow
 
 from sbmlsim import run
 from sbmlsim import simrun as plugin
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.run.fit_kinds import FitSpec
 from sbmlsim.run.kinds import get_kind
+
+if TYPE_CHECKING:
+    from simrun.store import RunRecord
+
+#: the tests which import simrun's worker, which runs on POSIX
+posix = pytest.mark.skipif(
+    sys.platform == "win32", reason="simrun's worker runs on POSIX"
+)
 
 PROJECT = "examples.hctz_fitting.project:PROJECT"
 ROOT = Path(__file__).parents[2]
@@ -88,6 +92,8 @@ def _result(out: Path) -> OptimizationResult:
 @pytest.fixture(scope="module")
 def store(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Get a run store in which simrun's worker computed the fit and merged it."""
+    from simrun.worker import run_merge, run_worker
+
     root = tmp_path_factory.mktemp("store")
     planned = plugin.fit_plan(FitSpec.model_validate(FIT))
     paths = _task_paths(root, "fit", {})
@@ -121,9 +127,18 @@ def test_entry_points_register_every_kind() -> None:
         assert (task_type.command is None) == kind.splittable
 
 
-def test_the_functions_of_the_task_types_resolve() -> None:
-    from simrun.plugins import resolve
+def test_the_entry_points_are_named_as_their_task_types() -> None:
+    entries = [
+        entry
+        for entry in entry_points(group=ENTRY_POINT_GROUP)
+        if entry.name.startswith("sbmlsim.")
+    ]
+    assert len(entries) == len(KINDS)
+    for entry in entries:
+        assert entry.name == entry.load().name
 
+
+def test_the_functions_of_the_task_types_resolve() -> None:
     for task_type in plugin.TASK_TYPES.values():
         refs = (
             task_type.plan,
@@ -136,6 +151,7 @@ def test_the_functions_of_the_task_types_resolve() -> None:
                 assert callable(resolve(ref)), ref
 
 
+@posix
 def test_fit_through_simrun_worker_equals_execute(store: Path, tmp_path: Path) -> None:
     paths = _task_paths(store, "fit", {})
     out = paths.out / plugin.OUTPUT
@@ -173,15 +189,36 @@ def test_plan_hook_fills_units() -> None:
     assert FitSpec.model_validate(submitted) == planned
 
 
-def _record(task: str, task_type: TaskType, settings: dict[str, Any]) -> RunRecord:
-    """Get a run of the fit and a task of a type which reads it."""
+@posix
+def test_plan_tasks_of_a_planned_workflow_keeps_its_settings() -> None:
+    """simrun's client plans a planned workflow again into the same settings."""
+    from simrun.client import plan_tasks
+
+    workflow = Workflow(
+        name="fit", tasks=[{"id": "fit", "type": plugin.FIT.name, "settings": FIT}]
+    )
+    types = load_task_types()
+    once = plan_tasks(workflow, types)
+    twice = plan_tasks(once, types)
+    settings = once.task("fit").settings
+    assert settings["seed"] is not None
+    assert settings["units"] == 3
+    assert twice.task("fit").settings == settings
+
+
+def _record(task: str, settings: dict[str, Any]) -> RunRecord:
+    """Get a run of the fit and a report which reads it."""
+    from simrun.snapshot import SourceProvenance
+    from simrun.store import RunRecord, RunState, TaskState
+    from simrun.workflow import Priority
+
     workflow = Workflow(
         name="fit",
         tasks=[
             {"id": "fit", "type": plugin.FIT.name, "settings": FIT},
             {
                 "id": task,
-                "type": task_type.name,
+                "type": plugin.TASK_TYPES[task].name,
                 "settings": settings,
                 "inputs": {"fit": "fit.out"},
             },
@@ -219,12 +256,15 @@ def _record(task: str, task_type: TaskType, settings: dict[str, Any]) -> RunReco
     )
 
 
+@posix
 def test_command_of_report_has_input_placeholder(store: Path) -> None:
+    from simrun.podspec import unsplit_command
+
     command = plugin.REPORT.command
     assert command is not None
     assert "--input={input}" in command.split()
     settings = {"project": PROJECT, "subset": "IV", "mapping_figures": False}
-    record = _record("report", plugin.REPORT, settings)
+    record = _record("report", settings)
     _, argv = unsplit_command(
         record,
         record.workflow.task("report"),
@@ -237,6 +277,8 @@ def test_command_of_report_has_input_placeholder(store: Path) -> None:
     assert argv[:4] == ["simrun-exec", "python", "-m", "sbmlsim.run"]
     assert f"--input=fit={fit_out}" in argv
     assert "--resume" in argv
+    out = task_dir / "out"
+    assert argv[argv.index("--summary") + 1] == f"{out}/summary.json"
 
     # the command of the pod, run here: the report of the fit of the worker
     task_dir.mkdir(parents=True)
@@ -258,4 +300,7 @@ def test_command_of_report_has_input_placeholder(store: Path) -> None:
         timeout=300,
     )
     assert result.returncode == 0, result.stderr
-    assert (task_dir / "out" / plugin.OUTPUT / "report" / "index.html").exists()
+    assert (out / plugin.OUTPUT / "report" / "index.html").exists()
+    # the summary of the task, which `simrun compare` reads, is the one of the run
+    summary = (out / "summary.json").read_bytes()
+    assert summary == (out / plugin.OUTPUT / "summary.json").read_bytes()
