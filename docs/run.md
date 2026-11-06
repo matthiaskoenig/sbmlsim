@@ -60,15 +60,15 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | argument | meaning |
 | --- | --- |
 | `<kind>` | the kind of analysis, see [Kinds](#kinds), or `module:attribute` of a kind of another package |
-| `<spec>` | the spec, a JSON file (`.json`) or a YAML file; a relative path in it is relative to the file |
-| `--out DIR` | the output directory, which must be empty or not exist; the run writes nothing outside of it |
+| `<spec>` | the spec, a JSON file (`.json`) or a YAML file; a relative path of a path field of the spec, e.g. the input `fit`, is relative to the file, a path inside another value, e.g. in `optimizer`, is taken as it is |
+| `--out DIR` | the output directory; a whole run needs it empty or not existing (unless `--resume`), while the `unit` and `merge` commands of one plan share it, see [Units](#units-and-merges); nothing is written outside of it |
 | `--workers N` | the number of processes, every CPU of the quota for a kind which uses several and 1 for the others without |
 | `--resume` | continue the run of the same spec in `--out`, see [Checkpoints](#checkpoints-and-resume) |
 | `--provenance FILE` | the provenance of the sources the run runs on, see [Provenance](#progress-and-provenance) |
 | `--input PORT=PATH` | the path of an input of the spec, the output of another run, e.g. `--input fit=results/fit`; repeated per input, also as `--input=PORT=PATH` |
 | `--summary FILE` | write the summary of a successful run also into this file |
 
-`plan` writes the planned spec as JSON to stdout or to `-o FILE`; the messages of every command go to stderr.
+`plan` writes the planned spec as JSON to stdout or to `-o FILE`; the messages of every command go to stderr. `unit` and `merge` take no `--workers`, `--resume` or `--provenance`: a unit runs serially in its process, a unit or a merge into an output with files continues it, and the provenance of their sources is the file of the environment variable `SIMRUN_PROVENANCE`, if set.
 
 ## Kinds
 
@@ -139,6 +139,24 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | `scan`, `sensitivity` | `scan_hash` | set by the plan | the hash of the scan the plan built |
 | `uncertainty` | `seed` | the seed of the analysis, else drawn by the plan | the seed of the draws |
 
+The scan, its observables and its design are defined in the project, so the spec of a scan, a sensitivity or an uncertainty analysis only names it, e.g. the Sobol indices of the scan `sobol` and the propagation `cl` with a seed of its own:
+
+```yaml title="sobol.yaml"
+project: examples.hctz_fitting.project:PROJECT
+analysis: sobol
+```
+
+```yaml title="cl.yaml"
+project: examples.hctz_fitting.project:PROJECT
+analysis: cl
+seed: 7
+```
+
+```bash
+python -m sbmlsim.run sensitivity sobol.yaml --out results/sobol
+python -m sbmlsim.run uncertainty cl.yaml --out results/cl
+```
+
 ## The output
 
 Every run writes the same files describing it into its output, besides its results:
@@ -166,19 +184,22 @@ The results of the kinds:
 
 The input `fit` of a kind is the output of a `fit` run, whose records are in its directory `<opid>`, or a directory of records itself, e.g. the output of an `identifiability` or `fisher` run, which copy the records of their fit, so a report shows the fit and its analyses from one directory. Every file is written atomically: a reader sees the old or the new file and never a partial one. A run never writes into the project: even `adopt` writes `adopted.json` into the output, which you copy into the project to adopt the fit.
 
+The results are the files of the classes of `sbmlsim`, which read them back: `OptimizationResult.from_json` reads `optimization_result.json` of a fit, `IdentifiabilityResult.from_json` reads `identifiability.json`, `ScanResult.from_netcdf` reads `result.nc` of a scan, `SensitivityResult.from_netcdf` reads `sensitivity.nc` and `UncertaintyResult.from_netcdf` reads the directory `uncertainty/`. The fitted parameters of `parameters.json` are the input of a report or of the [identifiability](identifiability.md) tools.
+
 ## Units and merges
 
-A run of a split kind computes units, each of its own files, and merges them. `python -m sbmlsim.run <kind>` does all of it in one process and its pool, the commands `plan`, `unit` and `merge` do it in separate processes, e.g. on several machines which share the output directory:
+A run of a split kind computes units, each of its own files, and merges them. `python -m sbmlsim.run <kind>` does all of it in one process and its pool. The commands `plan`, `unit` and `merge` do it in separate processes, which may run at the same time, on one machine or on several machines which share the output directory. First write the scan of three doses as a spec:
+
+```yaml title="dose.yaml"
+project: examples.hctz_fitting.project:PROJECT
+analysis: dose
+```
+
+`plan` completes the spec into what every unit computes alike and sets the number of units, `units`:
 
 ```bash
 python -m sbmlsim.run plan scan dose.yaml -o dose-planned.json
-python -m sbmlsim.run unit scan dose-planned.json 0 --out results/dose
-python -m sbmlsim.run unit scan dose-planned.json 1 --out results/dose
-python -m sbmlsim.run unit scan dose-planned.json 2 --out results/dose
-python -m sbmlsim.run merge scan dose-planned.json --out results/dose
 ```
-
-The plan completes the spec into what every unit computes alike and sets the number of units:
 
 ```json title="dose-planned.json"
 {
@@ -189,10 +210,31 @@ The plan completes the spec into what every unit computes alike and sets the num
 }
 ```
 
+The units are numbered from 0 to `units - 1`. Compute each one into the shared output, in any order, here one after another (`&` and `wait`, or one machine per unit, run them in parallel), then merge them:
+
+```bash
+for i in 0 1 2; do python -m sbmlsim.run unit scan dose-planned.json $i --out results/dose; done
+python -m sbmlsim.run merge scan dose-planned.json --out results/dose
+```
+
+The merge writes `result.nc`, the same result as a whole run, `python -m sbmlsim.run scan dose.yaml --out results/dose-whole`. A unit which is missing makes the merge exit with 3 and name it, e.g. `1 of 3 units are missing: 1`, so compute that unit and merge again. A fit splits the same way, and so does a profile likelihood, whose `unit` and `merge` need the records of the fit as their input:
+
+```bash
+python -m sbmlsim.run plan fit fit.yaml -o fit-planned.json
+for i in $(seq 0 7); do python -m sbmlsim.run unit fit fit-planned.json $i --out results/fit; done
+python -m sbmlsim.run merge fit fit-planned.json --out results/fit
+
+python -m sbmlsim.run plan identifiability profiles.yaml -o profiles-planned.json
+python -m sbmlsim.run unit identifiability profiles-planned.json 0 --out results/profiles --input fit=results/fit
+python -m sbmlsim.run merge identifiability profiles-planned.json --out results/profiles --input fit=results/fit
+```
+
+with one `unit` per parameter of `pids` in `profiles-planned.json`. The rules:
+
 - A fit, a scan and a propagation of a given number of draws are cut into at most 64 units of consecutive items, `max(1, ceil(n / 64))` repeats, points or draws each; a profile likelihood has one unit per parameter, and the adaptive number of draws of a propagation is one unit, whose rounds are its checkpoints.
 - The plan of a fit and of a propagation draws the seed when the spec has none, so every unit draws the same start values or the same points. The plan of a scan records the hash of the scan, which every unit and the merge compare with the scan they build; a scan which builds other points every time, e.g. a design without a seed, is refused by the plan.
 - The first unit writes `spec.json` into the output, and a unit or a merge of another plan is refused, so the units of two plans never mix. A unit writes no `run.json`, the merge does.
-- A unit computed again, e.g. after its machine was lost, writes the same files again; the merge names the units it misses.
+- A unit computed again, e.g. after its machine was lost, writes the same complete files again, and a unit whose files exist is not computed again; the merge names the units it misses and exits with 3.
 - The merged result equals the result of the whole run bitwise with roadrunner, apart from the times and durations of the records: the blocks of a scan combine to the `ScanResult` of the whole scan (`ScanResult.combine`), the repeats of a fit to its `OptimizationResult`, the profiles to the `IdentifiabilityResult` (`IdentifiabilityResult.combine`) and the blocks of draws to the `UncertaintyResult`, every block taking its rows of the points of the design of all the draws, so a Latin hypercube stays one hypercube.
 
 ## Checkpoints and resume
@@ -216,7 +258,7 @@ A resume runs the planned spec of `spec.json`, so a drawn seed stays, and is acc
 
 | event | fields |
 | --- | --- |
-| `fit.repeat` | `opid`, `run`: a repeat of a fit starts |
+| `fit.repeat` | `opid`, `run`: a repeat of a fit finished and is stored, its file written right after the event |
 | `profile` | `opid`, `pid`: the profile of a parameter finished |
 | `scan.chunk` | `points`, `done`, `total`: a chunk of points of a scan finished |
 | `scan.block` | `analysis`, `start`, `stop`, `points`: the block of a unit of a scan finished |
@@ -236,7 +278,7 @@ The provenance of a run is the git revision of the root of the project, recorded
 
 ## CPU quota and threads
 
-The number of processes of a run is the number of CPUs the process may use, bounded by the CPU quota of its cgroup, so a run in a container with a quota of 4 CPUs on a host of 64 starts 4 workers and not 64. The quota is the smallest one of the cgroup and its parents, rounded down and at least 1, of cgroup v2 or v1; the pools of `sbmlsim` (`Simulator`, a fit, the experiments) bound their default size the same way.
+The number of processes of a run is the number of CPUs the process may use, bounded by the CPU quota of its cgroup, so a run in a container with a quota of 4 CPUs on a host of 64 starts 4 workers and not 64. With cgroup v2 the quota is the smallest one of the cgroup of the process and its parents (`cpu.max`), with cgroup v1 the one quota of the cgroup as the container sees it (`cpu.cfs_quota_us` over `cpu.cfs_period_us`), rounded down and at least 1; the pools of `sbmlsim` (`Simulator`, a fit, the experiments) bound their default size the same way.
 
 A run uses its CPUs through the processes of its pools, so the numerical libraries run with one thread each: the command sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and `MKL_NUM_THREADS` to 1 unless they are set, starting itself once more with them, and draws its figures with the matplotlib backend `Agg` (`MPLBACKEND` unless set).
 
@@ -257,7 +299,7 @@ A project, `sbmlsim.project.Project`, names the analyses of a model package: it 
 | `simulator` | the engine and the integrator settings of the analyses |
 | `figure_settings` | the settings of the figures of the experiments |
 
-The project of the HCTZ example, [`examples/hctz_fitting/project.py`](https://github.com/matthiaskoenig/sbmlsim/blob/develop/examples/hctz_fitting/project.py), has the three simulation experiments of the studies, the fit problems `PK` (all pharmacokinetics data) and `IV` (the intravenous data of Beermann 1976), the scans `dose` (three oral doses on a grid of times) and `sobol` (a Sobol design of the dissolution and the renal excretion with its Sobol indices) and the uncertainty analysis `cl` (the AUC under an uncertain renal excretion, 32 draws). A project must be importable wherever the run layer runs: a model package installs it with its package, while the HCTZ example lives in `examples/` of the repository, which is not installed, and needs the root of the repository on the path, `python -m` from the root or `PYTHONPATH`.
+The project of the HCTZ example, [`examples/hctz_fitting/project.py`](https://github.com/matthiaskoenig/sbmlsim/blob/develop/examples/hctz_fitting/project.py), is the template of the project of a model package: copy it into a module of your package and replace the experiments, the fits and the analyses with your own. It has the three simulation experiments of the studies, the fit problems `PK` (all pharmacokinetics data) and `IV` (the intravenous data of Beermann 1976), the scans `dose` (three oral doses on a grid of times) and `sobol` (a Sobol design of the dissolution and the renal excretion with its Sobol indices) and the uncertainty analysis `cl` (the AUC under an uncertain renal excretion, 32 draws). A project must be importable wherever the run layer runs: a model package installs it with its package, while the HCTZ example lives in `examples/` of the repository, which is not installed, and needs the root of the repository on the path, `python -m` from the root or `PYTHONPATH`.
 
 ## simrun
 
@@ -301,6 +343,8 @@ tasks:
 ```bash
 simrun submit hctz-fit.yaml --source sbmlsim=~/git/sbmlsim
 ```
+
+The HCTZ project lives in the repository of `sbmlsim`, which is the only source here. A project of a model package outside of `sbmlsim` adds the source of the model first and then the one of `sbmlsim`, as simrun orders them, e.g. `simrun submit fit.yaml --source model=~/git/my_model --source sbmlsim=~/git/sbmlsim`.
 
 The fit is 64 units of one repeat, the profile likelihood one unit per parameter, and the report reads the fit and its profiles from the output of the identifiability analysis.
 
