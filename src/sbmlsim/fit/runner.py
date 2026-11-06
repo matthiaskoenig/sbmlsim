@@ -50,7 +50,7 @@ from rich.progress import (
 from rich.text import Text
 from scipy.optimize import OptimizeResult
 
-from sbmlsim import parallel
+from sbmlsim import cgroup, parallel
 from sbmlsim.console import console
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import hook_summaries
@@ -79,7 +79,7 @@ def resolve_n_cores(n_cores: int | None) -> int:
     Returns:
         Number of workers, at least one and at most the number of available cores.
     """
-    cpu_count = os.process_cpu_count() or 1
+    cpu_count = cgroup.available_cpus()
     if n_cores is None:
         return max(1, cpu_count - 1)
     if n_cores > cpu_count:

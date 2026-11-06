@@ -15,7 +15,6 @@ model, see `repeat_check`.
 from __future__ import annotations
 
 import logging
-import os
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -23,7 +22,7 @@ from enum import StrEnum
 
 import numpy as np
 
-from sbmlsim import parallel
+from sbmlsim import cgroup, parallel
 from sbmlsim.comparison.diff import within_tolerance
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel
 from sbmlsim.result import TimecourseResult
@@ -374,7 +373,7 @@ def map_cases[T](
     Returns:
         The answers of the function, in the order of the cases.
     """
-    workers = workers or os.process_cpu_count() or 1
+    workers = workers or cgroup.available_cpus()
     if workers == 1 or len(cases) <= 1:
         return [function(case) for case in cases]
     chunksize = max(1, min(8, len(cases) // (4 * workers)))

@@ -14,7 +14,7 @@ import pytest
 import xarray as xr
 
 import sbmlsim.simulator.simulator as simulator_module
-from sbmlsim import parallel
+from sbmlsim import cgroup, parallel
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
@@ -405,7 +405,7 @@ def test_none_runs_a_scan_from_the_threshold_in_the_pool(
 ) -> None:
     serial = Simulator(n_workers=1).run(_model(), _scan())
     monkeypatch.setattr(parallel, "POOL_THRESHOLD", 12)
-    monkeypatch.setattr(os, "process_cpu_count", lambda: 2)
+    monkeypatch.setattr(cgroup, "available_cpus", lambda: 2)
     pooled = Simulator().run(_model(), _scan())
     assert _pools() == [2]
     xr.testing.assert_identical(pooled.ds, serial.ds)

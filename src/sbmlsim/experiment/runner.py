@@ -35,7 +35,6 @@ import dataclasses
 import inspect
 import logging
 import math
-import os
 import pickle
 import queue
 import threading
@@ -49,7 +48,7 @@ from typing import Any, Literal, NamedTuple, cast, override
 
 import matplotlib
 
-from sbmlsim import parallel
+from sbmlsim import cgroup, parallel
 from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
 from sbmlsim.experiment import progress
 from sbmlsim.experiment.experiment import (
@@ -634,7 +633,7 @@ class ExperimentRunner:
             if parallel.in_worker():
                 return 1, None
             n_workers = min(
-                os.process_cpu_count() or 1,
+                cgroup.available_cpus(),
                 math.ceil(len(jobs) / EXPERIMENTS_PER_WORKER),
             )
             if n_workers > 1 and (reason := self._scan_pool()) is not None:

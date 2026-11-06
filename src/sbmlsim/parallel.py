@@ -47,6 +47,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, cast, override
 
+from sbmlsim import cgroup
+
 if sys.platform != "win32":
     from multiprocessing.context import (
         ForkContext,
@@ -205,7 +207,7 @@ def resolve_workers(n_workers: int | None, n_tasks: int) -> int:
         return n_workers
     if in_worker() or n_tasks < POOL_THRESHOLD:
         return 1
-    return max(1, os.process_cpu_count() or 1)
+    return max(1, cgroup.available_cpus())
 
 
 #: the contexts of the pools by their start method, see `_context`
