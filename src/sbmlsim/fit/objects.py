@@ -1471,9 +1471,10 @@ class FitData:
     def _dimensionless(self, data: Data) -> None:
         """Give a column of factors without a unit of the dataset no unit.
 
-        A geometric standard deviation is a factor, a dataset has it without a
-        unit, e.g. the `gsd` of pkpdsim, whose `add_gmean_unit` gives only the
-        geometric mean its unit (#403).
+        A geometric standard deviation is a factor, a dataset may have it
+        without a unit, e.g. a column `A_gsd` without a unit column of its own
+        (#403); the column `gsd` of a table of PK-DB is dimensionless already,
+        see `DataSet.from_df`.
         """
         if self.dset_id is None:
             return

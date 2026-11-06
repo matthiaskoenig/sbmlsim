@@ -1,0 +1,3 @@
+# the license texts are written into the COMBINE archives of the models byte
+# for byte, git never converts their line endings
+src/sbmlsim/resources/licenses/*.txt -text

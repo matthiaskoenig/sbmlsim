@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from sbmlsim.data import Data, DataSet, load_pkdb_dataframe
+from sbmlsim.data import Data, DataSet, load_pkdb_dataframe, rename_units
 from sbmlsim.units import UnitRegistry
 
 data_dir = Path(__file__).parent / "data"
@@ -486,8 +486,8 @@ def test_from_df_an_international_unit_is_not_defined(unit: str) -> None:
     message = str(info.value)
     assert "no international unit" in message
     assert "#263" in message
-    assert 'ureg.define("IU_insulin = 0.0347 * mg")' in message
-    assert 'ureg.define("IU = count")' in message
+    assert 'define_unit("IU_insulin = 0.0347 * mg")' in message
+    assert 'define_unit("IU = count")' in message
 
 
 def test_from_df_another_unit_has_no_note_of_an_international_unit() -> None:
@@ -705,3 +705,98 @@ def test_from_df_a_quantity_is_followed_by_its_uncertainty_and_unit(
     """Every quantity is followed by the columns of its uncertainty, then its unit."""
     dset = DataSet.from_df(pd.DataFrame(data), udict=udict)
     assert list(dset.columns) == columns
+
+
+def test_from_df_the_unit_is_the_unit_of_the_geometric_mean() -> None:
+    """The geometric SD is a factor: dimensionless and never converted."""
+    df = pd.DataFrame(
+        {
+            "time": [1.0, 2.0],
+            "time_unit": ["hr", "hr"],
+            "gmean": [1.0, 500.0],
+            "gsd": [1.5, 1.6],
+            "gcv": [0.4, 0.5],
+            "unit": ["mg/l", "µg/l"],
+        }
+    )
+    dset = DataSet.from_df(df)
+    assert dset.uinfo["gmean"] == "mg/l"
+    assert dset.uinfo["gsd"] == "dimensionless"
+    assert "gcv" not in dset.uinfo
+    assert dset["gmean"].tolist() == pytest.approx([1.0, 0.5])
+    assert dset["gsd"].tolist() == [1.5, 1.6]
+    assert dset["gcv"].tolist() == [0.4, 0.5]
+    assert dset["gmean_unit"].tolist() == ["mg/l", "mg/l"]
+
+
+def test_from_df_the_statistics_of_a_row_get_one_unit() -> None:
+    """A mean and a geometric mean of a table are converted in one pass."""
+    df = pd.DataFrame(
+        {"mean": [2.0, None], "gmean": [None, 3000.0], "unit": ["mg/l", "µg/l"]}
+    )
+    dset = DataSet.from_df(df)
+    assert dset.uinfo["mean"] == dset.uinfo["gmean"] == "mg/l"
+    assert dset["gmean"].tolist()[1] == pytest.approx(3.0)
+
+
+def test_from_df_a_geometric_mean_with_a_unit_column_keeps_it() -> None:
+    df = pd.DataFrame(
+        {"mean": [1.0], "gmean": [2.0], "gmean_unit": ["ng/ml"], "unit": ["mg/l"]}
+    )
+    dset = DataSet.from_df(df)
+    assert dset.uinfo["mean"] == "mg/l"
+    assert dset.uinfo["gmean"] == "ng/ml"
+    assert dset["gmean"].tolist() == [2.0]
+
+
+def test_from_df_a_geometric_sd_with_a_unit_column_keeps_it() -> None:
+    df = pd.DataFrame({"gsd": [1.5], "gsd_unit": ["percent"]})
+    assert DataSet.from_df(df).uinfo["gsd"] == "percent"
+
+
+@pytest.mark.parametrize(
+    ("unit", "renamed"),
+    [
+        ("IU/ml", "IU_x/ml"),
+        ("IU/mL", "IU_x/mL"),
+        ("µIU/ml", "µIU_x/ml"),
+        ("μIU/ml", "μIU_x/ml"),
+        ("mIU/l", "mIU_x/l"),
+        ("IU", "IU_x"),
+        ("IU/(ml*hr)", "IU_x/(ml*hr)"),
+        ("IU_per_ml", "IU_per_ml"),
+        ("2IU", "2IU"),
+        ("mg/IUx", "mg/IUx"),
+        ("ng/ml", "ng/ml"),
+    ],
+)
+def test_units_are_renamed_where_they_are_units(unit: str, renamed: str) -> None:
+    df = pd.DataFrame({"unit": [unit], "mean_unit": [unit], "label": ["IU"]})
+    assert rename_units(df, {"IU": "IU_x"}) is df
+    assert df["unit"].tolist() == [renamed]
+    assert df["mean_unit"].tolist() == [renamed]
+    assert df["label"].tolist() == ["IU"]
+
+
+def test_a_missing_unit_stays_missing() -> None:
+    df = pd.DataFrame({"unit": ["IU/ml", None]})
+    rename_units(df, {"IU": "IU_x"})
+    assert df["unit"].tolist()[0] == "IU_x/ml"
+    assert pd.isna(df["unit"].tolist()[1])
+
+
+def test_without_names_nothing_is_renamed() -> None:
+    df = pd.DataFrame({"unit": ["IU/ml"]})
+    assert rename_units(df, {}) is df
+    assert df["unit"].tolist() == ["IU/ml"]
+
+
+def test_renamed_units_of_the_data_are_read_with_their_definition() -> None:
+    """The international unit of the data gets the name of its substance."""
+    from sbmlsim.units import define_unit
+
+    name = define_unit("IU_sbmlsim_test_data = 0.5 * mg")
+    df = rename_units(pd.DataFrame({"mean": [2.0], "unit": ["µIU/ml"]}), {"IU": name})
+    dset = DataSet.from_df(df)
+    assert dset.uinfo["mean"] == f"µ{name}/ml"
+    assert dset.get_quantity("mean").to("ng/ml").magnitude == pytest.approx([1.0])

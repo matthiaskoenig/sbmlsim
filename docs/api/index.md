@@ -10,6 +10,8 @@ The top level modules: data, units and the shared output.
 | --- | --- |
 | [data](data.md) | `Data` objects referencing simulation results and datasets, the input of plots and calculations |
 | [units](units.md) | unit registry of a model and unit conversions with pint |
+| [distrib](distrib.md) | the grammar of the distrib formulas of the fitted parameters (`normal`, `lognormal`, `uniform`, truncated), without a simulator |
+| [licenses](licenses.md) | the license texts of a model (CC BY-SA 4.0, MIT) and `write_license`, which writes them byte for byte |
 | [engine](engine.md) | `Engine`, the engines which simulate a model, roadrunner, COPASI and AMICI, the imports of the optional COPASI and AMICI and the directory of the compiled models of AMICI the workers of a pool load from |
 | [sbml_math](sbml_math.md) | the math of SBML as sympy expressions and numpy functions, the math of the events of a model |
 | [serialization](serialization.md) | JSON serialization of experiments |
@@ -77,8 +79,9 @@ Simulation experiments and their results, see [Simulation experiments](../experi
 | [experiment.experiment](experiment.experiment.md) | `SimulationExperiment`, models, datasets, simulations, tasks, data and figures of an experiment |
 | [experiment.runner](experiment.runner.md) | `ExperimentRunner`, executing experiments and writing their results |
 | [experiment.progress](experiment.progress.md) | `RunProgress` and `PhaseClock`, the progress of a run of experiments and the seconds of their phases |
+| [experiment.sids](experiment.sids.md) | `to_sid`, the SId of a text such as a label of the data, a key of an experiment |
 | [result.timecourse](result.timecourse.md) | `TimecourseResult`, the array of the selections of a single timecourse simulation |
-| [result.scan](result.scan.md) | `ScanResult`, the result of a scan as an xarray dataset with units |
+| [result.scan](result.scan.md) | `ScanResult`, the result of a scan as an xarray dataset with units, and the functions of a point: its timecourse with the state after a change, the start and end values, the band of the draws |
 | [result.netcdf](result.netcdf.md) | the compressed netCDF files of `ScanResult` and `SensitivityResult` |
 
 ## sbmlsim.plot, sbmlsim.report

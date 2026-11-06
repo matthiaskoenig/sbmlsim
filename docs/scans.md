@@ -285,6 +285,7 @@ A `ScanResult` wraps an `xarray.Dataset`, `res.ds`, and keeps the unit of every 
 - `res.sel(patient="A")` selects points by label, `res.isel(patient=0)` by position.
 - `res.summary(dims)` gives statistics over dimensions: mean, sd, cv, min, max and quantiles.
 - `res.interpolate(times)` puts the result on other times.
+- The functions of a point in `sbmlsim.result.scan` read a result with one value per time, the state after a change at its time: `point_timecourse(res, key, dose=0)` gives the times and values of one point, `state_after_changes(res)` the whole result in that form, `start_values(res, key)` and `end_values(res, key)` the first and the last value of every point (also of the steps of the integrator, whose points have their own times), and `point_band(res, key, across="draw", dose=0)` the 5 %, 50 % and 95 % quantiles of the draws at a point. They import nothing of the simulator.
 - `res.ds.to_dataframe()` is a pandas table.
 - `res.to_netcdf(path)` and `ScanResult.from_netcdf(path)` store and load the result with its units. The file is netCDF4, its variables compressed with zstd, which shrinks a result of many selections about tenfold; `compression="gzip"` writes the filter every HDF5 reader has, `compression=None` none. Another python program reads the file with xarray after `import hdf5plugin`, netCDF-C reads it from version 4.9.
 

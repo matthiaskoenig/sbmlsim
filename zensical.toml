@@ -49,6 +49,8 @@ nav = [
     { "sbmlsim" = [
       { "data" = "api/data.md" },
       { "units" = "api/units.md" },
+      { "distrib" = "api/distrib.md" },
+      { "licenses" = "api/licenses.md" },
       { "engine" = "api/engine.md" },
       { "sbml_math" = "api/sbml_math.md" },
       { "serialization" = "api/serialization.md" },
@@ -100,6 +102,7 @@ nav = [
       { "experiment" = "api/experiment.experiment.md" },
       { "runner" = "api/experiment.runner.md" },
       { "progress" = "api/experiment.progress.md" },
+      { "sids" = "api/experiment.sids.md" },
     ] },
     { "sbmlsim.result" = [
       { "timecourse" = "api/result.timecourse.md" },
