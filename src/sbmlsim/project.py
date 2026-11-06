@@ -3,7 +3,8 @@
 A `Project` describes a model package once: its model variants and the factory
 which builds them, its simulation experiments, its fit problems and the records
 of its adopted fits, its scans with their sensitivity indices, its
-uncertainty analyses and its actions (analyses of its own), the settings of
+sensitivity analyses over the groups of its simulations, its uncertainty
+analyses and its actions (analyses of its own), the settings of
 the simulator and of the figures, the known exceptions of its checks
 (`sbmlsim.project_checks`) and its release metadata. It is a description,
 nothing of it runs when it is created.
@@ -15,10 +16,10 @@ analysis: name}` (or `subset: name` for a fit) against it and lists the
 analyses of a project with `python -m sbmlsim.run list <project>`, see
 `Project.analyses`.
 
-The experiments, the fits, the factory, the credibility declaration and the
-functions of the actions of a project are objects or references
-`"module:attribute"` to them, which are resolved when they are used
-(`resolve`) and kept, so that importing the module of a project imports none
+The experiments, the fits, the factory, the credibility declaration, the
+sensitivity analyses and the functions of the actions of a project are objects
+or references `"module:attribute"` to them, which are resolved when they are
+used (`resolve`) and kept, so that importing the module of a project imports none
 of them: the experiments import the module of their project for its paths,
 so the project cannot import them, and a package of many models stays cheap to
 import. A module which starts with a dot is relative to
@@ -727,6 +728,13 @@ class Project(BaseModel):
             reference to it, see `load_credibility`.
         scans: the scans by their name.
         uncertainties: the uncertainty analyses by their name.
+        sensitivities: the sensitivity analyses of the model over the groups
+            of its simulations by their name, see
+            `sbmlsim.sensitivity.runner`: a `SensitivityRunner`, the runners
+            of the subfolders of a model with several simulations by the name
+            of their subfolder, or a reference to either; a runner without a
+            project is bound to this one, see `sensitivity`. A name is no name
+            of a scan with indices, which is a sensitivity analysis as well.
         actions: the actions of the project by their name, analyses of its
             own which the kind `action` runs, see `ProjectAction`; a function
             or a reference is an action without a description.
@@ -759,6 +767,7 @@ class Project(BaseModel):
     credibility: Any = None
     scans: Mapping[str, ScanAnalysis] = {}
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
+    sensitivities: Mapping[str, Any] = {}
     actions: Mapping[str, ProjectAction] = {}
     simulator: SimulatorSettings = SimulatorSettings()
     figure_settings: FigureSettings | None = None
@@ -788,6 +797,49 @@ class Project(BaseModel):
                     f"The relative reference '{value}' needs the package of the "
                     "project."
                 )
+        return value
+
+    @field_validator("sensitivities")
+    @classmethod
+    def _check_sensitivities(cls, value: Any, info: ValidationInfo) -> Any:
+        """Check the sensitivity analyses, a reference is checked when used.
+
+        Raises:
+            ValueError: for an analysis which is neither a runner, runners by
+                subfolder nor a reference, a relative reference without a
+                package, and a name of a scan with indices.
+        """
+        runner = "sbmlsim.sensitivity.runner"
+        for name, target in value.items():
+            if isinstance(target, str):
+                check_reference(target)
+                if target.startswith(".") and info.data.get("package") is None:
+                    raise ValueError(
+                        f"The relative reference '{target}' of the sensitivity "
+                        f"analysis '{name}' needs the package of the project."
+                    )
+                continue
+            runners = list(target.values()) if isinstance(target, Mapping) else [target]
+            if not runners or not all(
+                _instance_of(r, runner, "SensitivityRunner") for r in runners
+            ):
+                raise ValueError(
+                    f"The sensitivity analysis '{name}' is a SensitivityRunner, a "
+                    "mapping of them by subfolder or a reference to either, not "
+                    f"{target!r}."
+                )
+        scans = info.data.get("scans") or {}
+        clashes = sorted(
+            name
+            for name in value
+            if name in scans and getattr(scans[name], "indices", None) is not None
+        )
+        if clashes:
+            raise ValueError(
+                f"The sensitivity analyses {clashes} are scans with indices as "
+                "well, which the kind 'sensitivity' runs by the same name: give "
+                "them other names."
+            )
         return value
 
     @field_validator("actions", mode="before")
@@ -1671,6 +1723,26 @@ class Project(BaseModel):
         """
         return _named("uncertainty analysis", self.uncertainties, name)
 
+    def sensitivity(self, name: str) -> Any:
+        """Get a sensitivity analysis over the groups of the simulations, resolved.
+
+        Args:
+            name: the name of the analysis, a key of `sensitivities`.
+
+        Returns:
+            The `SensitivityRunner`, or the runners by subfolder, bound to the
+            project (`sbmlsim.sensitivity.runner.bind`).
+
+        Raises:
+            KeyError: naming the analyses, for an unknown analysis.
+            TypeError: for a reference to neither runners nor a runner.
+            ValueError: for a runner of another project.
+        """
+        from sbmlsim.sensitivity.runner import bind
+
+        target = self._resolve(_named("sensitivity analysis", self.sensitivities, name))
+        return bind(target, self)
+
     def analyses(self, experiments: bool = False) -> list[dict[str, str]]:
         """List the analyses of the project.
 
@@ -1688,7 +1760,8 @@ class Project(BaseModel):
             every other group and every experiment class), the analyses of
             every fit subset (`fit`, `identifiability`, `fisher`, `report`,
             `petab`), every scan (`scan`) and, for a scan with indices, its
-            sensitivity analysis (`sensitivity`), every uncertainty analysis
+            sensitivity analysis (`sensitivity`), every sensitivity analysis
+            over groups (`sensitivity`), every uncertainty analysis
             (`uncertainty`) and every action (`action`) and the factory
             (`factory`, `models`).
         """
@@ -1723,6 +1796,8 @@ class Project(BaseModel):
         for name, scan in self.scans.items():
             if scan.indices is not None:
                 add("sensitivity", name, f"{scan.indices} indices of the scan '{name}'")
+        for name, target in self.sensitivities.items():
+            add("sensitivity", name, _sensitivity_description(name, target))
         for name, uncertainty in self.uncertainties.items():
             add(
                 "uncertainty",
@@ -1734,6 +1809,21 @@ class Project(BaseModel):
         if self.factory is not None:
             add("factory", FACTORY_ANALYSIS, "the models built by the factory")
         return entries
+
+
+def _sensitivity_description(name: str, target: Any) -> str:
+    """Describe a sensitivity analysis of a project without resolving a reference."""
+    description = getattr(target, "description", "")
+    if description:
+        return description
+    if isinstance(target, Mapping):
+        return (
+            f"the sensitivity analyses '{name}' of the subfolders {', '.join(target)}"
+        )
+    analyses = getattr(target, "analyses", None)
+    if analyses:
+        return f"the sensitivity analyses '{name}': {', '.join(analyses)}"
+    return f"the sensitivity analyses '{name}'"
 
 
 def load_project(ref: str) -> Project:

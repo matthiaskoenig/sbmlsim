@@ -5,8 +5,10 @@ model has two variants, the decay at the rate 0.2/min (`default`) and at
 0.1/min (`slow`), which the factory (`factory.create_toy_models`) writes into
 `models`. The experiments, the fits, the factory and the credibility
 declaration are references, so importing the package imports none of them, nor
-roadrunner. The scan `decay` scans the rate of the decay, the action `rates`
-writes a table of the rates of the variants (`actions.write_rates`).
+roadrunner. The scan `decay` scans the rate of the decay, the sensitivity
+analysis `decay` (`sensitivity.SENSITIVITY`) analyses the decay over the two
+variants, the action `rates` writes a table of the rates of the variants
+(`actions.write_rates`).
 """
 
 from pathlib import Path
@@ -52,6 +54,7 @@ PROJECT = Project(
             description="three rates of the decay",
         )
     },
+    sensitivities={"decay": ".sensitivity:SENSITIVITY"},
     actions={
         "rates": ProjectAction(
             function=".actions:write_rates",

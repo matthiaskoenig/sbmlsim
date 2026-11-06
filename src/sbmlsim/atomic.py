@@ -1,4 +1,4 @@
-"""Atomic writes of files.
+"""Atomic writes of files and directories.
 
 A file is written into a temporary file of its directory, which replaces it
 once it is complete, so a reader sees the old or the new file and never a
@@ -6,18 +6,21 @@ partial one, and a file written twice, e.g. by a unit of a run which runs
 again, keeps one complete content. The temporary file is created with the
 mode `0o666` and the umask of the process, the mode of a file written with
 `open` or `Path.write_text`, so a file written atomically is readable as any
-other file of the directory.
+other file of the directory. A directory is written the same way,
+`atomic_directory`: a temporary directory next to it replaces it once it is
+complete.
 
 The module imports only the standard library.
 """
 
 import os
 import secrets
+import shutil
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
-__all__ = ["atomic_path", "write_text_atomic"]
+__all__ = ["atomic_directory", "atomic_path", "write_text_atomic"]
 
 #: attempts to find a name for the temporary file which does not exist
 _ATTEMPTS = 100
@@ -90,3 +93,47 @@ def write_text_atomic(path: Path, text: str) -> None:
     """
     with atomic_path(path) as temporary:
         temporary.write_text(text, encoding="utf-8")
+
+
+@contextmanager
+def atomic_directory(path: Path) -> Generator[Path]:
+    """Write a directory atomically through a temporary directory.
+
+    The caller writes the complete directory into the yielded one, which
+    replaces `path` on success: an existing `path` is moved aside first and
+    removed after the new one took its place. On an exception the temporary
+    directory is removed and `path` is left as it was. The directory is
+    created with the mode `0o777` and the umask of the process, as a directory
+    created with `mkdir`.
+
+    Args:
+        path: the directory to write; its parent must exist.
+
+    Yields:
+        The temporary directory next to `path`.
+
+    Raises:
+        FileExistsError: if no free name was found.
+    """
+    path = Path(path)
+    for _ in range(_ATTEMPTS):
+        temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.tmp")
+        try:
+            temporary.mkdir(mode=0o777)
+        except FileExistsError:
+            continue
+        break
+    else:
+        raise FileExistsError(f"No free name for a temporary directory of '{path}'.")
+    try:
+        yield temporary
+        if path.exists():
+            previous = temporary.with_name(f"{temporary.name}.old")
+            path.rename(previous)
+            temporary.rename(path)
+            shutil.rmtree(previous)
+        else:
+            temporary.rename(path)
+    except BaseException:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise

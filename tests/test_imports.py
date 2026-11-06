@@ -12,6 +12,7 @@ import no roadrunner.
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -148,6 +149,30 @@ def test_the_project_checks_import_no_analysis() -> None:
         text=True,
         check=False,
         timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
+def test_a_project_with_sensitivity_analyses_imports_no_runner() -> None:
+    """A project lists its runners by reference, `sbmlsim` and the project import none.
+
+    The runners of `sbmlsim.sensitivity.runner` and the table of their
+    parameters, `sbmlsim.sensitivity.parameters`, are imported by the module of
+    a runner, which the project resolves when an analysis runs.
+    """
+    code = (
+        "import sys, sbmlsim, sbmlsim.project, tests.project_toy; "
+        "print(sorted(m for m in ('sbmlsim.sensitivity.runner',"
+        " 'sbmlsim.sensitivity.parameters', 'roadrunner') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        cwd=Path(__file__).parents[1],
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[]"

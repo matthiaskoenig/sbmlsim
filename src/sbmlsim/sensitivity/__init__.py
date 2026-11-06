@@ -17,6 +17,12 @@ timecourse on a grid.
   classification of sensitivities.
 - [`sensitivity.uncertainty`](../api/sensitivity.uncertainty.md): the bands and
   distributions of a scan over draws.
+- [`sensitivity.parameters`](../api/sensitivity.parameters.md): the table of
+  the parameters of an analysis, as sbmlsim 0.8 wrote it.
+- [`sensitivity.runner`](../api/sensitivity.runner.md): the sensitivity
+  analyses of a project over the groups of its simulations, with the files of
+  sbmlsim 0.8.5, the kind `sensitivity` of `Project.sensitivities`; not
+  imported by this package.
 """
 
 from .indices import fast, local, morris, sobol

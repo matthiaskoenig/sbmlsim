@@ -594,6 +594,7 @@ def test_the_analyses_of_the_toy() -> None:
             for kind in ["fit", "identifiability", "fisher", "report", "petab"]
         ],
         ("scan", "decay"),
+        ("sensitivity", "decay"),
         ("action", "rates"),
         ("action", "nothing"),
         ("factory", "models"),

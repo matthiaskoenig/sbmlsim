@@ -82,7 +82,7 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `petab` | the fit problem as a PEtab v2 problem, starting from the best parameters of a fit if one is given | whole | `fit` |
 | `adopt` | the adoption of a finished fit: its record and the adopted fits of the project with it | whole | `fit` |
 | `scan` | a scan of the project | blocks of points | |
-| `sensitivity` | a scan with sensitivity indices, and the indices | blocks of points | |
+| `sensitivity` | a scan with sensitivity indices, and the indices, or a sensitivity analysis of the project over the groups of its simulations | blocks of points, or one per analysis | |
 | `uncertainty` | the propagation of an uncertainty analysis | blocks of draws | |
 | `factory` | the models built by the factory of the project, compared with the ones of the package | whole | |
 | `action` | an action of the project, an analysis of its own | whole | |
@@ -93,7 +93,7 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | --- | --- | --- |
 | `project` | all | the project, `module:attribute` |
 | `subset` | `fit`, `identifiability`, `fisher`, `report`, `petab` | the fit problem, a key of the fits of the project |
-| `analysis` | `scan`, `sensitivity`, `uncertainty` | the scan or the uncertainty analysis, a key of the project |
+| `analysis` | `scan`, `sensitivity`, `uncertainty` | the scan, the sensitivity analysis or the uncertainty analysis, a key of the project |
 | `fit` | `identifiability`, `fisher`, `report`, `petab`, `adopt` | the records of a fit, the input `fit` |
 | `name` | `action` | the action, a key of the actions of the project |
 | `arguments` | `action` | the arguments of the action, JSON values by the names of the keywords of its function, `{}` without; the plan refuses arguments the function does not take. They are passed as they are: a relative path among them is relative to the current directory of the run, not to the spec file |
@@ -157,7 +157,9 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | `simulate` | `experiments` | every experiment | the names of the groups and of the classes of the experiments to run, every experiment once; the plan sets the names of the classes |
 | `simulate` | `figure_formats` | the formats of the project | the formats of the figures, e.g. `["svg", "html"]`, which the plan writes in lower case |
 | `simulate` | `uncertainty` | none | run the experiments over draws of the fitted parameters of the default variant of the model, the curves of their simulations as bands (see [Simulation experiments](experiments.md#over-the-draws-of-the-fitted-parameters)): `draws` (100), `seed` (drawn by the plan without) and the `quantiles` of the bands (`[0.05, 0.95]`) |
-| `scan`, `sensitivity` | `scan_hash` | set by the plan | the hash of the scan the plan built |
+| `scan`, `sensitivity` | `scan_hash` | set by the plan | the hash of the scan the plan built; none for a sensitivity analysis over groups |
+| `sensitivity` | `analyses` | the default analyses of the runner | the analyses of a sensitivity analysis over groups (`Project.sensitivities`), e.g. `[local, sampling]`, which the plan sets for a single runner |
+| `sensitivity` | `subfolders` | every subfolder | the subfolders of a sensitivity analysis of several runners, which the plan sets |
 | `uncertainty` | `seed` | the seed of the analysis, else drawn by the plan | the seed of the draws |
 
 The scan, its observables and its design are defined in the project, so the spec of a scan, a sensitivity or an uncertainty analysis only names it, e.g. the Sobol indices of the scan `sobol` and the propagation `cl` with a seed of its own:
@@ -177,6 +179,20 @@ seed: 7
 python -m sbmlsim.run sensitivity sobol.yaml --out results/sobol
 python -m sbmlsim.run uncertainty cl.yaml --out results/cl
 ```
+
+A sensitivity analysis of the project over the groups of its simulations (`Project.sensitivities`, see [Sensitivity analysis](sensitivity.md#sensitivity-analyses-of-a-project)) is run by the same kind; the spec names it and may choose its analyses:
+
+```yaml title="decay.yaml"
+project: my_model:PROJECT
+analysis: decay
+analyses: [local, sampling]
+```
+
+```bash
+python -m sbmlsim.run sensitivity decay.yaml --out results/sensitivity
+```
+
+Every analysis is a unit, which writes its folder of the output, and the merge writes the table of the parameters; a resumed run keeps the analyses whose folder exists.
 
 ## The output
 
@@ -201,7 +217,7 @@ The results of the kinds:
 | `adopt` | `fits/<fit id>` (the record of the fit) and `adopted.json` |
 | `petab` | `petab/problem.yaml` and its tables |
 | `scan` | `blocks/points-<start>-<stop>.nc` (the points of the units), `result.nc` (the `ScanResult`) |
-| `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`) |
+| `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`); of a sensitivity analysis over groups the files of its runner (see [Sensitivity analysis](sensitivity.md#sensitivity-analyses-of-a-project)): `parameters.tsv`, `parameters.tex` and a folder per analysis, `<analysis>/` or `<subfolder>/<analysis>/`, each written atomically by its unit |
 | `uncertainty` | `checkpoint/<scenario>/draws-<start>-<stop>.nc` (the draws of the units), `uncertainty/` (the `UncertaintyResult`) |
 | `factory` | the files of the factory with the layout of the package, e.g. `models/toy.xml`; the files of the package are never written. The summary has the number of the compared outputs (`outputs`): the `factory_outputs` of the project (`declared` true), else, with a warning, the variants and every file the factory wrote which the package has (`declared` false); a rebuild with nothing to compare fails. `changed` names the compared outputs which differ from the ones of the package, an SBML file compared without the dates of its model history and an antimony file (`.ant`) without its `model created`/`model modified` lines |
 | `action` | what the action writes; the summary is the mapping the action returns, followed by its `action` |
@@ -287,6 +303,7 @@ A resume runs the planned spec of `spec.json`, so a drawn seed stays, and is acc
 | `identifiability.profile` | `opid`, `pid`: the profile of a parameter finished |
 | `scan.chunk` | `points`, `done`, `total`: a chunk of points of a scan finished |
 | `scan.block` | `analysis`, `start`, `stop`, `points`: the block of a unit of a scan finished |
+| `sensitivity.analysis` | `analysis`, `folder`: an analysis of a sensitivity analysis over groups finished, its folder written |
 | `propagation.block` | `scenario`, `start`, `stop`: a block of draws ran or was read |
 | `experiment` | `sid`, `phase`, `activity`, `completed`, `total`: a phase of a simulation experiment |
 
@@ -323,7 +340,7 @@ After the command the profile is written into `profiling/<command>_<kind>_<time>
 
 A project, `sbmlsim.project.Project`, describes a model package once: its models, its analyses and their settings. It is an attribute of a module of the package, which the run layer imports. Nothing of it runs when it is created: the experiments, the scans, the observables and the uncertainty models are functions which build their objects when an analysis runs, so every unit of a run builds them again, and each must build the same object every time, e.g. a design with a fixed seed.
 
-The experiments, the fits, the factory and the credibility declaration are objects or references `"module:attribute"` to them, resolved on their first use and kept. The experiments of a package import its project for its paths, so the module of the project cannot import them, and with references importing the project imports none of them, which keeps a package of many models cheap to import. A reference which starts with a dot is relative to `package`:
+The experiments, the fits, the factory, the credibility declaration and the sensitivity analyses are objects or references `"module:attribute"` to them, resolved on their first use and kept. The experiments of a package import its project for its paths, so the module of the project cannot import them, and with references importing the project imports none of them, which keeps a package of many models cheap to import. A reference which starts with a dot is relative to `package`:
 
 ```py
 from pathlib import Path
@@ -362,6 +379,7 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `credibility` | the declaration of the contexts of use of the model, `load_credibility()` |
 | `scans` | the scans by their name, `ScanAnalysis`: the model, a function building the `Scan`, the observables, `time`, `keep`, `on_error` and, for a sensitivity analysis, `indices` (`local`, `sobol`, `fast` or `morris`) with `index_options` |
 | `uncertainties` | the uncertainty analyses by their name, `UncertaintyAnalysis`: the model, functions building the simulation or scenarios, the `UncertaintyModel` and the observables, and the arguments of [`propagate`](uncertainty.md) (`outputs`, `n` or the adaptive `rel_tol`, `n_start` and `n_max`, `design`, `seed`, `keep`, `time`, `on_error`) |
+| `sensitivities` | the sensitivity analyses of the model over the groups of its simulations by their name, the kind `sensitivity`: a `SensitivityRunner` of `sbmlsim.sensitivity.runner`, the runners of the subfolders of a model with several simulations by subfolder, or a reference `"module:attribute"` to either, resolved when it runs; `sensitivity(name)` gives it bound to the project (a runner without a project of its own runs the variants and the simulator settings of the project which lists it). A name is no name of a scan with indices |
 | `actions` | the actions of the project by their name, analyses of its own which the kind `action` runs, `ProjectAction`: the function or a reference to it and a `description`; a function or a reference alone is an action without a description. The function is called as `function(project, out, *, workers, **arguments)` (`ActionFunction`) and returns its summary, a mapping of JSON values, or `None` |
 | `simulator` | the settings of the simulator of the analyses, `SimulatorSettings`: the engine, `absolute_tolerance`, `relative_tolerance`, `jit_optimization` (the level LLJIT compiles the models of the experiments, fits and tests with) and the other settings of the integrator, `integrator`; the workers belong to a run |
 | `figure_settings` | the rendering of the figures of the experiments, a `FigureSettings` of the plots |
