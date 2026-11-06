@@ -106,8 +106,13 @@ amici = [
 	"amici>=1.2.0",
 	"ninja",
 ]
+# the task types of simrun, which runs the analyses of `python -m sbmlsim.run` on
+# a cluster, see sbmlsim.simrun; simrun needs python 3.14
+simrun = [
+	"simrun>=0.1.0; python_version >= '3.14'",
+]
 dev = [
-	"sbmlsim[sciml,copasi]",
+	"sbmlsim[sciml,copasi,simrun]",
 	# the reference of the forward pass in the tests, never imported by the package
 	"torch>=2.14.1",
 	"bump-my-version>=1.5.1",
@@ -130,6 +135,18 @@ dev = [
 	# the prototype of the plotly figures, see sbmlsim.plot.serialization_plotly
 	"plotly>=7.1.0",
 ]
+
+# the kinds of `python -m sbmlsim.run` as task types of simrun
+[project.entry-points."simrun.task_types"]
+"sbmlsim.simulate" = "sbmlsim.simrun:SIMULATE"
+"sbmlsim.fit" = "sbmlsim.simrun:FIT"
+"sbmlsim.identifiability" = "sbmlsim.simrun:IDENTIFIABILITY"
+"sbmlsim.fisher" = "sbmlsim.simrun:FISHER"
+"sbmlsim.report" = "sbmlsim.simrun:REPORT"
+"sbmlsim.petab" = "sbmlsim.simrun:PETAB"
+"sbmlsim.scan" = "sbmlsim.simrun:SCAN"
+"sbmlsim.sensitivity" = "sbmlsim.simrun:SENSITIVITY"
+"sbmlsim.uncertainty" = "sbmlsim.simrun:UNCERTAINTY"
 
 [project.urls]
 Homepage = "https://matthiaskoenig.github.io/sbmlsim"
@@ -188,6 +205,8 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/sbmlsim/__init__.py" }]
 # libraries, which the comparison of a forward pass does not need. A single
 # table and not a list of sources, which tox-uv cannot read
 torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
+# simrun from git until it is released on PyPI (a release blocker of sbmlsim)
+simrun = { git = "https://github.com/matthiaskoenig/simrun.git", rev = "ba442e025780f1f20527662881e4e72dfee63bd5" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

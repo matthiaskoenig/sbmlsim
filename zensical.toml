@@ -55,6 +55,7 @@ nav = [
       { "parallel" = "api/parallel.md" },
       { "project" = "api/project.md" },
       { "run" = "api/run.md" },
+      { "simrun" = "api/simrun.md" },
       { "console" = "api/console.md" },
       { "display" = "api/display.md" },
       { "log" = "api/log.md" },

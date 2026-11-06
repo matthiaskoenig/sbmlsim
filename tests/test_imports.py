@@ -64,7 +64,8 @@ def test_a_run_without_uncertain_values_does_not_import_the_uncertainty() -> Non
 def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
     code = (
         "import sys, sbmlsim; "
-        "print(sorted(m for m in ('sbmlsim.run', 'sbmlsim.project') if m in sys.modules))"
+        "print(sorted(m for m in ('sbmlsim.run', 'sbmlsim.project', 'sbmlsim.simrun',"
+        " 'simrun') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -82,7 +83,7 @@ def test_the_run_layer_imports_no_analysis() -> None:
     code = (
         "import sys, sbmlsim.run, sbmlsim.run.cli; "
         "print(sorted(m for m in ('sbmlsim.fit', 'sbmlsim.simulator', 'sbmlsim.project',"
-        " 'matplotlib') if m in sys.modules))"
+        " 'matplotlib', 'sbmlsim.simrun', 'simrun') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
