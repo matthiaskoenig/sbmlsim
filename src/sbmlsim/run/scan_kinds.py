@@ -66,6 +66,7 @@ from sbmlsim.run.units import MissingUnits, unit_blocks
 if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
     from sbmlsim.experiment.progress import Event
+    from sbmlsim.model.model_sbml import SBMLModel
     from sbmlsim.project import Project, ScanAnalysis, UncertaintyAnalysis
     from sbmlsim.result import ScanResult
     from sbmlsim.run.context import RunContext
@@ -179,6 +180,23 @@ def _model(project: Project, model: Path | str) -> Path | str:
     if isinstance(model, Path) and not model.is_absolute():
         return project.root / model
     return model
+
+
+def _loaded_model(project: Project, model: Path | str) -> SBMLModel:
+    """Load the model of an analysis in the engine and at the level of the project.
+
+    The model is compiled at `SimulatorSettings.jit_optimization` of the
+    project; the simulator uses a model of its engine as it is, and the
+    workers of its pool load it at the level of this model (`ModelSpec`).
+    """
+    from sbmlsim.model import model_sbml
+
+    settings = project.simulator
+    return model_sbml.load_model(
+        _model(project, model),
+        settings.engine,
+        jit_optimization=settings.jit_optimization,
+    )
 
 
 def _times(time: Any) -> list[float] | None:
@@ -440,7 +458,7 @@ def _run_blocks(
         return
     analysis, scan = planned.analysis, planned.scan
     simulator = planned.project.simulator.simulator(workers)
-    model = simulator.load(_model(planned.project, analysis.model))
+    model = simulator.load(_loaded_model(planned.project, analysis.model))
     observables = (
         list(analysis.observables()) if analysis.observables is not None else None
     )
@@ -604,7 +622,7 @@ def _propagation(
 
     blocks = _draw_blocks(analysis)
     return Propagation(
-        _model(project, analysis.model),
+        _loaded_model(project, analysis.model),
         analysis.simulation(),
         analysis.uq(),
         list(analysis.observables()) if analysis.observables is not None else (),

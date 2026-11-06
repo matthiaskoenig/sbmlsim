@@ -41,9 +41,10 @@ directory of the records of the adopted fits (`Project.fits_dir`):
 import dataclasses
 import importlib
 import json
+import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, override
+from typing import TYPE_CHECKING, Any, Literal, Self, override
 
 from pydantic import (
     BaseModel,
@@ -56,19 +57,26 @@ from pydantic import (
 )
 
 from sbmlsim.atomic import write_text_atomic
-from sbmlsim.engine import Engine
-from sbmlsim.experiment import ExperimentResult, SimulationExperiment
-from sbmlsim.fit.cli import FitDefinition
-from sbmlsim.model.model_roadrunner import JitOptimization
-from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.plot.plotting import FigureSettings
+from sbmlsim.engine import Engine, JitOptimization
 from sbmlsim.release.settings import ReleaseSettings
 from sbmlsim.simulation import Observable, Scan, Simulation
-from sbmlsim.simulator import Simulator
-from sbmlsim.uncertainty import UncertaintyModel
 
 if TYPE_CHECKING:
     import roadrunner
+
+    from sbmlsim.experiment import ExperimentResult, SimulationExperiment
+    from sbmlsim.fit.cli import FitDefinition
+    from sbmlsim.model.tolerances import AbsoluteTolerance
+    from sbmlsim.plot.plotting import FigureSettings
+    from sbmlsim.simulator import Simulator
+    from sbmlsim.uncertainty import UncertaintyModel
+else:
+    # the module stays light: it imports neither the experiments, the fits nor
+    # roadrunner. pydantic reads the annotations of the fields at runtime, where
+    # these types are `Any`; the validators check the instances (`_instance_of`)
+    # and the methods import the modules when they run.
+    SimulationExperiment = FitDefinition = AbsoluteTolerance = Any
+    FigureSettings = UncertaintyModel = Any
 
 __all__ = [
     "ADOPTED_FILE",
@@ -181,6 +189,25 @@ def normalize_formats(formats: Sequence[str]) -> tuple[str, ...]:
     return tuple(f.lower() for f in formats)
 
 
+def _instance_of(value: object, module: str, name: str) -> bool:
+    """Check that a value is an instance of a class without importing its module.
+
+    An instance of a class exists only once its module is imported, so a
+    module which is not imported has no instances.
+
+    Args:
+        value: the value.
+        module: the module of the class.
+        name: the name of the class.
+
+    Returns:
+        Whether the value is an instance of the class.
+    """
+    loaded = sys.modules.get(module)
+    cls = getattr(loaded, name, None) if loaded is not None else None
+    return isinstance(cls, type) and isinstance(value, cls)
+
+
 class _Resolved(dict[tuple[str | None, str], Any]):
     """The objects of the resolved references of a project, by package and reference.
 
@@ -225,10 +252,29 @@ class SimulatorSettings(BaseModel):
     model_config = _CONFIG
 
     engine: Engine = Engine.ROADRUNNER
-    absolute_tolerance: float | InstanceOf[AbsoluteTolerance] | None = None
+    absolute_tolerance: float | AbsoluteTolerance | None = None
     relative_tolerance: float | None = None
     jit_optimization: JitOptimization | None = None
     integrator: dict[str, Any] = {}
+
+    @field_validator("absolute_tolerance")
+    @classmethod
+    def _check_tolerance(cls, value: Any) -> Any:
+        """Check that the absolute tolerance is a number or an `AbsoluteTolerance`.
+
+        Raises:
+            ValueError: for another value.
+        """
+        if value is None or isinstance(value, float):
+            return value
+        if isinstance(value, int) and not isinstance(value, bool):
+            return float(value)
+        if not _instance_of(value, "sbmlsim.model.tolerances", "AbsoluteTolerance"):
+            raise ValueError(
+                f"The absolute tolerance is a number or an AbsoluteTolerance, not "
+                f"{value!r}."
+            )
+        return value
 
     @model_validator(mode="after")
     def _check_integrator(self) -> SimulatorSettings:
@@ -276,6 +322,8 @@ class SimulatorSettings(BaseModel):
         Returns:
             A new simulator.
         """
+        from sbmlsim.simulator import Simulator
+
         return Simulator(
             n_workers=n_workers, engine=self.engine, **self.integrator_settings()
         )
@@ -502,7 +550,11 @@ class Project(BaseModel):
             `model_path`; every variant is a file of its own.
         factory: builds the models, a function called with the directory it
             writes into, or a reference to it, see `create_models`.
-        factory_outputs: the files the factory writes, relative to `root`.
+        factory_dir: the directory the factory writes into in the package,
+            the directory of the first variant without; inside of `root`.
+        factory_outputs: the files the factory writes, relative to `root`;
+            the factory may write next to `factory_dir` as well, e.g. an
+            archive into its parent, see `create_models`.
         experiments: the simulation experiment classes, a sequence of them,
             groups of them by name (the group `all` has every experiment, the
             groups together without it), a callable which returns either, or
@@ -536,18 +588,19 @@ class Project(BaseModel):
     description: str = ""
     variants: Mapping[str, Path] = {}
     factory: Callable[[Path], Any] | str | None = None
+    factory_dir: Path | None = None
     factory_outputs: Sequence[Path] = ()
     experiments: Callable[[], _Experiments] | _Experiments | str | None = None
     base_path: Path | None = None
     data_path: Path | Sequence[Path] | None = None
-    fits: Mapping[str, InstanceOf[FitDefinition]] | str = {}
+    fits: Mapping[str, FitDefinition] | str = {}
     fits_dir: Path | None = None
     adopted: Path | None = None
     credibility: Any = None
     scans: Mapping[str, ScanAnalysis] = {}
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
     simulator: SimulatorSettings = SimulatorSettings()
-    figure_settings: InstanceOf[FigureSettings] | None = None
+    figure_settings: FigureSettings | None = None
     figures: FigureOutputs = FigureOutputs()
     checks: CheckSettings = CheckSettings()
     release: InstanceOf[ReleaseSettings] | None = None
@@ -576,7 +629,7 @@ class Project(BaseModel):
                 )
         return value
 
-    @field_validator("base_path", "fits_dir", "adopted")
+    @field_validator("base_path", "fits_dir", "adopted", "factory_dir")
     @classmethod
     def _relative_to_root(cls, value: Path | None, info: ValidationInfo) -> Any:
         """Get a relative path relative to the root."""
@@ -636,6 +689,84 @@ class Project(BaseModel):
                 f"project, not {outside}."
             )
         return outputs
+
+    @field_validator("fits")
+    @classmethod
+    def _check_fits(cls, value: Any) -> Any:
+        """Check that the fits are fit definitions, a reference is checked when used.
+
+        Raises:
+            ValueError: for a fit which is no `FitDefinition`.
+        """
+        if isinstance(value, str):
+            return value
+        wrong = [
+            subset
+            for subset, definition in value.items()
+            if not _instance_of(definition, "sbmlsim.fit.cli", "FitDefinition")
+        ]
+        if wrong:
+            raise ValueError(f"The fits {wrong} are no FitDefinition.")
+        return value
+
+    @field_validator("figure_settings")
+    @classmethod
+    def _check_figure_settings(cls, value: Any) -> Any:
+        """Check that the figure settings are a `FigureSettings`.
+
+        Raises:
+            ValueError: for other settings.
+        """
+        if value is not None and not _instance_of(
+            value, "sbmlsim.plot.plotting", "FigureSettings"
+        ):
+            raise ValueError(
+                f"The figure settings are a sbmlsim.plot.FigureSettings, not {value!r}."
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _check_factory_dir(self) -> Self:
+        """Set the directory of the factory, the one of the first variant without.
+
+        Raises:
+            ValueError: for a directory of the factory outside of the root.
+        """
+        if self.factory_dir is None and self.variants:
+            first = next(iter(self.variants.values()))
+            self.__dict__["factory_dir"] = first.parent
+        if (
+            self.factory is not None
+            and self.factory_dir is not None
+            and not self.factory_dir.is_relative_to(self.root)
+        ):
+            raise ValueError(
+                f"The directory of the factory {self.factory_dir} is outside of "
+                f"the root {self.root} of the project."
+            )
+        return self
+
+    def replace(self, **changes: Any) -> Self:
+        """Get a copy of the project with other fields, validated again.
+
+        The copy is created by the constructor, so the references are checked
+        and relative paths of the changes are relative to `root`, unlike
+        `model_copy(update=...)`, which validates nothing. The paths of the
+        project are stored relative to its root, i.e. absolute: a change of
+        `root` alone does not move them, and the directory of the factory
+        which the project derived from its first variant stays unless it is
+        changed as well.
+
+        Args:
+            **changes: the fields and their new values.
+
+        Returns:
+            The new project.
+
+        Raises:
+            pydantic.ValidationError: for invalid fields.
+        """
+        return type(self)(**{**dict(self), **changes})
 
     # ------------------------------------------------------------------------
     # references
@@ -729,25 +860,47 @@ class Project(BaseModel):
             )
         return factory
 
-    def create_models(self, out: Path) -> Path:
+    def create_models(self, out: Path | None = None) -> Path:
         """Build the models with the factory.
 
+        By default the factory builds the models in place, into `factory_dir`.
+        A rebuild into another directory `out` keeps the layout of the package
+        with `create_models(out / project.factory_dir.relative_to(project.root))`,
+        so an output `o` of `factory_outputs` is `out / o` there and `root / o`
+        in the package, see `factory_paths`.
+
         Args:
-            out: the directory the factory writes into; a relative directory is
-                relative to the current directory.
+            out: the directory the factory writes into, `factory_dir` without;
+                a relative directory is relative to the current directory.
 
         Returns:
             The directory.
 
         Raises:
-            ValueError: if the project has no factory.
+            ValueError: if the project has no factory or no directory of it.
         """
-        self.load_factory()(out)
-        return out
+        factory = self.load_factory()
+        directory = out if out is not None else self.factory_dir
+        if directory is None:
+            raise ValueError(
+                f"The project '{self.name}' has neither a directory of its factory "
+                "nor model variants: give factory_dir."
+            )
+        factory(directory)
+        return directory
 
-    def factory_paths(self) -> list[Path]:
-        """Get the files the factory writes in the package, `factory_outputs`."""
-        return [self.root / path for path in self.factory_outputs]
+    def factory_paths(self, out: Path | None = None) -> list[Path]:
+        """Get the files the factory writes, `factory_outputs`.
+
+        Args:
+            out: the directory of a rebuild with the layout of the package, see
+                `create_models`; the package (`root`) without.
+
+        Returns:
+            The paths of the outputs.
+        """
+        base = self.root if out is None else out
+        return [base / path for path in self.factory_outputs]
 
     def load_credibility(self) -> Any:
         """Get the declaration of the contexts of use of the model.
@@ -776,9 +929,12 @@ class Project(BaseModel):
             The experiment classes by group.
 
         Raises:
-            ValueError: if the project has no experiments.
+            ValueError: if the project has no experiments, or two experiment
+                classes have one name.
             TypeError: if an experiment is no `SimulationExperiment` class.
         """
+        from sbmlsim.experiment import SimulationExperiment
+
         if self.experiments is None:
             raise ValueError(
                 f"The project '{self.name}' has no simulation experiments."
@@ -805,6 +961,17 @@ class Project(BaseModel):
                         f"The experiments of '{self.name}' have {cls!r}, which is "
                         "no SimulationExperiment class."
                     )
+        named: dict[str, type[SimulationExperiment]] = {}
+        for group in groups.values():
+            for cls in group:
+                other = named.setdefault(cls.__name__, cls)
+                if other is not cls:
+                    raise ValueError(
+                        f"The experiments of '{self.name}' have two classes named "
+                        f"'{cls.__name__}', {other.__module__}.{other.__qualname__} "
+                        f"and {cls.__module__}.{cls.__qualname__}: an experiment is "
+                        "named by its class."
+                    )
         if ALL_EXPERIMENTS not in groups:
             every = {cls.__name__: cls for group in groups.values() for cls in group}
             groups[ALL_EXPERIMENTS] = list(every.values())
@@ -823,7 +990,8 @@ class Project(BaseModel):
             The experiment classes, every class once in the order of the names.
 
         Raises:
-            ValueError: if the project has no experiments.
+            ValueError: if the project has no experiments, or two experiment
+                classes have one name.
             KeyError: naming the groups and the experiments, for a name which
                 is neither.
         """
@@ -863,6 +1031,8 @@ class Project(BaseModel):
             TypeError: for experiments which are neither all names nor all
                 experiment classes.
         """
+        from sbmlsim.experiment import SimulationExperiment
+
         if experiments is None:
             return self.experiment_classes()
         if isinstance(experiments, type) and issubclass(
@@ -981,7 +1151,8 @@ class Project(BaseModel):
         """
         fits = self._resolve(self.fits)
         if not isinstance(fits, Mapping) or not all(
-            isinstance(key, str) and isinstance(value, FitDefinition)
+            isinstance(key, str)
+            and _instance_of(value, "sbmlsim.fit.cli", "FitDefinition")
             for key, value in fits.items()
         ):
             raise TypeError(
