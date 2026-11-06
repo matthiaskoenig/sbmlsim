@@ -46,49 +46,46 @@ RATES = Dimension("dim_k", values={"k": Q([0.1, 0.2], "1/min")})
 DRAWS = Dimension("draws", values={"k": Q([0.1, 0.15, 0.2, 0.25, 0.3], "1/min")})
 
 
-#: the file of the model, written by the fixture
-TOY_PATH: dict[str, Path] = {}
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _toy(tmp_path_factory: pytest.TempPathFactory) -> None:
+@pytest.fixture(scope="module")
+def toy(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """The SBML file of the decay."""
     path = tmp_path_factory.mktemp("toy") / "toy.xml"
     path.write_text(sbml(TOY), encoding="utf-8")
-    TOY_PATH["path"] = path
+    return path
 
 
-def run(simulation: Simulation, dimensions: Sequence[Dimension] = ()) -> ScanResult:
-    return Simulator(n_workers=1).run(
-        TOY_PATH["path"], Scan(simulation, list(dimensions))
-    )
+def run(
+    toy: Path, simulation: Simulation, dimensions: Sequence[Dimension] = ()
+) -> ScanResult:
+    return Simulator(n_workers=1).run(toy, Scan(simulation, list(dimensions)))
 
 
-def test_the_dimension_of_a_scan() -> None:
-    assert single_dimension(run(DECAY, [RATES])) == "dim_k"
+def test_the_dimension_of_a_scan(toy: Path) -> None:
+    assert single_dimension(run(toy, DECAY, [RATES])) == "dim_k"
 
 
-def test_a_simulation_has_no_dimension() -> None:
+def test_a_simulation_has_no_dimension(toy: Path) -> None:
     with pytest.raises(ValueError, match="one dimension"):
-        single_dimension(run(DECAY))
+        single_dimension(run(toy, DECAY))
 
 
-def test_the_timecourse_of_a_point_without_changes() -> None:
-    res = run(DECAY, [RATES])
+def test_the_timecourse_of_a_point_without_changes(toy: Path) -> None:
+    res = run(toy, DECAY, [RATES])
     time, values = point_timecourse(res, "[A]", dim_k=1)
     assert np.array_equal(time, res.ds["time"].values)
     assert np.array_equal(values, res["[A]"].isel(dim_k=1).values)
 
 
 @pytest.mark.parametrize("name", ["res", "key"])
-def test_a_dimension_can_have_the_name_of_an_argument(name: str) -> None:
-    res = run(DECAY, [Dimension(name, values={"k": Q([0.1, 0.2], "1/min")})])
+def test_a_dimension_can_have_the_name_of_an_argument(toy: Path, name: str) -> None:
+    res = run(toy, DECAY, [Dimension(name, values={"k": Q([0.1, 0.2], "1/min")})])
     time, values = point_timecourse(res, "[A]", **{name: 1})
     assert np.array_equal(time, res.ds["time"].values)
     assert np.array_equal(values, res["[A]"].isel({name: 1}).values)
 
 
-def test_the_state_before_a_change_is_left_out() -> None:
-    res = run(REDOSE, [RATES])
+def test_the_state_before_a_change_is_left_out(toy: Path) -> None:
+    res = run(toy, REDOSE, [RATES])
     assert res.ds.sizes["time"] == 52
     time, values = point_timecourse(res, "[A]", dim_k=0)
     assert time.size == 51
@@ -96,12 +93,12 @@ def test_the_state_before_a_change_is_left_out() -> None:
     assert values[time == 5.0] == pytest.approx([1.0])
 
 
-def test_a_simulation_needs_no_position() -> None:
-    time, _ = point_timecourse(run(REDOSE), "[A]")
+def test_a_simulation_needs_no_position(toy: Path) -> None:
+    time, _ = point_timecourse(run(toy, REDOSE), "[A]")
     assert time.size == 51
 
 
-def test_a_ragged_result_loses_its_padding() -> None:
+def test_a_ragged_result_loses_its_padding(toy: Path) -> None:
     lengths = Dimension(
         "dim_sim",
         simulations={
@@ -109,28 +106,28 @@ def test_a_ragged_result_loses_its_padding() -> None:
             "long": Simulation(end=10, steps=20),
         },
     )
-    res = run(DECAY, [lengths])
+    res = run(toy, DECAY, [lengths])
     assert res.ragged
     time, values = point_timecourse(res, "[A]", dim_sim=0)
     assert time.size == values.size == 11
     assert time[-1] == 5.0
 
 
-def test_every_dimension_needs_a_position() -> None:
-    res = run(DECAY, [RATES])
+def test_every_dimension_needs_a_position(toy: Path) -> None:
+    res = run(toy, DECAY, [RATES])
     with pytest.raises(ValueError, match="dim_k"):
         point_timecourse(res, "[A]")
     with pytest.raises(ValueError, match="dim_x"):
         point_timecourse(res, "[A]", dim_k=0, dim_x=0)
 
 
-def test_a_variable_which_is_no_timecourse() -> None:
+def test_a_variable_which_is_no_timecourse(toy: Path) -> None:
     with pytest.raises(ValueError, match="no timecourse"):
-        point_timecourse(run(DECAY, [RATES]), "missing", dim_k=0)
+        point_timecourse(run(toy, DECAY, [RATES]), "missing", dim_k=0)
 
 
-def test_the_state_after_a_change_has_every_time_once() -> None:
-    res = run(REDOSE)
+def test_the_state_after_a_change_has_every_time_once(toy: Path) -> None:
+    res = run(toy, REDOSE)
     assert res.ds.sizes["time"] == 52
     after = state_after_changes(res)
     time = after.ds["time"].values
@@ -139,8 +136,10 @@ def test_the_state_after_a_change_has_every_time_once() -> None:
     assert after["[A]"].values[time == 5.0] == pytest.approx([1.0])
 
 
-def test_the_state_after_a_change_is_the_state_of_the_point_timecourse() -> None:
-    res = run(REDOSE, [RATES])
+def test_the_state_after_a_change_is_the_state_of_the_point_timecourse(
+    toy: Path,
+) -> None:
+    res = run(toy, REDOSE, [RATES])
     after = state_after_changes(res)
     for k in range(2):
         time, values = point_timecourse(res, "[A]", dim_k=k)
@@ -148,14 +147,14 @@ def test_the_state_after_a_change_is_the_state_of_the_point_timecourse() -> None
         assert np.allclose(after["[A]"].isel(dim_k=k).values, values)
 
 
-def test_a_result_without_a_change_is_unchanged() -> None:
-    res = run(DECAY, [RATES])
+def test_a_result_without_a_change_is_unchanged(toy: Path) -> None:
+    res = run(toy, DECAY, [RATES])
     after = state_after_changes(res)
     assert np.array_equal(after.ds["time"].values, res.ds["time"].values)
     assert np.allclose(after["[A]"].values, res["[A]"].values)
 
 
-def test_the_state_after_a_change_of_a_ragged_result() -> None:
+def test_the_state_after_a_change_of_a_ragged_result(toy: Path) -> None:
     lengths = Dimension(
         "dim_sim",
         simulations={
@@ -165,7 +164,7 @@ def test_the_state_after_a_change_of_a_ragged_result() -> None:
             ),
         },
     )
-    res = run(DECAY, [lengths])
+    res = run(toy, DECAY, [lengths])
     assert res.ragged
     after = state_after_changes(res)
     for k in range(2):
@@ -176,9 +175,9 @@ def test_the_state_after_a_change_of_a_ragged_result() -> None:
         assert np.allclose(got["[A]"].values[finite][: time.size], values)
 
 
-def test_the_state_after_a_change_of_a_scan_of_two_dimensions() -> None:
+def test_the_state_after_a_change_of_a_scan_of_two_dimensions(toy: Path) -> None:
     doses = Dimension("dim_dose", values={"[A]": Q([1.0, 2.0, 3.0], "mM")})
-    res = run(REDOSE, [RATES, doses])
+    res = run(toy, REDOSE, [RATES, doses])
     after = state_after_changes(res)
     assert after["[A]"].shape[:2] == (2, 3)
     for i in range(2):
@@ -188,8 +187,8 @@ def test_the_state_after_a_change_of_a_scan_of_two_dimensions() -> None:
             assert np.allclose(after["[A]"].isel(dim_k=i, dim_dose=j).values, values)
 
 
-def test_the_start_and_end_values_on_a_grid() -> None:
-    res = run(DECAY, [RATES])
+def test_the_start_and_end_values_on_a_grid(toy: Path) -> None:
+    res = run(toy, DECAY, [RATES])
     assert not res.ragged
     start = start_values(res, "[A]")
     end = end_values(res, "[A]")
@@ -198,9 +197,9 @@ def test_the_start_and_end_values_on_a_grid() -> None:
     np.testing.assert_array_equal(end.values, res["[A]"].isel(time=-1).values)
 
 
-def test_the_start_and_end_values_of_the_steps_of_the_integrator() -> None:
+def test_the_start_and_end_values_of_the_steps_of_the_integrator(toy: Path) -> None:
     """A scan without steps is ragged, the end is the last time of every point."""
-    res = run(Simulation(end=10), [RATES])
+    res = run(toy, Simulation(end=10), [RATES])
     assert res.ragged
     start = start_values(res, "[A]")
     end = end_values(res, "[A]")
@@ -213,7 +212,7 @@ def test_the_start_and_end_values_of_the_steps_of_the_integrator() -> None:
     assert end.values[1] < end.values[0]
 
 
-def test_the_end_values_of_simulations_of_different_lengths() -> None:
+def test_the_end_values_of_simulations_of_different_lengths(toy: Path) -> None:
     lengths = Dimension(
         "dim_sim",
         simulations={
@@ -221,7 +220,7 @@ def test_the_end_values_of_simulations_of_different_lengths() -> None:
             "long": Simulation(end=10, steps=20),
         },
     )
-    res = run(DECAY, [lengths])
+    res = run(toy, DECAY, [lengths])
     end = end_values(res, "[A]")
     for k in range(2):
         _, values = point_timecourse(res, "[A]", dim_sim=k)
@@ -229,23 +228,23 @@ def test_the_end_values_of_simulations_of_different_lengths() -> None:
     assert np.all(np.isfinite(end.values))
 
 
-def test_the_start_and_end_values_need_a_timecourse() -> None:
-    res = run(DECAY, [RATES])
+def test_the_start_and_end_values_need_a_timecourse(toy: Path) -> None:
+    res = run(toy, DECAY, [RATES])
     with pytest.raises(ValueError, match="no timecourse"):
         start_values(res, "missing")
     with pytest.raises(ValueError, match="no timecourse"):
         end_values(res, "missing")
 
 
-def test_a_ragged_result_of_many_simulations_is_on_the_time_points_of_a_figure() -> (
-    None
-):
+def test_a_ragged_result_of_many_simulations_is_on_the_time_points_of_a_figure(
+    toy: Path,
+) -> None:
     # the steps of the integrator of 60 rates: every simulation steps at other
     # times, their union has more than 1000 time points, the time points of a
     # figure 500 and the time of the change
     steps = Simulation(end=10, changes=[Change([5.0], {"[A]": Q(1.0, "mM")})])
     rates = Dimension("dim_k", values={"k": Q(np.linspace(0.1, 3.0, 60), "1/min")})
-    res = run(steps, [rates])
+    res = run(toy, steps, [rates])
     assert res.ragged
     assert np.unique(res.time_points()).size > 1000
     after = state_after_changes(res)
@@ -267,16 +266,16 @@ def time_index(res: ScanResult, time: float) -> int:
     return int(np.flatnonzero(res.ds["time"].values == time)[0])
 
 
-def test_the_dimensions_without_the_draws() -> None:
+def test_the_dimensions_without_the_draws(toy: Path) -> None:
     volumes = Dimension("dim_volume", values={"Vc": np.array([1.0, 2.0])})
-    res = run(DECAY, [volumes, DRAWS])
+    res = run(toy, DECAY, [volumes, DRAWS])
     assert scan_dimensions(res, "draws") == ["dim_volume"]
     assert scan_dimensions(res) == ["dim_volume", "draws"]
 
 
-def test_the_band_of_a_point() -> None:
+def test_the_band_of_a_point(toy: Path) -> None:
     volumes = Dimension("dim_volume", values={"Vc": np.array([1.0, 2.0])})
-    res = run(Simulation(end=10, steps=10), [volumes, DRAWS])
+    res = run(toy, Simulation(end=10, steps=10), [volumes, DRAWS])
     time, lower, median, upper = point_band(res, "[A]", across="draws", dim_volume=0)
     assert time.shape == lower.shape == median.shape == upper.shape == (11,)
     assert np.all(lower <= median) and np.all(median <= upper)
@@ -290,9 +289,9 @@ def test_the_band_of_a_point() -> None:
         point_band(res, "[A]", across="draws", dim_volume=0, draws=0)
 
 
-def test_the_band_of_the_steps_of_the_integrator() -> None:
+def test_the_band_of_the_steps_of_the_integrator(toy: Path) -> None:
     """Draws with their own time points are on the time points of a figure."""
-    res = run(Simulation(end=10), [DRAWS])
+    res = run(toy, Simulation(end=10), [DRAWS])
     assert res.ragged
     time, lower, median, upper = point_band(res, "[A]", across="draws")
     assert np.all(np.diff(time) > 0)

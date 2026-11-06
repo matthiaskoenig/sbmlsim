@@ -800,3 +800,25 @@ def test_renamed_units_of_the_data_are_read_with_their_definition() -> None:
     dset = DataSet.from_df(df)
     assert dset.uinfo["mean"] == f"µ{name}/ml"
     assert dset.get_quantity("mean").to("ng/ml").magnitude == pytest.approx([1.0])
+
+
+def test_from_df_a_unit_the_caller_gives_wins_over_dimensionless() -> None:
+    """A unit of `udict` is kept, and the caller's dictionary is not changed."""
+    df = pd.DataFrame({"gsd": [1.5], "count": [10], "mean": [1.0], "unit": ["mg/l"]})
+    udict = {"gsd": "percent"}
+    dset = DataSet.from_df(df, udict=udict)
+    assert dset.uinfo["gsd"] == "percent"
+    assert dset["gsd_unit"].tolist() == ["percent"]
+    assert dset.uinfo["count"] == "dimensionless"
+    assert udict == {"gsd": "percent"}
+
+
+def test_from_df_an_empty_geometric_mean_gets_the_unit_of_the_row() -> None:
+    """As an empty mean, an empty geometric mean of a table gets a unit column."""
+    df = pd.DataFrame(
+        {"mean": [1.0, 2.0], "gmean": [None, None], "unit": ["mg/l", "mg/l"]}
+    )
+    dset = DataSet.from_df(df)
+    assert dset.uinfo["gmean"] == "mg/l"
+    assert dset["gmean_unit"].tolist() == ["mg/l", "mg/l"]
+    assert dset["gmean"].isna().all()

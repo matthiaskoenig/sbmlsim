@@ -4,9 +4,9 @@ A fitted parameter carries the distribution of its draws as a formula of the
 SBML package distrib: `normal(mean, sd[, lower, upper])`,
 `lognormal(mu, sigma[, lower, upper])` (mu and sigma of the natural logarithm)
 and `uniform(lower, upper)`, with numbers as arguments, truncated to the bounds
-of the fit when they are given. This module is the one grammar of these formulas: the draws of the
-fitted parameters parse them into the distributions of
-`sbmlsim.simulation.sampling`, and a library which must not import a
+of the fit when they are given. This module is the one grammar of these
+formulas: the draws of the fitted parameters parse them into the distributions
+of `sbmlsim.simulation.sampling`, and a library which must not import a
 simulator, e.g. the PBPK library of pkpdsim, reads their support to bound a
 fitted fraction. It imports only the standard library, so its import loads
 neither roadrunner nor the sampler.
