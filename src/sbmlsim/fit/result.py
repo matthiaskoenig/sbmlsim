@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+import re
 import uuid
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from copy import deepcopy
@@ -38,6 +39,34 @@ def fit_id(name: str | None = None) -> str:
     """
     uid = f"{datetime.datetime.now():%Y%m%d_%H%M%S}__{uuid.uuid4().hex[:5]}"
     return f"{name}_{uid}" if name else uid
+
+
+#: the form of the id of a fit of a named problem, `<subset>_<date>_<time>__<hash>`,
+#: see `fit_id`
+FIT_ID = re.compile(r"^(?P<subset>.+)_(?P<date>\d{8})_\d{6}__[0-9a-f]{5}$")
+
+
+def fit_subset(fit_id: str) -> str:
+    """Get the fit problem a fit belongs to from its id.
+
+    Args:
+        fit_id: the id of a fit, e.g. `PK_20261016_185018__3efe3`, see `fit_id`.
+
+    Returns:
+        The subset, e.g. `PK`. It may contain underscores, `PK_X_...` is `PK_X`.
+
+    Raises:
+        ValueError: if the id does not have the form of the id of a fit, also if
+            it holds a path separator or `..`, so that the id is safe as the name
+            of a directory.
+    """
+    match = FIT_ID.match(fit_id)
+    if match is None or any(part in fit_id for part in ("/", "\\", "..")):
+        raise ValueError(
+            f"'{fit_id}' is not the id of a fit, which has the form "
+            f"'<subset>_<date>_<time>__<hash>', e.g. 'PK_20261016_185018__3efe3'."
+        )
+    return match["subset"]
 
 
 def bound_warnings(
