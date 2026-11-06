@@ -6,6 +6,7 @@ Used for model and data unit conversions.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import warnings
@@ -50,7 +51,7 @@ def _create_registry() -> UnitRegistry:
 
     The registry defines no international unit (`IU`): it is specific to a
     substance, so a model or a user defines the one they need under a name of
-    the substance, e.g. `ureg.define("IU_insulin = 0.0347 * mg")`, or as a
+    the substance, e.g. `define_unit("IU_insulin = 0.0347 * mg")`, or as a
     count.
     """
     registry = pint.UnitRegistry(on_redefinition="ignore")
@@ -99,8 +100,8 @@ _INTERNATIONAL_UNIT_NOTE = (
     "The unit registry of sbmlsim defines no international unit (`IU`) since "
     "#263: an international unit is specific to a substance. Define the one the "
     "code or the data needs before it is used, under a name of the substance, "
-    'e.g. `sbmlsim.units.ureg.define("IU_insulin = 0.0347 * mg")`, or as a '
-    'count, `sbmlsim.units.ureg.define("IU = count")`.'
+    'e.g. `sbmlsim.units.define_unit("IU_insulin = 0.0347 * mg")`, or as a '
+    'count, `sbmlsim.units.define_unit("IU = count")`.'
 )
 
 
@@ -181,6 +182,62 @@ _UNIT_TOKEN = re.compile(r"(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?|
 
 #: an identifier, the form of a unit id of SBML
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def define_unit(definition: str, ureg: UnitRegistry | None = None) -> str:
+    """Define a unit in a registry once, e.g. the international unit of a substance.
+
+    The registry of the package ignores a redefinition, so a second model which
+    defined a name with another value would silently get the first one. A name
+    which is defined already must therefore have the same value (compared in
+    base units); a name of the model and the substance, e.g.
+    `IU_ramipril_renin`, keeps the models apart.
+
+    Args:
+        definition: `"<name> = <expression>"` in the syntax of pint, e.g.
+            `"IU_ramipril_renin = 0.6 * microgram"` or
+            `"IU_apixaban_antixa = count"`.
+        ureg: the unit registry, the one of the package by default,
+            `sbmlsim.units.ureg`; only a registry of your own is passed.
+
+    Returns:
+        The name of the unit.
+
+    Raises:
+        ValueError: if the definition is not `<name> = <expression>` with an
+            identifier as the name, pint cannot evaluate the expression (e.g. an
+            unknown unit in it, pint's `UndefinedUnitError`) or the name is
+            defined with another value.
+    """
+    if ureg is None:
+        ureg = _package_registry()
+    name, separator, expression = (part.strip() for part in definition.partition("="))
+    if not separator or not name.isidentifier() or not expression:
+        raise ValueError(
+            f"A unit is defined as '<name> = <expression>', not '{definition}'."
+        )
+    try:
+        value = ureg.Quantity(expression).to_base_units()
+    # the errors of pint derive from these (`UndefinedUnitError` from
+    # `AttributeError`), the others come from its parser
+    except (ArithmeticError, AttributeError, TokenError, TypeError, ValueError) as err:
+        raise ValueError(
+            f"The unit '{name}' cannot be defined as '{expression}': "
+            f"{type(err).__name__}: {err}"
+        ) from err
+    if name in ureg:
+        defined = ureg.Quantity(1, name).to_base_units()
+        if defined.units != value.units or not math.isclose(
+            defined.magnitude, value.magnitude, rel_tol=1e-12
+        ):
+            raise ValueError(
+                f"The unit '{name}' is defined as {defined} already, not as "
+                f"{value} ({expression}); give the unit of another substance or "
+                "model another name."
+            )
+        return name
+    ureg.define(f"{name} = {expression}")
+    return name
 
 
 def unit_identifiers(unit: str) -> list[str]:

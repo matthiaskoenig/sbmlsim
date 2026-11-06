@@ -38,7 +38,7 @@ print(dset.get_quantity("cp")[:3].to("µg/l").round(1))
 Tables exported from a database such as [PK-DB](https://pk-db.com) carry the units as columns. There are two forms:
 
 - A `<column>_unit` column gives the unit of `<column>` and of its `_sd`, `_se`, `_min` and `_max` columns.
-- A `unit` column gives the unit of every number of its row: `mean`, `value`, `median`, `sd`, `se`, `min` and `max`. The column `cv` is relative and has no unit.
+- A `unit` column gives the unit of every number of its row: `mean`, `value`, `median`, the geometric mean `gmean`, `sd`, `se`, `min` and `max`. The columns `cv` and `gcv` are relative and have no unit; the geometric SD `gsd` is a factor and dimensionless, as the counts `count` and `n`.
 
 The units may change from row to row. `from_df` converts every row to the unit of the first row with a value and rewrites the unit column:
 
@@ -67,6 +67,7 @@ The time of the last row became 60 min and its mean and SD 0.8 and 0.1 mg/l. Wit
 A few more rules:
 
 - A unit with a number in it, as publications write it (`micromol/(0.5*hr)`, `ml/min/(1.73*m^2)`), is read as part of the values: `8.6 micromol/(0.5*hr)` becomes `17.2 micromole/hour`.
+- An international unit of the data (`IU/ml`, `µIU/ml`) is specific to its substance: define it under the name of the substance with `sbmlsim.units.define_unit` and rename it in the unit columns with `sbmlsim.data.rename_units(df, {"IU": "IU_insulin"})` before `from_df` reads the table, see [Units](units.md#the-unit-registry-and-q).
 - A column whose rows cannot be brought to one unit raises a `ValueError` that names the column and its units. That happens for units of different dimensions, units with an offset such as `degC`, units the registry does not know (see [Units](units.md#the-unit-registry-and-q)) and values that are not numbers.
 - Every quantity of a dataset is followed by the columns of its uncertainty, `_sd`, `_se`, `_min`, `_max` and `_cv`, and then by its unit, e.g. `time`, `time_unit`, `cp`, `cp_sd`, `cp_unit`, whatever the order of the data frame.
 - `from_df` does not change the data frame you pass in, and a copy or slice of a dataset has its own units.

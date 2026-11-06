@@ -873,6 +873,64 @@ def ordered_columns(columns: Sequence[str]) -> list[str]:
     return order + [column for column in columns if column not in placed]
 
 
+#: the statistics of a row the column `unit` of a dataset is the unit of, as in
+#: the tables of PK-DB; their sd, se, min and max and the columns `sd`, `se`,
+#: `min` and `max` have it too, the relative `cv`, `gsd` and `gcv` not
+UNIT_STATISTICS: tuple[str, ...] = ("mean", "value", "median", "gmean")
+
+#: the columns of a dataset which are dimensionless without a unit column of
+#: their own: the counts and the geometric SD, a factor (#403)
+DIMENSIONLESS_COLUMNS: tuple[str, ...] = ("count", "n", "gsd")
+
+
+#: the metric prefixes a unit of the data can have, the longest first
+_PREFIXES: tuple[str, ...] = (
+    "da", "Y", "Z", "E", "P", "T", "G", "M", "k", "h", "d", "c", "m",
+    "µ", "μ", "u", "n", "p", "f", "a", "z", "y",
+)  # fmt: skip
+
+
+def rename_units(df: pd.DataFrame, names: Mapping[str, str]) -> pd.DataFrame:
+    """Rename units in the unit columns of a table of the data.
+
+    A name is replaced where it is a unit of a unit expression, alone or after a
+    metric prefix: with `{"IU": "IU_x"}`, `IU/ml` is `IU_x/ml` and `µIU/ml` is
+    `µIU_x/ml`; `IU_per_ml` and `2IU` stay. The unit columns are `unit` and
+    every column whose name ends with `_unit`; a missing value stays missing.
+    With `sbmlsim.units.define_unit` it gives the international unit of the
+    data the name of its substance before `DataSet.from_df` reads the table.
+
+    Args:
+        df: the table, changed in place.
+        names: the name in the data -> the new name.
+
+    Returns:
+        The table.
+    """
+    if not names:
+        return df
+    prefixes = "|".join(re.escape(prefix) for prefix in _PREFIXES)
+    patterns = [
+        (
+            re.compile(rf"(?<!\w)({prefixes})?{re.escape(old)}(?!\w)"),
+            r"\g<1>" + new.replace("\\", "\\\\"),
+        )
+        for old, new in names.items()
+    ]
+
+    def rename(value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        for pattern, replacement in patterns:
+            value = pattern.sub(replacement, value)
+        return value
+
+    for column in df.columns:
+        if column == "unit" or str(column).endswith("_unit"):
+            df[column] = df[column].map(rename)
+    return df
+
+
 def _missing_unit(
     df: pd.DataFrame, keys: Sequence[str], message: str, *args: object
 ) -> None:
@@ -1050,8 +1108,11 @@ class DataSet(pd.DataFrame):
         1. units annotations based on '*_unit' columns, which apply to the
            column and its '*_sd', '*_se', '*_min' and '*_max' columns
         2. units annotations based on 'unit' column which is applied on
-           'mean', 'value' and 'median', their '*_sd', '*_se', '*_min' and
-           '*_max' columns, and 'sd', 'se', 'min' and 'max' ('cv' is relative)
+           'mean', 'value', 'median' and 'gmean' (the geometric mean), their
+           '*_sd', '*_se', '*_min' and '*_max' columns, and 'sd', 'se', 'min'
+           and 'max' ('cv', the geometric SD 'gsd' and 'gcv' are relative); a
+           column of these with a '*_unit' column of its own keeps it
+        3. 'count', 'n' and 'gsd' without a '*_unit' column are dimensionless
 
         The unit of a column is the unit of its first row with a value; the unit
         of a row without a number (no value, sd, se, min or max) is ignored, and a
@@ -1061,8 +1122,8 @@ class DataSet(pd.DataFrame):
         (#310). Rows with another unit of the same
         dimension are converted to it, all their numbers, and their unit column is
         rewritten; the rows of a 'unit' column are converted in one pass, so mean,
-        value and median get one unit and the numbers they share are converted
-        once. A unit with a numeric factor, as PK-DB writes it
+        value, median and gmean get one unit and the numbers they share are
+        converted once. A unit with a numeric factor, as PK-DB writes it
         (`ml/min/(1.73*m^2)`, `micromol/(0.5*hr)`), is read as a number of the
         values: the numbers of its rows are multiplied by the factor, and a column
         whose first unit has a factor gets the unit without it. The data frame of
@@ -1127,13 +1188,14 @@ class DataSet(pd.DataFrame):
 
             elif key == "unit":
                 # the unit of a row is the unit of all of its numbers: the mean,
-                # the value and the median, their sd and se, and the range min and
-                # max of the row (cv is relative). The rows are converted in one
-                # pass, so a number the statistics of a row share is converted
-                # once, and the statistics get one unit.
+                # the value, the median and the geometric mean, their sd and se,
+                # and the range min and max of the row (cv, gsd and gcv are
+                # relative). The rows are converted in one pass, so a number the
+                # statistics of a row share is converted once, and the
+                # statistics get one unit.
                 stats = [
                     k
-                    for k in ("mean", "value", "median")
+                    for k in UNIT_STATISTICS
                     if k in df.columns and f"{k}_unit" not in df.columns
                 ]
                 unit = None
@@ -1191,8 +1253,8 @@ class DataSet(pd.DataFrame):
                 # remove unit column
                 del df["unit"]
 
-            elif key in ["count", "n"]:
-                # add special units for count
+            elif key in DIMENSIONLESS_COLUMNS:
+                # a count and a geometric SD, a factor, are dimensionless
                 if f"{key}_unit" not in df.columns:
                     udict[key] = "dimensionless"
 

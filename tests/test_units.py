@@ -13,7 +13,9 @@ from sbmlsim.units import (
     UnitRegistry,
     Units,
     UnitsInformation,
+    define_unit,
     unit_signature,
+    ureg,
 )
 
 LOTKA_VOLTERRA_SBML = Path(__file__).parent / "data" / "models" / "lotka_volterra.xml"
@@ -81,8 +83,8 @@ def test_the_package_registry_has_no_international_unit(unit: str) -> None:
     notes = "\n".join(info.value.__notes__)
     assert "no international unit" in notes
     assert "#263" in notes
-    assert 'ureg.define("IU_insulin = 0.0347 * mg")' in notes
-    assert 'ureg.define("IU = count")' in notes
+    assert 'define_unit("IU_insulin = 0.0347 * mg")' in notes
+    assert 'define_unit("IU = count")' in notes
     assert "model.Q" in notes
 
 
@@ -862,3 +864,56 @@ def test_the_quotient_of_units_is_read_by_pint(
     quotient = Units.quotient(numerator, denominator)
     assert quotient == expected
     ureg.parse_expression(quotient)
+
+
+def test_a_unit_is_defined_once() -> None:
+    name = "IU_sbmlsim_test_once"
+    assert define_unit(f"{name} = 0.5 * mg") == name
+    assert define_unit(f"{name} = 0.5*mg") == name
+    assert ureg.Quantity(2, f"µ{name}").to("ng").magnitude == pytest.approx(1.0)
+
+
+def test_a_unit_is_defined_in_a_registry_of_its_own() -> None:
+    registry = UnitRegistry()
+    assert define_unit("IU_sbmlsim_test_own = 0.5 * mg", registry) == (
+        "IU_sbmlsim_test_own"
+    )
+    assert "IU_sbmlsim_test_own" in registry
+    assert "IU_sbmlsim_test_own" not in ureg
+
+
+def test_a_unit_with_another_value_is_an_error() -> None:
+    define_unit("IU_sbmlsim_test_other = 0.5 * mg")
+    with pytest.raises(ValueError, match="IU_sbmlsim_test_other"):
+        define_unit("IU_sbmlsim_test_other = 0.6 * mg")
+
+
+def test_a_count_is_a_unit() -> None:
+    define_unit("IU_sbmlsim_test_count = count")
+    assert ureg.Quantity(3, "IU_sbmlsim_test_count/ml").to(
+        "1/ml"
+    ).magnitude == pytest.approx(3.0)
+
+
+@pytest.mark.parametrize(
+    ("expression", "error"),
+    [
+        ("0.6 * microgramm", "'microgramm' is not defined"),
+        ("0.6 * * mg", "missing unary operator"),
+        ("(0.6 * mg", "unexpected EOF"),
+        ("mg ** mg", "Cannot convert"),
+        ("0.6 * mg / 0", "division by zero"),
+    ],
+)
+def test_an_expression_which_pint_refuses_is_an_error(
+    expression: str, error: str
+) -> None:
+    with pytest.raises(ValueError, match=rf"'IU_sbmlsim_test_refused'.*{error}"):
+        define_unit(f"IU_sbmlsim_test_refused = {expression}")
+    assert "IU_sbmlsim_test_refused" not in ureg
+
+
+@pytest.mark.parametrize("definition", ["IU_x", "IU_x =", "= 0.5 * mg", "1IU = mg"])
+def test_a_definition_needs_a_name_and_an_expression(definition: str) -> None:
+    with pytest.raises(ValueError, match="<name> = <expression>"):
+        define_unit(definition)

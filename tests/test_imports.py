@@ -94,3 +94,29 @@ def test_the_run_layer_imports_no_analysis() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[]"
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["sbmlsim.licenses", "sbmlsim.distrib", "sbmlsim.result.scan", "sbmlsim.units"],
+)
+def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
+    """A library which must not load a simulator imports these modules.
+
+    The PBPK library of pkpdsim reads the support of a distrib formula and the
+    start values of a scan result, defines units and writes the license texts
+    of a model without loading roadrunner.
+    """
+    code = (
+        f"import sys, {module}; "
+        "print(sorted(m for m in ('roadrunner', 'COPASI', 'amici') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
