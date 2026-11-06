@@ -62,6 +62,7 @@ from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult, fit_id
 from sbmlsim.fit.runner import run_optimization
 from sbmlsim.fit.sampling import SamplingType
+from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
 from sbmlsim.utils import paths_text
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,14 @@ class FitDefinition:
         groupings: the groupings the reports of the fit evaluate the data by,
             e.g. `Grouping.by("tissue")`, see `FitReport`; `--group-by` of the
             command line tools replaces them.
+        jit_optimization: the optimization level the problems of the
+            definition compile their models with (`JitOptimization`, `"O0"`
+            to `"O3"`), in the process and in every worker of a pool, since a
+            problem carries its level into its workers; `None` for the level
+            of `resolve_jit_optimization`, i.e. of the environment of the
+            process which creates the problem. A project gives the definitions
+            of its fits the level of its simulator, see
+            `sbmlsim.project.Project.load_fit_definitions`.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -120,6 +129,16 @@ class FitDefinition:
     hybridizations: Sequence[DerivedChanges] = ()
     description: str = ""
     groupings: Sequence[Grouping] = ()
+    jit_optimization: JitOptimization | None = None
+
+    def __post_init__(self) -> None:
+        """Check the optimization level, a name of a level becomes the level.
+
+        Raises:
+            ValueError: if the level is no `JitOptimization`.
+        """
+        if self.jit_optimization is not None:
+            self.jit_optimization = resolve_jit_optimization(self.jit_optimization)
 
     def collections(
         self, study_ids: Sequence[str] | None = None
@@ -174,6 +193,7 @@ class FitDefinition:
             base_path=self.base_path,
             data_path=self.data_path,
             hybridizations=self.hybridizations,
+            jit_optimization=self.jit_optimization,
         )
 
 

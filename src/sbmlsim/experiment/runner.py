@@ -1271,6 +1271,10 @@ def run_experiments(
     n_workers: int | None = None,
     progress: bool | None = None,
     simulator: Simulator | None = None,
+    figure_formats: list[str] | None = None,
+    save_results: bool = False,
+    reduced_selections: bool = True,
+    jit_optimization: JitOptimization | str | None = None,
 ) -> list[ExperimentResult]:
     """Run simulation experiments and write their report to the output path.
 
@@ -1292,6 +1296,12 @@ def run_experiments(
         simulator: the simulator of the tasks, `Simulator()` without one; the
             models are loaded in its engine, e.g. `Simulator(engine="copasi")`
             or `Simulator(engine="amici")`.
+        figure_formats: the formats of the figures, see
+            `ExperimentRunner.run_experiments`.
+        save_results: write the results of the tasks.
+        reduced_selections: simulate only the selections an experiment uses.
+        jit_optimization: the optimization level every model is compiled
+            with, see `ExperimentRunner`.
 
     Returns:
         The results of the experiments.
@@ -1309,10 +1319,14 @@ def run_experiments(
         simulator=simulator,
         data_path=data_path,
         base_path=base_path,
+        jit_optimization=jit_optimization,
     )
     results = runner.run_experiments(
         output_path=output_path,
         show_figures=False,
+        save_results=save_results,
+        figure_formats=figure_formats,
+        reduced_selections=reduced_selections,
         figure_settings=figure_settings,
         n_workers=n_workers,
         progress=progress,

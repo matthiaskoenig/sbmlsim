@@ -595,7 +595,7 @@ def test_simulate_gives_the_workers_to_the_simulator(
 
     monkeypatch.setattr(runner, "run_experiments", run_experiments)
     assert HCTZ.experiments is not None
-    names = [cls.__name__ for cls in HCTZ.experiments()[:3]]
+    names = [cls.__name__ for cls in HCTZ.experiment_classes()[:3]]
     run.execute(
         "simulate",
         {"project": PROJECT, "experiments": names},

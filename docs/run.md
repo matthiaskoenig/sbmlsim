@@ -285,20 +285,52 @@ A run uses its CPUs through the processes of its pools, so the numerical librari
 
 ## Projects
 
-A project, `sbmlsim.project.Project`, names the analyses of a model package: it is an attribute of a module of the package, which the run layer imports. Nothing of it runs when it is created: the experiments, the scans, the observables and the uncertainty models are functions which build their objects when an analysis runs, so every unit of a run builds them again, and each must build the same object every time, e.g. a design with a fixed seed.
+A project, `sbmlsim.project.Project`, describes a model package once: its models, its analyses and their settings. It is an attribute of a module of the package, which the run layer imports. Nothing of it runs when it is created: the experiments, the scans, the observables and the uncertainty models are functions which build their objects when an analysis runs, so every unit of a run builds them again, and each must build the same object every time, e.g. a design with a fixed seed.
+
+The experiments, the fits, the factory and the credibility declaration are objects or references `"module:attribute"` to them, resolved on their first use and kept. The experiments of a package import its project for its paths, so the module of the project cannot import them, and with references importing the project imports none of them, which keeps a package of many models cheap to import. A reference which starts with a dot is relative to `package`:
+
+```py
+from pathlib import Path
+
+from sbmlsim.project import FigureOutputs, Project, SimulatorSettings
+
+PROJECT = Project(
+    name="toy",
+    root=Path(__file__).parent,
+    package=__name__,
+    variants={"default": Path("models/toy.xml"), "slow": Path("models/toy_slow.xml")},
+    factory=".factory:create_toy_models",
+    factory_outputs=[Path("models/toy.xml"), Path("models/toy_slow.xml")],
+    experiments=".experiments:EXPERIMENTS",
+    fits=".fitting:FIT_DEFINITIONS",
+    fits_dir=Path("fits"),
+    simulator=SimulatorSettings(relative_tolerance=1e-10, jit_optimization="O0"),
+    figures=FigureOutputs(formats=("svg", "png"), savefig_dpi=150),
+)
+```
+
+A relative path of a project (`variants`, `base_path`, `data_path`, `fits_dir`, `adopted`, the model of a scan) is relative to its `root`, while the outputs of a run go where the run is told: `PROJECT.run_experiments(["studies"], "results")` writes into `results` of the current directory.
 
 | field | meaning |
 | --- | --- |
 | `name`, `description` | the name of the project and what it is |
-| `root` | the directory of the model package; a relative path of a model of an analysis is relative to it |
-| `experiments` | a function returning the simulation experiment classes, the kind `simulate` |
+| `root` | the directory of the model package, which relative paths are relative to |
+| `package` | the dotted name of the model package, which relative references are relative to |
+| `variants` | the SBML files of the model by the name of its variant, the first the default: `model_path(variant)` and `load_roadrunner(variant)`, which compiles at the level of the simulator settings |
+| `factory`, `factory_outputs` | the function which builds the models, called with the directory it writes into (`create_models(out)`), and the files it writes, relative to `root` |
+| `experiments` | the simulation experiment classes, the kind `simulate`: a sequence of classes, groups of them by name (the group `all` has every experiment, the groups together without it) or a function returning either; `load_experiments()` gives the groups, `experiment_classes(names)` the classes of names of groups or classes, `run_experiments(experiments, out)` runs them with the settings of the project |
 | `base_path`, `data_path` | the base path and the datasets of the experiments |
-| `fits` | the fit problems by their subset, the `FitDefinition`s of [Parameter fitting](fitting.md) |
-| `adopted` | the file of the adopted fits, `{"fits": {"<subset>": "<fit id>"}}` |
+| `fits` | the fit problems by their subset, the `FitDefinition`s of [Parameter fitting](fitting.md); `load_fit_definitions()` gives them at the optimization level of the simulator settings |
+| `fits_dir` | the directory of the records of the adopted fits, one directory per fit id, `adopted_record(fit_id)` |
+| `adopted` | the file of the adopted fits, `{"fits": {"<subset>": "<fit id>"}}`, `adopted.json` in `fits_dir` without |
+| `credibility` | the declaration of the contexts of use of the model, `load_credibility()` |
 | `scans` | the scans by their name, `ScanAnalysis`: the model, a function building the `Scan`, the observables, `time`, `keep`, `on_error` and, for a sensitivity analysis, `indices` (`local`, `sobol`, `fast` or `morris`) with `index_options` |
 | `uncertainties` | the uncertainty analyses by their name, `UncertaintyAnalysis`: the model, functions building the simulation or scenarios, the `UncertaintyModel` and the observables, and the arguments of [`propagate`](uncertainty.md) (`outputs`, `n` or the adaptive `rel_tol`, `n_start` and `n_max`, `design`, `seed`, `keep`, `time`, `on_error`) |
-| `simulator` | the engine and the integrator settings of the analyses |
-| `figure_settings` | the settings of the figures of the experiments |
+| `simulator` | the settings of the simulator of the analyses, `SimulatorSettings`: the engine, `absolute_tolerance`, `relative_tolerance`, `jit_optimization` (the level LLJIT compiles the models of the experiments, fits and tests with) and the other settings of the integrator, `integrator`; the workers belong to a run |
+| `figure_settings` | the rendering of the figures of the experiments, a `FigureSettings` of the plots |
+| `figures` | the files of the figures, `FigureOutputs`: the `formats`, the resolution of the static images `savefig_dpi` and other parameters of matplotlib, `rc` |
+| `checks` | the known exceptions of the checks of the model, `CheckSettings`, each with its reason |
+| `release` | the release metadata, `sbmlsim.release.settings.ReleaseSettings`, `None` for a project which is not released |
 
 The project of the HCTZ example, [`examples/hctz_fitting/project.py`](https://github.com/matthiaskoenig/sbmlsim/blob/develop/examples/hctz_fitting/project.py), is the template of the project of a model package: copy it into a module of your package and replace the experiments, the fits and the analyses with your own. It has the three simulation experiments of the studies, the fit problems `PK` (all pharmacokinetics data) and `IV` (the intravenous data of Beermann 1976), the scans `dose` (three oral doses on a grid of times) and `sobol` (a Sobol design of the dissolution and the renal excretion with its Sobol indices) and the uncertainty analysis `cl` (the AUC under an uncertain renal excretion, 32 draws). A project must be importable wherever the run layer runs: a model package installs it with its package, while the HCTZ example lives in `examples/` of the repository, which is not installed, and needs the root of the repository on the path, `python -m` from the root or `PYTHONPATH`.
 

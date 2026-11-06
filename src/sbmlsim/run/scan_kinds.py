@@ -141,7 +141,8 @@ class UncertaintySpec(SplitSpec):
 class SimulateSpec(Spec):
     """The spec of a run of simulation experiments of a project.
 
-    The figures have the settings of the project, `Project.figure_settings`.
+    The experiments run with the settings of the simulator and of the figures
+    of the project, see `sbmlsim.project.Project.run_experiments`.
 
     Attributes:
         project: the project, `module:attribute`.
@@ -819,7 +820,7 @@ def _experiments(
         raise ConfigurationError(
             f"The project '{spec.project}' has no simulation experiments."
         )
-    classes = {cls.__name__: cls for cls in project.experiments()}
+    classes = {cls.__name__: cls for cls in project.experiment_classes()}
     names = list(classes) if spec.experiments is None else spec.experiments
     unknown = [name for name in names if name not in classes]
     if unknown or not names or len(set(names)) != len(names):
@@ -865,22 +866,11 @@ def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
             experiment ran and the report was written.
     """
     from sbmlsim.experiment.progress import reporting
-    from sbmlsim.experiment.runner import run_experiments
 
     project, experiments = _experiments(spec)
-    workers = _workers(ctx)
-    simulator = project.simulator.simulator(workers)
     with reporting(_experiment_event, shown=False):
-        results = run_experiments(
-            experiments,
-            output_path=ctx.out,
-            base_path=project.base_path or project.root,
-            data_path=project.data_path,
-            figure_settings=project.figure_settings,
-            n_workers=workers,
-            progress=False,
-            raise_on_failure=True,
-            simulator=simulator,
+        results = project.run_experiments(
+            experiments, ctx.out, n_workers=_workers(ctx), progress=False
         )
     return {
         "experiments": len(results),

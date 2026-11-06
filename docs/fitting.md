@@ -520,7 +520,7 @@ A fit always returns numbers, but the data may not determine them. The profile l
 
 ## Running a fit from the command line
 
-Most of a fit is the same for every model, so `sbmlsim.fit.cli` provides it and a model only defines its fits. A `FitDefinition` is everything a fit needs: a function which returns the mapping collections, the parameters, the paths and the settings. `run_fit` builds the problem, runs it and records its provenance; with `output_dir` every run is written to `<output_dir>/<opid>/runs`:
+Most of a fit is the same for every model, so `sbmlsim.fit.cli` provides it and a model only defines its fits. A `FitDefinition` is everything a fit needs: a function which returns the mapping collections, the parameters, the paths and the settings. `jit_optimization` of a definition is the optimization level its problems compile their models with, in the process and in every worker, see [Compilation speed](models.md#compilation-speed); a [project](run.md#projects) gives its fits the level of its simulator settings. `run_fit` builds the problem, runs it and records its provenance; with `output_dir` every run is written to `<output_dir>/<opid>/runs`:
 
 ```python
 from sbmlsim.fit.cli import FitDefinition, run_fit
@@ -581,7 +581,7 @@ python -m examples.hctz_fitting.fitting.run_report results/fit/<fit id>/paramete
 python -m examples.hctz_fitting.fitting.run_report run1/parameters.json run2/parameters.json
 ```
 
-Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`, which names its result and its report folder. Both tools take `--no-mapping-figures` for a fast report and `--group-by tissue` for the groupings of the report; `--help` lists all options.
+Every fit gets an id when it starts, `<problem>_<date>_<time>__<hash>`, e.g. `PK_20260908_144538__ea1ff`, which names its result and its report folder. `sbmlsim.fit.result.fit_subset` reads the problem back from an id. Both tools take `--no-mapping-figures` for a fast report and `--group-by tissue` for the groupings of the report; `--help` lists all options.
 
 ## PEtab
 

@@ -37,7 +37,7 @@ def test_load_project(project: Project) -> None:
     assert set(project.scans) == {"dose", "sobol"}
     assert set(project.uncertainties) == {"cl"}
     assert project.experiments is not None
-    assert [e.__name__ for e in project.experiments()] == [
+    assert [e.__name__ for e in project.experiment_classes()] == [
         "Beermann1976",
         "Patel1984",
         "Weir1998",

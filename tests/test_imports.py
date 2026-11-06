@@ -6,7 +6,8 @@ example. PEtab is imported when a formula is compiled or a PEtab problem is read
 
 A library which must not load a simulator, e.g. the PBPK library of pkpdsim,
 imports the light modules (`sbmlsim.licenses`, `sbmlsim.distrib`,
-`sbmlsim.result.scan`, `sbmlsim.units`), which import no roadrunner.
+`sbmlsim.result.scan`, `sbmlsim.units`, `sbmlsim.release.settings`), which
+import no roadrunner.
 """
 
 import subprocess
@@ -69,7 +70,7 @@ def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
     code = (
         "import sys, sbmlsim; "
         "print(sorted(m for m in ('sbmlsim.run', 'sbmlsim.project', 'sbmlsim.simrun',"
-        " 'simrun') if m in sys.modules))"
+        " 'simrun', 'sbmlsim.release') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -102,14 +103,21 @@ def test_the_run_layer_imports_no_analysis() -> None:
 
 @pytest.mark.parametrize(
     "module",
-    ["sbmlsim.licenses", "sbmlsim.distrib", "sbmlsim.result.scan", "sbmlsim.units"],
+    [
+        "sbmlsim.licenses",
+        "sbmlsim.distrib",
+        "sbmlsim.result.scan",
+        "sbmlsim.units",
+        "sbmlsim.release.settings",
+    ],
 )
 def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
     """A library which must not load a simulator imports these modules.
 
     The PBPK library of pkpdsim reads the support of a distrib formula and the
     start values of a scan result, defines units and writes the license texts
-    of a model without loading roadrunner.
+    of a model without loading roadrunner; a model package defines the release
+    metadata of its project.
     """
     code = (
         f"import sys, {module}; "
