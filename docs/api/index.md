@@ -80,6 +80,7 @@ Simulation experiments and their results, see [Simulation experiments](../experi
 | [experiment.experiment](experiment.experiment.md) | `SimulationExperiment`, models, datasets, simulations, tasks, data and figures of an experiment |
 | [experiment.runner](experiment.runner.md) | `ExperimentRunner`, executing experiments and writing their results |
 | [experiment.progress](experiment.progress.md) | `RunProgress` and `PhaseClock`, the progress of a run of experiments and the seconds of their phases |
+| [experiment.draws](experiment.draws.md) | `UncertaintySettings`, `UncertaintyRun` and `apply_uncertainty`, the experiments over draws of the fitted parameters with bands; `check_fit_parameters` of the variants of a project |
 | [experiment.sids](experiment.sids.md) | `to_sid`, the SId of a text such as a label of the data, a key of an experiment |
 | [result.timecourse](result.timecourse.md) | `TimecourseResult`, the array of the selections of a single timecourse simulation |
 | [result.scan](result.scan.md) | `ScanResult`, the result of a scan as an xarray dataset with units, and the functions of a point: its timecourse with the state after a change, the start and end values, the band of the draws |

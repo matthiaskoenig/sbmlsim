@@ -2,6 +2,8 @@
 
 A prediction depends on inputs that are not known exactly: a dose and a body weight reported as mean ± SD, a parameter from the literature with a CV, a clearance with an interval. `sbmlsim.uncertainty` lets you declare such values as uncertain where you use them, runs them through the simulations, and answers questions about the predictions with their Monte Carlo error.
 
+To repeat the simulation experiments of a project over draws of the fitted parameters of its adopted fits, with the curves of the figures as bands, see [Simulation experiments](experiments.md#over-the-draws-of-the-fitted-parameters).
+
 The example on this page is midazolam, a sedative that the liver clears. The question is how much an inhibitor of the liver enzyme, which leaves 30 % of its activity, raises the exposure to midazolam.
 
 ## Uncertain values

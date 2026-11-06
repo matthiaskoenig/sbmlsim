@@ -41,6 +41,7 @@ directory of the records of the adopted fits (`Project.fits_dir`):
 import dataclasses
 import importlib
 import json
+import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
@@ -65,6 +66,7 @@ if TYPE_CHECKING:
     import roadrunner
 
     from sbmlsim.experiment import ExperimentResult, SimulationExperiment
+    from sbmlsim.experiment.draws import UncertaintySettings
     from sbmlsim.fit.cli import FitDefinition
     from sbmlsim.fit.records import AdoptedRecords
     from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -82,6 +84,8 @@ else:
 __all__ = [
     "ADOPTED_FILE",
     "ALL_SUBSETS",
+    "COLLECTED_FORMATS",
+    "FIGURES_DIR",
     "CheckSettings",
     "FigureOutputs",
     "Project",
@@ -89,11 +93,19 @@ __all__ = [
     "SimulatorSettings",
     "UncertaintyAnalysis",
     "check_reference",
+    "collect_figure_files",
     "load_project",
     "normalize_formats",
     "resolve",
     "write_adopted",
 ]
+
+#: the formats of the figures which a run of experiments with `collect_figures`
+#: copies into `FIGURES_DIR` of its output, see `Project.run_experiments`
+COLLECTED_FORMATS: tuple[str, ...] = ("png", "svg")
+
+#: the directory of the collected figures in the output of a run of experiments
+FIGURES_DIR = "_figures"
 
 #: the file of the adopted fits of a project, see `write_adopted`
 ADOPTED_FILE = "adopted.json"
@@ -1091,6 +1103,8 @@ class Project(BaseModel):
         show_report: bool = False,
         progress: bool | None = None,
         raise_on_failure: bool = True,
+        uncertainty: UncertaintySettings | None = None,
+        collect_figures: bool = False,
     ) -> list[ExperimentResult]:
         """Run simulation experiments of the project and write their report.
 
@@ -1101,6 +1115,12 @@ class Project(BaseModel):
         implementation as `Project.run_experiments(project, ...)`, so a subclass
         may override the method with another signature and result without
         breaking it.
+
+        With `uncertainty` the experiments run over draws of the fitted
+        parameters of the model: the parameters of the default variant which
+        have a distribution are drawn once (`UncertaintyRun.create`), every
+        experiment runs every simulation over the draws and draws the curves
+        of the simulations as bands, see `sbmlsim.experiment.draws`.
 
         Args:
             experiments: the experiment classes, or names of groups or classes
@@ -1119,13 +1139,20 @@ class Project(BaseModel):
             progress: show the progress and the timings on the console, see
                 `ExperimentRunner.run_experiments`.
             raise_on_failure: raise when an experiment or a figure failed, after
-                every experiment ran and the report was written.
+                every experiment ran and the report was written (and the
+                figures were collected).
+            uncertainty: run the experiments over draws of the fitted
+                parameters, `None` runs them once.
+            collect_figures: copy the static figures of every experiment
+                (`COLLECTED_FORMATS`) into `FIGURES_DIR` of `out`.
 
         Returns:
             The results of the experiments.
 
         Raises:
-            ValueError: if the project has no experiments.
+            ValueError: if the project has no experiments, or with
+                `uncertainty` no parameter of its default variant has a
+                distribution.
             KeyError: for an unknown name of an experiment.
             TypeError: if `figure_formats` is a single string.
             ExperimentRunError: with `raise_on_failure`, if an experiment or a
@@ -1133,20 +1160,35 @@ class Project(BaseModel):
         """
         import matplotlib
 
+        from sbmlsim import display
+        from sbmlsim.experiment import ExperimentRunError
+        from sbmlsim.experiment.draws import UncertaintyRun
         from sbmlsim.experiment.runner import run_experiments
 
         classes = self._classes(experiments)
         formats = normalize_formats(figure_formats or ()) or self.figures.formats
         settings = simulator or self.simulator
+        run: UncertaintyRun | None = None
+        if uncertainty is not None:
+            run = UncertaintyRun.create(self, uncertainty)
+            low, high = uncertainty.quantiles
+            display.key_values(
+                {
+                    "uncertainty": f"{uncertainty.draws} draws of "
+                    f"{len(run.dimension.values)} parameters, seed "
+                    f"{uncertainty.seed}, bands {low:g} to {high:g}"
+                }
+            )
+        output_path = Path(out)
         rc: dict[Any, Any] = self.figures.rc_params()
         with matplotlib.rc_context(rc):
-            return run_experiments(
+            results = run_experiments(
                 classes,
-                output_path=Path(out),
+                output_path=output_path,
                 base_path=self.base_path or self.root,
                 data_path=self.data_path,
                 show_report=show_report,
-                raise_on_failure=raise_on_failure,
+                raise_on_failure=False,
                 figure_settings=self.figure_settings,
                 n_workers=n_workers,
                 progress=progress,
@@ -1155,7 +1197,13 @@ class Project(BaseModel):
                 save_results=save_results,
                 reduced_selections=reduced_selections,
                 jit_optimization=settings.jit_optimization,
+                uncertainty=run,
             )
+        if collect_figures:
+            collect_figure_files(output_path)
+        if raise_on_failure and any(result.failed for result in results):
+            raise ExperimentRunError(results)
+        return results
 
     # ------------------------------------------------------------------------
     # fits
@@ -1408,6 +1456,28 @@ def load_project(ref: str) -> Project:
     if not isinstance(project, Project):
         raise ValueError(f"'{ref}' is no Project, it is a '{type(project).__name__}'.")
     return project
+
+
+def collect_figure_files(output_path: Path) -> Path:
+    """Copy the static figures of a run of experiments into one directory.
+
+    Args:
+        output_path: the output of the run.
+
+    Returns:
+        The directory of the figures, `FIGURES_DIR` of the output, which has
+        every figure of `COLLECTED_FORMATS` of the experiments.
+    """
+    from sbmlsim import display
+
+    figures_dir = output_path / FIGURES_DIR
+    figures_dir.mkdir(parents=True, exist_ok=True)
+    for suffix in COLLECTED_FORMATS:
+        for path in sorted(output_path.glob(f"**/*.{suffix}")):
+            if path.parent != figures_dir:
+                shutil.copy2(path, figures_dir / path.name)
+    display.link("figures", figures_dir)
+    return figures_dir
 
 
 def write_adopted(path: Path, fits: Mapping[str, str]) -> None:
