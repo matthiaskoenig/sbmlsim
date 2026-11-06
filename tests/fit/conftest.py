@@ -16,14 +16,11 @@ from typing import Any
 
 import pytest
 
-from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.metadata import HCTZMappingMetaData, Route
-from examples.hctz_fitting.experiments.studies import Beermann1976
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
-from sbmlsim.fit import FitMapping, FitMappingCollection, FitSettings
+from sbmlsim.fit import FitMapping, FitSettings
 from sbmlsim.fit.cli import FitDefinition, run_fit
 from sbmlsim.fit.fisher import fisher_information
-from sbmlsim.fit.helpers import select_mapping_collections
 from sbmlsim.fit.identifiability import ProfileSettings, profile_likelihood
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import (
@@ -60,12 +57,6 @@ def definition_hctz_pk() -> FitDefinition:
     return FIT_DEFINITIONS["PK"]
 
 
-def _is_iv(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
-    """Accept the iv data."""
-    metadata = fit_mapping.metadata
-    return isinstance(metadata, HCTZMappingMetaData) and metadata.route is Route.IV
-
-
 def is_oral(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     """Select the oral mappings of the HCTZ problem.
 
@@ -86,33 +77,10 @@ def is_intravenous(fit_mapping_key: str, fit_mapping: FitMapping) -> bool:
     return isinstance(metadata, HCTZMappingMetaData) and metadata.route is Route.IV
 
 
-def _collections_iv() -> dict[str, list[FitMappingCollection]]:
-    """Select the iv data of Beermann1976, the rest is excluded."""
-    return select_mapping_collections(
-        experiment_classes=[Beermann1976],
-        base_path=HCTZ_PATH,
-        data_path=DATA_PATH,
-        filters=[_is_iv],
-        print_info=False,
-    )
-
-
-def _definition_iv() -> FitDefinition:
-    """Create the definition of the fit of the iv data of Beermann1976."""
-    pk = FIT_DEFINITIONS["PK"]
-    return FitDefinition(
-        mapping_collections=_collections_iv,
-        parameters=pk.parameters,
-        base_path=pk.base_path,
-        data_path=pk.data_path,
-        settings=pk.settings,
-    )
-
-
 @pytest.fixture
 def definition_hctz_iv() -> FitDefinition:
     """Get the definition of the fit of the iv data of Beermann1976."""
-    return _definition_iv()
+    return FIT_DEFINITIONS["IV"]
 
 
 @pytest.fixture(scope="session")
@@ -122,7 +90,7 @@ def _op_hctz_iv_template() -> OptimizationProblem:
     Only the copies in `op_hctz_iv` are handed to a test, so this problem is
     never initialized.
     """
-    return _definition_iv().problem(opid="hctz_iv")
+    return FIT_DEFINITIONS["IV"].problem(opid="hctz_iv")
 
 
 @pytest.fixture
