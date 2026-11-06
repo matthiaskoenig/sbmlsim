@@ -164,8 +164,14 @@ class DrawsSpec(BaseModel):
 
     @model_validator(mode="after")
     def _check(self) -> Self:
-        """Check the draws and the quantiles as the settings do."""
-        self.settings(seed=0)
+        """Check the draws and the quantiles as the settings do.
+
+        `sbmlsim.distrib.check_band`, so a spec is checked without importing
+        the experiments.
+        """
+        from sbmlsim.distrib import check_band
+
+        check_band(self.draws, self.quantiles)
         return self
 
     def settings(self, seed: int | None = None) -> UncertaintySettings:

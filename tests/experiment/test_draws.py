@@ -5,11 +5,14 @@ adopted fit of the toy project with its uncertainty (`tests.project_toy.records`
 """
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, override
 
 import numpy as np
 import pytest
+import xarray as xr
 from pydantic import ValidationError
 
 from sbmlsim import Q, run
@@ -27,6 +30,7 @@ from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Curve, Figure
 from sbmlsim.plot.plotting import Band
 from sbmlsim.project import FIGURES_DIR, Project, write_adopted
+from sbmlsim.result import ScanResult
 from sbmlsim.result.scan import point_timecourse
 from sbmlsim.run.kinds import ConfigurationError
 from sbmlsim.simulation import Dimension, Scan, Simulation
@@ -227,10 +231,22 @@ def test_a_parameter_which_a_simulation_sets_is_not_drawn(
 
 
 def test_without_draws_the_experiment_is_unchanged() -> None:
-    exp = initialized(ToyDecay, None)
+    exp = initialized(ToyPhase, None)
     assert exp.uncertainty is None
     assert exp.across() is None
     assert isinstance(exp._simulations["decay"], Simulation)
+    assert set(exp._simulations) == {"decay"}
+    assert set(exp._tasks) == {"task_decay"}
+    (plot,) = exp._figures["fig_decay"].get_plots()
+    assert not plot.bands
+    # the curves of the definition, as the experiment defines them
+    (defined,) = ToyPhase(base_path=TOY_PATH).figures()["fig_decay"].get_plots()
+
+    def lines(curves: list[Curve]) -> list[tuple[Any, ...]]:
+        return [(c.name, c.x.index, c.y.index, c.y.task_id, c.y.sel) for c in curves]
+
+    assert lines(plot.curves) == lines(defined.curves)
+    assert len(plot.curves) == 2
 
 
 def test_a_wrong_setting_raises() -> None:
@@ -415,26 +431,41 @@ def test_the_draws_reach_another_variant(
 def test_a_project_runs_its_experiments_over_the_draws_in_a_pool(
     toy_out: Path, toy_with_uncertainty: Path, tmp_path: Path
 ) -> None:
-    """The draws reach the workers of a pool as a setting of the experiments."""
+    """The draws reach the workers of a pool, whose results are those of a serial run."""
     project = adopted(toy_out, {"default": toy_with_uncertainty})
-    results = project.run_experiments(
-        ["ToyDecay", "ToyDecayHalf"],
-        tmp_path,
-        n_workers=2,
-        progress=False,
-        figure_formats=["png"],
-        uncertainty=UncertaintySettings(draws=3, seed=2),
-        collect_figures=True,
-    )
-    assert not any(result.failed for result in results)
-    assert (tmp_path / "index.html").exists()
-    collected = sorted(p.name for p in (tmp_path / FIGURES_DIR).iterdir())
-    assert collected == ["ToyDecayHalf_fig_decay.png", "ToyDecay_fig_decay.png"]
-    # the parent keeps its experiments for the report, over the same draws
-    decay = next(r.experiment for r in results if r.experiment.sid == "ToyDecay")
-    assert decay.uncertainty is not None
-    assert decay.uncertainty.settings.draws == 3
-    assert isinstance(decay._simulations["decay"], Scan)
+    outs: dict[int, Path] = {}
+    for n_workers in (2, 1):
+        out = outs[n_workers] = tmp_path / f"workers_{n_workers}"
+        results = project.run_experiments(
+            ["ToyDecay", "ToyDecayHalf"],
+            out,
+            n_workers=n_workers,
+            progress=False,
+            figure_formats=["png"],
+            save_results=True,
+            uncertainty=UncertaintySettings(draws=3, seed=2),
+            collect_figures=True,
+        )
+        assert not any(result.failed for result in results)
+        assert (out / "index.html").exists()
+        collected = sorted(p.name for p in (out / FIGURES_DIR).iterdir())
+        assert collected == ["ToyDecayHalf_fig_decay.png", "ToyDecay_fig_decay.png"]
+        # the parent keeps its experiments for the report, over the same draws
+        decay = next(r.experiment for r in results if r.experiment.sid == "ToyDecay")
+        assert decay.uncertainty is not None
+        assert decay.uncertainty.settings.draws == 3
+        assert isinstance(decay._simulations["decay"], Scan)
+    files = sorted(p.relative_to(outs[1]) for p in outs[1].rglob("*.nc"))
+    assert sorted(f.name for f in files) == [
+        "ToyDecayHalf_task_decay.nc",
+        "ToyDecay_task_decay.nc",
+    ]
+    for file in files:
+        serial = ScanResult.from_netcdf(outs[1] / file)
+        pooled = ScanResult.from_netcdf(outs[2] / file)
+        xr.testing.assert_identical(pooled.ds, serial.ds)
+    drawn = ScanResult.from_netcdf(outs[1] / "ToyDecay" / "ToyDecay_task_decay.nc")
+    assert drawn.ds.sizes[UNCERTAINTY_DIMENSION] == 3
 
 
 def test_the_figures_are_collected_before_the_failures_are_raised(
@@ -489,3 +520,20 @@ def test_the_draws_of_the_simulate_kind_are_checked(tmp_path: Path) -> None:
     spec = {"project": "tests.project_toy:PROJECT", "uncertainty": {"draws": 3}}
     with pytest.raises(ConfigurationError, match="No parameter"):
         run.execute("simulate", spec, tmp_path / "other", workers=1)
+
+
+def test_a_spec_of_draws_is_checked_without_the_experiments() -> None:
+    """The run layer parses a spec of draws without importing the experiments."""
+    code = (
+        "import sys\n"
+        "from sbmlsim.run.scan_kinds import SimulateSpec\n"
+        "SimulateSpec(project='a:b', uncertainty={'draws': 3})\n"
+        "try:\n"
+        "    SimulateSpec(project='a:b', uncertainty={'quantiles': [0.9, 0.1]})\n"
+        "except ValueError as err:\n"
+        "    assert 'quantiles' in str(err)\n"
+        "else:\n"
+        "    raise AssertionError('not checked')\n"
+        "assert 'sbmlsim.experiment' not in sys.modules\n"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
