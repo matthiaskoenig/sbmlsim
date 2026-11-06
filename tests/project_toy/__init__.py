@@ -5,7 +5,8 @@ model has two variants, the decay at the rate 0.2/min (`default`) and at
 0.1/min (`slow`), which the factory (`factory.create_toy_models`) writes into
 `models`. The experiments, the fits, the factory and the credibility
 declaration are references, so importing the package imports none of them, nor
-roadrunner. The scan `decay` scans the rate of the decay.
+roadrunner. The scan `decay` scans the rate of the decay, the action `rates`
+writes a table of the rates of the variants (`actions.write_rates`).
 """
 
 from pathlib import Path
@@ -14,6 +15,7 @@ from sbmlsim.project import (
     CheckSettings,
     FigureOutputs,
     Project,
+    ProjectAction,
     ScanAnalysis,
     SimulatorSettings,
 )
@@ -49,6 +51,13 @@ PROJECT = Project(
             scan=decay_scan,
             description="three rates of the decay",
         )
+    },
+    actions={
+        "rates": ProjectAction(
+            function=".actions:write_rates",
+            description="the table of the rates of the variants",
+        ),
+        "nothing": ".actions:nothing",
     },
     simulator=SimulatorSettings(
         absolute_tolerance=1e-10, relative_tolerance=1e-10, jit_optimization="O0"

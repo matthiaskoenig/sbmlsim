@@ -189,6 +189,7 @@ KINDS: dict[str, Kind[Any]] = {}
 _BUILTIN_MODULES: tuple[str, ...] = (
     "sbmlsim.run.fit_kinds",
     "sbmlsim.run.scan_kinds",
+    "sbmlsim.run.project_kinds",
 )
 
 _lock = threading.Lock()

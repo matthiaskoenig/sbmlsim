@@ -23,9 +23,11 @@ from sbmlsim.project import (
     CheckSettings,
     FigureOutputs,
     Project,
+    ProjectAction,
     SimulatorSettings,
     check_reference,
     resolve,
+    same_sbml,
     write_adopted,
 )
 from tests.project_toy import PROJECT, TOY_PATH
@@ -303,12 +305,36 @@ def test_a_rebuild_has_the_layout_of_the_package(tmp_path: Path) -> None:
     factory_dir = PROJECT.factory_dir
     assert factory_dir is not None
     out = tmp_path / "rebuild"
-    built = PROJECT.create_models(out / factory_dir.relative_to(PROJECT.root))
-    assert built == out / "models"
+    built = PROJECT.create_models(out)
+    assert built == out / factory_dir.relative_to(PROJECT.root) == out / "models"
     rebuilt = PROJECT.factory_paths(out)
     assert rebuilt == [out / o for o in PROJECT.factory_outputs]
     for new, old in zip(rebuilt, PROJECT.factory_paths(), strict=True):
         assert new.read_bytes() == old.read_bytes()
+    assert PROJECT.changed_outputs(out) == []
+
+
+def test_the_changed_outputs_of_a_rebuild(tmp_path: Path) -> None:
+    out = tmp_path / "rebuild"
+    PROJECT.create_models(out)
+    toy, slow = PROJECT.factory_paths(out)
+    # a date of the model history is no change
+    text = toy.read_text(encoding="utf-8")
+    dated = text.replace(
+        "</model>", "</model>\n<!-- <dcterms:created>2026</dcterms:created> -->"
+    )
+    toy.write_text(dated, encoding="utf-8")
+    assert same_sbml(text, dated)
+    assert PROJECT.changed_outputs(out) == []
+    slow.write_text(
+        slow.read_text(encoding="utf-8").replace("0.1", "0.3"), encoding="utf-8"
+    )
+    assert PROJECT.changed_outputs(out) == [Path("models/toy_slow.xml")]
+    toy.unlink()
+    assert PROJECT.changed_outputs(out) == [
+        Path("models/toy.xml"),
+        Path("models/toy_slow.xml"),
+    ]
 
 
 def test_the_factory_directory_is_inside_the_root(tmp_path: Path) -> None:
@@ -331,6 +357,38 @@ def test_a_factory_which_is_missing_or_no_function() -> None:
         PROJECT.replace(factory=None).load_factory()
     with pytest.raises(TypeError, match="not a function"):
         PROJECT.replace(factory="tests.project_toy:TOY_PATH").load_factory()
+
+
+def test_the_actions_of_a_project() -> None:
+    from tests.project_toy.actions import nothing, write_rates
+
+    assert PROJECT.action("nothing") == ProjectAction(function=".actions:nothing")
+    assert PROJECT.load_action("rates") is write_rates
+    assert PROJECT.load_action("nothing") is nothing
+    project = PROJECT.replace(actions={"direct": write_rates})
+    assert project.action("direct").function is write_rates
+    with pytest.raises(KeyError, match=r"no action 'other'.*\['direct'\]"):
+        project.action("other")
+    with pytest.raises(TypeError, match="not a function"):
+        PROJECT.replace(actions={"x": "tests.project_toy:TOY_PATH"}).load_action("x")
+
+
+@pytest.mark.parametrize(
+    ("actions", "message"),
+    [
+        ({" ": ".actions:nothing"}, "needs a name"),
+        ({"x": "no reference"}, "module:attribute"),
+        ({"x": {"function": ".actions:nothing", "other": 1}}, "Extra inputs"),
+    ],
+)
+def test_invalid_actions(actions: dict[str, object], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        PROJECT.replace(actions=actions)
+
+
+def test_a_relative_action_needs_a_package() -> None:
+    with pytest.raises(ValidationError, match="needs the package"):
+        Project(name="x", root=TOY_PATH, actions={"x": ".actions:nothing"})
 
 
 def test_a_project_without_credibility() -> None:
@@ -489,7 +547,30 @@ def test_the_analyses_of_the_toy() -> None:
             for kind in ["fit", "identifiability", "fisher", "report", "petab"]
         ],
         ("scan", "decay"),
+        ("action", "rates"),
+        ("action", "nothing"),
+        ("factory", "models"),
     ]
+    descriptions = {a["name"]: a["description"] for a in PROJECT.analyses()}
+    assert descriptions["rates"] == "the table of the rates of the variants"
+    assert descriptions["nothing"] == "the action 'nothing'"
+
+
+def test_the_analyses_with_the_experiments() -> None:
+    entries = PROJECT.analyses(experiments=True)
+    simulate = {a["name"]: a["description"] for a in entries if a["kind"] == "simulate"}
+    assert list(simulate) == [
+        "all",
+        "studies",
+        "variants",
+        "ToyDecay",
+        "ToyDecaySlow",
+        "ToyDecayHalf",
+    ]
+    assert (
+        simulate["variants"] == "the group of experiments: ToyDecaySlow, ToyDecayHalf"
+    )
+    assert simulate["ToyDecaySlow"] == "The decay of the slow variant of the model."
 
 
 def test_run_experiments_writes_into_out(
@@ -542,6 +623,54 @@ def test_the_figure_outputs_reach_the_workers_of_a_pool(tmp_path: Path) -> None:
     for png in pngs:
         with Image.open(png) as image:
             assert image.size[0] < 7 * 40, png
+
+
+def test_the_experiments_run_in_a_pool_with_serial_scans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`n_workers=None, scan_workers=1`: a pool of experiments, a serial simulator."""
+    from sbmlsim import cgroup
+    from sbmlsim.experiment import runner
+
+    seen: list[tuple[int | None, tuple[int, str | None]]] = []
+    workers = runner.ExperimentRunner._workers
+
+    def recording(
+        self: runner.ExperimentRunner, n_workers: int | None, *args: Any
+    ) -> tuple[int, str | None]:
+        chosen = workers(self, n_workers, *args)
+        assert self.simulator is not None
+        seen.append((self.simulator.n_workers, chosen))
+        return chosen
+
+    # a worker per experiment of two CPUs
+    monkeypatch.setattr(runner, "EXPERIMENTS_PER_WORKER", 1)
+    monkeypatch.setattr(cgroup, "available_cpus", lambda: 2)
+    monkeypatch.setattr(runner.ExperimentRunner, "_workers", recording)
+    results = PROJECT.run_experiments(
+        None, tmp_path, n_workers=None, scan_workers=1, progress=False
+    )
+    assert len(results) == 3
+    assert not any(result.failed for result in results)
+    assert seen == [(1, (2, None))]
+
+
+def test_the_scans_take_the_workers_of_the_run_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sbmlsim.experiment import runner
+
+    given: dict[str, Any] = {}
+
+    def run_experiments(experiments: list[Any], **kwargs: Any) -> list[Any]:
+        given.update(kwargs)
+        return []
+
+    monkeypatch.setattr(runner, "run_experiments", run_experiments)
+    PROJECT.run_experiments(None, tmp_path, n_workers=3)
+    assert (given["n_workers"], given["simulator"].n_workers) == (3, 3)
+    PROJECT.run_experiments(None, tmp_path, n_workers=None, scan_workers=1)
+    assert (given["n_workers"], given["simulator"].n_workers) == (None, 1)
 
 
 def test_run_experiments_compiles_at_the_level_of_the_project(

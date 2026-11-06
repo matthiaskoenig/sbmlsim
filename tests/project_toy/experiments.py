@@ -99,6 +99,12 @@ class ToyDecayHalf(ToyExperiment):
     rate = 0.1
 
 
+class ToyUnregistered(ToyExperiment):
+    """The decay at twice the rate of the model, not registered on purpose."""
+
+    rate = 0.4
+
+
 EXPERIMENTS: Mapping[str, list[type[SimulationExperiment]]] = {
     "studies": [ToyDecay],
     "variants": [ToyDecaySlow, ToyDecayHalf],

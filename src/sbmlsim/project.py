@@ -2,9 +2,10 @@
 
 A `Project` describes a model package once: its model variants and the factory
 which builds them, its simulation experiments, its fit problems and the records
-of its adopted fits, its scans with their sensitivity indices and its
-uncertainty analyses, the settings of the simulator and of the figures, the
-known exceptions of its checks and its release metadata. It is a description,
+of its adopted fits, its scans with their sensitivity indices, its
+uncertainty analyses and its actions (analyses of its own), the settings of
+the simulator and of the figures, the known exceptions of its checks
+(`sbmlsim.project_checks`) and its release metadata. It is a description,
 nothing of it runs when it is created.
 
 A model package defines its project as an attribute of a module, e.g.
@@ -14,8 +15,8 @@ analysis: name}` (or `subset: name` for a fit) against it and lists the
 analyses of a project with `python -m sbmlsim.run list <project>`, see
 `Project.analyses`.
 
-The experiments, the fits, the factory and the credibility declaration of a
-project are objects or references `"module:attribute"` to them, which are
+The experiments, the fits, the factory, the credibility declaration and the
+functions of the actions of a project are objects or references `"module:attribute"` to them, which are
 resolved when they are used (`resolve`) and kept, so that importing the module
 of a project imports none of them: the experiments import the module of their
 project for its paths, so the project cannot import them, and a package of many
@@ -41,11 +42,12 @@ directory of the records of the adopted fits (`Project.fits_dir`):
 import dataclasses
 import importlib
 import json
+import re
 import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, override
+from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, override
 
 from pydantic import (
     BaseModel,
@@ -86,9 +88,11 @@ __all__ = [
     "ALL_SUBSETS",
     "COLLECTED_FORMATS",
     "FIGURES_DIR",
+    "ActionFunction",
     "CheckSettings",
     "FigureOutputs",
     "Project",
+    "ProjectAction",
     "ScanAnalysis",
     "SimulatorSettings",
     "UncertaintyAnalysis",
@@ -97,6 +101,7 @@ __all__ = [
     "load_project",
     "normalize_formats",
     "resolve",
+    "same_sbml",
     "write_adopted",
 ]
 
@@ -118,6 +123,9 @@ ALL_EXPERIMENTS = "all"
 #: fit, no fit subset of a project
 ALL_SUBSETS = "all"
 
+#: the name of the analysis of the factory in `Project.analyses`
+FACTORY_ANALYSIS = "models"
+
 #: the kinds of the analyses of a fit subset, in the order `Project.analyses`
 #: lists them
 FIT_KINDS: tuple[str, ...] = ("fit", "identifiability", "fisher", "report", "petab")
@@ -137,6 +145,45 @@ _NOT_INTEGRATOR_SETTINGS = frozenset({"engine", "n_workers", "jit_optimization"}
 
 #: the configuration of the models of a project
 _CONFIG = ConfigDict(arbitrary_types_allowed=True, extra="forbid", frozen=True)
+
+#: a line of the SBML of a model with a date of its model history
+_HISTORY_DATE = re.compile(r"<dcterms:(created|modified)\b|<dcterms:W3CDTF>")
+
+#: the suffixes of the outputs of a factory which are compared as SBML
+_SBML_SUFFIXES = frozenset({".xml", ".sbml"})
+
+
+def same_sbml(a: str, b: str) -> bool:
+    """Compare the SBML of two models without the dates of their model history.
+
+    A factory writes the dates of its run into the model history, so a rebuild
+    of an unchanged model differs from the model only in the lines of these
+    dates.
+
+    Args:
+        a: the content of one file.
+        b: the content of the other.
+
+    Returns:
+        Whether they are equal but for the lines with a date.
+    """
+
+    def lines(text: str) -> list[str]:
+        return [line for line in text.splitlines() if not _HISTORY_DATE.search(line)]
+
+    return lines(a) == lines(b)
+
+
+def _same_output(a: Path, b: Path) -> bool:
+    """Compare two outputs of a factory, an SBML file without its dates."""
+    if a.suffix.lower() in _SBML_SUFFIXES:
+        try:
+            return same_sbml(
+                a.read_text(encoding="utf-8"), b.read_text(encoding="utf-8")
+            )
+        except UnicodeDecodeError:
+            pass
+    return a.read_bytes() == b.read_bytes()
 
 
 def check_reference(reference: str) -> None:
@@ -403,7 +450,13 @@ class FigureOutputs(BaseModel):
 class CheckSettings(BaseModel):
     """The known exceptions of the checks of a model package, each with its reason.
 
+    The checks are the functions of `sbmlsim.project_checks`.
+
     Attributes:
+        experiment_modules: the module of the experiments relative to the
+            package, a package whose modules define the experiment classes or
+            a module which defines them, see
+            `sbmlsim.project_checks.experiment_modules`.
         not_registered: experiment classes which are defined but not in the
             group `all` of the experiments on purpose, by class name.
         not_importable: modules below the package which do not import in the
@@ -418,6 +471,7 @@ class CheckSettings(BaseModel):
 
     model_config = _CONFIG
 
+    experiment_modules: str = "experiments"
     not_registered: Mapping[str, str] = {}
     not_importable: Mapping[str, str] = {}
     one_at_a_time: str | None = None
@@ -523,6 +577,53 @@ class UncertaintyAnalysis(BaseModel):
     description: str = ""
 
 
+class ActionFunction(Protocol):
+    """The function of an action of a project, see `ProjectAction`.
+
+    It is called with the project, the output directory of the run, which
+    exists and which the action writes into, the number of processes the run
+    may use and the arguments of the spec of the run as keywords, and returns
+    the summary of the run, JSON values by name, or `None`.
+    """
+
+    def __call__(
+        self, project: Project, out: Path, /, *, workers: int, **arguments: Any
+    ) -> Mapping[str, Any] | None:
+        """Run the action into `out`."""
+        ...
+
+
+class ProjectAction(BaseModel):
+    """An action of a project, an analysis of its own, e.g. a table of its studies.
+
+    The kind `action` of the run layer runs it into its output directory,
+    `python -m sbmlsim.run action <spec>` with the spec `{project, name,
+    arguments}`, see `sbmlsim.run.project_kinds`.
+
+    Attributes:
+        function: the function of the action, see `ActionFunction`, or a
+            reference `"module:attribute"` to it.
+        description: what the action does, its entry in `Project.analyses`.
+    """
+
+    model_config = _CONFIG
+
+    function: Callable[..., Any] | str
+    description: str = ""
+
+    @field_validator("function")
+    @classmethod
+    def _check_function(cls, value: Any) -> Any:
+        """Check the form of a reference, without resolving it.
+
+        Raises:
+            ValueError: for a malformed reference.
+        """
+        if isinstance(value, str):
+            check_reference(value)
+        return value
+
+
 def _named[T](kind: str, items: Mapping[str, T], name: str) -> T:
     """Get an analysis of a project by its name.
 
@@ -591,6 +692,9 @@ class Project(BaseModel):
             reference to it, see `load_credibility`.
         scans: the scans by their name.
         uncertainties: the uncertainty analyses by their name.
+        actions: the actions of the project by their name, analyses of its
+            own which the kind `action` runs, see `ProjectAction`; a function
+            or a reference is an action without a description.
         simulator: the settings of the simulator of the analyses.
         figure_settings: the settings of the rendering of the figures of a run.
         figures: the formats of the figures of a run and the parameters of
@@ -620,6 +724,7 @@ class Project(BaseModel):
     credibility: Any = None
     scans: Mapping[str, ScanAnalysis] = {}
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
+    actions: Mapping[str, ProjectAction] = {}
     simulator: SimulatorSettings = SimulatorSettings()
     figure_settings: FigureSettings | None = None
     figures: FigureOutputs = FigureOutputs()
@@ -649,6 +754,44 @@ class Project(BaseModel):
                     "project."
                 )
         return value
+
+    @field_validator("actions", mode="before")
+    @classmethod
+    def _check_actions(cls, value: Any, info: ValidationInfo) -> Any:
+        """Get the actions, a function or a reference an action of its own.
+
+        Raises:
+            ValueError: for an action without a name and a relative reference
+                without a package.
+        """
+        if not isinstance(value, Mapping):
+            return value
+        actions: dict[Any, Any] = {}
+        for name, action in value.items():
+            if isinstance(name, str) and not name.strip():
+                raise ValueError("An action of a project needs a name.")
+            if isinstance(action, str) or (
+                callable(action) and not isinstance(action, (ProjectAction, type))
+            ):
+                action = ProjectAction(function=action)
+            function = (
+                action.function
+                if isinstance(action, ProjectAction)
+                else action.get("function")
+                if isinstance(action, Mapping)
+                else None
+            )
+            if (
+                isinstance(function, str)
+                and function.startswith(".")
+                and info.data.get("package") is None
+            ):
+                raise ValueError(
+                    f"The relative reference '{function}' of the action '{name}' "
+                    "needs the package of the project."
+                )
+            actions[name] = action
+        return actions
 
     @field_validator("base_path", "fits_dir", "adopted", "factory_dir")
     @classmethod
@@ -894,31 +1037,35 @@ class Project(BaseModel):
         return factory
 
     def create_models(self, out: Path | None = None) -> Path:
-        """Build the models with the factory.
+        """Build the models with the factory, in place or into a rebuild.
 
         By default the factory builds the models in place, into `factory_dir`.
-        A rebuild into another directory `out` keeps the layout of the package
-        with `create_models(out / project.factory_dir.relative_to(project.root))`,
+        A rebuild into another directory `out` keeps the layout of the
+        package: the factory writes into `out / factory_dir.relative_to(root)`,
         so an output `o` of `factory_outputs` is `out / o` there and `root / o`
-        in the package, see `factory_paths`.
+        in the package, see `factory_paths` and `changed_outputs`.
 
         Args:
-            out: the directory the factory writes into, `factory_dir` without;
-                a relative directory is relative to the current directory.
+            out: the root of a rebuild, the package (`root`) without; a
+                relative directory is relative to the current directory.
 
         Returns:
-            The directory.
+            The directory the factory wrote into.
 
         Raises:
             ValueError: if the project has no factory or no directory of it.
         """
         factory = self.load_factory()
-        directory = out if out is not None else self.factory_dir
-        if directory is None:
+        if self.factory_dir is None:
             raise ValueError(
                 f"The project '{self.name}' has neither a directory of its factory "
                 "nor model variants: give factory_dir."
             )
+        directory = (
+            self.factory_dir
+            if out is None
+            else Path(out) / self.factory_dir.relative_to(self.root)
+        )
         factory(directory)
         return directory
 
@@ -926,14 +1073,41 @@ class Project(BaseModel):
         """Get the files the factory writes, `factory_outputs`.
 
         Args:
-            out: the directory of a rebuild with the layout of the package, see
+            out: the root of a rebuild with the layout of the package, see
                 `create_models`; the package (`root`) without.
 
         Returns:
             The paths of the outputs.
         """
-        base = self.root if out is None else out
+        base = self.root if out is None else Path(out)
         return [base / path for path in self.factory_outputs]
+
+    def changed_outputs(self, out: Path) -> list[Path]:
+        """Get the outputs of the factory whose rebuild differs from the package.
+
+        An output is compared with the one of the package, the SBML of a model
+        without the dates of its model history (`same_sbml`), any other file
+        by its bytes; an output which only one of them has differs.
+
+        Args:
+            out: the root of a rebuild, see `create_models`.
+
+        Returns:
+            The outputs which differ, relative to the root, in the order of
+            `factory_outputs`.
+        """
+        changed: list[Path] = []
+        for output, rebuilt, committed in zip(
+            self.factory_outputs,
+            self.factory_paths(out),
+            self.factory_paths(),
+            strict=True,
+        ):
+            if not (rebuilt.is_file() and committed.is_file()) or not _same_output(
+                rebuilt, committed
+            ):
+                changed.append(output)
+        return changed
 
     def load_credibility(self) -> Any:
         """Get the declaration of the contexts of use of the model.
@@ -946,6 +1120,42 @@ class Project(BaseModel):
                 f"The project '{self.name}' has no credibility declaration."
             )
         return self._resolve(self.credibility)
+
+    def action(self, name: str) -> ProjectAction:
+        """Get an action of the project.
+
+        Args:
+            name: the name of the action.
+
+        Returns:
+            The action.
+
+        Raises:
+            KeyError: naming the actions, for an unknown action.
+        """
+        return _named("action", self.actions, name)
+
+    def load_action(self, name: str) -> ActionFunction:
+        """Get the function of an action of the project, see `ActionFunction`.
+
+        Args:
+            name: the name of the action.
+
+        Returns:
+            The function.
+
+        Raises:
+            KeyError: naming the actions, for an unknown action.
+            TypeError: if the function is not callable.
+        """
+        action = self.action(name)
+        function = self._resolve(action.function)
+        if not callable(function):
+            raise TypeError(
+                f"The action '{name}' of '{self.name}' ({action.function}) is a "
+                f"{type(function).__name__}, not a function."
+            )
+        return function
 
     # ------------------------------------------------------------------------
     # experiments
@@ -1096,6 +1306,7 @@ class Project(BaseModel):
         out: Path | str,
         *,
         n_workers: int | None = None,
+        scan_workers: int | None = None,
         simulator: SimulatorSettings | None = None,
         figure_formats: Sequence[str] | None = None,
         save_results: bool = False,
@@ -1128,7 +1339,13 @@ class Project(BaseModel):
             out: the directory of the results and the report; a relative
                 directory is relative to the current directory.
             n_workers: the processes of the run, of the pool of the experiments
-                and of the simulator, see `run_experiments`.
+                and, without `scan_workers`, of the simulator, see
+                `run_experiments`.
+            scan_workers: the processes of the scans of the simulator, `n_workers`
+                without; `n_workers=None, scan_workers=1` runs the experiments
+                in a pool and the scans of each serially in its worker, which
+                is faster than scans in a pool for many experiments of small
+                scans.
             simulator: the settings of the simulator, the ones of the project
                 without.
             figure_formats: the formats of the figures, the ones of the project
@@ -1192,7 +1409,9 @@ class Project(BaseModel):
                 figure_settings=self.figure_settings,
                 n_workers=n_workers,
                 progress=progress,
-                simulator=settings.simulator(n_workers),
+                simulator=settings.simulator(
+                    n_workers if scan_workers is None else scan_workers
+                ),
                 figure_formats=list(formats),
                 save_results=save_results,
                 reduced_selections=reduced_selections,
@@ -1389,18 +1608,26 @@ class Project(BaseModel):
         """
         return _named("uncertainty analysis", self.uncertainties, name)
 
-    def analyses(self) -> list[dict[str, str]]:
+    def analyses(self, experiments: bool = False) -> list[dict[str, str]]:
         """List the analyses of the project.
 
-        Resolves the fits of the project, not its experiments.
+        Resolves the fits of the project and, with `experiments`, its
+        experiments.
+
+        Args:
+            experiments: also list the groups of the simulation experiments
+                and every experiment, which the kind `simulate` runs by these
+                names; this imports the experiments.
 
         Returns:
             One entry `{"kind", "name", "description"}` per analysis: the
-            simulation experiments (`simulate`, `all`), the analyses of every
-            fit subset (`fit`, `identifiability`, `fisher`, `report`,
+            simulation experiments (`simulate`, `all`; with `experiments`
+            every other group and every experiment class), the analyses of
+            every fit subset (`fit`, `identifiability`, `fisher`, `report`,
             `petab`), every scan (`scan`) and, for a scan with indices, its
-            sensitivity analysis (`sensitivity`), and every uncertainty
-            analysis (`uncertainty`).
+            sensitivity analysis (`sensitivity`), every uncertainty analysis
+            (`uncertainty`) and every action (`action`) and the factory
+            (`factory`, `models`).
         """
         entries: list[dict[str, str]] = []
 
@@ -1409,6 +1636,19 @@ class Project(BaseModel):
 
         if self.experiments is not None:
             add("simulate", "all", "the simulation experiments of the project")
+            if experiments:
+                groups = self.load_experiments()
+                for group, classes in groups.items():
+                    if group != ALL_EXPERIMENTS:
+                        names = ", ".join(cls.__name__ for cls in classes)
+                        add("simulate", group, f"the group of experiments: {names}")
+                for cls in groups[ALL_EXPERIMENTS]:
+                    doc = (cls.__doc__ or "").strip().splitlines()
+                    add(
+                        "simulate",
+                        cls.__name__,
+                        doc[0] if doc else f"the experiment '{cls.__name__}'",
+                    )
         for subset, definition in self.load_fit_definitions().items():
             for kind in FIT_KINDS:
                 description = _FIT_DESCRIPTIONS[kind].format(name=subset)
@@ -1426,6 +1666,10 @@ class Project(BaseModel):
                 name,
                 uncertainty.description or f"the uncertainty analysis '{name}'",
             )
+        for name, action in self.actions.items():
+            add("action", name, action.description or f"the action '{name}'")
+        if self.factory is not None:
+            add("factory", FACTORY_ANALYSIS, "the models built by the factory")
         return entries
 
 

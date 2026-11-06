@@ -70,7 +70,7 @@ def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
     code = (
         "import sys, sbmlsim; "
         "print(sorted(m for m in ('sbmlsim.run', 'sbmlsim.project', 'sbmlsim.simrun',"
-        " 'simrun', 'sbmlsim.release') if m in sys.modules))"
+        " 'simrun', 'sbmlsim.release', 'sbmlsim.project_checks') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -86,7 +86,8 @@ def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
 def test_the_run_layer_imports_no_analysis() -> None:
     """`sbmlsim.run` imports the fit, the simulator and the project when it runs."""
     code = (
-        "import sys, sbmlsim.run, sbmlsim.run.cli; "
+        "import sys, sbmlsim.run, sbmlsim.run.cli, sbmlsim.run.profiling, "
+        "sbmlsim.run.project_kinds; "
         "print(sorted(m for m in ('sbmlsim.fit', 'sbmlsim.simulator', 'sbmlsim.project',"
         " 'matplotlib', 'sbmlsim.simrun', 'simrun') if m in sys.modules))"
     )
@@ -122,6 +123,24 @@ def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
     code = (
         f"import sys, {module}; "
         "print(sorted(m for m in ('roadrunner', 'COPASI', 'amici') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
+def test_the_project_checks_import_no_analysis() -> None:
+    """The checks import the experiments, the fits and roadrunner when they run."""
+    code = (
+        "import sys, sbmlsim.project_checks; "
+        "print(sorted(m for m in ('roadrunner', 'sbmlsim.fit', 'sbmlsim.experiment',"
+        " 'sbmlsim.run') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],

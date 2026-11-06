@@ -1,6 +1,6 @@
 # Analyses
 
-`python -m sbmlsim.run` runs the analyses of a model package from the command line: its simulation experiments, fits, profile likelihoods, scans, sensitivity and uncertainty analyses. It runs an analysis of a [project](#projects) from a spec, a small YAML or JSON file of its settings, into an output directory. The same analysis runs whole on one machine or in units on several machines, which merge to the result of the whole run, so a fit of 64 repeats or a scan of 10000 points can be spread over a cluster with [simrun](#simrun) and give the same numbers as on a laptop.
+`python -m sbmlsim.run` runs the analyses of a model package from the command line: its simulation experiments, fits, profile likelihoods, scans, sensitivity and uncertainty analyses, the build of its models and the actions of its own. It runs an analysis of a [project](#projects) from a spec, a small YAML or JSON file of its settings, into an output directory. The same analysis runs whole on one machine or in units on several machines, which merge to the result of the whole run, so a fit of 64 repeats or a scan of 10000 points can be spread over a cluster with [simrun](#simrun) and give the same numbers as on a laptop.
 
 ## Quick start
 
@@ -52,10 +52,10 @@ python -m sbmlsim.run <kind> <spec> --out DIR [--workers N] [--resume] [--proven
 python -m sbmlsim.run plan <kind> <spec> [-o FILE]
 python -m sbmlsim.run unit <kind> <spec> <index> --out DIR [--input PORT=PATH ...]
 python -m sbmlsim.run merge <kind> <spec> --out DIR [--input PORT=PATH ...] [--summary FILE]
-python -m sbmlsim.run list <project> [--json]
+python -m sbmlsim.run list <project> [--json] [--experiments]
 ```
 
-The first form runs an analysis whole (its command is `run`, which may be left out). `plan`, `unit` and `merge` run it in [units](#units-and-merges), `list` lists the analyses of a project as a table or, with `--json`, as JSON.
+The first form runs an analysis whole (its command is `run`, which may be left out). `plan`, `unit` and `merge` run it in [units](#units-and-merges), `list` lists the analyses of a project as a table or, with `--json`, as JSON; with `--experiments` it also lists the groups of the simulation experiments and every experiment (kind `simulate`, which runs them by these names), which imports the experiments. `--profile`, anywhere in the command line, runs a command which writes into `--out` under the sampling profiler of python 3.15, see [Profiling](#profiling).
 
 | argument | meaning |
 | --- | --- |
@@ -84,6 +84,8 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `scan` | a scan of the project | blocks of points | |
 | `sensitivity` | a scan with sensitivity indices, and the indices | blocks of points | |
 | `uncertainty` | the propagation of an uncertainty analysis | blocks of draws | |
+| `factory` | the models built by the factory of the project, compared with the ones of the package | whole | |
+| `action` | an action of the project, an analysis of its own | whole | |
 
 A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds an analysis of the project:
 
@@ -93,6 +95,8 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `subset` | `fit`, `identifiability`, `fisher`, `report`, `petab` | the fit problem, a key of the fits of the project |
 | `analysis` | `scan`, `sensitivity`, `uncertainty` | the scan or the uncertainty analysis, a key of the project |
 | `fit` | `identifiability`, `fisher`, `report`, `petab`, `adopt` | the records of a fit, the input `fit` |
+| `name` | `action` | the action, a key of the actions of the project |
+| `arguments` | `action` | the arguments of the action, JSON values by the names of the keywords of its function, `{}` without; the plan refuses arguments the function does not take |
 | `units` | the split kinds | the number of units, set by the plan |
 
 ### fit
@@ -150,7 +154,7 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 
 | kind | field | default | meaning |
 | --- | --- | --- | --- |
-| `simulate` | `experiments` | every experiment | the names of the classes of the experiments to run |
+| `simulate` | `experiments` | every experiment | the names of the groups and of the classes of the experiments to run, every experiment once; the plan sets the names of the classes |
 | `simulate` | `uncertainty` | none | run the experiments over draws of the fitted parameters of the default variant of the model, the curves of their simulations as bands (see [Simulation experiments](experiments.md#over-the-draws-of-the-fitted-parameters)): `draws` (100), `seed` (drawn by the plan without) and the `quantiles` of the bands (`[0.05, 0.95]`) |
 | `scan`, `sensitivity` | `scan_hash` | set by the plan | the hash of the scan the plan built |
 | `uncertainty` | `seed` | the seed of the analysis, else drawn by the plan | the seed of the draws |
@@ -198,6 +202,8 @@ The results of the kinds:
 | `scan` | `blocks/points-<start>-<stop>.nc` (the points of the units), `result.nc` (the `ScanResult`) |
 | `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`) |
 | `uncertainty` | `checkpoint/<scenario>/draws-<start>-<stop>.nc` (the draws of the units), `uncertainty/` (the `UncertaintyResult`) |
+| `factory` | the files of the factory with the layout of the package, e.g. `models/toy.xml`; the summary names the outputs of the factory (`factory_outputs`) which differ from the ones of the package, `changed`, an SBML file compared without the dates of its model history; the files of the package are never written |
+| `action` | what the action writes; the summary is the one the action returns, with its `action` |
 
 The input `fit` of a kind is the output of a `fit` run, whose records are in its directory `<opid>`, or a directory of records itself, e.g. the output of an `identifiability` or `fisher` run, which copy the records of their fit, so a report shows the fit and its analyses from one directory. Every file is written atomically: a reader sees the old or the new file and never a partial one. A run never writes into the project: even `adopt` writes `adopted.json` and the record `fits/<opid>` into the output, which you copy into the directory of the fit records of the project (`fits_dir`) and commit to adopt the fit. A report of a project has its context: the title of the project and the adopted fits the fit kept fixed, as its records name them.
 
@@ -300,6 +306,16 @@ The number of processes of a run is the number of CPUs the process may use, boun
 
 A run uses its CPUs through the processes of its pools, so the numerical libraries run with one thread each: the command sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and `MKL_NUM_THREADS` to 1 unless they are set, starting itself once more with them, and draws its figures with the matplotlib backend `Agg` (`MPLBACKEND` unless set).
 
+## Profiling
+
+`--profile` runs a command which writes into `--out` (`run`, `unit`, `merge`) under the statistical sampling profiler of python 3.15 (`profiling.sampling`, PEP 799), which samples the stack of the command from a process of its own, so the command runs at nearly its normal speed:
+
+```bash
+python -m sbmlsim.run simulate simulate.yaml --out results/simulate --profile
+```
+
+After the command the profile is written into `profiling/<command>_<kind>_<time>/` of the output: `flamegraph.html` (the interactive flame graph), `heatmap/` (the source lines with their samples), `profile.pstats` (for `pstats` and its viewers), `summary.txt` (the functions with the most samples) and `profile.bin` (the samples, against which a later profile is compared, `python -m profiling.sampling replay --diff-flamegraph profile.bin`). The command exits with its own code. With an older python `--profile` is a bad command line (exit code 2) and the command does not run.
+
 ## Projects
 
 A project, `sbmlsim.project.Project`, describes a model package once: its models, its analyses and their settings. It is an attribute of a module of the package, which the run layer imports. Nothing of it runs when it is created: the experiments, the scans, the observables and the uncertainty models are functions which build their objects when an analysis runs, so every unit of a run builds them again, and each must build the same object every time, e.g. a design with a fixed seed.
@@ -334,8 +350,8 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `root` | the directory of the model package, which relative paths are relative to |
 | `package` | the dotted name of the model package, which relative references are relative to |
 | `variants` | the SBML files of the model by the name of its variant, the first the default: `model_path` (the default variant, a property), `variant_path(variant)` and `load_roadrunner(variant)`, which compiles at the level of the simulator settings |
-| `factory`, `factory_dir`, `factory_outputs` | the function which builds the models, called with the directory it writes into, the directory it writes into in the package (relative to `root`, the directory of the first variant without) and the files it writes, relative to `root`. `create_models()` builds in place, `create_models(out / project.factory_dir.relative_to(project.root))` rebuilds into `out` with the layout of the package, where `factory_paths(out)` are the outputs to compare with `factory_paths()` |
-| `experiments` | the simulation experiment classes, the kind `simulate`: a sequence of classes, groups of them by name (the group `all` has every experiment, the groups together without it) or a function returning either; `load_experiments()` gives the groups, `experiment_classes(names)` the classes of names of groups or classes, `run_experiments(experiments, out)` runs them with the settings of the project and raises an `ExperimentRunError` after the report when one failed, with `uncertainty` over draws of the fitted parameters and with `collect_figures` the static figures copied into `_figures` |
+| `factory`, `factory_dir`, `factory_outputs` | the function which builds the models, called with the directory it writes into, the directory it writes into in the package (relative to `root`, the directory of the first variant without) and the files it writes, relative to `root`. `create_models()` builds in place, `create_models(out)` rebuilds into `out` with the layout of the package (into `out / factory_dir.relative_to(root)`), where `factory_paths(out)` are the outputs to compare with `factory_paths()` and `changed_outputs(out)` the ones which differ, the kind `factory` |
+| `experiments` | the simulation experiment classes, the kind `simulate`: a sequence of classes, groups of them by name (the group `all` has every experiment, the groups together without it) or a function returning either; `load_experiments()` gives the groups, `experiment_classes(names)` the classes of names of groups or classes, `run_experiments(experiments, out)` runs them with the settings of the project (`n_workers` the processes of the run, `scan_workers` the ones of the scans of the simulator, `n_workers` without; `n_workers=None, scan_workers=1` runs the experiments in a pool and the scans of each serially) and raises an `ExperimentRunError` after the report when one failed, with `uncertainty` over draws of the fitted parameters and with `collect_figures` the static figures copied into `_figures` |
 | `base_path`, `data_path` | the base path and the datasets of the experiments |
 | `fits` | the fit problems by their subset, the `FitDefinition`s of [Parameter fitting](fitting.md); `load_fit_definitions()` gives them at the optimization level of the simulator settings |
 | `fits_dir` | the directory of the records of the adopted fits, one directory per fit id, `adopted_record(fit_id)`; `fit_records()` reads them, the fitted values with their uncertainty which a factory gives its parameters, `fit_records().parameter("k", unit=U.per_min)` (`sbmlsim.fit.records.AdoptedRecords`) |
@@ -343,17 +359,79 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `credibility` | the declaration of the contexts of use of the model, `load_credibility()` |
 | `scans` | the scans by their name, `ScanAnalysis`: the model, a function building the `Scan`, the observables, `time`, `keep`, `on_error` and, for a sensitivity analysis, `indices` (`local`, `sobol`, `fast` or `morris`) with `index_options` |
 | `uncertainties` | the uncertainty analyses by their name, `UncertaintyAnalysis`: the model, functions building the simulation or scenarios, the `UncertaintyModel` and the observables, and the arguments of [`propagate`](uncertainty.md) (`outputs`, `n` or the adaptive `rel_tol`, `n_start` and `n_max`, `design`, `seed`, `keep`, `time`, `on_error`) |
+| `actions` | the actions of the project by their name, analyses of its own which the kind `action` runs, `ProjectAction`: the function or a reference to it and a `description`; a function or a reference alone is an action without a description. The function is called as `function(project, out, *, workers, **arguments)` (`ActionFunction`) and returns its summary, a mapping of JSON values, or `None` |
 | `simulator` | the settings of the simulator of the analyses, `SimulatorSettings`: the engine, `absolute_tolerance`, `relative_tolerance`, `jit_optimization` (the level LLJIT compiles the models of the experiments, fits and tests with) and the other settings of the integrator, `integrator`; the workers belong to a run |
 | `figure_settings` | the rendering of the figures of the experiments, a `FigureSettings` of the plots |
 | `figures` | the files of the figures, `FigureOutputs`: the `formats`, the resolution of the static images `savefig_dpi` and other parameters of matplotlib, `rc` |
-| `checks` | the known exceptions of the checks of the model, `CheckSettings`, each with its reason |
+| `checks` | the known exceptions of the [checks](#checks-of-a-project) of the model, `CheckSettings`, each with its reason, and the module of its experiments, `experiment_modules` (`experiments` below the package) |
 | `release` | the release metadata, `sbmlsim.release.settings.ReleaseSettings`, `None` for a project which is not released |
 
 The project of the HCTZ example, [`examples/hctz_fitting/project.py`](https://github.com/matthiaskoenig/sbmlsim/blob/develop/examples/hctz_fitting/project.py), is the template of the project of a model package: copy it into a module of your package and replace the experiments, the fits and the analyses with your own. It has the three simulation experiments of the studies, the fit problems `PK` (all pharmacokinetics data) and `IV` (the intravenous data of Beermann 1976), the scans `dose` (three oral doses on a grid of times) and `sobol` (a Sobol design of the dissolution and the renal excretion with its Sobol indices) and the uncertainty analysis `cl` (the AUC under an uncertain renal excretion, 32 draws). A project must be importable wherever the run layer runs: a model package installs it with its package, while the HCTZ example lives in `examples/` of the repository, which is not installed, and needs the root of the repository on the path, `python -m` from the root or `PYTHONPATH`.
 
+An action is an analysis of the package which none of the kinds is, e.g. a table of the studies of its data:
+
+```py
+def write_rates(
+    project: Project, out: Path, /, *, workers: int, factor: float = 1.0
+) -> dict[str, int]:
+    ...  # writes rates.tsv into out
+    return {"rows": len(project.variants)}
+
+
+PROJECT = Project(
+    ...,
+    actions={
+        "rates": ProjectAction(
+            function=".actions:write_rates", description="the table of the rates"
+        )
+    },
+)
+```
+
+```yaml title="rates.yaml"
+project: my_model:PROJECT
+name: rates
+arguments:
+  factor: 2
+```
+
+```bash
+python -m sbmlsim.run action rates.yaml --out results/rates
+python -m sbmlsim.run factory factory.yaml --out results/models
+```
+
+where `factory.yaml` names the `project` alone; its summary lists the outputs of the factory which differ from the committed ones.
+
+## Checks of a project
+
+`sbmlsim.project_checks` has the checks of a model package as functions, which its tests call, so a package keeps them wherever it lives; each raises an `AssertionError` naming every problem:
+
+```py
+from sbmlsim import project_checks
+
+
+def test_the_project(tmp_path: Path) -> None:
+    project_checks.check_model(PROJECT)
+    project_checks.check_registry(PROJECT)
+    project_checks.initialize_experiments(PROJECT)
+    project_checks.run_all_experiments(PROJECT, tmp_path / "experiments")
+    project_checks.start_fits(PROJECT, tmp_path / "fits")
+```
+
+| function | checks |
+| --- | --- |
+| `check_model` | the project belongs to its package (the package imports and has the project, its directory is `root`, the name of the project is the last component of the package or its end `_<name>`), the variants, the factory directory, the fit records and the adopted fits lie below `root`, the variants and the data exist, every reference resolves, the experiments load, the fits of a reference are not empty, and every variant has the values and the distributions of the adopted fits |
+| `check_registry` | every module of the experiments imports (`experiment_modules`), every experiment it defines is in the group `all` once, and the known exceptions still hold |
+| `initialize_experiments` | every experiment initializes with its data, figures and fit mappings |
+| `run_all_experiments` | every experiment runs and writes its report, together into `all` or with `CheckSettings.one_at_a_time` one at a time |
+| `check_battery` | a battery of checks of the models, which a framework runs (`run(project)`), against the known failures of `CheckSettings.battery` |
+| `start_fits` | every fit problem starts, one repeat of a few evaluations |
+
+The known exceptions are the `checks` of the project, `CheckSettings`: `not_registered` (experiments defined but not in `all` on purpose), `not_importable` (modules of the experiments which do not import in the test environment), `one_at_a_time` (why the experiments run one at a time) and `battery` (the checks of a battery which fail), each with its reason; an exception which no longer holds is a problem as well.
+
 ## simrun
 
-[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt` and so on; the extra `simrun` installs simrun, which needs python 3.14:
+[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds but `action` as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt`, `sbmlsim.factory` and so on; the extra `simrun` installs simrun, which needs python 3.14:
 
 ```bash
 pip install "sbmlsim[simrun]"

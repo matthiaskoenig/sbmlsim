@@ -6,13 +6,20 @@
     python -m sbmlsim.run unit <kind> <spec> <index> --out DIR [--input PORT=PATH ...]
     python -m sbmlsim.run merge <kind> <spec> --out DIR [--summary FILE]
         [--input PORT=PATH ...]
-    python -m sbmlsim.run list <project> [--json]
+    python -m sbmlsim.run list <project> [--json] [--experiments]
+
+`--profile` anywhere after the program runs a command which writes into
+`--out` (`run`, `unit`, `merge`) under the sampling profiler of python 3.15 and
+writes the profile into `profiling/` of the output, see
+`sbmlsim.run.profiling`; with an older python it is a bad command line.
 
 A kind is the name of a registered kind or `module:attribute` of a kind, a
 spec a YAML or JSON file, an input `PORT=PATH` split at the first `=`, also
 as `--input=PORT=PATH`. `run` is the command when the first argument names no
 other command. `plan` writes the planned spec as JSON, `list` the analyses of
-a project as a table or as JSON. `--summary FILE` writes the summary of a
+a project as a table or as JSON, with `--experiments` also its groups of
+experiments and every experiment, which the kind `simulate` runs by these
+names. `--summary FILE` writes the summary of a
 successful run or merge also into a file, e.g. where simrun reads the summary
 of a task.
 
@@ -34,6 +41,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from sbmlsim.run.kinds import RESERVED_NAMES, ConfigurationError
+from sbmlsim.run.profiling import (
+    PROFILE_OPTION,
+    ProfilerUnavailable,
+    profile_dir,
+    run_profiled,
+)
 
 __all__ = [
     "EXIT_ANALYSIS",
@@ -57,6 +70,9 @@ EXIT_CONFIGURATION = 4
 
 #: the commands; `run` is the command of a first argument which is none
 COMMANDS: frozenset[str] = RESERVED_NAMES
+
+#: the commands which write into `--out`, which `--profile` profiles
+PROFILED_COMMANDS: frozenset[str] = frozenset({"run", "unit", "merge"})
 
 
 def input_pair(value: str) -> tuple[str, Path]:
@@ -97,6 +113,14 @@ def _parser() -> argparse.ArgumentParser:
             "whole or in units which merge. `run` is the command when the first "
             "argument is a kind."
         ),
+    )
+    # taken out of the arguments before they are parsed, so it may be given
+    # anywhere; here for the help
+    parser.add_argument(
+        PROFILE_OPTION,
+        action="store_true",
+        help="run a command which writes into --out under the sampling profiler "
+        "of python 3.15, the profile into profiling/ of the output",
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -169,6 +193,11 @@ def _parser() -> argparse.ArgumentParser:
     analyses = commands.add_parser("list", help="list the analyses of a project")
     analyses.add_argument("project", help="the project, module:attribute")
     analyses.add_argument("--json", action="store_true", help="write JSON")
+    analyses.add_argument(
+        "--experiments",
+        action="store_true",
+        help="also list the groups of experiments and every experiment",
+    )
     return parser
 
 
@@ -209,11 +238,35 @@ def _command(args: argparse.Namespace) -> None:
     elif args.command == "merge":
         api.merge(args.kind, args.spec, args.out, inputs=inputs, summary=args.summary)
     else:
-        entries = api.list_analyses(args.project)
+        entries = api.list_analyses(args.project, experiments=args.experiments)
         if args.json:
             sys.stdout.write(json.dumps(entries, indent=2) + "\n")
         else:
             sys.stdout.write(_table(entries))
+
+
+def _profiled(args: argparse.Namespace, arguments: list[str]) -> int:
+    """Run a parsed command under the profiler, see `sbmlsim.run.profiling`.
+
+    Args:
+        args: the parsed command.
+        arguments: the arguments of the command, without `--profile`.
+
+    Returns:
+        The exit code of the command, `EXIT_USAGE` for a command which writes
+        no output and a python without the profiler.
+    """
+    if args.command not in PROFILED_COMMANDS:
+        sys.stderr.write(
+            f"{PROFILE_OPTION} profiles the commands which write into --out, "
+            f"{sorted(PROFILED_COMMANDS)}, not '{args.command}'.\n"
+        )
+        return EXIT_USAGE
+    try:
+        return run_profiled(arguments, profile_dir(args.out, args.command, args.kind))
+    except ProfilerUnavailable as err:
+        sys.stderr.write(f"{err}\n")
+        return EXIT_USAGE
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -226,12 +279,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         The exit code, see the module.
     """
     arguments = list(sys.argv[1:] if argv is None else argv)
+    profile = PROFILE_OPTION in arguments
+    arguments = [argument for argument in arguments if argument != PROFILE_OPTION]
     if arguments and arguments[0] not in COMMANDS and not arguments[0].startswith("-"):
         arguments.insert(0, "run")
     try:
         args = _parser().parse_args(arguments)
     except SystemExit as exit_:
         return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
+    if profile:
+        return _profiled(args, arguments)
 
     try:
         _command(args)

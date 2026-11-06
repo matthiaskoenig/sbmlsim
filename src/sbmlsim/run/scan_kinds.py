@@ -201,8 +201,9 @@ class SimulateSpec(Spec):
 
     Attributes:
         project: the project, `module:attribute`.
-        experiments: the names of the classes of the experiments to run, the
-            plan sets every experiment of the project without.
+        experiments: the names of the groups and of the classes of the
+            experiments to run; the plan sets the names of the classes, every
+            experiment of the project without.
         uncertainty: run the experiments over draws of the fitted parameters
             of the default variant of the model, their curves as bands; once
             without.
@@ -887,24 +888,27 @@ def _experiments(
 ) -> tuple[Project, list[type[SimulationExperiment]]]:
     """Get the project and the experiments a spec names, in its order.
 
+    A name is a group of experiments or an experiment class, see
+    `Project.experiment_classes`; every experiment runs once.
+
     Raises:
-        ConfigurationError: for a project without experiments and an unknown
-            or repeated name of an experiment.
+        ConfigurationError: for a project without experiments, no names and
+            a name which is neither a group nor an experiment.
     """
     project = _project(spec.project)
     if project.experiments is None:
         raise ConfigurationError(
             f"The project '{spec.project}' has no simulation experiments."
         )
-    classes = {cls.__name__: cls for cls in project.experiment_classes()}
-    names = list(classes) if spec.experiments is None else spec.experiments
-    unknown = [name for name in names if name not in classes]
-    if unknown or not names or len(set(names)) != len(names):
+    if spec.experiments is not None and not spec.experiments:
         raise ConfigurationError(
-            f"The experiments {names} are not distinct experiments of the "
-            f"project '{spec.project}', which has {sorted(classes)}."
+            f"The run of experiments of '{spec.project}' names no experiments."
         )
-    return project, [classes[name] for name in names]
+    try:
+        classes = project.experiment_classes(spec.experiments)
+    except KeyError as err:
+        raise ConfigurationError(str(err.args[0])) from err
+    return project, classes
 
 
 def _plan_simulate(spec: SimulateSpec) -> SimulateSpec:

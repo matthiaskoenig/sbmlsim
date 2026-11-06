@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -76,3 +77,21 @@ def test_set_variables_are_kept_and_the_process_continues(
     entry._single_threaded()
     assert [os.environ[name] for name in entry.THREAD_VARIABLES] == ["3"] * 3
     assert os.environ["MPLBACKEND"] == "svg"
+
+
+@pytest.mark.parametrize("code", [0, 4])
+def test_the_exit_code_is_recorded_for_the_profiler(
+    code: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sbmlsim import log
+    from sbmlsim.run import cli, profiling
+
+    path = tmp_path / "exit_code"
+    monkeypatch.setenv(profiling.EXIT_CODE_FILE, str(path))
+    monkeypatch.setattr(entry, "_single_threaded", lambda: None)
+    monkeypatch.setattr(log, "enable_rich_logging", lambda **kwargs: None)
+    monkeypatch.setattr(cli, "main", lambda argv: code)
+    with pytest.raises(SystemExit) as info:
+        entry.main()
+    assert info.value.code == code
+    assert path.read_text(encoding="utf-8") == str(code)

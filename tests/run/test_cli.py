@@ -176,6 +176,17 @@ def test_main_list_as_a_table(capsys: pytest.CaptureFixture[str]) -> None:
     assert any(line.split()[:2] == ["fit", "PK"] for line in lines)
 
 
+def test_main_list_with_the_experiments(capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.main(["list", "tests.project_toy:PROJECT", "--json"]) == 0
+    names = [entry["name"] for entry in json.loads(capsys.readouterr().out)]
+    assert "studies" not in names
+    assert "rates" in names
+    assert cli.main(["list", "tests.project_toy:PROJECT", "--experiments"]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert any(line.split()[:2] == ["simulate", "studies"] for line in lines)
+    assert any(line.split()[:2] == ["simulate", "ToyDecaySlow"] for line in lines)
+
+
 def test_main_invalid_object_of_the_analysis_exits_3(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
