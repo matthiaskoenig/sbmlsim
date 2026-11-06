@@ -49,7 +49,7 @@ import json
 import logging
 import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
 
 import numpy as np
 from pydantic import Field, model_validator
@@ -135,8 +135,8 @@ class FitProblemSpec(Spec):
 class ProfileSpec(Spec):
     """The settings of profile likelihoods, of an analysis or after a fit.
 
-    The settings are the ones of `sbmlsim.fit.identifiability.ProfileSettings`
-    with its defaults.
+    Every setting of `sbmlsim.fit.identifiability.ProfileSettings` with its
+    default, `optimizer` its `optimizer_kwargs`.
 
     Attributes:
         alpha: the confidence level of the intervals.
@@ -144,7 +144,14 @@ class ProfileSpec(Spec):
         initial_step: the first step of a scan in decades.
         min_step: the smallest step in decades.
         max_step: the largest step in decades.
+        step_factor: the factor a step is reduced or enlarged by.
+        max_cost_fraction: the largest increase of the cost a single step may
+            cause, as a fraction of the distance between the minimal cost and
+            the threshold.
         max_points: the largest number of points of a scan in one direction.
+        flatness: a profile which rises by less than this fraction of the
+            distance between the minimal cost and the threshold, on both
+            sides, is flat.
         reoptimize: optimize the other parameters at every point.
         optimizer: arguments of the least squares optimizer of the other
             parameters, `ProfileSettings.optimizer_kwargs`.
@@ -155,7 +162,10 @@ class ProfileSpec(Spec):
     initial_step: float = 0.1
     min_step: float = 0.01
     max_step: float = 1.0
+    step_factor: float = 2.0
+    max_cost_fraction: float = 0.2
     max_points: int = 50
+    flatness: float = 0.05
     reoptimize: bool = True
     optimizer: dict[str, Any] = Field(default_factory=dict)
 
@@ -181,12 +191,16 @@ class FitSpec(FitProblemSpec, SplitSpec):
             `LSQ` and one repeat. The plan resolves it into the values, so
             every unit and a resume start from the same point, and keeps the
             given start in `start_from`; a relative path of a spec file is
-            relative to the file.
+            relative to the file, a fit id stays a name.
         start_from: the start as it was given, set by the plan, which the
             provenance of the fit records.
         record_adopted: record the adopted fits of the other subsets of the
             project, whose values the models of the project carry, and these
             values in the provenance of the fit; its report names them.
+        fixed_fits: the adopted fits of the other subsets, set by the plan with
+            `record_adopted`, so every unit records the same ones.
+        fixed_values: the values of their parameters which the fit does not
+            fit, set by the plan with them.
         identifiability: compute the profile likelihoods of the parameters of
             the best run after the fit, `<opid>/identifiability.json`.
         profile: the settings of these profiles.
@@ -213,12 +227,36 @@ class FitSpec(FitProblemSpec, SplitSpec):
     start: dict[str, float] | str | None = None
     start_from: str | None = None
     record_adopted: bool = True
+    fixed_fits: list[str] | None = None
+    fixed_values: dict[str, float] | None = None
     identifiability: bool = False
     profile: ProfileSpec = Field(default_factory=ProfileSpec)
     fisher: bool = True
     report: bool = False
     mapping_figures: bool = True
     adopt: bool = False
+
+    @override
+    @classmethod
+    def is_name(cls, field: str, value: str) -> bool:
+        """Check whether a start is the id of a fit, which is no path.
+
+        Args:
+            field: the name of the field, `start`.
+            value: its string.
+
+        Returns:
+            Whether the string is one name of the form of the id of a fit,
+            `<subset>_<date>_<time>__<hash>`, which the plan finds in the
+            fits of the project.
+        """
+        from sbmlsim.fit.result import FIT_ID
+
+        return (
+            field == "start"
+            and len(Path(value).parts) == 1
+            and FIT_ID.match(value) is not None
+        )
 
     @model_validator(mode="before")
     @classmethod
@@ -235,7 +273,8 @@ class AdoptSpec(Spec):
     Attributes:
         project: the project, `module:attribute`.
         fit: the records of the fit, the input `fit`: a records directory or
-            the out of a fit run; the id of the fit is its subset.
+            the out of a fit run; the id of the fit, the id of its result,
+            names its subset, `<subset>_<date>_<time>__<hash>`.
         force: adopt the fit although the project has adopted it already,
             i.e. replace its record.
     """
@@ -355,7 +394,7 @@ def _definition(spec: FitProblemSpec, subset: str | None = None) -> FitDefinitio
     subset = spec.subset if subset is None else subset
     try:
         return _project(spec).fit(subset)
-    except (ValueError, KeyError) as err:
+    except (ValueError, TypeError, KeyError) as err:
         message = err.args[0] if isinstance(err, KeyError) and err.args else err
         raise ConfigurationError(
             f"The fit problem '{subset}' of the project '{spec.project}' "
@@ -617,6 +656,8 @@ def _fixed(
 ) -> tuple[list[str], dict[str, float]]:
     """Get the adopted fits a fit keeps fixed and their values, see `fixed_values`.
 
+    The ones of a planned spec, else read from the project.
+
     Raises:
         ConfigurationError: if the records of the adopted fits are not read.
     """
@@ -624,6 +665,8 @@ def _fixed(
 
     if not spec.record_adopted:
         return [], {}
+    if spec.fixed_fits is not None:
+        return list(spec.fixed_fits), dict(spec.fixed_values or {})
     try:
         return fixed_values(_project(spec), spec.subset, definition)
     except (ValueError, OSError) as err:
@@ -657,7 +700,9 @@ def _check_start(spec: FitSpec, definition: FitDefinition) -> None:
         )
 
 
-def _check_remainders(spec: FitSpec, definition: FitDefinition) -> None:
+def _check_remainders(
+    spec: FitSpec, definition: FitDefinition, fixed: dict[str, float]
+) -> None:
     """Check that the bounds of a fit let no remainder of a model become negative.
 
     Every variant of the project is checked, see `remainder_problems`; a
@@ -677,7 +722,6 @@ def _check_remainders(spec: FitSpec, definition: FitDefinition) -> None:
             project.name,
         )
         return
-    _, fixed = _fixed(spec, definition)
     problems = list(
         dict.fromkeys(
             problem
@@ -746,7 +790,8 @@ def _plan_fit(spec: FitSpec) -> FitSpec:
             "An adopted fit carries the uncertainty of its parameters: adopt a "
             "fit with its 'identifiability'."
         )
-    _check_remainders(spec, definition)
+    fixed_fits, fixed = _fixed(spec, definition)
+    _check_remainders(spec, definition, fixed)
     seed = (
         spec.seed
         if spec.seed is not None
@@ -764,6 +809,8 @@ def _plan_fit(spec: FitSpec) -> FitSpec:
             "optimizer": optimizer,
             "start": start,
             "start_from": start_from,
+            "fixed_fits": fixed_fits if spec.record_adopted else None,
+            "fixed_values": fixed if spec.record_adopted else None,
         }
     )
 
@@ -1036,7 +1083,10 @@ def _profile_settings(spec: ProfileSpec) -> ProfileSettings:
             initial_step=spec.initial_step,
             min_step=spec.min_step,
             max_step=spec.max_step,
+            step_factor=spec.step_factor,
+            max_cost_fraction=spec.max_cost_fraction,
             max_points=spec.max_points,
+            flatness=spec.flatness,
             reoptimize=spec.reoptimize,
             optimizer_kwargs=spec.optimizer,
         )
@@ -1270,7 +1320,7 @@ def _run_adopt(spec: AdoptSpec, ctx: RunContext) -> dict[str, Any]:
         raise ConfigurationError(f"The fit is not adopted: {err}") from err
     try:
         _project(spec).fit(subset)
-    except KeyError as err:
+    except (KeyError, TypeError, ValueError) as err:
         raise ConfigurationError(
             f"The fit '{opid}' is no fit of a subset of '{spec.project}': "
             f"{err.args[0] if err.args else err}"

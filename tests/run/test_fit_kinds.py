@@ -18,7 +18,7 @@ from sbmlsim import run
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.run import ConfigurationError, PlanMismatch
-from sbmlsim.run.fit_kinds import FitSpec, IdentifiabilitySpec
+from sbmlsim.run.fit_kinds import FitSpec, IdentifiabilitySpec, ProfileSpec
 from sbmlsim.run.units import MissingUnits
 
 PROJECT = "examples.hctz_fitting.project:PROJECT"
@@ -305,17 +305,15 @@ def test_identifiability_defaults_are_the_profile_settings() -> None:
 
     defaults = ProfileSettings().to_dict()
     spec = IdentifiabilitySpec(project=PROJECT, subset="IV")
-    for name in (
-        "alpha",
-        "degrees_of_freedom",
-        "initial_step",
-        "min_step",
-        "max_step",
-        "max_points",
-        "reoptimize",
-    ):
+    profile = ProfileSpec()
+    # every setting of the profiles is a field of the spec
+    names = set(defaults) - {"optimizer_kwargs"}
+    assert names <= set(ProfileSpec.model_fields)
+    for name in names:
         assert getattr(spec, name) == defaults[name], name
+        assert getattr(profile, name) == defaults[name], name
     assert spec.optimizer == defaults["optimizer_kwargs"]
+    assert profile.optimizer == defaults["optimizer_kwargs"]
 
 
 def _cli(*args: str) -> subprocess.CompletedProcess[str]:

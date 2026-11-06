@@ -248,7 +248,8 @@ def _relative_to(spec: Spec, base: Path) -> Spec:
     Only the fields which are a `Path` or a list or tuple of them are resolved,
     not the paths inside of other values, e.g. of a nested model, and a string
     of a field of `Spec.path_strings`, e.g. the start of a fit, which may be a
-    path or a name, when the path exists relative to the directory.
+    path or a name (`Spec.is_name`), unless it is a name; whether a file
+    exists does not matter, so the spec and its hash do not depend on it.
     """
 
     def resolved(value: Any) -> Any:
@@ -267,7 +268,7 @@ def _relative_to(spec: Spec, base: Path) -> Spec:
             name in type(spec).path_strings
             and isinstance(value, str)
             and not Path(value).is_absolute()
-            and (base / value).exists()
+            and not type(spec).is_name(name, value)
         ):
             updates[name] = str(base / value)
     return spec.model_copy(update=updates)

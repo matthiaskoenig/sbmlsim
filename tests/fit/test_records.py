@@ -6,8 +6,10 @@ profiles, its Fisher information and its report, and adopted into its out.
 
 import json
 import math
+import os
 import re
 import shutil
+import stat
 from pathlib import Path
 
 import numpy as np
@@ -192,6 +194,40 @@ def test_adopt_refuses_an_adopted_fit_unless_forced(
     assert [p.name for p in tmp_path.iterdir()] == [toy_fit.name]
     other = adopt_fit(toy_fit, tmp_path, fit_id="DECAY_20260101_000000__abcde")
     assert other == tmp_path / "DECAY_20260101_000000__abcde"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the modes of POSIX")
+def test_an_adopted_record_has_the_permissions_of_the_umask(
+    toy_fit: Path, tmp_path: Path
+) -> None:
+    umask = os.umask(0o027)
+    try:
+        record = adopt_fit(toy_fit, tmp_path)
+    finally:
+        os.umask(umask)
+    assert stat.S_IMODE(record.stat().st_mode) == 0o750
+
+
+def test_a_record_which_is_not_replaced_is_restored(
+    toy_fit: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    record = adopt_fit(toy_fit, tmp_path)
+    before = sorted(p.name for p in record.iterdir())
+    replace = Path.replace
+    calls: list[Path] = []
+
+    def failing(self: Path, target: Path) -> Path:
+        calls.append(self)
+        if len(calls) == 2:
+            raise OSError("the rename failed")
+        return replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", failing)
+    with pytest.raises(OSError, match="the rename failed"):
+        adopt_fit(toy_fit, tmp_path, force=True)
+    monkeypatch.undo()
+    assert sorted(p.name for p in record.iterdir()) == before
+    assert [p.name for p in tmp_path.iterdir()] == [toy_fit.name]
 
 
 def test_adopt_refuses_a_fit_without_uncertainty(toy_fit: Path, tmp_path: Path) -> None:
