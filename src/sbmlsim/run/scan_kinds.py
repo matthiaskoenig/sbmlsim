@@ -884,11 +884,15 @@ def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
             experiment ran and the report was written.
     """
     from sbmlsim.experiment.progress import reporting
+    from sbmlsim.project import Project
 
     project, experiments = _experiments(spec)
     with reporting(_experiment_event, shown=False):
-        results = project.run_experiments(
-            experiments, ctx.out, n_workers=_workers(ctx), progress=False
+        # the base implementation, which is the contract of the run layer: a
+        # subclass of `Project` may override `run_experiments` with another
+        # signature and result, e.g. a model package of its own
+        results = Project.run_experiments(
+            project, experiments, ctx.out, n_workers=_workers(ctx), progress=False
         )
     return {
         "experiments": len(results),

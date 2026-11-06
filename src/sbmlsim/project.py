@@ -1088,7 +1088,10 @@ class Project(BaseModel):
         The experiments run with the settings of the simulator of the project,
         their figures with its figure settings and in its formats, see
         `sbmlsim.experiment.runner.run_experiments`. Every experiment runs, also
-        after another one failed.
+        after another one failed. The run layer (the kind `simulate`) calls this
+        implementation as `Project.run_experiments(project, ...)`, so a subclass
+        may override the method with another signature and result without
+        breaking it.
 
         Args:
             experiments: the experiment classes, or names of groups or classes
