@@ -68,8 +68,8 @@ def _chunk_sizes(monkeypatch: pytest.MonkeyPatch) -> list[list[int]]:
     sizes: list[list[int]] = []
     chunks = simulator_module._Compiled.chunks
 
-    def recording(self: Any, workers: int, on_error: Any) -> Any:
-        result = chunks(self, workers, on_error)
+    def recording(self: Any, workers: int, on_error: Any, block: Any = None) -> Any:
+        result = chunks(self, workers, on_error, block)
         sizes.append([len(chunk.indices) for chunk in result])
         return result
 

@@ -25,6 +25,7 @@ a zip file duplicate entries, and it adds its dependencies. npz writes slowest.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal, get_args
 
@@ -141,6 +142,15 @@ def chunk_shape(shape: tuple[int, ...], itemsize: int) -> tuple[int, ...]:
         if room == 1:
             break
     return tuple(chunks)
+
+
+def json_attributes(attrs: Mapping[str, Any]) -> Any:
+    """Get attributes as the JSON types which `read_netcdf` reads them as.
+
+    Attributes in memory and attributes read from a file compare equal in
+    this form, e.g. a tuple and a numpy array are lists.
+    """
+    return json.loads(json.dumps(attrs, default=_json_default))
 
 
 def _json_default(value: Any) -> Any:

@@ -46,7 +46,7 @@ from sbmlsim.engine import Engine, amici_cache, using_amici_cache
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
-from sbmlsim.result.scan import TIME
+from sbmlsim.result.scan import MAX_ERRORS, TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.simulator.engines import execute_plan
 from sbmlsim.simulator.observables import TIMECOURSE, ObservableError, ObservableGraph
@@ -54,9 +54,6 @@ from sbmlsim.simulator.plan import Plan, time_tolerance
 
 #: what a run does about a point which fails: raise its error or flag it
 OnError = Literal["raise", "flag"]
-
-#: the most messages of failed points a chunk reports
-MAX_ERRORS: int = 10
 
 
 class ScanPointError(RuntimeError):
