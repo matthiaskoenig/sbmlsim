@@ -1,8 +1,12 @@
-"""The core of sbmlsim imports neither petab nor torch.
+"""What the modules of sbmlsim import: petab, torch and roadrunner only when needed.
 
 petab.v2 imports its SciML extension and with it torch, which costs seconds in
 every process: in every worker of the tests, of a parallel fit and in every
 example. PEtab is imported when a formula is compiled or a PEtab problem is read.
+
+A library which must not load a simulator, e.g. the PBPK library of pkpdsim,
+imports the light modules (`sbmlsim.licenses`, `sbmlsim.distrib`,
+`sbmlsim.result.scan`, `sbmlsim.units`), which import no roadrunner.
 """
 
 import subprocess

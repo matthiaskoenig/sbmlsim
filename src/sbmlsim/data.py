@@ -1112,7 +1112,8 @@ class DataSet(pd.DataFrame):
            '*_sd', '*_se', '*_min' and '*_max' columns, and 'sd', 'se', 'min'
            and 'max' ('cv', the geometric SD 'gsd' and 'gcv' are relative); a
            column of these with a '*_unit' column of its own keeps it
-        3. 'count', 'n' and 'gsd' without a '*_unit' column are dimensionless
+        3. 'count', 'n' and 'gsd' without a '*_unit' column or a unit in
+           `udict` are dimensionless
 
         The unit of a column is the unit of its first row with a value; the unit
         of a row without a number (no value, sd, se, min or max) is ignored, and a
@@ -1155,8 +1156,8 @@ class DataSet(pd.DataFrame):
         # the caller's data frame is not changed
         df = df.copy()
 
-        if udict is None:
-            udict = {}
+        # the caller's units are not changed
+        udict = dict(udict) if udict else {}
 
         # all units from udict and DataFrame
         all_udict: dict[str, str] = {}
@@ -1254,8 +1255,9 @@ class DataSet(pd.DataFrame):
                 del df["unit"]
 
             elif key in DIMENSIONLESS_COLUMNS:
-                # a count and a geometric SD, a factor, are dimensionless
-                if f"{key}_unit" not in df.columns:
+                # a count and a geometric SD, a factor, are dimensionless unless
+                # the table or the caller gives their unit
+                if f"{key}_unit" not in df.columns and key not in udict:
                     udict[key] = "dimensionless"
 
         # add external definitions
