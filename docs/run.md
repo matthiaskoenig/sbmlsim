@@ -96,7 +96,7 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `analysis` | `scan`, `sensitivity`, `uncertainty` | the scan or the uncertainty analysis, a key of the project |
 | `fit` | `identifiability`, `fisher`, `report`, `petab`, `adopt` | the records of a fit, the input `fit` |
 | `name` | `action` | the action, a key of the actions of the project |
-| `arguments` | `action` | the arguments of the action, JSON values by the names of the keywords of its function, `{}` without; the plan refuses arguments the function does not take |
+| `arguments` | `action` | the arguments of the action, JSON values by the names of the keywords of its function, `{}` without; the plan refuses arguments the function does not take. They are passed as they are: a relative path among them is relative to the current directory of the run, not to the spec file |
 | `units` | the split kinds | the number of units, set by the plan |
 
 ### fit
@@ -114,7 +114,7 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `record_adopted` | `true` | record the adopted fits of the other subsets, whose values the models of the project carry, and these values in the provenance of the fit and name them in its report; nothing is fixed by it, the models carry the values |
 | `fixed_fits`, `fixed_values` | set by the plan | the adopted fits of the other subsets and the values of their parameters which the fit does not fit, read once by the plan with `record_adopted`, so every unit records the same |
 | `identifiability` | `false` | compute the profile likelihoods of the parameters of the best run after the fit, `<opid>/identifiability.json` |
-| `profile` | the defaults | the settings of these profiles, the ones of the kind `identifiability` (`ProfileSpec`), e.g. `{"max_points": 10}` |
+| `profile` | the defaults | the settings of these profiles, the ones of the kind `identifiability` (`ProfileSpec`), e.g. `{"max_points": 10}`, with `pids` the parameters to profile (every parameter which is no element of a network without) |
 | `fisher` | `true` | compute the Fisher information with the profiles, `<opid>/fisher.json` |
 | `report` | `false`, with `adopt` `true` | write the report of the fit into `<opid>`, with the title of the project and the fixed adopted fits |
 | `mapping_figures` | `true` | draw the figure of every fit mapping in the report |
@@ -155,6 +155,7 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | kind | field | default | meaning |
 | --- | --- | --- | --- |
 | `simulate` | `experiments` | every experiment | the names of the groups and of the classes of the experiments to run, every experiment once; the plan sets the names of the classes |
+| `simulate` | `figure_formats` | the formats of the project | the formats of the figures, e.g. `["svg", "html"]`, which the plan writes in lower case |
 | `simulate` | `uncertainty` | none | run the experiments over draws of the fitted parameters of the default variant of the model, the curves of their simulations as bands (see [Simulation experiments](experiments.md#over-the-draws-of-the-fitted-parameters)): `draws` (100), `seed` (drawn by the plan without) and the `quantiles` of the bands (`[0.05, 0.95]`) |
 | `scan`, `sensitivity` | `scan_hash` | set by the plan | the hash of the scan the plan built |
 | `uncertainty` | `seed` | the seed of the analysis, else drawn by the plan | the seed of the draws |
@@ -202,8 +203,8 @@ The results of the kinds:
 | `scan` | `blocks/points-<start>-<stop>.nc` (the points of the units), `result.nc` (the `ScanResult`) |
 | `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`) |
 | `uncertainty` | `checkpoint/<scenario>/draws-<start>-<stop>.nc` (the draws of the units), `uncertainty/` (the `UncertaintyResult`) |
-| `factory` | the files of the factory with the layout of the package, e.g. `models/toy.xml`; the summary names the outputs of the factory (`factory_outputs`) which differ from the ones of the package, `changed`, an SBML file compared without the dates of its model history; the files of the package are never written |
-| `action` | what the action writes; the summary is the one the action returns, with its `action` |
+| `factory` | the files of the factory with the layout of the package, e.g. `models/toy.xml`; the files of the package are never written. The summary has the number of the compared outputs (`outputs`): the `factory_outputs` of the project (`declared` true), else, with a warning, the variants and every file the factory wrote which the package has (`declared` false); a rebuild with nothing to compare fails. `changed` names the compared outputs which differ from the ones of the package, an SBML file compared without the dates of its model history |
+| `action` | what the action writes; the summary is the mapping the action returns, followed by its `action` |
 
 The input `fit` of a kind is the output of a `fit` run, whose records are in its directory `<opid>`, or a directory of records itself, e.g. the output of an `identifiability` or `fisher` run, which copy the records of their fit, so a report shows the fit and its analyses from one directory. Every file is written atomically: a reader sees the old or the new file and never a partial one. A run never writes into the project: even `adopt` writes `adopted.json` and the record `fits/<opid>` into the output, which you copy into the directory of the fit records of the project (`fits_dir`) and commit to adopt the fit. A report of a project has its context: the title of the project and the adopted fits the fit kept fixed, as its records name them.
 
@@ -314,7 +315,9 @@ A run uses its CPUs through the processes of its pools, so the numerical librari
 python -m sbmlsim.run simulate simulate.yaml --out results/simulate --profile
 ```
 
-After the command the profile is written into `profiling/<command>_<kind>_<time>/` of the output: `flamegraph.html` (the interactive flame graph), `heatmap/` (the source lines with their samples), `profile.pstats` (for `pstats` and its viewers), `summary.txt` (the functions with the most samples) and `profile.bin` (the samples, against which a later profile is compared, `python -m profiling.sampling replay --diff-flamegraph profile.bin`). The command exits with its own code. With an older python `--profile` is a bad command line (exit code 2) and the command does not run.
+After the command the profile is written into `profiling/<command>_<kind>_<time>/` of the output (of a unit `profiling/unit_<kind>_<index>_<time>/`, so the units which compute into one output at once do not share a folder): `flamegraph.html` (the interactive flame graph), `heatmap/` (the source lines with their samples), `profile.pstats` (for `pstats` and its viewers), `summary.txt` (the functions with the most samples) and `profile.bin` (the samples, against which a later profile is compared, `python -m profiling.sampling replay --diff-flamegraph profile.bin`). The command exits with its own code, which it records for the profiler (the profiler exits with 0 whatever the command did), 1 if it recorded none; a failure of the profiler or of the conversion of the profile is logged and does not change the code. With an older python `--profile` is a bad command line (exit code 2) and the command does not run.
+
+`sbmlsim.run.profiling.run_profiled(arguments, folder, module=...)` profiles any entry point which runs as `python -m <module>`, e.g. the command line of a framework of its own, which calls `record_exit_code(code)` before it exits. The profiler runs with one change: python 3.15.2 reads now and then a name of a frame while it changes, which broke the writer of the profile and ended the command; such a sample is left out and their number reported on stderr.
 
 ## Projects
 
@@ -420,7 +423,7 @@ def test_the_project(tmp_path: Path) -> None:
 
 | function | checks |
 | --- | --- |
-| `check_model` | the project belongs to its package (the package imports and has the project, its directory is `root`, the name of the project is the last component of the package or its end `_<name>`), the variants, the factory directory, the fit records and the adopted fits lie below `root`, the variants and the data exist, every reference resolves, the experiments load, the fits of a reference are not empty, and every variant has the values and the distributions of the adopted fits |
+| `check_model` | the project belongs to its package (the package imports and has the project, its directory is `root`, the name of the project is the last component of the package or its end `_<name>`), the variants, the factory directory, the fit records and the adopted fits lie below `root`, the variants and the data exist, every reference resolves, every action takes the arguments of its call (`function(project, out, *, workers)`), the experiments load, the fits of a reference are not empty, and every variant has the values and the distributions of the adopted fits |
 | `check_registry` | every module of the experiments imports (`experiment_modules`), every experiment it defines is in the group `all` once, and the known exceptions still hold |
 | `initialize_experiments` | every experiment initializes with its data, figures and fit mappings |
 | `run_all_experiments` | every experiment runs and writes its report, together into `all` or with `CheckSettings.one_at_a_time` one at a time |

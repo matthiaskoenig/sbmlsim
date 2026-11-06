@@ -207,11 +207,14 @@ class SimulateSpec(Spec):
         uncertainty: run the experiments over draws of the fitted parameters
             of the default variant of the model, their curves as bands; once
             without.
+        figure_formats: the formats of the figures, e.g. `["svg", "html"]`,
+            the ones of the project (`FigureOutputs.formats`) without.
     """
 
     project: str
     experiments: list[str] | None = None
     uncertainty: DrawsSpec | None = None
+    figure_formats: list[str] | None = None
 
 
 # ----------------------------------------------------------------------------
@@ -912,15 +915,26 @@ def _experiments(
 
 
 def _plan_simulate(spec: SimulateSpec) -> SimulateSpec:
-    """Plan a run of experiments: the names of the experiments and the seed of the draws.
+    """Plan a run of experiments: the names of the experiments, the seed of the draws.
+
+    The figure formats are written in lower case.
 
     Raises:
-        ConfigurationError: for unknown experiments and, with `uncertainty`, a
+        ConfigurationError: for unknown experiments, empty figure formats
+            and, with `uncertainty`, a
             default variant of the model without a parameter with a
             distribution.
     """
     project, experiments = _experiments(spec)
     update: dict[str, Any] = {"experiments": [cls.__name__ for cls in experiments]}
+    if spec.figure_formats is not None:
+        formats = [f.strip().lower() for f in spec.figure_formats if f.strip()]
+        if not formats:
+            raise ConfigurationError(
+                "The figure formats of a run of experiments are not empty, "
+                "the formats of the project without."
+            )
+        update["figure_formats"] = formats
     draws = spec.uncertainty
     if draws is not None:
         from sbmlsim.simulation.sampling import parameter_distributions
@@ -997,6 +1011,7 @@ def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
             n_workers=_workers(ctx),
             progress=False,
             uncertainty=settings,
+            figure_formats=spec.figure_formats,
         )
     summary: dict[str, Any] = {
         "experiments": len(results),

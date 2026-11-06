@@ -131,6 +131,33 @@ def test_an_adopted_fit_of_another_id_is_refused() -> None:
         run.plan("fit", {**FIT, "identifiability": True, "profile": {"max_points": 0}})
 
 
+def test_the_fit_profiles_the_given_parameters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sbmlsim.fit import identifiability
+
+    with pytest.raises(ConfigurationError, match="not distinct parameters"):
+        run.plan("fit", {**FIT, "identifiability": True, "profile": {"pids": ["x"]}})
+    given: list[object] = []
+    profile = identifiability.profile_likelihood
+
+    def recording(*args: Any, **kwargs: Any) -> Any:
+        given.append(kwargs.get("pids"))
+        return profile(*args, **kwargs)
+
+    monkeypatch.setattr(identifiability, "profile_likelihood", recording)
+    spec = {
+        **FIT,
+        "identifiability": True,
+        "fisher": False,
+        "profile": {"max_points": 3, "pids": ["k"]},
+    }
+    run.execute("fit", spec, tmp_path / "out", workers=1)
+    assert given == [["k"]]
+    result = _json(tmp_path / "out" / "DECAY" / "identifiability.json")
+    assert list(result["profiles"]) == ["k"]
+
+
 def test_an_adopted_fit_is_reported_by_default() -> None:
     adopt = {**FIT, "identifiability": True, "adopt": True}
     assert FitSpec.model_validate(adopt).report

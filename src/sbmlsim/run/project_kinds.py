@@ -6,14 +6,18 @@ Every spec names a project, `project` (`module:attribute` of a
 - `factory` (`FactorySpec`) builds the models of the project with its factory
   into the out, with the layout of the package (`Project.create_models(out)`:
   the factory writes into `out / factory_dir.relative_to(root)`), and compares
-  every output of the factory (`Project.factory_outputs`) with the one of the
-  package, an SBML file without the dates of its model history
-  (`Project.changed_outputs`). The files of the package are never written;
-  the summary names the outputs which differ, `changed`, so a run shows
-  whether the committed models are the ones the factory builds.
+  every output of the factory (`Project.compared_outputs`: the declared
+  `factory_outputs`, else the variants and every file the factory wrote which
+  the package has, with a warning) with the one of the package, an SBML file
+  without the dates of its model history (`Project.changed_outputs`). The
+  files of the package are never written; the summary names the number of the
+  compared outputs, whether they are declared and the outputs which differ,
+  `changed`, so a run shows whether the committed models are the ones the
+  factory builds; a rebuild with nothing to compare fails.
 - `action` (`ActionSpec`) runs an action of the project (`Project.actions`),
   an analysis of its own, with the arguments of the spec as keywords, see
-  `sbmlsim.project.ActionFunction`. The plan checks that the project has the
+  `sbmlsim.project.ActionFunction`; its summary is the mapping the action
+  returns with the name of the action, `action`. The plan checks that the project has the
   action and that its function takes the arguments, so a misspelled argument
   is a configuration error before anything runs.
 
@@ -63,7 +67,9 @@ class ActionSpec(Spec):
         project: the project, `module:attribute`.
         name: the name of the action, a key of `Project.actions`.
         arguments: the arguments of the action, JSON values by the names of
-            the keywords of its function.
+            the keywords of its function; they are passed as they are, a
+            relative path among them is not resolved against the directory of
+            a spec file but relative to the current directory of the run.
     """
 
     project: str
@@ -117,15 +123,35 @@ def _plan_factory(spec: FactorySpec) -> FactorySpec:
 
 
 def _run_factory(spec: FactorySpec, ctx: RunContext) -> dict[str, Any]:
-    """Build the models into the out and compare the outputs with the package."""
+    """Build the models into the out and compare the outputs with the package.
+
+    Raises:
+        RuntimeError: if the rebuild has nothing to compare, neither declared
+            outputs, variants nor a file of the package.
+    """
     project = _factory_project(spec)
     directory = project.create_models(ctx.out)
+    declared = bool(project.factory_outputs)
+    if not declared:
+        logger.warning(
+            "The project '%s' declares no factory_outputs: the rebuild compares "
+            "the variants and the files the factory wrote which the package has.",
+            spec.project,
+        )
+    compared = project.compared_outputs(ctx.out)
+    if not compared:
+        raise RuntimeError(
+            f"The rebuild of '{spec.project}' has nothing to compare: the project "
+            "declares no factory_outputs and no variants, and the factory wrote no "
+            "file of the package."
+        )
     changed = [path.as_posix() for path in project.changed_outputs(ctx.out)]
     for path in changed:
         logger.warning("The output '%s' of the factory differs from the package.", path)
     return {
         "directory": directory.relative_to(ctx.out).as_posix(),
-        "outputs": len(project.factory_outputs),
+        "outputs": len(compared),
+        "declared": declared,
         "changed": changed,
     }
 
@@ -186,7 +212,7 @@ def _run_action(spec: ActionSpec, ctx: RunContext) -> dict[str, Any]:
             f"The action '{spec.name}' returned a {type(result).__name__}, not "
             "its summary, a mapping, or None."
         )
-    return {"action": spec.name, **result}
+    return {**result, "action": spec.name}
 
 
 #: the models of a project built by its factory and compared with the package

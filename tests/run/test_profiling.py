@@ -7,6 +7,8 @@ before it.
 import json
 import os
 import re
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -33,6 +35,11 @@ def test_the_folder_of_a_profile(tmp_path: Path) -> None:
     assert folder.parent == tmp_path / "profiling"
     assert re.fullmatch(r"run_tests\.run\.kinds_dummy_DUMMY_\d{8}_\d{6}", folder.name)
     assert not folder.exists()
+
+
+def test_the_folder_of_the_profile_of_a_unit(tmp_path: Path) -> None:
+    folder = profiling.profile_dir(tmp_path, "unit", "fit", 3)
+    assert re.fullmatch(r"unit_fit_3_\d{8}_\d{6}", folder.name)
 
 
 def test_the_exit_code_of_a_profiled_command(
@@ -104,3 +111,85 @@ def test_a_sample_with_a_lone_surrogate_is_not_written() -> None:
     frames = [(1, [(2, 0, [("file.py", (1, 1, 0, 0), "f\ud87d", None)])])]
     assert not profiling._encodable(frames)
     assert profiling._encodable([(1, [(2, 0, [("file.py", (1, 1), "f", None)])])])
+
+
+class _Collector:
+    """The binary collector of the profiler, as `profiling.sampling` has it."""
+
+    def __init__(self) -> None:
+        self.samples: list[tuple[object, tuple[object, ...], dict[str, object]]] = []
+
+    def collect(self, stack_frames: object, *args: object, **kwargs: object) -> str:
+        self.samples.append((stack_frames, args, kwargs))
+        return "written"
+
+
+def _fake_profiler(
+    monkeypatch: pytest.MonkeyPatch, collector: type | None
+) -> types.ModuleType:
+    """Put a module `profiling.sampling.binary_collector` with the collector."""
+    module = types.ModuleType("profiling.sampling.binary_collector")
+    if collector is not None:
+        module.BinaryCollector = collector  # ty: ignore[unresolved-attribute]
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    return module
+
+
+def test_the_samples_with_a_lone_surrogate_are_skipped_and_counted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collector = type("BinaryCollector", (_Collector,), {})
+    monkeypatch.setattr(collector, "collect", _Collector.collect)
+    _fake_profiler(monkeypatch, collector)
+    skipped = profiling._patched_collector()
+    assert skipped is not None
+    instance = collector()
+    assert instance.collect([("a.py", "f")], 7, flag=True) == "written"
+    assert instance.collect([("a.py", "f\ud87d")], 8) is None
+    assert instance.samples == [([("a.py", "f")], (7,), {"flag": True})]
+    assert skipped() == 1
+
+
+def test_a_profiler_without_the_collector_runs_unchanged(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _fake_profiler(monkeypatch, None)
+    assert profiling._patched_collector() is None
+    assert "runs unchanged" in capsys.readouterr().err
+
+
+@needs_profiler
+@pytest.mark.parametrize(("record", "code"), [(True, 5), (False, 1)])
+def test_another_entry_point_is_profiled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    record: bool,
+    code: int,
+) -> None:
+    monkeypatch.chdir(REPOSITORY)
+    folder = tmp_path / "profile"
+    arguments = ["5", "record"] if record else ["5"]
+    returned = profiling.run_profiled(
+        arguments, folder, module="tests.run.profiled_entry"
+    )
+    assert returned == code
+    assert (folder / "flamegraph.html").exists()
+    assert ("recorded no exit code" in caplog.text) is not record
+
+
+@needs_profiler
+def test_a_failed_conversion_keeps_the_code_of_the_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def fail(binary: Path, folder: Path) -> None:
+        raise RuntimeError("replay --flamegraph failed")
+
+    monkeypatch.chdir(REPOSITORY)
+    monkeypatch.setattr(profiling, "_convert", fail)
+    returned = profiling.run_profiled(
+        ["0", "record"], tmp_path / "profile", module="tests.run.profiled_entry"
+    )
+    assert returned == 0
+    assert "was not converted" in caplog.text
+    assert (tmp_path / "profile" / "profile.bin").exists()

@@ -264,7 +264,8 @@ def check_model(project: Project) -> None:
     variants, the directory of the factory, the directory of the fit records
     and the file of the adopted fits lie below `root`, the variants and the
     data paths exist, the references (the factory, the experiments, the fits,
-    the credibility declaration, the actions) resolve, the experiments load
+    the credibility declaration, the actions) resolve, every action takes the
+    arguments of its call, the experiments load
     (`Project.load_experiments`), the fits of a reference are not empty, and
     every parameter of an adopted fit has its value and a distribution in
     every variant (`sbmlsim.experiment.draws.check_fit_parameters`).
@@ -309,8 +310,22 @@ def check_model(project: Project) -> None:
             problems.append("the fit definitions are not a non-empty mapping")
     for name, action in project.actions.items():
         function = resolved.get(f"action '{name}'", action.function)
-        if not isinstance(function, str) and not callable(function):
+        if isinstance(function, str):
+            continue
+        if not callable(function):
             problems.append(f"the action '{name}' is no function")
+            continue
+        try:
+            signature = inspect.signature(function)
+        except TypeError, ValueError:
+            continue
+        try:
+            signature.bind_partial(project, project.root, workers=1)
+        except TypeError as err:
+            problems.append(
+                f"the action '{name}' is not called as `function(project, out, *, "
+                f"workers, **arguments)`: {err}"
+            )
     # the values of the adopted fits and their uncertainty are in the model
     problems += check_fit_parameters(project)
     if problems:
@@ -412,10 +427,10 @@ class BatteryResult(Protocol):
     """The result of a check of a battery, see `check_battery`.
 
     Attributes:
-        check: the check, its name as `str` (e.g. a `StrEnum`).
+        check: the check, its name as its `value` (an `Enum`) or as `str`.
         passed: whether the check passed, `None` if it does not apply.
-        status: the status of the check, as `str` (e.g. a `StrEnum`), e.g.
-            `not_applicable`.
+        status: the status of the check, as its `value` (an `Enum`) or as
+            `str`, e.g. `not_applicable`.
         problems: the problems of a failed check, one line each.
     """
 
@@ -471,12 +486,13 @@ def check_battery[B: Battery](project: Project, run: Callable[[Project], B]) -> 
     known = project.checks.battery
     problems: list[str] = []
     for result in battery.results:
-        check = str(result.check)
+        check = str(getattr(result.check, "value", result.check))
         if result.passed is False and check not in known:
             problems.append(f"the check '{check}' failed:")
             problems += [f"  {problem}" for problem in result.problems]
         elif result.passed is not False and check in known:
-            status = str(result.status).replace("_", " ")
+            status = str(getattr(result.status, "value", result.status))
+            status = status.replace("_", " ")
             problems.append(
                 f"the known failure of the check '{check}' no longer applies, it "
                 f"{status}: remove it from `checks.battery`"

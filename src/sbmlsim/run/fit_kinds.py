@@ -155,6 +155,10 @@ class ProfileSpec(Spec):
         reoptimize: optimize the other parameters at every point.
         optimizer: arguments of the least squares optimizer of the other
             parameters, `ProfileSettings.optimizer_kwargs`.
+        pids: the parameters to profile, distinct parameters of the problem;
+            the ones `profile_likelihood` profiles by default without, every
+            parameter which is no element of a network (the plan of the kind
+            `identifiability` sets them).
     """
 
     alpha: float = 0.95
@@ -168,6 +172,7 @@ class ProfileSpec(Spec):
     flatness: float = 0.05
     reoptimize: bool = True
     optimizer: dict[str, Any] = Field(default_factory=dict)
+    pids: list[str] | None = None
 
 
 class FitSpec(FitProblemSpec, SplitSpec):
@@ -291,14 +296,10 @@ class IdentifiabilitySpec(FitProblemSpec, SplitSpec, ProfileSpec):
 
     Attributes:
         fit: the records of the fit, the input `fit`.
-        pids: the parameters to profile; the plan sets the ones
-            `profile_likelihood` profiles by default, every parameter which is
-            no element of a network.
         fisher: compute the Fisher information as well, `fisher.json`.
     """
 
     fit: Path | None = None
-    pids: list[str] | None = None
     fisher: bool = True
 
 
@@ -785,6 +786,8 @@ def _plan_fit(spec: FitSpec) -> FitSpec:
     )
     if spec.identifiability:
         _profile_settings(spec.profile)
+        if spec.profile.pids is not None:
+            _check_pids(spec.profile.pids, definition, spec.subset)
     elif spec.adopt:
         raise ConfigurationError(
             "An adopted fit carries the uncertainty of its parameters: adopt a "
@@ -970,6 +973,7 @@ def _fit_identifiability(
             settings=settings,
             parameter_set=parameter_set,
             profile_settings=_profile_settings(spec.profile),
+            pids=spec.profile.pids,
             n_cores=ctx.workers or available_cpus(),
         )
         write_text_atomic(path, str(result.to_json()) + "\n")
@@ -1106,14 +1110,24 @@ def _plan_identifiability(spec: IdentifiabilitySpec) -> IdentifiabilitySpec:
             definition.parameters, hook_summaries(definition.hybridizations)
         )
         pids = [p.pid for p in single]
+    _check_pids(pids, definition, spec.subset)
+    return spec.model_copy(update={"pids": list(pids), "units": len(pids)})
+
+
+def _check_pids(pids: list[str], definition: FitDefinition, subset: str) -> None:
+    """Check the parameters to profile.
+
+    Raises:
+        ConfigurationError: for no parameters or parameters which are not
+            distinct parameters of the problem.
+    """
     known = [p.pid for p in definition.parameters]
     unknown = [pid for pid in pids if pid not in known]
     if unknown or not pids or len(set(pids)) != len(pids):
         raise ConfigurationError(
             f"The parameters to profile {pids} are not distinct parameters of "
-            f"the problem '{spec.subset}', which has {known}."
+            f"the problem '{subset}', which has {known}."
         )
-    return spec.model_copy(update={"pids": list(pids), "units": len(pids)})
 
 
 def _planned_pids(spec: IdentifiabilitySpec) -> list[str]:
