@@ -164,7 +164,7 @@ RESERVED_NAMES: frozenset[str] = frozenset({"run", "plan", "unit", "merge", "lis
 KINDS: dict[str, Kind[Any]] = {}
 
 #: the modules which register the kinds of sbmlsim, imported by `get_kind`
-_BUILTIN_MODULES: tuple[str, ...] = ()
+_BUILTIN_MODULES: tuple[str, ...] = ("sbmlsim.run.fit_kinds",)
 
 _lock = threading.Lock()
 _builtins_loaded = False
