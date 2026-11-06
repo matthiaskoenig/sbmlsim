@@ -35,6 +35,7 @@ nav = [
     { "PEtab" = "petab.md" },
     { "PEtab SciML" = "petab_sciml.md" },
   ] },
+  { "Analyses" = "run.md" },
   { "Test suites" = [
     { "Overview" = "testsuites.md" },
     { "SBML Test Suite" = "testsuite.md" },
