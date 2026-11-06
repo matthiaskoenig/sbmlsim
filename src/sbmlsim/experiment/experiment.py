@@ -18,6 +18,7 @@ from pint.facets.plain import PlainUnit
 from sbmlsim.data import Data, DataSet, check_sel
 from sbmlsim.engine import Engine
 from sbmlsim.experiment import progress
+from sbmlsim.experiment.draws import UncertaintyRun, apply_uncertainty
 from sbmlsim.experiment.progress import Phase, PhaseClock
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
@@ -144,7 +145,11 @@ class SimulationExperiment:
         Initialization must be separated from object construction due to
         the parallel execution of the problem later on.
         Certain objects cannot be serialized and must be initialized.
-        :return:
+
+        With the setting `uncertainty`, an `UncertaintyRun`, every simulation
+        runs over the draws of the fitted parameters and the curves of the
+        simulations become bands, see
+        `sbmlsim.experiment.draws.apply_uncertainty`.
         """
         try:
             # initialized from the outside
@@ -163,11 +168,51 @@ class SimulationExperiment:
             self._check_task_data()
             self._check_figures()
             FigureSettings.check(self.figure_settings, f"the experiment '{self.sid}'")
+            run = self.uncertainty
         except Exception as err:
             # a note and no log entry: the runner logs the error of an experiment
             # once, with its traceback, which shows the note
             err.add_note(f"The experiment '{self.sid}' cannot be initialized.")
             raise
+        if run is not None:
+            try:
+                apply_uncertainty(self, run)
+                self._check_figures()
+            except Exception as err:
+                err.add_note(
+                    f"The experiment '{self.sid}' cannot run over the draws of the "
+                    f"fitted parameters."
+                )
+                raise
+
+    @property
+    def uncertainty(self) -> UncertaintyRun | None:
+        """The draws of the fitted parameters of a run over them, `None` otherwise.
+
+        The setting `uncertainty` of the experiment, which a run over the draws
+        gives every experiment, see `sbmlsim.experiment.draws`.
+
+        Raises:
+            TypeError: if the setting `uncertainty` is no `UncertaintyRun`.
+        """
+        run = self.settings.get("uncertainty")
+        if run is not None and not isinstance(run, UncertaintyRun):
+            raise TypeError(
+                f"The setting 'uncertainty' of '{self.sid}' is no UncertaintyRun: "
+                f"{run!r}."
+            )
+        return run
+
+    def across(self) -> str | None:
+        """Get the dimension of the draws of the fitted parameters, `None` without.
+
+        The dimension over which a run over the draws (`uncertainty`) varies
+        the fitted parameters, which a figure or an analysis of a scan of the
+        experiment leaves out of its own dimensions or makes a band of, e.g.
+        `sbmlsim.result.scan.point_band(result, ..., across=self.across())`.
+        """
+        run = self.uncertainty
+        return None if run is None else run.id
 
     def __str__(self) -> str:
         """Get string representation."""

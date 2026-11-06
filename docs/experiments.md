@@ -188,6 +188,17 @@ If the simulator runs its scans in a pool (`Simulator(n_workers=4)`) and you do 
 
 The workers report what they are doing to the progress display, so its rows are the experiments that are running in the workers. The models and the initialization in the timings are then the ones of the workers, which load the models again; the line below the table gives the time the runner took to initialize the experiments before the run.
 
+## Over the draws of the fitted parameters
+
+A run can repeat the experiments over draws of the fitted parameters of the model. A parameter whose value comes from an adopted fit carries the distribution of its uncertainty in the SBML (the package distrib), which the factory of a [project](run.md#projects) writes with `PROJECT.fit_records().parameter("k", unit=U.per_min)`. `Project.run_experiments(..., uncertainty=UncertaintySettings(draws=100, seed=1234, quantiles=(0.05, 0.95)))` draws these parameters of the default variant once, a Latin hypercube in the dimension `uncertainty`, and gives every experiment the draws as its setting `uncertainty`, an `UncertaintyRun` (`run_experiments(..., uncertainty=...)` and `ExperimentRunner(..., uncertainty=...)` take one directly). `SimulationExperiment.initialize` then runs every simulation as a scan over the draws, so an experiment needs no code of its own:
+
+- a parameter which a simulation, or a dimension of its scan, sets itself is not drawn, nor is one which its model does not have; a simulation without a drawn parameter runs once and keeps its curves,
+- a curve over the time, or over the values of a dimension of its scan, becomes the band of the quantiles with the median, in the name and the colour of the curve,
+- a curve over another variable (e.g. an effect over a concentration) has no common x across the draws: it draws the simulation with the fitted values (`<simulation>_fitted`) over a thin line of every draw,
+- the curves of the data stay.
+
+A figure an experiment draws itself (`figures_mpl`) reads the draws from `self.uncertainty` and the dimension from `self.across()`, e.g. for `sbmlsim.result.scan.point_band`. The draws of the default variant run on every variant, so every variant must have the same fitted values and distributions: `sbmlsim.experiment.draws.check_fit_parameters(project)` lists the differences. In the run layer the draws are the field `uncertainty` of the kind [`simulate`](run.md#simulate-scan-sensitivity-and-uncertainty).
+
 ## When something fails
 
 One failing experiment does not stop the run. An error in a definition, such as a bad key or a missing dataset, is logged with its traceback when the runner is created, and that experiment is skipped. An error during the run ends only that experiment, and a failing figure is skipped while the others are written.

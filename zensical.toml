@@ -103,6 +103,7 @@ nav = [
       { "experiment" = "api/experiment.experiment.md" },
       { "runner" = "api/experiment.runner.md" },
       { "progress" = "api/experiment.progress.md" },
+      { "draws" = "api/experiment.draws.md" },
       { "sids" = "api/experiment.sids.md" },
     ] },
     { "sbmlsim.result" = [

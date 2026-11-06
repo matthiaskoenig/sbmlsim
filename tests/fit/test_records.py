@@ -14,9 +14,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from sbmlutils.factory import Parameter, create_model
 
-from sbmlsim import run
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.records import (
     RECORD_FILES,
@@ -37,27 +35,15 @@ from sbmlsim.simulation.sampling import (
     uncertainty_dimension,
 )
 from tests.project_toy import PROJECT
-from tests.project_toy.factory import U, toy_model
-
-#: the fit of the toy project with what an adopted fit needs
-TOY_FIT = {
-    "project": "tests.project_toy:PROJECT",
-    "subset": "DECAY",
-    "repeats": 2,
-    "seed": 1,
-    "identifiability": True,
-    "profile": {"max_points": 5},
-    "report": True,
-    "mapping_figures": False,
-    "adopt": True,
-}
+from tests.project_toy.factory import U
+from tests.project_toy.records import adopt_toy_fit, toy_model_file
 
 
 @pytest.fixture(scope="module")
 def toy_out(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Get the out of the adopted fit of the toy project."""
     out = tmp_path_factory.mktemp("toy") / "out"
-    run.execute("fit", TOY_FIT, out, workers=1)
+    adopt_toy_fit(out)
     return out
 
 
@@ -82,21 +68,7 @@ def toy_with_uncertainty(
 ) -> Path:
     """Create the toy model whose rate is the value of the fit with its uncertainty."""
     records = AdoptedRecords(fits_dir, [toy_fit.name])
-    model = toy_model(0.2)
-    model.parameters = [
-        Parameter("k", **records.parameter("k", unit=U.per_min), name="rate")
-    ]
-    path = tmp_path_factory.mktemp("model") / "toy.xml"
-    create_model(
-        model=model,
-        filepath=path,
-        sbml_level=3,
-        sbml_version=2,
-        validate=False,
-        create_markdown=False,
-        create_antimony=False,
-    )
-    return path
+    return toy_model_file(tmp_path_factory.mktemp("model") / "toy.xml", records)
 
 
 def uncertainty(**changes: object) -> ParameterUncertainty:

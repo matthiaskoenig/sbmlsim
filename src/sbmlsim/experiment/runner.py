@@ -51,6 +51,7 @@ import matplotlib
 from sbmlsim import cgroup, parallel
 from sbmlsim.engine import Engine, amici_cache, resolve_engine, using_amici_cache
 from sbmlsim.experiment import progress
+from sbmlsim.experiment.draws import UncertaintyRun
 from sbmlsim.experiment.experiment import (
     DATASETS_DIR,
     STATIC_FORMAT,
@@ -1275,6 +1276,7 @@ def run_experiments(
     save_results: bool = False,
     reduced_selections: bool = True,
     jit_optimization: JitOptimization | str | None = None,
+    uncertainty: UncertaintyRun | None = None,
 ) -> list[ExperimentResult]:
     """Run simulation experiments and write their report to the output path.
 
@@ -1302,6 +1304,9 @@ def run_experiments(
         reduced_selections: simulate only the selections an experiment uses.
         jit_optimization: the optimization level every model is compiled
             with, see `ExperimentRunner`.
+        uncertainty: run every experiment over the draws of the fitted
+            parameters, its setting `uncertainty`, see
+            `sbmlsim.experiment.draws`; `None` runs them once.
 
     Returns:
         The results of the experiments.
@@ -1314,12 +1319,17 @@ def run_experiments(
     if simulator is None:
         simulator = Simulator()
 
+    # the settings of the experiments, see `SimulationExperiment.settings`
+    settings: dict[str, Any] = {}
+    if uncertainty is not None:
+        settings["uncertainty"] = uncertainty
     runner = ExperimentRunner(
         experiments,
         simulator=simulator,
         data_path=data_path,
         base_path=base_path,
         jit_optimization=jit_optimization,
+        **settings,
     )
     results = runner.run_experiments(
         output_path=output_path,

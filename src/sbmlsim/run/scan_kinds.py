@@ -27,7 +27,10 @@ is a relative `Path` is relative to `Project.root`.
   result into `uncertainty/` (`UncertaintyResult.to_netcdf`).
 - `simulate` (`SimulateSpec`) runs simulation experiments of the project with
   their report, `index.html` and a directory per experiment; the phases of
-  the experiments are the events `experiment` of the run.
+  the experiments are the events `experiment` of the run. With `uncertainty`
+  (`DrawsSpec`) the experiments run over draws of the fitted parameters of
+  the model of the project, with the seed of the plan, and the curves of their
+  simulations become bands, see `sbmlsim.experiment.draws`.
 
 Every result file is written atomically, so a unit computed again leaves
 complete files. The modules of the analyses are imported when a kind runs, not
@@ -46,9 +49,10 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 import numpy as np
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from sbmlsim import events
 from sbmlsim.atomic import atomic_path, write_text_atomic
@@ -65,6 +69,7 @@ from sbmlsim.run.units import MissingUnits, unit_blocks
 
 if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
+    from sbmlsim.experiment.draws import UncertaintySettings
     from sbmlsim.experiment.progress import Event
     from sbmlsim.model.model_sbml import SBMLModel
     from sbmlsim.project import Project, ScanAnalysis, UncertaintyAnalysis
@@ -78,6 +83,7 @@ __all__ = [
     "SENSITIVITY",
     "SIMULATE",
     "UNCERTAINTY",
+    "DrawsSpec",
     "ScanSpec",
     "SensitivitySpec",
     "SimulateSpec",
@@ -139,6 +145,48 @@ class UncertaintySpec(SplitSpec):
     seed: int | None = None
 
 
+class DrawsSpec(BaseModel):
+    """The draws of the fitted parameters of a run of experiments.
+
+    The fields of `sbmlsim.experiment.draws.UncertaintySettings`.
+
+    Attributes:
+        draws: the number of draws, at least two.
+        seed: the seed of the draws, drawn by the plan without.
+        quantiles: the lower and the upper quantile of the bands.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    draws: int = 100
+    seed: int | None = None
+    quantiles: tuple[float, float] = (0.05, 0.95)
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        """Check the draws and the quantiles as the settings do."""
+        self.settings(seed=0)
+        return self
+
+    def settings(self, seed: int | None = None) -> UncertaintySettings:
+        """Get the settings of the run.
+
+        Args:
+            seed: the seed, the one of the spec without.
+
+        Raises:
+            ValueError: for invalid settings or a spec without a seed.
+        """
+        from sbmlsim.experiment.draws import UncertaintySettings
+
+        seed = self.seed if seed is None else seed
+        if seed is None:
+            raise ValueError("The draws have no seed: plan the spec first.")
+        return UncertaintySettings(
+            draws=self.draws, seed=seed, quantiles=self.quantiles
+        )
+
+
 class SimulateSpec(Spec):
     """The spec of a run of simulation experiments of a project.
 
@@ -149,10 +197,14 @@ class SimulateSpec(Spec):
         project: the project, `module:attribute`.
         experiments: the names of the classes of the experiments to run, the
             plan sets every experiment of the project without.
+        uncertainty: run the experiments over draws of the fitted parameters
+            of the default variant of the model, their curves as bands; once
+            without.
     """
 
     project: str
     experiments: list[str] | None = None
+    uncertainty: DrawsSpec | None = None
 
 
 # ----------------------------------------------------------------------------
@@ -850,11 +902,37 @@ def _experiments(
 
 
 def _plan_simulate(spec: SimulateSpec) -> SimulateSpec:
-    """Plan a run of experiments: the names of the experiments."""
-    _, experiments = _experiments(spec)
-    return spec.model_copy(
-        update={"experiments": [cls.__name__ for cls in experiments]}
-    )
+    """Plan a run of experiments: the names of the experiments and the seed of the draws.
+
+    Raises:
+        ConfigurationError: for unknown experiments and, with `uncertainty`, a
+            default variant of the model without a parameter with a
+            distribution.
+    """
+    project, experiments = _experiments(spec)
+    update: dict[str, Any] = {"experiments": [cls.__name__ for cls in experiments]}
+    draws = spec.uncertainty
+    if draws is not None:
+        from sbmlsim.simulation.sampling import parameter_distributions
+
+        try:
+            path = project.model_path
+            if not path.exists():
+                raise ValueError(f"The model '{path}' does not exist.")
+            if not parameter_distributions(path):
+                raise ValueError(
+                    f"No parameter of '{path}' has a distribution: the uncertainty "
+                    "of the fitted parameters comes from the adopted fits of the "
+                    "model."
+                )
+        except ValueError as err:
+            raise ConfigurationError(
+                f"The experiments of '{spec.project}' cannot run over draws: {err}"
+            ) from err
+        if draws.seed is None:
+            seed = int(np.random.default_rng().integers(2**31))
+            update["uncertainty"] = draws.model_copy(update={"seed": seed})
+    return spec.model_copy(update=update)
 
 
 def _experiment_event(event: Event) -> None:
@@ -879,7 +957,11 @@ def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
     `ExperimentRunner.run_experiments`), run their scans on the workers of
     the run with the simulator of the run.
 
+    With `uncertainty` the experiments run over the draws of the fitted
+    parameters with the seed of the plan.
+
     Raises:
+        ConfigurationError: for draws without the seed of the plan.
         ExperimentRunError: if an experiment or a figure failed, after every
             experiment ran and the report was written.
     """
@@ -887,17 +969,33 @@ def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
     from sbmlsim.project import Project
 
     project, experiments = _experiments(spec)
+    settings: UncertaintySettings | None = None
+    if spec.uncertainty is not None:
+        if spec.uncertainty.seed is None:
+            raise ConfigurationError(
+                "The draws of the run of experiments have no seed: plan it first."
+            )
+        settings = spec.uncertainty.settings()
     with reporting(_experiment_event, shown=False):
         # the base implementation, which is the contract of the run layer: a
         # subclass of `Project` may override `run_experiments` with another
         # signature and result, e.g. a model package of its own
         results = Project.run_experiments(
-            project, experiments, ctx.out, n_workers=_workers(ctx), progress=False
+            project,
+            experiments,
+            ctx.out,
+            n_workers=_workers(ctx),
+            progress=False,
+            uncertainty=settings,
         )
-    return {
+    summary: dict[str, Any] = {
         "experiments": len(results),
         "failed": sum(1 for result in results if result.failed),
     }
+    if settings is not None:
+        summary["draws"] = settings.draws
+        summary["seed"] = settings.seed
+    return summary
 
 
 #: a scan of a project, split into blocks of points
