@@ -16,7 +16,14 @@ import math
 import re
 from dataclasses import dataclass
 
-__all__ = ["ARGUMENTS", "UNCERTAINTY_DIMENSION", "DistribFormula", "parse", "support"]
+__all__ = [
+    "ARGUMENTS",
+    "UNCERTAINTY_DIMENSION",
+    "DistribFormula",
+    "check_band",
+    "parse",
+    "support",
+]
 
 ARGUMENTS: dict[str, tuple[int, ...]] = {
     "normal": (2, 4),
@@ -105,3 +112,33 @@ def support(formula: str) -> tuple[float, float]:
     if distribution.name == "lognormal":
         return 0.0, math.inf
     return -math.inf, math.inf
+
+
+def check_band(draws: int, quantiles: tuple[float, ...]) -> tuple[float, float]:
+    """Check the draws and the quantiles of the bands of a run over the draws.
+
+    The one check of `sbmlsim.experiment.draws.UncertaintySettings` and of the
+    draws of the kind `simulate` (`sbmlsim.run.scan_kinds.DrawsSpec`), which
+    checks a spec without importing the experiments.
+
+    Args:
+        draws: the number of draws.
+        quantiles: the lower and the upper quantile of the bands.
+
+    Returns:
+        The quantiles as floats.
+
+    Raises:
+        ValueError: for less than two draws or quantiles which are not an
+            increasing pair within `(0, 1)`.
+    """
+    if draws < 2:
+        raise ValueError(f"A band needs at least two draws, not {draws}.")
+    if len(quantiles) != 2:
+        raise ValueError(f"A band has a lower and an upper quantile, not {quantiles}.")
+    low, high = (float(q) for q in quantiles)
+    if not 0.0 < low < high < 1.0:
+        raise ValueError(
+            f"The quantiles of a band are increasing within (0, 1), not {quantiles}."
+        )
+    return low, high

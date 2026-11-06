@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, Any
 import libsbml
 
 from sbmlsim.data import Data
+from sbmlsim.distrib import check_band
 from sbmlsim.plot.plotting import Curve
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.task import Task
@@ -97,22 +98,12 @@ class UncertaintySettings:
         """Check the settings.
 
         Raises:
-            ValueError: for less than two draws or quantiles which are not
-                increasing within `(0, 1)`.
+            ValueError: for less than two draws or quantiles which are not an
+                increasing pair within `(0, 1)`, see `sbmlsim.distrib.check_band`.
         """
-        object.__setattr__(self, "quantiles", tuple(float(q) for q in self.quantiles))
-        if self.draws < 2:
-            raise ValueError(f"A band needs at least two draws, not {self.draws}.")
-        if len(self.quantiles) != 2:
-            raise ValueError(
-                f"A band has a lower and an upper quantile, not {self.quantiles}."
-            )
-        low, high = self.quantiles
-        if not 0.0 < low < high < 1.0:
-            raise ValueError(
-                f"The quantiles of a band are increasing within (0, 1), not "
-                f"{self.quantiles}."
-            )
+        object.__setattr__(
+            self, "quantiles", check_band(self.draws, tuple(self.quantiles))
+        )
 
 
 @dataclass(frozen=True)
@@ -163,6 +154,7 @@ class UncertaintyRun:
         Raises:
             ValueError: if the project has no variants, or no parameter of the
                 variant has a distribution.
+            KeyError: naming the variants, for an unknown variant.
         """
         from sbmlsim.simulation.sampling import uncertainty_dimension
 
@@ -475,10 +467,13 @@ def check_fit_parameters(project: Project) -> list[str]:
     """Check that the model has the fitted values and the uncertainty of the adopted fits.
 
     Every parameter of an adopted fit must be a parameter of every variant of
-    the model (`Project.variants`) with the value of the fit and a
-    distribution of its draws. The draws are those of the default variant
-    (`UncertaintyRun.create`) and run on every variant, so the distribution
-    of a parameter in another variant is the one of the default variant.
+    the model (`Project.variants`) with the value of the record of the fit
+    (within `VALUE_RTOL`) and a distribution of its draws. A run over the
+    draws draws the parameters of the default variant only
+    (`UncertaintyRun.create`), and every draw replaces the parameter in every
+    variant: a variant whose value or distribution of a fitted parameter
+    differs would be simulated with the draws of another value, so it is a
+    problem, as is a value of the default variant other than the record's.
 
     Args:
         project: the project.
