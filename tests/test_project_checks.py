@@ -1,7 +1,7 @@
 """The checks of a project as functions, run on the toy project."""
 
 from dataclasses import dataclass, field
-from enum import StrEnum
+from enum import Enum, StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -226,6 +226,21 @@ def test_a_broken_project_names_every_problem() -> None:
     assert "action 'rates'" not in message
 
 
+def without_workers(project: Project, out: Path) -> None:
+    """An action which does not take the workers of its call."""
+
+
+def test_an_action_which_is_not_called_as_an_action_fails() -> None:
+    project = PROJECT.replace(
+        actions={"rates": ".actions:write_rates", "wrong": without_workers}
+    )
+    with pytest.raises(AssertionError) as info:
+        project_checks.check_model(project)
+    message = str(info.value)
+    assert "the action 'wrong' is not called as" in message
+    assert "'rates'" not in message
+
+
 def test_a_package_which_does_not_import_fails() -> None:
     with pytest.raises(AssertionError, match="does not import"):
         project_checks.check_model(PROJECT.replace(package="tests.project_missing"))
@@ -337,6 +352,25 @@ def test_a_battery_which_passes() -> None:
 def test_a_failed_check_of_a_battery_is_a_problem() -> None:
     with pytest.raises(AssertionError, match=r"'steady_state' failed:\n  not steady"):
         project_checks.check_battery(PROJECT, _battery(PASSED, FAILED))
+
+
+class PlainCheck(Enum):
+    """Checks whose `str` is not their value."""
+
+    STEADY_STATE = "steady_state"
+
+
+def test_the_checks_of_a_battery_are_named_by_their_value() -> None:
+    plain = Result(PlainCheck.STEADY_STATE, False, Status.FAILED, ["x"])  # ty: ignore[invalid-argument-type]
+    known = PROJECT.replace(
+        checks=CheckSettings(
+            not_registered={"ToyUnregistered": "a test"},
+            battery={"steady_state": "a test"},
+        )
+    )
+    project_checks.check_battery(known, _battery(plain))
+    with pytest.raises(AssertionError, match="'steady_state' failed"):
+        project_checks.check_battery(PROJECT, _battery(plain))
 
 
 def test_a_known_failure_of_a_battery() -> None:

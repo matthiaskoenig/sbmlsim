@@ -253,8 +253,9 @@ def _profiled(args: argparse.Namespace, arguments: list[str]) -> int:
         arguments: the arguments of the command, without `--profile`.
 
     Returns:
-        The exit code of the command, `EXIT_USAGE` for a command which writes
-        no output and a python without the profiler.
+        The exit code the command recorded (1 if none, see
+        `sbmlsim.run.profiling`), `EXIT_USAGE` for a command which writes no
+        output and a python without the profiler.
     """
     if args.command not in PROFILED_COMMANDS:
         sys.stderr.write(
@@ -263,7 +264,10 @@ def _profiled(args: argparse.Namespace, arguments: list[str]) -> int:
         )
         return EXIT_USAGE
     try:
-        return run_profiled(arguments, profile_dir(args.out, args.command, args.kind))
+        folder = profile_dir(
+            args.out, args.command, args.kind, getattr(args, "index", None)
+        )
+        return run_profiled(arguments, folder)
     except ProfilerUnavailable as err:
         sys.stderr.write(f"{err}\n")
         return EXIT_USAGE

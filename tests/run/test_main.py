@@ -95,3 +95,33 @@ def test_the_exit_code_is_recorded_for_the_profiler(
         entry.main()
     assert info.value.code == code
     assert path.read_text(encoding="utf-8") == str(code)
+
+
+@pytest.mark.parametrize(
+    ("raised", "recorded"),
+    [
+        (SystemExit(2), "2"),
+        (SystemExit("a message"), "1"),
+        (KeyboardInterrupt(), "130"),
+    ],
+)
+def test_the_code_of_an_interrupted_command_is_recorded(
+    raised: BaseException,
+    recorded: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sbmlsim import log
+    from sbmlsim.run import cli, profiling
+
+    def interrupted(argv: object) -> int:
+        raise raised
+
+    path = tmp_path / "exit_code"
+    monkeypatch.setenv(profiling.EXIT_CODE_FILE, str(path))
+    monkeypatch.setattr(entry, "_single_threaded", lambda: None)
+    monkeypatch.setattr(log, "enable_rich_logging", lambda **kwargs: None)
+    monkeypatch.setattr(cli, "main", interrupted)
+    with pytest.raises(type(raised)):
+        entry.main()
+    assert path.read_text(encoding="utf-8") == recorded

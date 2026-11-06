@@ -27,17 +27,30 @@ The profiler writes its samples outside of the output while the command runs,
 since a run refuses an output which is not empty, and the folder of the profile
 is written after the command. The child gets the thread variables of
 `sbmlsim.run.__main__` set, so it runs without starting itself again, which
-the profiler would not follow. The profiler exits with 0 whatever the command
-did, so the command writes its exit code into the file of the environment
-variable `EXIT_CODE_FILE` (`record_exit_code`).
+the profiler would not follow.
+
+`run_profiled` profiles any entry point which runs as `python -m <module>`,
+`sbmlsim.run` by default, e.g. the command line of a framework of its own. The
+profiler exits with 0 whatever the command did, so the entry point writes its
+exit code into the file of the environment variable `EXIT_CODE_FILE` with
+`record_exit_code` before it exits, which `sbmlsim.run.__main__` does; this is
+the hook of every other entry point. The exit code of a profiled run is the
+code the command recorded, 1 if it recorded none (it did not end by itself or
+does not record its code). A failure of the profiler or of the conversion of
+the profile is logged and does not change the exit code.
 
 The profiler runs as `python -m sbmlsim.run.profiling`, the command line of
 `profiling.sampling` with one change (`sample`): python 3.15.2 reads now and
 then a name of a frame of the command while it changes, a string with a lone
 surrogate, and the writer of the binary profile broke with a
 `UnicodeEncodeError` on such a sample, which ended the profiler and the
-command (one run in three of a short command); such a sample is not written
-and counts as a failed one, as the profiler counts a sample it cannot read.
+command (one run in three of a short command). Such a sample is not written;
+the binary profile does not count it (its `collect_failed_sample` does
+nothing), so the profiler reports the number of these samples on stderr. Which
+versions of python fix it is not known, so the change applies whenever the
+profiler has the collector it changes (`BinaryCollector.collect` of
+`profiling.sampling.binary_collector`) and the profiler runs unchanged with a
+warning otherwise.
 
 The profiler is part of python 3.15; with an older python `--profile` is an
 error and the command does not run.
@@ -54,7 +67,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -126,22 +139,25 @@ def record_exit_code(code: int | str | None) -> None:
     Path(path).write_text(str(value), encoding="utf-8")
 
 
-def profile_dir(out: Path, command: str, kind: str) -> Path:
+def profile_dir(out: Path, command: str, kind: str, unit: int | None = None) -> Path:
     """Get a new folder of the profile of a command in the output of a run.
 
     Args:
         out: the output of the run.
         command: the command, e.g. `run`.
         kind: the kind, e.g. `simulate` or `module:attribute` of a kind.
+        unit: the index of the unit of the command `unit`, so the units of a
+            run which compute into one output at once get folders of their own.
 
     Returns:
-        `profiling/<command>_<kind>_<time>` in the output, not created; the
-        characters of the kind which are no letters, digits, `.`, `-` or `_`
-        become `_`.
+        `profiling/<command>_<kind>_<time>` in the output, of a unit
+        `profiling/unit_<kind>_<index>_<time>`, not created; the characters of
+        the kind which are no letters, digits, `.`, `-` or `_` become `_`.
     """
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     name = re.sub(r"[^\w.-]", "_", kind)
-    return Path(out) / PROFILE_DIR / f"{command}_{name}_{stamp}"
+    index = "" if unit is None else f"_{unit}"
+    return Path(out) / PROFILE_DIR / f"{command}_{name}{index}_{stamp}"
 
 
 def _child_environment(exit_code: Path) -> dict[str, str]:
@@ -159,62 +175,16 @@ def _child_environment(exit_code: Path) -> dict[str, str]:
     return environment
 
 
-def run_profiled(arguments: Sequence[str], folder: Path) -> int:
-    """Run a command of the run layer under the sampling profiler, see the module.
-
-    Args:
-        arguments: the arguments of `python -m sbmlsim.run`, with the command
-            and without `--profile`.
-        folder: the folder of the profile, created after the command ran, see
-            `profile_dir`.
-
-    Returns:
-        The exit code of the command.
+def _convert(binary: Path, folder: Path) -> None:
+    """Convert a binary profile into the files of its folder, see the module.
 
     Raises:
-        ProfilerUnavailable: if the python has no sampling profiler.
-        RuntimeError: if a profile is not converted.
+        RuntimeError: if a conversion fails.
     """
-    if not profiler_available():
-        version = ".".join(map(str, PROFILER_PYTHON))
-        raise ProfilerUnavailable(
-            f"{PROFILE_OPTION} needs the sampling profiler of python {version} "
-            f"(profiling.sampling), this is python {sys.version.split()[0]}."
-        )
     profiler = [sys.executable, "-m", "profiling.sampling"]
-    sampler = [sys.executable, "-m", __name__]
-    with tempfile.TemporaryDirectory(prefix="sbmlsim-profile-") as tmp:
-        binary = Path(tmp) / "profile.bin"
-        exit_code = Path(tmp) / "exit_code"
-        returned = subprocess.run(
-            [
-                *sampler,
-                *("run", "--binary", "-o", str(binary)),
-                *("-m", "sbmlsim.run", *arguments),
-            ],
-            check=False,
-            env=_child_environment(exit_code),
-        ).returncode
-        # the code of the command, which the profiler does not pass on
-        code = (
-            int(exit_code.read_text(encoding="utf-8"))
-            if exit_code.is_file()
-            else returned or 1
-        )
-        if returned or not binary.is_file():
-            logger.error(
-                "The profiler failed with the exit code %d and wrote no profile "
-                "of the command.",
-                returned,
-            )
-            return code or 1
-        folder.mkdir(parents=True, exist_ok=True)
-        saved = folder / binary.name
-        # the temporary directory may be on another file system than the out
-        shutil.move(binary, saved)
     for option, name in FORMATS:
         replay = subprocess.run(
-            [*profiler, "replay", option, "-o", str(folder / name), str(saved)],
+            [*profiler, "replay", option, "-o", str(folder / name), str(binary)],
             check=False,
             capture_output=True,
             text=True,
@@ -224,17 +194,86 @@ def run_profiled(arguments: Sequence[str], folder: Path) -> int:
                 f"replay {option} failed:\n{replay.stderr}{replay.stdout}"
             )
     summary = subprocess.run(
-        [*profiler, "replay", "--pstats", "--sort", "cumtime", "-l", "40", str(saved)],
-        check=True,
+        [*profiler, "replay", "--pstats", "--sort", "cumtime", "-l", "40", str(binary)],
+        check=False,
         capture_output=True,
         text=True,
     )
+    if summary.returncode:
+        raise RuntimeError(f"replay --pstats failed:\n{summary.stderr}{summary.stdout}")
     # the statistics, without the progress of the replay before them
     text = summary.stdout
     start = text.find("Profile Stats:")
     (folder / "summary.txt").write_text(
         text[start:] if start >= 0 else text, encoding="utf-8"
     )
+
+
+def run_profiled(
+    arguments: Sequence[str], folder: Path, *, module: str = "sbmlsim.run"
+) -> int:
+    """Run an entry point under the sampling profiler, see the module.
+
+    Args:
+        arguments: the arguments of `python -m <module>`, for `sbmlsim.run`
+            with the command and without `--profile`.
+        folder: the folder of the profile, created after the command ran, see
+            `profile_dir`.
+        module: the module of the entry point, which records its exit code
+            with `record_exit_code`.
+
+    Returns:
+        The exit code the command recorded, 1 if it recorded none; a failure
+        of the profiler or of the conversion of the profile is logged and does
+        not change it.
+
+    Raises:
+        ProfilerUnavailable: if the python has no sampling profiler.
+    """
+    if not profiler_available():
+        version = ".".join(map(str, PROFILER_PYTHON))
+        raise ProfilerUnavailable(
+            f"{PROFILE_OPTION} needs the sampling profiler of python {version} "
+            f"(profiling.sampling), this is python {sys.version.split()[0]}."
+        )
+    with tempfile.TemporaryDirectory(prefix="sbmlsim-profile-") as tmp:
+        binary = Path(tmp) / "profile.bin"
+        exit_code = Path(tmp) / "exit_code"
+        returned = subprocess.run(
+            [
+                *(sys.executable, "-m", __name__),
+                *("run", "--binary", "-o", str(binary)),
+                *("-m", module, *arguments),
+            ],
+            check=False,
+            env=_child_environment(exit_code),
+        ).returncode
+        # the code of the command, which the profiler does not pass on
+        if exit_code.is_file():
+            code = int(exit_code.read_text(encoding="utf-8"))
+        else:
+            logger.error(
+                "The command '%s' recorded no exit code (record_exit_code): it "
+                "did not end by itself or does not record it, its code is 1.",
+                module,
+            )
+            code = 1
+        if returned or not binary.is_file():
+            logger.error(
+                "The profiler failed with the exit code %d and wrote no profile "
+                "of the command.",
+                returned,
+            )
+            return code
+        folder.mkdir(parents=True, exist_ok=True)
+        saved = folder / binary.name
+        # the temporary directory may be on another file system than the out
+        shutil.move(binary, saved)
+    try:
+        _convert(saved, folder)
+    except (RuntimeError, OSError) as err:
+        logger.error("The profile '%s' was not converted: %s", saved, err)
+        return code
     logger.info("The profile: file://%s", (folder / "flamegraph.html").resolve())
     return code
 
@@ -255,27 +294,58 @@ def _encodable(value: object) -> bool:
     return True
 
 
+def _patched_collector() -> Callable[[], int] | None:
+    """Skip the samples the binary profile cannot encode, see the module.
+
+    Returns:
+        The number of the samples skipped so far, `None` if the profiler has
+        no collector to change.
+    """
+    try:
+        binary_collector = importlib.import_module(
+            "profiling.sampling.binary_collector"
+        )
+    except ImportError:
+        binary_collector = None
+    collector = getattr(binary_collector, "BinaryCollector", None)
+    collect = getattr(collector, "collect", None)
+    if collector is None or not callable(collect):
+        sys.stderr.write(
+            "Warning: profiling.sampling has no BinaryCollector.collect, the "
+            "profiler runs unchanged.\n"
+        )
+        return None
+    skipped = 0
+
+    def checked(self: Any, stack_frames: Any, *args: Any, **kwargs: Any) -> Any:
+        nonlocal skipped
+        if _encodable(stack_frames):
+            return collect(self, stack_frames, *args, **kwargs)
+        skipped += 1
+        return None
+
+    collector.collect = checked
+    return lambda: skipped
+
+
 def sample() -> None:
     """Run the command line of the sampling profiler, see the module.
 
     A sample with a name the binary profile cannot encode, a name the profiler
-    read while the command changed it, counts as a failed sample instead of
-    breaking the writer of the profile, which ended the profiler and the
-    command.
+    read while the command changed it, is not written instead of breaking the
+    writer of the profile, which ended the profiler and the command; their
+    number is reported on stderr.
     """
-    binary_collector = importlib.import_module("profiling.sampling.binary_collector")
     cli = importlib.import_module("profiling.sampling.cli")
-    collector = binary_collector.BinaryCollector
-    collect = collector.collect
-
-    def checked(self: Any, stack_frames: Any, timestamp_us: int | None = None) -> None:
-        if _encodable(stack_frames):
-            collect(self, stack_frames, timestamp_us)
-        else:
-            self.collect_failed_sample()
-
-    collector.collect = checked
-    cli.main()
+    skipped = _patched_collector()
+    try:
+        cli.main()
+    finally:
+        if skipped is not None and skipped():
+            sys.stderr.write(
+                f"Warning: {skipped()} samples with a name which is no valid "
+                "UTF-8 were not written into the profile.\n"
+            )
 
 
 if __name__ == "__main__":

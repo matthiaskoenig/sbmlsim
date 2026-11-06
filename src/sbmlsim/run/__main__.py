@@ -10,15 +10,19 @@ POSIX it replaces itself (`os.execv`); on windows, where `os.execv` starts a
 new process and ends the old one with 0, it runs the new process and exits
 with its code. A command which runs under the profiler (`--profile`, see
 `sbmlsim.run.profiling`) records its exit code for the profiler, which exits
-with 0 whatever the command did. `MPLBACKEND` is set to `Agg` unless set, so the workers of the
-pools draw with `Agg` as the process does (`matplotlib.use("Agg")`, #317). The
-messages are logged on stderr, so stdout carries only the output of `plan` and
-`list`.
+with 0 whatever the command did: the code of the command line, the code of a
+`SystemExit`, `EXIT_INTERRUPTED` for Ctrl-C and 1 for any other error.
+`MPLBACKEND` is set to `Agg` unless set, so the workers of the pools draw with
+`Agg` as the process does (`matplotlib.use("Agg")`, #317). The messages are
+logged on stderr, so stdout carries only the output of `plan` and `list`.
 """
 
 import os
 import subprocess
 import sys
+
+#: the exit code of a command which Ctrl-C interrupted, 128 + SIGINT
+EXIT_INTERRUPTED = 130
 
 #: the variables of the threads of the numerical libraries, `1` unless set
 THREAD_VARIABLES: tuple[str, ...] = (
@@ -65,6 +69,12 @@ def main() -> None:
     enable_rich_logging(console=Console(stderr=True))
     try:
         code = cli_main(sys.argv[1:])
+    except SystemExit as stop:
+        record_exit_code(stop.code)
+        raise
+    except KeyboardInterrupt:
+        record_exit_code(EXIT_INTERRUPTED)
+        raise
     except BaseException:
         record_exit_code(1)
         raise

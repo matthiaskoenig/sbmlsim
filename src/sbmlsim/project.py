@@ -16,11 +16,12 @@ analyses of a project with `python -m sbmlsim.run list <project>`, see
 `Project.analyses`.
 
 The experiments, the fits, the factory, the credibility declaration and the
-functions of the actions of a project are objects or references `"module:attribute"` to them, which are
-resolved when they are used (`resolve`) and kept, so that importing the module
-of a project imports none of them: the experiments import the module of their
-project for its paths, so the project cannot import them, and a package of many
-models stays cheap to import. A module which starts with a dot is relative to
+functions of the actions of a project are objects or references
+`"module:attribute"` to them, which are resolved when they are used
+(`resolve`) and kept, so that importing the module of a project imports none
+of them: the experiments import the module of their project for its paths,
+so the project cannot import them, and a package of many models stays cheap to
+import. A module which starts with a dot is relative to
 `Project.package`. The scans, the observables and the uncertainty models are
 python callables which build their objects when an analysis runs, so every
 unit of a run builds the same objects from them, which is why every callable
@@ -1082,27 +1083,54 @@ class Project(BaseModel):
         base = self.root if out is None else Path(out)
         return [base / path for path in self.factory_outputs]
 
+    def compared_outputs(self, out: Path) -> list[Path]:
+        """Get the outputs of the factory which a rebuild compares with the package.
+
+        These are the `factory_outputs`. A project which declares none
+        compares what the rebuild wrote: the variants of the model and every
+        file the factory wrote into its directory which the package has as
+        well (a file the package does not have, e.g. an ignored one, is left
+        out), so a rebuild is never compared on nothing.
+
+        Args:
+            out: the root of a rebuild, see `create_models`.
+
+        Returns:
+            The outputs relative to the root, the declared ones in their
+            order, else sorted.
+        """
+        if self.factory_outputs:
+            return list(self.factory_outputs)
+        outputs = {path.relative_to(self.root) for path in self.variants.values()}
+        if self.factory_dir is not None:
+            relative = self.factory_dir.relative_to(self.root)
+            rebuilt = Path(out) / relative
+            if rebuilt.is_dir():
+                outputs |= {
+                    path.relative_to(out)
+                    for path in rebuilt.rglob("*")
+                    if path.is_file() and (self.root / path.relative_to(out)).is_file()
+                }
+        return sorted(outputs)
+
     def changed_outputs(self, out: Path) -> list[Path]:
         """Get the outputs of the factory whose rebuild differs from the package.
 
-        An output is compared with the one of the package, the SBML of a model
-        without the dates of its model history (`same_sbml`), any other file
-        by its bytes; an output which only one of them has differs.
+        Every output of `compared_outputs` is compared with the one of the
+        package, the SBML of a model without the dates of its model history
+        (`same_sbml`), any other file by its bytes; an output which only one
+        of them has differs.
 
         Args:
             out: the root of a rebuild, see `create_models`.
 
         Returns:
             The outputs which differ, relative to the root, in the order of
-            `factory_outputs`.
+            `compared_outputs`.
         """
         changed: list[Path] = []
-        for output, rebuilt, committed in zip(
-            self.factory_outputs,
-            self.factory_paths(out),
-            self.factory_paths(),
-            strict=True,
-        ):
+        for output in self.compared_outputs(out):
+            rebuilt, committed = Path(out) / output, self.root / output
             if not (rebuilt.is_file() and committed.is_file()) or not _same_output(
                 rebuilt, committed
             ):
