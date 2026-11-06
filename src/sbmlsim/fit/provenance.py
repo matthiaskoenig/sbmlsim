@@ -305,8 +305,8 @@ def create_provenance(
         fixed_values: values of the model which the caller keeps fixed;
             recorded, not applied.
         engine: the engine of the problem, see `collect_versions`.
-        sources: provenance of the sources of a snapshot, `snapshot_provenance`
-            if `None`; with sources there is no git revision (a snapshot has no
+        sources: provenance of the sources of a snapshot; without them the file
+            of the environment variable `SIMRUN_PROVENANCE` is read, if set; with sources there is no git revision (a snapshot has no
             checkout) and the checksums are relative to `base_path`.
 
     Returns:

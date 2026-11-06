@@ -325,3 +325,39 @@ def test_combine_refuses_a_parameter_twice(
         IdentifiabilityResult.combine([part, part])
     with pytest.raises(ValueError, match="no part"):
         IdentifiabilityResult.combine([])
+
+
+def test_a_fit_emits_one_event_per_repeat(
+    op_hctz_iv: OptimizationProblem,
+    fit_settings: FitSettings,
+    short_fit: dict[str, Any],
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from sbmlsim import events
+
+    path = tmp_path / "progress.jsonl"
+    with events.recording(path):
+        _fit(op_hctz_iv, fit_settings, short_fit, tmp_path / "runs")
+    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    repeats = [x for x in lines if x["event"] == "fit.repeat"]
+    assert sorted(x["run"] for x in repeats) == [0, 1, 2, 3]
+    assert {x["opid"] for x in repeats} == {op_hctz_iv.opid}
+
+
+def test_a_profile_emits_an_event(
+    profiles: tuple[OptimizationProblem, ParameterSet, list[str]],
+    fit_settings: FitSettings,
+    tmp_path: Path,
+) -> None:
+    import json
+
+    from sbmlsim import events
+
+    problem, parameter_set, pids = profiles
+    path = tmp_path / "progress.jsonl"
+    with events.recording(path):
+        _profile(problem, fit_settings, parameter_set, pids)
+    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    assert [x["pid"] for x in lines if x["event"] == "profile"] == pids

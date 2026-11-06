@@ -259,3 +259,22 @@ def test_a_checkpoint_keeps_no_attribute_of_its_own(tmp_path: Path) -> None:
     result = propagate(**_arguments(n=8, checkpoint=tmp_path))
     assert "propagation" not in result.results["control"].ds.attrs
     _assert_equal(propagate(**_arguments(n=8)), result)
+
+
+def test_blocks_emit_events(tmp_path: Path) -> None:
+    import json
+
+    from sbmlsim import events
+
+    path = tmp_path / "progress.jsonl"
+    with events.recording(path):
+        propagate(**_arguments(n=20, design="sobol", block_size=10))
+    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    blocks = [
+        (x["scenario"], x["start"], x["stop"])
+        for x in lines
+        if x["event"] == "propagation.block"
+    ]
+    assert sorted(blocks) == sorted(
+        (s, a, b) for s in ("control", "treatment") for a, b in ((0, 10), (10, 20))
+    )
