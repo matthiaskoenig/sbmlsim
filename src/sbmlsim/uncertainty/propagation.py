@@ -918,6 +918,21 @@ class Propagation:
             )
         return ds
 
+    def checkpointed(self, block: range) -> bool:
+        """Check whether a block has its checkpoint files for every scenario.
+
+        Args:
+            block: consecutive draws.
+
+        Returns:
+            Whether the propagation has a checkpoint and the files of the block
+            exist in it for every scenario; whether they are blocks of this
+            propagation is checked when they are read.
+        """
+        return self.checkpoint is not None and all(
+            self._path(block, name).exists() for name in self.scenarios
+        )
+
     def run_block(self, block: range) -> None:
         """Run the draws of a block in every scenario.
 
@@ -936,9 +951,7 @@ class Propagation:
         key = (block.start, block.stop)
         if key in self._results:
             return
-        if self.checkpoint is not None and all(
-            self._path(block, name).exists() for name in self.scenarios
-        ):
+        if self.checkpointed(block):
             logger.info(
                 "The draws %s-%s of the propagation are read from '%s'.",
                 block.start,

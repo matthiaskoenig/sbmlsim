@@ -17,6 +17,7 @@ from sbmlsim.experiment.progress import (
     Phase,
     PhaseClock,
     RunProgress,
+    current_listener,
     reporting,
     scan_progress,
     show_progress,
@@ -298,6 +299,9 @@ def test_scan_progress() -> None:
         assert scan_progress() is False
     with reporting(lambda event: None):
         assert scan_progress() is None
+    # a listener which shows nothing, e.g. one which records the events
+    with reporting(lambda event: None, shown=False):
+        assert scan_progress() is False
 
 
 def _result(sid: str, timings: dict[str, float], error: str | None = None) -> Any:
@@ -415,3 +419,33 @@ def test_a_console_without_utf_gets_ascii(encoding: str) -> None:
     assert "+ experiments 2 workers, 1 failed" in text
     assert "+ GoodExperiment" in text and "x BrokenTask" in text
     assert "================" in text
+
+
+def test_a_run_without_progress_reports_to_the_listener_of_its_context(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A run without a display reports to the listener of an enclosing reporting.
+
+    The run layer records the events of the experiments this way, without a
+    display on the console.
+    """
+    events: list[Event] = []
+    with reporting(events.append, shown=False):
+        assert current_listener() is not None
+        _runner(GoodExperiment).run_experiments(
+            output_path=tmp_path, n_workers=1, progress=False
+        )
+    assert current_listener() is None
+    assert capsys.readouterr().out == ""
+    assert {e.sid for e in events} == {"GoodExperiment"}
+    assert {Phase.SIMULATIONS, Phase.FIGURES} <= {e.phase for e in events}
+
+
+def test_the_workers_report_to_the_listener_of_the_context(tmp_path: Path) -> None:
+    """The events of the workers of a run without a display reach the listener."""
+    events: list[Event] = []
+    with reporting(events.append, shown=False):
+        _runner(First, Second).run_experiments(
+            output_path=tmp_path, n_workers=2, progress=False
+        )
+    assert {e.sid for e in events} == {"First", "Second"}

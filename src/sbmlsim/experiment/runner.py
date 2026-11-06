@@ -64,6 +64,7 @@ from sbmlsim.experiment.progress import (
     Phase,
     PhaseClock,
     RunProgress,
+    current_listener,
     reporting,
     show_progress,
     show_timings,
@@ -449,7 +450,9 @@ class ExperimentRunner:
                 shows them on a terminal and in a notebook and not when the
                 output is redirected, see `progress.show_progress`. `False`
                 prints nothing, the progress bars of the scans of the tasks
-                included.
+                included. A run without progress inside of
+                `progress.reporting` reports its events to the listener of
+                that context, also from its workers.
 
         Returns:
             The results of the experiments, which the report is created from.
@@ -493,11 +496,16 @@ class ExperimentRunner:
         display = (
             RunProgress(len(self._order), workers) if show_progress(progress) else None
         )
-        # the workers of a run with progress report what they do through a
+        # a run without a display reports to the listener of an enclosing
+        # reporting, e.g. of the run layer, which records the events
+        listener: Listener | None = (
+            display if display is not None else current_listener()
+        )
+        # the workers of a run with a listener report what they do through a
         # queue, which a worker receives when it starts
         events: Queue[Event] | None = (
             parallel.process_context().Queue()
-            if display is not None and workers > 1
+            if listener is not None and workers > 1
             else None
         )
         exp_results: list[ExperimentResult] = []
@@ -520,8 +528,8 @@ class ExperimentRunner:
             )
             if executor is not None:
                 stack.callback(parallel.stop, executor)
-            stack.enter_context(reporting(display))
-            stack.enter_context(_forwarded(events, display))
+            stack.enter_context(reporting(listener, shown=display is not None))
+            stack.enter_context(_forwarded(events, listener))
             # the most expensive experiments first, so that none of them
             # starts last and keeps the others waiting
             futures: dict[str, Future[_Outcome]] = (

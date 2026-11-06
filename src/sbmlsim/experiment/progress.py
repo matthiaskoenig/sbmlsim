@@ -142,9 +142,15 @@ Listener = Callable[[Event], None]
 
 @dataclass(frozen=True, slots=True)
 class _Reporting:
-    """The listener of a run of the runner, `None` if the run shows nothing."""
+    """The listener of a run of the runner and whether the run shows progress.
+
+    Attributes:
+        listener: what receives the events, `None` if nothing does.
+        shown: whether the run shows its progress on the console.
+    """
 
     listener: Listener | None
+    shown: bool
 
 
 #: the reporting of the run of the runner, `None` outside of one
@@ -157,19 +163,37 @@ _CLOCK: ContextVar[PhaseClock | None] = ContextVar("sbmlsim_clock", default=None
 
 
 @contextmanager
-def reporting(listener: Listener | None) -> Generator[None]:
+def reporting(
+    listener: Listener | None, *, shown: bool | None = None
+) -> Generator[None]:
     """Report the phases of the experiments which run in the context.
+
+    A run of the runner without a display of its own reports to the listener
+    of an enclosing context, see `current_listener`, e.g. the run layer,
+    which records the events of the experiments.
 
     Args:
         listener: what receives the events, `None` for a run which shows no
             progress; the scans of its tasks then show none either, see
             `scan_progress`.
+        shown: whether the run shows its progress on the console; by default
+            a run with a listener does. A listener which shows nothing, e.g.
+            one which records the events, is not shown, and the scans of the
+            tasks show no progress either.
     """
-    token = _REPORTING.set(_Reporting(listener))
+    token = _REPORTING.set(
+        _Reporting(listener, listener is not None if shown is None else shown)
+    )
     try:
         yield
     finally:
         _REPORTING.reset(token)
+
+
+def current_listener() -> Listener | None:
+    """Get the listener of the reporting of the context, `None` outside of one."""
+    current = _REPORTING.get()
+    return current.listener if current is not None else None
 
 
 def scan_progress() -> bool | None:
@@ -183,7 +207,7 @@ def scan_progress() -> bool | None:
         `False` in a run of the runner without progress, `None` otherwise.
     """
     current = _REPORTING.get()
-    return False if current is not None and current.listener is None else None
+    return False if current is not None and not current.shown else None
 
 
 def advance(steps: int = 1) -> None:

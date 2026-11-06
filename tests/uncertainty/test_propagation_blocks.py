@@ -269,7 +269,7 @@ def test_blocks_emit_events(tmp_path: Path) -> None:
     path = tmp_path / "progress.jsonl"
     with events.recording(path):
         propagate(**_arguments(n=20, design="sobol", block_size=10))
-    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    lines = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
     blocks = [
         (x["scenario"], x["start"], x["stop"])
         for x in lines
@@ -278,3 +278,20 @@ def test_blocks_emit_events(tmp_path: Path) -> None:
     assert sorted(blocks) == sorted(
         (s, a, b) for s in ("control", "treatment") for a, b in ((0, 10), (10, 20))
     )
+
+
+def test_a_block_is_checkpointed_once_every_scenario_has_its_file(
+    tmp_path: Path,
+) -> None:
+    propagation = Propagation(
+        **_arguments(n=4, block_size=2, checkpoint=tmp_path / "checkpoint")
+    )
+    first, second = propagation.blocks()
+    assert not propagation.checkpointed(first)
+    propagation.run_block(first)
+    assert propagation.checkpointed(first)
+    assert not propagation.checkpointed(second)
+    # a block of one scenario only is not checkpointed
+    next((tmp_path / "checkpoint").glob("*/draws-0-2.nc")).unlink()
+    assert not propagation.checkpointed(first)
+    assert not Propagation(**_arguments(n=4)).checkpointed(first)
