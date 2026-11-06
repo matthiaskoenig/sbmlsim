@@ -19,6 +19,19 @@ def _read(path: Path) -> str | None:
         return None
 
 
+def _cpus(quota: str, period: str) -> float | None:
+    """Get a quota in CPUs, `None` for a value which is no finite positive number."""
+    try:
+        quota_us, period_us = float(quota), float(period)
+    except ValueError:
+        return None
+    if not (math.isfinite(quota_us) and math.isfinite(period_us)):
+        return None
+    if quota_us <= 0 or period_us <= 0:
+        return None
+    return quota_us / period_us
+
+
 def _v2_quota(root: Path, proc_cgroup: Path) -> float | None:
     """Get the smallest quota in CPUs of the cgroup v2 path of the process and its parents."""
     text = _read(proc_cgroup)
@@ -36,14 +49,9 @@ def _v2_quota(root: Path, proc_cgroup: Path) -> float | None:
         content = _read(directory / "cpu.max")
         if content is not None:
             parts = content.split()
-            if len(parts) == 2 and parts[0] != "max":
-                try:
-                    quota, period = float(parts[0]), float(parts[1])
-                except ValueError:
-                    pass
-                else:
-                    if period > 0:
-                        quotas.append(quota / period)
+            cpus = _cpus(parts[0], parts[1]) if len(parts) == 2 else None
+            if cpus is not None:
+                quotas.append(cpus)
         if directory == root or root not in directory.parents:
             break
         directory = directory.parent
@@ -57,12 +65,9 @@ def _v1_quota(root: Path) -> float | None:
         period = _read(root / name / "cpu.cfs_period_us")
         if quota is None or period is None:
             continue
-        try:
-            quota_us, period_us = float(quota), float(period)
-        except ValueError:
-            continue
-        if quota_us > 0 and period_us > 0:
-            return quota_us / period_us
+        cpus = _cpus(quota, period)
+        if cpus is not None:
+            return cpus
     return None
 
 
@@ -74,7 +79,7 @@ def cpu_quota(root: Path = CGROUP_ROOT, proc_cgroup: Path = PROC_CGROUP) -> int 
         proc_cgroup: the file with the cgroup of the process.
 
     Returns:
-        The floor of the smallest quota of the cgroup and its parents (cgroup v2) or of its quota (v1), at least 1, `None` without a quota.
+        The floor of the smallest quota of the cgroup and its parents (cgroup v2) or of its quota (v1), at least 1, `None` without a quota. A quota is `max` (v2) or `-1` (v1) without a limit; a file which is no quota, e.g. garbage, a value which is no finite positive number or a directory, sets no quota.
     """
     quota = _v2_quota(root, proc_cgroup)
     if quota is None:
