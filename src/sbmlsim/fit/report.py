@@ -2171,7 +2171,7 @@ class FitReport:
             return label
         try:
             text = f"{ureg.Unit(unit):~P}"
-        except (PintError, TokenError, ValueError):
+        except PintError, TokenError, ValueError:
             text = unit
         return f"{label} [{text}]" if text else label
 

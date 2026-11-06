@@ -15,7 +15,7 @@ def _read(path: Path) -> str | None:
     """Read a text file, `None` when it is missing or unreadable."""
     try:
         return path.read_text(encoding="utf-8").strip()
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
 
 

@@ -206,7 +206,7 @@ def git_info(path: Path) -> GitInfo | None:
         root = run("rev-parse", "--show-toplevel")
         sha = run("rev-parse", "HEAD")
         dirty = bool(run("status", "--porcelain", "--untracked-files=no"))
-    except (OSError, subprocess.CalledProcessError):
+    except OSError, subprocess.CalledProcessError:
         return None
     return GitInfo(root=root, sha=sha, dirty=dirty)
 

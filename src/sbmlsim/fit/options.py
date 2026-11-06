@@ -398,7 +398,7 @@ class FitSettings:
         }
 
     @staticmethod
-    def from_dict(d: dict[str, Any]) -> "FitSettings":
+    def from_dict(d: dict[str, Any]) -> FitSettings:
         """Create settings from a dictionary, i.e., from the stored JSON.
 
         Args:

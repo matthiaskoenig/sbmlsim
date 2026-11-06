@@ -1,6 +1,6 @@
 # Installation
 
-`sbmlsim` needs python 3.13 or newer and runs on Linux, macOS and Windows. Install it from [PyPI](https://pypi.org/project/sbmlsim/) with pip:
+`sbmlsim` needs python 3.14 or newer and runs on Linux, macOS and Windows. Install it from [PyPI](https://pypi.org/project/sbmlsim/) with pip:
 
 ```bash
 pip install sbmlsim
@@ -55,7 +55,7 @@ Five features need packages which are not installed with `sbmlsim`:
 | hybrid models with neural networks ([PEtab SciML](petab_sciml.md)) | `pip install "sbmlsim[sciml]"` |
 | COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [COPASI](simulation.md#copasi)) | `pip install "sbmlsim[copasi]"` |
 | AMICI as a third simulation engine (`Simulator(engine="amici")`, see [AMICI](simulation.md#amici)) | `pip install "sbmlsim[amici]"` |
-| the analyses as task types of [simrun](https://github.com/matthiaskoenig/simrun), which runs them on a cluster (see [simrun](run.md#simrun)); python 3.14 or newer | `pip install "sbmlsim[simrun]"` |
+| the analyses as task types of [simrun](https://github.com/matthiaskoenig/simrun), which runs them on a cluster (see [simrun](run.md#simrun)) | `pip install "sbmlsim[simrun]"` |
 
 AMICI has no wheels and is built from source when it is installed. It needs a C++ compiler, a BLAS library with its `cblas` header and the headers of HDF5 from the system, e.g. on Debian or Ubuntu:
 

@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
 
 
 @dataclass
@@ -32,8 +31,8 @@ class Source:
 
     @classmethod
     def from_source(
-        cls, source: Union["Source", str, Path], base_dir: Path | None = None
-    ) -> "Source":
+        cls, source: Source | str | Path, base_dir: Path | None = None
+    ) -> Source:
         """Resolve the source string.
 
         Args:

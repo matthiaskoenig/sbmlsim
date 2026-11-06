@@ -58,7 +58,7 @@ class TimecourseResult:
         object.__setattr__(self, "_index", index)
 
     @classmethod
-    def concatenate(cls, results: Sequence["TimecourseResult"]) -> "TimecourseResult":
+    def concatenate(cls, results: Sequence[TimecourseResult]) -> TimecourseResult:
         """Concatenate the results of consecutive timecourses.
 
         Args:

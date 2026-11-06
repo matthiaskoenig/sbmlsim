@@ -126,9 +126,9 @@ class _PetabExperimentDefinition:
     derived_dir: Path | None
     sciml: Any
     model_sources: dict[Path, Path] = field(default_factory=dict)
-    _reader: "PetabReader | None" = field(default=None, repr=False)
+    _reader: PetabReader | None = field(default=None, repr=False)
 
-    def reader(self) -> "PetabReader":
+    def reader(self) -> PetabReader:
         """Construct runtime state once per bound experiment class."""
         if self._reader is None:
             self._reader = PetabReader(
@@ -215,7 +215,7 @@ class PetabReader:
             without them.
     """
 
-    sciml: "SciMLReader | None" = None
+    sciml: SciMLReader | None = None
 
     def __init__(
         self,
@@ -223,7 +223,7 @@ class PetabReader:
         base_path: Path | None = None,
         name: str | None = None,
         derived_dir: Path | None = None,
-        sciml: "SciMLConfig | Mapping[str, Any] | None" = None,
+        sciml: SciMLConfig | Mapping[str, Any] | None = None,
     ):
         """Initialize the reader.
 
@@ -359,7 +359,7 @@ class PetabReader:
         name: str | None = None,
         *,
         derived_dir: Path | None = None,
-    ) -> "PetabReader":
+    ) -> PetabReader:
         """Read the problem of a PEtab YAML file.
 
         Args:
@@ -415,7 +415,7 @@ class PetabReader:
             sciml=sciml,
         )
 
-    def _read_sciml(self, extensions: dict[str, Any]) -> "SciMLReader | None":
+    def _read_sciml(self, extensions: dict[str, Any]) -> SciMLReader | None:
         """Read the networks of a problem of PEtab SciML.
 
         Args:
@@ -605,7 +605,7 @@ class PetabReader:
             return default
         try:
             unit = str(uinfo[sid])
-        except (KeyError, TypeError):
+        except KeyError, TypeError:
             return default
         return unit if unit else DEFAULT_VALUE_UNIT
 
@@ -2058,7 +2058,7 @@ def _is_number(value: Any) -> bool:
     """
     try:
         return np.isfinite(float(value))
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 

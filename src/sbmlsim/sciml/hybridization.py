@@ -483,7 +483,7 @@ class Hybridization:
         for sid, value in constants.items():
             try:
                 number = float(value)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 number = np.nan
             if not np.isfinite(number):
                 raise self.error(f"the constant '{sid}' is '{value}', not a number")

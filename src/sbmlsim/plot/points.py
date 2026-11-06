@@ -498,7 +498,7 @@ def _positions(dimension: Dimension, labels: Sequence[Any]) -> list[int] | None:
     index = {label: k for k, label in enumerate(dimension.labels.tolist())}
     try:
         return [index[label] for label in labels]
-    except (KeyError, TypeError):
+    except KeyError, TypeError:
         return None
 
 

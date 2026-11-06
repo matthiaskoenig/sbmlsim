@@ -590,7 +590,7 @@ class SimulationExperiment:
         keep_results: bool = True,
         on_error: Literal["raise", "log"] = "raise",
         figure_settings: FigureSettings | Mapping[str, Any] | None = None,
-    ) -> "ExperimentResult":
+    ) -> ExperimentResult:
         """Execute given experiment and store results.
 
         A figure which failed in this run, and every figure of a failed
@@ -1502,7 +1502,7 @@ class ExperimentRunError(Exception):
         failures: the failed experiments and figures, one line each.
     """
 
-    def __init__(self, results: "list[ExperimentResult]") -> None:
+    def __init__(self, results: list[ExperimentResult]) -> None:
         """Create the error from the results of a run."""
         self.results = results
         lines = []

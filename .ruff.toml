@@ -3,7 +3,7 @@ line-length = 88
 indent-width = 4
 
 # oldest supported version, see `project.requires-python`
-target-version = "py313"
+target-version = "py314"
 
 [lint]
 # Pyflakes (`F`) and a subset of pycodestyle (`E`), plus:
