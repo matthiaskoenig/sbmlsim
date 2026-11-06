@@ -59,3 +59,37 @@ def test_a_run_without_uncertain_values_does_not_import_the_uncertainty() -> Non
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == "[]"
+
+
+def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
+    code = (
+        "import sys, sbmlsim; "
+        "print(sorted(m for m in ('sbmlsim.run', 'sbmlsim.project') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
+def test_the_run_layer_imports_no_analysis() -> None:
+    """`sbmlsim.run` imports the fit, the simulator and the project when it runs."""
+    code = (
+        "import sys, sbmlsim.run, sbmlsim.run.cli; "
+        "print(sorted(m for m in ('sbmlsim.fit', 'sbmlsim.simulator', 'sbmlsim.project',"
+        " 'matplotlib') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
