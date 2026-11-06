@@ -2,6 +2,8 @@
 
 import datetime
 import logging
+import os
+import tempfile
 import uuid
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from copy import deepcopy
@@ -114,6 +116,54 @@ def bound_warnings(
     return messages
 
 
+def _write_atomic(path: Path, text: str) -> None:
+    """Write a text file atomically.
+
+    The text goes into a temporary file of the directory of the file, which
+    then replaces the file, so the file is either the old or the new one.
+
+    Args:
+        path: the file to write.
+        text: its content.
+    """
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _run_index(path: Path) -> int | None:
+    """Get the index of a run from its file, the integer after the last `_`."""
+    _, sep, index = path.stem.rpartition("_")
+    if not sep or not (index.isascii() and index.isdigit()):
+        return None
+    return int(index)
+
+
+def _ordered_runs(paths: Iterable[Path]) -> list[Path]:
+    """Order the files of runs by their index, else by their names.
+
+    Args:
+        paths: the JSON files of the runs.
+
+    Returns:
+        The files by the index of their run, `<opid>_run_10` after
+        `<opid>_run_9`, when every file has one, else by their names.
+    """
+    by_name = sorted(paths)
+    indexed: list[tuple[int, Path]] = []
+    for path in by_name:
+        index = _run_index(path)
+        if index is None:
+            return by_name
+        indexed.append((index, path))
+    return [path for _, path in sorted(indexed)]
+
+
 class OptimizationResult(ObjectJSONEncoder):
     """Result of optimization problem."""
 
@@ -208,7 +258,11 @@ class OptimizationResult(ObjectJSONEncoder):
         """Store a single optimization run as JSON.
 
         The runs are stored while the fit runs, so a fit which is interrupted,
-        times out or crashes leaves the runs which finished.
+        times out or crashes leaves the runs which finished. The file is
+        written atomically: the JSON goes into a temporary file of the
+        directory, which replaces the file of the run, so a reader never sees
+        a partial run and a run written twice, e.g. by a unit of a fit which
+        runs again, keeps one complete file.
 
         Args:
             directory: directory of the runs, created if it does not exist.
@@ -226,7 +280,7 @@ class OptimizationResult(ObjectJSONEncoder):
         """
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / f"{sid}.json"
-        OptimizationResult(
+        text = OptimizationResult(
             parameters=parameters,
             fits=[fit],
             trajectories=[trajectory],
@@ -235,7 +289,8 @@ class OptimizationResult(ObjectJSONEncoder):
             settings=settings,
             units=units,
             provenance=provenance,
-        ).to_json(path=path)
+        ).to_json()
+        _write_atomic(path, str(text))
         return path
 
     @staticmethod
@@ -244,7 +299,10 @@ class OptimizationResult(ObjectJSONEncoder):
 
         This is the counterpart of `write_run`: the runs a fit stored are read
         back and combined, which recovers the results of a fit which did not
-        finish.
+        finish, or merges the pieces of a fit which ran its repeats apart.
+        The runs are in the order of their index, the integer after the last
+        `_` of the name of their file (`<opid>_run_<k>.json`), when every file
+        has one, else in the order of the names.
 
         Args:
             directory: directory with the JSON files of the runs.
@@ -256,7 +314,7 @@ class OptimizationResult(ObjectJSONEncoder):
         Raises:
             ValueError: if the directory holds no run.
         """
-        paths = sorted(directory.glob("*.json"))
+        paths = _ordered_runs(directory.glob("*.json"))
         results = [OptimizationResult.from_json(path) for path in paths]
         if not results:
             raise ValueError(f"No optimization run in '{directory}'.")

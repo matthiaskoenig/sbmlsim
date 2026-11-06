@@ -50,7 +50,7 @@ from sbmlsim.fit.identifiability import (
 )
 from sbmlsim.fit.methods import ReportContext
 from sbmlsim.fit.objects import FitMappingCollection, FitParameter, MappingKind
-from sbmlsim.fit.optimization import OptimizationProblem
+from sbmlsim.fit.optimization import OptimizationProblem, run_indices
 from sbmlsim.fit.options import (
     FitSettings,
     OptimizationAlgorithmType,
@@ -261,6 +261,7 @@ def run_fit(
     output_dir: Path | None = None,
     arguments: Mapping[str, Any] | None = None,
     fixed_values: Mapping[str, float] | None = None,
+    indices: Sequence[int] | None = None,
     **kwargs: Any,
 ) -> dict[str, FitRun]:
     """Run the fit of a definition.
@@ -286,12 +287,20 @@ def run_fit(
         fixed_values: values of the model which the caller keeps fixed, e.g.
             the fitted values of an earlier fit; recorded in the provenance,
             not applied.
+        indices: the repeats of every problem which run, all `size` repeats
+            if `None`, see `run_optimization`; the provenance is the one of
+            the whole fit, so the pieces of a fit merge to it.
         kwargs: additional arguments of the optimizer, they replace the
             defaults of `ALGORITHM_KWARGS`.
 
     Returns:
         The finished fits by optimization id.
+
+    Raises:
+        ValueError: if an index is outside of `range(size)` or given twice.
     """
+    # an index outside of the repeats is refused before a problem is built
+    run_indices(size, indices)
     if opid is None:
         opid = fit_id()
     mapping_collections = definition.collections(study_ids=study_ids)
@@ -349,6 +358,7 @@ def run_fit(
             timeout=timeout,
             runs_dir=(Path(output_dir) / problem.opid / "runs" if output_dir else None),
             provenance=provenance,
+            indices=indices,
             **optimizer_kwargs,
         )
         runs[problem.opid] = FitRun(problem=problem, result=result)

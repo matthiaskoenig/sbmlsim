@@ -96,7 +96,8 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
@@ -622,6 +623,78 @@ class IdentifiabilityResult:
                 scale=self.scale(pid),
             )
 
+    def _definition(self) -> str:
+        """Get what the profiles of a result are computed around, as JSON.
+
+        The parts of an analysis share it, see `combine`; JSON compares the
+        values bitwise and a `NaN` equal to itself.
+        """
+        return json.dumps(
+            {
+                "opid": self.opid,
+                "parameter_set": self.parameter_set.to_dict(),
+                "parameters": [p.to_dict() for p in self.parameters],
+                "settings": self.settings.to_dict(),
+                "fit_settings": self.fit_settings.to_dict(),
+                "cost": self.cost,
+            },
+            default=str,
+        )
+
+    @staticmethod
+    def combine(parts: Sequence[IdentifiabilityResult]) -> IdentifiabilityResult:
+        """Combine the results of parts of an analysis into one result.
+
+        An analysis split into parts, e.g. one per parameter, or the results
+        `profile_likelihood` reports with `on_profile`, combine to the result
+        of the whole analysis: the profiles of the parts in the order of the
+        parts, evaluated against the lowest cost of all of them, since the
+        threshold of the confidence intervals depends on it.
+
+        Args:
+            parts: the results of the parts, around the same parameter set
+                with the same settings.
+
+        Returns:
+            The result with the profiles of all parts, its duration the sum of
+            the durations of the parts. The parts are not changed.
+
+        Raises:
+            ValueError: if there is no part, if a parameter is profiled in two
+                parts, or if the parts differ in the problem, the parameter
+                set, the parameters, the settings, the settings of the fit or
+                the cost.
+        """
+        if not parts:
+            raise ValueError("There is no part of an identifiability analysis.")
+        first = parts[0]
+        definition = first._definition()
+        profiles: dict[str, ParameterProfile] = {}
+        for k, part in enumerate(parts):
+            if part._definition() != definition:
+                raise ValueError(
+                    f"'{first.opid}': the part {k} ('{part.opid}') is not a part of "
+                    f"the analysis of the first part, they differ in the problem, "
+                    f"the parameter set, the parameters, the settings or the cost."
+                )
+            for pid, profile in part.profiles.items():
+                if pid in profiles:
+                    raise ValueError(
+                        f"'{first.opid}': the parameter '{pid}' is profiled twice, "
+                        f"again in the part {k}."
+                    )
+                profiles[pid] = deepcopy(profile)
+        return IdentifiabilityResult(
+            opid=first.opid,
+            parameter_set=deepcopy(first.parameter_set),
+            parameters=deepcopy(first.parameters),
+            settings=first.settings,
+            fit_settings=first.fit_settings,
+            cost=first.cost,
+            profiles=profiles,
+            duration=float(sum(part.duration for part in parts)),
+        )
+
     def scale(self, pid: str) -> ParameterScaleType:
         """Get the scale a parameter was profiled on.
 
@@ -1013,6 +1086,7 @@ def profile_likelihood(
     n_cores: int = 1,
     serial: bool = False,
     show_progress: bool = True,
+    on_profile: Callable[[IdentifiabilityResult], None] | None = None,
 ) -> IdentifiabilityResult:
     """Analyse the identifiability of the parameters of a fit.
 
@@ -1033,6 +1107,12 @@ def profile_likelihood(
             `if __name__ == "__main__":` guard like a parallel fit.
         serial: run the scans in this process, whatever `n_cores` says.
         show_progress: show the progress of the scans on the console.
+        on_profile: called in the calling process with the result of one
+            profile as soon as both scans of its parameter finished, e.g. to
+            store the profiles while the analysis runs; its duration is the
+            time since the profile before it finished. The results of all
+            profiles combine to the result of the analysis, see
+            `IdentifiabilityResult.combine`.
 
     Returns:
         The profiles with the confidence intervals and the classification.
@@ -1149,9 +1229,49 @@ def profile_likelihood(
         }
     )
 
+    # the units of pint, with the unit ids of the models resolved, which a
+    # design of the profiles reads, see `profile_parameters`
+    result_parameter_set = replace(
+        parameter_set, units={**parameter_set.units, **problem.parameter_units}
+    )
     scans: dict[int, dict[int, list[ProfilePoint]]] = {
         task["index"]: {} for task in tasks
     }
+    assembled: dict[str, ParameterProfile] = {}
+    last_finished = ts
+
+    def collect(index: int, direction: int, points: list[ProfilePoint]) -> None:
+        """Keep the scan, the profile once both of its scans finished."""
+        nonlocal last_finished
+        scans[index][direction] = points
+        if len(scans[index]) < 2:
+            return
+        pid = problem.pids[index]
+        assembled[pid] = _assemble_profile(
+            problem=problem,
+            pid=pid,
+            theta_optimum=theta_optimum,
+            cost_optimum=cost_optimum,
+            index=index,
+            scans=scans[index],
+        )
+        now = time.time()
+        if on_profile is not None:
+            on_profile(
+                IdentifiabilityResult(
+                    opid=problem.opid,
+                    parameter_set=result_parameter_set,
+                    parameters=problem.parameters,
+                    settings=profile_settings,
+                    fit_settings=settings,
+                    cost=cost_optimum,
+                    # a copy: the result of the analysis evaluates its own
+                    profiles={pid: deepcopy(assembled[pid])},
+                    duration=now - last_finished,
+                )
+            )
+        last_finished = now
+
     with runner.optimization_progress(
         "profiling",
         len(tasks),
@@ -1165,37 +1285,22 @@ def profile_likelihood(
                     if isinstance(outcome, Exception):
                         raise outcome
                     index, direction, points = outcome
-                    scans[index][direction] = points
                     runner._advance(progress)
+                    collect(index, direction, points)
         else:
             for task in tasks:
                 points = _scan_task(problem, task)
-                scans[task["index"]][task["direction"]] = points
                 runner._advance(progress)
+                collect(task["index"], task["direction"], points)
 
-    profiles = {
-        pid: _assemble_profile(
-            problem=problem,
-            pid=pid,
-            theta_optimum=theta_optimum,
-            cost_optimum=cost_optimum,
-            index=problem.pids.index(pid),
-            scans=scans[problem.pids.index(pid)],
-        )
-        for pid in pids
-    }
     result = IdentifiabilityResult(
         opid=problem.opid,
-        # the units of pint, with the unit ids of the models resolved, which a
-        # design of the profiles reads, see `profile_parameters`
-        parameter_set=replace(
-            parameter_set, units={**parameter_set.units, **problem.parameter_units}
-        ),
+        parameter_set=result_parameter_set,
         parameters=problem.parameters,
         settings=profile_settings,
         fit_settings=settings,
         cost=cost_optimum,
-        profiles=profiles,
+        profiles={pid: assembled[pid] for pid in pids},
         duration=time.time() - ts,
     )
     if result.better_optimum:
