@@ -351,7 +351,7 @@ class RoadrunnerSBMLModel(SBMLModel):
         return self.r
 
     @override
-    def initialize(self, assignments: Sequence["Assignment"]) -> None:
+    def initialize(self, assignments: Sequence[Assignment]) -> None:
         """Initialize the model with values before its initialization.
 
         PEtab v2 sets the values of the parameter table and of the first
@@ -531,7 +531,7 @@ class RoadrunnerSBMLModel(SBMLModel):
             raise KeyError(selection)
         return float(state.values[index[selection]])
 
-    def _loaded_state(self) -> "_State":
+    def _loaded_state(self) -> _State:
         """Get the values of the model as loaded, read once per instance of roadrunner.
 
         They are read when the model is loaded, before an initialization
@@ -1011,7 +1011,7 @@ class RoadrunnerSBMLModel(SBMLModel):
             )
         return self._volumes_of[1]
 
-    def sbml_ids(self) -> "SBMLIds":
+    def sbml_ids(self) -> SBMLIds:
         """Get the constant parameters and the species of the SBML roadrunner simulates.
 
         They are read from the SBML of the instance of roadrunner

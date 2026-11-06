@@ -304,7 +304,7 @@ class Subset:
     """
 
     label: str
-    select: "MappingFilter"
+    select: MappingFilter
 
 
 @dataclass(frozen=True)
@@ -338,7 +338,7 @@ class Grouping:
             )
 
     @classmethod
-    def by(cls, *columns: str) -> "Grouping":
+    def by(cls, *columns: str) -> Grouping:
         """Get the grouping by the values of columns, named after them.
 
         Args:
@@ -351,7 +351,7 @@ class Grouping:
         return cls(name="_".join(columns), columns=tuple(columns))
 
     @classmethod
-    def of_subsets(cls, name: str, *subsets: Subset) -> "Grouping":
+    def of_subsets(cls, name: str, *subsets: Subset) -> Grouping:
         """Get the grouping by named subsets of the fit mappings.
 
         Args:

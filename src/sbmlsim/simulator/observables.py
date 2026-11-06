@@ -532,7 +532,7 @@ def _derive_unit(formula: str, units: Mapping[str, str]) -> str | None:
         return str(value.units)
     try:
         float(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return "dimensionless"
 

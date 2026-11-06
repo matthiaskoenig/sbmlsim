@@ -64,7 +64,7 @@ def _base_unit(registry: UnitRegistry, unit: str) -> tuple[str, float | None]:
             quantity = registry.Quantity(registry.parse_expression(unit))
             base = quantity.to_base_units()
             units[unit] = (str(base.units), float(base.magnitude))
-        except (PintError, TokenError, ArithmeticError, ValueError):
+        except PintError, TokenError, ArithmeticError, ValueError:
             units[unit] = (unit, None)
     return units[unit]
 

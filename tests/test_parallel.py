@@ -24,11 +24,11 @@ REPO = Path(__file__).parents[1]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
-def test_process_context_is_not_fork_by_default(
+def test_process_context_takes_the_default_of_the_platform(
     start_methods: Callable[[str | None, str], None],
 ) -> None:
-    """The default `fork` of python 3.13 on linux is replaced by `forkserver`."""
-    start_methods(None, "fork")
+    """The default `forkserver` of linux is used."""
+    start_methods(None, "forkserver")
     assert process_context().get_start_method() == "forkserver"
 
 
@@ -39,22 +39,8 @@ def test_process_context_keeps_the_start_method_of_the_user(
     """A start method set with `multiprocessing.set_start_method` is used."""
     start_methods("fork", "forkserver")
     assert process_context().get_start_method() == "fork"
-    start_methods("spawn", "fork")
+    start_methods("spawn", "forkserver")
     assert process_context().get_start_method() == "spawn"
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="windows has no forkserver")
-def test_process_context_does_not_take_the_default_for_a_choice(
-    start_methods: Callable[[str | None, str], None],
-) -> None:
-    """A start method which is the default of the platform is no choice.
-
-    Python 3.13 fixes the start method of the process to the default when a
-    process is started by `spawn` or `forkserver`, i.e. by the first pool of
-    this context, which must not make the second pool fork.
-    """
-    start_methods("fork", "fork")
-    assert process_context().get_start_method() == "forkserver"
 
 
 def test_process_context_keeps_another_default(
@@ -68,8 +54,7 @@ def test_process_context_keeps_another_default(
 def test_process_context_does_not_fix_the_start_method() -> None:
     """The start method of the process stays unset, so it is not read as a choice.
 
-    A start method which is set cannot be told from one the user chose, a pool
-    of the default context on python 3.13 would fix it to `fork`.
+    A start method which is set cannot be told from one the user chose.
     """
     code = (
         "import multiprocessing\n"
@@ -92,9 +77,9 @@ def test_process_context_does_not_fix_the_start_method() -> None:
 def test_pools_of_the_process_context_do_not_fork_a_process_with_threads() -> None:
     """The workers of a pool are not forked from a process which runs threads.
 
-    A second pool is created after the first one has started its workers, which
-    fixes the start method of the process on python 3.13, the fixture
-    `_no_fork_of_threads` of the tests fails the test if one of them forks.
+    A second pool is created after the first one has started its workers, the
+    fixture `_no_fork_of_threads` of the tests fails the test if one of them
+    forks.
     """
     stop = threading.Event()
     thread = threading.Thread(target=stop.wait)
@@ -469,7 +454,7 @@ def _start_time(pid: int) -> str | None:
             .rsplit(")", 1)[1]
             .split()[19]
         )
-    except (OSError, IndexError):
+    except OSError, IndexError:
         return None
 
 

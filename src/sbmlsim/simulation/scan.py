@@ -492,7 +492,7 @@ def _same_value(a: Any, b: Any) -> bool:
         ):
             return bool(np.all(equal))
         return bool(equal)
-    except (DimensionalityError, TypeError, ValueError):
+    except DimensionalityError, TypeError, ValueError:
         return False
 
 

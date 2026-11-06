@@ -134,38 +134,23 @@ def process_context() -> BaseContext:
     """Get the multiprocessing context a pool of sbmlsim is created from.
 
     A start method set with `multiprocessing.set_start_method` is used, else
-    the default of the platform, except `fork`: the process of a simulation
-    runs the threads of roadrunner and of the linear algebra, and a fork of a
-    process with threads may deadlock in the child. Python 3.14 made
-    `forkserver` the default on linux for this reason, a pool takes it on
-    python 3.13 as well, where it warns about the fork of a process with
-    threads with a `DeprecationWarning`. A start method which equals the
-    default of the platform counts as no choice, so on python 3.13 on linux a
-    `fork` which is set is replaced by `forkserver` as well, see below.
+    the default of the platform: `forkserver` on linux, `spawn` on macOS and
+    windows. No default forks, the process of a simulation runs the threads of
+    roadrunner and of the linear algebra, and a fork of a process with threads
+    may deadlock in the child.
 
     Every pool of sbmlsim comes from this module, see `pool` and `start_pool`,
     and the start method of the process is not fixed by the call
     (`get_context()` without a method would), because a start method which is
     set is read as one the user chose.
 
-    Python 3.13 fixes the start method of the process to the default of the
-    platform when a process is started by `spawn` or `forkserver`, python 3.14
-    does not. On linux the first pool of this context, or of any other code
-    which does not fork, would make every later call read `fork` as the choice
-    of the user. A start method which equals the default of the platform is
-    therefore no choice, so on python 3.13 on linux `fork` cannot be asked for,
-    while it can wherever `fork` is not the default (python 3.14, macOS).
-
     Returns:
         The context.
     """
     method = multiprocessing.get_start_method(allow_none=True)
-    # the first of the supported methods is the default of the platform
-    methods = multiprocessing.get_all_start_methods()
-    if method is None or method == methods[0]:
-        method = methods[0]
-        if method == "fork" and "forkserver" in methods:
-            method = "forkserver"
+    if method is None:
+        # the first of the supported methods is the default of the platform
+        method = multiprocessing.get_all_start_methods()[0]
     return multiprocessing.get_context(method)
 
 

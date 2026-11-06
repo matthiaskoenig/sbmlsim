@@ -597,7 +597,7 @@ class ExperimentRunner:
         formats: list[str],
         figure_formats: list[str] | None,
         options: dict[str, Any],
-    ) -> dict[str, "_Job"]:
+    ) -> dict[str, _Job]:
         """Get what a worker needs to run every experiment, see `_run_job`."""
         rc, levels = _changed_rc_params(), _logger_levels()
         cache = amici_cache(self.engine, self.models.values())
@@ -628,7 +628,7 @@ class ExperimentRunner:
         }
 
     def _workers(
-        self, n_workers: int | None, jobs: dict[str, "_Job"], options: dict[str, Any]
+        self, n_workers: int | None, jobs: dict[str, _Job], options: dict[str, Any]
     ) -> tuple[int, str | None]:
         """Get the number of processes which run the experiments, see `run_experiments`.
 
@@ -685,7 +685,7 @@ class ExperimentRunner:
         return None
 
     def _serial_reason(
-        self, jobs: dict[str, "_Job"], options: dict[str, Any]
+        self, jobs: dict[str, _Job], options: dict[str, Any]
     ) -> str | None:
         """Get why the experiments cannot run in workers, `None` if they can.
 
@@ -727,7 +727,7 @@ class ExperimentRunner:
         return None
 
     @staticmethod
-    def _outcome(future: "Future[_Outcome] | None") -> "_Outcome | None":
+    def _outcome(future: Future[_Outcome] | None) -> _Outcome | None:
         """Get the outcome of an experiment in a worker and log its messages.
 
         `None` without a worker or when the worker died, e.g. by a crash of
@@ -1186,10 +1186,10 @@ def _run_job(job: _Job) -> _Outcome:
 
 
 #: the queue of a worker to the display of the parent, see `_set_events`
-_EVENTS: "Queue[Event] | None" = None
+_EVENTS: Queue[Event] | None = None
 
 
-def _set_events(events: "Queue[Event]") -> None:
+def _set_events(events: Queue[Event]) -> None:
     """Keep the queue to the display of the parent, the initializer of a worker."""
     global _EVENTS
     _EVENTS = events
@@ -1197,7 +1197,7 @@ def _set_events(events: "Queue[Event]") -> None:
 
 @contextlib.contextmanager
 def _forwarded(
-    events: "Queue[Event] | None", display: Listener | None
+    events: Queue[Event] | None, display: Listener | None
 ) -> Generator[None]:
     """Forward the events of the workers to the display while the run lasts.
 
@@ -1223,7 +1223,7 @@ def _forwarded(
                 event = events.get(timeout=0.05)
             except queue.Empty:
                 continue
-            except (EOFError, OSError):
+            except EOFError, OSError:
                 return
             display(event)
 
@@ -1238,7 +1238,7 @@ def _forwarded(
             events.close()
 
 
-def _on_done(display: RunProgress, sid: str) -> "Callable[[Future[_Outcome]], None]":
+def _on_done(display: RunProgress, sid: str) -> Callable[[Future[_Outcome]], None]:
     """Get what counts an experiment of a worker as done when its result arrives.
 
     The results arrive in the order the experiments end, while the loop of
@@ -1247,7 +1247,7 @@ def _on_done(display: RunProgress, sid: str) -> "Callable[[Future[_Outcome]], No
     the parent, which counts it then.
     """
 
-    def done(future: "Future[_Outcome]") -> None:
+    def done(future: Future[_Outcome]) -> None:
         """Count the experiment, or note that its worker died."""
         if future.cancelled():
             return

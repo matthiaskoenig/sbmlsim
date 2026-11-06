@@ -1026,7 +1026,7 @@ def short_unit(unit: str | None) -> str:
         return ""
     try:
         parsed = ureg.Unit(unit)
-    except (PintError, ValueError, TypeError, AttributeError, TokenError):
+    except PintError, ValueError, TypeError, AttributeError, TokenError:
         return unit
     # the short form of dimensionless is empty
     return f"{parsed:~P}"

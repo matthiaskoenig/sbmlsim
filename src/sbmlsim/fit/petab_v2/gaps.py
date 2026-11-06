@@ -434,7 +434,7 @@ GAPS_BY_ID: dict[str, Gap] = {gap.id: gap for gap in GAPS}
 
 
 def _has_a_simulation_of_several_kinds(
-    problem: "OptimizationProblem", exported: Sequence[int]
+    problem: OptimizationProblem, exported: Sequence[int]
 ) -> bool:
     """Check whether an exported simulation mixes the kinds of its mappings.
 
@@ -465,14 +465,14 @@ def _has_a_simulation_of_several_kinds(
 
 
 def _exported(
-    problem: "OptimizationProblem", indices: Sequence[int] | None
+    problem: OptimizationProblem, indices: Sequence[int] | None
 ) -> Sequence[int]:
     """Get the indices of the exported mappings, every mapping by default."""
     return range(len(problem.mapping_keys)) if indices is None else indices
 
 
 def gap_mappings(
-    problem: "OptimizationProblem", indices: Sequence[int] | None = None
+    problem: OptimizationProblem, indices: Sequence[int] | None = None
 ) -> dict[str, list[str]]:
     """Get the fit mappings which hit the gaps of scalar observables and scans.
 
@@ -498,7 +498,7 @@ def gap_mappings(
 
 
 def gaps_of_problem(
-    problem: "OptimizationProblem", indices: Sequence[int] | None = None
+    problem: OptimizationProblem, indices: Sequence[int] | None = None
 ) -> list[Gap]:
     """Report the gaps an optimization problem runs into.
 
@@ -606,7 +606,7 @@ def gaps_of_problem(
 
 
 def measurements_at_changes(
-    problem: "OptimizationProblem", indices: Sequence[int] | None = None
+    problem: OptimizationProblem, indices: Sequence[int] | None = None
 ) -> dict[str, list[float]]:
     """Get the measurements a fit compares with the state before a change.
 

@@ -278,7 +278,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return path
 
     @staticmethod
-    def from_directory(directory: Path, sid: str | None = None) -> "OptimizationResult":
+    def from_directory(directory: Path, sid: str | None = None) -> OptimizationResult:
         """Collect the optimization runs of a directory.
 
         This is the counterpart of `write_run`: the runs a fit stored are read
@@ -348,7 +348,7 @@ class OptimizationResult(ObjectJSONEncoder):
         return to_json(object=self, path=path)
 
     @staticmethod
-    def from_json(json_info: str | Path) -> "OptimizationResult":
+    def from_json(json_info: str | Path) -> OptimizationResult:
         """Load OptimizationResult from Path or str.
 
         :param json_info:
@@ -419,7 +419,7 @@ class OptimizationResult(ObjectJSONEncoder):
         )
 
     @staticmethod
-    def combine(opt_results: list["OptimizationResult"]) -> "OptimizationResult":
+    def combine(opt_results: list[OptimizationResult]) -> OptimizationResult:
         """Combine results from multiple parameter fitting experiments.
 
         Raises:
