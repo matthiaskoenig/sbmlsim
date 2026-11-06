@@ -75,6 +75,7 @@ import xarray as xr
 
 from sbmlsim.atomic import atomic_path
 from sbmlsim.engine import Engine
+from sbmlsim.events import emit
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.result.netcdf import json_attributes
 from sbmlsim.result.scan import POINT, ScanResult, pad_points
@@ -947,6 +948,7 @@ class Propagation:
             self._results[key] = {
                 name: self._read(block, name) for name in self.scenarios
             }
+            self._emit_block(block)
             return
         results: dict[str, xr.Dataset] = {}
         for name in self.scenarios:
@@ -971,6 +973,17 @@ class Propagation:
             else:
                 results[name] = result.ds
         self._results[key] = results
+        self._emit_block(block)
+
+    def _emit_block(self, block: range) -> None:
+        """Report a block as computed or read, per scenario."""
+        for name in self.scenarios:
+            emit(
+                "propagation.block",
+                scenario=name,
+                start=block.start,
+                stop=block.stop,
+            )
 
     def _combined(self, blocks: Sequence[range]) -> dict[str, ScanResult]:
         """Get the results of the scenarios of consecutive blocks from 0.

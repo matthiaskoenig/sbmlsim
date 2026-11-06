@@ -84,6 +84,7 @@ from rich.progress import (
 from sbmlsim import parallel
 from sbmlsim.console import console
 from sbmlsim.engine import Engine, import_amici, import_copasi, resolve_engine
+from sbmlsim.events import emit
 from sbmlsim.model import AbstractModel, SBMLModel, load_model
 from sbmlsim.model.model_sbml import IntegratorSetting, IntegratorSettings
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -342,11 +343,20 @@ class Simulator:
         chunks = compiled.chunks(workers, on_error, block)
         show = workers > 1 if progress is None else progress
         assembly = _Assembly(compiled, block)
+        done = 0
         with _progress(show, len(block)) as advance:
 
             def collect(result: ChunkResult) -> None:
+                nonlocal done
                 assembly.add(result)
                 advance(len(result.indices))
+                done += len(result.indices)
+                emit(
+                    "scan.chunk",
+                    points=len(result.indices),
+                    done=done,
+                    total=len(block),
+                )
 
             if workers == 1:
                 self._run_serial(compiled, chunks, collect)

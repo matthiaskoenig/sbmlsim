@@ -52,6 +52,7 @@ from scipy.optimize import OptimizeResult
 
 from sbmlsim import cgroup, parallel
 from sbmlsim.console import console
+from sbmlsim.events import emit
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.optimization import (
@@ -1116,6 +1117,7 @@ def _run_optimization_parallel(
                     trajectory=trajectory,
                     sid=f"{problem.opid}_run_{k}",
                     provenance=provenance,
+                    run=k,
                 )
                 _advance(progress)
                 collected[k] = (fit, trajectory)
@@ -1169,6 +1171,7 @@ def _store_run(
     trajectory: list[float],
     sid: str,
     provenance: FitProvenance | None = None,
+    run: int | None = None,
 ) -> None:
     """Store a finished repeat, which must never end the fit.
 
@@ -1180,7 +1183,9 @@ def _store_run(
         trajectory: cost of every step of the repeat.
         sid: id of the repeat, the name of its file.
         provenance: what the fit runs with.
+        run: index of the repeat, reported as the event `fit.repeat`.
     """
+    emit("fit.repeat", opid=problem.opid, run=run)
     if runs_dir is None:
         return
     try:
@@ -1247,6 +1252,7 @@ def _run_optimization_serial(
             trajectory=trajectory,
             sid=f"{problem.opid}_{run_prefix}_{k}",
             provenance=provenance,
+            run=k,
         )
         if on_progress is not None:
             on_progress()

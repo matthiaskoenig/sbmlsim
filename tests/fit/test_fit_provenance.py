@@ -192,3 +192,47 @@ def test_a_fit_stores_its_provenance(
         assert stored.provenance == provenance
     combined = OptimizationResult.from_directory(tmp_path / run.problem.opid / "runs")
     assert combined.provenance == provenance
+
+
+def test_snapshot_provenance_reads_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from sbmlsim.fit.provenance import SIMRUN_PROVENANCE, snapshot_provenance
+
+    assert snapshot_provenance() is None
+    path = tmp_path / "provenance.json"
+    path.write_text('[{"name": "m", "commit": "abc"}]', encoding="utf-8")
+    monkeypatch.setenv(SIMRUN_PROVENANCE, str(path))
+    assert snapshot_provenance() == [{"name": "m", "commit": "abc"}]
+    assert snapshot_provenance(path) == [{"name": "m", "commit": "abc"}]
+
+
+@pytest.mark.parametrize("content", ['{"a": 1}', "[1]", "not json"])
+def test_snapshot_provenance_refuses_no_list(content: str, tmp_path: Path) -> None:
+    from sbmlsim.fit.provenance import snapshot_provenance
+
+    path = tmp_path / "provenance.json"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError):
+        snapshot_provenance(path)
+
+
+def test_with_sources_git_is_not_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def refuse(path: Path) -> None:
+        raise AssertionError("git read")
+
+    monkeypatch.setattr("sbmlsim.fit.provenance.git_info", refuse)
+    sources = [{"name": "m", "commit": "abc"}]
+    provenance = create_provenance(
+        arguments={},
+        seed=None,
+        run_seeds=[None],
+        base_path=tmp_path,
+        files=[],
+        start_values={},
+        sources=sources,
+    )
+    assert provenance.git is None and provenance.sources == sources
+    assert FitProvenance.from_dict(provenance.to_dict()) == provenance

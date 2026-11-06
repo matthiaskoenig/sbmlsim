@@ -110,6 +110,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from scipy.stats import chi2
 
+from sbmlsim.events import emit
 from sbmlsim.fit import display, runner
 from sbmlsim.fit.derived import group_parameters, hook_summaries
 from sbmlsim.fit.objects import FitParameter
@@ -1252,6 +1253,7 @@ def profile_likelihood(
             scans=scans[index],
         )
         now = time.time()
+        emit("profile", opid=problem.opid, pid=pid)
         if on_profile is not None:
             on_profile(
                 IdentifiabilityResult(

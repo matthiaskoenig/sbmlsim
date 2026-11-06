@@ -1,6 +1,7 @@
 """Tests of the report document of a fit, its methods and its results."""
 
 import copy
+import dataclasses
 import shutil
 from pathlib import Path
 
@@ -410,3 +411,27 @@ def test_an_unproven_end_of_a_profile_is_not_determined(
     assert table.rows[0][2] == f"{value} [LB, 1.8]"
     caption = " ".join(getattr(span, "text", "") for span in table.caption)
     assert "not determined" not in caption
+
+
+def test_the_sources_of_a_snapshot_are_in_the_provenance(
+    fitted_report: Reported, tmp_path: Path
+) -> None:
+    """A fit with sources shows their commit instead of a repository."""
+    report, plots_dir = fitted_report
+    report = _copy(report)
+    assert report.opt_result is not None and report.opt_result.provenance is not None
+    report.opt_result.provenance = dataclasses.replace(
+        report.opt_result.provenance,
+        git=None,
+        sources=[
+            {
+                "name": "model",
+                "branch": "main",
+                "commit": "abcdef1234",
+                "dirty": True,
+                "diff_sha256": "0123456789",
+            }
+        ],
+    )
+    html = _render_all(report, plots_dir)
+    assert "abcdef1234" in html and "model" in html
