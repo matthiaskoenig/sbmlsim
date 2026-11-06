@@ -454,7 +454,7 @@ def load_fit_records(directory: Path) -> FitRecords:
     )
 
 
-def _settings_of(definition: FitDefinition, records: FitRecords) -> FitSettings:
+def settings_of(definition: FitDefinition, records: FitRecords) -> FitSettings:
     """Get the settings a report of stored parameters is computed with.
 
     The settings the fit ran with, stored in its record, describe the fit; the
@@ -487,6 +487,54 @@ def _settings_of(definition: FitDefinition, records: FitRecords) -> FitSettings:
     return stored
 
 
+def recorded_study_ids(records: FitRecords) -> list[str] | None:
+    """Get the studies a stored fit was restricted to.
+
+    Args:
+        records: the records of the fit.
+
+    Returns:
+        The ids of the studies of the argument `study_ids` of the fit, recorded
+        in the provenance of its result; `None` for a fit of all studies and
+        for records without a result or a provenance.
+    """
+    opt_result = records.opt_result
+    if opt_result is None or opt_result.provenance is None:
+        return None
+    study_ids = opt_result.provenance.arguments.get("study_ids")
+    return [str(sid) for sid in study_ids] if study_ids else None
+
+
+def problem_of_records(
+    definition: FitDefinition, records: FitRecords, opid: str
+) -> OptimizationProblem:
+    """Get the problem a stored fit optimized: of the studies it was fitted to.
+
+    A fit restricted to some studies (`run_fit(study_ids=...)`) records them
+    in its provenance, see `recorded_study_ids`; its profiles, its Fisher
+    information, its report and its PEtab problem are computed on the problem
+    of these studies, not of all studies of the definition.
+
+    Args:
+        definition: the definition of the fit.
+        records: the records of the fit.
+        opid: the id of the problem.
+
+    Returns:
+        The uninitialized problem.
+
+    Raises:
+        KeyError: if a recorded study is no study of the definition.
+    """
+    study_ids = recorded_study_ids(records)
+    return definition.problem(
+        opid=opid,
+        mapping_collections=(
+            definition.collections(study_ids=study_ids) if study_ids else None
+        ),
+    )
+
+
 def report_from_records(
     definition: FitDefinition,
     directory: Path,
@@ -508,7 +556,9 @@ def report_from_records(
     the report are the settings the fit ran with, stored in its result; when
     they differ from the settings of the definition, which may have changed
     since, a warning names the settings which differ. Without a result with
-    settings the report has the settings of the definition.
+    settings the report has the settings of the definition. The problem of
+    the report is the one of the studies the fit was restricted to, see
+    `problem_of_records`.
 
     `report_cli` and `identifiability_cli` build their reports with it, a
     caller builds the report of a fit of its own with it, e.g. with the
@@ -546,8 +596,8 @@ def report_from_records(
     # the problem is a definition, `FitReport` initializes a copy of its own
     # with the settings, so later fits and edits cannot change the report
     return FitReport(
-        problem=definition.problem(opid=opid),
-        settings=_settings_of(definition, records),
+        problem=problem_of_records(definition, records, opid=opid),
+        settings=settings_of(definition, records),
         parameter_sets=parameter_sets,
         opt_result=records.opt_result,
         identifiability=records.identifiability,

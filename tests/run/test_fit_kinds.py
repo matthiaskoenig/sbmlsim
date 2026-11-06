@@ -346,3 +346,122 @@ def test_cli_fisher_with_the_input_of_a_fit(fit_out: Path, tmp_path: Path) -> No
     missing = _cli("fisher", str(spec), "--out", str(tmp_path / "missing"))
     assert missing.returncode == 4, missing.stderr
     assert "input 'fit'" in missing.stderr
+
+
+@pytest.mark.parametrize(
+    "opid", ["../../escape", "/absolute", "a/b", "a\\b", ".", "..", "", "C:x"]
+)
+def test_an_opid_outside_of_the_out_is_refused(opid: str, tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match="directory"):
+        run.plan("fit", {**FIT, "opid": opid})
+    planned = run.plan("fit", FIT)
+    with pytest.raises(ConfigurationError, match="directory"):
+        run.compute_unit(
+            "fit", planned.model_copy(update={"opid": opid}), 0, tmp_path / "out"
+        )
+    assert list(tmp_path.parent.glob("escape")) == []
+
+
+@pytest.mark.parametrize(
+    ("settings", "match"),
+    [
+        ({"studies": ["NoStudy"]}, "NoStudy"),
+        ({"optimizer": {"no_such_argument": 1}}, "no_such_argument"),
+        ({"optimizer": {"seed": 2}}, "seed"),
+        ({"optimizer": {"loss": "soft_l1"}}, "loss"),
+    ],
+)
+def test_fit_plan_checks_the_studies_and_the_optimizer(
+    settings: dict[str, Any], match: str
+) -> None:
+    with pytest.raises(ConfigurationError, match=match):
+        run.plan("fit", {**FIT, **settings})
+
+
+def test_fit_plan_accepts_the_arguments_of_the_runner() -> None:
+    planned = run.plan("fit", {**FIT, "optimizer": {"xtol": 1e-6, "serial": True}})
+    assert isinstance(planned, FitSpec)
+
+
+def test_an_interrupted_fit_is_interrupted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl-C after some repeats finished keeps them and ends the run."""
+    optimize_run = OptimizationProblem.optimize_run
+
+    def interrupted(self: OptimizationProblem, *args: Any, **kwargs: Any) -> Any:
+        if kwargs.get("run") == 1:
+            raise KeyboardInterrupt
+        return optimize_run(self, *args, **kwargs)
+
+    monkeypatch.setattr(OptimizationProblem, "optimize_run", interrupted)
+    out = tmp_path / "out"
+    with pytest.raises(KeyboardInterrupt):
+        run.execute("fit", FIT, out, workers=1)
+    assert sorted(p.name for p in (out / "IV" / "runs").glob("*.json")) == [
+        "IV_run_0.json"
+    ]
+    assert _json(out / "run.json")["status"] == "failed"
+
+
+def test_lost_repeats_are_named(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    from sbmlsim.fit import cli as fit_cli
+
+    def run_fit(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"IV": SimpleNamespace(result=SimpleNamespace(interrupted=False))}
+
+    monkeypatch.setattr(fit_cli, "run_fit", run_fit)
+    with pytest.raises(RuntimeError, match=r"\[0, 1, 2\].*--resume"):
+        run.execute("fit", FIT, tmp_path / "out", workers=1)
+
+
+def test_identifiability_merge_names_the_missing_profiles(
+    fit_out: Path, tmp_path: Path
+) -> None:
+    planned = run.plan("identifiability", IDENTIFIABILITY)
+    out = tmp_path / "split"
+    inputs = {"fit": fit_out}
+    run.compute_unit("identifiability", planned, 1, out, inputs=inputs)
+    with pytest.raises(MissingUnits) as info:
+        run.merge("identifiability", planned, out, inputs=inputs)
+    assert info.value.missing == (0,)
+
+
+def test_identifiability_of_a_fit_of_some_studies(tmp_path: Path) -> None:
+    """The analyses of a fit of one study evaluate the problem of that study."""
+    fit = tmp_path / "fit"
+    run.execute(
+        "fit",
+        {
+            "project": PROJECT,
+            "subset": "PK",
+            "repeats": 1,
+            "seed": 1,
+            "studies": ["Beermann1976"],
+            "optimizer": {"max_nfev": 2},
+        },
+        fit,
+        workers=1,
+    )
+    out = tmp_path / "out"
+    run.execute(
+        "identifiability",
+        {
+            "project": PROJECT,
+            "subset": "PK",
+            "pids": ["KI__HCTZEX_k"],
+            "max_points": 1,
+            "reoptimize": False,
+            "fisher": False,
+        },
+        out,
+        workers=1,
+        inputs={"fit": fit},
+    )
+    best = OptimizationResult.from_json(fit / "PK" / "optimization_result.json")
+    profiles = _json(out / "identifiability.json")
+    assert profiles["cost"] == pytest.approx(best.df_fits.cost.iloc[0], rel=1e-9)

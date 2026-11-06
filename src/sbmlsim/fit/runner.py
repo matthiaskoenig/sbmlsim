@@ -1151,7 +1151,7 @@ def _run_optimization_parallel(
             f"'{problem.opid}': every repeat failed, there is no result.{stored} "
             f"{failures}"
         )
-    return OptimizationResult(
+    result = OptimizationResult(
         parameters=problem.parameters,
         fits=fits,
         trajectories=trajectories,
@@ -1161,6 +1161,8 @@ def _run_optimization_parallel(
         units=problem.parameter_units,
         provenance=provenance,
     )
+    result.interrupted = interrupted
+    return result
 
 
 def _store_run(
@@ -1257,6 +1259,7 @@ def _run_optimization_serial(
         if on_progress is not None:
             on_progress()
 
+    interrupted = False
     try:
         problem.optimize(
             size=size,
@@ -1272,13 +1275,14 @@ def _run_optimization_serial(
         # like the pool, which keeps the repeats which came back
         if not fits:
             raise
+        interrupted = True
         logger.warning(
             "'%s': the fit was interrupted, it keeps the %s repeats which finished.",
             problem.opid,
             len(fits),
         )
 
-    return OptimizationResult(
+    result = OptimizationResult(
         parameters=problem.parameters,
         fits=fits,
         trajectories=trajectories,
@@ -1288,3 +1292,5 @@ def _run_optimization_serial(
         units=problem.parameter_units,
         provenance=provenance,
     )
+    result.interrupted = interrupted
+    return result

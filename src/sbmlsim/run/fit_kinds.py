@@ -35,7 +35,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -283,8 +283,9 @@ def _stored_fit(
 ) -> tuple[OptimizationProblem, FitSettings, ParameterSet]:
     """Get the problem, the settings and the best parameter set of a stored fit.
 
-    The settings are the ones the fit ran with, stored in its records, see
-    `sbmlsim.fit.cli.report_from_records`.
+    The problem is the one of the studies the fit was restricted to and the
+    settings are the ones the fit ran with, both stored in its records, see
+    `sbmlsim.fit.cli.problem_of_records` and `sbmlsim.fit.cli.settings_of`.
 
     Args:
         spec: the spec, it names the problem.
@@ -293,13 +294,29 @@ def _stored_fit(
     Returns:
         The uninitialized problem, the settings and the first parameter set of
         `parameters.json`.
+
+    Raises:
+        ConfigurationError: if a study of the fit is no study of the problem.
     """
-    from sbmlsim.fit.cli import _settings_of, load_fit_records, load_parameter_sets
+    from sbmlsim.fit.cli import (
+        load_fit_records,
+        load_parameter_sets,
+        problem_of_records,
+        settings_of,
+    )
 
     definition = _definition(spec)
     records = load_fit_records(directory)
-    problem = definition.problem(opid=_fit_opid(records, spec.subset))
-    settings = _settings_of(definition, records)
+    try:
+        problem = problem_of_records(
+            definition, records, opid=_fit_opid(records, spec.subset)
+        )
+    except KeyError as err:
+        raise ConfigurationError(
+            f"The fit in '{directory}' is not a fit of the problem "
+            f"'{spec.subset}': {err.args[0] if err.args else err}"
+        ) from err
+    settings = settings_of(definition, records)
     parameter_set = load_parameter_sets([directory / PARAMETERS_FILE])[0]
     return problem, settings, parameter_set
 
@@ -336,9 +353,92 @@ def _write_fisher(
 # ----------------------------------------------------------------------------
 # fit
 # ----------------------------------------------------------------------------
+def _check_opid(opid: str) -> None:
+    """Check that the id of a fit is one plain path component.
+
+    The records of a fit are written into `out/<opid>`, so an id which is
+    empty, `.` or `..`, has a separator or is absolute would write them
+    elsewhere.
+
+    Raises:
+        ConfigurationError: for such an id.
+    """
+    if (
+        opid in ("", ".", "..")
+        or "/" in opid
+        or "\\" in opid
+        or PurePosixPath(opid).is_absolute()
+        or PureWindowsPath(opid).drive
+    ):
+        raise ConfigurationError(
+            f"The id of a fit is the name of a directory in the output, without "
+            f"a separator, not '{opid}'."
+        )
+
+
+#: the arguments of `run_optimization` a fit takes in `FitSpec.optimizer`
+_RUNNER_ARGUMENTS: frozenset[str] = frozenset({"sampling", "serial", "show_progress"})
+
+
+def _check_fit_arguments(spec: FitSpec, definition: FitDefinition) -> None:
+    """Check the studies and the arguments of the optimizer of a fit.
+
+    Raises:
+        ConfigurationError: for a study which is no study of the problem, an
+            argument of the optimizer which is a setting of the spec, and one
+            which the optimizer does not accept.
+    """
+    import inspect
+
+    from sbmlsim.fit.cli import ALGORITHM_KWARGS, ALGORITHMS, run_fit
+    from sbmlsim.fit.optimization import OptimizationProblem
+    from sbmlsim.fit.runner import run_optimization
+
+    if spec.studies:
+        try:
+            definition.collections(study_ids=spec.studies)
+        except KeyError as err:
+            raise ConfigurationError(
+                f"The studies of the fit are invalid: "
+                f"{err.args[0] if err.args else err}"
+            ) from err
+    # the arguments of the runner which `run_fit` does not set, e.g. the
+    # sampling of the start values, are arguments of a fit as well
+    runner_arguments = set(inspect.signature(run_optimization).parameters)
+    fixed = sorted(
+        set(spec.optimizer)
+        & (set(inspect.signature(run_fit).parameters) | runner_arguments)
+        - {"kwargs", *_RUNNER_ARGUMENTS}
+    )
+    if fixed:
+        raise ConfigurationError(
+            f"The arguments {fixed} of the optimizer are settings of the fit, "
+            "set them in the spec."
+        )
+    algorithm = ALGORITHMS[spec.algorithm]
+    arguments = {
+        name: value
+        for name, value in {**ALGORITHM_KWARGS[algorithm], **spec.optimizer}.items()
+        if name not in runner_arguments
+    }
+    try:
+        OptimizationProblem.check_optimizer_arguments(algorithm, arguments)
+    except (TypeError, ValueError) as err:
+        raise ConfigurationError(
+            f"The arguments of the optimizer are invalid: {err}"
+        ) from err
+
+
 def _plan_fit(spec: FitSpec) -> FitSpec:
-    """Plan a fit: its id, its seed and its units."""
-    _definition(spec)
+    """Plan a fit: its id, its seed and its units.
+
+    Raises:
+        ConfigurationError: for an unknown problem or study, an id which is
+            no name of a directory and invalid arguments of the optimizer.
+    """
+    opid = spec.subset if spec.opid is None else spec.opid
+    _check_opid(opid)
+    _check_fit_arguments(spec, _definition(spec))
     seed = (
         spec.seed
         if spec.seed is not None
@@ -346,7 +446,7 @@ def _plan_fit(spec: FitSpec) -> FitSpec:
     )
     return spec.model_copy(
         update={
-            "opid": spec.opid or spec.subset,
+            "opid": opid,
             "seed": seed,
             "units": len(unit_blocks(spec.repeats)),
         }
@@ -362,6 +462,7 @@ def _planned_fit(spec: FitSpec) -> tuple[str, list[range]]:
     """
     if spec.opid is None or spec.seed is None or spec.units is None:
         raise ConfigurationError("The spec of the fit is not planned: plan it first.")
+    _check_opid(spec.opid)
     blocks = unit_blocks(spec.repeats)
     if spec.units != len(blocks):
         raise PlanMismatch(
@@ -384,11 +485,18 @@ def _run_file(ctx: RunContext, opid: str, k: int) -> Path:
 def _run_repeats(
     spec: FitSpec, opid: str, ctx: RunContext, indices: list[int], n_cores: int
 ) -> None:
-    """Run repeats of a fit, which write their files into the out."""
+    """Run repeats of a fit, which write their files into the out.
+
+    Raises:
+        KeyboardInterrupt: if the fit was interrupted (Ctrl-C), also after
+            some of the repeats finished, which are kept.
+        RuntimeError: naming the repeats which were lost otherwise, e.g. by a
+            worker which died.
+    """
     from sbmlsim.fit.cli import ALGORITHMS, run_fit
 
     logger.info("'%s': the repeats %s of %d run.", opid, indices, spec.repeats)
-    run_fit(
+    runs = run_fit(
         _definition(spec),
         opid=opid,
         algorithm=ALGORITHMS[spec.algorithm],
@@ -401,6 +509,14 @@ def _run_repeats(
         indices=indices,
         **spec.optimizer,
     )
+    if any(fit_run.result.interrupted for fit_run in runs.values()):
+        raise KeyboardInterrupt
+    lost = [k for k in indices if not _run_file(ctx, opid, k).exists()]
+    if lost:
+        raise RuntimeError(
+            f"'{opid}': the repeats {lost} were lost, see the log; the run with "
+            "--resume, or the unit again, runs them again and keeps the others."
+        )
 
 
 def _compute_fit_unit(spec: FitSpec, index: int, ctx: RunContext) -> None:

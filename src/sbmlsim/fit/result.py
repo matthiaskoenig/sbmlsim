@@ -218,6 +218,10 @@ class OptimizationResult(ObjectJSONEncoder):
             [float(cost) for cost in trajectory] for trajectory in trajectories
         ]
 
+        #: whether the fit was interrupted (Ctrl-C) after some repeats finished,
+        #: so the result lacks the repeats which did not; not stored
+        self.interrupted: bool = False
+
         # create data frame from results
         self.df_fits = OptimizationResult.process_fits(self.parameters, self.fits)
         self.df_traces = OptimizationResult.process_traces(self.trajectories)
