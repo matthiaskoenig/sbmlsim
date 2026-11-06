@@ -47,6 +47,7 @@ from matplotlib.lines import Line2D
 from pint.errors import PintError
 
 from sbmlsim import __version__
+from sbmlsim.atomic import write_text_atomic
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import (
     HookSummary,
@@ -734,8 +735,12 @@ class FitReport:
             }
         )
 
-        # the parameters are the input of a report, they are stored with it
-        self.parameter_sets.to_json(path=results_dir / "parameters.json")
+        # the parameters are the input of a report, they are stored with it;
+        # the records are written atomically, the report may be written next
+        # to the records of its fit, which other runs read
+        write_text_atomic(
+            results_dir / "parameters.json", str(self.parameter_sets.to_json())
+        )
 
         # metrics of the parameter sets
         for df, name in [
@@ -750,18 +755,24 @@ class FitReport:
                 results_dir / "metrics_groups.tsv", sep="\t", index=False
             )
         if self.opt_result:
-            self.opt_result.to_json(path=results_dir / "optimization_result.json")
+            write_text_atomic(
+                results_dir / "optimization_result.json",
+                str(self.opt_result.to_json()),
+            )
             self.opt_result.to_tsv(path=results_dir / "optimization_result.tsv")
         if self.fisher:
-            fisher_json = results_dir / "fisher.json"
-            fisher_json.write_text(
-                json.dumps(self.fisher.to_dict(), indent=2), encoding="utf-8"
+            write_text_atomic(
+                results_dir / "fisher.json",
+                json.dumps(self.fisher.to_dict(), indent=2),
             )
             self._fisher_summary_df().to_csv(
                 results_dir / "fisher.tsv", sep="\t", index=False
             )
         if self.identifiability:
-            self.identifiability.to_json(path=results_dir / "identifiability.json")
+            write_text_atomic(
+                results_dir / "identifiability.json",
+                str(self.identifiability.to_json()),
+            )
             self.identifiability.summary_df().to_csv(
                 results_dir / "identifiability.tsv", sep="\t", index=False
             )

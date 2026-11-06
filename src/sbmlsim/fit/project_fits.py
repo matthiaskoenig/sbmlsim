@@ -12,7 +12,7 @@ file, of a finished or of an adopted fit. `remainder_problems` refuses a fit
 whose bounds let a remainder `1 - a - b` of the model become negative.
 
 The `fit` kind of `sbmlsim.run` uses them with the fields `start` and
-`fix_adopted` of its spec.
+`record_adopted` of its spec, and the kind `adopt` adopts a finished fit.
 """
 
 from __future__ import annotations
@@ -83,9 +83,9 @@ def start_point(
 
     The start is a point, the values by parameter id in the units of the fit
     parameters (`FitParameter.unit`), given as a mapping or as a JSON file of
-    one; or a fit: the directory of its records, or the id of an adopted fit of
-    the project (`Project.fits_dir`) or of a finished fit in `output_dir`, whose
-    best parameters (`parameters.json`, in the units of the model) are
+    one; or a fit: the id of an adopted fit of the project (`Project.fits_dir`)
+    or of a finished fit in `output_dir`, which a name is before a path of the
+    current directory, or the directory of its records, whose best parameters (`parameters.json`, in the units of the model) are
     converted into the units of the fit parameters. A fit of another problem
     gives the parameters which the definition fits. A parameter which the
     start does not give keeps its own start value.
@@ -108,29 +108,36 @@ def start_point(
     """
     parameters = {p.pid: p for p in definition.parameters}
     values: dict[str, object]
+    path = Path(start) if not isinstance(start, Mapping) else None
+    # a name is a fit id: an adopted fit, a finished fit, then a path of the
+    # current directory
+    fits = [
+        d / path.name
+        for d in (project.fits_dir, output_dir)
+        if d is not None
+        and path is not None
+        and not path.is_absolute()
+        and len(path.parts) == 1
+    ]
+    record = next((d for d in fits if (d / _PARAMETERS_FILE).is_file()), None)
     if isinstance(start, Mapping):
         values = dict(start)
         given = "The start point"
-    elif (path := Path(start)).is_file():
+    elif record is not None:
+        values = _fit_values(record, parameters, str(start))
+        given = ""
+    elif path is not None and path.is_file():
         values = dict(json.loads(path.read_text(encoding="utf-8")))
         given = f"The start '{start}'"
-    else:
+    elif path is not None and (path / _PARAMETERS_FILE).is_file():
+        values = _fit_values(path, parameters, str(start))
         given = ""
-        candidates = [path] if path.is_dir() else []
-        if not path.is_absolute() and len(path.parts) == 1:
-            candidates += [
-                d / str(start) for d in (project.fits_dir, output_dir) if d is not None
-            ]
-        directory = next(
-            (d for d in candidates if (d / _PARAMETERS_FILE).is_file()), None
+    else:
+        raise ValueError(
+            f"The start '{start}' is neither a json file nor a fit: no records "
+            f"of a fit, adopted in {project.fits_dir} or finished in "
+            f"{output_dir}."
         )
-        if directory is None:
-            raise ValueError(
-                f"The start '{start}' is neither a json file nor a fit: no records "
-                f"of a fit, adopted in {project.fits_dir} or finished in "
-                f"{output_dir}."
-            )
-        values = _fit_values(directory, parameters, str(start))
     if given:
         unknown = sorted(set(values) - set(parameters))
         if unknown:

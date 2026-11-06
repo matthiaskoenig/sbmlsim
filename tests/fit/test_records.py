@@ -186,7 +186,12 @@ def test_adopt_refuses_an_adopted_fit_unless_forced(
     adopt_fit(toy_fit, tmp_path)
     with pytest.raises(FileExistsError, match="adopted already"):
         adopt_fit(toy_fit, tmp_path)
-    assert adopt_fit(toy_fit, tmp_path, force=True).exists()
+    record = adopt_fit(toy_fit, tmp_path, force=True)
+    assert (record / "parameters.json").exists()
+    # the record is replaced as a whole, nothing temporary is left
+    assert [p.name for p in tmp_path.iterdir()] == [toy_fit.name]
+    other = adopt_fit(toy_fit, tmp_path, fit_id="DECAY_20260101_000000__abcde")
+    assert other == tmp_path / "DECAY_20260101_000000__abcde"
 
 
 def test_adopt_refuses_a_fit_without_uncertainty(toy_fit: Path, tmp_path: Path) -> None:

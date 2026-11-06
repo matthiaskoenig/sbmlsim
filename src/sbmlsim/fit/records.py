@@ -37,6 +37,7 @@ import logging
 import math
 import re
 import shutil
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -108,7 +109,9 @@ class UncertaintyMethod(StrEnum):
 # ----------------------------------------------------------------------------
 # adopting a fit
 # ----------------------------------------------------------------------------
-def adopt_fit(fit_dir: Path, fits_dir: Path, *, force: bool = False) -> Path:
+def adopt_fit(
+    fit_dir: Path, fits_dir: Path, *, force: bool = False, fit_id: str | None = None
+) -> Path:
     """Copy the record of a finished fit into the folder of the fits of a model.
 
     The record is the part of the results of a fit which the model needs: the
@@ -121,10 +124,14 @@ def adopt_fit(fit_dir: Path, fits_dir: Path, *, force: bool = False) -> Path:
     runs, the other figures, the LaTeX sources with the PNG copies of their
     figures and the HTML report stay in the results of the fit.
 
+    The record is copied into a temporary directory next to its place and
+    renamed into it, so a reader sees no record or a complete one.
+
     Args:
         fit_dir: the directory of the results of the fit, named by its id.
         fits_dir: the folder of the adopted fits of the model.
         force: replace a record of the same id.
+        fit_id: the id of the fit, the name of `fit_dir` without.
 
     Returns:
         The directory of the record.
@@ -145,21 +152,32 @@ def adopt_fit(fit_dir: Path, fits_dir: Path, *, force: bool = False) -> Path:
             f"Fisher information ({list(UNCERTAINTY_FILES)}): run the fit with "
             f"its identifiability."
         )
-    target = fits_dir / fit_dir.name
-    if target.exists():
-        if not force:
-            raise FileExistsError(
-                f"The fit '{fit_dir.name}' is adopted already: {target}."
-            )
-        shutil.rmtree(target)
-    target.mkdir(parents=True)
-    for name in RECORD_FILES:
-        source = fit_dir / name
-        if source.exists():
-            shutil.copy2(source, target / name)
-    for figure in _report_figures(fit_dir):
-        (target / figure).parent.mkdir(exist_ok=True)
-        shutil.copy2(fit_dir / figure, target / figure)
+    fit_id = fit_dir.name if fit_id is None else fit_id
+    target = fits_dir / fit_id
+    if target.exists() and not force:
+        raise FileExistsError(f"The fit '{fit_id}' is adopted already: {target}.")
+    fits_dir.mkdir(parents=True, exist_ok=True)
+    temporary = Path(tempfile.mkdtemp(prefix=f".{fit_id}.", dir=fits_dir))
+    try:
+        for name in RECORD_FILES:
+            source = fit_dir / name
+            if source.exists():
+                shutil.copy2(source, temporary / name)
+        for figure in _report_figures(fit_dir):
+            (temporary / figure).parent.mkdir(exist_ok=True)
+            shutil.copy2(fit_dir / figure, temporary / figure)
+        if target.exists():
+            # the old record is moved aside first, a rename does not replace a
+            # directory which is not empty
+            old = Path(tempfile.mkdtemp(prefix=f".{fit_id}.old.", dir=fits_dir))
+            target.replace(old / fit_id)
+            temporary.replace(target)
+            shutil.rmtree(old)
+        else:
+            temporary.replace(target)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
     return target
 
 

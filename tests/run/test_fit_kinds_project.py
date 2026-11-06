@@ -124,8 +124,17 @@ def test_an_adopted_fit_of_another_id_is_refused() -> None:
         run.plan("fit", {**ADOPT, "opid": "DECAY"})
     with pytest.raises(ConfigurationError, match="identifiability"):
         run.plan("fit", {**FIT, "adopt": True})
-    with pytest.raises(ConfigurationError, match="profile settings"):
+    with pytest.raises(ConfigurationError, match="profile"):
         run.plan("fit", {**FIT, "identifiability": True, "profile": {"x": 1}})
+    with pytest.raises(ConfigurationError, match="profile settings"):
+        run.plan("fit", {**FIT, "identifiability": True, "profile": {"max_points": 0}})
+
+
+def test_an_adopted_fit_is_reported_by_default() -> None:
+    adopt = {**FIT, "identifiability": True, "adopt": True}
+    assert FitSpec.model_validate(adopt).report
+    assert not FitSpec.model_validate({**adopt, "report": False}).report
+    assert not FitSpec.model_validate(FIT).report
 
 
 def test_a_fit_without_adopt_keeps_the_subset_as_its_id() -> None:
@@ -147,10 +156,11 @@ def test_the_report_of_every_adopted_fit(
         {"project": TOY, "subset": "all", "adopted": True, "mapping_figures": False},
         out,
     )
-    assert summary == {"reports": {"DECAY": "DECAY"}}
-    typst = (out / "DECAY" / "report.typ").read_text(encoding="utf-8")
+    (fit_id,) = _adopted_project(adopted_out).adopted_fits().values()
+    assert summary == {"reports": {"DECAY": fit_id}}
+    typst = (out / fit_id / "report.typ").read_text(encoding="utf-8")
     assert "toy: fit DECAY" in typst
-    assert (out / "DECAY" / "report.pdf").read_bytes().startswith(b"%PDF")
+    assert (out / fit_id / "report.pdf").read_bytes().startswith(b"%PDF")
     # the report of the subset alone
     single = tmp_path / "single"
     run.execute(
@@ -158,7 +168,7 @@ def test_the_report_of_every_adopted_fit(
         {"project": TOY, "subset": "DECAY", "adopted": True, "mapping_figures": False},
         single,
     )
-    assert (single / "DECAY" / "index.html").exists()
+    assert (single / fit_id / "index.html").exists()
 
 
 def test_the_report_of_an_adopted_fit_is_the_report_of_its_record(
@@ -181,7 +191,7 @@ def test_the_report_of_an_adopted_fit_is_the_report_of_its_record(
         single,
         inputs={"fit": project.adopted_record(fit_id)},
     )
-    assert (adopted / "DECAY" / "report.typ").read_text(encoding="utf-8") == (
+    assert (adopted / fit_id / "report.typ").read_text(encoding="utf-8") == (
         single / "report" / "report.typ"
     ).read_text(encoding="utf-8")
 
@@ -226,7 +236,7 @@ def test_a_fit_records_the_fixed_adopted_fits(
     out = tmp_path / "out"
     run.execute(
         "fit",
-        {**FIT, "fix_adopted": True, "report": True, "mapping_figures": False},
+        {**FIT, "report": True, "mapping_figures": False},
         out,
         workers=1,
     )
@@ -237,11 +247,25 @@ def test_a_fit_records_the_fixed_adopted_fits(
     typst = (out / "DECAY" / "report.typ").read_text(encoding="utf-8")
     assert "were fixed at their fitted values" in typst
 
-    # without fix_adopted nothing is recorded
+    # without record_adopted nothing is recorded
     plain = tmp_path / "plain"
-    run.execute("fit", FIT, plain, workers=1)
+    run.execute("fit", {**FIT, "record_adopted": False}, plain, workers=1)
     provenance = _json(plain / "DECAY" / "optimization_result.json")["provenance"]
     assert "fixed_fits" not in provenance["arguments"]
+    assert provenance["fixed_values"] == {}
+
+
+def test_a_project_without_adopted_fits_records_no_fixed_fits(tmp_path: Path) -> None:
+    """The default `record_adopted` changes nothing for a project without adopted fits."""
+    out = tmp_path / "out"
+    run.execute(
+        "fit", {**FIT, "report": True, "mapping_figures": False}, out, workers=1
+    )
+    provenance = _json(out / "DECAY" / "optimization_result.json")["provenance"]
+    assert provenance["arguments"]["fixed_fits"] == []
+    assert provenance["fixed_values"] == {}
+    typst = (out / "DECAY" / "report.typ").read_text(encoding="utf-8")
+    assert "were fixed" not in typst
 
 
 # ----------------------------------------------------------------------------
@@ -250,6 +274,8 @@ def test_a_fit_records_the_fixed_adopted_fits(
 def test_a_fit_starts_from_a_point(tmp_path: Path) -> None:
     out = tmp_path / "out"
     run.execute("fit", {**FIT, "start": {"k": 0.3}}, out, workers=1)
+    planned = FitSpec.model_validate(_json(out / "spec.json"))
+    assert (planned.start, planned.start_from) == ({"k": 0.3}, None)
     result = _json(out / "DECAY" / "optimization_result.json")
     assert result["provenance"]["start_values"] == {"k": 0.3}
     (repeat,) = result["fits"]
@@ -264,10 +290,53 @@ def test_a_fit_starts_from_another_fit(adopted_out: Path, tmp_path: Path) -> Non
     (fit_id,) = _json(adopted_out / "adopted.json")["fits"].values()
     best = _json(adopted_out / fit_id / "parameters.json")["sets"][0]["values"]["k"]
     out = tmp_path / "out"
-    run.execute("fit", {**FIT, "start": str(adopted_out / fit_id)}, out, workers=1)
+    start = str(adopted_out / fit_id)
+    run.execute("fit", {**FIT, "start": start}, out, workers=1)
+    planned = FitSpec.model_validate(_json(out / "spec.json"))
+    assert planned.start == {"k": pytest.approx(best, rel=1e-12)}
+    assert planned.start_from == start
     result = OptimizationResult.from_json(out / "DECAY" / "optimization_result.json")
     assert result.provenance is not None
     assert result.provenance.start_values == {"k": pytest.approx(best, rel=1e-12)}
+    assert result.provenance.arguments["start"] == start
+
+
+def test_a_relative_start_of_a_spec_file_is_relative_to_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    (specs / "start.json").write_text(json.dumps({"k": 0.3}), encoding="utf-8")
+    spec = specs / "fit.json"
+    spec.write_text(json.dumps({**FIT, "start": "start.json"}), encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    out = tmp_path / "out"
+    run.execute("fit", spec, out, workers=1)
+    planned = FitSpec.model_validate(_json(out / "spec.json"))
+    assert planned.start == {"k": 0.3}
+    assert planned.start_from == str(specs / "start.json")
+
+
+def test_a_resume_starts_from_the_planned_point(
+    adopted_out: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The start an adopted fit gave is kept although the adopted fits changed."""
+    project = _adopted_project(adopted_out)
+    (fit_id,) = project.adopted_fits().values()
+    _with_project(monkeypatch, project)
+    out = tmp_path / "out"
+    run.execute("fit", {**FIT, "start": fit_id}, out, workers=1)
+    planned = FitSpec.model_validate(_json(out / "spec.json"))
+    assert planned.start_from == fit_id
+    # the adopted fit is gone, the lost repeat runs again from the planned point
+    _with_project(monkeypatch, PROJECT.replace(fits_dir=tmp_path / "empty"))
+    (out / "DECAY" / "runs" / "DECAY_run_0.json").unlink()
+    run.execute("fit", {**FIT, "start": fit_id}, out, workers=1, resume=True)
+    result = OptimizationResult.from_json(out / "DECAY" / "optimization_result.json")
+    assert result.provenance is not None
+    assert result.provenance.start_values == planned.start
 
 
 @pytest.mark.parametrize(
@@ -350,6 +419,111 @@ def test_the_report_of_a_record_without_provenance(
         {"project": TOY, "subset": "all", "adopted": True, "mapping_figures": False},
         out,
     )
-    typst = (out / "DECAY" / "report.typ").read_text(encoding="utf-8")
+    typst = (out / fit_id / "report.typ").read_text(encoding="utf-8")
     assert "not recorded" in typst
     assert "were fixed" not in typst
+
+
+# ----------------------------------------------------------------------------
+# the adopt kind
+# ----------------------------------------------------------------------------
+@pytest.fixture(scope="module")
+def finished_out(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Get the out of a finished fit with its profiles, not adopted."""
+    out = tmp_path_factory.mktemp("finished") / "out"
+    run.execute(
+        "fit",
+        {
+            **FIT,
+            "opid": "DECAY_20261106_120000__abcde",
+            "identifiability": True,
+            "profile": {"max_points": 3},
+            "report": True,
+            "mapping_figures": False,
+        },
+        out,
+        workers=1,
+    )
+    return out
+
+
+def test_the_adopt_kind_adopts_a_finished_fit(
+    finished_out: Path, tmp_path: Path
+) -> None:
+    fit_id = "DECAY_20261106_120000__abcde"
+    out = tmp_path / "out"
+    before = _status()
+    summary = run.execute("adopt", {"project": TOY}, out, inputs={"fit": finished_out})
+    assert _status() == before
+    assert summary == {"subset": "DECAY", "opid": fit_id, "adopted": f"fits/{fit_id}"}
+    assert _json(out / "adopted.json") == {"fits": {"DECAY": fit_id}}
+    record = out / "fits" / fit_id
+    for name in ("parameters.json", "identifiability.json", "report.typ"):
+        assert (record / name).exists(), name
+    # nothing temporary is left next to the record
+    assert [p.name for p in (out / "fits").iterdir()] == [fit_id]
+    # the records directory itself is an input as well
+    direct = tmp_path / "direct"
+    run.execute(
+        "adopt", {"project": TOY}, direct, inputs={"fit": finished_out / fit_id}
+    )
+    assert (direct / "fits" / fit_id / "parameters.json").exists()
+
+
+def test_the_adopt_kind_refuses_an_adopted_fit_unless_forced(
+    finished_out: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fit_id = "DECAY_20261106_120000__abcde"
+    first = tmp_path / "first"
+    run.execute("adopt", {"project": TOY}, first, inputs={"fit": finished_out})
+    _with_project(monkeypatch, _adopted_project(first))
+    with pytest.raises(ConfigurationError, match="adopted already"):
+        run.execute(
+            "adopt", {"project": TOY}, tmp_path / "again", inputs={"fit": finished_out}
+        )
+    run.execute(
+        "adopt",
+        {"project": TOY, "force": True},
+        tmp_path / "forced",
+        inputs={"fit": finished_out},
+    )
+    assert (tmp_path / "forced" / "fits" / fit_id / "parameters.json").exists()
+
+
+def test_the_adopt_kind_needs_a_fit_with_uncertainty(tmp_path: Path) -> None:
+    out = tmp_path / "fit"
+    run.execute("fit", {**FIT, "opid": "DECAY_20261106_120000__abcde"}, out, workers=1)
+    with pytest.raises(ConfigurationError, match="neither a profile"):
+        run.execute("adopt", {"project": TOY}, tmp_path / "out", inputs={"fit": out})
+    with pytest.raises(ConfigurationError, match="needs the records"):
+        run.execute("adopt", {"project": TOY}, tmp_path / "none")
+
+
+def test_the_adopt_kind_needs_the_id_of_a_fit(tmp_path: Path) -> None:
+    out = tmp_path / "fit"
+    run.execute("fit", FIT, out, workers=1)
+    with pytest.raises(ConfigurationError, match="not the id of a fit"):
+        run.execute("adopt", {"project": TOY}, tmp_path / "out", inputs={"fit": out})
+
+
+# ----------------------------------------------------------------------------
+# the subset all, a project without variants
+# ----------------------------------------------------------------------------
+def test_a_subset_named_all_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = PROJECT.replace(fits={"all": PROJECT.fit("DECAY")})
+    with pytest.raises(ValueError, match="rename the subset"):
+        project.load_fit_definitions()
+    _with_project(monkeypatch, project)
+    with pytest.raises(ConfigurationError, match="rename the subset"):
+        run.plan("fit", {"project": TOY, "subset": "all"})
+
+
+def test_a_project_without_variants_checks_no_remainders(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _with_project(monkeypatch, PROJECT.replace(variants={}))
+    with caplog.at_level("INFO", logger="sbmlsim.run.fit_kinds"):
+        run.plan("fit", FIT)
+    assert "remainders of its models are not checked" in caplog.text

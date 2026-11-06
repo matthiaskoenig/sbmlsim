@@ -1,7 +1,7 @@
 """The kinds of the run layer as task types of simrun.
 
 simrun runs the tasks of a workflow on a cluster; this module registers the
-nine kinds of `python -m sbmlsim.run` (`sbmlsim.run`) as its task types
+ten kinds of `python -m sbmlsim.run` (`sbmlsim.run`) as its task types
 `sbmlsim.<kind>`, entry points of the group `simrun.task_types` in the
 `pyproject.toml` of sbmlsim, see the plugins of simrun. The settings of a task
 are the spec of its kind, and `plan` is the plan of the kind, which simrun's
@@ -10,7 +10,8 @@ client calls before it submits a task.
 A splittable kind (`fit`, `identifiability`, `scan`, `sensitivity`,
 `uncertainty`) is split: simrun's workers compute its units with
 `sbmlsim.run.compute_unit` and its merge merges them with `sbmlsim.run.merge`.
-Every other kind (`simulate`, `fisher`, `report`, `petab`) runs as the command
+Every other kind (`simulate`, `fisher`, `report`, `petab`, `adopt`) runs as the
+command
 (`simrun-exec` runs it, `{settings}`, `{out}` and `{input}` filled by simrun)
 
     python -m sbmlsim.run <kind> {settings} --out {out}/out
@@ -49,6 +50,7 @@ from simrun.plugins import ResourceHint, TaskPaths, TaskType
 from sbmlsim import run
 from sbmlsim.run.context import SUMMARY_FILE
 from sbmlsim.run.fit_kinds import (
+    AdoptSpec,
     FisherSpec,
     FitSpec,
     IdentifiabilitySpec,
@@ -64,6 +66,7 @@ from sbmlsim.run.scan_kinds import (
 )
 
 __all__ = [
+    "ADOPT",
     "FISHER",
     "FIT",
     "IDENTIFIABILITY",
@@ -169,6 +172,11 @@ def fisher_plan(settings: FisherSpec) -> FisherSpec:
 def report_plan(settings: ReportSpec) -> ReportSpec:
     """Plan the report of a fit, see `sbmlsim.run.plan`."""
     return _plan("report", settings)
+
+
+def adopt_plan(settings: AdoptSpec) -> AdoptSpec:
+    """Plan the adoption of a fit, see `sbmlsim.run.plan`."""
+    return _plan("adopt", settings)
 
 
 def petab_plan(settings: PetabSpec) -> PetabSpec:
@@ -286,6 +294,7 @@ PETAB = _task_type("petab")
 SCAN = _task_type("scan")
 SENSITIVITY = _task_type("sensitivity")
 UNCERTAINTY = _task_type("uncertainty")
+ADOPT = _task_type("adopt")
 
 #: the task types by the name of their kind
 TASK_TYPES: dict[str, TaskType] = {
@@ -300,5 +309,6 @@ TASK_TYPES: dict[str, TaskType] = {
         SCAN,
         SENSITIVITY,
         UNCERTAINTY,
+        ADOPT,
     )
 }
