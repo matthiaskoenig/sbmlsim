@@ -102,6 +102,7 @@ __all__ = [
     "load_project",
     "normalize_formats",
     "resolve",
+    "same_antimony",
     "same_sbml",
     "write_adopted",
 ]
@@ -150,8 +151,15 @@ _CONFIG = ConfigDict(arbitrary_types_allowed=True, extra="forbid", frozen=True)
 #: a line of the SBML of a model with a date of its model history
 _HISTORY_DATE = re.compile(r"<dcterms:(created|modified)\b|<dcterms:W3CDTF>")
 
+#: a line of the antimony of a model with a date of its history, e.g.
+#: `  model created "2026-10-17T19:35:15Z"`
+_ANTIMONY_DATE = re.compile(r'^\s*model (created|modified) "')
+
 #: the suffixes of the outputs of a factory which are compared as SBML
 _SBML_SUFFIXES = frozenset({".xml", ".sbml"})
+
+#: the suffixes of the outputs of a factory which are compared as antimony
+_ANTIMONY_SUFFIXES = frozenset({".ant"})
 
 
 def same_sbml(a: str, b: str) -> bool:
@@ -175,13 +183,39 @@ def same_sbml(a: str, b: str) -> bool:
     return lines(a) == lines(b)
 
 
+def same_antimony(a: str, b: str) -> bool:
+    """Compare the antimony of two models without the dates of their history.
+
+    A factory which writes the antimony of a model writes the dates of its run
+    as `model created "..."` and `model modified "..."`.
+
+    Args:
+        a: the content of one file.
+        b: the content of the other.
+
+    Returns:
+        Whether they are equal but for the lines with a date.
+    """
+
+    def lines(text: str) -> list[str]:
+        return [line for line in text.splitlines() if not _ANTIMONY_DATE.match(line)]
+
+    return lines(a) == lines(b)
+
+
 def _same_output(a: Path, b: Path) -> bool:
-    """Compare two outputs of a factory, an SBML file without its dates."""
-    if a.suffix.lower() in _SBML_SUFFIXES:
+    """Compare two outputs of a factory, SBML and antimony without their dates."""
+    suffix = a.suffix.lower()
+    compare = (
+        same_sbml
+        if suffix in _SBML_SUFFIXES
+        else same_antimony
+        if suffix in _ANTIMONY_SUFFIXES
+        else None
+    )
+    if compare is not None:
         try:
-            return same_sbml(
-                a.read_text(encoding="utf-8"), b.read_text(encoding="utf-8")
-            )
+            return compare(a.read_text(encoding="utf-8"), b.read_text(encoding="utf-8"))
         except UnicodeDecodeError:
             pass
     return a.read_bytes() == b.read_bytes()
@@ -1118,7 +1152,8 @@ class Project(BaseModel):
 
         Every output of `compared_outputs` is compared with the one of the
         package, the SBML of a model without the dates of its model history
-        (`same_sbml`), any other file by its bytes; an output which only one
+        (`same_sbml`), its antimony (`.ant`) without the dates of its history
+        (`same_antimony`), any other file by its bytes; an output which only one
         of them has differs.
 
         Args:

@@ -188,6 +188,7 @@ def _convert(binary: Path, folder: Path) -> None:
             check=False,
             capture_output=True,
             text=True,
+            errors="replace",
         )
         if replay.returncode:
             raise RuntimeError(
@@ -198,6 +199,7 @@ def _convert(binary: Path, folder: Path) -> None:
         check=False,
         capture_output=True,
         text=True,
+        errors="replace",
     )
     if summary.returncode:
         raise RuntimeError(f"replay --pstats failed:\n{summary.stderr}{summary.stdout}")
@@ -271,7 +273,8 @@ def run_profiled(
         shutil.move(binary, saved)
     try:
         _convert(saved, folder)
-    except (RuntimeError, OSError) as err:
+    except (RuntimeError, OSError, ValueError) as err:
+        # ValueError covers a UnicodeDecodeError of the output of a replay
         logger.error("The profile '%s' was not converted: %s", saved, err)
         return code
     logger.info("The profile: file://%s", (folder / "flamegraph.html").resolve())
