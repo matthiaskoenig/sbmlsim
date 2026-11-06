@@ -262,6 +262,7 @@ def run_fit(
     arguments: Mapping[str, Any] | None = None,
     fixed_values: Mapping[str, float] | None = None,
     indices: Sequence[int] | None = None,
+    sources: list[dict[str, Any]] | None = None,
     **kwargs: Any,
 ) -> dict[str, FitRun]:
     """Run the fit of a definition.
@@ -290,6 +291,8 @@ def run_fit(
         indices: the repeats of every problem which run, all `size` repeats
             if `None`, see `run_optimization`; the provenance is the one of
             the whole fit, so the pieces of a fit merge to it.
+        sources: the provenance of the sources of a snapshot, see
+            `create_provenance`; the file `SIMRUN_PROVENANCE` names if `None`.
         kwargs: additional arguments of the optimizer, they replace the
             defaults of `ALGORITHM_KWARGS`.
 
@@ -347,6 +350,7 @@ def run_fit(
             start_values={p.pid: p.start_value for p in problem.parameters},
             fixed_values=fixed_values,
             engine=problem.engine,
+            sources=sources,
         )
         result = run_optimization(
             problem=problem,

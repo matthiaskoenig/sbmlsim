@@ -104,7 +104,7 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `seed` | drawn by the plan | the seed of the start values and of the runs |
 | `studies` | all | the studies of the problem to fit |
 | `timeout` | none | the seconds a single run may take |
-| `optimizer` | `{}` | further arguments of the optimizer, e.g. `{"max_nfev": 50}`; a setting of the spec, e.g. `seed`, is refused here |
+| `optimizer` | `{}` | further arguments of the optimizer, e.g. `{"max_nfev": 50}`, and of the runner, e.g. the sampling of the start values `sampling` by its name (`LOGUNIFORM`, `UNIFORM`, `LOGUNIFORM_LHS`, `UNIFORM_LHS`, `START`); a setting of the spec, e.g. `seed`, is refused here |
 | `adopt` | `false` | write `adopted.json`, the adopted fits of the project with this fit for its subset |
 
 ### identifiability
@@ -163,7 +163,7 @@ Every run writes the same files describing it into its output, besides its resul
 
 | file | content |
 | --- | --- |
-| `run.json` | the record of the run: the kind, the hash of the spec, the versions of the packages and of the project, python, the host, the provenance of the sources or else the git revision of the project, the variables `SIMRUN_*` of the environment, the workers, the times and the status (`running`, `done`, or `failed` with its error) |
+| `run.json` | the record of the run: the kind, the hash of the spec, the versions of the packages and of the project, python, the host, the provenance of the sources or else the git revision of the project, the variables of the task which simrun sets in a pod (`SIMRUN_TASK_DIR`, `SIMRUN_TASK_TYPE`, `SIMRUN_INPUTS`, `SIMRUN_ATTEMPT`, `SIMRUN_ROLE`, `SIMRUN_WORKER`, `SIMRUN_NODE`, `SIMRUN_PROVENANCE`, `SIMRUN_MEMORY_*`, ...; never a credential such as `SIMRUN_TOKEN`), the workers, the times and the status (`running`, `done`, or `failed` with its error) |
 | `spec.json` | the planned spec, which a resume runs as it is |
 | `summary.json` | the summary of the run, e.g. the best cost of a fit or the failed points of a scan |
 | `progress.jsonl` | the events of the run, see [Progress](#progress-and-provenance); the events of a unit go to `progress/unit-<index>.jsonl` |
@@ -232,7 +232,8 @@ python -m sbmlsim.run merge identifiability profiles-planned.json --out results/
 with one `unit` per parameter of `pids` in `profiles-planned.json`. The rules:
 
 - A fit, a scan and a propagation of a given number of draws are cut into at most 64 units of consecutive items, `max(1, ceil(n / 64))` repeats, points or draws each; a profile likelihood has one unit per parameter, and the adaptive number of draws of a propagation is one unit, whose rounds are its checkpoints.
-- The plan of a fit and of a propagation draws the seed when the spec has none, so every unit draws the same start values or the same points. The plan of a scan records the hash of the scan, which every unit and the merge compare with the scan they build; a scan which builds other points every time, e.g. a design without a seed, is refused by the plan.
+- The plan of a fit and of a propagation draws the seed when the spec has none, so every unit draws the same start values or the same points. The plan of a scan records the hash of the identity of the scan, which every unit and the merge compare with the scan they build: its record without the numbers a design draws and the references it reads (`scan_identity`: the method, the distributions and the options of a design with its seed and its number of points, the labels, the targets, and the whole record of the simulation and of a dimension of given values), so a unit on another platform than the plan, whose numerics differ in the last bits, builds the same scan. The plan builds the scan twice and compares the whole records; a scan which builds other points every time, e.g. a design without a seed, is refused.
+- A whole run computes the same units on the workers of the run: the consecutive blocks of a scan or of a propagation of a given number of draws which have no file run as one run of the simulator, so it is parallel whatever the size of a block, and its result is cut into the files of the blocks, each the file its unit writes (a block whose messages of failed points the run does not keep, more than ten failed points before them, runs alone).
 - The first unit writes `spec.json` into the output, and a unit or a merge of another plan is refused, so the units of two plans never mix. A unit writes no `run.json`, the merge does.
 - A unit computed again, e.g. after its machine was lost, writes the same complete files again, and a unit whose files exist is not computed again; the merge names the units it misses and exits with 3.
 - The merged result equals the result of the whole run bitwise with roadrunner, apart from the times and durations of the records: the blocks of a scan combine to the `ScanResult` of the whole scan (`ScanResult.combine`), the repeats of a fit to its `OptimizationResult`, the profiles to the `IdentifiabilityResult` (`IdentifiabilityResult.combine`) and the blocks of draws to the `UncertaintyResult`, every block taking its rows of the points of the design of all the draws, so a Latin hypercube stays one hypercube.
@@ -245,7 +246,7 @@ The units are the checkpoints of a run: a repeat of a fit is written once it fin
 python -m sbmlsim.run fit fit.yaml --out results/fit --resume
 ```
 
-A resume runs the planned spec of `spec.json`, so a drawn seed stays, and is accepted only for the spec the run was started with; its inputs are left out of the comparison, so they may be staged at another path. A run into an output which is not empty without `--resume` is refused, and so is a resume with another spec, as both would mix the results of two runs. A resume of a finished run runs it again, keeps every result and merges again; `--resume` into an empty output starts a run, and `progress.jsonl` collects the events of every attempt.
+A resume runs the planned spec of `spec.json`, so a drawn seed stays, and is accepted only for the spec file the run was started with (and not for `spec.json`, the planned spec); its inputs are left out of the comparison, so they may be staged at another path. A run into an output which is not empty without `--resume` is refused, and so is a resume with another spec, as both would mix the results of two runs. A resume of a finished run runs it again, keeps every result and merges again; `--resume` into an empty output starts a run, and `progress.jsonl` collects the events of every attempt.
 
 ## Progress and provenance
 
@@ -259,7 +260,7 @@ A resume runs the planned spec of `spec.json`, so a drawn seed stays, and is acc
 | event | fields |
 | --- | --- |
 | `fit.repeat` | `opid`, `run`: a repeat of a fit finished and is stored, its file written right after the event |
-| `profile` | `opid`, `pid`: the profile of a parameter finished |
+| `identifiability.profile` | `opid`, `pid`: the profile of a parameter finished |
 | `scan.chunk` | `points`, `done`, `total`: a chunk of points of a scan finished |
 | `scan.block` | `analysis`, `start`, `stop`, `points`: the block of a unit of a scan finished |
 | `propagation.block` | `scenario`, `start`, `stop`: a block of draws ran or was read |

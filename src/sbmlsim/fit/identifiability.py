@@ -1253,7 +1253,7 @@ def profile_likelihood(
             scans=scans[index],
         )
         now = time.time()
-        emit("profile", opid=problem.opid, pid=pid)
+        emit("identifiability.profile", opid=problem.opid, pid=pid)
         if on_profile is not None:
             on_profile(
                 IdentifiabilityResult(

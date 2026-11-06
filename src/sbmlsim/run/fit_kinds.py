@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from sbmlsim.fit.optimization import OptimizationProblem
     from sbmlsim.fit.options import FitSettings
     from sbmlsim.fit.parameters import ParameterSet
+    from sbmlsim.fit.sampling import SamplingType
     from sbmlsim.run.context import RunContext
 
 __all__ = [
@@ -380,6 +381,45 @@ def _check_opid(opid: str) -> None:
 _RUNNER_ARGUMENTS: frozenset[str] = frozenset({"sampling", "serial", "show_progress"})
 
 
+def _sampling(value: Any) -> SamplingType:
+    """Get the sampling of the start values of a fit from a spec.
+
+    Args:
+        value: a `SamplingType`, its name (any case) or its value, as a YAML
+            or JSON spec gives it.
+
+    Raises:
+        ConfigurationError: for a value which is no sampling.
+    """
+    from sbmlsim.fit.sampling import SamplingType
+
+    if isinstance(value, SamplingType):
+        return value
+    if isinstance(value, str) and value.upper() in SamplingType.__members__:
+        return SamplingType[value.upper()]
+    if isinstance(value, int) and not isinstance(value, bool):
+        try:
+            return SamplingType(value)
+        except ValueError:
+            pass
+    raise ConfigurationError(
+        f"The sampling {value!r} of the optimizer is none of "
+        f"{list(SamplingType.__members__)}."
+    )
+
+
+def _optimizer_arguments(spec: FitSpec) -> dict[str, Any]:
+    """Get the arguments of the optimizer of a fit, its `sampling` a `SamplingType`.
+
+    Raises:
+        ConfigurationError: for a sampling which is no `SamplingType`.
+    """
+    arguments = dict(spec.optimizer)
+    if "sampling" in arguments:
+        arguments["sampling"] = _sampling(arguments["sampling"])
+    return arguments
+
+
 def _check_fit_arguments(spec: FitSpec, definition: FitDefinition) -> None:
     """Check the studies and the arguments of the optimizer of a fit.
 
@@ -444,11 +484,16 @@ def _plan_fit(spec: FitSpec) -> FitSpec:
         if spec.seed is not None
         else int(np.random.default_rng().integers(2**31))
     )
+    optimizer = _optimizer_arguments(spec)
+    if "sampling" in optimizer:
+        # the name, which the JSON of the planned spec keeps
+        optimizer["sampling"] = optimizer["sampling"].name
     return spec.model_copy(
         update={
             "opid": opid,
             "seed": seed,
             "units": len(unit_blocks(spec.repeats)),
+            "optimizer": optimizer,
         }
     )
 
@@ -507,7 +552,8 @@ def _run_repeats(
         timeout=spec.timeout,
         output_dir=ctx.out,
         indices=indices,
-        **spec.optimizer,
+        sources=ctx.provenance,
+        **_optimizer_arguments(spec),
     )
     if any(fit_run.result.interrupted for fit_run in runs.values()):
         raise KeyboardInterrupt

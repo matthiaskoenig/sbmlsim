@@ -58,7 +58,10 @@ def test_run_json_records_sources_and_environment(
     provenance = tmp_path / "provenance.json"
     provenance.write_text(json.dumps(sources), encoding="utf-8")
     monkeypatch.setenv("SIMRUN_PROVENANCE", str(provenance))
-    monkeypatch.setenv("SIMRUN_RUN", "x")
+    monkeypatch.setenv("SIMRUN_ATTEMPT", "1")
+    monkeypatch.setenv("SIMRUN_TOKEN", "secret")
+    monkeypatch.setenv("SIMRUN_STORE_KEY", "secret")
+    monkeypatch.setenv("SIMRUN_URL", "https://user:secret@simrun")
 
     out = tmp_path / "out"
     run.execute(
@@ -71,8 +74,11 @@ def test_run_json_records_sources_and_environment(
     record = _json(out / "run.json")
     assert _json(out / "summary.json")["workers"] == 2
     assert record["sources"] == sources
-    assert record["environment"]["SIMRUN_RUN"] == "x"
-    assert record["environment"]["SIMRUN_PROVENANCE"] == str(provenance)
+    assert record["environment"] == {
+        "SIMRUN_ATTEMPT": "1",
+        "SIMRUN_PROVENANCE": str(provenance),
+    }
+    assert "secret" not in (out / "run.json").read_text(encoding="utf-8")
     assert record["git"] is None
     assert record["workers"] == 2
 
@@ -161,8 +167,14 @@ def test_resume_without_a_record_is_refused(tmp_path: Path) -> None:
 def test_resume_with_another_spec_is_refused(tmp_path: Path) -> None:
     out = tmp_path / "out"
     run.execute(DUMMY, {"n": 4}, out)
-    with pytest.raises(ConfigurationError, match="another spec"):
+    with pytest.raises(ConfigurationError, match="another spec") as info:
         run.execute(DUMMY, {"n": 5}, out, resume=True)
+    # the planned spec of the out is no spec the run was started with
+    assert "with the spec file the run was started with" in str(info.value)
+    assert "not its planned spec 'spec.json'" in str(info.value)
+    planned = _json(out / "spec.json")
+    with pytest.raises(ConfigurationError, match="another spec"):
+        run.execute(DUMMY, planned, out, resume=True)
 
 
 def test_split_equals_execute(tmp_path: Path) -> None:

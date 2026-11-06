@@ -12,7 +12,7 @@ import xarray as xr
 from sbmlsim import Q
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.result import ScanResult
-from sbmlsim.result.scan import INDEX, MAX_ERRORS, POINT, STATUS
+from sbmlsim.result.scan import INDEX, MAX_ERRORS, POINT, STATUS, LostErrors
 from sbmlsim.simulation import Dimension, Formula, Scan, Simulation
 from sbmlsim.simulator import Simulator
 from tests.simulator.models import sbml
@@ -358,3 +358,67 @@ def test_index_is_a_reserved_name(model: RoadrunnerSBMLModel) -> None:
         Simulator(n_workers=1).run(model, scan)
     with pytest.raises(ValueError, match="_index"):
         Formula(INDEX, "S1")
+
+
+def _failing_scan() -> Scan:
+    """Get a scan of 3 x 4 points of which the points 2, 6 and 10 blow up."""
+    return Scan(
+        Simulation(end=10),
+        [
+            Dimension("fast", values={"k1": [0.1, 1.0, 5.0]}),
+            Dimension(
+                "decay", values={"k2": [0.01, 0.1, 1.0, 10.0], "kb": [0, 0, 1, 0]}
+            ),
+        ],
+    )
+
+
+@pytest.mark.parametrize("grid", [False, True])
+def test_a_part_of_a_block_equals_the_run_of_its_points(
+    model: RoadrunnerSBMLModel, tmp_path: Path, grid: bool
+) -> None:
+    """A run of a span cut into parts equals a run per part, also in a file."""
+    scan = _failing_scan()
+    kwargs: dict[str, Any] = {"on_error": "flag"}
+    if grid:
+        kwargs["time"] = np.linspace(0, 10, 11)
+    span = Simulator(n_workers=2).run(model, scan, points=range(1, 12), **kwargs)
+    serial = Simulator(n_workers=1)
+    # the point 2 fails alone, the parts pad to their own longest point
+    for points in (range(1, 2), range(2, 3), range(3, 7), range(7, 12), range(1, 12)):
+        part = span.part(points)
+        expected = serial.run(model, scan, points=points, **kwargs)
+        xr.testing.assert_identical(part.ds, expected.ds)
+        assert part.ds.attrs == expected.ds.attrs
+        path = tmp_path / f"part-{points.start}-{points.stop}.nc"
+        part.to_netcdf(path)
+        xr.testing.assert_identical(ScanResult.from_netcdf(path).ds, expected.ds)
+    if not grid:
+        assert span.part(range(2, 3)).ds.sizes[POINT] == 0
+        assert span.part(range(3, 7)).ds.sizes[POINT] < span.ds.sizes[POINT]
+
+
+def test_a_part_whose_errors_are_not_kept_raises(
+    simulator: Simulator, model: RoadrunnerSBMLModel
+) -> None:
+    n = MAX_ERRORS + 4
+    scan = Scan(Simulation(end=10), [Dimension("blow", values={"kb": [1.0] * n})])
+    span = simulator.run(model, scan, points=range(n), on_error="flag")
+    first = span.part(range(3))
+    xr.testing.assert_identical(
+        first.ds, simulator.run(model, scan, points=range(3), on_error="flag").ds
+    )
+    with pytest.raises(LostErrors, match="3-14"):
+        span.part(range(3, n))
+
+
+def test_a_part_needs_a_block_with_its_points(
+    simulator: Simulator, model: RoadrunnerSBMLModel
+) -> None:
+    whole = simulator.run(model, _scan())
+    with pytest.raises(ValueError, match="no block"):
+        whole.part(range(2))
+    block = simulator.run(model, _scan(), points=range(2, 6))
+    for points in (range(1, 3), range(5, 7), range(3, 3), range(2, 6, 2)):
+        with pytest.raises(ValueError, match="points"):
+            block.part(points)

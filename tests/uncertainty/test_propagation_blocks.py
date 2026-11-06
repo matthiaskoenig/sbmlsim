@@ -10,8 +10,8 @@ import pytest
 import xarray as xr
 
 from sbmlsim import Q
-from sbmlsim.result.scan import ScanResult
-from sbmlsim.simulation import PK, Change, Simulation
+from sbmlsim.result.scan import MAX_ERRORS, ScanResult
+from sbmlsim.simulation import PK, Change, Custom, Simulation
 from sbmlsim.simulation.sampling import LogNormal
 from sbmlsim.simulator import Simulator
 from sbmlsim.uncertainty import (
@@ -295,3 +295,98 @@ def test_a_block_is_checkpointed_once_every_scenario_has_its_file(
     next((tmp_path / "checkpoint").glob("*/draws-0-2.nc")).unlink()
     assert not propagation.checkpointed(first)
     assert not Propagation(**_arguments(n=4)).checkpointed(first)
+
+
+def fails_for_a_large_dose(time: np.ndarray, values: dict[str, Any]) -> float:
+    """Fail for a large concentration, i.e. a large dose."""
+    if np.max(values["[C]"]) > 13.0:
+        raise ValueError("a large dose")
+    return 1.0
+
+
+def _failing(**kwargs: Any) -> dict[str, Any]:
+    """Get a propagation of an uncertain dose of which about half the draws fail."""
+    return _arguments(
+        simulation=Simulation(
+            end=24, changes=[Change(0, {"PODOSE": Uncertain(Q(200, "mg"), cv=0.1)})]
+        ),
+        uq=UncertaintyModel(),
+        observables=[
+            *OBSERVABLES,
+            Custom("check", fails_for_a_large_dose, "dimensionless", symbols=["[C]"]),
+        ],
+        keep=["[C]", "pk", "check"],
+        **kwargs,
+    )
+
+
+@pytest.mark.parametrize(
+    "case", ["grid", "ragged", "failing"], ids=["grid", "ragged", "failing"]
+)
+def test_a_run_of_blocks_writes_the_checkpoints_of_the_blocks(
+    case: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Consecutive blocks run in one run per scenario, their files as run alone."""
+    if case == "failing":
+        n, size = 32, 4
+        arguments = _failing(n=n, block_size=size)
+    else:
+        n, size = 12, 3
+        steps = 24 if case == "grid" else None
+        arguments = _arguments(
+            n=n, design="lhs", simulation=_scenarios(steps), block_size=size
+        )
+    pooled_arguments: dict[str, Any] = {
+        **arguments,
+        "checkpoint": tmp_path / "pooled",
+        "simulator": Simulator(n_workers=2),
+    }
+    pooled = Propagation(**pooled_arguments)
+    blocks = pooled.blocks()
+    assert len(blocks) == n // size
+    calls: list[int] = []
+    simulate = Simulator.run
+
+    def counted(
+        self: Simulator, model: Any, scan: Any, *args: Any, **kwargs: Any
+    ) -> Any:
+        calls.append(len(scan))
+        return simulate(self, model, scan, *args, **kwargs)
+
+    monkeypatch.setattr(Simulator, "run", counted)
+    pooled.run_blocks(blocks)
+    monkeypatch.undo()
+    n_scenarios = len(pooled.scenarios)
+    # one run of the draws per scenario, then the blocks of the failed draws
+    # whose messages the run does not keep
+    assert calls.count(n) == n_scenarios
+    assert set(calls) <= {n, size}
+
+    for block in blocks:
+        Propagation(**arguments, checkpoint=tmp_path / "alone").run_block(block)
+    pooled_files = sorted(
+        p.relative_to(tmp_path / "pooled") for p in (tmp_path / "pooled").rglob("*.nc")
+    )
+    alone_files = sorted(
+        p.relative_to(tmp_path / "alone") for p in (tmp_path / "alone").rglob("*.nc")
+    )
+    assert pooled_files == alone_files
+    assert len(pooled_files) == len(blocks) * n_scenarios
+    for path in pooled_files:
+        xr.testing.assert_identical(
+            ScanResult.from_netcdf(tmp_path / "pooled" / path).ds,
+            ScanResult.from_netcdf(tmp_path / "alone" / path).ds,
+        )
+    unblocked: dict[str, Any] = {**arguments, "block_size": None}
+    whole = propagate(**unblocked)
+    _assert_equal(pooled.run(), whole)
+    if case == "failing":
+        failed = int(whole.results["default"].ds["status"].sum())
+        assert failed > MAX_ERRORS
+        assert size in calls
+    if case == "ragged":
+        sizes = {
+            ScanResult.from_netcdf(tmp_path / "pooled" / path).ds.sizes["_point"]
+            for path in pooled_files
+        }
+        assert len(sizes) > 1

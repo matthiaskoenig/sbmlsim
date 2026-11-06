@@ -181,6 +181,23 @@ def test_fit_adopt_writes_adopted_json_into_out(tmp_path: Path) -> None:
     assert (status(), adopted.exists()) == before
 
 
+def test_fit_records_the_provenance_argument(tmp_path: Path) -> None:
+    """`--provenance FILE` reaches the records of the fit, without the variable."""
+    sources = [{"name": "model", "sha": "abc", "dirty": False}]
+    provenance = tmp_path / "provenance.json"
+    provenance.write_text(json.dumps(sources), encoding="utf-8")
+    out = tmp_path / "out"
+    run.execute("fit", {**FIT, "repeats": 1}, out, workers=1, provenance=provenance)
+
+    for path in (
+        out / "IV" / "optimization_result.json",
+        out / "IV" / "runs" / "IV_run_0.json",
+    ):
+        recorded = _json(path)["provenance"]
+        assert recorded["sources"] == sources
+        assert recorded["git"] is None
+
+
 def test_unit_with_another_plan_is_refused(tmp_path: Path) -> None:
     planned = run.plan("fit", FIT)
     assert isinstance(planned, FitSpec)
@@ -381,6 +398,30 @@ def test_fit_plan_checks_the_studies_and_the_optimizer(
 def test_fit_plan_accepts_the_arguments_of_the_runner() -> None:
     planned = run.plan("fit", {**FIT, "optimizer": {"xtol": 1e-6, "serial": True}})
     assert isinstance(planned, FitSpec)
+
+
+@pytest.mark.parametrize(
+    ("sampling", "name"),
+    [("logUniform_lhs", "LOGUNIFORM_LHS"), ("START", "START"), (2, "UNIFORM")],
+)
+def test_fit_sampling_of_a_yaml_spec(
+    sampling: str | int, name: str, tmp_path: Path
+) -> None:
+    """A sampling given by its name or value, as YAML gives it, runs in a unit."""
+    planned = run.plan(
+        "fit", {**FIT, "repeats": 1, "optimizer": {"sampling": sampling}}
+    )
+    assert isinstance(planned, FitSpec)
+    assert planned.optimizer["sampling"] == name
+    out = tmp_path / "out"
+    run.compute_unit("fit", planned, 0, out)
+    assert (out / "IV" / "runs" / "IV_run_0.json").exists()
+
+
+@pytest.mark.parametrize("sampling", ["NOPE", 99, 1.5])
+def test_fit_plan_refuses_an_unknown_sampling(sampling: Any) -> None:
+    with pytest.raises(ConfigurationError, match="sampling"):
+        run.plan("fit", {**FIT, "optimizer": {"sampling": sampling}})
 
 
 def test_an_interrupted_fit_is_interrupted(

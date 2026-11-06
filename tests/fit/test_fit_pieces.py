@@ -360,4 +360,4 @@ def test_a_profile_emits_an_event(
     with events.recording(path):
         _profile(problem, fit_settings, parameter_set, pids)
     lines = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
-    assert [x["pid"] for x in lines if x["event"] == "profile"] == pids
+    assert [x["pid"] for x in lines if x["event"] == "identifiability.profile"] == pids

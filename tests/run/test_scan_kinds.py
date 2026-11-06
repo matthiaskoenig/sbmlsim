@@ -10,6 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 import xarray as xr
 
@@ -24,7 +25,7 @@ from sbmlsim.run.cli import EXIT_CONFIGURATION, main
 from sbmlsim.run.scan_kinds import ScanSpec, SensitivitySpec, UncertaintySpec
 from sbmlsim.run.units import MissingUnits
 from sbmlsim.sensitivity import SensitivityResult
-from sbmlsim.simulation import Scan
+from sbmlsim.simulation import Custom, Dimension, Observable, Scan
 from sbmlsim.simulation.sampling import Uniform, random
 from sbmlsim.simulator import Simulator
 from sbmlsim.uncertainty import UncertaintyResult
@@ -66,9 +67,53 @@ SMALL = Project(
     root=HCTZ_PATH,
     uncertainties={
         "few": HCTZ.uncertainty("cl").model_copy(update={"n": 4}),
+        "many": HCTZ.uncertainty("cl").model_copy(update={"n": 130}),
         "adaptive": HCTZ.uncertainty("cl").model_copy(
             update={"n": None, "n_start": 4, "n_max": 8, "rel_tol": 1e-6}
         ),
+    },
+)
+
+
+def checked_excretion(time: np.ndarray, values: dict[str, Any]) -> float:
+    """Get the renal excretion, which fails above 0.0035/ml."""
+    k = float(np.max(values["KI__HCTZEX_k"]))
+    if k > 0.0035:
+        raise ValueError(f"the excretion {k} is too fast")
+    return k
+
+
+def failing_scan() -> Scan:
+    """Get 24 renal excretions, of which the last 15 fail."""
+    return Scan(
+        oral_dose(),
+        [
+            Dimension(
+                "excretion", values={"KI__HCTZEX_k": np.linspace(0.002, 0.006, 24)}
+            )
+        ],
+    )
+
+
+def failing_observables() -> list[Observable]:
+    """Get the plasma concentration and the checked excretion."""
+    return [
+        *observables()[:1],
+        Custom("checked", checked_excretion, "1/ml", symbols=["KI__HCTZEX_k"]),
+    ]
+
+
+#: a ragged scan of 24 points in 24 blocks whose points above 0.0035/ml fail
+FAILING = Project(
+    name="failing",
+    root=HCTZ_PATH,
+    scans={
+        "failing": ScanAnalysis(
+            model=MODEL_PATH,
+            scan=failing_scan,
+            observables=failing_observables,
+            on_error="flag",
+        )
     },
 )
 FEW: dict[str, Any] = {"project": f"{__name__}:SMALL", "analysis": "few"}
@@ -145,6 +190,49 @@ def test_scan_resume_skips_blocks(
     assert (out / "blocks" / "points-1-2.nc").exists()
 
 
+def test_a_whole_scan_runs_its_blocks_on_its_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A whole run runs its blocks in one span and writes the files of its units."""
+    from sbmlsim.result.scan import MAX_ERRORS
+
+    spec = {"project": f"{__name__}:FAILING", "analysis": "failing"}
+    calls: list[range | None] = []
+    simulate = Simulator.run
+
+    def counted(self: Simulator, *args: Any, **kwargs: Any) -> Any:
+        calls.append(kwargs.get("points"))
+        assert self.n_workers == 2
+        return simulate(self, *args, **kwargs)
+
+    monkeypatch.setattr(Simulator, "run", counted)
+    whole = tmp_path / "whole"
+    summary = run.execute("scan", spec, whole, workers=2)
+    monkeypatch.undo()
+    assert summary == {"points": 24, "failed": 15}
+    # one span, then the blocks whose messages the span does not keep
+    assert calls[0] == range(24)
+    # the points from 9 fail, the span keeps the messages of 9 to 18
+    assert calls[1:] == [range(k, k + 1) for k in range(9 + MAX_ERRORS, 24)]
+
+    planned = run.plan("scan", spec)
+    split = tmp_path / "split"
+    for index in range(run.count_units("scan", planned)):
+        run.compute_unit("scan", planned, index, split)
+    run.merge("scan", planned, split)
+    files = sorted(p.name for p in (whole / "blocks").iterdir())
+    assert files == sorted(p.name for p in (split / "blocks").iterdir())
+    assert len(files) == 24
+    for name in [*(f"blocks/{f}" for f in files), "result.nc"]:
+        xr.testing.assert_identical(
+            ScanResult.from_netcdf(whole / name).ds,
+            ScanResult.from_netcdf(split / name).ds,
+        )
+    result = ScanResult.from_netcdf(whole / "result.nc")
+    assert "_point" in result.ds.dims
+    assert len(result.ds.attrs["errors"]) == MAX_ERRORS
+
+
 def test_scan_merge_names_the_missing_units(tmp_path: Path) -> None:
     planned = run.plan("scan", DOSE)
     out = tmp_path / "split"
@@ -174,6 +262,59 @@ def test_scan_hash_is_stable() -> None:
     dose = run.plan("scan", DOSE)
     assert isinstance(dose, ScanSpec)
     assert first.scan_hash != dose.scan_hash
+
+
+def _designed(
+    values: list[float],
+    seed: int = 1,
+    reference: float = 0.0037,
+    covariate: float = 70.0,
+) -> Scan:
+    """Get a scan of a dimension drawn by a design and one of given values."""
+    from sbmlsim.simulation.scan import Design
+
+    design = Design(
+        method="random",
+        distributions={"KI__HCTZEX_k": {"type": "Uniform", "relative": 0.5}},
+        options={"n": len(values), "seed": seed},
+        references={"KI__HCTZEX_k": {"value": reference, "unit": "1/ml"}},
+    )
+    return Scan(
+        oral_dose(),
+        [
+            Dimension(
+                "draws",
+                values={"KI__HCTZEX_k": values},
+                coordinates={"weight": [covariate] * len(values)},
+                design=design,
+            ),
+            Dimension("dose", values={"PODOSE_hctz": [10.0, 20.0]}),
+        ],
+    )
+
+
+def test_scan_hash_is_the_identity_without_the_drawn_values() -> None:
+    """A last bit of a drawn value or a reference, e.g. of another platform."""
+    from sbmlsim.run.scan_kinds import scan_hash
+
+    values = [0.002, 0.003]
+    other = [0.002, float(np.nextafter(0.003, 1.0))]
+    digest = scan_hash(_designed(values))
+    assert scan_hash(_designed(other)) == digest
+    assert scan_hash(_designed(values, reference=0.0037000000000000002)) == digest
+    assert scan_hash(_designed(values, covariate=70.00000000000001)) == digest
+    # the seed, the number of draws and the given values are the scan
+    assert scan_hash(_designed(values, seed=2)) != digest
+    assert scan_hash(_designed([0.002, 0.003, 0.004])) != digest
+    given = _designed(values)
+    changed = Scan(
+        given.simulation,
+        [
+            given.dimensions[0],
+            Dimension("dose", values={"PODOSE_hctz": [10.0, 20.000000000000004]}),
+        ],
+    )
+    assert scan_hash(changed) != digest
 
 
 def test_plan_refuses_a_design_without_seed() -> None:
@@ -254,6 +395,92 @@ def test_uncertainty_split_equals_whole(tmp_path: Path) -> None:
     assert _split_equals_whole(CL, tmp_path) == {"n": 32, "converged": True}
 
 
+def test_a_whole_propagation_runs_its_blocks_on_its_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The blocks of a whole run are one run of the simulator, as files of units."""
+    calls: list[int] = []
+    simulate = Simulator.run
+
+    def counted(self: Simulator, model: Any, scan: Any, *args: Any, **kw: Any) -> Any:
+        calls.append(len(scan))
+        assert self.n_workers == 2
+        return simulate(self, model, scan, *args, **kw)
+
+    monkeypatch.setattr(Simulator, "run", counted)
+    whole = tmp_path / "whole"
+    summary = run.execute("uncertainty", FEW, whole, workers=2)
+    monkeypatch.undo()
+    assert calls == [4]
+
+    planned = run.plan("uncertainty", FEW)
+    split = tmp_path / "split"
+    for index in range(run.count_units("uncertainty", planned)):
+        run.compute_unit("uncertainty", planned, index, split)
+    assert run.merge("uncertainty", planned, split) == summary
+    files = sorted(p.relative_to(whole) for p in (whole / "checkpoint").rglob("*.nc"))
+    assert len(files) == 4
+    assert files == sorted(
+        p.relative_to(split) for p in (split / "checkpoint").rglob("*.nc")
+    )
+    for path in files:
+        xr.testing.assert_identical(
+            ScanResult.from_netcdf(whole / path).ds,
+            ScanResult.from_netcdf(split / path).ds,
+        )
+    xr.testing.assert_identical(
+        _uncertainty(whole).results["default"].ds,
+        _uncertainty(split).results["default"].ds,
+    )
+
+
+def test_a_checkpoint_of_another_propagation_is_a_plan_mismatch(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "out"
+    run.execute("uncertainty", FEW, out, workers=1)
+    path = out / "checkpoint" / "default" / "draws-1-2.nc"
+    ds = ScanResult.from_netcdf(path).ds
+    ds.attrs["propagation"] = {**ds.attrs["propagation"], "on_error": "raise"}
+    path.unlink()
+    ScanResult(ds).to_netcdf(path)
+
+    with pytest.raises(PlanMismatch, match="another propagation"):
+        run.execute("uncertainty", FEW, out, workers=1, resume=True)
+    with pytest.raises(PlanMismatch, match="another propagation"):
+        run.compute_unit("uncertainty", run.plan("uncertainty", FEW), 1, out)
+    with pytest.raises(PlanMismatch, match="another propagation"):
+        run.merge("uncertainty", _json(out / "spec.json"), out)
+    code = main(["uncertainty", *_spec_file(tmp_path), "--out", str(out), "--resume"])
+    assert code == EXIT_CONFIGURATION
+
+
+def _spec_file(tmp_path: Path) -> list[str]:
+    """Write the spec FEW into a file, the argument of the command line."""
+    path = tmp_path / "few.json"
+    path.write_text(json.dumps(FEW), encoding="utf-8")
+    return [str(path)]
+
+
+def test_the_plan_of_more_draws_than_units_has_blocks_of_several_draws(
+    tmp_path: Path,
+) -> None:
+    from sbmlsim.run.context import RunContext
+    from sbmlsim.run.scan_kinds import _planned_uncertainty
+
+    spec = {"project": f"{__name__}:SMALL", "analysis": "many"}
+    planned = run.plan("uncertainty", spec)
+    assert isinstance(planned, UncertaintySpec)
+    assert run.count_units("uncertainty", planned) == 44
+    ctx = RunContext(out=tmp_path, workers=1, resume=False, provenance=None)
+    propagation, blocks = _planned_uncertainty(planned, ctx, workers=1)
+    assert blocks is not None
+    assert propagation.block_size == 3
+    assert propagation.blocks() == blocks
+    assert blocks[0] == range(3)
+    assert blocks[-1] == range(129, 130)
+
+
 def test_the_adaptive_propagation_is_one_unit(tmp_path: Path) -> None:
     assert run.count_units("uncertainty", run.plan("uncertainty", ADAPTIVE)) == 1
     summary = _split_equals_whole(ADAPTIVE, tmp_path)
@@ -286,6 +513,32 @@ def test_simulate_runs_one_experiment(tmp_path: Path) -> None:
     assert experiment
     assert {e["sid"] for e in experiment} == {"Beermann1976"}
     assert {"simulations", "figures"} <= {e["phase"] for e in experiment}
+
+
+def test_simulate_gives_the_workers_to_the_simulator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A serial run of a few experiments runs their scans on the workers."""
+    from sbmlsim.experiment import runner
+
+    given: dict[str, Any] = {}
+
+    def run_experiments(experiments: list[Any], **kwargs: Any) -> list[Any]:
+        given.update(kwargs, experiments=experiments)
+        return []
+
+    monkeypatch.setattr(runner, "run_experiments", run_experiments)
+    assert HCTZ.experiments is not None
+    names = [cls.__name__ for cls in HCTZ.experiments()[:3]]
+    run.execute(
+        "simulate",
+        {"project": PROJECT, "experiments": names},
+        tmp_path / "out",
+        workers=3,
+    )
+    assert [cls.__name__ for cls in given["experiments"]] == names
+    assert given["n_workers"] == 3
+    assert given["simulator"].n_workers == 3
 
 
 def test_simulate_refuses_unknown_experiments() -> None:

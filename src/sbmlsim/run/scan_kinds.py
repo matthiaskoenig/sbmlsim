@@ -9,16 +9,20 @@ is a relative `Path` is relative to `Project.root`.
   consecutive points, `unit_blocks(scan.size)`: a unit writes the result of
   its points, `blocks/points-<start>-<stop>.nc`, and the merge combines them
   into `result.nc` (`ScanResult.combine`), the result of a run of the whole
-  scan, bitwise. The plan records the hash of the scan, `scan_hash`, which
-  every unit and the merge compare with the scan they build, so a design
-  which draws other points every time, one without a seed, is refused.
+  scan, bitwise; a whole run runs the consecutive blocks as one span on its
+  workers, cut into the files of the blocks. The plan records the hash of
+  the identity of the scan, `scan_hash`, which every unit and the merge
+  compare with the scan they build, and refuses a scan whose records of two
+  builds differ, a design which draws other points every time, one without
+  a seed.
 - `sensitivity` (`SensitivitySpec`) is a scan whose analysis has
   sensitivity indices: the merge also computes the indices of the result,
   `sensitivity.nc` (`SensitivityResult`).
 - `uncertainty` (`UncertaintySpec`) propagates the uncertainty of an
   analysis (`sbmlsim.uncertainty.Propagation`) with the seed of the plan:
   a given number of draws `n` in one unit per block, `unit_blocks(n)`, the
-  checkpoints of the propagation in `checkpoint/`; the adaptive number of
+  checkpoints of the propagation in `checkpoint/`, the consecutive blocks of
+  a whole run in one span on its workers; the adaptive number of
   draws is one unit, whose rounds are its checkpoints. The merge writes the
   result into `uncertainty/` (`UncertaintyResult.to_netcdf`).
 - `simulate` (`SimulateSpec`) runs simulation experiments of the project with
@@ -38,6 +42,8 @@ import json
 import logging
 import secrets
 import shutil
+from collections.abc import Generator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -256,12 +262,55 @@ def _canonical(value: Any) -> Any:
     raise TypeError(f"A '{type(value).__name__}' has no canonical JSON.")
 
 
-def scan_hash(scan: Scan) -> str:
-    """Get the hash of a scan: the sha256 of the canonical JSON of its record.
+def scan_identity(scan: Scan) -> dict[str, Any]:
+    """Get the identity of a scan: its record without what a design computes.
 
-    The record (`Scan.to_dict`) has the simulation, the values of every
-    dimension and the record of a design with its seed, so two builds of a
-    scan hash equally if and only if they run the same points.
+    A dimension of a design (`Dimension.design`, a design of
+    `sbmlsim.simulation.sampling`) is identified by its definition: its id,
+    kind, labels, time `at`, simulations and models, the targets of its values
+    and the names of its coordinates, and the record of its design without the
+    references (`Design.references`: the method, the distributions and the
+    options, its seed and number of points among them). The numbers it draws,
+    its values and coordinates (e.g. the covariates of a population), and the
+    references, which the design reads from the model, are left out: the
+    plan and the units of a split run may run on other platforms, whose
+    numerics may differ in the last bits. Every other dimension, of values,
+    simulations or models given by the user, and the simulation are
+    identified by their whole record.
+
+    Args:
+        scan: the scan.
+
+    Returns:
+        The identity, JSON types.
+    """
+    record = scan.to_dict()
+    for dimension, entry in zip(scan.dimensions, record["dimensions"], strict=True):
+        if dimension.design is None:
+            continue
+        entry["values"] = sorted(entry["values"])
+        entry["coordinates"] = sorted(entry["coordinates"])
+        entry["design"] = {
+            k: v for k, v in entry["design"].items() if k != "references"
+        }
+    return record
+
+
+def _digest(record: Any) -> str:
+    """Get the sha256 of the canonical JSON of a record."""
+    text = json.dumps(record, sort_keys=True, separators=(",", ":"), default=_canonical)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def scan_hash(scan: Scan) -> str:
+    """Get the hash of a scan: the sha256 of the canonical JSON of its identity.
+
+    The identity (`scan_identity`) is the record of the scan without the
+    numbers its designs draw and the references they read, so a unit on
+    another platform than the plan builds a scan of the same hash, while a
+    scan of another simulation, other given values or another design, seed or
+    number of points has another hash. That two builds draw the same numbers,
+    e.g. a design with a seed, the plan checks on the whole records.
 
     Args:
         scan: the scan.
@@ -269,10 +318,7 @@ def scan_hash(scan: Scan) -> str:
     Returns:
         The hexadecimal digest.
     """
-    text = json.dumps(
-        scan.to_dict(), sort_keys=True, separators=(",", ":"), default=_canonical
-    )
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return _digest(scan_identity(scan))
 
 
 def _plan_scan[S: ScanSpec](spec: S) -> S:
@@ -288,7 +334,8 @@ def _plan_scan[S: ScanSpec](spec: S) -> S:
     _, analysis = _scan_analysis(spec)
     scan = _build_scan(spec, analysis)
     digest = scan_hash(scan)
-    if scan_hash(_build_scan(spec, analysis)) != digest:
+    # the whole records: a design without a seed draws other numbers
+    if _digest(_build_scan(spec, analysis).to_dict()) != _digest(scan.to_dict()):
         raise ConfigurationError(
             f"The scan '{spec.analysis}' differs between two builds: a design "
             "without a seed draws other points each time, give it a seed."
@@ -348,10 +395,30 @@ def _block_file(ctx: RunContext, block: range) -> Path:
     return ctx.out / BLOCKS_DIR / f"points-{block.start}-{block.stop}.nc"
 
 
+def _spans(indices: list[int]) -> list[list[int]]:
+    """Group indices of blocks into runs of consecutive indices, in their order."""
+    spans: list[list[int]] = []
+    for index in sorted(set(indices)):
+        if spans and spans[-1][-1] == index - 1:
+            spans[-1].append(index)
+        else:
+            spans.append([index])
+    return spans
+
+
 def _run_blocks(
     planned: _PlannedScan, ctx: RunContext, indices: list[int], workers: int
 ) -> None:
     """Run blocks of points of a scan, each written to its file.
+
+    The consecutive blocks run as one span of points on the workers
+    (`Simulator.run` with `points`), so a whole run is parallel whatever the
+    number of its blocks, and the result of the span is cut into the results
+    of its blocks (`ScanResult.part`), each bitwise the file a unit writes; a
+    block whose messages of failed points the span does not keep
+    (`LostErrors`, more than `MAX_ERRORS` failed points before them) runs
+    alone. The events `scan.chunk` count the points of a span, the event
+    `scan.block` follows the file of every block.
 
     Args:
         planned: the planned scan.
@@ -359,6 +426,8 @@ def _run_blocks(
         indices: the indices of the blocks (units) to run.
         workers: the processes of the simulator.
     """
+    from sbmlsim.result.scan import LostErrors
+
     if not indices:
         return
     analysis, scan = planned.analysis, planned.scan
@@ -367,10 +436,10 @@ def _run_blocks(
     observables = (
         list(analysis.observables()) if analysis.observables is not None else None
     )
-    (ctx.out / BLOCKS_DIR).mkdir(parents=True, exist_ok=True)
-    for index in indices:
-        block = planned.blocks[index]
-        result = simulator.run(
+
+    def simulate(points: range) -> ScanResult:
+        """Run points of the scan."""
+        return simulator.run(
             model,
             scan,
             observables,
@@ -378,17 +447,30 @@ def _run_blocks(
             keep=list(analysis.keep) if analysis.keep is not None else None,
             on_error=analysis.on_error,
             progress=False,
-            points=block,
+            points=points,
         )
-        with atomic_path(_block_file(ctx, block)) as temporary:
-            result.to_netcdf(temporary)
-        events.emit(
-            "scan.block",
-            analysis=planned.spec.analysis,
-            start=block.start,
-            stop=block.stop,
-            points=scan.size,
-        )
+
+    (ctx.out / BLOCKS_DIR).mkdir(parents=True, exist_ok=True)
+    for span in _spans(indices):
+        blocks = [planned.blocks[index] for index in span]
+        result = simulate(range(blocks[0].start, blocks[-1].stop))
+        for block in blocks:
+            part = result
+            if len(blocks) > 1:
+                try:
+                    part = result.part(block)
+                except LostErrors as err:
+                    logger.info("%s", err)
+                    part = simulate(block)
+            with atomic_path(_block_file(ctx, block)) as temporary:
+                part.to_netcdf(temporary)
+            events.emit(
+                "scan.block",
+                analysis=planned.spec.analysis,
+                start=block.start,
+                stop=block.stop,
+                points=scan.size,
+            )
 
 
 def _compute_scan_unit(spec: ScanSpec, index: int, ctx: RunContext) -> None:
@@ -585,6 +667,27 @@ def _planned_uncertainty(
     return propagation, blocks
 
 
+@contextmanager
+def _checkpoints_of_the_plan() -> Generator[None]:
+    """Raise a checkpoint of another propagation in the out as `PlanMismatch`.
+
+    The out holds the checkpoints of a plan whose analysis resolves to
+    another propagation now, e.g. after its model changed.
+
+    Raises:
+        PlanMismatch: for a checkpoint of another propagation.
+    """
+    from sbmlsim.uncertainty import CheckpointMismatch
+
+    try:
+        yield
+    except CheckpointMismatch as err:
+        raise PlanMismatch(
+            f"{err} The output holds the checkpoints of a propagation which the "
+            "analysis does not resolve to anymore; run it into another output."
+        ) from err
+
+
 def _adaptive_file(ctx: RunContext) -> Path:
     """Get the file of the adaptive propagation which finished its rounds."""
     return ctx.out / CHECKPOINT_DIR / ADAPTIVE_FILE
@@ -598,19 +701,23 @@ def _compute(
 ) -> None:
     """Run units of a propagation, which checkpoints them.
 
-    A unit of a given number of draws is a block of the propagation; the unit
-    of the adaptive number of draws runs its rounds and writes
-    `ADAPTIVE_FILE` once they finished.
+    A unit of a given number of draws is a block of the propagation, and the
+    consecutive blocks of a whole run run as one span on its workers
+    (`Propagation.run_blocks`); the unit of the adaptive number of draws runs
+    its rounds and writes `ADAPTIVE_FILE` once they finished.
+
+    Raises:
+        PlanMismatch: for a checkpoint of another propagation in the out.
     """
-    if blocks is not None:
-        for index in units:
-            propagation.run_block(blocks[index])
-        return
-    if units:
-        result = propagation.run()
-        write_text_atomic(
-            _adaptive_file(ctx), json.dumps({"n": result.record["n"]}) + "\n"
-        )
+    with _checkpoints_of_the_plan():
+        if blocks is not None:
+            propagation.run_blocks([blocks[index] for index in units])
+            return
+        if units:
+            result = propagation.run()
+            write_text_atomic(
+                _adaptive_file(ctx), json.dumps({"n": result.record["n"]}) + "\n"
+            )
 
 
 def _compute_uncertainty_unit(
@@ -628,6 +735,7 @@ def _write_uncertainty(
 
     Raises:
         MissingUnits: naming the units without their checkpoint.
+        PlanMismatch: for a checkpoint of another propagation in the out.
     """
     if blocks is not None:
         missing = [
@@ -637,7 +745,8 @@ def _write_uncertainty(
             raise MissingUnits(missing, len(blocks))
     elif not _adaptive_file(ctx).exists():
         raise MissingUnits([0], 1)
-    result = propagation.run()
+    with _checkpoints_of_the_plan():
+        result = propagation.run()
     _replace_directory(result, ctx.out / UNCERTAINTY_DIR)
     history = result.record.get("history") or []
     return {
@@ -737,8 +846,12 @@ def _experiment_event(event: Event) -> None:
 def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
     """Run the experiments and write their report into the out.
 
-    The experiments run in a pool of the workers of the run; a single
-    experiment runs its scans on them.
+    The experiments run in a pool of the workers of the run, at most one per
+    experiment, each serially in its worker, which builds a serial simulator
+    of its own. The experiments which run in this process, a single one or
+    the ones `run_experiments` runs serially (see
+    `ExperimentRunner.run_experiments`), run their scans on the workers of
+    the run with the simulator of the run.
 
     Raises:
         ExperimentRunError: if an experiment or a figure failed, after every
@@ -749,7 +862,7 @@ def _run_simulate(spec: SimulateSpec, ctx: RunContext) -> dict[str, Any]:
 
     project, experiments = _experiments(spec)
     workers = _workers(ctx)
-    simulator = project.simulator.simulator(workers if len(experiments) == 1 else 1)
+    simulator = project.simulator.simulator(workers)
     with reporting(_experiment_event, shown=False):
         results = run_experiments(
             experiments,

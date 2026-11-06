@@ -108,6 +108,15 @@ MAX_ERRORS: int = 10
 REPR_VARIABLES = 8
 
 
+class LostErrors(ValueError):
+    """The messages of the failed points of a part are not kept by its result.
+
+    A result keeps the messages of its first `MAX_ERRORS` failed points; a
+    part whose first failed points come after them has messages which only a
+    run of its own points gives.
+    """
+
+
 class ScanResult:
     """The result of a scan, see the module.
 
@@ -709,6 +718,121 @@ class ScanResult:
             errors = [e for part in ordered for e in part.ds.attrs.get("errors", [])]
             attrs["errors"] = errors[:MAX_ERRORS]
         return cls(xr.Dataset(data_vars, coords=coords, attrs=attrs))
+
+    def part(self, points: range) -> ScanResult:
+        """Get the result of some points of a block, as a run of these points gives it.
+
+        A run of a span of points, e.g. of the blocks of several units, in one
+        pool is cut into the results of its blocks (`points` of
+        `sbmlsim.simulator.Simulator.run`), each bitwise the result of a run of
+        its points alone: its points along `_index`, the dimension `_point` of
+        a ragged result trimmed to its own longest point (`trim_points`), the
+        attribute `block` with its `start` and `stop` and the messages of its
+        own failed points (`part_errors`).
+
+        Args:
+            points: consecutive points of the block, not empty.
+
+        Returns:
+            The result of the points.
+
+        Raises:
+            ValueError: for a result which is no block of a scan, and points
+                which are no consecutive points of the block.
+            LostErrors: if the result does not keep the messages of the failed
+                points of the part.
+        """
+        if not self.is_block or INDEX not in self.ds.dims:
+            raise ValueError(
+                "The result is no block of a scan, see the argument `points` of "
+                "`Simulator.run`; only a block has parts."
+            )
+        block = self.ds.attrs[BLOCK]
+        start, stop = int(block["start"]), int(block["stop"])
+        if (
+            points.step != 1
+            or len(points) == 0
+            or points.start < start
+            or points.stop > stop
+        ):
+            raise ValueError(
+                f"The points {points} are no consecutive points of the block "
+                f"{range(start, stop)}."
+            )
+        within = slice(points.start - start, points.stop - start)
+        ds = trim_points(self.ds.isel({INDEX: within}))
+        attrs = copy.deepcopy(dict(self.ds.attrs))
+        attrs[BLOCK] = {**attrs[BLOCK], "start": points.start, "stop": points.stop}
+        if "errors" in attrs:
+            attrs["errors"] = part_errors(
+                attrs["errors"],
+                self.ds[STATUS].values,
+                within,
+                f"{points.start}-{points.stop}",
+            )
+        ds.attrs = attrs
+        return ScanResult(ds)
+
+
+def trim_points(ds: xr.Dataset) -> xr.Dataset:
+    """Trim the dimension `_point` of a ragged result to its longest point.
+
+    The rows of `_point` after the last row in which a variable or a
+    coordinate has a value are padding, which a run of the points of the
+    result has not: a run pads to the longest point which ran, the reverse of
+    `pad_points`.
+
+    Args:
+        ds: the dataset of a result, e.g. of some points of a larger result.
+
+    Returns:
+        The dataset without the trailing rows of `NaN`, itself without
+        `_point`.
+    """
+    if POINT not in ds.dims or ds.sizes[POINT] == 0:
+        return ds
+    filled = np.zeros(ds.sizes[POINT], dtype=bool)
+    for variable in (*ds.data_vars.values(), *ds.coords.values()):
+        if POINT in variable.dims:
+            values = variable.transpose(..., POINT).values
+            filled |= ~np.isnan(values.reshape(-1, ds.sizes[POINT])).all(axis=0)
+    rows_kept = int(np.flatnonzero(filled)[-1]) + 1 if filled.any() else 0
+    if rows_kept == ds.sizes[POINT]:
+        return ds
+    return ds.isel({POINT: slice(0, rows_kept)})
+
+
+def part_errors(
+    errors: Sequence[str], status: np.ndarray, within: slice, name: str
+) -> list[str]:
+    """Get the messages of the failed points of a part of a result.
+
+    The messages of a result are the ones of its first `MAX_ERRORS` failed
+    points in their order, one per failed point (`status` 1); the ones of a
+    part are the ones of its first failed points.
+
+    Args:
+        errors: the messages of the result, the attribute `errors`.
+        status: the variable `status` of the result, flat in the order of its
+            points.
+        within: the points of the part in the flat points of the result.
+        name: the part, for a message.
+
+    Returns:
+        The messages of the first `MAX_ERRORS` failed points of the part.
+
+    Raises:
+        LostErrors: if the result does not keep them.
+    """
+    failed = np.flatnonzero(np.ravel(status) != 0)
+    ranks = np.flatnonzero((failed >= within.start) & (failed < within.stop))
+    ranks = ranks[:MAX_ERRORS]
+    if ranks.size and int(ranks[-1]) >= len(errors):
+        raise LostErrors(
+            f"The result keeps the messages of its first {len(errors)} failed "
+            f"points, not the ones of the points {name}: run them alone."
+        )
+    return [errors[int(rank)] for rank in ranks]
 
 
 def _definition(ds: xr.Dataset) -> dict[str, Any]:

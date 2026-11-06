@@ -7,6 +7,7 @@ its nominal value. A `Covariance` is the dependence between uncertain values.
 
 from sbmlsim.uncertainty.covariance import Covariance
 from sbmlsim.uncertainty.propagation import (
+    CheckpointMismatch,
     Propagation,
     UncertaintyResult,
     propagate,
@@ -16,6 +17,7 @@ from sbmlsim.uncertainty.sources import UncertaintyModel, Variable
 from sbmlsim.uncertainty.testing import Hypothesis, TestReport, TestResult, probability
 
 __all__ = [
+    "CheckpointMismatch",
     "Covariance",
     "Hypothesis",
     "Propagation",

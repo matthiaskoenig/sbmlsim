@@ -6,8 +6,8 @@ A run writes only into its output directory `out`:
   given spec (`spec_hash`), the versions of the packages, python, the host,
   the provenance of the sources of a snapshot (`sources`, the file simrun
   writes, see `sbmlsim.fit.provenance.snapshot_provenance`), the git revision
-  of the project without sources (`git`), the variables `SIMRUN_*` of the
-  environment, the number of workers, the times and the status (`running`,
+  of the project without sources (`git`), the variables of the task which
+  simrun sets in a pod (`ENVIRONMENT`, never a credential), the number of workers, the times and the status (`running`,
   `done` or `failed` with the `error`). It is written when the run starts and
   again when it ends, so an interrupted run leaves the record a resume checks.
 - `spec.json` (`SPEC_FILE`), the planned spec, which a resume runs as it is.
@@ -45,7 +45,7 @@ from sbmlsim.cgroup import available_cpus
 from sbmlsim.run.kinds import ConfigurationError, Kind, PlanMismatch, Spec
 
 __all__ = [
-    "ENVIRONMENT_PREFIX",
+    "ENVIRONMENT",
     "PROGRESS_FILE",
     "RUN_FILE",
     "SPEC_FILE",
@@ -66,8 +66,44 @@ SUMMARY_FILE = "summary.json"
 PROGRESS_FILE = "progress.jsonl"
 #: the directory of the events of the units of a split run
 PROGRESS_DIR = "progress"
-#: the prefix of the variables of the environment a run records
-ENVIRONMENT_PREFIX = "SIMRUN_"
+#: the variables of the environment a run records: the ones simrun sets for the
+#: task of a pod (`simrun.podspec.env_values`, `simrun.worker`), never its
+#: credentials or the settings of its client
+ENVIRONMENT = (
+    "SIMRUN_ATTEMPT",
+    "SIMRUN_EDITABLE",
+    "SIMRUN_INPUTS",
+    "SIMRUN_MEMORY_BASE_GB",
+    "SIMRUN_MEMORY_PER_WORKER_GB",
+    "SIMRUN_NODE",
+    "SIMRUN_PROVENANCE",
+    "SIMRUN_ROLE",
+    "SIMRUN_SCRATCH",
+    "SIMRUN_STAGE",
+    "SIMRUN_STALE_S",
+    "SIMRUN_TASK_DIR",
+    "SIMRUN_TASK_TYPE",
+    "SIMRUN_WORKER",
+)
+#: a variable whose name contains one of them is never recorded
+SECRET_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "KEY")
+
+
+def recorded_environment(environ: Mapping[str, str]) -> dict[str, str]:
+    """The variables of an environment which `run.json` records.
+
+    Args:
+        environ: the environment, e.g. `os.environ`.
+
+    Returns:
+        The variables of `ENVIRONMENT` which are set, by name; a name which
+        contains one of `SECRET_MARKERS` is never recorded.
+    """
+    return {
+        name: environ[name]
+        for name in sorted(ENVIRONMENT)
+        if name in environ and not any(m in name.upper() for m in SECRET_MARKERS)
+    }
 
 
 def _jsonable(value: Any) -> Any:
@@ -392,8 +428,9 @@ def prepare_out(
         record.get("spec_hash"),
     ) != (kind.name, given_hash):
         raise ConfigurationError(
-            f"The output '{out}' holds the run of another spec or kind, it is "
-            "resumed with the spec it was started with only; give another output."
+            f"The output '{out}' holds the run of another spec or kind: resume "
+            "it with the spec file the run was started with, not its planned "
+            f"spec '{SPEC_FILE}', or give another output."
         )
     spec_file = out / SPEC_FILE
     if not spec_file.exists():
@@ -495,11 +532,7 @@ def record_run(
         "host": socket.gethostname(),
         "sources": ctx.provenance,
         "git": _git(spec, ctx.provenance),
-        "environment": {
-            name: value
-            for name, value in sorted(os.environ.items())
-            if name.startswith(ENVIRONMENT_PREFIX)
-        },
+        "environment": recorded_environment(os.environ),
         "workers": resolved_workers(kind, ctx.workers),
         "started": _now(),
         "finished": None,

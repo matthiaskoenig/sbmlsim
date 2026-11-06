@@ -43,7 +43,9 @@ of separate instances merge and an interrupted propagation resumes with the
 same result; a block of another propagation (another model, engine,
 integrator settings, observables, kept timecourses, grid of times or draws)
 is refused. A ragged timecourse is padded to the longest block, as a run pads
-it to its longest point.
+it to its longest point. Consecutive blocks of one instance run as one span
+on the workers of its simulator (`Propagation.run_blocks`), whose result is
+cut into the results of the blocks, each the one a block run alone gives.
 
 The `UncertaintyResult` has the results of the scenarios, the variables and
 the record (seed, design, number of draws, history, covariances), and gives
@@ -78,7 +80,15 @@ from sbmlsim.engine import Engine
 from sbmlsim.events import emit
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.result.netcdf import json_attributes
-from sbmlsim.result.scan import POINT, ScanResult, pad_points
+from sbmlsim.result.scan import (
+    POINT,
+    STATUS,
+    LostErrors,
+    ScanResult,
+    pad_points,
+    part_errors,
+    trim_points,
+)
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.scan import Design, Dimension, Scan
 from sbmlsim.simulator.simulator import Simulator, settings_record
@@ -113,6 +123,10 @@ QUANTILES: tuple[float, ...] = (0.025, 0.05, 0.5, 0.95, 0.975)
 
 #: the attribute of a checkpoint file with the configuration of its block
 CHECKPOINT: str = "propagation"
+
+
+class CheckpointMismatch(ValueError):
+    """A checkpoint file is the block of another propagation."""
 
 
 def _magnitudes(values: Any) -> np.ndarray:
@@ -897,8 +911,8 @@ class Propagation:
         variables, and its scan, i.e. the simulation and the draws.
 
         Raises:
-            ValueError: if the file is the block of another propagation,
-                naming what differs.
+            CheckpointMismatch: if the file is the block of another
+                propagation, naming what differs.
         """
         path = self._path(block, name)
         ds = ScanResult.from_netcdf(path).ds
@@ -912,7 +926,7 @@ class Propagation:
         }
         differ = sorted(k for k in expected if expected[k] != found.get(k))
         if differ:
-            raise ValueError(
+            raise CheckpointMismatch(
                 f"The checkpoint '{path}' is a block of another propagation, it "
                 f"differs in {', '.join(differ)}: use another checkpoint directory."
             )
@@ -945,7 +959,8 @@ class Propagation:
 
         Raises:
             ValueError: for a block which is no consecutive draws of the
-                propagation or a checkpoint of another propagation.
+                propagation.
+            CheckpointMismatch: for a checkpoint of another propagation.
         """
         self._check_block(block)
         key = (block.start, block.stop)
@@ -963,29 +978,115 @@ class Propagation:
             }
             self._emit_block(block)
             return
-        results: dict[str, xr.Dataset] = {}
-        for name in self.scenarios:
-            result = self._simulator.run(
-                self._loaded,
-                self._scan(block, name),
-                self._observables or None,
-                time=self._time,
-                keep=self._keep,
-                on_error=self._on_error,
-            )
-            if self.checkpoint is not None:
-                path = self._path(block, name)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                with atomic_path(path) as temporary:
-                    ScanResult(
-                        result.ds.assign_attrs({CHECKPOINT: self._configuration})
-                    ).to_netcdf(temporary)
-                # the block as it is read, so it does not depend on whether it
-                # was simulated or read
-                results[name] = self._read(block, name)
+        self._store(
+            block, {name: self._simulate(block, name) for name in self.scenarios}
+        )
+
+    def run_blocks(self, blocks: Sequence[range]) -> None:
+        """Run blocks of draws in every scenario, consecutive ones in one run.
+
+        A block which ran or was read before is not run again, and with a
+        checkpoint a block whose files exist for every scenario is read, see
+        `run_block`. The other blocks which follow each other without a gap
+        run as one span of draws per scenario on the workers of the simulator,
+        so the blocks of a propagation run in parallel whatever their size;
+        the result of a span is cut into the results of its blocks, each
+        bitwise the result of `run_block` of the block alone, which are
+        written as their checkpoints. A block whose messages of failed draws
+        the span does not keep (`LostErrors`) runs alone.
+
+        Args:
+            blocks: consecutive draws each, within `n` if given.
+
+        Raises:
+            ValueError: for a block which is no consecutive draws of the
+                propagation.
+            CheckpointMismatch: for a checkpoint of another propagation.
+        """
+        for block in blocks:
+            self._check_block(block)
+        spans: list[list[range]] = []
+        for block in sorted(blocks, key=lambda b: (b.start, b.stop)):
+            if (block.start, block.stop) in self._results or self.checkpointed(block):
+                self.run_block(block)
+            elif spans and spans[-1][-1].stop == block.start:
+                spans[-1].append(block)
             else:
-                results[name] = result.ds
-        self._results[key] = results
+                spans.append([block])
+        for span in spans:
+            if len(span) == 1:
+                self.run_block(span[0])
+                continue
+            draws = range(span[0].start, span[-1].stop)
+            parts: dict[range, dict[str, ScanResult]] = {b: {} for b in span}
+            for name in self.scenarios:
+                result = self._simulate(draws, name)
+                for block in span:
+                    try:
+                        parts[block][name] = self._part(result, draws, block, name)
+                    except LostErrors as err:
+                        logger.info("%s", err)
+                        parts[block][name] = self._simulate(block, name)
+            for block in span:
+                self._store(block, parts[block])
+
+    def _simulate(self, block: range, name: str) -> ScanResult:
+        """Simulate the draws of a block of a scenario."""
+        return self._simulator.run(
+            self._loaded,
+            self._scan(block, name),
+            self._observables or None,
+            time=self._time,
+            keep=self._keep,
+            on_error=self._on_error,
+        )
+
+    def _part(
+        self, result: ScanResult, draws: range, block: range, name: str
+    ) -> ScanResult:
+        """Get the result of a block from the result of a span of draws.
+
+        The draws of the block, `_point` trimmed to its longest draw, the
+        record of its scan and the messages of its failed draws, as a run of
+        the block gives them, see `ScanResult.part`.
+
+        Raises:
+            LostErrors: if the result does not keep the messages of the failed
+                draws of the block.
+        """
+        within = slice(block.start - draws.start, block.stop - draws.start)
+        ds = trim_points(result.ds.isel({DRAW: within}))
+        attrs = copy.deepcopy(dict(result.ds.attrs))
+        attrs["scan"] = self._scan(block, name).to_dict()
+        if "errors" in attrs:
+            attrs["errors"] = part_errors(
+                attrs["errors"],
+                result.ds[STATUS].values,
+                within,
+                f"{block.start}-{block.stop}",
+            )
+        ds.attrs = attrs
+        return ScanResult(ds)
+
+    def _store(self, block: range, results: Mapping[str, ScanResult]) -> None:
+        """Keep the results of a block of every scenario, written as checkpoints.
+
+        With a checkpoint the results are the files as they are read, so they
+        do not depend on whether a block was simulated or read.
+        """
+        stored: dict[str, xr.Dataset] = {}
+        for name, result in results.items():
+            if self.checkpoint is None:
+                stored[name] = result.ds
+                continue
+            path = self._path(block, name)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with atomic_path(path) as temporary:
+                ScanResult(
+                    result.ds.assign_attrs({CHECKPOINT: self._configuration})
+                ).to_netcdf(temporary)
+            stored[name] = self._read(block, name)
+        self._results[(block.start, block.stop)] = stored
         self._emit_block(block)
 
     def _emit_block(self, block: range) -> None:
@@ -1050,8 +1151,7 @@ class Propagation:
         history: list[dict[str, Any]] = []
         if self.n is not None:
             blocks = self.blocks()
-            for block in blocks:
-                self.run_block(block)
+            self.run_blocks(blocks)
             self._check_outputs(blocks[0])
         else:
             blocks = [range(min(self._n_start, self._n_max))]
