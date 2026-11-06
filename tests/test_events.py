@@ -20,7 +20,7 @@ def test_recording_writes_one_json_line_per_event(tmp_path: Path) -> None:
     with events.recording(path):
         events.emit("a", n=1)
         events.emit("b", name="x")
-    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert [line["event"] for line in lines] == ["a", "b"]
     assert lines[0]["n"] == 1 and lines[1]["name"] == "x"
     assert all("time" in line for line in lines)
@@ -31,7 +31,7 @@ def test_recording_is_a_context(tmp_path: Path) -> None:
     with events.recording(path):
         events.emit("a")
     events.emit("b")
-    assert len(path.read_text().splitlines()) == 1
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_a_scan_in_a_recording_emits_chunks(tmp_path: Path) -> None:
@@ -45,7 +45,7 @@ def test_a_scan_in_a_recording_emits_chunks(tmp_path: Path) -> None:
     )
     with events.recording(path):
         simulator.run(model, scan, progress=False)
-    lines = [json.loads(line) for line in path.read_text().splitlines()]
+    lines = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     chunks = [line for line in lines if line["event"] == "scan.chunk"]
     assert chunks and chunks[-1]["done"] == 300 and chunks[-1]["total"] == 300
 
@@ -58,7 +58,7 @@ def test_emit_from_a_thread_is_written(tmp_path: Path) -> None:
         thread = threading.Thread(target=lambda: events.emit("t"))
         thread.start()
         thread.join()
-    assert json.loads(path.read_text())["event"] == "t"
+    assert json.loads(path.read_text(encoding="utf-8"))["event"] == "t"
 
 
 def test_nested_recordings_restore_the_outer_one(tmp_path: Path) -> None:
@@ -68,18 +68,22 @@ def test_nested_recordings_restore_the_outer_one(tmp_path: Path) -> None:
         with events.recording(inner):
             events.emit("b")
         events.emit("c")
-    assert [json.loads(x)["event"] for x in outer.read_text().splitlines()] == [
+    assert [
+        json.loads(x)["event"] for x in outer.read_text(encoding="utf-8").splitlines()
+    ] == [
         "a",
         "c",
     ]
-    assert [json.loads(x)["event"] for x in inner.read_text().splitlines()] == ["b"]
+    assert [
+        json.loads(x)["event"] for x in inner.read_text(encoding="utf-8").splitlines()
+    ] == ["b"]
 
 
 def test_emit_never_raises(tmp_path: Path) -> None:
     path = tmp_path / "progress.jsonl"
     with events.recording(path):
         events.emit("n", x=float("nan"), y=[float("inf"), 1.0])
-    line = json.loads(path.read_text())
+    line = json.loads(path.read_text(encoding="utf-8"))
     assert line["x"] is None and line["y"] == [None, 1.0]
     closed = tmp_path / "closed.jsonl"
     with events.recording(closed):

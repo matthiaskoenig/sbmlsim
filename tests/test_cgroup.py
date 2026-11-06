@@ -11,12 +11,12 @@ from sbmlsim.fit.runner import resolve_n_cores
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
 
 
 def _v2(tmp_path: Path, cgroup_path: str = "/", **files: str) -> int | None:
     proc = tmp_path / "proc_cgroup"
-    proc.write_text(f"0::{cgroup_path}\n")
+    proc.write_text(f"0::{cgroup_path}\n", encoding="utf-8")
     for name, text in files.items():
         _write(tmp_path / "root" / name.replace("__", "/"), text)
     (tmp_path / "root").mkdir(exist_ok=True)
@@ -50,7 +50,7 @@ def test_v1_cfs_quota(tmp_path: Path, quota: str, expected: int | None) -> None:
     _write(root / "cpu" / "cpu.cfs_quota_us", quota)
     _write(root / "cpu" / "cpu.cfs_period_us", "100000")
     proc = tmp_path / "proc_cgroup"
-    proc.write_text("4:cpu,cpuacct:/x\n")
+    proc.write_text("4:cpu,cpuacct:/x\n", encoding="utf-8")
     assert cgroup.cpu_quota(root, proc) == expected
 
 

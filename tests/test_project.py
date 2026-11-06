@@ -102,14 +102,14 @@ def test_adopted_round_trip(tmp_path: Path) -> None:
     assert project.adopted_fits() == {}
     write_adopted(path, {"PK": "fit_b", "IV": "fit_a"})
     assert project.adopted_fits() == {"IV": "fit_a", "PK": "fit_b"}
-    text = path.read_text()
+    text = path.read_text(encoding="utf-8")
     assert list(json.loads(text)["fits"]) == ["IV", "PK"]
     assert Project(name="p", root=tmp_path).adopted_fits() == {}
 
 
 def test_adopted_refuses_a_file_of_another_format(tmp_path: Path) -> None:
     path = tmp_path / ADOPTED_FILE
-    path.write_text(json.dumps({"fits": {"PK": 1}}))
+    path.write_text(json.dumps({"fits": {"PK": 1}}), encoding="utf-8")
     with pytest.raises(ValueError, match="adopted"):
         Project(name="p", root=tmp_path, adopted=path).adopted_fits()
 

@@ -340,7 +340,7 @@ def test_a_fit_emits_one_event_per_repeat(
     path = tmp_path / "progress.jsonl"
     with events.recording(path):
         _fit(op_hctz_iv, fit_settings, short_fit, tmp_path / "runs")
-    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    lines = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
     repeats = [x for x in lines if x["event"] == "fit.repeat"]
     assert sorted(x["run"] for x in repeats) == [0, 1, 2, 3]
     assert {x["opid"] for x in repeats} == {op_hctz_iv.opid}
@@ -359,5 +359,5 @@ def test_a_profile_emits_an_event(
     path = tmp_path / "progress.jsonl"
     with events.recording(path):
         _profile(problem, fit_settings, parameter_set, pids)
-    lines = [json.loads(x) for x in path.read_text().splitlines()]
+    lines = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines()]
     assert [x["pid"] for x in lines if x["event"] == "profile"] == pids
