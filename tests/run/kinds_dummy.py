@@ -25,6 +25,7 @@ class DummySpec(SplitSpec):
     fit: Path | None = None
     project: str | None = None
     fail: bool = False
+    invalid: bool = False
 
 
 def plan(spec: DummySpec) -> DummySpec:
@@ -53,12 +54,19 @@ def merge(spec: DummySpec, ctx: RunContext) -> dict[str, Any]:
         for i in range(spec.units)
     )
     ctx.write_json("total.json", total)
-    return {"total": total, "omp_num_threads": os.environ.get("OMP_NUM_THREADS")}
+    return {
+        "total": total,
+        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+        "mplbackend": os.environ.get("MPLBACKEND"),
+        "workers": ctx.workers,
+    }
 
 
 def run(spec: DummySpec, ctx: RunContext) -> dict[str, Any]:
     if spec.fail:
         raise RuntimeError("the dummy kind fails")
+    if spec.invalid:
+        DummySpec.model_validate({"n": "no number"})
     assert spec.units is not None
     for index in range(spec.units):
         if not (ctx.resume and _part(ctx, index).exists()):

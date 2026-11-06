@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from sbmlsim import run
-from sbmlsim.run import ConfigurationError
+from sbmlsim.run import ConfigurationError, PlanMismatch
 from sbmlsim.run.units import MissingUnits
 from tests.run.kinds_dummy import DummySpec
 
@@ -39,7 +39,7 @@ def test_execute_writes_spec_run_summary_progress(tmp_path: Path) -> None:
     record = _json(out / "run.json")
     assert record["kind"] == "dummy"
     assert record["status"] == "done"
-    assert record["spec_hash"] == run.spec_hash(DummySpec(n=10, seed=2))
+    assert record["spec_hash"] == run.spec_hash(DummySpec(n=10, seed=2), ("fit",))
     assert record["versions"]["sbmlsim"]
     assert record["python"]
     assert record["host"]
@@ -69,6 +69,7 @@ def test_run_json_records_sources_and_environment(
     )
 
     record = _json(out / "run.json")
+    assert _json(out / "summary.json")["workers"] == 2
     assert record["sources"] == sources
     assert record["environment"]["SIMRUN_RUN"] == "x"
     assert record["environment"]["SIMRUN_PROVENANCE"] == str(provenance)
@@ -183,7 +184,7 @@ def test_split_equals_execute(tmp_path: Path) -> None:
     assert (split / "total.json").read_bytes() == (whole / "total.json").read_bytes()
     record = _json(split / "run.json")
     assert record["status"] == "done"
-    assert record["spec_hash"] == run.spec_hash(planned)
+    assert record["spec_hash"] == run.spec_hash(planned, ("fit",))
     assert _json(split / "summary.json") == summary
     assert DummySpec.model_validate(_json(split / "spec.json")) == planned
 
@@ -273,7 +274,7 @@ def test_inputs_set_input_fields(tmp_path: Path) -> None:
     fit.mkdir()
     out = tmp_path / "out"
     run.execute(DUMMY, {"n": 2}, out, inputs={"fit": fit})
-    assert DummySpec.model_validate(_json(out / "spec.json")).fit == fit
+    assert DummySpec.model_validate(_json(out / "spec.json")).fit == fit.resolve()
 
     with pytest.raises(ConfigurationError, match="input"):
         run.execute(DUMMY, {"n": 2}, tmp_path / "other", inputs={"data": fit})
@@ -297,3 +298,44 @@ def test_run_json_records_the_distribution_of_the_project(tmp_path: Path) -> Non
     record = _json(out / "run.json")
     assert record["versions"]["PyYAML"]
     assert record["git"] is None
+
+
+def test_inputs_are_resolved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    planned = run.plan(DUMMY, {"n": 2})
+    run.compute_unit(DUMMY, planned, 0, tmp_path / "out", inputs={"fit": Path("fit")})
+    stored = DummySpec.model_validate(_json(tmp_path / "out" / "spec.json"))
+    assert stored.fit == (tmp_path / "fit").resolve()
+
+
+def test_resume_with_the_inputs_at_another_path(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    run.execute(DUMMY, {"n": 2, "seed": 1}, out, inputs={"fit": tmp_path / "a"})
+    run.execute(
+        DUMMY, {"n": 2, "seed": 1}, out, resume=True, inputs={"fit": tmp_path / "b"}
+    )
+    stored = DummySpec.model_validate(_json(out / "spec.json"))
+    assert stored.fit == (tmp_path / "b").resolve()
+
+
+def test_invalid_spec_is_a_configuration_error(tmp_path: Path) -> None:
+    with pytest.raises(ConfigurationError, match="unknown"):
+        run.execute(DUMMY, {"n": 1, "unknown": 2}, tmp_path / "out")
+    with pytest.raises(ConfigurationError, match="n"):
+        run.plan(DUMMY, {"n": "no number"})
+
+
+def test_units_of_another_plan_are_refused(tmp_path: Path) -> None:
+    first = run.plan(DUMMY, {"n": 10, "seed": 1})
+    second = run.plan(DUMMY, {"n": 10, "seed": 2})
+    run.compute_unit(DUMMY, first, 0, tmp_path, inputs={"fit": tmp_path / "a"})
+    assert DummySpec.model_validate(_json(tmp_path / "spec.json")) == first.model_copy(
+        update={"fit": (tmp_path / "a").resolve()}
+    )
+    # the same plan with its inputs at another path is the same plan
+    run.compute_unit(DUMMY, first, 1, tmp_path, inputs={"fit": tmp_path / "b"})
+    with pytest.raises(PlanMismatch, match="another planned spec"):
+        run.compute_unit(DUMMY, second, 2, tmp_path)
+    assert not (tmp_path / "parts" / "2.json").exists()
+    with pytest.raises(PlanMismatch):
+        run.merge(DUMMY, second, tmp_path)

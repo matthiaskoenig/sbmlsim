@@ -19,7 +19,8 @@ def _run(*args: str) -> subprocess.CompletedProcess[str]:
     env = {
         name: value
         for name, value in os.environ.items()
-        if name not in THREAD_VARIABLES and not name.startswith("SIMRUN_")
+        if name not in (*THREAD_VARIABLES, "MPLBACKEND")
+        and not name.startswith("SIMRUN_")
     }
     env["PYTHONPATH"] = str(REPOSITORY)
     return subprocess.run(
@@ -49,7 +50,7 @@ def test_cli_runs_a_kind(tmp_path: Path) -> None:
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert summary["total"] == 1 + 4 + 9 + 16
     planned = json.loads((out / "spec.json").read_text(encoding="utf-8"))
-    assert planned["fit"] == str(fit)
+    assert planned["fit"] == str(fit.resolve())
 
 
 def test_cli_sets_thread_variables(tmp_path: Path) -> None:
@@ -58,6 +59,7 @@ def test_cli_sets_thread_variables(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     assert summary["omp_num_threads"] == "1"
+    assert summary["mplbackend"] == "Agg"
 
 
 def test_cli_invalid_spec_exits_4(tmp_path: Path) -> None:
@@ -128,6 +130,15 @@ def test_main_list_as_a_table(capsys: pytest.CaptureFixture[str]) -> None:
     assert cli.main(["list", "examples.hctz_fitting.project:PROJECT"]) == 0
     lines = capsys.readouterr().out.splitlines()
     assert any(line.split()[:2] == ["fit", "PK"] for line in lines)
+
+
+def test_main_invalid_object_of_the_analysis_exits_3(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Only the validation of the spec is a configuration error."""
+    spec = str(_spec(tmp_path, {"n": 1, "invalid": True}))
+    assert cli.main([DUMMY, spec, "--out", str(tmp_path / "out")]) == 3
+    assert "ValidationError" in caplog.text
 
 
 def test_main_resume(tmp_path: Path) -> None:

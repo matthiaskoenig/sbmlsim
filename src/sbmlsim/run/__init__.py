@@ -29,11 +29,14 @@ from typing import Any
 from sbmlsim import events
 from sbmlsim.run.context import (
     RunContext,
+    check_plan,
     load_spec,
     prepare_out,
     read_provenance,
     record_run,
+    resolved_workers,
     spec_hash,
+    with_inputs,
 )
 from sbmlsim.run.kinds import (
     ConfigurationError,
@@ -118,39 +121,57 @@ def execute(
     """Run an analysis whole into an output directory.
 
     The spec is validated, its inputs set and it is planned, unless the run
-    resumes, which runs the planned spec of `out/spec.json` as it is. The run
-    writes `spec.json`, `run.json`, `summary.json` and its events into `out`,
-    see `sbmlsim.run.context`.
+    resumes, which runs the planned spec of `out/spec.json` as it is, with the
+    inputs given now. The run writes `spec.json`, `run.json`, `summary.json`
+    and its events into `out`, see `sbmlsim.run.context`.
+
+    A resume is accepted for the spec the run in `out` was started with, its
+    inputs left out (`spec_hash`), so the inputs may be staged at another
+    path. A resume of a finished run runs it again, and its kind skips what
+    exists, e.g. the finished repeats of a fit; `progress.jsonl` accumulates
+    the events of every attempt.
 
     Args:
         kind: the name of the kind or `module:attribute` of a kind.
-        spec: the spec, its settings or a YAML or JSON file of them, whose
-            relative paths are relative to the file.
+        spec: the spec, its settings or a YAML or JSON file of them. The
+            relative paths of a file are relative to the file; only the fields
+            which are a `Path` or a list or tuple of them are resolved, not
+            paths inside of other values.
         out: the output directory, created; it must be empty without `resume`.
-        workers: the number of processes, `None` for the kind to decide.
+        workers: the number of processes, every CPU of the quota without for a
+            kind which uses several cores, else 1.
         resume: continue the run of the same spec in `out`.
         provenance: the file of the provenance of the sources, the one of
             `SIMRUN_PROVENANCE` without.
-        inputs: the paths of the input fields of the spec by their name.
+        inputs: the paths of the input fields of the spec by their name,
+            resolved to absolute paths.
 
     Returns:
         The summary of the run.
 
     Raises:
-        ConfigurationError: for an unknown kind, a spec which is not read, an
-            output which is not empty without `resume`, a resume of another
-            spec and a provenance which is not read.
-        pydantic.ValidationError: for invalid settings.
+        ConfigurationError: for an unknown kind, a spec which is not read or
+            invalid, an output which is not empty without `resume`, a resume
+            of another spec and a provenance which is not read.
     """
     the_kind = get_kind(kind)
     given = load_spec(the_kind, spec, inputs)
-    given_hash = spec_hash(given)
+    given_hash = spec_hash(given, the_kind.inputs)
     _check_workers(workers)
     sources = read_provenance(provenance)
     out = Path(out)
     stored = prepare_out(the_kind, given_hash, out, resume)
-    planned = stored if stored is not None else _planned(the_kind, given)
-    ctx = RunContext(out=out, workers=workers, resume=resume, provenance=sources)
+    planned = (
+        _planned(the_kind, given)
+        if stored is None
+        else with_inputs(the_kind, stored, given)
+    )
+    ctx = RunContext(
+        out=out,
+        workers=resolved_workers(the_kind, workers),
+        resume=resume,
+        provenance=sources,
+    )
     return record_run(
         the_kind, planned, given_hash, ctx, lambda: the_kind.run(planned, ctx)
     )
@@ -199,9 +220,10 @@ def compute_unit(
     """Compute one unit of a planned spec into an output directory, serially.
 
     The units of a run compute into the same output, each of its own files,
-    and a unit computed again writes the same files. A unit writes its events
-    into `progress/unit-<index>.jsonl` and no `run.json`, which the merge
-    writes.
+    and a unit computed again writes the same files. The first unit writes the
+    planned spec into `spec.json`, and a unit of another plan is refused, so
+    the units of two plans do not mix. A unit writes its events into
+    `progress/unit-<index>.jsonl` and no `run.json`, which the merge writes.
 
     Args:
         kind: the name of the kind or `module:attribute` of a kind.
@@ -213,12 +235,14 @@ def compute_unit(
     Raises:
         ConfigurationError: for a kind which is not split, a spec which is not
             planned and an index outside of the units.
+        PlanMismatch: if `out` holds the units of another planned spec.
     """
     the_kind = get_kind(kind)
     given = load_spec(the_kind, spec, inputs)
     n_units = _n_units(the_kind, given)
     compute = the_kind.compute_unit
-    assert compute is not None
+    if compute is None:
+        raise ConfigurationError(f"The kind '{the_kind.name}' computes no units.")
     if not 0 <= index < n_units:
         raise ConfigurationError(
             f"The unit {index} is outside of the units range(0, {n_units})."
@@ -226,6 +250,7 @@ def compute_unit(
     sources = read_provenance(None)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
+    check_plan(the_kind, given, out)
     ctx = RunContext(out=out, workers=1, resume=True, provenance=sources, unit=index)
     progress = ctx.progress_path
     progress.parent.mkdir(parents=True, exist_ok=True)
@@ -256,19 +281,31 @@ def merge(
     Raises:
         ConfigurationError: for a kind which is not split and a spec which is
             not planned.
+        PlanMismatch: if `out` holds the units of another planned spec.
         MissingUnits: from the merge of a kind, naming the missing units.
     """
     the_kind = get_kind(kind)
     given = load_spec(the_kind, spec, inputs)
     _n_units(the_kind, given)
     merge_units = the_kind.merge
-    assert merge_units is not None
+    if merge_units is None:
+        raise ConfigurationError(f"The kind '{the_kind.name}' merges no units.")
     sources = read_provenance(None)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    ctx = RunContext(out=out, workers=None, resume=True, provenance=sources)
+    check_plan(the_kind, given, out)
+    ctx = RunContext(
+        out=out,
+        workers=resolved_workers(the_kind, None),
+        resume=True,
+        provenance=sources,
+    )
     return record_run(
-        the_kind, given, spec_hash(given), ctx, lambda: merge_units(given, ctx)
+        the_kind,
+        given,
+        spec_hash(given, the_kind.inputs),
+        ctx,
+        lambda: merge_units(given, ctx),
     )
 
 

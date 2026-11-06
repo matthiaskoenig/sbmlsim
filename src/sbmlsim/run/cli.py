@@ -14,10 +14,11 @@ other command. `plan` writes the planned spec as JSON, `list` the analyses of
 a project as a table or as JSON.
 
 The exit codes: 0 done, 2 a bad command line, 3 the analysis failed (its
-traceback is logged), 4 a configuration error (an invalid spec, an unknown
-kind or project, a planned spec which does not match what it resolves to, an
-output which is not empty without `--resume` or a resume of another spec), its
-message on stderr.
+traceback is logged), also by an invalid object the analysis builds, 4 a
+configuration error (`ConfigurationError`: an invalid spec or input, an
+unknown kind or project, a planned spec which does not match what it resolves
+to, an output which is not empty without `--resume` or a resume of another
+spec), its message on stderr.
 """
 
 from __future__ import annotations
@@ -28,6 +29,8 @@ import logging
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+from sbmlsim.run.kinds import RESERVED_NAMES, ConfigurationError
 
 __all__ = [
     "EXIT_ANALYSIS",
@@ -49,8 +52,8 @@ EXIT_ANALYSIS = 3
 #: the run is configured wrongly
 EXIT_CONFIGURATION = 4
 
-#: the commands besides `run`, which is the command of any other first argument
-COMMANDS: tuple[str, ...] = ("run", "plan", "unit", "merge", "list")
+#: the commands; `run` is the command of a first argument which is none
+COMMANDS: frozenset[str] = RESERVED_NAMES
 
 
 def input_pair(value: str) -> tuple[str, Path]:
@@ -215,13 +218,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except SystemExit as exit_:
         return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
 
-    from pydantic import ValidationError
-
-    from sbmlsim.run.kinds import ConfigurationError
-
     try:
         _command(args)
-    except (ConfigurationError, ValidationError) as err:
+    except ConfigurationError as err:
         sys.stderr.write(f"{err}\n")
         return EXIT_CONFIGURATION
     except Exception:

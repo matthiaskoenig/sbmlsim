@@ -157,6 +157,9 @@ class Kind[S: Spec]:
         return self.compute_unit is not None and self.merge is not None
 
 
+#: the commands of the command line, which are no names of kinds
+RESERVED_NAMES: frozenset[str] = frozenset({"run", "plan", "unit", "merge", "list"})
+
 #: the kinds by their name
 KINDS: dict[str, Kind[Any]] = {}
 
@@ -174,11 +177,16 @@ def register(kind: Kind[Any]) -> None:
         kind: the kind.
 
     Raises:
-        ValueError: for a name which is registered or contains `:`, which
-            references a kind.
+        ValueError: for a name which is registered, contains `:`, which
+            references a kind, or is a command, see `RESERVED_NAMES`.
     """
     if ":" in kind.name:
         raise ValueError(f"The name of a kind has no ':', '{kind.name}' has one.")
+    if kind.name in RESERVED_NAMES:
+        raise ValueError(
+            f"'{kind.name}' is a command of the command line and no name of a "
+            f"kind; the commands are {sorted(RESERVED_NAMES)}."
+        )
     if kind.name in KINDS:
         raise ValueError(f"The kind '{kind.name}' is registered already.")
     KINDS[kind.name] = kind

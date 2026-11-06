@@ -31,18 +31,18 @@ import math
 import os
 import platform
 import socket
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from sbmlsim import events
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.cgroup import available_cpus
-from sbmlsim.run.kinds import ConfigurationError, Kind, Spec
+from sbmlsim.run.kinds import ConfigurationError, Kind, PlanMismatch, Spec
 
 __all__ = [
     "ENVIRONMENT_PREFIX",
@@ -106,8 +106,9 @@ class RunContext:
 
     Attributes:
         out: the output directory, which exists.
-        workers: the number of processes the run may use, `None` for the kind
-            to decide (e.g. every CPU of the quota, `available_cpus`).
+        workers: the number of processes the run may use: the given number,
+            else every CPU of the quota (`available_cpus`) for a kind which
+            uses several cores and 1 for one which does not, 1 for a unit.
         resume: whether the run continues an earlier one in `out`, so it
             keeps what exists, e.g. the files of the finished repeats.
         provenance: the provenance of the sources of the snapshot the run runs
@@ -146,19 +147,40 @@ class RunContext:
         return self.out / PROGRESS_DIR / f"unit-{self.unit}.jsonl"
 
 
-def spec_hash(spec: Spec) -> str:
+def spec_hash(spec: Spec, exclude: Collection[str] = ()) -> str:
     """Get the hash of a spec: the sha256 of its canonical JSON, sorted keys.
 
     Args:
         spec: the spec.
+        exclude: the fields left out, the inputs of its kind (`Kind.inputs`),
+            which are identified by their own provenance, so a run whose
+            inputs are staged at another path is the same run.
 
     Returns:
         The hexadecimal digest.
     """
     canonical = json.dumps(
-        spec.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        spec.model_dump(mode="json", exclude=set(exclude)),
+        sort_keys=True,
+        separators=(",", ":"),
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _validated[S: Spec](kind: Kind[S], settings: Mapping[str, Any] | str) -> S:
+    """Validate the settings of a spec, a mapping or JSON.
+
+    Raises:
+        ConfigurationError: for invalid settings, with the errors of pydantic.
+    """
+    try:
+        if isinstance(settings, str):
+            return kind.spec.model_validate_json(settings)
+        return kind.spec.model_validate(dict(settings))
+    except ValidationError as err:
+        raise ConfigurationError(
+            f"The spec of the kind '{kind.name}' is invalid: {err}"
+        ) from err
 
 
 def _read_spec_file(path: Path) -> dict[str, Any]:
@@ -185,7 +207,11 @@ def _read_spec_file(path: Path) -> dict[str, Any]:
 
 
 def _relative_to(spec: Spec, base: Path) -> Spec:
-    """Resolve the relative paths of the fields of a spec against a directory."""
+    """Resolve the relative paths of a spec against a directory.
+
+    Only the fields which are a `Path` or a list or tuple of them are resolved,
+    not the paths inside of other values, e.g. of a nested model.
+    """
 
     def resolved(value: Any) -> Any:
         if isinstance(value, Path) and not value.is_absolute():
@@ -212,16 +238,18 @@ def load_spec[S: Spec](
     Args:
         kind: the kind.
         spec: the spec, its settings or a YAML or JSON file of them, whose
-            relative paths are relative to the file.
-        inputs: the paths of input fields by their name, see `Kind.inputs`.
+            relative paths are relative to the file (the fields which are a
+            `Path` or a list or tuple of them).
+        inputs: the paths of input fields by their name, see `Kind.inputs`,
+            resolved to absolute paths.
 
     Returns:
         The spec.
 
     Raises:
         ConfigurationError: for a spec of another kind, a file which is not
-            read or no mapping, and an input the kind does not have.
-        pydantic.ValidationError: for invalid settings.
+            read or no mapping, invalid settings and an input the kind does
+            not have.
     """
     if isinstance(spec, Spec):
         if not isinstance(spec, kind.spec):
@@ -231,12 +259,12 @@ def load_spec[S: Spec](
             )
         loaded: S = spec
     elif isinstance(spec, Mapping):
-        loaded = kind.spec.model_validate(dict(spec))
+        loaded = _validated(kind, spec)
     else:
         path = Path(spec)
-        validated = kind.spec.model_validate(_read_spec_file(path))
-        loaded = kind.spec.model_validate(
-            _relative_to(validated, path.parent.resolve()).model_dump()
+        validated = _validated(kind, _read_spec_file(path))
+        loaded = _validated(
+            kind, _relative_to(validated, path.parent.resolve()).model_dump()
         )
     if inputs:
         unknown = sorted(set(inputs) - set(kind.inputs))
@@ -246,9 +274,57 @@ def load_spec[S: Spec](
                 f"{list(kind.inputs)}."
             )
         settings = loaded.model_dump()
-        settings.update({port: Path(path) for port, path in inputs.items()})
-        loaded = kind.spec.model_validate(settings)
+        settings.update({port: Path(path).resolve() for port, path in inputs.items()})
+        loaded = _validated(kind, settings)
     return loaded
+
+
+def with_inputs[S: Spec](kind: Kind[S], spec: S, source: Spec) -> S:
+    """Get a spec with the input fields of another spec of its kind.
+
+    Args:
+        kind: the kind.
+        spec: the spec, e.g. the planned spec of a run to resume.
+        source: the spec whose inputs are taken, e.g. the given spec.
+
+    Returns:
+        The spec with the inputs of `source`.
+    """
+    if not kind.inputs:
+        return spec
+    settings = spec.model_dump()
+    settings.update({name: getattr(source, name) for name in kind.inputs})
+    return _validated(kind, settings)
+
+
+def check_plan(kind: Kind[Any], spec: Spec, out: Path) -> None:
+    """Fix the planned spec of a split run in its output, or check it.
+
+    The first unit writes `spec.json`; a later unit or the merge of another
+    plan, e.g. of a design drawn again, would mix its results with the ones of
+    the first plan and is refused. The inputs are not compared, see
+    `spec_hash`.
+
+    Args:
+        kind: the kind of the run.
+        spec: the planned spec.
+        out: the output directory, which exists.
+
+    Raises:
+        PlanMismatch: if `out` holds the units of another planned spec.
+        ConfigurationError: if its `spec.json` is no spec of the kind.
+    """
+    path = out / SPEC_FILE
+    if not path.exists():
+        write_text_atomic(path, to_json(spec))
+        return
+    stored = _validated(kind, path.read_text(encoding="utf-8"))
+    if spec_hash(stored, kind.inputs) != spec_hash(spec, kind.inputs):
+        raise PlanMismatch(
+            f"The output '{out}' holds the units of another planned spec of the "
+            f"kind '{kind.name}'; compute the units of a plan into an output of "
+            "their own."
+        )
 
 
 def read_provenance(path: Path | None) -> list[dict[str, Any]] | None:
@@ -322,7 +398,7 @@ def prepare_out(
     spec_file = out / SPEC_FILE
     if not spec_file.exists():
         return None
-    return kind.spec.model_validate_json(spec_file.read_text(encoding="utf-8"))
+    return _validated(kind, spec_file.read_text(encoding="utf-8"))
 
 
 def resolved_workers(kind: Kind[Any], workers: int | None) -> int:

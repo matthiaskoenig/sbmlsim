@@ -59,6 +59,12 @@ def test_a_name_with_a_colon_is_refused() -> None:
         register(Kind(name="a:b", spec=_Plain, run=_run))
 
 
+@pytest.mark.parametrize("name", ["run", "plan", "unit", "merge", "list"])
+def test_a_command_is_no_name_of_a_kind(name: str) -> None:
+    with pytest.raises(ValueError, match="command"):
+        register(Kind(name=name, spec=_Plain, run=_run))
+
+
 def test_splittable() -> None:
     assert DUMMY.splittable
     plain = Kind(name="plain", spec=_Plain, run=_run)
