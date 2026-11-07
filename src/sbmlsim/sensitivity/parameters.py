@@ -22,7 +22,7 @@ otherwise (the constant compartments and the constant or boundary species as
 well, in the order of the model).
 
 A global design draws the values around the values of the table. A model with
-several variants (`sbmlsim.project.Project.variants`, e.g. a variant per sex)
+several variants (`sbmlsim.project.Project.variants`, e.g. a variant per population)
 samples a group of another variant relative to the values of its variant:
 `build_values` reads them, `design_factors` gives the ratios and
 `relative_design` scales the design.
@@ -396,7 +396,7 @@ def build_values(sbml_path: Path, uids: Iterable[str]) -> dict[str, float]:
     """Get the values of parameters in a variant of a model, as `parameters_from_sbml` reads them.
 
     Args:
-        sbml_path: the SBML model, e.g. the female variant.
+        sbml_path: the SBML model, e.g. a variant of the model.
         uids: the ids of the parameters, compartments and species.
 
     Returns:
@@ -420,9 +420,9 @@ def design_factors(
     model. A group of another variant samples the same design relative to the
     values of its variant: every value of a parameter is multiplied with the
     ratio of its value in the variant to its value in the table, so e.g. a
-    group of women varies the body weight around the female body weight by the
-    same factors as the men around the male one. The bounds of the table are
-    taken relative to its values.
+    group of a variant varies the body weight around the body weight of its
+    variant by the same factors as the default variant around its own. The
+    bounds of the table are taken relative to its values.
 
     Args:
         parameters: the parameters which a design varies.
