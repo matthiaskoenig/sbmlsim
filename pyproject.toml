@@ -211,8 +211,6 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/sbmlsim/__init__.py" }]
 # libraries, which the comparison of a forward pass does not need. A single
 # table and not a list of sources, which tox-uv cannot read
 torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
-# simrun from git until it is released on PyPI (a release blocker of sbmlsim)
-simrun = { git = "https://github.com/matthiaskoenig/simrun.git", rev = "ba442e025780f1f20527662881e4e72dfee63bd5" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"

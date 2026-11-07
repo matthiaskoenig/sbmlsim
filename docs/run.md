@@ -421,8 +421,6 @@ python -m sbmlsim.run release release.yaml --out results/release
 pip install "sbmlsim[simrun]"
 ```
 
-Until simrun is released on PyPI, install it from its repository first, `pip install git+https://github.com/matthiaskoenig/simrun.git`.
-
 The settings of a task are the spec of its kind. A split kind (`fit`, `identifiability`, `scan`, `sensitivity`, `uncertainty`) is split by simrun: its workers compute the units and its merge merges them. The other kinds run as the command `python -m sbmlsim.run <kind> {settings} --out {out}/out --summary {out}/summary.json --resume --input={input}`, whose `--resume` lets a retry after an eviction continue the run it finds. A task writes the output of its run into its output port `out`, which a task downstream reads as the input `<task>.out`, and its summary into `summary.json` of the task.
 
 A workflow which fits the HCTZ problem in units, profiles its parameters and writes the report of both:
@@ -463,4 +461,4 @@ The fit is 64 units of one repeat, the profile likelihood one unit per parameter
 - **The plan runs in the client.** `simrun submit` plans every task whose type is installed where it runs, before it takes the snapshots, and submits the planned settings: the seed of the fit, the units, the parameters of the profiles. The client therefore needs `sbmlsim[simrun]` and the model package, so that it imports the project; a task submitted without its plan has no `units` and fails in the service.
 - **The project is imported in the pods.** The pods install the snapshots editable, which installs the package of a source and not the rest of its repository: a model package is found, while the HCTZ example in `examples/` needs the root of the repository on `PYTHONPATH`.
 - **Provenance.** simrun writes the provenance of the snapshots of a run and names it in `SIMRUN_PROVENANCE`, which `run.json` and the records of a fit record, see [Provenance](#progress-and-provenance).
-- **Development.** The development environment is python 3.14 (`.python-version`), so `uv sync --extra dev` installs simrun and `uv run ty check` checks `sbmlsim.simrun` against it; the tests of the plugin skip without simrun. Until simrun is released on PyPI the lock takes it from git, and the tox environments, which resolve from `pyproject.toml`, do not install it.
+- **Development.** The development environment is python 3.14 (`.python-version`), so `uv sync --extra dev` installs simrun and `uv run ty check` checks `sbmlsim.simrun` against it; the tests of the plugin skip without simrun. The tox environments, which resolve from `pyproject.toml`, do not install it.
