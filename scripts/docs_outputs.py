@@ -65,6 +65,8 @@ PAGES: list[str] = [
     "uncertainty.md",
     "sensitivity.md",
     "fitting.md",
+    "release.md",
+    "licenses.md",
 ]
 
 #: the fence of a python block and of its output

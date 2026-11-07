@@ -314,6 +314,33 @@ ScanResult(patient: 3, dose: 3, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz,
 
 `time=` puts all points on one grid of 6 minutes, which `summary` needs. The summary over `patient` has the statistics as a new dimension `statistic` and keeps `dose` and `time`.
 
+The functions of a point are what a figure of an experiment, or the pharmacokinetic parameters of a model, read from the points of a scan. For a scan of one dimension (`single_dimension` raises for another) and a result with draws:
+
+```py
+from sbmlsim.result.scan import (
+    end_values,
+    point_band,
+    point_timecourse,
+    single_dimension,
+    start_values,
+    state_after_changes,
+)
+
+dim = single_dimension(res)  # the one dimension of the scan
+for k in range(res.ds.sizes[dim]):
+    time, values = point_timecourse(res, "[Cve_hctz]", **{dim: k})
+doses = start_values(res, "PODOSE_hctz")  # the dose of every point
+urine = end_values(res, "Aurine_hctz")  # the amount in the urine at the end
+res = state_after_changes(res)  # the whole result with the state after a change only
+
+# the dimensions of a scan over draws, and the band of a point
+time, lower, median, upper = point_band(
+    res, "[Cve_hctz]", across="uncertainty", quantiles=(0.05, 0.95), dose=0
+)
+```
+
+`scan_dimensions(res, across)` gives the dimensions of a scan without the dimension of the draws.
+
 ## Designs
 
 A design is a dimension with values from a sampling method. `sbmlsim.simulation.sampling` creates local designs, random draws, Latin hypercubes, the designs of global sensitivity analyses, draws of fitted parameters and virtual populations, see [Sampling](sampling.md). Here a Latin hypercube draws 50 virtual patients with a variable dissolution rate, body weight and kidney function:
