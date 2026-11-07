@@ -246,7 +246,7 @@ def source_framework(source: SourceRepo, framework: str) -> str | None:
     lock_path = source.root / "uv.lock"
     if not lock_path.is_file():
         return None
-    lock = tomllib.loads(lock_path.read_text("utf-8"))
+    lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
     for package in lock.get("package", []):
         if package.get("name") == framework:
             return locked_version(package)

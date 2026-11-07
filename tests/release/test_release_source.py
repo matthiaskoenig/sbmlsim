@@ -26,7 +26,7 @@ pytestmark = pytest.mark.usefixtures("git_env")
 
 
 def test_source_dirty_refused(source_without_fits: Project) -> None:
-    (source_without_fits.root / "new.txt").write_text("untracked\n")
+    (source_without_fits.root / "new.txt").write_text("untracked\n", encoding="utf-8")
     with pytest.raises(ReleaseError, match="commit the changes of"):
         source_repo(source_without_fits)
 
@@ -52,7 +52,7 @@ def test_release_repo_cloned_when_missing(
     assert (repo.path / "README.md").exists()
     assert repo.last_tag == "0.1.0"
     assert repo.ahead == 0
-    (path / "x.txt").write_text("x\n")
+    (path / "x.txt").write_text("x\n", encoding="utf-8")
     git(path, "add", "-A")
     git(path, "commit", "-m", "local")
     assert release_repo(release_settings, path).ahead == 1
@@ -103,7 +103,7 @@ def test_release_repo_behind_refused(
     remote, clone = remote_and_clone
     other = tmp_path / "other"
     git(tmp_path, "clone", str(remote), str(other))
-    (other / "new.txt").write_text("new\n")
+    (other / "new.txt").write_text("new\n", encoding="utf-8")
     git(other, "add", "-A")
     git(other, "commit", "-m", "more")
     git(other, "push", "origin", "main")
@@ -174,8 +174,8 @@ def test_export_namespace(tmp_path: Path, source_without_fits: Project) -> None:
     project = source_without_fits.replace(package=f"pkg.{PACKAGE}")
     release = tmp_path / "release"
     (release / "src" / "pkg").mkdir(parents=True)
-    (release / "src" / "pkg" / "__init__.py").write_text("")
-    (release / "src" / "__init__.py").write_text("")
+    (release / "src" / "pkg" / "__init__.py").write_text("", encoding="utf-8")
+    (release / "src" / "__init__.py").write_text("", encoding="utf-8")
     export_package(project, SETTINGS, source_repo(project), release)
     assert not (release / "src" / "pkg" / "__init__.py").exists()
     assert not (release / "src" / "__init__.py").exists()
@@ -186,7 +186,7 @@ def test_export_replaces(tmp_path: Path, source_without_fits: Project) -> None:
     release = tmp_path / "release"
     stale = release / "src" / PACKAGE / "stale.py"
     stale.parent.mkdir(parents=True)
-    stale.write_text("old\n")
+    stale.write_text("old\n", encoding="utf-8")
     export_package(
         source_without_fits, SETTINGS, source_repo(source_without_fits), release
     )
@@ -210,7 +210,7 @@ def test_release_repo_empty(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     path = tmp_path / "toy-model"
     repo = release_repo(SETTINGS, path)
     assert (repo.last_tag, repo.ahead) == (None, 0)
-    (path / "x.txt").write_text("x\n")
+    (path / "x.txt").write_text("x\n", encoding="utf-8")
     git(path, "add", "-A")
     git(path, "commit", "-m", "the release commit, not pushed")
     assert release_repo(SETTINGS, path).ahead == 1

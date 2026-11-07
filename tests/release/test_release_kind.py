@@ -67,8 +67,8 @@ def test_the_kind_builds_the_release_into_the_out(
     assert summary["version"] == VERSION
     assert summary["framework"] == "sbmlsim"
     assert summary["publishable"] is True
-    assert json.loads((out / SUMMARY_FILE).read_text()) == summary
-    assert json.loads((out / RUN_FILE).read_text())["status"] == "done"
+    assert json.loads((out / SUMMARY_FILE).read_text(encoding="utf-8")) == summary
+    assert json.loads((out / RUN_FILE).read_text(encoding="utf-8"))["status"] == "done"
     assert (out / "repository" / "release.json").is_file()
     assert git(clone, "rev-parse", "HEAD") == head
     simulate = next(c for c in runner.commands if "specs/simulate.json" in c)
@@ -84,7 +84,7 @@ def test_a_refused_release_is_a_configuration_error(
     runner: FakeRunner,
     tmp_path: Path,
 ) -> None:
-    (source_project.root / "new.txt").write_text("untracked\n")
+    (source_project.root / "new.txt").write_text("untracked\n", encoding="utf-8")
     spec = {"project": REFERENCE, "version": VERSION}
     with pytest.raises(ConfigurationError, match="refused: commit the changes of"):
         run.execute("release", spec, tmp_path / "out")

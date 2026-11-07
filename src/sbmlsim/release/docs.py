@@ -369,7 +369,7 @@ def _release_notes(release_path: Path) -> list[str]:
         if _VERSION.match(path.stem)
     ]
     return [
-        _HEADING.sub(r"#\1", path.read_text("utf-8").strip())
+        _HEADING.sub(r"#\1", path.read_text(encoding="utf-8").strip())
         for path in sorted(files, key=_version_key, reverse=True)
     ]
 
@@ -424,16 +424,18 @@ def write_docs(context: ProjectContext, release_path: Path) -> list[Path]:
     for page, _ in site_pages:
         path = docs / f"{page}.md"
         path.write_text(
-            render(f"docs/{page}.md.j2", context, extra), "utf-8", newline="\n"
+            render(f"docs/{page}.md.j2", context, extra), encoding="utf-8", newline="\n"
         )
         written.append(path)
     configuration = release_path / "zensical.toml"
     configuration.write_text(
-        render("zensical.toml.j2", context, extra), "utf-8", newline="\n"
+        render("zensical.toml.j2", context, extra), encoding="utf-8", newline="\n"
     )
     written.append(configuration)
     readme = release_path / "README.md"
-    readme.write_text(render("README.md.j2", context, extra), "utf-8", newline="\n")
+    readme.write_text(
+        render("README.md.j2", context, extra), encoding="utf-8", newline="\n"
+    )
     written.append(readme)
     written.extend(sorted(images.glob("*")))
     return written

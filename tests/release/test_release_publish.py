@@ -242,7 +242,8 @@ def _lock(release: Path, source: str) -> None:
     (release / "uv.lock").write_text(
         'version = 1\n\n[[package]]\nname = "toy-release"\nversion = "1.0.0"\n'
         'source = { editable = "." }\n\n'
-        f'[[package]]\nname = "pkpdsim"\nversion = "0.7.1"\nsource = {source}\n'
+        f'[[package]]\nname = "pkpdsim"\nversion = "0.7.1"\nsource = {source}\n',
+        encoding="utf-8",
     )
 
 
@@ -261,7 +262,7 @@ def test_check_lock_local_source(tmp_path: Path) -> None:
 def test_check_lock_uv_sources(tmp_path: Path) -> None:
     _lock(tmp_path, '{ registry = "https://pypi.org/simple" }')
     (tmp_path / "pyproject.toml").write_text(
-        '[tool.uv.sources]\npkpdsim = { path = "../pkpdsim" }\n'
+        '[tool.uv.sources]\npkpdsim = { path = "../pkpdsim" }\n', encoding="utf-8"
     )
     with pytest.raises(ReleaseError, match=r"tool\.uv\.sources"):
         check_lock(tmp_path)

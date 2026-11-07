@@ -54,7 +54,7 @@ def model(source_project: Project, release_settings: ReleaseSettings) -> Project
 def clone(remote_and_clone: tuple[Path, Path]) -> Path:
     """The checkout of the release repository with a file of an old layout."""
     _, clone = remote_and_clone
-    (clone / "run_toy.py").write_text("print('old')\n")
+    (clone / "run_toy.py").write_text("print('old')\n", encoding="utf-8")
     git(clone, "add", "-A")
     git(clone, "commit", "-m", "old layout")
     git(clone, "push", "origin", "main")
@@ -182,7 +182,7 @@ def test_the_build_knows_the_source_commit(
 ) -> None:
     """The assessment of the credibility records the commit of the source."""
     path = build(model, out, clone)
-    spec = json.loads((path / "specs" / "credibility.json").read_text())
+    spec = json.loads((path / "specs" / "credibility.json").read_text(encoding="utf-8"))
     assert spec == {
         "project": REFERENCE,
         "source_commit": git(model.root, "rev-parse", "HEAD").strip(),
@@ -236,8 +236,8 @@ def test_the_release_has_the_models_of_the_factory(
     runner = FakeRunner(factory_changes={"models/toy_slow.xml": rebuilt})
     path, release = built(model, out, clone, runner)
     package = path / "src" / PACKAGE
-    assert (package / "models" / "toy_slow.xml").read_text("utf-8") == rebuilt
-    assert (path / "models" / "toy_slow.xml").read_text("utf-8") == rebuilt
+    assert (package / "models" / "toy_slow.xml").read_text(encoding="utf-8") == rebuilt
+    assert (path / "models" / "toy_slow.xml").read_text(encoding="utf-8") == rebuilt
     # an output the package does not track is released at the top only
     assert (path / "toy.omex").is_file()
     assert not (package / "toy.omex").exists()
@@ -291,13 +291,15 @@ def test_hand_edit_after_review_needs_a_rebuild(
     model: Project, out: Path, clone: Path
 ) -> None:
     path = build(model, out, clone)
-    (path / "docs" / "index.md").write_text("edited by hand\n")
+    (path / "docs" / "index.md").write_text("edited by hand\n", encoding="utf-8")
     publisher = FakePublisher()
     with pytest.raises(ReleaseError, match="no unchanged build"):
         publish(model, out, publisher=publisher)
     assert publisher.calls == []
     build(model, out, clone)
-    assert (path / "docs" / "index.md").read_text("utf-8") != "edited by hand\n"
+    assert (path / "docs" / "index.md").read_text(
+        encoding="utf-8"
+    ) != "edited by hand\n"
     publish(model, out, publisher=publisher)
     assert len(publisher.calls) == 1
 
@@ -311,7 +313,7 @@ def test_a_moved_source_needs_a_rebuild(model: Project, out: Path, clone: Path) 
 
 def commit_source(model: Project) -> None:
     """Move the source repository on by a commit which changes the package."""
-    (model.root / "extra.py").write_text("EXTRA = 1\n")
+    (model.root / "extra.py").write_text("EXTRA = 1\n", encoding="utf-8")
     root = model.root.parent.parent
     git(root, "add", "-A")
     git(root, "commit", "-m", "more")
@@ -344,7 +346,7 @@ def test_dirty_unrelated_changes_refused(
     model: Project, out: Path, clone: Path
 ) -> None:
     path = build(model, out, clone)
-    (path / "notes.txt").write_text("not from a release\n")
+    (path / "notes.txt").write_text("not from a release\n", encoding="utf-8")
     runner = FakeRunner()
     with pytest.raises(ReleaseError, match="changes which no release made"):
         build(model, out, clone, runner)
@@ -367,11 +369,12 @@ def test_a_local_lock_is_not_published(model: Project, out: Path, clone: Path) -
     path = build(model, out, clone)
     lock = path / "uv.lock"
     lock.write_text(
-        lock.read_text(encoding="utf-8").replace(PYPI, '{ directory = "../sbmlsim" }')
+        lock.read_text(encoding="utf-8").replace(PYPI, '{ directory = "../sbmlsim" }'),
+        encoding="utf-8",
     )
     manifest = json.loads((path / MANIFEST_FILE).read_text(encoding="utf-8"))
     manifest["files"]["uv.lock"] = hashlib.sha256(lock.read_bytes()).hexdigest()
-    (path / MANIFEST_FILE).write_text(json.dumps(manifest))
+    (path / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
     publisher = FakePublisher()
     with pytest.raises(ReleaseError, match="not from PyPI"):
         publish(model, out, publisher=publisher)
@@ -421,7 +424,7 @@ def test_file_added_after_a_failed_build_refused(
     with pytest.raises(ReleaseError, match="uncertainty"):
         build(model, out, clone, FakeRunner(fail_on="specs/uncertainty.json"))
     path = out / REPOSITORY_DIR
-    (path / "mine.txt").write_text("added by hand\n")
+    (path / "mine.txt").write_text("added by hand\n", encoding="utf-8")
     with pytest.raises(ReleaseError, match="changes which no release made"):
         build(model, out, clone)
     assert (path / "mine.txt").is_file()
@@ -443,7 +446,7 @@ def test_interrupted_build_is_rebuilt(model: Project, out: Path, clone: Path) ->
 
 def test_stale_results_are_not_reused(model: Project, out: Path, clone: Path) -> None:
     path = build(model, out, clone)
-    (path / "results" / "x").write_text("stale\n")
+    (path / "results" / "x").write_text("stale\n", encoding="utf-8")
     build(model, out, clone)
     assert not (path / "results" / "x").exists()
     assert (path / "results" / "simulate" / "Decay" / "Decay.html").is_file()
@@ -492,7 +495,7 @@ def test_a_version_not_after_the_last_release_refused(
 def commit_package_file(model: Project, relative: str) -> None:
     """Track a file in the model package of the source repository."""
     (model.root / relative).parent.mkdir(parents=True, exist_ok=True)
-    (model.root / relative).write_text("x\n")
+    (model.root / relative).write_text("x\n", encoding="utf-8")
     root = model.root.parent.parent
     git(root, "add", "-f", str(model.root / relative))
     git(root, "commit", "-m", f"track {relative}")
@@ -524,14 +527,14 @@ def test_publish_removes_a_stale_marker(model: Project, out: Path, clone: Path) 
     path = build(model, out, clone)
     marker = path / ".git" / BUILD_MARKER
     # a rebuild killed before it changed a file
-    marker.write_text(json.dumps({"version": VERSION}) + "\n")
+    marker.write_text(json.dumps({"version": VERSION}) + "\n", encoding="utf-8")
     publish(model, out)
     assert not marker.exists()
 
 
 def test_local_commit_ahead_refused(model: Project, out: Path, clone: Path) -> None:
     """A local commit of the checkout which the release repository lacks."""
-    (clone / "notes.txt").write_text("not from a release\n")
+    (clone / "notes.txt").write_text("not from a release\n", encoding="utf-8")
     git(clone, "add", "-A")
     git(clone, "commit", "-m", "local")
     runner = FakeRunner()

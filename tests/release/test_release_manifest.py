@@ -56,7 +56,7 @@ pytestmark = pytest.mark.usefixtures("git_env")
 def write(root: Path, relative: str, text: str = "x\n") -> Path:
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
     return path
 
 
@@ -164,7 +164,7 @@ def test_matches_after_build(release: tuple[Path, list[Path]]) -> None:
 def test_hand_edit_breaks_match(release: tuple[Path, list[Path]]) -> None:
     root, written = release
     write_manifest(root, "0.8.0", SOURCE, written)
-    with (root / "README.md").open("a") as f:
+    with (root / "README.md").open("a", encoding="utf-8") as f:
         f.write("x")
     assert not matches(root, "0.8.0", "abc123", "0.8.0")
 
@@ -219,7 +219,7 @@ def test_matches_after_prune_of_tracked_files(
     prune(root, written)
     write_manifest(root, "0.8.0", SOURCE, written)
     assert matches(root, "0.8.0", "abc123", "0.8.0")
-    with (root / "README.md").open("a") as f:
+    with (root / "README.md").open("a", encoding="utf-8") as f:
         f.write("x")
     assert not matches(root, "0.8.0", "abc123", "0.8.0")
 
@@ -237,7 +237,7 @@ def test_changed_by_build(release: tuple[Path, list[Path]]) -> None:
     assert not changed_by_build(root, "0.8.0")
     write_manifest(root, "0.8.0", SOURCE, written)
     assert changed_by_build(root, "0.8.0")
-    with (root / "README.md").open("a") as f:
+    with (root / "README.md").open("a", encoding="utf-8") as f:
         f.write("edited by hand")
     assert changed_by_build(root, "0.8.0")
     assert not changed_by_build(root, "0.9.0")

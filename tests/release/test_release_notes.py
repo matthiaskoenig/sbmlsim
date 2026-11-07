@@ -69,7 +69,7 @@ pytestmark = pytest.mark.usefixtures("git_env")
 
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text)
+    path.write_text(text, encoding="utf-8")
 
 
 def parameters(values: dict[str, float]) -> str:
@@ -412,7 +412,7 @@ def test_write_release_notes(release: ReleaseRepo, model: Project) -> None:
 def test_write_release_notes_fetch_fails(release: ReleaseRepo, model: Project) -> None:
     text = write_release_notes(
         context(model, "0.2.0"), release, fetch=failing_fetch
-    ).read_text("utf-8")
+    ).read_text(encoding="utf-8")
     assert "pkpdsim 0.6.0 → 0.7.0: the release notes could not be fetched." in text
 
 
@@ -525,7 +525,7 @@ def test_write_release_notes_of_sbmlsim(release: ReleaseRepo, model: Project) ->
     project = model.replace(release=PROJECT.release)
     text = write_release_notes(
         context(project, "0.2.0"), release, fetch=fake_fetch
-    ).read_text("utf-8")
+    ).read_text(encoding="utf-8")
     assert f"Made from tests {COMMIT[:10]} with sbmlsim 0.9.7." in text
     assert "sbmlsim 0.9.6 → 0.9.7:\n" in text
     assert "pkpdsim 0.6.0" not in text
@@ -556,7 +556,7 @@ def test_the_release_hook_adds_to_the_notes(
     ]
     text = write_release_notes(
         context(model, "0.2.0", hook=Hook()), release, fetch=fake_fetch
-    ).read_text("utf-8")
+    ).read_text(encoding="utf-8")
     assert text.endswith("\n\n## Framework\n\nThe notes of pkpdsim.\n")
     assert "\n\n\n" not in text
 

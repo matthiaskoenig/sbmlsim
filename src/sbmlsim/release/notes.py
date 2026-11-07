@@ -586,7 +586,7 @@ def model_changes(release: ReleaseRepo, runner: Runner = run) -> list[ModelChang
             if name in old
             else None
         )
-        new_text = (folder / name).read_text("utf-8") if name in new else None
+        new_text = (folder / name).read_text(encoding="utf-8") if name in new else None
         before = _model_elements(old_text, name)
         after = _model_elements(new_text, name)
         old_parameters, new_parameters = before["parameters"], after["parameters"]
@@ -716,7 +716,7 @@ def fit_changes(
                 raise ReleaseError(
                     f"The adopted fit '{new_id}' has no record {record}."
                 )
-            after = _best_values(record.read_text("utf-8"), str(record))
+            after = _best_values(record.read_text(encoding="utf-8"), str(record))
         moved = (
             [
                 (pid, before.get(pid), after.get(pid))
@@ -824,7 +824,7 @@ def write_release_notes(
     lock_path = release.path / "uv.lock"
     if not lock_path.is_file():
         raise ReleaseError(f"The release repository has no 'uv.lock' at {lock_path}.")
-    new_lock = lock_path.read_text("utf-8")
+    new_lock = lock_path.read_text(encoding="utf-8")
     old_lock = _lock_text(release, tree, runner)
     libraries = library_changes(old_lock, new_lock)
     locked = _locked(new_lock)

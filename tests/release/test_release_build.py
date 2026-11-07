@@ -81,15 +81,15 @@ class FakeRunner:
         if kind == "factory":
             models = out / "models"
             models.mkdir(parents=True)
-            (models / "toy.xml").write_text("<sbml/>")
-            (models / "toy.md").write_text("# toy")
-            (models / "other.txt").write_text("not copied")
-            (out / "mit.txt").write_text("MIT")
-            (out / "cc-by-sa-4.0.txt").write_text("CC")
+            (models / "toy.xml").write_text("<sbml/>", encoding="utf-8")
+            (models / "toy.md").write_text("# toy", encoding="utf-8")
+            (models / "other.txt").write_text("not copied", encoding="utf-8")
+            (out / "mit.txt").write_text("MIT", encoding="utf-8")
+            (out / "cc-by-sa-4.0.txt").write_text("CC", encoding="utf-8")
             (out / "figures").mkdir()
-            (out / "figures" / "model.svg").write_text("<svg/>")
+            (out / "figures" / "model.svg").write_text("<svg/>", encoding="utf-8")
             if not self.no_archive:
-                (out / "toy.omex").write_text("omex")
+                (out / "toy.omex").write_text("omex", encoding="utf-8")
         elif kind == "simulate" and ("uncertainty" in joined or not self.no_sim):
             self._write(out / "Exp/index.html")
         elif kind == "credibility" and not self.no_credibility:
@@ -107,7 +107,7 @@ class FakeRunner:
     @staticmethod
     def _write(path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("<html/>")
+        path.write_text("<html/>", encoding="utf-8")
 
 
 def run_command(kind: str, step: str, *workers: str) -> list[str]:
@@ -145,16 +145,18 @@ def test_build_writes_the_specs_of_the_steps(tmp_path: Path) -> None:
     release = tmp_path / "release"
     release.mkdir()
     (release / "specs").mkdir()
-    (release / "specs" / "stale.json").write_text("{}")
+    (release / "specs" / "stale.json").write_text("{}", encoding="utf-8")
     written = build(
         project_with(tmp_path), REFERENCE, release, runner=FakeRunner()
     ).written
     specs = {p.name for p in (release / "specs").iterdir()}
     assert specs == {"factory.json", "simulate.json", "uncertainty.json", "report.json"}
     assert Path("specs/report.json") in written
-    report = json.loads((release / "specs" / "report.json").read_text())
+    report = json.loads((release / "specs" / "report.json").read_text(encoding="utf-8"))
     assert report == {"adopted": True, "project": REFERENCE, "subset": "all"}
-    uncertainty = json.loads((release / "specs" / "uncertainty.json").read_text())
+    uncertainty = json.loads(
+        (release / "specs" / "uncertainty.json").read_text(encoding="utf-8")
+    )
     assert uncertainty == {
         "project": REFERENCE,
         "uncertainty": {"draws": 100, "quantiles": [0.05, 0.95], "seed": 1234},
@@ -209,7 +211,7 @@ def test_build_copies_outputs(tmp_path: Path) -> None:
 def test_build_replaces_stale_reports(tmp_path: Path) -> None:
     old = tmp_path / "fit" / "OLD_20200101_000000__aaaaa"
     old.mkdir(parents=True)
-    (old / "index.html").write_text("old")
+    (old / "index.html").write_text("old", encoding="utf-8")
     build(project_with(tmp_path), REFERENCE, tmp_path, runner=FakeRunner())
     assert not old.exists()
     assert (tmp_path / "fit" / FIT_ID).is_dir()
@@ -229,7 +231,7 @@ def test_build_missing_declared_archive_raises(tmp_path: Path) -> None:
 
 def test_build_removes_stale_models(tmp_path: Path) -> None:
     (tmp_path / "models").mkdir()
-    (tmp_path / "models/old.xml").write_text("old")
+    (tmp_path / "models/old.xml").write_text("old", encoding="utf-8")
     build(project_with(tmp_path), REFERENCE, tmp_path, runner=FakeRunner())
     assert not (tmp_path / "models/old.xml").exists()
 
@@ -237,7 +239,7 @@ def test_build_removes_stale_models(tmp_path: Path) -> None:
 def test_build_does_not_reuse_stale_results(tmp_path: Path) -> None:
     stale = tmp_path / "results/simulate/Exp"
     stale.mkdir(parents=True)
-    (stale / "index.html").write_text("stale")
+    (stale / "index.html").write_text("stale", encoding="utf-8")
     with pytest.raises(ReleaseError, match="simulate"):
         build(
             project_with(tmp_path), REFERENCE, tmp_path, runner=FakeRunner(no_sim=True)
@@ -248,7 +250,7 @@ def test_build_without_fits_writes_no_reports(tmp_path: Path) -> None:
     """Without adopted fits there are no fit reports and no confidence interval."""
     stale = tmp_path / "simulations_uncertainty"
     stale.mkdir()
-    (stale / "index.html").write_text("stale")
+    (stale / "index.html").write_text("stale", encoding="utf-8")
     runner = FakeRunner()
     written = build(project_with(tmp_path, []), REFERENCE, tmp_path, runner).written
     assert not any("report" in command for command in runner.commands)
@@ -283,14 +285,16 @@ def test_build_passes_the_source_commit_to_the_credibility(tmp_path: Path) -> No
     """The assessment runs in the release repository, its provenance is the source."""
     project = project_with(tmp_path, credibility=True)
     build(project, REFERENCE, tmp_path, runner=FakeRunner(), source_commit="0123abc")
-    spec = json.loads((tmp_path / "specs" / "credibility.json").read_text())
+    spec = json.loads(
+        (tmp_path / "specs" / "credibility.json").read_text(encoding="utf-8")
+    )
     assert spec == {"project": REFERENCE, "source_commit": "0123abc"}
 
 
 def test_build_without_a_declaration_removes_credibility(tmp_path: Path) -> None:
     stale = tmp_path / "credibility"
     stale.mkdir()
-    (stale / "credibility.json").write_text("{}")
+    (stale / "credibility.json").write_text("{}", encoding="utf-8")
     runner = FakeRunner()
     written = build(project_with(tmp_path), REFERENCE, tmp_path, runner=runner).written
     assert not any("credibility" in " ".join(c) for c in runner.commands)
@@ -313,11 +317,11 @@ def test_build_without_a_factory_releases_the_models_of_the_package(
     release = tmp_path / "release"
     package = release / "src" / "tests" / "project_toy" / "models"
     package.mkdir(parents=True)
-    (package / "toy.xml").write_text("<sbml/>")
+    (package / "toy.xml").write_text("<sbml/>", encoding="utf-8")
     runner = FakeRunner()
     build(project, REFERENCE, release, runner=runner)
     assert not any("factory" in " ".join(c) for c in runner.commands)
-    assert (release / "models" / "toy.xml").read_text() == "<sbml/>"
+    assert (release / "models" / "toy.xml").read_text(encoding="utf-8") == "<sbml/>"
     with pytest.raises(ReleaseError, match="no SBML model"):
         (package / "toy.xml").unlink()
         build(project, REFERENCE, release, runner=runner)
@@ -366,7 +370,9 @@ def test_a_changed_output_of_the_factory_is_logged(
             result = super().__call__(args, cwd, stream=stream)
             if "specs/factory.json" in args:
                 summary = cwd / "results" / "factory" / "summary.json"
-                summary.write_text(json.dumps({"changed": ["models/toy.xml"]}))
+                summary.write_text(
+                    json.dumps({"changed": ["models/toy.xml"]}), encoding="utf-8"
+                )
             return result
 
     with caplog.at_level(logging.WARNING, logger="sbmlsim.release"):
