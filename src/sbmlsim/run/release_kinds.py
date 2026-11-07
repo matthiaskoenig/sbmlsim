@@ -129,7 +129,7 @@ def _run_release(spec: ReleaseSpec, ctx: RunContext) -> dict[str, Any]:
         )
     except source.ReleaseError as err:
         raise ConfigurationError(f"The release is refused: {err}") from err
-    manifest = build_release(
+    built = build_release(
         project,
         spec.project,
         spec.version,
@@ -138,7 +138,7 @@ def _run_release(spec: ReleaseSpec, ctx: RunContext) -> dict[str, Any]:
         workers=ctx.workers,
         runner=runner,
     )
-    return build_summary(manifest, prepared.target.path)
+    return build_summary(built, prepared.target.path)
 
 
 #: the build of a release of a project into the out

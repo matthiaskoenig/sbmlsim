@@ -46,6 +46,26 @@ def init_repo(path: Path) -> None:
     git(path, "init", "-b", "main")
 
 
+#: the factory of the copy writes the default variant with the rate of the
+#: adopted fit and its uncertainty, as the factory of a model package takes it
+#: from the records
+FACTORY_WITH_RECORDS = f'''
+
+_create_plain_models = create_toy_models
+
+
+def create_toy_models(output_dir: Path) -> list[Path]:  # noqa: F811
+    """Create the variants, the default one with the rate of the adopted fit."""
+    from {PACKAGE} import PROJECT
+    from {PACKAGE}.records import toy_model_file
+
+    paths = _create_plain_models(output_dir)
+    if PROJECT.adopted_fits():
+        toy_model_file(output_dir / "toy.xml", PROJECT.fit_records())
+    return paths
+'''
+
+
 def copy_toy(target: Path, *, credibility: bool = True) -> Path:
     """Copy the toy project as the package `release_toy`.
 
@@ -66,6 +86,8 @@ def copy_toy(target: Path, *, credibility: bool = True) -> Path:
         text = path.read_text(encoding="utf-8").replace("tests.project_toy", PACKAGE)
         if not credibility and path.name == "__init__.py":
             text = text.replace('    credibility=".credibility:CREDIBILITY",\n', "")
+        if path.name == "factory.py":
+            text += FACTORY_WITH_RECORDS
         path.write_text(text, encoding="utf-8")
     return target
 

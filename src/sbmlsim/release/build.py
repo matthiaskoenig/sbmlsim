@@ -37,10 +37,12 @@ __all__ = [
     "RUN_RECORDS",
     "SPECS_DIR",
     "BuildPaths",
+    "BuildResult",
     "BuildStep",
     "build",
     "build_steps",
     "has_distributions",
+    "skipped_steps",
 ]
 
 logger = logging.getLogger(__name__)
@@ -116,17 +118,23 @@ class BuildStep:
 
 
 def build_steps(
-    project: Project, reference: str, source_commit: str | None = None
+    project: Project,
+    reference: str,
+    source_commit: str | None = None,
+    *,
+    root: Path | None = None,
 ) -> list[BuildStep]:
     """Get the steps of the build of a release of a project, in their order.
 
-    - `factory`: the models, with the factory of the project; a project
+    - `factory`: the models, with the factory of the project, which the
+      build runs first and copies over the exported package; a project
       without one releases the models of its package.
     - `simulate`: the experiments of a project with experiments.
     - `uncertainty`: the experiments over the draws of the fitted parameters,
       with the defaults of `sbmlsim.experiment.draws.UncertaintySettings`, for
       a project with experiments and adopted fits whose default variant has
-      the distributions of its fitted parameters (`has_distributions`).
+      the distributions of its fitted parameters (`has_distributions`, else
+      the step is skipped, see `skipped_steps`).
     - `report`: the reports of the adopted fits, one folder per fit id.
     - `credibility`: the assessment of the contexts of use of a project with a
       declaration, with the commit of the source repository in its provenance.
@@ -136,6 +144,9 @@ def build_steps(
         reference: the project as `module:attribute`, which the release
             repository imports.
         source_commit: the commit of the source repository.
+        root: the package whose default variant `has_distributions` reads,
+            e.g. the exported package with the models of the factory; the
+            root of the project without.
 
     Returns:
         The steps.
@@ -153,14 +164,7 @@ def build_steps(
         steps.append(BuildStep("factory", "factory", dict(base), "Models"))
     if project.experiments is not None:
         steps.append(BuildStep("simulate", "simulate", dict(base), "Simulations"))
-        if adopted and not has_distributions(project):
-            logger.warning(
-                "The default variant of '%s' has no distributions of its fitted "
-                "parameters, the release has no simulations with the confidence "
-                "interval.",
-                project.name,
-            )
-        elif adopted:
+        if adopted and has_distributions(project, root):
             from sbmlsim.experiment.draws import UncertaintySettings
 
             draws = UncertaintySettings()
@@ -190,7 +194,7 @@ def build_steps(
     return steps
 
 
-def has_distributions(project: Project) -> bool:
+def has_distributions(project: Project, root: Path | None = None) -> bool:
     """Tell whether the default variant of a project has distributions.
 
     The experiments run over the draws of the fitted parameters from the
@@ -199,6 +203,8 @@ def has_distributions(project: Project) -> bool:
 
     Args:
         project: the project.
+        root: the package of the variant, e.g. the exported package of a
+            release; the root of the project without.
 
     Returns:
         Whether the SBML of the default variant exists and a parameter of it
@@ -209,12 +215,68 @@ def has_distributions(project: Project) -> bool:
     """
     from sbmlsim.simulation.sampling import parameter_distributions
 
-    if not project.variants or not project.model_path.is_file():
+    if not project.variants:
+        return False
+    path = project.model_path
+    if root is not None:
+        path = root / path.relative_to(project.root)
+    if not path.is_file():
         return False
     try:
-        return bool(parameter_distributions(project.model_path))
+        return bool(parameter_distributions(path))
     except ValueError as err:
         raise ReleaseError(str(err)) from err
+
+
+def skipped_steps(project: Project, root: Path | None = None) -> list[dict[str, str]]:
+    """Get the steps of the build which a project skips, with the reason.
+
+    Args:
+        project: the project.
+        root: the package of the default variant, see `has_distributions`.
+
+    Returns:
+        `{"step": name, "reason": text}` of every skipped step: `uncertainty`
+        for a project with experiments and adopted fits whose default variant
+        has no distributions.
+
+    Raises:
+        ReleaseError: if the adopted fits are not read.
+    """
+    try:
+        adopted = bool(project.adopted_fits())
+    except ValueError as err:
+        raise ReleaseError(str(err)) from err
+    if project.experiments is None or not adopted or has_distributions(project, root):
+        return []
+    return [
+        {
+            "step": "uncertainty",
+            "reason": "the default variant has no distributions of its fitted "
+            "parameters",
+        }
+    ]
+
+
+@dataclass(frozen=True)
+class BuildResult:
+    """What the build of a release wrote and ran.
+
+    Attributes:
+        written: the written paths, relative to the release repository.
+        steps: the steps which ran, see `build_steps`.
+        changed: the outputs of the factory which differ from the ones of the
+            source package, as the kind `factory` names them; the build
+            copies them over the exported package, so they are part of the
+            release.
+        skipped: the steps which were skipped with the reason, see
+            `skipped_steps`.
+    """
+
+    written: list[Path]
+    steps: list[BuildStep]
+    changed: list[str]
+    skipped: list[dict[str, str]]
 
 
 def _replace(source: Path, target: Path) -> None:
@@ -254,10 +316,9 @@ def _require(path: Path, step: str) -> Path:
 
 
 def _write_specs(steps: list[BuildStep], release_path: Path) -> list[Path]:
-    """Write the specs of the steps into `specs/`, which is replaced."""
+    """Write the specs of the steps into `specs/`."""
     folder = release_path / SPECS_DIR
-    _remove(folder)
-    folder.mkdir()
+    folder.mkdir(exist_ok=True)
     written = []
     for step in steps:
         text = json.dumps(step.spec, indent=2, sort_keys=True) + "\n"
@@ -271,11 +332,10 @@ def _copy_models(
 ) -> list[Path]:
     """Copy the models, the archive, the licenses and the figures into the release.
 
-    `base` is the root of the package which has the models: the rebuild of
-    the factory or the exported package. The models are the SBML, markdown
-    and antimony files of its `factory_dir`, the licenses and the folder
-    `figures` are taken from the parent of it, the archive from its path
-    relative to the root.
+    `base` is the exported package, with the outputs of the factory copied
+    over it. The models are the SBML, markdown and antimony files of its
+    `factory_dir`, the licenses and the folder `figures` are taken from the
+    parent of it, the archive from its path relative to the root.
     """
     assert project.factory_dir is not None
     factory_dir = base / project.factory_dir.relative_to(project.root)
@@ -309,23 +369,43 @@ def _copy_models(
     return written
 
 
-def _check_factory(project: Project, out: Path) -> None:
-    """Warn about outputs of the factory which differ from the ones of the package.
+def _apply_factory(project: Project, out: Path, package: Path) -> list[str]:
+    """Copy the rebuild of the factory over the exported package.
 
-    The analyses of the release run on the models of the package, the
-    release has the models the factory built.
+    Every file the factory wrote (the records of the run left out) replaces
+    the one of the package, so the analyses of the release, its models and
+    its archive are the ones of the factory, as a factory which builds the
+    models in place gives them.
+
+    Args:
+        project: the project.
+        out: the output of the step `factory`, the rebuild with the layout of
+            the package.
+        package: the exported package.
+
+    Returns:
+        The outputs which differ from the ones of the source package, the
+        `changed` of the summary of the kind `factory`.
     """
+    for source in sorted(out.rglob("*")):
+        relative = source.relative_to(out)
+        if relative.parts[0] in RUN_RECORDS or not source.is_file():
+            continue
+        target = package / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
     summary = out / SUMMARY_FILE
     if not summary.is_file():
-        return
+        return []
     changed = json.loads(summary.read_text(encoding="utf-8")).get("changed") or []
     for path in changed:
         logger.warning(
             "The output '%s' of the factory of '%s' differs from the one of the "
-            "package, which the analyses of the release run on.",
+            "source package, the release has the one of the factory.",
             path,
             project.name,
         )
+    return [str(path) for path in changed]
 
 
 def build(
@@ -336,17 +416,23 @@ def build(
     workers: int | None = None,
     *,
     source_commit: str | None = None,
-) -> list[Path]:
+) -> BuildResult:
     """Build the models, simulations, fit reports and the credibility in the release.
 
     All commands run with `release_path` as working directory: `uv lock`, `uv
     sync --locked` and the steps of `build_steps`, each an analysis of the run
     layer of sbmlsim with its spec file in `specs/` into `results/<step>`
-    (ignored by git, removed before the steps). The outputs are copied to the
-    tracked folders `models`, `figures`, `simulations`,
-    `simulations_uncertainty`, `fit/<fit id>` and `credibility`; every one of
-    them is replaced, so the reports of fits which are no longer adopted
-    disappear, and the folder of a step which does not run is removed.
+    (ignored by git, removed before the steps). The factory runs first and
+    its rebuild is copied over the exported package (`_apply_factory`), so
+    the package of the release, its models, its archive and every analysis
+    agree; then the steps are decided on that package (`build_steps`,
+    `skipped_steps`) and run. The outputs are copied to the tracked folders
+    `models`, `figures`, `simulations` and `simulations_uncertainty` (each
+    with the static figures of the experiments in `_figures`,
+    `sbmlsim.project.collect_figure_files`), `fit/<fit id>` and
+    `credibility`; every one of them is replaced, so the reports of fits
+    which are no longer adopted disappear, and the folder of a step which
+    does not run is removed.
 
     A declared output is required, an undeclared one is optional: the models
     must have at least one SBML file and, if the settings name an archive, the
@@ -365,37 +451,53 @@ def build(
             built from, recorded by the assessment of the contexts of use.
 
     Returns:
-        The written paths, relative to `release_path`, with the new `uv.lock`
-        and the specs of the steps.
+        What the build wrote (with the new `uv.lock` and the specs of the
+        steps), the steps, the outputs the factory changed and the skipped
+        steps.
 
     Raises:
         ReleaseError: if a step fails; the message names the step.
     """
+    from sbmlsim.project import collect_figure_files
+
     archive = None if project.release is None else project.release.archive
     if project.factory_dir is None:
         raise ReleaseError(
             f"The project '{project.name}' has neither a directory of its factory "
             "nor model variants, the release has no models."
         )
-    steps = build_steps(project, reference, source_commit)
-    by_name = {step.name: step for step in steps}
+    package = release_path / "src" / package_dirs(project)
 
     stage("Lock and sync of the environment")
     _step(runner, ["uv", "lock"], release_path)
     _step(runner, ["uv", "sync", "--locked"], release_path)
-    written = [Path("uv.lock"), *_write_specs(steps, release_path)]
     _remove(release_path / BuildPaths.RESULTS)
+    _remove(release_path / SPECS_DIR)
+    changed: list[str] = []
+    if project.factory is not None:
+        factory = BuildStep("factory", "factory", {"project": reference}, "Models")
+        _write_specs([factory], release_path)
+        stage(factory.title)
+        _step(runner, factory.command(workers), release_path)
+        changed = _apply_factory(project, release_path / factory.out, package)
 
+    steps = build_steps(project, reference, source_commit, root=package)
+    skipped = skipped_steps(project, package)
+    for entry in skipped:
+        logger.warning(
+            "The release of '%s' has no step '%s': %s.",
+            project.name,
+            entry["step"],
+            entry["reason"],
+        )
+    by_name = {step.name: step for step in steps}
+    written = [Path("uv.lock"), *_write_specs(steps, release_path)]
     for step in steps:
-        stage(step.title)
-        _step(runner, step.command(workers), release_path)
+        if step.name != "factory":
+            stage(step.title)
+            _step(runner, step.command(workers), release_path)
 
-    if "factory" in by_name:
-        base = release_path / by_name["factory"].out
-        _check_factory(project, base)
-    else:
-        base = release_path / "src" / package_dirs(project)
-    written += _copy_models(project, base, release_path, archive=archive)
+    written += _copy_models(project, package, release_path, archive=archive)
 
     outputs = (
         ("simulate", BuildPaths.SIMULATIONS, None),
@@ -411,6 +513,8 @@ def build(
         if below is not None:
             source = source / below
         _replace(_require(source, " ".join(step.command())), release_path / target)
+        if step.kind == "simulate":
+            collect_figure_files(release_path / target)
         written.append(Path(target))
 
     fits_dir = release_path / BuildPaths.FITS
@@ -424,4 +528,4 @@ def build(
                 fits_dir / fit_id,
             )
             written.append(Path(BuildPaths.FITS) / fit_id)
-    return written
+    return BuildResult(written=written, steps=steps, changed=changed, skipped=skipped)

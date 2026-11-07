@@ -32,7 +32,9 @@ from tests.release.repos import git
 OLD_FIT = "PK_20260101_000000__abcde"
 NEW_FIT = "PK_20261016_185018__3efe3"
 PD_FIT = "PD_20261016_185018__12345"
-DATA_DIR = "src/tests/project_toy/data"
+PACKAGE_DIR = "src/tests/project_toy"
+DATA_DIR = f"{PACKAGE_DIR}/data"
+DATA = [PurePosixPath("data")]
 FITS_DIR = "src/tests/project_toy/fits"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
@@ -255,10 +257,10 @@ def test_library_changes_local_package_without_version() -> None:
 
 
 def test_data_changes(release: ReleaseRepo) -> None:
-    assert data_changes(release, DATA_DIR) == DataChanges(
-        added=["other/Added2003"],
-        removed=["drug/Removed2002"],
-        changed=["drug/Changed2001"],
+    assert data_changes(release, PACKAGE_DIR, DATA) == DataChanges(
+        added=["data/other/Added2003"],
+        removed=["data/drug/Removed2002"],
+        changed=["data/drug/Changed2001"],
     )
 
 
@@ -398,9 +400,9 @@ def test_write_release_notes(release: ReleaseRepo, model: Project) -> None:
     assert "third bullet!" in text
     assert "sixth bullet" not in text
     assert "| `numpy` | 2.0.0 | 2.1.0 |" in text
-    assert "`other/Added2003`" in text
-    assert "`drug/Removed2002`" in text
-    assert "`drug/Changed2001`" in text
+    assert "`data/other/Added2003`" in text
+    assert "`data/drug/Removed2002`" in text
+    assert "`data/drug/Changed2001`" in text
     assert "`k` 0.2 → 0.3" in text
     assert "`k` 0.2 → 0.25" in text
     assert "\u2014" not in text
@@ -505,9 +507,16 @@ def test_notes_no_previous_release(release: ReleaseRepo, model: Project) -> None
         context(model, "0.1.0"), first, fetch=fake_fetch
     ).read_text(encoding="utf-8")
     assert "First release." in text
-    for item in ("drug/Same2000", "other/Added2003", "`A`", "`C`", "toy.xml", NEW_FIT):
+    for item in (
+        "data/drug/Same2000",
+        "data/other/Added2003",
+        "`A`",
+        "`C`",
+        "toy.xml",
+        NEW_FIT,
+    ):
         assert item in text
-    assert "drug/Removed2002" not in text
+    assert "data/drug/Removed2002" not in text
     assert "no fit record in the previous release" not in text
 
 
@@ -525,7 +534,7 @@ def test_write_release_notes_of_sbmlsim(release: ReleaseRepo, model: Project) ->
 class Hook(ReleaseHook):
     """A hook with the studies of PK-DB, `<substance>/<study>`, and a section."""
 
-    def data_study(self, path: PurePosixPath) -> str | None:
+    def data_study(self, data_dir: PurePosixPath, path: PurePosixPath) -> str | None:
         return "/".join(path.parts[:2]) if len(path.parts) >= 3 else None
 
     def notes_sections(
@@ -538,9 +547,10 @@ def test_the_release_hook_adds_to_the_notes(
     release: ReleaseRepo, model: Project
 ) -> None:
     write(release.path / DATA_DIR / "drug" / "Same2000" / "deep" / "x.tsv", "a\n")
-    plain = data_changes(release, DATA_DIR)
-    assert plain.added == ["drug/Same2000/deep", "other/Added2003"]
-    assert data_changes(release, DATA_DIR, study=Hook().data_study).changed == [
+    plain = data_changes(release, PACKAGE_DIR, DATA)
+    assert plain.added == ["data/drug/Same2000/deep", "data/other/Added2003"]
+    hooked = data_changes(release, PACKAGE_DIR, DATA, study=Hook().data_study)
+    assert hooked.changed == [
         "drug/Changed2001",
         "drug/Same2000",
     ]
@@ -554,7 +564,33 @@ def test_the_release_hook_adds_to_the_notes(
 def test_the_data_of_the_project(model: Project) -> None:
     from sbmlsim.release.notes import data_dirs
 
-    assert data_dirs(model) == [DATA_DIR]
+    assert data_dirs(model) == DATA
     assert data_dirs(model.replace(data_path=None)) == []
     outside = model.replace(data_path=[Path("data"), TOY_PATH.parent / "data"])
-    assert data_dirs(outside) == [DATA_DIR]
+    assert data_dirs(outside) == DATA
+
+
+def test_the_studies_of_two_data_folders_do_not_merge(tmp_path: Path) -> None:
+    """Two data folders with a study of one name are two studies."""
+    path = tmp_path / "toy-model"
+    path.mkdir()
+    git(path, "init", "-b", "main")
+    for folder in ("data/omeprazole", "data/ph"):
+        write(path / PACKAGE_DIR / folder / "Cederberg1992" / "a.tsv", "a\n1\n")
+    release = commit_release(path, "0.1.0")
+    write(path / PACKAGE_DIR / "data/ph" / "Cederberg1992" / "a.tsv", "a\n2\n")
+    folders = [PurePosixPath("data/omeprazole"), PurePosixPath("data/ph")]
+    assert data_changes(release, PACKAGE_DIR, folders) == DataChanges(
+        changed=["data/ph/Cederberg1992"]
+    )
+
+    class ByStudy(ReleaseHook):
+        """Give a study of every data folder one name, as a hook may."""
+
+        def data_study(
+            self, data_dir: PurePosixPath, path: PurePosixPath
+        ) -> str | None:
+            return path.parts[0] if len(path.parts) > 1 else None
+
+    merged = data_changes(release, PACKAGE_DIR, folders, study=ByStudy().data_study)
+    assert merged == DataChanges(changed=["Cederberg1992"])

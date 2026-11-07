@@ -92,6 +92,7 @@ class ProjectContext:
         requires_python: the `requires-python` of the source project.
         hook: the release hook of the project.
         source_commit: the commit of the source repository.
+        built_steps: the steps the build ran, `None` before the build.
     """
 
     project: Project
@@ -107,6 +108,7 @@ class ProjectContext:
     requires_python: str
     hook: ReleaseHook = field(default_factory=ReleaseHook)
     source_commit: str | None = None
+    built_steps: tuple[BuildStep, ...] | None = None
 
     @property
     def repo_name(self) -> str:
@@ -140,11 +142,14 @@ class ProjectContext:
 
     @cached_property
     def steps(self) -> list[BuildStep]:
-        """The steps of the build, see `sbmlsim.release.build.build_steps`.
+        """The steps of the build: the ones it ran, `built_steps`.
 
-        Computed once per context, the check of the distributions of the
-        default variant reads its SBML.
+        Before the build the steps of the source package, see
+        `sbmlsim.release.build.build_steps`; computed once per context, the
+        check of the distributions of the default variant reads its SBML.
         """
+        if self.built_steps is not None:
+            return list(self.built_steps)
         return build_steps(self.project, self.reference, self.source_commit)
 
 

@@ -78,6 +78,9 @@ class ReleaseSettings:
             the root of the project; the build copies it into the release, the
             models page links it and the GitHub release attaches it, which a
             release without one is not published with.
+        library_owner: the owner of the GitHub repositories of the core
+            libraries, named as their package, whose release notes the notes
+            of a release summarize.
         hook: what a framework adds to the release, a
             `sbmlsim.release.hooks.ReleaseHook` or a reference
             `module:attribute` to one, see `sbmlsim.project.Project.release_hook`;
@@ -97,6 +100,7 @@ class ReleaseSettings:
     framework: str = "sbmlsim"
     core_libraries: Sequence[str] = ("sbmlsim", "sbmlutils")
     archive: str | None = None
+    library_owner: str = "matthiaskoenig"
     hook: object = None
 
     def __post_init__(self) -> None:

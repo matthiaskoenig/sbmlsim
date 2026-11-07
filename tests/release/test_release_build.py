@@ -45,7 +45,7 @@ def project_with(
 @pytest.fixture(autouse=True)
 def _distributions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give the default variant of the toy the distributions of its fitted rate."""
-    monkeypatch.setattr("sbmlsim.release.build.has_distributions", lambda p: True)
+    monkeypatch.setattr("sbmlsim.release.build.has_distributions", lambda *args: True)
 
 
 class FakeRunner:
@@ -146,7 +146,9 @@ def test_build_writes_the_specs_of_the_steps(tmp_path: Path) -> None:
     release.mkdir()
     (release / "specs").mkdir()
     (release / "specs" / "stale.json").write_text("{}")
-    written = build(project_with(tmp_path), REFERENCE, release, runner=FakeRunner())
+    written = build(
+        project_with(tmp_path), REFERENCE, release, runner=FakeRunner()
+    ).written
     specs = {p.name for p in (release / "specs").iterdir()}
     assert specs == {"factory.json", "simulate.json", "uncertainty.json", "report.json"}
     assert Path("specs/report.json") in written
@@ -181,7 +183,9 @@ def test_build_logs_the_stages(
 def test_build_copies_outputs(tmp_path: Path) -> None:
     release = tmp_path / "release"
     release.mkdir()
-    written = build(project_with(tmp_path), REFERENCE, release, runner=FakeRunner())
+    written = build(
+        project_with(tmp_path), REFERENCE, release, runner=FakeRunner()
+    ).written
     assert (release / "models/toy.xml").is_file()
     assert (release / "models/toy.md").is_file()
     assert not (release / "models/other.txt").exists()
@@ -246,7 +250,7 @@ def test_build_without_fits_writes_no_reports(tmp_path: Path) -> None:
     stale.mkdir()
     (stale / "index.html").write_text("stale")
     runner = FakeRunner()
-    written = build(project_with(tmp_path, []), REFERENCE, tmp_path, runner)
+    written = build(project_with(tmp_path, []), REFERENCE, tmp_path, runner).written
     assert not any("report" in command for command in runner.commands)
     assert not any("specs/uncertainty.json" in c for c in runner.commands)
     assert not stale.exists()
@@ -269,7 +273,7 @@ def test_build_requires_the_report_of_every_fit(tmp_path: Path) -> None:
 def test_build_runs_the_credibility_of_a_declared_project(tmp_path: Path) -> None:
     runner = FakeRunner()
     project = project_with(tmp_path, credibility=True)
-    written = build(project, REFERENCE, tmp_path, runner=runner)
+    written = build(project, REFERENCE, tmp_path, runner=runner).written
     assert runner.commands[-1] == run_command("credibility", "credibility")
     assert (tmp_path / "credibility/credibility.json").is_file()
     assert Path("credibility") in written
@@ -288,7 +292,7 @@ def test_build_without_a_declaration_removes_credibility(tmp_path: Path) -> None
     stale.mkdir()
     (stale / "credibility.json").write_text("{}")
     runner = FakeRunner()
-    written = build(project_with(tmp_path), REFERENCE, tmp_path, runner=runner)
+    written = build(project_with(tmp_path), REFERENCE, tmp_path, runner=runner).written
     assert not any("credibility" in " ".join(c) for c in runner.commands)
     assert not stale.exists()
     assert Path("credibility") not in written

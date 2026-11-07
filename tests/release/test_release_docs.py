@@ -25,7 +25,12 @@ from sbmlsim.release.docs import PAGES, pages, write_docs
 from sbmlsim.release.hooks import ReleaseHook
 from sbmlsim.release.notes import fits_prefix
 from sbmlsim.release.project import ProjectContext, write_project_files
-from tests.credibility.tables import battery_of, fit_table, verification_of
+from tests.credibility.tables import (
+    PROVENANCE,
+    battery_of,
+    fit_table,
+    verification_of,
+)
 from tests.credibility_toy.credibility import CREDIBILITY
 from tests.credibility_toy.extensions import ARMS
 from tests.project_toy import PROJECT, TOY_PATH
@@ -38,7 +43,7 @@ PAGE_NAMES = [page for page, _ in PAGES]
 @pytest.fixture(autouse=True)
 def _distributions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Give the default variant of the toy the distributions of its fitted rate."""
-    monkeypatch.setattr("sbmlsim.release.build.has_distributions", lambda p: True)
+    monkeypatch.setattr("sbmlsim.release.build.has_distributions", lambda *args: True)
 
 
 def write(path: Path, text: str | bytes) -> None:
@@ -643,3 +648,68 @@ def test_the_release_hook_adds_to_the_site(
         "project"
     ]["nav"]
     assert {"The library": "library.md"} in nav
+
+
+def test_the_credibility_page_shows_the_parameter_uncertainty(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    from tests.credibility.test_assessment_analyses import _propagation
+
+    context, path = release
+    context = _credibility_context(context)
+    assessment = assess_table(
+        CREDIBILITY, fit_table(), PROVENANCE, propagation=_propagation(0.01)
+    )
+    _write(path, assessment)
+    page = _page(context, path)
+    dose = page[page.index("## dose") : page.index("## renal")]
+    assert "Parameter uncertainty, the adopted fits at 256 draws" in dose
+    assert "| `GMFE` | <= 1.5 | 1 | accepted |" in dose
+    assert "| `GMFE` (rule) | `DECAY.k` " in dose
+    assert "\n\n\n" not in page
+
+
+def test_the_credibility_page_shows_the_variability(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    from tests.credibility.test_variability import _checks
+
+    context, path = release
+    context = _credibility_context(context)
+    assessment = assess_table(
+        CREDIBILITY, fit_table(), PROVENANCE, variability=_checks(0.5)
+    )
+    _write(path, assessment)
+    page = _page(context, path)
+    dose = page[page.index("## dose") : page.index("## renal")]
+    assert (
+        "Variability, the visual predictive check of the decisive points with the "
+        "variability of the subjects (`k` LogNormal(cv=0.2)), 16 subjects at the "
+        "adopted parameters:"
+    ) in dose
+    assert "| narrow |" in dose
+    assert "| `[A]` |" in dose
+    assert "\n\n\n" not in page
+
+
+def test_the_hook_adds_after_the_acceptance_of_a_context(
+    release: tuple[ProjectContext, Path], tmp_path: Path
+) -> None:
+    """The part of the acceptance follows the acceptance table of every context."""
+    context, path = release
+    templates = tmp_path / "templates" / "docs"
+    templates.mkdir(parents=True)
+    (templates / "library.md.j2").write_text("# Library\n")
+    (templates / "credibility-acceptance.md.j2").write_text(
+        "| Ratio of `{{ context.id }}` |\n| --- |\n\n"
+    )
+    context = dataclasses.replace(
+        _credibility_context(context), hook=Hook(tmp_path / "templates")
+    )
+    _write_credibility(path)
+    page = _page(context, path)
+    dose = page[page.index("## dose") : page.index("## renal")]
+    acceptance = dose.index("| Acceptance criterion |")
+    ratio = dose.index("| Ratio of `dose` |")
+    assert acceptance < ratio
+    assert "| yes |\n\n| Ratio of `dose` |" in dose

@@ -11,8 +11,10 @@ domain through a `ReleaseHook`, which `ReleaseSettings.hook` names
   sbmlsim (`sbmlsim/resources/release`): a template of the same path replaces
   the one of sbmlsim, another one adds to them, e.g. a page of the site or a
   part which a template of sbmlsim includes when it exists. The page of the
-  credibility includes `docs/credibility-context.md.j2` in the section of
-  every context of use (`context` the context) and
+  credibility includes, in the section of every context of use (`context`
+  the context), `docs/credibility-acceptance.md.j2` right after its
+  acceptance table (e.g. the tables of the rules of an extension) and
+  `docs/credibility-context.md.j2` at its end, and
   `docs/credibility-sections.md.j2` after its sections of the core, see
   `CREDIBILITY_PARTS`.
 - `pages`: pages of the site of its own, `docs/<page>.md.j2` of its templates,
@@ -44,9 +46,10 @@ if TYPE_CHECKING:
 __all__ = ["CREDIBILITY_PARTS", "ReleaseHook"]
 
 #: the parts of the page of the credibility which a hook may add, by where
-#: they are included: in the section of every context of use and after the
-#: sections of the core
+#: they are included: in the section of every context of use after its
+#: acceptance table and at its end, and after the sections of the core
 CREDIBILITY_PARTS: Final = {
+    "acceptance": "docs/credibility-acceptance.md.j2",
     "context": "docs/credibility-context.md.j2",
     "sections": "docs/credibility-sections.md.j2",
 }
@@ -112,21 +115,28 @@ class ReleaseHook:
         """
         return data
 
-    def data_study(self, path: PurePosixPath) -> str | None:
+    def data_study(self, data_dir: PurePosixPath, path: PurePosixPath) -> str | None:
         """Get the study which a file of the data of the package belongs to.
 
+        The release notes key the files by their path in the release
+        repository, so files of two data folders belong to one study only if
+        this method gives them one name.
+
         Args:
-            path: the path of the file relative to a directory of the data of
-                the project (`sbmlsim.project.Project.data_path`).
+            data_dir: the data folder of the file relative to the root of the
+                package, one of the data paths of the project
+                (`sbmlsim.project.Project.data_path`), e.g. `data`.
+            path: the path of the file relative to `data_dir`.
 
         Returns:
-            The study, by default the folder of the file; `None` for a file
-            which belongs to no study, by default a file at the top of the
-            directory.
+            The study, by default the folder of the file relative to the root
+            of the package, e.g. `data/drug/Study2000`; `None` for a file which
+            belongs to no study, by default a file at the top of the data
+            folder.
         """
         if len(path.parts) < 2:
             return None
-        return path.parent.as_posix()
+        return (data_dir / path.parent).as_posix()
 
     def notes_sections(
         self, context: ProjectContext, release: ReleaseRepo, runner: Runner

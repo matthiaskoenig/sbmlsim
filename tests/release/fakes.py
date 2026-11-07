@@ -35,11 +35,23 @@ class FakeRunner:
     """Runs git; fakes uv, the analyses of the run layer, docker and gh."""
 
     def __init__(
-        self, fail_on: str | None = None, interrupt_on: str | None = None
+        self,
+        fail_on: str | None = None,
+        interrupt_on: str | None = None,
+        factory_changes: dict[str, str] | None = None,
     ) -> None:
+        """Fake the tools.
+
+        Args:
+            fail_on: a part of the command which fails.
+            interrupt_on: a part of the command which is interrupted.
+            factory_changes: files the factory writes otherwise than the
+                package has them, by their path relative to the package.
+        """
         self.commands: list[list[str]] = []
         self.fail_on = fail_on
         self.interrupt_on = interrupt_on
+        self.factory_changes = factory_changes or {}
 
     def __call__(self, args: Sequence[str], cwd: Path, *, stream: bool = False) -> str:
         command = [str(a) for a in args]
@@ -61,7 +73,14 @@ class FakeRunner:
         if kind == "factory":
             models = out / "models"
             models.mkdir(parents=True, exist_ok=True)
-            shutil.copy(TOY_PATH / "models" / "toy.xml", models / "toy.xml")
+            # the factory builds the models of the package
+            exported = sorted((cwd / "src").glob("**/models/toy.xml"))
+            source = exported[0] if exported else TOY_PATH / "models" / "toy.xml"
+            shutil.copy(source, models / "toy.xml")
+            for relative, text in self.factory_changes.items():
+                self._write(out / relative, text)
+            changed = sorted(self.factory_changes)
+            (out / "summary.json").write_text(json.dumps({"changed": changed}))
             (models / "toy.md").write_text("# toy\n")
             (out / "toy.omex").write_text("omex\n")
             self._write(out / "figures" / "toy_model.png", "png")

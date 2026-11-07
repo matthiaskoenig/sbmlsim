@@ -24,12 +24,13 @@ the tests replace them.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Final
 
-from sbmlsim.release.build import build
+from sbmlsim.release.build import BuildResult, build
 from sbmlsim.release.docs import write_docs
 from sbmlsim.release.manifest import (
     Manifest,
@@ -70,6 +71,7 @@ __all__ = [
     "REPOSITORY_DIR",
     "PreparedRelease",
     "Publisher",
+    "ReleaseBuild",
     "build_release",
     "build_summary",
     "prepare_release",
@@ -97,6 +99,19 @@ class PreparedRelease:
     settings: ReleaseSettings
     source: SourceRepo
     target: ReleaseRepo
+
+
+@dataclass(frozen=True)
+class ReleaseBuild:
+    """The build of a release.
+
+    Attributes:
+        manifest: the manifest of the build.
+        build: what the analyses of the build wrote and ran.
+    """
+
+    manifest: Manifest
+    build: BuildResult
 
 
 def release_settings(project: Project) -> ReleaseSettings:
@@ -231,7 +246,7 @@ def build_release(
     framework_path: Path | None = None,
     workers: int | None = None,
     runner: Runner = run,
-) -> Manifest:
+) -> ReleaseBuild:
     """Build a prepared release in its repository and write its manifest.
 
     The stages write, in this order: the export of the package, the project
@@ -261,7 +276,7 @@ def build_release(
         runner: runs git, uv and the analyses of the model.
 
     Returns:
-        The manifest of the build.
+        The manifest and what the analyses wrote and ran.
 
     Raises:
         ReleaseError: if a stage fails; the message is for the user.
@@ -277,9 +292,11 @@ def build_release(
         written: list[Path] = export_package(project, settings, source, path, runner)
         stage("Project files")
         written += write_project_files(context, path)
-        written += build(
+        result = build(
             project, reference, path, runner, workers, source_commit=source.commit
         )
+        written += result.written
+        context = dataclasses.replace(context, built_steps=tuple(result.steps))
         stage("Release notes")
         written.append(write_release_notes(context, target, runner))
         stage("Docs and README")
@@ -303,21 +320,25 @@ def build_release(
             stop_build(path, runner)
         raise
     finish_build(path, runner)
-    return manifest
+    return ReleaseBuild(manifest=manifest, build=result)
 
 
-def build_summary(manifest: Manifest, path: Path) -> dict[str, Any]:
+def build_summary(release: ReleaseBuild, path: Path) -> dict[str, Any]:
     """Get the summary of a build: what it built and whether it can be published.
 
     Args:
-        manifest: the manifest of the build.
+        release: the build.
         path: the release repository.
 
     Returns:
         The repository relative to the output, the version, the source commit,
-        the framework and its version, the number of files and whether the
-        lock of the build can be published (`publishable`).
+        the framework and its version, the number of files, the steps which
+        ran, the outputs of the factory which differ from the source package
+        and are part of the release (`changed`), the skipped steps with their
+        reason (`skipped`) and whether the lock of the build can be published
+        (`publishable`).
     """
+    manifest = release.manifest
     try:
         check_lock(path)
         publishable = True
@@ -330,6 +351,9 @@ def build_summary(manifest: Manifest, path: Path) -> dict[str, Any]:
         "framework": manifest.framework,
         "framework_version": manifest.framework_version,
         "files": len(manifest.files),
+        "steps": [step.name for step in release.build.steps],
+        "changed": list(release.build.changed),
+        "skipped": [dict(entry) for entry in release.build.skipped],
         "publishable": publishable,
     }
 
