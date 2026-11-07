@@ -91,24 +91,88 @@ def test_release_repo_wrong_branch_refused(
 ) -> None:
     _, clone = remote_and_clone
     git(clone, "checkout", "-b", "feature")
-    with pytest.raises(ReleaseError, match="not 'main'"):
+    with pytest.raises(ReleaseError, match="not 'main', which no build") as err:
         release_repo(release_settings, clone)
+    assert f"remove the out {clone.parent} or give another one" in str(err.value)
 
 
-def test_release_repo_behind_refused(
+def push_commit(tmp_path: Path, remote: Path, name: str = "new.txt") -> str:
+    """Push a commit to the release repository from another clone."""
+    other = tmp_path / f"other-{name}"
+    git(tmp_path, "clone", str(remote), str(other))
+    (other / name).write_text("new\n", encoding="utf-8")
+    git(other, "add", "-A")
+    git(other, "commit", "-m", "more")
+    git(other, "push", "origin", "main")
+    return git(other, "rev-parse", "HEAD").strip()
+
+
+def test_a_reused_clone_behind_is_brought_to_origin(
+    tmp_path: Path,
+    remote_and_clone: tuple[Path, Path],
+    release_settings: ReleaseSettings,
+) -> None:
+    """A clone of an earlier run is fast-forwarded to the release repository."""
+    remote, clone = remote_and_clone
+    head = push_commit(tmp_path, remote)
+    repo = release_repo(release_settings, clone)
+    assert git(clone, "rev-parse", "HEAD").strip() == head
+    assert repo.ahead == 0
+
+
+def test_a_fresh_clone_is_the_release_repository_whatever_the_checkout(
+    tmp_path: Path,
+    remote_and_clone: tuple[Path, Path],
+    release_settings: ReleaseSettings,
+) -> None:
+    """The checkout is a cache: its branch, its commits and its tags are not cloned."""
+    remote, clone = remote_and_clone
+    head = push_commit(tmp_path, remote)  # the checkout is behind
+    git(clone, "checkout", "-q", "-b", "feature")
+    (clone / "local.txt").write_text("local\n", encoding="utf-8")
+    git(clone, "add", "-A")
+    git(clone, "commit", "-m", "local")
+    git(clone, "tag", "9.9.9")
+    path = tmp_path / "out" / "repository"
+    repo = release_repo(release_settings, path, checkout=clone)
+    assert git(path, "branch", "--show-current").strip() == "main"
+    assert git(path, "rev-parse", "HEAD").strip() == head
+    assert (repo.ahead, repo.last_tag) == (0, "0.1.0")
+    assert not (path / "local.txt").exists()
+    assert git(clone, "rev-parse", "HEAD").strip() != head
+
+
+def test_a_checkout_with_commits_on_main_which_are_not_pushed_is_refused(
     tmp_path: Path,
     remote_and_clone: tuple[Path, Path],
     release_settings: ReleaseSettings,
 ) -> None:
     remote, clone = remote_and_clone
-    other = tmp_path / "other"
-    git(tmp_path, "clone", str(remote), str(other))
-    (other / "new.txt").write_text("new\n", encoding="utf-8")
-    git(other, "add", "-A")
-    git(other, "commit", "-m", "more")
-    git(other, "push", "origin", "main")
-    with pytest.raises(ReleaseError, match="behind"):
+    push_commit(tmp_path, remote)  # behind and ahead: the commit is still missing
+    (clone / "local.txt").write_text("local\n", encoding="utf-8")
+    git(clone, "add", "-A")
+    git(clone, "commit", "-m", "local")
+    git(clone, "commit", "-q", "--allow-empty", "-m", "another")
+    path = tmp_path / "out" / "repository"
+    with pytest.raises(ReleaseError, match=r"has 2 commit\(s\) on main which"):
+        release_repo(release_settings, path, checkout=clone)
+
+
+def test_a_diverged_clone_is_refused(
+    tmp_path: Path,
+    remote_and_clone: tuple[Path, Path],
+    release_settings: ReleaseSettings,
+) -> None:
+    remote, clone = remote_and_clone
+    (clone / "local.txt").write_text("local\n", encoding="utf-8")
+    git(clone, "add", "-A")
+    git(clone, "commit", "-m", "local")
+    push_commit(tmp_path, remote)
+    with pytest.raises(ReleaseError) as err:
         release_repo(release_settings, clone)
+    message = str(err.value)
+    assert f"{clone} has 1 local commit(s) and is behind origin/main by 1" in message
+    assert f"remove the out {clone.parent} or give another one" in message
 
 
 def test_check_version() -> None:

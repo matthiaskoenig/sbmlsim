@@ -301,10 +301,11 @@ def _clone(
 ) -> None:
     """Clone the release repository into `path`.
 
-    A checkout of the release repository is cloned with its history, tags and
-    branches, and the origin of the clone is set to the origin of the checkout,
-    so the clone fetches from and pushes to the release repository; the
-    checkout itself is only read.
+    A checkout of the release repository is only a cache: it is cloned with
+    its history and the origin of the clone is set to the origin of the
+    checkout, so the clone fetches from and pushes to the release repository;
+    the checkout itself is only read, and its branch, its local commits and
+    tags are no part of the clone after `release_repo` (`_to_origin`).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     if checkout is None:
@@ -319,6 +320,86 @@ def _clone(
     runner(["git", "remote", "set-url", "origin", origin], path)
 
 
+def _remove_out(path: Path) -> str:
+    """Get the remedy of a clone in an out which no build made so."""
+    return f"remove the out {path.parent} or give another one"
+
+
+def _to_origin(path: Path, runner: Runner, *, fresh: bool) -> None:
+    """Bring `main` of a clone of the release repository to `origin/main`.
+
+    A fresh clone takes `main` of `origin/main` whatever the branch, the local
+    commits and the tags of the checkout it was cloned from were (its tags are
+    the ones of the release repository). A reused clone, the one of an earlier
+    run into the out, is fast-forwarded when it is behind; its local commits,
+    i.e. the release commit of a publishing which failed half way, are kept
+    and judged by the caller (`ReleaseRepo.ahead`).
+
+    Raises:
+        ReleaseError: for a reused clone on another branch than `main`, one
+            whose `main` and `origin/main` diverged and one which is not
+            fast-forwarded; the message names the clone and says to remove the
+            out or give another one.
+    """
+    remote = _has_ref(path, "refs/remotes/origin/main", runner)
+    if fresh:
+        runner(["git", "fetch", "--tags", "--prune", "--prune-tags", "origin"], path)
+        if remote:
+            runner(["git", "checkout", "-q", "-B", "main", "origin/main"], path)
+        return
+    # empty on a detached HEAD; the branch of an empty repository has no commit
+    branch = runner(["git", "branch", "--show-current"], path).strip()
+    if branch != "main":
+        raise ReleaseError(
+            f"{path} is on branch '{branch or 'HEAD'}', not 'main', which no build "
+            f"of a release made; {_remove_out(path)}"
+        )
+    runner(["git", "fetch", "--tags", "origin"], path)
+    if not remote or not _has_ref(path, "refs/heads/main", runner):
+        return
+    behind = _count(path, "HEAD..origin/main", runner)
+    if not behind:
+        return
+    ahead = _count(path, "origin/main..HEAD", runner)
+    if ahead:
+        raise ReleaseError(
+            f"{path} has {ahead} local commit(s) and is behind origin/main by "
+            f"{behind}, they diverged; {_remove_out(path)}"
+        )
+    try:
+        runner(["git", "merge", "-q", "--ff-only", "origin/main"], path)
+    except ReleaseError as err:
+        raise ReleaseError(
+            f"{path} is behind origin/main and is not fast-forwarded: {err}; "
+            f"{_remove_out(path)}"
+        ) from err
+
+
+def _check_pushed(path: Path, checkout: Path, runner: Runner) -> None:
+    """Refuse a checkout whose `main` has commits the release repository lacks.
+
+    A maintainer who did not push a commit of the release repository would
+    release without it. `main` of the checkout is fetched into the clone
+    (`FETCH_HEAD`, the checkout is only read) and compared with
+    `origin/main`; a checkout which is behind or on another branch is fine.
+
+    Raises:
+        ReleaseError: naming the checkout and its commits which are not pushed.
+    """
+    if not _has_ref(checkout, "refs/heads/main", runner):
+        return
+    runner(["git", "fetch", "-q", "--no-tags", str(checkout), "refs/heads/main"], path)
+    if _has_ref(path, "refs/remotes/origin/main", runner):
+        unpushed = _count(path, "origin/main..FETCH_HEAD", runner)
+    else:
+        unpushed = _count(path, "FETCH_HEAD", runner)
+    if unpushed:
+        raise ReleaseError(
+            f"{checkout} has {unpushed} commit(s) on main which the release "
+            "repository does not have; push them first"
+        )
+
+
 def release_repo(
     settings: ReleaseSettings,
     path: Path,
@@ -326,18 +407,25 @@ def release_repo(
     *,
     checkout: Path | None = None,
 ) -> ReleaseRepo:
-    """Find or clone the release repository and check it is ready.
+    """Find or clone the release repository and bring it to `origin/main`.
+
+    The clone is the one of an out, `<out>/repository`: a missing one is
+    cloned (`_clone`), and a fresh or reused clone is brought to
+    `origin/main` (`_to_origin`), so a checkout it was cloned from is only a
+    cache.
 
     Args:
         settings: the release settings of the model.
-        path: the checkout the release is built in, cloned when it does not
+        path: the clone the release is built in, cloned when it does not
             exist.
         runner: runs the git commands.
         checkout: a checkout of the release repository which a missing `path`
-            is cloned from instead of the repository on GitHub, see `_clone`.
+            is cloned from instead of the repository on GitHub, see `_clone`;
+            its `main` must have no commit the release repository lacks
+            (`_check_pushed`).
 
     Returns:
-        The checkout, its highest released version and the number of its
+        The clone, its highest released version and the number of its
         commits which are not pushed (only the release commit of a release
         which failed while publishing may be, see `sbmlsim.release.workflow`).
 
@@ -345,10 +433,12 @@ def release_repo(
     release and no commit ahead.
 
     Raises:
-        ReleaseError: if `origin` is another repository, the branch is not `main`
-            or the branch is behind `origin/main`.
+        ReleaseError: if `origin` is another repository, the clone cannot be
+            brought to `origin/main` (`_to_origin`) or `main` of the checkout
+            has commits which are not pushed (`_check_pushed`).
     """
-    if not path.exists():
+    fresh = not path.exists()
+    if fresh:
         _clone(settings, path, checkout, runner)
     origin = runner(["git", "remote", "get-url", "origin"], path).strip()
     if not _is_repository(origin, settings.repository):
@@ -356,15 +446,11 @@ def release_repo(
             f"{path} has origin {origin}, not the release repository "
             f"{settings.repository}"
         )
-    # empty on a detached HEAD; the branch of an empty repository has no commit
-    branch = runner(["git", "branch", "--show-current"], path).strip()
-    if branch != "main":
-        raise ReleaseError(f"{path} is on branch '{branch or 'HEAD'}', not 'main'")
-    runner(["git", "fetch", "--tags", "origin"], path)
+    _to_origin(path, runner, fresh=fresh)
+    if checkout is not None:
+        _check_pushed(path, checkout, runner)
     local = _has_ref(path, "refs/heads/main", runner)
     remote = _has_ref(path, "refs/remotes/origin/main", runner)
-    if remote and (not local or _count(path, "HEAD..origin/main", runner) > 0):
-        raise ReleaseError(f"{path} is behind origin/main, pull it first")
     if not local:
         ahead = 0
     elif remote:

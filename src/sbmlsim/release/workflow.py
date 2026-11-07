@@ -183,8 +183,9 @@ def _check_ahead(target: ReleaseRepo, resume: bool) -> None:
         commits = "commit" if target.ahead == 1 else "commits"
         raise ReleaseError(
             f"{target.path} is ahead of origin/main by {target.ahead} {commits}; "
-            "only the release commit of this version may wait for the push, push "
-            "or reset the others first"
+            "only the release commit of this version, which its publishing made, "
+            f"may wait for the push; remove the out {target.path.parent} or give "
+            "another one"
         )
 
 
