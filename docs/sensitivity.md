@@ -278,7 +278,7 @@ def parameters():
 GROUPS = [
     SensitivityGroup("control", "Control", Simulation(end=24, time_unit="hr")),
     SensitivityGroup(
-        "female", "Female", Simulation(end=24, time_unit="hr"), variant="female"
+        "renal", "Renal", Simulation(end=24, time_unit="hr"), variant="renal"
     ),
 ]
 

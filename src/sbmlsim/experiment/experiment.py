@@ -349,7 +349,7 @@ class SimulationExperiment:
         """Get the variant of the model of the project a simulation runs on.
 
         The hook of a framework which builds a model per group of subjects
-        (a variant of the model of a `Project`, e.g. a build per sex), which
+        (a variant of the model of a `Project`, e.g. a build per population), which
         `sbmlsim.run verify dump` stores per task, so that a study which moves to
         another build is found. A class method of a subclass may implement it
         as well. By default the experiment says nothing and `verify` takes the
