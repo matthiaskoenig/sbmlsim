@@ -93,3 +93,53 @@ def test_a_failed_directory_leaves_the_old_one(tmp_path: Path) -> None:
         raise RuntimeError("failed")
     assert sorted(p.name for p in target.iterdir()) == ["a.tsv"]
     assert [p.name for p in tmp_path.iterdir()] == ["local"]
+
+
+def test_a_directory_has_the_mode_of_a_new_directory(tmp_path: Path) -> None:
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    with atomic_directory(tmp_path / "local") as temporary:
+        (temporary / "a.tsv").write_text("x", encoding="utf-8")
+    assert _mode(tmp_path / "local") == _mode(reference)
+
+
+def test_a_failed_replacement_restores_the_old_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The old directory is moved aside; it is moved back when the new one fails."""
+    target = tmp_path / "local"
+    target.mkdir()
+    (target / "a.tsv").write_text("kept", encoding="utf-8")
+    rename = Path.rename
+
+    def failing(self: Path, other: Path) -> Path:
+        if self.name.endswith(".tmp"):
+            raise OSError("rename failed")
+        return rename(self, other)
+
+    monkeypatch.setattr(Path, "rename", failing)
+    with (
+        pytest.raises(OSError, match="rename failed"),
+        atomic_directory(target) as temporary,
+    ):
+        (temporary / "b.tsv").write_text("lost", encoding="utf-8")
+    assert sorted(p.name for p in target.iterdir()) == ["a.tsv"]
+    assert [p.name for p in tmp_path.iterdir()] == ["local"]
+
+
+def test_an_old_directory_which_is_not_removed_is_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import shutil
+
+    target = tmp_path / "local"
+    target.mkdir()
+
+    def failing(path: Path, *args: object, **kwargs: object) -> None:
+        raise OSError("busy")
+
+    monkeypatch.setattr(shutil, "rmtree", failing)
+    with atomic_directory(target) as temporary:
+        (temporary / "b.tsv").write_text("new", encoding="utf-8")
+    assert (target / "b.tsv").exists()
+    assert "is not removed: busy" in caplog.text

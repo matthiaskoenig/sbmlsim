@@ -6,6 +6,7 @@ analysis `subfolders` is two runners by subfolder without a project of their
 own, which the project binds.
 """
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,7 @@ import pytest
 from sbmlsim import run
 from sbmlsim.project import Project
 from sbmlsim.run import ConfigurationError, PlanMismatch
-from sbmlsim.run.scan_kinds import SensitivitySpec
+from sbmlsim.run.scan_kinds import PLAN_MARKER, SensitivitySpec
 from sbmlsim.run.units import MissingUnits
 from sbmlsim.sensitivity.runner import (
     LocalAnalysis,
@@ -51,6 +52,9 @@ PROJECT = TOY.replace(
         }
     },
 )
+#: the files of a run beside its results
+RUN_FILES = {"run.json", "spec.json", "summary.json", "progress.jsonl", "progress"}
+
 SUBFOLDERS: dict[str, Any] = {
     "project": f"{__name__}:PROJECT",
     "analysis": "subfolders",
@@ -116,6 +120,7 @@ def test_a_whole_run_writes_the_files_of_the_runner(tmp_path: Path) -> None:
     assert summary["analyses"] == ["local", "sampling"]
     assert summary["parameters"] == 2
     assert sorted(p.name for p in (out / "local").iterdir()) == [
+        PLAN_MARKER,
         "local_d0.01_nvar3_00_control.png",
         "local_d0.01_nvar3_00_control.tsv",
         "local_d0.01_nvar3_01_slow.png",
@@ -143,15 +148,21 @@ def test_units_and_merge_give_the_whole_run(tmp_path: Path) -> None:
 
     whole = tmp_path / "whole"
     assert run.execute("sensitivity", SUBFOLDERS, whole, workers=1) == summary
-    for name in [
-        "single/local/local_d0.01_nvar3_00_control.tsv",
-        "multi/local/local_d0.01_nvar3_00_slow.tsv",
-        "multi/sampling/sampling_N4.tsv",
-        "multi/sampling/slow/samples.tsv",
-    ]:
-        pd.testing.assert_frame_equal(
-            pd.read_csv(out / name, sep="\t"), pd.read_csv(whole / name, sep="\t")
-        )
+    # every file of the analyses and the table, byte by byte
+    names = sorted(
+        p.relative_to(whole).as_posix()
+        for p in whole.rglob("*")
+        if p.is_file() and p.parts[len(whole.parts)] not in RUN_FILES
+    )
+    assert "parameters.tsv" in names
+    assert "multi/sampling/sampling_N4_sensitivity_outputs.png" in names
+    assert names == sorted(
+        p.relative_to(out).as_posix()
+        for p in out.rglob("*")
+        if p.is_file() and p.parts[len(out.parts)] not in RUN_FILES
+    )
+    for name in names:
+        assert (out / name).read_bytes() == (whole / name).read_bytes(), name
 
 
 def test_a_unit_whose_folder_exists_is_not_computed_again(tmp_path: Path) -> None:
@@ -162,6 +173,64 @@ def test_a_unit_whose_folder_exists_is_not_computed_again(tmp_path: Path) -> Non
     table.write_text("kept", encoding="utf-8")
     run.compute_unit("sensitivity", planned, 0, out)
     assert table.read_text(encoding="utf-8") == "kept"
+
+
+def test_a_unit_of_another_plan_is_computed_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A smoke run of 2 samples leaves no folder a real run takes as its own."""
+    spec = {**DECAY, "analyses": ["sampling"]}
+    out = tmp_path / "out"
+    monkeypatch.setenv("SBMLSIM_SENSITIVITY_N", "2")
+    smoke = plan(spec)
+    assert smoke.run_plan is not None
+    assert smoke.run_plan["units"][0]["n"] == 2
+    run.compute_unit("sensitivity", smoke, 0, out)
+    assert (out / "sampling" / "sampling_N2.tsv").is_file()
+    # the plan fixes the number of samples: a unit of another one is refused
+    monkeypatch.delenv("SBMLSIM_SENSITIVITY_N")
+    with pytest.raises(PlanMismatch, match=r"\['sampling'\] differ"):
+        run.compute_unit("sensitivity", smoke, 0, out)
+    planned = plan(spec)
+    assert planned.run_plan is not None
+    assert planned.run_plan["units"][0]["n"] == 8
+    # the folder of the smoke run, e.g. copied into the output of the real
+    # run, is no unit of it
+    real = tmp_path / "real"
+    real.mkdir()
+    shutil.copytree(out / "sampling", real / "sampling")
+    with pytest.raises(MissingUnits):
+        run.merge("sensitivity", planned, real)
+    out = real
+    run.compute_unit("sensitivity", planned, 0, out)
+    files = sorted(p.name for p in (out / "sampling").iterdir() if p.is_file())
+    assert "sampling_N8.tsv" in files
+    assert "sampling_N2.tsv" not in files
+    run.merge("sensitivity", planned, out)
+
+
+def test_a_resume_with_another_number_of_samples_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = {**DECAY, "analyses": ["sampling"]}
+    out = tmp_path / "out"
+    monkeypatch.setenv("SBMLSIM_SENSITIVITY_N", "2")
+    run.execute("sensitivity", spec, out, workers=1)
+    monkeypatch.delenv("SBMLSIM_SENSITIVITY_N")
+    with pytest.raises(PlanMismatch, match="SBMLSIM_SENSITIVITY_N"):
+        run.execute("sensitivity", spec, out, workers=1, resume=True)
+
+
+def test_a_changed_table_is_another_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    planned = plan(DECAY)
+    assert planned.run_plan is not None
+    changed = planned.model_copy(
+        update={"run_plan": {**planned.run_plan, "table": "0" * 64}}
+    )
+    with pytest.raises(PlanMismatch, match="the table of the parameters"):
+        run.compute_unit("sensitivity", changed, 0, tmp_path / "out")
 
 
 def test_a_resumed_run_keeps_the_analyses_it_has(tmp_path: Path) -> None:

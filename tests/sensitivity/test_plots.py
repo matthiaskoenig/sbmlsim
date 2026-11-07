@@ -20,6 +20,7 @@ from matplotlib.patches import Rectangle
 from matplotlib.text import Text
 
 from sbmlsim.sensitivity import local, plot_heatmap, plot_indices, plot_morris
+from sbmlsim.sensitivity.plots import draw_boxes
 from sbmlsim.sensitivity.result import PARAMETER, SensitivityResult
 from sbmlsim.simulation import Change, Formula, Scan, Simulation, sampling
 from sbmlsim.simulator import Simulator
@@ -635,3 +636,58 @@ def test_a_heatmap_of_long_labels_has_room_for_them(
     for text in [*ax.get_yticklabels(), *ax.get_xticklabels()]:
         extent = text.get_window_extent()
         assert extent.x0 >= 0 and extent.x1 <= figure.bbox.width, text.get_text()
+
+
+@pytest.mark.parametrize("n", [1, 2, 4])
+@pytest.mark.parametrize("filled", [False, True], ids=["lines", "filled"])
+def test_the_boxes_have_the_limits_and_ticks_of_boxplot(n: int, filled: bool) -> None:
+    """`draw_boxes` draws as `Axes.boxplot`: the limits, the ticks and the parts."""
+    rng = np.random.default_rng(0)
+    data = [rng.normal(size=50) + k for k in range(n)]
+    labels = [f"g{k}" for k in range(n)]
+    colors = [f"C{k}" for k in range(n)]
+    axes = []
+    for draw in ("boxplot", "draw_boxes"):
+        ax = Figure().subplots()
+        if draw == "boxplot":
+            artists = ax.boxplot(
+                data,
+                positions=range(n),
+                tick_labels=labels,
+                patch_artist=filled,
+                showfliers=not filled,
+            )
+            if filled:
+                for patch, color in zip(artists["boxes"], colors, strict=True):
+                    patch.set_facecolor(color)
+        else:
+            draw_boxes(
+                ax,
+                data,
+                range(n),
+                labels,
+                facecolors=colors if filled else None,
+                showfliers=not filled,
+            )
+        # the other parts of the sampling figures, which the limits include
+        for k, values in enumerate(data):
+            ax.violinplot(values, positions=[k + 0.3], showextrema=False)
+        axes.append(ax)
+    boxplot, boxes = axes
+    np.testing.assert_allclose(boxes.get_xlim(), boxplot.get_xlim())
+    np.testing.assert_allclose(boxes.get_ylim(), boxplot.get_ylim())
+    np.testing.assert_array_equal(boxes.get_xticks(), boxplot.get_xticks())
+    assert [t.get_text() for t in boxes.get_xticklabels()] == labels
+    lines = sorted(
+        tuple(np.round(np.ravel(line.get_xydata()), 12)) for line in boxplot.lines
+    )
+    assert lines == sorted(
+        tuple(np.round(np.ravel(line.get_xydata()), 12)) for line in boxes.lines
+    )
+
+
+@pytest.mark.usefixtures("no_pyplot")
+def test_the_boxes_do_not_resolve_the_backend() -> None:
+    ax = Figure().subplots()
+    draw_boxes(ax, [np.arange(10.0), np.array([])])
+    assert ax.get_xlim() == pytest.approx((0.5, 2.5))

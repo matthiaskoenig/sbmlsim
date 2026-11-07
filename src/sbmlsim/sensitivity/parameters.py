@@ -43,6 +43,7 @@ import numpy as np
 import pandas as pd
 from sbmlutils.report.units import udef_to_string
 
+from sbmlsim.atomic import write_text_atomic
 from sbmlsim.simulation import Dimension, Simulation
 from sbmlsim.simulation.sampling import Uniform
 
@@ -293,6 +294,8 @@ def write_parameters(
 ) -> pd.DataFrame:
     """Write the table of the parameters as `parameters.tsv` and `parameters.tex`.
 
+    Each file is written atomically (`sbmlsim.atomic.write_text_atomic`).
+
     Args:
         parameters: the parameters.
         directory: the directory, created if it does not exist.
@@ -304,9 +307,12 @@ def write_parameters(
     """
     directory.mkdir(parents=True, exist_ok=True)
     df = parameters_to_df(parameters, builds=builds)
-    df.to_csv(directory / "parameters.tsv", sep="\t", index=False)
+    write_text_atomic(
+        directory / "parameters.tsv",
+        df.to_csv(None, sep="\t", index=False, lineterminator="\n"),
+    )
     tex = df.to_latex(None, index=False, float_format="{:.3g}".format)
-    (directory / "parameters.tex").write_text(tex.replace("_", r"\_"), encoding="utf-8")
+    write_text_atomic(directory / "parameters.tex", tex.replace("_", r"\_"))
     return df
 
 

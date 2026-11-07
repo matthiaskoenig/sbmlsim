@@ -13,6 +13,7 @@ complete.
 The module imports only the standard library.
 """
 
+import logging
 import os
 import secrets
 import shutil
@@ -21,6 +22,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 __all__ = ["atomic_directory", "atomic_path", "write_text_atomic"]
+
+logger = logging.getLogger(__name__)
 
 #: attempts to find a name for the temporary file which does not exist
 _ATTEMPTS = 100
@@ -101,10 +104,12 @@ def atomic_directory(path: Path) -> Generator[Path]:
 
     The caller writes the complete directory into the yielded one, which
     replaces `path` on success: an existing `path` is moved aside first and
-    removed after the new one took its place. On an exception the temporary
-    directory is removed and `path` is left as it was. The directory is
-    created with the mode `0o777` and the umask of the process, as a directory
-    created with `mkdir`.
+    removed after the new one took its place (best effort: a directory which
+    is not removed is logged and left next to it). On an exception the
+    temporary directory is removed and `path` is left as it was, also when
+    the new directory fails to take its place after the old one was moved.
+    The directory is created with the mode `0o777` and the umask of the
+    process, as a directory created with `mkdir`.
 
     Args:
         path: the directory to write; its parent must exist.
@@ -130,8 +135,17 @@ def atomic_directory(path: Path) -> Generator[Path]:
         if path.exists():
             previous = temporary.with_name(f"{temporary.name}.old")
             path.rename(previous)
-            temporary.rename(path)
-            shutil.rmtree(previous)
+            try:
+                temporary.rename(path)
+            except BaseException:
+                previous.rename(path)
+                raise
+            try:
+                shutil.rmtree(previous)
+            except OSError as err:
+                logger.warning(
+                    "The replaced directory '%s' is not removed: %s", previous, err
+                )
         else:
             temporary.rename(path)
     except BaseException:
