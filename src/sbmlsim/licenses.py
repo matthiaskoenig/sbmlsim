@@ -18,6 +18,12 @@ from enum import StrEnum
 from importlib.resources import files
 from pathlib import Path
 
+__all__ = [
+    "License",
+    "license_text",
+    "write_license",
+]
+
 
 class License(StrEnum):
     """A license of a model, its value is the name of its file without `.txt`."""

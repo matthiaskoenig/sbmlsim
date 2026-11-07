@@ -62,6 +62,7 @@ __all__ = [
     "EXIT_USAGE",
     "input_pair",
     "main",
+    "positive_number",
 ]
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ def input_pair(value: str) -> tuple[str, Path]:
     return port, Path(path)
 
 
-def _positive(value: str) -> int:
+def positive_number(value: str) -> int:
     """Parse a positive number."""
     try:
         number = int(value)
@@ -165,7 +166,7 @@ def _parser() -> argparse.ArgumentParser:
     summary_file(run)
     run.add_argument(
         "--workers",
-        type=_positive,
+        type=positive_number,
         default=None,
         help="the number of processes, the kind decides without",
     )

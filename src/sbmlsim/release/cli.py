@@ -32,7 +32,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sbmlsim.release.source import Runner, run
-from sbmlsim.run.cli import EXIT_ANALYSIS, EXIT_CONFIGURATION, EXIT_OK, EXIT_USAGE
+from sbmlsim.run.cli import (
+    EXIT_ANALYSIS,
+    EXIT_CONFIGURATION,
+    EXIT_OK,
+    EXIT_USAGE,
+    positive_number,
+)
 from sbmlsim.run.kinds import ConfigurationError
 
 if TYPE_CHECKING:
@@ -44,17 +50,6 @@ logger = logging.getLogger(__name__)
 
 #: the exit code of a publishing which is refused or fails
 EXIT_REFUSED = 1
-
-
-def _positive(value: str) -> int:
-    """Parse a positive number of workers."""
-    try:
-        number = int(value)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"'{value}' is no number") from None
-    if number < 1:
-        raise argparse.ArgumentTypeError(f"'{value}' is not positive")
-    return number
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -98,7 +93,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     build.add_argument(
         "--workers",
-        type=_positive,
+        type=positive_number,
         help="the number of workers of the simulations, the CPUs of the quota without",
     )
     build.add_argument(

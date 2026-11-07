@@ -21,8 +21,8 @@ from urllib.parse import quote
 from sbmlsim.credibility.assessment import CredibilityAssessment
 from sbmlsim.credibility.verification import PREDICTION_CHECKS, check_of
 from sbmlsim.fit.records import AdoptedRecord
-from sbmlsim.release.build import BuildPaths
-from sbmlsim.release.notes import NOTES_DIR, fits_prefix
+from sbmlsim.release.build import BuildPaths, is_experiment_folder
+from sbmlsim.release.notes import NOTES_DIR, fits_prefix, version_key
 from sbmlsim.release.project import ProjectContext, render
 from sbmlsim.release.source import ReleaseError
 
@@ -353,12 +353,8 @@ def _experiments(release_path: Path) -> list[str]:
     return sorted(
         path.name
         for path in folder.iterdir()
-        if not path.name.startswith("_") and (path / f"{path.name}.html").is_file()
+        if is_experiment_folder(path.name) and (path / f"{path.name}.html").is_file()
     )
-
-
-def _version_key(path: Path) -> tuple[int, ...]:
-    return tuple(int(part) for part in path.stem.split("."))
 
 
 def _release_notes(release_path: Path) -> list[str]:
@@ -370,7 +366,9 @@ def _release_notes(release_path: Path) -> list[str]:
     ]
     return [
         _HEADING.sub(r"#\1", path.read_text(encoding="utf-8").strip())
-        for path in sorted(files, key=_version_key, reverse=True)
+        for path in sorted(
+            files, key=lambda path: version_key(path.stem) or (), reverse=True
+        )
     ]
 
 
