@@ -68,6 +68,7 @@ from sbmlsim.run.kinds import (
     PlanMismatch,
     Spec,
     SplitSpec,
+    load_project_ref,
     register,
 )
 from sbmlsim.run.units import MissingUnits, unit_blocks
@@ -245,18 +246,6 @@ class SimulateSpec(Spec):
 # ----------------------------------------------------------------------------
 # what the kinds share
 # ----------------------------------------------------------------------------
-def _project(ref: str) -> Project:
-    """Load a project.
-
-    Raises:
-        ConfigurationError: for a project which is not loaded.
-    """
-    from sbmlsim.project import load_project
-
-    try:
-        return load_project(ref)
-    except (ImportError, ValueError) as err:
-        raise ConfigurationError(f"The project '{ref}' is not loaded: {err}") from err
 
 
 def _model(project: Project, model: Path | str) -> Path | str:
@@ -330,7 +319,7 @@ def _scan_analysis(spec: ScanSpec) -> tuple[Project, ScanAnalysis]:
         ConfigurationError: for an unknown project or scan, and a sensitivity
             analysis of a scan without valid indices.
     """
-    project = _project(spec.project)
+    project = load_project_ref(spec.project)
     try:
         analysis = project.scan(spec.analysis)
     except KeyError as err:
@@ -687,13 +676,17 @@ def _project_sensitivity(spec: SensitivitySpec) -> Any | None:
         ConfigurationError: for an unknown project, a sensitivity which is not
             resolved, and analyses or subfolders of a scan.
     """
-    project = _project(spec.project)
+    project = load_project_ref(spec.project)
     if spec.analysis not in project.sensitivities:
-        if spec.analyses is not None or spec.subfolders is not None:
+        if (
+            spec.analyses is not None
+            or spec.subfolders is not None
+            or spec.run_plan is not None
+        ):
             raise ConfigurationError(
                 f"'{spec.analysis}' of '{spec.project}' is no sensitivity analysis "
                 "of the project over groups: a scan has neither analyses nor "
-                "subfolders."
+                "subfolders and no run_plan."
             )
         return None
     try:
@@ -903,7 +896,7 @@ def _uncertainty_analysis(spec: UncertaintySpec) -> tuple[Project, UncertaintyAn
     Raises:
         ConfigurationError: for an unknown project or analysis.
     """
-    project = _project(spec.project)
+    project = load_project_ref(spec.project)
     try:
         return project, project.uncertainty(spec.analysis)
     except KeyError as err:
@@ -1135,7 +1128,7 @@ def _experiments(
         ConfigurationError: for a project without experiments, no names and
             a name which is neither a group nor an experiment.
     """
-    project = _project(spec.project)
+    project = load_project_ref(spec.project)
     if project.experiments is None:
         raise ConfigurationError(
             f"The project '{spec.project}' has no simulation experiments."

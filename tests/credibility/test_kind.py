@@ -167,3 +167,17 @@ def test_the_second_simulator_switched_off(tmp_path: Path) -> None:
     assert record.verification.battery is not None
     cross = record.verification.battery.result("cross_simulator")
     assert (cross.passed, cross.statement) == (None, "Not run.")
+
+
+def test_an_invalid_declaration_is_a_configuration_error(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The plan checks the declaration, so an invalid one is exit code 4 at the plan."""
+    from sbmlsim.credibility.declaration import DeclarationError
+
+    def invalid(self: Project) -> None:
+        raise DeclarationError(["the domain 'x' names no field"])
+
+    monkeypatch.setattr(Project, "load_credibility", invalid)
+    with pytest.raises(ConfigurationError, match="declaration is invalid"):
+        run.plan("credibility", {"project": REF})

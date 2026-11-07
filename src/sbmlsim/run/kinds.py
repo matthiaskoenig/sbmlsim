@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, override
 from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
+    from sbmlsim.project import Project
     from sbmlsim.run.context import RunContext
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "SplitSpec",
     "UnknownKind",
     "get_kind",
+    "load_project_ref",
     "register",
 ]
 
@@ -49,6 +51,20 @@ class ConfigurationError(Exception):
 
     The command line exits with 4 for it.
     """
+
+
+def load_project_ref(ref: str) -> Project:
+    """Load the project a spec or a command names, `module:attribute`.
+
+    Raises:
+        ConfigurationError: for a project which is not loaded.
+    """
+    from sbmlsim.project import load_project
+
+    try:
+        return load_project(ref)
+    except (ImportError, ValueError) as err:
+        raise ConfigurationError(f"The project '{ref}' is not loaded: {err}") from err
 
 
 class OutInUse(ConfigurationError):
