@@ -326,6 +326,17 @@ The provenance of a run is the git revision of the root of the project, recorded
 | 3 | the analysis failed, its traceback is logged; also a merge with missing units |
 | 4 | a configuration error, its message on stderr: an invalid spec or input, an unknown kind, project or analysis, a planned spec which does not match what it resolves to, an output which is not empty without `--resume` or a resume of another spec |
 
+An output which a run may not run into raises `sbmlsim.run.OutInUse`, a `ConfigurationError` with the output (`out`) and why (`reason`: `not_a_directory`, `not_empty` without `--resume`, `no_record` and `unreadable` for a resume without a readable `run.json`, `other_run` for the record of another kind or spec). `sbmlsim.run.check_out(kind, spec, out, resume=...)` makes these checks and the validation of the spec without running and without writing anything, so a wrapper refuses before it starts:
+
+```py
+from sbmlsim import run
+
+try:
+    run.check_out("release", {"project": "my_model:PROJECT", "version": "0.8.0"}, out)
+except run.OutInUse as err:
+    print(err.reason, err.out)
+```
+
 ## CPU quota and threads
 
 The number of processes of a run is the number of CPUs the process may use, bounded by the CPU quota of its cgroup, so a run in a container with a quota of 4 CPUs on a host of 64 starts 4 workers and not 64. With cgroup v2 the quota is the smallest one of the cgroup of the process and its parents (`cpu.max`), with cgroup v1 the one quota of the cgroup as the container sees it (`cpu.cfs_quota_us` over `cpu.cfs_period_us`), rounded down and at least 1; the pools of `sbmlsim` (`Simulator`, a fit, the experiments) bound their default size the same way.
