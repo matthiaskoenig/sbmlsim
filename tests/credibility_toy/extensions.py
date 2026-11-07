@@ -6,6 +6,7 @@ which `numerator` selects with the one mapping of the study which
 selection, as the ratios of a PK/PD library check it.
 """
 
+import math
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, ClassVar, override
@@ -19,6 +20,7 @@ from sbmlsim.credibility import (
     Pairing,
     ScorecardChange,
 )
+from sbmlsim.credibility.extensions import scorecard_number
 from sbmlsim.fit.helpers import MappingFilter
 
 
@@ -47,6 +49,7 @@ class ArmsExtension(EvidenceExtension):
 
     name: ClassVar[str] = "arms"
     label: ClassVar[str] = "arms of a ratio"
+    scorecard_names: ClassVar[tuple[str, ...]] = ("arms",)
 
     @override
     def claims(self, pairing: Pairing) -> bool:
@@ -85,9 +88,12 @@ class ArmsExtension(EvidenceExtension):
     def regressions(
         self, baseline: Mapping[str, object], current: Mapping[str, object]
     ) -> list[ScorecardChange]:
-        before, after = baseline.get("arms"), current.get("arms")
-        if isinstance(before, int) and (not isinstance(after, int) or after < before):
-            return [ScorecardChange("arms", str(before), str(after))]
+        if "arms" not in baseline:
+            return []
+        before = scorecard_number(baseline["arms"])
+        after = scorecard_number(current.get("arms"))
+        if not math.isnan(before) and not after >= before:
+            return [ScorecardChange("arms", f"{before:g}", f"{after:g}")]
         return []
 
 

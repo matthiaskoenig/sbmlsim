@@ -75,18 +75,29 @@ blocks after one block of the core in the order of the extensions;
 navigation, after the core sections and before the provenance; `report_tables`
 the tables it writes next to the report.
 
-The scorecard. `scorecard_columns` gives the columns of the extension of a
-context, after the columns of the core; the rows of the acceptance of an
-extension are columns of their rule like the rules of the context.
-`regressions` compares the columns of the extension of a context of the
-baseline with the current ones (a baseline without them, of an older record,
-has none), and `pool` pools the sections of the contexts of several models,
-e.g. the qualification of the ratio pairs by a value of the metadata.
+The scorecard. An extension names its columns statically
+(`scorecard_names`) and `scorecard_columns` gives their values for a context,
+for every name of `scorecard_names` and no other; they follow the columns of
+the core (the order of the columns of pkpdsim changes, the scorecards are
+compared by the names of the columns). The rows of the acceptance of an
+extension are columns of their rule like the rules of the context, which the
+core compares as rules; the columns of `scorecard_names` it never compares
+(`rule_columns`): `regressions` of the extension alone judges them, e.g. a
+column of pairs which drops from 10 to 4 is no regression of a rule. The core
+gives `regressions` the rows as they are: a scorecard of the process has the
+values `scorecard_columns` gave, a scorecard read back from its TSV has texts
+(an empty text for a missing value), and a baseline of an older record lacks
+the columns; `scorecard_number` and `scorecard_true` read a value of either.
+`pool` pools the sections of the contexts of several models with the options
+of the pooling, which the caller passes through as it got them (e.g.
+`{"field": "health"}` of the qualification of the ratio pairs by a value of
+the metadata, an option of a command line), or empty for the defaults of the extension.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+import math
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Protocol, runtime_checkable
@@ -119,6 +130,10 @@ __all__ = [
     "ScorecardChange",
     "read_acceptance",
     "read_sections",
+    "rule_columns",
+    "scorecard_columns",
+    "scorecard_number",
+    "scorecard_true",
 ]
 
 #: the field of a record with the sections of the extensions by their name
@@ -291,10 +306,13 @@ class EvidenceExtension:
         label: what the rules of the extension evaluate, shown next to their
             rows in the acceptance table, e.g. `ratio pairs`; the name
             without.
+        scorecard_names: the columns of the extension in the scorecard, which
+            `scorecard_columns` gives and only `regressions` judges.
     """
 
     name: ClassVar[str] = ""
     label: ClassVar[str] = ""
+    scorecard_names: ClassVar[tuple[str, ...]] = ()
 
     def claims(self, pairing: Pairing) -> bool:
         """Check whether the extension assesses a pairing of a ratio quantity.
@@ -442,7 +460,8 @@ class EvidenceExtension:
                 record.
 
         Returns:
-            The values by column; empty for none.
+            The values by column, one for every name of `scorecard_names`;
+            empty for an extension without columns.
         """
         return {}
 
@@ -452,8 +471,9 @@ class EvidenceExtension:
         """Compare the columns of the extension of a context with its baseline.
 
         Args:
-            baseline: the row of the context in the baseline scorecard; a
-                baseline of an older record lacks the columns.
+            baseline: the row of the context in the baseline scorecard as it
+                is, values of `scorecard_columns` or texts of a TSV, see the
+                module; a baseline of an older record lacks the columns.
             current: the row of the context in the current scorecard.
 
         Returns:
@@ -463,13 +483,18 @@ class EvidenceExtension:
         return []
 
     def pool(
-        self, contexts: Mapping[str, Sequence[Mapping[str, Any] | None]]
+        self,
+        contexts: Mapping[str, Sequence[Mapping[str, Any] | None]],
+        options: Mapping[str, Any],
     ) -> pd.DataFrame | None:
         """Pool the sections of the contexts of use of several models.
 
         Args:
             contexts: the sections of the extension of every context of use,
                 by model.
+            options: the options of the pooling as the caller got them, e.g.
+                `{"field": "health"}`; empty for the defaults of the
+                extension.
 
         Returns:
             The pooled table, e.g. the ratio pairs by a value of the metadata;
@@ -486,8 +511,9 @@ def read_sections(
     The sections are the field `extensions` of the record; a record without
     it, of pkpdsim 0.19 or earlier, has the evidence of the extensions as
     fields of its own, which are read as the sections: every extension of
-    `legacy` with at least one of its fields in the record gets the section
-    of these fields with their values, e.g. `{"temporal": {"temporal": ...}}`.
+    `legacy` with at least one of its fields in the record and not `None`
+    gets the section of these fields with their values, e.g.
+    `{"temporal": {"temporal": ...}}`; `{"temporal": None}` is no section.
     A record of pkpdsim 0.17 or 0.18 has none of them.
 
     Args:
@@ -502,7 +528,8 @@ def read_sections(
         return {str(name): section for name, section in dict(data[EXTENSIONS]).items()}
     sections: dict[str, Any] = {}
     for name, fields in legacy.items():
-        present = {f: data[f] for f in fields if f in data}
+        # a field of pkpdsim 0.19 which is `None` is no record of the extension
+        present = {f: data[f] for f in fields if data.get(f) is not None}
         if present:
             sections[name] = present
     return sections
@@ -530,3 +557,83 @@ def read_acceptance(data: Mapping[str, Any]) -> list[dict[str, Any]]:
         if row is not None:
             rows.append({**row, ACCEPTANCE_EXTENSION: name})
     return rows
+
+
+def scorecard_columns(
+    extension: EvidenceExtension, section: Mapping[str, Any] | None
+) -> dict[str, object]:
+    """Get the columns of an extension of a context, checked against its names.
+
+    Args:
+        extension: the extension.
+        section: its section in the record of the context, `None` without.
+
+    Returns:
+        The values by column, in the order of `scorecard_names`.
+
+    Raises:
+        ValueError: if the columns are not the names of the extension.
+    """
+    columns = dict(extension.scorecard_columns(section))
+    if set(columns) != set(extension.scorecard_names):
+        raise ValueError(
+            f"The extension '{extension.name}' gives the scorecard columns "
+            f"{sorted(columns)}, not its names {list(extension.scorecard_names)}."
+        )
+    return {name: columns[name] for name in extension.scorecard_names}
+
+
+def rule_columns(
+    columns: Iterable[str],
+    core: Collection[str],
+    extensions: Sequence[EvidenceExtension],
+) -> list[str]:
+    """Get the columns of a scorecard which the core compares as rules.
+
+    Every column which is neither a column of the core nor of an extension
+    (`EvidenceExtension.scorecard_names`), whose `regressions` alone judges
+    them, is the value of an acceptance rule.
+
+    Args:
+        columns: the columns of the scorecard, in their order.
+        core: the columns of the core, e.g. the model, the context and the
+            verdict.
+        extensions: the extensions of the project.
+
+    Returns:
+        The columns of the rules, in their order.
+    """
+    names = {n for e in extensions for n in e.scorecard_names}
+    return [c for c in columns if c not in core and c not in names]
+
+
+def scorecard_number(value: object) -> float:
+    """Get a value of a scorecard as a number, of the process or read from a TSV.
+
+    Args:
+        value: the value, e.g. `4`, `4.0`, `"4"` or `""`.
+
+    Returns:
+        The number, `NaN` for `None`, an empty text or a text which is no
+        number.
+    """
+    if value is None or isinstance(value, bool):
+        return math.nan if value is None else float(value)
+    if isinstance(value, int | float):
+        return float(value)
+    try:
+        return float(str(value))
+    except ValueError:
+        return math.nan
+
+
+def scorecard_true(value: object) -> bool:
+    """Check whether a value of a scorecard is true, of the process or read from a TSV.
+
+    Args:
+        value: the value, e.g. `True` or `"True"`.
+
+    Returns:
+        Whether it is `True` or the text `True`.
+    """
+    return value is True or str(value) == "True"
