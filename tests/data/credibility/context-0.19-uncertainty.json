@@ -1,0 +1,191 @@
+{
+  "id": "describe",
+  "title": "Describe the decay",
+  "question": "Does the model describe the intravenous decay of A?",
+  "level": "C1",
+  "influence": "low",
+  "consequence": "low",
+  "risk": "low",
+  "rationale": "",
+  "extrapolation": "",
+  "domain_statement": "",
+  "quantities": [
+    {
+      "id": "[A]",
+      "description": "the concentration of A",
+      "ratio": false,
+      "coverage": "covered",
+      "n_points": 10
+    }
+  ],
+  "acceptance": [
+    {
+      "name": "within_2fold",
+      "value": 100.0,
+      "limit": ">= 70",
+      "met": true
+    }
+  ],
+  "verdict": "supported",
+  "factors": [
+    {
+      "id": "software_quality_assurance",
+      "name": "Software quality assurance",
+      "status": "platform",
+      "statement": "pkpdsim and sbmlsim are released packages with tests and continuous integration; the model is released reproducibly from its repository with the versions and the commit of the provenance.",
+      "step": null
+    },
+    {
+      "id": "numerical_code_verification",
+      "name": "Numerical code verification",
+      "status": "platform",
+      "statement": "sbmlsim runs the SBML Test Suite and the PEtab test suite.",
+      "step": null
+    },
+    {
+      "id": "discretization_error",
+      "name": "Discretization error",
+      "status": "not_assessed",
+      "statement": "The convergence of the results in the tolerances of the integrator.",
+      "step": 2
+    },
+    {
+      "id": "numerical_solver_error",
+      "name": "Numerical solver error",
+      "status": "not_assessed",
+      "statement": "The results with a second integration method of the integrator.",
+      "step": 2
+    },
+    {
+      "id": "use_error",
+      "name": "Use error",
+      "status": "not_assessed",
+      "statement": "The validity and the units of the builds and the finite predictions of the evidence.",
+      "step": 2
+    },
+    {
+      "id": "model_form",
+      "name": "Model form",
+      "status": "not_assessed",
+      "statement": "The structure of the model across studies and drugs: the ratios, the cross-validation and the qualification across models.",
+      "step": 3
+    },
+    {
+      "id": "model_inputs",
+      "name": "Model inputs",
+      "status": "assessed",
+      "statement": "The parameter uncertainty of 1 adopted fit (0 with the correlation of the Fisher information) propagated with 256 draws. The 90 % bands of the predictions have a median fold width of up to 1.03 over the quantities and hold 100 % of the 10 evaluable decisive observations. The variance of the quantities is carried most by [A]: DECAY.k (0.89). The acceptance with probability at least 0.9: within_2fold >= 70: P = 1, accepted.",
+      "step": null
+    },
+    {
+      "id": "test_samples",
+      "name": "Test samples",
+      "status": "assessed",
+      "statement": "10 points of 2 mappings of 2 studies of the calibration evidence decide, 10 of them evaluable (minimum 5).",
+      "step": null
+    },
+    {
+      "id": "test_conditions",
+      "name": "Test conditions",
+      "status": "assessed",
+      "statement": "0 claimed values of the metadata, 0 values of the evidence outside the claim.",
+      "step": null
+    },
+    {
+      "id": "equivalency_of_inputs",
+      "name": "Equivalency of input parameters",
+      "status": "not_assessed",
+      "statement": "Whether the inputs of the simulations of the evidence are the ones of the context of use: the individuals and their variability.",
+      "step": 4
+    },
+    {
+      "id": "output_comparison",
+      "name": "Output comparison",
+      "status": "assessed",
+      "statement": "1 of 1 acceptance rule met on the calibration evidence, 0 not evaluable.",
+      "step": null
+    },
+    {
+      "id": "relevance_of_quantities",
+      "name": "Relevance of the quantities of interest",
+      "status": "not_assessed",
+      "statement": "Whether the quantities of the evidence answer the question, e.g. the ratios of a special population. A context with a ratio quantity and its pairing assesses it by the pairs of its arms; else only that every claimed quantity which is no ratio has decisive points in the claimed domain is checked, see the relevance of the validation activities.",
+      "step": 3
+    },
+    {
+      "id": "relevance_of_validation",
+      "name": "Relevance of the validation activities to the COU",
+      "status": "assessed",
+      "statement": "0 of 0 claimed values and 1 of 1 quantity of interest covered.",
+      "step": null
+    }
+  ],
+  "n_decisive": 10,
+  "n_evaluable": 10,
+  "minimum_points": 5,
+  "verification": [],
+  "ratios": [],
+  "ratio_acceptance": null,
+  "temporal": null,
+  "uncertainty": {
+    "n_draws": 256,
+    "seed": 1,
+    "quantiles": [
+      0.05,
+      0.95
+    ],
+    "threshold": 0.9,
+    "level": 0.95,
+    "fits": [
+      {
+        "fit": "DECAY",
+        "fit_id": "DECAY_20261001_120000__abcde",
+        "n_parameters": 1,
+        "correlated": false,
+        "note": "nothing to correlate",
+        "n_failed": 0
+      }
+    ],
+    "n_points": 10,
+    "coverage": 1.0,
+    "quantities": [
+      {
+        "quantity": "[A]",
+        "n_points": 10,
+        "band_fold": 1.0296277834811272,
+        "coverage": 1.0
+      }
+    ],
+    "rules": [
+      {
+        "name": "within_2fold",
+        "limit": ">= 70",
+        "estimate": 1.0,
+        "low": 0.9755340524932403,
+        "high": 1.0,
+        "n": 256,
+        "n_failed": 0,
+        "decision": "accepted",
+        "n_needed": null
+      }
+    ],
+    "sensitivity": [
+      {
+        "target": "[A]",
+        "kind": "quantity",
+        "fit": "DECAY",
+        "parameter": "k",
+        "index": 0.8913955009883426
+      },
+      {
+        "target": "within_2fold",
+        "kind": "rule",
+        "fit": "DECAY",
+        "parameter": "k",
+        "index": null
+      }
+    ]
+  },
+  "inputs": null,
+  "variability": null
+}

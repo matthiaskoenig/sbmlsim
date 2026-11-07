@@ -71,7 +71,8 @@ def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
     code = (
         "import sys, sbmlsim; "
         "print(sorted(m for m in ('sbmlsim.run', 'sbmlsim.project', 'sbmlsim.simrun',"
-        " 'simrun', 'sbmlsim.release', 'sbmlsim.project_checks') if m in sys.modules))"
+        " 'simrun', 'sbmlsim.release', 'sbmlsim.project_checks',"
+        " 'sbmlsim.credibility') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -165,6 +166,25 @@ def test_a_project_with_sensitivity_analyses_imports_no_runner() -> None:
         "import sys, sbmlsim, sbmlsim.project, tests.project_toy; "
         "print(sorted(m for m in ('sbmlsim.sensitivity.runner',"
         " 'sbmlsim.sensitivity.parameters', 'roadrunner') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+        cwd=Path(__file__).parents[1],
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
+def test_a_project_imports_no_credibility() -> None:
+    """The credibility settings of a project import the credibility when they are used."""
+    code = (
+        "import sys, sbmlsim.project, tests.credibility_toy; "
+        "print(sorted(m for m in ('sbmlsim.credibility', 'sbmlsim.fit',"
+        " 'sbmlsim.simulator') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],

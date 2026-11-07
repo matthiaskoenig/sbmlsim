@@ -152,6 +152,24 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.parameters](sensitivity.parameters.md) | the table of the parameters of an analysis, as sbmlsim 0.8 wrote it |
 | [sensitivity.runner](sensitivity.runner.md) | the sensitivity analyses of a project over the groups of its simulations, with the files of sbmlsim 0.8.5 |
 
+## sbmlsim.credibility
+
+The credibility of a model for its contexts of use, see [Credibility](../run.md#credibility).
+
+| module | description |
+| --- | --- |
+| [credibility.declaration](credibility.declaration.md) | `Credibility`, `ContextOfUse`, `Domain`, `Evidence`, `QuantityOfInterest` and the acceptance rules, the declaration of the contexts of use of a model, and `metadata_fields`, the fields of the metadata a domain claims |
+| [credibility.risk](credibility.risk.md) | the model risk of the influence and the consequence, the default acceptance and the default minimum of points |
+| [credibility.factors](credibility.factors.md) | `FACTORS`, the credibility factors of ASME V&V 40 and their status |
+| [credibility.extensions](credibility.extensions.md) | `EvidenceExtension`, the evidence a project adds to the credibility, and the sections of the extensions in the records |
+| [credibility.selection](credibility.selection.md) | `select`, the data points of the evidence of the contexts of use |
+| [credibility.records](credibility.records.md) | `evaluate_fits` and `mapping_table`, the data points of the adopted fits with the recorded kinds of their mappings |
+| [credibility.lock](credibility.lock.md) | the lock of the evidence, written into an out and compared with the one of the project |
+| [credibility.check](credibility.check.md) | `check_declaration`, the static check of a declaration against the adopted fits |
+| [credibility.uncertainty](credibility.uncertainty.md) | `propagate_fits`, the parameter uncertainty of the adopted fits propagated to the decisive predictions |
+| [credibility.variability](credibility.variability.md) | `predictive_checks`, the visual predictive check of the decisive points with the variability of the subjects |
+| [credibility.cross_validation](credibility.cross_validation.md) | `cross_validate`, the leave-one-study-out cross-validation of an adopted fit |
+
 ## sbmlsim.sciml
 
 The neural networks of hybrid problems, see [PEtab SciML](../petab_sciml.md). The package needs the extra `sciml`.

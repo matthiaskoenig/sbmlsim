@@ -1,0 +1,180 @@
+{
+  "id": "renal",
+  "title": "Decay in renal impairment",
+  "question": "Does the model predict the decay in renal impairment?",
+  "level": "C3",
+  "influence": "medium",
+  "consequence": "high",
+  "risk": "high",
+  "rationale": "",
+  "extrapolation": "",
+  "domain_statement": "",
+  "quantities": [
+    {
+      "id": "[A]",
+      "description": "the concentration of A",
+      "ratio": false,
+      "coverage": "covered",
+      "n_points": 10
+    },
+    {
+      "id": "A_ratio",
+      "description": "the concentration in renal impairment over the healthy one",
+      "ratio": true,
+      "coverage": "covered",
+      "n_points": 1
+    }
+  ],
+  "acceptance": [
+    {
+      "name": "within_2fold",
+      "value": 100.0,
+      "limit": ">= 90",
+      "met": true
+    },
+    {
+      "name": "within_1.5fold",
+      "value": 100.0,
+      "limit": ">= 70",
+      "met": true
+    },
+    {
+      "name": "GMFE",
+      "value": 1.0488088481701516,
+      "limit": "<= 1.3",
+      "met": true
+    }
+  ],
+  "verdict": "supported",
+  "factors": [
+    {
+      "id": "software_quality_assurance",
+      "name": "Software quality assurance",
+      "status": "platform",
+      "statement": "pkpdsim and sbmlsim are released packages with tests and continuous integration; the model is released reproducibly from its repository with the versions and the commit of the provenance.",
+      "step": null
+    },
+    {
+      "id": "numerical_code_verification",
+      "name": "Numerical code verification",
+      "status": "platform",
+      "statement": "sbmlsim runs the SBML Test Suite and the PEtab test suite.",
+      "step": null
+    },
+    {
+      "id": "discretization_error",
+      "name": "Discretization error",
+      "status": "not_assessed",
+      "statement": "The convergence of the results in the tolerances of the integrator.",
+      "step": 2
+    },
+    {
+      "id": "numerical_solver_error",
+      "name": "Numerical solver error",
+      "status": "not_assessed",
+      "statement": "The results with a second integration method of the integrator.",
+      "step": 2
+    },
+    {
+      "id": "use_error",
+      "name": "Use error",
+      "status": "not_assessed",
+      "statement": "The validity and the units of the builds and the finite predictions of the evidence.",
+      "step": 2
+    },
+    {
+      "id": "model_form",
+      "name": "Model form",
+      "status": "not_assessed",
+      "statement": "The structure of the model across studies and drugs: the ratios, the cross-validation and the qualification across models.",
+      "step": 3
+    },
+    {
+      "id": "model_inputs",
+      "name": "Model inputs",
+      "status": "not_assessed",
+      "statement": "The uncertainty and the sensitivity of the parameters.",
+      "step": 4
+    },
+    {
+      "id": "test_samples",
+      "name": "Test samples",
+      "status": "assessed",
+      "statement": "10 points of 2 mappings of 1 study of the validation evidence decide, 10 of them evaluable (minimum 5).",
+      "step": null
+    },
+    {
+      "id": "test_conditions",
+      "name": "Test conditions",
+      "status": "assessed",
+      "statement": "2 claimed values of the metadata, 0 values of the evidence outside the claim.",
+      "step": null
+    },
+    {
+      "id": "equivalency_of_inputs",
+      "name": "Equivalency of input parameters",
+      "status": "not_assessed",
+      "statement": "Whether the inputs of the simulations of the evidence are the ones of the context of use: the individuals and their variability.",
+      "step": 4
+    },
+    {
+      "id": "output_comparison",
+      "name": "Output comparison",
+      "status": "assessed",
+      "statement": "4 of 4 acceptance rules met on the validation evidence, 0 not evaluable.",
+      "step": null
+    },
+    {
+      "id": "relevance_of_quantities",
+      "name": "Relevance of the quantities of interest",
+      "status": "assessed",
+      "statement": "1 of 1 ratio pair within the limits of Guest et al. (>= 80 %), 1 of 1 ratio quantity covered.",
+      "step": null
+    },
+    {
+      "id": "relevance_of_validation",
+      "name": "Relevance of the validation activities to the COU",
+      "status": "assessed",
+      "statement": "2 of 2 claimed values and 1 of 1 quantity of interest covered.",
+      "step": null
+    }
+  ],
+  "n_decisive": 10,
+  "n_evaluable": 10,
+  "minimum_points": 5,
+  "verification": [],
+  "ratios": [
+    {
+      "quantity": "A_ratio",
+      "fit": "DECAY",
+      "experiment": "CredA",
+      "numerator": "fm_renal",
+      "denominator": "fm_dose",
+      "observed": 1.0,
+      "predicted": 1.1,
+      "limit": 1.25,
+      "within": true,
+      "metadata": {
+        "tissue": "PLASMA",
+        "route": "IV",
+        "application_form": "NR",
+        "dosing": "SINGLE",
+        "fasting": "NR",
+        "health": "RENAL_IMPAIRMENT",
+        "coadministration": "NONE",
+        "genotype": "NR",
+        "phenotype": "NR"
+      }
+    }
+  ],
+  "ratio_acceptance": {
+    "name": "Guest",
+    "value": 100.0,
+    "limit": ">= 80",
+    "met": true
+  },
+  "temporal": null,
+  "uncertainty": null,
+  "inputs": null,
+  "variability": null
+}

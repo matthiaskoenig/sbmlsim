@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "evidence": {
+    "/scaled data": [
+      "DECAY/CredA/fm_limit"
+    ],
+    "describe/intravenous data": [
+      "DECAY/CredA/fm_train",
+      "DECAY/CredB/fm_dose"
+    ],
+    "dose/doses": [
+      "DECAY/CredA/fm_dose"
+    ],
+    "dose/other healthy data": [
+      "DECAY/CredA/fm_subject"
+    ],
+    "renal/renal impairment": [
+      "DECAY/CredA/fm_renal"
+    ]
+  }
+}
