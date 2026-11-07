@@ -30,6 +30,7 @@ from matplotlib.figure import Figure
 
 from sbmlsim.plot.axes import label_axes
 from sbmlsim.result.scan import STATISTIC, TIME, ScanResult
+from sbmlsim.sensitivity.plots import draw_boxes
 from sbmlsim.units import setup_matplotlib, unit_label
 
 
@@ -225,6 +226,6 @@ def plot_distribution(
         axes.set_ylabel("count")
         _legend(axes, label)
     else:
-        axes.boxplot(samples, tick_labels=names)
+        draw_boxes(axes, samples, labels=names)
         axes.set_ylabel(text)
     return figure

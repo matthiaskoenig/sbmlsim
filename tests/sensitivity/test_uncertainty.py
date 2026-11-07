@@ -48,6 +48,7 @@ def test_plot_bands_draws_a_band_per_label(result: ScanResult) -> None:
     assert ax.get_xlabel().startswith("time")
 
 
+@pytest.mark.usefixtures("no_pyplot")
 def test_plot_distribution_per_label(result: ScanResult) -> None:
     figure = plot_distribution(result, "k", dim="random")
     assert isinstance(figure, Figure)
@@ -58,6 +59,12 @@ def test_plot_distribution_per_label(result: ScanResult) -> None:
     assert len(widths) == len(patches) and np.allclose(widths, widths[0])
     box = plot_distribution(result, "k", dim="random", kind="box")
     assert isinstance(box, Figure)
+    # a box per label at 1, ..., n, drawn without resolving the backend
+    ax = box.axes[0]
+    n = len(ax.get_xticks())
+    assert n >= 1
+    np.testing.assert_array_equal(ax.get_xticks(), np.arange(1, n + 1))
+    assert all(t.get_text() for t in ax.get_xticklabels())
     with pytest.raises(ValueError, match="kind"):
         plot_distribution(result, "k", dim="random", kind="violin")
     with pytest.raises(ValueError, match="time"):

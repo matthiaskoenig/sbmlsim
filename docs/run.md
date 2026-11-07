@@ -160,6 +160,7 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | `scan`, `sensitivity` | `scan_hash` | set by the plan | the hash of the scan the plan built; none for a sensitivity analysis over groups |
 | `sensitivity` | `analyses` | the default analyses of the runner | the analyses of a sensitivity analysis over groups (`Project.sensitivities`), e.g. `[local, sampling]`, which the plan sets for a single runner |
 | `sensitivity` | `subfolders` | every subfolder | the subfolders of a sensitivity analysis of several runners, which the plan sets |
+| `sensitivity` | `run_plan` | set by the plan | what every unit of a sensitivity analysis over groups computes: the hash of the table of the parameters and every analysis with its groups and resolved settings, e.g. the number of samples of `SBMLSIM_SENSITIVITY_N`; a unit or a merge which resolves to another plan fails with a `PlanMismatch` |
 | `uncertainty` | `seed` | the seed of the analysis, else drawn by the plan | the seed of the draws |
 
 The scan, its observables and its design are defined in the project, so the spec of a scan, a sensitivity or an uncertainty analysis only names it, e.g. the Sobol indices of the scan `sobol` and the propagation `cl` with a seed of its own:
@@ -192,7 +193,7 @@ analyses: [local, sampling]
 python -m sbmlsim.run sensitivity decay.yaml --out results/sensitivity
 ```
 
-Every analysis is a unit, which writes its folder of the output, and the merge writes the table of the parameters; a resumed run keeps the analyses whose folder exists.
+Every analysis is a unit, which writes its folder of the output, and the merge writes the table of the parameters; a resumed run keeps the analyses whose folder was written by the same plan. The plan fixes the numbers of samples: a unit run with another `SBMLSIM_SENSITIVITY_N` than its plan fails.
 
 ## The output
 
@@ -217,7 +218,7 @@ The results of the kinds:
 | `adopt` | `fits/<fit id>` (the record of the fit) and `adopted.json` |
 | `petab` | `petab/problem.yaml` and its tables |
 | `scan` | `blocks/points-<start>-<stop>.nc` (the points of the units), `result.nc` (the `ScanResult`) |
-| `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`); of a sensitivity analysis over groups the files of its runner (see [Sensitivity analysis](sensitivity.md#sensitivity-analyses-of-a-project)): `parameters.tsv`, `parameters.tex` and a folder per analysis, `<analysis>/` or `<subfolder>/<analysis>/`, each written atomically by its unit |
+| `sensitivity` | as `scan`, and `sensitivity.nc` (the `SensitivityResult`); of a sensitivity analysis over groups the files of its runner (see [Sensitivity analysis](sensitivity.md#sensitivity-analyses-of-a-project)): `parameters.tsv`, `parameters.tex` and a folder per analysis, `<analysis>/` or `<subfolder>/<analysis>/`, each written atomically by its unit with the hash of its plan in `.sensitivity-plan`, so a folder of another plan, e.g. of a smoke run, is computed again |
 | `uncertainty` | `checkpoint/<scenario>/draws-<start>-<stop>.nc` (the draws of the units), `uncertainty/` (the `UncertaintyResult`) |
 | `factory` | the files of the factory with the layout of the package, e.g. `models/toy.xml`; the files of the package are never written. The summary has the number of the compared outputs (`outputs`): the `factory_outputs` of the project (`declared` true), else, with a warning, the variants and every file the factory wrote which the package has (`declared` false); a rebuild with nothing to compare fails. `changed` names the compared outputs which differ from the ones of the package, an SBML file compared without the dates of its model history and an antimony file (`.ant`) without its `model created`/`model modified` lines |
 | `action` | what the action writes; the summary is the mapping the action returns, followed by its `action` |

@@ -45,7 +45,7 @@ from sbmlsim.sensitivity.runner import (
     run_subfolders,
     sample_size,
 )
-from sbmlsim.simulation import PK, Formula, Scan, Simulation, sampling
+from sbmlsim.simulation import PK, Custom, Formula, Scan, Simulation, sampling
 from tests.project_toy import PROJECT
 from tests.project_toy.sensitivity import OUTPUTS, toy_parameters
 
@@ -442,11 +442,15 @@ def test_the_seed_of_the_designs(tmp_path: Path) -> None:
     assert not np.allclose(first["k"], samples(4321, "other")["k"])
 
 
-def test_the_analyses_go_into_a_subfolder_the_table_stays(tmp_path: Path) -> None:
+def test_the_analyses_go_into_a_subfolder_the_table_stays(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """The analyses of one of several simulations, the one table of the parameters."""
     analyses = {"local": LocalAnalysis(groups=[CONTROL])}
     toy = runner(tmp_path, analyses=analyses)
     path = toy.run(["local"], subfolder="single", workers=1)
+    # the report links the folder of the analyses
+    assert (path / "single").as_uri() in capsys.readouterr().out.replace("\n", "")
     toy.run(["local"], subfolder="multi", workers=1)
     assert path == tmp_path / "sensitivity"
     assert sorted(p.name for p in path.iterdir()) == [
@@ -1132,3 +1136,45 @@ def test_the_table_reads_the_parameters_of_the_default_variant() -> None:
     set_relative_bounds(parameters, 0.15)
     assert {p.uid: p.value for p in parameters}["k"] == pytest.approx(0.1)
     assert {p.uid: p.value for p in toy_parameters()}["k"] == pytest.approx(0.2)
+
+
+def last_unless_fast(time: np.ndarray, values: dict[str, np.ndarray]) -> float:
+    """Get the last `[A]`, `NaN` for a decay faster than 0.2/min."""
+    if float(values["k"][0]) > 0.2:
+        return math.nan
+    return float(values["[A]"][-1])
+
+
+def test_the_statistics_skip_nan_values(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A `NaN` value of an output is left out of its statistics, which a warning counts."""
+    observables = [
+        *OBSERVABLES,
+        Custom("A_end", last_unless_fast, "mM", symbols=["k", "[A]"]),
+    ]
+    outputs = [*OUTPUTS, SensitivityOutput("A_end", "A at the end")]
+    analyses = {"sampling": SamplingAnalysis(groups=[CONTROL], n=8)}
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.sensitivity.runner"):
+        path = runner(
+            tmp_path,
+            outputs=outputs,
+            observables=observables,
+            analyses=analyses,
+            default=["sampling"],
+        ).run(["sampling"], workers=1)
+    samples = pd.read_csv(path / "sampling" / "control" / "samples.tsv", sep="\t")
+    values = samples["A_end"].to_numpy()
+    nan = int(np.isnan(values).sum())
+    assert 0 < nan < len(values)
+    assert f"{nan} of the 8 values of 'A_end' in the group 'control' are NaN" in (
+        caplog.text
+    )
+    df = pd.read_csv(path / "sampling" / "sampling_N8.tsv", sep="\t").set_index("uid")
+    finite = values[np.isfinite(values)]
+    assert df.loc["A_end", "N"] == 8
+    assert df.loc["A_end", "mean"] == pytest.approx(np.mean(finite))
+    assert df.loc["A_end", "std"] == pytest.approx(np.std(finite, ddof=1))
+    assert df.loc["A_end", "max"] == pytest.approx(np.max(finite))
+    # an output without NaN is not reported
+    assert "'A_auc'" not in caplog.text

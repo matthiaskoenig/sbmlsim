@@ -9,6 +9,9 @@ wants to display it does so itself.
 - `plot_indices`: the bars of `S1` and `ST` of an observable with their
   intervals;
 - `plot_morris`: `mu_star` against `sigma` of an observable.
+
+`draw_boxes` draws the boxes of `Axes.boxplot` without it: `boxplot` reads
+every parameter of matplotlib and so resolves the backend of pyplot (#317).
 """
 
 from __future__ import annotations
@@ -18,15 +21,17 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
+import matplotlib as mpl
 import numpy as np
 import pandas as pd
 import xarray as xr
-from matplotlib import colormaps
+from matplotlib import cbook, colormaps
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.colors import Colormap, ListedColormap, Normalize
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
+from matplotlib.patches import PathPatch, Rectangle
+from matplotlib.path import Path as MplPath
 from matplotlib.text import Annotation, Text
 from matplotlib.ticker import ScalarFormatter
 from scipy.cluster.hierarchy import leaves_list, linkage
@@ -87,6 +92,139 @@ ST_COLOR = "#eb6834"
 
 INTERVAL_COLOR = "black"
 """The color of the intervals of the bars and of their edges."""
+
+
+def _rc_props(group: str, keys: Sequence[str]) -> dict[str, Any]:
+    """Get the properties of a part of a box plot from the parameters of matplotlib.
+
+    Read key by key: iterating the parameters reads the backend and resolves
+    the backend of pyplot (#317).
+    """
+    params: Any = mpl.rcParams
+    return {key: params[f"boxplot.{group}props.{key}"] for key in keys}
+
+
+def draw_boxes(
+    ax: Axes,
+    data: Sequence[np.ndarray],
+    positions: Sequence[float] | None = None,
+    labels: Sequence[str] | None = None,
+    *,
+    facecolors: Sequence[str] | None = None,
+    showfliers: bool | None = None,
+    median_color: str | None = None,
+) -> None:
+    """Draw a box per sample as `Axes.boxplot` draws it, without resolving the backend.
+
+    `Axes.boxplot` reads every parameter of matplotlib, the backend among
+    them, which imports pyplot and selects its backend, an interactive one
+    with a display (#317). These are the boxes of `boxplot` with the defaults
+    of the parameters `boxplot.*` (the box from the first to the third
+    quartile, the median, the whiskers to the last values within
+    `boxplot.whiskers` interquartile ranges, the caps and the fliers), the
+    same widths, ticks, data limits (`positions` +- 0.5) and sticky edges of
+    the median lines, so the axes have the limits `boxplot` gives them.
+
+    Args:
+        ax: the axes.
+        data: the values of every box; an empty sample has a box of `NaN`.
+        positions: the positions of the boxes, `1, ..., n` by default as in
+            `boxplot`.
+        labels: the labels of the ticks, the positions by default.
+        facecolors: fill every box with a color (`patch_artist=True` of
+            `boxplot` and `set_facecolor`), boxes of lines without.
+        showfliers: draw the values outside of the whiskers,
+            `boxplot.showfliers` by default.
+        median_color: the color of the medians, `boxplot.medianprops.color`
+            by default.
+    """
+    n = len(data)
+    pos = np.asarray(
+        list(range(1, n + 1)) if positions is None else positions, dtype=float
+    )
+    if showfliers is None:
+        showfliers = bool(mpl.rcParams["boxplot.showfliers"])
+    if facecolors is not None and len(facecolors) != n:
+        raise ValueError(f"{len(facecolors)} face colors for {n} boxes.")
+    line_keys = ("color", "linestyle", "linewidth")
+    zorder = 2.0
+    box = _rc_props("box", line_keys)
+    whisker = _rc_props("whisker", line_keys)
+    cap = _rc_props("cap", line_keys)
+    median = _rc_props("median", line_keys)
+    if median_color is not None:
+        median["color"] = median_color
+    flier = _rc_props(
+        "flier",
+        (
+            "color",
+            "marker",
+            "markerfacecolor",
+            "markeredgecolor",
+            "markeredgewidth",
+            "markersize",
+            "linestyle",
+            "linewidth",
+        ),
+    )
+    width = float(np.clip(0.15 * np.ptp(pos), 0.15, 0.5)) if n else 0.5
+    stats = cbook.boxplot_stats(
+        [np.asarray(d, dtype=float) for d in data],
+        whis=mpl.rcParams["boxplot.whiskers"],
+    )
+    medians = []
+    for k, (x, st) in enumerate(zip(pos, stats, strict=True)):
+        left, right = x - width / 2, x + width / 2
+        box_x = [left, right, right, left, left]
+        box_y = [st["q1"], st["q1"], st["q3"], st["q3"], st["q1"]]
+        if facecolors is not None:
+            patch = PathPatch(
+                MplPath(np.column_stack([box_x, box_y]), closed=True),
+                facecolor=facecolors[k],
+                edgecolor=box["color"],
+                linestyle=box["linestyle"],
+                linewidth=box["linewidth"],
+                zorder=zorder,
+            )
+            ax.add_artist(patch)
+        else:
+            ax.plot(box_x, box_y, zorder=zorder, label="_nolegend_", **box)
+        for ends in ((st["q1"], st["whislo"]), (st["q3"], st["whishi"])):
+            ax.plot([x, x], list(ends), zorder=zorder, label="_nolegend_", **whisker)
+        for y in (st["whislo"], st["whishi"]):
+            ax.plot(
+                [x - width / 4, x + width / 4],
+                [y, y],
+                zorder=zorder,
+                label="_nolegend_",
+                **cap,
+            )
+        (line,) = ax.plot(
+            [left, right],
+            [st["med"], st["med"]],
+            zorder=zorder + 0.1,
+            label="_nolegend_",
+            **median,
+        )
+        medians.append(line)
+        if showfliers:
+            ax.plot(
+                np.full(len(st["fliers"]), x),
+                st["fliers"],
+                zorder=zorder,
+                label="_nolegend_",
+                **flier,
+            )
+    if not n:
+        return
+    # the limits of `Axes.bxp`: the positions +- 0.5, the sticky edges on the
+    # medians keep the margins from widening them
+    low, high = ax.dataLim.intervalx
+    ax.dataLim.intervalx = (min(low, pos.min() - 0.5), max(high, pos.max() + 0.5))
+    for line, x in zip(medians, pos, strict=True):
+        line.sticky_edges.x.extend([x - 0.5, x + 0.5])
+    tick_labels = [f"{x:g}" for x in pos] if labels is None else list(labels)
+    ax.set_xticks(pos, tick_labels)
 
 
 def _overlapping(texts: Sequence[Text], pad: float = 2.0) -> bool:

@@ -110,6 +110,9 @@ CHECKPOINT_DIR = "checkpoint"
 ADAPTIVE_FILE = "adaptive.json"
 #: the directory of the result of a propagation
 UNCERTAINTY_DIR = "uncertainty"
+#: the file of the hash of the plan of a unit in the folder of an analysis of
+#: a sensitivity analysis over groups, which a unit of another plan replaces
+PLAN_MARKER = ".sensitivity-plan"
 
 
 # ----------------------------------------------------------------------------
@@ -142,10 +145,14 @@ class SensitivitySpec(ScanSpec):
             sets them for a single runner.
         subfolders: the subfolders of the runners by subfolder which run,
             every one without; the plan sets them.
+        run_plan: what every unit of a sensitivity analysis over groups
+            computes, set by the plan (`PreparedRun.identity`); a unit or a
+            merge which resolves to another raises `PlanMismatch`.
     """
 
     analyses: list[str] | None = None
     subfolders: list[str] | None = None
+    run_plan: dict[str, Any] | None = None
 
 
 class UncertaintySpec(SplitSpec):
@@ -721,9 +728,18 @@ def _prepared(spec: SensitivitySpec, target: Any) -> PreparedRun:
 
 
 def _plan_runner(spec: SensitivitySpec, target: Any) -> SensitivitySpec:
-    """Plan a run of the runners of a project sensitivity: what runs and its units."""
+    """Plan a run of the runners of a project sensitivity: what runs and its units.
+
+    The plan records what every unit computes, `run_plan`
+    (`PreparedRun.identity`: the hash of the table of the parameters and the
+    analyses with their groups and resolved settings, the number of samples of
+    a smoke run among them), which every unit and the merge compare.
+    """
     prepared = _prepared(spec, target)
-    update: dict[str, Any] = {"units": len(prepared.units)}
+    update: dict[str, Any] = {
+        "units": len(prepared.units),
+        "run_plan": prepared.identity(),
+    }
     if None in prepared.runners:
         update["analyses"] = list(prepared.plans[None][0])
     else:
@@ -738,7 +754,7 @@ def _planned_runner(spec: SensitivitySpec, target: Any) -> PreparedRun:
         ConfigurationError: for a spec which is not planned.
         PlanMismatch: for other units than the ones of the plan.
     """
-    if spec.units is None:
+    if spec.units is None or spec.run_plan is None:
         raise ConfigurationError(
             "The spec of the sensitivity analysis is not planned: plan it first."
         )
@@ -748,7 +764,43 @@ def _planned_runner(spec: SensitivitySpec, target: Any) -> PreparedRun:
             f"The sensitivity analysis has {spec.units} units, its analyses are "
             f"{len(prepared.units)}; plan the spec again."
         )
+    identity = prepared.identity()
+    if identity != spec.run_plan:
+        from sbmlsim.sensitivity.runner import SAMPLE_SIZE
+
+        planned = spec.run_plan.get("units", [])
+        differ = [
+            unit["folder"]
+            for unit, other in zip(identity["units"], planned, strict=False)
+            if unit != other
+        ]
+        table = (
+            ["the table of the parameters"]
+            if identity["table"] != spec.run_plan.get("table")
+            else []
+        )
+        raise PlanMismatch(
+            f"The sensitivity analysis is not the one of the plan, {table + differ} "
+            f"differ, e.g. a number of samples of {SAMPLE_SIZE}; plan the spec "
+            "again."
+        )
     return prepared
+
+
+def _unit_hash(spec: SensitivitySpec, unit: dict[str, Any]) -> str:
+    """Get the hash of the plan of a unit: the table and what the unit computes."""
+    run_plan = spec.run_plan or {}
+    return _digest({"table": run_plan.get("table"), "unit": unit})
+
+
+def _done(spec: SensitivitySpec, prepared: PreparedRun, k: int, out: Path) -> bool:
+    """Check whether the folder of a unit was written by a unit of this plan."""
+    unit = prepared.units[k]
+    marker = out / unit.folder / PLAN_MARKER
+    if not marker.is_file():
+        return False
+    planned = (spec.run_plan or {})["units"][k]
+    return marker.read_text(encoding="utf-8").strip() == _unit_hash(spec, planned)
 
 
 def _run_analysis(
@@ -758,11 +810,20 @@ def _run_analysis(
     ctx: RunContext,
     workers: int,
 ) -> None:
-    """Run an analysis of a project sensitivity into its folder of the out, atomically."""
+    """Run an analysis of a project sensitivity into its folder of the out, atomically.
+
+    The folder gets the hash of the plan of the unit, `PLAN_MARKER`, so a
+    folder of another plan, e.g. of a smoke run, is computed again.
+    """
     folder = ctx.out / unit.folder
     folder.parent.mkdir(parents=True, exist_ok=True)
+    k = prepared.units.index(unit)
     with atomic_directory(folder) as temporary:
         prepared.run_unit(unit, temporary, prepared.simulator(workers))
+        (temporary / PLAN_MARKER).write_text(
+            _unit_hash(spec, (spec.run_plan or {})["units"][k]) + "\n",
+            encoding="utf-8",
+        )
     events.emit(
         "sensitivity.analysis",
         analysis=spec.analysis,
@@ -776,12 +837,11 @@ def _merge_runner(
     """Write the table of the parameters once every analysis has its folder.
 
     Raises:
-        MissingUnits: naming the units whose analysis has no folder.
+        MissingUnits: naming the units whose analysis has no folder of this
+            plan.
     """
     units = prepared.units
-    missing = [
-        k for k, unit in enumerate(units) if not (ctx.out / unit.folder).is_dir()
-    ]
+    missing = [k for k in range(len(units)) if not _done(spec, prepared, k, ctx.out)]
     if missing:
         raise MissingUnits(missing, len(units))
     table = prepared.write_table(ctx.out)
@@ -809,9 +869,8 @@ def _compute_sensitivity_unit(
         _compute_scan_unit(spec, index, ctx)
         return
     prepared = _planned_runner(spec, target)
-    unit = prepared.units[index]
-    if not (ctx.out / unit.folder).is_dir():
-        _run_analysis(spec, prepared, unit, ctx, workers=1)
+    if not _done(spec, prepared, index, ctx.out):
+        _run_analysis(spec, prepared, prepared.units[index], ctx, workers=1)
 
 
 def _merge_sensitivity(spec: SensitivitySpec, ctx: RunContext) -> dict[str, Any]:
@@ -823,14 +882,14 @@ def _merge_sensitivity(spec: SensitivitySpec, ctx: RunContext) -> dict[str, Any]
 
 
 def _run_sensitivity(spec: SensitivitySpec, ctx: RunContext) -> dict[str, Any]:
-    """Run a sensitivity analysis whole, with `resume` the analyses without a folder."""
+    """Run a sensitivity analysis whole, with `resume` the analyses without a folder of the plan."""
     target = _project_sensitivity(spec)
     if target is None:
         return _run_scan(spec, ctx)
     prepared = _planned_runner(spec, target)
     workers = _workers(ctx)
-    for unit in prepared.units:
-        if not (ctx.resume and (ctx.out / unit.folder).is_dir()):
+    for k, unit in enumerate(prepared.units):
+        if not (ctx.resume and _done(spec, prepared, k, ctx.out)):
             _run_analysis(spec, prepared, unit, ctx, workers)
     return _merge_runner(spec, prepared, ctx)
 

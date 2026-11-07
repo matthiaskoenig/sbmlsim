@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import hashlib
 import logging
 import os
 import warnings
@@ -61,10 +62,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, override
 
 import numpy as np
 import pandas as pd
-from matplotlib import cbook
-from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-from matplotlib.patches import Rectangle
 
 from sbmlsim import display
 from sbmlsim.console import console
@@ -460,47 +458,6 @@ def _figshape(n: int) -> tuple[int, int]:
     return int(nrows), int(ncols)
 
 
-def _boxes(
-    ax: Axes, data: Sequence[np.ndarray], colors: Sequence[str], labels: Sequence[str]
-) -> None:
-    """Draw a box per group at the positions `0, 1, ...`, filled with its color.
-
-    The boxes of `Axes.boxplot(patch_artist=True, showfliers=False)` with
-    black lines: the box from the first to the third quartile, the median and
-    the whiskers to the last values within 1.5 interquartile ranges, drawn
-    without `boxplot`, which reads every parameter of matplotlib and so
-    resolves the backend of pyplot (#317). A group without values has no box.
-    """
-    width = float(np.clip(0.15 * max(len(data) - 1, 1), 0.15, 0.5))
-    line: dict[str, Any] = {"color": "black", "linewidth": 1.0, "zorder": 2.0}
-    median: dict[str, Any] = {**line, "zorder": 2.1}
-    for k, (values, color) in enumerate(zip(data, colors, strict=True)):
-        if values.size == 0:
-            continue
-        (stats,) = cbook.boxplot_stats(values)
-        left, right = k - width / 2, k + width / 2
-        ax.add_patch(
-            Rectangle(
-                (left, stats["q1"]),
-                width,
-                stats["q3"] - stats["q1"],
-                facecolor=color,
-                edgecolor="black",
-                linewidth=1.0,
-                zorder=2.0,
-            )
-        )
-        ax.plot([left, right], [stats["med"]] * 2, **median)
-        for low, high in (
-            (stats["whislo"], stats["q1"]),
-            (stats["q3"], stats["whishi"]),
-        ):
-            ax.plot([k, k], [low, high], **line)
-        for y in (stats["whislo"], stats["whishi"]):
-            ax.plot([k - width / 4, k + width / 4], [y, y], **line)
-    ax.set_xticks(range(len(labels)), labels)
-
-
 def _plot_groups(
     panels: Sequence[tuple[str, Sequence[np.ndarray]]],
     groups: Sequence[SensitivityGroup],
@@ -533,7 +490,15 @@ def _plot_groups(
             continue
         label, values = panels[k]
         data = [v[np.isfinite(v)] for v in values]
-        _boxes(ax, data, colors, [g.uid for g in groups])
+        plots.draw_boxes(
+            ax,
+            data,
+            range(len(groups)),
+            [g.uid for g in groups],
+            facecolors=colors,
+            showfliers=False,
+            median_color="black",
+        )
         for kg, (d, color) in enumerate(zip(data, colors, strict=True)):
             if np.unique(d).size > 1:
                 violin = ax.violinplot(
@@ -611,6 +576,23 @@ class Analysis(ABC):
             The parameters, see `free_parameters`.
         """
         return free_parameters(parameters, [g.simulation for g in self.groups])
+
+    def _settings(self) -> dict[str, Any]:
+        """Get the settings of a run of the analysis, resolved: none by default."""
+        return {}
+
+    def _identity(self, project: Project) -> dict[str, Any]:
+        """Get what a run of the analysis computes: its kind, groups and settings.
+
+        JSON types; the groups with the names of their variants and the
+        settings as the run resolves them, e.g. the number of samples of a
+        smoke run, see `PreparedRun.identity`.
+        """
+        return {
+            "analysis": type(self).__name__,
+            "groups": [[g.uid, _variant(project, g)] for g in self.groups],
+            **self._settings(),
+        }
 
     def _check(
         self, parameters: Sequence[SensitivityParameter]
@@ -738,6 +720,11 @@ class LocalAnalysis(Analysis):
                 path=path / f"{prefix}_{kg:>02}_{group.uid}.png",
             )
 
+    @override
+    def _settings(self) -> dict[str, Any]:
+        """Get the change and its steps."""
+        return {"delta": self.delta, "n_var": self.n_var}
+
     def _mean(
         self, results: Sequence[SensitivityResult], outputs: Sequence[SensitivityOutput]
     ) -> SensitivityResult:
@@ -839,6 +826,11 @@ class _SampledAnalysis(Analysis):
                 f"int, not {n!r}."
             )
 
+    @override
+    def _settings(self) -> dict[str, Any]:
+        """Get the number of samples of a run, see `_samples`."""
+        return {"n": self._samples()}
+
     def _samples(self) -> int:
         """Get the number of samples of a run, `n` or the one of a smoke run.
 
@@ -878,22 +870,36 @@ _QUANTILES: tuple[float, ...] = (0.5, 0.05, 0.95, 0.025, 0.975)
 
 
 def _statistics(
-    result: ScanResult, observables: Sequence[str]
+    result: ScanResult, observables: Sequence[str], group: str = ""
 ) -> dict[str, dict[str, float]]:
     """Get the statistics of sbmlsim 0.8.5 of the outputs of a sampling.
 
     `ScanResult.summary` over every point: `mean`, the sample standard
     deviation `std`, `cv = std / mean`, `min`, `max`, the `median`, the
     quantiles `q005` and `q095` and the uncertainty
-    `U = (P97.5 - P2.5) / P50`; a failed point (`NaN`) is skipped.
+    `U = (P97.5 - P2.5) / P50`; a value which is `NaN`, e.g. of a failed
+    point, is skipped, which a warning counts.
 
     Args:
         result: the result of the sampling of a group.
         observables: the observables of the outputs.
+        group: the group, named by the warning.
 
     Returns:
         The statistics of every observable.
     """
+    for observable in observables:
+        values = np.asarray(result.ds[observable].values, dtype=float)
+        skipped = int(np.count_nonzero(np.isnan(values)))
+        if skipped:
+            logger.warning(
+                "%d of the %d values of '%s' in the group '%s' are NaN, the "
+                "statistics skip them.",
+                skipped,
+                values.size,
+                observable,
+                group,
+            )
     with warnings.catch_warnings(), np.errstate(divide="ignore", invalid="ignore"):
         # a zero mean or a single point gives an undefined cv or std
         warnings.simplefilter("ignore", RuntimeWarning)
@@ -981,7 +987,7 @@ class SamplingAnalysis(_SampledAnalysis):
         rows = []
         stats: dict[tuple[str, str], dict[str, float]] = {}
         for group in self.groups:
-            group_stats = _statistics(results[group.uid], observables)
+            group_stats = _statistics(results[group.uid], observables, group.uid)
             for output in context.outputs:
                 stats[group.uid, output.uid] = group_stats[output.observable]
                 symbol, classification = _classes(
@@ -1573,7 +1579,9 @@ class SensitivityRunner:
         simulator = prepared.simulator(workers)
         for unit in prepared.units:
             prepared.run_unit(unit, analyses_path / unit.folder, simulator)
-        _report({"analyses": ", ".join(u.analysis for u in prepared.units)}, path)
+        _report(
+            {"analyses": ", ".join(u.analysis for u in prepared.units)}, analyses_path
+        )
         return path
 
     def parse_command_line(
@@ -1746,6 +1754,42 @@ class PreparedRun:
             for key, (names, _) in self.plans.items()
             for name in names
         )
+
+    def identity(self) -> dict[str, Any]:
+        """Get what the run computes, JSON types, which the plan of the kind records.
+
+        The table of the parameters as the hash of its values to twelve
+        digits (a platform may differ in the last bits) and every unit with
+        its analysis, its groups, its resolved settings (the number of samples
+        of a smoke run, `SBMLSIM_SENSITIVITY_N`), the parameters it varies,
+        the outputs and the seed.
+
+        Returns:
+            `{"table": <sha256>, "units": [...]}`.
+        """
+        table = parameters_to_df(self.parameters, builds=self.builds).to_csv(
+            None, sep="\t", index=False, float_format="%.12g", lineterminator="\n"
+        )
+        return {
+            "table": hashlib.sha256(table.encode("utf-8")).hexdigest(),
+            "units": [self.unit_identity(unit) for unit in self.units],
+        }
+
+    def unit_identity(self, unit: SensitivityUnit) -> dict[str, Any]:
+        """Get what a unit computes, see `identity`.
+
+        Args:
+            unit: one of `units`.
+        """
+        runner = self.runners[unit.subfolder]
+        _, varied = self.plans[unit.subfolder]
+        return {
+            "folder": unit.folder.as_posix(),
+            **runner.analyses[unit.analysis]._identity(self.project),
+            "parameters": [p.uid for p in varied[unit.analysis]],
+            "outputs": [[o.uid, o.observable] for o in runner.outputs],
+            "seed": runner.seed,
+        }
 
     def write_table(self, path: Path, *, show: bool = False) -> pd.DataFrame:
         """Write the table of the parameters into a folder.
