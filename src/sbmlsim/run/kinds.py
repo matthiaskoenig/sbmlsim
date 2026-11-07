@@ -22,6 +22,7 @@ import importlib
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, override
 
 from pydantic import BaseModel, ConfigDict
@@ -33,6 +34,7 @@ __all__ = [
     "KINDS",
     "ConfigurationError",
     "Kind",
+    "OutInUse",
     "PlanMismatch",
     "Spec",
     "SplitSpec",
@@ -47,6 +49,47 @@ class ConfigurationError(Exception):
 
     The command line exits with 4 for it.
     """
+
+
+class OutInUse(ConfigurationError):
+    """An output which a run may not run into, e.g. the output of another run.
+
+    The command line exits with 4 for it, as for every `ConfigurationError`.
+
+    Attributes:
+        out: the output.
+        reason: why, one of `REASONS`: `not_a_directory`, `not_empty` (an
+            output with files without `resume`), `no_record` (with `resume`
+            an output with files and no `run.json`), `unreadable` (its
+            `run.json` is not read) and `other_run` (the record of a run of
+            another kind or spec).
+    """
+
+    #: the reasons of an output in use
+    REASONS: ClassVar[tuple[str, ...]] = (
+        "not_a_directory",
+        "not_empty",
+        "no_record",
+        "unreadable",
+        "other_run",
+    )
+
+    def __init__(self, message: str, *, out: Path, reason: str) -> None:
+        """Create the error.
+
+        Args:
+            message: the message for the user.
+            out: the output.
+            reason: why the output is in use, one of `REASONS`.
+
+        Raises:
+            ValueError: for an unknown reason.
+        """
+        if reason not in self.REASONS:
+            raise ValueError(f"'{reason}' is no reason of an output in use.")
+        super().__init__(message)
+        self.out = out
+        self.reason = reason
 
 
 class PlanMismatch(ConfigurationError):

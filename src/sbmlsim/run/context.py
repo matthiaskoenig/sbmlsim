@@ -42,7 +42,7 @@ from pydantic import BaseModel, ValidationError
 from sbmlsim import events
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.cgroup import available_cpus
-from sbmlsim.run.kinds import ConfigurationError, Kind, PlanMismatch, Spec
+from sbmlsim.run.kinds import ConfigurationError, Kind, OutInUse, PlanMismatch, Spec
 
 __all__ = [
     "ENVIRONMENT",
@@ -395,6 +395,69 @@ def read_provenance(path: Path | None) -> list[dict[str, Any]] | None:
         ) from err
 
 
+def check_out_of(
+    kind: Kind[Any], given_hash: str, out: Path, resume: bool
+) -> Spec | None:
+    """Check that a run may run into an output, without creating or changing it.
+
+    Args:
+        kind: the kind of the run.
+        given_hash: the hash of the given spec, see `spec_hash`.
+        out: the output directory, which need not exist.
+        resume: whether the run resumes a run in `out`.
+
+    Returns:
+        The planned spec of the run to resume, `None` for a new run.
+
+    Raises:
+        OutInUse: a `ConfigurationError` for an output which is no
+            directory, which is not empty without `resume`, and with `resume`
+            which has no record of a run, an unreadable one or the record of
+            a run of another kind or spec.
+    """
+    if out.exists() and not out.is_dir():
+        raise OutInUse(
+            f"The output '{out}' is no directory.", out=out, reason="not_a_directory"
+        )
+    if not out.exists() or not any(out.iterdir()):
+        return None
+    if not resume:
+        raise OutInUse(
+            f"The output '{out}' is not empty: resume the run in it (--resume) "
+            "or give another output.",
+            out=out,
+            reason="not_empty",
+        )
+    run_file = out / RUN_FILE
+    try:
+        record = json.loads(run_file.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise OutInUse(
+            f"The output '{out}' is not empty and has no {RUN_FILE} of a run to resume.",
+            out=out,
+            reason="no_record",
+        ) from None
+    except (OSError, json.JSONDecodeError) as err:
+        raise OutInUse(
+            f"The record '{run_file}' is not read: {err}", out=out, reason="unreadable"
+        ) from err
+    if not isinstance(record, dict) or (
+        record.get("kind"),
+        record.get("spec_hash"),
+    ) != (kind.name, given_hash):
+        raise OutInUse(
+            f"The output '{out}' holds the run of another spec or kind: resume "
+            "it with the spec file the run was started with, not its planned "
+            f"spec '{SPEC_FILE}', or give another output.",
+            out=out,
+            reason="other_run",
+        )
+    spec_file = out / SPEC_FILE
+    if not spec_file.exists():
+        return None
+    return _validated(kind, spec_file.read_text(encoding="utf-8"))
+
+
 def prepare_out(
     kind: Kind[Any], given_hash: str, out: Path, resume: bool
 ) -> Spec | None:
@@ -410,42 +473,11 @@ def prepare_out(
         The planned spec of the run to resume, `None` for a new run.
 
     Raises:
-        ConfigurationError: for an output which is no directory, which is not
-            empty without `resume`, and with `resume` which has no record of a
-            run or the record of a run of another kind or spec.
+        OutInUse: for an output the run may not run into, see `check_out_of`.
     """
-    if out.exists() and not out.is_dir():
-        raise ConfigurationError(f"The output '{out}' is no directory.")
+    stored = check_out_of(kind, given_hash, out, resume)
     out.mkdir(parents=True, exist_ok=True)
-    if not any(out.iterdir()):
-        return None
-    if not resume:
-        raise ConfigurationError(
-            f"The output '{out}' is not empty: resume the run in it (--resume) "
-            "or give another output."
-        )
-    run_file = out / RUN_FILE
-    try:
-        record = json.loads(run_file.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        raise ConfigurationError(
-            f"The output '{out}' is not empty and has no {RUN_FILE} of a run to resume."
-        ) from None
-    except (OSError, json.JSONDecodeError) as err:
-        raise ConfigurationError(f"The record '{run_file}' is not read: {err}") from err
-    if not isinstance(record, dict) or (
-        record.get("kind"),
-        record.get("spec_hash"),
-    ) != (kind.name, given_hash):
-        raise ConfigurationError(
-            f"The output '{out}' holds the run of another spec or kind: resume "
-            "it with the spec file the run was started with, not its planned "
-            f"spec '{SPEC_FILE}', or give another output."
-        )
-    spec_file = out / SPEC_FILE
-    if not spec_file.exists():
-        return None
-    return _validated(kind, spec_file.read_text(encoding="utf-8"))
+    return stored
 
 
 def resolved_workers(kind: Kind[Any], workers: int | None) -> int:

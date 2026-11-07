@@ -35,6 +35,7 @@ from sbmlsim.atomic import write_text_atomic
 from sbmlsim.run.context import (
     SUMMARY_FILE,
     RunContext,
+    check_out_of,
     check_plan,
     load_spec,
     prepare_out,
@@ -47,6 +48,7 @@ from sbmlsim.run.context import (
 from sbmlsim.run.kinds import (
     ConfigurationError,
     Kind,
+    OutInUse,
     PlanMismatch,
     Spec,
     SplitSpec,
@@ -60,11 +62,13 @@ __all__ = [
     "ConfigurationError",
     "Kind",
     "MissingUnits",
+    "OutInUse",
     "PlanMismatch",
     "RunContext",
     "Spec",
     "SplitSpec",
     "UnknownKind",
+    "check_out",
     "compute_unit",
     "count_units",
     "execute",
@@ -195,6 +199,39 @@ def execute(
     )
     _write_summary(out, summary)
     return result
+
+
+def check_out(
+    kind: str,
+    spec: SpecLike,
+    out: Path,
+    *,
+    resume: bool = False,
+    inputs: Mapping[str, Path] | None = None,
+) -> None:
+    """Check that a run may run into an output, without running it.
+
+    The checks of `execute` before it runs: the kind and the spec are valid
+    and the output may hold the run, an empty or missing output, or with
+    `resume` the output of a run of the same kind and spec. Nothing is
+    written, so a wrapper refuses before it starts.
+
+    Args:
+        kind: the name of the kind or `module:attribute` of a kind.
+        spec: the spec, its settings or a YAML or JSON file of them.
+        out: the output directory.
+        resume: whether the run would resume the run in `out`.
+        inputs: the paths of the input fields of the spec by their name.
+
+    Raises:
+        OutInUse: for an output the run may not run into; its `out` and
+            `reason` say which and why.
+        ConfigurationError: for an unknown kind or a spec which is not read
+            or invalid.
+    """
+    the_kind = get_kind(kind)
+    given = load_spec(the_kind, spec, inputs)
+    check_out_of(the_kind, spec_hash(given, the_kind.inputs), Path(out), resume)
 
 
 def plan(kind: str, spec: SpecLike) -> Spec:

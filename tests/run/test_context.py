@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 
 from sbmlsim import run
-from sbmlsim.run import ConfigurationError, PlanMismatch
+from sbmlsim.run import ConfigurationError, OutInUse, PlanMismatch
 from sbmlsim.run.units import MissingUnits
 from tests.run.kinds_dummy import DummySpec
 
@@ -351,3 +351,63 @@ def test_units_of_another_plan_are_refused(tmp_path: Path) -> None:
     assert not (tmp_path / "parts" / "2.json").exists()
     with pytest.raises(PlanMismatch):
         run.merge(DUMMY, second, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("setup", "resume", "reason"),
+    [
+        ("file", False, "not_a_directory"),
+        ("other", False, "not_empty"),
+        ("other", True, "no_record"),
+        ("broken", True, "unreadable"),
+        ("run", True, "other_run"),
+    ],
+)
+def test_an_out_in_use_is_typed(
+    tmp_path: Path, setup: str, resume: bool, reason: str
+) -> None:
+    """A wrapper tells an out in use by its reason, `check_out` before a run."""
+    out = tmp_path / "out"
+    if setup == "file":
+        out.write_text("x", encoding="utf-8")
+    elif setup == "run":
+        run.execute(DUMMY, {"n": 4}, out)
+    else:
+        out.mkdir()
+        (out / "other.txt").write_text("x", encoding="utf-8")
+        if setup == "broken":
+            (out / "run.json").write_text("{", encoding="utf-8")
+    for check in (
+        lambda: run.check_out(DUMMY, {"n": 5}, out, resume=resume),
+        lambda: run.execute(DUMMY, {"n": 5}, out, resume=resume),
+    ):
+        with pytest.raises(OutInUse) as info:
+            check()
+        assert isinstance(info.value, ConfigurationError)
+        assert (info.value.out, info.value.reason) == (out, reason)
+
+
+def test_check_out_writes_nothing(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    run.check_out(DUMMY, {"n": 4}, out)
+    assert not out.exists()
+    run.execute(DUMMY, {"n": 4}, out)
+    run.check_out(DUMMY, {"n": 4}, out, resume=True)
+    with pytest.raises(ConfigurationError, match="spec"):
+        run.check_out(DUMMY, {"n": "many"}, tmp_path / "other")
+    with pytest.raises(ValueError, match="no reason"):
+        OutInUse("x", out=out, reason="busy")
+
+
+def test_an_out_in_use_exits_with_4(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from sbmlsim.run.cli import EXIT_CONFIGURATION, main
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "other.txt").write_text("x", encoding="utf-8")
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps({"n": 2}), encoding="utf-8")
+    assert main([DUMMY, str(spec), "--out", str(out)]) == EXIT_CONFIGURATION
+    assert "is not empty: resume the run in it" in capsys.readouterr().err
