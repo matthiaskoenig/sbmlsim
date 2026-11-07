@@ -764,10 +764,9 @@ def _files(
     battery = (
         None if assessment.verification is None else assessment.verification.battery
     )
-    if hook is not None and battery is not None:
-        tables.append(
-            (f"the battery hook '{hook.name}'", hook.report_tables(battery.sections))
-        )
+    if hook is not None:
+        sections = {} if battery is None else battery.sections
+        tables.append((f"the battery hook '{hook.name}'", hook.report_tables(sections)))
     for owner, named in tables:
         for stem, table in named.items():
             name = f"{stem}.tsv"
