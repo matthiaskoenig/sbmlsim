@@ -608,7 +608,7 @@ def build_problems(paths: Mapping[str, Path]) -> list[str]:
     checks of the units; an issue of severity warning or above is a problem.
 
     Args:
-        paths: the SBML files by the name of their variant, e.g. `male`.
+        paths: the SBML files by the name of their variant, e.g. `renal`.
 
     Returns:
         Per variant with issues its file, the number of issues and the first

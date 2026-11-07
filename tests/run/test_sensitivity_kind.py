@@ -104,8 +104,16 @@ def test_the_plan_sets_the_analyses_and_the_units() -> None:
             },
             "neither analyses nor subfolders",
         ),
+        (
+            {
+                "project": "tests.project_toy:PROJECT",
+                "analysis": "decay2",
+                "run_plan": {"units": []},
+            },
+            "no run_plan",
+        ),
     ],
-    ids=["analysis", "subfolders", "hash", "subfolder", "unknown", "scan"],
+    ids=["analysis", "subfolders", "hash", "subfolder", "unknown", "scan", "run_plan"],
 )
 def test_the_plan_refuses_a_spec(spec: dict[str, Any], match: str) -> None:
     with pytest.raises(ConfigurationError, match=match):

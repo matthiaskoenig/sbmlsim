@@ -199,9 +199,9 @@ uv run zensical serve
 The API reference is rendered from the docstrings by [mkdocstrings](https://mkdocstrings.github.io/); a page in `docs/api/` only contains the module directive:
 
 ```markdown
-# simulation.timecourse
+# simulation.definition
 
-::: sbmlsim.simulation.timecourse
+::: sbmlsim.simulation.definition
 ```
 
 Docstrings are therefore the place to document functions and classes, the markdown files provide the narrative around them. Adding a module to the reference means adding such a page and an entry to `nav` in `zensical.toml`.
