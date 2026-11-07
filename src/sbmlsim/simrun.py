@@ -1,7 +1,7 @@
 """The kinds of the run layer as task types of simrun.
 
 simrun runs the tasks of a workflow on a cluster; this module registers the
-twelve kinds of `python -m sbmlsim.run` (`sbmlsim.run`) as its task types
+thirteen kinds of `python -m sbmlsim.run` (`sbmlsim.run`) as its task types
 `sbmlsim.<kind>`, entry points of the group `simrun.task_types` in the
 `pyproject.toml` of sbmlsim, see the plugins of simrun. The settings of a task
 are the spec of its kind, and `plan` is the plan of the kind, which simrun's
@@ -11,7 +11,7 @@ A splittable kind (`fit`, `identifiability`, `scan`, `sensitivity`,
 `uncertainty`) is split: simrun's workers compute its units with
 `sbmlsim.run.compute_unit` and its merge merges them with `sbmlsim.run.merge`.
 Every other kind (`simulate`, `fisher`, `report`, `petab`, `adopt`, `factory`,
-`credibility`)
+`credibility`, `release`)
 runs as the command
 (`simrun-exec` runs it, `{settings}`, `{out}` and `{input}` filled by simrun)
 
@@ -33,7 +33,11 @@ The resource hints are the maximum resident memory of a run on one worker
 0.5 GiB: the fit of the subset `PK` with 4 repeats 0.36 GiB, the scan `dose`
 0.37 GiB, the sensitivity `sobol` 0.38 GiB, the uncertainty `cl` 0.38 GiB, the
 simulation of the three experiments 0.38 GiB and the report of the fit with
-its figures 0.48 GiB, so 1 GiB per worker for every kind. The base memory is
+its figures 0.48 GiB, so 1 GiB per worker for every kind. The build of a release (`release`) runs
+the analyses of the release in its own processes and is hinted alike.
+
+The kind `verify` is no task type: it compares the dumps of two environments, a
+task type comes when a workflow needs it. The base memory is
 the process of simrun's worker besides the processes of its units, 0.10 GiB
 measured with this module imported, 0.5 GiB.
 
@@ -61,6 +65,7 @@ from sbmlsim.run.fit_kinds import (
 )
 from sbmlsim.run.kinds import Spec, get_kind
 from sbmlsim.run.project_kinds import FactorySpec
+from sbmlsim.run.release_kinds import ReleaseSpec
 from sbmlsim.run.scan_kinds import (
     ScanSpec,
     SensitivitySpec,
@@ -77,6 +82,7 @@ __all__ = [
     "IDENTIFIABILITY",
     "OUTPUT",
     "PETAB",
+    "RELEASE",
     "REPORT",
     "SCAN",
     "SENSITIVITY",
@@ -192,6 +198,11 @@ def factory_plan(settings: FactorySpec) -> FactorySpec:
 def credibility_plan(settings: CredibilitySpec) -> CredibilitySpec:
     """Plan an assessment of the credibility, see `sbmlsim.run.plan`."""
     return _plan("credibility", settings)
+
+
+def release_plan(settings: ReleaseSpec) -> ReleaseSpec:
+    """Plan the build of a release of a project, see `sbmlsim.run.plan`."""
+    return _plan("release", settings)
 
 
 def petab_plan(settings: PetabSpec) -> PetabSpec:
@@ -312,6 +323,7 @@ UNCERTAINTY = _task_type("uncertainty")
 ADOPT = _task_type("adopt")
 FACTORY = _task_type("factory")
 CREDIBILITY = _task_type("credibility")
+RELEASE = _task_type("release")
 
 #: the task types by the name of their kind
 TASK_TYPES: dict[str, TaskType] = {
@@ -329,5 +341,6 @@ TASK_TYPES: dict[str, TaskType] = {
         ADOPT,
         FACTORY,
         CREDIBILITY,
+        RELEASE,
     )
 }

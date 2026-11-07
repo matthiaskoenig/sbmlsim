@@ -152,6 +152,7 @@ dev = [
 "sbmlsim.adopt" = "sbmlsim.simrun:ADOPT"
 "sbmlsim.factory" = "sbmlsim.simrun:FACTORY"
 "sbmlsim.credibility" = "sbmlsim.simrun:CREDIBILITY"
+"sbmlsim.release" = "sbmlsim.simrun:RELEASE"
 
 [project.urls]
 Homepage = "https://matthiaskoenig.github.io/sbmlsim"
