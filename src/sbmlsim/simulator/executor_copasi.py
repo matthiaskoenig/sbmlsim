@@ -135,7 +135,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from sbmlsim.engine import kept_encoding
+from sbmlsim.engine import UnsupportedModelError, kept_encoding
 from sbmlsim.model.event_rows import EPSILON
 from sbmlsim.model.model_copasi import COPASI, CopasiSBMLModel, drain_messages
 from sbmlsim.result.timecourse import TimecourseResult
@@ -808,7 +808,7 @@ def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
     a presimulation.
 
     Raises:
-        NotImplementedError: for a plan which sets a conversion factor or an
+        UnsupportedModelError: a `NotImplementedError`, for a plan which sets a conversion factor or an
             entity its initial assignment reads, and for a model with a
             delayed event and a plan with a change after the start or a
             presimulation.
@@ -826,7 +826,7 @@ def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
     )
     if changed:
         factors = sorted({model.conversion_factors[sid] for sid in changed})
-        raise NotImplementedError(
+        raise UnsupportedModelError(
             f"The engine COPASI does not simulate a change of {changed} of the "
             f"model '{model.label}', which sets the conversion factor "
             f"{', '.join(repr(f) for f in factors)}: COPASI multiplies the "
@@ -841,7 +841,7 @@ def check_supported(plan: Plan, model: CopasiSBMLModel) -> None:
     if plan.steady_state is not None:
         writes.append("a presimulation")
     if writes:
-        raise NotImplementedError(
+        raise UnsupportedModelError(
             f"The engine COPASI does not simulate the delayed events {delayed} of "
             f"the model '{model.label}' in a simulation with "
             f"{' and '.join(writes)}: COPASI keeps a delayed event pending "

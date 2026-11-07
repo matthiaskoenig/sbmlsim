@@ -70,6 +70,7 @@ from sbmlsim.simulation import Observable, Scan, Simulation
 if TYPE_CHECKING:
     import roadrunner
 
+    from sbmlsim.credibility.battery import BatteryHook
     from sbmlsim.experiment import ExperimentResult, SimulationExperiment
     from sbmlsim.experiment.draws import UncertaintySettings
     from sbmlsim.fit.cli import FitDefinition
@@ -557,6 +558,11 @@ class CredibilitySettings(BaseModel):
             instance of `sbmlsim.credibility.battery.BatteryHook` or a
             reference to it, see `Project.battery_hook`; `None` for the
             generic checks only.
+        battery_settings: the settings of the battery over the ones of the
+            hook (the defaults without one), by the names of the fields of
+            `sbmlsim.credibility.battery.BatterySettings`, e.g.
+            `{"engines": ["copasi"], "horizon": 60.0, "steady_state": True}`;
+            checked when the battery runs.
     """
 
     model_config = _CONFIG
@@ -565,6 +571,7 @@ class CredibilitySettings(BaseModel):
     domain_fields: tuple[str, ...] | None = None
     extensions: tuple[Any, ...] = ()
     battery: Any = None
+    battery_settings: Mapping[str, Any] = {}
 
     @field_validator("metadata_type")
     @classmethod
@@ -1401,7 +1408,7 @@ class Project(BaseModel):
             )
         return extensions
 
-    def battery_hook(self) -> Any:
+    def battery_hook(self) -> BatteryHook | None:
         """Get the battery hook of the credibility of the project.
 
         Returns:
@@ -1414,10 +1421,10 @@ class Project(BaseModel):
         """
         if self.credibility_settings.battery is None:
             return None
-        from sbmlsim.credibility.battery import BatteryHook
+        from sbmlsim.credibility import battery
 
         hook = self._resolve(self.credibility_settings.battery)
-        if not isinstance(hook, BatteryHook):
+        if not isinstance(hook, battery.BatteryHook):
             raise ValueError(
                 f"The battery hook {hook!r} of the project '{self.name}' is no "
                 "sbmlsim.credibility.battery.BatteryHook."

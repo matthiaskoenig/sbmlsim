@@ -172,6 +172,7 @@ from dataclasses import dataclass
 import libsbml
 import numpy as np
 
+from sbmlsim.engine import UnsupportedModelError
 from sbmlsim.model.comparisons import COMPARISONS, trigger_comparisons
 from sbmlsim.model.model_amici import AmiciSBMLModel, run_simulation, vector_array
 from sbmlsim.result.timecourse import TimecourseResult
@@ -1345,7 +1346,7 @@ def check_supported(plan: Plan, model: AmiciSBMLModel) -> None:
     `sbmlsim.model.model_amici`.
 
     Raises:
-        NotImplementedError: for a plan which sets such a compartment.
+        UnsupportedModelError: a `NotImplementedError`, for a plan which sets such a compartment.
     """
     assignments = [
         *plan.preinit,
@@ -1357,7 +1358,7 @@ def check_supported(plan: Plan, model: AmiciSBMLModel) -> None:
         {symbols.entity(a.target) for a in assignments} & model.not_a_number
     )
     if outside:
-        raise NotImplementedError(
+        raise UnsupportedModelError(
             f"The engine AMICI does not simulate a change of {outside} of the model "
             f"'{model.label}': its value in the SBML is not a number, which AMICI "
             f"keeps out of its states."

@@ -44,7 +44,11 @@ class DecayBattery(BatteryHook):
 
     @override
     def settings(self) -> BatterySettings:
-        return BatterySettings(horizon=60.0, steps=60)
+        # the model starts at its steady state without A; COPASI is the second
+        # engine whether AMICI is installed or not
+        return BatterySettings(
+            horizon=60.0, steps=60, steady_state=True, engines=("copasi",)
+        )
 
     @override
     def read(self, variant: str, path: Path) -> object:

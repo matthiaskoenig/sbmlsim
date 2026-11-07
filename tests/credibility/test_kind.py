@@ -98,6 +98,23 @@ def test_the_options_of_an_assessment(tmp_path: Path) -> None:
             tmp_path / "out",
             inputs={"record": tmp_path},
         )
+    with pytest.raises(
+        ConfigurationError,
+        match="verification: false, battery: false are options of an assessment",
+    ):
+        run.execute(
+            "credibility",
+            {"project": REF, "verification": False, "battery": False},
+            tmp_path / "out",
+            inputs={"record": tmp_path},
+        )
+    with pytest.raises(ConfigurationError, match="cross-validation of no adopted fit"):
+        run.execute(
+            "credibility",
+            {"project": REF, "verification": False},
+            tmp_path / "empty",
+            inputs={"cross_validation": tmp_path},
+        )
     with pytest.raises(ConfigurationError, match="no credibility declaration"):
         run.plan("credibility", {"project": f"{__name__}:NO_DECLARATION"})
     with pytest.raises(ConfigurationError, match=r"neither a credibility\.json"):
@@ -139,3 +156,14 @@ def test_the_uncertainty_and_the_cross_validations(
     assert dose["uncertainty"]["n_draws"] == 4
     factors = {f["id"]: f for f in dose["factors"]}
     assert factors["model_form"]["status"] == "assessed"
+
+
+@pytest.mark.usefixtures("project")
+def test_the_second_simulator_switched_off(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    run.execute("credibility", {"project": REF, "cross_simulator": False}, out)
+    record = CredibilityAssessment.from_json(out / CREDIBILITY_DIR / "credibility.json")
+    assert record.verification is not None
+    assert record.verification.battery is not None
+    cross = record.verification.battery.result("cross_simulator")
+    assert (cross.passed, cross.statement) == (None, "Not run.")

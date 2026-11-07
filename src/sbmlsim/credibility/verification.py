@@ -142,8 +142,9 @@ class Check:
         return self.id
 
 
-#: the registered checks by their id, see `register_check`
-CHECKS: dict[str, Check] = {}
+_CHECKS: dict[str, Check] = {}
+#: the registered checks by their id, read-only, see `register_check`
+CHECKS: Final[Mapping[str, Check]] = MappingProxyType(_CHECKS)
 
 #: the checks of the battery of pkpdsim 0.19 which its records name, by id:
 #: the label and the factor of a record of a battery without its hook
@@ -179,12 +180,12 @@ def register_check(check: Check) -> Check:
             f"The check '{check.id}' assesses the factor '{check.factor}', which "
             f"is no factor of V&V 40: {sorted(_FACTOR_IDS)}."
         )
-    registered = CHECKS.get(check.id)
+    registered = _CHECKS.get(check.id)
     if registered is not None and registered != check:
         raise ValueError(
             f"The check '{check.id}' is registered as {registered!r}, not {check!r}."
         )
-    CHECKS[check.id] = check
+    _CHECKS[check.id] = check
     return check
 
 
@@ -640,16 +641,16 @@ def build_problems(paths: Mapping[str, Path]) -> list[str]:
     return problems
 
 
-def _battery(project: Project) -> Battery:
+def _battery(project: Project, cross_simulator: bool) -> Battery:
     """Run the battery of the checks of the variants of a project.
 
     A failed check which the project knows (`CheckSettings.battery`) gets its
     reason as a further problem and stays failed.
     """
-    from sbmlsim.credibility.battery import run_battery
+    from sbmlsim.credibility import battery as module
 
     logger.info("Run the battery of the checks of the variants of '%s'", project.name)
-    battery = run_battery(project)
+    battery = module.run_battery(project, cross_simulator=cross_simulator)
     known = project.checks.battery
     return dataclasses.replace(
         battery,
@@ -674,6 +675,7 @@ def verify(
     tightening: float = TIGHTENING,
     *,
     battery: bool = True,
+    cross_simulator: bool = True,
 ) -> Verification:
     """Evaluate the adopted fits of a project with the alternatives of the checks.
 
@@ -684,6 +686,8 @@ def verify(
         tightening: the factor the tolerances are divided by.
         battery: run the battery of the checks of the variants, see
             `sbmlsim.credibility.battery.run_battery`.
+        cross_simulator: run the check `cross_simulator` of the battery, as
+            the settings of the battery say; `False` switches it off.
 
     Returns:
         The alternative predictions, the issues of the variants and the battery.
@@ -719,7 +723,7 @@ def verify(
             for subset, report in fits.reports.items()
         ],
         problems=build_problems(dict(project.variants)),
-        battery=_battery(project) if battery else None,
+        battery=_battery(project, cross_simulator) if battery else None,
     )
     return Verification(
         predictions=MappingProxyType(predictions),

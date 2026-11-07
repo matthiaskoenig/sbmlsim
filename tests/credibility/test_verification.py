@@ -392,5 +392,8 @@ def test_the_checks_are_open() -> None:
     unknown = check_of("unknown_check", "use_error")
     assert (unknown.label, unknown.factor) == ("unknown check", "use_error")
     assert unknown.id not in CHECKS
+    # the registry is read only, a check is registered by `register_check`
+    with pytest.raises(TypeError):
+        CHECKS["other"] = unknown  # ty: ignore[invalid-assignment]
     # the checks of the PK battery of pkpdsim 0.19 are read with their factor
     assert check_of("superposition").factor == "numerical_code_verification"
