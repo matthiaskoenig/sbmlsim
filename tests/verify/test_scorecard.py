@@ -131,6 +131,11 @@ def test_the_pool_is_worded_by_the_extension(
     assert "qualification by health:" in out
     assert "  x: 2" in out
 
+    empty = table[table["model"] == "none"]
+    monkeypatch.setattr(type(ARMS), "pool", lambda self, contexts, options: empty)
+    assert verify(args) == 0
+    assert "qualification by" not in capsys.readouterr().out
+
 
 def test_a_bad_extension_object_exits_with_2(tmp_path: Path) -> None:
     records = _write(tmp_path / "records", _assessment("a"))

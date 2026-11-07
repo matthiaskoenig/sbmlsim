@@ -103,9 +103,14 @@ def scorecard_command(options: argparse.Namespace) -> int:
     for row in table.to_dict("records"):
         verified = "" if row["verified"] is None else f", verified {row['verified']}"
         report(f"  {row['model']}/{row['context']}: {row['verdict']}{verified}")
-    if qualified is not None and pooled_by is not None:
+    lines = (
+        []
+        if qualified is None or pooled_by is None
+        else pooled_by.pool_lines(qualified, pool_options)
+    )
+    if lines:
         report(f"qualification by {options.field or 'the default'}:")
-        for line in pooled_by.pool_lines(qualified, pool_options):
+        for line in lines:
             report(line)
     if baseline is None:
         return 0
