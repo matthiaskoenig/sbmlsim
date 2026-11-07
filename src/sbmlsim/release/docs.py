@@ -343,7 +343,9 @@ def _experiments(release_path: Path) -> list[str]:
     """Get the experiments of the simulation report.
 
     The report of sbmlsim has a folder per experiment with the page
-    `<experiment>/<experiment>.html`; `_figures` holds copies of the figures.
+    `<experiment>/<experiment>.html`; `_figures` holds the static figures of
+    every experiment, which the build collects
+    (`sbmlsim.project.collect_figure_files`), and is no experiment.
     """
     folder = release_path / BuildPaths.SIMULATIONS
     if not folder.is_dir():

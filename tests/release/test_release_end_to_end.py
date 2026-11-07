@@ -62,11 +62,12 @@ def test_the_release_of_the_toy(
     runner = AnalysesRunner()
     out = tmp_path / "out"
     prepared = prepare_release(project, VERSION, out, checkout=clone, runner=runner)
-    manifest = build_release(
+    release = build_release(
         project, REFERENCE, VERSION, prepared, workers=1, runner=runner
     )
     path = prepared.target.path
-    assert Manifest.read(path / MANIFEST_FILE) == manifest
+    assert Manifest.read(path / MANIFEST_FILE) == release.manifest
+    assert release.build.skipped == []
     steps = [c[5] for c in runner.commands if c[:2] == ["uv", "run"]]
     assert steps == ["factory", "simulate", "simulate", "report"]
 
@@ -83,6 +84,8 @@ def test_the_release_of_the_toy(
     for experiment in experiments:
         assert (path / "simulations" / experiment / f"{experiment}.html").is_file()
         assert (path / "simulations_uncertainty" / experiment).is_dir()
+    assert any((path / "simulations" / "_figures").iterdir())
+    assert any((path / "simulations_uncertainty" / "_figures").iterdir())
     assert not (path / "simulations" / "run.json").exists()
     (fit_id,) = project.adopted_fits().values()
     assert (path / "fit" / fit_id / "index.html").is_file()

@@ -44,7 +44,6 @@ if TYPE_CHECKING:
     from sbmlsim.project import Project
 
 __all__ = [
-    "LIBRARY_OWNER",
     "MAX_BULLETS",
     "NOTES_DIR",
     "CoreSummary",
@@ -67,8 +66,6 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-LIBRARY_OWNER = "matthiaskoenig"
-"""The owner of the GitHub repositories of the core libraries, named as their package."""
 
 MAX_BULLETS = 5
 """The maximal number of bullets of the summary of a core library."""
@@ -300,8 +297,10 @@ def _bullets(body: str) -> list[str]:
     return bullets
 
 
-def github_releases(repository: str, runner: Runner = run) -> dict[str, str]:
-    """Get the release notes of a library of `LIBRARY_OWNER` from GitHub.
+def github_releases(
+    repository: str, runner: Runner = run, owner: str = "matthiaskoenig"
+) -> dict[str, str]:
+    """Get the release notes of a library from GitHub.
 
     One call of `gh api` lists all releases, so the releases between two
     versions need no further call. A leading `v` of a tag is removed.
@@ -309,6 +308,8 @@ def github_releases(repository: str, runner: Runner = run) -> dict[str, str]:
     Args:
         repository: the name of the repository, e.g. `sbmlsim`.
         runner: runs `gh`.
+        owner: the owner of the repository on GitHub, see
+            `ReleaseSettings.library_owner`.
 
     Returns:
         The body of the release notes by version.
@@ -320,7 +321,7 @@ def github_releases(repository: str, runner: Runner = run) -> dict[str, str]:
         [
             "gh",
             "api",
-            f"repos/{LIBRARY_OWNER}/{repository}/releases",
+            f"repos/{owner}/{repository}/releases",
             "--paginate",
             "--jq",
             '.[] | {tag: .tag_name, body: (.body // "")}',
@@ -394,66 +395,84 @@ def core_summaries(
     return summaries
 
 
+#: the study of a file of the data: the data folder relative to the package
+#: and the path of the file relative to it, see `ReleaseHook.data_study`
+Study = Callable[[PurePosixPath, PurePosixPath], str | None]
+
+
 def _studies(
-    files: dict[str, str], study: Callable[[PurePosixPath], str | None]
+    files: dict[str, str],
+    package_dir: PurePosixPath,
+    data_dirs: Sequence[PurePosixPath],
+    study: Study,
 ) -> dict[str, set[tuple[str, str]]]:
-    """Group files of the data folder, `path: hash`, by their study."""
+    """Group the files of the data folders, `repository path: hash`, by their study.
+
+    A file is keyed by its path in the release repository, so the files of
+    two data folders never merge unless `study` gives them one study.
+    """
     studies: dict[str, set[tuple[str, str]]] = {}
     for path, blob in files.items():
-        name = study(PurePosixPath(path))
-        if name is not None:
-            studies.setdefault(name, set()).add((path, blob))
+        posix = PurePosixPath(path)
+        for data_dir in data_dirs:
+            folder = package_dir / data_dir
+            if folder in posix.parents:
+                name = study(data_dir, posix.relative_to(folder))
+                if name is not None:
+                    studies.setdefault(name, set()).add((path, blob))
+                break
     return studies
 
 
-def _default_study(path: PurePosixPath) -> str | None:
+def _default_study(data_dir: PurePosixPath, path: PurePosixPath) -> str | None:
     """Get the study of a file of the data, its folder (`ReleaseHook.data_study`)."""
-    return ReleaseHook().data_study(path)
+    return ReleaseHook().data_study(data_dir, path)
 
 
 def data_changes(
     release: ReleaseRepo,
-    data_dirs: str | Sequence[str],
+    package_dir: str | PurePosixPath,
+    data_dirs: Sequence[str | PurePosixPath],
     runner: Runner = run,
-    study: Callable[[PurePosixPath], str | None] = _default_study,
+    study: Study = _default_study,
 ) -> DataChanges:
     """Compare the studies of the data of the previous release and the new build.
 
     A study is the group of the files of the data folders which `study` gives
-    one name, by default a folder of a data folder
+    one name, by default a folder of the package below a data folder
     (`sbmlsim.release.hooks.ReleaseHook.data_study`); it changed if a file was
-    added, removed or changed. The files of the previous release are compared
-    by the git blob hashes at the last tag with the hashes git gives the files
-    of the working tree (`git hash-object`), ignored files are skipped.
+    added, removed or changed. The files are keyed by their path in the
+    release repository: the files of the previous release are compared by the
+    git blob hashes at the last tag with the hashes git gives the files of the
+    working tree (`git hash-object`), ignored files are skipped.
 
     Args:
         release: the release repository.
-        data_dirs: the data folders, relative to the release repository.
+        package_dir: the folder of the package in the release repository,
+            e.g. `src/pkg/models/hctz`.
+        data_dirs: the data folders, relative to the package (`data_dirs`).
         runner: runs git.
-        study: the study of a file, its path relative to its data folder.
+        study: the study of a file, by its data folder relative to the
+            package and its path relative to the data folder.
 
     Returns:
         The added, removed and changed studies.
     """
-    prefixes = [data_dirs] if isinstance(data_dirs, str) else list(data_dirs)
+    package = PurePosixPath(package_dir)
+    folders = [PurePosixPath(d) for d in data_dirs]
     tree = _tree(release, runner)
     old_files: dict[str, str] = {}
     new_files: dict[str, str] = {}
-    for data_dir in prefixes:
-        prefix = data_dir.strip("/") + "/"
+    for data_dir in folders:
+        prefix = (package / data_dir).as_posix() + "/"
         old_files |= {
-            path.removeprefix(prefix): blob
-            for path, blob in tree.items()
-            if path.startswith(prefix)
+            path: blob for path, blob in tree.items() if path.startswith(prefix)
         }
         paths = _worktree_files(release, prefix, runner)
         hashes = _hash_objects(release, paths, runner)
-        new_files |= {
-            path.removeprefix(prefix): blob
-            for path, blob in zip(paths, hashes, strict=True)
-        }
-    old = _studies(old_files, study)
-    new = _studies(new_files, study)
+        new_files |= dict(zip(paths, hashes, strict=True))
+    old = _studies(old_files, package, folders, study)
+    new = _studies(new_files, package, folders, study)
     return DataChanges(
         added=sorted(new.keys() - old.keys()),
         removed=sorted(old.keys() - new.keys()),
@@ -741,8 +760,8 @@ def _number(value: float | None) -> str:
     return "none" if value is None else f"{value:.6g}"
 
 
-def data_dirs(project: Project) -> list[str]:
-    """Get the folders of the data of a project in the release repository.
+def data_dirs(project: Project) -> list[PurePosixPath]:
+    """Get the folders of the data of a project which a release has.
 
     The folders are the data paths of the project (`Project.data_path`) inside
     of its package; a folder outside of the package is not released.
@@ -751,13 +770,12 @@ def data_dirs(project: Project) -> list[str]:
         project: the project.
 
     Returns:
-        The folders as POSIX paths relative to the release repository.
+        The folders relative to the root of the package.
     """
     paths = project.data_path
     if paths is None:
         return []
     paths = [paths] if isinstance(paths, Path) else list(paths)
-    folders = PurePosixPath("src", *package_dirs(project).parts)
     dirs = []
     for path in paths:
         absolute = path if path.is_absolute() else project.root / path
@@ -771,7 +789,7 @@ def data_dirs(project: Project) -> list[str]:
                 project.name,
             )
             continue
-        dirs.append((folders / PurePosixPath(*relative.parts)).as_posix())
+        dirs.append(PurePosixPath(*relative.parts))
     return dirs
 
 
@@ -799,7 +817,9 @@ def write_release_notes(
         ReleaseError: if the new build has no `uv.lock`.
     """
     project, settings, hook = context.project, context.settings, context.hook
-    fetch = fetch or functools.partial(github_releases, runner=runner)
+    fetch = fetch or functools.partial(
+        github_releases, runner=runner, owner=settings.library_owner
+    )
     tree = _tree(release, runner)
     lock_path = release.path / "uv.lock"
     if not lock_path.is_file():
@@ -821,7 +841,13 @@ def write_release_notes(
         "core": core_summaries(libraries, fetch, core),
         "libraries": libraries,
         "direct_libraries": [c for c in libraries if c.name in direct],
-        "data": data_changes(release, data_dirs(project), runner, hook.data_study),
+        "data": data_changes(
+            release,
+            PurePosixPath("src", *package_dirs(project).parts),
+            data_dirs(project),
+            runner,
+            hook.data_study,
+        ),
         "models": model_changes(release, runner),
         "experiments_added": added_experiments,
         "experiments_removed": removed_experiments,

@@ -25,6 +25,7 @@ def test_the_framework_of_a_release_is_sbmlsim_by_default() -> None:
     assert SETTINGS.core_libraries == ("sbmlsim", "sbmlutils")
     assert SETTINGS.archive is None
     assert SETTINGS.hook is None
+    assert SETTINGS.library_owner == "matthiaskoenig"
     framework = dataclasses.replace(
         SETTINGS, framework="pkpdsim", core_libraries=["pkpdsim", "sbmlsim"]
     )
@@ -79,8 +80,10 @@ def test_the_hook_adds_nothing_by_default(tmp_path: Path) -> None:
     assert hook.values(nothing, tmp_path) == {}
     assert hook.pages(nothing) == ()
     assert hook.notes_sections(nothing, nothing, nothing) == ()
-    data: dict[str, Any] = {"contexts": []}
-    assert hook.credibility(nothing, data) is data
-    assert hook.data_study(PurePosixPath("drug/Study2000/a.tsv")) == "drug/Study2000"
-    assert hook.data_study(PurePosixPath("collect_data.py")) is None
-    assert set(CREDIBILITY_PARTS) == {"context", "sections"}
+    page: dict[str, Any] = {"contexts": []}
+    assert hook.credibility(nothing, page) is page
+    data = PurePosixPath("data")
+    study = hook.data_study(data, PurePosixPath("drug/Study2000/a.tsv"))
+    assert study == "data/drug/Study2000"
+    assert hook.data_study(data, PurePosixPath("collect_data.py")) is None
+    assert set(CREDIBILITY_PARTS) == {"acceptance", "context", "sections"}

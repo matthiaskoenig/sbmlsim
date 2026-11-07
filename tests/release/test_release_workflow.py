@@ -22,11 +22,13 @@ from sbmlsim.release.settings import ReleaseSettings
 from sbmlsim.release.source import ReleaseError
 from sbmlsim.release.workflow import (
     REPOSITORY_DIR,
+    ReleaseBuild,
     build_release,
     build_summary,
     prepare_release,
     publish_release,
 )
+from tests.project_toy import TOY_PATH
 from tests.release.fakes import (
     PYPI,
     SBMLSIM,
@@ -74,9 +76,24 @@ def build(
     framework_path: Path | None = None,
 ) -> Path:
     """Build the release into the out, the repository cloned from the checkout."""
+    return built(
+        model, out, clone, runner, version=version, framework_path=framework_path
+    )[0]
+
+
+def built(
+    model: Project,
+    out: Path,
+    clone: Path | None,
+    runner: FakeRunner | None = None,
+    *,
+    version: str = VERSION,
+    framework_path: Path | None = None,
+) -> tuple[Path, ReleaseBuild]:
+    """Build the release into the out, with what the build wrote and ran."""
     runner = runner or FakeRunner()
     prepared = prepare_release(model, version, out, checkout=clone, runner=runner)
-    build_release(
+    release = build_release(
         model,
         REFERENCE,
         version,
@@ -85,7 +102,7 @@ def build(
         workers=2,
         runner=runner,
     )
-    return out / REPOSITORY_DIR
+    return out / REPOSITORY_DIR, release
 
 
 def publish(
@@ -191,14 +208,68 @@ def test_stage_lines(
 
 
 def test_the_summary_of_the_build(model: Project, out: Path, clone: Path) -> None:
-    path = build(model, out, clone)
+    path, release = built(model, out, clone)
     manifest = Manifest.read(path / MANIFEST_FILE)
-    assert manifest is not None
-    summary = build_summary(manifest, path)
+    assert manifest == release.manifest
+    summary = build_summary(release, path)
     assert summary["repository"] == "repository"
     assert summary["version"] == VERSION
     assert summary["publishable"] is True
-    assert summary["files"] == len(manifest.files)
+    assert summary["files"] == len(release.manifest.files)
+    assert summary["steps"] == [
+        "factory",
+        "simulate",
+        "uncertainty",
+        "report",
+        "credibility",
+    ]
+    assert summary["changed"] == []
+    assert summary["skipped"] == []
+
+
+def test_the_release_has_the_models_of_the_factory(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """The factory runs first, its rebuild replaces the models of the package."""
+    rebuilt = (TOY_PATH / "models" / "toy_slow.xml").read_text(encoding="utf-8")
+    rebuilt = rebuilt.replace('value="0.1"', 'value="0.05"')
+    runner = FakeRunner(factory_changes={"models/toy_slow.xml": rebuilt})
+    path, release = built(model, out, clone, runner)
+    package = path / "src" / PACKAGE
+    assert (package / "models" / "toy_slow.xml").read_text("utf-8") == rebuilt
+    assert (path / "models" / "toy_slow.xml").read_text("utf-8") == rebuilt
+    # an output the package does not track is released at the top only
+    assert (path / "toy.omex").is_file()
+    assert not (package / "toy.omex").exists()
+    manifest = release.manifest.files
+    assert f"src/{PACKAGE}/models/toy_slow.xml" in manifest
+    assert build_summary(release, path)["changed"] == ["models/toy_slow.xml"]
+    factory = runner.commands.index(next(c for c in runner.commands if "factory" in c))
+    simulate = next(c for c in runner.commands if "specs/simulate.json" in c)
+    assert factory < runner.commands.index(simulate)
+
+
+def test_the_draws_are_decided_on_the_models_of_the_factory(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """A factory whose default variant has no distributions skips the draws."""
+    plain = (TOY_PATH / "models" / "toy.xml").read_text(encoding="utf-8")
+    runner = FakeRunner(factory_changes={"models/toy.xml": plain})
+    path, release = built(model, out, clone, runner)
+    summary = build_summary(release, path)
+    assert "uncertainty" not in summary["steps"]
+    assert summary["skipped"] == [
+        {
+            "step": "uncertainty",
+            "reason": "the default variant has no distributions of its fitted "
+            "parameters",
+        }
+    ]
+    assert not runner.ran("specs/uncertainty.json")
+    assert not (path / "simulations_uncertainty").exists()
+    assert not (path / "specs" / "uncertainty.json").exists()
+    page = (path / "docs" / "simulations.md").read_text(encoding="utf-8")
+    assert "simulations_uncertainty" not in page
 
 
 def test_publish_after_review(model: Project, out: Path, clone: Path) -> None:
@@ -311,12 +382,10 @@ def test_a_build_with_a_local_framework_is_not_published(
     model: Project, out: Path, clone: Path, tmp_path: Path
 ) -> None:
     """The lock of the release has the local framework, not its version."""
-    path = build(model, out, clone, framework_path=tmp_path / "sbmlsim")
+    path, release = built(model, out, clone, framework_path=tmp_path / "sbmlsim")
     pyproject = (path / "pyproject.toml").read_text(encoding="utf-8")
     assert "[tool.uv.sources]\nsbmlsim = { path = " in pyproject
-    manifest = Manifest.read(path / MANIFEST_FILE)
-    assert manifest is not None
-    assert build_summary(manifest, path)["publishable"] is False
+    assert build_summary(release, path)["publishable"] is False
 
 
 def test_fit_without_record_refused(model: Project, out: Path, clone: Path) -> None:

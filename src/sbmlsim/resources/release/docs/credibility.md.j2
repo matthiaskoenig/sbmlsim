@@ -45,6 +45,7 @@ The assessment of the contexts of use of the model against its adopted fits. A c
 {% endfor %}
 
 {% endif %}
+{% include "docs/credibility-acceptance.md.j2" ignore missing %}
 {% if context.uncertainty %}
 Parameter uncertainty, the adopted fits at {{ context.uncertainty.n_draws }} draws of their parameters; a rule is robust when it is met with a probability of at least {{ context.uncertainty.threshold }}:
 
