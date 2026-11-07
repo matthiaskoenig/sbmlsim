@@ -215,7 +215,7 @@ def test_zenodo_json(context: ProjectContext) -> None:
 def test_workflows_replaced(context: ProjectContext, tmp_path: Path) -> None:
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
-    (workflows / "python.yml").write_text("old")
+    (workflows / "python.yml").write_text("old", encoding="utf-8")
     written = write_project_files(context, tmp_path)
     assert not (workflows / "python.yml").exists()
     assert {p.name for p in workflows.iterdir()} == {"ci.yml", "docs.yml"}
@@ -311,7 +311,7 @@ def test_forked_package_not_constrained(source: SourceRepo) -> None:
         '\n[[package]]\nname = "numpy"\nversion = "2.0.0"\n'
         'source = { registry = "https://pypi.org/simple" }\n'
     )
-    (source.root / "uv.lock").write_text(LOCK + fork)
+    (source.root / "uv.lock").write_text(LOCK + fork, encoding="utf-8")
     constraints = project_context(
         PROJECT, REFERENCE, SETTINGS, source, "0.1.0"
     ).constraints
@@ -393,7 +393,7 @@ def test_docs_workflow_copies_existing_reports(
     (step,) = [s for s in docs["jobs"]["build"]["steps"] if "site/" in s.get("run", "")]
     for folder in folders:
         (tmp_path / folder).mkdir()
-        (tmp_path / folder / "index.html").write_text("<html/>")
+        (tmp_path / folder / "index.html").write_text("<html/>", encoding="utf-8")
     (tmp_path / "site").mkdir()
     result = subprocess.run(
         ["bash", "-e", "-c", step["run"]], cwd=tmp_path, capture_output=True, text=True
@@ -418,7 +418,7 @@ def test_readme_for_the_build(context: ProjectContext, tmp_path: Path) -> None:
     readme = tmp_path / "README.md"
     assert readme in written
     assert readme.read_text(encoding="utf-8") == f"# {SETTINGS.title}\n"
-    readme.write_text("the README of the last release\n")
+    readme.write_text("the README of the last release\n", encoding="utf-8")
     assert readme not in write_project_files(context, tmp_path)
     assert readme.read_text(encoding="utf-8") == "the README of the last release\n"
 

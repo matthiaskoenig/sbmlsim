@@ -322,7 +322,7 @@ def _write_specs(steps: list[BuildStep], release_path: Path) -> list[Path]:
     written = []
     for step in steps:
         text = json.dumps(step.spec, indent=2, sort_keys=True) + "\n"
-        (release_path / step.spec_file).write_text(text, "utf-8", newline="\n")
+        (release_path / step.spec_file).write_text(text, encoding="utf-8", newline="\n")
         written.append(Path(step.spec_file))
     return written
 

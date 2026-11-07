@@ -51,7 +51,7 @@ def write(path: Path, text: str | bytes) -> None:
     if isinstance(text, bytes):
         path.write_bytes(text)
     else:
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
 
 
 def adopted_ids(context: ProjectContext) -> list[str]:
@@ -293,7 +293,7 @@ def test_fit_table_open_interval(release: tuple[ProjectContext, Path]) -> None:
     entry = data["profiles"][pid]
     for key in ("ci_lower", "ci_upper"):
         entry[key] = None
-    profiles.write_text(json.dumps(data))
+    profiles.write_text(json.dumps(data), encoding="utf-8")
     reloaded = AdoptedRecord.load(directory).parameters[pid]
     if reloaded.ci_lower is not None:
         pytest.skip("the record format keeps the interval of the profile")
@@ -623,12 +623,14 @@ def test_the_release_hook_adds_to_the_site(
     context, path = release
     templates = tmp_path / "templates" / "docs"
     templates.mkdir(parents=True)
-    (templates / "library.md.j2").write_text("# Library\n\n{{ library }}\n")
+    (templates / "library.md.j2").write_text(
+        "# Library\n\n{{ library }}\n", encoding="utf-8"
+    )
     (templates / "credibility-context.md.j2").write_text(
-        "{{ context.pairs }} pairs of arms of `{{ context.id }}`.\n\n"
+        "{{ context.pairs }} pairs of arms of `{{ context.id }}`.\n\n", encoding="utf-8"
     )
     (templates / "credibility-sections.md.j2").write_text(
-        '## Study data\n\n{{ credibility.studies | join(", ") }}\n\n'
+        '## Study data\n\n{{ credibility.studies | join(", ") }}\n\n', encoding="utf-8"
     )
     context = dataclasses.replace(
         _credibility_context(context), hook=Hook(tmp_path / "templates")
@@ -699,9 +701,9 @@ def test_the_hook_adds_after_the_acceptance_of_a_context(
     context, path = release
     templates = tmp_path / "templates" / "docs"
     templates.mkdir(parents=True)
-    (templates / "library.md.j2").write_text("# Library\n")
+    (templates / "library.md.j2").write_text("# Library\n", encoding="utf-8")
     (templates / "credibility-acceptance.md.j2").write_text(
-        "| Ratio of `{{ context.id }}` |\n| --- |\n\n"
+        "| Ratio of `{{ context.id }}` |\n| --- |\n\n", encoding="utf-8"
     )
     context = dataclasses.replace(
         _credibility_context(context), hook=Hook(tmp_path / "templates")

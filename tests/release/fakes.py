@@ -64,7 +64,7 @@ class FakeRunner:
         if command[0] == "git":
             return run(command, cwd)
         if command[:2] == ["uv", "lock"]:
-            (cwd / "uv.lock").write_text(lock_text())
+            (cwd / "uv.lock").write_text(lock_text(), encoding="utf-8")
         elif "sbmlsim.run" in command:
             self._analysis(command[5], command[6], cwd / command[8], cwd)
         return ""
@@ -80,9 +80,11 @@ class FakeRunner:
             for relative, text in self.factory_changes.items():
                 self._write(out / relative, text)
             changed = sorted(self.factory_changes)
-            (out / "summary.json").write_text(json.dumps({"changed": changed}))
-            (models / "toy.md").write_text("# toy\n")
-            (out / "toy.omex").write_text("omex\n")
+            (out / "summary.json").write_text(
+                json.dumps({"changed": changed}), encoding="utf-8"
+            )
+            (models / "toy.md").write_text("# toy\n", encoding="utf-8")
+            (out / "toy.omex").write_text("omex\n", encoding="utf-8")
             self._write(out / "figures" / "toy_model.png", "png")
         elif kind == "simulate":
             self._write(out / "Decay" / "Decay.html")
@@ -94,14 +96,14 @@ class FakeRunner:
                 self._write(report / "index.html")
                 self._write(report / "report.pdf", "%PDF")
         elif kind == "credibility":
-            assert json.loads((cwd / spec).read_text())["source_commit"]
+            assert json.loads((cwd / spec).read_text(encoding="utf-8"))["source_commit"]
             self._write(out / "credibility" / "index.html")
-        (out / "run.json").write_text("{}")
+        (out / "run.json").write_text("{}", encoding="utf-8")
 
     @staticmethod
     def _write(path: Path, text: str = "<html/>") -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
 
     def ran(self, word: str) -> bool:
         """Tell whether a command with this word ran."""

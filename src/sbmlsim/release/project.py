@@ -156,7 +156,7 @@ class ProjectContext:
 def _python_version(source: SourceRepo, requires_python: str) -> str:
     version_file = source.root / ".python-version"
     if version_file.exists():
-        match = _PYTHON_VERSION.match(version_file.read_text("utf-8").strip())
+        match = _PYTHON_VERSION.match(version_file.read_text(encoding="utf-8").strip())
         if match:
             return match.group(0)
     floor = _PYTHON_FLOOR.search(requires_python)
@@ -201,7 +201,7 @@ def _constraints(
     lock_path = source.root / "uv.lock"
     if not lock_path.exists():
         raise ReleaseError(f"The source has no 'uv.lock' at {lock_path}.")
-    lock = tomllib.loads(lock_path.read_text("utf-8"))
+    lock = tomllib.loads(lock_path.read_text(encoding="utf-8"))
     versions: dict[str, set[str]] = {}
     for package in lock.get("package", []):
         if "registry" not in package.get("source", {}):
@@ -249,7 +249,7 @@ def project_context(
     pyproject_path = source.root / "pyproject.toml"
     if not pyproject_path.is_file():
         raise ReleaseError(f"The source has no 'pyproject.toml' at {pyproject_path}.")
-    table = tomllib.loads(pyproject_path.read_text("utf-8")).get("project", {})
+    table = tomllib.loads(pyproject_path.read_text(encoding="utf-8")).get("project", {})
     requires_python = table.get("requires-python")
     if not isinstance(requires_python, str):
         raise ReleaseError(
@@ -299,7 +299,7 @@ def _loader(directories: Sequence[Path | Traversable]) -> Callable[[str], str | 
         for root in directories:
             path = root.joinpath(*name.split("/"))
             if path.is_file():
-                return path.read_text("utf-8")
+                return path.read_text(encoding="utf-8")
         return None
 
     return load
@@ -448,6 +448,8 @@ def write_project_files(context: ProjectContext, release_path: Path) -> list[Pat
             workflow.unlink()
     readme = release_path / "README.md"
     if not readme.is_file():
-        readme.write_text(f"# {context.settings.title}\n", "utf-8", newline="\n")
+        readme.write_text(
+            f"# {context.settings.title}\n", encoding="utf-8", newline="\n"
+        )
         written.append(readme)
     return written
