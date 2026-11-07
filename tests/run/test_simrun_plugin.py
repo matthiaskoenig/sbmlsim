@@ -53,6 +53,7 @@ KINDS = (
     "adopt",
     "factory",
     "credibility",
+    "release",
 )
 
 #: a fit of three repeats which stop after a few steps
@@ -307,3 +308,21 @@ def test_command_of_report_has_input_placeholder(store: Path) -> None:
     # the summary of the task, which `simrun compare` reads, is the one of the run
     summary = (out / "summary.json").read_bytes()
     assert summary == (out / plugin.OUTPUT / "summary.json").read_bytes()
+
+
+def test_release_is_an_unsplit_task_type_and_verify_has_none() -> None:
+    command = plugin.RELEASE.command
+    assert command is not None
+    assert command.startswith("python -m sbmlsim.run release {settings} ")
+    assert "--resume" in command.split()
+    assert plugin.RELEASE.outputs == (plugin.OUTPUT,)
+    assert "verify" not in plugin.TASK_TYPES
+
+
+def test_the_plan_of_release_is_the_plan_of_its_kind() -> None:
+    from sbmlsim.run.release_kinds import ReleaseSpec
+
+    spec = ReleaseSpec(project="tests.project_toy:PROJECT", version="1.0.0")
+    assert plugin.RELEASE.plan == "sbmlsim.simrun:release_plan"
+    assert resolve(plugin.RELEASE.plan) is plugin.release_plan
+    assert isinstance(spec, ReleaseSpec)
