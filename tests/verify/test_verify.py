@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.plot import Figure
 from sbmlsim.project import FigureOutputs
 from sbmlsim.simulation import Scan, Simulation
@@ -282,6 +283,23 @@ def test_an_unknown_project_is_a_usage_error(
     assert verify(["dump", "--out", out]) == 2
 
 
+def test_the_report_writes_the_text_as_it_is(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from sbmlsim.verify.common import report
+
+    report("a\tb :smile: [bold]x[/bold]")
+    assert capsys.readouterr().out == "a\tb :smile: [bold]x[/bold]\n"
+
+
+def test_the_versions_of_a_dump() -> None:
+    from sbmlsim.verify.dump import package_versions
+
+    versions = package_versions(PROJECT)
+    assert versions["sbmlsim"] == importlib.metadata.version("sbmlsim")
+    assert "sbmlutils" in versions  # a core library of the release settings
+
+
 def test_the_command_is_part_of_the_run_layer(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -301,7 +319,7 @@ def test_capture_settings_of_a_project() -> None:
     settings = capture_settings(PROJECT, ToyDecay, ROOT)
     assert settings["experiment"] == "ToyDecay"
     assert settings["simulator"]["relative_tolerance"] == 1e-10
-    assert settings["simulator"]["n_workers"] == 1
+    assert settings["run"]["n_workers"] is None
     assert settings["run"]["figure_formats"] == ["svg", "png"]
     assert settings["run"]["reduced_selections"] is True
     assert settings["run"]["save_results"] is False
@@ -310,6 +328,64 @@ def test_capture_settings_of_a_project() -> None:
     assert settings["calls"] == {"simulator": 1, "runner": 1, "run": 1}
     assert "<root>" in settings["runner"]["base_path"]
     assert "figure" not in settings
+
+
+def _fake_run(positional: bool):
+    from sbmlsim.experiment import ExperimentRunner
+    from sbmlsim.simulator import Simulator
+
+    def run(experiment: type[SimulationExperiment], output_dir: Path) -> None:
+        if positional:
+            simulator = Simulator(1, absolute_tolerance=1e-10)
+            runner = ExperimentRunner([experiment], TOY_PATH, None, simulator)
+            runner.run_experiments(output_dir, False, False, ["png"])
+        else:
+            simulator = Simulator(n_workers=1, absolute_tolerance=1e-10)
+            runner = ExperimentRunner(
+                experiment_classes=[experiment],
+                simulator=simulator,
+                base_path=TOY_PATH,
+            )
+            runner.run_experiments(
+                output_path=output_dir,
+                show_figures=False,
+                save_results=False,
+                figure_formats=["png"],
+            )
+
+    return run
+
+
+def test_capture_settings_binds_positional_arguments() -> None:
+    from sbmlsim.verify.definitions import capture_settings
+
+    a = capture_settings(PROJECT, ToyDecay, ROOT, _fake_run(True))
+    b = capture_settings(PROJECT, ToyDecay, ROOT, _fake_run(False))
+    assert a == b
+    assert a["simulator"]["absolute_tolerance"] == 1e-10
+    assert a["run"]["figure_formats"] == ["png"]
+    assert a["runner"]["experiment_classes"] == ["ToyDecay"]
+
+
+def test_capture_settings_requires_a_complete_run() -> None:
+    from sbmlsim.verify.definitions import capture_settings
+
+    with pytest.raises(RuntimeError, match="did not reach sbmlsim"):
+        capture_settings(PROJECT, ToyDecay, ROOT, lambda experiment, out: None)
+
+
+def test_capture_settings_records_the_matplotlib_settings() -> None:
+    import matplotlib
+
+    from sbmlsim.verify.definitions import capture_settings
+
+    def with_font(experiment: type[SimulationExperiment], output_dir: Path) -> None:
+        with matplotlib.rc_context({"font.size": 3}):
+            PROJECT.run_experiments(experiment, output_dir)
+
+    rc = capture_settings(PROJECT, ToyDecay, ROOT, with_font)["rc"]
+    assert rc["font.size"] == 3
+    assert rc["savefig.dpi"] == 30
 
 
 def test_capture_settings_sees_a_difference() -> None:
@@ -355,7 +431,7 @@ def test_capture_settings_of_an_experiment_with_a_design() -> None:
     from sbmlsim.verify.definitions import capture_settings
 
     settings = capture_settings(PROJECT, ToyDesign, ROOT)
-    assert settings["simulator"]["n_workers"] == 1
+    assert settings["simulator"]["n_workers"] is None
     assert settings["calls"]["simulator"] == 1
 
 
@@ -557,6 +633,22 @@ def test_a_model_which_is_no_variant_has_no_build() -> None:
     experiment._tasks = {"task_decay": Task("model", "decay")}
     assert variant_of(other, experiment, "task_decay") is None
     assert variant_of(PROJECT, experiment, "task_decay") == "default"
+
+
+def test_a_variant_which_the_project_does_not_have_is_warned_about(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from sbmlsim.task import Task
+    from sbmlsim.verify.dump import variant_of
+
+    class Named(ToyDecay):
+        def variant_of(self, simulation: str) -> str | None:
+            return "nowhere"
+
+    experiment = Named(base_path=TOY_PATH)
+    experiment._tasks = {"task_decay": Task("model", "decay")}
+    assert variant_of(PROJECT, experiment, "task_decay") == "nowhere"
+    assert "no variant of the project" in caplog.text
 
 
 def test_the_tasks_of_the_builds_are_renamed() -> None:
@@ -1468,6 +1560,18 @@ def test_a_renames_file_with_wrong_new_parts_is_an_error(
     path.write_text(json.dumps(renames), encoding="utf-8")
     with pytest.raises(ValueError):
         load_renames(str(path))
+
+
+def test_a_figure_of_one_dump_only_is_a_difference(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    both = {"f": json.dumps({"sid": "f"}), "g": json.dumps({"sid": "g"})}
+    one = {"f": both["f"]}
+    old = written(tmp_path, "o.pkl", synthetic(figures={"E": both}))
+    new = written(tmp_path, "n.pkl", synthetic(figures={"E": one}))
+    assert verify(["compare", old, new]) == 1
+    assert "figures: 2 old, 1 new, 1 differ (0 expected)" in capsys.readouterr().out
+    assert verify(["compare", new, old]) == 1
 
 
 def test_png_pairs_the_figures_of_renamed_keys(tmp_path: Path) -> None:

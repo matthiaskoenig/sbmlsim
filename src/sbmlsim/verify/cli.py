@@ -166,8 +166,8 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--qualification", help="TSV file the qualification is written to")
     s.add_argument(
         "--field",
-        default="health",
-        help="the field of the metadata of the numerator the ratios are pooled by",
+        default=None,
+        help="an option of the pooling of the extension, e.g. the field of the metadata the ratios are pooled by; its default without",
     )
     s.add_argument(
         "--tolerance",

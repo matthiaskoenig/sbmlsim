@@ -28,13 +28,21 @@ def evidence_extensions(args: argparse.Namespace) -> list[Any]:
 
     extensions: list[Any] = []
     if args.project:
-        extensions += load_project_of(args).evidence_extensions()
+        try:
+            extensions += load_project_of(args).evidence_extensions()
+        except ValueError as err:
+            raise UsageError(str(err)) from err
     for reference in args.extensions:
         try:
             found = resolve(reference)
         except (ValueError, ImportError, AttributeError) as err:
             raise UsageError(f"--extensions {reference}: {err}") from err
-        extensions += [found] if isinstance(found, EvidenceExtension) else list(found)
+        try:
+            extensions += (
+                [found] if isinstance(found, EvidenceExtension) else list(found)
+            )
+        except TypeError as err:
+            raise UsageError(f"--extensions {reference}: {err}") from err
     wrong = [e for e in extensions if not isinstance(e, EvidenceExtension)]
     if wrong:
         raise UsageError(f"{wrong!r} are no evidence extensions")
@@ -80,12 +88,9 @@ def scorecard_command(options: argparse.Namespace) -> int:
         )
     except (FileNotFoundError, ValueError, KeyError) as err:
         raise UsageError(str(err)) from err
+    pool_options = {} if options.field is None else {"field": options.field}
     table = scorecard(records, extensions)
-    qualified = (
-        None
-        if pooled_by is None
-        else pool(records, pooled_by, {"field": options.field})
-    )
+    qualified = None if pooled_by is None else pool(records, pooled_by, pool_options)
     if options.pool and qualified is None:
         raise UsageError(f"The extension {options.pool} pools no qualification.")
     if options.out:
@@ -98,8 +103,10 @@ def scorecard_command(options: argparse.Namespace) -> int:
     for row in table.to_dict("records"):
         verified = "" if row["verified"] is None else f", verified {row['verified']}"
         report(f"  {row['model']}/{row['context']}: {row['verdict']}{verified}")
-    if qualified is not None:
-        _report_qualification(qualified, options.field)
+    if qualified is not None and pooled_by is not None:
+        report(f"qualification by {options.field or 'the default'}:")
+        for line in pooled_by.pool_lines(qualified, pool_options):
+            report(line)
     if baseline is None:
         return 0
     regressions = compare(baseline, table, options.tolerance, extensions)
@@ -107,16 +114,3 @@ def scorecard_command(options: argparse.Namespace) -> int:
     for regression in regressions:
         report(f"  {regression}")
     return 1 if regressions else 0
-
-
-def _report_qualification(qualified: Any, field: str) -> None:
-    """Report the pooled qualification of the ratio pairs by a field."""
-    pooled = qualified[qualified["model"] == "all"]
-    if len(pooled):
-        report(f"qualification by {field}:")
-        for row in pooled.to_dict("records"):
-            report(
-                f"  {row['value']}: {row['n_within']} of {row['n_pairs']} ratio "
-                f"pairs within the limits of Guest ({row['within']:.0f} %), GMFE "
-                f"{row['gmfe']:.3g}"
-            )

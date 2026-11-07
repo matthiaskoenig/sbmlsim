@@ -100,3 +100,39 @@ def test_bad_arguments_exit_with_2(tmp_path: Path, extra: list[str]) -> None:
 def test_records_which_cannot_be_read_exit_with_2(tmp_path: Path) -> None:
     assert verify(["scorecard", str(tmp_path / "missing")]) == 2
     assert verify(["scorecard", str(tmp_path), "--baseline", "none.tsv"]) == 2
+
+
+def test_the_pool_is_worded_by_the_extension(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default prints every row as columns and values, an extension words them."""
+    records = _write(tmp_path / "records", _assessment("a"))
+    args = ["scorecard", str(records), *EXTENSIONS, "--pool", "arms"]
+    assert verify(args) == 0
+    out = capsys.readouterr().out
+    assert "qualification by the default:" in out
+    assert "model=a" in out or "model=all" in out
+
+    table = pd.DataFrame({"model": ["a", "all"], "value": ["x", "x"], "n": [1, 2]})
+    monkeypatch.setattr(type(ARMS), "pool", lambda self, contexts, options: table)
+    assert verify(args) == 0
+    assert "  model=all, value=x, n=2" in capsys.readouterr().out
+    monkeypatch.setattr(
+        type(ARMS),
+        "pool_lines",
+        lambda self, table, options: [
+            f"  {r['value']}: {r['n']}"
+            for r in table.to_dict("records")
+            if r["model"] == "all"
+        ],
+    )
+    assert verify([*args, "--field", "health"]) == 0
+    out = capsys.readouterr().out
+    assert "qualification by health:" in out
+    assert "  x: 2" in out
+
+
+def test_a_bad_extension_object_exits_with_2(tmp_path: Path) -> None:
+    records = _write(tmp_path / "records", _assessment("a"))
+    bad = ["--extensions", "tests.verify.projects:BROKEN"]
+    assert verify(["scorecard", str(records), *bad]) == 2
