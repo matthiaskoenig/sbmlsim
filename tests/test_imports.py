@@ -72,7 +72,7 @@ def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
         "import sys, sbmlsim; "
         "print(sorted(m for m in ('sbmlsim.run', 'sbmlsim.project', 'sbmlsim.simrun',"
         " 'simrun', 'sbmlsim.release', 'sbmlsim.project_checks',"
-        " 'sbmlsim.credibility') if m in sys.modules))"
+        " 'sbmlsim.credibility', 'sbmlsim.verify') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -93,7 +93,7 @@ def test_the_run_layer_imports_no_analysis() -> None:
         "sbmlsim.run.release_kinds; "
         "print(sorted(m for m in ('sbmlsim.fit', 'sbmlsim.simulator', 'sbmlsim.project',"
         " 'matplotlib', 'sbmlsim.simrun', 'simrun', 'sbmlsim.credibility',"
-        " 'sbmlsim.release', 'jinja2') if m in sys.modules))"
+        " 'sbmlsim.release', 'sbmlsim.verify', 'jinja2') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -165,6 +165,30 @@ def test_a_release_imports_its_tools_when_it_runs() -> None:
         "print(sorted(m for m in ('jinja2', 'sbmlsim.release.workflow',"
         " 'sbmlsim.credibility', 'sbmlsim.project', 'roadrunner', 'pymetadata.omex',"
         " 'sbmlode') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
+def test_verify_imports_no_simulator_until_a_command_runs() -> None:
+    """`sbmlsim.verify` and its command line import no simulator until a command runs.
+
+    The run layer imports it when the command `verify` runs, and `verify` loads
+    the project, the experiments and the simulator in the commands which need
+    them.
+    """
+    code = (
+        "import sys, sbmlsim.verify.cli; "
+        "print(sorted(m for m in ('roadrunner', 'sbmlsim.simulator',"
+        " 'sbmlsim.experiment', 'sbmlsim.fit', 'sbmlsim.project', 'matplotlib',"
+        " 'sbmlsim.credibility') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],

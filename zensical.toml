@@ -191,6 +191,17 @@ nav = [
       { "report" = "api/credibility.report.md" },
       { "scorecard" = "api/credibility.scorecard.md" },
     ] },
+    { "sbmlsim.verify" = [
+      { "dump" = "api/verify.dump.md" },
+      { "match" = "api/verify.match.md" },
+      { "renames" = "api/verify.renames.md" },
+      { "compare" = "api/verify.compare.md" },
+      { "definitions" = "api/verify.definitions.md" },
+      { "files" = "api/verify.files.md" },
+      { "scorecard" = "api/verify.scorecard.md" },
+      { "common" = "api/verify.common.md" },
+      { "cli" = "api/verify.cli.md" },
+    ] },
     { "sbmlsim.sciml" = [
       { "sciml" = "api/sciml.md" },
       { "network" = "api/sciml.network.md" },

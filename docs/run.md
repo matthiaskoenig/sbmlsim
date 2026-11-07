@@ -53,9 +53,10 @@ python -m sbmlsim.run plan <kind> <spec> [-o FILE]
 python -m sbmlsim.run unit <kind> <spec> <index> --out DIR [--input PORT=PATH ...]
 python -m sbmlsim.run merge <kind> <spec> --out DIR [--input PORT=PATH ...] [--summary FILE]
 python -m sbmlsim.run list <project> [--json] [--experiments]
+python -m sbmlsim.run verify <subcommand> ...
 ```
 
-The first form runs an analysis whole (its command is `run`, which may be left out). `plan`, `unit` and `merge` run it in [units](#units-and-merges), `list` lists the analyses of a project as a table or, with `--json`, as JSON; with `--experiments` it also lists the groups of the simulation experiments and every experiment (kind `simulate`, which runs them by these names), which imports the experiments. `--profile`, anywhere in the command line, runs a command which writes into `--out` under the sampling profiler of python 3.15, see [Profiling](#profiling).
+The first form runs an analysis whole (its command is `run`, which may be left out). `plan`, `unit` and `merge` run it in [units](#units-and-merges), `list` lists the analyses of a project as a table or, with `--json`, as JSON; with `--experiments` it also lists the groups of the simulation experiments and every experiment (kind `simulate`, which runs them by these names), which imports the experiments. `verify` is a family of commands that compare the results of two checkouts, see [Verify](#verify). `--profile`, anywhere in the command line, runs a command which writes into `--out` under the sampling profiler of python 3.15, see [Profiling](#profiling).
 
 | argument | meaning |
 | --- | --- |
@@ -336,6 +337,33 @@ try:
 except run.OutInUse as err:
     print(err.reason, err.out)
 ```
+
+## Verify
+
+`python -m sbmlsim.run verify <subcommand>` checks that a change of a model changes only what it is meant to change: a refactoring, an update of sbmlsim or a refresh of the study data should leave the simulations of the model as they were. It is a family of local commands like `plan` and `list`, not a kind: it compares the results of checkouts on this machine, writes only where it is told to (`--out`) and has no units, no merge and no simrun task type. The result of a command goes to stdout, the progress and the problems are logged on stderr. The exit code is 0 when nothing differs, 1 when a difference is found and 2 for a command that cannot be run as it was asked (an unknown project or experiment, a bad option, a missing directory).
+
+```bash
+git worktree add --detach ../base develop
+# the experiments simulate the models of the project, which are generated:
+# create them with the factory of each checkout right before its dump
+python -m sbmlsim.run verify dump --root ../base --project my_models.hctz:PROJECT --out base.pkl --atol 1e-16 --rtol 1e-12 --grid 1000
+python -m sbmlsim.run verify dump --root . --project my_models.hctz:PROJECT --out new.pkl --order base.pkl --atol 1e-16 --rtol 1e-12 --grid 1000
+python -m sbmlsim.run verify compare base.pkl new.pkl
+```
+
+| subcommand | what it does |
+| --- | --- |
+| `dump --project REF --out FILE` | runs the experiments of the project (or the named ones, `--all` adds those defined below its package but not in its experiments) serially and stores the results, datasets, fit mappings, figures and the variant of every task in a pickle; `--atol`/`--rtol` take a number or `model` for the tolerance of the project, `--grid N` outputs every simulation at `N + 1` equidistant times and at its changes instead of the steps of the integrator, `--order FILE` runs in the order of another dump, `--skip A,B` leaves experiments out, `--reduced-selections` simulates only the selections the experiments need |
+| `compare OLD NEW` | compares two dumps: the simulations on the matched rows of their output times (a row at a time which only one dump has is compared with the other dump interpolated at its time, relative to the scale of the array, an array whose interpolation cannot resolve the `--threshold` is reported as unresolved, not as equal), everything else exactly; `--renames FILE` applies the expected renames and differences of a change to the old dump first |
+| `ranges DUMP` | lists the fit mappings whose data lie outside of the simulated range |
+| `fits --project REF --out DIR` | starts a minimal fit of every fit definition |
+| `definitions --project REF --out FILE` | writes the fit definitions as JSON (settings, parameters, mappings), to compare two checkouts with `diff`; the checkout is `<root>` |
+| `settings --project REF --out FILE` | writes the settings a run of the experiments hands to sbmlsim as JSON, without simulating |
+| `png OLD NEW` | compares the PNG figures of two directories pixel by pixel; `--sids` pairs an old figure with the figure of the SId of its file name |
+| `sbml OLD NEW` | compares SBML models (files or directories) by their elements, ignoring the order and the annotations |
+| `scorecard RECORDS...` | reads the credibility records of many models into one table, compares it with `--baseline` and pools a qualification with the evidence extension named by `--pool` (`--field`); the extensions are those of `--project` and `--extensions MODULE:ATTRIBUTE` |
+
+`--project` is the reference `module:attribute` of the project and `--root` the directory put first on the python path, e.g. a checkout (the project must be imported from below it). The variant of the model a task runs on is stored with every task: the variant `SimulationExperiment.variant_of(simulation)` names, which a framework that builds a model per group of subjects implements, else the variant of the project whose file is the source of the model of the task; a study that moves to another variant is a difference of its own. The renames file has the parts `metadata` (`fields`, `members` and `added`, the renamed metadata of the fit mappings), `strings` and `ids` (renamed texts and ids), `sids` (`true` when the ids became SIds), `figure_fields` (fields of a figure left out of both dumps) and `expected` (patterns of the keys per part of the dump, `results`, `datasets`, `mappings`, `figures`, `ranges` and `builds`, whose differences are expected: they are printed and not counted, and an expected difference that does not occur is counted).
 
 ## CPU quota and threads
 

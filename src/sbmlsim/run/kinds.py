@@ -223,7 +223,9 @@ class Kind[S: Spec]:
 
 
 #: the commands of the command line, which are no names of kinds
-RESERVED_NAMES: frozenset[str] = frozenset({"run", "plan", "unit", "merge", "list"})
+RESERVED_NAMES: frozenset[str] = frozenset(
+    {"run", "plan", "unit", "merge", "list", "verify"}
+)
 
 #: the kinds by their name
 KINDS: dict[str, Kind[Any]] = {}
