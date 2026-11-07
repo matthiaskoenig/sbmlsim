@@ -377,7 +377,8 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `fits` | the fit problems by their subset, the `FitDefinition`s of [Parameter fitting](fitting.md); `load_fit_definitions()` gives them at the optimization level of the simulator settings |
 | `fits_dir` | the directory of the records of the adopted fits, one directory per fit id, `adopted_record(fit_id)`; `fit_records()` reads them, the fitted values with their uncertainty which a factory gives its parameters, `fit_records().parameter("k", unit=U.per_min)` (`sbmlsim.fit.records.AdoptedRecords`) |
 | `adopted` | the file of the adopted fits, `{"fits": {"<subset>": "<fit id>"}}`, `adopted.json` in `fits_dir` without |
-| `credibility` | the declaration of the contexts of use of the model, `load_credibility()` |
+| `credibility` | the declaration of the contexts of use of the model, `load_credibility()`, which checks its domains against the metadata of the project, see [Credibility](#credibility) |
+| `credibility_settings` | the domain of the credibility, `CredibilitySettings`: the metadata of the fit mappings (`metadata_type`, a class or a reference, `MappingMetaData` without), the fields of it a domain can claim (`domain_fields`, every enum field without) and the evidence extensions (`extensions`, objects or references); `domain_fields()` and `evidence_extensions()` resolve them |
 | `scans` | the scans by their name, `ScanAnalysis`: the model, a function building the `Scan`, the observables, `time`, `keep`, `on_error` and, for a sensitivity analysis, `indices` (`local`, `sobol`, `fast` or `morris`) with `index_options` |
 | `uncertainties` | the uncertainty analyses by their name, `UncertaintyAnalysis`: the model, functions building the simulation or scenarios, the `UncertaintyModel` and the observables, and the arguments of [`propagate`](uncertainty.md) (`outputs`, `n` or the adaptive `rel_tol`, `n_start` and `n_max`, `design`, `seed`, `keep`, `time`, `on_error`) |
 | `sensitivities` | the sensitivity analyses of the model over the groups of its simulations by their name, the kind `sensitivity`: a `SensitivityRunner` of `sbmlsim.sensitivity.runner`, the runners of the subfolders of a model with several simulations by subfolder, or a reference `"module:attribute"` to either, resolved when it runs; `sensitivity(name)` gives it bound to the project (a runner without a project of its own runs the variants and the simulator settings of the project which lists it). A name is no name of a scan with indices |
@@ -423,6 +424,22 @@ python -m sbmlsim.run factory factory.yaml --out results/models
 ```
 
 where `factory.yaml` names the `project` alone; its summary lists the outputs of the factory which differ from the committed ones.
+
+## Credibility
+
+`sbmlsim.credibility` is the credibility of a model for its contexts of use (ASME V&V 40, ICH M15). A `Credibility` lists the `ContextOfUse`s of a model: the question, its level (`CouLevel`, C1 describe to C5 clinical endpoint), the influence and the consequence, whose model risk (`model_risk`) gives the default acceptance (`default_acceptance`) and the minimum of points, the quantities of interest, the domain it claims (values of the fields of the metadata of the fit mappings) and the evidence, selections of the fit mappings with a role (calibration, validation, limitation; `Unclaimed` takes the validation data no other evidence selects). The project references it (`credibility`) and gives its domain (`credibility_settings`):
+
+```py
+PROJECT = Project(
+    ...,
+    credibility=".credibility:CREDIBILITY",
+    credibility_settings=CredibilitySettings(
+        metadata_type=".metadata:StudyMetaData", domain_fields=("route", "health")
+    ),
+)
+```
+
+The evidence is selected from the data points of the adopted fits with the kinds their records stored (`evaluate_fits` evaluates them fresh, `mapping_table` lists the mappings without a simulation, `select` applies the declaration) and `check_declaration(project)` checks a declaration against the adopted fits without a simulation. The lock fixes the selection in advance: `write_lock(selections, fits, out)` writes `credibility.lock.json` into an out, which is reviewed and committed into the root of the project, where `lock_differences` compares the selection with it. The parameter uncertainty of the adopted fits is propagated to the decisive predictions with `propagate_fits` (`PropagationSettings`), the decisive points are checked with the declared variability of the subjects with `predictive_checks` (`VariabilitySettings`), and `cross_validate` refits an adopted fit without one training study at a time, whose result `write_cross_validation` writes into an out (`fits/<fit id>/cross_validation.json`, committed next to the record of the fit). A domain adds evidence of its own with an `EvidenceExtension` (e.g. the ratios between the arms of a study), which the selection, the assessment, the report and the scorecard call; the records keep its sections in `extensions` and read the records of pkpdsim 0.17 to 0.19.
 
 ## Checks of a project
 

@@ -1,0 +1,216 @@
+{
+  "provenance": {
+    "model": "credibility",
+    "title": "Toy model with every kind of evidence",
+    "fits": [
+      "DECAY_20261106_183957__59e5e"
+    ],
+    "versions": {
+      "pkpdsim": "0.18.0",
+      "sbmlsim": "0.16.0",
+      "sbmlutils": "0.17.2",
+      "libroadrunner": "2.11.0"
+    },
+    "commit": "f078e5ca2ed51c0b5bc6b61c91c32cafb306e7cc",
+    "dirty": false,
+    "date": "2026-11-06T18:40:24+01:00",
+    "lock": null
+  },
+  "evidence": [
+    {
+      "context": "describe",
+      "name": "intravenous data",
+      "role": "calibration",
+      "description": "",
+      "selection": "route in [IV]",
+      "n_points": 10,
+      "n_mappings": 2,
+      "n_studies": 2,
+      "outliers_dropped": 0,
+      "limitation_subtracted": 0,
+      "metrics": {
+        "GMFE": 1.002235893718994,
+        "AFE": 1.000848541045419,
+        "within_1.25fold": 100.0,
+        "within_1.5fold": 100.0,
+        "within_2fold": 100.0,
+        "within_1sd": null,
+        "within_2sd": null
+      }
+    },
+    {
+      "context": "dose",
+      "name": "doses",
+      "role": "validation",
+      "description": "",
+      "selection": "CredA: fm_dose",
+      "n_points": 5,
+      "n_mappings": 1,
+      "n_studies": 1,
+      "outliers_dropped": 0,
+      "limitation_subtracted": 0,
+      "metrics": {
+        "GMFE": 1.002235893718994,
+        "AFE": 1.000848541045419,
+        "within_1.25fold": 100.0,
+        "within_1.5fold": 100.0,
+        "within_2fold": 100.0,
+        "within_1sd": null,
+        "within_2sd": null
+      }
+    },
+    {
+      "context": "dose",
+      "name": "other healthy data",
+      "role": "validation",
+      "description": "",
+      "selection": "unclaimed validation data within route in [IV] and health in [HEALTHY]",
+      "n_points": 5,
+      "n_mappings": 1,
+      "n_studies": 1,
+      "outliers_dropped": 0,
+      "limitation_subtracted": 5,
+      "metrics": {
+        "GMFE": 1.002235893718994,
+        "AFE": 1.000848541045419,
+        "within_1.25fold": 100.0,
+        "within_1.5fold": 100.0,
+        "within_2fold": 100.0,
+        "within_1sd": null,
+        "within_2sd": null
+      }
+    },
+    {
+      "context": "renal",
+      "name": "renal impairment",
+      "role": "validation",
+      "description": "",
+      "selection": "CredA: fm_renal",
+      "n_points": 5,
+      "n_mappings": 1,
+      "n_studies": 1,
+      "outliers_dropped": 0,
+      "limitation_subtracted": 0,
+      "metrics": {
+        "GMFE": 1.002235893718994,
+        "AFE": 1.000848541045419,
+        "within_1.25fold": 100.0,
+        "within_1.5fold": 100.0,
+        "within_2fold": 100.0,
+        "within_1sd": null,
+        "within_2sd": null
+      }
+    }
+  ],
+  "coverage": [
+    {
+      "context": "dose",
+      "field": "route",
+      "value": "IV",
+      "coverage": "validated",
+      "claimed": true,
+      "n_points": 10
+    },
+    {
+      "context": "dose",
+      "field": "health",
+      "value": "HEALTHY",
+      "coverage": "validated",
+      "claimed": true,
+      "n_points": 10
+    },
+    {
+      "context": "renal",
+      "field": "health",
+      "value": "HEALTHY",
+      "coverage": "uncovered",
+      "claimed": true,
+      "n_points": 0
+    },
+    {
+      "context": "renal",
+      "field": "health",
+      "value": "RENAL_IMPAIRMENT",
+      "coverage": "validated",
+      "claimed": true,
+      "n_points": 5
+    }
+  ],
+  "limitations": [
+    {
+      "context": "",
+      "name": "scaled data",
+      "role": "limitation",
+      "description": "data at three times the decay which the model does not describe",
+      "selection": "CredA: fm_limit",
+      "n_points": 5,
+      "n_mappings": 1,
+      "n_studies": 1,
+      "outliers_dropped": 0,
+      "limitation_subtracted": 0,
+      "metrics": {
+        "GMFE": 2.997456535098109,
+        "AFE": 0.33361618034847307,
+        "within_1.25fold": 0.0,
+        "within_1.5fold": 0.0,
+        "within_2fold": 0.0,
+        "within_1sd": null,
+        "within_2sd": null
+      }
+    }
+  ],
+  "unclaimed": [
+    {
+      "fit": "DECAY",
+      "experiment": "CredB",
+      "mapping": "fm_zero",
+      "n": 5
+    }
+  ],
+  "notes": "",
+  "verification": null,
+  "cross_validations": [],
+  "studies": [
+    {
+      "study": "CredA",
+      "folder": null,
+      "fits": [
+        "DECAY"
+      ],
+      "n_points": 30,
+      "recorded": false,
+      "collected": null,
+      "dating": null,
+      "updated": null,
+      "released": null,
+      "pkdb_id": null,
+      "source_digest": null,
+      "pkdb_data_commit": null,
+      "pkdb_data_dirty": null,
+      "n_tables": 0,
+      "changed": null
+    },
+    {
+      "study": "CredB",
+      "folder": null,
+      "fits": [
+        "DECAY"
+      ],
+      "n_points": 10,
+      "recorded": false,
+      "collected": null,
+      "dating": null,
+      "updated": null,
+      "released": null,
+      "pkdb_id": null,
+      "source_digest": null,
+      "pkdb_data_commit": null,
+      "pkdb_data_dirty": null,
+      "n_tables": 0,
+      "changed": null
+    }
+  ],
+  "inputs": [],
+  "vpc": [],
+  "contexts": []
+}

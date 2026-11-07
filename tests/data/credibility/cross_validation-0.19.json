@@ -1,0 +1,28 @@
+{
+  "fit": "DECAY_20261106_184001__e6264",
+  "subset": "DECAY",
+  "studies": [
+    {
+      "study": "CredA",
+      "n_points": 30,
+      "gmfe_held_out": 1.2030041051675902,
+      "gmfe_fitted": 1.2030041051675902,
+      "within_2fold_held_out": 83.33333333333334,
+      "within_2fold_fitted": 83.33333333333334,
+      "cost": 1.0979734346250959e-05
+    },
+    {
+      "study": "CredB",
+      "n_points": 5,
+      "gmfe_held_out": 1.002235893718994,
+      "gmfe_fitted": 1.002235893718994,
+      "within_2fold_held_out": 100.0,
+      "within_2fold_fitted": 100.0,
+      "cost": 1.0979734346250959e-05
+    }
+  ],
+  "gmfe_held_out": 1.1720305822850852,
+  "gmfe_fitted": 1.1720305822850852,
+  "seed": 1234,
+  "date": "2026-11-06T18:40:12+01:00"
+}

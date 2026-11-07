@@ -48,6 +48,7 @@ import re
 import shutil
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, override
 
@@ -92,6 +93,7 @@ __all__ = [
     "FIGURES_DIR",
     "ActionFunction",
     "CheckSettings",
+    "CredibilitySettings",
     "FigureOutputs",
     "Project",
     "ProjectAction",
@@ -534,6 +536,62 @@ class CheckSettings(BaseModel):
         return self
 
 
+class CredibilitySettings(BaseModel):
+    """The settings of the credibility of a project which belong to its domain.
+
+    The declaration of the contexts of use (`Project.credibility`) is checked
+    and assessed with them, see `sbmlsim.credibility`.
+
+    Attributes:
+        metadata_type: the metadata of the fit mappings of the project, a
+            dataclass derived from `sbmlsim.fit.objects.MappingMetaData`, or a
+            reference to it; `MappingMetaData` without, which has no fields.
+        domain_fields: the fields of the metadata a domain of a context of
+            use can claim, every field whose type is an enum without, see
+            `sbmlsim.credibility.metadata_fields`.
+        extensions: the evidence extensions of the project, instances of
+            `sbmlsim.credibility.extensions.EvidenceExtension` or references
+            to them, see `Project.evidence_extensions`.
+    """
+
+    model_config = _CONFIG
+
+    metadata_type: Any = None
+    domain_fields: tuple[str, ...] | None = None
+    extensions: tuple[Any, ...] = ()
+
+    @field_validator("metadata_type")
+    @classmethod
+    def _check_metadata_type(cls, value: Any) -> Any:
+        """Check that the metadata is a class or a reference.
+
+        Raises:
+            ValueError: for something else.
+        """
+        if value is None or isinstance(value, type):
+            return value
+        if isinstance(value, str):
+            check_reference(value)
+            return value
+        raise ValueError(
+            f"The metadata type is a class or a reference 'module:attribute', not "
+            f"{value!r}."
+        )
+
+    @field_validator("extensions")
+    @classmethod
+    def _check_extensions(cls, value: tuple[Any, ...]) -> tuple[Any, ...]:
+        """Check the references of the extensions, an object is checked when used.
+
+        Raises:
+            ValueError: for a malformed reference.
+        """
+        for extension in value:
+            if isinstance(extension, str):
+                check_reference(extension)
+        return value
+
+
 class ScanAnalysis(BaseModel):
     """A scan of a project, with its sensitivity indices if it has a design.
 
@@ -726,6 +784,9 @@ class Project(BaseModel):
             without, see `adopted_file`.
         credibility: the declaration of the contexts of use of the model, or a
             reference to it, see `load_credibility`.
+        credibility_settings: the metadata of the fit mappings, the fields of
+            it a domain can claim and the evidence extensions of the
+            credibility of the project.
         scans: the scans by their name.
         uncertainties: the uncertainty analyses by their name.
         sensitivities: the sensitivity analyses of the model over the groups
@@ -765,6 +826,7 @@ class Project(BaseModel):
     fits_dir: Path | None = None
     adopted: Path | None = None
     credibility: Any = None
+    credibility_settings: CredibilitySettings = CredibilitySettings()
     scans: Mapping[str, ScanAnalysis] = {}
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
     sensitivities: Mapping[str, Any] = {}
@@ -1227,14 +1289,90 @@ class Project(BaseModel):
     def load_credibility(self) -> Any:
         """Get the declaration of the contexts of use of the model.
 
+        A declaration of `sbmlsim.credibility` is checked against the fields of
+        the metadata of the project, see `domain_fields`; any other object is
+        returned as it is.
+
         Raises:
             ValueError: if the project has no declaration.
+            sbmlsim.credibility.DeclarationError: with the problems of the
+                domains of a declaration.
         """
         if self.credibility is None:
             raise ValueError(
                 f"The project '{self.name}' has no credibility declaration."
             )
-        return self._resolve(self.credibility)
+        credibility = self._resolve(self.credibility)
+        if _instance_of(credibility, "sbmlsim.credibility.declaration", "Credibility"):
+            from sbmlsim.credibility.declaration import DeclarationError
+
+            problems = credibility.domain_problems(self.domain_fields())
+            if problems:
+                raise DeclarationError(problems)
+        return credibility
+
+    def metadata_type(self) -> type:
+        """Get the metadata of the fit mappings of the project.
+
+        Returns:
+            The class of `CredibilitySettings.metadata_type`,
+            `sbmlsim.fit.objects.MappingMetaData` without.
+
+        Raises:
+            ValueError: if a reference is no class.
+        """
+        value = self.credibility_settings.metadata_type
+        if value is None:
+            from sbmlsim.fit.objects import MappingMetaData
+
+            return MappingMetaData
+        metadata = self._resolve(value)
+        if not isinstance(metadata, type):
+            raise ValueError(
+                f"The metadata type '{value}' of the project '{self.name}' is no class."
+            )
+        return metadata
+
+    def domain_fields(self) -> dict[str, type[StrEnum]]:
+        """Get the fields of the metadata a domain can claim with their enum.
+
+        Returns:
+            The enum of every field, see `sbmlsim.credibility.metadata_fields`.
+        """
+        from sbmlsim.credibility.declaration import metadata_fields
+
+        return metadata_fields(
+            self.metadata_type(), self.credibility_settings.domain_fields
+        )
+
+    def evidence_extensions(self) -> list[Any]:
+        """Get the evidence extensions of the credibility of the project.
+
+        Returns:
+            The extensions, the references resolved, in their order.
+
+        Raises:
+            ValueError: if an extension is no
+                `sbmlsim.credibility.extensions.EvidenceExtension` or two have
+                one name.
+        """
+        from sbmlsim.credibility.extensions import EvidenceExtension
+
+        extensions = [self._resolve(e) for e in self.credibility_settings.extensions]
+        wrong = [e for e in extensions if not isinstance(e, EvidenceExtension)]
+        if wrong:
+            raise ValueError(
+                f"The evidence extensions {wrong!r} of the project '{self.name}' "
+                "are no sbmlsim.credibility.extensions.EvidenceExtension."
+            )
+        names = [e.name for e in extensions]
+        repeated = sorted({n for n in names if names.count(n) > 1 or not n})
+        if repeated:
+            raise ValueError(
+                f"The evidence extensions of the project '{self.name}' need a name "
+                f"of their own, not {repeated}."
+            )
+        return extensions
 
     def action(self, name: str) -> ProjectAction:
         """Get an action of the project.
