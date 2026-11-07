@@ -534,15 +534,113 @@ def test_publish_removes_a_stale_marker(model: Project, out: Path, clone: Path) 
     assert not marker.exists()
 
 
-def test_local_commit_ahead_refused(model: Project, out: Path, clone: Path) -> None:
-    """A local commit of the checkout which the release repository lacks."""
-    (clone / "notes.txt").write_text("not from a release\n", encoding="utf-8")
+def test_a_checkout_with_commits_which_are_not_pushed_is_refused(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """A release without a commit the maintainer forgot to push is refused."""
+    (clone / "notes.txt").write_text("not pushed\n", encoding="utf-8")
     git(clone, "add", "-A")
     git(clone, "commit", "-m", "local")
     runner = FakeRunner()
-    with pytest.raises(ReleaseError, match="ahead of origin/main"):
+    with pytest.raises(ReleaseError) as err:
         build(model, out, clone, runner)
+    assert str(err.value) == (
+        f"{clone} has 1 commit(s) on main which the release repository does not "
+        "have; push them first"
+    )
     assert not runner.ran("sbmlsim.run")
+    git(clone, "push", "-q", "origin", "main")
+    path = build(model, out, clone)
+    assert (path / "notes.txt").exists() is False  # pruned, it is no output
+    assert git(path, "rev-parse", "HEAD") == git(clone, "rev-parse", "HEAD")
+
+
+def test_a_checkout_on_another_branch_is_fine(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """The commits of another branch of the checkout are not released."""
+    head = git(clone, "rev-parse", "HEAD").strip()
+    git(clone, "checkout", "-q", "-b", "feature")
+    (clone / "notes.txt").write_text("a feature\n", encoding="utf-8")
+    git(clone, "add", "-A")
+    git(clone, "commit", "-m", "feature")
+    path = build(model, out, clone)
+    assert git(path, "rev-parse", "HEAD").strip() == head
+
+
+def push_to_release(tmp_path: Path, remote: Path) -> str:
+    """Push a commit to the release repository from another clone."""
+    other = tmp_path / "other"
+    git(tmp_path, "clone", str(remote), str(other))
+    (other / "CHANGES.txt").write_text("from elsewhere\n", encoding="utf-8")
+    git(other, "add", "-A")
+    git(other, "commit", "-m", "more")
+    git(other, "push", "origin", "main")
+    return git(other, "rev-parse", "HEAD").strip()
+
+
+def test_a_checkout_behind_the_release_repository(
+    model: Project,
+    out: Path,
+    clone: Path,
+    remote_and_clone: tuple[Path, Path],
+    tmp_path: Path,
+) -> None:
+    """A checkout which is not pulled builds the release of the repository."""
+    remote, _ = remote_and_clone
+    head = push_to_release(tmp_path, remote)
+    path = build(model, out, clone)
+    assert git(path, "rev-parse", "HEAD").strip() == head
+
+
+def test_the_clone_of_an_earlier_run_is_brought_to_the_release_repository(
+    model: Project,
+    out: Path,
+    clone: Path,
+    remote_and_clone: tuple[Path, Path],
+    tmp_path: Path,
+) -> None:
+    """A resumed run reuses its clone, which the release repository moved past."""
+    remote, _ = remote_and_clone
+    path = build(model, out, clone)
+    head = push_to_release(tmp_path, remote)
+    git(clone, "pull", "-q")
+    path = build(model, out, clone)
+    assert git(path, "rev-parse", "HEAD").strip() == head
+    assert publishable(model, VERSION, out, runner=FakeRunner()) is None
+
+
+def test_a_stale_commit_of_the_clone_of_an_out_is_refused(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """A commit no build made, e.g. of a checkout reset since, stays refused."""
+    path = build(model, out, clone)
+    git(path, "commit", "-q", "--allow-empty", "-m", "not the release commit")
+    git(path, "commit", "-q", "--allow-empty", "-m", "another one")
+    runner = FakeRunner()
+    with pytest.raises(ReleaseError) as err:
+        build(model, out, clone, runner)
+    message = str(err.value)
+    assert f"{path} is ahead of origin/main by 2 commits" in message
+    assert f"remove the out {out} or give another one" in message
+    assert not runner.ran("sbmlsim.run")
+
+
+def test_the_release_commit_of_a_failed_publishing_survives(
+    model: Project,
+    out: Path,
+    clone: Path,
+) -> None:
+    """A publishing which failed after the commit resumes with its commit."""
+    path = build(model, out, clone)
+    publisher = FakePublisher()
+    commit_release(path, tag=True)
+    head = git(path, "rev-parse", "HEAD").strip()
+    assert check_build(model, VERSION, out, runner=FakeRunner()).resumed is True
+    publish(model, out, publisher=publisher)
+    assert git(path, "rev-parse", "HEAD").strip() == head
+    assert git(path, "tag", "--list", VERSION).strip() == VERSION
+    assert len(publisher.calls) == 1
 
 
 def test_local_commit_before_the_release_commit_refused(
