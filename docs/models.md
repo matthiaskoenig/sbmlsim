@@ -232,3 +232,7 @@ RoadrunnerSBMLModel {'BW': Quantity(100, "kilogram")}
 ```
 
 The source of a model is a path, absolute or relative to the `base_path` of the experiment, or the SBML itself. `sbmlsim` never downloads a model: a source which is neither an existing file nor SBML raises an `OSError`.
+
+## The models of a package
+
+A model package which has several variants of its model, a factory which builds them and the analyses which use them describes them once in a [project](project.md), which the [run layer](run.md), the [release](release.md) and the [credibility](credibility.md) assessment read. The [licenses](licenses.md) of the models travel with them in their COMBINE archive.

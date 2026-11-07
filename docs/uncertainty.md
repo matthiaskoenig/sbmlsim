@@ -224,6 +224,56 @@ A probability statement is about the predictive distribution, i.e. about what is
 
 `examples/uncertainty_midazolam.py` runs the analysis of this page with an adaptive number of draws, which draws until its hypotheses are decided.
 
+## The uncertainty of the fitted parameters
+
+The fitted parameters of a model are known only within their confidence intervals, and so are its predictions. The records of the adopted fits, their distributions and the run of the experiments over their draws make the uncertainty of the fitted parameters part of the model. A fit becomes part of a model in three steps: it is adopted, the factory takes its values with their uncertainty, and a run draws them.
+
+### Adopting a fit
+
+A fit writes its results into its output, which is not tracked. The `adopt` option of the kind `fit` (or the kind `adopt` for a fit which finished without it) copies the record of the fit into `fits/<fit id>` of the output, a folder a person commits into the directory of the adopted fits of the [project](project.md) (`fits_dir`), together with `adopted.json`, which names the fit adopted for each subset. The record is the part of the results which the model needs (`sbmlsim.fit.records.RECORD_FILES`, `adopt_fit`): the best parameter sets (`parameters.json`), the problem with its settings and bounds (`optimization_result.json`), the profile likelihood (`identifiability.json`, `identifiability.tsv`), the Fisher information (`fisher.json`, `fisher.tsv`), the metrics, the text report and the methods report (`report.pdf`, its Typst source `report.typ` with `references.bib` and `references.csl` and the SVG figures it shows in `plots/`, so that `report.typ` compiles in the record). The LaTeX sources, the HTML report and the runs stay in the results of the fit. See [Adopted fits](fitting.md#adopted-fits).
+
+### The fitted values in the factory
+
+A model file takes the value of a fitted parameter from the record of its fit, so the value, its uncertainty and its provenance come from one place and cannot drift apart. `Project.fit_records()` reads the records (`sbmlsim.fit.records.AdoptedRecords`), and `AdoptedRecords.parameter(pid, unit=...)` gives the keyword arguments of an `sbmlutils.factory.Parameter`: its `value`, its `uncertainties` and its `unit`. The pid is the id of the parameter in the flat model, as the fit names it:
+
+```py
+FITS = PROJECT.fit_records()
+
+Parameter(
+    "k_el",
+    **FITS.parameter("KI__k_el", unit=U.per_min),
+    name="elimination rate",
+)
+```
+
+A parameter which no adopted fit has, and a parameter which two adopted fits have, raise. `sbmlsim.project_checks.check_model` checks with `sbmlsim.experiment.draws.check_fit_parameters` that every parameter of an adopted fit is a parameter of every variant of the model with the value of the fit and a distribution, and that the other variants have the distribution of the default variant: the draws are those of the default variant and run on every variant.
+
+### The uncertainty in the SBML
+
+The uncertainty is a `distrib:uncertainty` of the SBML parameter (the distrib package of SBML), which comp flattening keeps. It has three children and the provenance in its notes (`sbmlsim.fit.records.ParameterUncertainty`):
+
+| child | value |
+| --- | --- |
+| `uncertSpan` of the type `confidenceInterval` | the confidence interval of the profile likelihood at the level of the fit (0.95); a side which the profile does not close is the bound of the fit |
+| `uncertParameter` of the type `standardError` | the standard error of the Fisher information in the unit of the model (delta method), if the fit has one |
+| `uncertParameter` of the type `distribution` | the distribution the draws of the parameter come from |
+
+The distribution follows the confidence interval in the space the fit searched the parameter in, the `parameter_scale` of the fit:
+
+| the profile | the distribution |
+| --- | --- |
+| closed, logarithmic scale | `lognormal(ln(value), sigma, lb, ub)`: sigma is the mean of the closed half widths of the interval in the logarithm divided by `z = sqrt(chi2(alpha, df))`, truncated to the bounds of the fit |
+| open on one side | the closed side gives sigma, the bound cuts off the open side (a value at its bound gives a half lognormal) |
+| open on both sides (not identifiable) | `uniform(lb, ub)` |
+| linear scale | `normal(value, sigma, lb, ub)` with the same rule |
+| no profile (the Fisher fallback) | sigma is the standard error of the Fisher information in the space of the fit |
+
+The notes name the fit, the record, the cost and the number of data points, the bounds and the scale, the method, the class of the profile, the confidence intervals of the profile and of the Fisher information and the distribution. The draws are independent per parameter: distrib states one distribution per parameter, the correlations of the Fisher information stay in the record (the [credibility](credibility.md#parameter-uncertainty) propagation uses them).
+
+### Running over the draws
+
+The experiments of a project run over the draws of the fitted parameters with `Project.run_experiments(..., uncertainty=UncertaintySettings(...))` or the field `uncertainty` of the kind `simulate`, see [Simulation experiments](experiments.md#over-the-draws-of-the-fitted-parameters). The run reads the distribution of every parameter of the default variant (`sbmlsim.simulation.sampling.parameter_distributions`) and draws them once in a Latin hypercube into the dimension `uncertainty` (`sbmlsim.simulation.sampling.uncertainty_dimension`, `sbmlsim.experiment.draws.UncertaintySettings`: 100 draws, seed 1234, the quantiles 0.05 and 0.95). Every simulation becomes a scan over the draws, and the curves of the figures become bands of the quantiles with the median. A figure an experiment draws itself with matplotlib reads `self.uncertainty` and draws the bands with `point_band`, see [Scans](scans.md#working-with-scan-results).
+
 ## References
 
 - JCGM 101:2008. Evaluation of measurement data, Supplement 1 to the GUM: propagation of distributions using a Monte Carlo method.

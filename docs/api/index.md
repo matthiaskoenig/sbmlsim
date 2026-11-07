@@ -18,7 +18,10 @@ The top level modules: data, units and the shared output.
 | [utils](utils.md) | timing and other helpers |
 | [parallel](parallel.md) | the process pools of sbmlsim: the start method, the kept pools and the caches of the workers |
 | [project](project.md) | `Project`, a model package: its model variants and factory, experiments, fits and their records, scans and uncertainty analyses, which the run layer resolves, with the settings of its simulator, figures, checks and release |
-| [release.settings](release.settings.md) | `ReleaseSettings` and `Author`, the release metadata of a project, standard library only |
+| [project_checks](project_checks.md) | the checks of a model package as functions over a `Project` |
+| [events](events.md) | the events of a run as JSON lines |
+| [atomic](atomic.md) | atomic writes of files and directories |
+| [cgroup](cgroup.md) | the CPU quota of the cgroup of the process |
 | [console](console.md) | shared rich console |
 | [display](display.md) | the output of scripts: sections, key/value blocks and links which the terminal opens with a click |
 | [log](log.md) | logging of the package |
@@ -152,9 +155,28 @@ Local and global sensitivity analysis, see [Sensitivity analysis](../sensitivity
 | [sensitivity.parameters](sensitivity.parameters.md) | the table of the parameters of an analysis, as sbmlsim 0.8 wrote it |
 | [sensitivity.runner](sensitivity.runner.md) | the sensitivity analyses of a project over the groups of its simulations, with the files of sbmlsim 0.8.5 |
 
+## sbmlsim.release
+
+The release of a project as a repository of its own, see [Release](../release.md).
+
+| module | description |
+| --- | --- |
+| [release.settings](release.settings.md) | `ReleaseSettings` and `Author`, the release metadata of a project, standard library only |
+| [release.archive](release.archive.md) | the COMBINE archive of the models of a release: the SBML, its ODEs and antimony, the licenses |
+| [release.workflow](release.workflow.md) | the build of a release into an output and its publishing, `build_release` and `publish_release` |
+| [release.source](release.source.md) | the source repository and the release repository of a model, the checks before a build |
+| [release.project](release.project.md) | the project files of a release repository written from templates |
+| [release.build](release.build.md) | the build of a release repository: the analyses of the release in its own environment |
+| [release.notes](release.notes.md) | the release notes of a release repository |
+| [release.docs](release.docs.md) | the documentation site and the README of a release repository |
+| [release.manifest](release.manifest.md) | the manifest `release.json` of a release and the removal of what the release did not build |
+| [release.publish](release.publish.md) | the publishing of a built release: commit, tag, Pages, Docker image and GitHub release |
+| [release.hooks](release.hooks.md) | `ReleaseHook`, what a framework adds to the release of a model package |
+| [release.cli](release.cli.md) | the command line `python -m sbmlsim.release` |
+
 ## sbmlsim.credibility
 
-The credibility of a model for its contexts of use, see [Credibility](../run.md#credibility).
+The credibility of a model for its contexts of use, see [Credibility](../credibility.md).
 
 | module | description |
 | --- | --- |
