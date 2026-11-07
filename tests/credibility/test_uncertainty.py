@@ -162,7 +162,9 @@ def test_the_propagation_of_the_adopted_fit(credibility_project: Project) -> Non
 
 def test_the_record_of_pkpdsim() -> None:
     """The uncertainty record of pkpdsim 0.19 is read, a record of 0.18 has none."""
-    data = json.loads((DATA / "context-0.19-uncertainty.json").read_text("utf-8"))
+    data = json.loads(
+        (DATA / "context-0.19-uncertainty.json").read_text(encoding="utf-8")
+    )
     record = uncertainty_record_from_dict(data["uncertainty"])
     assert record is not None
     assert record == data["uncertainty"]
@@ -171,5 +173,5 @@ def test_the_record_of_pkpdsim() -> None:
     read = uncertainty_record_from_dict(without)
     assert read is not None
     assert read["sensitivity"] == []
-    old = json.loads((DATA / "context-0.18.json").read_text("utf-8"))
+    old = json.loads((DATA / "context-0.18.json").read_text(encoding="utf-8"))
     assert uncertainty_record_from_dict(old.get("uncertainty")) is None

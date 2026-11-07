@@ -414,6 +414,8 @@ def read_cross_validations(project: Project) -> dict[str, CrossValidation]:
     for fit_id in project.adopted_fits().values():
         path = project.adopted_record(fit_id) / CROSS_VALIDATION_FILE
         if path.is_file():
-            result = CrossValidation.from_dict(json.loads(path.read_text("utf-8")))
+            result = CrossValidation.from_dict(
+                json.loads(path.read_text(encoding="utf-8"))
+            )
             found[result.subset] = result
     return found

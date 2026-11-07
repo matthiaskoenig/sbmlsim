@@ -128,7 +128,7 @@ def test_a_round_trip_without_points() -> None:
 
 def test_the_cross_validation_of_pkpdsim() -> None:
     """A cross-validation which pkpdsim 0.19 wrote is read as it is."""
-    data = json.loads((DATA / "cross_validation-0.19.json").read_text("utf-8"))
+    data = json.loads((DATA / "cross_validation-0.19.json").read_text(encoding="utf-8"))
     result = CrossValidation.from_dict(data)
     assert result.subset == "DECAY"
     assert [s.study for s in result.studies] == ["CredA", "CredB"]

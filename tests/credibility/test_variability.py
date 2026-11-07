@@ -174,8 +174,10 @@ def test_the_variability_between_the_studies(credibility_project: Project) -> No
 
 def test_the_record_of_pkpdsim() -> None:
     """The predictive check of pkpdsim 0.19 is read, a record of 0.18 has none."""
-    data = json.loads((DATA / "context-0.19-variability.json").read_text("utf-8"))
+    data = json.loads(
+        (DATA / "context-0.19-variability.json").read_text(encoding="utf-8")
+    )
     record = variability_record_from_dict(data["variability"])
     assert record == data["variability"]
-    old = json.loads((DATA / "context-0.18.json").read_text("utf-8"))
+    old = json.loads((DATA / "context-0.18.json").read_text(encoding="utf-8"))
     assert variability_record_from_dict(old.get("variability")) is None

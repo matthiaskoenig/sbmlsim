@@ -106,7 +106,7 @@ def test_a_gone_and_a_changed_evidence(project: Project, tmp_path: Path) -> None
     data = json.loads(path.read_text(encoding="utf-8"))
     data["evidence"]["renal/renal impairment"] = ["DECAY/CredA/fm_other"]
     data["evidence"]["renal/old"] = ["DECAY/CredA/fm_renal"]
-    path.write_text(json.dumps(data))
+    path.write_text(json.dumps(data), encoding="utf-8")
     differences = lock_differences(project, select(CREDIBILITY, fits), fits)
     assert differences == [
         "the evidence 'renal/old' of the lock is gone",
@@ -116,7 +116,7 @@ def test_a_gone_and_a_changed_evidence(project: Project, tmp_path: Path) -> None
 
 
 def test_a_file_which_is_no_lock(project: Project) -> None:
-    lock_path(project).write_text(json.dumps({"version": 0}))
+    lock_path(project).write_text(json.dumps({"version": 0}), encoding="utf-8")
     with pytest.raises(ValueError, match="is no lock of version 1"):
         read_lock(project)
 
@@ -132,10 +132,10 @@ def test_check_declaration_compares_the_lock(
     assert check_declaration(project) == []
     data = json.loads(lock_path(project).read_text(encoding="utf-8"))
     data["evidence"]["renal/renal impairment"] = []
-    lock_path(project).write_text(json.dumps(data))
+    lock_path(project).write_text(json.dumps(data), encoding="utf-8")
     problems = check_declaration(project)
     assert problems[-1] == LOCK_REMEDY
     assert "selects other mappings: +DECAY/CredA/fm_renal" in problems[0]
-    lock_path(project).write_text(json.dumps({"version": 2}))
+    lock_path(project).write_text(json.dumps({"version": 2}), encoding="utf-8")
     (problem,) = check_declaration(project)
     assert "is no lock of version 1" in problem
