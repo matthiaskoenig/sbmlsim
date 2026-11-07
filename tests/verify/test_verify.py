@@ -268,7 +268,7 @@ def test_a_project_from_another_root_fails(
             str(out),
         ]
     )
-    assert code == 2
+    assert code == 4
     assert "not from below" in caplog.text
     assert not out.exists()
 
@@ -277,9 +277,9 @@ def test_an_unknown_project_is_a_usage_error(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     out = str(tmp_path / "x.pkl")
-    assert verify(["dump", "--project", "tests.project_toy:MISSING", "--out", out]) == 2
+    assert verify(["dump", "--project", "tests.project_toy:MISSING", "--out", out]) == 4
     assert "no attribute 'MISSING'" in caplog.text
-    assert verify(["dump", "--project", "no-reference", "--out", out]) == 2
+    assert verify(["dump", "--project", "no-reference", "--out", out]) == 4
     assert verify(["dump", "--out", out]) == 2
 
 

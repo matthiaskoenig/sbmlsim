@@ -18,9 +18,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path, PurePath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sbmlsim.engine import Engine
+
+if TYPE_CHECKING:
+    from sbmlsim.project import Project
 
 #: the environment variable of the file simrun writes with the provenance of
 #: the sources of a snapshot, a JSON list of objects with the keys `name`,
@@ -152,6 +155,61 @@ def collect_versions(engine: Engine = Engine.ROADRUNNER) -> dict[str, str]:
         except importlib.metadata.PackageNotFoundError:
             versions[package] = "not installed"
     return versions
+
+
+def installed_versions(names: Iterable[str]) -> dict[str, str]:
+    """Get the versions of the distributions which are installed.
+
+    Args:
+        names: the names of the distributions, a repeated one once.
+
+    Returns:
+        The version by name in the order of the names, without a distribution
+        which is not installed.
+    """
+    versions: dict[str, str] = {}
+    for name in dict.fromkeys(names):
+        try:
+            versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+    return versions
+
+
+def module_distributions(module: str) -> list[str]:
+    """Get the distributions of the top level module of a dotted name.
+
+    Args:
+        module: a module name or a dotted path.
+
+    Returns:
+        The distributions which ship the top level module, found by its files;
+        for an editable install, whose files are no part of the distribution,
+        its name.
+    """
+    top = module.partition(".")[0]
+    return importlib.metadata.packages_distributions().get(top) or [top]
+
+
+def project_versions(
+    project: Project, extra: Iterable[str] = (), *, distribution: bool = True
+) -> dict[str, str]:
+    """Get the versions of the packages a record of a project names.
+
+    Args:
+        project: the project.
+        extra: further distributions, e.g. the libraries of a release.
+        distribution: whether to include the distribution of the package of the
+            project.
+
+    Returns:
+        The versions of sbmlsim, the distribution of the package of the
+        project and `extra` which are installed.
+    """
+    names = ["sbmlsim", *extra]
+    if distribution and project.package:
+        names.insert(1, *module_distributions(project.package))
+    return installed_versions(names)
 
 
 def snapshot_provenance(path: Path | None = None) -> list[dict[str, Any]] | None:

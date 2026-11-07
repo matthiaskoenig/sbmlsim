@@ -11,6 +11,20 @@ from typing import TypedDict, cast
 
 from sbmlsim.verify.dump import Dump
 
+__all__ = [
+    "EXPECTED_PARTS",
+    "ID_FIELDS",
+    "RENAME_PARTS",
+    "Expected",
+    "MetadataRenames",
+    "Renames",
+    "apply_renames",
+    "drop_figure_fields",
+    "load_renames",
+    "rename_ids",
+    "rename_mapping",
+]
+
 #: the fields of the specification of a figure with the id of a task or a dataset
 ID_FIELDS: tuple[str, ...] = ("task_id", "dset_id")
 

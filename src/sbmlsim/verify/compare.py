@@ -24,6 +24,13 @@ from sbmlsim.verify.renames import (
     load_renames,
 )
 
+__all__ = [
+    "compare",
+    "diff_lines",
+    "json_paths",
+    "ranges",
+]
+
 
 def _flat(
     dump: Dump, part: Literal["datasets", "mappings", "figures", "ranges", "builds"]

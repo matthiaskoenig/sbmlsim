@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import dataclasses
-import importlib
-import importlib.metadata
 import json
 import logging
 import pickle
@@ -26,6 +23,24 @@ if TYPE_CHECKING:
     from sbmlsim.plot import Figure
     from sbmlsim.project import Project
     from sbmlsim.simulation import Scan, Simulation
+
+__all__ = [
+    "RESOLVED",
+    "TIME_DIMENSIONS",
+    "Dump",
+    "defined_experiments",
+    "describe_mapping",
+    "dump",
+    "figure_spec",
+    "load",
+    "mapping_range",
+    "metadata_names",
+    "on_grid",
+    "package_versions",
+    "serialize",
+    "store_experiment",
+    "variant_of",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -351,19 +366,10 @@ def package_versions(project: Project) -> dict[str, str]:
     Returns:
         The version by name of the distribution.
     """
-    import sbmlsim
+    from sbmlsim.fit.provenance import project_versions
 
-    names = ["sbmlsim"]
-    package = (project.package or "").partition(".")[0]
-    if package:
-        names += importlib.metadata.packages_distributions().get(package, [])
-    if project.release is not None:
-        names += project.release.core_libraries
-    versions = {"sbmlsim": sbmlsim.__version__}
-    for name in dict.fromkeys(names):
-        with contextlib.suppress(importlib.metadata.PackageNotFoundError):
-            versions.setdefault(name, importlib.metadata.version(name))
-    return versions
+    libraries = project.release.core_libraries if project.release is not None else []
+    return project_versions(project, libraries)
 
 
 def _tolerance(

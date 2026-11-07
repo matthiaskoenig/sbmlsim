@@ -12,6 +12,17 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from sbmlsim.project import Project
 
+__all__ = [
+    "PROJECT_HELP",
+    "ROOT_HELP",
+    "ProjectNotLoaded",
+    "UsageError",
+    "add_project_arguments",
+    "load_project_of",
+    "outside_root",
+    "report",
+]
+
 logger = logging.getLogger(__name__)
 
 ROOT_HELP = (
@@ -23,6 +34,10 @@ PROJECT_HELP = "the project, module:attribute, e.g. pkdb_models.models.hctz:PROJ
 
 class UsageError(Exception):
     """A subcommand cannot run as it was asked to, exit code 2."""
+
+
+class ProjectNotLoaded(UsageError):
+    """The project cannot be loaded, exit code 4 as for the kinds of the run layer."""
 
 
 def report(text: object = "") -> None:
@@ -76,7 +91,7 @@ def load_project_of(args: argparse.Namespace) -> Project:
         The project.
 
     Raises:
-        UsageError: if the project cannot be loaded or is imported from
+        ProjectNotLoaded: if the project cannot be loaded or is imported from
             outside of `--root`.
     """
     from sbmlsim.project import load_project
@@ -86,7 +101,7 @@ def load_project_of(args: argparse.Namespace) -> Project:
         sys.path.insert(0, str(root))
     try:
         if root is not None and (message := outside_root(args.project, root)):
-            raise UsageError(message)
+            raise ProjectNotLoaded(message)
         return load_project(args.project)
     except (ValueError, ImportError) as err:
-        raise UsageError(f"{args.project}: {err}") from err
+        raise ProjectNotLoaded(f"{args.project}: {err}") from err

@@ -18,6 +18,13 @@ if TYPE_CHECKING:
     from sbmlsim.experiment import SimulationExperiment
     from sbmlsim.project import Project
 
+__all__ = [
+    "capture_settings",
+    "definitions",
+    "fits",
+    "settings",
+]
+
 logger = logging.getLogger(__name__)
 
 
