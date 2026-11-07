@@ -144,6 +144,7 @@ from sbmlsim.credibility.verification import (
 )
 from sbmlsim.fit.evaluation import Fold, criteria_metrics
 from sbmlsim.fit.filters import MetadataFilter, NamedFilter
+from sbmlsim.fit.provenance import project_versions
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -1839,12 +1840,9 @@ def provenance(
         dirty = None if status is None else bool(status.strip())
     else:
         commit, dirty = source_commit, None
-    versions: dict[str, str] = {}
-    for package in (*VERSIONED_PACKAGES, *_packages(project)):
-        try:
-            versions[package] = importlib.metadata.version(package)
-        except importlib.metadata.PackageNotFoundError:
-            continue
+    versions = project_versions(
+        project, (*VERSIONED_PACKAGES[1:], *_packages(project)), distribution=False
+    )
     return Provenance(
         model=project.name,
         title=project.title or project.name,

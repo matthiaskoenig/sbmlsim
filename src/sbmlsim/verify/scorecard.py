@@ -9,6 +9,11 @@ from typing import Any
 
 from sbmlsim.verify.common import UsageError, load_project_of, report
 
+__all__ = [
+    "evidence_extensions",
+    "scorecard_command",
+]
+
 logger = logging.getLogger(__name__)
 
 

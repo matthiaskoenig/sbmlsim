@@ -7,12 +7,19 @@ import logging
 import os
 from collections.abc import Callable, Sequence
 
-from sbmlsim.verify.common import UsageError, add_project_arguments
+from sbmlsim.run.cli import EXIT_CONFIGURATION, EXIT_USAGE
+from sbmlsim.verify.common import ProjectNotLoaded, UsageError, add_project_arguments
 from sbmlsim.verify.compare import compare, ranges
 from sbmlsim.verify.definitions import definitions, fits, settings
 from sbmlsim.verify.dump import dump
 from sbmlsim.verify.files import png, sbml
 from sbmlsim.verify.scorecard import scorecard_command
+
+__all__ = [
+    "DESCRIPTION",
+    "parser",
+    "verify",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +29,6 @@ DESCRIPTION = (
     "and compare fit definitions, settings, PNG figures, SBML models and the "
     "credibility of many models."
 )
-
-#: the exit code of a command line which cannot be run as it was asked
-EXIT_USAGE = 2
 
 
 def parser() -> argparse.ArgumentParser:
@@ -195,7 +199,8 @@ def verify(args: Sequence[str] | None = None) -> int:
     Returns:
         The exit code: 0, 1 if the subcommand found a difference, 2 for a
         command which cannot be run as it was asked (`UsageError`, or the
-        arguments, which argparse rejects).
+        arguments, which argparse rejects) and 4 for a project which cannot be
+        loaded (`ProjectNotLoaded`, as the kinds of the run layer).
     """
     os.environ.setdefault("MPLBACKEND", "Agg")
     try:
@@ -204,6 +209,9 @@ def verify(args: Sequence[str] | None = None) -> int:
         return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
     try:
         return options.function(options)
+    except ProjectNotLoaded as err:
+        logger.error("%s", err)
+        return EXIT_CONFIGURATION
     except UsageError as err:
         logger.error("%s", err)
         return EXIT_USAGE

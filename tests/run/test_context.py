@@ -59,6 +59,7 @@ def test_run_json_records_sources_and_environment(
     provenance.write_text(json.dumps(sources), encoding="utf-8")
     monkeypatch.setenv("SIMRUN_PROVENANCE", str(provenance))
     monkeypatch.setenv("SIMRUN_ATTEMPT", "1")
+    monkeypatch.setenv("SBMLSIM_JIT_OPTIMIZATION", "O0")
     monkeypatch.setenv("SIMRUN_TOKEN", "secret")
     monkeypatch.setenv("SIMRUN_STORE_KEY", "secret")
     monkeypatch.setenv("SIMRUN_URL", "https://user:secret@simrun")
@@ -75,6 +76,7 @@ def test_run_json_records_sources_and_environment(
     assert _json(out / "summary.json")["workers"] == 2
     assert record["sources"] == sources
     assert record["environment"] == {
+        "SBMLSIM_JIT_OPTIMIZATION": "O0",
         "SIMRUN_ATTEMPT": "1",
         "SIMRUN_PROVENANCE": str(provenance),
     }

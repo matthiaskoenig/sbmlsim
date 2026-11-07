@@ -24,7 +24,6 @@ API of `sbmlsim.run`, which composes them.
 from __future__ import annotations
 
 import hashlib
-import importlib.metadata
 import json
 import logging
 import math
@@ -68,8 +67,11 @@ PROGRESS_FILE = "progress.jsonl"
 PROGRESS_DIR = "progress"
 #: the variables of the environment a run records: the ones simrun sets for the
 #: task of a pod (`simrun.podspec.env_values`, `simrun.worker`), never its
-#: credentials or the settings of its client
+#: credentials or the settings of its client, and the optimization level of
+#: the JIT of roadrunner (`model_roadrunner.JIT_OPTIMIZATION_VARIABLE`), which
+#: changes the results in the last bits and is no part of the spec
 ENVIRONMENT = (
+    "SBMLSIM_JIT_OPTIMIZATION",
     "SIMRUN_ATTEMPT",
     "SIMRUN_EDITABLE",
     "SIMRUN_INPUTS",
@@ -503,20 +505,22 @@ def _versions(spec: Spec) -> dict[str, str]:
     `spec.project`, found by its files or, for an editable install, whose
     files are no part of the distribution, by its name.
     """
-    from sbmlsim.fit.provenance import collect_versions
+    from sbmlsim.fit.provenance import (
+        collect_versions,
+        installed_versions,
+        module_distributions,
+    )
 
     versions = collect_versions()
     project = getattr(spec, "project", None)
     if isinstance(project, str) and project:
-        top_level = project.partition(":")[0].split(".")[0]
-        names = importlib.metadata.packages_distributions().get(top_level) or [
-            top_level
-        ]
-        for name in names:
-            try:
-                versions.setdefault(name, importlib.metadata.version(name))
-            except importlib.metadata.PackageNotFoundError:
-                continue
+        versions |= {
+            name: version
+            for name, version in installed_versions(
+                module_distributions(project.partition(":")[0])
+            ).items()
+            if name not in versions
+        }
     return versions
 
 

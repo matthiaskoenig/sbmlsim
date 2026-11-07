@@ -10,6 +10,28 @@ import numpy as np
 
 from sbmlsim.verify.dump import TIME_DIMENSIONS, Dump
 
+__all__ = [
+    "SCALE_FLOOR",
+    "TIME_RESOLUTION",
+    "ArrayDifference",
+    "Columns",
+    "InterpolationRange",
+    "PointMatch",
+    "RowMatch",
+    "columns",
+    "equal",
+    "interpolated_pairs",
+    "interpolation_envelope",
+    "matched_rows",
+    "point_matches",
+    "point_times",
+    "relative_difference",
+    "relative_differences",
+    "scaled_difference",
+    "task_columns",
+    "time_axis",
+]
+
 
 def time_axis(dims: Sequence[str]) -> int | None:
     """Get the position of the time (or scan point) dimension."""

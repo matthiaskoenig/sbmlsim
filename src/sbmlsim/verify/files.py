@@ -12,6 +12,12 @@ import numpy as np
 
 from sbmlsim.verify.common import UsageError, report
 
+__all__ = [
+    "png",
+    "sbml",
+    "sbml_elements",
+]
+
 
 def _files(directory: Path, pattern: str) -> dict[Path, Path]:
     """Get the files below a directory by their path relative to it."""
