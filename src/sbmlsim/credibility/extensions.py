@@ -55,6 +55,10 @@ gives its `ContextContribution` to a context of use:
 `assessment_section` is its section of the record of the assessment, e.g. the
 provenance of the study data of every study.
 
+The pooling. `pool` pools the sections of the contexts of several models
+into a table whose columns the extension decides; `pool_lines` words the rows
+for a command that prints them (by default every row as `column=value`).
+
 The records. The record of a context of use and of an assessment has the
 sections of the extensions by their name in its field `extensions`
 (`EXTENSIONS`), which the extension of that name writes and reads; the core
@@ -501,6 +505,27 @@ class EvidenceExtension:
             `None` for an extension which pools nothing.
         """
         return None
+
+    def pool_lines(
+        self, table: pd.DataFrame, options: Mapping[str, Any]
+    ) -> Sequence[str]:
+        """Describe a pooled table as the lines a command prints.
+
+        The default prints every row as `column=value` pairs; an extension
+        overrides it to word its own columns, e.g. the share of the ratio
+        pairs within the limits of Guest.
+
+        Args:
+            table: the table `pool` returned.
+            options: the options `pool` got.
+
+        Returns:
+            The lines, none for an empty table.
+        """
+        return [
+            "  " + ", ".join(f"{column}={row[column]}" for column in table.columns)
+            for row in table.to_dict("records")
+        ]
 
 
 def read_sections(

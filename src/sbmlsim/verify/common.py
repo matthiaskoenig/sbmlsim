@@ -9,8 +9,6 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sbmlsim.console import console
-
 if TYPE_CHECKING:
     from sbmlsim.project import Project
 
@@ -30,10 +28,11 @@ class UsageError(Exception):
 def report(text: object = "") -> None:
     """Write a line of the result of a subcommand to stdout.
 
-    Unlike a log record it is the output of the command, unwrapped and
-    unformatted, so that it can be redirected and compared.
+    Unlike a log record it is the output of the command, written as it is
+    (no wrapping, markup, emoji or tab expansion), so that it can be redirected
+    and compared.
     """
-    console.print(str(text), soft_wrap=True, markup=False, highlight=False)
+    sys.stdout.write(f"{text}\n")
 
 
 def add_project_arguments(

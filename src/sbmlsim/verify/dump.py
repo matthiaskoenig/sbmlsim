@@ -317,6 +317,16 @@ def variant_of(
     """
     chosen = experiment.variant_of(experiment._tasks[task].simulation_id)
     if chosen is not None:
+        if str(chosen) not in project.variants:
+            logger.warning(
+                "The variant '%s' of the task '%s' of '%s' is no variant of the "
+                "project '%s': %s.",
+                chosen,
+                task,
+                experiment.sid,
+                project.name,
+                sorted(project.variants),
+            )
         return str(chosen)
     model = experiment._models.get(experiment._tasks[task].model_id)
     path = getattr(getattr(model, "source", None), "path", None)
@@ -326,6 +336,34 @@ def variant_of(
         if project.variant_path(name).resolve() == Path(path).resolve():
             return name
     return None
+
+
+def package_versions(project: Project) -> dict[str, str]:
+    """Get the versions of the packages which make a dump.
+
+    sbmlsim, the distribution of the package of the project and, for a project
+    with release settings, the libraries of the release (`core_libraries`) which
+    are installed.
+
+    Args:
+        project: the project.
+
+    Returns:
+        The version by name of the distribution.
+    """
+    import sbmlsim
+
+    names = ["sbmlsim"]
+    package = (project.package or "").partition(".")[0]
+    if package:
+        names += importlib.metadata.packages_distributions().get(package, [])
+    if project.release is not None:
+        names += project.release.core_libraries
+    versions = {"sbmlsim": sbmlsim.__version__}
+    for name in dict.fromkeys(names):
+        with contextlib.suppress(importlib.metadata.PackageNotFoundError):
+            versions.setdefault(name, importlib.metadata.version(name))
+    return versions
 
 
 def _tolerance(
@@ -366,7 +404,7 @@ def dump(args: argparse.Namespace) -> int:
     errors: dict[str, str] = {}
     try:
         classes = project.experiment_classes()
-    except ValueError as err:
+    except (ValueError, TypeError) as err:
         raise UsageError(str(err)) from err
     if args.all:
         classes += [c for c in defined_experiments(project, errors) if c not in classes]
@@ -388,13 +426,7 @@ def dump(args: argparse.Namespace) -> int:
         if value is not None:
             tolerances[f"{name}_tolerance"] = value
 
-    import sbmlsim
-
-    versions = {"sbmlsim": sbmlsim.__version__}
-    package = (project.package or "").partition(".")[0]
-    if package:
-        with contextlib.suppress(importlib.metadata.PackageNotFoundError):
-            versions[package] = importlib.metadata.version(package)
+    versions = package_versions(project)
     result = Dump(
         project=project.name,
         order=[c.__name__ for c in classes],

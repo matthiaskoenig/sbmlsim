@@ -145,6 +145,7 @@ def capture_settings(
     project: Project,
     experiment: type[SimulationExperiment],
     root: Path,
+    run: Callable[[type[SimulationExperiment], Path], object] | None = None,
 ) -> dict[str, Any]:
     """Capture the settings a run of an experiment hands to sbmlsim.
 
@@ -163,6 +164,8 @@ def capture_settings(
         project: the project, whose `run_experiments` is intercepted.
         experiment: the experiment class the run gets.
         root: the checkout; it is replaced by `<root>` in the paths.
+        run: the run to intercept, called with the experiment and an output
+            directory; `project.run_experiments` with its settings without.
 
     Returns:
         The settings as json values.
@@ -223,7 +226,11 @@ def capture_settings(
         mock.patch.object(ExperimentRunner, "run_experiments", record_run),
         mock.patch.object(ExperimentReport, "create_report", no_report),
     ):
-        project.run_experiments(experiment, Path(tmp) / "settings", n_workers=1)
+        output = Path(tmp) / "settings"
+        if run is None:
+            project.run_experiments(experiment, output)
+        else:
+            run(experiment, output)
     missing = [
         key for key in ("simulator", "runner", "run", "rc") if key not in captured
     ]
@@ -249,7 +256,7 @@ def settings(args: argparse.Namespace) -> int:
     project = load_project_of(args)
     try:
         classes = project.experiment_classes()
-    except ValueError as err:
+    except (ValueError, TypeError) as err:
         raise UsageError(str(err)) from err
     if args.experiment:
         experiment = {c.__name__: c for c in classes}.get(args.experiment)
