@@ -49,7 +49,7 @@ import json
 import logging
 import shutil
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, override
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, override
 
 import numpy as np
 from pydantic import Field, model_validator
@@ -114,7 +114,7 @@ REPORT_NAME = "report"
 #: the directory of the PEtab problem in the out of a petab run
 PETAB_DIR = "petab"
 #: the directory of the records of the adopted fits in the out of a fit
-FITS_DIR = "fits"
+FITS_DIR: Final = "fits"
 
 
 # ----------------------------------------------------------------------------

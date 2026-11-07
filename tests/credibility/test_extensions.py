@@ -7,8 +7,10 @@ those versions wrote.
 """
 
 import json
+import math
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import pytest
 
@@ -32,6 +34,10 @@ from sbmlsim.credibility.extensions import (
     EXTENSIONS,
     LEGACY_ASSESSMENT_SECTIONS,
     LEGACY_CONTEXT_SECTIONS,
+    rule_columns,
+    scorecard_columns,
+    scorecard_number,
+    scorecard_true,
 )
 from sbmlsim.credibility.uncertainty import uncertainty_record_from_dict
 from sbmlsim.credibility.variability import variability_record_from_dict
@@ -125,7 +131,7 @@ def test_an_extension_contributes_nothing_by_default() -> None:
     assert nothing.report_tables({}) == {}
     assert nothing.scorecard_columns(None) == {}
     assert nothing.regressions({}, {}) == []
-    assert nothing.pool({"toy": [None]}) is None
+    assert nothing.pool({"toy": [None]}, {"field": "health"}) is None
     # an extension overrides what it adds
     assert ARMS.claims(Arms(observable="A", numerator=_all, denominator=_all))
     assert ARMS.scorecard_columns({"pairs": [1, 2]}) == {"arms": 2}
@@ -135,6 +141,54 @@ def test_an_extension_contributes_nothing_by_default() -> None:
     ]
     # a baseline of an older record lacks the columns
     assert ARMS.regressions({}, {"arms": 1}) == []
+
+
+def test_the_scorecard_columns_of_an_extension() -> None:
+    """Only the extension judges its columns, the core compares the rules."""
+    assert scorecard_columns(ARMS, {"pairs": [1]}) == {"arms": 1}
+    assert scorecard_columns(EvidenceExtension(), None) == {}
+
+    class Unnamed(EvidenceExtension):
+        name = "unnamed"
+
+        @override
+        def scorecard_columns(
+            self, context: Mapping[str, Any] | None
+        ) -> Mapping[str, object]:
+            return {"pairs": 1}
+
+    with pytest.raises(ValueError, match=r"columns \['pairs'\], not its names \[\]"):
+        scorecard_columns(Unnamed(), None)
+    columns = ["model", "context", "verdict", "within_2fold", "arms", "GMFE"]
+    core = {"model", "context", "verdict"}
+    assert rule_columns(columns, core, [ARMS]) == ["within_2fold", "GMFE"]
+    assert rule_columns(columns, core, []) == ["within_2fold", "arms", "GMFE"]
+    # a column of the extension which drops from 10 to 4 is no rule regression,
+    # the extension judges it, also from the texts of a scorecard read back
+    assert "arms" not in rule_columns(columns, core, [ARMS])
+    (change,) = ARMS.regressions({"arms": "10"}, {"arms": 4})
+    assert change == ScorecardChange("arms", "10", "4")
+    assert ARMS.regressions({"arms": ""}, {"arms": 4}) == []
+    assert ARMS.regressions({"arms": "4"}, {"arms": "10"}) == []
+
+
+def test_the_values_of_a_scorecard() -> None:
+    assert scorecard_number(4) == 4.0
+    assert scorecard_number("4.5") == 4.5
+    assert math.isnan(scorecard_number(""))
+    assert math.isnan(scorecard_number(None))
+    assert math.isnan(scorecard_number("n/a"))
+    assert scorecard_true(True) and scorecard_true("True")
+    assert not scorecard_true("False") and not scorecard_true(None)
+
+
+def test_a_section_which_is_none_is_no_section() -> None:
+    """`{"temporal": None}` of pkpdsim 0.19 is no record of the extension."""
+    data = {**_read("context-0.19-temporal-inputs.json"), "temporal": None}
+    assert "temporal" not in read_sections(data, LEGACY_CONTEXT_SECTIONS)
+    old = _read("context-0.19-uncertainty.json")
+    assert old["temporal"] is None
+    assert "temporal" not in read_sections(old, LEGACY_CONTEXT_SECTIONS)
 
 
 def test_a_contribution() -> None:
