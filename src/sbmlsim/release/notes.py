@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import libsbml
 
 from sbmlsim.fit.result import fit_subset
-from sbmlsim.release.build import BuildPaths
+from sbmlsim.release.build import BuildPaths, is_experiment_folder
 from sbmlsim.release.hooks import ReleaseHook
 from sbmlsim.release.project import ProjectContext, render
 from sbmlsim.release.source import (
@@ -61,6 +61,7 @@ __all__ = [
     "github_releases",
     "library_changes",
     "model_changes",
+    "version_key",
     "write_release_notes",
 ]
 
@@ -127,7 +128,7 @@ class CoreSummary:
 
 @dataclass(frozen=True)
 class DataChanges:
-    """The studies of the data, `<substance>/<study>`, which changed.
+    """The studies of the data, `<data dir>/<folder>` by default, which changed.
 
     Attributes:
         added: the studies which are new.
@@ -266,7 +267,8 @@ def library_changes(old_lock: str | None, new_lock: str) -> list[LibraryChange]:
     ]
 
 
-def _version_key(version: str) -> tuple[int, ...] | None:
+def version_key(version: str) -> tuple[int, ...] | None:
+    """Get the numbers of a version, `None` for a text which is no version."""
     match = _RELEASE_VERSION.match(version.strip())
     if match is None:
         return None
@@ -275,7 +277,7 @@ def _version_key(version: str) -> tuple[int, ...] | None:
 
 def _in_range(version: str, old: str, new: str) -> bool:
     """Check that a version is after `old` and up to `new`."""
-    key, low, high = _version_key(version), _version_key(old), _version_key(new)
+    key, low, high = version_key(version), version_key(old), version_key(new)
     return (
         key is not None and low is not None and high is not None and low < key <= high
     )
@@ -377,7 +379,7 @@ def core_summaries(
             continue
         versions = sorted(
             (v for v in releases if _in_range(v, change.old, change.new)),
-            key=lambda v: _version_key(v) or (),
+            key=lambda v: version_key(v) or (),
             reverse=True,
         )
         bullets = [
@@ -480,11 +482,6 @@ def data_changes(
     )
 
 
-def _is_experiment(name: str) -> bool:
-    """Check a folder of the simulation report is an experiment, not `_figures`."""
-    return not name.startswith(("_", "."))
-
-
 def _experiments(release: ReleaseRepo, runner: Runner) -> tuple[set[str], set[str]]:
     """Get the experiments of the previous release and of the new build."""
     old = set()
@@ -494,7 +491,9 @@ def _experiments(release: ReleaseRepo, runner: Runner) -> tuple[set[str], set[st
             old.add(parts[1])
     folder = release.path / BuildPaths.SIMULATIONS
     new = {p.name for p in folder.iterdir() if p.is_dir()} if folder.is_dir() else set()
-    return {e for e in old if _is_experiment(e)}, {e for e in new if _is_experiment(e)}
+    return {e for e in old if is_experiment_folder(e)}, {
+        e for e in new if is_experiment_folder(e)
+    }
 
 
 def experiment_changes(

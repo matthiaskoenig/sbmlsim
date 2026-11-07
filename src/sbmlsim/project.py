@@ -64,6 +64,7 @@ from pydantic import (
 
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.engine import Engine, JitOptimization
+from sbmlsim.reference import check_reference
 from sbmlsim.release.settings import ReleaseSettings
 from sbmlsim.simulation import Observable, Scan, Simulation
 
@@ -224,24 +225,6 @@ def _same_output(a: Path, b: Path) -> bool:
         except UnicodeDecodeError:
             pass
     return a.read_bytes() == b.read_bytes()
-
-
-def check_reference(reference: str) -> None:
-    """Check that a reference has the form `"module:attribute"`.
-
-    The module may start with dots (relative to a package), the attribute may
-    be dotted (an attribute of an attribute).
-
-    Args:
-        reference: the reference to check.
-
-    Raises:
-        ValueError: if the reference does not have the form.
-    """
-    module, separator, attribute = reference.partition(":")
-    names = [*module.lstrip(".").split("."), *attribute.split(".")]
-    if not separator or not all(name.isidentifier() for name in names):
-        raise ValueError(f"A reference is 'module:attribute', not '{reference}'.")
 
 
 def resolve(reference: str, package: str | None = None) -> Any:
@@ -787,7 +770,7 @@ class Project(BaseModel):
             report of a fit; the name without.
         description: what the project is.
         variants: the SBML files of the model by the name of its variant, e.g.
-            `{"male": ..., "female": ...}`, the first the default, see
+            `{"default": ..., "renal": ...}`, the first the default, see
             `model_path`; every variant is a file of its own.
         factory: builds the models, a function called with the directory it
             writes into, or a reference to it, see `create_models`.

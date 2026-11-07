@@ -6,7 +6,7 @@ example. PEtab is imported when a formula is compiled or a PEtab problem is read
 
 A library which must not load a simulator, e.g. the PBPK library of pkpdsim,
 imports the light modules (`sbmlsim.licenses`, `sbmlsim.distrib`,
-`sbmlsim.result.scan`, `sbmlsim.units`, `sbmlsim.release.settings`), which
+`sbmlsim.result.scan`, `sbmlsim.units`, `sbmlsim.release.settings`, `sbmlsim.release.archive`), which
 import no roadrunner.
 """
 
@@ -114,6 +114,8 @@ def test_the_run_layer_imports_no_analysis() -> None:
         "sbmlsim.result.scan",
         "sbmlsim.units",
         "sbmlsim.release.settings",
+        "sbmlsim.release.archive",
+        "sbmlsim.reference",
     ],
 )
 def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
@@ -153,8 +155,13 @@ def test_the_settings_and_the_hook_of_a_release_import_the_standard_library(
         if isinstance(node, ast.Import):
             imported |= {alias.name.split(".")[0] for alias in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-            imported.add(node.module.split(".")[0])
-    assert imported <= {*sys.stdlib_module_names, "__future__"}
+            imported.add(
+                node.module
+                if node.module == "sbmlsim.reference"
+                else node.module.split(".")[0]
+            )
+    # sbmlsim.reference is the standard library only form of a reference
+    assert imported <= {*sys.stdlib_module_names, "__future__", "sbmlsim.reference"}
 
 
 def test_a_release_imports_its_tools_when_it_runs() -> None:

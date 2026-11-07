@@ -9,6 +9,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, fields
 
+from sbmlsim.reference import check_reference
+
 __all__ = ["Author", "ReleaseSettings"]
 
 _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -121,11 +123,7 @@ class ReleaseSettings:
             if not _PACKAGE.match(package):
                 raise ValueError(f"'{package}' is no name of a package.")
         if isinstance(self.hook, str):
-            module, _, attribute = self.hook.partition(":")
-            if not module or not attribute:
-                raise ValueError(
-                    f"The release hook is 'module:attribute', not '{self.hook}'."
-                )
+            check_reference(self.hook)
 
     @property
     def owner(self) -> str:

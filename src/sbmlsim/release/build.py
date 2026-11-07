@@ -42,6 +42,7 @@ __all__ = [
     "build",
     "build_steps",
     "has_distributions",
+    "is_experiment_folder",
     "skipped_steps",
 ]
 
@@ -64,6 +65,14 @@ class BuildPaths:
     FITS = "fit"
     CREDIBILITY = "credibility"
     RESULTS = "results"
+
+
+def is_experiment_folder(name: str) -> bool:
+    """Check that a folder of the simulation report is an experiment.
+
+    The folders `_figures` and the hidden ones are no experiments.
+    """
+    return not name.startswith(("_", "."))
 
 
 #: the records of a run of the run layer of sbmlsim in the folder of a result
