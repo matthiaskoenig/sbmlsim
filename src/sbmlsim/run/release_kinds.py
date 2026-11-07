@@ -30,7 +30,13 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import field_validator
 
-from sbmlsim.run.kinds import ConfigurationError, Kind, Spec, register
+from sbmlsim.run.kinds import (
+    ConfigurationError,
+    Kind,
+    Spec,
+    load_project_ref,
+    register,
+)
 
 if TYPE_CHECKING:
     from sbmlsim.project import Project
@@ -79,16 +85,10 @@ def _project(spec: ReleaseSpec) -> Project:
         ConfigurationError: for a project which is not loaded, has no package
             or incomplete release settings.
     """
-    from sbmlsim.project import load_project
     from sbmlsim.release.source import ReleaseError
     from sbmlsim.release.workflow import release_settings
 
-    try:
-        project = load_project(spec.project)
-    except (ImportError, ValueError) as err:
-        raise ConfigurationError(
-            f"The project '{spec.project}' is not loaded: {err}"
-        ) from err
+    project = load_project_ref(spec.project)
     if not project.package:
         raise ConfigurationError(
             f"The project '{spec.project}' has no package, a release exports it."

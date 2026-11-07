@@ -54,6 +54,7 @@ from sbmlsim.run.kinds import (
     SplitSpec,
     UnknownKind,
     get_kind,
+    load_project_ref,
     register,
 )
 from sbmlsim.run.units import MissingUnits, unit_blocks
@@ -384,12 +385,5 @@ def list_analyses(project: str, *, experiments: bool = False) -> list[dict[str, 
     Raises:
         ConfigurationError: for a project which is not loaded.
     """
-    from sbmlsim.project import load_project
-
-    try:
-        the_project = load_project(project)
-    except (ImportError, ValueError) as err:
-        raise ConfigurationError(
-            f"The project '{project}' is not loaded: {err}"
-        ) from err
+    the_project = load_project_ref(project)
     return the_project.analyses(experiments=experiments)

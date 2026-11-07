@@ -34,7 +34,13 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
 
-from sbmlsim.run.kinds import ConfigurationError, Kind, Spec, register
+from sbmlsim.run.kinds import (
+    ConfigurationError,
+    Kind,
+    Spec,
+    load_project_ref,
+    register,
+)
 
 if TYPE_CHECKING:
     from sbmlsim.project import ActionFunction, Project
@@ -77,20 +83,6 @@ class ActionSpec(Spec):
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
-def _project(ref: str) -> Project:
-    """Load a project.
-
-    Raises:
-        ConfigurationError: for a project which is not loaded.
-    """
-    from sbmlsim.project import load_project
-
-    try:
-        return load_project(ref)
-    except (ImportError, ValueError) as err:
-        raise ConfigurationError(f"The project '{ref}' is not loaded: {err}") from err
-
-
 # ----------------------------------------------------------------------------
 # factory
 # ----------------------------------------------------------------------------
@@ -101,7 +93,7 @@ def _factory_project(spec: FactorySpec) -> Project:
         ConfigurationError: for a project without a factory, whose factory is
             not resolved or which has no directory of its factory.
     """
-    project = _project(spec.project)
+    project = load_project_ref(spec.project)
     try:
         project.load_factory()
     except (ImportError, AttributeError, TypeError, ValueError) as err:
@@ -166,7 +158,7 @@ def _action(spec: ActionSpec) -> tuple[Project, ActionFunction]:
         ConfigurationError: for an unknown action, a function which is not
             resolved and arguments the function does not take.
     """
-    project = _project(spec.project)
+    project = load_project_ref(spec.project)
     try:
         function = project.load_action(spec.name)
     except KeyError as err:

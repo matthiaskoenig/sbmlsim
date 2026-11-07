@@ -40,7 +40,13 @@ from typing import TYPE_CHECKING, Any, Final
 
 from pydantic import Field
 
-from sbmlsim.run.kinds import ConfigurationError, Kind, Spec, register
+from sbmlsim.run.kinds import (
+    ConfigurationError,
+    Kind,
+    Spec,
+    load_project_ref,
+    register,
+)
 
 if TYPE_CHECKING:
     from sbmlsim.credibility.assessment import CredibilityAssessment
@@ -107,19 +113,26 @@ def _project(spec: CredibilitySpec) -> Project:
         ConfigurationError: for a project which is not loaded or has no
             declaration.
     """
-    from sbmlsim.project import load_project
-
-    try:
-        project = load_project(spec.project)
-    except (ImportError, ValueError) as err:
-        raise ConfigurationError(
-            f"The project '{spec.project}' is not loaded: {err}"
-        ) from err
+    project = load_project_ref(spec.project)
     if project.credibility is None:
         raise ConfigurationError(
             f"The project '{spec.project}' has no credibility declaration."
         )
     return project
+
+
+def _declaration(project: Project) -> tuple[Any, Any]:
+    """Check the declaration of a project and get its extensions and battery hook.
+
+    Raises:
+        ConfigurationError: for a declaration, an extension or a battery hook
+            which is not valid or not loaded.
+    """
+    try:
+        project.load_credibility()
+        return project.evidence_extensions(), project.battery_hook()
+    except (ImportError, ValueError) as err:
+        raise ConfigurationError(f"The declaration is invalid: {err}") from err
 
 
 def _propagation(spec: CredibilitySpec) -> PropagationSettings | None:
@@ -202,7 +215,8 @@ def _check_record_options(spec: CredibilitySpec) -> None:
 def _plan(spec: CredibilitySpec) -> CredibilitySpec:
     """Check the project and the settings, the spec is planned as given."""
     _check_record_options(spec)
-    _project(spec)
+    project = _project(spec)
+    _declaration(project)
     _propagation(spec)
     _variability(spec)
     return spec
@@ -294,29 +308,29 @@ def _summary(
 def _run(spec: CredibilitySpec, ctx: RunContext) -> dict[str, Any]:
     """Assess the project, or read the record, and write the outputs into the out."""
     from sbmlsim.credibility.assessment import assess
+    from sbmlsim.credibility.declaration import DeclarationError
     from sbmlsim.credibility.report import print_summary, write_outputs
 
     _check_record_options(spec)
     project = _project(spec)
-    try:
-        extensions = project.evidence_extensions()
-        hook = project.battery_hook()
-    except ValueError as err:
-        raise ConfigurationError(str(err)) from err
+    extensions, hook = _declaration(project)
     if spec.record is not None:
         assessment = _read_record(spec.record)
     else:
-        assessment = assess(
-            project,
-            spec.source_commit,
-            verification=spec.verification,
-            battery=spec.battery,
-            cross_simulator=spec.cross_simulator,
-            lock=ctx.out if spec.lock else None,
-            uncertainty=_propagation(spec),
-            variability=_variability(spec),
-            cross_validations=_cross_validations(project, spec.cross_validation),
-        )
+        try:
+            assessment = assess(
+                project,
+                spec.source_commit,
+                verification=spec.verification,
+                battery=spec.battery,
+                cross_simulator=spec.cross_simulator,
+                lock=ctx.out if spec.lock else None,
+                uncertainty=_propagation(spec),
+                variability=_variability(spec),
+                cross_validations=_cross_validations(project, spec.cross_validation),
+            )
+        except DeclarationError as err:
+            raise ConfigurationError(f"The declaration is invalid: {err}") from err
     directory = write_outputs(assessment, ctx.out / CREDIBILITY_DIR, extensions, hook)
     print_summary(assessment)
     return _summary(assessment, ctx.out, directory)

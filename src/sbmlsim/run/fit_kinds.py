@@ -62,6 +62,7 @@ from sbmlsim.run.kinds import (
     PlanMismatch,
     Spec,
     SplitSpec,
+    load_project_ref,
     register,
 )
 from sbmlsim.run.units import MissingUnits, unit_blocks
@@ -73,7 +74,6 @@ if TYPE_CHECKING:
     from sbmlsim.fit.options import FitSettings
     from sbmlsim.fit.parameters import ParameterSet
     from sbmlsim.fit.sampling import SamplingType
-    from sbmlsim.project import Project
     from sbmlsim.run.context import RunContext
 
 __all__ = [
@@ -369,20 +369,6 @@ class PetabSpec(FitProblemSpec):
 # ----------------------------------------------------------------------------
 # what the kinds share
 # ----------------------------------------------------------------------------
-def _project(spec: FitProblemSpec | AdoptSpec) -> Project:
-    """Get the project a spec names.
-
-    Raises:
-        ConfigurationError: for a project which is not loaded.
-    """
-    from sbmlsim.project import load_project
-
-    try:
-        return load_project(spec.project)
-    except (ImportError, ValueError) as err:
-        raise ConfigurationError(
-            f"The project '{spec.project}' is not loaded: {err}"
-        ) from err
 
 
 def _definition(spec: FitProblemSpec, subset: str | None = None) -> FitDefinition:
@@ -394,7 +380,7 @@ def _definition(spec: FitProblemSpec, subset: str | None = None) -> FitDefinitio
     """
     subset = spec.subset if subset is None else subset
     try:
-        return _project(spec).fit(subset)
+        return load_project_ref(spec.project).fit(subset)
     except (ValueError, TypeError, KeyError) as err:
         message = err.args[0] if isinstance(err, KeyError) and err.args else err
         raise ConfigurationError(
@@ -647,7 +633,7 @@ def _start_point(spec: FitSpec, definition: FitDefinition) -> dict[str, float]:
 
     assert spec.start is not None
     try:
-        return start_point(_project(spec), definition, spec.start)
+        return start_point(load_project_ref(spec.project), definition, spec.start)
     except (ValueError, OSError) as err:
         raise ConfigurationError(f"The start of the fit is invalid: {err}") from err
 
@@ -669,7 +655,7 @@ def _fixed(
     if spec.fixed_fits is not None:
         return list(spec.fixed_fits), dict(spec.fixed_values or {})
     try:
-        return fixed_values(_project(spec), spec.subset, definition)
+        return fixed_values(load_project_ref(spec.project), spec.subset, definition)
     except (ValueError, OSError) as err:
         raise ConfigurationError(
             f"The adopted fits of '{spec.project}' are not read: {err}"
@@ -714,7 +700,7 @@ def _check_remainders(
     """
     from sbmlsim.fit.project_fits import remainder_problems
 
-    project = _project(spec)
+    project = load_project_ref(spec.project)
     if not project.variants:
         logger.info(
             "'%s': the project '%s' has no model variants, the remainders of "
@@ -999,7 +985,9 @@ def _fit_report(spec: FitSpec, opid: str, records: Path, ctx: RunContext) -> Non
         records,
         opid=opid,
         records=loaded,
-        context=records_context(_project(spec))(spec.subset, definition, loaded),
+        context=records_context(load_project_ref(spec.project))(
+            spec.subset, definition, loaded
+        ),
         mapping_figures=spec.mapping_figures,
     )
     report.create(output_dir=ctx.out, name=opid)
@@ -1032,7 +1020,7 @@ def _adopt(
     from sbmlsim.fit.records import adopt_fit
     from sbmlsim.project import ADOPTED_FILE, write_adopted
 
-    project = _project(spec)
+    project = load_project_ref(spec.project)
     try:
         adopted = project.adopted_fits()
     except ValueError as err:
@@ -1250,7 +1238,7 @@ def _run_report(spec: ReportSpec, ctx: RunContext) -> dict[str, Any]:
     from sbmlsim.fit.evaluation import Grouping
     from sbmlsim.project import ALL_SUBSETS
 
-    project = _project(spec)
+    project = load_project_ref(spec.project)
     context = records_context(project)
     groupings = (
         None
@@ -1333,7 +1321,7 @@ def _run_adopt(spec: AdoptSpec, ctx: RunContext) -> dict[str, Any]:
     except ValueError as err:
         raise ConfigurationError(f"The fit is not adopted: {err}") from err
     try:
-        _project(spec).fit(subset)
+        load_project_ref(spec.project).fit(subset)
     except (KeyError, TypeError, ValueError) as err:
         raise ConfigurationError(
             f"The fit '{opid}' is no fit of a subset of '{spec.project}': "
