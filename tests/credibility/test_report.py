@@ -409,3 +409,17 @@ def test_the_report_of_a_record_of_pkpdsim_0_19(tmp_path: Path) -> None:
         "numerical_code_verification"
     )
     assert {p.name for p in output.iterdir()} == FILES
+
+
+def test_write_outputs_keeps_its_directory(
+    assessment: CredibilityAssessment, tmp_path: Path
+) -> None:
+    """The directory is kept, so it is replaced on windows also as the working directory."""
+    output_dir = Path.cwd()
+    write_outputs(assessment, output_dir)
+    inode = output_dir.stat().st_ino
+    (output_dir / "figures").mkdir()
+    (output_dir / "figures" / "old.svg").write_text("<svg/>", encoding="utf-8")
+    write_outputs(assessment, output_dir)
+    assert output_dir.stat().st_ino == inode
+    assert {p.name for p in output_dir.iterdir()} == FILES

@@ -780,6 +780,15 @@ def _files(
     return files
 
 
+def _clear(directory: Path) -> None:
+    """Remove every entry of a directory, the directory itself is kept."""
+    for entry in directory.iterdir():
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+
+
 def write_outputs(
     assessment: CredibilityAssessment,
     output_dir: Path,
@@ -790,7 +799,10 @@ def write_outputs(
 
     A directory of the outputs is replaced as a whole, so no file of an earlier
     assessment is left; a directory is one when it holds `credibility.json`.
-    The outputs are rendered before anything is removed.
+    The outputs are rendered before anything is removed. The entries of the
+    directory are removed and the directory itself is kept: windows refuses
+    to remove or rename a directory which a process has open, e.g. as its
+    working directory or in an explorer.
 
     Args:
         assessment: the assessment.
@@ -822,8 +834,8 @@ def write_outputs(
     files = _files(assessment, extensions, hook)
     if output_dir.is_dir():
         logger.info("Replace the credibility outputs in '%s'", output_dir)
-        shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True)
+        _clear(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     assessment.to_json(output_dir / RECORD)
     for name, text in files.items():
         (output_dir / name).write_text(text, encoding="utf-8")
