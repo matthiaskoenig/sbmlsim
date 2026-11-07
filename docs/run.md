@@ -87,6 +87,7 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `factory` | the models built by the factory of the project, compared with the ones of the package | whole | |
 | `action` | an action of the project, an analysis of its own | whole | |
 | `credibility` | the assessment of the contexts of use of the project against its adopted fits, its record, tables and report | whole | `cross_validation`, `record` |
+| `release` | the build of a release of the project as a repository of its own, which `python -m sbmlsim.release publish` publishes, see [Release](#release) | whole | |
 
 A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds an analysis of the project:
 
@@ -98,6 +99,9 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `fit` | `identifiability`, `fisher`, `report`, `petab`, `adopt` | the records of a fit, the input `fit` |
 | `name` | `action` | the action, a key of the actions of the project |
 | `arguments` | `action` | the arguments of the action, JSON values by the names of the keywords of its function, `{}` without; the plan refuses arguments the function does not take. They are passed as they are: a relative path among them is relative to the current directory of the run, not to the spec file |
+| `version` | `release` | the version of the release, `X.Y.Z` |
+| `repository` | `release` | a checkout of the release repository, cloned instead of the repository on GitHub; only read |
+| `framework_path` | `release` | a local checkout of the framework of the release (`ReleaseSettings.framework`) instead of the released one; such a build is not published |
 | `units` | the split kinds | the number of units, set by the plan |
 
 ### fit
@@ -224,6 +228,7 @@ The results of the kinds:
 | `factory` | the files of the factory with the layout of the package, e.g. `models/toy.xml`; the files of the package are never written. The summary has the number of the compared outputs (`outputs`): the `factory_outputs` of the project (`declared` true), else, with a warning, the variants and every file the factory wrote which the package has (`declared` false); a rebuild with nothing to compare fails. `changed` names the compared outputs which differ from the ones of the package, an SBML file compared without the dates of its model history and an antimony file (`.ant`) without its `model created`/`model modified` lines |
 | `action` | what the action writes; the summary is the mapping the action returns, followed by its `action` |
 | `credibility` | `credibility/` (the record `credibility.json`, the tables and the report `index.html`, see [Credibility](#credibility)), with `lock` also `credibility.lock.json`; the summary has the verdict of every context of use (`verdicts`), the verified contexts (`verified`) and the state of the lock (`lock`) |
+| `release` | `repository/`, a clone of the release repository with the build of the release, not committed; the summary has the version, the source commit, the framework and its version, the number of files of the manifest and whether the build can be published (`publishable`) |
 
 The input `fit` of a kind is the output of a `fit` run, whose records are in its directory `<opid>`, or a directory of records itself, e.g. the output of an `identifiability` or `fisher` run, which copy the records of their fit, so a report shows the fit and its analyses from one directory. Every file is written atomically: a reader sees the old or the new file and never a partial one. A run never writes into the project: even `adopt` writes `adopted.json` and the record `fits/<opid>` into the output, which you copy into the directory of the fit records of the project (`fits_dir`) and commit to adopt the fit. A report of a project has its context: the title of the project and the adopted fits the fit kept fixed, as its records name them.
 
@@ -389,7 +394,7 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `figure_settings` | the rendering of the figures of the experiments, a `FigureSettings` of the plots |
 | `figures` | the files of the figures, `FigureOutputs`: the `formats`, the resolution of the static images `savefig_dpi` and other parameters of matplotlib, `rc` |
 | `checks` | the known exceptions of the [checks](#checks-of-a-project) of the model, `CheckSettings`, each with its reason, and the module of its experiments, `experiment_modules` (`experiments` below the package) |
-| `release` | the release metadata, `sbmlsim.release.settings.ReleaseSettings`, `None` for a project which is not released |
+| `release` | the release metadata, `sbmlsim.release.settings.ReleaseSettings`, `None` for a project which is not released; besides the metadata of the citation it names the framework of the release (`framework`, `sbmlsim` by default), the core libraries whose release notes the notes of a release summarize (`core_libraries`, `sbmlsim` and `sbmlutils` by default), the COMBINE archive the factory writes (`archive`) and the release hook of a framework (`hook`, an object or a reference), see [Release](#release) |
 
 The project of the HCTZ example, [`examples/hctz_fitting/project.py`](https://github.com/matthiaskoenig/sbmlsim/blob/develop/examples/hctz_fitting/project.py), is the template of the project of a model package: copy it into a module of your package and replace the experiments, the fits and the analyses with your own. It has the three simulation experiments of the studies, the fit problems `PK` (all pharmacokinetics data) and `IV` (the intravenous data of Beermann 1976), the scans `dose` (three oral doses on a grid of times) and `sobol` (a Sobol design of the dissolution and the renal excretion with its Sobol indices) and the uncertainty analysis `cl` (the AUC under an uncertain renal excretion, 32 draws). A project must be importable wherever the run layer runs: a model package installs it with its package, while the HCTZ example lives in `examples/` of the repository, which is not installed, and needs the root of the repository on the path, `python -m` from the root or `PYTHONPATH`.
 
@@ -463,6 +468,27 @@ Its input `cross_validation` is an out with `fits/<fit id>/cross_validation.json
 python -m sbmlsim.run credibility credibility.yaml --out results/credibility
 python -m sbmlsim.run credibility credibility.yaml --out results/report --input record=results/credibility
 ```
+
+## Release
+
+`sbmlsim.release` releases a model package as a repository of its own, e.g. `matthiaskoenig/hctz-model`, with the metadata of `Project.release`. The kind `release` builds the release into the out: it clones the release repository into `out/repository` (from GitHub, or from a checkout given as `repository`, which is only read), checks that the source repository of the project is clean and that the version is greater than the last release, exports the tracked files of the package into `src/`, writes the project files (`pyproject.toml` locked to the versions of the source, the Dockerfile, the workflows, `.zenodo.json`), runs the analyses of the release in its own environment (`uv lock`, `uv sync` and then `python -m sbmlsim.run` with the specs it writes into `specs/`: `factory`, `simulate`, `simulate` over the draws of the adopted fits when the default variant has their distributions, `report` of the adopted fits and `credibility` of a project with a declaration), copies their results into `models/`, `figures/`, `simulations/`, `simulations_uncertainty/`, `fit/<fit id>/` and `credibility/`, writes the release notes (the changes of the core libraries, the libraries, the data, the models, the experiments and the adopted fits since the last release), the pages of the site and the README, removes every file no stage wrote and writes the manifest `release.json` with a hash of every file. It commits nothing:
+
+```yaml title="release.yaml"
+project: my_model:PROJECT
+version: 0.8.0
+```
+
+```bash
+python -m sbmlsim.run release release.yaml --out results/release
+python -m sbmlsim.release build my_model:PROJECT --version 0.8.0 --out results/release
+python -m sbmlsim.release publish my_model:PROJECT --version 0.8.0 --out results/release
+```
+
+`python -m sbmlsim.release build` runs the kind, and `publish` is the local step which never runs as a kind: it checks that the build of the out is still the build of the current source (`matches`), that docker, its buildx plugin and `gh` are ready and that the lock has released packages only, and then builds the Docker image, commits, tags, sets up GitHub Pages, pushes, pushes the image and creates the GitHub release with the archive; every step which is done already is skipped, so a publishing which failed half way is finished by running it again. The users of the release run the same analyses with the specs of `specs/`, which its pages show.
+
+A framework on top of sbmlsim names itself and its core libraries in the release settings and contributes the content of its domain through a `ReleaseHook` (`sbmlsim.release.hooks`, `ReleaseSettings.hook`): templates which replace or add to the templates of the release, pages of the site, values of the pages, the data of the page of the credibility (e.g. the evidence of its extensions, shown by the parts `docs/credibility-context.md.j2` and `docs/credibility-sections.md.j2` of its templates), the study a file of the data belongs to and sections of the release notes. A manifest of pkpdsim 0.19 is read as the manifest of the framework pkpdsim.
+
+`sbmlsim.release.archive.write_archive(models, out, name=..., copyright=...)` writes the COMBINE archive of the models of a release for a factory: the flat model of a model with submodels, the differential equations of every flat model as markdown and its antimony, the license texts and `<name>.omex` with the README and further models and files.
 
 ## Checks of a project
 
