@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import weakref
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ from sbmlsim.model.model_sbml import (
     INITIAL_SUFFIX,
     IntegratorSetting,
     SBMLModel,
+    _flatten,
     _is_helper,
 )
 from sbmlsim.model.symbols import TargetKind
@@ -185,9 +187,8 @@ def load_roadrunner(
     instance of the model in the process an `O0` one, which integrates a
     little apart from the `O2` instances of the workers of a pool. The SBML
     roadrunner compiles carries its level as a comment (`_with_level`), so the
-    code of one level is never the code of another; a file whose model
-    references models of other files (`externalModelDefinition`) is loaded
-    by its path, untagged, so that the references resolve.
+    code of one level is never the code of another; a model which references
+    models of other files (`externalModelDefinition`) is flattened first.
 
     Args:
         source: the path of an SBML file or the SBML itself.
@@ -207,27 +208,49 @@ def load_roadrunner(
     return roadrunner.RoadRunner(_with_level(source, level), options)
 
 
+def _sbml_text(data: bytes) -> str:
+    """Decode an SBML file in the encoding of its XML declaration, UTF-8 without one.
+
+    A byte order mark of UTF-8 is dropped.
+    """
+    match = _ENCODING.match(data)
+    encoding = match.group(1).decode("ascii") if match else "utf-8"
+    if encoding.lower().replace("_", "-") in ("utf-8", "utf8"):
+        encoding = "utf-8-sig"
+    return data.decode(encoding)
+
+
+#: the encoding of an XML declaration
+_ENCODING = re.compile(
+    rb'^(?:\xef\xbb\xbf)?\s*<\?xml[^>]*?encoding\s*=\s*["\']([A-Za-z0-9._-]+)["\']'
+)
+
+
 def _with_level(source: str | Path, level: JitOptimization) -> str:
     """Get the SBML of a source with its optimization level as a comment, see `load_roadrunner`.
+
+    A path is read (in the encoding of its XML declaration), a string which
+    starts with `<` (after a byte order mark and whitespace) is the SBML. A
+    hierarchical model with external model definitions is flattened, its
+    references resolved relative to its file (to the current directory for
+    SBML given as a string), as `SBMLModel` simulates it. The comment follows
+    the root element, so the XML declaration stays first.
 
     Args:
         source: the path of an SBML file or the SBML itself.
         level: the optimization level.
 
     Returns:
-        The SBML with the comment before its element `sbml`, or the path of a
-        file whose model references other files.
+        The SBML with the comment of its level.
     """
+    path: Path | None = None
     text = str(source)
-    if isinstance(source, Path) or not text.lstrip().startswith("<"):
+    if isinstance(source, Path) or not text.lstrip("\ufeff \t\r\n").startswith("<"):
         path = Path(source)
-        text = path.read_text(encoding="utf-8")
-        if "externalModelDefinition" in text:
-            return str(path)
-    position = text.find("<sbml")
-    if position < 0:
-        return text
-    return f"{text[:position]}<!-- sbmlsim LLJIT {level} -->{text[position:]}"
+        text = _sbml_text(path.read_bytes())
+    if "externalModelDefinition" in text:
+        text = _flatten(text, path=path)
+    return f"{text.rstrip()}\n<!-- sbmlsim LLJIT {level} -->\n"
 
 
 logger = logging.getLogger(__name__)
