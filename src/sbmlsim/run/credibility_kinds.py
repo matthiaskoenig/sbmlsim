@@ -7,8 +7,9 @@ report into `out/credibility/` (`CREDIBILITY_DIR`,
 `sbmlsim.credibility.report.write_outputs`), with the evidence extensions and
 the battery hook of the project. The fields are the options of an
 assessment: `verification` (the decisive predictions with tightened
-tolerances and a second integration method) and `battery` (the checks of the
-variants of the model), `uncertainty` (the propagation of the parameter
+tolerances and a second integration method), `battery` (the checks of the
+variants of the model) and `cross_simulator` (its check of the second engines,
+which `false` switches off alone), `uncertainty` (the propagation of the parameter
 uncertainty of the adopted fits, `draws` and `seed`), `variability` (the
 predictive check with the declared variability of the subjects, `subjects`
 and `studies`), `lock` (the lock of the evidence is written into the out,
@@ -21,7 +22,10 @@ the adopted fits instead of the ones of the records of the project, and
 `record`, an earlier record (a `credibility.json` or an out with
 `credibility/credibility.json`), whose outputs are written again without an
 assessment, so a report of a record of pkpdsim 0.17 to 0.19 is written with
-the current template.
+the current template. An option of an assessment with a record is refused,
+also `verification`, `battery` or `cross_simulator` switched off, which a
+record cannot undo; a `cross_validation` input with none of the adopted fits is
+refused as well.
 
 The analyses are imported when the kind plans or runs, not when this module is
 imported.
@@ -62,6 +66,8 @@ class CredibilitySpec(Spec):
         verification: verify the decisive predictions.
         battery: run the battery of the checks of the variants with the
             verification.
+        cross_simulator: run the check `cross_simulator` of the battery, as
+            the settings of the battery say; `false` switches it off.
         lock: write the lock of the evidence into the out instead of comparing
             the evidence with the lock of the project.
         uncertainty: propagate the parameter uncertainty of the adopted fits.
@@ -81,6 +87,7 @@ class CredibilitySpec(Spec):
     project: str
     verification: bool = True
     battery: bool = True
+    cross_simulator: bool = True
     lock: bool = False
     uncertainty: bool = False
     draws: int | None = Field(default=None, ge=2)
@@ -179,6 +186,9 @@ def _check_record_options(spec: CredibilitySpec) -> None:
             ("variability", spec.variability),
             ("source_commit", spec.source_commit is not None),
             ("cross_validation", spec.cross_validation is not None),
+            ("verification: false", not spec.verification),
+            ("battery: false", not spec.battery),
+            ("cross_simulator: false", not spec.cross_simulator),
         )
         if value
     ]
@@ -260,6 +270,12 @@ def _cross_validations(
                 json.loads(path.read_text(encoding="utf-8"))
             )
             found[result.subset] = result
+    if not found:
+        raise ConfigurationError(
+            f"The input cross_validation '{directory}' has the cross-validation of "
+            f"no adopted fit, {FITS_DIR}/<fit id>/{CROSS_VALIDATION_FILE} of "
+            f"{sorted(project.adopted_fits().values())}."
+        )
     return found
 
 
@@ -295,6 +311,7 @@ def _run(spec: CredibilitySpec, ctx: RunContext) -> dict[str, Any]:
             spec.source_commit,
             verification=spec.verification,
             battery=spec.battery,
+            cross_simulator=spec.cross_simulator,
             lock=ctx.out if spec.lock else None,
             uncertainty=_propagation(spec),
             variability=_variability(spec),

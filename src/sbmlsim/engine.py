@@ -9,6 +9,17 @@ from enum import StrEnum
 from types import ModuleType
 
 
+class UnsupportedModelError(ValueError, NotImplementedError):
+    """An engine does not simulate a model or a plan as roadrunner does.
+
+    The feature checks of COPASI and AMICI raise it before the engine loads,
+    compiles or runs what it would simulate otherwise, e.g. an algebraic rule
+    or a delayed event; it is a limitation of the engine, not an error of the
+    model. It is a `ValueError` (the checks of a model) and a
+    `NotImplementedError` (the checks of a plan) alike.
+    """
+
+
 class Engine(StrEnum):
     """The engine which integrates a model."""
 

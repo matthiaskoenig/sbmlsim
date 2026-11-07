@@ -9,6 +9,7 @@ import dataclasses
 import json
 import math
 import shutil
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import ClassVar, override
@@ -33,11 +34,15 @@ from sbmlsim.credibility import (
     write_outputs,
 )
 from sbmlsim.credibility.battery import (
+    BatteryCase,
     BatteryCollector,
     BatteryContribution,
     BatterySettings,
+    CompileTimeout,
     accumulating_states,
+    battery_settings_of,
     read_build,
+    with_deadline,
 )
 from sbmlsim.credibility.report import battery_table
 from sbmlsim.credibility.verification import (
@@ -81,10 +86,20 @@ def _sbml(path: Path, text: str) -> Path:
     return path
 
 
-def _project(tmp_path: Path, extra: str = "") -> Project:
-    """Get a project of the steady model without a hook, fits and factory."""
-    path = _sbml(tmp_path / "steady.xml", STEADY.replace("{extra}", extra))
-    return Project(name="steady", root=tmp_path, variants={"default": path})
+#: the settings of the battery of the steady model: it starts at its steady
+#: state, COPASI is its second engine whether AMICI is installed or not
+STEADY_SETTINGS = {"steady_state": True, "engines": ["copasi"]}
+
+
+def _project(tmp_path: Path, extra: str = "", model: str = STEADY) -> Project:
+    """Get a project of a model without a hook, fits and factory."""
+    path = _sbml(tmp_path / "model.xml", model.replace("{extra}", extra))
+    return Project(
+        name="steady",
+        root=tmp_path,
+        variants={"default": path},
+        credibility_settings=CredibilitySettings(battery_settings=STEADY_SETTINGS),
+    )
 
 
 def _battery(project: Project, **kwargs: object) -> Battery:
@@ -200,18 +215,157 @@ def test_the_hook_of_the_toy_package(credibility_project: Project) -> None:
     assert battery.result(REBUILD).status is BatteryStatus.NOT_APPLICABLE
 
 
-def test_without_a_hook_the_decay_fails_the_steady_state(
+def test_the_steady_state_is_checked_when_declared(
     credibility_project: Project,
 ) -> None:
+    """A decay does not start at its steady state, the check is not applicable without."""
+    metadata = credibility_project.credibility_settings.metadata_type
     project = credibility_project.replace(
-        credibility_settings=CredibilitySettings(
-            metadata_type=credibility_project.credibility_settings.metadata_type
-        )
+        credibility_settings=CredibilitySettings(metadata_type=metadata)
     )
     assert project.battery_hook() is None
     battery = _battery(project)
     assert [r.check for r in battery.results] == list(BATTERY_CHECKS)
-    assert battery.result(STEADY_STATE).status is BatteryStatus.FAILED
+    result = battery.result(STEADY_STATE)
+    assert result.status is BatteryStatus.NOT_APPLICABLE
+    assert "not declared to start at its steady state" in result.statement
+    assert all(r.passed is not False for r in battery.results)
+    declared = credibility_project.replace(
+        credibility_settings=CredibilitySettings(
+            metadata_type=metadata, battery_settings={"steady_state": True}
+        )
+    )
+    assert _battery(declared).result(STEADY_STATE).status is BatteryStatus.FAILED
+
+
+#: an oscillator, which never is at a steady state
+OSCILLATOR = """
+model oscillator
+  compartment V = 1;
+  species X in V = 1; species Y in V = 0;
+  X' = Y; Y' = -X;
+  {extra}
+end
+"""
+
+
+def test_an_oscillator_is_verified(tmp_path: Path) -> None:
+    project = _project(tmp_path, model=OSCILLATOR).replace(
+        credibility_settings=CredibilitySettings(
+            battery_settings={"engines": ["copasi"]}
+        )
+    )
+    battery = _battery(project)
+    assert battery.result(STEADY_STATE).status is BatteryStatus.NOT_APPLICABLE
+    # X and Y are negative half of the time
+    assert battery.result(NON_NEGATIVITY).status is BatteryStatus.FAILED
+
+
+def test_the_settings_of_the_project(tmp_path: Path) -> None:
+    """The settings of the project lie over the ones of the hook."""
+    project = _project(tmp_path).replace(
+        credibility_settings=CredibilitySettings(
+            battery_settings={"horizon": 10.0, "steps": 5, "steady_state": True}
+        )
+    )
+    battery = _battery(project)
+    assert "from 0 to 10 on a grid of 5 intervals" in battery.settings
+    with_hook = battery_settings_of(
+        PROJECT.replace(
+            credibility_settings=CredibilitySettings(battery_settings={"horizon": 30.0})
+        ),
+        BATTERY,
+    )
+    assert (with_hook.horizon, with_hook.steps, with_hook.steady_state) == (
+        30.0,
+        60,
+        True,
+    )
+    unknown = _project(tmp_path).replace(
+        credibility_settings=CredibilitySettings(battery_settings={"horizn": 10.0})
+    )
+    with pytest.raises(ValueError, match=r"\['horizn'\], which are no settings"):
+        _battery(unknown)
+    off = _project(tmp_path).replace(
+        credibility_settings=CredibilitySettings(
+            battery_settings={"cross_simulator": False}
+        )
+    )
+    result = run_battery(off, rebuild=False).result(CROSS_SIMULATOR)
+    assert (result.status, result.statement) == (
+        BatteryStatus.NOT_APPLICABLE,
+        "Not run.",
+    )
+
+
+#: a delayed event at 5 after the start, which roadrunner queues at a reset
+DELAYED = """
+model delayed
+  compartment V = 1;
+  species A in V = 2; species B in V = 0;
+  E: at 5 after (time >= 0), t0=false: B = 5;
+end
+"""
+
+
+def test_the_cases_do_not_depend_on_their_order(tmp_path: Path) -> None:
+    """A reset queues the events at the time 0 at 0, whichever case ran before."""
+    path = _sbml(tmp_path / "delayed.xml", DELAYED)
+    cases = (
+        BatteryCase(name="late", changes={30.0: {"A": 1.0}}),
+        BatteryCase(name="again", changes={}),
+    )
+    build = dataclasses.replace(read_build("default", path), cases=cases)
+    run = BatteryRun(build, BatterySettings(horizon=60.0, steps=60))
+    b = run.index["B"]
+    assert list(run.zero[4:7, b]) == [0.0, 5.0, 5.0]
+    assert list(run.cases["again"][:, b]) == list(run.zero[:, b])
+    assert list(run.cases["late"][4:7, b]) == [0.0, 5.0, 5.0]
+
+
+def test_a_change_off_the_grid_is_refused(tmp_path: Path) -> None:
+    run = BatteryRun(
+        read_build("default", _sbml(tmp_path / "m.xml", STEADY.replace("{extra}", ""))),
+        BatterySettings(horizon=10.0, steps=10),
+    )
+    for at in (2.5, 10.0, -1.0):
+        with pytest.raises(ValueError, match="no time of the grid"):
+            run.run(BatteryCase(name="off", changes={at: {"A": 1.0}}))
+    assert run.run(BatteryCase(name="on", changes={3.0: {"A": 1.0}})).shape[0] == 11
+
+
+def test_an_engine_limitation_is_no_failure(tmp_path: Path) -> None:
+    """COPASI makes the initial assignment of a species reference a constant."""
+    _skip_without_copasi()
+    path = _sbml(tmp_path / "flow.xml", STEADY.replace("{extra}", ""))
+    doc = libsbml.readSBMLFromFile(str(path))
+    model = doc.getModel()
+    model.getReaction("FLOW").getProduct(0).setId("srB")
+    assignment = model.createInitialAssignment()
+    assignment.setSymbol("srB")
+    assignment.setMath(libsbml.parseL3Formula("2"))
+    libsbml.writeSBMLToFile(doc, str(path))
+    project = Project(
+        name="flow",
+        root=tmp_path,
+        variants={"default": path},
+        credibility_settings=CredibilitySettings(
+            battery_settings={"engines": ["copasi"]}
+        ),
+    )
+    result = run_battery(project, rebuild=False).result(CROSS_SIMULATOR)
+    assert result.status is BatteryStatus.NOT_APPLICABLE
+    assert result.statement.startswith(
+        "No case was compared. default: not compared with COPASI: The model"
+    )
+    assert "species reference 'srB'" in result.statement
+
+
+def test_with_a_deadline() -> None:
+    """A function runs in a worker of a pool of its own, stopped after its deadline."""
+    assert with_deadline(math.sqrt, (4.0,), 60.0) == 2.0
+    with pytest.raises(CompileTimeout, match=r"took longer than 0\.5 s"):
+        with_deadline(time.sleep, (30.0,), 0.5)
 
 
 class _WrongHook(BatteryHook):
@@ -277,12 +431,21 @@ def test_without_a_second_engine_the_cross_simulator_is_not_applicable(
 
     monkeypatch.setattr(engine, "import_amici", missing)
     monkeypatch.setattr(engine, "import_copasi", missing)
-    battery = run_battery(_project(tmp_path), rebuild=False)
+    both = _project(tmp_path).replace(
+        credibility_settings=CredibilitySettings(
+            battery_settings={"engines": ["amici", "copasi"]}
+        )
+    )
+    battery = run_battery(both, rebuild=False)
     result = battery.result(CROSS_SIMULATOR)
     assert result.status is BatteryStatus.NOT_APPLICABLE
     assert result.statement == (
         "Neither AMICI nor COPASI is installed, install sbmlsim with the extra "
         "'amici' or 'copasi'."
+    )
+    one = run_battery(_project(tmp_path), rebuild=False).result(CROSS_SIMULATOR)
+    assert one.statement == (
+        "COPASI is not installed, install sbmlsim with the extra 'copasi'."
     )
 
 
@@ -290,7 +453,9 @@ def test_the_second_simulator(tmp_path: Path) -> None:
     _skip_without_copasi()
     result = run_battery(_project(tmp_path), rebuild=False).result(CROSS_SIMULATOR)
     assert result.status is BatteryStatus.PASSED, result.problems
+    assert result.cases == 1
     assert result.largest < 1e-6
+    assert result.statement.startswith("COPASI gives the results of roadrunner")
 
 
 def test_the_settings_of_the_battery() -> None:
@@ -417,7 +582,9 @@ def test_a_known_failure_is_shown_in_the_verification(
     from sbmlsim.credibility import evaluate_fits, verify
 
     monkeypatch.setattr(
-        module, "run_battery", lambda project: _failed(battery_of(), STEADY_STATE)
+        module,
+        "run_battery",
+        lambda project, **kwargs: _failed(battery_of(), STEADY_STATE),
     )
     known = credibility_project.replace(
         checks=CheckSettings(battery={"steady_state": "the decay"})

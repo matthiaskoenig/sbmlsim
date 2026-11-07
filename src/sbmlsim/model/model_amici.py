@@ -121,7 +121,7 @@ from typing import TYPE_CHECKING, Any, override
 import libsbml
 import numpy as np
 
-from sbmlsim.engine import Engine, import_amici
+from sbmlsim.engine import Engine, UnsupportedModelError, import_amici
 from sbmlsim.model.comparisons import (
     COMPARISONS,
     math_comparisons,
@@ -1294,11 +1294,12 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
         label: the name of the model in a message.
 
     Raises:
-        ValueError: naming the feature and its element, for a model with one.
+        UnsupportedModelError: naming the feature and its element, for a
+            model with one.
     """
 
-    def unsupported(feature: str) -> ValueError:
-        return ValueError(
+    def unsupported(feature: str) -> UnsupportedModelError:
+        return UnsupportedModelError(
             f"The model '{label}' has {feature}; AMICI does not simulate it as "
             f"roadrunner, the model cannot be simulated with AMICI."
         )

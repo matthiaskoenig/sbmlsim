@@ -1792,7 +1792,12 @@ def _packages(project: Project) -> list[str]:
     try:
         hook = project.battery_hook()
         objects = [*project.evidence_extensions(), *([] if hook is None else [hook])]
-    except ValueError:
+    except ValueError as err:
+        logger.warning(
+            "The versions of the extensions of '%s' are not recorded: %s",
+            project.name,
+            err,
+        )
         return []
     distributions = importlib.metadata.packages_distributions()
     names: list[str] = []
@@ -1858,6 +1863,7 @@ def assess(
     *,
     verification: bool = True,
     battery: bool = True,
+    cross_simulator: bool = True,
     lock: Path | None = None,
     uncertainty: PropagationSettings | None = None,
     variability: VariabilitySettings | None = None,
@@ -1879,6 +1885,8 @@ def assess(
             verification are not assessed without.
         battery: run the battery of the checks of the variants with the
             verification, see `sbmlsim.credibility.battery`.
+        cross_simulator: run the check `cross_simulator` of the battery, as
+            the settings of the battery say; `False` switches it off.
         lock: write the lock of the evidence (`sbmlsim.credibility.lock`) into
             this directory instead of comparing the evidence with the lock of
             the project; the lock of the package is never written.
@@ -1936,7 +1944,11 @@ def assess(
             raise LockMismatchError(differences)
         state = None if differences is None else "matched"
     prepared = {e.name: e.prepare(project, credibility, fits) for e in extensions}
-    checks = verify(project, fits, battery=battery) if verification else None
+    checks = (
+        verify(project, fits, battery=battery, cross_simulator=cross_simulator)
+        if verification
+        else None
+    )
     propagation = (
         None if uncertainty is None else propagate_fits(project, fits, uncertainty)
     )

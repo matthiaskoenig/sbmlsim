@@ -12,12 +12,23 @@ against what every model must fulfil (`BATTERY_CHECKS`):
   integrator in any simulation.
 - `steady_state`: without a change every state but the accumulating ones
   (`accumulating_states`, the sinks which nothing drains) stays at its start
-  (`BatterySettings.steady_limit`): the model starts at its steady state.
+  (`BatterySettings.steady_limit`): the model starts at its steady state. A
+  model which is not meant to, e.g. a decay or an oscillator, does not; the
+  check runs only when the settings say the model starts at its steady state
+  (`BatterySettings.steady_state`, off by default) and is not applicable
+  otherwise.
 - `cross_simulator`: a second engine of sbmlsim (`BatterySettings.engines`,
   AMICI and COPASI, each one which is installed) gives the results of
   roadrunner without a change and with every case of the hook which it
   repeats (`BatteryCase.cross_simulator`), within `LIMIT`; both run through
-  `sbmlsim.simulator.Simulator` on the same simulation.
+  `sbmlsim.simulator.Simulator` on the same simulation, roadrunner compiled
+  at `O0`. What an engine does not simulate as roadrunner
+  (`sbmlsim.engine.UnsupportedModelError`, e.g. an algebraic rule in COPASI)
+  is no failure: the statement names it as not compared, and a check which
+  compared nothing is not applicable. AMICI compiles a variant in a worker of
+  a pool of its own (`sbmlsim.parallel.start_pool`) which is stopped after
+  `BatterySettings.compile_timeout`, so a compilation which takes too long
+  is not compared either.
 - `plausibility`: the initial state has finite values and positive
   compartments, and no value of an adopted fit lies at a bound of its fit
   (`BatterySettings.bound_margin`).
@@ -35,8 +46,13 @@ a dose of every route (`BatteryCase`), and further checks on the simulations
 of every variant (`BatteryHook.contribute`, `BatteryRun`), which it registers
 (`sbmlsim.credibility.verification.register_check`), with sections of plain
 data in the record of the battery (`Battery.sections`) which the report shows
-(`BatteryHook.report_html`, `BatteryHook.report_tables`). A check without what
-it needs is not applicable and assesses nothing.
+(`BatteryHook.report_html`, `BatteryHook.report_tables`). The settings are
+the ones of the hook (`BatteryHook.settings`), else the defaults, with the
+settings of the project over them
+(`sbmlsim.project.CredibilitySettings.battery_settings`, see
+`battery_settings_of`), so a project without a hook sets its engines, its
+horizon or its tolerances as well. A check without what it needs is not
+applicable and assesses nothing.
 """
 
 from __future__ import annotations
@@ -46,7 +62,7 @@ import logging
 import math
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum, unique
 from pathlib import Path
@@ -67,6 +83,8 @@ from sbmlsim.credibility.verification import (
     Check,
     check_of,
 )
+from sbmlsim.engine import UnsupportedModelError
+from sbmlsim.model.model_roadrunner import reset_all
 
 if TYPE_CHECKING:
     import libsbml
@@ -79,6 +97,7 @@ if TYPE_CHECKING:
 __all__ = [
     "ABSOLUTE_TOLERANCE",
     "BOUND_MARGIN",
+    "COMPILE_TIMEOUT",
     "HORIZON",
     "RELATIVE_TOLERANCE",
     "STEADY_LIMIT",
@@ -95,6 +114,7 @@ __all__ = [
     "BatteryStatus",
     "accumulating_states",
     "battery_settings",
+    "battery_settings_of",
     "math_names",
     "not_applicable",
     "read_build",
@@ -103,10 +123,10 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-#: the end of every simulation in the time of the model, two days in minutes
-HORIZON: Final = 2880.0
-#: the intervals of the grid of the results
-STEPS: Final = 288
+#: the end of every simulation by default, in the time of the model
+HORIZON: Final = 100.0
+#: the intervals of the grid of the results by default
+STEPS: Final = 100
 #: the relative tolerance of the simulations of the battery
 RELATIVE_TOLERANCE: Final = 1e-10
 #: the absolute tolerance of the simulations of the battery, also the floor of
@@ -117,6 +137,8 @@ STEADY_LIMIT: Final = 1e-6
 #: the share of the range of a bound (in the scale of the fit) within which a
 #: fitted value lies at the bound
 BOUND_MARGIN: Final = 1e-3
+#: the longest compilation of a variant by AMICI (s), see `BatterySettings`
+COMPILE_TIMEOUT: Final = 900.0
 
 #: the second engines of the check `cross_simulator`, by their name
 _ENGINE_LABELS: Final = {"amici": "AMICI", "copasi": "COPASI"}
@@ -281,8 +303,14 @@ class BatterySettings:
             to its start.
         bound_margin: the share of the range of a bound (in the scale of the
             fit) within which a fitted value lies at the bound.
+        steady_state: whether the model starts at its steady state, so the
+            check `steady_state` runs; it is not applicable without, e.g. for
+            a decay or an oscillator.
+        cross_simulator: run the check `cross_simulator`.
         engines: the second engines of the check `cross_simulator`, each one
             which is installed is compared with roadrunner.
+        compile_timeout: the longest compilation of a variant by AMICI (s);
+            a variant which takes longer is not compared with AMICI.
     """
 
     horizon: float = HORIZON
@@ -291,21 +319,26 @@ class BatterySettings:
     absolute_tolerance: float = ABSOLUTE_TOLERANCE
     steady_limit: float = STEADY_LIMIT
     bound_margin: float = BOUND_MARGIN
+    steady_state: bool = False
+    cross_simulator: bool = True
     engines: tuple[str, ...] = ("amici", "copasi")
+    compile_timeout: float = COMPILE_TIMEOUT
 
     def __post_init__(self) -> None:
-        """Check the settings.
+        """Check the settings, the engines as a tuple.
 
         Raises:
-            ValueError: for a horizon, a tolerance or a limit which is not
-                positive, fewer than one step and an unknown engine.
+            ValueError: for a horizon, a tolerance, a limit or a timeout which
+                is not positive, fewer than one step and an unknown engine.
         """
+        object.__setattr__(self, "engines", tuple(self.engines))
         for name in (
             "horizon",
             "relative_tolerance",
             "absolute_tolerance",
             "steady_limit",
             "bound_margin",
+            "compile_timeout",
         ):
             if not getattr(self, name) > 0:
                 raise ValueError(
@@ -324,6 +357,35 @@ class BatterySettings:
     def times(self) -> np.ndarray:
         """Get the times of the grid of the results."""
         return np.linspace(0.0, self.horizon, self.steps + 1)
+
+
+def battery_settings_of(project: Project, hook: BatteryHook | None) -> BatterySettings:
+    """Get the settings of the battery of a project.
+
+    The settings of the hook, the defaults without one, with the settings of
+    the project over them (`sbmlsim.project.CredibilitySettings.battery_settings`).
+
+    Args:
+        project: the project.
+        hook: its battery hook.
+
+    Returns:
+        The settings.
+
+    Raises:
+        ValueError: for a setting of the project which the battery does not
+            have or which is not valid.
+    """
+    settings = BatterySettings() if hook is None else hook.settings()
+    overrides = dict(project.credibility_settings.battery_settings)
+    known = {f.name for f in dataclasses.fields(BatterySettings)}
+    unknown = sorted(set(overrides) - known)
+    if unknown:
+        raise ValueError(
+            f"The battery settings of the project '{project.name}' have "
+            f"{unknown}, which are no settings of the battery: {sorted(known)}."
+        )
+    return dataclasses.replace(settings, **overrides)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -531,7 +593,7 @@ class BatteryRun:
         self.columns = build.columns
         self.r.timeCourseSelections = ["time", *self.columns]
         self.index = {sid: k for k, sid in enumerate(self.columns)}
-        self.r.resetAll()
+        reset_all(self.r)
         self.values = {
             pid: float(self.r[pid]) for pid in self.r.model.getGlobalParameterIds()
         }
@@ -562,13 +624,27 @@ class BatteryRun:
 
         Returns:
             The results on the grid, `steps + 1` rows of the columns.
+
+        Raises:
+            ValueError: for a change at a time which is no time of the grid
+                before the horizon.
         """
-        r = self.r
-        r.resetAll()
         horizon = self.settings.horizon
+        step = horizon / self.settings.steps
+        for at in case.changes:
+            k = at / step
+            if not (0.0 <= at < horizon) or not math.isclose(
+                k, round(k), rel_tol=0.0, abs_tol=1e-9 * max(1.0, abs(k))
+            ):
+                raise ValueError(
+                    f"The case '{case.name}' changes the model at {at:g}, which "
+                    f"is no time of the grid of the battery before its horizon "
+                    f"{horizon:g}, a multiple of {step:g}."
+                )
+        r = self.r
+        reset_all(r)
         times = sorted({0.0, *case.changes})
         bounds = [*times, horizon]
-        step = horizon / self.settings.steps
         rows: list[np.ndarray] = []
         for k, start in enumerate(times):
             for sid, value in case.changes.get(start, {}).items():
@@ -907,7 +983,7 @@ def _plausibility(
     """Check the values of the initial state and of the adopted fits."""
     for run in runs:
         r = run.r
-        r.resetAll()
+        reset_all(r)
         name = run.build.variant
         for cid in r.model.getCompartmentIds():
             size = float(r[cid])
@@ -937,14 +1013,15 @@ def _plausibility(
         return
     for pid, parameter in records.parameters.items():
         collector.cases += 1
-        value = parameter._to_scale(parameter.value)
+        scale = parameter.scale
+        value = float(scale.to_scale(parameter.value))
         lower, upper = parameter.lower_bound, parameter.upper_bound
         if not (math.isfinite(lower) and math.isfinite(upper)):
             continue
-        span = abs(parameter._to_scale(upper) - parameter._to_scale(lower))
+        span = abs(float(scale.to_scale(upper)) - float(scale.to_scale(lower)))
         for side, bound in (("lower", lower), ("upper", upper)):
             distance = (
-                abs(value - parameter._to_scale(bound)) / span if span > 0 else 0.0
+                abs(value - float(scale.to_scale(bound))) / span if span > 0 else 0.0
             )
             if distance < margin:
                 collector.problems.append(
@@ -1004,18 +1081,75 @@ def _simulation(case: BatteryCase, settings: BatterySettings) -> Simulation:
     )
 
 
-def _engine_values(
-    engine: str,
-    build: BatteryBuild,
-    cases: Sequence[BatteryCase],
-    settings: BatterySettings,
-) -> list[np.ndarray]:
-    """Simulate the cases of a variant with an engine of sbmlsim.
+class CompileTimeout(Exception):
+    """A compilation did not end within its deadline, see `with_deadline`."""
+
+
+def with_deadline(
+    function: Callable[..., Any], args: Sequence[Any], timeout: float
+) -> Any:  # what the function returns
+    """Call a function in a worker of a pool of its own, stopped after a deadline.
+
+    In a worker of a pool, which starts no pool, the function is called in
+    the process, without a deadline.
+
+    Args:
+        function: a module level function.
+        args: its arguments, picklable.
+        timeout: the deadline (s).
+
+    Returns:
+        What the function returns; an exception of the function is raised.
 
     Raises:
-        ImportError: if the engine is not installed.
+        CompileTimeout: if the function did not return within the deadline;
+            the worker is stopped.
     """
+    from concurrent.futures import TimeoutError as FutureTimeout
+
+    from sbmlsim import parallel
+
+    if parallel.in_worker():
+        logger.warning("A worker of a pool calls %r without a deadline.", function)
+        return function(*args)
+    pool = parallel.start_pool(1)
+    try:
+        return pool.submit(function, *args).result(timeout=timeout)
+    except FutureTimeout as err:
+        raise CompileTimeout(f"took longer than {timeout:g} s") from err
+    finally:
+        parallel.stop(pool)
+
+
+def _compile_amici(sbml: str, selections: list[str], cache: str | None) -> None:
+    """Compile a variant with AMICI into the cache of compiled models of AMICI."""
+    from sbmlsim.engine import Engine, using_amici_cache
     from sbmlsim.model import AbstractModel
+    from sbmlsim.model.model_sbml import load_model
+
+    with using_amici_cache(cache):
+        load_model(AbstractModel(sbml, selections=selections), Engine.AMICI)
+
+
+def _engine_model(
+    engine: str, build: BatteryBuild, settings: BatterySettings
+) -> tuple[Any, Any]:
+    """Load a variant in an engine with the tolerances of the battery.
+
+    roadrunner compiles the variant at `O0`; AMICI compiles it in a worker
+    with the deadline of the settings first, see `with_deadline`.
+
+    Returns:
+        The simulator and the model.
+
+    Raises:
+        UnsupportedModelError: if the engine does not simulate the variant as
+            roadrunner.
+        CompileTimeout: if AMICI did not compile the variant in time.
+    """
+    from sbmlsim.engine import Engine, amici_cache, using_amici_cache
+    from sbmlsim.model import AbstractModel
+    from sbmlsim.model.model_sbml import load_model
     from sbmlsim.simulator import Simulator
 
     simulator = Simulator(
@@ -1024,34 +1158,65 @@ def _engine_values(
         relative_tolerance=settings.relative_tolerance,
         absolute_tolerance=settings.absolute_tolerance,
     )
-    columns = [*build.species, *build.states]
-    model = simulator.load(AbstractModel(build.sbml, selections=["time", *columns]))
-    values: list[np.ndarray] = []
-    for case in cases:
-        result = simulator.simulate(model, _simulation(case, settings))
-        values.append(np.column_stack([result[c] for c in columns]))
-    return values
+    selections = ["time", *build.species, *build.states]
+    description = AbstractModel(build.sbml, selections=selections)
+    if engine == Engine.ROADRUNNER:
+        return simulator, simulator.load(
+            load_model(description, Engine.ROADRUNNER, jit_optimization="O0")
+        )
+    if engine == Engine.AMICI:
+        cache = amici_cache(Engine.AMICI, ())
+        with_deadline(
+            _compile_amici, (build.sbml, selections, cache), settings.compile_timeout
+        )
+        with using_amici_cache(cache):
+            return simulator, simulator.load(description)
+    return simulator, simulator.load(description)
+
+
+def _values(
+    simulator: Any,  # a Simulator, imported lazily
+    model: Any,  # its model
+    build: BatteryBuild,
+    case: BatteryCase,
+    settings: BatterySettings,
+) -> np.ndarray:
+    """Simulate a case with an engine, the amounts of the species and the states."""
+    result = simulator.simulate(model, _simulation(case, settings))
+    return np.column_stack([result[c] for c in (*build.species, *build.states)])
+
+
+def _installed(engine: str) -> bool:
+    """Check whether a second engine is installed."""
+    from sbmlsim.engine import import_amici, import_copasi
+
+    try:
+        (import_amici if engine == "amici" else import_copasi)()
+    except ImportError:
+        return False
+    return True
 
 
 def _cross_simulator(
     runs: Sequence[BatteryRun], settings: BatterySettings
 ) -> BatteryResult:
-    """Compare the results of roadrunner with the results of the second engines."""
-    from sbmlsim.engine import import_amici, import_copasi
+    """Compare the results of roadrunner with the results of the second engines.
 
-    engines: list[str] = []
-    for engine in settings.engines:
-        try:
-            (import_amici if engine == "amici" else import_copasi)()
-        except ImportError:
-            continue
-        engines.append(engine)
+    A variant or a case an engine does not simulate as roadrunner, or a
+    variant AMICI does not compile in time, is not compared and named in the
+    statement; an error of an engine on anything else is a problem.
+    """
+    engines = [e for e in settings.engines if _installed(e)]
     if not engines:
-        names = " nor ".join(_ENGINE_LABELS[e] for e in settings.engines)
+        names = [_ENGINE_LABELS[e] for e in settings.engines]
+        missing = (
+            f"{names[0]} is not installed"
+            if len(names) == 1
+            else f"Neither {' nor '.join(names)} is installed"
+        )
         return not_applicable(
             CROSS_SIMULATOR,
-            f"{'Neither ' if len(settings.engines) > 1 else ''}{names} is installed, "
-            "install sbmlsim with the extra "
+            f"{missing}, install sbmlsim with the extra "
             + " or ".join(f"'{e}'" for e in settings.engines)
             + ".",
         )
@@ -1062,6 +1227,7 @@ def _cross_simulator(
         f"it repeats, within {LIMIT:g}."
     )
     collector = BatteryCollector()
+    skipped: list[str] = []
     floor = settings.absolute_tolerance
     for run in runs:
         build = run.build
@@ -1073,21 +1239,45 @@ def _cross_simulator(
             *(c for c in build.cases if c.cross_simulator),
         ]
         try:
-            expected = _engine_values("roadrunner", build, cases, settings)
+            reference, model = _engine_model("roadrunner", build, settings)
+            expected = [_values(reference, model, build, c, settings) for c in cases]
         except (RuntimeError, ValueError) as err:
             collector.problems.append(f"{build.variant}: roadrunner failed: {err}")
             continue
         for engine in engines:
             label = _ENGINE_LABELS[engine]
             try:
-                actuals = _engine_values(engine, build, cases, settings)
-            except Exception as err:  # a model the engine cannot simulate is the result
+                simulator, model = _engine_model(engine, build, settings)
+            except UnsupportedModelError as err:
+                skipped.append(f"{build.variant}: not compared with {label}: {err}")
+                continue
+            except CompileTimeout as err:
+                skipped.append(
+                    f"{build.variant}: not compared with {label}: compiling {err}."
+                )
+                continue
+            except Exception as err:  # an error of an engine on a variant is the result
                 collector.problems.append(
                     f"{build.variant}: {label} cannot simulate the variant: "
                     f"{type(err).__name__}: {err}"
                 )
                 continue
-            for case, want, actual in zip(cases, expected, actuals, strict=True):
+            for case, want in zip(cases, expected, strict=True):
+                try:
+                    actual = _values(simulator, model, build, case, settings)
+                except UnsupportedModelError as err:
+                    skipped.append(
+                        f"{build.variant} {case.name}: not compared with {label}: {err}"
+                    )
+                    continue
+                except (
+                    Exception
+                ) as err:  # an error of an engine on a case is the result
+                    collector.problems.append(
+                        f"{build.variant} {case.name}: {label} failed: "
+                        f"{type(err).__name__}: {err}"
+                    )
+                    continue
                 collector.cases += 1
                 scale = np.max(np.abs(want), axis=0)
                 limit = np.maximum(SCALE_FLOOR * scale, floor)
@@ -1107,6 +1297,16 @@ def _cross_simulator(
                         f"{build.variant} {case.name}: '{columns[k]}' differs "
                         f"between {label} and roadrunner by {largest[k]:.2g}"
                     )
+    if skipped:
+        statement = f"{statement} " + " ".join(
+            s if s.endswith(".") else f"{s}." for s in skipped
+        )
+        if not collector.cases and not collector.problems:
+            return not_applicable(
+                CROSS_SIMULATOR,
+                "No case was compared. "
+                + " ".join(s if s.endswith(".") else f"{s}." for s in skipped),
+            )
     return collector.result(CROSS_SIMULATOR, statement)
 
 
@@ -1167,7 +1367,8 @@ def run_battery(
         project: the project, every variant of `Project.variants`.
         rebuild: run the check `rebuild`, which runs the factory.
         cross_simulator: run the check `cross_simulator` with the second
-            engines which are installed.
+            engines which are installed, as the settings say; `False`
+            switches it off whatever the settings.
         hook: the battery hook, the one of the project
             (`sbmlsim.project.Project.battery_hook`) without.
 
@@ -1176,25 +1377,35 @@ def run_battery(
 
     Raises:
         ValueError: if the hook gives a result of a check it does not add, or
-            misses one.
+            misses one, and for invalid settings of the project.
     """
     hook = project.battery_hook() if hook is None else hook
-    settings = BatterySettings() if hook is None else hook.settings()
+    settings = battery_settings_of(project, hook)
     builds = [read_build(name, path, hook) for name, path in project.variants.items()]
     runs = [BatteryRun(build, settings) for build in builds]
     results: dict[str, BatteryResult] = {}
-    for check, function, nothing in (
+    checks = [
         (
             NON_NEGATIVITY,
             lambda c: _non_negativity(runs, c, settings.absolute_tolerance),
             "The model has no species.",
         ),
-        (
+    ]
+    if settings.steady_state:
+        checks.append(
+            (
+                STEADY_STATE,
+                lambda c: _steady_state(runs, c, settings),
+                "The model has no state which does not accumulate.",
+            )
+        )
+    else:
+        results[STEADY_STATE.id] = not_applicable(
             STEADY_STATE,
-            lambda c: _steady_state(runs, c, settings),
-            "The model has no state which does not accumulate.",
-        ),
-    ):
+            "The model is not declared to start at its steady state "
+            "(BatterySettings.steady_state), e.g. a decay or an oscillator.",
+        )
+    for check, function, nothing in checks:
         collector = BatteryCollector()
         function(collector)
         results[check.id] = (
@@ -1204,7 +1415,7 @@ def run_battery(
         )
     results[CROSS_SIMULATOR.id] = (
         _cross_simulator(runs, settings)
-        if cross_simulator
+        if cross_simulator and settings.cross_simulator
         else not_applicable(CROSS_SIMULATOR, "Not run.")
     )
     collector = BatteryCollector()

@@ -316,7 +316,9 @@ def compare(
         if scorecard_true(before.get("uncertainty_robust")) and not scorecard_true(
             after.get("uncertainty_robust")
         ):
-            regression("uncertainty_robust", "True", str(after["uncertainty_robust"]))
+            regression(
+                "uncertainty_robust", "True", str(after.get("uncertainty_robust"))
+            )
         for rule in rules:
             a, b = scorecard_number(before[rule]), scorecard_number(after[rule])
             if _worse(rule, a, b, tolerance):
