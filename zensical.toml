@@ -185,6 +185,11 @@ nav = [
       { "uncertainty" = "api/credibility.uncertainty.md" },
       { "variability" = "api/credibility.variability.md" },
       { "cross_validation" = "api/credibility.cross_validation.md" },
+      { "verification" = "api/credibility.verification.md" },
+      { "battery" = "api/credibility.battery.md" },
+      { "assessment" = "api/credibility.assessment.md" },
+      { "report" = "api/credibility.report.md" },
+      { "scorecard" = "api/credibility.scorecard.md" },
     ] },
     { "sbmlsim.sciml" = [
       { "sciml" = "api/sciml.md" },

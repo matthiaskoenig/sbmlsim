@@ -17,9 +17,48 @@ one study at a time (`cross_validate`). The factors of V&V 40 (`FACTORS`) list
 what an assessment assesses. A domain adds evidence of its own with an
 `EvidenceExtension`, e.g. the ratios between the arms of a study.
 
+`assess` assesses the contexts of use on the adopted fits into a
+`CredibilityAssessment`: the acceptance, the coverage, the verdict and the
+factors of every context, verified on tightened tolerances and a second
+integration method (`verify`) and the battery of the checks of the variants
+of the model (`run_battery`), which a project extends with a `BatteryHook`;
+the checks are open (`Check`, `register_check`). `write_outputs` writes the
+record, the tables and the report, `scorecard` and `compare` read the records
+of many models.
+
 `import sbmlsim` does not import this package.
 """
 
+from sbmlsim.credibility.assessment import (
+    AcceptanceRecord,
+    ContextResult,
+    Coverage,
+    CoverageEntry,
+    CredibilityAssessment,
+    EvidenceResult,
+    Provenance,
+    QuantityRecord,
+    Verdict,
+    applicable,
+    assess,
+    assess_table,
+    describe_selection,
+    provenance,
+    verdict,
+)
+from sbmlsim.credibility.battery import (
+    Battery,
+    BatteryBuild,
+    BatteryCase,
+    BatteryCollector,
+    BatteryContribution,
+    BatteryHook,
+    BatteryResult,
+    BatteryRun,
+    BatterySettings,
+    BatteryStatus,
+    run_battery,
+)
 from sbmlsim.credibility.check import check_declaration
 from sbmlsim.credibility.cross_validation import (
     CrossValidation,
@@ -82,6 +121,7 @@ from sbmlsim.credibility.records import (
     mapping_table,
     recorded_kinds,
 )
+from sbmlsim.credibility.report import print_summary, render_html, write_outputs
 from sbmlsim.credibility.risk import (
     DEFAULT_ACCEPTANCE,
     DEFAULT_MIN_POINTS,
@@ -89,6 +129,7 @@ from sbmlsim.credibility.risk import (
     default_acceptance,
     model_risk,
 )
+from sbmlsim.credibility.scorecard import Regression, compare, load_records, scorecard
 from sbmlsim.credibility.selection import (
     EvidenceSelection,
     SelectionError,
@@ -110,28 +151,63 @@ from sbmlsim.credibility.variability import (
     VariabilitySettings,
     predictive_checks,
 )
+from sbmlsim.credibility.verification import (
+    BATTERY_CHECKS,
+    CHECKS,
+    NUMERICAL_CHECKS,
+    PREDICTION_CHECKS,
+    Check,
+    CheckRecord,
+    Verification,
+    VerificationSummary,
+    check_of,
+    register_check,
+    verify,
+)
 
 __all__ = [
+    "BATTERY_CHECKS",
+    "CHECKS",
     "DEFAULT_ACCEPTANCE",
     "DEFAULT_MIN_POINTS",
     "FACTORS",
+    "NUMERICAL_CHECKS",
+    "PREDICTION_CHECKS",
     "RISK_TABLE",
     "UNCLAIMED",
     "Acceptance",
+    "AcceptanceRecord",
     "AcceptanceResult",
     "AcceptanceRule",
     "AfeRange",
+    "Battery",
+    "BatteryBuild",
+    "BatteryCase",
+    "BatteryCollector",
+    "BatteryContribution",
+    "BatteryHook",
+    "BatteryResult",
+    "BatteryRun",
+    "BatterySettings",
+    "BatteryStatus",
+    "Check",
+    "CheckRecord",
     "Consequence",
     "ContextBlock",
     "ContextContribution",
     "ContextOfUse",
+    "ContextResult",
     "CouLevel",
+    "Coverage",
+    "CoverageEntry",
     "Credibility",
+    "CredibilityAssessment",
     "CrossValidation",
     "DeclarationError",
     "Domain",
     "Evidence",
     "EvidenceExtension",
+    "EvidenceResult",
     "EvidenceRole",
     "EvidenceSelection",
     "ExtensionSetting",
@@ -151,7 +227,10 @@ __all__ = [
     "Pairing",
     "PredictiveChecks",
     "PropagationSettings",
+    "Provenance",
     "QuantityOfInterest",
+    "QuantityRecord",
+    "Regression",
     "ReportSection",
     "Risk",
     "ScorecardChange",
@@ -162,15 +241,25 @@ __all__ = [
     "Unclaimed",
     "VariabilityRecord",
     "VariabilitySettings",
+    "Verdict",
+    "Verification",
+    "VerificationSummary",
     "acceptance_result",
     "adopted_ids",
+    "applicable",
+    "assess",
+    "assess_table",
     "check_declaration",
+    "check_of",
     "combine_factor",
+    "compare",
     "cross_validate",
     "default_acceptance",
+    "describe_selection",
     "evaluate_fits",
     "in_domain",
     "kind_differences",
+    "load_records",
     "lock_differences",
     "mapping_table",
     "metadata_fields",
@@ -178,12 +267,21 @@ __all__ = [
     "model_risk",
     "normalize_observable",
     "predictive_checks",
+    "print_summary",
     "propagate_fits",
+    "provenance",
     "read_acceptance",
     "read_cross_validations",
     "read_sections",
     "recorded_kinds",
+    "register_check",
+    "render_html",
+    "run_battery",
+    "scorecard",
     "select",
+    "verdict",
+    "verify",
     "write_cross_validation",
     "write_lock",
+    "write_outputs",
 ]

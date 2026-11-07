@@ -169,6 +169,11 @@ The credibility of a model for its contexts of use, see [Credibility](../run.md#
 | [credibility.uncertainty](credibility.uncertainty.md) | `propagate_fits`, the parameter uncertainty of the adopted fits propagated to the decisive predictions |
 | [credibility.variability](credibility.variability.md) | `predictive_checks`, the visual predictive check of the decisive points with the variability of the subjects |
 | [credibility.cross_validation](credibility.cross_validation.md) | `cross_validate`, the leave-one-study-out cross-validation of an adopted fit |
+| [credibility.verification](credibility.verification.md) | `verify`, the decisive predictions with tightened tolerances and a second integration method, and the open checks, `Check` and `register_check` |
+| [credibility.battery](credibility.battery.md) | `run_battery`, the checks of the variants of a model, and `BatteryHook`, the simulations and checks a project adds |
+| [credibility.assessment](credibility.assessment.md) | `assess`, the assessment of the contexts of use on the adopted fits, `CredibilityAssessment` and its record |
+| [credibility.report](credibility.report.md) | `write_outputs`, the record, the tables and the report of an assessment |
+| [credibility.scorecard](credibility.scorecard.md) | `scorecard` and `compare`, the assessments of many models and their regressions against a baseline |
 
 ## sbmlsim.sciml
 

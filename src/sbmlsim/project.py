@@ -552,6 +552,11 @@ class CredibilitySettings(BaseModel):
         extensions: the evidence extensions of the project, instances of
             `sbmlsim.credibility.extensions.EvidenceExtension` or references
             to them, see `Project.evidence_extensions`.
+        battery: the battery hook of the project, which adds the simulations
+            and checks of its domain to the battery of its variants, an
+            instance of `sbmlsim.credibility.battery.BatteryHook` or a
+            reference to it, see `Project.battery_hook`; `None` for the
+            generic checks only.
     """
 
     model_config = _CONFIG
@@ -559,6 +564,7 @@ class CredibilitySettings(BaseModel):
     metadata_type: Any = None
     domain_fields: tuple[str, ...] | None = None
     extensions: tuple[Any, ...] = ()
+    battery: Any = None
 
     @field_validator("metadata_type")
     @classmethod
@@ -589,6 +595,18 @@ class CredibilitySettings(BaseModel):
         for extension in value:
             if isinstance(extension, str):
                 check_reference(extension)
+        return value
+
+    @field_validator("battery")
+    @classmethod
+    def _check_battery(cls, value: Any) -> Any:
+        """Check the reference of the battery hook, an object is checked when used.
+
+        Raises:
+            ValueError: for a malformed reference.
+        """
+        if isinstance(value, str):
+            check_reference(value)
         return value
 
 
@@ -1382,6 +1400,29 @@ class Project(BaseModel):
                 f"of their own, not {repeated}."
             )
         return extensions
+
+    def battery_hook(self) -> Any:
+        """Get the battery hook of the credibility of the project.
+
+        Returns:
+            The hook, the reference resolved, `None` without one, see
+            `sbmlsim.credibility.battery.BatteryHook`.
+
+        Raises:
+            ValueError: if the hook is no
+                `sbmlsim.credibility.battery.BatteryHook`.
+        """
+        if self.credibility_settings.battery is None:
+            return None
+        from sbmlsim.credibility.battery import BatteryHook
+
+        hook = self._resolve(self.credibility_settings.battery)
+        if not isinstance(hook, BatteryHook):
+            raise ValueError(
+                f"The battery hook {hook!r} of the project '{self.name}' is no "
+                "sbmlsim.credibility.battery.BatteryHook."
+            )
+        return hook
 
     def action(self, name: str) -> ProjectAction:
         """Get an action of the project.

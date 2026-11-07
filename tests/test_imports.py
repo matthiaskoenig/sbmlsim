@@ -89,9 +89,10 @@ def test_the_run_layer_imports_no_analysis() -> None:
     """`sbmlsim.run` imports the fit, the simulator and the project when it runs."""
     code = (
         "import sys, sbmlsim.run, sbmlsim.run.cli, sbmlsim.run.profiling, "
-        "sbmlsim.run.project_kinds; "
+        "sbmlsim.run.project_kinds, sbmlsim.run.credibility_kinds; "
         "print(sorted(m for m in ('sbmlsim.fit', 'sbmlsim.simulator', 'sbmlsim.project',"
-        " 'matplotlib', 'sbmlsim.simrun', 'simrun') if m in sys.modules))"
+        " 'matplotlib', 'sbmlsim.simrun', 'simrun', 'sbmlsim.credibility')"
+        " if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],

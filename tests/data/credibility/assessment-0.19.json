@@ -3,19 +3,663 @@
     "model": "credibility",
     "title": "Toy model with every kind of evidence",
     "fits": [
-      "DECAY_20261106_183957__59e5e"
+      "DECAY_20261107_013041__7531f"
     ],
     "versions": {
-      "pkpdsim": "0.18.0",
+      "pkpdsim": "0.19.0",
       "sbmlsim": "0.16.0",
       "sbmlutils": "0.17.2",
       "libroadrunner": "2.11.0"
     },
-    "commit": "f078e5ca2ed51c0b5bc6b61c91c32cafb306e7cc",
-    "dirty": false,
-    "date": "2026-11-06T18:40:24+01:00",
+    "commit": "0123abc",
+    "dirty": null,
+    "date": "2026-11-07T01:31:07+01:00",
     "lock": null
   },
+  "contexts": [
+    {
+      "id": "describe",
+      "title": "Describe the decay",
+      "question": "Does the model describe the intravenous decay of A?",
+      "level": "C1",
+      "influence": "low",
+      "consequence": "low",
+      "risk": "low",
+      "rationale": "",
+      "extrapolation": "",
+      "domain_statement": "",
+      "quantities": [
+        {
+          "id": "[A]",
+          "description": "the concentration of A",
+          "ratio": false,
+          "coverage": "covered",
+          "n_points": 10
+        }
+      ],
+      "acceptance": [
+        {
+          "name": "within_2fold",
+          "value": 100.0,
+          "limit": ">= 70",
+          "met": true
+        }
+      ],
+      "verdict": "supported",
+      "factors": [
+        {
+          "id": "software_quality_assurance",
+          "name": "Software quality assurance",
+          "status": "assessed",
+          "statement": "pkpdsim and sbmlsim are released packages with tests and continuous integration; the model is released reproducibly from its repository with the versions and the commit of the provenance. Rebuild of 1 case: passed.",
+          "step": null
+        },
+        {
+          "id": "numerical_code_verification",
+          "name": "Numerical code verification",
+          "status": "platform",
+          "statement": "sbmlsim runs the SBML Test Suite and the PEtab test suite.",
+          "step": null
+        },
+        {
+          "id": "discretization_error",
+          "name": "Discretization error",
+          "status": "assessed",
+          "statement": "Largest relative difference 2.5e-06 of 10 decisive predictions with the tolerances of the fits divided by 100, at CredA.fm_train at 6, acceptance unchanged: passed.",
+          "step": null
+        },
+        {
+          "id": "numerical_solver_error",
+          "name": "Numerical solver error",
+          "status": "assessed",
+          "statement": "Largest relative difference 2.8e-06 of 10 decisive predictions with the BDF of CVODE of at most order 2 at the tightened tolerances, at CredA.fm_train at 8, acceptance unchanged: passed.",
+          "step": null
+        },
+        {
+          "id": "use_error",
+          "name": "Use error",
+          "status": "assessed",
+          "statement": "The builds are valid SBML with consistent units and the 10 decisive predictions are finite: passed. Plausibility of the values of 4 cases: passed.",
+          "step": null
+        },
+        {
+          "id": "model_form",
+          "name": "Model form",
+          "status": "not_assessed",
+          "statement": "The structure of the model across studies and drugs: the ratios, the cross-validation and the qualification across models.",
+          "step": 3
+        },
+        {
+          "id": "model_inputs",
+          "name": "Model inputs",
+          "status": "not_assessed",
+          "statement": "The uncertainty and the sensitivity of the parameters.",
+          "step": 4
+        },
+        {
+          "id": "test_samples",
+          "name": "Test samples",
+          "status": "assessed",
+          "statement": "10 points of 2 mappings of 2 studies of the calibration evidence decide, 10 of them evaluable (minimum 5).",
+          "step": null
+        },
+        {
+          "id": "test_conditions",
+          "name": "Test conditions",
+          "status": "assessed",
+          "statement": "0 claimed values of the metadata, 0 values of the evidence outside the claim.",
+          "step": null
+        },
+        {
+          "id": "equivalency_of_inputs",
+          "name": "Equivalency of input parameters",
+          "status": "not_assessed",
+          "statement": "Whether the inputs of the simulations of the evidence are the ones of the context of use: the individuals and their variability.",
+          "step": 4
+        },
+        {
+          "id": "output_comparison",
+          "name": "Output comparison",
+          "status": "assessed",
+          "statement": "1 of 1 acceptance rule met on the calibration evidence, 0 not evaluable.",
+          "step": null
+        },
+        {
+          "id": "relevance_of_quantities",
+          "name": "Relevance of the quantities of interest",
+          "status": "not_assessed",
+          "statement": "Whether the quantities of the evidence answer the question, e.g. the ratios of a special population. A context with a ratio quantity and its pairing assesses it by the pairs of its arms; else only that every claimed quantity which is no ratio has decisive points in the claimed domain is checked, see the relevance of the validation activities.",
+          "step": 3
+        },
+        {
+          "id": "relevance_of_validation",
+          "name": "Relevance of the validation activities to the COU",
+          "status": "assessed",
+          "statement": "0 of 0 claimed values and 1 of 1 quantity of interest covered.",
+          "step": null
+        }
+      ],
+      "n_decisive": 10,
+      "n_evaluable": 10,
+      "minimum_points": 5,
+      "verification": [
+        {
+          "check": "tolerances",
+          "factor": "discretization_error",
+          "n_points": 10,
+          "max_difference": 2.4564432740018067e-06,
+          "at": "CredA.fm_train at 6",
+          "acceptance_changed": false,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "integrator",
+          "factor": "numerical_solver_error",
+          "n_points": 10,
+          "max_difference": 2.755331904059288e-06,
+          "at": "CredA.fm_train at 8",
+          "acceptance_changed": false,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "setup",
+          "factor": "use_error",
+          "n_points": 10,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "plausibility",
+          "factor": "use_error",
+          "n_points": 4,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "rebuild",
+          "factor": "software_quality_assurance",
+          "n_points": 1,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        }
+      ],
+      "ratios": [],
+      "ratio_acceptance": null,
+      "temporal": null,
+      "uncertainty": null,
+      "inputs": {
+        "n_mappings": 2,
+        "n_checked": 0,
+        "inputs": [],
+        "differs": []
+      },
+      "variability": null
+    },
+    {
+      "id": "dose",
+      "title": "Decay after a dose",
+      "question": "Does the model predict the decay after a dose of the data?",
+      "level": "C2",
+      "influence": "medium",
+      "consequence": "medium",
+      "risk": "medium",
+      "rationale": "",
+      "extrapolation": "",
+      "domain_statement": "the single doses of the data",
+      "quantities": [
+        {
+          "id": "[A]",
+          "description": "the concentration of A",
+          "ratio": false,
+          "coverage": "covered",
+          "n_points": 10
+        }
+      ],
+      "acceptance": [
+        {
+          "name": "within_2fold",
+          "value": 100.0,
+          "limit": ">= 80",
+          "met": true
+        },
+        {
+          "name": "GMFE",
+          "value": 1.002235893718994,
+          "limit": "<= 1.5",
+          "met": true
+        }
+      ],
+      "verdict": "supported",
+      "factors": [
+        {
+          "id": "software_quality_assurance",
+          "name": "Software quality assurance",
+          "status": "assessed",
+          "statement": "pkpdsim and sbmlsim are released packages with tests and continuous integration; the model is released reproducibly from its repository with the versions and the commit of the provenance. Rebuild of 1 case: passed.",
+          "step": null
+        },
+        {
+          "id": "numerical_code_verification",
+          "name": "Numerical code verification",
+          "status": "platform",
+          "statement": "sbmlsim runs the SBML Test Suite and the PEtab test suite.",
+          "step": null
+        },
+        {
+          "id": "discretization_error",
+          "name": "Discretization error",
+          "status": "assessed",
+          "statement": "Largest relative difference 2.5e-06 of 10 decisive predictions with the tolerances of the fits divided by 100, at CredA.fm_dose at 6, acceptance unchanged: passed.",
+          "step": null
+        },
+        {
+          "id": "numerical_solver_error",
+          "name": "Numerical solver error",
+          "status": "assessed",
+          "statement": "Largest relative difference 2.8e-06 of 10 decisive predictions with the BDF of CVODE of at most order 2 at the tightened tolerances, at CredA.fm_dose at 8, acceptance unchanged: passed.",
+          "step": null
+        },
+        {
+          "id": "use_error",
+          "name": "Use error",
+          "status": "assessed",
+          "statement": "The builds are valid SBML with consistent units and the 10 decisive predictions are finite: passed. Plausibility of the values of 4 cases: passed.",
+          "step": null
+        },
+        {
+          "id": "model_form",
+          "name": "Model form",
+          "status": "not_assessed",
+          "statement": "The structure of the model across studies and drugs: the ratios, the cross-validation and the qualification across models.",
+          "step": 3
+        },
+        {
+          "id": "model_inputs",
+          "name": "Model inputs",
+          "status": "not_assessed",
+          "statement": "The uncertainty and the sensitivity of the parameters.",
+          "step": 4
+        },
+        {
+          "id": "test_samples",
+          "name": "Test samples",
+          "status": "assessed",
+          "statement": "10 points of 2 mappings of 1 study of the validation evidence decide, 10 of them evaluable (minimum 10).",
+          "step": null
+        },
+        {
+          "id": "test_conditions",
+          "name": "Test conditions",
+          "status": "assessed",
+          "statement": "2 claimed values of the metadata, 0 values of the evidence outside the claim.",
+          "step": null
+        },
+        {
+          "id": "equivalency_of_inputs",
+          "name": "Equivalency of input parameters",
+          "status": "not_assessed",
+          "statement": "Whether the inputs of the simulations of the evidence are the ones of the context of use: the individuals and their variability.",
+          "step": 4
+        },
+        {
+          "id": "output_comparison",
+          "name": "Output comparison",
+          "status": "assessed",
+          "statement": "2 of 2 acceptance rules met on the validation evidence, 0 not evaluable. No decisive study was collected after its fit (0 collected before, 1 without a date).",
+          "step": null
+        },
+        {
+          "id": "relevance_of_quantities",
+          "name": "Relevance of the quantities of interest",
+          "status": "not_assessed",
+          "statement": "Whether the quantities of the evidence answer the question, e.g. the ratios of a special population. A context with a ratio quantity and its pairing assesses it by the pairs of its arms; else only that every claimed quantity which is no ratio has decisive points in the claimed domain is checked, see the relevance of the validation activities.",
+          "step": 3
+        },
+        {
+          "id": "relevance_of_validation",
+          "name": "Relevance of the validation activities to the COU",
+          "status": "assessed",
+          "statement": "2 of 2 claimed values and 1 of 1 quantity of interest covered.",
+          "step": null
+        }
+      ],
+      "n_decisive": 10,
+      "n_evaluable": 10,
+      "minimum_points": 10,
+      "verification": [
+        {
+          "check": "tolerances",
+          "factor": "discretization_error",
+          "n_points": 10,
+          "max_difference": 2.4564432740018067e-06,
+          "at": "CredA.fm_dose at 6",
+          "acceptance_changed": false,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "integrator",
+          "factor": "numerical_solver_error",
+          "n_points": 10,
+          "max_difference": 2.755331904059288e-06,
+          "at": "CredA.fm_dose at 8",
+          "acceptance_changed": false,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "setup",
+          "factor": "use_error",
+          "n_points": 10,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "plausibility",
+          "factor": "use_error",
+          "n_points": 4,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "rebuild",
+          "factor": "software_quality_assurance",
+          "n_points": 1,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        }
+      ],
+      "ratios": [],
+      "ratio_acceptance": null,
+      "temporal": {
+        "studies": [],
+        "n_points": 0,
+        "n_evaluable": 0,
+        "acceptance": [
+          {
+            "name": "within_2fold",
+            "value": null,
+            "limit": ">= 80",
+            "met": null
+          },
+          {
+            "name": "GMFE",
+            "value": null,
+            "limit": "<= 1.5",
+            "met": null
+          }
+        ],
+        "n_known": 0,
+        "undated": [
+          "CredA"
+        ]
+      },
+      "uncertainty": null,
+      "inputs": {
+        "n_mappings": 2,
+        "n_checked": 0,
+        "inputs": [],
+        "differs": []
+      },
+      "variability": null
+    },
+    {
+      "id": "renal",
+      "title": "Decay in renal impairment",
+      "question": "Does the model predict the decay in renal impairment?",
+      "level": "C3",
+      "influence": "medium",
+      "consequence": "high",
+      "risk": "high",
+      "rationale": "",
+      "extrapolation": "",
+      "domain_statement": "",
+      "quantities": [
+        {
+          "id": "[A]",
+          "description": "the concentration of A",
+          "ratio": false,
+          "coverage": "covered",
+          "n_points": 5
+        },
+        {
+          "id": "A_ratio",
+          "description": "the concentration in renal impairment over the healthy one",
+          "ratio": true,
+          "coverage": null,
+          "n_points": 0
+        }
+      ],
+      "acceptance": [
+        {
+          "name": "within_2fold",
+          "value": 100.0,
+          "limit": ">= 90",
+          "met": true
+        },
+        {
+          "name": "within_1.5fold",
+          "value": 100.0,
+          "limit": ">= 70",
+          "met": true
+        },
+        {
+          "name": "GMFE",
+          "value": 1.002235893718994,
+          "limit": "<= 1.3",
+          "met": true
+        }
+      ],
+      "verdict": "insufficient_evidence",
+      "factors": [
+        {
+          "id": "software_quality_assurance",
+          "name": "Software quality assurance",
+          "status": "assessed",
+          "statement": "pkpdsim and sbmlsim are released packages with tests and continuous integration; the model is released reproducibly from its repository with the versions and the commit of the provenance. Rebuild of 1 case: passed.",
+          "step": null
+        },
+        {
+          "id": "numerical_code_verification",
+          "name": "Numerical code verification",
+          "status": "platform",
+          "statement": "sbmlsim runs the SBML Test Suite and the PEtab test suite.",
+          "step": null
+        },
+        {
+          "id": "discretization_error",
+          "name": "Discretization error",
+          "status": "assessed",
+          "statement": "Largest relative difference 2.5e-06 of 5 decisive predictions with the tolerances of the fits divided by 100, at CredA.fm_renal at 6, acceptance unchanged: passed.",
+          "step": null
+        },
+        {
+          "id": "numerical_solver_error",
+          "name": "Numerical solver error",
+          "status": "assessed",
+          "statement": "Largest relative difference 2.8e-06 of 5 decisive predictions with the BDF of CVODE of at most order 2 at the tightened tolerances, at CredA.fm_renal at 8, acceptance unchanged: passed.",
+          "step": null
+        },
+        {
+          "id": "use_error",
+          "name": "Use error",
+          "status": "assessed",
+          "statement": "The builds are valid SBML with consistent units and the 5 decisive predictions are finite: passed. Plausibility of the values of 4 cases: passed.",
+          "step": null
+        },
+        {
+          "id": "model_form",
+          "name": "Model form",
+          "status": "not_assessed",
+          "statement": "The structure of the model across studies and drugs: the ratios, the cross-validation and the qualification across models.",
+          "step": 3
+        },
+        {
+          "id": "model_inputs",
+          "name": "Model inputs",
+          "status": "not_assessed",
+          "statement": "The uncertainty and the sensitivity of the parameters.",
+          "step": 4
+        },
+        {
+          "id": "test_samples",
+          "name": "Test samples",
+          "status": "assessed",
+          "statement": "5 points of 1 mapping of 1 study of the validation evidence decide, 5 of them evaluable (minimum 20).",
+          "step": null
+        },
+        {
+          "id": "test_conditions",
+          "name": "Test conditions",
+          "status": "assessed",
+          "statement": "2 claimed values of the metadata, 0 values of the evidence outside the claim.",
+          "step": null
+        },
+        {
+          "id": "equivalency_of_inputs",
+          "name": "Equivalency of input parameters",
+          "status": "not_assessed",
+          "statement": "Whether the inputs of the simulations of the evidence are the ones of the context of use: the individuals and their variability.",
+          "step": 4
+        },
+        {
+          "id": "output_comparison",
+          "name": "Output comparison",
+          "status": "assessed",
+          "statement": "3 of 3 acceptance rules met on the validation evidence, 0 not evaluable. No decisive study was collected after its fit (0 collected before, 1 without a date).",
+          "step": null
+        },
+        {
+          "id": "relevance_of_quantities",
+          "name": "Relevance of the quantities of interest",
+          "status": "not_assessed",
+          "statement": "Whether the quantities of the evidence answer the question, e.g. the ratios of a special population. A context with a ratio quantity and its pairing assesses it by the pairs of its arms; else only that every claimed quantity which is no ratio has decisive points in the claimed domain is checked, see the relevance of the validation activities.",
+          "step": 3
+        },
+        {
+          "id": "relevance_of_validation",
+          "name": "Relevance of the validation activities to the COU",
+          "status": "assessed",
+          "statement": "1 of 2 claimed values and 1 of 1 quantity of interest covered.",
+          "step": null
+        }
+      ],
+      "n_decisive": 5,
+      "n_evaluable": 5,
+      "minimum_points": 20,
+      "verification": [
+        {
+          "check": "tolerances",
+          "factor": "discretization_error",
+          "n_points": 5,
+          "max_difference": 2.4564432740018067e-06,
+          "at": "CredA.fm_renal at 6",
+          "acceptance_changed": false,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "integrator",
+          "factor": "numerical_solver_error",
+          "n_points": 5,
+          "max_difference": 2.755331904059288e-06,
+          "at": "CredA.fm_renal at 8",
+          "acceptance_changed": false,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "setup",
+          "factor": "use_error",
+          "n_points": 5,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "plausibility",
+          "factor": "use_error",
+          "n_points": 4,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        },
+        {
+          "check": "rebuild",
+          "factor": "software_quality_assurance",
+          "n_points": 1,
+          "max_difference": null,
+          "at": "",
+          "acceptance_changed": null,
+          "passed": true,
+          "problems": []
+        }
+      ],
+      "ratios": [],
+      "ratio_acceptance": null,
+      "temporal": {
+        "studies": [],
+        "n_points": 0,
+        "n_evaluable": 0,
+        "acceptance": [
+          {
+            "name": "within_2fold",
+            "value": null,
+            "limit": ">= 90",
+            "met": null
+          },
+          {
+            "name": "within_1.5fold",
+            "value": null,
+            "limit": ">= 70",
+            "met": null
+          },
+          {
+            "name": "GMFE",
+            "value": null,
+            "limit": "<= 1.3",
+            "met": null
+          }
+        ],
+        "n_known": 0,
+        "undated": [
+          "CredA"
+        ]
+      },
+      "uncertainty": null,
+      "inputs": {
+        "n_mappings": 1,
+        "n_checked": 0,
+        "inputs": [],
+        "differs": []
+      },
+      "variability": null
+    }
+  ],
   "evidence": [
     {
       "context": "describe",
@@ -168,7 +812,98 @@
     }
   ],
   "notes": "",
-  "verification": null,
+  "verification": {
+    "tightening": 100.0,
+    "limit": 0.01,
+    "scale_floor": 1e-06,
+    "fits": [
+      {
+        "fit": "DECAY",
+        "reference": "CVODE BDF, rtol 1e-06, atol amount 1.0e-08, concentration 1.0e-08, other 1.0e-08",
+        "tolerances": "CVODE BDF, rtol 1e-08, atol amount 1.0e-10, concentration 1.0e-10, other 1.0e-10",
+        "integrator": "CVODE BDF of order at most 2, rtol 1e-08, atol amount 1.0e-10, concentration 1.0e-10, other 1.0e-10"
+      }
+    ],
+    "problems": [],
+    "battery": {
+      "results": [
+        {
+          "check": "mass_balance",
+          "status": "not_applicable",
+          "cases": 0,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The model has no substance with a molecular weight `Mr_<s>`, the convention of the PBPK models the checks of the simulations read."
+        },
+        {
+          "check": "non_negativity",
+          "status": "not_applicable",
+          "cases": 0,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The model has no substance with a molecular weight `Mr_<s>`, the convention of the PBPK models the checks of the simulations read."
+        },
+        {
+          "check": "zero_dose",
+          "status": "not_applicable",
+          "cases": 0,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The model has no substance with a molecular weight `Mr_<s>`, the convention of the PBPK models the checks of the simulations read."
+        },
+        {
+          "check": "steady_state",
+          "status": "not_applicable",
+          "cases": 0,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The model has no substance with a molecular weight `Mr_<s>`, the convention of the PBPK models the checks of the simulations read."
+        },
+        {
+          "check": "superposition",
+          "status": "not_applicable",
+          "cases": 0,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The model has no substance with a molecular weight `Mr_<s>`, the convention of the PBPK models the checks of the simulations read."
+        },
+        {
+          "check": "cross_simulator",
+          "status": "not_applicable",
+          "cases": 0,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The model has no substance with a molecular weight `Mr_<s>`, the convention of the PBPK models the checks of the simulations read."
+        },
+        {
+          "check": "plausibility",
+          "status": "passed",
+          "cases": 4,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The default individual has finite values, positive compartments and species which are not negative, and no fitted value lies within 0.001 of the range of a bound."
+        },
+        {
+          "check": "rebuild",
+          "status": "passed",
+          "cases": 1,
+          "largest": null,
+          "at": "",
+          "problems": [],
+          "statement": "The factory writes the SBML files of the model again, equal but for the dates of the model history."
+        }
+      ],
+      "fates": [],
+      "settings": "roadrunner CVODE BDF, rtol 1e-10, atol 1e-16; every simulation 48 h on a grid of 10 min; a dose of 10 mg, an infusion over 60 min; the superposition of 0.01 mg at 0 and 720 min."
+    }
+  },
   "cross_validations": [],
   "studies": [
     {
@@ -211,6 +946,5 @@
     }
   ],
   "inputs": [],
-  "vpc": [],
-  "contexts": []
+  "vpc": []
 }
