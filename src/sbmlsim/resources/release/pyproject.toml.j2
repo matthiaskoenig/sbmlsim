@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = {{ repo_name | toml }}
+version = {{ version | toml }}
+description = {{ settings.description | toml }}
+readme = "README.md"
+requires-python = {{ requires_python | toml }}
+authors = [
+{% for author in settings.authors %}
+    { name = {{ author.name | toml }} },
+{% endfor %}
+]
+keywords = [
+{% for keyword in settings.keywords %}
+    {{ keyword | toml }},
+{% endfor %}
+]
+classifiers = [
+{% for version in pythons %}
+    "Programming Language :: Python :: {{ version }}",
+{% endfor %}
+]
+dependencies = [
+{% for dependency in dependencies %}
+    {{ dependency | toml }},
+{% endfor %}
+]
+
+[project.urls]
+Homepage = "https://github.com/{{ settings.repository }}"
+Repository = "https://github.com/{{ settings.repository }}"
+Documentation = {{ settings.site_url | toml }}
+Issues = "https://github.com/{{ settings.repository }}/issues"
+
+[dependency-groups]
+docs = ["zensical"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/{{ top_package }}"]
+
+[tool.uv]
+constraint-dependencies = [
+{% for constraint in constraints %}
+    {{ constraint | toml }},
+{% endfor %}
+]
+{% if framework_path %}
+
+[tool.uv.sources]
+{{ framework }} = { path = {{ framework_path | toml }}, editable = true }
+{% endif %}

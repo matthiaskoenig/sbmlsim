@@ -89,10 +89,11 @@ def test_the_run_layer_imports_no_analysis() -> None:
     """`sbmlsim.run` imports the fit, the simulator and the project when it runs."""
     code = (
         "import sys, sbmlsim.run, sbmlsim.run.cli, sbmlsim.run.profiling, "
-        "sbmlsim.run.project_kinds, sbmlsim.run.credibility_kinds; "
+        "sbmlsim.run.project_kinds, sbmlsim.run.credibility_kinds, "
+        "sbmlsim.run.release_kinds; "
         "print(sorted(m for m in ('sbmlsim.fit', 'sbmlsim.simulator', 'sbmlsim.project',"
-        " 'matplotlib', 'sbmlsim.simrun', 'simrun', 'sbmlsim.credibility')"
-        " if m in sys.modules))"
+        " 'matplotlib', 'sbmlsim.simrun', 'simrun', 'sbmlsim.credibility',"
+        " 'sbmlsim.release', 'jinja2') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -126,6 +127,44 @@ def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
     code = (
         f"import sys, {module}; "
         "print(sorted(m for m in ('roadrunner', 'COPASI', 'amici') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
+@pytest.mark.parametrize("module", ["settings", "hooks"])
+def test_the_settings_and_the_hook_of_a_release_import_the_standard_library(
+    module: str,
+) -> None:
+    """A model package imports them when it defines its project."""
+    import ast
+
+    path = Path(__file__).parents[1] / "src" / "sbmlsim" / "release" / f"{module}.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    imported = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            imported |= {alias.name.split(".")[0] for alias in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            imported.add(node.module.split(".")[0])
+    assert imported <= {*sys.stdlib_module_names, "__future__"}
+
+
+def test_a_release_imports_its_tools_when_it_runs() -> None:
+    """`sbmlsim.release` and its command line import jinja2 and git when they run."""
+    code = (
+        "import sys, sbmlsim.release, sbmlsim.release.settings, "
+        "sbmlsim.release.hooks, sbmlsim.release.cli; "
+        "print(sorted(m for m in ('jinja2', 'sbmlsim.release.workflow',"
+        " 'sbmlsim.credibility', 'sbmlsim.project', 'roadrunner', 'pymetadata.omex',"
+        " 'sbmlode') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],

@@ -1,0 +1,37 @@
+{% for badge in badges %}
+[![{{ badge.label }}]({{ badge.image }})]({{ badge.link }})
+{% endfor %}
+
+# {{ settings.title }}
+
+{{ settings.description }}
+
+Documentation: <{{ settings.site_url }}>
+{% if credibility %}
+
+Credibility of the model for its contexts of use: [{{ settings.site_url }}credibility.html]({{ settings.site_url }}credibility.html)
+{% endif %}
+
+## Quick start
+
+```bash
+git clone https://github.com/{{ settings.repository }}.git && cd {{ repo_name }}
+uv sync
+{% if "simulate" in steps %}
+uv run python -m sbmlsim.run simulate {{ steps.simulate.spec_file }} --out {{ steps.simulate.out }}
+{% else %}
+uv run python -m sbmlsim.run list {{ reference }}
+{% endif %}
+```
+
+## How to cite
+
+> {{ citation }}
+
+## License
+
+* Source Code: [MIT](https://opensource.org/license/MIT)
+* Documentation: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+* Models: [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)
+
+&copy; {{ copyright_years }} {{ authors }}

@@ -1,0 +1,56 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv and set the python version
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "{{ uv }}"
+          python-version: "{{ python }}"
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --locked --group docs
+
+      - name: Build the site
+        run: uv run zensical build --clean --strict
+
+      - name: Add the simulation, fit and credibility reports
+        # a model without adopted fits has no fit folder, one without a declaration
+        # of its contexts of use no credibility folder
+        run: |
+          for folder in simulations simulations_uncertainty fit credibility; do
+            if [ -d "$folder" ]; then cp -r "$folder" site/; fi
+          done
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ '{{' }} steps.deployment.outputs.page_url {{ '}}' }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

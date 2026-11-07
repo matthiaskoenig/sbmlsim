@@ -1,0 +1,129 @@
+# Credibility
+
+[Credibility report]({{ settings.site_url }}credibility/index.html)
+
+The assessment of the contexts of use of the model against its adopted fits. A context of use is decided on its validation evidence; a description (C1) is decided on its calibration evidence, the data the model was fitted to.
+
+| Context of use | Title | Level | Risk | Verdict | Decided on |
+| --- | --- | --- | --- | --- | --- |
+{% for context in credibility.contexts %}
+| `{{ context.id }}` | {{ context.title | cell }} | {{ context.level }} | {{ context.risk }} | {{ context.verdict_label }} | {{ context.decided_on }} |
+{% endfor %}
+
+{% for context in credibility.contexts %}
+## {{ context.id }}: {{ context.title }}
+
+**Question:** {{ context.question }}
+
+**Verdict:** {{ context.verdict_label }}, decided on the {{ context.decided_on }} evidence, level {{ context.level }}, model risk {{ context.risk }} (influence {{ context.influence }}, consequence {{ context.consequence }}), {{ context.n_evaluable }} of {{ context.n_decisive }} decisive points evaluable{% if context.minimum_points %} (minimum {{ context.minimum_points }}){% endif %}.
+
+| Quantity of interest | Description | Kind | Coverage | Points |
+| --- | --- | --- | --- | --- |
+{% for quantity in context.quantities %}
+| `{{ quantity.id }}` | {{ quantity.description | cell }} | {{ ("ratio" if quantity.coverage else "ratio, no pairing declared") if quantity.ratio else "absolute" }} | {{ quantity.coverage or "n/a" }} | {{ quantity.n_points if quantity.coverage else "n/a" }} |
+{% endfor %}
+
+{% if context.coverage %}
+**Claimed domain:**
+
+| Field | Value | Coverage | Points |
+| --- | --- | --- | --- |
+{% for entry in context.coverage %}
+| `{{ entry.field }}` | `{{ entry.value }}` | {{ entry.coverage }} | {{ entry.n_points }} |
+{% endfor %}
+
+{% endif %}
+{% if context.domain_statement %}
+{% if context.coverage %}Beyond the metadata: {% else %}**Claimed domain:** {% endif %}{{ context.domain_statement }} (statement, not assessed)
+
+{% endif %}
+{% if context.acceptance %}
+| Acceptance criterion | Value | Limit | Met |
+| --- | --- | --- | --- |
+{% for rule in context.acceptance %}
+| `{{ rule.name }}`{% if rule.get("extension") %} ({{ rule.extension }}){% endif %} | {{ "%.4g" % rule.value if rule.value is not none else "n/a" }} | {{ rule.limit }} | {{ "n/a" if rule.met is none else ("yes" if rule.met else "no") }} |
+{% endfor %}
+
+{% endif %}
+{% if context.uncertainty %}
+Parameter uncertainty, the adopted fits at {{ context.uncertainty.n_draws }} draws of their parameters; a rule is robust when it is met with a probability of at least {{ context.uncertainty.threshold }}:
+
+| Acceptance criterion | Limit | P(met) | Decision |
+| --- | --- | --- | --- |
+{% for rule in context.uncertainty.rules %}
+| `{{ rule.name }}` | {{ rule.limit }} | {{ "%.3g" % rule.estimate if rule.estimate is not none else "n/a" }} | {{ rule.decision | replace("_", " ") }} |
+{% endfor %}
+
+| Quantity of interest | Points | Band fold | Coverage (%) |
+| --- | --- | --- | --- |
+{% for quantity in context.uncertainty.quantities %}
+| `{{ quantity.quantity }}` | {{ quantity.n_points }} | {{ "%.3g" % quantity.band_fold if quantity.band_fold is not none else "n/a" }} | {{ "%.0f" % (100 * quantity.coverage) if quantity.coverage is not none else "n/a" }} |
+{% endfor %}
+
+{% if context.uncertainty.sensitivity %}
+| Target | Leading parameters (first-order index) |
+| --- | --- |
+{% for target, group in context.uncertainty.sensitivity | groupby("target") %}
+{% set leading = group | rejectattr("index", "none") | selectattr("index", "ge", 0.05) | sort(attribute="index", reverse=True) | list %}
+| `{{ target }}`{% if group[0].kind == "rule" %} (rule){% endif %} | {% for i in leading[:3] %}`{{ i.fit }}.{{ i.parameter }}` {{ "%.2f" % i.index }}{% if not loop.last %}, {% endif %}{% else %}none of at least 0.05{% endfor %} |
+{% endfor %}
+
+{% endif %}
+{% endif %}
+{% if context.variability %}
+{% set v = context.variability %}
+Variability, the visual predictive check of the decisive points with the variability of the subjects ({% for t, d in v.targets.items() %}`{{ t }}` {{ d }}{% if not loop.last %}, {% endif %}{% endfor %}){% if v.between %} and between the studies ({% for t, d in v.between.items() %}`{{ t }}` {{ d }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}, {% if v.between %}{{ v.studies }} studies of {% endif %}{{ v.subjects }} subjects {% if v.vectors > 1 %}nested in {{ v.vectors }} draws of the parameters{% else %}at the adopted parameters{% endif %}:
+
+| Points | Means of groups | Coverage (%) | Interval (%) | Expected (%) | Agreement |
+| --- | --- | --- | --- | --- | --- |
+| {{ v.n_points }} | {{ v.n_groups }} | {{ "%.0f" % (100 * v.coverage) if v.coverage is not none else "n/a" }} | {{ "%.0f to %.0f" % (100 * v.low, 100 * v.high) if v.low is not none else "n/a" }} | {{ "%.0f" % (100 * v.expected) }} | {{ v.agreement or "n/a" }} |
+
+{% if v.quantities %}
+| Quantity of interest | Points | Coverage (%) |
+| --- | --- | --- |
+{% for q in v.quantities %}
+| `{{ q.quantity }}` | {{ q.n_points }} | {{ "%.0f" % (100 * q.coverage) if q.coverage is not none else "n/a" }} |
+{% endfor %}
+
+{% endif %}
+{% endif %}
+{% if context.verification %}
+| Verification | Factor | Points | Largest difference | Result |
+| --- | --- | --- | --- | --- |
+{% for check in context.verification %}
+| {{ check.label }} | `{{ check.factor }}` | {{ check.n_points }} | {{ "%.2g" % check.max_difference if check.max_difference is not none else "" }} | {{ "passed" if check.passed else "failed" }}{% if check.problems %}: {{ check.problems | join("; ") | cell }}{% endif %} |
+{% endfor %}
+
+{% endif %}
+{% include "docs/credibility-context.md.j2" ignore missing %}
+{% if context.extrapolation %}
+**Extrapolation:** {{ context.extrapolation }}
+
+{% endif %}
+{% endfor %}
+{% if credibility.cross_validations %}
+## Cross-validation
+
+Every adopted fit is refitted once per training study without the study and predicts the held-out study.
+
+| Fit | Study | Points | GMFE held out | GMFE fitted |
+| --- | --- | --- | --- | --- |
+{% for cv in credibility.cross_validations %}
+{% for study in cv.studies %}
+| {{ cv.subset }} | {{ study.study }} | {{ study.n_points }} | {{ "%.3g" % study.gmfe_held_out if study.gmfe_held_out is not none else "n/a" }} | {{ "%.3g" % study.gmfe_fitted if study.gmfe_fitted is not none else "n/a" }} |
+{% endfor %}
+{% endfor %}
+
+{% endif %}
+{% include "docs/credibility-sections.md.j2" ignore missing %}
+{% if credibility.battery %}
+## Battery of the variants
+
+The variants of the model are checked without data, the same for every context of use; a failed check makes every context not verified.
+
+| Check | Factor | Cases | Largest deviation | Result |
+| --- | --- | --- | --- | --- |
+{% for check in credibility.battery %}
+| {{ check.label }} | `{{ check.factor }}` | {{ check.cases if check.status != "not_applicable" else "" }} | {{ "%.2g" % check.largest if check.largest is not none and check.status != "not_applicable" else "" }} | {{ check.status | replace("_", " ") }}{% if check.status == "not_applicable" %}: {{ check.statement | cell }}{% elif check.problems %}: {{ check.problems | join("; ") | cell }}{% endif %} |
+{% endfor %}
+{% endif %}

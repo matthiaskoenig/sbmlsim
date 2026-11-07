@@ -1,0 +1,16 @@
+# Simulations
+
+* [Simulation report]({{ settings.site_url }}simulations/index.html)
+{% if "uncertainty" in steps %}
+* [Simulation report with the confidence interval]({{ settings.site_url }}simulations_uncertainty/index.html)
+{% endif %}
+
+{% if experiments %}
+| Experiment |
+| --- |
+{% for experiment in experiments %}
+| [{{ experiment }}]({{ settings.site_url }}simulations/{{ experiment }}/{{ experiment }}.html) |
+{% endfor %}
+{% else %}
+The release has no experiment reports.
+{% endif %}

@@ -264,7 +264,8 @@ def check_model(project: Project) -> None:
     variants, the directory of the factory, the directory of the fit records
     and the file of the adopted fits lie below `root`, the variants and the
     data paths exist, the references (the factory, the experiments, the fits,
-    the credibility declaration, the actions) resolve, every action takes the
+    the credibility declaration, the release hook, the actions) resolve and
+    the release hook is one, every action takes the
     arguments of its call, the experiments load
     (`Project.load_experiments`), the fits of a reference are not empty, and
     every parameter of an adopted fit has its value and a distribution in
@@ -284,6 +285,7 @@ def check_model(project: Project) -> None:
         "experiments": project.experiments,
         "fits": project.fits if isinstance(project.fits, str) else None,
         "credibility": project.credibility,
+        "release hook": None if project.release is None else project.release.hook,
         **{
             f"action '{name}'": action.function
             for name, action in project.actions.items()
@@ -304,6 +306,11 @@ def check_model(project: Project) -> None:
             project.load_experiments()
         except (TypeError, ValueError) as err:
             problems.append(f"the experiments do not load: {err}")
+    if "release hook" in resolved:
+        try:
+            project.release_hook()
+        except ValueError as err:
+            problems.append(str(err))
     if "fits" in resolved:
         fits = resolved["fits"]
         if not isinstance(fits, Mapping) or not fits:

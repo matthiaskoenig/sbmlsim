@@ -37,6 +37,9 @@ dependencies = [
 	# SBML, its formulas and COMBINE archives
 	"sbmlutils>=0.16.0",
 	"pymetadata>=0.8.1",
+	# the differential equations of a model as markdown, written into the
+	# COMBINE archive of a release (`sbmlsim.release.archive`)
+	"sbmlode>=0.3.0",
 	"python-libsbml>=5.21.2",
 	# simulation
 	"libroadrunner>=2.11.0",

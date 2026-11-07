@@ -1,0 +1,17 @@
+version = 1
+requires-python = ">=3.14"
+
+[[package]]
+name = "toy"
+version = "0.1.0"
+source = { virtual = "." }
+
+[[package]]
+name = "sbmlsim"
+version = "0.8.0"
+source = { registry = "https://pypi.org/simple" }
+
+[[package]]
+name = "sbmlutils"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }

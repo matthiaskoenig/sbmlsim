@@ -12,6 +12,9 @@ from dataclasses import dataclass, fields
 __all__ = ["Author", "ReleaseSettings"]
 
 _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_PACKAGE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+#: the fields a release may leave empty, see `ReleaseSettings.missing`
+_OPTIONAL = frozenset({"exclude", "first_year", "archive", "hook", "core_libraries"})
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,22 @@ class ReleaseSettings:
         description: one paragraph about the model.
         exclude: paths of the model folder which are not released.
         first_year: the year of the first release, the start of the copyright.
+        framework: the package the model package is built with, e.g.
+            `sbmlsim` or a framework on top of it: the lock of the release must
+            contain it, the manifest and the release notes record its version
+            and a build may take it from a local checkout instead of the
+            registry, which the release cannot publish.
+        core_libraries: the libraries whose release notes the release notes
+            summarize, in their order; the lock of the release must contain
+            them.
+        archive: the COMBINE archive the factory writes, a path relative to
+            the root of the project; the build copies it into the release, the
+            models page links it and the GitHub release attaches it, which a
+            release without one is not published with.
+        hook: what a framework adds to the release, a
+            `sbmlsim.release.hooks.ReleaseHook` or a reference
+            `module:attribute` to one, see `sbmlsim.project.Project.release_hook`;
+            `None` for the release of sbmlsim alone.
     """
 
     title: str
@@ -75,15 +94,34 @@ class ReleaseSettings:
     description: str
     exclude: Sequence[str] = ("TODO.md", "literature", "thesis")
     first_year: int
+    framework: str = "sbmlsim"
+    core_libraries: Sequence[str] = ("sbmlsim", "sbmlutils")
+    archive: str | None = None
+    hook: object = None
 
     def __post_init__(self) -> None:
-        """Normalize the sequences and check the form of the repository."""
-        for name in ("authors", "keywords", "exclude"):
+        """Normalize the sequences and check the repository and the hook.
+
+        Raises:
+            ValueError: for a repository which is not `owner/name`, a framework
+                or a core library which is no name of a package and a hook
+                given as a string which is no reference `module:attribute`.
+        """
+        for name in ("authors", "keywords", "exclude", "core_libraries"):
             object.__setattr__(self, name, tuple(getattr(self, name)))
         if not _REPOSITORY.match(self.repository):
             raise ValueError(
                 f"The repository is 'owner/name', not '{self.repository}'."
             )
+        for package in (self.framework, *self.core_libraries):
+            if not _PACKAGE.match(package):
+                raise ValueError(f"'{package}' is no name of a package.")
+        if isinstance(self.hook, str):
+            module, _, attribute = self.hook.partition(":")
+            if not module or not attribute:
+                raise ValueError(
+                    f"The release hook is 'module:attribute', not '{self.hook}'."
+                )
 
     @property
     def owner(self) -> str:
@@ -116,13 +154,14 @@ class ReleaseSettings:
     def missing(self) -> list[str]:
         """Get the names of the fields a release lacks, sorted.
 
-        A field is missing if it is empty; `exclude` may be empty (everything is
-        released), `first_year` is missing unless it is a positive int.
+        A field is missing if it is empty; `exclude` (everything is released),
+        `core_libraries`, `archive` and `hook` may be empty, `first_year` is
+        missing unless it is a positive int.
         """
         names = [
             f.name
             for f in fields(self)
-            if f.name not in ("exclude", "first_year") and not getattr(self, f.name)
+            if f.name not in _OPTIONAL and not getattr(self, f.name)
         ]
         year = self.first_year
         if isinstance(year, bool) or not isinstance(year, int) or year < 1:
