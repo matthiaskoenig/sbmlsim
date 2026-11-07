@@ -177,6 +177,18 @@ def load_roadrunner(
     its jump tables were more than 2 GiB apart (#331, roadrunner #1368), e.g.
     when a model was compiled again while an earlier instance of it was alive.
 
+    LLJIT of libroadrunner 2.11 keeps the code of an SBML once it compiled it
+    in the process, also after the instance was released and also with
+    `RECOMPILE`, and gives a later compilation of the same SBML at another
+    optimization level that code: a model compiled at `O0` (e.g. by
+    `sbmlsim.sensitivity.parameters.parameters_from_sbml`) made every later
+    instance of the model in the process an `O0` one, which integrates a
+    little apart from the `O2` instances of the workers of a pool. The SBML
+    roadrunner compiles carries its level as a comment (`_with_level`), so the
+    code of one level is never the code of another; a file whose model
+    references models of other files (`externalModelDefinition`) is loaded
+    by its path, untagged, so that the references resolve.
+
     Args:
         source: the path of an SBML file or the SBML itself.
         optimization: the optimization level of the compilation, see
@@ -190,10 +202,32 @@ def load_roadrunner(
         options.modelGeneratorOpt | roadrunner.LoadSBMLOptions.RECOMPILE
     )
     options.setLLVMBackend(roadrunner.LoadSBMLOptions.LLJIT)
-    options.setLLJitOptimizationLevel(
-        _LLJIT_LEVELS[resolve_jit_optimization(optimization)]
-    )
-    return roadrunner.RoadRunner(str(source), options)
+    level = resolve_jit_optimization(optimization)
+    options.setLLJitOptimizationLevel(_LLJIT_LEVELS[level])
+    return roadrunner.RoadRunner(_with_level(source, level), options)
+
+
+def _with_level(source: str | Path, level: JitOptimization) -> str:
+    """Get the SBML of a source with its optimization level as a comment, see `load_roadrunner`.
+
+    Args:
+        source: the path of an SBML file or the SBML itself.
+        level: the optimization level.
+
+    Returns:
+        The SBML with the comment before its element `sbml`, or the path of a
+        file whose model references other files.
+    """
+    text = str(source)
+    if isinstance(source, Path) or not text.lstrip().startswith("<"):
+        path = Path(source)
+        text = path.read_text(encoding="utf-8")
+        if "externalModelDefinition" in text:
+            return str(path)
+    position = text.find("<sbml")
+    if position < 0:
+        return text
+    return f"{text[:position]}<!-- sbmlsim LLJIT {level} -->{text[position:]}"
 
 
 logger = logging.getLogger(__name__)
