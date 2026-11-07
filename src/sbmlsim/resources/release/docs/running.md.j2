@@ -1,0 +1,74 @@
+# Running the model
+
+Clone the repository:
+
+```bash
+git clone https://github.com/{{ settings.repository }}.git
+cd {{ repo_name }}
+```
+
+The analyses of the release are commands of the run layer of [sbmlsim](https://github.com/matthiaskoenig/sbmlsim), `python -m sbmlsim.run <kind> <spec> --out <directory>`, with the specs in `specs/` with which the release was built; every command writes into its own empty output directory. The analyses of the model are listed with:
+
+```bash
+uv run python -m sbmlsim.run list {{ reference }}
+```
+
+## uv
+
+Run the analyses with [uv](https://docs.astral.sh/uv/getting-started/installation/):
+
+```bash
+uv sync
+{% for step in steps.values() %}
+uv run python -m sbmlsim.run {{ step.kind }} {{ step.spec_file }} --out {{ step.out }}
+{% endfor %}
+```
+{% if "uncertainty" in steps %}
+
+The simulations with the confidence interval of the adopted fits are `{{ steps.uncertainty.spec_file }}`.
+{% endif %}
+{% if "report" in steps %}
+
+The reports of the adopted fits are recreated from their records, one folder per fit in `{{ steps.report.out }}` (`{{ steps.report.spec_file }}`).
+{% endif %}
+
+## pip
+
+If you use pip install the package via
+
+```bash
+pip install -e .
+```
+
+and run the analyses in the environment, e.g.:
+
+```bash
+{% for step in steps.values() %}
+python -m sbmlsim.run {{ step.kind }} {{ step.spec_file }} --out {{ step.out }}
+{% endfor %}
+```
+
+## docker
+
+Simulations can also be run within a docker container:
+
+```bash
+docker run -v "${PWD}/results:/results" -it {{ settings.docker_image }}:latest /bin/bash
+```
+
+Run the analyses:
+
+```bash
+{% for step in steps.values() %}
+uv run python -m sbmlsim.run {{ step.kind }} {{ step.spec_file }} --out /{{ step.out }}
+{% endfor %}
+```
+
+The results are written into the mounted `/results` folder on the host.
+
+In case of permission issues with the mounted folder, adjust ownership and access rights with:
+
+```bash
+sudo chown $(id -u):$(id -g) -R "${PWD}/results"
+sudo chmod 775 "${PWD}/results"
+```

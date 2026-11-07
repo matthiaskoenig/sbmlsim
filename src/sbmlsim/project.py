@@ -77,6 +77,7 @@ if TYPE_CHECKING:
     from sbmlsim.fit.records import AdoptedRecords
     from sbmlsim.model.tolerances import AbsoluteTolerance
     from sbmlsim.plot.plotting import FigureSettings
+    from sbmlsim.release.hooks import ReleaseHook
     from sbmlsim.simulator import Simulator
     from sbmlsim.uncertainty import UncertaintyModel
 else:
@@ -1428,6 +1429,28 @@ class Project(BaseModel):
             raise ValueError(
                 f"The battery hook {hook!r} of the project '{self.name}' is no "
                 "sbmlsim.credibility.battery.BatteryHook."
+            )
+        return hook
+
+    def release_hook(self) -> ReleaseHook:
+        """Get the release hook of the project, see `ReleaseSettings.hook`.
+
+        Returns:
+            The hook, the reference resolved; the hook which adds nothing,
+            `sbmlsim.release.hooks.ReleaseHook`, without one.
+
+        Raises:
+            ValueError: if the hook is no `sbmlsim.release.hooks.ReleaseHook`.
+        """
+        from sbmlsim.release.hooks import ReleaseHook
+
+        if self.release is None or self.release.hook is None:
+            return ReleaseHook()
+        hook = self._resolve(self.release.hook)
+        if not isinstance(hook, ReleaseHook):
+            raise ValueError(
+                f"The release hook {hook!r} of the project '{self.name}' is no "
+                "sbmlsim.release.hooks.ReleaseHook."
             )
         return hook
 

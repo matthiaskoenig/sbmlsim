@@ -191,6 +191,7 @@ _BUILTIN_MODULES: tuple[str, ...] = (
     "sbmlsim.run.scan_kinds",
     "sbmlsim.run.project_kinds",
     "sbmlsim.run.credibility_kinds",
+    "sbmlsim.run.release_kinds",
 )
 
 _lock = threading.Lock()

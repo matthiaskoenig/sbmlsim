@@ -1,0 +1,172 @@
+{% set singular = {"species": "species", "reactions": "reaction", "parameters": "parameter"} %}
+{% macro counts(numbers) -%}
+{% set parts = [] %}
+{% for kind, n in numbers.items() if n %}
+{% set _ = parts.append(n ~ " " ~ (singular[kind] if n == 1 else kind)) %}
+{% endfor %}
+{{- parts | join(", ") -}}
+{%- endmacro %}
+{% macro moved(parameters) -%}
+{% for pid, old, new in parameters %}`{{ pid }}` {{ number(old) }} → {{ number(new) }}{{ ", " if not loop.last }}{% endfor %}
+{%- endmacro %}
+{% macro names(items) -%}
+{% for item in items %}`{{ item }}`{{ ", " if not loop.last }}{% endfor %}
+{%- endmacro %}
+{% macro table(changes) -%}
+| Package | Previous | New |
+| --- | --- | --- |
+{% for change in changes %}
+| `{{ change.name }}` | {{ change.old or "-" }} | {{ change.new or "-" }} |{{ "\n" if not loop.last }}
+{%- endfor %}
+{%- endmacro %}
+# Release notes for {{ repo_name }} {{ version }}
+
+Made from {{ top_package }} {{ commit }}{% if framework_version %} with {{ framework }} {{ framework_version }}{% endif %}.
+
+{% if previous is none %}
+First release.
+{% else %}
+The changes since {{ previous }}.
+{% endif %}
+
+## Core libraries
+
+{% if previous is none or not old_lock %}
+{% if previous is not none %}
+The versions of the core libraries cannot be compared, there is no lock file in the previous release. The release uses:
+
+{% endif %}
+{% for name, locked in core_versions %}
+- {{ name }} {{ locked }}
+{% endfor %}
+{% elif core %}
+{% for summary in core %}
+{% if summary.old is none %}
+{{ summary.name }} {{ summary.new }}: not used by the previous release.
+{% elif summary.new is none %}
+{{ summary.name }} {{ summary.old }}: no longer used.
+{% elif not summary.fetched %}
+{{ summary.name }} {{ summary.old }} → {{ summary.new }}: the release notes could not be fetched.
+{% elif summary.bullets %}
+{{ summary.name }} {{ summary.old }} → {{ summary.new }}{{ " (latest %d of %d)" % (summary.bullets | length, summary.total) if summary.total > summary.bullets | length }}:
+
+{% for bullet in summary.bullets %}
+- {{ bullet }}
+{% endfor %}
+{% else %}
+{{ summary.name }} {{ summary.old }} → {{ summary.new }}: no release notes.
+{% endif %}
+{% if not loop.last %}
+
+{% endif %}
+{% endfor %}
+{% else %}
+No changes.
+{% endif %}
+
+## Libraries
+
+{% if previous is none %}
+First release, the versions of the libraries are locked in `uv.lock`.
+{% elif not old_lock %}
+The versions cannot be compared, there is no lock file in the previous release.
+{% elif libraries %}
+{% if direct_libraries %}
+{{ table(direct_libraries) }}
+
+{% endif %}
+{% set others = libraries | length - direct_libraries | length %}
+{% if others %}
+{{ others }} other package{{ "s" if others != 1 }} changed.
+
+{% endif %}
+<details>
+<summary>All changed packages</summary>
+
+{{ table(libraries) }}
+
+</details>
+{% else %}
+No changes.
+{% endif %}
+
+## Data
+
+{% if previous is none %}
+{% if data.added %}
+Studies: {{ names(data.added) }}.
+{% else %}
+No studies.
+{% endif %}
+{% elif data.added or data.removed or data.changed %}
+{% if data.added %}
+- Added: {{ names(data.added) }}
+{% endif %}
+{% if data.removed %}
+- Removed: {{ names(data.removed) }}
+{% endif %}
+{% if data.changed %}
+- Changed: {{ names(data.changed) }}
+{% endif %}
+{% else %}
+No changes.
+{% endif %}
+
+## Analysis
+
+### Models
+
+{% for change in models %}
+{% if change.status == "added" %}
+- `{{ change.file }}`: {{ "new, " if previous is not none }}{{ counts(change.added) }}
+{% elif change.status == "removed" %}
+- `{{ change.file }}`: removed
+{% else %}
+{% set parts = [] %}
+{% if counts(change.added) %}{% set _ = parts.append("added " ~ counts(change.added)) %}{% endif %}
+{% if counts(change.removed) %}{% set _ = parts.append("removed " ~ counts(change.removed)) %}{% endif %}
+{% if change.changed_parameters %}{% set _ = parts.append("changed values " ~ moved(change.changed_parameters)) %}{% endif %}
+- `{{ change.file }}`: {{ parts | join("; ") if parts else "changed, with the same species, reactions and parameter values" }}
+{% endif %}
+{% else %}
+No changes.
+{% endfor %}
+
+### Experiments
+
+{% if previous is none %}
+{% if experiments_added %}
+Experiments: {{ names(experiments_added) }}.
+{% else %}
+No experiments.
+{% endif %}
+{% elif experiments_added or experiments_removed %}
+{% if experiments_added %}
+- Added: {{ names(experiments_added) }}
+{% endif %}
+{% if experiments_removed %}
+- Removed: {{ names(experiments_removed) }}
+{% endif %}
+{% else %}
+No changes.
+{% endif %}
+
+### Fits
+
+{% for change in fits %}
+{% if previous is none %}
+- `{{ change.subset }}`: `{{ change.new_id }}`
+{% elif change.old_id is none %}
+- `{{ change.subset }}`: `{{ change.new_id }}`, no fit record in the previous release
+{% elif change.new_id is none %}
+- `{{ change.subset }}`: `{{ change.old_id }}` is no longer adopted
+{% else %}
+- `{{ change.subset }}`: `{{ change.old_id }}` → `{{ change.new_id }}`, {{ ("moved " ~ moved(change.parameters)) if change.parameters else "no parameter moved" }}
+{% endif %}
+{% else %}
+{{ "No adopted fits." if previous is none else "No changes." }}
+{% endfor %}
+{% for section in sections %}
+
+{{ section.strip() }}
+{% endfor %}

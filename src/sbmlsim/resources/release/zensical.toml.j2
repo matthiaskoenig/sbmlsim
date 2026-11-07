@@ -1,0 +1,46 @@
+[project]
+site_name = {{ settings.title | toml }}
+site_url = {{ settings.site_url | toml }}
+site_description = {{ settings.description | toml }}
+site_author = {{ settings.author_names | toml }}
+
+copyright = {{ ("Copyright &copy; %s %s" % (copyright_years, settings.author_names)) | toml }}
+
+# pages as `simulations.html`, so the reports which the docs workflow copies into
+# the site (`simulations/`, `fit/`) do not replace the pages of the same name
+use_directory_urls = false
+
+repo_url = "https://github.com/{{ settings.repository }}"
+repo_name = {{ settings.repository | toml }}
+
+nav = [
+{% for page, title in pages %}
+  { {{ title | toml }} = "{{ page }}.md" },
+{% endfor %}
+]
+
+[project.theme]
+language = "en"
+features = [
+  "content.code.copy",
+  "navigation.footer",
+  "navigation.top",
+  "search.highlight",
+  "toc.follow",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "teal"
+accent = "teal"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "teal"
+accent = "teal"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/{{ settings.repository }}"

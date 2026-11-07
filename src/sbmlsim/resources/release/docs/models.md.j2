@@ -1,0 +1,23 @@
+# Models
+
+The models are distributed in [SBML](http://sbml.org) format.
+
+{% for entry in models %}
+## {{ entry.stem }}
+
+* Model: [`{{ entry.file }}`]({{ settings.raw_url }}models/{{ entry.file }})
+{% if entry.equations %}
+* Equations: [`{{ entry.stem }}.md`](https://github.com/{{ settings.repository }}/blob/main/models/{{ entry.stem }}.md)
+{% endif %}
+* Report: [SBML4humans](https://sbml4humans.de/report?url={{ (settings.raw_url ~ "models/" ~ entry.file) | query }})
+{% if entry.figure %}
+
+![{{ entry.stem }} model diagram](images/{{ entry.figure }}){ style="max-height: 420px; width: auto; max-width: 100%" }
+{% endif %}
+
+{% endfor %}
+{% if omex %}
+## COMBINE archive
+
+The models and the metadata are available as COMBINE archive from [`{{ omex }}`]({{ settings.raw_url }}{{ omex }}).
+{% endif %}
