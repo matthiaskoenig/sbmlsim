@@ -13,7 +13,8 @@ whose parameters are fitted to every study.
 
 `cross_validate` runs it, `CrossValidation` is its result, which
 `write_cross_validation` writes into an out in the layout of the records of the
-adopted fits (`fits/<fit id>/cross_validation.json`, never into the package),
+adopted fits (`fits/<fit id>/cross_validation.json`, `sbmlsim.run.fit_kinds.FITS_DIR`,
+never into the package),
 from where it is reviewed and committed next to the record of the adopted fit;
 the credibility assessment reads it there for the factor model form
 (`read_cross_validations`). It is run on demand, since it fits the problem
@@ -36,6 +37,7 @@ import numpy as np
 import pandas as pd
 
 from sbmlsim.atomic import write_text_atomic
+from sbmlsim.run.fit_kinds import FITS_DIR
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -46,7 +48,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "CROSS_VALIDATION_FILE",
-    "FITS_DIR",
     "CrossValidation",
     "HeldOutStudy",
     "cross_validate",
@@ -60,10 +61,6 @@ logger = logging.getLogger(__name__)
 
 #: the file of a cross-validation in the record of its adopted fit
 CROSS_VALIDATION_FILE: Final = "cross_validation.json"
-
-#: the directory of the records of the adopted fits in an out, the one of the
-#: kind `fit` with `adopt` (`sbmlsim.run.fit_kinds.FITS_DIR`)
-FITS_DIR: Final = "fits"
 
 
 def _gmfe(dv: np.ndarray, ipred: np.ndarray) -> float:
@@ -299,11 +296,11 @@ def cross_validate(
     from sbmlsim.fit.result import fit_subset
     from sbmlsim.fit.sampling import SamplingType
 
-    adopted = list(project.adopted_fits().values())
-    if fit_id not in adopted:
+    adopted_fit_ids = list(project.adopted_fits().values())
+    if fit_id not in adopted_fit_ids:
         raise ValueError(
             f"The fit '{fit_id}' is not adopted by '{project.name}', the adopted "
-            f"fits are {adopted}."
+            f"fits are {adopted_fit_ids}."
         )
     subset = fit_subset(fit_id)
     definition = project.load_fit_definitions()[subset]

@@ -219,21 +219,28 @@ def kind_differences(table: pd.DataFrame, recorded: Kinds) -> list[str]:
 def adopted_ids(project: Project) -> list[str]:
     """Get the ids of the adopted fits of a project, in the order of their subsets.
 
+    The subsets are the keys of the file of the adopted fits
+    (`Project.adopted_fits`), so a subset has one adopted fit; the id of a fit
+    must be one of its subset (`sbmlsim.fit.result.fit_subset`).
+
     Raises:
-        ValueError: if the project has no adopted fits or two adopted fits
-            have one subset.
+        ValueError: if the project has no adopted fits or a fit id is no fit
+            of the subset it is adopted for.
     """
-    fit_ids = list(project.adopted_fits().values())
-    if not fit_ids:
+    adopted = project.adopted_fits()
+    if not adopted:
         raise ValueError(f"The model '{project.name}' has no adopted fits.")
-    subsets = [fit_subset(fit_id) for fit_id in fit_ids]
-    repeated = sorted({s for s in subsets if subsets.count(s) > 1})
-    if repeated:
+    wrong = sorted(
+        f"{subset}: {fit_id}"
+        for subset, fit_id in adopted.items()
+        if fit_subset(fit_id) != subset
+    )
+    if wrong:
         raise ValueError(
-            f"The adopted fits of '{project.name}' have the subsets {repeated} "
-            f"twice, a subset has one adopted fit."
+            f"The adopted fits of '{project.name}' are fits of other subsets than "
+            f"the ones they are adopted for: {wrong}."
         )
-    return fit_ids
+    return list(adopted.values())
 
 
 def _adopted_fits(project: Project) -> Iterator[tuple[str, Path, FitDefinition]]:

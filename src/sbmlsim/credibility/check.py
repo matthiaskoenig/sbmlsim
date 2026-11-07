@@ -10,6 +10,7 @@ from sbmlsim.credibility.records import KIND_REMEDY, kind_differences, mapping_t
 from sbmlsim.credibility.selection import SelectionError, select
 
 if TYPE_CHECKING:
+    from sbmlsim.credibility.extensions import EvidenceExtension
     from sbmlsim.project import Project
 
 __all__ = ["check_declaration"]
@@ -19,7 +20,9 @@ def check_declaration(project: Project) -> list[str]:
     """Check the credibility declaration of a project against its adopted fits.
 
     The declaration must be valid, its domains claim values of the metadata of
-    the project (`Project.load_credibility`), the kinds of the mappings of the
+    the project, its settings of extensions name extensions of the project and
+    every pairing of a ratio is claimed by one (`Project.load_credibility`);
+    invalid credibility settings of the project are a problem as well. The kinds of the mappings of the
     current selection of the fit definitions must be the recorded kinds of the
     adopted fits, and the evidence must select valid data (see `select`, with
     the evidence extensions of the project), all from the fit definitions and
@@ -38,12 +41,22 @@ def check_declaration(project: Project) -> list[str]:
     Raises:
         ValueError: if the project has no declaration.
     """
+    if project.credibility is None:
+        raise ValueError(
+            f"The project '{project.name}' has no credibility declaration."
+        )
     problems: list[str] = []
     credibility: Credibility | None = None
+    extensions: list[EvidenceExtension] = []
     try:
         credibility = project.load_credibility()
+        extensions = project.evidence_extensions()
     except DeclarationError as err:
         problems.extend(err.problems)
+    except ValueError as err:
+        # the credibility settings of the project: its metadata, its domain
+        # fields or an extension
+        problems.append(str(err))
     try:
         fits = mapping_table(project)
     except (FileNotFoundError, ValueError) as err:
@@ -57,7 +70,7 @@ def check_declaration(project: Project) -> list[str]:
         )
     if credibility is not None:
         try:
-            selections = select(credibility, fits, project.evidence_extensions())
+            selections = select(credibility, fits, extensions)
         except SelectionError as err:
             problems.extend(err.problems)
         else:

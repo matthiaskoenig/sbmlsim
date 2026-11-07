@@ -55,6 +55,8 @@ __all__ = [
     "EvidenceSelection",
     "SelectionError",
     "Selections",
+    "in_domain",
+    "metadata_values",
     "normalize_observable",
     "select",
 ]
@@ -74,6 +76,48 @@ def normalize_observable(observable: str) -> str:
     if observable.startswith("[") and observable.endswith("]"):
         return observable[1:-1]
     return observable
+
+
+def metadata_values(points: pd.DataFrame, field: str) -> pd.Series:
+    """Get the values of a field of the metadata of points as text.
+
+    The values are the names of the members of the enums, as the table of the
+    fits has them (`sbmlsim.fit.metrics.metadata_dict`).
+
+    Args:
+        points: rows of the table of the fits.
+        field: the field of the metadata, e.g. `route`.
+
+    Returns:
+        The values, empty for a point without the field or a table without the
+        column.
+    """
+    if field not in points.columns:
+        return pd.Series("", index=points.index, dtype=str)
+    return points[field].fillna("").astype(str)
+
+
+def in_domain(cou: ContextOfUse, points: pd.DataFrame) -> pd.DataFrame:
+    """Get the points inside the claimed domain of a context of use.
+
+    A point is inside when it has a claimed value of every claimed field; a
+    field without claimed values claims nothing and restricts no point. The
+    core and the extensions test the domain with it, e.g. the coverage of a
+    quantity and the pairs of a ratio inside the domain.
+
+    Args:
+        cou: the context of use.
+        points: rows of the table of the fits.
+
+    Returns:
+        The points inside the domain, in their order.
+    """
+    inside = pd.Series(True, index=points.index)
+    for field, claimed in cou.domain.metadata.items():
+        if claimed:
+            names = [value.name for value in claimed]
+            inside &= metadata_values(points, field).isin(names)
+    return points.loc[inside]
 
 
 @dataclass(frozen=True, kw_only=True, eq=False)

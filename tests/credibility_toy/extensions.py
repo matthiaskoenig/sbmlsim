@@ -12,7 +12,13 @@ from typing import Any, ClassVar, override
 
 import pandas as pd
 
-from sbmlsim.credibility import ContextOfUse, EvidenceExtension, MappingLookup
+from sbmlsim.credibility import (
+    ContextOfUse,
+    EvidenceExtension,
+    MappingLookup,
+    Pairing,
+    ScorecardChange,
+)
 from sbmlsim.fit.helpers import MappingFilter
 
 
@@ -40,6 +46,11 @@ class ArmsExtension(EvidenceExtension):
     """Checks that every study of a ratio has one denominator."""
 
     name: ClassVar[str] = "arms"
+    label: ClassVar[str] = "arms of a ratio"
+
+    @override
+    def claims(self, pairing: Pairing) -> bool:
+        return isinstance(pairing, Arms)
 
     @override
     def selection_problems(
@@ -48,7 +59,8 @@ class ArmsExtension(EvidenceExtension):
         problems: list[str] = []
         for q in cou.ratios:
             arms = q.pairing
-            assert isinstance(arms, Arms)
+            if not isinstance(arms, Arms):
+                continue
             pairs = decisive[["experiment", "mapping"]].drop_duplicates()
             for experiment, group in pairs.groupby("experiment"):
                 denominators = [
@@ -68,6 +80,15 @@ class ArmsExtension(EvidenceExtension):
         self, context: Mapping[str, Any] | None
     ) -> Mapping[str, object]:
         return {"arms": None if context is None else len(context.get("pairs", ()))}
+
+    @override
+    def regressions(
+        self, baseline: Mapping[str, object], current: Mapping[str, object]
+    ) -> list[ScorecardChange]:
+        before, after = baseline.get("arms"), current.get("arms")
+        if isinstance(before, int) and (not isinstance(after, int) or after < before):
+            return [ScorecardChange("arms", str(before), str(after))]
+        return []
 
 
 ARMS = ArmsExtension()

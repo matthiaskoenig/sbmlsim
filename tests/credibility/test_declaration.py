@@ -30,7 +30,7 @@ from sbmlsim.credibility import (
 )
 from sbmlsim.fit.evaluation import Fold
 from sbmlsim.fit.objects import MappingMetaData
-from tests.credibility_toy.extensions import Arms, MinimumPairs
+from tests.credibility_toy.extensions import ARMS, Arms, MinimumPairs
 from tests.credibility_toy.metadata import Health, Route, ToyMetaData
 
 #: the fields of the metadata of the toy package a domain can claim
@@ -363,8 +363,48 @@ def test_the_settings_of_the_extensions() -> None:
 
 
 def test_no_covariates_by_default() -> None:
-    assert dict(Credibility(contexts=(_cou(),)).covariates) == {}
+    """Undeclared covariates are `None`, an extension tells them from none."""
+    assert Credibility(contexts=(_cou(),)).covariates is None
+    assert Credibility(contexts=(_cou(),), covariates={}).covariates == {}
     declared = Credibility(contexts=(_cou(),), covariates={"BW": "weight"})
-    assert dict(declared.covariates) == {"BW": "weight"}
+    assert declared.covariates == {"BW": "weight"}
     with pytest.raises(DeclarationError, match="covariate ' '"):
         Credibility(contexts=(_cou(),), covariates={" ": "weight"})
+
+
+def test_a_ratio_of_another_type() -> None:
+    wrong = QuantityOfInterest("Cve_ratio", "ratio", ratio="arms")  # ty: ignore[invalid-argument-type]
+    assert wrong.pairing is None
+    (problem,) = _problems(
+        _cou(quantities=(QuantityOfInterest("Cve", "plasma"), wrong))
+    )
+    assert problem == (
+        "context of use 'dose': the ratio of the quantity 'Cve_ratio' is True, "
+        "False or a pairing with an observable, not str"
+    )
+
+
+def test_the_extensions_of_a_declaration() -> None:
+    """A setting or a pairing which no extension takes is a problem."""
+    arms = Arms(observable="[Cve]", numerator=_select, denominator=_select)
+    cou = _cou(
+        quantities=(
+            QuantityOfInterest("Cve", "plasma"),
+            QuantityOfInterest("Cve_ratio", "ratio", ratio=arms),
+        ),
+        extensions={"arms": MinimumPairs(2), "armz": MinimumPairs(2)},
+    )
+    credibility = Credibility(contexts=(cou,))
+    assert credibility.extension_problems([ARMS]) == [
+        "context of use 'dose': the setting 'armz' names no evidence extension "
+        "of the project, its extensions are ['arms']"
+    ]
+    assert credibility.extension_problems([]) == [
+        "context of use 'dose': the setting 'arms' names no evidence extension "
+        "of the project, its extensions are []",
+        "context of use 'dose': the setting 'armz' names no evidence extension "
+        "of the project, its extensions are []",
+        "context of use 'dose': the pairing of the ratio 'Cve_ratio' is claimed "
+        "by no evidence extension of the project, its extensions are []",
+    ]
+    assert Credibility(contexts=(_cou(),)).extension_problems([]) == []

@@ -29,7 +29,6 @@ from sbmlsim.credibility.cross_validation import (
     write_cross_validation,
 )
 from sbmlsim.credibility.declaration import (
-    DEFAULT_COVARIATES,
     UNCLAIMED,
     Acceptance,
     AcceptanceResult,
@@ -54,13 +53,24 @@ from sbmlsim.credibility.declaration import (
     metadata_fields,
 )
 from sbmlsim.credibility.extensions import (
+    ContextBlock,
     ContextContribution,
     EvidenceExtension,
     ExtensionSetting,
+    FactorStatement,
     Pairing,
+    ReportSection,
+    ScorecardChange,
+    read_acceptance,
     read_sections,
 )
-from sbmlsim.credibility.factors import FACTORS, Factor, FactorRecord, FactorStatus
+from sbmlsim.credibility.factors import (
+    FACTORS,
+    Factor,
+    FactorRecord,
+    FactorStatus,
+    combine_factor,
+)
 from sbmlsim.credibility.lock import LockMismatchError, lock_differences, write_lock
 from sbmlsim.credibility.records import (
     FitTable,
@@ -83,6 +93,8 @@ from sbmlsim.credibility.selection import (
     EvidenceSelection,
     SelectionError,
     Selections,
+    in_domain,
+    metadata_values,
     normalize_observable,
     select,
 )
@@ -101,7 +113,6 @@ from sbmlsim.credibility.variability import (
 
 __all__ = [
     "DEFAULT_ACCEPTANCE",
-    "DEFAULT_COVARIATES",
     "DEFAULT_MIN_POINTS",
     "FACTORS",
     "RISK_TABLE",
@@ -111,6 +122,7 @@ __all__ = [
     "AcceptanceRule",
     "AfeRange",
     "Consequence",
+    "ContextBlock",
     "ContextContribution",
     "ContextOfUse",
     "CouLevel",
@@ -125,6 +137,7 @@ __all__ = [
     "ExtensionSetting",
     "Factor",
     "FactorRecord",
+    "FactorStatement",
     "FactorStatus",
     "FitPropagation",
     "FitTable",
@@ -139,7 +152,9 @@ __all__ = [
     "PredictiveChecks",
     "PropagationSettings",
     "QuantityOfInterest",
+    "ReportSection",
     "Risk",
+    "ScorecardChange",
     "Selection",
     "SelectionError",
     "Selections",
@@ -150,17 +165,21 @@ __all__ = [
     "acceptance_result",
     "adopted_ids",
     "check_declaration",
+    "combine_factor",
     "cross_validate",
     "default_acceptance",
     "evaluate_fits",
+    "in_domain",
     "kind_differences",
     "lock_differences",
     "mapping_table",
     "metadata_fields",
+    "metadata_values",
     "model_risk",
     "normalize_observable",
     "predictive_checks",
     "propagate_fits",
+    "read_acceptance",
     "read_cross_validations",
     "read_sections",
     "recorded_kinds",

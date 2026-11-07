@@ -14,7 +14,6 @@ import pytest
 
 from sbmlsim.credibility.cross_validation import (
     CROSS_VALIDATION_FILE,
-    FITS_DIR,
     CrossValidation,
     HeldOutStudy,
     cross_validate,
@@ -26,6 +25,7 @@ from sbmlsim.credibility.cross_validation import (
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import MappingKind
 from sbmlsim.project import Project
+from sbmlsim.run.fit_kinds import FITS_DIR
 
 DATA = Path(__file__).parents[1] / "data" / "credibility"
 
