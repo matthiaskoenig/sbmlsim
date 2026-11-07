@@ -52,7 +52,13 @@ settings of the project over them
 (`sbmlsim.project.CredibilitySettings.battery_settings`, see
 `battery_settings_of`), so a project without a hook sets its engines, its
 horizon or its tolerances as well. A check without what it needs is not
-applicable and assesses nothing.
+applicable and assesses nothing. A hook also says which generic check does
+not apply to which variant (`BatteryHook.not_applicable`, e.g. no steady
+state for a model of another kind than the others): the check runs on the
+other variants and its statement names the variants left out with their
+reason, and when it leaves out every variant the check is not applicable and
+its statement gives the reasons per variant. The tables of the hook are
+written whether or not the battery ran (`BatteryHook.report_tables`).
 """
 
 from __future__ import annotations
@@ -778,7 +784,7 @@ class BatteryHook:
     A subclass names itself and overrides what it adds; every method adds
     nothing by default. A hook registers its checks
     (`sbmlsim.credibility.verification.register_check`) when its module is
-    imported.
+    imported. `not_applicable` leaves a variant out of a generic check.
 
     Attributes:
         name: the name of the hook, e.g. `pk`.
@@ -857,6 +863,21 @@ class BatteryHook:
         """
         return BatteryContribution()
 
+    def not_applicable(self, check: str, data: object) -> str | None:
+        """Get why a generic check does not apply to a variant, None when it does.
+
+        Args:
+            check: the id of a generic check of the battery (`BATTERY_CHECKS`:
+                `non_negativity`, `steady_state`, `cross_simulator`,
+                `plausibility`, `rebuild`).
+            data: what `read` returned for the variant.
+
+        Returns:
+            The reason the variant is left out of the check, `None` (by
+            default) when the check applies to it.
+        """
+        return None
+
     def describe(self) -> str:
         """Get the settings of the cases of the hook in words.
 
@@ -886,7 +907,10 @@ class BatteryHook:
 
         Returns:
             The tables by the name of their file without the suffix, e.g.
-            `fates`; empty for none.
+            `fates`; empty for none. The report calls this whenever the
+            project has a hook, with empty sections when the battery did not
+            run, and the hook must then return its tables empty, with their
+            columns, so the files of a report depend on the hook only.
         """
         return {}
 
@@ -1354,6 +1378,23 @@ def _ordered(
     return tuple(results[check] for check in order)
 
 
+def _with_left_out(
+    check: Check, result: BatteryResult, left: Mapping[str, str], variants: int
+) -> BatteryResult:
+    """Name the variants a hook left out of a check, see `BatteryHook.not_applicable`.
+
+    A check which left out every variant is not applicable and gives the
+    reasons; a check which ran on the others keeps its status and names them
+    in its statement.
+    """
+    if not left:
+        return result
+    text = " ".join(f"{v}: {reason.rstrip('.')}." for v, reason in left.items())
+    if len(left) == variants:
+        return not_applicable(check, f"Not applicable to any variant. {text}")
+    return dataclasses.replace(result, statement=f"{result.statement} Left out: {text}")
+
+
 def run_battery(
     project: Project,
     *,
@@ -1384,10 +1425,27 @@ def run_battery(
     builds = [read_build(name, path, hook) for name, path in project.variants.items()]
     runs = [BatteryRun(build, settings) for build in builds]
     results: dict[str, BatteryResult] = {}
+    left: dict[str, dict[str, str]] = {}
+
+    def applying(check: Check) -> list[BatteryRun]:
+        """Get the runs of the variants the hook does not leave out of a check."""
+        reasons = {}
+        if hook is not None:
+            for run in runs:
+                reason = hook.not_applicable(check.id, run.build.data)
+                if reason is not None:
+                    reasons[run.build.variant] = reason
+        left[check.id] = reasons
+        return [r for r in runs if r.build.variant not in reasons]
+
+    def named(check: Check, result: BatteryResult) -> BatteryResult:
+        """Name the variants left out of a check in its statement."""
+        return _with_left_out(check, result, left[check.id], len(runs))
+
     checks = [
         (
             NON_NEGATIVITY,
-            lambda c: _non_negativity(runs, c, settings.absolute_tolerance),
+            lambda r, c: _non_negativity(r, c, settings.absolute_tolerance),
             "The model has no species.",
         ),
     ]
@@ -1395,7 +1453,7 @@ def run_battery(
         checks.append(
             (
                 STEADY_STATE,
-                lambda c: _steady_state(runs, c, settings),
+                lambda r, c: _steady_state(r, c, settings),
                 "The model has no state which does not accumulate.",
             )
         )
@@ -1407,24 +1465,27 @@ def run_battery(
         )
     for check, function, nothing in checks:
         collector = BatteryCollector()
-        function(collector)
-        results[check.id] = (
+        function(applying(check), collector)
+        results[check.id] = named(
+            check,
             collector.result(check, _statement(check, settings))
             if collector.cases
-            else not_applicable(check, nothing)
+            else not_applicable(check, nothing),
         )
     results[CROSS_SIMULATOR.id] = (
-        _cross_simulator(runs, settings)
+        named(CROSS_SIMULATOR, _cross_simulator(applying(CROSS_SIMULATOR), settings))
         if cross_simulator and settings.cross_simulator
         else not_applicable(CROSS_SIMULATOR, "Not run.")
     )
     collector = BatteryCollector()
-    _plausibility(project, runs, collector, settings.bound_margin)
-    results[PLAUSIBILITY.id] = collector.result(
-        PLAUSIBILITY, _statement(PLAUSIBILITY, settings)
+    _plausibility(project, applying(PLAUSIBILITY), collector, settings.bound_margin)
+    results[PLAUSIBILITY.id] = named(
+        PLAUSIBILITY, collector.result(PLAUSIBILITY, _statement(PLAUSIBILITY, settings))
     )
-    results[REBUILD.id] = (
-        _rebuild(project) if rebuild else not_applicable(REBUILD, "Not run.")
+    applying(REBUILD)
+    results[REBUILD.id] = named(
+        REBUILD,
+        _rebuild(project) if rebuild else not_applicable(REBUILD, "Not run."),
     )
     sections: Mapping[str, Any] = {}
     if hook is not None:

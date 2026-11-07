@@ -381,6 +381,51 @@ class _WrongHook(BatteryHook):
         )
 
 
+class _LeavesOut(BatteryHook):
+    """A hook which leaves the variants of its map out of the steady state."""
+
+    name: ClassVar[str] = "leaves"
+
+    def __init__(self, reasons: dict[str, str]) -> None:
+        self.reasons = reasons
+
+    @override
+    def read(self, variant: str, path: Path) -> object:
+        return variant
+
+    @override
+    def not_applicable(self, check: str, data: object) -> str | None:
+        return self.reasons.get(str(data)) if check == "steady_state" else None
+
+
+def _two_variants(tmp_path: Path) -> Project:
+    project = _project(tmp_path)
+    other = _sbml(tmp_path / "other.xml", STEADY.replace("{extra}", ""))
+    return project.replace(variants={**project.variants, "other": other})
+
+
+def test_a_variant_is_left_out_of_a_check(tmp_path: Path) -> None:
+    project = _two_variants(tmp_path)
+    plain = _battery(project).result(STEADY_STATE)
+    hook = _LeavesOut({"other": "It is a bodyweight model."})
+    result = _battery(project, hook=hook).result(STEADY_STATE)
+    assert result.status is BatteryStatus.PASSED
+    assert result.cases < plain.cases
+    assert "Left out: other: It is a bodyweight model." in result.statement
+    assert _battery(project, hook=hook).result(NON_NEGATIVITY).cases == (
+        _battery(project).result(NON_NEGATIVITY).cases
+    )
+
+
+def test_every_variant_left_out_is_not_applicable(tmp_path: Path) -> None:
+    project = _two_variants(tmp_path)
+    hook = _LeavesOut({"default": "No physiology.", "other": "A bodyweight model."})
+    result = _battery(project, hook=hook).result(STEADY_STATE)
+    assert result.status is BatteryStatus.NOT_APPLICABLE
+    assert "default: No physiology." in result.statement
+    assert "other: A bodyweight model." in result.statement
+
+
 def test_a_hook_gives_the_results_of_its_checks(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="gives the results of"):
         _battery(_project(tmp_path), hook=_WrongHook())
@@ -561,6 +606,19 @@ def test_the_outputs_of_the_battery(tmp_path: Path) -> None:
     plain = write_outputs(assessment, tmp_path / "plain")
     assert not (plain / "doses.tsv").exists()
     assert "decay-doses" not in (plain / "index.html").read_text(encoding="utf-8")
+
+
+def test_a_report_without_a_battery_run_has_the_tables_of_the_hook(
+    tmp_path: Path,
+) -> None:
+    assessment = _with_battery(battery_of())
+    assert assessment.verification is not None
+    bare = dataclasses.replace(assessment.verification, battery=None)
+    assessment = dataclasses.replace(assessment, verification=bare)
+    output = write_outputs(assessment, tmp_path / "credibility", hook=BATTERY)
+    assert (output / "doses.tsv").read_text(encoding="utf-8").splitlines() == [
+        "variant\tcase\tend"
+    ]
 
 
 def test_the_known_failures_of_the_battery(credibility_project: Project) -> None:
