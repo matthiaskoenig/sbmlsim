@@ -41,7 +41,7 @@ https://matthiaskoenig.github.io/hctz-model/
 - `repository`: the GitHub repository as `owner/name`; the docs site is `https://<owner>.github.io/<name>/`.
 - `doi`: the concept DOI of Zenodo, which cites every version.
 - `authors`: the authors of the citation in order, each with the name as `"Family, Given"`, the ORCID and the affiliation.
-- `keywords`, `funding`, `description`: the Zenodo record (`.zenodo.json`), the docs and the README.
+- `keywords`, `funding`, `description`: the Zenodo record (`.zenodo.json`), the docs and the README. `title`, `repository`, `doi`, `authors`, `keywords`, `docker_image`, `funding`, `description` and `first_year` are required; `missing()` lists the ones which are empty.
 - `docker_image`: the image which is pushed as `<docker_image>:<version>` and `:latest`. The image of the version is built and pushed while the registry lacks it, a pushed version is never rebuilt and `:latest` is then tagged on the registry from it.
 - `exclude`: paths of the model folder which are not released, by default `TODO.md`, `literature` and `thesis`. An empty `exclude` releases the whole model folder.
 - `first_year`: the year of the first release, the start of the copyright.
@@ -96,7 +96,7 @@ A publishing which failed half way is finished by running the same command again
 
 ## Frameworks
 
-A framework on top of sbmlsim names itself and its core libraries in the release settings and contributes the content of its domain through a `ReleaseHook` (`sbmlsim.release.hooks`, `ReleaseSettings.hook`): templates which replace or add to the templates of the release, pages of the site, values of the pages, the data of the page of the credibility (e.g. the evidence of its extensions, shown by the parts `docs/credibility-acceptance.md.j2`, `docs/credibility-uncertainty.md.j2`, `docs/credibility-context.md.j2` and `docs/credibility-sections.md.j2` of its templates), the study a file of the data belongs to (`data_study(data_dir, path)`, by default its folder below the package, `<data dir>/<folder>`) and sections of the release notes. The owner of the GitHub repositories of the core libraries, whose release notes are summarized, is `library_owner`. A manifest of pkpdsim 0.19 is read as the manifest of the framework pkpdsim.
+A framework on top of sbmlsim names itself and its core libraries in the release settings and contributes the content of its domain through a `ReleaseHook` (`sbmlsim.release.hooks`, `ReleaseSettings.hook`): templates which replace or add to the templates of the release, pages of the site, values of the pages, the data of the page of the credibility (e.g. the evidence of its extensions, shown by the parts `docs/credibility-acceptance.md.j2`, `docs/credibility-uncertainty.md.j2`, `docs/credibility-context.md.j2` and `docs/credibility-sections.md.j2` of its templates), the study a file of the data belongs to (`data_study(data_dir, path)`, by default its folder below the package, `<data dir>/<folder>`) and sections of the release notes. The owner of the GitHub repositories of the core libraries, whose release notes are summarized, is `library_owner`.
 
 A framework registers the hook in the release settings of its projects (`ReleaseSettings.hook`, an object or a reference `module:attribute`; `Project.release_hook()` resolves it), see `sbmlsim.release.hooks`.
 

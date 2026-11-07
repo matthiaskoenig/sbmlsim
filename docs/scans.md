@@ -314,32 +314,59 @@ ScanResult(patient: 3, dose: 3, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz,
 
 `time=` puts all points on one grid of 6 minutes, which `summary` needs. The summary over `patient` has the statistics as a new dimension `statistic` and keeps `dose` and `time`.
 
-The functions of a point are what a figure of an experiment, or the pharmacokinetic parameters of a model, read from the points of a scan. For a scan of one dimension (`single_dimension` raises for another) and a result with draws:
+The functions of a point are what a figure of an experiment, or the pharmacokinetic parameters of a model, read from the points of a scan. For a scan of one dimension (`single_dimension` raises for another) they read the timecourse of a point and the first and last values of every point:
 
-```py
+```python
 from sbmlsim.result.scan import (
     end_values,
     point_band,
     point_timecourse,
+    scan_dimensions,
     single_dimension,
     start_values,
     state_after_changes,
 )
 
-dim = single_dimension(res)  # the one dimension of the scan
-for k in range(res.ds.sizes[dim]):
-    time, values = point_timecourse(res, "[Cve_hctz]", **{dim: k})
-doses = start_values(res, "PODOSE_hctz")  # the dose of every point
-urine = end_values(res, "Aurine_hctz")  # the amount in the urine at the end
-res = state_after_changes(res)  # the whole result with the state after a change only
-
-# the dimensions of a scan over draws, and the band of a point
-time, lower, median, upper = point_band(
-    res, "[Cve_hctz]", across="uncertainty", quantiles=(0.05, 0.95), dose=0
-)
+by_dose = simulator.run(model, Scan(tablet, [doses]))
+dim = single_dimension(by_dose)
+time, cve = point_timecourse(by_dose, "[Cve_hctz]", **{dim: 1})
+print(dim, len(time), f"{cve.max():.3g}")
+print(start_values(by_dose, "PODOSE_hctz"))
+print(end_values(by_dose, "Aurine_hctz").round(2))
+print(state_after_changes(by_dose))
 ```
 
-`scan_dimensions(res, across)` gives the dimensions of a scan without the dimension of the draws.
+```text title="Output"
+dose 840 0.000452
+<xarray.DataArray 'PODOSE_hctz' (dose: 3)> Size: 24B
+array([12.5, 25. , 50. ])
+Coordinates:
+  * dose              (dose) <U7 84B '12.5 mg' '25 mg' '50 mg'
+    dose.PODOSE_hctz  (dose) float64 24B 12.5 25.0 50.0
+<xarray.DataArray 'Aurine_hctz' (dose: 3)> Size: 24B
+array([0.02, 0.05, 0.09])
+Coordinates:
+  * dose              (dose) <U7 84B '12.5 mg' '25 mg' '50 mg'
+    dose.PODOSE_hctz  (dose) float64 24B 12.5 25.0 50.0
+ScanResult(dose: 3, time: 498; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
+```
+
+A scan over draws, e.g. of the body weight, has the dimension of the draws next to the others, which `scan_dimensions` leaves out, and `point_band` gives the time points and the lower quantile, the median and the upper quantile of the draws at a point of the other dimensions:
+
+```python
+draws = Dimension("draw", values={"BW": np.linspace(60, 110, 11)})
+over_draws = simulator.run(model, Scan(tablet, [doses, draws]), time=time_grid)
+print(scan_dimensions(over_draws, "draw"))
+time, lower, median, upper = point_band(
+    over_draws, "[Cve_hctz]", across="draw", quantiles=(0.05, 0.95), dose=1
+)
+print(f"{lower.max():.3g} {median.max():.3g} {upper.max():.3g}")
+```
+
+```text title="Output"
+['dose']
+0.000297 0.000393 0.00055
+```
 
 ## Designs
 
@@ -378,7 +405,7 @@ ax.legend()
 ScanResult(lhs: 50, time: 241; [Cve_hctz], Aurine_hctz, PODOSE_hctz, Ri_hctz)
 ```
 
-![Output figure](images/outputs/scans-11.png)
+![Output figure](images/outputs/scans-13.png)
 
 A distribution without a location, like `LogNormal(cv=0.3)` or `Normal(sd=10)`, is centered on the reference of its target: the value the model has after the pre-initialization of the simulation. The dimension of a design is named after its method, here `lhs`, and the result records the design, so an analysis needs only the result.
 

@@ -54,9 +54,12 @@ A percentage of a few points says little, so a verdict also needs a minimum of e
 
 ## Declaring the contexts of use
 
-A model package gets a module `credibility.py` with the object `CREDIBILITY`, a `Credibility`, and its [project](project.md) references it like the experiments and the fit definitions, `credibility=".credibility:CREDIBILITY"`; it is resolved when a command uses it, `Project.load_credibility()`. A declaration is plain python, a tree of frozen dataclasses. This is a declaration of a model with calibration data, held-out doses and data the model does not describe (the metadata classes and the filters are those of the project, the test package `tests/credibility_toy` has a complete one):
+A model package gets a module `credibility.py` with the object `CREDIBILITY`, a `Credibility`, and its [project](project.md) references it like the experiments and the fit definitions, `credibility=".credibility:CREDIBILITY"`; it is resolved when a command uses it, `Project.load_credibility()`. A declaration is plain python, a tree of frozen dataclasses. This is a declaration of a model with calibration data, held-out doses and data the model does not describe, with the metadata of its fit mappings (a `MappingMetaData` with the fields a domain can claim) and the mappings of its studies by id (the package `tests/credibility_toy` in the [repository](https://github.com/matthiaskoenig/sbmlsim/tree/develop/tests/credibility_toy) has a complete one, with its fits):
 
-```py
+```python
+from dataclasses import dataclass
+from enum import StrEnum
+
 from sbmlsim.credibility import (
     ContextOfUse,
     CouLevel,
@@ -67,8 +70,32 @@ from sbmlsim.credibility import (
     Level,
     QuantityOfInterest,
     Unclaimed,
+    default_acceptance,
+    model_risk,
 )
-from sbmlsim.fit.filters import metadata_filter, named_filter
+from sbmlsim.fit.filters import NamedMappings, metadata_filter, named_filter
+from sbmlsim.fit.objects import MappingMetaData
+
+
+class Route(StrEnum):
+    IV = "iv"
+    PO = "po"
+
+
+class Health(StrEnum):
+    HEALTHY = "healthy"
+    RENAL_IMPAIRMENT = "renal impairment"
+
+
+@dataclass(kw_only=True)
+class StudyMetaData(MappingMetaData):
+    route: Route
+    health: Health = Health.HEALTHY
+
+
+# the mappings of the studies by experiment id, for named_filter
+DOSE: NamedMappings = {"Doses2020": {"cve_low", "cve_high"}}
+SCALED: NamedMappings = {"Scaled2021": {"cve"}}
 
 QUANTITIES = (QuantityOfInterest("[A]", "the concentration of A"),)
 
@@ -121,11 +148,23 @@ CREDIBILITY = Credibility(
         Evidence(
             "scaled data",
             EvidenceRole.LIMITATION,
-            named_filter(LIMITATION),
+            named_filter(SCALED),
             "data at three times the decay which the model does not describe",
         ),
     ),
 )
+
+for cou in CREDIBILITY.contexts:
+    print(cou.id, cou.level.label, cou.risk, cou.minimum_points, cou.decisive_role)
+print(model_risk(Level.HIGH, Level.MEDIUM))
+print(default_acceptance(Level.MEDIUM))
+```
+
+```text title="Output"
+describe describe low 5 calibration
+dose interpolate medium 10 validation
+high
+(Acceptance(criterion=Fold(fold=2.0), minimum=80.0), MaxGmfe(maximum=1.5))
 ```
 
 The project gives the declaration and its domain (`credibility_settings`, `CredibilitySettings`: the metadata class of the fit mappings, the fields a domain can claim, the evidence extensions and the battery hook):
@@ -144,7 +183,7 @@ PROJECT = Project(
 - `QuantityOfInterest(id, description)`: an observable of the fit mappings or the observable of a value per simulation (`pk.cmax`). The observable column of the data holds the selection, `[A]` for a concentration, so a quantity is matched after the brackets are removed (`[A]` and `A` are the same quantity); a quantity which matches no observable of the fits is an error. A quantity restricts the evidence of its COU to its observables. `ratio` marks a ratio between arms: `ratio=True` declares it without a pairing, it is matched against no observable, restricts no evidence and is shown as "ratio, no pairing declared"; a `Pairing` pairs its arms and is assessed by the evidence extension which claims it. The absolute quantities decide the verdict, a ratio adds to it, so a COU has at least one quantity which is no ratio.
 - `Domain`: `metadata`, the claimed values by field of the metadata of the fit mappings (the fields `CredibilitySettings.domain_fields` of the project names, every enum field of its metadata class by default), and `statement`, a sentence for what the metadata cannot say (dose range, duration). The coverage is assessed on the metadata; the statement is shown, marked "statement, not assessed". A COU above C1 claims at least one value of the metadata, without one its domain would be covered by any data.
 - `Evidence(name, role, selection, description, fit=None)`: the selection is a filter of fit mappings (`named_filter` of the mapping keys by study id, `metadata_filter` of the metadata class, `sbmlsim.fit.filters`) or `Unclaimed`; `fit` restricts the evidence to one subset of the adopted fits, and a subset the adopted fits do not have is an error naming the subsets they have.
-- `Credibility(contexts, limitations, notes)`: the limitations are evidence of the whole model. A limitation, of the model or of a COU, is data the model does not describe and is subtracted from the evidence of every COU.
+- `Credibility(contexts, limitations, notes, covariates, variability)`: `covariates` are the covariates of the subjects whose simulated values an evidence extension checks against the reported ones (`None` takes the default of the extension, an empty mapping checks none) and `variability` the variability between the subjects for the [predictive check](#variability-and-the-predictive-check). The limitations are evidence of the whole model. A limitation, of the model or of a COU, is data the model does not describe and is subtracted from the evidence of every COU.
 
 ## The checks of a declaration
 
@@ -216,7 +255,7 @@ Quantity coverage is per quantity of interest which is no ratio: `covered` when 
 
 ## Evidence extensions
 
-A domain adds evidence with an `EvidenceExtension` (`sbmlsim.credibility.extensions`, whose module docstring is the contract), registered in `CredibilitySettings.extensions` of the project: it claims the pairings of ratio quantities, selects and prepares its data, assesses a context into a section of the record by the name of the extension (`ContextResult.section(name)`, `CredibilityAssessment.extensions`), adds rules to the acceptance of a context (they enter the verdict after the rules of the context and are rows of its acceptance table with the field `extension`), states a factor of V&V 40 which joins the one of the core (`combine_factor`), adds blocks and sections to the report, tables and columns of the scorecard, which only it judges, and pools its sections over models. Every hook is a no-op by default. The records read the sections of an extension and the fields of the records of pkpdsim 0.17 to 0.19 as such sections.
+A domain adds evidence with an `EvidenceExtension` (`sbmlsim.credibility.extensions`, whose module docstring is the contract), registered in `CredibilitySettings.extensions` of the project: it claims the pairings of ratio quantities, selects and prepares its data, assesses a context into a section of the record by the name of the extension (`ContextResult.section(name)`, `CredibilityAssessment.extensions`), adds rules to the acceptance of a context (they enter the verdict after the rules of the context and are rows of its acceptance table with the field `extension`), states a factor of V&V 40 which joins the one of the core (`combine_factor`), adds blocks and sections to the report, tables and columns of the scorecard, which only it judges, and pools its sections over models. Every hook is a no-op by default. The records read the sections of an extension and the fields of the records of earlier versions as such sections.
 
 ## Verification
 

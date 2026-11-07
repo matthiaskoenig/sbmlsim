@@ -65,6 +65,7 @@ PAGES: list[str] = [
     "uncertainty.md",
     "sensitivity.md",
     "fitting.md",
+    "credibility.md",
     "release.md",
     "licenses.md",
 ]
