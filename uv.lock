@@ -3225,8 +3225,8 @@ requires-dist = [
     { name = "sbmlutils", specifier = ">=0.16.0" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
-    { name = "simrun", marker = "extra == 'dev'", git = "https://github.com/matthiaskoenig/simrun.git?rev=ba442e025780f1f20527662881e4e72dfee63bd5" },
-    { name = "simrun", marker = "extra == 'simrun'", git = "https://github.com/matthiaskoenig/simrun.git?rev=ba442e025780f1f20527662881e4e72dfee63bd5" },
+    { name = "simrun", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "simrun", marker = "extra == 'simrun'", specifier = ">=0.1.0" },
     { name = "sympy", specifier = ">=1.14.0" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'dev'", specifier = ">=2.14.1", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and extra == 'dev'", specifier = ">=2.14.1" },
@@ -3365,7 +3365,7 @@ wheels = [
 [[package]]
 name = "simrun"
 version = "0.1.0"
-source = { git = "https://github.com/matthiaskoenig/simrun.git?rev=ba442e025780f1f20527662881e4e72dfee63bd5#ba442e025780f1f20527662881e4e72dfee63bd5" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
     { name = "fastmcp" },
@@ -3378,6 +3378,10 @@ dependencies = [
     { name = "tomlkit" },
     { name = "typer" },
     { name = "uvicorn" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/51/fd/249f2729d074bac3fed3c0e5ef814479230b3f2aa8a61925b23a6bf5e80d/simrun-0.1.0.tar.gz", hash = "sha256:3e0cf05ede1e19212c664200bf39c9ede1dacd5a6a6597d5ce33a2666e95c291", size = 1798259, upload-time = "2026-11-07T12:42:20.365Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/cc/6d/40236d32d79c7b8eaab45c41976215bb2a2fcbf0425de51ca243cc6a2f93/simrun-0.1.0-py3-none-any.whl", hash = "sha256:0daf7112bb3a4a4159d47997e410007cd1e2a0b33f622d0cb39af7ca9e33e6ae", size = 129343, upload-time = "2026-11-07T12:42:18.437Z" },
 ]
 
 [[package]]
