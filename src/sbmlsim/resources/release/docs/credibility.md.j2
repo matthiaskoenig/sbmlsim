@@ -71,6 +71,7 @@ Parameter uncertainty, the adopted fits at {{ context.uncertainty.n_draws }} dra
 
 {% endif %}
 {% endif %}
+{% include "docs/credibility-uncertainty.md.j2" ignore missing %}
 {% if context.variability %}
 {% set v = context.variability %}
 Variability, the visual predictive check of the decisive points with the variability of the subjects ({% for t, d in v.targets.items() %}`{{ t }}` {{ d }}{% if not loop.last %}, {% endif %}{% endfor %}){% if v.between %} and between the studies ({% for t, d in v.between.items() %}`{{ t }}` {{ d }}{% if not loop.last %}, {% endif %}{% endfor %}){% endif %}, {% if v.between %}{{ v.studies }} studies of {% endif %}{{ v.subjects }} subjects {% if v.vectors > 1 %}nested in {{ v.vectors }} draws of the parameters{% else %}at the adopted parameters{% endif %}:

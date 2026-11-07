@@ -86,4 +86,9 @@ def test_the_hook_adds_nothing_by_default(tmp_path: Path) -> None:
     study = hook.data_study(data, PurePosixPath("drug/Study2000/a.tsv"))
     assert study == "data/drug/Study2000"
     assert hook.data_study(data, PurePosixPath("collect_data.py")) is None
-    assert set(CREDIBILITY_PARTS) == {"acceptance", "context", "sections"}
+    assert set(CREDIBILITY_PARTS) == {
+        "acceptance",
+        "uncertainty",
+        "context",
+        "sections",
+    }

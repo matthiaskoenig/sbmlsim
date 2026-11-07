@@ -13,7 +13,9 @@ domain through a `ReleaseHook`, which `ReleaseSettings.hook` names
   part which a template of sbmlsim includes when it exists. The page of the
   credibility includes, in the section of every context of use (`context`
   the context), `docs/credibility-acceptance.md.j2` right after its
-  acceptance table (e.g. the tables of the rules of an extension) and
+  acceptance table (e.g. the tables of the rules of an extension),
+  `docs/credibility-uncertainty.md.j2` between its parameter uncertainty and
+  its variability (e.g. the inputs of the simulations) and
   `docs/credibility-context.md.j2` at its end, and
   `docs/credibility-sections.md.j2` after its sections of the core, see
   `CREDIBILITY_PARTS`.
@@ -47,9 +49,11 @@ __all__ = ["CREDIBILITY_PARTS", "ReleaseHook"]
 
 #: the parts of the page of the credibility which a hook may add, by where
 #: they are included: in the section of every context of use after its
-#: acceptance table and at its end, and after the sections of the core
+#: acceptance table, between its parameter uncertainty and its variability and
+#: at its end, and after the sections of the core
 CREDIBILITY_PARTS: Final = {
     "acceptance": "docs/credibility-acceptance.md.j2",
+    "uncertainty": "docs/credibility-uncertainty.md.j2",
     "context": "docs/credibility-context.md.j2",
     "sections": "docs/credibility-sections.md.j2",
 }

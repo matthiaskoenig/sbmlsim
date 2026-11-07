@@ -15,7 +15,9 @@ import re
 import shutil
 import subprocess
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any, Protocol
@@ -32,6 +34,7 @@ __all__ = [
     "SourceRepo",
     "check_version",
     "clone_url",
+    "current_runner",
     "export_package",
     "locked_version",
     "package_dirs",
@@ -41,6 +44,7 @@ __all__ = [
     "source_framework",
     "source_repo",
     "stage",
+    "using_runner",
 ]
 
 logger = logging.getLogger(__name__)
@@ -120,6 +124,40 @@ def run(args: Sequence[str], cwd: Path, *, stream: bool = False) -> str:
     except OSError as err:
         raise ReleaseError(f"'{command}' could not run in {cwd}: {err}") from err
     return result.stdout
+
+
+#: the runner of the commands of the kind `release`, see `using_runner`
+_RUNNER: ContextVar[Runner | None] = ContextVar("release_runner", default=None)
+
+
+def current_runner() -> Runner:
+    """Get the runner of the commands of a release in this context.
+
+    Returns:
+        The runner of an enclosing `using_runner`, the real one, `run`, without.
+    """
+    return _RUNNER.get() or run
+
+
+@contextmanager
+def using_runner(runner: Runner) -> Generator[None]:
+    """Run the commands of the kind `release` with a runner in this context.
+
+    The kind runs inside of `sbmlsim.run.execute`, which takes no runner; the
+    build of a release through the run layer
+    (`sbmlsim.release.workflow.execute_release`) passes its runner so.
+
+    Args:
+        runner: runs git, uv and the analyses of the build.
+
+    Yields:
+        Nothing; the runner holds until the block ends.
+    """
+    token = _RUNNER.set(runner)
+    try:
+        yield
+    finally:
+        _RUNNER.reset(token)
 
 
 @dataclass(frozen=True)

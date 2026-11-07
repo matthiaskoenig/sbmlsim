@@ -715,3 +715,37 @@ def test_the_hook_adds_after_the_acceptance_of_a_context(
     ratio = dose.index("| Ratio of `dose` |")
     assert acceptance < ratio
     assert "| yes |\n\n| Ratio of `dose` |" in dose
+
+
+def test_the_hook_adds_between_the_uncertainty_and_the_variability(
+    release: tuple[ProjectContext, Path], tmp_path: Path
+) -> None:
+    """The part of the uncertainty follows the parameter uncertainty of a context."""
+    from tests.credibility.test_assessment_analyses import _propagation
+    from tests.credibility.test_variability import _checks
+
+    context, path = release
+    templates = tmp_path / "templates" / "docs"
+    templates.mkdir(parents=True)
+    (templates / "library.md.j2").write_text("# Library\n", encoding="utf-8")
+    (templates / "credibility-uncertainty.md.j2").write_text(
+        "| Inputs of `{{ context.id }}` |\n| --- |\n\n", encoding="utf-8"
+    )
+    context = dataclasses.replace(
+        _credibility_context(context), hook=Hook(tmp_path / "templates")
+    )
+    assessment = assess_table(
+        CREDIBILITY,
+        fit_table(),
+        PROVENANCE,
+        propagation=_propagation(0.01),
+        variability=_checks(0.5),
+    )
+    _write(path, assessment)
+    page = _page(context, path)
+    dose = page[page.index("## dose") : page.index("## renal")]
+    uncertainty = dose.index("Parameter uncertainty, the adopted fits")
+    inputs = dose.index("| Inputs of `dose` |")
+    variability = dose.index("Variability, the visual predictive check")
+    assert uncertainty < inputs < variability
+    assert "\n\n\n" not in page
