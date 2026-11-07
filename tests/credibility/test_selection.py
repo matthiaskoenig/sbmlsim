@@ -24,8 +24,10 @@ from sbmlsim.credibility import (
     Unclaimed,
     check_declaration,
     evaluate_fits,
+    in_domain,
     kind_differences,
     mapping_table,
+    metadata_values,
     normalize_observable,
     recorded_kinds,
     select,
@@ -631,3 +633,53 @@ def test_check_declaration_with_the_extensions(
         )
     )
     assert check_declaration(project) == []
+
+
+def test_check_declaration_reports_the_extensions(credibility_project: Project) -> None:
+    project = credibility_project.replace(
+        credibility=".credibility:WITH_ARMS",
+        credibility_settings=CredibilitySettings(
+            metadata_type=ToyMetaData, extensions=(ARMS,)
+        ),
+    )
+    assert check_declaration(project) == []
+    (problem,) = check_declaration(
+        project.replace(credibility=".credibility:WITH_TYPO")
+    )
+    assert "the setting 'armz' names no evidence extension" in problem
+    unclaimed = project.replace(
+        credibility_settings=CredibilitySettings(metadata_type=ToyMetaData)
+    )
+    problems = check_declaration(unclaimed)
+    assert any("is claimed by no evidence extension" in p for p in problems)
+
+
+@pytest.mark.parametrize(
+    ("settings", "message"),
+    [
+        (CredibilitySettings(metadata_type=".fitting:DOSE"), "is no class"),
+        (CredibilitySettings(domain_fields=("dose",)), "are no fields"),
+        (CredibilitySettings(extensions=(".metadata:Route",)), "are no sbmlsim"),
+    ],
+)
+def test_check_declaration_reports_the_settings(
+    credibility_project: Project, settings: CredibilitySettings, message: str
+) -> None:
+    """Invalid credibility settings are a problem, the fits are checked still."""
+    project = credibility_project.replace(credibility_settings=settings)
+    (problem,) = check_declaration(project)
+    assert message in problem
+    with pytest.raises(ValueError, match="no credibility declaration"):
+        check_declaration(project.replace(credibility=None))
+
+
+def test_in_domain(fits: FitTable) -> None:
+    table = fits.table
+    renal = CREDIBILITY.context("renal")
+    inside = in_domain(renal, table)
+    assert set(inside["health"]) == {"HEALTHY", "RENAL_IMPAIRMENT"}
+    dose = in_domain(CREDIBILITY.context("dose"), table)
+    assert set(zip(dose["route"], dose["health"], strict=True)) == {("IV", "HEALTHY")}
+    assert len(in_domain(CREDIBILITY.context("describe"), table)) == len(table)
+    assert set(metadata_values(table, "route")) == {"IV", "PO"}
+    assert set(metadata_values(table, "tissue")) == {""}

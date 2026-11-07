@@ -1289,14 +1289,20 @@ class Project(BaseModel):
     def load_credibility(self) -> Any:
         """Get the declaration of the contexts of use of the model.
 
-        A declaration of `sbmlsim.credibility` is checked against the fields of
-        the metadata of the project, see `domain_fields`; any other object is
-        returned as it is.
+        A declaration of `sbmlsim.credibility` is checked against the
+        credibility settings of the project: its domains against the fields of
+        the metadata (`domain_fields`), the settings of the extensions of its
+        contexts and the pairings of its ratio quantities against the evidence
+        extensions (`evidence_extensions`,
+        `sbmlsim.credibility.Credibility.extension_problems`); any other
+        object is returned as it is.
 
         Raises:
-            ValueError: if the project has no declaration.
+            ValueError: if the project has no declaration, or its credibility
+                settings are invalid (see `domain_fields`,
+                `evidence_extensions`).
             sbmlsim.credibility.DeclarationError: with the problems of the
-                domains of a declaration.
+                domains, the settings and the pairings of a declaration.
         """
         if self.credibility is None:
             raise ValueError(
@@ -1306,7 +1312,10 @@ class Project(BaseModel):
         if _instance_of(credibility, "sbmlsim.credibility.declaration", "Credibility"):
             from sbmlsim.credibility.declaration import DeclarationError
 
-            problems = credibility.domain_problems(self.domain_fields())
+            problems = [
+                *credibility.domain_problems(self.domain_fields()),
+                *credibility.extension_problems(self.evidence_extensions()),
+            ]
             if problems:
                 raise DeclarationError(problems)
         return credibility

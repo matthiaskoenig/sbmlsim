@@ -8,16 +8,21 @@ assess it. The factors of the verification (discretization error, numerical
 solver error, use error) are assessed when an assessment is verified, see
 `sbmlsim.credibility.verification`. An evidence extension assesses a factor
 for a context of use with a statement of its own
-(`sbmlsim.credibility.extensions.ContextContribution.factors`).
+(`sbmlsim.credibility.extensions.ContextContribution.factors`), which
+`combine_factor` combines with the statement of the core.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum, unique
-from typing import Final, TypedDict
+from typing import TYPE_CHECKING, Final, TypedDict
 
-__all__ = ["FACTORS", "Factor", "FactorRecord", "FactorStatus"]
+if TYPE_CHECKING:
+    from sbmlsim.credibility.extensions import FactorStatement
+
+__all__ = ["FACTORS", "Factor", "FactorRecord", "FactorStatus", "combine_factor"]
 
 
 @unique
@@ -178,3 +183,46 @@ FACTORS: Final[tuple[Factor, ...]] = (
         statement="The coverage of the claimed domain by the evidence.",
     ),
 )
+
+
+def combine_factor(
+    record: FactorRecord, statements: Sequence[FactorStatement]
+) -> FactorRecord:
+    """Combine the record of a factor of the core with the statements of the extensions.
+
+    The statement is the statements of the extensions before the core
+    (`FactorStatement.before_core`), the statement of the core and the
+    statements of the extensions after it, each group in the order of the
+    statements (the order of the extensions of the project). The statement of
+    the core is the one of its record unless the record is not assessed, whose
+    statement only names what will assess it. A factor with a statement of an
+    extension is assessed and has no step; without one the record is the one
+    of the core.
+
+    Args:
+        record: the factor as the core assessed it for a context of use.
+        statements: the statements of the extensions of the factor, in the
+            order of the extensions.
+
+    Returns:
+        The combined factor, a new record.
+    """
+    if not statements:
+        return FactorRecord(**record)
+    core = (
+        []
+        if record["status"] == FactorStatus.NOT_ASSESSED.value
+        else [record["statement"]]
+    )
+    parts = [
+        *(s.text for s in statements if s.before_core),
+        *core,
+        *(s.text for s in statements if not s.before_core),
+    ]
+    return FactorRecord(
+        id=record["id"],
+        name=record["name"],
+        status=FactorStatus.ASSESSED.value,
+        statement=" ".join(p for p in parts if p),
+        step=None,
+    )

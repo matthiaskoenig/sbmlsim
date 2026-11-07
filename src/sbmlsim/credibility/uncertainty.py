@@ -29,9 +29,9 @@ well).
 
 The names differ from the ones of pkpdsim, which clashed with the propagation
 of `sbmlsim.uncertainty` and the settings of the draws of the experiments
-(`sbmlsim.experiment.draws.PropagationSettings`): `propagate_fits` was
+(`sbmlsim.experiment.draws.UncertaintySettings`): `propagate_fits` was
 `propagate`, `FitPropagation` was `Propagation` and `PropagationSettings` was
-`PropagationSettings`.
+`UncertaintySettings`.
 """
 
 from __future__ import annotations

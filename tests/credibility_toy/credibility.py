@@ -16,6 +16,7 @@ from sbmlsim.credibility import (
 from sbmlsim.fit.filters import metadata_filter, named_filter
 from sbmlsim.fit.variability import Variability
 from sbmlsim.simulation.sampling import LogNormal
+from tests.credibility_toy.extensions import Arms, MinimumPairs
 from tests.credibility_toy.fitting import DOSE, LIMITATION, POPULATION
 from tests.credibility_toy.metadata import Health, Route, ToyMetaData
 
@@ -141,3 +142,33 @@ OUTSIDE = dataclasses.replace(
 CREDIBILITY_VARIABILITY = dataclasses.replace(
     CREDIBILITY, variability=Variability({"k": LogNormal(cv=0.2)})
 )
+
+
+def _with_arms(setting: str) -> Credibility:
+    """Get the declaration whose renal context assesses its ratio by its arms."""
+    arms = Arms(
+        observable="[A]",
+        numerator=metadata_filter(ToyMetaData, health={Health.RENAL_IMPAIRMENT}),
+        denominator=metadata_filter(ToyMetaData, health={Health.HEALTHY}),
+    )
+    renal = CREDIBILITY.context("renal")
+    quantities = tuple(
+        dataclasses.replace(q, ratio=arms) if q.ratio else q for q in renal.quantities
+    )
+    contexts = tuple(
+        dataclasses.replace(
+            c, quantities=quantities, extensions={setting: MinimumPairs(1)}
+        )
+        if c.id == "renal"
+        else c
+        for c in CREDIBILITY.contexts
+    )
+    return dataclasses.replace(CREDIBILITY, contexts=contexts)
+
+
+#: the declaration with a ratio of the arms of a study and a setting of the
+#: extension `arms`, see `tests.credibility_toy.extensions`
+WITH_ARMS = _with_arms("arms")
+
+#: the same with a typo in the name of the setting
+WITH_TYPO = _with_arms("armz")

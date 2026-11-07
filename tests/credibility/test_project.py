@@ -79,3 +79,27 @@ def test_the_settings_are_checked() -> None:
     )
     with pytest.raises(ValueError, match="is no class"):
         not_a_class.metadata_type()
+
+
+def test_the_project_checks_the_extensions_of_a_declaration() -> None:
+    """A setting of no extension and a pairing no extension claims are problems."""
+    with_arms = PROJECT.replace(
+        credibility=".credibility:WITH_ARMS",
+        credibility_settings=CredibilitySettings(
+            metadata_type=ToyMetaData, extensions=(ARMS,)
+        ),
+    )
+    assert with_arms.load_credibility().context("renal").extensions
+    typo = with_arms.replace(credibility=".credibility:WITH_TYPO")
+    with pytest.raises(DeclarationError) as err:
+        typo.load_credibility()
+    (problem,) = err.value.problems
+    assert "the setting 'armz' names no evidence extension of the project" in problem
+    without = with_arms.replace(
+        credibility_settings=CredibilitySettings(metadata_type=ToyMetaData)
+    )
+    with pytest.raises(DeclarationError) as err:
+        without.load_credibility()
+    first, second = err.value.problems
+    assert "the setting 'arms' names no evidence extension" in first
+    assert "the pairing of the ratio 'A_ratio' is claimed by no evidence" in second

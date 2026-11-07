@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 import re
 import types
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum, unique
 from types import MappingProxyType
@@ -34,10 +34,10 @@ from sbmlsim.fit.evaluation import Criterion, afe, criteria_metrics, gmfe
 from sbmlsim.fit.helpers import MappingFilter
 
 if TYPE_CHECKING:
+    from sbmlsim.credibility.extensions import EvidenceExtension
     from sbmlsim.fit.variability import Variability
 
 __all__ = [
-    "DEFAULT_COVARIATES",
     "UNCLAIMED",
     "Acceptance",
     "AcceptanceResult",
@@ -61,12 +61,6 @@ __all__ = [
     "acceptance_result",
     "metadata_fields",
 ]
-
-#: the covariates of the subjects whose simulated values an extension checks
-#: against the reported ones, none in sbmlsim: the extension of a domain which
-#: checks them (the inputs of pkpdsim) takes its own default for a declaration
-#: without covariates
-DEFAULT_COVARIATES: Final[Mapping[str, str]] = MappingProxyType({})
 
 #: the pattern of the id of a context of use
 ID_PATTERN: Final = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -184,7 +178,7 @@ class QuantityOfInterest:
     @property
     def pairing(self) -> Pairing | None:
         """Get the pairing of an assessed ratio, `None` otherwise."""
-        return None if isinstance(self.ratio, bool) else self.ratio
+        return self.ratio if isinstance(self.ratio, Pairing) else None
 
 
 def _enum_of(hint: object) -> type[StrEnum] | None:
@@ -585,10 +579,50 @@ class ContextOfUse:
                     f"{who}: the setting of the extension '{name}': {p}"
                     for p in setting.problems()
                 )
+        for q in self.quantities:
+            if isinstance(q.ratio, bool):
+                continue
+            if not isinstance(q.ratio, Pairing):
+                found.append(
+                    f"{who}: the ratio of the quantity '{q.id}' is True, False or a "
+                    f"pairing with an observable, not {type(q.ratio).__name__}"
+                )
+            elif (
+                not isinstance(q.ratio.observable, str)
+                or not q.ratio.observable.strip()
+            ):
+                found.append(
+                    f"{who}: the ratio '{q.id}' needs the observable of its arms"
+                )
+        return found
+
+    def extension_problems(self, extensions: Sequence[EvidenceExtension]) -> list[str]:
+        """Get the settings and the pairings of the context which no extension takes.
+
+        A setting of `extensions` by a name of no extension of the project and
+        a pairing of a ratio quantity which no extension claims
+        (`EvidenceExtension.claims`) is a problem: neither would be assessed.
+
+        Args:
+            extensions: the evidence extensions of the project.
+
+        Returns:
+            Every problem, each naming the context.
+        """
+        who = f"context of use '{self.id}'"
+        names = [e.name for e in extensions]
+        found = [
+            f"{who}: the setting '{name}' names no evidence extension of the "
+            f"project, its extensions are {names}"
+            for name in self.extensions
+            if name not in names
+        ]
         found.extend(
-            f"{who}: the ratio '{q.id}' needs the observable of its arms"
+            f"{who}: the pairing of the ratio '{q.id}' is claimed by no evidence "
+            f"extension of the project, its extensions are {names}"
             for q in self.ratios
-            if q.pairing is not None and not q.pairing.observable.strip()
+            if q.pairing is not None
+            and not any(e.claims(q.pairing) for e in extensions)
         )
         return found
 
@@ -619,8 +653,9 @@ class Credibility:
         covariates: the covariates of the subjects whose simulated values an
             evidence extension checks against the reported ones (the
             equivalency of the inputs), the target of the model and the
-            measurement type of its reported value; none by default
-            (`DEFAULT_COVARIATES`), an extension takes its own default then.
+            measurement type of its reported value; `None` for a declaration
+            which declares none, for which an extension takes its own default,
+            and an empty mapping for a declaration which checks none.
         variability: the variability between the subjects, relative
             distributions of targets (`sbmlsim.fit.variability.Variability`),
             the input of the predictive check of the decisive points, see
@@ -636,7 +671,7 @@ class Credibility:
     contexts: tuple[ContextOfUse, ...]
     limitations: tuple[Evidence, ...] = ()
     notes: str = ""
-    covariates: Mapping[str, str] = field(default=DEFAULT_COVARIATES, hash=False)
+    covariates: Mapping[str, str] | None = field(default=None, hash=False)
     variability: Variability | None = field(default=None, hash=False)
 
     def __post_init__(self) -> None:
@@ -660,7 +695,7 @@ class Credibility:
         found.extend(
             f"covariate '{target}': the target and the measurement type must be "
             "texts which are not empty"
-            for target, measurement in self.covariates.items()
+            for target, measurement in (self.covariates or {}).items()
             if not (
                 isinstance(target, str)
                 and target.strip()
@@ -678,7 +713,10 @@ class Credibility:
                 )
         if found:
             raise DeclarationError(found)
-        object.__setattr__(self, "covariates", MappingProxyType(dict(self.covariates)))
+        if self.covariates is not None:
+            object.__setattr__(
+                self, "covariates", MappingProxyType(dict(self.covariates))
+            )
 
     def domain_problems(self, fields: Mapping[str, type[StrEnum]]) -> list[str]:
         """Get the problems of the domains of the contexts of use.
@@ -692,6 +730,17 @@ class Credibility:
             the fields.
         """
         return [p for cou in self.contexts for p in cou.domain_problems(fields)]
+
+    def extension_problems(self, extensions: Sequence[EvidenceExtension]) -> list[str]:
+        """Get the settings and the pairings of the contexts which no extension takes.
+
+        Args:
+            extensions: the evidence extensions of the project.
+
+        Returns:
+            Every problem, see `ContextOfUse.extension_problems`.
+        """
+        return [p for cou in self.contexts for p in cou.extension_problems(extensions)]
 
     def context(self, id: str) -> ContextOfUse:
         """Get a context of use by its id.
