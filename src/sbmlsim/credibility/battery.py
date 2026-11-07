@@ -118,13 +118,15 @@ __all__ = [
     "BatteryRun",
     "BatterySettings",
     "BatteryStatus",
+    "CompileTimeout",
     "accumulating_states",
     "battery_settings",
     "battery_settings_of",
     "math_names",
-    "not_applicable",
+    "not_applicable_result",
     "read_build",
     "run_battery",
+    "with_deadline",
 ]
 
 logger = logging.getLogger(__name__)
@@ -744,7 +746,7 @@ class BatteryCollector:
         )
 
 
-def not_applicable(check: Check, reason: str) -> BatteryResult:
+def not_applicable_result(check: Check, reason: str) -> BatteryResult:
     """Get the result of a check which is not applicable.
 
     Args:
@@ -784,7 +786,7 @@ class BatteryHook:
     A subclass names itself and overrides what it adds; every method adds
     nothing by default. A hook registers its checks
     (`sbmlsim.credibility.verification.register_check`) when its module is
-    imported. `not_applicable` leaves a variant out of a generic check.
+    imported. `BatteryHook.not_applicable` leaves a variant out of a generic check.
 
     Attributes:
         name: the name of the hook, e.g. `pk`.
@@ -930,6 +932,13 @@ def battery_settings(settings: BatterySettings, hook: BatteryHook | None) -> str
         f"{settings.absolute_tolerance:g}; every simulation from 0 to "
         f"{settings.horizon:g} on a grid of {settings.steps} intervals."
     )
+    if settings.steady_state:
+        text += " The model starts at its steady state, which is checked."
+    if settings.cross_simulator:
+        text += (
+            f" Second simulators: {', '.join(settings.engines)}, a compilation "
+            f"longer than {settings.compile_timeout:g} s is not compared."
+        )
     described = "" if hook is None else hook.describe()
     return f"{text} {described}" if described else text
 
@@ -1061,7 +1070,7 @@ def _rebuild(project: Project) -> BatteryResult:
         "the dates of the model history."
     )
     if project.factory is None or project.factory_dir is None:
-        return not_applicable(REBUILD, "The project has no factory.")
+        return not_applicable_result(REBUILD, "The project has no factory.")
     collector = BatteryCollector()
     with tempfile.TemporaryDirectory(prefix="sbmlsim-rebuild-") as tmp:
         out = Path(tmp)
@@ -1134,7 +1143,10 @@ def with_deadline(
     from sbmlsim import parallel
 
     if parallel.in_worker():
-        logger.warning("A worker of a pool calls %r without a deadline.", function)
+        logger.warning(
+            "A worker of a pool calls %s without a deadline.",
+            getattr(function, "__qualname__", function),
+        )
         return function(*args)
     pool = parallel.start_pool(1)
     try:
@@ -1238,7 +1250,7 @@ def _cross_simulator(
             if len(names) == 1
             else f"Neither {' nor '.join(names)} is installed"
         )
-        return not_applicable(
+        return not_applicable_result(
             CROSS_SIMULATOR,
             f"{missing}, install sbmlsim with the extra "
             + " or ".join(f"'{e}'" for e in settings.engines)
@@ -1326,7 +1338,7 @@ def _cross_simulator(
             s if s.endswith(".") else f"{s}." for s in skipped
         )
         if not collector.cases and not collector.problems:
-            return not_applicable(
+            return not_applicable_result(
                 CROSS_SIMULATOR,
                 "No case was compared. "
                 + " ".join(s if s.endswith(".") else f"{s}." for s in skipped),
@@ -1391,7 +1403,7 @@ def _with_left_out(
         return result
     text = " ".join(f"{v}: {reason.rstrip('.')}." for v, reason in left.items())
     if len(left) == variants:
-        return not_applicable(check, f"Not applicable to any variant. {text}")
+        return not_applicable_result(check, f"Not applicable to any variant. {text}")
     return dataclasses.replace(result, statement=f"{result.statement} Left out: {text}")
 
 
@@ -1458,7 +1470,7 @@ def run_battery(
             )
         )
     else:
-        results[STEADY_STATE.id] = not_applicable(
+        results[STEADY_STATE.id] = not_applicable_result(
             STEADY_STATE,
             "The model is not declared to start at its steady state "
             "(BatterySettings.steady_state), e.g. a decay or an oscillator.",
@@ -1470,22 +1482,24 @@ def run_battery(
             check,
             collector.result(check, _statement(check, settings))
             if collector.cases
-            else not_applicable(check, nothing),
+            else not_applicable_result(check, nothing),
         )
     results[CROSS_SIMULATOR.id] = (
         named(CROSS_SIMULATOR, _cross_simulator(applying(CROSS_SIMULATOR), settings))
         if cross_simulator and settings.cross_simulator
-        else not_applicable(CROSS_SIMULATOR, "Not run.")
+        else not_applicable_result(CROSS_SIMULATOR, "Not run.")
     )
     collector = BatteryCollector()
     _plausibility(project, applying(PLAUSIBILITY), collector, settings.bound_margin)
     results[PLAUSIBILITY.id] = named(
         PLAUSIBILITY, collector.result(PLAUSIBILITY, _statement(PLAUSIBILITY, settings))
     )
-    applying(REBUILD)
+    rebuilt = applying(REBUILD)
     results[REBUILD.id] = named(
         REBUILD,
-        _rebuild(project) if rebuild else not_applicable(REBUILD, "Not run."),
+        _rebuild(project)
+        if rebuild and (rebuilt or not runs)
+        else not_applicable_result(REBUILD, "Not run."),
     )
     sections: Mapping[str, Any] = {}
     if hook is not None:

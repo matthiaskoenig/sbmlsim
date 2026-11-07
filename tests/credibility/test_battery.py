@@ -127,6 +127,8 @@ def test_a_sound_model_passes(tmp_path: Path) -> None:
     assert battery.result(NON_NEGATIVITY).cases == 2
     assert battery.sections == {}
     assert battery.settings.startswith("roadrunner CVODE BDF, rtol 1e-10")
+    assert "steady state" in battery.settings
+    assert "Second simulators:" in battery.settings and "900 s" in battery.settings
 
 
 def test_the_accumulating_states(tmp_path: Path) -> None:

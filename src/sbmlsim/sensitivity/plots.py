@@ -146,6 +146,8 @@ def draw_boxes(
         showfliers = bool(mpl.rcParams["boxplot.showfliers"])
     if facecolors is not None and len(facecolors) != n:
         raise ValueError(f"{len(facecolors)} face colors for {n} boxes.")
+    if n == 0:
+        return
     line_keys = ("color", "linestyle", "linewidth")
     zorder = 2.0
     box = _rc_props("box", line_keys)
@@ -167,7 +169,7 @@ def draw_boxes(
             "linewidth",
         ),
     )
-    width = float(np.clip(0.15 * np.ptp(pos), 0.15, 0.5)) if n else 0.5
+    width = float(np.clip(0.15 * np.ptp(pos), 0.15, 0.5))
     stats = cbook.boxplot_stats(
         [np.asarray(d, dtype=float) for d in data],
         whis=mpl.rcParams["boxplot.whiskers"],

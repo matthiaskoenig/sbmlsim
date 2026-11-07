@@ -638,6 +638,14 @@ def test_a_heatmap_of_long_labels_has_room_for_them(
         assert extent.x0 >= 0 and extent.x1 <= figure.bbox.width, text.get_text()
 
 
+def test_no_boxes_draw_nothing() -> None:
+    """`draw_boxes` of no data returns without drawing."""
+    ax = Figure().subplots()
+    draw_boxes(ax, [])
+    assert not ax.patches
+    assert not ax.lines
+
+
 @pytest.mark.parametrize("n", [1, 2, 4])
 @pytest.mark.parametrize("filled", [False, True], ids=["lines", "filled"])
 def test_the_boxes_have_the_limits_and_ticks_of_boxplot(n: int, filled: bool) -> None:
