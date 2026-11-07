@@ -86,6 +86,7 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `uncertainty` | the propagation of an uncertainty analysis | blocks of draws | |
 | `factory` | the models built by the factory of the project, compared with the ones of the package | whole | |
 | `action` | an action of the project, an analysis of its own | whole | |
+| `credibility` | the assessment of the contexts of use of the project against its adopted fits, its record, tables and report | whole | `cross_validation`, `record` |
 
 A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds an analysis of the project:
 
@@ -222,6 +223,7 @@ The results of the kinds:
 | `uncertainty` | `checkpoint/<scenario>/draws-<start>-<stop>.nc` (the draws of the units), `uncertainty/` (the `UncertaintyResult`) |
 | `factory` | the files of the factory with the layout of the package, e.g. `models/toy.xml`; the files of the package are never written. The summary has the number of the compared outputs (`outputs`): the `factory_outputs` of the project (`declared` true), else, with a warning, the variants and every file the factory wrote which the package has (`declared` false); a rebuild with nothing to compare fails. `changed` names the compared outputs which differ from the ones of the package, an SBML file compared without the dates of its model history and an antimony file (`.ant`) without its `model created`/`model modified` lines |
 | `action` | what the action writes; the summary is the mapping the action returns, followed by its `action` |
+| `credibility` | `credibility/` (the record `credibility.json`, the tables and the report `index.html`, see [Credibility](#credibility)), with `lock` also `credibility.lock.json`; the summary has the verdict of every context of use (`verdicts`), the verified contexts (`verified`) and the state of the lock (`lock`) |
 
 The input `fit` of a kind is the output of a `fit` run, whose records are in its directory `<opid>`, or a directory of records itself, e.g. the output of an `identifiability` or `fisher` run, which copy the records of their fit, so a report shows the fit and its analyses from one directory. Every file is written atomically: a reader sees the old or the new file and never a partial one. A run never writes into the project: even `adopt` writes `adopted.json` and the record `fits/<opid>` into the output, which you copy into the directory of the fit records of the project (`fits_dir`) and commit to adopt the fit. A report of a project has its context: the title of the project and the adopted fits the fit kept fixed, as its records name them.
 
@@ -378,7 +380,7 @@ A relative path of a project (`variants`, `factory_dir`, `base_path`, `data_path
 | `fits_dir` | the directory of the records of the adopted fits, one directory per fit id, `adopted_record(fit_id)`; `fit_records()` reads them, the fitted values with their uncertainty which a factory gives its parameters, `fit_records().parameter("k", unit=U.per_min)` (`sbmlsim.fit.records.AdoptedRecords`) |
 | `adopted` | the file of the adopted fits, `{"fits": {"<subset>": "<fit id>"}}`, `adopted.json` in `fits_dir` without |
 | `credibility` | the declaration of the contexts of use of the model, `load_credibility()`, which checks its domains against the metadata of the project, see [Credibility](#credibility) |
-| `credibility_settings` | the domain of the credibility, `CredibilitySettings`: the metadata of the fit mappings (`metadata_type`, a class or a reference, `MappingMetaData` without), the fields of it a domain can claim (`domain_fields`, every enum field without) and the evidence extensions (`extensions`, objects or references); `domain_fields()` and `evidence_extensions()` resolve them |
+| `credibility_settings` | the domain of the credibility, `CredibilitySettings`: the metadata of the fit mappings (`metadata_type`, a class or a reference, `MappingMetaData` without), the fields of it a domain can claim (`domain_fields`, every enum field without) the evidence extensions (`extensions`, objects or references) and the battery hook (`battery`, an object or a reference); `domain_fields()`, `evidence_extensions()` and `battery_hook()` resolve them |
 | `scans` | the scans by their name, `ScanAnalysis`: the model, a function building the `Scan`, the observables, `time`, `keep`, `on_error` and, for a sensitivity analysis, `indices` (`local`, `sobol`, `fast` or `morris`) with `index_options` |
 | `uncertainties` | the uncertainty analyses by their name, `UncertaintyAnalysis`: the model, functions building the simulation or scenarios, the `UncertaintyModel` and the observables, and the arguments of [`propagate`](uncertainty.md) (`outputs`, `n` or the adaptive `rel_tol`, `n_start` and `n_max`, `design`, `seed`, `keep`, `time`, `on_error`) |
 | `sensitivities` | the sensitivity analyses of the model over the groups of its simulations by their name, the kind `sensitivity`: a `SensitivityRunner` of `sbmlsim.sensitivity.runner`, the runners of the subfolders of a model with several simulations by subfolder, or a reference `"module:attribute"` to either, resolved when it runs; `sensitivity(name)` gives it bound to the project (a runner without a project of its own runs the variants and the simulator settings of the project which lists it). A name is no name of a scan with indices |
@@ -441,6 +443,26 @@ PROJECT = Project(
 
 The evidence is selected from the data points of the adopted fits with the kinds their records stored (`evaluate_fits` evaluates them fresh, `mapping_table` lists the mappings without a simulation, `select` applies the declaration) and `check_declaration(project)` checks a declaration against the adopted fits without a simulation. The lock fixes the selection in advance: `write_lock(selections, fits, out)` writes `credibility.lock.json` into an out, which is reviewed and committed into the root of the project, where `lock_differences` compares the selection with it. The parameter uncertainty of the adopted fits is propagated to the decisive predictions with `propagate_fits` (`PropagationSettings`), the decisive points are checked with the declared variability of the subjects with `predictive_checks` (`VariabilitySettings`), and `cross_validate` refits an adopted fit without one training study at a time, whose result `write_cross_validation` writes into an out (`fits/<fit id>/cross_validation.json`, committed next to the record of the fit). A domain adds evidence of its own with an `EvidenceExtension` (e.g. the ratios between the arms of a study), registered in `CredibilitySettings.extensions`, which the selection, the assessment, the report and the scorecard call at the points the module `sbmlsim.credibility.extensions` states: its rules enter the verdict and the acceptance table of a context after the rules of the context, its statements of a factor of V&V 40 join the one of the core (`combine_factor`), its blocks follow a block of the card of a context in the report. A setting of an extension in a context (`ContextOfUse.extensions`) by a name of no extension of the project and a pairing of a ratio which no extension claims are problems of the declaration. The records keep the sections of the extensions in `extensions` and read the records of pkpdsim 0.17 to 0.19.
 
+The assessment (`assess(project)`) evaluates the adopted fits fresh and assesses every context of use on its decisive evidence (the calibration data for a description, C1, else the validation data): the acceptance rules, the coverage of the claimed domain and of the quantities of interest, the minimum of evaluable points and the verdict (`supported`, `supported with extrapolation`, `not supported`, `insufficient evidence`, `not verified`), with the factors of V&V 40. It verifies the decisive predictions (`verify`): every adopted fit is evaluated again with its tolerances divided by 100 and with the BDF of CVODE of at most order 2, the variants are checked by libsbml, and the battery of the variants (`run_battery`) checks the model without data: no species becomes negative, every state but the sinks stays at its start, AMICI and COPASI (each one which is installed, through `Simulator(engine=...)`) give the results of roadrunner, the initial state and the adopted fits are plausible, and the factory builds the models of the package again. A project adds the simulations and checks of its domain with a `BatteryHook` (`CredibilitySettings.battery`), e.g. the doses of every route and the mass balance of a PBPK model; the checks are open, a hook registers its own (`register_check`). A record (`CredibilityAssessment.to_json`) is read back with `from_json`, also a record of pkpdsim 0.17 to 0.19. `write_outputs` writes the record, the tables and the report, whose blocks of an extension follow the block of the card of a context they name; `scorecard` and `compare` read the records of many models into one table and its regressions against a baseline.
+
+The kind `credibility` assesses the project into `out/credibility/`:
+
+| field | default | meaning |
+| --- | --- | --- |
+| `verification` | `true` | verify the decisive predictions |
+| `battery` | `true` | run the battery of the checks of the variants with the verification |
+| `lock` | `false` | write the lock of the evidence into the out, `credibility.lock.json`, instead of comparing the evidence with the lock of the project; the lock of the project is never written |
+| `uncertainty` | `false` | propagate the parameter uncertainty of the adopted fits, `draws` (128) and `seed` (1234) of the propagation |
+| `variability` | `false` | check the decisive points with the declared variability of the subjects, `subjects` (64) and `studies` (16) |
+| `source_commit` | none | the commit of the source repository of a release, recorded in the provenance |
+
+Its input `cross_validation` is an out with `fits/<fit id>/cross_validation.json`, the cross-validations of the adopted fits instead of the ones of their records, and its input `record` is an earlier `credibility.json` (or an out of the kind), whose outputs are written again without an assessment:
+
+```bash
+python -m sbmlsim.run credibility credibility.yaml --out results/credibility
+python -m sbmlsim.run credibility credibility.yaml --out results/report --input record=results/credibility
+```
+
 ## Checks of a project
 
 `sbmlsim.project_checks` has the checks of a model package as functions, which its tests call, so a package keeps them wherever it lives; each raises an `AssertionError` naming every problem:
@@ -470,7 +492,7 @@ The known exceptions are the `checks` of the project, `CheckSettings`: `not_regi
 
 ## simrun
 
-[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds but `action` as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt`, `sbmlsim.factory` and so on; the extra `simrun` installs simrun, which needs python 3.14:
+[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds but `action` as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt`, `sbmlsim.factory`, `sbmlsim.credibility` and so on; the extra `simrun` installs simrun, which needs python 3.14:
 
 ```bash
 pip install "sbmlsim[simrun]"

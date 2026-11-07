@@ -1,7 +1,7 @@
 """The kinds of the run layer as task types of simrun.
 
 simrun runs the tasks of a workflow on a cluster; this module registers the
-eleven kinds of `python -m sbmlsim.run` (`sbmlsim.run`) as its task types
+twelve kinds of `python -m sbmlsim.run` (`sbmlsim.run`) as its task types
 `sbmlsim.<kind>`, entry points of the group `simrun.task_types` in the
 `pyproject.toml` of sbmlsim, see the plugins of simrun. The settings of a task
 are the spec of its kind, and `plan` is the plan of the kind, which simrun's
@@ -10,7 +10,8 @@ client calls before it submits a task.
 A splittable kind (`fit`, `identifiability`, `scan`, `sensitivity`,
 `uncertainty`) is split: simrun's workers compute its units with
 `sbmlsim.run.compute_unit` and its merge merges them with `sbmlsim.run.merge`.
-Every other kind (`simulate`, `fisher`, `report`, `petab`, `adopt`, `factory`)
+Every other kind (`simulate`, `fisher`, `report`, `petab`, `adopt`, `factory`,
+`credibility`)
 runs as the command
 (`simrun-exec` runs it, `{settings}`, `{out}` and `{input}` filled by simrun)
 
@@ -49,6 +50,7 @@ from simrun.plugins import ResourceHint, TaskPaths, TaskType
 
 from sbmlsim import run
 from sbmlsim.run.context import SUMMARY_FILE
+from sbmlsim.run.credibility_kinds import CredibilitySpec
 from sbmlsim.run.fit_kinds import (
     AdoptSpec,
     FisherSpec,
@@ -68,6 +70,7 @@ from sbmlsim.run.scan_kinds import (
 
 __all__ = [
     "ADOPT",
+    "CREDIBILITY",
     "FACTORY",
     "FISHER",
     "FIT",
@@ -184,6 +187,11 @@ def adopt_plan(settings: AdoptSpec) -> AdoptSpec:
 def factory_plan(settings: FactorySpec) -> FactorySpec:
     """Plan a build of the models of a project, see `sbmlsim.run.plan`."""
     return _plan("factory", settings)
+
+
+def credibility_plan(settings: CredibilitySpec) -> CredibilitySpec:
+    """Plan an assessment of the credibility, see `sbmlsim.run.plan`."""
+    return _plan("credibility", settings)
 
 
 def petab_plan(settings: PetabSpec) -> PetabSpec:
@@ -303,6 +311,7 @@ SENSITIVITY = _task_type("sensitivity")
 UNCERTAINTY = _task_type("uncertainty")
 ADOPT = _task_type("adopt")
 FACTORY = _task_type("factory")
+CREDIBILITY = _task_type("credibility")
 
 #: the task types by the name of their kind
 TASK_TYPES: dict[str, TaskType] = {
@@ -319,5 +328,6 @@ TASK_TYPES: dict[str, TaskType] = {
         UNCERTAINTY,
         ADOPT,
         FACTORY,
+        CREDIBILITY,
     )
 }

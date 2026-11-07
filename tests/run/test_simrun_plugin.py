@@ -52,6 +52,7 @@ KINDS = (
     "uncertainty",
     "adopt",
     "factory",
+    "credibility",
 )
 
 #: a fit of three repeats which stop after a few steps

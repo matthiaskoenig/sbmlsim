@@ -1,10 +1,29 @@
 """Hand-built tables of the data points of the toy credibility package."""
 
 from collections.abc import Mapping
+from types import MappingProxyType
 
 import pandas as pd
 
-from sbmlsim.credibility import FitTable
+from sbmlsim.credibility import (
+    BATTERY_CHECKS,
+    Battery,
+    BatteryResult,
+    BatteryStatus,
+    Check,
+    FitTable,
+    Provenance,
+    Verification,
+    VerificationSummary,
+)
+from sbmlsim.credibility.verification import (
+    CROSS_SIMULATOR,
+    INTEGRATOR,
+    LIMIT,
+    SCALE_FLOOR,
+    TIGHTENING,
+    TOLERANCES,
+)
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.helpers import FitMappings
 from sbmlsim.fit.metrics import metadata_dict
@@ -76,4 +95,95 @@ def fit_table(
         table=pd.DataFrame(rows),
         lookup=lookup,
         recorded_kinds={("DECAY", e, m): k for (e, m), k in KINDS.items()},
+    )
+
+
+#: the provenance of the assessments of hand-built tables
+PROVENANCE = Provenance(
+    model="credibility",
+    title="Toy model with every kind of evidence",
+    fits=["DECAY_fit"],
+    versions={"sbmlsim": "0.0.0"},
+    commit=None,
+    dirty=None,
+    date="2026-11-03T12:00:00+01:00",
+)
+
+
+def verification_of(
+    fits: FitTable,
+    factor: float = 1.0,
+    *,
+    factors: dict[Check, float] | None = None,
+    failures: dict[Check, dict[str, str]] | None = None,
+    problems: tuple[str, ...] = (),
+    limit: float = LIMIT,
+    battery: Battery | None = None,
+) -> Verification:
+    """Get a verification whose alternatives are the reference times a factor."""
+    factors = factors or {}
+    failures = failures or {}
+    ipred = fits.table["IPRED"].astype(float)
+    return Verification(
+        predictions=MappingProxyType(
+            {
+                check: ipred * factors.get(check, factor)
+                for check in (TOLERANCES, INTEGRATOR)
+            }
+        ),
+        failures=MappingProxyType(
+            {
+                check: MappingProxyType(failures.get(check, {}))
+                for check in (TOLERANCES, INTEGRATOR)
+            }
+        ),
+        summary=VerificationSummary(
+            tightening=TIGHTENING,
+            limit=limit,
+            scale_floor=SCALE_FLOOR,
+            fits=[
+                {
+                    "fit": "DECAY",
+                    "reference": "CVODE BDF, rtol 1e-06",
+                    "tolerances": "CVODE BDF, rtol 1e-08",
+                    "integrator": "CVODE BDF of order at most 2, rtol 1e-08",
+                }
+            ],
+            problems=list(problems),
+            battery=battery,
+        ),
+    )
+
+
+def battery_of(failed: Check | None = None) -> Battery:
+    """Get a battery without a simulation: the second simulator is not applicable.
+
+    Args:
+        failed: a check which fails with the problem `broken`, every other
+            check passes.
+    """
+    results = []
+    for check in BATTERY_CHECKS:
+        if check == CROSS_SIMULATOR:
+            status = BatteryStatus.NOT_APPLICABLE
+        elif check == failed:
+            status = BatteryStatus.FAILED
+        else:
+            status = BatteryStatus.PASSED
+        applicable = status is not BatteryStatus.NOT_APPLICABLE
+        results.append(
+            BatteryResult(
+                check=check,
+                status=status,
+                cases=4 if applicable else 0,
+                largest=1e-9 if applicable else float("nan"),
+                at="default: A" if applicable else "",
+                problems=("broken",) if status is BatteryStatus.FAILED else (),
+                statement=f"The check {check.id}.",
+            )
+        )
+    return Battery(
+        results=tuple(results),
+        sections={"doses": [{"variant": "default", "case": "dose", "end": 0.1}]},
+        settings="roadrunner CVODE BDF.",
     )
