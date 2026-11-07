@@ -136,3 +136,46 @@ def test_a_runner_compiles_its_models_at_its_level(tmp_path: Path) -> None:
         for model in models
         if isinstance(model, RoadrunnerSBMLModel)
     ] == [JitOptimization.O1]
+
+
+#: compiles the HCTZ model at the levels of the arguments in one process and
+#: prints the bytes of the timecourse of the last one
+_LEVELS_SCRIPT = """
+import sys
+import numpy as np
+from examples.hctz_fitting import MODEL_PATH
+from sbmlsim.model.model_roadrunner import load_roadrunner
+for level in sys.argv[1:]:
+    r = load_roadrunner(MODEL_PATH, level)
+    r.setValue("PODOSE_hctz", 25)
+    values = np.asarray(r.simulate(0, 1440, 20))
+    del r
+sys.stdout.write(values.tobytes().hex())
+"""
+
+
+def test_a_level_compiled_before_in_the_process_does_not_change_another() -> None:
+    """LLJIT reuses the code of an SBML it compiled before, also at another level.
+
+    The SBML carries its level, so an instance at `O2` after one at `O0` is an
+    `O2` one, bitwise; HCTZ integrates differently at the two levels.
+    """
+    import subprocess
+    import sys
+
+    root = Path(__file__).parents[2]
+
+    def timecourse(*levels: str) -> str:
+        result = subprocess.run(
+            [sys.executable, "-c", _LEVELS_SCRIPT, *levels],
+            capture_output=True,
+            text=True,
+            check=True,
+            cwd=root,
+            timeout=300,
+        )
+        return result.stdout
+
+    o2 = timecourse("O2")
+    assert timecourse("O0", "O2") == o2
+    assert timecourse("O0") != o2
