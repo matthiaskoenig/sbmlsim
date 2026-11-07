@@ -345,6 +345,24 @@ class SimulationExperiment:
                 unit_ids[uid] = next(iter(expressions.values()))
         return unit_ids
 
+    def variant_of(self, simulation: str) -> str | None:
+        """Get the variant of the model of the project a simulation runs on.
+
+        The hook of a framework which builds a model per group of subjects
+        (a variant of the model of a `Project`, e.g. a build per sex), which
+        `sbmlsim.run verify dump` stores per task, so that a study which moves to
+        another build is found. A class method of a subclass may implement it
+        as well. By default the experiment says nothing and `verify` takes the
+        variant whose file is the source of the model of the task.
+
+        Args:
+            simulation: the key of the simulation of a task.
+
+        Returns:
+            The name of the variant, `None` to leave it to the project.
+        """
+        return None
+
     def models(self) -> dict[str, AbstractModel | Path]:
         """Define model definitions.
 

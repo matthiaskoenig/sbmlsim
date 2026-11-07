@@ -7,11 +7,18 @@
     python -m sbmlsim.run merge <kind> <spec> --out DIR [--summary FILE]
         [--input PORT=PATH ...]
     python -m sbmlsim.run list <project> [--json] [--experiments]
+    python -m sbmlsim.run verify <subcommand> ...
 
 `--profile` anywhere after the program runs a command which writes into
 `--out` (`run`, `unit`, `merge`) under the sampling profiler of python 3.15 and
 writes the profile into `profiling/` of the output, see
 `sbmlsim.run.profiling`; with an older python it is a bad command line.
+
+`verify` is a family of commands which compare the results of local checkouts
+(`dump`, `compare`, `ranges`, `fits`, `definitions`, `settings`, `png`, `sbml`,
+`scorecard`, see `sbmlsim.verify`), not a kind: it writes only where it is told
+to and has its own exit codes (0 nothing differs, 1 a difference, 2 a command
+which cannot be run), imported when it runs.
 
 A kind is the name of a registered kind or `module:attribute` of a kind, a
 spec a YAML or JSON file, an input `PORT=PATH` split at the first `=`, also
@@ -198,6 +205,13 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also list the groups of experiments and every experiment",
     )
+    commands.add_parser(
+        "verify",
+        help="compare the results of checkouts: dump, compare, ranges, fits, "
+        "definitions, settings, png, sbml, scorecard (python -m sbmlsim.run "
+        "verify --help)",
+        add_help=False,
+    )
     return parser
 
 
@@ -273,6 +287,24 @@ def _profiled(args: argparse.Namespace, arguments: list[str]) -> int:
         return EXIT_USAGE
 
 
+def _verify(arguments: list[str]) -> int:
+    """Run the command `verify`, imported only now, see `sbmlsim.verify`.
+
+    Args:
+        arguments: the arguments after `verify`.
+
+    Returns:
+        The exit code of the subcommand.
+    """
+    from sbmlsim.verify.cli import verify
+
+    try:
+        return verify(arguments)
+    except Exception:
+        logger.exception("The command 'verify %s' failed.", " ".join(arguments))
+        return EXIT_ANALYSIS
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line.
 
@@ -287,6 +319,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = [argument for argument in arguments if argument != PROFILE_OPTION]
     if arguments and arguments[0] not in COMMANDS and not arguments[0].startswith("-"):
         arguments.insert(0, "run")
+    if arguments and arguments[0] == "verify":
+        if profile:
+            sys.stderr.write(
+                f"{PROFILE_OPTION} profiles the commands which write into --out, "
+                f"{sorted(PROFILED_COMMANDS)}, not 'verify'.\n"
+            )
+            return EXIT_USAGE
+        return _verify(arguments[1:])
     try:
         args = _parser().parse_args(arguments)
     except SystemExit as exit_:
