@@ -2073,11 +2073,14 @@ def load_project(ref: str) -> Project:
     return project
 
 
-def collect_figure_files(output_path: Path) -> Path:
+def collect_figure_files(output_path: Path, *, show: bool = True) -> Path:
     """Copy the static figures of a run of experiments into one directory.
 
     Args:
         output_path: the output of the run.
+        show: show the link of the directory on the console of the package;
+            a command whose stdout carries its result, e.g. the build of a
+            release, shows none.
 
     Returns:
         The directory of the figures, `FIGURES_DIR` of the output, which has
@@ -2091,7 +2094,8 @@ def collect_figure_files(output_path: Path) -> Path:
         for path in sorted(output_path.glob(f"**/*.{suffix}")):
             if path.parent != figures_dir:
                 shutil.copy2(path, figures_dir / path.name)
-    display.link("figures", figures_dir)
+    if show:
+        display.link("figures", figures_dir)
     return figures_dir
 
 

@@ -31,6 +31,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from sbmlsim.release.source import Runner, run
 from sbmlsim.run.cli import EXIT_ANALYSIS, EXIT_CONFIGURATION, EXIT_OK, EXIT_USAGE
 from sbmlsim.run.kinds import ConfigurationError
 
@@ -108,18 +109,20 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build(args: argparse.Namespace) -> int:
+def _build(args: argparse.Namespace, runner: Runner) -> int:
     """Run the kind `release` into the output."""
-    from sbmlsim.run import execute
+    from sbmlsim.release.workflow import execute_release
 
-    spec: dict[str, object] = {"project": args.project, "version": args.version}
-    if args.repository is not None:
-        spec["repository"] = str(args.repository.resolve())
-    if args.framework_path is not None:
-        spec["framework_path"] = str(args.framework_path.resolve())
     try:
-        summary = execute(
-            "release", spec, args.out, workers=args.workers, resume=args.resume
+        summary = execute_release(
+            args.project,
+            args.version,
+            args.out,
+            repository=args.repository,
+            framework_path=args.framework_path,
+            workers=args.workers,
+            resume=args.resume,
+            runner=runner,
         )
     except ConfigurationError as err:
         sys.stderr.write(f"{err}\n")
@@ -148,7 +151,7 @@ def _load(reference: str) -> Project:
         ) from err
 
 
-def _publish(args: argparse.Namespace) -> int:
+def _publish(args: argparse.Namespace, runner: Runner) -> int:
     """Publish the build of the output."""
     from sbmlsim.release.source import ReleaseError
     from sbmlsim.release.workflow import publish_release
@@ -159,7 +162,7 @@ def _publish(args: argparse.Namespace) -> int:
         sys.stderr.write(f"{err}\n")
         return EXIT_CONFIGURATION
     try:
-        publish_release(project, args.version, args.out)
+        publish_release(project, args.version, args.out, runner=runner)
     except ReleaseError as err:
         sys.stderr.write(f"python -m sbmlsim.release publish: error: {err}\n")
         return EXIT_REFUSED
@@ -167,11 +170,12 @@ def _publish(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(argv: Sequence[str] | None = None, *, runner: Runner = run) -> int:
     """Run the command line.
 
     Args:
         argv: the arguments without the program, `sys.argv[1:]` without.
+        runner: runs git, uv, the analyses of the build, docker and gh.
 
     Returns:
         The exit code, see the module.
@@ -181,5 +185,5 @@ def main(argv: Sequence[str] | None = None) -> int:
     except SystemExit as exit_:
         return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
     if args.command == "build":
-        return _build(args)
-    return _publish(args)
+        return _build(args, runner)
+    return _publish(args, runner)

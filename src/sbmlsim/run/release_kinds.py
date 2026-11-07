@@ -121,8 +121,9 @@ def _run_release(spec: ReleaseSpec, ctx: RunContext) -> dict[str, Any]:
     )
 
     project = _project(spec)
-    # the runner of the commands at the time of the run, which the tests replace
-    runner = source.run
+    # the runner of `sbmlsim.release.workflow.execute_release`, the real one
+    # without
+    runner = source.current_runner()
     try:
         prepared = prepare_release(
             project, spec.version, ctx.out, checkout=spec.repository, runner=runner

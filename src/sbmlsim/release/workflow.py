@@ -62,6 +62,7 @@ from sbmlsim.release.source import (
     source_framework,
     source_repo,
     stage,
+    using_runner,
 )
 
 if TYPE_CHECKING:
@@ -70,12 +71,16 @@ if TYPE_CHECKING:
 __all__ = [
     "REPOSITORY_DIR",
     "PreparedRelease",
+    "PublishableBuild",
     "Publisher",
     "ReleaseBuild",
     "build_release",
     "build_summary",
+    "check_build",
+    "execute_release",
     "prepare_release",
     "publish_release",
+    "publishable",
     "release_settings",
 ]
 
@@ -358,40 +363,53 @@ def build_summary(release: ReleaseBuild, path: Path) -> dict[str, Any]:
     }
 
 
-def publish_release(
-    project: Project,
-    version: str,
-    out: Path,
-    *,
-    runner: Runner = run,
-    publisher: Publisher = publish_steps,
-) -> list[str]:
-    """Publish the build of a release in an output.
+@dataclass(frozen=True)
+class PublishableBuild:
+    """The build of a release in an output which can be published.
+
+    Attributes:
+        settings: the complete release settings of the project.
+        path: the release repository of the output, `out/repository`.
+        archive: the COMBINE archive the GitHub release attaches.
+        resumed: whether `HEAD` is the release commit of the version, i.e. an
+            earlier publishing failed half way and resumes.
+    """
+
+    settings: ReleaseSettings
+    path: Path
+    archive: Path
+    resumed: bool
+
+
+def check_build(
+    project: Project, version: str, out: Path, *, runner: Runner = run
+) -> PublishableBuild:
+    """Check that an output holds the build of a release which can be published.
 
     The checks: the version is `X.Y.Z`, the release settings are complete and
-    name the archive, which the GitHub release attaches, the source repository
-    is clean and the release repository of the output is on `main` and up to
-    date without local commits. If `HEAD` is the release commit of the version
-    (clean, with its manifest) and its tag is missing or at `HEAD`, an earlier
-    publishing failed half way and resumes, whatever the source commit is now.
-    Otherwise the version must be greater than the last release and the
-    release repository must hold the build of this version from the current
-    source commit and framework, unchanged since (`matches`). Then the tools
-    are checked (`check_tools`), the lock must have released packages only
-    (`check_lock`) and the release is published (`publisher`).
+    name the archive, which the GitHub release attaches, the output has a
+    release repository, the source repository is clean and the release
+    repository of the output is on `main` and up to date without local
+    commits. If `HEAD` is the release commit of the version (clean, with its
+    manifest) and its tag is missing or at `HEAD`, an earlier publishing
+    failed half way and resumes, whatever the source commit is now; otherwise
+    the version must be greater than the last release and the release
+    repository must hold the build of this version from the current source
+    commit and framework, unchanged since (`matches`). The lock must have
+    released packages only (`check_lock`). The tools of the publishing are
+    not checked, see `publish_release`, and nothing is changed.
 
     Args:
         project: the project which is released.
         version: the version of the release.
         out: the output of the build, see `build_release`.
-        runner: runs git, docker and gh.
-        publisher: publishes the built release.
+        runner: runs git.
 
     Returns:
-        The steps of the publishing which ran.
+        The build.
 
     Raises:
-        ReleaseError: if a check or a step fails; the message is for the user.
+        ReleaseError: naming the first check which fails.
     """
     parse_version(version)
     settings = release_settings(project)
@@ -417,8 +435,111 @@ def publish_release(
                 f"source commit {source.commit[:10]} with {settings.framework} "
                 f"{framework_version}; build it again"
             )
-    check_tools(path, runner)
-    finish_build(path, runner)  # the tree is a finished build, a marker is stale
     check_lock(path)
-    stage(f"Publishing {settings.repository} {version}")
-    return publisher(settings, path, version, path / archive, runner)
+    return PublishableBuild(
+        settings=settings, path=path, archive=path / archive, resumed=resume
+    )
+
+
+def publishable(
+    project: Project, version: str, out: Path, *, runner: Runner = run
+) -> str | None:
+    """Tell whether an output holds the build of a release which can be published.
+
+    Args:
+        project: the project which is released.
+        version: the version of the release.
+        out: the output of the build.
+        runner: runs git.
+
+    Returns:
+        `None` for a build which can be published, else why not, the message
+        of the check which fails, see `check_build`.
+    """
+    try:
+        check_build(project, version, out, runner=runner)
+    except ReleaseError as err:
+        return str(err)
+    return None
+
+
+def publish_release(
+    project: Project,
+    version: str,
+    out: Path,
+    *,
+    runner: Runner = run,
+    publisher: Publisher = publish_steps,
+) -> list[str]:
+    """Publish the build of a release in an output.
+
+    The build is checked (`check_build`), then the tools of the publishing
+    (`check_tools`), a stale marker of a build is removed and the release is
+    published (`publisher`).
+
+    Args:
+        project: the project which is released.
+        version: the version of the release.
+        out: the output of the build, see `build_release`.
+        runner: runs git, docker and gh.
+        publisher: publishes the built release.
+
+    Returns:
+        The steps of the publishing which ran.
+
+    Raises:
+        ReleaseError: if a check or a step fails; the message is for the user.
+    """
+    build = check_build(project, version, out, runner=runner)
+    check_tools(build.path, runner)
+    finish_build(build.path, runner)  # the tree is a finished build, a marker is stale
+    stage(f"Publishing {build.settings.repository} {version}")
+    return publisher(build.settings, build.path, version, build.archive, runner)
+
+
+def execute_release(
+    project: str,
+    version: str,
+    out: Path,
+    *,
+    repository: Path | None = None,
+    framework_path: Path | None = None,
+    workers: int | None = None,
+    resume: bool = False,
+    runner: Runner = run,
+) -> dict[str, Any]:
+    """Build a release into an output with the kind `release` of the run layer.
+
+    `sbmlsim.run.execute` of the kind with the commands run by `runner`
+    (`sbmlsim.release.source.using_runner`), so the output has the records of
+    a run; `python -m sbmlsim.release build` calls it.
+
+    Args:
+        project: the project, `module:attribute`.
+        version: the version of the release.
+        out: the output of the build.
+        repository: a checkout of the release repository which is cloned
+            instead of the repository on GitHub; only read.
+        framework_path: a local checkout of the framework instead of the
+            released one.
+        workers: the number of workers of the simulations.
+        resume: build again into the output of an earlier build of the spec.
+        runner: runs git, uv and the analyses of the build.
+
+    Returns:
+        The summary of the run, see `build_summary`.
+
+    Raises:
+        ConfigurationError: for an invalid spec, an output in use or a
+            refused release.
+        ReleaseError: if a stage of the build fails.
+    """
+    from sbmlsim.run import execute
+
+    spec: dict[str, Any] = {"project": project, "version": version}
+    if repository is not None:
+        spec["repository"] = str(Path(repository).resolve())
+    if framework_path is not None:
+        spec["framework_path"] = str(Path(framework_path).resolve())
+    with using_runner(runner):
+        return execute("release", spec, out, workers=workers, resume=resume)

@@ -12,7 +12,13 @@ from sbmlsim.project import Project
 from sbmlsim.release import cli
 from sbmlsim.release import source as source_module
 from sbmlsim.release.settings import ReleaseSettings
-from sbmlsim.release.source import ReleaseError
+from sbmlsim.release.source import (
+    ReleaseError,
+    Runner,
+    current_runner,
+    using_runner,
+)
+from sbmlsim.release.workflow import execute_release
 from sbmlsim.run.context import RUN_FILE, SUMMARY_FILE
 from sbmlsim.run.kinds import ConfigurationError, get_kind
 from sbmlsim.run.release_kinds import ReleaseSpec
@@ -23,11 +29,9 @@ pytestmark = pytest.mark.usefixtures("git_env")
 
 
 @pytest.fixture
-def runner(monkeypatch: pytest.MonkeyPatch) -> FakeRunner:
+def runner() -> FakeRunner:
     """The fake runner of the commands of the kind."""
-    fake = FakeRunner()
-    monkeypatch.setattr(source_module, "run", fake)
-    return fake
+    return FakeRunner()
 
 
 def test_the_kind_is_registered() -> None:
@@ -61,8 +65,9 @@ def test_the_kind_builds_the_release_into_the_out(
     _, clone = remote_and_clone
     head = git(clone, "rev-parse", "HEAD")
     out = tmp_path / "out"
-    spec = {"project": REFERENCE, "version": VERSION, "repository": str(clone)}
-    summary = run.execute("release", spec, out, workers=2)
+    summary = execute_release(
+        REFERENCE, VERSION, out, repository=clone, workers=2, runner=runner
+    )
     assert summary["repository"] == "repository"
     assert summary["version"] == VERSION
     assert summary["framework"] == "sbmlsim"
@@ -73,9 +78,13 @@ def test_the_kind_builds_the_release_into_the_out(
     assert git(clone, "rev-parse", "HEAD") == head
     simulate = next(c for c in runner.commands if "specs/simulate.json" in c)
     assert simulate[-2:] == ["--workers", "2"]
-    # a resume builds again into the repository of the out
-    again = run.execute("release", spec, out, workers=2, resume=True)
+    # a resume builds again into the repository of the out, the kind runs the
+    # commands with the runner of the context
+    spec = {"project": REFERENCE, "version": VERSION, "repository": str(clone)}
+    with using_runner(runner):
+        again = run.execute("release", spec, out, workers=2, resume=True)
     assert again["files"] == summary["files"]
+    assert current_runner() is source_module.run
 
 
 def test_a_refused_release_is_a_configuration_error(
@@ -85,9 +94,8 @@ def test_a_refused_release_is_a_configuration_error(
     tmp_path: Path,
 ) -> None:
     (source_project.root / "new.txt").write_text("untracked\n", encoding="utf-8")
-    spec = {"project": REFERENCE, "version": VERSION}
     with pytest.raises(ConfigurationError, match="refused: commit the changes of"):
-        run.execute("release", spec, tmp_path / "out")
+        execute_release(REFERENCE, VERSION, tmp_path / "out", runner=runner)
     assert not runner.ran("sbmlsim.run")
 
 
@@ -137,23 +145,44 @@ def test_build_reports_a_refusal(
     assert cli.main(args) == 3
 
 
+def test_build_runs_the_commands_with_the_runner(
+    source_project: Project,
+    release_settings: ReleaseSettings,
+    remote_and_clone: tuple[Path, Path],
+    runner: FakeRunner,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """The command line passes its runner to the kind, no monkeypatching."""
+    _, clone = remote_and_clone
+    out = tmp_path / "out"
+    command = ["build", REFERENCE, "--version", VERSION, "--out", str(out)]
+    assert cli.main([*command, "--repository", str(clone)], runner=runner) == 0
+    assert runner.ran("specs/simulate.json")
+    assert (out / "repository" / "release.json").is_file()
+    assert capsys.readouterr().out.startswith(f"{out / 'repository'}\n")
+
+
 def test_publish_publishes_the_build(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    calls: list[tuple[Project, str, Path]] = []
+    calls: list[tuple[Project, str, Path, Runner]] = []
 
-    def publish(project: Project, version: str, out: Path) -> list[str]:
-        calls.append((project, version, out))
+    def publish(
+        project: Project, version: str, out: Path, *, runner: Runner
+    ) -> list[str]:
+        calls.append((project, version, out, runner))
         return []
 
     monkeypatch.setattr("sbmlsim.release.workflow.publish_release", publish)
     args = ["publish", "tests.project_toy:PROJECT", "--version", VERSION]
-    assert cli.main([*args, "--out", str(tmp_path)]) == 0
-    ((project, version, out),) = calls
-    assert (project.name, version, out) == ("toy", VERSION, tmp_path)
+    fake = FakeRunner()
+    assert cli.main([*args, "--out", str(tmp_path)], runner=fake) == 0
+    ((project, version, out, runner),) = calls
+    assert (project.name, version, out, runner) == ("toy", VERSION, tmp_path, fake)
     assert capsys.readouterr().out == f"Released {VERSION} from {tmp_path}.\n"
 
-    def refuse(*args: object) -> list[str]:
+    def refuse(*args: object, **kwargs: object) -> list[str]:
         raise ReleaseError("the build is stale")
 
     monkeypatch.setattr("sbmlsim.release.workflow.publish_release", refuse)

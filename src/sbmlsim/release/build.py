@@ -514,7 +514,7 @@ def build(
             source = source / below
         _replace(_require(source, " ".join(step.command())), release_path / target)
         if step.kind == "simulate":
-            collect_figure_files(release_path / target)
+            collect_figure_files(release_path / target, show=False)
         written.append(Path(target))
 
     fits_dir = release_path / BuildPaths.FITS

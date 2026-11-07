@@ -25,8 +25,10 @@ from sbmlsim.release.workflow import (
     ReleaseBuild,
     build_release,
     build_summary,
+    check_build,
     prepare_release,
     publish_release,
+    publishable,
 )
 from tests.project_toy import TOY_PATH
 from tests.release.fakes import (
@@ -570,3 +572,38 @@ def test_first_release_into_an_empty_repository(
     assert (path / "README.md").is_file()
     notes = (path / "release-notes" / f"{VERSION}.md").read_text(encoding="utf-8")
     assert "First release." in notes
+
+
+def test_check_build_tells_whether_an_out_can_be_published(
+    model: Project, out: Path, clone: Path
+) -> None:
+    """The check which `publish_release` makes before it publishes."""
+    runner = FakeRunner()
+    assert publishable(model, VERSION, out, runner=runner) == (
+        f"{out} holds no build of a release, build it first with the kind "
+        "release (python -m sbmlsim.release build)."
+    )
+    path = build(model, out, clone)
+    checked = check_build(model, VERSION, out, runner=runner)
+    assert checked.path == path
+    assert checked.archive == path / "toy.omex"
+    assert checked.resumed is False
+    assert model.release is not None
+    assert checked.settings == model.release
+    assert publishable(model, VERSION, out, runner=runner) is None
+    assert not runner.ran("docker") and not runner.ran("gh")
+    (path / "docs" / "index.md").write_text("edited by hand\n", encoding="utf-8")
+    reason = publishable(model, VERSION, out, runner=runner)
+    assert reason is not None
+    assert "no unchanged build" in reason
+    with pytest.raises(ReleaseError, match="no unchanged build"):
+        check_build(model, VERSION, out, runner=runner)
+
+
+def test_check_build_of_a_resumed_publishing(
+    model: Project, out: Path, clone: Path
+) -> None:
+    path = build(model, out, clone)
+    commit_release(path, tag=True)
+    commit_source(model)
+    assert check_build(model, VERSION, out, runner=FakeRunner()).resumed is True
