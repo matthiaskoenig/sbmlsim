@@ -152,6 +152,45 @@ def test_events_at_t0_fire_once() -> None:
     assert _p1(model) == pytest.approx(expected)
 
 
+#: an event with a delay of the start which a pre-initialization of `P1`
+#: makes true
+DELAYED_DOSE = """
+model delayed_dose
+  P1 = 0
+  Q = 0
+  n = 0
+  E: at 1 after (P1 > 1), t0=false: Q = P1, n = n + 1
+end
+"""
+
+
+def _dose(model: RoadrunnerSBMLModel) -> list[list[float]]:
+    r = model.r_loaded
+    r.timeCourseSelections = ["time", "Q", "n"]
+    values = np.array(r.simulate(0, 2, 3))[:, 1:].tolist()
+    model.simulated()
+    return values
+
+
+def test_a_delayed_event_of_the_start_fires_once_with_the_pre_initialization() -> None:
+    """A delayed event which a pre-initialization makes true fires once, at its delay.
+
+    Every initialization fires the events of the time 0 with its own values
+    (#439) and queues a delayed one; the queue is emptied before an
+    initialization without a simulation since the last one, the load
+    included, so the event fires once with the values of the last one.
+    """
+    model = RoadrunnerSBMLModel(source=sbml(DELAYED_DOSE))
+    model.initialize([_a("P1", 3.0)])
+    model.initialize([_a("P1", 4.0)])
+    assert _dose(model) == [[0.0, 0.0], [4.0, 1.0], [4.0, 1.0]]
+    model.initialize([_a("P1", 4.0)])
+    model.initialize([])
+    assert _dose(model) == [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]]
+    model.initialize([_a("P1", 2.0)])
+    assert _dose(model) == [[0.0, 0.0], [2.0, 1.0], [2.0, 1.0]]
+
+
 def test_values_of_an_initialization_without_simulation_are_restored() -> None:
     """Two initializations without a simulation do not leak into each other."""
     model = RoadrunnerSBMLModel(source=sbml())

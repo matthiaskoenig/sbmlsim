@@ -66,11 +66,6 @@ Known differences to roadrunner:
 - roadrunner evaluates the triggers of the events when the model is
   initialized, at the time 0, also for a simulation from a negative start;
   COPASI evaluates them at the start.
-- An event whose trigger is false before the time 0 and which a
-  pre-initialization makes true, e.g. a dose `dose > 0` with `dose` set
-  before the initialization, fires at the start in COPASI and AMICI, as in
-  libroadrunner after `resetAll` and in the SBML Test Suite; the executor of
-  roadrunner does not fire it (#439).
 - roadrunner fires a delayed event of the model late in the steps of the
   integrator, at the end of the next step of CVODE (roadrunner #1382);
   COPASI at its time.
@@ -769,8 +764,8 @@ def start_events(model: CopasiSBMLModel, time: float) -> None:
     start, so the output at the start has the state after them; COPASI
     does not fire them, their triggers are true before the time 0 in the
     SBML it loads, see `CopasiSBMLModel.start_events`. Also an event which a
-    pre-initialization makes true, e.g. a dose `dose > 0`, fires, which the
-    executor of roadrunner does not (#439).
+    pre-initialization makes true, e.g. a dose `dose > 0`, fires, as in
+    roadrunner (#439).
 
     Args:
         model: the model, initialized.

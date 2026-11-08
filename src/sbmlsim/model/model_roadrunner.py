@@ -75,6 +75,44 @@ def reset_all(r: roadrunner.RoadRunner) -> None:
     _roadrunner.RoadRunner_reset(r, RESET_ALL)
 
 
+def reset_values(r: roadrunner.RoadRunner) -> None:
+    """Reset a model to its initial values without the events at the time 0.
+
+    `reset_all` resets the model and then fires the events whose trigger is
+    false before the time 0 and true at it, with the values of the reset; the
+    values of a pre-initialization, which are set after the reset, are not
+    seen by them (#439). This is the reset of the model alone, which leaves
+    the time of the model before the time 0, so that `fire_initial_events`
+    evaluates the triggers with the values set after it.
+
+    Args:
+        r: the roadrunner instance.
+    """
+    r.getIntegrator().setIntegrationStartTime(0.0)
+    r.model.setIntegrationStartTime(0.0)
+    _roadrunner.ExecutableModel_reset(r.model, RESET_ALL)
+
+
+def fire_initial_events(r: roadrunner.RoadRunner) -> None:
+    """Fire the events at the time 0 with the current values, as `reset_all` does.
+
+    The time of the model is set before the time 0, where roadrunner takes
+    the trigger of an event as its initial value, and the integrator is
+    restarted at the time 0, which evaluates the triggers there: an event
+    whose trigger is false before and true at the time 0 fires (an event
+    with a delay is queued), with the current values, also the ones a
+    pre-initialization set (#439). The integration start times are 0 as in
+    `reset_all`.
+
+    Args:
+        r: the roadrunner instance.
+    """
+    r.getIntegrator().setIntegrationStartTime(0.0)
+    r.model.setIntegrationStartTime(0.0)
+    _roadrunner.ExecutableModel_setTime(r.model, -np.inf)
+    _roadrunner.Integrator_restart(r.getIntegrator(), 0.0)
+
+
 def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
     """Apply an event which the integrator keeps pending after a simulation.
 
@@ -335,10 +373,27 @@ class RoadrunnerSBMLModel(SBMLModel):
         #: the values of the instance of roadrunner as loaded (a weak
         #: reference), which a reset restores, see `_loaded_state`
         self._state_of: tuple[weakref.ref[roadrunner.RoadRunner], _State] | None = None
-        self._loaded_state()
         #: whether the model has an event with a delay, which can still be
         #: pending when a simulation ends, see `discard_pending_events`
         self._delayed_events: bool = any(e.delayed for e in self.symbols.events)
+        #: whether the model has an event with a delay which can fire at the
+        #: time 0, which every initialization queues, see `initialize`
+        self._delayed_initial_events: bool = any(
+            e.delayed and not e.initial_value for e in self.symbols.events
+        )
+        #: whether events at the time 0 were queued since the last simulation
+        #: or regeneration, the load counts as one, see `initialize`
+        self._initial_events_queued: bool = True
+        if self.r is not None and self.symbols.events:
+            # the load fired the events at the time 0 with the values as
+            # loaded; the values as loaded are the ones before them, which an
+            # initialization fires with its own values (#439), and the model
+            # is left as roadrunner loaded it
+            reset_values(self.r)
+            self._loaded_state()
+            fire_initial_events(self.r)
+        else:
+            self._loaded_state()
         #: the time of roadrunner the last simulation since the load or the
         #: last regeneration reached, `inf` before any, see
         #: `discard_pending_events`
@@ -401,13 +456,23 @@ class RoadrunnerSBMLModel(SBMLModel):
         evaluated again, in their order, from the assignment rule of their
         helper parameter, which roadrunner evaluates on the current values.
 
-        roadrunner queues the events which fire at the time 0 with every
-        reset, a loaded model counts as one, and a simulation fires them once:
-        a second reset without a simulation in between fires them twice (case
-        01757 of the SBML Test Suite). A model which was not simulated since
-        its last reset is therefore not reset again, the values as loaded are
-        set back instead (the values of an earlier initialization included),
-        see `_reset`; `simulated` records a simulation.
+        roadrunner's reset fires the events at the time 0 with the values of
+        the reset, before the values of a pre-initialization are set, so an
+        event whose trigger they make true would not fire and one whose
+        trigger they make false would (#439). The model is therefore reset
+        without these events (`reset_values`), and they fire after the values
+        are set (`fire_initial_events`): an event whose trigger is false
+        before the time 0 and true at it fires once per initialization, with
+        the values of the pre-initialization, as in libroadrunner when the
+        values are set before the reset, and the output at the start is the
+        state after it. A model which was not simulated since its last reset
+        is not reset again, the values as loaded, the ones before the events
+        at the time 0, are set back instead (the values of an earlier
+        initialization and its events included), see `_reset`; `simulated`
+        records a simulation. An event with a delay is queued when it fires
+        at the time 0 and a reset keeps the queue, so a model with such an
+        event is generated again before it is initialized again without a
+        simulation in between, the load included, which empties the queue.
 
         A compartment keeps the concentration of the species whose initial
         value is a concentration, as at the initialization of SBML, and of a
@@ -423,6 +488,8 @@ class RoadrunnerSBMLModel(SBMLModel):
             assignments: the pre-initialization assignments of a plan. A
                 formula reads the parameters after the values are set.
         """
+        if self._delayed_initial_events and self._initial_events_queued:
+            self._regenerate()
         self._reset()
         r = self.r_loaded
         symbols = self.symbols
@@ -495,6 +562,10 @@ class RoadrunnerSBMLModel(SBMLModel):
             else:
                 self._set(entity, value)
             changed.add(entity)
+        # also without events, which sets the time to 0 and restarts the
+        # integrator, as roadrunner's reset does
+        fire_initial_events(r)
+        self._initial_events_queued = True
 
     def _reset(self) -> None:
         """Set the model to the state it was loaded in, bitwise, see `initialize`.
@@ -502,10 +573,12 @@ class RoadrunnerSBMLModel(SBMLModel):
         After a simulation roadrunner resets the model and the values which
         its reset misses are set back (`_restore_loaded_state`); the
         parameters and the compartments as loaded are set before the reset as
-        well, which evaluates the initial values with them (#318). A model
-        which was not simulated since its last reset, i.e. initialized at
-        most, is not reset again (the events at the time 0), every value
-        which differs from the model as loaded is set back instead (#322):
+        well, which evaluates the initial values with them (#318). The reset
+        fires no events, the values as loaded are the ones before the events
+        at the time 0, which `initialize` fires (#439). A model which was not
+        simulated since its last reset, i.e. initialized at most, is not
+        reset again, every value which differs from the model as loaded is
+        set back instead (#322):
         the amount of a species, which roadrunner reads and writes through
         the current volume of its compartment, is the amount as loaded, also
         when an initialization changed the volume and the species.
@@ -519,7 +592,7 @@ class RoadrunnerSBMLModel(SBMLModel):
             # parameters and compartments, which are the ones as loaded first
             # (#318)
             self._restore_loaded_state(species=False)
-            reset_all(r)
+            reset_values(r)
             self._reset_pending = True
         self._restore_loaded_state()
 
@@ -534,8 +607,9 @@ class RoadrunnerSBMLModel(SBMLModel):
         that nothing which reads the model later sees them (#315). Every
         parameter, compartment and species amount which is not the variable
         of an assignment rule is the one of the model as loaded afterwards,
-        see `_reset`; roadrunner resets the model once per simulation, see
-        `initialize`.
+        see `_reset`, the values before the events at the time 0, which the
+        next initialization fires; roadrunner resets the model once per
+        simulation, see `initialize`.
         """
         self._reset()
 
@@ -649,6 +723,7 @@ class RoadrunnerSBMLModel(SBMLModel):
         simulation reached is kept, see `discard_pending_events`.
         """
         self._reset_pending = False
+        self._initial_events_queued = False
         self._reached = float(self.r_loaded.model.getTime())
 
     def discard_pending_events(self, horizon: float) -> None:
@@ -676,6 +751,13 @@ class RoadrunnerSBMLModel(SBMLModel):
         """
         if not self._delayed_events or horizon <= self._reached:
             return
+        self._regenerate()
+
+    def _regenerate(self) -> None:
+        """Generate the model again, which empties the queue of its events.
+
+        See `discard_pending_events` and `initialize`.
+        """
         r = self.r_loaded
         selections = list(r.timeCourseSelections)
         try:
@@ -686,6 +768,7 @@ class RoadrunnerSBMLModel(SBMLModel):
             r.timeCourseSelections = selections
             self._set_absolute_tolerance(self.absolute_tolerance)
         self._reset_pending = False
+        self._initial_events_queued = False
         self._reached = np.inf
 
     def _set(self, selection: str, value: float) -> None:

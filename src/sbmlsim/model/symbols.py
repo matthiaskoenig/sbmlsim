@@ -44,6 +44,9 @@ class EventSymbols:
         priority: the MathML of the priority, or `None` without a priority.
         use_values_from_trigger_time: evaluate assignments when triggered.
         persistent: keep the event when its trigger becomes false.
+        initial_value: the value of the trigger before the time 0, an event
+            whose trigger is false then and true at the start fires at the
+            start.
     """
 
     eid: str
@@ -53,6 +56,7 @@ class EventSymbols:
     priority: str | None = None
     use_values_from_trigger_time: bool = True
     persistent: bool = True
+    initial_value: bool = True
 
 
 class TargetKind(StrEnum):
@@ -436,4 +440,5 @@ def _event_symbols(
         else None,
         use_values_from_trigger_time=event.getUseValuesFromTriggerTime(),
         persistent=trigger.getPersistent() if trigger is not None else True,
+        initial_value=trigger.getInitialValue() if trigger is not None else True,
     )

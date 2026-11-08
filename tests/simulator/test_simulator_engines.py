@@ -352,19 +352,30 @@ def _first_row(result: ScanResult) -> dict[str, float]:
     return {name: float(result.ds[name].values[0]) for name in ("total", "n")}
 
 
+#: every engine, roadrunner first
+ENGINES = [Engine.ROADRUNNER, *OTHER_ENGINES]
+
+
+def _engine(engine: Engine) -> Engine:
+    """Skip a test of an engine whose extra is not installed."""
+    if engine is not Engine.ROADRUNNER:
+        require(engine)
+    return engine
+
+
 @pytest.mark.parametrize(("case", "times"), START_CASES, ids=START_IDS)
 @pytest.mark.parametrize("reset", ["", ", dose = 0"], ids=["kept", "reset"])
+@pytest.mark.parametrize("engine", ENGINES, ids=str)
 def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
-    other_engine: Engine, reset: str, case: str, times: bool
+    engine: Engine, reset: str, case: str, times: bool
 ) -> None:
     """A dose of the pre-initialization fires at the start, its row has the state after it.
 
-    COPASI and AMICI fire it as raw libroadrunner after `resetAll` and the
-    SBML Test Suite do, with a presimulation at its start, the time 0; the
-    executor of roadrunner does not fire it (#439).
+    Every engine fires it as raw libroadrunner after `resetAll` and the SBML
+    Test Suite do, with a presimulation at its start, the time 0 (#439).
     """
     res = _engine_run(
-        other_engine,
+        _engine(engine),
         DOSE_EVENT.replace("RESET", reset),
         _start_simulation(case, times, {"dose": 10}),
     )
@@ -383,6 +394,62 @@ def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
         np.testing.assert_allclose(total[finite], expected, rtol=1e-5)
         if not np.all(finite):
             assert total[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+#: a dose every `tau` from `tn`, of the amount `dose`
+PERIODIC_DOSE = """
+model periodic_dose
+  tn = 0
+  tau = 5
+  dose = 100
+  n = 0
+  total = 0
+  total' = -0.1 * total
+  E: at (time >= tn), t0=false: total = total + dose, tn = tn + tau, n = n + 1
+end
+"""
+
+
+@pytest.mark.parametrize("times", [True, False], ids=["times", "steps"])
+@pytest.mark.parametrize("engine", ENGINES, ids=str)
+def test_a_pre_initialization_moves_an_event_of_the_start(
+    engine: Engine, times: bool
+) -> None:
+    """An event of the start fires with the values of the pre-initialization.
+
+    roadrunner fired the events of the time 0 with the values as loaded
+    before the pre-initialization was set, i.e. the first dose at 0 instead
+    of at the moved time (#439).
+    """
+    res = _engine_run(
+        _engine(engine), PERIODIC_DOSE, _start_simulation("start", times, {"tn": 1})
+    )
+    assert _first_row(res) == {"total": 0.0, "n": 0.0}
+    time = res.ds["time"].values
+    n = res.ds["n"].values
+    assert n[-1] == 1.0
+    # the rows of the event at 1 aside, which the engines place differently
+    np.testing.assert_array_equal(n[time < 1 - 1e-6], 0.0)
+    after = time > 1 + 1e-6
+    np.testing.assert_allclose(
+        res.ds["total"].values[after],
+        100.0 * np.exp(-0.1 * (time[after] - 1)),
+        rtol=1e-5,
+    )
+
+
+@pytest.mark.parametrize("engine", ENGINES, ids=str)
+def test_an_event_of_the_start_assigns_the_values_of_the_pre_initialization(
+    engine: Engine,
+) -> None:
+    """The dose of an event of the start is the one of the pre-initialization (#439)."""
+    res = _engine_run(
+        _engine(engine),
+        PERIODIC_DOSE,
+        _start_simulation("presimulation", True, {"dose": 0}),
+    )
+    np.testing.assert_array_equal(res.ds["n"].values, 1.0)
+    np.testing.assert_allclose(res.ds["total"].values, 0.0, atol=1e-12)
 
 
 @pytest.mark.parametrize(
