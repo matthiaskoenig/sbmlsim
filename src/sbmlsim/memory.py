@@ -7,9 +7,11 @@ for a large model (the creatinine model of pkdb_models at `O0`), and a run of
 experiments frees the arrays of its results, which glibc allocates in its heap
 once their size is below its dynamic threshold of `mmap`. A process which
 loads several models or runs several experiments held this memory until it
-ended. `release_freed_memory` returns it (`malloc_trim`), which costs a few
-milliseconds, after a model was compiled and after the results of an
-experiment were released.
+ended. `release_freed_memory` returns it (`malloc_trim`) after a model was
+compiled and after the results of an experiment were released. Its cost grows
+with the free memory of the heap, from microseconds for a heap without freed
+memory to about 0.3 s for 10 GB of freed small allocations, small against the
+compilation and the experiment which freed it.
 
 The module imports the standard library only.
 """

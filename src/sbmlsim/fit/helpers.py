@@ -191,6 +191,32 @@ class FitMappings:
             for experiment_id, experiment in self.runner.experiments.items()
         }
 
+    @classmethod
+    def for_project(
+        cls,
+        project: Project,
+        experiment_classes: Iterable[type[SimulationExperiment]],
+    ) -> FitMappings:
+        """Instantiate the experiments of a project, as its runs do.
+
+        The experiments get the paths of the project (its `base_path`, else its
+        `root`, and its `data_path`) and its models are compiled at its level
+        (`SimulatorSettings.jit_optimization`).
+
+        Args:
+            project: the project.
+            experiment_classes: simulation experiment classes with fit mappings.
+
+        Returns:
+            The fit mappings of the experiments.
+        """
+        return cls(
+            experiment_classes=experiment_classes,
+            base_path=project.base_path or project.root,
+            data_path=project.data_path,
+            jit_optimization=project.simulator.jit_optimization,
+        )
+
     @property
     def experiments(self) -> dict[str, SimulationExperiment]:
         """The instantiated simulation experiments by id."""
@@ -361,10 +387,9 @@ def select_mappings(
 ) -> dict[str, list[FitMappingCollection]]:
     """Select the data of a fit of a project, see `FitMappings.select`.
 
-    The experiments are created with the paths of the project (its
-    `base_path`, else its `root`, and its `data_path`) and its models compiled
-    at its level (`SimulatorSettings.jit_optimization`); the counts of the
-    selected mappings per experiment and kind are printed.
+    The experiments are created as the runs of the project create them
+    (`FitMappings.for_project`); the counts of the selected mappings per
+    experiment and kind are printed.
 
     Args:
         project: the project.
@@ -376,12 +401,7 @@ def select_mappings(
     Returns:
         The fit mapping collections of all kinds by experiment id.
     """
-    fit_mappings = FitMappings(
-        experiment_classes=experiment_classes,
-        base_path=project.base_path or project.root,
-        data_path=project.data_path,
-        jit_optimization=project.simulator.jit_optimization,
-    )
+    fit_mappings = FitMappings.for_project(project, experiment_classes)
     selection = fit_mappings.select(
         filters=filters, outliers=outliers, validation=validation, print_info=False
     )
