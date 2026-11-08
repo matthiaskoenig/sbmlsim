@@ -35,7 +35,10 @@ nav = [
     { "PEtab" = "petab.md" },
     { "PEtab SciML" = "petab_sciml.md" },
   ] },
-  { "Analyses" = "run.md" },
+  { "Analyses & workflows" = [
+    { "Analyses" = "run.md" },
+    { "Workflows with simrun" = "simrun.md" },
+  ] },
   { "Projects & releases" = [
     { "Projects" = "project.md" },
     { "Credibility" = "credibility.md" },

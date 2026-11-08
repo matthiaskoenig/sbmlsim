@@ -1185,7 +1185,7 @@ class FitReport:
 
         Args:
             results_dir: directory of the report, the files are relative to it.
-            name: name of the report.
+            name: name of the report, its directory.
             document: the report document of the tab "Report", the `document`
                 of the plots of `results_dir` by default.
             pdf_error: the reason the PDF of the document could not be
@@ -1197,6 +1197,9 @@ class FitReport:
         plots_dir = results_dir / "plots"
         if document is None:
             document = self.document(plots_dir)
+        # the heading is the id of the fit, not the directory of the report,
+        # which e.g. the run layer names `report`
+        fit_id = self.opt_result.sid if self.opt_result else self.problem.opid
         counts = self.problem.mapping_counts()
         # the data the model does not describe is not resolved, so it has no
         # rows, no metrics and no figures: it is not part of the report
@@ -1376,9 +1379,10 @@ class FitReport:
                 for file, label in DOCUMENT_FILES
                 if (results_dir / file).exists()
             ],
-            "title": f"{name} | sbmlsim fit report",
-            "fit_id": name,
-            "opid": self.problem.opid,
+            "title": f"{fit_id} | sbmlsim fit report",
+            "fit_id": fit_id,
+            # the id of the problem under the id of the fit, unless the same
+            "opid": "" if self.problem.opid == fit_id else self.problem.opid,
             "version": __version__,
             "created": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "badges": badges,

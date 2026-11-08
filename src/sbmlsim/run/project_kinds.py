@@ -214,11 +214,16 @@ FACTORY: Kind[FactorySpec] = Kind(
     run=_run_factory,
     plan=_plan_factory,
     uses_cores=False,
+    description="Build the models of a project",
 )
 
 #: an action of a project
 ACTION: Kind[ActionSpec] = Kind(
-    name="action", spec=ActionSpec, run=_run_action, plan=_plan_action
+    name="action",
+    spec=ActionSpec,
+    run=_run_action,
+    plan=_plan_action,
+    description="Run an action of a project",
 )
 
 for _kind in (FACTORY, ACTION):

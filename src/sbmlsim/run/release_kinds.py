@@ -144,7 +144,11 @@ def _run_release(spec: ReleaseSpec, ctx: RunContext) -> dict[str, Any]:
 
 #: the build of a release of a project into the out
 RELEASE: Kind[ReleaseSpec] = Kind(
-    name="release", spec=ReleaseSpec, run=_run_release, plan=_plan_release
+    name="release",
+    spec=ReleaseSpec,
+    run=_run_release,
+    plan=_plan_release,
+    description="Build the release of a model package",
 )
 
 register(RELEASE)

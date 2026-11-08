@@ -69,6 +69,7 @@ from sbmlsim.run.kinds import (
     Spec,
     SplitSpec,
     load_project_ref,
+    planned,
     register,
 )
 from sbmlsim.run.units import MissingUnits, unit_blocks
@@ -130,7 +131,7 @@ class ScanSpec(SplitSpec):
 
     project: str
     analysis: str
-    scan_hash: str | None = None
+    scan_hash: str | None = planned()
 
 
 class SensitivitySpec(ScanSpec):
@@ -153,7 +154,7 @@ class SensitivitySpec(ScanSpec):
 
     analyses: list[str] | None = None
     subfolders: list[str] | None = None
-    run_plan: dict[str, Any] | None = None
+    run_plan: dict[str, Any] | None = planned()
 
 
 class UncertaintySpec(SplitSpec):
@@ -1265,6 +1266,7 @@ SCAN: Kind[ScanSpec] = Kind(
     compute_unit=_compute_scan_unit,
     merge=_merge_scan,
     cost_setting="analysis",
+    description="Parameter scan of a project, split into blocks",
 )
 
 #: the sensitivity indices of a scan of a project, split as the scan, or a
@@ -1277,6 +1279,7 @@ SENSITIVITY: Kind[SensitivitySpec] = Kind(
     compute_unit=_compute_sensitivity_unit,
     merge=_merge_sensitivity,
     cost_setting="analysis",
+    description="Sensitivity analysis of a project",
 )
 
 #: an uncertainty analysis of a project, split into blocks of draws
@@ -1288,11 +1291,16 @@ UNCERTAINTY: Kind[UncertaintySpec] = Kind(
     compute_unit=_compute_uncertainty_unit,
     merge=_merge_uncertainty,
     cost_setting="analysis",
+    description="Uncertainty propagation of a project",
 )
 
 #: the simulation experiments of a project and their report
 SIMULATE: Kind[SimulateSpec] = Kind(
-    name="simulate", spec=SimulateSpec, run=_run_simulate, plan=_plan_simulate
+    name="simulate",
+    spec=SimulateSpec,
+    run=_run_simulate,
+    plan=_plan_simulate,
+    description="Simulation experiments of a project",
 )
 
 for _kind in (SCAN, SENSITIVITY, UNCERTAINTY, SIMULATE):

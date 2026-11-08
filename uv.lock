@@ -3225,8 +3225,8 @@ requires-dist = [
     { name = "sbmlutils", specifier = ">=0.16.0" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "seaborn", specifier = ">=0.13.2" },
-    { name = "simrun", marker = "extra == 'dev'", specifier = ">=0.2.0" },
-    { name = "simrun", marker = "extra == 'simrun'", specifier = ">=0.2.0" },
+    { name = "simrun", marker = "extra == 'dev'", specifier = ">=0.3.0" },
+    { name = "simrun", marker = "extra == 'simrun'", specifier = ">=0.3.0" },
     { name = "sympy", specifier = ">=1.14.0" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'dev'", specifier = ">=2.14.1", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and extra == 'dev'", specifier = ">=2.14.1" },
@@ -3364,7 +3364,7 @@ wheels = [
 
 [[package]]
 name = "simrun"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastapi" },
@@ -3380,9 +3380,9 @@ dependencies = [
     { name = "typer" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3b/38/daeb035aa472e8f90ec97ae0cdf9831e3dd86ce547a93209fb676355d617/simrun-0.2.0.tar.gz", hash = "sha256:8e82cb7de37c9a61618c1b7f0dfb1fcebb069c792b3c1306def4dceef28e1f3e", size = 3771460, upload-time = "2026-11-08T15:55:30.566Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/b6/3397c2402e89b75d1d6b77f2e32532e8da0493cca567f56bc7236369f33d/simrun-0.3.0.tar.gz", hash = "sha256:c707331092d602362aeae6bf91092d328a8e595887509c8aee09a24fe1b9359d", size = 3783176, upload-time = "2026-11-08T21:19:44.706Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/65/caf5c28a3f923c9318060df696a02fe4e3b9b5b86421b55e86e446f7bf6e/simrun-0.2.0-py3-none-any.whl", hash = "sha256:b8753011e911a818be909c4a8d3344d077db7e5189e6f26bd4ab929677bbdb6c", size = 325276, upload-time = "2026-11-08T15:55:28.671Z" },
+    { url = "https://files.pythonhosted.org/packages/c1/14/85d46188490bc76a8b984601e481e1565504cf0d3a7d50fdfa596b82dfb9/simrun-0.3.0-py3-none-any.whl", hash = "sha256:afdd837ef8408f39b98764f8205f1f97e17c267feb1ac4ec22538a45d5a346ad", size = 329018, upload-time = "2026-11-08T21:19:43.192Z" },
 ]
 
 [[package]]

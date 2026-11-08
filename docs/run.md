@@ -415,7 +415,7 @@ python -m sbmlsim.run release release.yaml --out results/release
 
 ## simrun
 
-[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds but `action` as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt`, `sbmlsim.factory`, `sbmlsim.credibility`, `sbmlsim.release` and so on (`verify` is a command and no kind, so it has no task type until a workflow needs one); the extra `simrun` installs simrun, which needs python 3.14:
+[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster or, with `--local`, on this machine; [Workflows with simrun](simrun.md) runs the analyses of the tutorial as a workflow and shows how to convert an analysis. `sbmlsim` registers its kinds but `action` as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt`, `sbmlsim.factory`, `sbmlsim.credibility`, `sbmlsim.release` and so on (`verify` is a command and no kind, so it has no task type until a workflow needs one); the extra `simrun` installs simrun, which needs python 3.14:
 
 ```bash
 pip install "sbmlsim[simrun]"
@@ -459,6 +459,6 @@ The HCTZ project lives in the repository of `sbmlsim`, which is the only source 
 The fit is 64 units of one repeat, the profile likelihood one unit per parameter, and the report reads the fit and its profiles from the output of the identifiability analysis.
 
 - **The plan runs in the client.** `simrun submit` plans every task whose type is installed where it runs, before it takes the snapshots, and submits the planned settings: the seed of the fit, the units, the parameters of the profiles. The client therefore needs `sbmlsim[simrun]` and the model package, so that it imports the project; a task submitted without its plan has no `units` and fails in the service.
-- **The project is imported in the pods.** The pods install the snapshots editable, which installs the package of a source and not the rest of its repository: a model package is found, while the HCTZ example in `examples/` needs the root of the repository on `PYTHONPATH`.
+- **The project is imported in the pods.** The pods install the snapshots editable, which installs the package of a source and not the rest of its repository: a model package is found, and a task imports from the root of the source of the model first (simrun 0.3.0), so the HCTZ example in `examples/` is found as well.
 - **Provenance.** simrun writes the provenance of the snapshots of a run and names it in `SIMRUN_PROVENANCE`, which `run.json` and the records of a fit record, see [Provenance](#progress-and-provenance).
 - **Development.** The development environment is python 3.14 (`.python-version`), so `uv sync --extra dev` installs simrun and `uv run ty check` checks `sbmlsim.simrun` against it; the tests of the plugin skip without simrun. The tox environments, which resolve from `pyproject.toml`, do not install it.

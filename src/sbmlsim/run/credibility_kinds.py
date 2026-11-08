@@ -344,6 +344,7 @@ CREDIBILITY: Kind[CredibilitySpec] = Kind(
     plan=_plan,
     inputs=("cross_validation", "record"),
     uses_cores=False,
+    description="Assess the credibility of a model for its contexts of use",
 )
 
 register(CREDIBILITY)

@@ -102,3 +102,23 @@ def test_spec_forbids_extra_fields_and_is_frozen() -> None:
 
 def test_plan_mismatch_is_a_configuration_error() -> None:
     assert issubclass(PlanMismatch, ConfigurationError)
+
+
+def test_the_fields_the_plan_sets_are_read_only_in_the_schema() -> None:
+    """A form of the settings, e.g. the Editor of simrun, does not offer them."""
+    read_only = {
+        name: sorted(
+            field
+            for field, schema in get_kind(name)
+            .spec.model_json_schema()["properties"]
+            .items()
+            if schema.get("readOnly")
+        )
+        for name in ("fit", "scan", "sensitivity", "uncertainty")
+    }
+    assert read_only == {
+        "fit": ["fixed_fits", "fixed_values", "start_from", "units"],
+        "scan": ["scan_hash", "units"],
+        "sensitivity": ["run_plan", "scan_hash", "units"],
+        "uncertainty": ["units"],
+    }
