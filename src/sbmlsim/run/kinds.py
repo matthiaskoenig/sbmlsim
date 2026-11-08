@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, override
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from sbmlsim.project import Project
@@ -152,6 +152,16 @@ class Spec(BaseModel):
         return False
 
 
+def planned() -> Any:
+    """Get the default of a field of a spec which the plan of its kind sets.
+
+    The field is `None` until the plan sets it, and the JSON Schema of the spec
+    marks it `readOnly`, so a form of the settings, e.g. the Editor of simrun,
+    does not offer it.
+    """
+    return Field(default=None, json_schema_extra={"readOnly": True})
+
+
 class SplitSpec(Spec):
     """The spec of a kind which splits into units.
 
@@ -159,7 +169,7 @@ class SplitSpec(Spec):
         units: the number of units, set by the plan of the kind.
     """
 
-    units: int | None = None
+    units: int | None = planned()
 
 
 def _identity[S](spec: S) -> S:

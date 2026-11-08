@@ -818,9 +818,11 @@ def test_html_context(
         parameter_sets=op_hctz_pk.parameter_set_model(),
         mapping_figures=False,
     )
-    context = report.html_context(results_dir=Path("nowhere"), name="the_fit")
+    context = report.html_context(results_dir=Path("nowhere"), name="report")
 
-    assert context["fit_id"] == "the_fit"
+    # the heading is the id of the fit, not the directory of the report
+    assert context["fit_id"] == op_hctz_pk.opid
+    assert context["opid"] == ""
     # the data the model does not describe is not part of the report
     assert context["kinds"] == [kind.value for kind in EVALUATED_KINDS]
     assert MappingKind.EXCLUDED.value not in context["kinds"]

@@ -63,6 +63,7 @@ from sbmlsim.run.kinds import (
     Spec,
     SplitSpec,
     load_project_ref,
+    planned,
     register,
 )
 from sbmlsim.run.units import MissingUnits, unit_blocks
@@ -230,10 +231,10 @@ class FitSpec(FitProblemSpec, SplitSpec):
     timeout: float | None = None
     optimizer: dict[str, Any] = Field(default_factory=dict)
     start: dict[str, float] | str | None = None
-    start_from: str | None = None
+    start_from: str | None = planned()
     record_adopted: bool = True
-    fixed_fits: list[str] | None = None
-    fixed_values: dict[str, float] | None = None
+    fixed_fits: list[str] | None = planned()
+    fixed_values: dict[str, float] | None = planned()
     identifiability: bool = False
     profile: ProfileSpec = Field(default_factory=ProfileSpec)
     fisher: bool = True

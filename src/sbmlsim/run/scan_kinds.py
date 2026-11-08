@@ -69,6 +69,7 @@ from sbmlsim.run.kinds import (
     Spec,
     SplitSpec,
     load_project_ref,
+    planned,
     register,
 )
 from sbmlsim.run.units import MissingUnits, unit_blocks
@@ -130,7 +131,7 @@ class ScanSpec(SplitSpec):
 
     project: str
     analysis: str
-    scan_hash: str | None = None
+    scan_hash: str | None = planned()
 
 
 class SensitivitySpec(ScanSpec):
@@ -153,7 +154,7 @@ class SensitivitySpec(ScanSpec):
 
     analyses: list[str] | None = None
     subfolders: list[str] | None = None
-    run_plan: dict[str, Any] | None = None
+    run_plan: dict[str, Any] | None = planned()
 
 
 class UncertaintySpec(SplitSpec):
