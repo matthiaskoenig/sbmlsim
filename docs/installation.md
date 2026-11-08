@@ -8,6 +8,8 @@ pip install sbmlsim
 
 The simulator [libroadrunner](https://libroadrunner.org) comes as a binary wheel for all three platforms, so you need no compiler. The one exception is python 3.15: h5py, which writes the result files, has no wheels for it yet, so pip builds it from source. That needs a C compiler and the HDF5 library (`libhdf5-dev` on Debian and Ubuntu, `brew install hdf5` on macOS).
 
+On python 3.15, libroadrunner 2.11 takes the symbols of the GDB JIT interface from the interpreter, which not every python 3.15 exports: with the python 3.15 of Ubuntu, for example, `import roadrunner` fails with `undefined symbol: __jit_debug_register_code`. The python of uv exports them, so use it for python 3.15, e.g. `uv venv --python 3.15 --managed-python`. Python 3.14 works with any interpreter.
+
 ## With uv
 
 With [uv](https://docs.astral.sh/uv/), add `sbmlsim` to your project, which locks it together with the rest of your environment:
