@@ -971,27 +971,13 @@ def test_report_writes_all_formats(report_dir: Path) -> None:
     assert "<math" in html
 
 
-def test_pdf_failure_keeps_the_fit(monkeypatch, tmp_path, fitted) -> None:
-    import sbmlsim.fit.report as report_module
-
-    def broken(*args, **kwargs):
-        raise RuntimeError("typst could not compile 'report.typ': boom")
-
-    monkeypatch.setattr(report_module, "compile_pdf", broken)
-    problem, result = fitted
-    out = FitReport.from_optimization_result(problem=problem, opt_result=result).create(
-        output_dir=tmp_path
-    )
-    assert (out / "report.typ").exists() and not (out / "report.pdf").exists()
-    assert "PDF could not be created" in (out / "index.html").read_text(
-        encoding="utf-8"
-    )
-
-
 def test_a_failed_pdf_is_stated_with_its_reason(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fitted_report
 ) -> None:
-    """The report states why the PDF failed, every other output is written."""
+    """The report states why the PDF failed, every other output is written.
+
+    The fit is kept: the report has its Typst source and no PDF.
+    """
     import sbmlsim.fit.report as report_module
 
     def broken(*args: object, **kwargs: object) -> Path:
@@ -1000,7 +986,9 @@ def test_a_failed_pdf_is_stated_with_its_reason(
     monkeypatch.setattr(report_module, "compile_pdf", broken)
     report, _ = fitted_report
     out = report.create(output_dir=tmp_path, name="failed")
+    assert not (out / "report.pdf").exists()
     html = _html_of(out)
+    assert "PDF could not be created" in html
     assert "typst could not compile &#39;report.typ&#39;: boom" in html
     # the page does not link the PDF which is not there
     assert 'href="report.pdf"' not in html
