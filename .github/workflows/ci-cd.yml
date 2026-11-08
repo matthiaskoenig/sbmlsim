@@ -197,12 +197,12 @@ jobs:
         fi
 
   testsuite:
-    # the semantic cases of the SBML Test Suite against the pinned release and
-    # the cases of the PEtab SciML test suite against the pinned commit, which
-    # the baselines record, as two jobs which run next to each other. A normal
-    # run of the tests deselects them: they answer what libroadrunner and the
-    # networks support, which a change to sbmlsim rarely moves, and they take
-    # longer than the rest together. A release does not go out without them
+    # the semantic cases of the SBML Test Suite and the cases of the PEtab
+    # SciML test suite against their pinned commits, which the baselines
+    # record, as two jobs which run next to each other. A normal run of the
+    # tests deselects them: they answer what libroadrunner and the networks
+    # support, which a change to sbmlsim rarely moves, and they take longer
+    # than the rest together. A release does not go out without them
     name: sbml test suite
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -216,9 +216,9 @@ jobs:
       with:
         python-version: "3.14"
         sync: --extra dev --no-editable
-    - name: Download the pinned release
+    - name: Download the pinned commit
       run: uv run --no-sync python scripts/testsuite.py download
-    - name: Run the semantic cases against the pinned release
+    - name: Run the semantic cases against the pinned commit
       run: uv run --no-sync pytest -m testsuite
 
   sciml:
@@ -263,8 +263,8 @@ jobs:
       run: uv run --no-sync pytest -m petab_testsuite tests/fit
 
   submission:
-    # the results a submission to the SBML Test Suite Database is made of. A
-    # release submits against the newest suite, not against the pinned one.
+    # the results a submission to the SBML Test Suite Database is made of,
+    # against the pinned commit, whose outcomes the job `testsuite` checks.
     # The archive is an attachment of the release and never blocks it
     name: sbml test suite submission
     if: startsWith(github.ref, 'refs/tags/')
@@ -280,13 +280,9 @@ jobs:
       with:
         python-version: "3.14"
         sync: --no-editable
-    - name: Run the SBML Test Suite against its newest release
-      # the cases run in one process per core; the token authenticates the
-      # request of the newest release, which the anonymous rate limit of the
-      # shared addresses of the runners refuses
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      run: uv run --no-sync python scripts/testsuite.py submission --version latest --output submission
+    - name: Run the SBML Test Suite against the pinned commit
+      # the cases run in one process per core
+      run: uv run --no-sync python scripts/testsuite.py submission --output submission
     - name: Upload the submission
       uses: actions/upload-artifact@v7
       with:

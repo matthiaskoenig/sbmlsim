@@ -21,12 +21,17 @@ from typing import Any
 import pandas as pd
 
 from sbmlsim.report.templates import template_environment
+from sbmlsim.testsuite.cases import CASES_DIR, SUITE_REPOSITORY
 from sbmlsim.testsuite.runner import CaseResult, CaseStatus
 
 logger = logging.getLogger(__name__)
 
 #: template of the report
 TEMPLATE = "testsuite_report.html"
+
+#: the semantic cases of a commit of the suite on GitHub, which the report
+#: links to
+SUITE_TREE_URL = f"https://github.com/{SUITE_REPOSITORY}/tree/{{commit}}/{CASES_DIR}"
 
 #: what an outcome says, shown in the overview of the report
 STATUS_DESCRIPTION: dict[CaseStatus, str] = {
@@ -85,20 +90,20 @@ class TagSummary:
 class TestSuiteReport:
     """Report of a run of the semantic cases of the SBML Test Suite."""
 
-    def __init__(self, results: Sequence[CaseResult], suite_version: str) -> None:
+    def __init__(self, results: Sequence[CaseResult], suite_commit: str) -> None:
         """Construct the report.
 
         Args:
             results: the results of the run, one per case.
-            suite_version: release of the suite which was run.
+            suite_commit: commit of the suite which was run.
         """
         self.results = list(results)
-        self.suite_version = suite_version
+        self.suite_commit = suite_commit
 
     def __str__(self) -> str:
         """Get string representation."""
         return (
-            f"{self.__class__.__name__}<{self.suite_version}: "
+            f"{self.__class__.__name__}<{self.suite_commit[:7]}: "
             f"{self.n_passed}/{len(self.results)}>"
         )
 
@@ -187,13 +192,14 @@ class TestSuiteReport:
             ]
 
         return {
-            "suite_version": self.suite_version,
+            "suite_commit": self.suite_commit,
+            "suite_url": SUITE_TREE_URL.format(commit=self.suite_commit),
             "statuses": [status.value for status in CaseStatus],
             "badges": [
                 {"label": "cases", "value": n},
                 {"label": "passed", "value": self.n_passed},
                 {"label": "pass rate", "value": f"{100 * self.pass_rate:.1f}%"},
-                {"label": "suite", "value": self.suite_version},
+                {"label": "suite", "value": self.suite_commit[:7]},
             ],
             "outcomes": [
                 {
@@ -239,7 +245,7 @@ class TestSuiteReport:
         (output_dir / "results.json").write_text(
             json.dumps(
                 {
-                    "suite_version": self.suite_version,
+                    "suite_commit": self.suite_commit,
                     "versions": versions(),
                     "n_cases": len(self.results),
                     "n_passed": self.n_passed,

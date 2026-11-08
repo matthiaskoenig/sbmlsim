@@ -1,7 +1,7 @@
 {
-  "suite_version": "3.5.0",
+  "suite_commit": "bbcbc80c4daec79fea301299f981746408a1742b",
   "n_cases": 1789,
-  "n_passed": 1580,
+  "n_passed": 1581,
   "expected_failures": {
     "00039": "not_read",
     "00040": "not_read",
@@ -162,7 +162,6 @@
     "01501": "not_read",
     "01502": "not_read",
     "01503": "not_read",
-    "01511": "tolerance",
     "01518": "not_read",
     "01519": "not_read",
     "01520": "not_read",

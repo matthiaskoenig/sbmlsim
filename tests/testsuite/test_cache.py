@@ -84,20 +84,32 @@ def test_an_archive_without_cases(tmp_path: Path) -> None:
 def test_the_semantic_suite_is_loaded_through_the_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`SemanticSuite.load` downloads into the path of its release."""
+    """`SemanticSuite.load` downloads into the path of its commit.
+
+    The archive of a commit is the whole repository, only its semantic cases
+    are unpacked.
+    """
     url = _archive(
-        tmp_path / "semantic.zip", {"semantic/00001/00001-settings.txt": "start: 0"}
+        tmp_path / "suite.zip",
+        {
+            "sbml-test-suite-abc/cases/semantic/00001/00001-settings.txt": "start: 0",
+            "sbml-test-suite-abc/cases/stochastic/00001/00001-settings.txt": "",
+            "sbml-test-suite-abc/src/test-runner/build.xml": "",
+            "sbml-test-suite-abc/README.md": "",
+        },
     )
     monkeypatch.delenv("SBMLSIM_TEST_SUITE_PATH", raising=False)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.setattr("sbmlsim.testsuite.cases.SUITE_URL", url)
 
-    suite = SemanticSuite.load("9.9.9")
+    suite = SemanticSuite.load("abc")
 
-    assert suite.version == "9.9.9"
-    assert suite.path == tmp_path / "cache/sbmlsim/test-suite/9.9.9/semantic"
+    assert suite.commit == "abc"
+    assert suite.path == tmp_path / "cache/sbmlsim/test-suite/abc/semantic"
     assert (suite.path / "00001" / "00001-settings.txt").is_file()
-    assert SemanticSuite.cached("9.9.9") == suite
+    assert [p.name for p in suite.path.iterdir()] == ["00001"]
+    assert [p.name for p in suite.path.parent.iterdir()] == ["semantic"]
+    assert SemanticSuite.cached("abc") == suite
 
 
 def test_two_fetches_of_one_target(tmp_path: Path) -> None:
@@ -266,15 +278,16 @@ def test_a_load_from_the_cache_removes_a_killed_fetch(
 ) -> None:
     """A suite which is cached removes what a killed fetch left next to it."""
     url = _archive(
-        tmp_path / "semantic.zip", {"semantic/00001/00001-settings.txt": "start: 0"}
+        tmp_path / "suite.zip",
+        {"sbml-test-suite-abc/cases/semantic/00001/00001-settings.txt": "start: 0"},
     )
     monkeypatch.delenv("SBMLSIM_TEST_SUITE_PATH", raising=False)
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.setattr("sbmlsim.testsuite.cases.SUITE_URL", url)
-    suite = SemanticSuite.load("9.9.9")
+    suite = SemanticSuite.load("abc")
     killed = _killed_staging(suite.path.parent, ".semantic.abc.incomplete")
 
-    assert SemanticSuite.load("9.9.9") == suite
+    assert SemanticSuite.load("abc") == suite
     assert not killed.exists()
 
 
@@ -306,5 +319,5 @@ def test_a_suite_elsewhere_leaves_its_neighbours_alone(
     neighbour = _killed_staging(elsewhere.parent, ".semantic.abc.incomplete")
     monkeypatch.setenv("SBMLSIM_TEST_SUITE_PATH", str(elsewhere))
 
-    assert SemanticSuite.load("9.9.9").path == elsewhere
+    assert SemanticSuite.load("abc").path == elsewhere
     assert neighbour.exists()

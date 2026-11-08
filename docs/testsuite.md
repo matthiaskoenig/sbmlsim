@@ -7,7 +7,7 @@ The [SBML Test Suite](https://github.com/sbmlteam/sbml-test-suite) is the confor
 ## Run it
 
 ```bash
-# download the pinned release into the cache
+# download the pinned commit into the cache
 uv run python scripts/testsuite.py download
 
 # run every case and print how many pass
@@ -17,13 +17,13 @@ uv run python scripts/testsuite.py run
 uv run python scripts/testsuite.py report --output site/testsuite/report
 ```
 
-The cases run in parallel, one process per core. `--workers` sets the number of processes, and `--workers 1` runs everything in one process. `--version latest` runs the newest release of the suite instead of the pinned one.
+The cases run in parallel, one process per core. `--workers` sets the number of processes, and `--workers 1` runs everything in one process. `--commit latest` runs the head of the branch `develop` of the suite instead of the pinned commit.
 
-The cases are cached in `~/.cache/sbmlsim/test-suite/<version>/` (or under `XDG_CACHE_HOME` when it is set). If you keep the cases somewhere else, for example on a machine without network access, point `SBMLSIM_TEST_SUITE_PATH` at that directory.
+The cases are cached in `~/.cache/sbmlsim/test-suite/<commit>/` (or under `XDG_CACHE_HOME` when it is set). If you keep the cases somewhere else, for example on a machine without network access, point `SBMLSIM_TEST_SUITE_PATH` at that directory.
 
 ## What is run
 
-The pinned release is 3.5.0 (`SUITE_VERSION` in `sbmlsim.testsuite.cases`). It has 1789 timecourse cases, and 1580 of them pass. Of the 209 that do not, 208 cannot be read and one, 01511, gives results outside its tolerances.
+The cases come from the branch `develop` of the suite, pinned to a commit (`SUITE_COMMIT` in `sbmlsim.testsuite.cases`), and not from a release: the releases of the suite are rare, and a case fixed upstream would wait for the next one. Case 01511, whose output grid stepped across the window of its trigger in release 3.5.0, was fixed in [d6dcd2c](https://github.com/sbmlteam/sbml-test-suite/commit/d6dcd2cc6408d5eb881638ac6ce7a05fd7d2e4d1) and passes since. The pinned commit has 1789 timecourse cases, and 1581 of them pass. The 208 that do not cannot be read.
 
 Only the timecourse cases run, each in the newest SBML encoding it ships:
 
@@ -57,7 +57,7 @@ A case that does not pass gets one of five outcomes. The report shows them separ
 2. a simulation of half the duration, followed by the full simulation,
 3. the simulation with a steady state before it, compared with the same on a freshly loaded model.
 
-libroadrunner runs simultaneous events of the same priority in a random order. The runner seeds the random generator of the model before every simulation, so these cases are reproducible. Regenerating a model, which checks 2 and 3 can do, also draws from that generator, so for the cases tagged `RandomEventExecution`, checks 2 and 3 compare with the expected results within the tolerances of the case instead of bit for bit. All 1580 cases that pass also pass this check.
+libroadrunner runs simultaneous events of the same priority in a random order. The runner seeds the random generator of the model before every simulation, so these cases are reproducible. Regenerating a model, which checks 2 and 3 can do, also draws from that generator, so for the cases tagged `RandomEventExecution`, checks 2 and 3 compare with the expected results within the tolerances of the case instead of bit for bit. All 1581 cases that pass also pass this check.
 
 ## Part of the tests of sbmlsim
 
@@ -78,9 +78,9 @@ uv run python scripts/testsuite.py baseline
 
 and the diff of the file shows what changed.
 
-## Which release is run
+## Which commit is run
 
-The tests and pull requests run against the pinned release, so a new upstream release cannot break the build by itself. A scheduled workflow (`.github/workflows/testsuite-pin.yml`) checks for a newer release and opens a pull request that bumps the pin and refreshes the baseline. That pull request is where the results of new cases show up first.
+The tests, the documentation and the release run against the pinned commit, so a change upstream cannot break the build by itself. A scheduled workflow (`.github/workflows/testsuite-pin.yml`) checks every week whether the semantic cases of the branch `develop` changed since the pinned commit and, if they did, opens a pull request that bumps the pin to the head of the branch and refreshes the baseline. A commit that changes only the test runner of the suite is no reason for a pull request. That pull request is where the results of new or changed cases show up first.
 
 The release workflow runs the tests of the suite before every release of `sbmlsim`.
 
@@ -92,4 +92,4 @@ The results of a run can be submitted to the SBML Test Suite Database:
 uv run python scripts/testsuite.py submission --output dist
 ```
 
-This writes a zip archive with one CSV file per case that could be simulated, named after the case, and a `manifest.json` with the versions of `sbmlsim`, libroadrunner, libsbml and the suite. A case that cannot be read or integrated has no CSV file, which is how a submission says it is not supported. The release workflow builds this archive against the newest release of the suite and attaches it to the GitHub release. Uploading it to the database is done by hand.
+This writes a zip archive with one CSV file per case that could be simulated, named after the case, and a `manifest.json` with the versions of `sbmlsim`, libroadrunner and libsbml and the commit of the suite. A case that cannot be read or integrated has no CSV file, which is how a submission says it is not supported. The release workflow builds this archive against the pinned commit and attaches it to the GitHub release. Uploading it to the database is done by hand.
