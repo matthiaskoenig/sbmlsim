@@ -35,7 +35,6 @@ from sbmlsim.model.tolerances import (
     state_tolerances,
 )
 from sbmlsim.units import UnitRegistry
-from sbmlsim.utils import md5_for_path
 
 if TYPE_CHECKING:
     from sbmlsim.simulator.plan import Assignment
@@ -772,40 +771,11 @@ class RoadrunnerSBMLModel(SBMLModel):
 
         # load model
         if source.path is not None:
-            sbml_path: Path = source.path
-            # state_path: Path = RoadrunnerSBMLModel.get_state_path(sbml_path=sbml_path)
-
-            r = load_roadrunner(sbml_path, optimization)
-            # FIXME: see https://github.com/sys-bio/roadrunner/issues/963
-            # if state_path.exists():
-            #     logger.debug(f"Load model from state: '{state_path}'")
-            #     r = roadrunner.RoadRunner()
-            #     r.loadState(str(state_path))
-            #     # with open(state_path, "rb") as fin:
-            #     #     r.loadStateS(fin.read())
-            #     logger.debug(f"Model loaded from state: '{state_path}'")
-            # else:
-            #     logger.info(f"Load model from SBML: '{sbml_path}'")
-            #     r = roadrunner.RoadRunner(str(sbml_path))
-            #     # save state
-            #     r.saveState(str(state_path))
-            #     # with open(state_path, "wb") as fout:
-            #     #     fout.write(r.saveStateS(opt="b"))
-            #     logger.info(f"Save state: '{state_path}'")
-
+            r = load_roadrunner(source.path, optimization)
         elif source.is_content():
             r = load_roadrunner(str(source.content), optimization)
 
         return r
-
-    @staticmethod
-    def get_state_path(sbml_path: Path) -> Path | None:
-        """Get path of the state file.
-
-        The state file is a binary file which allows fast model loading.
-        """
-        md5 = md5_for_path(sbml_path)
-        return Path(f"{sbml_path}_rr{roadrunner.__version__}_{md5}.state")
 
     @classmethod
     def set_timecourse_selections(

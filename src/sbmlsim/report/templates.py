@@ -15,9 +15,6 @@ from sbmlsim import RESOURCES_DIR
 #: directory of the jinja2 templates
 TEMPLATE_DIR: Path = RESOURCES_DIR / "templates"
 
-#: base template of the HTML reports, it provides the blocks and the style
-BASE_TEMPLATE = "report_base.html"
-
 
 def template_environment(template_dir: Path | None = None) -> jinja2.Environment:
     """Create the jinja2 environment of the reports.

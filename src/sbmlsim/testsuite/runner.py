@@ -75,16 +75,6 @@ class CaseStatus(StrEnum):
     REPEAT = "repeat"
 
 
-#: the outcomes which are not a pass
-FAILED_STATUS: tuple[CaseStatus, ...] = (
-    CaseStatus.TOLERANCE,
-    CaseStatus.NOT_READ,
-    CaseStatus.SIMULATION_ERROR,
-    CaseStatus.MISSING_VARIABLE,
-    CaseStatus.REPEAT,
-)
-
-
 @dataclass(frozen=True)
 class CaseResult:
     """The result of running a case of the suite.
