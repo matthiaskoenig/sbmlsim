@@ -891,6 +891,15 @@ def _tolerance(tolerance: AbsoluteTolerance) -> list[Part]:
         ", which for a species in a concentration is multiplied by the initial "
         "volume of its compartment"
     )
+    if tolerance.relative is not None:
+        parts += [
+            "; a state with a typical magnitude has the absolute tolerance ",
+            _number(tolerance.relative),
+            " times this magnitude, its largest magnitude in test simulations"
+            if tolerance.scales
+            else " times this magnitude, its initial value",
+            " where it has one, else its initial value" if tolerance.scales else "",
+        ]
     if tolerance.ids:
         parts.append(f", and {_count(len(tolerance.ids), 'state')} of its own")
     return parts

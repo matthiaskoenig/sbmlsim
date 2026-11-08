@@ -1018,6 +1018,11 @@ class RoadrunnerSBMLModel(SBMLModel):
             )
         return self._volumes_of[1]
 
+    def _loaded_values(self) -> dict[str, float]:
+        """Get the values of the model as loaded by id, the amounts of the species."""
+        state = self._loaded_state()
+        return dict(zip(state.ids, _floats(state.values), strict=True))
+
     def sbml_ids(self) -> SBMLIds:
         """Get the constant parameters and the species of the SBML roadrunner simulates.
 
@@ -1074,11 +1079,20 @@ class RoadrunnerSBMLModel(SBMLModel):
         roadrunner turns a single value into a vector by its own scaling, so
         the tolerances are set as the vector of CVODE, in the order of
         `state_ids`, in one call. The reference volumes are
-        the initial volumes of the model as loaded, see `_loaded_volumes`.
+        the initial volumes of the model as loaded, see `_loaded_volumes`,
+        and the initial values which scale the tolerances of `relative` are
+        the values of the model as loaded, see `_loaded_state`, so the
+        tolerances do not depend on a simulation before.
         """
         r = self.r_loaded
         volumes = self._loaded_volumes()
-        states = state_tolerances(self.state_ids(), self.symbols, volumes, tolerance)
+        states = state_tolerances(
+            self.state_ids(),
+            self.symbols,
+            volumes,
+            tolerance,
+            initial_values=self._loaded_values(),
+        )
         for state in states:
             if (
                 state.volume_raised
@@ -1112,8 +1126,10 @@ class RoadrunnerSBMLModel(SBMLModel):
             A row per state with `sid`, `kind`, `compartment` (the compartment
             of a species, amount and concentration, empty for another state),
             `volume` (the reference volume of a concentration species, which
-            scales its tolerance, empty for another state) and
-            `absolute_tolerance`.
+            scales its tolerance, empty for another state),
+            `absolute_tolerance` and `scale` (the scale of a tolerance
+            relative to it, see `AbsoluteTolerance.relative`, empty for the
+            tolerance of a kind or an override).
         """
         compartments = self.symbols.species_compartment
         return pd.DataFrame(
@@ -1124,10 +1140,18 @@ class RoadrunnerSBMLModel(SBMLModel):
                     "compartment": compartments.get(s.sid, s.compartment),
                     "volume": s.volume,
                     "absolute_tolerance": s.absolute_tolerance,
+                    "scale": np.nan if s.scale is None else s.scale,
                 }
                 for s in self._state_tolerances
             ],
-            columns=["sid", "kind", "compartment", "volume", "absolute_tolerance"],
+            columns=[
+                "sid",
+                "kind",
+                "compartment",
+                "volume",
+                "absolute_tolerance",
+                "scale",
+            ],
         )
 
     @staticmethod

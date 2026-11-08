@@ -270,13 +270,43 @@ print(tolerances[tolerances["sid"].isin(["ECF", "Cve_hctz", "Aurine_hctz"])])
 ```
 
 ```text title="Output"
-            sid           kind compartment  volume  absolute_tolerance
-0           ECF          other         NaN     NaN        1.000000e-08
-19     Cve_hctz  concentration         Vve  2.9321        2.932100e-10
-25  Aurine_hctz         amount      Vurine     NaN        1.000000e-10
+            sid           kind compartment  volume  absolute_tolerance  scale
+0           ECF          other         NaN     NaN        1.000000e-08    NaN
+19     Cve_hctz  concentration         Vve  2.9321        2.932100e-10    NaN
+25  Aurine_hctz         amount      Vurine     NaN        1.000000e-10    NaN
 ```
 
 The reference volumes come from the model as loaded. A pre-initialization change of a volume, e.g. through the body weight, does not change the tolerances, so a simulation never depends on the one that ran before it.
+
+#### Tolerances relative to the scale of a state
+
+The tolerance of a kind is the same for a small state as for a large one. A drug in nM next to sodium in mM is then integrated with the relative accuracy `atol / |x|` of the drug, about `1e-4` at the defaults, instead of the relative tolerance; the curves look the same, but the finite differences of a fit, the Fisher information and the profiles see the error. With `relative`, the tolerance of every state is `relative` times its scale, its typical magnitude, so every state has the relative accuracy `relative`; set it to the relative tolerance of the integrator. The scale of a state is its initial value in the model as loaded (the amount of a species). A state which starts at 0, like a drug before its dose, keeps the tolerance of its kind unless `scales` gives its typical magnitude. `typical_scales` takes the largest magnitude of every state in test simulations, here the tablet:
+
+```python
+from sbmlsim.simulator.scales import typical_scales
+
+scales = typical_scales(
+    simulator, HCTZ_SBML, Simulation(time_unit="hr", end=48, changes=[tablet])
+)
+scaled = Simulator(
+    absolute_tolerance=AbsoluteTolerance(relative=1e-10, scales=scales),
+    relative_tolerance=1e-10,
+)
+tolerances = scaled.load(HCTZ_SBML).tolerances()
+print(
+    tolerances[tolerances["sid"].isin(["na", "Cve_hctz", "Aurine_hctz", "IVDOSE_hctz"])]
+)
+```
+
+```text title="Output"
+            sid           kind compartment   volume  absolute_tolerance        scale
+3   IVDOSE_hctz          other         NaN      NaN        1.000000e-10          NaN
+7            na  concentration         ECF  13.6125        1.905750e-07  1905.750000
+19     Cve_hctz  concentration         Vve   2.9321        1.325555e-13     0.001326
+25  Aurine_hctz         amount      Vurine      NaN        5.101054e-12     0.051011
+```
+
+Changing the units of a model, e.g. the drug in nmol, changes the integration only through these tolerances, so scaled tolerances replace a rescaled model, see [#435](https://github.com/matthiaskoenig/sbmlsim/issues/435). Compute the scales once, e.g. from the standard doses of a model, and store them with it, e.g. as the JSON of `AbsoluteTolerance.to_dict` in the settings of the simulator of its project: a simulation must not derive its tolerances from its own scenario. Scales of a standard dose keep the drug accurate to about `1e-7` from a hundredth to a hundred times the dose. COPASI and AMICI have one absolute tolerance and do not scale the states, see the engines below.
 
 ### The first step after a change
 
@@ -440,9 +470,9 @@ copasi
 [0.0 2.721 3.282 3.282 0.417 0.27 0.183 0.123] μM
 equal: True
 time           0.000000e+00
-Aurine_hctz    4.398536e-10
+Aurine_hctz    4.331909e-10
 Ri_hctz        0.000000e+00
-[Cve_hctz]     7.446912e-09
+[Cve_hctz]     7.399668e-09
 ```
 
 `is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences. With `"amici"` in place of `"copasi"`, AMICI agrees with roadrunner on the infusion to `7.3e-9` relative in `[Cve_hctz]`. With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.

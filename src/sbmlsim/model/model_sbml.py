@@ -884,7 +884,9 @@ class EngineSettings:
         """Get the one absolute tolerance of the engine of a tolerance per kind.
 
         The smallest tolerance of the kinds and of the overrides, reported
-        once per model when they differ, times a factor of the engine.
+        once per model when they differ or when the tolerance scales the
+        states (`AbsoluteTolerance.relative`, a tolerance per state, which
+        the engine does not have), times a factor of the engine.
 
         Args:
             tolerance: the tolerance per kind.
@@ -894,7 +896,9 @@ class EngineSettings:
             The absolute tolerance.
         """
         smallest = tolerance.smallest()
-        if len(tolerance.distinct_values()) > 1 and not self._tolerance_reported:
+        if (
+            len(tolerance.distinct_values()) > 1 or tolerance.relative is not None
+        ) and not self._tolerance_reported:
             self._tolerance_reported = True
             times = f", times {factor}" if factor != 1.0 else ""
             self._log.warning(

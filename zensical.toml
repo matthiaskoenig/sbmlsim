@@ -105,6 +105,7 @@ nav = [
       { "shared" = "api/simulator.shared.md" },
       { "observables" = "api/simulator.observables.md" },
       { "pk" = "api/simulator.pk.md" },
+      { "scales" = "api/simulator.scales.md" },
     ] },
     { "sbmlsim.task" = [
       { "task" = "api/task.task.md" },
