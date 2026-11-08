@@ -114,11 +114,6 @@ Known differences to roadrunner:
 - roadrunner evaluates the triggers of the events when the model is
   initialized, at the time 0, also for a simulation from a negative start;
   AMICI evaluates them at the start.
-- An event whose trigger is false before the time 0 and which a
-  pre-initialization makes true, e.g. a dose `dose > 0` with `dose` set
-  before the initialization, fires at the start in AMICI and COPASI, as in
-  libroadrunner after `resetAll` and in the SBML Test Suite; the executor of
-  roadrunner does not fire it (#439).
 - roadrunner integrates a model which does not read the time in local time,
   every segment from its time 0; AMICI integrates every model in absolute
   time.
