@@ -34,14 +34,20 @@ RECORD = {
 
 
 def test_spec_hash() -> None:
-    """The hash of a spec, with and without an excluded field."""
-    spec = _Spec(
+    """The hash of a spec, and without an excluded field.
+
+    A path is written with the separator of the platform, so the hash of a
+    spec with a path differs between windows and POSIX; the pinned values have
+    none or exclude it.
+    """
+    spec = _Spec(name="Dose µg", values=[1.0, 0.5, float("inf")], units=4)
+    assert spec_hash(spec) == (
+        "3048932043f72d3b3a6ef46bf396630daef6851c2025b19c683039be55c97f38"
+    )
+    with_path = _Spec(
         name="Dose µg", values=[1.0, 0.5, float("inf")], path=Path("a/b"), units=4
     )
-    assert spec_hash(spec) == (
-        "ee2229e88100a1eb50bddfedd2ca4abb15d133bc17e98665f9b5aafab2cdaf8b"
-    )
-    assert spec_hash(spec, exclude={"path"}) == (
+    assert spec_hash(with_path, exclude={"path"}) == (
         "4953979633bd8feaf08d50557768e1fb309b294514662384b5aa6d593efc3f8f"
     )
 
