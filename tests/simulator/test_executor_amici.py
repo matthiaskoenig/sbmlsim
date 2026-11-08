@@ -1180,8 +1180,15 @@ def test_two_events_closer_than_the_resolution_fire_one_after_the_other(
     assert_agree(amici, roadrunner, times, events=[1.0])
 
 
+REPEATS = 3
+
+
 def _integrations(source: str, simulation: Simulation) -> tuple[int, float]:
-    """Run a simulation with AMICI, counting its integrations and the time it takes."""
+    """Run a simulation with AMICI, counting its integrations and the time it takes.
+
+    The simulation runs once without being timed and then `REPEATS` times, the
+    time is the one of the fastest run and the integrations those of one run.
+    """
     model = AmiciSBMLModel(source=source, settings=SETTINGS)
     plan = plan_of(source, simulation)
     integrate = executor_amici._Course._integrate
@@ -1193,14 +1200,19 @@ def _integrations(source: str, simulation: Simulation) -> tuple[int, float]:
         return integrate(self, start, times)
 
     executor_amici._Course._integrate = counted
+    seconds = []
     try:
         executor_amici.execute(plan, model, ["time", "X", "n"])
-        started = time.perf_counter()
-        result = executor_amici.execute(plan, model, ["time", "X", "n"])
+        for _ in range(REPEATS):
+            calls = 0
+            started = time.perf_counter()
+            result = executor_amici.execute(plan, model, ["time", "X", "n"])
+            seconds.append(time.perf_counter() - started)
     finally:
         executor_amici._Course._integrate = integrate
     assert abs(result["n"][-1] - simulation.end * 1000.0) <= 1.0
-    return calls // 2, time.perf_counter() - started
+    # the fastest of the runs, which a busy machine delays the least
+    return calls, min(seconds)
 
 
 @pytest.mark.parametrize("times", [[0, 1, 2], None])
