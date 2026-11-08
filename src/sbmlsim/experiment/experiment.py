@@ -22,6 +22,7 @@ from sbmlsim.experiment.draws import UncertaintyRun, apply_uncertainty
 from sbmlsim.experiment.progress import Phase, PhaseClock
 from sbmlsim.fit import FitMapping
 from sbmlsim.fit.objects import FitDataInitialized
+from sbmlsim.memory import release_freed_memory
 from sbmlsim.model import AbstractModel, SBMLModel
 from sbmlsim.plot import Figure, FigureSettings
 from sbmlsim.plot.points import point_linestyles
@@ -812,6 +813,7 @@ class SimulationExperiment:
                 # every output is written, the report needs no results
                 self._results = {}
                 self._results_released = True
+                release_freed_memory()
             if output_path is not None:
                 keys = dict.fromkeys([*self._figures, *mpl_figures])
                 self._remove_figure_files(
