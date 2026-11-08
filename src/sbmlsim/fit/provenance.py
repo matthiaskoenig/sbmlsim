@@ -8,7 +8,6 @@ written with every run and with the result and read back by the report.
 
 from __future__ import annotations
 
-import hashlib
 import importlib.metadata
 import json
 import os
@@ -21,6 +20,7 @@ from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any
 
 from sbmlsim.engine import Engine
+from sbmlsim.hashing import file_sha256
 
 if TYPE_CHECKING:
     from sbmlsim.project import Project
@@ -335,7 +335,7 @@ def file_checksums(paths: Iterable[Path], root: Path | None = None) -> dict[str,
         if not path.is_file():
             continue
         key = checksum_key(path.resolve(), root.resolve() if root else None)
-        sums[key] = hashlib.sha256(path.read_bytes()).hexdigest()
+        sums[key] = file_sha256(path)
     return dict(sorted(sums.items()))
 
 

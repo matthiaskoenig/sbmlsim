@@ -120,7 +120,7 @@ from sbmlsim.fit.options import (
     OptimizationAlgorithmType,
     ParameterScaleType,
 )
-from sbmlsim.fit.parameters import ParameterSet
+from sbmlsim.fit.parameters import ParameterSet, dump_json, load_json
 
 logger = logging.getLogger(__name__)
 
@@ -838,12 +838,7 @@ class IdentifiabilityResult:
         Returns:
             The path or the JSON string.
         """
-        info = self.to_dict()
-        if path is None:
-            return json.dumps(info, indent=2)
-        with open(path, "w", encoding="utf-8") as f_json:
-            json.dump(info, f_json, indent=2)
-        return path
+        return dump_json(self.to_dict(), path)
 
     @staticmethod
     def from_json(json_info: str | Path) -> IdentifiabilityResult:
@@ -855,12 +850,7 @@ class IdentifiabilityResult:
         Returns:
             The result.
         """
-        if isinstance(json_info, Path):
-            with open(json_info, encoding="utf-8") as f_json:
-                d = json.load(f_json)
-        else:
-            d = json.loads(json_info)
-        return IdentifiabilityResult.from_dict(d)
+        return IdentifiabilityResult.from_dict(load_json(json_info))
 
 
 # ----------------------------------------------------------------------------

@@ -23,7 +23,6 @@ API of `sbmlsim.run`, which composes them.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import math
@@ -41,6 +40,7 @@ from pydantic import BaseModel, ValidationError
 from sbmlsim import events
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.cgroup import available_cpus
+from sbmlsim.hashing import canonical_json_sha256
 from sbmlsim.run.kinds import ConfigurationError, Kind, OutInUse, PlanMismatch, Spec
 
 __all__ = [
@@ -197,12 +197,7 @@ def spec_hash(spec: Spec, exclude: Collection[str] = ()) -> str:
     Returns:
         The hexadecimal digest.
     """
-    canonical = json.dumps(
-        spec.model_dump(mode="json", exclude=set(exclude)),
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return canonical_json_sha256(spec.model_dump(mode="json", exclude=set(exclude)))
 
 
 def _validated[S: Spec](kind: Kind[S], settings: Mapping[str, Any] | str) -> S:

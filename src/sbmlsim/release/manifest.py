@@ -9,7 +9,6 @@ makes the release repository hold only what the command generates.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import tomllib
@@ -18,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from sbmlsim.hashing import file_sha256
 from sbmlsim.release.source import (
     ReleaseError,
     Runner,
@@ -181,11 +181,6 @@ def _generated(release_path: Path, written: Iterable[Path]) -> set[str]:
     return files
 
 
-def _hash(path: Path) -> str:
-    with path.open("rb") as f:
-        return hashlib.file_digest(f, "sha256").hexdigest()
-
-
 def _library_versions(release_path: Path) -> dict[str, str]:
     lock_path = release_path / "uv.lock"
     if not lock_path.is_file():
@@ -226,7 +221,7 @@ def write_manifest(
     if missing:
         raise ReleaseError(f"'uv.lock' of the release lacks {', '.join(missing)}.")
     files = {
-        relative: _hash(release_path / relative)
+        relative: file_sha256(release_path / relative)
         for relative in sorted(_generated(release_path, written))
         if relative != MANIFEST_FILE
     }
@@ -297,7 +292,7 @@ def matches(
         return False
     for relative, digest in manifest.files.items():
         path = release_path / relative
-        if not path.is_file() or _hash(path) != digest:
+        if not path.is_file() or file_sha256(path) != digest:
             return False
     allowed = {*manifest.files, MANIFEST_FILE}
     return _status_paths(release_path, runner) <= allowed
