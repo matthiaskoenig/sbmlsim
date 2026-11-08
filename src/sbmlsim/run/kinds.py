@@ -184,6 +184,8 @@ class Kind[S: Spec]:
             the outputs of other runs.
         uses_cores: whether the kind runs on several CPUs.
         cost_setting: the field of the spec a scheduler estimates the cost by.
+        description: what the kind computes, one line, e.g. the description
+            of its task type of simrun in the palette of the Editor.
     """
 
     name: str
@@ -196,6 +198,7 @@ class Kind[S: Spec]:
     inputs: tuple[str, ...] = ()
     uses_cores: bool = True
     cost_setting: str | None = None
+    description: str = ""
 
     def __post_init__(self) -> None:
         """Check the kind.

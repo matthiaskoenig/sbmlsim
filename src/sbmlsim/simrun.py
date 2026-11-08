@@ -307,6 +307,7 @@ def _task_type(kind_name: str) -> TaskType:
         uses_cores=kind.uses_cores,
         plan=f"{ref}_plan",
         cost_setting=kind.cost_setting,
+        description=kind.description,
         **split,
     )
 

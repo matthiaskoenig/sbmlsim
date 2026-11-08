@@ -441,3 +441,4 @@ The test takes the number of draws into account: with too few draws the decision
 - [Simulation experiments](experiments.md): studies as python classes, with figures and HTML reports.
 - [Units](units.md): how `sbmlsim` reads and converts units.
 - [PEtab](petab.md): exchange a fit with other tools as a PEtab problem.
+- [Workflows with simrun](simrun.md): the analyses of this tutorial as one workflow, on your laptop or a cluster.

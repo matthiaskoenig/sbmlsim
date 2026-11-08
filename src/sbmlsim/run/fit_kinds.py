@@ -1361,6 +1361,7 @@ FIT: Kind[FitSpec] = Kind(
     compute_unit=_compute_fit_unit,
     merge=_merge_fit,
     cost_setting="subset",
+    description="Fit of a project, split into its repeats",
 )
 
 #: the profile likelihoods of a fit, one unit per parameter
@@ -1373,6 +1374,7 @@ IDENTIFIABILITY: Kind[IdentifiabilitySpec] = Kind(
     merge=_merge_identifiability,
     inputs=("fit",),
     cost_setting="subset",
+    description="Profile likelihoods of a fit, a parameter per unit",
 )
 
 #: the Fisher information of a fit, one jacobian in one process
@@ -1382,21 +1384,37 @@ FISHER: Kind[FisherSpec] = Kind(
     run=_run_fisher,
     inputs=("fit",),
     uses_cores=False,
+    description="Fisher information of a fit",
 )
 
 #: the report of the records of a fit
 REPORT: Kind[ReportSpec] = Kind(
-    name="report", spec=ReportSpec, run=_run_report, inputs=("fit",), uses_cores=False
+    name="report",
+    spec=ReportSpec,
+    run=_run_report,
+    inputs=("fit",),
+    uses_cores=False,
+    description="HTML report of a fit with its profiles and metrics",
 )
 
 #: the PEtab v2 problem of a fit problem
 PETAB: Kind[PetabSpec] = Kind(
-    name="petab", spec=PetabSpec, run=_run_petab, inputs=("fit",), uses_cores=False
+    name="petab",
+    spec=PetabSpec,
+    run=_run_petab,
+    inputs=("fit",),
+    uses_cores=False,
+    description="PEtab v2 problem of a fit",
 )
 
 #: the adoption of a finished fit
 ADOPT: Kind[AdoptSpec] = Kind(
-    name="adopt", spec=AdoptSpec, run=_run_adopt, inputs=("fit",), uses_cores=False
+    name="adopt",
+    spec=AdoptSpec,
+    run=_run_adopt,
+    inputs=("fit",),
+    uses_cores=False,
+    description="Adopt a fit as a record of the project",
 )
 
 for _kind in (FIT, IDENTIFIABILITY, FISHER, REPORT, PETAB, ADOPT):

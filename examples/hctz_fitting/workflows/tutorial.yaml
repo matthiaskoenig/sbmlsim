@@ -1,0 +1,44 @@
+# The analyses of the tutorial as one workflow of simrun, see docs/simrun.md:
+#   simrun submit examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
+name: hctz-tutorial
+tasks:
+  - id: simulate
+    type: sbmlsim.simulate
+    settings:
+      project: examples.hctz_fitting.project:PROJECT
+  - id: dose
+    type: sbmlsim.scan
+    settings:
+      project: examples.hctz_fitting.project:PROJECT
+      analysis: dose
+  - id: sobol
+    type: sbmlsim.sensitivity
+    settings:
+      project: examples.hctz_fitting.project:PROJECT
+      analysis: sobol
+  - id: cl
+    type: sbmlsim.uncertainty
+    settings:
+      project: examples.hctz_fitting.project:PROJECT
+      analysis: cl
+  - id: fit
+    type: sbmlsim.fit
+    settings:
+      project: examples.hctz_fitting.project:PROJECT
+      subset: PK
+      repeats: 8
+      seed: 1
+  - id: profiles
+    type: sbmlsim.identifiability
+    settings:
+      project: examples.hctz_fitting.project:PROJECT
+      subset: PK
+    inputs:
+      fit: fit.out
+  - id: report
+    type: sbmlsim.report
+    settings:
+      project: examples.hctz_fitting.project:PROJECT
+      subset: PK
+    inputs:
+      fit: profiles.out

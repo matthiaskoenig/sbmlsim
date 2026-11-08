@@ -415,7 +415,7 @@ python -m sbmlsim.run release release.yaml --out results/release
 
 ## simrun
 
-[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster. `sbmlsim` registers its kinds but `action` as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt`, `sbmlsim.factory`, `sbmlsim.credibility`, `sbmlsim.release` and so on (`verify` is a command and no kind, so it has no task type until a workflow needs one); the extra `simrun` installs simrun, which needs python 3.14:
+[simrun](https://github.com/matthiaskoenig/simrun) runs the tasks of a workflow on a cluster or, with `--local`, on this machine; [Workflows with simrun](simrun.md) runs the analyses of the tutorial as a workflow and shows how to convert an analysis. `sbmlsim` registers its kinds but `action` as the task types `sbmlsim.<kind>` of simrun, `sbmlsim.fit`, `sbmlsim.identifiability`, `sbmlsim.scan`, `sbmlsim.adopt`, `sbmlsim.factory`, `sbmlsim.credibility`, `sbmlsim.release` and so on (`verify` is a command and no kind, so it has no task type until a workflow needs one); the extra `simrun` installs simrun, which needs python 3.14:
 
 ```bash
 pip install "sbmlsim[simrun]"

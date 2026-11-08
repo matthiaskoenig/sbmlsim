@@ -1265,6 +1265,7 @@ SCAN: Kind[ScanSpec] = Kind(
     compute_unit=_compute_scan_unit,
     merge=_merge_scan,
     cost_setting="analysis",
+    description="Parameter scan of a project, split into blocks",
 )
 
 #: the sensitivity indices of a scan of a project, split as the scan, or a
@@ -1277,6 +1278,7 @@ SENSITIVITY: Kind[SensitivitySpec] = Kind(
     compute_unit=_compute_sensitivity_unit,
     merge=_merge_sensitivity,
     cost_setting="analysis",
+    description="Sensitivity analysis of a project",
 )
 
 #: an uncertainty analysis of a project, split into blocks of draws
@@ -1288,11 +1290,16 @@ UNCERTAINTY: Kind[UncertaintySpec] = Kind(
     compute_unit=_compute_uncertainty_unit,
     merge=_merge_uncertainty,
     cost_setting="analysis",
+    description="Uncertainty propagation of a project",
 )
 
 #: the simulation experiments of a project and their report
 SIMULATE: Kind[SimulateSpec] = Kind(
-    name="simulate", spec=SimulateSpec, run=_run_simulate, plan=_plan_simulate
+    name="simulate",
+    spec=SimulateSpec,
+    run=_run_simulate,
+    plan=_plan_simulate,
+    description="Simulation experiments of a project",
 )
 
 for _kind in (SCAN, SENSITIVITY, UNCERTAINTY, SIMULATE):

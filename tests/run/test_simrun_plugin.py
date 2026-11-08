@@ -126,6 +126,8 @@ def test_entry_points_register_every_kind() -> None:
         assert task_type.inputs == kind.inputs
         assert task_type.uses_cores == kind.uses_cores
         assert task_type.cost_setting == kind.cost_setting
+        # the palette of the Editor of simrun shows it
+        assert task_type.description == kind.description != "", name
         assert task_type.checkpoints
         assert task_type.plan == f"sbmlsim.simrun:{name}_plan"
         assert (task_type.command is None) == kind.splittable
