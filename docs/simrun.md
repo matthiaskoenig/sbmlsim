@@ -41,7 +41,9 @@ Take the dose scan of the tutorial. As a script it builds the scan, runs it and 
 ```py
 simulator = Simulator()
 model = simulator.load(HCTZ_SBML)
-dose = Simulation(time_unit="hr", end=24, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})])
+dose = Simulation(
+    time_unit="hr", end=24, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})]
+)
 scan = Scan(dose, [Dimension("dose", values={"PODOSE_hctz": Q([12.5, 25, 50], "mg")})])
 observables = [
     Formula("cp", "[Cve_hctz] * Mr_hctz", unit="ng/ml"),
@@ -55,7 +57,9 @@ In a project the same analysis is a set of functions which build the objects, an
 
 ```py
 def oral_dose() -> Simulation:
-    return Simulation(time_unit="hr", end=24, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})])
+    return Simulation(
+        time_unit="hr", end=24, changes=[Change(0, {"PODOSE_hctz": Q(25, "mg")})]
+    )
 
 
 def dose_scan() -> Scan:
@@ -254,7 +258,11 @@ sobol = SensitivityResult.from_netcdf("results/sobol/out/sensitivity.nc")
 print(sobol.index("ST").to_pandas().round(2))
 
 cl = UncertaintyResult.from_netcdf("results/cl/out/uncertainty")
-print(cl.summary(outputs=["pk.auc_inf_obs"])[["output", "n", "mean", "sd", "q0.05", "q0.95"]])
+print(
+    cl.summary(outputs=["pk.auc_inf_obs"])[
+        ["output", "n", "mean", "sd", "q0.05", "q0.95"]
+    ]
+)
 ```
 
 ```text
