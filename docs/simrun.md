@@ -181,7 +181,7 @@ simrun estimate examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=.
 simrun submit examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
 ```
 
-`estimate` shows the plan of every task: its processes, the cores and the memory it asks for, and the units of a split task (3 points of the dose scan, 32 blocks of the Sobol design and of the draws, 8 repeats of the fit, a profile per parameter). `submit` plans the tasks, records the provenance of the sources and follows the run to its end with a line per task; on 20 cores the workflow takes about a minute:
+`estimate` shows the plan of every task: its processes, the cores and the memory it asks for, and the units of a split task (3 points of the dose scan, 32 blocks of the Sobol design and of the draws, 8 repeats of the fit, a profile per parameter). `submit` plans the tasks, records the provenance of the sources and follows the run to its end with a line per task; on 20 idle cores the workflow takes about a minute:
 
 ```bash
 simrun status <run> --local
@@ -211,7 +211,7 @@ A click on a task opens it in the inspector on the right: its **Overview**, its 
 
 ![The outputs of the task report](images/simrun/executions-outputs.png)
 
-The logs are the console of the run layer, here the repeats of the fit with their costs:
+The logs are the console of the run layer, here the repeats of the fit with their costs; long lines scroll sideways, **wrap lines** wraps them at the width of the inspector:
 
 ![The logs of the task fit](images/simrun/executions-logs.png)
 
@@ -280,7 +280,7 @@ A split result equals the result of the whole analysis on one machine bitwise, s
 
 ### The Editor
 
-`simrun edit` opens the workflow file in the **Editor** of the web app: the task types of `sbmlsim` in the palette, the tasks as cards, the settings of the selected task as a form of its spec. A save writes the YAML file, **Run workflow** submits it:
+`simrun edit` opens the workflow file in the **Editor** of the web app: the task types of `sbmlsim` in the palette, the tasks as cards, the settings of the selected task as a form of its spec, without the fields the plan sets, such as the units. A save writes the YAML file, **Run workflow** submits it:
 
 ```bash
 simrun edit examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
