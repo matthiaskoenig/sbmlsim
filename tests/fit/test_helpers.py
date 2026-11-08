@@ -4,12 +4,14 @@ import pytest
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984
-from sbmlsim.fit import FitMapping, MappingKind
+from sbmlsim.fit import FitMapping, MappingKind, helpers
 from sbmlsim.fit.helpers import (
     FitMappings,
     MappingSelection,
     select_mapping_collections,
 )
+from sbmlsim.project import SimulatorSettings
+from tests.project_toy import PROJECT
 
 
 @pytest.fixture(scope="module")
@@ -200,3 +202,35 @@ def test_filter_keys_takes_a_copy_of_the_ids() -> None:
     selected = filter_keys(keys)
     keys.add("fm_b")
     assert not selected("fm_b", None)  # ty: ignore[invalid-argument-type]
+
+
+def test_the_models_are_compiled_at_the_given_level() -> None:
+    """The experiments of the fit mappings load their models at the level."""
+    fit_mappings = FitMappings(
+        experiment_classes=[Beermann1976],
+        base_path=HCTZ_PATH,
+        data_path=DATA_PATH,
+        jit_optimization="O1",
+    )
+    assert str(fit_mappings.runner.jit_optimization) == "O1"
+
+
+class _Stop(Exception):
+    """Raised by the recording fit mappings after they recorded."""
+
+
+def test_select_mappings_compiles_at_the_level_of_the_project(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fit mappings of a project compile its models at its level."""
+    seen: dict[str, object] = {}
+
+    def recording(**kwargs: object) -> FitMappings:
+        seen.update(kwargs)
+        raise _Stop
+
+    monkeypatch.setattr(helpers, "FitMappings", recording)
+    project = PROJECT.replace(simulator=SimulatorSettings(jit_optimization="O1"))
+    with pytest.raises(_Stop):
+        helpers.select_mappings(project, [])
+    assert seen["jit_optimization"] == "O1"

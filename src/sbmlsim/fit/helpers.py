@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from sbmlsim.engine import JitOptimization
 from sbmlsim.experiment import ExperimentRunner, SimulationExperiment
 from sbmlsim.fit import display
 from sbmlsim.fit.filters import (
@@ -164,6 +165,7 @@ class FitMappings:
         experiment_classes: Iterable[type[SimulationExperiment]],
         base_path: Path,
         data_path: Path | Iterable[Path] | None,
+        jit_optimization: JitOptimization | str | None = None,
     ):
         """Instantiate the simulation experiments.
 
@@ -172,6 +174,9 @@ class FitMappings:
             base_path: base path of the simulation experiments.
             data_path: path or paths of the datasets of the simulation
                 experiments, none without datasets.
+            jit_optimization: the optimization level the models of the
+                experiments are compiled at, see `ExperimentRunner`; the level
+                of a project is `SimulatorSettings.jit_optimization`.
         """
         self.runner = ExperimentRunner(
             experiment_classes=list(experiment_classes),
@@ -179,6 +184,7 @@ class FitMappings:
             data_path=data_path,
             # a fit needs every experiment, its definition errors are raised
             on_error="raise",
+            jit_optimization=jit_optimization,
         )
         self.keys: dict[str, list[str]] = {
             experiment_id: list(experiment._fit_mappings)
@@ -311,6 +317,7 @@ def select_mapping_collections(
     outliers: Iterable[str] = (),
     validation: Iterable[str] | MappingFilter = (),
     print_info: bool = True,
+    jit_optimization: JitOptimization | str | None = None,
 ) -> dict[str, list[FitMappingCollection]]:
     """Select the data of a fit in one call, see `FitMappings.select`.
 
@@ -325,6 +332,8 @@ def select_mapping_collections(
         outliers: keys of the outliers.
         validation: keys or filter of the validation data.
         print_info: print the overview of the selected data.
+        jit_optimization: the optimization level the models of the experiments
+            are compiled at, see `FitMappings`.
 
     Returns:
         The fit mapping collections of all kinds by experiment id.
@@ -333,6 +342,7 @@ def select_mapping_collections(
         experiment_classes=experiment_classes,
         base_path=base_path,
         data_path=data_path,
+        jit_optimization=jit_optimization,
     )
     return fit_mappings.select(
         filters=filters,
@@ -352,7 +362,8 @@ def select_mappings(
     """Select the data of a fit of a project, see `FitMappings.select`.
 
     The experiments are created with the paths of the project (its
-    `base_path`, else its `root`, and its `data_path`); the counts of the
+    `base_path`, else its `root`, and its `data_path`) and its models compiled
+    at its level (`SimulatorSettings.jit_optimization`); the counts of the
     selected mappings per experiment and kind are printed.
 
     Args:
@@ -369,6 +380,7 @@ def select_mappings(
         experiment_classes=experiment_classes,
         base_path=project.base_path or project.root,
         data_path=project.data_path,
+        jit_optimization=project.simulator.jit_optimization,
     )
     selection = fit_mappings.select(
         filters=filters, outliers=outliers, validation=validation, print_info=False
