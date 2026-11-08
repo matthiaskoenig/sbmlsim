@@ -46,7 +46,6 @@ when this module is imported.
 
 from __future__ import annotations
 
-import hashlib
 import inspect
 import json
 import logging
@@ -62,6 +61,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 from sbmlsim import events
 from sbmlsim.atomic import atomic_directory, atomic_path, write_text_atomic
 from sbmlsim.cgroup import available_cpus
+from sbmlsim.hashing import canonical_json_sha256
 from sbmlsim.run.kinds import (
     ConfigurationError,
     Kind,
@@ -396,8 +396,7 @@ def scan_identity(scan: Scan) -> dict[str, Any]:
 
 def _digest(record: Any) -> str:
     """Get the sha256 of the canonical JSON of a record."""
-    text = json.dumps(record, sort_keys=True, separators=(",", ":"), default=_canonical)
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return canonical_json_sha256(record, default=_canonical)
 
 
 def scan_hash(scan: Scan) -> str:

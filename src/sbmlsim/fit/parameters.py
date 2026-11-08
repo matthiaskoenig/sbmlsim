@@ -25,6 +25,40 @@ from sbmlsim.units import DimensionalityError, UndefinedUnitError, ureg
 logger = logging.getLogger(__name__)
 
 
+def dump_json(info: dict[str, Any], path: Path | None = None) -> str | Path:
+    """Write a dictionary as JSON into a file or a string.
+
+    The JSON of `ParameterSets.to_json` and `IdentifiabilityResult.to_json`.
+
+    Args:
+        info: the dictionary.
+        path: file to write, the JSON string is returned if it is `None`.
+
+    Returns:
+        The path or the JSON string.
+    """
+    if path is None:
+        return json.dumps(info, indent=2)
+    with open(path, "w", encoding="utf-8") as f_json:
+        json.dump(info, f_json, indent=2)
+    return path
+
+
+def load_json(json_info: str | Path) -> Any:
+    """Read JSON from a file or a string, see `dump_json`.
+
+    Args:
+        json_info: path of the file or the JSON string.
+
+    Returns:
+        The content.
+    """
+    if isinstance(json_info, Path):
+        with open(json_info, encoding="utf-8") as f_json:
+            return json.load(f_json)
+    return json.loads(json_info)
+
+
 @dataclass
 class ParameterSet:
     """A named set of parameter values.
@@ -349,12 +383,7 @@ class ParameterSets:
         Returns:
             The path or the JSON string.
         """
-        info = {"sets": [pset.to_dict() for pset in self.sets]}
-        if path is None:
-            return json.dumps(info, indent=2)
-        with open(path, "w", encoding="utf-8") as f_json:
-            json.dump(info, f_json, indent=2)
-        return path
+        return dump_json({"sets": [pset.to_dict() for pset in self.sets]}, path)
 
     @staticmethod
     def from_json(json_info: str | Path) -> ParameterSets:
@@ -366,9 +395,5 @@ class ParameterSets:
         Returns:
             The parameter sets.
         """
-        if isinstance(json_info, Path):
-            with open(json_info, encoding="utf-8") as f_json:
-                d = json.load(f_json)
-        else:
-            d = json.loads(json_info)
+        d = load_json(json_info)
         return ParameterSets([ParameterSet.from_dict(s) for s in d["sets"]])
