@@ -972,6 +972,6 @@ def test_unusable_cache_gives_a_registry(tmp_path, monkeypatch):
     from sbmlsim import units
 
     blocker = tmp_path / "file"
-    blocker.write_text("x")
+    blocker.write_text("x", encoding="utf-8")
     monkeypatch.setenv(units.CACHE_ENV, str(blocker / "cache"))
     assert units._create_registry().Quantity(1, "mg").to("g").magnitude == 0.001
