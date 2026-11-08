@@ -250,6 +250,7 @@ def test_a_worker_sees_a_rewritten_model(
     )
     run_chunk_in_worker(spec, chunk)
     result = run_chunk_in_worker(other, chunk)
+    assert isinstance(result, ChunkResult)
     assert result.values[0, 0, 1] == pytest.approx(0.5)
 
 

@@ -70,6 +70,7 @@ Execution of simulations.
 | [simulator.changes](simulator.changes.md) | the changes of a plan and the events a change fires, shared by the engines |
 | [simulator.formula](simulator.formula.md) | the formulas of the changes of a simulation |
 | [simulator.worker](simulator.worker.md) | the chunks of a scan, run on one plan and one model in a worker |
+| [simulator.shared](simulator.shared.md) | the large arrays of a chunk result in shared memory, from a worker to the parent |
 | [simulator.observables](simulator.observables.md) | the compiled observables of a scan and their evaluation on the native solutions |
 | [simulator.pk](simulator.pk.md) | the non-compartmental analysis of a `PK` observable with pkpdutils |
 | [task.task](task.task.md) | `Task`, a simulation applied to a model |
