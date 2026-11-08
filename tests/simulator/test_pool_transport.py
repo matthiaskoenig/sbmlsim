@@ -146,7 +146,9 @@ def test_an_earlier_failure_in_unsubmitted_chunks_still_wins(
     submitted: list[int] = []
 
     class FailingPool:
-        def submit(self, function: Callable, spec: ModelSpec, chunk: Any) -> Future:
+        def submit(
+            self, function: Callable, spec: ModelSpec, chunk: Any, *args: Any
+        ) -> Future:
             future: Future = Future()
             index = int(chunk.indices[0])
             submitted.append(index)
@@ -154,7 +156,7 @@ def test_an_earlier_failure_in_unsubmitted_chunks_still_wins(
                 failure = 10 if index == 0 else 5
                 future.set_exception(ScanPointError(failure, "injected failure"))
             else:
-                future.set_result(function(spec, chunk))
+                future.set_result(function(spec, chunk, *args))
             return future
 
     monkeypatch.setattr(parallel, "pool", lambda _: FailingPool())
@@ -174,7 +176,9 @@ def test_workers_stop_before_snapshot_cleanup_on_unexpected_errors(
     stopped: list[bool] = []
 
     class PendingPool:
-        def submit(self, function: Callable, spec: ModelSpec, chunk: Any) -> Future:
+        def submit(
+            self, function: Callable, spec: ModelSpec, chunk: Any, *args: Any
+        ) -> Future:
             paths.append(Path(spec.source))
             return Future()
 
