@@ -47,7 +47,7 @@ def convert_v1(
     Args:
         yaml_file: the YAML file of the problem of PEtab v1.
         output_dir: the directory the problem of PEtab v2 is written to, it
-            must not exist.
+            must not exist or be empty.
         simulation_files: the tables of the reference simulations of the
             problem, in PEtab v1; they are written to `SIMULATIONS_FILE` of
             the output directory as one table of PEtab v2, i.e. a measurement
