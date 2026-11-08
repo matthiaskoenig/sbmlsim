@@ -102,6 +102,7 @@ nav = [
       { "changes" = "api/simulator.changes.md" },
       { "formula" = "api/simulator.formula.md" },
       { "worker" = "api/simulator.worker.md" },
+      { "shared" = "api/simulator.shared.md" },
       { "observables" = "api/simulator.observables.md" },
       { "pk" = "api/simulator.pk.md" },
     ] },

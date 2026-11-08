@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ALL_COMPLETED, wait
 from pathlib import Path
 from typing import Any
 
@@ -18,8 +19,9 @@ from sbmlsim import cgroup, parallel
 from sbmlsim.model import RoadrunnerSBMLModel
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.simulation import Change, Dimension, Scan, Simulation
-from sbmlsim.simulator import IntegratorSettings, ScanError, Simulator
-from sbmlsim.simulator.worker import ModelSpec
+from sbmlsim.simulator import IntegratorSettings, ScanError, Simulator, shared
+from sbmlsim.simulator.shared import SharedArray
+from sbmlsim.simulator.worker import ModelSpec, run_chunk_in_worker
 from tests.simulator.models import (
     BLOWUP,
     OTHER_BODY_WEIGHT,
@@ -527,3 +529,127 @@ def test_ctrl_c_in_a_terminal(mode: str, tmp_path: Path) -> None:
     assert stdout.split() == ["INTERRUPTED", "DONE"]
     assert process.returncode == 0
     assert _group_ended(process.pid, timeout=10.0)
+
+
+#: a grid on which every point of the test models is above the threshold
+LARGE_GRID = np.linspace(0, 1, 60_000)
+
+needs_dev_shm = pytest.mark.skipif(
+    sys.platform != "linux", reason="the segments are files of /dev/shm on linux"
+)
+
+
+def _segments(prefix: str) -> list[str]:
+    """Get the segments of shared memory of a run of this prefix."""
+    return sorted(path.name for path in Path("/dev/shm").glob(f"{prefix}*"))
+
+
+def _prefixed(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Give the runs of a test a prefix of their segments of its own."""
+    prefix = f"sbt{os.getpid()}x{time.monotonic_ns() % 10**6}_"
+    monkeypatch.setattr(shared, "run_prefix", lambda: prefix)
+    return prefix
+
+
+def _received(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Record the names of the segments the parent receives."""
+    names: list[str] = []
+    receive = shared.receive
+
+    def recording(array: SharedArray) -> np.ndarray:
+        names.append(array.name)
+        return receive(array)
+
+    monkeypatch.setattr(shared, "receive", recording)
+    return names
+
+
+@pytest.mark.parametrize("output", ["grid", "steps"])
+def test_a_large_result_arrives_in_shared_memory(
+    output: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pool which hands its results over in shared memory gives the serial result."""
+    if output == "grid":
+        scan, grid = _scan(), LARGE_GRID * 2
+    else:
+        # ragged: the parent keeps the chunks until the last one arrived
+        scan, grid = Scan(Simulation(end=2, steps=40_000), _scan().dimensions), None
+    serial = Simulator(n_workers=1).run(_model(), scan, time=grid)
+    prefix = _prefixed(monkeypatch)
+    names = _received(monkeypatch)
+    pooled = Simulator(n_workers=2).run(_model(), scan, time=grid)
+    xr.testing.assert_identical(pooled.ds, serial.ds)
+    if shared.supported():
+        assert names
+        assert all(name.startswith(prefix) for name in names)
+    if sys.platform == "linux":
+        assert _segments(prefix) == []
+
+
+def test_a_small_result_is_pickled(monkeypatch: pytest.MonkeyPatch) -> None:
+    names = _received(monkeypatch)
+    serial = Simulator(n_workers=1).run(_model(), _scan())
+    pooled = Simulator(n_workers=2).run(_model(), _scan())
+    xr.testing.assert_identical(pooled.ds, serial.ds)
+    assert names == []
+
+
+def test_a_serial_run_uses_no_shared_memory(monkeypatch: pytest.MonkeyPatch) -> None:
+    def no_segment(*args: Any) -> Any:
+        raise AssertionError("a serial run shared an array")
+
+    monkeypatch.setattr(shared, "share", no_segment)
+    monkeypatch.setattr(shared, "run_prefix", no_segment)
+    res = Simulator(n_workers=1).run(_model(), _scan(), time=LARGE_GRID * 2)
+    assert np.isfinite(res["[A]"].values).all()
+
+
+def _share_and_die(spec: ModelSpec, chunk: Any, segment: str | None = None) -> Any:
+    """Run a chunk into shared memory, then end the worker before it answers."""
+    result = run_chunk_in_worker(spec, chunk, segment)
+    if not isinstance(result.values, SharedArray):
+        raise AssertionError("the result is not in shared memory")
+    os._exit(1)
+
+
+@needs_dev_shm
+def test_no_segment_outlives_a_failed_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(simulator_module, "MAX_CHUNK", 1)
+    prefix = _prefixed(monkeypatch)
+    names = _received(monkeypatch)
+    blowup = RoadrunnerSBMLModel(source=sbml(BLOWUP))
+    rates = [0.1, 0.2, 3.0, 0.3, 2.0, 4.0, 0.4, 5.0]
+    scan = Scan(Simulation(end=1), [Dimension("rate", values={"k": rates})])
+    with pytest.raises(ScanError, match=r"The point rate=2, k=3\.0 of the scan"):
+        Simulator(n_workers=2).run(blowup, scan, time=LARGE_GRID)
+    assert names
+    assert _segments(prefix) == []
+
+
+@needs_dev_shm
+def test_no_segment_outlives_a_dead_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    prefix = _prefixed(monkeypatch)
+    monkeypatch.setattr(simulator_module, "run_chunk_in_worker", _share_and_die)
+    with pytest.raises(RuntimeError, match="A worker of the pool died"):
+        Simulator(n_workers=2).run(_model(), _scan(), time=LARGE_GRID * 2)
+    assert _segments(prefix) == []
+
+
+@needs_dev_shm
+def test_no_segment_outlives_an_interrupted_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prefix = _prefixed(monkeypatch)
+    left: list[list[str]] = []
+
+    def interrupt(futures: Any, return_when: Any = None) -> Any:
+        # Ctrl-C after the pending chunks wrote their results
+        wait(futures, return_when=ALL_COMPLETED)
+        left.append(_segments(prefix))
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(simulator_module, "wait", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        Simulator(n_workers=2).run(_model(), _scan(), time=LARGE_GRID * 2)
+    assert left[0]
+    assert _segments(prefix) == []

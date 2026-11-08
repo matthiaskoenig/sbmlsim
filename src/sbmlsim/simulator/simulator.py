@@ -16,7 +16,10 @@
    see `sbmlsim.simulator.worker`; the same function runs serially in the
    calling process and in a worker of a pool of `sbmlsim.parallel`; the
    observables are evaluated on the native solutions of the points of a chunk
-   before the kept timecourses are interpolated onto a grid.
+   before the kept timecourses are interpolated onto a grid. A worker of a
+   pool hands a large array of the result of a chunk over in shared memory
+   instead of the pipe of the pool, on POSIX, see `sbmlsim.simulator.shared`;
+   the segments of a run never outlive it.
 4. Assembly: the arrays of a chunk are written into the arrays of the result
    when the chunk arrives and the chunk is released, see `_Assembly`, so a
    run holds its result once; the arrays are reshaped into the dimensions of
@@ -103,6 +106,7 @@ from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation.definition import Simulation
 from sbmlsim.simulation.observables import Observable
 from sbmlsim.simulation.scan import RESERVED, DimensionKind, Scan
+from sbmlsim.simulator import shared
 from sbmlsim.simulator.engines import check_plan, execute_plan
 from sbmlsim.simulator.observables import ObservableGraph, compile_observables
 from sbmlsim.simulator.plan import Plan, compile_simulation, model_time, target_values
@@ -112,6 +116,7 @@ from sbmlsim.simulator.worker import (
     ModelSpec,
     OnError,
     ScanPointError,
+    SharedChunkResult,
     point_plan,
     run_chunk,
     run_chunk_in_worker,
@@ -578,11 +583,24 @@ class Simulator:
         collect: Callable[[ChunkResult], None],
         specs: Sequence[ModelSpec],
     ) -> None:
-        """Run bounded pending work while its shared snapshots remain available."""
+        """Run bounded pending work while its shared snapshots remain available.
+
+        A large array of a result arrives in a segment of shared memory, see
+        `sbmlsim.simulator.shared`: the names of the segments of a chunk are
+        the prefix of the run and the position of the chunk, a segment is
+        removed when its result is received, and the segments of every chunk
+        whose result was not received are removed at the end of the run, also
+        after an error, Ctrl-C or a dead worker.
+        """
         executor = parallel.pool(workers)
         failed: ScanPointError | None = None
-        futures: dict[Future[ChunkResult], Chunk] = {}
-        pending: set[Future[ChunkResult]] = set()
+        futures: dict[Future[ChunkResult | SharedChunkResult], Chunk] = {}
+        pending: set[Future[ChunkResult | SharedChunkResult]] = set()
+        prefix = shared.run_prefix() if shared.supported() else None
+        # the stem of the segments of every chunk whose result is unread
+        stems: dict[Future[ChunkResult | SharedChunkResult], str] = {}
+        unread: set[str] = set()
+        submitted = 0
         remaining = iter(chunks)
         finished = False
         try:
@@ -594,18 +612,26 @@ class Simulator:
                     ):
                         finished = True
                         break
+                    stem = None
+                    if prefix is not None:
+                        stem = shared.segment_stem(prefix, submitted)
+                        unread.add(stem)
+                    submitted += 1
                     future = executor.submit(
-                        run_chunk_in_worker, specs[chunk.model], chunk
+                        run_chunk_in_worker, specs[chunk.model], chunk, stem
                     )
                     futures[future] = chunk
+                    if stem is not None:
+                        stems[future] = stem
                     pending.add(future)
                 if not pending:
                     break
                 done, pending = wait(pending, return_when=FIRST_COMPLETED)
                 for future in done:
                     futures.pop(future)
+                    stem = stems.pop(future, None)
                     try:
-                        result = future.result()
+                        answer = future.result()
                     except ScanPointError as err:
                         failed = _first(failed, err)
                         # `wait` reports a cancelled future only once the pool
@@ -617,8 +643,13 @@ class Simulator:
                             ):
                                 pending.remove(other)
                                 futures.pop(other)
+                                # a cancelled chunk never ran
+                                unread.discard(stems.pop(other, ""))
                         continue
-                    collect(result)
+                    if isinstance(answer, SharedChunkResult):
+                        answer = answer.received()
+                    unread.discard(stem or "")
+                    collect(answer)
         except BrokenProcessPool as err:
             parallel.stop(executor)
             raise RuntimeError(
@@ -633,6 +664,11 @@ class Simulator:
             # e.g. Ctrl-C: the workers still run their chunks, the pool stops
             parallel.stop(executor)
             raise
+        finally:
+            # the workers finished or were stopped: no segment comes later
+            shared.unlink(
+                name for stem in sorted(unread) for name in shared.segment_names(stem)
+            )
         if failed is not None:
             raise compiled.error(failed) from failed
 

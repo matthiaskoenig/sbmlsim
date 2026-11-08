@@ -22,6 +22,10 @@ does and the result does not depend on the number of workers (bitwise with
 roadrunner and AMICI, within the integration with COPASI, see
 `sbmlsim.simulator.simulator`).
 
+In a worker of a pool a large array of the result of a chunk is written into
+shared memory instead of being pickled through the pipe of the pool, see
+`SharedChunkResult` and `sbmlsim.simulator.shared`, on POSIX only.
+
 A point which fails is reported once, by its error: roadrunner logs the error
 of CVODE as well, so its log level is lowered while a chunk of a model of
 roadrunner runs. A feature which the engine does not simulate, the
@@ -48,9 +52,11 @@ from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.result.scan import MAX_ERRORS, TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
+from sbmlsim.simulator import shared
 from sbmlsim.simulator.engines import execute_plan
 from sbmlsim.simulator.observables import TIMECOURSE, ObservableError, ObservableGraph
 from sbmlsim.simulator.plan import Plan, time_tolerance
+from sbmlsim.simulator.shared import SharedArray
 
 #: what a run does about a point which fails: raise its error or flag it
 OnError = Literal["raise", "flag"]
@@ -573,18 +579,71 @@ def _pack(
     )
 
 
-def run_chunk_in_worker(spec: ModelSpec, chunk: Chunk) -> ChunkResult:
+@dataclass(frozen=True)
+class SharedChunkResult:
+    """The answer of a chunk of a worker whose large arrays are in shared memory.
+
+    The fields of `ChunkResult`, of which `values` and `scalars` are a
+    `SharedArray` when the worker wrote them into a segment, see
+    `sbmlsim.simulator.shared`.
+    """
+
+    indices: np.ndarray
+    values: np.ndarray | SharedArray
+    scalars: np.ndarray | SharedArray
+    status: np.ndarray
+    errors: tuple[tuple[int, str], ...]
+
+    def received(self) -> ChunkResult:
+        """Get the `ChunkResult`, its arrays read from their segments.
+
+        Such an array is a read-only view on its segment, whose name is
+        removed, so this is called once, in the parent, see
+        `sbmlsim.simulator.shared.receive`.
+        """
+        return ChunkResult(
+            indices=self.indices,
+            values=_received(self.values),
+            scalars=_received(self.scalars),
+            status=self.status,
+            errors=self.errors,
+        )
+
+
+def _received(array: np.ndarray | SharedArray) -> np.ndarray:
+    """Get an array, read from its segment if it is in one."""
+    return shared.receive(array) if isinstance(array, SharedArray) else array
+
+
+def run_chunk_in_worker(
+    spec: ModelSpec, chunk: Chunk, segment: str | None = None
+) -> ChunkResult | SharedChunkResult:
     """Run a chunk in a worker process, on the model the worker keeps.
 
     Args:
         spec: the model of the chunk and the settings of its integrator.
         chunk: the points.
+        segment: the stem of the names of the segments of shared memory the
+            arrays of the result are written into, `values` and `scalars`
+            with the `SUFFIXES` of `sbmlsim.simulator.shared`;
+            `None` returns the arrays through the pipe of the pool.
 
     Returns:
-        The values of every point, see `run_chunk`.
+        The values of every point, see `run_chunk`, with its large arrays in
+        shared memory when `segment` is given.
     """
     model = parallel.worker_cache(("model", spec.key), spec.load)
-    return run_chunk(chunk, model)
+    result = run_chunk(chunk, model)
+    if segment is None:
+        return result
+    values, scalars = shared.segment_names(segment)
+    return SharedChunkResult(
+        indices=result.indices,
+        values=shared.share(result.values, values),
+        scalars=shared.share(result.scalars, scalars),
+        status=result.status,
+        errors=result.errors,
+    )
 
 
 @contextmanager
