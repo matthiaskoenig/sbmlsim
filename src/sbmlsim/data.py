@@ -1390,27 +1390,3 @@ def load_pkdb_dataframe(
     # FIXME: handle unnecessary UnitStrippedWarning: The unit of the quantity is stripped when downcasting to ndarray.
     # At this point we only work with numpy arrays, units not important here
     return df.dropna(how="all")  # drop all NA rows
-
-
-def load_pkdb_dataframes_by_substance(
-    sid, data_path, **kwargs
-) -> dict[str, pd.DataFrame]:
-    """Load dataframes from given PKDB figure/table id split on substance.
-
-    The DataFrame is split on the 'substance' key.
-
-    This is a simple helper functions to directly loading the TSV data.
-    It is recommended to use `pkdb_analysis` methods instead.
-
-    This function will be removed.
-
-    :param sid:
-    :param data_path:
-    :param kwargs:
-    :return: dict[substance, pd.DataFrame]
-    """
-    df = load_pkdb_dataframe(sid=sid, data_path=data_path, na_values=["na"], **kwargs)
-    frames = {}
-    for substance in df.substance.unique():
-        frames[substance] = df.copy()[df.substance == substance]
-    return frames

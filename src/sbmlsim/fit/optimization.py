@@ -2834,14 +2834,6 @@ class OptimizationProblem(ObjectJSONEncoder):
                     f"[{start}, {end}]."
                 )
 
-    def _derived_targets(self, k_group: int) -> set[str]:
-        """Get the targets the hybridizations of a simulation group set."""
-        return {
-            target
-            for hook, _ in self.group_derived[k_group]
-            for target in hook.targets()
-        }
-
     def _group_derived_changes(self) -> None:
         """Resolve the derived changes of every simulation group.
 

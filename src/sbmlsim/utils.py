@@ -1,7 +1,6 @@
 """Utility functions."""
 
 import functools
-import hashlib
 import logging
 import os
 import time
@@ -9,16 +8,6 @@ from collections.abc import Iterable
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
-
-
-def md5_for_path(path):
-    """Calculate MD5 of file content."""
-    # Open,close, read file and calculate MD5 on its contents
-    with open(path, "rb") as f_check:
-        # read contents of the file
-        data = f_check.read()
-        # pipe contents of the file through
-        return hashlib.md5(data).hexdigest()
 
 
 def timeit(function):
