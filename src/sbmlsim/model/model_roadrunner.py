@@ -17,6 +17,7 @@ import roadrunner
 from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
 
 from sbmlsim.engine import Engine, JitOptimization
+from sbmlsim.memory import release_freed_memory
 from sbmlsim.model.event_rows import with_event_markers
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_resources import Source
@@ -109,8 +110,9 @@ def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
 
 
 #: the level of a model loaded without one, unless `JIT_OPTIMIZATION_VARIABLE`
-#: sets another
-DEFAULT_JIT_OPTIMIZATION = JitOptimization.O2
+#: sets another; `O0` compiles several times faster and needs less memory, the
+#: higher levels simulate little faster (see `JitOptimization`)
+DEFAULT_JIT_OPTIMIZATION = JitOptimization.O0
 
 #: the environment variable which sets the level of a model loaded without one,
 #: e.g. `SBMLSIM_JIT_OPTIMIZATION=O0`
@@ -178,6 +180,8 @@ def load_roadrunner(
     MCJIT. Up to libroadrunner 2.10 LLJIT crashed when the code of a model and
     its jump tables were more than 2 GiB apart (#331, roadrunner #1368), e.g.
     when a model was compiled again while an earlier instance of it was alive.
+    The memory the compilation freed is returned to the system
+    (`sbmlsim.memory.release_freed_memory`).
 
     LLJIT of libroadrunner 2.11 keeps the code of an SBML once it compiled it
     in the process, also after the instance was released and also with
@@ -205,7 +209,10 @@ def load_roadrunner(
     options.setLLVMBackend(roadrunner.LoadSBMLOptions.LLJIT)
     level = resolve_jit_optimization(optimization)
     options.setLLJitOptimizationLevel(_LLJIT_LEVELS[level])
-    return roadrunner.RoadRunner(_with_level(source, level), options)
+    instance = roadrunner.RoadRunner(_with_level(source, level), options)
+    # the compilation leaves the memory of its allocations free in the heap
+    release_freed_memory()
+    return instance
 
 
 def _sbml_text(data: bytes) -> str:
