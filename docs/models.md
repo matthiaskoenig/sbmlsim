@@ -197,7 +197,7 @@ The integrator of roadrunner (CVODE by default) is configured on the simulator, 
 
 ## Compilation speed
 
-roadrunner compiles every model into machine code when it is loaded. The optimization level `jit_optimization`, `O0` to `O3`, trades the time of the compilation against the speed of the simulation. `O0` is the default: it compiles about four times faster, its code needs less memory and it simulates up to a quarter slower than `O2`, which pays off only for a run which simulates a model long after compiling it once.
+roadrunner compiles every model into machine code when it is loaded. The optimization level `jit_optimization`, `O0` to `O3`, trades the time of the compilation against the speed of the simulation. `O2` is the default and simulates fast. `O0` compiles about four times faster and simulates up to a quarter slower, which pays off when a run loads many models and simulates little with each, e.g. when it initializes many experiments, or in tests.
 
 Set the level on a model, on an `ExperimentRunner` or an `OptimizationProblem` (for all their models), or with the environment variable `SBMLSIM_JIT_OPTIMIZATION` for everything which is not given a level:
 

@@ -110,9 +110,8 @@ def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
 
 
 #: the level of a model loaded without one, unless `JIT_OPTIMIZATION_VARIABLE`
-#: sets another; `O0` compiles several times faster and needs less memory, the
-#: higher levels simulate little faster (see `JitOptimization`)
-DEFAULT_JIT_OPTIMIZATION = JitOptimization.O0
+#: sets another
+DEFAULT_JIT_OPTIMIZATION = JitOptimization.O2
 
 #: the environment variable which sets the level of a model loaded without one,
 #: e.g. `SBMLSIM_JIT_OPTIMIZATION=O0`
