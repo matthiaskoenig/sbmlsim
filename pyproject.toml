@@ -179,6 +179,9 @@ testpaths = ["tests"]
 addopts = "-n auto --dist worksteal -m 'not testsuite and not sciml_testsuite and not petab_testsuite and not petab_benchmark and not benchmark'"
 # a passed subtest is not listed, a failed one is
 verbosity_subtests = 0
+# a warning fails the test which raises it, so a deprecation is fixed when it
+# appears and not when the feature is removed
+filterwarnings = ["error"]
 markers = [
     "testsuite: a semantic case of the SBML Test Suite, run before a release",
     "sciml_testsuite: a case of the PEtab SciML test suite, run before a release",
