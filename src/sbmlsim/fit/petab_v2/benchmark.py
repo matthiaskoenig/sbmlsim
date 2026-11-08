@@ -47,6 +47,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from sbmlsim.atomic import atomic_directory
 from sbmlsim.comparison.diff import within_tolerance
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.conversion import (
@@ -734,34 +735,28 @@ class BenchmarkCollection:
 
 
 def _convert(problem: BenchmarkProblem) -> None:
-    """Write a problem in PEtab v2 into a staging directory and move it."""
+    """Write a problem in PEtab v2 atomically, see `atomic_directory`."""
     problem.v2_dir.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(
-        tempfile.mkdtemp(prefix=f".{problem.name}.", dir=problem.v2_dir.parent)
-    )
-    output = staging / problem.name
     try:
-        v1_dir = problem.source_dir / V1_DIR
-        v1_yaml = _yaml_file(v1_dir) if v1_dir.is_dir() else None
-        simulation_files = _simulation_files(v1_yaml) if v1_yaml is not None else []
-        if problem.native:
-            shutil.copytree(problem.source_dir / V2_DIR, output)
-            if v1_yaml is not None and simulation_files:
-                convert_simulations(v1_yaml, simulation_files).to_csv(
-                    output / SIMULATIONS_FILE, sep="\t", index=False
-                )
-        elif v1_yaml is not None:
-            convert_v1(v1_yaml, output, simulation_files)
-        else:
-            raise ValueError(f"The problem '{problem.name}' has no encoding.")
-        os.replace(output, problem.v2_dir)
+        with atomic_directory(problem.v2_dir) as output:
+            v1_dir = problem.source_dir / V1_DIR
+            v1_yaml = _yaml_file(v1_dir) if v1_dir.is_dir() else None
+            simulation_files = _simulation_files(v1_yaml) if v1_yaml is not None else []
+            if problem.native:
+                shutil.copytree(problem.source_dir / V2_DIR, output, dirs_exist_ok=True)
+                if v1_yaml is not None and simulation_files:
+                    convert_simulations(v1_yaml, simulation_files).to_csv(
+                        output / SIMULATIONS_FILE, sep="\t", index=False
+                    )
+            elif v1_yaml is not None:
+                convert_v1(v1_yaml, output, simulation_files)
+            else:
+                raise ValueError(f"The problem '{problem.name}' has no encoding.")
     except Exception as err:  # the conversion of the problem is its outcome
         logger.warning("The problem '%s' is not converted: %s", problem.name, err)
         problem.conversion_error.write_text(
             f"{type(err).__name__}: {err}\n", encoding="utf-8"
         )
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
 
 
 def _yaml_file(directory: Path) -> Path:

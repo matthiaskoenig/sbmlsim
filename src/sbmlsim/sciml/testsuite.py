@@ -61,6 +61,7 @@ from sbmlsim.sciml.network import (
 )
 from sbmlsim.sciml.parameters import nominal_parameters
 from sbmlsim.testsuite import cache
+from sbmlsim.testsuite.baseline import CaseOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -138,34 +139,8 @@ SEVERITY: tuple[CaseStatus, ...] = (
 )
 
 
-@dataclass(frozen=True)
-class CaseResult:
-    """The outcome of a case.
-
-    Attributes:
-        group: the group of the case.
-        cid: the number of the case, e.g. `001`.
-        status: the outcome.
-        message: what failed, empty for a case which passes.
-        max_difference: the largest absolute difference to the reference
-            values, `None` when nothing was compared.
-    """
-
-    group: str
-    cid: str
-    status: CaseStatus
-    message: str = ""
-    max_difference: float | None = None
-
-    @property
-    def passed(self) -> bool:
-        """Check whether the case passes."""
-        return self.status == CaseStatus.PASS
-
-    @property
-    def key(self) -> str:
-        """Get the key of the case in the baseline, e.g. `ml_model_import/001`."""
-        return f"{self.group}/{self.cid}"
+class CaseResult(CaseOutcome[CaseStatus]):
+    """The outcome of a case, e.g. the key `ml_model_import/001`."""
 
 
 def read_solutions(path: Path) -> dict[str, Any]:

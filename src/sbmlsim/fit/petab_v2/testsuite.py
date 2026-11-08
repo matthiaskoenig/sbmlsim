@@ -31,9 +31,7 @@ from __future__ import annotations
 
 import logging
 import math
-import os
 import shutil
-import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
@@ -44,6 +42,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from sbmlsim.atomic import atomic_directory
 from sbmlsim.fit.options import DataAtChangeType, FitSettings, ParameterScaleType
 from sbmlsim.fit.petab_v2.conversion import convert_v1
 from sbmlsim.fit.petab_v2.likelihood import (
@@ -55,6 +54,7 @@ from sbmlsim.fit.petab_v2.likelihood import (
 from sbmlsim.fit.petab_v2.reader import DEFAULT_EXPERIMENT, PetabReader
 from sbmlsim.simulator.formula import compile_formula
 from sbmlsim.testsuite import cache
+from sbmlsim.testsuite.baseline import CaseOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -116,34 +116,8 @@ class CaseStatus(StrEnum):
     ERROR = "error"
 
 
-@dataclass(frozen=True)
-class CaseResult:
-    """The outcome of a case.
-
-    Attributes:
-        group: the group of the case, `sbml` or `math`.
-        cid: the number of the case, e.g. `0001`.
-        status: the outcome.
-        message: what failed, empty for a case which passes.
-        max_difference: the largest absolute difference to the reference
-            values, `None` when nothing was compared.
-    """
-
-    group: str
-    cid: str
-    status: CaseStatus
-    message: str = ""
-    max_difference: float | None = None
-
-    @property
-    def passed(self) -> bool:
-        """Check whether the case passes."""
-        return self.status == CaseStatus.PASS
-
-    @property
-    def key(self) -> str:
-        """Get the key of the case in the baseline, e.g. `sbml/0001`."""
-        return f"{self.group}/{self.cid}"
+class CaseResult(CaseOutcome[CaseStatus]):
+    """The outcome of a case, of the group `sbml` or `math`."""
 
 
 @dataclass(frozen=True)
@@ -634,40 +608,36 @@ def _convert_case(source: Path, target: Path) -> None:
 
     The problem and its simulations are converted into a staging directory,
     see `sbmlsim.fit.petab_v2.conversion.convert_v1`, which is moved into
-    place, so a case is converted completely or not at all.
+    place, so a case is converted completely or not at all, see
+    `atomic_directory`. A case which is not converted is a directory with
+    the error in `CONVERSION_ERROR`.
 
     Args:
         source: the directory of the case of PEtab v1.
         target: the directory of the converted case.
     """
     target.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=f".{source.name}.", dir=target.parent))
     cid = source.name
-    try:
-        output = staging / "case"
-        solution_file = source / f"_{cid}_solution.yaml"
-        solution: dict[str, Any] = yaml.safe_load(
-            solution_file.read_text(encoding="utf-8")
-        )
-        simulations = convert_v1(
-            source / f"_{cid}.yaml",
-            output,
-            [source / name for name in solution.get("simulation_files", [])],
-        )
-        if simulations is not None:
-            solution["simulation_files"] = [simulations.name]
-        (output / solution_file.name).write_text(
-            yaml.safe_dump(solution), encoding="utf-8"
-        )
-    except Exception as err:  # the conversion of the case is its outcome
-        logger.warning("The case '%s' of PEtab v1 is not converted: %s", cid, err)
-        output = staging / "case"
-        shutil.rmtree(output, ignore_errors=True)
-        output.mkdir()
-        (output / CONVERSION_ERROR).write_text(
-            f"{type(err).__name__}: {err}\n", encoding="utf-8"
-        )
-    try:
-        os.replace(staging / "case", target)
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
+    with atomic_directory(target) as output:
+        try:
+            solution_file = source / f"_{cid}_solution.yaml"
+            solution: dict[str, Any] = yaml.safe_load(
+                solution_file.read_text(encoding="utf-8")
+            )
+            simulations = convert_v1(
+                source / f"_{cid}.yaml",
+                output,
+                [source / name for name in solution.get("simulation_files", [])],
+            )
+            if simulations is not None:
+                solution["simulation_files"] = [simulations.name]
+            (output / solution_file.name).write_text(
+                yaml.safe_dump(solution), encoding="utf-8"
+            )
+        except Exception as err:  # the conversion of the case is its outcome
+            logger.warning("The case '%s' of PEtab v1 is not converted: %s", cid, err)
+            shutil.rmtree(output)
+            output.mkdir()
+            (output / CONVERSION_ERROR).write_text(
+                f"{type(err).__name__}: {err}\n", encoding="utf-8"
+            )

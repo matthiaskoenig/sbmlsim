@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -50,6 +52,39 @@ class Outcome(Protocol):
     def status(self) -> Any:
         """Get the status, an enum whose value is the name in the baseline."""
         ...
+
+
+@dataclass(frozen=True)
+class CaseOutcome[S: StrEnum]:
+    """The outcome of a case of a suite whose cases are in groups.
+
+    The `CaseResult` of the PEtab and the SciML test suite, each with the
+    `CaseStatus` of its suite.
+
+    Attributes:
+        group: the group of the case, e.g. `sbml`.
+        cid: the number of the case, e.g. `0001`.
+        status: the outcome.
+        message: what failed, empty for a case which passes.
+        max_difference: the largest absolute difference to the reference
+            values, `None` when nothing was compared.
+    """
+
+    group: str
+    cid: str
+    status: S
+    message: str = ""
+    max_difference: float | None = None
+
+    @property
+    def passed(self) -> bool:
+        """Check whether the case passes."""
+        return self.status == PASS
+
+    @property
+    def key(self) -> str:
+        """Get the key of the case in the baseline, e.g. `sbml/0001`."""
+        return f"{self.group}/{self.cid}"
 
 
 def unexpected_outcomes(
