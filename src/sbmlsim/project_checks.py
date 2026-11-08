@@ -341,16 +341,7 @@ def check_model(project: Project) -> None:
 
 def _runner(project: Project) -> ExperimentRunner:
     """Initialize the experiments of a project, as its runs do."""
-    from sbmlsim.experiment import ExperimentRunner
-
-    return ExperimentRunner(
-        experiment_classes=registered_experiments(project),
-        base_path=project.base_path or project.root,
-        data_path=project.data_path,
-        simulator=None,
-        on_error="log",
-        jit_optimization=project.simulator.jit_optimization,
-    )
+    return project.experiment_runner(registered_experiments(project), on_error="log")
 
 
 def initialize_experiments(project: Project) -> dict[str, SimulationExperiment]:

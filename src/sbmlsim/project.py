@@ -47,7 +47,7 @@ import json
 import re
 import shutil
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, Self, override
@@ -72,7 +72,11 @@ if TYPE_CHECKING:
     import roadrunner
 
     from sbmlsim.credibility.battery import BatteryHook
-    from sbmlsim.experiment import ExperimentResult, SimulationExperiment
+    from sbmlsim.experiment import (
+        ExperimentResult,
+        ExperimentRunner,
+        SimulationExperiment,
+    )
     from sbmlsim.experiment.draws import UncertaintySettings
     from sbmlsim.fit.cli import FitDefinition
     from sbmlsim.fit.records import AdoptedRecords
@@ -1611,6 +1615,39 @@ class Project(BaseModel):
         raise TypeError(
             "The experiments of a run are names of groups or experiments or "
             f"experiment classes, not {list(experiments)!r}."
+        )
+
+    def experiment_runner(
+        self,
+        experiment_classes: Iterable[type[SimulationExperiment]],
+        *,
+        simulator: Simulator | None = None,
+        on_error: Literal["raise", "log"] = "log",
+    ) -> ExperimentRunner:
+        """Initialize experiments of the project, as its runs do.
+
+        The experiments get the paths of the project (its `base_path`, else its
+        `root`, and its `data_path`) and their models are compiled at its level
+        (`SimulatorSettings.jit_optimization`).
+
+        Args:
+            experiment_classes: the classes of the experiments.
+            simulator: the simulator of the tasks, see `ExperimentRunner`.
+            on_error: whether an experiment which cannot be initialized
+                raises or is logged, see `ExperimentRunner`.
+
+        Returns:
+            The runner with the initialized experiments.
+        """
+        from sbmlsim.experiment import ExperimentRunner
+
+        return ExperimentRunner(
+            experiment_classes=list(experiment_classes),
+            base_path=self.base_path or self.root,
+            data_path=self.data_path,
+            simulator=simulator,
+            on_error=on_error,
+            jit_optimization=self.simulator.jit_optimization,
         )
 
     def run_experiments(
