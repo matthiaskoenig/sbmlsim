@@ -174,11 +174,11 @@ Install `sbmlsim` with the extra `simrun`, which installs simrun and registers t
 pip install "sbmlsim[simrun]"
 ```
 
-From the root of the repository, `--local` runs the workflow with the local service of simrun, which starts in the background and keeps its runs in `.simrun/` of the current directory. The HCTZ project is in `examples/`, which is not part of the package `sbmlsim`, so the tasks need the root of the repository on `PYTHONPATH`; a model package does not:
+From the root of the repository, `--local` runs the workflow with the local service of simrun, which starts in the background and keeps its runs in `.simrun/` of the current directory. The HCTZ project is in `examples/`, which is not part of the package `sbmlsim`; a task imports from the root of the source of the model first, as `python -m` in the checkout, so it finds `examples` without further settings:
 
 ```bash
-PYTHONPATH=. simrun estimate examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
-PYTHONPATH=. simrun submit examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
+simrun estimate examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
+simrun submit examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
 ```
 
 `estimate` shows the plan of every task: its processes, the cores and the memory it asks for, and the units of a split task (3 points of the dose scan, 32 blocks of the Sobol design and of the draws, 8 repeats of the fit, a profile per parameter). `submit` plans the tasks, records the provenance of the sources and follows the run to its end with a line per task; on 20 cores the workflow takes about a minute:
@@ -283,7 +283,7 @@ A split result equals the result of the whole analysis on one machine bitwise, s
 `simrun edit` opens the workflow file in the **Editor** of the web app: the task types of `sbmlsim` in the palette, the tasks as cards, the settings of the selected task as a form of its spec. A save writes the YAML file, **Run workflow** submits it:
 
 ```bash
-PYTHONPATH=. simrun edit examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
+simrun edit examples/hctz_fitting/workflows/tutorial.yaml --source sbmlsim=. --local
 ```
 
 ![The Editor with the tutorial workflow and the settings of the fit](images/simrun/editor.png)
@@ -298,4 +298,4 @@ simrun wait <run>
 simrun outputs <run> report --to results/report
 ```
 
-A project of a model package outside of `sbmlsim` names its source first and `sbmlsim` second, e.g. `--source model=~/git/my_model --source sbmlsim=~/git/sbmlsim`, and needs no `PYTHONPATH`: the pods install the snapshots, which install the package of the model with its project. [simrun](run.md#simrun) in Analyses describes the plan in the client, the provenance and the task types, the documentation of simrun the service, the cluster and the web app.
+A project of a model package outside of `sbmlsim` names its source first and `sbmlsim` second, e.g. `--source model=~/git/my_model --source sbmlsim=~/git/sbmlsim`: the pods install the snapshots, which install the package of the model with its project, and import from the root of the model first, so a project at the root of a checkout, such as the examples of `sbmlsim`, is found as well. [simrun](run.md#simrun) in Analyses describes the plan in the client, the provenance and the task types, the documentation of simrun the service, the cluster and the web app.
