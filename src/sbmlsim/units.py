@@ -9,6 +9,9 @@ import logging
 import math
 import os
 import re
+import shutil
+import sys
+import tempfile
 import warnings
 from collections.abc import Iterator, Mapping, MutableMapping
 from pathlib import Path
@@ -40,6 +43,63 @@ logger = logging.getLogger(__name__)
 UdictType = dict[str, str]
 
 
+#: the environment variable which gives the directory of the cache of the parsed
+#: definitions of pint, `""` turns the cache off
+CACHE_ENV = "SBMLSIM_UNITS_CACHE"
+
+#: the format of the cache, raised when `_pint_registry` changes what it stores
+CACHE_FORMAT = 1
+
+
+def cache_folder() -> Path | None:
+    """Get the directory of the cache of the parsed definitions of pint.
+
+    Returns:
+        `SBMLSIM_UNITS_CACHE` if it is set (`None` for an empty value), else
+        `sbmlsim/units` in the user cache, i.e. in `XDG_CACHE_HOME` or `~/.cache`.
+        The directory below it is named by the version of pint and of python and
+        `CACHE_FORMAT`; pint keys every entry by the content of the file it parsed.
+    """
+    root = os.environ.get(CACHE_ENV)
+    if root is None:
+        base = os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache"
+        root = str(Path(base) / "sbmlsim" / "units")
+    if not root:
+        return None
+    version = f"pint-{pint.__version__}-py{sys.version_info.major}.{sys.version_info.minor}-{CACHE_FORMAT}"
+    return Path(root) / version
+
+
+def _pint_registry() -> UnitRegistry:
+    """Create the registry of pint, with the parsed definitions from the disk cache.
+
+    Parsing the definitions of pint takes more than half of the time to create
+    the registry. They are kept in a directory which is complete when it is
+    published: the first process builds it in a private directory of the same
+    parent and renames it (atomic, so processes which build at once and a
+    reader never see a partial file, and the loser of the rename discards its
+    copy). A directory which cannot be created, read or written, or is
+    corrupt, gives the registry without a cache.
+    """
+    try:
+        folder = cache_folder()
+        if folder is not None:
+            if not folder.is_dir():
+                folder.parent.mkdir(parents=True, exist_ok=True)
+                building = Path(
+                    tempfile.mkdtemp(prefix=f".{folder.name}.", dir=folder.parent)
+                )
+                try:
+                    pint.UnitRegistry(on_redefinition="ignore", cache_folder=building)
+                    building.rename(folder)
+                except OSError:
+                    shutil.rmtree(building, ignore_errors=True)
+            return pint.UnitRegistry(on_redefinition="ignore", cache_folder=folder)
+    except Exception as err:
+        logger.debug("The cache of the units is not used: %s", err)
+    return pint.UnitRegistry(on_redefinition="ignore")
+
+
 def _create_registry() -> UnitRegistry:
     """Create the unit registry of the package with the units sbmlsim defines.
 
@@ -54,7 +114,12 @@ def _create_registry() -> UnitRegistry:
     the substance, e.g. `define_unit("IU_insulin = 0.0347 * mg")`, or as a
     count.
     """
-    registry = pint.UnitRegistry(on_redefinition="ignore")
+    registry = _pint_registry()
+    # pint defines `percent` as dimensionless; a registry without the cache has
+    # resolved its root unit (`dimensionless`) while it was built and keeps it
+    # when `percent` is defined again below, so a registry from the cache
+    # resolves it now, to be the same registry
+    registry.get_root_units("percent")
     registry.define("none = count")
     registry.define("item = count")
     registry.define("percent = 0.01*count")
