@@ -11,6 +11,21 @@ which roadrunner scales by the initial value or by the volume of a state:
 | `OTHER` | every other state, i.e. the targets of rate rules | `other` |
 
 The numbers are in the units of the model of the state, so they need no units.
+
+The kinds give a small state the same tolerance as a large one, so a state
+whose magnitude is far below the tolerance over the relative tolerance, e.g.
+a drug in nM next to glucose in mM, is integrated with the relative accuracy
+`atol / |x|` instead of `rtol` (#435). A tolerance `relative` scales the
+tolerance of every state by its typical magnitude instead,
+`relative * scale`, which gives every state the relative accuracy
+`relative`, best the relative tolerance of the integrator. The scale of a
+state is its value in `scales`, e.g. its largest magnitude in test
+simulations (`sbmlsim.simulator.scales.typical_scales`), else the magnitude
+of its initial value in the model as loaded (the amount of a species); a
+state without either, e.g. a drug which starts at 0, keeps the tolerance of
+its kind. Rescaling the units of a model changes the integration only through
+these tolerances, they are the same as rescaled states: CVODE weighs every
+state by its tolerance.
 `V` is the reference volume of the compartment: its initial volume in the
 model as loaded, raised to `VOLUME_FLOOR` times the largest finite positive
 initial volume of the model when it is smaller, not finite or not positive,
@@ -70,25 +85,46 @@ class AbsoluteTolerance:
             state; an override of a concentration species is an amount. Any
             mapping is normalized to a sorted tuple, so that tolerances are
             hashable and compare by value.
+        relative: the tolerance of a state relative to its scale, see the
+            module; `None` for the tolerances of the kinds alone.
+        scales: the typical magnitudes of states by id, in the unit of the
+            model of the state, an amount for a species; a state without one
+            is scaled by its initial value. Normalized as `ids`.
     """
 
     amount: float = 1e-10
     concentration: float = 1e-10
     other: float = 1e-10
     ids: Mapping[str, float] | tuple[tuple[str, float], ...] = ()
+    relative: float | None = None
+    scales: Mapping[str, float] | tuple[tuple[str, float], ...] = ()
 
     def __post_init__(self) -> None:
-        """Check the tolerances and normalize the overrides."""
+        """Check the tolerances and normalize the overrides and the scales.
+
+        Raises:
+            ValueError: for a tolerance or a scale which is not finite and
+                positive, or scales without a relative tolerance.
+        """
         for kind in StateKind:
             object.__setattr__(
                 self, kind.value, _checked(kind.value, getattr(self, kind.value))
             )
-        overrides = tuple(
-            sorted(
-                (str(sid), _checked(str(sid), v)) for sid, v in dict(self.ids).items()
+        for field in ("ids", "scales"):
+            values = tuple(
+                sorted(
+                    (str(sid), _checked(str(sid), v))
+                    for sid, v in dict(getattr(self, field)).items()
+                )
             )
-        )
-        object.__setattr__(self, "ids", overrides)
+            object.__setattr__(self, field, values)
+        if self.relative is not None:
+            object.__setattr__(self, "relative", _checked("relative", self.relative))
+        elif self.scales:
+            raise ValueError(
+                "The scales of the states need the tolerance relative to them, "
+                "`relative`."
+            )
 
     @classmethod
     def of(cls, value: float | AbsoluteTolerance) -> AbsoluteTolerance:
@@ -102,6 +138,11 @@ class AbsoluteTolerance:
     def overrides(self) -> dict[str, float]:
         """Get the tolerances of single states by id."""
         return dict(self.ids)
+
+    @property
+    def state_scales(self) -> dict[str, float]:
+        """Get the scales of single states by id."""
+        return dict(self.scales)
 
     def of_kind(self, kind: StateKind) -> float:
         """Get the tolerance of a kind of state."""
@@ -117,7 +158,9 @@ class AbsoluteTolerance:
         """Get the smallest tolerance of the kinds and of the single states.
 
         The one absolute tolerance of an engine which has no tolerance per
-        state, COPASI and AMICI, is derived from it.
+        state, COPASI and AMICI, is derived from it; the scaled tolerances of
+        `relative` are tolerances per state, which these engines do not
+        have.
         """
         return min(self.distinct_values())
 
@@ -128,6 +171,8 @@ class AbsoluteTolerance:
             "concentration": self.concentration,
             "other": self.other,
             "ids": self.overrides,
+            "relative": self.relative,
+            "scales": self.state_scales,
         }
 
     @classmethod
@@ -139,6 +184,8 @@ class AbsoluteTolerance:
                 concentration=d["concentration"],
                 other=d["other"],
                 ids=d.get("ids", {}),
+                relative=d.get("relative"),
+                scales=d.get("scales", {}),
             )
         return cls.of(d)
 
@@ -150,6 +197,10 @@ class AbsoluteTolerance:
         )
         if self.ids:
             text += f", {len(self.ids)} by id"
+        if self.relative is not None:
+            text += f", {self.relative:.1e} of the scale of a state"
+            if self.scales:
+                text += f" ({len(self.scales)} scales)"
         return text
 
 
@@ -166,6 +217,8 @@ class StateTolerance:
         volume_raised: whether the initial volume was raised to the floor.
         absolute_tolerance: the tolerance in the unit of the model of the
             state, an amount for a species.
+        scale: the scale of the state which the tolerance is relative to,
+            `None` for the tolerance of its kind or of an override.
     """
 
     sid: str
@@ -174,6 +227,7 @@ class StateTolerance:
     volume: float | None
     volume_raised: bool
     absolute_tolerance: float
+    scale: float | None = None
 
 
 def state_kinds(states: Iterable[str], symbols: ModelSymbols) -> dict[str, StateKind]:
@@ -214,11 +268,19 @@ def _reference_volumes(
     return volumes, raised
 
 
+def _scale(value: float | None) -> float | None:
+    """Get the scale of an initial value, `None` for 0 or a value which is not finite."""
+    if value is None or not math.isfinite(value) or value == 0:
+        return None
+    return abs(value)
+
+
 def state_tolerances(
     states: Sequence[str],
     symbols: ModelSymbols,
     initial_volumes: Mapping[str, float],
     tolerance: AbsoluteTolerance,
+    initial_values: Mapping[str, float] | None = None,
 ) -> list[StateTolerance]:
     """Get the absolute tolerance of every state, see the module.
 
@@ -227,20 +289,26 @@ def state_tolerances(
         symbols: symbols of the model.
         initial_volumes: initial volume of every compartment.
         tolerance: the tolerances per kind and by id.
+        initial_values: the initial value of every state in the model as
+            loaded, an amount for a species, which scales its tolerance with
+            `relative` when it has no scale of its own.
 
     Returns:
         The tolerance of every state, in the order of `states`.
 
     Raises:
-        ValueError: if an override is not a state.
+        ValueError: if an override or a scale is not a state.
     """
     overrides = tolerance.overrides
-    unknown = sorted(set(overrides) - set(states))
-    if unknown:
-        raise ValueError(
-            f"The absolute tolerances of {unknown} are overrides of ids which are "
-            f"not a state, the states are {sorted(states)}."
-        )
+    scales = tolerance.state_scales
+    for name, given in (("absolute tolerances", overrides), ("scales", scales)):
+        unknown = sorted(set(given) - set(states))
+        if unknown:
+            raise ValueError(
+                f"The {name} of {unknown} are given for ids which are not a "
+                f"state, the states are {sorted(states)}."
+            )
+    initial_values = initial_values or {}
     volumes, raised = _reference_volumes(initial_volumes)
     result: list[StateTolerance] = []
     for sid, kind in state_kinds(states, symbols).items():
@@ -251,6 +319,11 @@ def state_tolerances(
             compartment = symbols.species_compartment[sid]
             volume = volumes.get(compartment, VOLUME_FLOOR)
             value *= volume
+        scale: float | None = None
+        if tolerance.relative is not None and sid not in overrides:
+            scale = scales.get(sid, _scale(initial_values.get(sid)))
+            if scale is not None:
+                value = tolerance.relative * scale
         result.append(
             StateTolerance(
                 sid=sid,
@@ -259,6 +332,7 @@ def state_tolerances(
                 volume=volume,
                 volume_raised=compartment in raised,
                 absolute_tolerance=overrides.get(sid, value),
+                scale=scale,
             )
         )
     return result

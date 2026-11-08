@@ -424,7 +424,7 @@ class Verification:
 def tightened(
     tolerance: float | AbsoluteTolerance, factor: float = TIGHTENING
 ) -> AbsoluteTolerance:
-    """Divide an absolute tolerance by a factor, every kind and override.
+    """Divide an absolute tolerance by a factor, every kind, override and the relative one.
 
     Args:
         tolerance: the tolerance, a float is the same for every kind.
@@ -439,6 +439,8 @@ def tightened(
         concentration=tolerance.concentration / factor,
         other=tolerance.other / factor,
         ids={sid: value / factor for sid, value in tolerance.overrides.items()},
+        relative=None if tolerance.relative is None else tolerance.relative / factor,
+        scales=tolerance.scales,
     )
 
 

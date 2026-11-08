@@ -109,3 +109,64 @@ def test_round_trip() -> None:
         AbsoluteTolerance(amount=1e-9, ids={"a": 1e-13, "b": 1e-12})
     )
     assert "2 by id" in str(tolerance)
+
+
+def test_relative_tolerance_scales_by_the_initial_value(symbols: ModelSymbols) -> None:
+    """A state is scaled by its initial value, a state at 0 keeps its kind (#435)."""
+    tolerance = AbsoluteTolerance(amount=1e-9, relative=1e-8)
+    initial = {"A": 4.0, "S": 0.0, "X": -3.0, "D": math.nan}
+    by_id = {
+        t.sid: t for t in state_tolerances(STATES, symbols, VOLUMES, tolerance, initial)
+    }
+    assert by_id["A"].absolute_tolerance == pytest.approx(1e-8 * 4.0)
+    assert by_id["A"].scale == 4.0
+    assert by_id["X"].absolute_tolerance == pytest.approx(1e-8 * 3.0)
+    # no initial value: the tolerance of the kind, times the volume
+    assert by_id["S"].scale is None
+    assert by_id["S"].absolute_tolerance == pytest.approx(1e-10 * VOLUME_FLOOR * 2.0)
+    assert by_id["D"].scale is None
+    assert by_id["D"].absolute_tolerance == pytest.approx(1e-10)
+
+
+def test_a_scale_wins_over_the_initial_value_and_an_override_over_both(
+    symbols: ModelSymbols,
+) -> None:
+    """A given scale replaces the initial value, an override is the tolerance."""
+    tolerance = AbsoluteTolerance(
+        relative=1e-10, scales={"A": 1e-6, "S": 2.0}, ids={"X": 1e-14}
+    )
+    initial = {"A": 4.0, "S": 0.0, "X": 5.0, "D": 0.0}
+    by_id = {
+        t.sid: t for t in state_tolerances(STATES, symbols, VOLUMES, tolerance, initial)
+    }
+    assert by_id["A"].absolute_tolerance == pytest.approx(1e-16)
+    assert by_id["S"].absolute_tolerance == pytest.approx(2e-10)
+    assert by_id["X"].absolute_tolerance == pytest.approx(1e-14)
+    assert by_id["X"].scale is None
+
+
+def test_a_scale_of_no_state(symbols: ModelSymbols) -> None:
+    """A scale of an id which is not a state names the states."""
+    tolerance = AbsoluteTolerance(relative=1e-10, scales={"Y": 1.0})
+    with pytest.raises(ValueError, match=r"scales of \['Y'\].*not a state"):
+        state_tolerances(STATES, symbols, VOLUMES, tolerance)
+
+
+def test_scales_need_a_relative_tolerance() -> None:
+    """Scales without `relative` are refused, invalid ones too."""
+    with pytest.raises(ValueError, match="relative"):
+        AbsoluteTolerance(scales={"A": 1.0})
+    with pytest.raises(ValueError, match="finite and positive"):
+        AbsoluteTolerance(relative=1e-10, scales={"A": 0.0})
+    with pytest.raises(ValueError, match="finite and positive"):
+        AbsoluteTolerance(relative=-1.0)
+
+
+def test_round_trip_of_a_scaled_tolerance() -> None:
+    """The relative tolerance and the scales are a dictionary and back."""
+    tolerance = AbsoluteTolerance(relative=1e-10, scales={"b": 2.0, "a": 1e-6})
+    assert AbsoluteTolerance.from_dict(tolerance.to_dict()) == tolerance
+    assert tolerance.state_scales == {"a": 1e-6, "b": 2.0}
+    assert "1.0e-10 of the scale of a state (2 scales)" in str(tolerance)
+    # the scales are no tolerance of COPASI and AMICI
+    assert tolerance.smallest() == 1e-10
