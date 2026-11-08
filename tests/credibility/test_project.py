@@ -3,9 +3,9 @@
 import pydantic
 import pytest
 
-from sbmlsim.credibility import DeclarationError, EvidenceExtension
+from sbmlsim.credibility import DeclarationError, EvidenceExtension, records
 from sbmlsim.fit.objects import MappingMetaData
-from sbmlsim.project import CredibilitySettings
+from sbmlsim.project import CredibilitySettings, SimulatorSettings
 from tests.credibility_toy import PROJECT
 from tests.credibility_toy.extensions import ARMS
 from tests.credibility_toy.metadata import Health, Route, ToyMetaData
@@ -103,3 +103,25 @@ def test_the_project_checks_the_extensions_of_a_declaration() -> None:
     first, second = err.value.problems
     assert "the setting 'arms' names no evidence extension" in first
     assert "the pairing of the ratio 'A_ratio' is claimed by no evidence" in second
+
+
+class _Stop(Exception):
+    """Raised by the recording fit mappings after they recorded."""
+
+
+def test_the_mapping_table_compiles_at_the_level_of_the_project(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The experiments of the evidence load their models at the project's level."""
+    seen: dict[str, object] = {}
+
+    def recording(**kwargs: object) -> None:
+        seen.update(kwargs)
+        raise _Stop
+
+    monkeypatch.setattr(records, "_adopted_fits", lambda project: [])
+    monkeypatch.setattr(records, "FitMappings", recording)
+    project = PROJECT.replace(simulator=SimulatorSettings(jit_optimization="O1"))
+    with pytest.raises(_Stop):
+        records.mapping_table(project)
+    assert seen["jit_optimization"] == "O1"

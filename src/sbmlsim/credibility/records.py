@@ -354,6 +354,8 @@ def mapping_table(project: Project) -> FitTable:
         experiment_classes=classes.values(),
         base_path=project.base_path or project.root,
         data_path=project.data_path,
+        # the models compiled at the level of the project, as its runs do
+        jit_optimization=project.simulator.jit_optimization,
     )
     lookup = _Lookup(fit_mappings.experiments)
     rows: list[dict[str, str]] = []
