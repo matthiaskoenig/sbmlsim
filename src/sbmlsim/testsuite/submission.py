@@ -2,10 +2,10 @@
 
 A submission is an archive with the results of every case which could be
 simulated, one CSV per case named after it, and a manifest with the versions
-the results were produced with. A case which the simulator cannot read or
-integrate has no results and is left out, which is how a submission says that
-it does not support the case. Uploading the archive is a deliberate step and is
-not done here.
+the results were produced with and the commit of the suite whose cases they
+answer. A case which the simulator cannot read or integrate has no results and
+is left out, which is how a submission says that it does not support the case.
+Uploading the archive is a deliberate step and is not done here.
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ def write_submission(
     results = map_cases(case_csv, cases, workers=workers)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"sbmlsim-{__version__}-sbml-test-suite-{suite.version}.zip"
+    path = output_dir / f"sbmlsim-{__version__}-sbml-test-suite-{suite.commit[:7]}.zip"
     submitted = 0
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         for case, (csv, message) in zip(cases, results, strict=True):
@@ -98,7 +98,7 @@ def write_submission(
                 {
                     "simulator": "sbmlsim",
                     "versions": versions(),
-                    "suite_version": suite.version,
+                    "suite_commit": suite.commit,
                     "n_cases": len(cases),
                     "n_submitted": submitted,
                 },

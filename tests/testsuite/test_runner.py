@@ -92,7 +92,7 @@ def _suite(path: Path) -> SemanticSuite:
     for cid in ("00001", "00002", "00003"):
         _case(path, cid)
     _case(path, "00004", model="<sbml/>")
-    return SemanticSuite(version="test", path=path)
+    return SemanticSuite(commit="test", path=path)
 
 
 def test_the_cases_run_in_parallel_as_in_one_process(tmp_path: Path) -> None:
@@ -314,4 +314,4 @@ def test_the_submission_holds_the_cases_which_could_be_simulated(
     assert len(rows) == 21
     assert manifest["n_cases"] == 4
     assert manifest["n_submitted"] == 3
-    assert manifest["suite_version"] == "test"
+    assert manifest["suite_commit"] == "test"

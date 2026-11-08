@@ -4,18 +4,22 @@ A case is a directory `cases/semantic/NNNNN/` with the model in several
 encodings, `NNNNN-settings.txt` with the simulation and the tolerances,
 `NNNNN-results.csv` with the expected results and `NNNNN-model.m` with the
 description and the tags. `SemanticCase` reads the two metadata files, and
-`SemanticSuite` is a directory of cases, downloaded from a release of the
-suite and cached.
+`SemanticSuite` is a directory of cases, downloaded from a commit of the
+`develop` branch of the suite and cached.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
+import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -23,26 +27,31 @@ from sbmlsim.testsuite import cache
 
 logger = logging.getLogger(__name__)
 
-#: version of the SBML Test Suite the tests and the documentation run against.
-#: The release job resolves the newest release instead, see
-#: `SemanticSuite.latest_version`; a scheduled job opens a pull request when
-#: upstream is newer, which is where new failures are seen
-SUITE_VERSION = "3.5.0"
+#: commit of the SBML Test Suite the tests, the documentation and the release
+#: run against. The cases are taken from the branch `SUITE_BRANCH` and not from
+#: a release, which are rare, so a case fixed upstream does not wait for the
+#: next one (01511, #360); a scheduled job opens a pull request when the
+#: semantic cases of the branch changed, which is where new failures are seen
+SUITE_COMMIT = "bbcbc80c4daec79fea301299f981746408a1742b"
 
-#: releases of the suite, `{version}` is a tag such as `3.5.0`
-SUITE_URL = (
-    "https://github.com/sbmlteam/sbml-test-suite/releases/download/"
-    "{version}/semantic_tests_v{version}.zip"
-)
+#: the branch of the suite the pinned commit follows
+SUITE_BRANCH = "develop"
+
+#: the repository of the suite on GitHub
+SUITE_REPOSITORY = "sbmlteam/sbml-test-suite"
+
+#: archive of a commit of the suite, `{commit}` is its hash
+SUITE_URL = f"https://github.com/{SUITE_REPOSITORY}/archive/{{commit}}.zip"
+
+#: the directory of the semantic cases in the repository of the suite
+CASES_DIR = "cases/semantic"
 
 #: the environment variable which points at the cases when they are not in
 #: the cache
 SUITE_PATH_VARIABLE = "SBMLSIM_TEST_SUITE_PATH"
 
-#: the newest release of the suite
-LATEST_RELEASE_URL = (
-    "https://api.github.com/repos/sbmlteam/sbml-test-suite/releases/latest"
-)
+#: the API of GitHub of the repository of the suite
+API_URL = f"https://api.github.com/repos/{SUITE_REPOSITORY}"
 
 #: SBML encodings of a case, the newest first: a case is run once, in the
 #: newest encoding it provides. Reading the older encodings tests the reader,
@@ -272,15 +281,15 @@ class SemanticCase:
 
 @dataclass(frozen=True)
 class SemanticSuite:
-    """The semantic cases of a release of the SBML Test Suite.
+    """The semantic cases of a commit of the SBML Test Suite.
 
     Attributes:
         path: directory which holds the case directories.
-        version: release of the suite, e.g. `3.5.0`.
+        commit: commit of the suite the cases are from.
     """
 
     path: Path
-    version: str
+    commit: str
 
     def __len__(self) -> int:
         """Get the number of timecourse cases of the suite."""
@@ -318,77 +327,97 @@ class SemanticSuite:
         return case
 
     # ------------------------------------------------------------------
-    # the release of the suite
+    # the commit of the suite
     # ------------------------------------------------------------------
     @staticmethod
-    def cache_path(version: str) -> Path:
-        """Get the directory a release of the suite is unpacked into.
+    def cache_path(commit: str) -> Path:
+        """Get the directory a commit of the suite is unpacked into.
 
         `SBMLSIM_TEST_SUITE_PATH` overrides it, e.g. for an offline machine
-        which has the cases somewhere else. Otherwise it is the user cache,
-        i.e. `XDG_CACHE_HOME` or `~/.cache`.
+        which has the cases somewhere else. Otherwise it is
+        `sbmlsim/test-suite/<commit>/semantic` in the user cache, i.e. in
+        `XDG_CACHE_HOME` or `~/.cache`.
 
         Args:
-            version: release of the suite.
+            commit: commit of the suite.
 
         Returns:
-            The directory the cases of the release live in.
+            The directory the cases of the commit live in.
         """
-        return cache.cache_path(SUITE_PATH_VARIABLE, "test-suite", version, "semantic")
+        return cache.cache_path(SUITE_PATH_VARIABLE, "test-suite", commit, "semantic")
 
-    @classmethod
-    def latest_version(cls) -> str:
-        """Get the newest release of the suite from GitHub.
+    @staticmethod
+    def latest_commit(branch: str = SUITE_BRANCH) -> str:
+        """Get the newest commit of a branch of the suite from GitHub.
 
-        The request is authenticated with the token in `GITHUB_TOKEN` or
-        `GH_TOKEN` when one is set: GitHub allows 60 anonymous requests per
-        hour and address, which the shared addresses of the runners of GitHub
-        Actions exhaust (`HTTP Error 403: rate limit exceeded`).
+        Args:
+            branch: the branch of the suite.
 
         Returns:
-            The tag of the newest release, e.g. `3.5.0`.
+            The hash of the head of the branch.
         """
-        import json
-        import os
+        commit: str = _github(f"commits/{urllib.parse.quote(branch)}")["sha"]
+        return commit
 
-        request = urllib.request.Request(
-            LATEST_RELEASE_URL, headers={"Accept": "application/vnd.github+json"}
+    @staticmethod
+    def cases_changed(pinned: str, commit: str) -> bool:
+        """Check whether the semantic cases of a commit differ from a pinned one.
+
+        The last commit before `commit` which changed the semantic cases is
+        compared with `pinned`: when `pinned` contains it, the cases of both
+        commits are the same, e.g. after a commit which changed only the
+        test runner of the suite.
+
+        Args:
+            pinned: the pinned commit.
+            commit: the commit which may be adopted, e.g. the head of the
+                branch, see `latest_commit`.
+
+        Returns:
+            Whether `commit` has cases `pinned` has not.
+        """
+        query = urllib.parse.urlencode(
+            {"sha": commit, "path": CASES_DIR, "per_page": 1}
         )
-        token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-        if token:
-            request.add_header("Authorization", f"Bearer {token}")
-        with urllib.request.urlopen(request, timeout=60) as response:
-            release = json.load(response)
-        version: str = release["tag_name"]
-        return version
+        changes = _github(f"commits?{query}")
+        if not changes:
+            return False
+        last = changes[0]["sha"]
+        # `identical` or `ahead`: the pinned commit is the last change of the
+        # cases or a descendant of it
+        status = _github(f"compare/{last}...{pinned}")["status"]
+        return status not in ("identical", "ahead")
 
     @classmethod
-    def cached(cls, version: str = SUITE_VERSION) -> SemanticSuite | None:
-        """Get a release of the suite if it is already on this machine.
+    def cached(cls, commit: str = SUITE_COMMIT) -> SemanticSuite | None:
+        """Get a commit of the suite if it is already on this machine.
 
         Args:
-            version: release of the suite.
+            commit: commit of the suite.
 
         Returns:
             The suite, or `None` if it was not downloaded yet.
         """
-        path = cls.cache_path(version)
-        return cls(path=path, version=version) if path.is_dir() else None
+        path = cls.cache_path(commit)
+        return cls(path=path, commit=commit) if path.is_dir() else None
 
     @classmethod
-    def load(cls, version: str = SUITE_VERSION) -> SemanticSuite:
-        """Get a release of the suite, downloading it if it is not cached.
+    def load(cls, commit: str = SUITE_COMMIT) -> SemanticSuite:
+        """Get a commit of the suite, downloading it if it is not cached.
+
+        The archive of the commit is the whole repository, about 100 MB, of
+        which only the semantic cases are unpacked.
 
         Args:
-            version: release of the suite.
+            commit: commit of the suite.
 
         Returns:
             The suite with its cases unpacked in the cache.
 
         Raises:
-            OSError: if the release cannot be downloaded.
+            OSError: if the commit cannot be downloaded.
         """
-        suite = cls.cached(version)
+        suite = cls.cached(commit)
         if suite is not None:
             # what a fetch which was killed left next to the cache, which an
             # override is not
@@ -396,18 +425,18 @@ class SemanticSuite:
                 cache.remove_stale(suite.path)
             return suite
 
-        path = cls.cache_path(version)
-        url = SUITE_URL.format(version=version)
-        logger.info("Downloading the SBML Test Suite '%s' from '%s'", version, url)
-        cache.fetch(url, path, select=cls._cases_dir)
-        return cls(path=path, version=version)
+        path = cls.cache_path(commit)
+        url = SUITE_URL.format(commit=commit)
+        logger.info("Downloading the SBML Test Suite '%s' from '%s'", commit, url)
+        cache.fetch(url, path, select=cls._cases_dir, members=_is_case_member)
+        return cls(path=path, commit=commit)
 
     @staticmethod
     def _cases_dir(staging: Path) -> Path:
         """Get the directory of the case directories of an unpacked archive.
 
-        The archive of a release holds the cases under a `semantic` directory;
-        a differently packed archive is searched one level deep.
+        The archive of a commit holds the repository in a directory named
+        after the commit, with the cases in `cases/semantic`.
 
         Args:
             staging: directory the archive was unpacked into.
@@ -418,8 +447,48 @@ class SemanticSuite:
         Raises:
             OSError: if it holds no cases.
         """
-        candidates = [staging, *(p for p in staging.iterdir() if p.is_dir())]
-        for candidate in candidates:
+        for candidate in sorted(staging.glob(f"*/{CASES_DIR}")):
             if any(p.is_dir() and p.name.isdigit() for p in candidate.iterdir()):
                 return candidate
         raise OSError(f"No case directories in the unpacked suite '{staging}'")
+
+
+def _is_case_member(name: str) -> bool:
+    """Check whether a member of the archive of a commit is part of the cases.
+
+    The archive is the whole repository, whose test runner and web interface
+    are more than three times the size of the cases.
+
+    Args:
+        name: the name of the member, e.g.
+            `sbml-test-suite-<commit>/cases/semantic/00001/00001-settings.txt`.
+
+    Returns:
+        Whether the member is below the semantic cases.
+    """
+    _, _, below = name.partition("/")
+    return below.startswith(f"{CASES_DIR}/")
+
+
+def _github(path: str) -> Any:
+    """Get a resource of the API of GitHub of the repository of the suite.
+
+    The request is authenticated with the token in `GITHUB_TOKEN` or
+    `GH_TOKEN` when one is set: GitHub allows 60 anonymous requests per hour
+    and address, which the shared addresses of the runners of GitHub Actions
+    exhaust (`HTTP Error 403: rate limit exceeded`).
+
+    Args:
+        path: the path below the repository, e.g. `commits/develop`.
+
+    Returns:
+        The JSON of the resource.
+    """
+    request = urllib.request.Request(
+        f"{API_URL}/{path}", headers={"Accept": "application/vnd.github+json"}
+    )
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    with urllib.request.urlopen(request, timeout=60) as response:
+        return json.load(response)

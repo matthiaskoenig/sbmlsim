@@ -2,7 +2,7 @@ name: sbml test suite
 
 on:
   schedule:
-    # Mondays, early: a new release of the suite is rare and never urgent
+    # Mondays, early: a change of the cases upstream is rare and never urgent
     - cron: "17 5 * * 1"
   workflow_dispatch:
 
@@ -15,11 +15,14 @@ concurrency:
 
 jobs:
   pin:
-    # `SUITE_VERSION` pins the release the tests and the documentation run
-    # against, so that a new release upstream cannot turn a green build red on
-    # its own. This job notices a newer release and opens the pull request
-    # which adopts it, which is where the failures of new cases are seen.
-    name: bump the pinned release
+    # `SUITE_COMMIT` pins the commit of the branch `develop` of the suite the
+    # tests, the documentation and the release run against, so that a change
+    # upstream cannot turn a green build red on its own. This job notices a
+    # newer commit which changed the semantic cases and opens the pull request
+    # which adopts the head of the branch, which is where the failures of new
+    # or changed cases are seen. A commit which changed only the test runner
+    # of the suite is no reason for a pull request
+    name: bump the pinned commit
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -32,20 +35,28 @@ jobs:
         with:
           python-version: "3.14"
           sync: --extra dev
-      - name: Compare the pinned release with the newest one
-        id: versions
+      - name: Compare the pinned commit with the head of the branch
+        id: commits
         env:
+          # the anonymous rate limit of the shared addresses of the runners
+          # refuses the requests
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          PINNED=$(uv run --no-sync python -c "from sbmlsim.testsuite.cases import SUITE_VERSION; print(SUITE_VERSION)")
-          LATEST=$(uv run --no-sync python -c "from sbmlsim.testsuite import SemanticSuite; print(SemanticSuite.latest_version())")
-          echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
-          echo "latest=$LATEST" >> "$GITHUB_OUTPUT"
-          echo "The pinned release is '$PINNED', the newest is '$LATEST'"
-      - name: Adopt the newest release
-        if: steps.versions.outputs.pinned != steps.versions.outputs.latest
+          uv run --no-sync python - <<'PY' >> "$GITHUB_OUTPUT"
+          from sbmlsim.testsuite import SemanticSuite
+          from sbmlsim.testsuite.cases import SUITE_COMMIT
+
+          latest = SemanticSuite.latest_commit()
+          changed = SemanticSuite.cases_changed(SUITE_COMMIT, latest)
+          print(f"pinned={SUITE_COMMIT}")
+          print(f"latest={latest}")
+          print(f"changed={str(changed).lower()}")
+          PY
+          cat "$GITHUB_OUTPUT"
+      - name: Adopt the head of the branch
+        if: steps.commits.outputs.changed == 'true'
         env:
-          LATEST: ${{ steps.versions.outputs.latest }}
+          LATEST: ${{ steps.commits.outputs.latest }}
         run: |
           python - <<'PY'
           import os, pathlib, re
@@ -53,35 +64,45 @@ jobs:
           path = pathlib.Path("src/sbmlsim/testsuite/cases.py")
           text = path.read_text()
           path.write_text(
-              re.sub(r'SUITE_VERSION = "[^"]+"', f'SUITE_VERSION = "{latest}"', text, count=1)
+              re.sub(r'SUITE_COMMIT = "[0-9a-f]+"', f'SUITE_COMMIT = "{latest}"', text, count=1)
           )
           PY
           # the baseline records the outcome of every case, so it is recorded
-          # again for the release which is adopted
+          # again for the commit which is adopted
           uv run --no-sync python scripts/testsuite.py baseline
+      - name: Name the commits
+        id: names
+        if: steps.commits.outputs.changed == 'true'
+        env:
+          PINNED: ${{ steps.commits.outputs.pinned }}
+          LATEST: ${{ steps.commits.outputs.latest }}
+        run: |
+          echo "pinned=${PINNED:0:7}" >> "$GITHUB_OUTPUT"
+          echo "latest=${LATEST:0:7}" >> "$GITHUB_OUTPUT"
       - name: Open the pull request
-        if: steps.versions.outputs.pinned != steps.versions.outputs.latest
+        if: steps.commits.outputs.changed == 'true'
         uses: peter-evans/create-pull-request@v8
         with:
-          branch: testsuite/bump-${{ steps.versions.outputs.latest }}
+          branch: testsuite/bump-${{ steps.names.outputs.latest }}
           base: develop
-          title: "Run against the SBML Test Suite ${{ steps.versions.outputs.latest }}"
+          title: "Run against the SBML Test Suite at ${{ steps.names.outputs.latest }}"
           commit-message: |
-            Run against the SBML Test Suite ${{ steps.versions.outputs.latest }}
+            Run against the SBML Test Suite at ${{ steps.names.outputs.latest }}
 
-            The pinned release goes from ${{ steps.versions.outputs.pinned }} to
-            ${{ steps.versions.outputs.latest }} and the baseline is recorded
-            again, so the diff of the baseline is what the new release changes.
+            The pinned commit of the branch develop of the suite goes from
+            ${{ steps.names.outputs.pinned }} to ${{ steps.names.outputs.latest }} and the baseline is
+            recorded again, so the diff of the baseline is what the new
+            commit changes.
           body: |
-            The SBML Test Suite released
-            [${{ steps.versions.outputs.latest }}](https://github.com/sbmlteam/sbml-test-suite/releases/tag/${{ steps.versions.outputs.latest }}),
-            the pinned release was `${{ steps.versions.outputs.pinned }}`.
+            The semantic cases of the branch `develop` of the SBML Test Suite
+            changed since the pinned commit:
+            [${{ steps.names.outputs.pinned }}...${{ steps.names.outputs.latest }}](https://github.com/sbmlteam/sbml-test-suite/compare/${{ steps.commits.outputs.pinned }}...${{ steps.commits.outputs.latest }}).
 
-            `SUITE_VERSION` is bumped and `tests/data/testsuite_baseline.json`
-            is recorded again, so **the diff of the baseline is what the new
-            release changes**: cases which are new and do not pass appear as
-            expected failures, and a case which changed its outcome shows up
-            as a changed line.
+            `SUITE_COMMIT` is bumped to the head of the branch and
+            `tests/data/testsuite_baseline.json` is recorded again, so **the
+            diff of the baseline is what the new commit changes**: cases which
+            are new and do not pass appear as expected failures, and a case
+            which changed its outcome shows up as a changed line.
 
             Review the baseline diff before merging. A case which regressed is
             a bug, a case which is new and fails may be SBML which is not

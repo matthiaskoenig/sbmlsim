@@ -5,7 +5,7 @@ say which parts of SBML the simulation of `sbmlsim` supports. This script is
 the command line around `sbmlsim.testsuite`:
 
 ```bash
-# fetch the pinned release into the cache, which the tests need
+# fetch the pinned commit into the cache, which the tests need
 uv run python scripts/testsuite.py download
 
 # run the cases and write the interactive report
@@ -18,8 +18,9 @@ uv run python scripts/testsuite.py baseline
 uv run python scripts/testsuite.py submission --output dist
 ```
 
-`--version latest` resolves the newest release instead of the pinned one,
-which is what the release workflow submits against.
+`--commit latest` resolves the head of the branch `develop` of the suite
+instead of the pinned commit, e.g. to see what a newer commit changes before
+the scheduled pull request adopts it.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from pathlib import Path
 from sbmlsim import log
 from sbmlsim.console import console
 from sbmlsim.testsuite import SemanticSuite, run_suite
-from sbmlsim.testsuite.cases import SUITE_VERSION
+from sbmlsim.testsuite.cases import SUITE_BRANCH, SUITE_COMMIT
 from sbmlsim.testsuite.report import TestSuiteReport
 from sbmlsim.testsuite.runner import CaseResult, CaseStatus
 from sbmlsim.testsuite.submission import write_submission
@@ -44,26 +45,27 @@ BASELINE_PATH = (
 )
 
 
-def resolve_version(version: str) -> str:
-    """Resolve the release of the suite to run.
+def resolve_commit(commit: str) -> str:
+    """Resolve the commit of the suite to run.
 
     Args:
-        version: a release such as `3.5.0`, or `latest` for the newest one.
+        commit: the hash of a commit, or `latest` for the head of the branch
+            the pinned commit follows.
 
     Returns:
-        The release.
+        The hash of the commit.
     """
-    return SemanticSuite.latest_version() if version == "latest" else version
+    return SemanticSuite.latest_commit() if commit == "latest" else commit
 
 
-def load(version: str) -> SemanticSuite:
+def load(commit: str) -> SemanticSuite:
     """Get the suite, downloading it if it is not cached."""
-    return SemanticSuite.load(resolve_version(version))
+    return SemanticSuite.load(resolve_commit(commit))
 
 
 def run(suite: SemanticSuite, workers: int | None = None) -> list[CaseResult]:
     """Run every timecourse case of the suite and report the outcome."""
-    console.print(f"Running the SBML Test Suite '{suite.version}' from {suite.path}")
+    console.print(f"Running the SBML Test Suite '{suite.commit}' from {suite.path}")
     results = run_suite(suite, workers=workers)
     counts = Counter(r.status for r in results)
     n = len(results)
@@ -79,7 +81,7 @@ def write_baseline(results: list[CaseResult], suite: SemanticSuite) -> Path:
     BASELINE_PATH.write_text(
         json.dumps(
             {
-                "suite_version": suite.version,
+                "suite_commit": suite.commit,
                 "n_cases": len(results),
                 "n_passed": len(results) - len(failures),
                 "expected_failures": failures,
@@ -109,10 +111,13 @@ def main(argv: list[str] | None = None) -> int:
         help="what to do",
     )
     parser.add_argument(
-        "-v",
-        "--version",
-        default=SUITE_VERSION,
-        help=f"release of the suite, or 'latest'; '{SUITE_VERSION}' by default",
+        "-c",
+        "--commit",
+        default=SUITE_COMMIT,
+        help=(
+            f"commit of the suite, or 'latest' for the head of its branch "
+            f"'{SUITE_BRANCH}'; the pinned '{SUITE_COMMIT[:7]}' by default"
+        ),
     )
     parser.add_argument(
         "-o",
@@ -131,9 +136,9 @@ def main(argv: list[str] | None = None) -> int:
     options = parser.parse_args(argv)
     log.enable_rich_logging()
 
-    suite = load(options.version)
+    suite = load(options.commit)
     if options.command == "download":
-        console.print(f"SBML Test Suite '{suite.version}': {suite.path}")
+        console.print(f"SBML Test Suite '{suite.commit}': {suite.path}")
         return 0
 
     if options.command == "submission":
@@ -144,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results = run(suite, workers=options.workers)
     if options.command == "report":
-        TestSuiteReport(results, suite_version=suite.version).create(options.output)
+        TestSuiteReport(results, suite_commit=suite.commit).create(options.output)
     elif options.command == "baseline":
         write_baseline(results, suite)
     return 0
