@@ -45,13 +45,10 @@ class JitOptimization(StrEnum):
     0.75 s). `O0` gives the results of MCJIT bitwise, the other levels differ
     from them in the last bits, so a fit can take another path.
 
-    `O0` is the default (`DEFAULT_JIT_OPTIMIZATION`): it compiles several
-    times faster and its code needs less memory (the experiments and fit
-    mappings of the creatinine model of pkdb_models 3.8 GB against 4.9 GB at
-    `O2`), and the higher levels simulate little faster, so they pay only for
-    a run which simulates a model long after compiling it once; e.g. the run
-    of all experiments of dulaglutide takes about 30 s at `O0` against 34 s
-    at `O2`.
+    `O2` is the default (`DEFAULT_JIT_OPTIMIZATION`), it simulates as fast as
+    MCJIT. `O0` pays for a run which compiles more than it simulates, e.g.
+    the initialization of experiments: the run of all experiments of
+    dulaglutide takes about 30 s at `O0` against 34 s at `O2`.
     """
 
     O0 = "O0"
