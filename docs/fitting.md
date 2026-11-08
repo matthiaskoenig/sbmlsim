@@ -563,7 +563,7 @@ workers             1 (serial)
   optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:00 ~ 0:00:00 total
 converged           2/2 runs
 best cost           1.09898
-optimizer time      0.5 s
+optimizer time      0.4 s
 2 runs read back
 versions: python, sbmlsim, libroadrunner, scipy, numpy
 checksums of 10 files
