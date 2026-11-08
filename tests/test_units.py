@@ -917,3 +917,61 @@ def test_an_expression_which_pint_refuses_is_an_error(
 def test_a_definition_needs_a_name_and_an_expression(definition: str) -> None:
     with pytest.raises(ValueError, match="<name> = <expression>"):
         define_unit(definition)
+
+
+def _registry_names(registry) -> tuple:
+    """Get the units, prefixes and dimensions of a registry before it is used."""
+    return (
+        sorted(registry._units),
+        sorted(registry._prefixes),
+        sorted(registry._dimensions),
+    )
+
+
+def _registry_state(registry) -> tuple:
+    """Get the root units of some units of a registry."""
+    return (
+        {
+            name: str(registry.get_root_units(name))
+            for name in ("none", "item", "percent", "mg", "min", "mol/l")
+        },
+    )
+
+
+def test_cached_registry_equals_uncached(tmp_path, monkeypatch):
+    """A registry from the cache has the definitions of one built without it."""
+    from sbmlsim import units
+
+    monkeypatch.setenv(units.CACHE_ENV, str(tmp_path / "cache"))
+    cold = units._create_registry()  # fills the cache
+    cold_names = _registry_names(cold)
+    folder = units.cache_folder()
+    assert folder is not None and any(folder.glob("*.pickle"))
+    assert not [p for p in folder.parent.iterdir() if p != folder]
+    warm = units._create_registry()  # reads it
+    monkeypatch.setenv(units.CACHE_ENV, "")
+    assert units.cache_folder() is None
+    plain = units._create_registry()
+    assert cold_names == _registry_names(warm)
+    # pint adds the prefixed names it met while it parsed the definitions (e.g.
+    # `kilometer`) to its units, which the cache does not replay: they are
+    # resolved from their prefix and unit on first use, to the same unit
+    assert set(cold_names[0]) <= set(_registry_names(plain)[0])
+    for name in set(_registry_names(plain)[0]) - set(cold_names[0]):
+        assert str(warm.get_root_units(name)) == str(plain.get_root_units(name))
+    assert cold_names[1:] == _registry_names(plain)[1:]
+    assert _registry_state(cold) == _registry_state(plain)
+    for name in sorted(cold_names[0]):
+        assert str(warm.get_root_units(name)) == str(plain.get_root_units(name)), name
+    assert _registry_state(warm) == _registry_state(plain)
+    assert "IU" not in warm._units
+
+
+def test_unusable_cache_gives_a_registry(tmp_path, monkeypatch):
+    """A cache folder which cannot be created does not fail."""
+    from sbmlsim import units
+
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    monkeypatch.setenv(units.CACHE_ENV, str(blocker / "cache"))
+    assert units._create_registry().Quantity(1, "mg").to("g").magnitude == 0.001

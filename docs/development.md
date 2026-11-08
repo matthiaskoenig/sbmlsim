@@ -228,6 +228,10 @@ uv run python scripts/llms_txt.py
 
 The `documentation` workflow runs both steps, so the files are regenerated with every push. `docs/robots.txt` points crawlers at the sitemap and at these files. Zensical will provide agent context files itself at some point, then this script can go.
 
+## Caches
+
+sbmlsim keeps its caches below `~/.cache/sbmlsim` (or `XDG_CACHE_HOME`): the test suites, the compiled models of AMICI (`SBMLSIM_AMICI_CACHE`) and the parsed unit definitions of pint (`units/`, `SBMLSIM_UNITS_CACHE`, an empty value turns it off), which make `import sbmlsim` about 65 ms faster. Every cache can be deleted at any time.
+
 ## Release
 
 A release is made from `develop`. Since `develop` only accepts pull requests, the release is prepared on a branch and tagged once that pull request is merged:
