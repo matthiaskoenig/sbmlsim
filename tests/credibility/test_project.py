@@ -5,7 +5,7 @@ import pytest
 
 from sbmlsim.credibility import DeclarationError, EvidenceExtension, records
 from sbmlsim.fit.objects import MappingMetaData
-from sbmlsim.project import CredibilitySettings, SimulatorSettings
+from sbmlsim.project import CredibilitySettings
 from tests.credibility_toy import PROJECT
 from tests.credibility_toy.extensions import ARMS
 from tests.credibility_toy.metadata import Health, Route, ToyMetaData
@@ -109,19 +109,18 @@ class _Stop(Exception):
     """Raised by the recording fit mappings after they recorded."""
 
 
-def test_the_mapping_table_compiles_at_the_level_of_the_project(
+def test_the_mapping_table_creates_the_fit_mappings_of_the_project(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The experiments of the evidence load their models at the project's level."""
-    seen: dict[str, object] = {}
+    """The experiments of the evidence are created as the runs of the project do."""
+    seen: list[object] = []
 
-    def recording(**kwargs: object) -> None:
-        seen.update(kwargs)
+    def recording(project: object, experiment_classes: object) -> None:
+        seen.append(project)
         raise _Stop
 
     monkeypatch.setattr(records, "_adopted_fits", lambda project: [])
-    monkeypatch.setattr(records, "FitMappings", recording)
-    project = PROJECT.replace(simulator=SimulatorSettings(jit_optimization="O1"))
+    monkeypatch.setattr(records.FitMappings, "for_project", recording)
     with pytest.raises(_Stop):
-        records.mapping_table(project)
-    assert seen["jit_optimization"] == "O1"
+        records.mapping_table(PROJECT)
+    assert seen == [PROJECT]

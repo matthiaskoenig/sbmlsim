@@ -350,13 +350,7 @@ def mapping_table(project: Project) -> FitTable:
             selected.append(
                 (subset, experiment, list(collection.mappings), collection.kind.value)
             )
-    fit_mappings = FitMappings(
-        experiment_classes=classes.values(),
-        base_path=project.base_path or project.root,
-        data_path=project.data_path,
-        # the models compiled at the level of the project, as its runs do
-        jit_optimization=project.simulator.jit_optimization,
-    )
+    fit_mappings = FitMappings.for_project(project, classes.values())
     lookup = _Lookup(fit_mappings.experiments)
     rows: list[dict[str, str]] = []
     for subset, experiment, keys, kind in selected:

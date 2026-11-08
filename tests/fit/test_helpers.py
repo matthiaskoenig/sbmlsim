@@ -4,6 +4,7 @@ import pytest
 
 from examples.hctz_fitting import DATA_PATH, HCTZ_PATH
 from examples.hctz_fitting.experiments.studies import Beermann1976, Patel1984
+from sbmlsim import project_checks
 from sbmlsim.fit import FitMapping, MappingKind, helpers
 from sbmlsim.fit.helpers import (
     FitMappings,
@@ -215,22 +216,29 @@ def test_the_models_are_compiled_at_the_given_level() -> None:
     assert str(fit_mappings.runner.jit_optimization) == "O1"
 
 
+def test_the_fit_mappings_of_a_project_have_its_paths_and_level() -> None:
+    project = PROJECT.replace(simulator=SimulatorSettings(jit_optimization="O1"))
+    fit_mappings = FitMappings.for_project(
+        project, project_checks.registered_experiments(project)
+    )
+    assert str(fit_mappings.runner.jit_optimization) == "O1"
+    assert fit_mappings.runner.base_path == (project.base_path or project.root)
+
+
 class _Stop(Exception):
     """Raised by the recording fit mappings after they recorded."""
 
 
-def test_select_mappings_compiles_at_the_level_of_the_project(
+def test_select_mappings_creates_the_fit_mappings_of_the_project(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The fit mappings of a project compile its models at its level."""
-    seen: dict[str, object] = {}
+    seen: list[object] = []
 
-    def recording(**kwargs: object) -> FitMappings:
-        seen.update(kwargs)
+    def recording(project: object, experiment_classes: object) -> FitMappings:
+        seen.append(project)
         raise _Stop
 
-    monkeypatch.setattr(helpers, "FitMappings", recording)
-    project = PROJECT.replace(simulator=SimulatorSettings(jit_optimization="O1"))
+    monkeypatch.setattr(FitMappings, "for_project", recording)
     with pytest.raises(_Stop):
-        helpers.select_mappings(project, [])
-    assert seen["jit_optimization"] == "O1"
+        helpers.select_mappings(PROJECT, [])
+    assert seen == [PROJECT]
