@@ -148,13 +148,12 @@ def collect_versions(engine: Engine = Engine.ROADRUNNER) -> dict[str, str]:
     Returns:
         The version by package, "not installed" for a package which is missing.
     """
-    versions = {"python": platform.python_version()}
-    for package in PACKAGES + ENGINE_PACKAGES[engine]:
-        try:
-            versions[package] = importlib.metadata.version(package)
-        except importlib.metadata.PackageNotFoundError:
-            versions[package] = "not installed"
-    return versions
+    packages = PACKAGES + ENGINE_PACKAGES[engine]
+    installed = installed_versions(packages)
+    return {
+        "python": platform.python_version(),
+        **{package: installed.get(package, "not installed") for package in packages},
+    }
 
 
 def installed_versions(names: Iterable[str]) -> dict[str, str]:
