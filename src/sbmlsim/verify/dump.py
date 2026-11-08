@@ -403,7 +403,6 @@ def dump(args: argparse.Namespace) -> int:
         UsageError: for an unknown experiment or tolerance, or a project
             without experiments.
     """
-    from sbmlsim.experiment import ExperimentRunner
     from sbmlsim.simulator import Simulator
 
     project = load_project_of(args)
@@ -449,18 +448,14 @@ def dump(args: argparse.Namespace) -> int:
         result["grid"] = args.grid
     for cls in classes:
         try:
-            runner = ExperimentRunner(
-                experiment_classes=[cls],
-                data_path=project.data_path,
-                base_path=project.base_path or project.root,
+            runner = project.experiment_runner(
+                [cls],
                 # a dump runs serially, the order of its experiments is the
                 # order of the run
                 simulator=Simulator(n_workers=1, **tolerances),
                 # an experiment which cannot be initialized raises and is
                 # recorded below
                 on_error="raise",
-                # the models compiled at the level of the project, as its runs do
-                jit_optimization=project.simulator.jit_optimization,
             )
             for sid, experiment in runner.experiments.items():
                 if args.grid is not None:
