@@ -90,7 +90,12 @@ def is_overridden(variable: str) -> bool:
     return bool(os.environ.get(variable))
 
 
-def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
+def fetch(
+    url: str,
+    path: Path,
+    select: Callable[[Path], Path],
+    members: Callable[[str], bool] | None = None,
+) -> Path:
     """Download an archive and move a directory of it into place.
 
     Every fetch unpacks into a staging directory of its own next to `path`,
@@ -108,6 +113,8 @@ def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
         path: the directory which holds the cases afterwards.
         select: gets the directory the archive was unpacked into and returns
             the directory of it which becomes `path`.
+        members: gets the name of a member of the archive and returns whether
+            it is unpacked, every member by default.
 
     Returns:
         `path`.
@@ -134,7 +141,10 @@ def fetch(url: str, path: Path, select: Callable[[Path], Path]) -> Path:
         logger.debug("Downloading '%s' into '%s'", url, staging)
         urllib.request.urlretrieve(url, archive)
         with zipfile.ZipFile(archive) as zf:
-            zf.extractall(unpacked)
+            names = zf.namelist()
+            if members is not None:
+                names = [name for name in names if members(name)]
+            zf.extractall(unpacked, members=names)
         archive.unlink()
         selected = select(unpacked)
         try:

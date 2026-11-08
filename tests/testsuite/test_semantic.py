@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from sbmlsim.testsuite import SemanticSuite, run_case
-from sbmlsim.testsuite.cases import SUITE_VERSION, SemanticCase
+from sbmlsim.testsuite.cases import SUITE_COMMIT, SemanticCase
 
 #: the cases are the conformance of libroadrunner and not of a change, so they
 #: are not part of a normal run: `pytest -m testsuite` runs them, and so does
@@ -39,7 +39,7 @@ def _case_ids() -> list[str]:
     Returns:
         The case identifiers, empty when the suite is not on this machine.
     """
-    path = SemanticSuite.cache_path(SUITE_VERSION)
+    path = SemanticSuite.cache_path(SUITE_COMMIT)
     if not path.is_dir():
         return []
     return sorted(p.name for p in path.iterdir() if p.is_dir() and p.name.isdigit())
@@ -75,8 +75,8 @@ def test_case(cid: str, suite: SemanticSuite, baseline: dict) -> None:
 
 
 def test_the_baseline_matches_the_suite(suite: SemanticSuite, baseline: dict) -> None:
-    """The baseline was recorded for the release which is pinned and cached."""
-    assert baseline["suite_version"] == SUITE_VERSION == suite.version
+    """The baseline was recorded for the commit which is pinned and cached."""
+    assert baseline["suite_commit"] == SUITE_COMMIT == suite.commit
     assert baseline["n_cases"] == len(CASE_IDS) - _n_not_timecourse(suite)
     assert baseline["n_passed"] == baseline["n_cases"] - len(
         baseline["expected_failures"]

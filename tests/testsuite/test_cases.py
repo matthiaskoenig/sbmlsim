@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from sbmlsim.result import TimecourseResult
-from sbmlsim.testsuite.cases import LATEST_RELEASE_URL, SemanticCase, SemanticSuite
+from sbmlsim.testsuite.cases import API_URL, SemanticCase, SemanticSuite
 from sbmlsim.testsuite.comparison import compare_case
 
 SETTINGS = """start: 0
@@ -113,7 +113,7 @@ def test_the_suite_iterates_its_cases(tmp_path: Path) -> None:
     _case(tmp_path, cid="00002")
     _case(tmp_path, cid="00001")
     (tmp_path / "not-a-case").mkdir()
-    suite = SemanticSuite(path=tmp_path, version="0.0.0")
+    suite = SemanticSuite(path=tmp_path, commit="abc")
 
     assert [case.cid for case in suite.cases()] == ["00001", "00002"]
     assert len(suite) == 2
@@ -122,26 +122,41 @@ def test_the_suite_iterates_its_cases(tmp_path: Path) -> None:
         suite.case("00003")
 
 
-def test_the_cache_is_per_release(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A release is cached under its version, and can be pointed elsewhere."""
+def test_the_cache_is_per_commit(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A commit is cached under its hash, and can be pointed elsewhere."""
     monkeypatch.delenv("SBMLSIM_TEST_SUITE_PATH", raising=False)
     monkeypatch.setenv("XDG_CACHE_HOME", "/tmp/cache")
-    assert SemanticSuite.cache_path("3.5.0") == Path(
-        "/tmp/cache/sbmlsim/test-suite/3.5.0/semantic"
+    assert SemanticSuite.cache_path("abc") == Path(
+        "/tmp/cache/sbmlsim/test-suite/abc/semantic"
     )
 
     monkeypatch.setenv("SBMLSIM_TEST_SUITE_PATH", "/elsewhere/semantic")
-    assert SemanticSuite.cache_path("3.5.0") == Path("/elsewhere/semantic")
+    assert SemanticSuite.cache_path("abc") == Path("/elsewhere/semantic")
+
+
+def _github(
+    monkeypatch: pytest.MonkeyPatch, responses: dict[str, object]
+) -> list[urllib.request.Request]:
+    """Answer the requests of the API of GitHub by their path."""
+    requests: list[urllib.request.Request] = []
+
+    def urlopen(request: urllib.request.Request, timeout: float) -> io.BytesIO:
+        requests.append(request)
+        path = request.full_url.removeprefix(f"{API_URL}/")
+        return io.BytesIO(json.dumps(responses[path]).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    return requests
 
 
 @pytest.mark.parametrize(
     ("variable", "authorization"),
     [("GITHUB_TOKEN", "Bearer abc"), ("GH_TOKEN", "Bearer abc"), (None, None)],
 )
-def test_the_newest_release_is_requested_with_a_token(
+def test_the_newest_commit_is_requested_with_a_token(
     monkeypatch: pytest.MonkeyPatch, variable: str | None, authorization: str | None
 ) -> None:
-    """A token in the environment authenticates the request of the newest release.
+    """A token in the environment authenticates the request of the newest commit.
 
     The anonymous rate limit of GitHub refused the request on the shared
     addresses of the runners of GitHub Actions, which failed the submission of
@@ -151,18 +166,43 @@ def test_the_newest_release_is_requested_with_a_token(
     monkeypatch.delenv("GH_TOKEN", raising=False)
     if variable is not None:
         monkeypatch.setenv(variable, "abc")
-    requests: list[urllib.request.Request] = []
+    requests = _github(monkeypatch, {"commits/develop": {"sha": "f00"}})
 
-    def urlopen(request: urllib.request.Request, timeout: float) -> io.BytesIO:
-        requests.append(request)
-        return io.BytesIO(json.dumps({"tag_name": "3.6.0"}).encode())
-
-    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
-
-    assert SemanticSuite.latest_version() == "3.6.0"
+    assert SemanticSuite.latest_commit() == "f00"
     (request,) = requests
-    assert request.full_url == LATEST_RELEASE_URL
+    assert request.full_url == f"{API_URL}/commits/develop"
     assert request.get_header("Authorization") == authorization
+
+
+@pytest.mark.parametrize(
+    ("status", "changed"),
+    [("identical", False), ("ahead", False), ("behind", True), ("diverged", True)],
+)
+def test_the_cases_changed_since_the_pinned_commit(
+    monkeypatch: pytest.MonkeyPatch, status: str, changed: bool
+) -> None:
+    """The cases changed when the pinned commit lacks their last change.
+
+    A newer commit which changed only the test runner of the suite has the
+    cases of the pinned commit, which is not adopted.
+    """
+    requests = _github(
+        monkeypatch,
+        {
+            "commits?sha=head&path=cases%2Fsemantic&per_page=1": [{"sha": "last"}],
+            "compare/last...pinned": {"status": status},
+        },
+    )
+
+    assert SemanticSuite.cases_changed("pinned", "head") is changed
+    assert len(requests) == 2
+
+
+def test_no_change_of_the_cases(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A branch without a commit of the cases has no change."""
+    _github(monkeypatch, {"commits?sha=head&path=cases%2Fsemantic&per_page=1": []})
+
+    assert not SemanticSuite.cases_changed("pinned", "head")
 
 
 # ---------------------------------------------------------------------------
