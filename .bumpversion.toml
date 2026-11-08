@@ -22,3 +22,10 @@ filename = "./src/sbmlsim/__init__.py"
 
 [[tool.bumpversion.files]]
 filename = "./CITATION.cff"
+
+# the date of the release in the citation, the day of the bump
+[[tool.bumpversion.files]]
+filename = "./CITATION.cff"
+regex = true
+search = 'date-released: "\d{{4}}-\d{{2}}-\d{{2}}"'
+replace = 'date-released: "{now:%Y-%m-%d}"'
