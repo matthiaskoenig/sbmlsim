@@ -25,6 +25,15 @@ A fit becomes part of a model in two steps:
    notes, see `ParameterUncertainty`. The distributions are read back from the
    SBML by `sbmlsim.simulation.sampling.parameter_distributions`.
 
+distrib states one distribution per parameter, the dependence of the
+parameters of a fit stays in its record: `AdoptedRecord.correlation` is the
+correlation of the normal scores of its parameters, of the Laplace posterior
+(`posterior.json`) or else of a Fisher information of full rank, see
+`parameter_correlation`, which the draws of the experiments
+(`sbmlsim.experiment.draws.UncertaintyRun`) and of the credibility
+(`sbmlsim.credibility.uncertainty`) take as the correlation of a Gaussian
+copula of the distributions of the SBML.
+
 The records of one fit which its report is built from are
 `sbmlsim.fit.cli.FitRecords` (`load_fit_records`); an `AdoptedRecord` is the
 fitted parameters of an adopted fit with their uncertainty.
@@ -50,6 +59,7 @@ from scipy import stats
 
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.options import ParameterScaleType
+from sbmlsim.fit.posterior import POSTERIOR_FILE, ParameterPosterior
 from sbmlsim.units import ureg
 
 if TYPE_CHECKING:
@@ -64,10 +74,12 @@ __all__ = [
     "UNCERTAINTY_FILES",
     "AdoptedRecord",
     "AdoptedRecords",
+    "ParameterCorrelation",
     "ParameterUncertainty",
     "UncertaintyMethod",
     "adopt_fit",
     "convert_value",
+    "parameter_correlation",
 ]
 
 logger = logging.getLogger(__name__)
@@ -81,6 +93,7 @@ RECORD_FILES: tuple[str, ...] = (
     "fisher.json",
     "fisher.tsv",
     "posterior.json",
+    "posterior.tsv",
     "metrics.tsv",
     "metrics_mappings.tsv",
     "report.txt",
@@ -418,6 +431,95 @@ class ParameterUncertainty:
 # ----------------------------------------------------------------------------
 # the records of the fits
 # ----------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ParameterCorrelation:
+    """The dependence of the fitted parameters of a fit.
+
+    Attributes:
+        pids: the parameters, in the order of the rows of `matrix`.
+        matrix: the correlation of their normal scores in the space of the
+            fit, `None` for independent parameters.
+        source: where the correlation comes from, or why there is none.
+    """
+
+    pids: tuple[str, ...]
+    matrix: np.ndarray | None = field(repr=False)
+    source: str
+
+    @property
+    def correlated(self) -> bool:
+        """Whether the parameters have a correlation."""
+        return self.matrix is not None
+
+    def rank_correlation(self) -> np.ndarray:
+        """Get the Spearman rank correlation of the parameters.
+
+        The rank correlation of the normal scores, `6 / π asin(r / 2)`, which
+        the designs `lhs` and `random` of `sbmlsim.simulation.sampling` take as
+        `correlation`; the identity for independent parameters.
+        """
+        if self.matrix is None:
+            return np.eye(len(self.pids))
+        rank = 6.0 / np.pi * np.arcsin(np.clip(self.matrix, -1.0, 1.0) / 2.0)
+        np.fill_diagonal(rank, 1.0)
+        return (rank + rank.T) / 2.0
+
+
+def parameter_correlation(
+    pids: Sequence[str],
+    *,
+    posterior: ParameterPosterior | None = None,
+    fisher: FisherInformation | None = None,
+) -> ParameterCorrelation:
+    """Get the correlation of the normal scores of fitted parameters.
+
+    The correlation of the Laplace posterior, which constrains every
+    direction (`sbmlsim.fit.posterior.posterior_laplace` raises otherwise),
+    else of a Fisher information of full rank, in the space of the fit; for a
+    normal or log-normal marginal in that space it is the correlation of the
+    multivariate normal of the analysis. A Fisher information which is not of
+    full rank, an analysis of other parameters or none gives independent
+    parameters.
+
+    Args:
+        pids: the parameters.
+        posterior: the Laplace posterior of the fit, `None` without.
+        fisher: the Fisher information of the fit, `None` without.
+
+    Returns:
+        The correlation, with where it comes from.
+    """
+    pids = tuple(pids)
+    if len(pids) < 2:
+        return ParameterCorrelation(pids, None, "nothing to correlate")
+    if posterior is not None and set(pids) <= set(posterior.pids):
+        matrix = posterior.correlation.loc[list(pids), list(pids)]
+        source = "the correlation of the Laplace posterior in the space of the fit"
+    elif fisher is None:
+        return ParameterCorrelation(
+            pids,
+            None,
+            "independent, the fit has no posterior and no Fisher information",
+        )
+    elif not fisher.is_identifiable:
+        return ParameterCorrelation(
+            pids,
+            None,
+            f"independent, the Fisher information has rank {fisher.rank} of {fisher.k}",
+        )
+    elif not set(pids) <= set(fisher.pids):
+        return ParameterCorrelation(
+            pids, None, "independent, the Fisher information has other parameters"
+        )
+    else:
+        matrix = fisher.correlation.loc[list(pids), list(pids)]
+        source = "the correlation of the Fisher information in the space of the fit"
+    values = matrix.to_numpy(dtype=float)
+    values = (values + values.T) / 2.0
+    np.fill_diagonal(values, 1.0)
+    return ParameterCorrelation(pids, values, source)
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     """Read a JSON object."""
     with open(path, encoding="utf-8") as f:
@@ -461,10 +563,36 @@ class AdoptedRecord:
     Attributes:
         directory: the directory of the record, named by the id of the fit.
         parameters: the uncertainty of every fitted parameter by pid.
+        fisher: the Fisher information of the fit, `fisher.json`.
+        posterior: the Laplace posterior of the fit, `posterior.json`.
     """
 
     directory: Path
     parameters: Mapping[str, ParameterUncertainty] = field(repr=False)
+    fisher: FisherInformation | None = field(default=None, repr=False)
+    posterior: ParameterPosterior | None = field(default=None, repr=False)
+
+    def correlation(self, pids: Sequence[str] | None = None) -> ParameterCorrelation:
+        """Get the correlation of the normal scores of fitted parameters.
+
+        Args:
+            pids: the parameters, every fitted parameter without.
+
+        Returns:
+            The correlation of the posterior or of the Fisher information,
+            see `parameter_correlation`.
+
+        Raises:
+            KeyError: for a parameter which the fit does not fit.
+        """
+        pids = tuple(self.parameters) if pids is None else tuple(pids)
+        unknown = [pid for pid in pids if pid not in self.parameters]
+        if unknown:
+            raise KeyError(
+                f"The fit '{self.fit_id}' does not fit {unknown}, it fits "
+                f"{sorted(self.parameters)}."
+            )
+        return parameter_correlation(pids, posterior=self.posterior, fisher=self.fisher)
 
     @property
     def fit_id(self) -> str:
@@ -480,7 +608,8 @@ class AdoptedRecord:
         (`optimization_result.json`); the confidence interval is the one of the
         profile likelihood (`identifiability.json`), the Fisher information
         (`fisher.json`) gives the standard error and is the fallback for a
-        parameter without a profile.
+        parameter without a profile. The Laplace posterior (`posterior.json`)
+        gives the correlation of the parameters, see `correlation`.
 
         Args:
             directory: the directory of the record.
@@ -492,7 +621,8 @@ class AdoptedRecord:
             FileNotFoundError: if the record lacks a required file or has
                 neither a profile nor a Fisher information.
             ValueError: if a fitted parameter has neither a profile nor a
-                Fisher information.
+                Fisher information, or the posterior is not the one of the
+                fitted parameters.
         """
         fit_id = directory.name
         missing = [n for n in REQUIRED_FILES if not (directory / n).exists()]
@@ -583,7 +713,44 @@ class AdoptedRecord:
                 n_data=None if fisher is None else fisher.n,
                 record=f"{fit_id}/",
             )
-        return cls(directory=directory, parameters=parameters)
+        posterior: ParameterPosterior | None = None
+        if (directory / POSTERIOR_FILE).exists():
+            posterior = ParameterPosterior.read(directory / POSTERIOR_FILE)
+            _check_posterior(posterior, values, units, directory)
+        return cls(
+            directory=directory,
+            parameters=parameters,
+            fisher=fisher,
+            posterior=posterior,
+        )
+
+
+def _check_posterior(
+    posterior: ParameterPosterior,
+    values: Mapping[str, float],
+    units: Mapping[str, str | None],
+    directory: Path,
+) -> None:
+    """Check that the posterior of a record is the one of its fitted parameters.
+
+    Raises:
+        ValueError: if the posterior has other parameters or other values.
+    """
+    if set(posterior.pids) != set(values):
+        raise ValueError(
+            f"The posterior of the record '{directory}' has the parameters "
+            f"{sorted(posterior.pids)}, the fit {sorted(values)}."
+        )
+    for pid, value, unit in zip(
+        posterior.pids, posterior.values, posterior.units, strict=True
+    ):
+        expected = convert_value(values[pid], units.get(pid), unit)
+        if not math.isclose(float(value), expected, rel_tol=1e-9):
+            raise ValueError(
+                f"The posterior of the record '{directory}' is at {pid} = "
+                f"{float(value)!r}, the fit at {expected!r}: it is the posterior "
+                f"of another parameter set."
+            )
 
 
 class AdoptedRecords:

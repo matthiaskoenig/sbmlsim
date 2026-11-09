@@ -437,9 +437,9 @@ report = FitReport(problem, settings, ParameterSets.from_json(Path("parameters.j
 - `index.html`, an interactive page with the methods, the results and the figures of the fit, with search, filters by kind of data and sortable tables. It works offline and can be archived or sent as it is.
 - `report.pdf` with its sources `report.typ` and LaTeX (`report.tex` for `\input` in a manuscript, `report_standalone.tex`), and `references.bib`. Typst compiles the PDF, no LaTeX installation is needed; if it fails, the page says why and everything else is written.
 - the figures in `plots/`: the optimization runs (traces and waterfall), goodness of fit, Bland-Altman plot, and a figure per fit mapping with the data and the simulation, linear and logarithmic.
-- `report.txt`, `parameters.json`, the metrics as TSV (`metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv`, `datapoints.tsv`), and the records of the fit (`optimization_result.json`, `fisher.json`, `identifiability.json`) where the report has them.
+- `report.txt`, `parameters.json`, the metrics as TSV (`metrics.tsv`, `metrics_mappings.tsv`, `metrics_observables.tsv`, `datapoints.tsv`), and the records of the fit (`optimization_result.json`, `fisher.json`, `fisher.tsv`, `identifiability.json`, `posterior.json`, `posterior.tsv`) where the report has them.
 
-The methods describe only what the fit used: the parameters, the data per kind, the objective, the optimizer and its options, the identifiability analysis and the provenance. The references are those it cites, see [References](references.md).
+The methods describe only what the fit used: the parameters, the data per kind, the objective (the weighted least squares, or the negative log-likelihood with the noise models of the data and, for the posterior, the priors and their correlation), the optimizer and its options, the identifiability analysis, the posterior and the provenance. The references are those it cites, see [References](references.md).
 
 The goodness of fit and the Bland-Altman plot have one panel per kind of data, training, validation and outliers, with the points colored by study. The Bland-Altman plot shows the ratio of prediction and measurement against their mean, with the bias and the limits of agreement of the training data as fold factors. Both draw this band from the training data in every panel, so the validation data and the outliers are read against what the fit agrees to. Data points which are zero or negative have no ratio and are not drawn.
 
@@ -449,7 +449,7 @@ The goodness of fit and the Bland-Altman plot have one panel per kind of data, t
 - `groupings=[Grouping.by("tissue")]` (from `sbmlsim.fit.evaluation`) adds figures and metrics per group of a column of the data points, e.g. a field of the metadata. `Grouping.of_subsets("route", Subset("oral", is_oral), ...)` groups by named filters.
 - `error_bars=True` draws the standard deviations of the data, `color_by="tissue"` colors the points by a column instead of the study.
 - `context=ReportContext(title=..., description=..., parameter_descriptions=...)` (from `sbmlsim.fit.methods`) sets the title of the report and the text about the fit.
-- `identifiability=` and `fisher=` add the results of the [identifiability](identifiability.md) analysis.
+- `identifiability=` and `fisher=` add the results of the [identifiability](identifiability.md) analysis, `posterior=` the section of the [Laplace posterior](uncertainty.md#the-posterior-of-a-fit).
 
 To report a stored fit, `report_from_records(definition, directory, opid=...)` of `sbmlsim.fit.cli` reads the records of a report folder (`parameters.json`, `optimization_result.json`, `identifiability.json`, `fisher.json`) and returns the `FitReport`. It uses the settings the fit ran with and warns if the definition has changed since.
 

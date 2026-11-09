@@ -80,9 +80,10 @@ from sbmlsim.fit.objects import (
     describe_array,
 )
 from sbmlsim.fit.optimization import ObservationKind, OptimizationProblem
-from sbmlsim.fit.options import FitSettings
+from sbmlsim.fit.options import FitSettings, ObjectiveType, ParameterScaleType
 from sbmlsim.fit.parameter_mapping import has_renamed_targets
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.posterior import POSTERIOR_FILE, ParameterPosterior
 from sbmlsim.fit.report_document import FIGURES, fit_document
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
@@ -274,6 +275,7 @@ class FitReport:
         opt_result: OptimizationResult | None = None,
         identifiability: IdentifiabilityResult | None = None,
         fisher: FisherInformation | None = None,
+        posterior: ParameterPosterior | None = None,
         show_titles: bool = True,
         image_format: str = "svg",
         mapping_figures: bool = True,
@@ -300,6 +302,9 @@ class FitReport:
             fisher: Fisher information of the parameters, adds its table of
                 errors and intervals and the correlation of the parameters to
                 the identifiability section.
+            posterior: the Laplace posterior of the parameters, adds the
+                section of the posterior with its credible intervals and the
+                correlation of the parameters.
             show_titles: add titles to the figures: the title of a fit
                 mapping above the panels of its figures, the title of a
                 figure or of its panel for the other figures.
@@ -333,6 +338,7 @@ class FitReport:
         self.opt_result = deepcopy(opt_result)
         self.identifiability = deepcopy(identifiability)
         self.fisher = deepcopy(fisher)
+        self.posterior = deepcopy(posterior)
         self.show_titles = show_titles
         self.image_format = image_format
         self.mapping_figures = mapping_figures
@@ -768,6 +774,11 @@ class FitReport:
             self._fisher_summary_df().to_csv(
                 results_dir / "fisher.tsv", sep="\t", index=False
             )
+        if self.posterior:
+            self.posterior.write(results_dir / POSTERIOR_FILE)
+            self._posterior_summary_df().to_csv(
+                results_dir / "posterior.tsv", sep="\t", index=False
+            )
         if self.identifiability:
             write_text_atomic(
                 results_dir / "identifiability.json",
@@ -991,6 +1002,13 @@ class FitReport:
             "model (to first order, also for a parameter searched as a "
             "logarithm)."
         ),
+        "sd": (
+            "Standard deviation of the posterior in the space the optimizer "
+            "searches the parameter in, e.g. of its decadic logarithm."
+        ),
+        "q0.025": "Lower end of the 95 % credible interval of the posterior.",
+        "q0.975": "Upper end of the 95 % credible interval of the posterior.",
+        "target": "The entity of the model the parameter sets.",
         "ci_lower": "Lower bound of the confidence interval.",
         "ci_upper": "Upper bound of the confidence interval.",
         "identifiability": (
@@ -1324,6 +1342,9 @@ class FitReport:
             )
         if self.fisher:
             files.append({"href": "fisher.tsv", "label": "fisher.tsv"})
+        if self.posterior:
+            files.append({"href": POSTERIOR_FILE, "label": POSTERIOR_FILE})
+            files.append({"href": "posterior.tsv", "label": "posterior.tsv"})
         if self.identifiability:
             files.append(
                 {"href": "identifiability.json", "label": "identifiability.json"}
@@ -1486,6 +1507,8 @@ class FitReport:
             "runs": runs,
             "identifiability": self._identifiability_context(plots_dir),
             "fisher": self._fisher_context(),
+            "posterior": self._posterior_context(),
+            "priors": self._priors_context(),
             "groupings": self._groupings_context(plots_dir),
             "files": files,
         }
@@ -1674,8 +1697,40 @@ class FitReport:
             "condition number": f"{fim.condition_number:.4g}",
             "confidence level": f"{fim.alpha:.0%}",
         }
-        # the elements of a network are one row per array, with the range of
-        # their errors, and are left out of the correlation matrix
+        return {
+            "info": info,
+            "identifiable": fim.is_identifiable,
+            "columns": self._analysis_columns(df),
+            "rows": self._analysis_rows(df, fim.parameter_scales, "se"),
+            "eigenvalues": [f"{value:.4g}" for value in eigenvalues],
+            **self._correlation_context(fim.pids, fim.correlation),
+        }
+
+    def _analysis_columns(self, df: pd.DataFrame) -> list[dict[str, Any]]:
+        """Get the columns of the table of the parameters of an analysis."""
+        return [
+            {
+                "name": column,
+                "hint": self.HINTS.get(column),
+                # the columns of text are left aligned
+                "numeric": column not in {"parameter", "target", "scale", "unit"},
+            }
+            for column in df.columns
+        ]
+
+    def _analysis_rows(
+        self, df: pd.DataFrame, scales: Sequence[ParameterScaleType], error: str
+    ) -> list[list[str]]:
+        """Get the rows of the table of the parameters of an analysis.
+
+        The elements of a network are one row per array, with the norm of
+        their values and the range of their errors.
+
+        Args:
+            df: the table, one row per parameter in the order of `scales`.
+            scales: the scale of every parameter.
+            error: the column of the errors.
+        """
         groups = self._grouping[1]
         grouped = {p.pid for _, members in groups for p in members}
         rows: list[list[str]] = [
@@ -1689,51 +1744,128 @@ class FitReport:
                 continue
             n = len({p.entity_id for p in members})
             versions = f", {len(sub)} parameters" if len(sub) != n else ""
-            scales = {fim.parameter_scales[i].name for i in sub.index}
+            names = {scales[i].name for i in sub.index}
             cells = {
                 "parameter": (
                     f"{group.label} ({n} element{'s' if n != 1 else ''}{versions})"
                 ),
                 "value": f"norm {np.linalg.norm(sub['value'].to_numpy()):.4g}",
-                "scale": scales.pop() if len(scales) == 1 else "mixed",
+                "scale": names.pop() if len(names) == 1 else "mixed",
                 # an error which is not defined, e.g. without degrees of
                 # freedom, is no error
-                "se": (
-                    f"{sub['se'].min():.3g} to {sub['se'].max():.3g}"
-                    if sub["se"].notna().any()
+                error: (
+                    f"{sub[error].min():.3g} to {sub[error].max():.3g}"
+                    if sub[error].notna().any()
                     else "-"
                 ),
                 "unit": display.ELEMENT_UNIT_LABEL,
             }
             rows.append([cells.get(column, "-") for column in df.columns])
-        keep = [i for i, pid in enumerate(fim.pids) if pid not in grouped]
-        correlation = fim.correlation
+        return rows
+
+    def _correlation_context(
+        self, pids: Sequence[str], correlation: pd.DataFrame
+    ) -> dict[str, Any]:
+        """Get the correlation matrix of an analysis, without the elements of a network."""
+        grouped = {p.pid for _, members in self._grouping[1] for p in members}
+        keep = [i for i, pid in enumerate(pids) if pid not in grouped]
         return {
-            "info": info,
-            "identifiable": fim.is_identifiable,
-            "columns": [
-                {
-                    "name": column,
-                    "hint": self.HINTS.get(column),
-                    # the columns of text are left aligned
-                    "numeric": column not in {"parameter", "scale", "unit"},
-                }
-                for column in df.columns
-            ],
-            "rows": rows,
-            "eigenvalues": [f"{value:.4g}" for value in eigenvalues],
-            "pids": [fim.pids[i] for i in keep],
+            "pids": [pids[i] for i in keep],
             "correlation": [
                 [_cell(correlation.iloc[i, j], ".3f") for j in keep] for i in keep
             ],
             "note": (
                 f"The correlation is shown for the {len(keep)} parameters which "
-                f"are no elements of a network; the {fim.k - len(keep)} elements "
-                f"are left out."
+                f"are no elements of a network; the {len(pids) - len(keep)} "
+                f"elements are left out."
                 if grouped
                 else None
             ),
         }
+
+    def _posterior_summary_df(self) -> pd.DataFrame:
+        """Get the table of the posterior with the units of the report.
+
+        Raises:
+            ValueError: if the report has no posterior.
+        """
+        if self.posterior is None:
+            raise ValueError("The report has no posterior.")
+        df = self.posterior.summary_df
+        units = self.display_units
+        df["unit"] = [
+            units.get(pid, unit)
+            for pid, unit in zip(df["parameter"], df["unit"], strict=True)
+        ]
+        return df
+
+    def _posterior_context(self) -> dict[str, Any] | None:
+        """Collect what the posterior of the report shows."""
+        posterior = self.posterior
+        if posterior is None:
+            return None
+        df = self._posterior_summary_df()
+        if list(df["target"]) == list(df["parameter"]):
+            df = df.drop(columns="target")
+        scales = {s.name for s in posterior.scales}
+        info: dict[str, Any] = {
+            "parameter set": posterior.sid,
+            "method": (
+                "Laplace approximation"
+                if posterior.method == "laplace"
+                else posterior.method
+            ),
+            "objective": posterior.objective.value,
+            "parameter scale": (
+                scales.pop() if len(scales) == 1 else "per parameter in the table"
+            ),
+            "data points": str(posterior.n),
+        }
+        if posterior.objective is ObjectiveType.LEAST_SQUARES:
+            info["residual variance"] = f"{posterior.sigma2:.4g}"
+        info["credible level"] = "95%"
+        return {
+            "info": info,
+            "objective": posterior.objective.value,
+            "problems": list(posterior.problems),
+            "columns": self._analysis_columns(df),
+            "rows": self._analysis_rows(df, posterior.scales, "sd"),
+            **self._correlation_context(posterior.pids, posterior.correlation),
+        }
+
+    def _priors_context(self) -> dict[str, Any] | None:
+        """Collect the priors of the parameters and their correlation.
+
+        `None` for a problem whose parameters have no prior.
+        """
+        parameters = self.problem.parameters
+        if not any(p.prior is not None for p in parameters):
+            return None
+        rows = [
+            {
+                "pid": p.pid,
+                "prior": str(p.prior) if p.prior is not None else "uniform(bounds)",
+                "lower": f"{p.lower_bound:.4g}",
+                "upper": f"{p.upper_bound:.4g}",
+                "unit": self.display_units[p.pid],
+            }
+            for p in parameters
+        ]
+        correlation = self.problem.prior_correlation
+        context: dict[str, Any] = {
+            "rows": rows,
+            "objective": self.settings.objective.value,
+            "used": self.settings.objective is ObjectiveType.POSTERIOR,
+            "pids": [],
+            "correlation": [],
+        }
+        if correlation is not None:
+            matrix = correlation.correlation_matrix()
+            context["pids"] = list(correlation.targets)
+            context["correlation"] = [
+                [_cell(float(value), ".3f") for value in row] for row in matrix
+            ]
+        return context
 
     def _identifiability_context(self, plots_dir: Path) -> dict[str, Any] | None:
         """Collect what the identifiability section of the HTML report shows."""

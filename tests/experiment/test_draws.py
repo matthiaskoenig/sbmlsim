@@ -5,15 +5,19 @@ adopted fit of the toy project with its uncertainty (`tests.project_toy.records`
 """
 
 import json
+import logging
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, override
 
+import libsbml
 import numpy as np
 import pytest
 import xarray as xr
 from pydantic import ValidationError
+from scipy.stats import spearmanr
 
 from sbmlsim import Q, run
 from sbmlsim.data import Data
@@ -24,8 +28,9 @@ from sbmlsim.experiment.draws import (
     UncertaintySettings,
     _over_draws,
     check_fit_parameters,
+    correlations,
 )
-from sbmlsim.fit.records import AdoptedRecords
+from sbmlsim.fit.records import AdoptedRecord, AdoptedRecords
 from sbmlsim.model import AbstractModel
 from sbmlsim.plot import Curve, Figure
 from sbmlsim.plot.plotting import Band
@@ -36,6 +41,7 @@ from sbmlsim.run.kinds import ConfigurationError
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulation.sampling import uncertainty_dimension
 from sbmlsim.simulator import Simulator
+from sbmlsim.uncertainty import Covariance
 from tests.project_toy import PROJECT, TOY_PATH
 from tests.project_toy.experiments import (
     ToyDecay,
@@ -174,6 +180,97 @@ def test_the_draws_are_those_of_a_variant(
     )
     with pytest.raises(ValueError, match="No parameter"):
         UncertaintyRun.create(project, settings, variant="plain")
+
+
+def two_parameter_model(path: Path, source: Path) -> Path:
+    """Write the toy model with a second fitted parameter `k2`, a copy of `k`."""
+    document = libsbml.readSBMLFromFile(str(source))
+    model = document.getModel()
+    copy = model.getParameter("k").clone()
+    copy.setId("k2")
+    assert model.addParameter(copy) == libsbml.LIBSBML_OPERATION_SUCCESS
+    libsbml.writeSBMLToFile(document, str(path))
+    return path
+
+
+def test_the_record_has_the_posterior(records: AdoptedRecords) -> None:
+    (record,) = records.records.values()
+    assert record.posterior is not None
+    assert record.fisher is not None
+    assert record.posterior.pids == ["k"]
+    assert record.correlation().source == "nothing to correlate"
+    with pytest.raises(KeyError, match="does not fit"):
+        record.correlation(["k", "other"])
+
+
+def test_a_posterior_of_other_values_is_refused(toy_out: Path, tmp_path: Path) -> None:
+    (fit_id,) = json.loads((toy_out / "adopted.json").read_text(encoding="utf-8"))[
+        "fits"
+    ].values()
+    directory = tmp_path / fit_id
+    shutil.copytree(toy_out / "fits" / fit_id, directory)
+    path = directory / "posterior.json"
+    content = json.loads(path.read_text(encoding="utf-8"))
+    content["values"] = [2.0 * v for v in content["values"]]
+    path.write_text(json.dumps(content), encoding="utf-8")
+    with pytest.raises(ValueError, match="another parameter set"):
+        AdoptedRecord.load(directory)
+
+
+def test_the_draws_of_correlated_parameters(
+    toy_with_uncertainty: Path, tmp_path: Path
+) -> None:
+    path = two_parameter_model(tmp_path / "two.xml", toy_with_uncertainty)
+    correlation = Covariance.correlation({("k", "k2"): 0.8})
+    dimension = uncertainty_dimension(path, 400, seed=1, correlation=[correlation])
+    values = np.column_stack(
+        [np.asarray(dimension.values[pid], dtype=float) for pid in ("k", "k2")]
+    )
+    # the rank correlation of the normal scores of 0.8, `6 / π asin(0.4)`
+    rho = spearmanr(values[:, 0], values[:, 1]).statistic
+    assert rho == pytest.approx(6.0 / np.pi * np.arcsin(0.4), abs=0.02)
+    # the marginals are the ones of the model
+    independent = uncertainty_dimension(path, 400, seed=1)
+    assert np.allclose(
+        np.sort(values[:, 0]), np.sort(np.asarray(independent.values["k"]))
+    )
+    assert spearmanr(
+        independent.values["k"], independent.values["k2"]
+    ).statistic == pytest.approx(0.0, abs=0.05)
+    with pytest.raises(ValueError, match="two correlations"):
+        uncertainty_dimension(path, 400, seed=1, correlation=[correlation] * 2)
+    covariance = Covariance(["k", "k2"], [[1.0, 0.5], [0.5, 1.0]])
+    with pytest.raises(ValueError, match="is a covariance"):
+        uncertainty_dimension(path, 400, seed=1, correlation=[covariance])
+
+
+def test_a_run_draws_the_correlation_of_the_records(
+    toy_out: Path,
+    toy_with_uncertainty: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # the toy fit has one parameter, nothing to correlate
+    project = adopted(toy_out, {"default": toy_with_uncertainty})
+    assert correlations(project, {"k"}) == []
+    assert correlations(PROJECT, {"k"}) == []
+
+    path = two_parameter_model(tmp_path / "two.xml", toy_with_uncertainty)
+    project = adopted(toy_out, {"default": path})
+    correlation = Covariance.correlation({("k", "k2"): 0.8})
+    monkeypatch.setattr(
+        "sbmlsim.experiment.draws.correlations", lambda project, pids: [correlation]
+    )
+    run_ = UncertaintyRun.create(project, UncertaintySettings(draws=200, seed=2))
+    rho = spearmanr(run_.dimension.values["k"], run_.dimension.values["k2"])
+    assert rho.statistic > 0.7
+    assert run_.dimension.design is not None
+    # too few draws for a correlated hypercube are drawn independently
+    with caplog.at_level(logging.WARNING):
+        few = UncertaintyRun.create(project, UncertaintySettings(draws=2, seed=2))
+    assert "drawn independently" in caplog.text
+    assert len(few.dimension.labels) == 2
 
 
 def draws_run(path: Path, draws: int = 3) -> UncertaintyRun:

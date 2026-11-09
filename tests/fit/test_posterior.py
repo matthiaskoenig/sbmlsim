@@ -19,7 +19,9 @@ from scipy.stats import multivariate_normal
 from sbmlsim.data import DataSet
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitSettings, ParameterSet
-from sbmlsim.fit.fisher import fisher_information
+from sbmlsim.fit.cli import load_fit_records
+from sbmlsim.fit.fisher import FisherInformation, fisher_information
+from sbmlsim.fit.methods import ReportContext, methods_section
 from sbmlsim.fit.objects import (
     FitData,
     FitMapping,
@@ -33,7 +35,11 @@ from sbmlsim.fit.options import ObjectiveType, ParameterScaleType
 from sbmlsim.fit.petab_v2.likelihood import log_likelihood
 from sbmlsim.fit.posterior import ParameterPosterior, posterior_laplace
 from sbmlsim.fit.priors import JointPrior, prior_distributions, prior_model
+from sbmlsim.fit.records import parameter_correlation
+from sbmlsim.fit.report import FitReport
 from sbmlsim.model import AbstractModel
+from sbmlsim.report.document import Document
+from sbmlsim.report.render import HTMLRenderer
 from sbmlsim.simulation import Simulation
 from sbmlsim.simulation.sampling import Truncated, Uniform, posterior_parameters
 from sbmlsim.simulation.sampling.distributions import LogNormal, Normal
@@ -411,3 +417,158 @@ def test_the_correlation_is_exported_to_petab(tmp_path: Path) -> None:
     path = to_petab(problem, tmp_path / "petab")
     read = PetabReader.from_yaml(path).to_optimization_problem()
     assert read.prior_correlation == CORRELATION
+
+
+# ----------------------------------------------------------------------------
+# the posterior and the priors in the report and its methods
+# ----------------------------------------------------------------------------
+def _methods_html(
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    fisher: FisherInformation | None = None,
+    posterior: ParameterPosterior | None = None,
+) -> str:
+    """Get the methods of a fit as HTML."""
+    section = methods_section(
+        problem=problem,
+        settings=settings,
+        result=None,
+        identifiability=None,
+        fisher=fisher,
+        context=ReportContext(),
+        posterior=posterior,
+    )
+    return HTMLRenderer().render(Document("t", (section,)))
+
+
+def test_the_report_shows_the_priors_and_the_posterior(tmp_path: Path) -> None:
+    problem, settings = _problem(
+        tmp_path,
+        [_parameter("p1", NORMAL_1), _parameter("p2", NORMAL_2)],
+        ["y", "q"],
+        correlation=CORRELATION,
+    )
+    pset = _pset(problem, [1.2, 2.0])
+    posterior = posterior_laplace(problem, settings, pset)
+    report = FitReport(
+        problem=problem,
+        settings=settings,
+        parameter_sets=[pset],
+        posterior=posterior,
+        mapping_figures=False,
+    )
+    results_dir = report.create(tmp_path / "report", name="posterior")
+
+    assert ParameterPosterior.read(results_dir).to_dict() == posterior.to_dict()
+    table = pd.read_csv(results_dir / "posterior.tsv", sep="\t")
+    assert list(table["parameter"]) == ["p1", "p2"]
+    records = load_fit_records(results_dir)
+    assert records.posterior is not None
+    assert records.posterior.to_dict() == posterior.to_dict()
+    assert "posterior.json" in records.names
+
+    html = (results_dir / "index.html").read_text(encoding="utf-8")
+    assert "could not be created" not in html
+    section = html[html.index('<section id="posterior">') :]
+    assert "Laplace approximation" in section
+    for pid in ("p1", "p2"):
+        assert f"<td>{pid}</td>" in section
+    # the priors with their correlation are in the overview
+    assert "normal(1.3, 0.2)" in html
+    assert "Prior correlation" in html
+    # the methods describe the objective, the copula and the posterior
+    for text in [
+        "maximum a posteriori",
+        "Gaussian copula",
+        "Laplace approximation",
+        "Tierney",
+        "Nelsen",
+    ]:
+        assert text in html, text
+    # and the results the table of the posterior
+    assert "Value [95% CrI]" in html
+    typst = (results_dir / "report.typ").read_text(encoding="utf-8")
+    assert "<tab:posterior:observables>" in typst
+    assert (results_dir / "report.pdf").exists()
+
+
+def test_the_methods_of_a_likelihood(tmp_path: Path) -> None:
+    problem, settings = _problem(
+        tmp_path,
+        [_parameter("p1", NORMAL_1), _parameter("p2")],
+        ["y", "q"],
+        objective=ObjectiveType.LIKELIHOOD,
+    )
+    pset = _pset(problem, [1.2, 2.0])
+    fisher = fisher_information(problem, settings, pset)
+    posterior = posterior_laplace(problem, settings, pset, fisher=fisher)
+    html = _methods_html(problem, settings, fisher, posterior)
+    assert "maximum likelihood" in html
+    assert "maximum a posteriori" not in html
+    # the normal noise of the standard deviations of the data
+    assert "a measurement with normal noise is" in html
+    assert "log-normal noise" in html  # the default for geometric means
+    assert "a measurement with log-normal noise" not in html
+    # the weights and the loss do not enter
+    assert "do not enter the objective" in html
+    assert "loss function" in html
+    assert "Gaussian copula" not in html
+    # the Fisher information in units of the noise
+    assert "4 measurements" not in html  # y and q, 8 measurements
+    assert "8 measurements" in html
+    assert "quantile of the standard normal" in html
+    # the posterior of the uniform priors
+    assert "uniform priors of the bounds" in html
+
+
+def test_the_methods_of_least_squares_are_unchanged(tmp_path: Path) -> None:
+    problem, settings = _problem(
+        tmp_path,
+        [_parameter("p1"), _parameter("p2")],
+        ["y", "q"],
+        objective=ObjectiveType.LEAST_SQUARES,
+    )
+    pset = _pset(problem, [1.2, 2.0])
+    fisher = fisher_information(problem, settings, pset)
+    posterior = posterior_laplace(problem, settings, pset, fisher=fisher)
+    html = _methods_html(problem, settings, fisher, posterior)
+    assert "maximum likelihood" not in html
+    assert "loss function" in html
+    assert "covariance is the one of the Fisher information" in html
+    assert "quantile of the standard normal" not in html
+
+
+def test_the_methods_of_independent_priors(tmp_path: Path) -> None:
+    problem, settings = _problem(
+        tmp_path, [_parameter("p1", NORMAL_1), _parameter("p2")], ["y", "q"]
+    )
+    html = _methods_html(problem, settings)
+    assert "maximum a posteriori" in html
+    assert "normal(1.3, 0.2)" in html
+    assert "the 1 other parameter has the uniform prior of its bounds" in html
+    assert "Gaussian copula" not in html
+
+
+# ----------------------------------------------------------------------------
+# the correlation of the record of a fit
+# ----------------------------------------------------------------------------
+def test_the_correlation_of_a_record(posterior: ParameterPosterior) -> None:
+    correlation = parameter_correlation(("p1", "p2"), posterior=posterior)
+    assert correlation.correlated
+    assert "Laplace posterior" in correlation.source
+    assert correlation.matrix is not None
+    np.testing.assert_allclose(correlation.matrix, posterior.correlation_matrix)
+    np.testing.assert_allclose(
+        correlation.rank_correlation(), posterior.rank_correlation()
+    )
+    # the order of the parameters is the asked one
+    reversed_ = parameter_correlation(("p2", "p1"), posterior=posterior)
+    assert reversed_.matrix is not None
+    assert reversed_.matrix[0, 1] == pytest.approx(correlation.matrix[0, 1])
+    # a posterior of other parameters falls back to independent parameters
+    other = parameter_correlation(("p1", "p3"), posterior=posterior)
+    assert not other.correlated
+    assert np.array_equal(other.rank_correlation(), np.eye(2))
+    assert parameter_correlation(("p1",), posterior=posterior).source == (
+        "nothing to correlate"
+    )

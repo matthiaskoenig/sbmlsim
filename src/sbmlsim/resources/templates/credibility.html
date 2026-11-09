@@ -303,7 +303,7 @@ td.status .soft { font-size: 12.5px; }
     {% if c.uncertainty is not none %}{% set u = c.uncertainty %}
     {% set states = {"accepted": "met", "rejected": "not_met", "equivalent": "not_evaluable", "undecided": "not_evaluable", "not_evaluable": "outside"} %}
     <h4>Parameter uncertainty</h4>
-    <p class="note">The adopted fits evaluated at {{ u.n_draws }} draws of their fitted parameters (the profile or Fisher uncertainty of their records{% if u.fits | selectattr("correlated") | list %}, with the correlation of the Fisher information{% endif %}). A rule is robust when it is met with a probability of at least {{ u.threshold }} over the draws, decided at the level {{ u.level }} for the rules of the context together; the verdict is the acceptance at the adopted parameters and does not change.</p>
+    <p class="note">The adopted fits evaluated at {{ u.n_draws }} draws of their fitted parameters (the profile or Fisher uncertainty of their records{% if u.fits | selectattr("correlated") | list %}, with the correlation of their Laplace posterior or Fisher information{% endif %}). A rule is robust when it is met with a probability of at least {{ u.threshold }} over the draws, decided at the level {{ u.level }} for the rules of the context together; the verdict is the acceptance at the adopted parameters and does not change.</p>
     {% if u.rules %}
     <div class="scroll">
       <table class="compact">

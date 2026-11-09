@@ -9,14 +9,15 @@ predictions shows how robust the acceptance is and how precise the
 predictions of the quantities of interest are.
 
 The draws of a fit (`parameter_draws`) have the marginals the releases draw
-(`ParameterUncertainty.distribution`) and the correlation of the Fisher
-information of the fit, in the space of the fit, as the correlation of the
+(`ParameterUncertainty.distribution`) and the correlation of the record of the
+fit (`AdoptedRecord.correlation`: of its Laplace posterior, else of its Fisher
+information of full rank), in the space of the fit, as the correlation of the
 normal scores of a Gaussian copula (`sbmlsim.uncertainty.draws.draw`): for a
 normal or log-normal marginal in the scale of the fit this is the multivariate
-normal of the Fisher covariance, with the widths of the profile. A Fisher
-information which is not of full rank, or none, gives independent draws. The
-fits are drawn independently, and the parameters a fit fixes from another
-adopted fit stay at their adopted values.
+normal of the posterior or of the Fisher covariance, with the widths of the
+profile. A record with neither gives independent draws. The fits are drawn
+independently, and the parameters a fit fixes from another adopted fit stay
+at their adopted values.
 
 `propagate_fits` evaluates every adopted fit at its draws with the report of
 the fresh evaluation (`FitTable.reports`); the assessment reads the predictions
@@ -36,7 +37,6 @@ of `sbmlsim.uncertainty` and the settings of the draws of the experiments
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import time
@@ -50,11 +50,9 @@ from sbmlsim.fit.result import fit_subset
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
-    from pathlib import Path
 
     from sbmlsim.credibility.records import FitTable
-    from sbmlsim.fit.fisher import FisherInformation
-    from sbmlsim.fit.records import ParameterUncertainty
+    from sbmlsim.fit.records import ParameterCorrelation, ParameterUncertainty
     from sbmlsim.fit.report import FitReport
     from sbmlsim.project import Project
 
@@ -139,8 +137,8 @@ class FitDraws:
         pids: the fitted parameters, in the order of the columns of `values`.
         values: one row per draw, in the units of the model.
         units: the unit of every parameter of the model, `None` if unknown.
-        correlated: whether the draws have the correlation of the Fisher
-            information.
+        correlated: whether the draws have the correlation of the posterior
+            or of the Fisher information of the fit.
         note: where the dependence comes from, or why there is none.
     """
 
@@ -160,7 +158,7 @@ class FitDraws:
 def parameter_draws(
     fit_id: str,
     parameters: Sequence[ParameterUncertainty],
-    fisher: FisherInformation | None,
+    correlation: ParameterCorrelation,
     settings: PropagationSettings,
 ) -> FitDraws:
     """Draw the fitted parameters of an adopted fit, see the module.
@@ -168,11 +166,15 @@ def parameter_draws(
     Args:
         fit_id: the id of the fit.
         parameters: the uncertainty of every fitted parameter.
-        fisher: the Fisher information of the fit, `None` without.
+        correlation: the correlation of the normal scores of the parameters,
+            see `sbmlsim.fit.records.AdoptedRecord.correlation`.
         settings: the number of draws and the seed.
 
     Returns:
         The draws.
+
+    Raises:
+        ValueError: if the correlation is not one of the parameters.
     """
     from sbmlsim.simulation.sampling import distribution_from_formula
     from sbmlsim.uncertainty import Covariance
@@ -180,6 +182,11 @@ def parameter_draws(
     from sbmlsim.uncertainty.sources import Variable
 
     pids = tuple(p.pid for p in parameters)
+    if correlation.pids != pids:
+        raise ValueError(
+            f"The correlation of {list(correlation.pids)} is not the one of the "
+            f"parameters {list(pids)}."
+        )
     variables = [
         Variable(
             key=p.pid,
@@ -191,23 +198,13 @@ def parameter_draws(
         for p in parameters
     ]
     covariance: list[Covariance] = []
-    if fisher is None:
-        note = "independent draws, the fit has no Fisher information"
-    elif not fisher.is_identifiable:
-        note = (
-            f"independent draws, the Fisher information has rank {fisher.rank} "
-            f"of {fisher.k}"
-        )
-    elif set(fisher.pids) != set(pids):
-        note = "independent draws, the Fisher information has other parameters"
-    elif len(pids) == 1:
-        note = "nothing to correlate"
-    else:
-        matrix = fisher.correlation.loc[list(pids), list(pids)].to_numpy(dtype=float)
+    if correlation.matrix is not None:
         covariance.append(
-            Covariance.correlation(matrix=matrix, targets=pids, nearest=True)
+            Covariance.correlation(
+                matrix=correlation.matrix, targets=pids, nearest=True
+            )
         )
-        note = "the correlation of the Fisher information in the space of the fit"
+    note = correlation.source
     values = draw(variables, covariance, settings.draws, seed=settings.seed)
     matrix = np.column_stack(
         [
@@ -241,16 +238,6 @@ class FitPropagation:
     draws: Mapping[str, FitDraws]
     predictions: pd.DataFrame = field(repr=False)
     failed: Mapping[str, int]
-
-
-def _read_fisher(directory: Path) -> FisherInformation | None:
-    """Read the Fisher information of the record of a fit, `None` without."""
-    from sbmlsim.fit.fisher import FisherInformation
-
-    path = directory / "fisher.json"
-    if not path.is_file():
-        return None
-    return FisherInformation.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _same_points(points: pd.DataFrame, reference: pd.DataFrame) -> bool:
@@ -339,10 +326,7 @@ def propagate_fits(
             continue
         record = AdoptedRecord.load(project.adopted_record(fit_id))
         draws = parameter_draws(
-            fit_id,
-            list(record.parameters.values()),
-            _read_fisher(record.directory),
-            settings,
+            fit_id, list(record.parameters.values()), record.correlation(), settings
         )
         rows = table.index[table["fit"] == subset]
         start = time.perf_counter()
@@ -367,7 +351,8 @@ class FitUncertainty(TypedDict):
         fit: the subset of the fit.
         fit_id: the id of the fit.
         n_parameters: the fitted parameters which are drawn.
-        correlated: whether the draws have the Fisher correlation.
+        correlated: whether the draws have the correlation of the posterior
+            or of the Fisher information of the fit.
         note: where the dependence comes from, or why there is none.
         n_failed: the draws whose evaluation failed.
     """

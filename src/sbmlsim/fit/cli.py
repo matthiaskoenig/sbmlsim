@@ -58,7 +58,11 @@ from sbmlsim.fit.options import (
     OptimizationStrategy,
 )
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
-from sbmlsim.fit.posterior import ParameterPosterior, posterior_laplace
+from sbmlsim.fit.posterior import (
+    POSTERIOR_FILE,
+    ParameterPosterior,
+    posterior_laplace,
+)
 from sbmlsim.fit.provenance import create_provenance
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult, fit_id
@@ -451,11 +455,13 @@ class FitRecords:
             with the settings, the runs and the provenance of the fit.
         identifiability: the profiles of the parameters, `identifiability.json`.
         fisher: the Fisher information of the parameters, `fisher.json`.
+        posterior: the Laplace posterior of the parameters, `posterior.json`.
     """
 
     opt_result: OptimizationResult | None = None
     identifiability: IdentifiabilityResult | None = None
     fisher: FisherInformation | None = None
+    posterior: ParameterPosterior | None = None
 
     @property
     def names(self) -> list[str]:
@@ -466,6 +472,7 @@ class FitRecords:
                 ("optimization_result.json", self.opt_result),
                 ("identifiability.json", self.identifiability),
                 ("fisher.json", self.fisher),
+                (POSTERIOR_FILE, self.posterior),
             ]
             if record is not None
         ]
@@ -487,6 +494,7 @@ def load_fit_records(directory: Path) -> FitRecords:
     opt_path = directory / "optimization_result.json"
     identifiability_path = directory / "identifiability.json"
     fisher_path = directory / "fisher.json"
+    posterior_path = directory / POSTERIOR_FILE
     return FitRecords(
         opt_result=(
             OptimizationResult.from_json(opt_path) if opt_path.exists() else None
@@ -502,6 +510,9 @@ def load_fit_records(directory: Path) -> FitRecords:
             )
             if fisher_path.exists()
             else None
+        ),
+        posterior=(
+            ParameterPosterior.read(posterior_path) if posterior_path.exists() else None
         ),
     )
 
@@ -654,6 +665,7 @@ def report_from_records(
         opt_result=records.opt_result,
         identifiability=records.identifiability,
         fisher=records.fisher,
+        posterior=records.posterior,
         show_titles=show_titles,
         mapping_figures=mapping_figures,
         context=context,
@@ -757,6 +769,7 @@ def _display_records(
         opt_result=report.opt_result,
         identifiability=report.identifiability,
         fisher=report.fisher,
+        posterior=report.posterior,
     ).names
     display.section(section, icon=icon)
     display.key_values(

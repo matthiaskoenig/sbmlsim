@@ -25,7 +25,11 @@ from sbmlsim.credibility.uncertainty import (
 )
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.objects import ParameterScaleType
-from sbmlsim.fit.records import ParameterUncertainty, UncertaintyMethod
+from sbmlsim.fit.records import (
+    ParameterUncertainty,
+    UncertaintyMethod,
+    parameter_correlation,
+)
 from sbmlsim.project import Project
 
 DATA = Path(__file__).parents[1] / "data" / "credibility"
@@ -70,10 +74,12 @@ def _fisher(correlation: float, matrix: np.ndarray | None = None) -> FisherInfor
 def test_the_draws_have_the_fisher_correlation() -> None:
     parameters = [_parameter("a", 1.0), _parameter("b", 2.0)]
     settings = PropagationSettings(draws=1024, seed=1)
+    correlation = parameter_correlation(("a", "b"), fisher=_fisher(0.8))
     draws = parameter_draws(
-        "PK_20261001_120000__abcde", parameters, _fisher(0.8), settings
+        "PK_20261001_120000__abcde", parameters, correlation, settings
     )
     assert draws.correlated
+    assert "Fisher information" in draws.note
     assert draws.subset == "PK"
     assert draws.pids == ("a", "b")
     assert draws.values.shape == (1024, 2)
@@ -84,7 +90,7 @@ def test_the_draws_have_the_fisher_correlation() -> None:
     assert np.std(logs[:, 0]) == pytest.approx(math.log(2) / 1.96, rel=0.1)
     # the same seed, the same draws
     again = parameter_draws(
-        "PK_20261001_120000__abcde", parameters, _fisher(0.8), settings
+        "PK_20261001_120000__abcde", parameters, correlation, settings
     )
     assert np.array_equal(again.values, draws.values)
 
@@ -92,15 +98,25 @@ def test_the_draws_have_the_fisher_correlation() -> None:
 def test_independent_draws() -> None:
     parameters = [_parameter("a", 1.0), _parameter("b", 2.0)]
     singular = _fisher(0.0, matrix=np.array([[1.0, 1.0], [1.0, 1.0]]))
-    draws = parameter_draws("PK_20261001_120000__abcde", parameters, singular, SETTINGS)
+    draws = parameter_draws(
+        "PK_20261001_120000__abcde",
+        parameters,
+        parameter_correlation(("a", "b"), fisher=singular),
+        SETTINGS,
+    )
     assert not draws.correlated
     assert "rank 1 of 2" in draws.note
-    none = parameter_draws("PK_20261001_120000__abcde", parameters, None, SETTINGS)
-    assert "no Fisher information" in none.note
-    other = parameter_draws(
-        "PK_20261001_120000__abcde", [_parameter("a", 1.0)], _fisher(0.5), SETTINGS
+    none = parameter_draws(
+        "PK_20261001_120000__abcde",
+        parameters,
+        parameter_correlation(("a", "b")),
+        SETTINGS,
     )
-    assert "other parameters" in other.note
+    assert "no posterior and no Fisher information" in none.note
+    other = parameter_correlation(("a", "c"), fisher=_fisher(0.5))
+    assert "other parameters" in other.source
+    with pytest.raises(ValueError, match="not the one of the parameters"):
+        parameter_draws("PK_20261001_120000__abcde", parameters, other, SETTINGS)
 
 
 def test_the_settings() -> None:
@@ -117,7 +133,12 @@ def test_the_settings() -> None:
 def test_the_sensitivity_indices() -> None:
     parameters = [_parameter("a", 1.0), _parameter("b", 2.0)]
     settings = PropagationSettings(draws=512, seed=2)
-    draws = parameter_draws("PK_20261001_120000__abcde", parameters, None, settings)
+    draws = parameter_draws(
+        "PK_20261001_120000__abcde",
+        parameters,
+        parameter_correlation(("a", "b")),
+        settings,
+    )
     y = np.log(draws.values[:, 0])
     y[:3] = np.nan
     a, b = sensitivity_indices("Cve", "quantity", y, {"PK": draws})
@@ -148,7 +169,7 @@ def test_the_propagation_of_the_adopted_fit(credibility_project: Project) -> Non
     assert propagation.failed == {"DECAY": 0}
     (draws,) = propagation.draws.values()
     assert draws.pids == ("k",)
-    assert draws.note == "independent draws, the fit has no Fisher information"
+    assert draws.note == "nothing to correlate"
     predictions = propagation.predictions
     assert list(predictions.index) == list(fits.table.index)
     assert list(predictions.columns) == list(range(8))
