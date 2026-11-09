@@ -1052,6 +1052,11 @@ class OptimizationProblem(ObjectJSONEncoder):
         #: which are evaluated on that output; `None` for the other groups,
         #: see `_compile_plans`
         self._group_pointwise: list[ObservableGraph | None] = []
+        #: the time at which the simulation of every group ends in a fit, its
+        #: last output time for a group which outputs the times of its data
+        #: before the end of its simulation, `None` for the end of its
+        #: simulation, see `_compile_plans` and `Plan.until`
+        self._group_ends: list[float | None] = []
         #: the plan of the output of the simulation of every group which
         #: outputs the times of its data, which the curves of the evaluation
         #: of a fit are simulated with, see `residuals`; `None` for a group
@@ -2387,6 +2392,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self._group_timecourse_graphs = []
         self._group_scalars = []
         self._group_pointwise = []
+        self._group_ends = []
         self._curve_plans = []
         before = self.settings_initialized.data_at_change is DataAtChangeType.BEFORE
         for k_group, group in enumerate(self.mapping_groups):
@@ -2409,6 +2415,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             at_data = at_data or pointwise is not None
             curve_plan = plan if at_data else None
             graph: ObservableGraph | None = None
+            end: float | None = None
             timecourse_graph: ObservableGraph | None = None
             scalars: tuple[str, ...] = ()
             added = np.empty(0)
@@ -2522,7 +2529,18 @@ class OptimizationProblem(ObjectJSONEncoder):
                     if steady
                     else None,
                 )
+                # nothing after the last output time changes the output, the
+                # simulation ends there, see `Plan.until`; the curves of the
+                # evaluation keep the whole simulation
+                if (
+                    not steady
+                    and not plan.symbols.events
+                    and plan.times
+                    and plan.start < plan.times[-1] < plan.end
+                ):
+                    end = plan.times[-1]
             self._group_points.append(points)
+            self._group_ends.append(end)
             self._group_graphs.append(graph)
             self._group_pointwise.append(pointwise)
             self._curve_plans.append(curve_plan)
@@ -3611,6 +3629,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 k_group,
                 self.evaluated_plan(k_group, x, quantities, factors=factors),
                 x,
+                indices,
             )
 
             for k in indices:
@@ -3619,18 +3638,24 @@ class OptimizationProblem(ObjectJSONEncoder):
         return results
 
     def _simulate_at_data(
-        self, k_group: int, plan: Plan, x: np.ndarray
+        self,
+        k_group: int,
+        plan: Plan,
+        x: np.ndarray,
+        indices: Sequence[int] | None = None,
     ) -> DataTimesResult | None:
         """Simulate a group which outputs the times of its data, see `_compile_plans`.
 
-        The simulation has the selections the mappings of the group read and
-        the observables they read, evaluated on its output.
+        The simulation has the selections the evaluated mappings of the group
+        read, e.g. not the ones of its validation data in a fit, or the
+        observables the mappings read, evaluated on its output.
 
         Args:
             k_group: index of the simulation group.
             plan: the plan of the group with the values of the parameters,
                 see `evaluated_plan`; the plan of its curve for the evaluation.
             x: parameter values in the units of the parameters, for the log.
+            indices: the evaluated mappings of the group, all without.
 
         Returns:
             The output, `None` if the integration or an observable failed.
@@ -3638,7 +3663,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         group = self.mapping_groups[k_group]
         graph = self._group_pointwise[k_group]
         if graph is None:
-            selections = sorted({s for k in group for s in self.selections[k]})
+            mappings = group if indices is None else indices
+            selections = sorted({s for k in mappings for s in self.selections[k]})
         else:
             selections = [TIME, *graph.selections]
         try:
@@ -3803,7 +3829,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         Returns:
             The plan of the group with the values of the parameters, of the
             point and the derived changes in the units of the model, times the
-            factors.
+            factors; a group which outputs the times of its data ends at its
+            last output time, see `Plan.until`, its curve does not.
 
         Raises:
             ValueError: if the group keeps its output and a curve is asked
@@ -3842,6 +3869,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                         f"in the model of the group {k_group}."
                     ) from err
             plan = plan.scaled(factors, defaults)
+        end = self._group_ends[k_group]
+        if not curve and end is not None:
+            # last, after every value is applied, see `Plan.until`
+            plan = plan.until(end)
         return plan
 
     def _derived_changes(

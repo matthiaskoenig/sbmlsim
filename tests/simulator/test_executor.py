@@ -19,7 +19,7 @@ from sbmlsim.simulator.executor import (
     steady_state,
 )
 from sbmlsim.simulator.plan import compile_simulation, time_tolerance
-from tests.simulator.models import SPECIES_KINDS, sbml, sbml_pk
+from tests.simulator.models import DELAYED_EVENT_RULE, SPECIES_KINDS, sbml, sbml_pk
 
 SEL = ["time", "[A]", "[B]", "X", "C", "k1"]
 
@@ -1899,3 +1899,48 @@ def test_a_delayed_event_pending_closer_after_the_start_than_cvode_integrates(
         # the event fires after the change
         np.testing.assert_array_equal(result["p"][result.time <= 2.0], 0.0)
         assert np.all(result["p"][result.time >= 3.0] == 1.0)
+
+
+def test_a_plan_until_its_last_output_time_has_the_rows_of_the_plan() -> None:
+    """A plan which ends at its last output time gives its rows bitwise (`Plan.until`).
+
+    The change at the last output time stays, the change after it is dropped.
+    """
+    model = RoadrunnerSBMLModel(source=sbml())
+    simulation = Simulation(
+        end=10,
+        times=[0, 1, 2.5, 4],
+        changes=[
+            Change(2.5, {"k1": 0.2}),
+            Change(4, {"A": 3.0}),
+            Change(7, {"k2": 2.0}),
+        ],
+    )
+    plan = compile_simulation(simulation, model.symbols, model.uinfo)
+    until = plan.until(4.0)
+    assert until.end == 4.0
+    assert [event.time for event in until.events] == [2.5, 4.0]
+    assert plan.until(plan.end) is plan
+    full = execute(plan, model, SEL)
+    short = execute(until, model, SEL)
+    assert full.columns == short.columns
+    np.testing.assert_array_equal(short.values, full.values)
+
+
+def test_a_plan_ends_earlier_only_with_output_times_and_without_events() -> None:
+    """`Plan.until` refuses an output after the time and a model with events."""
+    model = RoadrunnerSBMLModel(source=sbml())
+    plan = compile_simulation(
+        Simulation(end=10, times=[0, 1, 4]), model.symbols, model.uinfo
+    )
+    with pytest.raises(ValueError, match="cannot end"):
+        plan.until(3.0)
+    steps = compile_simulation(Simulation(end=10), model.symbols, model.uinfo)
+    with pytest.raises(ValueError, match="without events"):
+        steps.until(4.0)
+    events = RoadrunnerSBMLModel(source=sbml(DELAYED_EVENT_RULE))
+    plan = compile_simulation(
+        Simulation(end=10, times=[0, 1]), events.symbols, events.uinfo
+    )
+    with pytest.raises(ValueError, match="without events"):
+        plan.until(1.0)
