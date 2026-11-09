@@ -240,7 +240,7 @@ A release is made from `develop`. Since `develop` only accepts pull requests, th
 2. write the release notes for the version in `release-notes/x.y.z.md`
 3. make sure everything passes: `tox run-parallel`, `ruff check`, `uv run ty check`
 4. check the version bump: `uvx bump-my-version bump [major|minor|patch] --dry-run -vv`
-5. bump the version: `uvx bump-my-version bump [major|minor|patch]`, which updates `src/sbmlsim/__init__.py` and `CITATION.cff` and commits. It does not create the tag; a squash or rebase merge would rewrite the commit and leave the tag behind on a commit which is not part of `develop`
+5. bump the version: `uvx bump-my-version bump [major|minor|patch]`, which updates `src/sbmlsim/__init__.py` and the version and the date of the release in `CITATION.cff` and commits. It does not create the tag; a squash or rebase merge would rewrite the commit and leave the tag behind on a commit which is not part of `develop`
 6. write the outputs of the pages again with the new version, which `installation.md` prints: `uv run python scripts/docs_outputs.py`, and commit them
 7. push the branch, open the pull request against `develop` and merge it once the checks are green
 8. tag the merged commit on `develop` and push the tag:
