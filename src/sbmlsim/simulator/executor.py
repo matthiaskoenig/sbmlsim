@@ -305,7 +305,11 @@ def output_time(
     """
     if plan.time_shift != 0.0:
         values[:, 0] += plan.time_shift
-    entity = "time" in symbols.parameters | symbols.compartments | symbols.species
+    entity = (
+        "time" in symbols.parameters
+        or "time" in symbols.compartments
+        or "time" in symbols.species
+    )
     if not entity:
         for k, column in enumerate(columns[1:], start=1):
             if column == "time":
@@ -438,9 +442,9 @@ def _simulate(
             ]
             # a time which rounds to the end in local time is before the change
             shifted = np.minimum(wanted - offset, end_stop)
-            grid = np.unique(np.concatenate([[start], shifted, [end_stop]]))
+            grid, asked = _output_grid(start, shifted, end_stop)
             result = _simulate_times(r, grid, end, bool(model_events))
-            block = result[np.isin(grid, shifted)]
+            block = result[asked]
             if block.shape[0] != wanted.size:
                 raise RuntimeError(
                     f"The output times of the segment [{a}, {b}] are not distinct "
@@ -630,6 +634,38 @@ def integrable(start: float, stop: float) -> bool:
     """
     distance = stop - start
     return distance > 0.0 and distance >= 2.0 * (EPSILON * max(abs(start), abs(stop)))
+
+
+def _output_grid(
+    start: float, shifted: np.ndarray, stop: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """Get the output grid of a segment and which of its times are asked for.
+
+    The grid is the sorted, distinct times of the start, the output times and
+    the stop, as `np.unique` gives them, and the mask the times of the grid
+    which are output times, as `np.isin` gives it. The output times of a plan
+    are sorted and within the segment, so the times are sorted already and the
+    two are a comparison of neighbours and a binary search, a fraction of the
+    cost of `np.unique` and `np.isin`, which sort, for every segment of every
+    simulation.
+
+    Args:
+        start: the start of the segment.
+        shifted: the output times in the segment.
+        stop: the stop of the segment.
+
+    Returns:
+        The grid and the mask of the output times in it.
+    """
+    times = np.concatenate([[start], shifted, [stop]])
+    if np.any(times[1:] < times[:-1]):
+        times = np.sort(times)
+    distinct = np.ones(times.size, dtype=bool)
+    distinct[1:] = times[1:] != times[:-1]
+    grid = times[distinct]
+    asked = np.zeros(grid.size, dtype=bool)
+    asked[np.searchsorted(grid, shifted)] = True
+    return grid, asked
 
 
 def _held(r: roadrunner.RoadRunner, times: np.ndarray) -> np.ndarray:
