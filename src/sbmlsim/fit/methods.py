@@ -26,18 +26,20 @@ from sbmlsim.engine import Engine
 from sbmlsim.fit.derived import hook_summaries
 from sbmlsim.fit.fisher import FisherInformation
 from sbmlsim.fit.identifiability import Identifiability, IdentifiabilityResult
-from sbmlsim.fit.objects import MappingKind
+from sbmlsim.fit.objects import MappingKind, NoiseDistribution
 from sbmlsim.fit.optimization import OptimizationProblem, default_diff_step
 from sbmlsim.fit.options import (
     DataAtChangeType,
     FitSettings,
     LossFunctionType,
+    ObjectiveType,
     OptimizationAlgorithmType,
     ParameterScaleType,
     ResidualType,
     WeightingCurvesType,
     WeightingPointsType,
 )
+from sbmlsim.fit.posterior import PRIOR_STEP, ParameterPosterior
 from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
@@ -488,6 +490,7 @@ def methods_section(
     identifiability: IdentifiabilityResult | None,
     fisher: FisherInformation | None,
     context: ReportContext,
+    posterior: ParameterPosterior | None = None,
 ) -> Section:
     """Write the methods of a fit.
 
@@ -501,12 +504,14 @@ def methods_section(
         identifiability: the profile likelihood analysis of the fit, if any.
         fisher: the Fisher information of the fit, if any.
         context: what the report says about the fit beyond the fit.
+        posterior: the Laplace posterior of the fit, if any.
 
     Returns:
         The section of the methods with the sub-sections `methods:parameters`,
         `methods:objective`, `methods:optimization`, `methods:metrics`,
         `methods:identifiability` (with an identifiability analysis or a
-        Fisher information) and `methods:provenance`.
+        Fisher information), `methods:posterior` (with a posterior) and
+        `methods:provenance`.
 
     Raises:
         UnsupportedSetting: if a value of a setting has no text.
@@ -515,12 +520,14 @@ def methods_section(
         problem.initialize(settings)
     blocks = [
         _parameters(problem, context),
-        _objective(settings),
+        _objective(problem, settings),
         _optimization(problem, settings, result),
         _metrics(problem, settings),
     ]
     if identifiability is not None or fisher is not None:
         blocks.append(_identifiability(identifiability, fisher))
+    if posterior is not None:
+        blocks.append(_posterior(posterior))
     blocks.append(_provenance(result))
     title = f"Methods: {context.title}" if context.title else "Methods"
     return Section(title, tuple(blocks), level=1, key="methods")
@@ -568,8 +575,17 @@ def _parameters(problem: OptimizationProblem, context: ReportContext) -> Section
     return _section("Parameters and data", "methods:parameters", [p(*parts), p(*data)])
 
 
-def _objective(settings: FitSettings) -> Section:
-    """Write the objective function with its residuals, weights and loss."""
+def _objective(problem: OptimizationProblem, settings: FitSettings) -> Section:
+    """Write the objective function, see `ObjectiveType`."""
+    if settings.objective is ObjectiveType.LEAST_SQUARES:
+        blocks = _weighted_least_squares(settings)
+    else:
+        blocks = _likelihood(problem, settings)
+    return _section("Objective function", "methods:objective", blocks)
+
+
+def _weighted_least_squares(settings: FitSettings) -> list[Block]:
+    """Write the weighted least squares with its residuals, weights and loss."""
     residual_equation, residual_text = _text(
         RESIDUAL_TEXT, settings.residual, "residual"
     )
@@ -617,7 +633,229 @@ def _objective(settings: FitSettings) -> Section:
             "baseline itself has the weight 0."
         )
     blocks.append(p(*points))
-    return _section("Objective function", "methods:objective", blocks)
+    return blocks
+
+
+#: the negative log density of the noise of a measurement `m` of the simulation
+#: `y` with the scale `s`, the definitions of PEtab v2
+NOISE_EQUATIONS: dict[NoiseDistribution, tuple[str, str]] = {
+    NoiseDistribution.NORMAL: (
+        r"-\log \pi = \frac{1}{2} \log\left(2 \pi s^2\right) "
+        r"+ \frac{1}{2} \left(\frac{m - y}{s}\right)^2",
+        "-log pi = 1/2 log(2 pi s^2) + 1/2 ((m - y) / s)^2",
+    ),
+    NoiseDistribution.LOG_NORMAL: (
+        r"-\log \pi = \frac{1}{2} \log\left(2 \pi s^2 m^2\right) "
+        r"+ \frac{1}{2} \left(\frac{\ln m - \ln y}{s}\right)^2",
+        "-log pi = 1/2 log(2 pi s^2 m^2) + 1/2 ((ln m - ln y) / s)^2",
+    ),
+    NoiseDistribution.LAPLACE: (
+        r"-\log \pi = \log(2 s) + \frac{|m - y|}{s}",
+        "-log pi = log(2 s) + abs(m - y) / s",
+    ),
+    NoiseDistribution.LOG_LAPLACE: (
+        r"-\log \pi = \log(2 s m) + \frac{|\ln m - \ln y|}{s}",
+        "-log pi = log(2 s m) + abs(ln m - ln y) / s",
+    ),
+}
+
+
+def _likelihood(problem: OptimizationProblem, settings: FitSettings) -> list[Block]:
+    """Write the negative log-likelihood or log posterior and the noise models."""
+    from sbmlsim.fit.petab_v2.likelihood import noise_model_of
+
+    training = problem.indices(MappingKind.TRAINING)
+    noises = [noise_model_of(problem, k) for k in training]
+    declared = sum(problem.noise_models[k] is not None for k in training)
+    posterior = settings.objective is ObjectiveType.POSTERIOR
+    blocks: list[Block] = []
+    if posterior:
+        blocks.extend(
+            [
+                p(
+                    "The parameters were estimated by maximum a posteriori, "
+                    "minimizing the negative logarithm of the unnormalized "
+                    "posterior"
+                ),
+                Equation(
+                    r"F(\vec{p}) = -\sum_{k} \sum_{i} \log \pi\left(m_{i,k} "
+                    r"\mid y_{i,k}(\vec{p}), s_{i,k}(\vec{p})\right) "
+                    r"- \log \pi(\vec{p})",
+                    "F(arrow(p)) = -sum_k sum_i log pi(m_(i,k) | y_(i,k)(arrow(p)), "
+                    "s_(i,k)(arrow(p))) - log pi(arrow(p))",
+                ),
+            ]
+        )
+    else:
+        blocks.extend(
+            [
+                p(
+                    "The parameters were estimated by maximum likelihood, "
+                    "minimizing the negative log-likelihood"
+                ),
+                Equation(
+                    r"F(\vec{p}) = -\sum_{k} \sum_{i} \log \pi\left(m_{i,k} "
+                    r"\mid y_{i,k}(\vec{p}), s_{i,k}(\vec{p})\right)",
+                    "F(arrow(p)) = -sum_k sum_i log pi(m_(i,k) | y_(i,k)(arrow(p)), "
+                    "s_(i,k)(arrow(p)))",
+                ),
+            ]
+        )
+    blocks.append(
+        p(
+            "where ",
+            Math("k", "k"),
+            " runs over the fit mappings of the training data and ",
+            Math("i", "i"),
+            " over their data points, ",
+            Math(r"m_{i,k}", "m_(i,k)"),
+            " is the measured value, ",
+            Math(r"y_{i,k}", "y_(i,k)"),
+            " the simulation, the median of the distribution of the noise, and ",
+            Math(r"s_{i,k}", "s_(i,k)"),
+            " the scale of the noise, the value of the noise formula of the fit "
+            "mapping (PEtab v2). "
+            + (
+                f"{_count(declared, 'fit mapping')} of the training data "
+                f"{'has' if declared == 1 else 'have'} a noise model of "
+                f"{'its' if declared == 1 else 'their'} own. "
+                if declared
+                else ""
+            )
+            + "A fit mapping without a noise model of its own has normal noise "
+            "with the standard deviation of its data as the scale, log-normal "
+            "noise with the logarithm of the geometric standard deviation for "
+            "geometric means, "
+            "and the scale 1 for data without errors.",
+        )
+    )
+    distributions = [
+        d for d in NoiseDistribution if any(n.distribution is d for n in noises)
+    ]
+    for distribution in distributions:
+        latex, typst = NOISE_EQUATIONS[distribution]
+        blocks.append(
+            p(
+                f"The negative log density of a measurement with {distribution.value} noise is"
+            )
+        )
+        blocks.append(Equation(latex, typst))
+    noise_parameters = sorted(
+        {
+            pid
+            for noise in noises
+            for pid in problem.pids
+            if re.search(rf"\b{re.escape(pid)}\b", noise.formula)
+        }
+    )
+    closing: list[Part] = []
+    if noise_parameters:
+        closing.extend(
+            [
+                "The parameters of the noise formulas, ",
+                *_join([[Code(pid)] for pid in noise_parameters]),
+                ", were estimated with the parameters of the model. ",
+            ]
+        )
+    closing.append(
+        "The residual type, the weights and the loss function of the settings "
+        "do not enter the objective, its value is the negative log-likelihood"
+        + (" plus the negative log prior." if posterior else ".")
+    )
+    blocks.append(p(*closing))
+    if posterior:
+        blocks.extend(_priors(problem))
+    return blocks
+
+
+def _priors(problem: OptimizationProblem) -> list[Block]:
+    """Write the priors of the parameters and their correlation."""
+    with_prior = [fp for fp in problem.parameters if fp.prior is not None]
+    n = len(problem.parameters)
+    items: list[list[Part]] = [[Code(fp.pid), f" {fp.prior}"] for fp in with_prior]
+    parts: list[Part] = [
+        "The prior ",
+        Math(r"\pi(\vec{p})", "pi(arrow(p))"),
+        " is the product of the priors of the parameters, each a distribution of "
+        "PEtab v2 truncated at the bounds of its parameter, i.e. normalized "
+        "over them",
+    ]
+    if with_prior:
+        parts.extend([": ", *_join(items), "; "])
+    else:
+        parts.append("; ")
+    others = n - len(with_prior)
+    if others:
+        parts.append(
+            f"the {_count(others, 'other parameter')} "
+            f"{'has' if others == 1 else 'have'} the uniform prior of "
+            f"{'its' if others == 1 else 'their'} bounds."
+        )
+    else:
+        parts[-1] = "."
+    blocks: list[Block] = [p(*parts)]
+    correlation = problem.prior_correlation
+    if correlation is None:
+        return blocks
+    matrix = correlation.correlation_matrix()
+    targets = list(correlation.targets)
+    pairs: list[list[Part]] = [
+        [
+            Math(
+                rf"\rho_{{\mathrm{{{a}}}, \mathrm{{{b}}}}} = {matrix[i, j]:.3g}",
+                f'rho_("{a}", "{b}") = {matrix[i, j]:.3g}',
+            )
+        ]
+        for i, a in enumerate(targets)
+        for j, b in enumerate(targets)
+        if j > i and matrix[i, j] != 0.0
+    ]
+    blocks.extend(
+        [
+            p(
+                "The priors of ",
+                *_join([[Code(t)] for t in targets]),
+                " are not independent but correlated by a Gaussian copula ",
+                Cite(("Nelsen2006",)),
+                " of the correlation ",
+                Math("R", "R"),
+                " of their normal scores, ",
+                Math(
+                    r"z_j = (p_j - \mu_j) / \sigma_j",
+                    "z_j = (p_j - mu_j) / sigma_j",
+                ),
+                " of a normal prior and ",
+                Math(
+                    r"z_j = (\ln p_j - \mu_j) / \sigma_j",
+                    "z_j = (ln p_j - mu_j) / sigma_j",
+                ),
+                " of a log-normal one, i.e. their joint prior is the multivariate "
+                "normal of the values or of their logarithms:",
+            ),
+            Equation(
+                r"-\log \pi(\vec{p}) = \frac{1}{2} \vec{z}^\top R^{-1} \vec{z} "
+                r"+ \sum_j \log \sigma_j + \frac{1}{2} \log \det R "
+                r"+ \frac{n_c}{2} \log 2\pi + \sum_{j \in \mathrm{log}} \ln p_j",
+                "-log pi(arrow(p)) = 1/2 arrow(z)^top R^(-1) arrow(z) + sum_j log "
+                'sigma_j + 1/2 log det R + n_c / 2 log 2 pi + sum_(j in "log") ln p_j',
+            ),
+            p(
+                "with the number ",
+                Math("n_c", "n_c"),
+                " of correlated parameters, the last sum over the ones with a "
+                "log-normal prior; the correlated priors are normalized without "
+                "their bounds. "
+                + (
+                    "The correlations are "
+                    if len(pairs) != 1
+                    else "The correlation is "
+                ),
+                *(_join(pairs) if pairs else ["0"]),
+                ".",
+            ),
+        ]
+    )
+    return blocks
 
 
 def _optimization(
@@ -1267,6 +1505,7 @@ def _profiles(result: IdentifiabilityResult) -> list[Block]:
 def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
     """Write the Fisher information."""
     step = _math(fisher.step)
+    scaled = fisher.scaled
     blocks: list[Block] = [
         p(
             "The Fisher information "
@@ -1274,8 +1513,13 @@ def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
             "is the Gauss-Newton approximation of the curvature of the objective "
             "at the optimum, from the Jacobian ",
             Math("J", "J"),
-            " of the weighted residuals of the training data with respect to the "
-            "parameters ",
+            (
+                " of the weighted residuals of the training data"
+                if scaled
+                else " of the residuals of the likelihood of the training data, "
+                "in units of the scale of the noise, without the priors,"
+            ),
+            " with respect to the parameters ",
             Math(r"\vec{p}", "arrow(p)"),
             " in the space of the optimizer, computed by central finite differences "
             "with the step ",
@@ -1287,31 +1531,60 @@ def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
             Math("p_j", "p_j"),
             ":",
         ),
-        Equation(
-            r"I = J^\top J, \quad \mathrm{cov} = \sigma^2 I^{-1}, \quad "
-            r"\sigma^2 = \frac{2 F}{n - n_p}",
-            'I = J^top J, quad "cov" = sigma^2 I^(-1), quad '
-            "sigma^2 = (2 F) / (n - n_p)",
-        ),
-        p(
+    ]
+    if scaled:
+        blocks.append(
+            Equation(
+                r"I = J^\top J, \quad \mathrm{cov} = \sigma^2 I^{-1}, \quad "
+                r"\sigma^2 = \frac{2 F}{n - n_p}",
+                'I = J^top J, quad "cov" = sigma^2 I^(-1), quad '
+                "sigma^2 = (2 F) / (n - n_p)",
+            )
+        )
+        parts: list[Part] = [
             "with the number ",
             Math("n", "n"),
             " of data points of the training data and the number ",
             Math("n_p", "n_p"),
-            " of parameters. "
+            " of parameters. ",
+        ]
+        quantile = Math(
+            r"\hat{p}_j \pm t_{(1+\alpha)/2,\, n-n_p}\, \mathrm{SE}_j",
+            'hat(p)_j plus.minus t_((1+alpha)/2, n-n_p) "SE"_j',
+        )
+    else:
+        blocks.append(
+            Equation(
+                r"I = J^\top J, \quad \mathrm{cov} = I^{-1}",
+                'I = J^top J, quad "cov" = I^(-1)',
+            )
+        )
+        parts = [
+            "The residuals of the likelihood are in units of the noise, so the "
+            "covariance is not scaled by a variance of the residuals; the "
+            f"information is the one of {_count(fisher.n, 'measurement')}. "
+        ]
+        quantile = Math(
+            r"\hat{p}_j \pm z_{(1+\alpha)/2}\, \mathrm{SE}_j",
+            'hat(p)_j plus.minus z_((1+alpha)/2) "SE"_j',
+        )
+    blocks.append(
+        p(
+            *parts,
             f"The information has rank {fisher.rank} of {fisher.k}, the number of "
             "its eigenvalues above ",
             _number(fisher.rank_tolerance),
             " of the largest one, and the condition number ",
             _number(float(f"{fisher.condition_number:.3g}")),
             "; the covariance of an information of a lower rank is computed with "
-            "the pseudo-inverse. The Wald "
-            "intervals are ",
-            Math(
-                r"\hat{p}_j \pm t_{(1+\alpha)/2,\, n-n_p}\, \mathrm{SE}_j",
-                'hat(p)_j plus.minus t_((1+alpha)/2, n-n_p) "SE"_j',
+            "the pseudo-inverse. The Wald intervals are ",
+            quantile,
+            (
+                " with the standard errors "
+                if scaled
+                else " with the quantile of the standard normal and the standard "
+                "errors "
             ),
-            " with the standard errors ",
             Math(
                 r"\mathrm{SE}_j = \sqrt{\mathrm{cov}_{jj}}",
                 '"SE"_j = sqrt("cov"_(j j))',
@@ -1319,9 +1592,99 @@ def _fisher(fisher: FisherInformation, preferred: bool) -> list[Block]:
             " at the confidence level ",
             Math(rf"\alpha = {fisher.alpha:g}", f"alpha = {fisher.alpha:g}"),
             ", transformed back into the units of the fit parameters.",
+        )
+    )
+    return blocks
+
+
+def _posterior(posterior: ParameterPosterior) -> Section:
+    """Write the Laplace approximation of the posterior."""
+    step = _math(posterior.step)
+    prior_step = _math(PRIOR_STEP)
+    blocks: list[Block] = [
+        p(
+            "The posterior of the parameters was approximated by the Laplace "
+            "approximation ",
+            Cite(("Tierney1986",)),
+            ", the multivariate normal around the estimate ",
+            Math(r"\hat{\vec{p}}", "hat(arrow(p))"),
+            " in the space of the optimizer whose precision is the curvature of the "
+            "negative log posterior at the estimate:",
+        ),
+        Equation(
+            r"\Sigma^{-1} = \frac{J^\top J}{\sigma^2} + H_{\mathrm{prior}}",
+            'Sigma^(-1) = (J^top J) / sigma^2 + H_"prior"',
         ),
     ]
-    return blocks
+    jacobian: list[Part] = [
+        "with the Jacobian ",
+        Math("J", "J"),
+        " of the residuals of the data at the estimate (the Gauss-Newton "
+        "approximation of the curvature of the negative log-likelihood), computed "
+        "by central finite differences with the relative step ",
+        step,
+        ", ",
+    ]
+    if posterior.objective is ObjectiveType.POSTERIOR:
+        jacobian.extend(
+            [
+                Math(r"\sigma^2 = 1", "sigma^2 = 1"),
+                ", since the residuals of the likelihood are in units of the noise, "
+                "and the Hessian ",
+                Math(r"H_{\mathrm{prior}}", 'H_"prior"'),
+                " of the negative log density of the priors in the space of the "
+                "optimizer, computed by central finite differences with the step ",
+                Math(
+                    rf"h_j = \epsilon \max(|p_j|, 1),\ \epsilon = {prior_step.latex}",
+                    f"h_j = epsilon max(|p_j|, 1), space epsilon = {prior_step.typst}",
+                ),
+                ", a stencil which would leave the bounds moved inside them. The "
+                "priors are the densities of the values, as the fit evaluated them.",
+            ]
+        )
+    elif posterior.objective is ObjectiveType.LIKELIHOOD:
+        jacobian.extend(
+            [
+                Math(r"\sigma^2 = 1", "sigma^2 = 1"),
+                " and ",
+                Math(r"H_{\mathrm{prior}} = 0", 'H_"prior" = 0'),
+                ": the fit minimized the likelihood, so the posterior is the one of "
+                "the uniform priors of the bounds, which have no curvature.",
+            ]
+        )
+    else:
+        jacobian.extend(
+            [
+                Math(
+                    rf"\sigma^2 = 2 F / (n - n_p) = {posterior.sigma2:.4g}",
+                    f"sigma^2 = 2 F / (n - n_p) = {posterior.sigma2:.4g}",
+                ),
+                f", the variance of the weighted residuals of the {posterior.n} data "
+                "points, and ",
+                Math(r"H_{\mathrm{prior}} = 0", 'H_"prior" = 0'),
+                ": the weighted least squares are the likelihood of normal noise "
+                "of that variance with the uniform priors of the bounds, so the "
+                "covariance is the one of the Fisher information.",
+            ]
+        )
+    blocks.append(p(*jacobian))
+    closing: list[Part] = [
+        "On a logarithmic scale of the optimizer the normal of a parameter is a "
+        "log-normal of its values. The 95 % credible intervals are the quantiles "
+        "of the normal, transformed back into the units of the fit parameters, and "
+        "the draws of a propagation of the parameter uncertainty come from it."
+    ]
+    if posterior.problems:
+        closing.append(
+            " The approximation is questionable where the posterior is cut off by "
+            "a bound: "
+            + "; ".join(
+                _sentence(problem).rstrip(".") for problem in posterior.problems
+            )
+            + "."
+        )
+    blocks.append(p(*closing))
+    return _section("Posterior", "methods:posterior", blocks)
 
 
 #: the number of characters of a checksum in the table of the checksums, which

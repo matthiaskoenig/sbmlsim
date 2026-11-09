@@ -7,14 +7,22 @@ uncertainty of the SBML package distrib, an uncert parameter of the type
 record of an adopted fit (`sbmlsim.fit.records.AdoptedRecords.parameter`).
 `parameter_distributions` reads these distributions back as distributions of
 `sbmlsim.simulation.sampling` and `uncertainty_dimension` draws them into the
-dimension `UNCERTAINTY_DIMENSION` of a scan. The draws are independent per
-parameter: distrib states one distribution per parameter.
+dimension `UNCERTAINTY_DIMENSION` of a scan. distrib states one distribution
+per parameter, so the draws are independent unless a correlation of their
+normal scores is given, e.g. the one of the record of an adopted fit
+(`sbmlsim.fit.records.AdoptedRecord.correlation`), which the Latin hypercube
+takes as the rank correlation of a Gaussian copula.
 """
 
+from __future__ import annotations
+
 import math
+from collections.abc import Sequence
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import libsbml
+import numpy as np
 
 from sbmlsim import distrib
 from sbmlsim.distrib import UNCERTAINTY_DIMENSION
@@ -27,6 +35,9 @@ from sbmlsim.simulation.sampling.distributions import (
     Uniform,
 )
 from sbmlsim.simulation.scan import Dimension
+
+if TYPE_CHECKING:
+    from sbmlsim.uncertainty.covariance import Covariance
 
 __all__ = [
     "UNCERTAINTY_DIMENSION",
@@ -110,24 +121,38 @@ def parameter_distributions(sbml_path: Path) -> dict[str, Distribution]:
 
 
 def uncertainty_dimension(
-    sbml_path: Path, draws: int, seed: int, id: str = UNCERTAINTY_DIMENSION
+    sbml_path: Path,
+    draws: int,
+    seed: int,
+    id: str = UNCERTAINTY_DIMENSION,
+    correlation: Sequence[Covariance] = (),
 ) -> Dimension:
     """Draw the parameters of a model which have a distribution.
 
     The draws are a Latin hypercube of the distributions, see
-    `parameter_distributions`.
+    `parameter_distributions`, with the correlation of the normal scores of
+    `correlation` as the Spearman rank correlation `6 / π asin(r / 2)` of the
+    values (Iman and Conover, see `lhs`), the correlation of a Gaussian copula
+    of the distributions. A parameter which no correlation names, or which has
+    no distribution, is independent.
 
     Args:
         sbml_path: the SBML model.
-        draws: the number of draws.
+        draws: the number of draws, with a correlation more than the
+            number of parameters with a distribution.
         seed: the seed of the Latin hypercube.
         id: the id of the dimension.
+        correlation: correlations of the normal scores of parameters
+            (`sbmlsim.uncertainty.Covariance` of the kind `correlation`), of
+            disjoint parameters.
 
     Returns:
         The dimension of the draws.
 
     Raises:
-        ValueError: if no parameter of the model has a distribution.
+        ValueError: if no parameter of the model has a distribution, two
+            correlations share a parameter or a correlation is not one of the
+            kind `correlation`.
     """
     distributions = parameter_distributions(sbml_path)
     if not distributions:
@@ -135,4 +160,29 @@ def uncertainty_dimension(
             f"No parameter of '{sbml_path}' has a distribution: the uncertainty "
             f"of the fitted parameters comes from the adopted fits of the model."
         )
-    return lhs(distributions, draws, seed=seed, id=id)
+    index = {pid: k for k, pid in enumerate(distributions)}
+    matrix = np.eye(len(index))
+    seen: set[str] = set()
+    for c in correlation:
+        if c.kind != "correlation":
+            raise ValueError(
+                f"The correlation of {list(c.targets)} is a covariance, the draws "
+                f"take a correlation of the normal scores."
+            )
+        shared = seen & set(c.targets)
+        if shared:
+            raise ValueError(
+                f"The parameters {sorted(shared)} are in two correlations."
+            )
+        seen |= set(c.targets)
+        positions = [(k, index[t]) for k, t in enumerate(c.targets) if t in index]
+        for i, a in positions:
+            for j, b in positions:
+                if a != b:
+                    r = float(c.matrix[i, j])
+                    matrix[a, b] = (
+                        6.0 / math.pi * math.asin(max(-1.0, min(1.0, r)) / 2.0)
+                    )
+    if not np.any(matrix != np.eye(len(index))):
+        return lhs(distributions, draws, seed=seed, id=id)
+    return lhs(distributions, draws, seed=seed, id=id, correlation=matrix)

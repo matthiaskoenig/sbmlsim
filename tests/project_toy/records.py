@@ -1,8 +1,8 @@
 """The adopted fit of the toy project and the models with its uncertainty, for the tests.
 
 `adopt_toy_fit` runs the fit `DECAY` of the toy project with what an adopted
-fit needs (the profiles, the Fisher information and the report) and adopts it
-into its out; `toy_model_file` writes a variant of the toy model whose rate is
+fit needs (the profiles, the Fisher information, the posterior and the report)
+and adopts it into its out; `toy_model_file` writes a variant of the toy model whose rate is
 the value of the adopted fit with its uncertainty, as the factory of a model
 package takes it from the records.
 """
@@ -25,6 +25,7 @@ TOY_FIT = {
     "seed": 1,
     "identifiability": True,
     "profile": {"max_points": 5},
+    "posterior": True,
     "report": True,
     "mapping_figures": False,
     "adopt": True,

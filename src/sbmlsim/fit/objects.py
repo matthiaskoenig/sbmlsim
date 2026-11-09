@@ -172,6 +172,11 @@ class Prior:
             self, "parameters", tuple(float(value) for value in self.parameters)
         )
 
+    def __str__(self) -> str:
+        """Get the prior as text, e.g. `normal(1, 0.5)`."""
+        values = ", ".join(f"{value:.4g}" for value in self.parameters)
+        return f"{self.distribution.value}({values})"
+
     def log_density(self, value: float, lower: float, upper: float) -> float:
         """Get the log density of the prior at a value.
 

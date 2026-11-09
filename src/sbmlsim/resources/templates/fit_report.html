@@ -131,6 +131,35 @@
     {% endif %}
   </div>
   {% endif %}
+  {% if priors %}
+  <h3>Priors</h3>
+  <div class="card">
+    <p>{% if priors.used %}The fit minimizes the negative log posterior, so the priors enter the objective (maximum a posteriori).{% else %}The objective of the fit is <code>{{ priors.objective }}</code>, which leaves the priors out; they are part of the problem, e.g. of its PEtab problem.{% endif %} A prior is truncated at the bounds of its parameter; a parameter without one has the uniform prior of its bounds.</p>
+    <table data-filter="row">
+      <thead><tr>
+        <th data-sort="text">parameter</th><th data-sort="text">prior</th>
+        <th class="num" data-sort="num">lower</th><th class="num" data-sort="num">upper</th>
+        <th data-sort="text">unit</th>
+      </tr></thead>
+      <tbody>
+      {% for row in priors.rows %}
+      <tr><td class="mono">{{ row.pid }}</td><td class="mono">{{ row.prior }}</td><td class="num mono">{{ row.lower }}</td><td class="num mono">{{ row.upper }}</td><td>{{ row.unit }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if priors.pids %}
+    <h3>Prior correlation<span class="hint" tabindex="0" data-tip="Correlation of the normal scores of the priors, a Gaussian copula of the normal and log-normal priors: the multivariate normal of the values or of their logarithms.">?</span></h3>
+    <table>
+      <thead><tr><th></th>{% for pid in priors.pids %}<th class="num">{{ pid }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for pid in priors.pids %}
+      <tr><td>{{ pid }}</td>{% for value in priors.correlation[loop.index0] %}<td class="num mono">{{ value }}</td>{% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+  {% endif %}
   {% if hooks %}
 
   <h3>Networks</h3>
@@ -411,6 +440,48 @@
   {% endif %}
 {% endif %}
 {% if fisher or identifiability %}
+</section>
+{% endif %}
+
+{% if posterior %}
+<section id="posterior">
+  <h2>Posterior</h2>
+  <p>The Laplace approximation of the posterior: the multivariate normal around the {{ "maximum a posteriori estimate" if posterior.objective == "posterior" else "estimate" }} in the space the optimizer searches, whose precision is the curvature of the negative log posterior, <code>J'J / σ² + H_prior</code>, the information of the data and the curvature of the priors. On a logarithmic scale it is a log-normal of the values, so a credible interval is not symmetric around the value. It is the distribution the draws of a propagation of the parameter uncertainty come from.</p>
+  {% for problem in posterior.problems %}<p class="warn">{{ problem }}</p>{% endfor %}
+  <div class="grid">
+    <div class="card wide">
+      <h3>Analysis</h3>
+      <dl class="kv">
+        {% for key, value in posterior.info.items() %}<dt>{{ key }}</dt><dd class="mono">{{ value }}</dd>{% endfor %}
+      </dl>
+    </div>
+    <div class="card wide">
+      <h3>Parameters</h3>
+      <table data-filter="row">
+        <thead><tr>{% for column in posterior.columns %}
+          <th{% if column.numeric %} class="num"{% endif %} data-sort="{{ 'num' if column.numeric else 'text' }}">{{ column.name }}{% if column.hint %}<span class="hint" tabindex="0" data-tip="{{ column.hint }}">?</span>{% endif %}</th>
+        {% endfor %}</tr></thead>
+        <tbody>
+        {% for row in posterior.rows %}
+        <tr>{% for value in row %}<td{% if posterior.columns[loop.index0].numeric %} class="num mono"{% endif %}>{{ value }}</td>{% endfor %}</tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Correlation<span class="hint" tabindex="0" data-tip="Correlation of the parameters in the posterior, in the space of the optimizer. The draws of a propagation keep it.">?</span></h3>
+    {% if posterior.note %}<p>{{ posterior.note }}</p>{% endif %}
+    <table>
+      <thead><tr><th></th>{% for pid in posterior.pids %}<th class="num">{{ pid }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for pid in posterior.pids %}
+      <tr><td>{{ pid }}</td>{% for value in posterior.correlation[loop.index0] %}<td class="num mono">{{ value }}</td>{% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </section>
 {% endif %}
 </div>

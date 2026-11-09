@@ -1211,7 +1211,8 @@ def _uncertainty_statement(uncertainty: UncertaintyRecord) -> str:
     folds = [q["band_fold"] for q in uncertainty["quantities"] if q["band_fold"]]
     parts = [
         f"The parameter uncertainty of {_count(len(fits), 'adopted fit')} "
-        f"({correlated} with the correlation of the Fisher information) "
+        f"({correlated} with the correlation of their posterior or Fisher "
+        f"information) "
         f"propagated with {uncertainty['n_draws']} draws"
         + (f" ({failed} failed)" if failed else "")
         + ".",

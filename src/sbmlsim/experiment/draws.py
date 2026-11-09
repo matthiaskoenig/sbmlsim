@@ -30,8 +30,14 @@ A fit of a project becomes part of its model in three steps:
    and every curve of a simulation becomes the band of a quantile range with
    the median, see `apply_uncertainty`.
 
-The draws are independent per parameter: distrib states one distribution per
-parameter, the correlations of the Fisher information stay in the record.
+distrib states one distribution per parameter, the dependence of the
+parameters of a fit stays in its record: the draws have the correlation of the
+Laplace posterior of every adopted fit (`posterior.json`, the field
+`posterior` of the kind `fit`), else of its Fisher information of full rank,
+as the correlation of the normal scores of a Gaussian copula of the
+distributions of the SBML (`sbmlsim.fit.records.AdoptedRecord.correlation`).
+The parameters of different fits, and the ones of a fit without either, are
+independent.
 """
 
 from __future__ import annotations
@@ -54,6 +60,7 @@ if TYPE_CHECKING:
     from sbmlsim.experiment.experiment import SimulationExperiment
     from sbmlsim.project import Project
     from sbmlsim.simulation.sampling import Distribution
+    from sbmlsim.uncertainty.covariance import Covariance
 
 # the sampler is imported where the draws are made: it imports the fits,
 # which import the experiments
@@ -65,6 +72,7 @@ __all__ = [
     "UncertaintySettings",
     "apply_uncertainty",
     "check_fit_parameters",
+    "correlations",
 ]
 
 logger = logging.getLogger(__name__)
@@ -148,6 +156,9 @@ class UncertaintyRun:
             variant: the variant whose distributions are drawn, the default
                 variant without.
 
+        The parameters of an adopted fit are drawn with the correlation of its
+        record, see `correlations`.
+
         Returns:
             The run.
 
@@ -156,14 +167,61 @@ class UncertaintyRun:
                 variant has a distribution.
             KeyError: naming the variants, for an unknown variant.
         """
-        from sbmlsim.simulation.sampling import uncertainty_dimension
+        from sbmlsim.simulation.sampling import (
+            parameter_distributions,
+            uncertainty_dimension,
+        )
 
+        path = project.variant_path(variant)
+        drawn = set(parameter_distributions(path))
+        correlation = correlations(project, drawn)
+        n = len(drawn)
+        if correlation and settings.draws <= n:
+            logger.warning(
+                "The %s draws are not more than the %s drawn parameters, which "
+                "a correlated Latin hypercube needs: the parameters are drawn "
+                "independently.",
+                settings.draws,
+                n,
+            )
+            correlation = []
         return cls(
             settings=settings,
             dimension=uncertainty_dimension(
-                project.variant_path(variant), settings.draws, settings.seed
+                path, settings.draws, settings.seed, correlation=correlation
             ),
         )
+
+
+def correlations(project: Project, pids: set[str]) -> list[Covariance]:
+    """Get the correlations of the fitted parameters of the adopted fits of a project.
+
+    Args:
+        project: the project.
+        pids: the parameters which are drawn, the ones of the model with a
+            distribution.
+
+    Returns:
+        One correlation of the normal scores per adopted fit whose drawn
+        parameters are correlated, see `AdoptedRecord.correlation`; empty for
+        a project without adopted fits.
+    """
+    from sbmlsim.uncertainty.covariance import Covariance
+
+    if not project.adopted_fits():
+        return []
+    result: list[Covariance] = []
+    for fit_id, record in project.fit_records().records.items():
+        drawn = [pid for pid in record.parameters if pid in pids]
+        correlation = record.correlation(drawn)
+        logger.info("The draws of the fit '%s': %s.", fit_id, correlation.source)
+        if correlation.matrix is not None:
+            result.append(
+                Covariance.correlation(
+                    matrix=correlation.matrix, targets=drawn, nearest=True
+                )
+            )
+    return result
 
 
 # ----------------------------------------------------------------------------

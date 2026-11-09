@@ -34,6 +34,7 @@ from sbmlsim.fit.methods import (
     methods_section,
 )
 from sbmlsim.fit.objects import EVALUATED_KINDS, MappingKind
+from sbmlsim.fit.options import ObjectiveType
 from sbmlsim.fit.parameters import ParameterSet
 from sbmlsim.report.document import (
     Block,
@@ -166,17 +167,22 @@ def results_section(
 
     Returns:
         The section of the results with the sub-sections `results:parameters`,
-        `results:data`, `results:metrics`, `results:figures` (if a figure
-        exists) and `results:provenance`, whose items read "not recorded" for
-        a result without a provenance.
+        `results:posterior` (with a posterior), `results:data`,
+        `results:metrics`, `results:figures` (if a figure exists) and
+        `results:provenance`, whose items read "not recorded" for a result
+        without a provenance.
     """
     fit_id = _fit_id(report)
     best = _best_set(report)
-    blocks: list[Block] = [
-        _parameters(report, context, best, fit_id),
-        _data(report, best, fit_id),
-        _metrics(report, best, fit_id),
-    ]
+    blocks: list[Block] = [_parameters(report, context, best, fit_id)]
+    if report.posterior is not None:
+        blocks.append(_posterior(report, fit_id))
+    blocks.extend(
+        [
+            _data(report, best, fit_id),
+            _metrics(report, best, fit_id),
+        ]
+    )
     figures = _figures(report, plots_dir, fit_id)
     if figures is not None:
         blocks.append(figures)
@@ -208,6 +214,7 @@ def fit_document(
         identifiability=report.identifiability,
         fisher=report.fisher,
         context=context,
+        posterior=report.posterior,
     )
     results = results_section(report, context, plots_dir)
     document = Document(
@@ -362,6 +369,71 @@ def _parameters(
         align="llrlrl",
     )
     return _section("Parameters", "results:parameters", [table])
+
+
+def _posterior(report: FitReport, fit_id: str) -> Section:
+    """Write the table of the Laplace posterior of the parameters."""
+    posterior = report.posterior
+    assert posterior is not None
+    priors = {fp.pid: fp.prior for fp in report.problem.parameters}
+    used = posterior.objective is ObjectiveType.POSTERIOR
+    lower, upper = posterior.intervals(0.95)
+    rows = []
+    for k, pid in enumerate(posterior.pids):
+        prior = priors.get(pid)
+        rows.append(
+            (
+                Code(pid),
+                str(prior) if used and prior is not None else "uniform",
+                f"{_g(posterior.values[k])} [{_g(lower[k])}, {_g(upper[k])}]",
+                _unit(report.problem.parameter_units.get(pid)),
+                _g(posterior.standard_deviations[k]),
+                posterior.scales[k].name,
+            )
+        )
+    correlated = posterior.k > 1
+    caption = (
+        f"Laplace approximation of the posterior of the fit {fit_id} around the "
+        f"parameter set {posterior.sid}: the value with the 95 % credible "
+        "interval, the standard deviation of the normal in the space of the "
+        "optimizer (the scale) and the prior"
+        + (
+            " which the fit minimized with the likelihood, the uniform prior of "
+            "the bounds for a parameter without one."
+            if used
+            else "; the fit minimized "
+            + (
+                "the likelihood"
+                if posterior.objective is ObjectiveType.LIKELIHOOD
+                else "the weighted least squares"
+            )
+            + ", so every prior is the uniform prior of the bounds."
+        )
+        + (
+            " The correlation of the parameters is in the files of the report, "
+            "posterior.tsv and posterior.json."
+            if correlated
+            else ""
+        )
+    )
+    table = Table(
+        caption=_caption(caption),
+        header=("Parameter", "Prior", "Value [95% CrI]", "Unit", "SD", "Scale"),
+        rows=tuple(rows),
+        label=_label(f"tab:posterior:{fit_id}"),
+        align="llrlrl",
+    )
+    blocks: list[Block] = [table]
+    if posterior.problems:
+        blocks.append(
+            p(
+                "The approximation is questionable where the posterior is cut off "
+                "by a bound: "
+                + "; ".join(problem.rstrip(".") for problem in posterior.problems)
+                + "."
+            )
+        )
+    return _section("Posterior", "results:posterior", blocks)
 
 
 def _data(report: FitReport, best: ParameterSet, fit_id: str) -> Section:
