@@ -316,9 +316,9 @@ runs                5
 workers             1 (serial)
 converged           5/5 runs
 best cost           425.867
-optimizer time      0.2 s
+optimizer time      0.1 s
 Ka_dis_hctz   0.297 / h
-KI__HCTZEX_k  0.00511 / ml
+KI__HCTZEX_k  0.00512 / ml
 ```
 
 To compare the fitted model with the data, set the fitted values before the start of the simulation. The data become quantities as well, so they share the axes with the simulation:
@@ -395,8 +395,8 @@ print(uncertainty.contributions("pk.auc_inf_obs", scenario="healthy").round(2))
 
 ```text title="Output"
    scenario      mean       sd    q0.05     q0.95
-0   healthy   66253.0  26028.0  33722.0  114600.0
-1  impaired  193089.0  84097.0  90798.0  350926.0
+0   healthy   66251.0  26028.0  33721.0  114597.0
+1  impaired  193084.0  84095.0  90795.0  350915.0
        variable  index  correlated
 0            BW   0.54       False
 1  KI__HCTZEX_k   0.36       False

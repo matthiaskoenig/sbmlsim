@@ -69,12 +69,12 @@ runs                4
 workers             1 (serial)
 converged           4/4 runs
 best cost           0.0496035
-optimizer time      0.2 s
+optimizer time      0.1 s
    run      cost  Ka_dis_hctz  KI__HCTZEX_k
-0    0  0.049603     0.304798      0.005028
-1    1  0.049603     0.304798      0.005028
-2    3  0.049603     0.304798      0.005028
-3    2  0.049603     0.304798      0.005028
+0    1  0.049603     0.304794      0.005028
+1    0  0.049603     0.304794      0.005028
+2    2  0.049603     0.304796      0.005028
+3    3  0.049603     0.304797      0.005028
 ```
 
 Every run ends at about the same parameters, so the optimum is well defined. With a seed the start points, and therefore the result, are the same in every session.
@@ -375,11 +375,13 @@ The first point of a curve is the exception: if a curve has later points, its fi
 
 `run_optimization(problem, settings, size, ...)` runs `size` optimizations and returns an `OptimizationResult`:
 
-- `algorithm`: `OptimizationAlgorithmType.LEAST_SQUARE` (default, from `sbmlsim.fit.options`), the local `scipy.optimize.least_squares`, which needs many start points, or `DIFFERENTIAL_EVOLUTION`, the global `scipy.optimize.differential_evolution`, which needs few runs and finite bounds. Further keyword arguments go to the SciPy function, e.g. `max_nfev`. A `loss` or `f_scale` of SciPy is refused, the loss belongs in the settings.
+- `algorithm`: `OptimizationAlgorithmType.LEAST_SQUARE` (default, from `sbmlsim.fit.options`), the local `scipy.optimize.least_squares`, which needs many start points, or `DIFFERENTIAL_EVOLUTION`, the global `scipy.optimize.differential_evolution`, which needs few runs and finite bounds. Further keyword arguments go to the SciPy function, e.g. `max_nfev`. A `loss` or `f_scale` of SciPy is refused, the loss belongs in the settings. Least squares from many start points is the default for every fit: on the fits of the HCTZ example it reached the optimum at a 4th to a 17th of the evaluations of differential evolution with the defaults of SciPy, and closer to it; differential evolution is the global check of a final fit.
 - `diff_step`: the relative step of the finite differences of the Jacobian of the least squares optimizer. It defaults to the square root of `relative_tolerance` of the settings, `1e-3` for the default `1e-6`: a simulation is exact only to the tolerance of the integrator, and a smaller step, such as the default of SciPy, measures the noise of the integrator instead of the slope, so the optimizer stops next to its start.
-- `sampling`: how the start points are drawn within the bounds, `SamplingType.UNIFORM` (default, from `sbmlsim.fit.sampling`), `LOGUNIFORM` and their Latin hypercube variants `UNIFORM_LHS` and `LOGUNIFORM_LHS`. `START` starts every run from the start values, to improve a known solution; one run is then enough for the local optimizer. Setting `problem.x0` changes the start values of a problem.
+- `ftol`, `xtol`, `gtol`: the tolerances of the least squares optimizer. They default to `relative_tolerance` of the settings, at least `1e-8`, the default of SciPy: the cost is exact only to the tolerance of the integrator, steps below it chase its noise. On the fits of the HCTZ example this took 13 to 27 % fewer evaluations to the same optima.
+- `sampling`: how the start points are drawn within the bounds, `SamplingType.LOGUNIFORM_LHS` (default, from `sbmlsim.fit.sampling`), the Latin hypercube of the logarithms, `LOGUNIFORM`, `UNIFORM` and `UNIFORM_LHS`. Bounds over several decades need logarithmic start points: uniform ones lie almost all in the top decade, and on the fits of the HCTZ example 25 to 30 % of the uniform starts reached the optimum against 60 to 70 % of the logarithmic ones. `START` starts every run from the start values, to improve a known solution; one run is then enough for the local optimizer. Setting `problem.x0` changes the start values of a problem.
 - `seed`: the seed of the start points. The start points are drawn before the runs start, so the result does not depend on the number of workers.
-- `n_cores`: the number of worker processes; `1` (default) runs in the calling process, `None` uses all cores but one. `serial=True` runs serially whatever `n_cores` says, which is what a debugger needs. A worker cannot start workers of its own, so the workers go either to the runs or to the population of differential evolution (`split_cores` of `sbmlsim.fit.runner`): with as many runs as workers or more, every worker optimizes a run of its own; differential evolution with fewer runs than workers, e.g. a single global optimization, runs its runs one after another and every run evaluates the members of its population on all workers; the polishing of the best member by L-BFGS-B evaluates the points of its gradients there together and its line search in the calling process. The workers start and initialize the problem before the timeout of a run starts. Least squares runs its runs in parallel only. Every worker holds the problem, the memory of a fit grows with `n_cores` either way.
+- `n_cores`: the number of worker processes; `1` (default) runs in the calling process, `None` uses all cores but one. `serial=True` runs serially whatever `n_cores` says, which is what a debugger needs. A worker cannot start workers of its own, so the workers go either to the runs or to the population of differential evolution (`split_cores` of `sbmlsim.fit.runner`): with as many runs as workers or more, every worker optimizes a run of its own; differential evolution with fewer runs than workers, e.g. a single global optimization, runs its runs one after another and every run evaluates the members of its population on all workers; the polishing of the best member by least squares evaluates in the calling process (with `polish=True`, the L-BFGS-B of SciPy, the points of its gradients are evaluated on the workers together and its line search in the calling process). The workers start and initialize the problem before the timeout of a run starts. Least squares runs its runs in parallel only. Every worker holds the problem, the memory of a fit grows with `n_cores` either way.
+- `popsize`, `polish`: differential evolution has a population of `5` members per parameter (`DE_POPSIZE` of `sbmlsim.fit.optimization`, `15` in SciPy), and its best member is polished by a least squares optimization of the residuals (`polish="least_squares"`, `LEAST_SQUARES_POLISH`), unless they are given. On the fits of the HCTZ example this reached the optimum from every seed at a quarter of the evaluations of the defaults of SciPy, whose polishing by L-BFGS-B on the cost cost 360 evaluations without improving it; `polish=True` is the polishing of SciPy.
 - `updating`: differential evolution updates its population once per generation (`updating="deferred"`, the scheme of Storn and Price), which the fit sets unless it is given, so a seed gives the same result for any number of workers. `updating="immediate"`, the default of SciPy, updates the best member after every trial vector and evaluates the population serially; `workers` of SciPy is refused, except its default `1`, `n_cores` gives the workers.
 - `timeout`: seconds per run; a run which runs out of time keeps the best parameters it reached.
 - `runs_dir`: a directory every run is written to as JSON as soon as it finishes, so an interrupted fit keeps its finished runs. `OptimizationResult.from_directory` reads them back.
@@ -418,7 +420,7 @@ print(ParameterSets.from_json(Path("parameters.json")).to_df())
 
 ```text title="Output"
       parameter  unit  hctz_patel_0  hctz_patel_1
-0   Ka_dis_hctz  1/hr      0.304798      0.304798
+0   Ka_dis_hctz  1/hr      0.304794      0.304794
 1  KI__HCTZEX_k  1/ml      0.005028      0.005028
 ```
 
@@ -560,10 +562,10 @@ Ka_dis_hctz    -       0.01    10      1/hr
 KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                2
 workers             1 (serial)
-  optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:00 ~ 0:00:01 total
+  optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:00 ~ 0:00:00 total
 converged           2/2 runs
 best cost           1.09898
-optimizer time      0.5 s
+optimizer time      0.3 s
 2 runs read back
 versions: python, sbmlsim, libroadrunner, scipy, numpy
 checksums of 10 files

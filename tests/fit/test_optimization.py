@@ -20,9 +20,12 @@ from sbmlsim.data import DataSet
 from sbmlsim.fit import FitMappingCollection, FitParameter, FitSettings, MappingKind
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.optimization import (
+    DE_POPSIZE,
+    LEAST_SQUARES_POLISH,
     OptimizationProblem,
     apply_loss_function,
     default_diff_step,
+    default_tolerance,
 )
 from sbmlsim.fit.options import (
     LossFunctionType,
@@ -364,24 +367,72 @@ def test_the_step_of_the_jacobian_is_the_root_of_the_tolerance() -> None:
 def test_a_least_squares_fit_gets_the_step_of_its_tolerance(
     op_hctz_pk: OptimizationProblem,
 ) -> None:
-    """A given step, the global optimizer and a jacobian function keep theirs.
+    """A given step or tolerance, the global optimizer and a jacobian function keep theirs.
 
-    Differential evolution gets `updating="deferred"` instead, unless given.
+    Least squares gets the tolerances of the integrator, at least the ones of
+    scipy; differential evolution gets `updating="deferred"`, a population of
+    `DE_POPSIZE` and the polishing by least squares instead, unless given.
     """
     op_hctz_pk.initialize(FitSettings(relative_tolerance=1e-8))
     lsq = OptimizationAlgorithmType.LEAST_SQUARE
     assert op_hctz_pk.optimizer_arguments(lsq, {"xtol": 1e-6}) == {
         "xtol": 1e-6,
+        "ftol": 1e-8,
+        "gtol": 1e-8,
         "diff_step": pytest.approx(1e-4),
     }
-    assert op_hctz_pk.optimizer_arguments(lsq, {"diff_step": 0.1}) == {"diff_step": 0.1}
-    assert op_hctz_pk.optimizer_arguments(lsq, {"jac": len}) == {"jac": len}
-    de = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
-    # the population is updated once per generation, for any number of workers
-    assert op_hctz_pk.optimizer_arguments(de, {}) == {"updating": "deferred"}
-    assert op_hctz_pk.optimizer_arguments(de, {"updating": "immediate"}) == {
-        "updating": "immediate"
+    tolerances = {"ftol": 1e-8, "xtol": 1e-8, "gtol": 1e-8}
+    assert op_hctz_pk.optimizer_arguments(lsq, {"diff_step": 0.1}) == {
+        "diff_step": 0.1,
+        **tolerances,
     }
+    assert op_hctz_pk.optimizer_arguments(lsq, {"jac": len}) == {
+        "jac": len,
+        **tolerances,
+    }
+    de = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+    defaults = {"popsize": DE_POPSIZE, "polish": LEAST_SQUARES_POLISH}
+    # the population is updated once per generation, for any number of workers
+    assert op_hctz_pk.optimizer_arguments(de, {}) == {
+        "updating": "deferred",
+        **defaults,
+    }
+    assert op_hctz_pk.optimizer_arguments(
+        de, {"updating": "immediate", "popsize": 15, "polish": True}
+    ) == {"updating": "immediate", "popsize": 15, "polish": True}
+
+
+def test_the_tolerances_of_least_squares_follow_the_integrator(
+    op_hctz_pk: OptimizationProblem,
+) -> None:
+    """The tolerances are the relative tolerance of the integrator, at least scipy's."""
+    assert default_tolerance(1e-6) == 1e-6
+    assert default_tolerance(1e-10) == 1e-8
+    op_hctz_pk.initialize(FitSettings(relative_tolerance=1e-6))
+    arguments = op_hctz_pk.optimizer_arguments(
+        OptimizationAlgorithmType.LEAST_SQUARE, {}
+    )
+    assert {k: arguments[k] for k in ("ftol", "xtol", "gtol")} == dict.fromkeys(
+        ("ftol", "xtol", "gtol"), 1e-6
+    )
+
+
+def test_differential_evolution_is_polished_by_least_squares(
+    op_hctz_iv: OptimizationProblem,
+) -> None:
+    """The polishing by least squares reaches a lower cost than the population.
+
+    A run records the polishing by its name; with `polish=False` the best
+    member is the result.
+    """
+    op_hctz_iv.initialize(FitSettings())
+    de = OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
+    polished, _ = op_hctz_iv.optimize_run(algorithm=de, run_seed=1, maxiter=3)
+    best, _ = op_hctz_iv.optimize_run(algorithm=de, run_seed=1, maxiter=3, polish=False)
+    assert polished.optimizer_kwargs["polish"] == LEAST_SQUARES_POLISH
+    assert polished.optimizer_kwargs["popsize"] == DE_POPSIZE
+    assert polished.cost < best.cost
+    assert polished.nfev > best.nfev
 
 
 def test_a_fit_records_the_step_of_its_jacobian(
