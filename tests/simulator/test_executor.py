@@ -14,6 +14,7 @@ from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import (
     SteadyStateError,
     _exact_times,
+    _output_grid,
     _to_the_end,
     execute,
     steady_state,
@@ -1899,3 +1900,27 @@ def test_a_delayed_event_pending_closer_after_the_start_than_cvode_integrates(
         # the event fires after the change
         np.testing.assert_array_equal(result["p"][result.time <= 2.0], 0.0)
         assert np.all(result["p"][result.time >= 3.0] == 1.0)
+
+
+@pytest.mark.parametrize("seed", range(20))
+def test_output_grid_is_unique_and_isin(seed: int) -> None:
+    """The grid of a segment and its mask are the ones of `np.unique` and `np.isin`."""
+    rng = np.random.default_rng(seed)
+    start, stop = 0.0, 10.0
+    # sorted output times with repeats, at the start and at the stop
+    shifted = np.sort(
+        np.concatenate(
+            [
+                rng.choice([0.0, 1.0, 2.5, 10.0, 3.0], size=rng.integers(0, 4)),
+                rng.uniform(start, stop, rng.integers(0, 6)),
+            ]
+        )
+    )
+    expected = np.unique(np.concatenate([[start], shifted, [stop]]))
+    grid, asked = _output_grid(start, shifted, stop)
+    np.testing.assert_array_equal(grid, expected)
+    np.testing.assert_array_equal(asked, np.isin(expected, shifted))
+    # unsorted times give the same
+    grid, asked = _output_grid(start, rng.permutation(shifted), stop)
+    np.testing.assert_array_equal(grid, expected)
+    np.testing.assert_array_equal(asked, np.isin(expected, shifted))
