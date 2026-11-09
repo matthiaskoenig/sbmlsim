@@ -36,6 +36,7 @@ ADOPT: dict[str, Any] = {
     **FIT,
     "identifiability": True,
     "profile": {"max_points": 3},
+    "posterior": True,
     "report": True,
     "mapping_figures": False,
     "adopt": True,
@@ -83,6 +84,24 @@ def _adopted_project(out: Path) -> Project:
 # ----------------------------------------------------------------------------
 # adopt
 # ----------------------------------------------------------------------------
+def test_the_posterior_of_a_fit_reuses_its_fisher_information(
+    adopted_out: Path,
+) -> None:
+    """A fit of least squares has the posterior of the Fisher covariance."""
+    from sbmlsim.fit.cli import load_fit_records
+    from sbmlsim.fit.posterior import ParameterPosterior
+
+    (fit_id,) = _json(adopted_out / "adopted.json")["fits"].values()
+    posterior = ParameterPosterior.read(adopted_out / fit_id)
+    fisher = load_fit_records(adopted_out / fit_id).fisher
+    assert fisher is not None
+    assert posterior.pids == ["k"]
+    assert posterior.covariance[0, 0] == pytest.approx(fisher.covariance[0, 0])
+    assert _json(adopted_out / "summary.json")["posterior_problems"] == len(
+        posterior.problems
+    )
+
+
 def test_an_adopted_fit_has_the_id_of_a_fit(adopted_out: Path) -> None:
     (fit_id,) = _json(adopted_out / "adopted.json")["fits"].values()
     assert _json(adopted_out / "adopted.json") == {"fits": {"DECAY": fit_id}}
@@ -100,7 +119,12 @@ def test_the_adopted_record_is_in_the_out(adopted_out: Path) -> None:
     for name in ("identifiability.json", "fisher.json", "report.pdf", "index.html"):
         assert (records / name).exists(), name
     record = adopted_out / "fits" / fit_id
-    for name in ("parameters.json", "identifiability.json", "fisher.json"):
+    for name in (
+        "parameters.json",
+        "identifiability.json",
+        "fisher.json",
+        "posterior.json",
+    ):
         assert (record / name).exists(), name
     assert (record / "report.typ").exists()
     assert not (record / "index.html").exists()

@@ -16,7 +16,9 @@ fit from one directory.
   `<opid>/optimization_result.json`, `<opid>/parameters.json` (the best run)
   and `<opid>/fits.tsv`, with `identifiability` the profiles and the Fisher
   information of the best run, `<opid>/identifiability.json` and
-  `<opid>/fisher.json`, with `report` the report of the fit into `<opid>`,
+  `<opid>/fisher.json`, with `posterior` the Laplace approximation of the
+  posterior of the best run, `<opid>/posterior.json` (`sbmlsim.fit.posterior`),
+  with `report` the report of the fit into `<opid>`,
   and with `adopt` the record of the fit, `fits/<opid>`, and `adopted.json`,
   the adopted fits of the project with the fit adopted for its subset (the
   files of the project are never written). Least squares starts from
@@ -28,7 +30,9 @@ fit from one directory.
 - `identifiability` (`IdentifiabilitySpec`) computes the profile likelihoods,
   one unit per parameter, `profiles/<pid>.json`, which the merge combines
   into `identifiability.json`, with `fisher` also `fisher.json`.
-- `fisher` (`FisherSpec`) computes the Fisher information, `fisher.json`.
+- `fisher` (`FisherSpec`) computes the Fisher information, `fisher.json`,
+  with `posterior` also the Laplace approximation of the posterior,
+  `posterior.json`.
 - `report` (`ReportSpec`) writes the report of the records, `report/`, with
   `adopted` the report of the adopted fit of the subset, of every adopted fit
   for the subset `all`, from its record in the project into `<fit id>/`; a
@@ -70,6 +74,7 @@ from sbmlsim.run.units import MissingUnits, unit_blocks
 
 if TYPE_CHECKING:
     from sbmlsim.fit.cli import FitDefinition, FitRecords
+    from sbmlsim.fit.fisher import FisherInformation
     from sbmlsim.fit.identifiability import ProfileSettings
     from sbmlsim.fit.optimization import OptimizationProblem
     from sbmlsim.fit.options import FitSettings
@@ -106,6 +111,9 @@ FITS_FILE = "fits.tsv"
 IDENTIFIABILITY_FILE = "identifiability.json"
 #: the Fisher information of a fit
 FISHER_FILE = "fisher.json"
+#: the Laplace approximation of the posterior of a fit, `POSTERIOR_FILE` of
+#: `sbmlsim.fit.posterior`
+POSTERIOR_FILE = "posterior.json"
 #: the records of a fit which an analysis of it copies into its out
 FIT_RECORDS: tuple[str, ...] = (RESULT_FILE, PARAMETERS_FILE)
 #: the directory of the profiles of the units of an identifiability analysis
@@ -212,6 +220,9 @@ class FitSpec(FitProblemSpec, SplitSpec):
         profile: the settings of these profiles.
         fisher: compute the Fisher information with the profiles,
             `<opid>/fisher.json`.
+        posterior: compute the Laplace approximation of the posterior of the
+            best run, `<opid>/posterior.json`, from the Fisher information of
+            the profiles when they have it.
         report: write the report of the fit into `<opid>`, with the context
             of the project; true by default with `adopt`, so that the record
             of an adopted fit has its report.
@@ -238,6 +249,7 @@ class FitSpec(FitProblemSpec, SplitSpec):
     identifiability: bool = False
     profile: ProfileSpec = Field(default_factory=ProfileSpec)
     fisher: bool = True
+    posterior: bool = False
     report: bool = False
     mapping_figures: bool = True
     adopt: bool = False
@@ -311,10 +323,13 @@ class FisherSpec(FitProblemSpec):
         fit: the records of the fit, the input `fit`.
         step: the relative step of the finite differences, the default of
             `fisher_information` without.
+        posterior: compute the Laplace approximation of the posterior from the
+            Fisher information as well, `posterior.json`.
     """
 
     fit: Path | None = None
     step: float | None = None
+    posterior: bool = False
 
 
 class ReportSpec(FitProblemSpec):
@@ -491,9 +506,15 @@ def _write_fisher(
     problem: OptimizationProblem,
     settings: FitSettings,
     parameter_set: ParameterSet,
+    *,
+    posterior: bool = False,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Compute the Fisher information, write `fisher.json` and summarize it."""
+    """Compute the Fisher information, write `fisher.json` and summarize it.
+
+    With `posterior` the Laplace approximation of the posterior from the
+    information as well, `posterior.json`.
+    """
     from sbmlsim.fit.fisher import fisher_information
 
     fisher = fisher_information(
@@ -502,7 +523,30 @@ def _write_fisher(
     write_text_atomic(
         directory / FISHER_FILE, json.dumps(fisher.to_dict(), indent=2) + "\n"
     )
-    return {"rank": fisher.rank, "condition": fisher.condition_number}
+    summary: dict[str, Any] = {
+        "rank": fisher.rank,
+        "condition": fisher.condition_number,
+    }
+    if posterior:
+        summary.update(
+            _write_posterior(directory, problem, settings, parameter_set, fisher)
+        )
+    return summary
+
+
+def _write_posterior(
+    directory: Path,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    parameter_set: ParameterSet,
+    fisher: FisherInformation | None = None,
+) -> dict[str, Any]:
+    """Compute the Laplace posterior, write `posterior.json` and summarize it."""
+    from sbmlsim.fit.posterior import posterior_laplace
+
+    posterior = posterior_laplace(problem, settings, parameter_set, fisher=fisher)
+    posterior.write(directory / POSTERIOR_FILE)
+    return {"posterior_problems": len(posterior.problems)}
 
 
 # ----------------------------------------------------------------------------
@@ -932,6 +976,8 @@ def _merge_fit(spec: FitSpec, ctx: RunContext) -> dict[str, Any]:
     }
     if spec.identifiability:
         summary.update(_fit_identifiability(spec, records, ctx))
+    if spec.posterior:
+        summary.update(_fit_posterior(spec, records, ctx))
     if spec.report:
         _fit_report(spec, opid, records, ctx)
     if spec.adopt:
@@ -973,6 +1019,27 @@ def _fit_identifiability(
             records, problem, settings, parameter_set, alpha=result.settings.alpha
         )
     return summary
+
+
+def _fit_posterior(spec: FitSpec, records: Path, ctx: RunContext) -> dict[str, Any]:
+    """Compute the Laplace posterior of the best run of a fit into its records.
+
+    The Fisher information of the records is reused when the fit computed it
+    with its profiles; a resumed run keeps a posterior which exists.
+    """
+    from sbmlsim.fit.fisher import FisherInformation
+
+    path = records / POSTERIOR_FILE
+    if ctx.resume and path.exists():
+        return {}
+    problem, settings, parameter_set = _stored_fit(spec, records)
+    fisher_path = records / FISHER_FILE
+    fisher = (
+        FisherInformation.from_dict(json.loads(fisher_path.read_text(encoding="utf-8")))
+        if spec.identifiability and spec.fisher and fisher_path.exists()
+        else None
+    )
+    return _write_posterior(records, problem, settings, parameter_set, fisher)
 
 
 def _fit_report(spec: FitSpec, opid: str, records: Path, ctx: RunContext) -> None:
@@ -1220,7 +1287,14 @@ def _run_fisher(spec: FisherSpec, ctx: RunContext) -> dict[str, Any]:
     """Compute the Fisher information and copy the records of the fit."""
     directory = _records_dir(spec.fit)
     problem, settings, parameter_set = _stored_fit(spec, directory)
-    summary = _write_fisher(ctx.out, problem, settings, parameter_set, step=spec.step)
+    summary = _write_fisher(
+        ctx.out,
+        problem,
+        settings,
+        parameter_set,
+        posterior=spec.posterior,
+        step=spec.step,
+    )
     _copy_records(directory, ctx)
     return summary
 

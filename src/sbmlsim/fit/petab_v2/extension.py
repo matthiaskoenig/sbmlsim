@@ -40,12 +40,13 @@ SCIML_EXTRA = "pip install sbmlsim[sciml]"
 #: `check_extensions`
 KNOWN_EXTENSIONS: frozenset[str] = frozenset({EXTENSION_ID})
 
-#: version of the extension, raised when the block changes. 0.4.0 carries the
+#: version of the extension, raised when the block changes. 0.5.0 carries the
+#: correlation of the priors, `prior_correlation`. 0.4.0 carries the
 #: setting `data_at_change` in `settings`; the settings of an earlier version
 #: do not have it and are read with `after`, the comparison they were written
 #: for (`FitSettings.from_dict`). 0.3.0 holds the `Simulation` of an
 #: experiment, the versions before its timecourses
-EXTENSION_VERSION = "0.4.0"
+EXTENSION_VERSION = "0.5.0"
 
 
 class SbmlsimExtension(ExtensionConfig):
@@ -93,6 +94,9 @@ class SbmlsimExtension(ExtensionConfig):
             of the input. The conditions of these experiments repeat it, see
             `sbmlsim.fit.petab_v2.sciml_export`.
         gaps: what this export lost, see `sbmlsim.fit.petab_v2.gaps`.
+        prior_correlation: the correlation of the priors of the parameters as
+            the dictionary of its `Covariance`, by the ids of the parameters,
+            see `sbmlsim.fit.priors`; `None` for independent priors.
     """
 
     version: str = EXTENSION_VERSION
@@ -107,6 +111,7 @@ class SbmlsimExtension(ExtensionConfig):
     models: dict[str, dict[str, Any]] = Field(default_factory=dict)
     inputs: dict[str, str] = Field(default_factory=dict)
     gaps: list[dict[str, Any]] = Field(default_factory=list)
+    prior_correlation: dict[str, Any] | None = None
 
 
 def extension_of(config: Any) -> SbmlsimExtension | None:

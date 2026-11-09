@@ -1220,6 +1220,11 @@ class PetabExporter:
             models=models,
             inputs=dict(self.sciml.fallbacks) if self.sciml is not None else {},
             gaps=gaps_dict(self.gaps),
+            prior_correlation=(
+                None
+                if problem.prior_correlation is None
+                else problem.prior_correlation.to_dict()
+            ),
         )
         if petab_problem.config is None:
             petab_problem.config = petab_v2.ProblemConfig(format_version="2.0.0")

@@ -1160,6 +1160,7 @@ def _run_optimization_parallel(
         settings=settings,
         units=problem.parameter_units,
         provenance=provenance,
+        prior_correlation=problem.prior_correlation,
     )
     result.interrupted = interrupted
     return result
@@ -1201,6 +1202,7 @@ def _store_run(
             settings=settings,
             units=problem.parameter_units,
             provenance=provenance,
+            prior_correlation=problem.prior_correlation,
         )
     except Exception as err:
         logger.error(
@@ -1291,6 +1293,7 @@ def _run_optimization_serial(
         settings=settings,
         units=problem.parameter_units,
         provenance=provenance,
+        prior_correlation=problem.prior_correlation,
     )
     result.interrupted = interrupted
     return result

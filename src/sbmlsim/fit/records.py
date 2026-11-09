@@ -80,6 +80,7 @@ RECORD_FILES: tuple[str, ...] = (
     "identifiability.tsv",
     "fisher.json",
     "fisher.tsv",
+    "posterior.json",
     "metrics.tsv",
     "metrics_mappings.tsv",
     "report.txt",

@@ -6,7 +6,11 @@
 - `profile_parameters`: every parameter from its profile likelihood (follows
   asymmetric and open profiles, independent across parameters, since the
   profiles carry no joint information);
-- `fit_repeats`: the best parameter sets of the repeats of a fit.
+- `fit_repeats`: the best parameter sets of the repeats of a fit;
+- `posterior_parameters`: the multivariate normal of the Laplace
+  approximation of the posterior of a fit, `sbmlsim.fit.posterior`, in the
+  space of the `parameter_scale` (correlated, with the priors of a fit of the
+  posterior).
 
 A fitted parameter is written to its `pid` unless `targets` maps it to another
 target; two parameters of one target (the versions of a parameter) raise,
@@ -26,6 +30,7 @@ from sbmlsim.fit.identifiability import IdentifiabilityResult, ParameterProfile
 from sbmlsim.fit.objects import FitParameter
 from sbmlsim.fit.options import ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
+from sbmlsim.fit.posterior import ParameterPosterior
 from sbmlsim.simulation.sampling.designs import _count, _seed
 from sbmlsim.simulation.scan import Design, Dimension
 from sbmlsim.units import ureg
@@ -122,7 +127,7 @@ def fit_parameters(
             parameter or two parameters have one target.
     """
     n = _count(n)
-    if fisher.n <= fisher.k:
+    if fisher.scaled and fisher.n <= fisher.k:
         raise ValueError(
             f"The Fisher information of '{fisher.opid}' has no degrees of freedom "
             f"(n={fisher.n} data points, k={fisher.k} parameters), its covariance "
@@ -182,6 +187,89 @@ def fit_parameters(
         references={
             target: {"value": float(value), "unit": unit or ""}
             for target, value, unit in zip(names, fisher.values, units, strict=True)
+        },
+    )
+    return Dimension(
+        id,
+        values={
+            target: _column(values[:, k], units[k]) for k, target in enumerate(names)
+        },
+        design=record,
+    )
+
+
+def posterior_parameters(
+    posterior: ParameterPosterior,
+    n: int,
+    *,
+    seed: int | None = None,
+    targets: Mapping[str, str] | None = None,
+    id: str = "posterior",
+) -> Dimension:
+    """Draw the fitted parameters from the Laplace approximation of their posterior.
+
+    The draws are the multivariate normal of the posterior in the space of
+    every parameter (`ParameterPosterior.scales`), transformed back into the
+    units of the model, so a parameter on a logarithmic scale is log-normal.
+    The target of a parameter is the one of the posterior
+    (`FitParameter.target_id`) unless `targets` maps it.
+
+    Args:
+        posterior: the posterior of the fitted parameters.
+        n: the number of points.
+        seed: the seed; `None` draws one, which the record keeps.
+        targets: pid -> the target of the model, overrides the targets of the
+            posterior.
+        id: the id of the dimension.
+
+    Returns:
+        The dimension.
+
+    Raises:
+        ValueError: if `n` is no positive integer, the draws are not finite in
+            the units of the model, a key of `targets` is no parameter or two
+            parameters have one target.
+    """
+    n = _count(n)
+    names = _targets(posterior.pids, posterior.targets, targets)
+    seed = _seed(seed)
+    eigenvalues, eigenvectors = np.linalg.eigh(posterior.covariance)
+    factor = eigenvectors * np.sqrt(np.clip(eigenvalues, 0.0, None))
+    rng = np.random.default_rng(seed)
+    draws = posterior.mean + rng.standard_normal((n, posterior.k)) @ factor.T
+    with np.errstate(over="ignore"):
+        values = np.column_stack(
+            [
+                np.asarray(s.from_scale(draws[:, j]), dtype=float)
+                for j, s in enumerate(posterior.scales)
+            ]
+        )
+    bad = [
+        pid
+        for j, pid in enumerate(posterior.pids)
+        if not np.isfinite(values[:, j]).all()
+    ]
+    if bad:
+        raise ValueError(
+            f"The draws of the parameters {bad} of the posterior of "
+            f"'{posterior.opid}' are not finite in the units of the model."
+        )
+    units = list(posterior.units)
+    record = Design(
+        method="posterior_parameters",
+        options={
+            "n": n,
+            "seed": seed,
+            "opid": posterior.opid,
+            "sid": posterior.sid,
+            "method": posterior.method,
+            "objective": posterior.objective.value,
+            "pids": list(posterior.pids),
+            "scales": [s.name for s in posterior.scales],
+        },
+        references={
+            target: {"value": float(value), "unit": unit or ""}
+            for target, value, unit in zip(names, posterior.values, units, strict=True)
         },
     )
     return Dimension(

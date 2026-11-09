@@ -11,7 +11,7 @@ from copy import copy, deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -57,6 +57,7 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.parameter_mapping import ParameterMapping
 from sbmlsim.fit.parameters import ParameterSet
+from sbmlsim.fit.priors import JointPrior, check_prior_correlation
 from sbmlsim.fit.provenance import data_files
 from sbmlsim.fit.sampling import SamplingType, create_samples
 from sbmlsim.model import SBMLModel
@@ -94,6 +95,9 @@ from sbmlsim.simulator.simulator import scan_point_plans, scan_point_values
 from sbmlsim.simulator.worker import observe, point_plan
 from sbmlsim.units import DimensionalityError, Quantity, UndefinedUnitError, ureg
 from sbmlsim.utils import timeit
+
+if TYPE_CHECKING:
+    from sbmlsim.uncertainty.covariance import Covariance
 
 logger = logging.getLogger(__name__)
 
@@ -680,40 +684,6 @@ def _sd_of_se(
 LIKELIHOOD_FAILURE_RESIDUAL = 1e3
 
 
-def _prior_functions(
-    parameters: Sequence[FitParameter],
-) -> list[tuple[int, Callable[[np.ndarray], np.ndarray], float]]:
-    """Get the log density of the prior of every parameter which has one.
-
-    Args:
-        parameters: the parameters of a problem.
-
-    Returns:
-        The index of the parameter, the function of its log density and the
-        offset of its residual: twice the largest log density on a grid of
-        its bounds and at the parameters of the prior, see
-        `OptimizationProblem._prior_residuals`, plus one.
-    """
-    functions = []
-    for j, parameter in enumerate(parameters):
-        if parameter.prior is None:
-            continue
-        lower, upper = parameter.lower_bound, parameter.upper_bound
-        log_density = parameter.prior.log_density_function(lower, upper)
-        candidates = [np.asarray(parameter.prior.parameters, dtype=float)]
-        if np.isfinite(lower) and np.isfinite(upper):
-            candidates.append(np.linspace(lower, upper, 2001))
-            if lower > 0.0:
-                candidates.append(np.geomspace(lower, upper, 2001))
-        grid = np.concatenate(candidates)
-        grid = grid[(grid >= lower) & (grid <= upper)]
-        values = log_density(grid) if grid.size else np.array([0.0])
-        finite = values[np.isfinite(values)]
-        largest = float(np.max(finite)) if finite.size else 0.0
-        functions.append((j, log_density, 2.0 * max(largest, 0.0) + 1.0))
-    return functions
-
-
 def _log_sd_of_gsd(gsd: np.ndarray, y: np.ndarray, mapping: str) -> np.ndarray:
     """Get the standard deviations of the logarithm from geometric standard deviations.
 
@@ -782,6 +752,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         hybridizations: Sequence[DerivedChanges] | None = None,
         jit_optimization: JitOptimization | str | None = None,
         engine: Engine | str = Engine.ROADRUNNER,
+        prior_correlation: Covariance | None = None,
     ):
         """Optimization problem.
 
@@ -810,10 +781,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                 `set_simulator` with a simulator of another engine loads them
                 again. It is pickled with the problem, so the workers of a
                 parallel fit and a report evaluate with it.
+            prior_correlation: the correlation of the normal scores of the
+                priors of some parameters, `Covariance.correlation` by their
+                pids, which have a normal or a log-normal prior; the priors
+                are independent without, see `sbmlsim.fit.priors`.
 
         Raises:
             ValueError: if the problem has no parameters or two parameters of
-                one id, or the engine is no engine.
+                one id, the engine is no engine or the priors do not take the
+                correlation.
             TypeError: if a hybridization does not provide the derived
                 changes.
         """
@@ -847,6 +823,9 @@ class OptimizationProblem(ObjectJSONEncoder):
         # it was given nor another problem of the same definition; the values
         # of a parameter are immutable, a selector and a prior are shared
         self.parameters = [copy(p) for p in fit_parameters]
+        check_prior_correlation(self.parameters, prior_correlation)
+        #: the correlation of the priors, see `sbmlsim.fit.priors`
+        self.prior_correlation: Covariance | None = prior_correlation
 
         # parameter information
         self.pids = [p.pid for p in self.parameters]
@@ -887,10 +866,8 @@ class OptimizationProblem(ObjectJSONEncoder):
         # the constant of the residuals of the last evaluation of a
         # likelihood, which the cost does not hold, see `_likelihood_terms`
         self._cost_offset = 0.0
-        # the log densities of the priors, see `_prior_residuals`
-        self._priors: (
-            list[tuple[int, Callable[[np.ndarray], np.ndarray], float]] | None
-        ) = None
+        # the prior of the parameters, see `_prior_residuals`
+        self._prior: JointPrior | None = None
         self.xmodel: np.ndarray = np.empty(shape=(len(self.pids)))
         self._reset_mappings()
 
@@ -950,6 +927,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             hybridizations=self.hybridizations,
             jit_optimization=self.jit_optimization,
             engine=self.engine,
+            prior_correlation=self.prior_correlation,
         )
         fresh._amici_cache = self._worker_amici_cache()
         return fresh.__dict__
@@ -4393,12 +4371,41 @@ class OptimizationProblem(ObjectJSONEncoder):
             True,
         )
 
+    @property
+    def prior(self) -> JointPrior:
+        """Get the prior of the parameters, see `sbmlsim.fit.priors`."""
+        if self._prior is None:
+            self._prior = JointPrior(self.parameters, self.prior_correlation)
+        return self._prior
+
+    @property
+    def prior_residual_count(self) -> int:
+        """Get the number of residuals of the priors, the last ones of `residuals`.
+
+        They are part of the residuals of a fit of `ObjectiveType.POSTERIOR`
+        only, the others have none.
+        """
+        if self.objective is not ObjectiveType.POSTERIOR:
+            return 0
+        return len(self.prior)
+
+    def log_prior_density(self, x: np.ndarray) -> float:
+        """Get the log density of the prior of the parameters.
+
+        Args:
+            x: values of the parameters on the linear scale.
+
+        Returns:
+            The log density of the joint prior, see `sbmlsim.fit.priors`, also
+            for an objective which does not use it.
+        """
+        return self.prior.log_density(np.asarray(x, dtype=float))
+
     def _prior_residuals(self, x: np.ndarray) -> tuple[np.ndarray, float]:
         """Get the residuals of the priors of the parameters, see `ObjectiveType`.
 
-        The residual of a prior is `sqrt(c - 2 log p)`, its offset `c` is twice
-        the largest log density of the prior on a grid of its bounds, so the
-        half sum of squares minus the offsets is the negative log density. A
+        The residuals of `sbmlsim.fit.priors.JointPrior`, whose half sum of
+        squares minus the offset is the negative log density of the prior. A
         parameter without a prior has the uniform prior over its bounds,
         which is a constant and has no residual.
 
@@ -4406,20 +4413,13 @@ class OptimizationProblem(ObjectJSONEncoder):
             x: values of the parameters on the linear scale.
 
         Returns:
-            The residuals and the sum of their offsets.
+            The residuals, `LIKELIHOOD_FAILURE_RESIDUAL` where the prior is not
+            defined, and the sum of their offsets.
         """
-        if self._priors is None:
-            self._priors = _prior_functions(self.parameters)
-        residuals = np.zeros(len(self._priors))
-        offset = 0.0
-        for i, (j, log_density, c) in enumerate(self._priors):
-            log_p = float(log_density(np.asarray(x[j], dtype=float)))
-            residuals[i] = (
-                np.sqrt(max(c - 2.0 * log_p, 0.0))
-                if np.isfinite(log_p)
-                else LIKELIHOOD_FAILURE_RESIDUAL
-            )
-            offset += 0.5 * c
+        residuals, offset = self.prior.residuals(np.asarray(x, dtype=float))
+        residuals = np.where(
+            np.isfinite(residuals), residuals, LIKELIHOOD_FAILURE_RESIDUAL
+        )
         return residuals, offset
 
     def evaluate_cost(self, xlog: np.ndarray) -> float:

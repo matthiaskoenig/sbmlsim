@@ -224,6 +224,86 @@ A probability statement is about the predictive distribution, i.e. about what is
 
 `examples/uncertainty_midazolam.py` runs the analysis of this page with an adaptive number of draws, which draws until its hypotheses are decided.
 
+## Priors and the posterior of a fit
+
+A fitted parameter is known from its data and, before the data, from its prior: `FitParameter(prior=...)` takes a prior of PEtab v2, a distribution of [sampling](sampling.md) or an `Uncertain`, truncated at the bounds of the parameter. A parameter without a prior has the uniform prior over its bounds. A fit of the objective `posterior` minimizes the negative log posterior and gives the maximum a posteriori estimate (see [The objective](fitting.md#the-objective)), the objectives `least_squares` and `likelihood` leave the priors out.
+
+### Correlated priors
+
+The priors are independent unless the problem has a `prior_correlation`: a `Covariance.correlation` of parameters with normal or log-normal priors, by their pids. It is the correlation of their normal scores, a Gaussian copula, as everywhere in this package: the multivariate normal of the values of normal priors and of the logarithms of log-normal ones, restricted to the bounds.
+
+```py
+from sbmlsim.fit.cli import FitDefinition
+from sbmlsim.fit.objects import FitParameter
+from sbmlsim.uncertainty import Covariance, Uncertain
+
+parameters = [
+    FitParameter(
+        "CL",
+        lower_bound=1,
+        upper_bound=100,
+        unit="l/hr",
+        prior=Uncertain(Q(20, "l/hr"), cv=0.3),
+    ),
+    FitParameter(
+        "V",
+        lower_bound=10,
+        upper_bound=1000,
+        unit="l",
+        prior=Uncertain(Q(150, "l"), cv=0.4),
+    ),
+]
+definition = FitDefinition(
+    ...,
+    parameters=parameters,
+    prior_correlation=Covariance.correlation({("CL", "V"): 0.6}),
+)
+```
+
+The fit minimizes the correlated priors as whitened residuals (Tarantola 2005): with the normal scores `z` and the Cholesky factor `L` of the correlation `R = L L'`, the residuals `L⁻¹ z` have the half sum of squares `z' R⁻¹ z / 2`, the quadratic form of the multivariate normal, so the Gauss-Newton structure of the least squares optimizer is kept. The cost is the negative log posterior up to a constant of the problem: the correlated priors are normalized without their bounds. The PEtab export writes the priors into the parameter table and the correlation into the `sbmlsim` extension (the gap `prior-correlation`), so the round trip is exact.
+
+### The posterior of a fit
+
+`posterior_laplace` (`sbmlsim.fit.posterior`) is the Laplace approximation of the posterior (Tierney & Kadane 1986): the multivariate normal around the estimate whose precision is the curvature of the negative log posterior, in the space the optimizer searches, the `parameter_scale` of the fit. On a logarithmic scale it is a log-normal of the values.
+
+```
+precision = J' J / σ² + H_prior,   covariance = precision⁻¹
+```
+
+`J' J` is the [Fisher information](identifiability.md#fisher-information) of the data, the Gauss-Newton curvature, which is exact for normal noise of a known scale and a model linear in the parameters. `H_prior` is the Hessian of the negative log density of the priors, by central differences. What enters is what the fit minimized: `posterior` the likelihood and the priors, `likelihood` the likelihood alone, and `least_squares` the weighted least squares as the likelihood of normal noise of the variance `σ² = 2 cost / (n - k)`, whose posterior covariance is the covariance of the Fisher information.
+
+```py
+from sbmlsim.fit.posterior import ParameterPosterior, posterior_laplace
+
+posterior = posterior_laplace(problem, settings, parameter_set)  # or run.posterior()
+print(posterior.summary_df)  # value, sd on the scale, 95 % interval, unit
+print(posterior.correlation)
+posterior.write(Path("results"))  # posterior.json
+posterior = ParameterPosterior.read(Path("results"))
+```
+
+A direction which neither the data nor the priors constrain has no curvature: the posterior is the uniform prior of the bounds there, which no normal describes, and `posterior_laplace` raises and names the parameters of the direction. Give them priors, or see the [profile likelihood](identifiability.md#profile-likelihood). `posterior.problems` lists, and the log warns, where the approximation is questionable: a parameter at a bound, where the posterior is cut off, and a 95 % interval which reaches past a bound. The kinds `fit` and `fisher` of the run layer write the posterior with `posterior: true` into `posterior.json`, see [Analyses](run.md); the record of an adopted fit keeps it.
+
+### The posterior and the priors as a source
+
+The posterior is the uncertainty of the parameters of a propagation, of a scan and of a sensitivity analysis. Its marginals are a normal (linear scale) or a log-normal (logarithmic scale) per target, and their correlation of the normal scores makes them the normal of the space of the parameters:
+
+```py
+from sbmlsim.simulation.sampling import lhs, posterior_parameters, sobol
+from sbmlsim.uncertainty import propagate
+
+uq = posterior.uncertainty_model()  # the marginals and the correlation
+res = propagate(model, simulations, uq, observables, outputs=["pk.auc"], n=512)
+
+draws = posterior_parameters(posterior, 200, seed=1234)  # a Dimension of a Scan
+points = lhs(posterior.distributions(), 200, correlation=posterior.rank_correlation())
+indices = sobol(posterior.distributions(), 1024)  # independent marginals
+```
+
+`rank_correlation` is the Spearman correlation `6 / π asin(r / 2)` of the normal, which the designs `lhs` and `random` convert back. The Sobol, FAST and Morris designs of a sensitivity analysis take independent marginals; with correlated parameters the first-order indices are no decomposition of the variance. A parameter of a version (two parameters of one target) needs `targets=` to give the versions different targets.
+
+The priors of a problem are a source in the same way, e.g. for the parameters from the literature which no data informs: `prior_distributions(problem)` (`sbmlsim.fit.priors`) gives every target its prior truncated at the bounds or the uniform distribution over the bounds, and `prior_model(problem)` the `UncertaintyModel` with the correlation of the priors.
+
 ## The uncertainty of the fitted parameters
 
 The fitted parameters of a model are known only within their confidence intervals, and so are its predictions. The records of the adopted fits, their distributions and the run of the experiments over their draws make the uncertainty of the fitted parameters part of the model. A fit becomes part of a model in three steps: it is adopted, the factory takes its values with their uncertainty, and a run draws them.
@@ -286,3 +366,6 @@ The experiments of a project run over the draws of the fitted parameters with `P
 - Robbins H (1970). Statistical methods related to the law of the iterated logarithm. Ann Math Stat 41:1397-1409. Lai TL (1976). On confidence sequences. Ann Stat 4:265-280. Howard SR, Ramdas A, McAuliffe J, Sekhon J (2021). Time-uniform, nonparametric, nonasymptotic confidence sequences. Ann Stat 49:1055-1080.
 - Schuirmann DJ (1987). A comparison of the two one-sided tests procedure and the power approach for assessing the equivalence of average bioavailability. J Pharmacokinet Biopharm 15:657-680.
 - Gelman A, Carlin JB, Stern HS, Dunson DB, Vehtari A, Rubin DB (2013). Bayesian Data Analysis, 3rd ed. CRC Press.
+- Tierney L, Kadane JB (1986). Accurate approximations for posterior moments and marginal densities. J Am Stat Assoc 81:82-86.
+- Tarantola A (2005). Inverse Problem Theory and Methods for Model Parameter Estimation. SIAM.
+- Pearson K (1907). Mathematical contributions to the theory of evolution XVI: on further methods of determining correlation. Drapers' Company Research Memoirs, Biometric Series IV.

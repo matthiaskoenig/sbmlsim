@@ -308,6 +308,17 @@ GAPS: tuple[Gap, ...] = (
         "the gap `sciml-priors`, which raises",
     ),
     Gap(
+        id="prior-correlation",
+        kind=GapKind.EXTENSION,
+        sbmlsim="the correlation of the normal scores of the priors of "
+        "parameters, `OptimizationProblem.prior_correlation`, see "
+        "`sbmlsim.fit.priors`",
+        petab="PEtab v2 has independent priors only",
+        detail="the parameter table has the prior of every parameter, the "
+        "extension the correlation; a tool which reads the tables alone "
+        "evaluates the priors as independent",
+    ),
+    Gap(
         id="parameter-scale",
         kind=GapKind.EXTENSION,
         sbmlsim="`FitParameter.scale`, the space the optimizer searches one "
@@ -565,6 +576,8 @@ def gaps_of_problem(
         parameter.prior is not None for parameter in problem.parameters
     ):
         hits.add("priors")
+    if problem.prior_correlation is not None:
+        hits.add("prior-correlation")
     if any(parameter.scale is not None for parameter in problem.parameters):
         hits.add("parameter-scale")
     for hybridization in problem.hybridizations:
