@@ -482,6 +482,54 @@ class Plan:
             self, preinit=tuple(preinit), events=events, steady_state=steady_state
         )
 
+    def until(self, time: float) -> Plan:
+        """Get the plan which ends at a time, without the changes after it.
+
+        The output of a plan of output times at a time does not depend on what
+        happens after it, so a plan whose last output time is before its end
+        is simulated to its last output time: roadrunner integrates every
+        output time exactly, and the rows are the ones of the plan, bitwise.
+        The changes after the time are dropped, so the values of a fit, of
+        the point of a scan and of a subject are applied before, see
+        `OptimizationProblem.evaluated_plan`. A model with events is not
+        ended earlier, since the executor stops its segments just before
+        their end and treats an event at the end of the simulation apart, see
+        `sbmlsim.simulator.executor`.
+
+        Args:
+            time: the new end, at least the last output time of the plan.
+
+        Returns:
+            The new plan, this one if it ends at the time already.
+
+        Raises:
+            ValueError: if the plan has no output times, an output after the
+                time, a steady state after its end, the model has events or
+                the time is outside of the simulation.
+        """
+        if time == self.end:
+            return self
+        if (
+            self.output is not OutputMode.TIMES
+            or self.steady_state_output is not None
+            or self.symbols.events
+        ):
+            raise ValueError(
+                "Only a plan of output times without a steady state after its end "
+                "of a model without events ends before its end."
+            )
+        if not self.start <= time <= self.end or any(t > time for t in self.times):
+            raise ValueError(
+                f"The plan of the simulation [{self.start}, {self.end}] with the "
+                f"last output time {max(self.times, default=self.start)} cannot end "
+                f"at {time}."
+            )
+        return replace(
+            self,
+            end=time,
+            events=tuple(event for event in self.events if event.time <= time),
+        )
+
     def _with_change(self, values: Mapping[str, float], at: float) -> Plan:
         """Get the plan with the values as a change at a time, see `with_values`."""
         if not self.start <= at <= self.end:
