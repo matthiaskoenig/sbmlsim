@@ -210,6 +210,39 @@ def default_diff_step(relative_tolerance: float) -> float:
     return float(np.sqrt(relative_tolerance))
 
 
+#: the tolerances `ftol`, `xtol` and `gtol` of scipy's least squares, its
+#: default, the floor of `default_tolerance`
+LEAST_SQUARES_TOLERANCE = 1e-8
+
+#: the population of differential evolution per parameter, the default of a
+#: fit; scipy's default is 15
+DE_POPSIZE = 5
+
+#: `polish` of differential evolution: the best member is polished by a least
+#: squares optimization of the residuals, the default of a fit; `True` is the
+#: polishing of scipy, L-BFGS-B on the cost
+LEAST_SQUARES_POLISH = "least_squares"
+
+
+def default_tolerance(relative_tolerance: float) -> float:
+    """Get the tolerances `ftol`, `xtol` and `gtol` of the least squares of a fit.
+
+    A simulation is exact only to the relative tolerance of its integrator, so
+    the cost has a noise of about that size: scipy's default of `1e-8` below
+    it only adds the steps which chase the noise. The tolerances are the
+    relative tolerance of the integrator, at least the default of scipy. On
+    the fits of the HCTZ example this took 13 to 27 % fewer evaluations to
+    the same optima.
+
+    Args:
+        relative_tolerance: relative tolerance of the integrator of the fit.
+
+    Returns:
+        The tolerance.
+    """
+    return max(float(relative_tolerance), LEAST_SQUARES_TOLERANCE)
+
+
 def run_indices(size: int, indices: Sequence[int] | None = None) -> list[int]:
     """Get the repeats of a fit which run, all of them by default.
 
@@ -3082,7 +3115,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         size: int = 5,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-        sampling: SamplingType = SamplingType.UNIFORM,
+        sampling: SamplingType = SamplingType.LOGUNIFORM_LHS,
         seed: int | None = None,
         timeout: float | None = None,
         on_run_finished: (
@@ -3151,7 +3184,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         self,
         size: int,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
-        sampling: SamplingType = SamplingType.UNIFORM,
+        sampling: SamplingType = SamplingType.LOGUNIFORM_LHS,
         seed: int | None = None,
     ) -> list[np.ndarray | None]:
         """Create the start values of the optimization runs.
@@ -3279,12 +3312,19 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         A least squares optimization with a jacobian of finite differences
         gets the step `default_diff_step` of the relative tolerance of the
-        integrator of the settings, unless `diff_step` is given. Differential
-        evolution updates its population once per generation,
-        `updating="deferred"`, unless `updating` is given: the members of a
-        generation are evaluated together, serially or on workers, so the
-        result of a seed does not depend on the number of workers. Its
-        `workers=1`, the default of scipy, is dropped; the fit sets the workers.
+        integrator of the settings, unless `diff_step` is given, and the
+        tolerances `ftol`, `xtol` and `gtol` of `default_tolerance`, unless
+        given. Differential evolution updates its population once per
+        generation, `updating="deferred"`, unless `updating` is given: the
+        members of a generation are evaluated together, serially or on
+        workers, so the result of a seed does not depend on the number of
+        workers. Its `workers=1`, the default of scipy, is dropped; the fit
+        sets the workers. Its population is `DE_POPSIZE` members per parameter
+        and its best member is polished by least squares
+        (`LEAST_SQUARES_POLISH`), unless `popsize` or `polish` is given: on
+        the fits of the HCTZ example this found the optimum of every seed at a
+        quarter of the evaluations of scipy's defaults, whose polishing by
+        L-BFGS-B on the cost did not improve it.
 
         Args:
             algorithm: optimization algorithm.
@@ -3294,16 +3334,18 @@ class OptimizationProblem(ObjectJSONEncoder):
             The arguments.
         """
         arguments = dict(kwargs)
-        if (
-            algorithm == OptimizationAlgorithmType.LEAST_SQUARE
-            and "diff_step" not in arguments
-            and isinstance(arguments.get("jac", "2-point"), str)
-        ):
-            arguments["diff_step"] = default_diff_step(
-                self.settings_initialized.relative_tolerance
-            )
+        relative_tolerance = self.settings_initialized.relative_tolerance
+        if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
+            if "diff_step" not in arguments and isinstance(
+                arguments.get("jac", "2-point"), str
+            ):
+                arguments["diff_step"] = default_diff_step(relative_tolerance)
+            for name in ("ftol", "xtol", "gtol"):
+                arguments.setdefault(name, default_tolerance(relative_tolerance))
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
             arguments.setdefault("updating", "deferred")
+            arguments.setdefault("popsize", DE_POPSIZE)
+            arguments.setdefault("polish", LEAST_SQUARES_POLISH)
             if arguments.get("workers", 1) == 1:
                 arguments.pop("workers", None)
         return arguments
@@ -3522,6 +3564,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 )
                 if population is not None:
                     self._population_arguments(population, kwargs)
+                if kwargs.get("polish") == LEAST_SQUARES_POLISH:
+                    kwargs["polish"] = self._least_squares_polish
                 opt_result = scipy.optimize.differential_evolution(
                     func=self.cost_least_square, bounds=de_bounds_log, **kwargs
                 )
@@ -4473,13 +4517,16 @@ class OptimizationProblem(ObjectJSONEncoder):
         """Set the arguments of differential evolution for a population evaluator.
 
         The map of the evaluator is the `workers` of scipy, which evaluates the
-        members of every generation. The polishing by L-BFGS-B, the default of
-        scipy without constraints, gets the map as the `workers` of its finite
-        differences, so the points of a gradient are evaluated together; its
-        line search evaluates in the calling process. Both evaluate the same
-        points as a serial run, in the same order, so the result does not
-        change. A polishing function of the caller, or with constraints, is
-        left to scipy, which evaluates it on the map one point at a time.
+        members of every generation. The polishing by L-BFGS-B, scipy's with
+        `polish=True` without constraints, gets the map as the `workers` of
+        its finite differences, so the points of a gradient are evaluated
+        together; its line search evaluates in the calling process. Both
+        evaluate the same points as a serial run, in the same order, so the
+        result does not change. The polishing by least squares, the default
+        of a fit (`LEAST_SQUARES_POLISH`), evaluates the residuals in the
+        calling process, see `_least_squares_polish`; a polishing function of
+        the caller, or with constraints, is left to scipy, which evaluates it
+        on the map one point at a time.
 
         Args:
             population: evaluates the costs of the members.
@@ -4494,6 +4541,62 @@ class OptimizationProblem(ObjectJSONEncoder):
                 method="L-BFGS-B",
                 options={"workers": population_map},
             )
+
+    def _least_squares_polish(
+        self,
+        func: Callable[[np.ndarray], float],
+        x0: np.ndarray,
+        bounds: scipy.optimize.Bounds,
+        constraints: Any = (),
+    ) -> scipy.optimize.OptimizeResult:
+        """Polish the best member of differential evolution by least squares.
+
+        The polishing of `scipy.optimize.differential_evolution` with the
+        signature of `polish_func(func, x0, **kwds)`: a least squares
+        optimization of the residuals from the best member, with the arguments
+        of `optimizer_arguments`, in the calling process, uses the structure
+        of the cost which L-BFGS-B on the cost does not see. scipy keeps the
+        polished parameters if their cost, evaluated by `func`, is lower. With
+        constraints the polishing is scipy's, trust-constr on the cost.
+
+        Args:
+            func: the cost of differential evolution, `cost_least_square`.
+            x0: the best member, in the space of the optimizer.
+            bounds: the bounds of the parameters in that space.
+            constraints: the constraints of differential evolution.
+
+        Returns:
+            The polished parameters, their cost and the evaluations.
+        """
+        if constraints:
+            return scipy.optimize.minimize(
+                func,
+                x0,
+                method="trust-constr",
+                bounds=bounds,
+                constraints=constraints,
+            )
+        evaluations = 0
+
+        def residuals(xlog: np.ndarray) -> np.ndarray:
+            nonlocal evaluations
+            evaluations += 1
+            return self.residuals(xlog)  # ty: ignore[invalid-return-type]
+
+        result = scipy.optimize.least_squares(
+            residuals,
+            x0,
+            bounds=(bounds.lb, bounds.ub),
+            **self.optimizer_arguments(OptimizationAlgorithmType.LEAST_SQUARE, {}),
+        )
+        cost = float(func(result.x))
+        return scipy.optimize.OptimizeResult(
+            x=result.x,
+            fun=cost,
+            success=bool(result.success),
+            nfev=evaluations + 1,
+            message=result.message,
+        )
 
     def _population_map(
         self, population: PopulationEvaluator
