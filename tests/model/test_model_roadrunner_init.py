@@ -520,6 +520,9 @@ def test_a_value_is_set_back_only_where_it_changed_and_can_be_set() -> None:
     )
     assert _changed(np.array([1.0, np.nan, 5.0, 4.0]), state).tolist() == [3]
     assert _changed(np.array([0.0, 1.0, 2.0, 3.0]), state).tolist() == [0, 1]
+    # the first values only, e.g. the parameters and the compartments
+    assert _changed(np.array([0.0, np.nan]), state).tolist() == [0]
+    assert _changed(np.array([1.0, 1.0]), state).tolist() == [1]
 
 
 def test_the_values_as_loaded_do_not_follow_a_simulation() -> None:

@@ -88,9 +88,10 @@ def reset_values(r: roadrunner.RoadRunner) -> None:
     Args:
         r: the roadrunner instance.
     """
+    model = r.model
     r.getIntegrator().setIntegrationStartTime(0.0)
-    r.model.setIntegrationStartTime(0.0)
-    _roadrunner.ExecutableModel_reset(r.model, RESET_ALL)
+    model.setIntegrationStartTime(0.0)
+    _roadrunner.ExecutableModel_reset(model, RESET_ALL)
 
 
 def fire_initial_events(r: roadrunner.RoadRunner) -> None:
@@ -107,10 +108,11 @@ def fire_initial_events(r: roadrunner.RoadRunner) -> None:
     Args:
         r: the roadrunner instance.
     """
-    r.getIntegrator().setIntegrationStartTime(0.0)
-    r.model.setIntegrationStartTime(0.0)
-    _roadrunner.ExecutableModel_setTime(r.model, -np.inf)
-    _roadrunner.Integrator_restart(r.getIntegrator(), 0.0)
+    integrator, model = r.getIntegrator(), r.model
+    integrator.setIntegrationStartTime(0.0)
+    model.setIntegrationStartTime(0.0)
+    _roadrunner.ExecutableModel_setTime(model, -np.inf)
+    _roadrunner.Integrator_restart(integrator, 0.0)
 
 
 def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
@@ -708,11 +710,8 @@ class RoadrunnerSBMLModel(SBMLModel):
         """
         r = self.r_loaded
         state = self._loaded_state()
-        current = _state_values(r)
-        changed = _changed(current, state)
-        if not species:
-            changed = changed[changed < state.first_species]
-        for k in changed:
+        current = _state_values(r) if species else _parameter_values(r)
+        for k in _changed(current, state):
             r.setValue(state.ids[k], float(state.values[k]))
 
     @override
@@ -1367,6 +1366,12 @@ class _State:
         """Get the index of every id in `ids`."""
         return {sid: k for k, sid in enumerate(self.ids)}
 
+    @cached_property
+    def nan(self) -> np.ndarray | None:
+        """Get whether a value as loaded is `NaN`, `None` if none is."""
+        nan = np.isnan(self.values)
+        return nan if nan.any() else None
+
 
 def _changed(current: np.ndarray, state: _State) -> np.ndarray:
     """Get the indices of the values which differ from the model as loaded.
@@ -1376,14 +1381,18 @@ def _changed(current: np.ndarray, state: _State) -> np.ndarray:
     roadrunner refuses to set, is never one of them.
 
     Args:
-        current: the values of `_state_values` now.
+        current: the values of `_state_values` now, or its first values, e.g.
+            the parameters and the compartments of `_parameter_values`.
         state: the values as loaded.
 
     Returns:
         The indices into `state.ids`, in their order.
     """
-    differ = (current != state.values) & ~(np.isnan(current) & np.isnan(state.values))
-    return np.flatnonzero(differ & state.settable)
+    n = current.size
+    differ = (current != state.values[:n]) & state.settable[:n]
+    if state.nan is not None:
+        differ &= ~(state.nan[:n] & np.isnan(current))
+    return np.flatnonzero(differ)
 
 
 def _state_ids(r: roadrunner.RoadRunner) -> list[str]:
@@ -1406,6 +1415,17 @@ def _state_values(r: roadrunner.RoadRunner) -> np.ndarray:
             np.asarray(m.getCompartmentVolumes(), dtype=float),
             np.asarray(m.getBoundarySpeciesAmounts(), dtype=float),
             np.asarray(m.getFloatingSpeciesAmounts(), dtype=float),
+        ]
+    )
+
+
+def _parameter_values(r: roadrunner.RoadRunner) -> np.ndarray:
+    """Get the values of the parameters and the compartments, the first ones of `_state_values`."""
+    m = r.model
+    return np.concatenate(
+        [
+            np.asarray(m.getGlobalParameterValues(), dtype=float),
+            np.asarray(m.getCompartmentVolumes(), dtype=float),
         ]
     )
 
