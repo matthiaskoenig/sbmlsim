@@ -31,6 +31,7 @@ from sbmlsim.simulation.sampling.distributions import (
 from sbmlsim.simulation.sampling.fit import (
     fit_parameters,
     fit_repeats,
+    posterior_parameters,
     profile_parameters,
 )
 from sbmlsim.simulation.sampling.model_distributions import (
@@ -64,6 +65,7 @@ __all__ = [
     "parameter_distributions",
     "parameters_of",
     "population",
+    "posterior_parameters",
     "profile_parameters",
     "random",
     "references",

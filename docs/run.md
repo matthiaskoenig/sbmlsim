@@ -78,7 +78,7 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `simulate` | the simulation experiments of the project with their report | whole | |
 | `fit` | the repeats of the optimization of a fit problem | blocks of repeats | |
 | `identifiability` | the profile likelihoods of the parameters of a fit | one per parameter | `fit` |
-| `fisher` | the Fisher information of a fit | whole | `fit` |
+| `fisher` | the Fisher information of a fit, with `posterior` the Laplace approximation of its posterior | whole | `fit` |
 | `report` | the report of a fit, with its profiles and Fisher information when the input has them | whole | `fit` |
 | `petab` | the fit problem as a PEtab v2 problem, starting from the best parameters of a fit if one is given | whole | `fit` |
 | `adopt` | the adoption of a finished fit: its record and the adopted fits of the project with it | whole | `fit` |
@@ -122,6 +122,7 @@ A spec forbids unknown fields. The fit kinds name a fit problem, the other kinds
 | `identifiability` | `false` | compute the profile likelihoods of the parameters of the best run after the fit, `<opid>/identifiability.json` |
 | `profile` | the defaults | the settings of these profiles, the ones of the kind `identifiability` (`ProfileSpec`), e.g. `{"max_points": 10}`, with `pids` the parameters to profile (every parameter which is no element of a network without) |
 | `fisher` | `true` | compute the Fisher information with the profiles, `<opid>/fisher.json` |
+| `posterior` | `false` | compute the [Laplace approximation of the posterior](uncertainty.md#the-posterior-of-a-fit) of the best run, `<opid>/posterior.json`, from the Fisher information of the profiles when the fit computes them |
 | `report` | `false`, with `adopt` `true` | write the report of the fit into `<opid>`, with the title of the project and the fixed adopted fits |
 | `mapping_figures` | `true` | draw the figure of every fit mapping in the report |
 | `adopt` | `false` | adopt the fit, which needs `identifiability`: its record into `fits/<opid>` and `adopted.json`, the adopted fits of the project with this fit for its subset |
@@ -148,6 +149,7 @@ The settings are the ones of the [profile likelihood](identifiability.md#profile
 | kind | field | default | meaning |
 | --- | --- | --- | --- |
 | `fisher` | `step` | of `fisher_information` | the relative step of the finite differences |
+| `fisher` | `posterior` | `false` | compute the [Laplace approximation of the posterior](uncertainty.md#the-posterior-of-a-fit) from the Fisher information as well, `posterior.json` |
 | `report` | `mapping_figures` | `true` | draw the figure of every fit mapping |
 | `report` | `group_by` | the groupings of the problem | the groupings of the report, the columns of one grouping per list |
 | `report` | `adopted` | `false` | report the adopted fit of the subset from its record in the project, of every adopted fit for the subset `all` (no fit subset of a project may be named `all`), into `<fit id>/`, without the input `fit` |
@@ -217,9 +219,9 @@ The results of the kinds:
 | kind | results |
 | --- | --- |
 | `simulate` | `index.html` and a directory per experiment |
-| `fit` | `<opid>/runs/<opid>_run_<k>.json` (the repeats), `<opid>/optimization_result.json`, `<opid>/parameters.json` (the best run), `<opid>/fits.tsv`, with `identifiability` also `<opid>/identifiability.json` and `<opid>/fisher.json`, with `report` the report in `<opid>`, with `adopt` also `fits/<opid>` (the record of the adopted fit) and `adopted.json` |
+| `fit` | `<opid>/runs/<opid>_run_<k>.json` (the repeats), `<opid>/optimization_result.json`, `<opid>/parameters.json` (the best run), `<opid>/fits.tsv`, with `identifiability` also `<opid>/identifiability.json` and `<opid>/fisher.json`, with `posterior` also `<opid>/posterior.json`, with `report` the report in `<opid>`, with `adopt` also `fits/<opid>` (the record of the adopted fit) and `adopted.json` |
 | `identifiability` | `profiles/<pid>.json` (the profiles), `identifiability.json`, `fisher.json` and a copy of the records of the fit, `optimization_result.json` and `parameters.json` |
-| `fisher` | `fisher.json` and a copy of the records of the fit |
+| `fisher` | `fisher.json`, with `posterior` also `posterior.json`, and a copy of the records of the fit |
 | `report` | `report/`, with `adopted` a directory per adopted fit, `<fit id>/` |
 | `adopt` | `fits/<fit id>` (the record of the fit) and `adopted.json` |
 | `petab` | `petab/problem.yaml` and its tables |

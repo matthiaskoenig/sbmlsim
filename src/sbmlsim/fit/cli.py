@@ -58,6 +58,7 @@ from sbmlsim.fit.options import (
     OptimizationStrategy,
 )
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
+from sbmlsim.fit.posterior import ParameterPosterior, posterior_laplace
 from sbmlsim.fit.provenance import create_provenance
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult, fit_id
@@ -68,6 +69,7 @@ from sbmlsim.utils import paths_text
 
 if TYPE_CHECKING:
     from sbmlsim.project import Project
+    from sbmlsim.uncertainty.covariance import Covariance
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +125,9 @@ class FitDefinition:
             process which creates the problem. A project gives the definitions
             of its fits the level of its simulator, see
             `sbmlsim.project.Project.load_fit_definitions`.
+        prior_correlation: the correlation of the normal scores of the priors
+            of some parameters, `Covariance.correlation` by their pids, see
+            `sbmlsim.fit.priors`; the priors are independent without.
     """
 
     mapping_collections: Callable[[], dict[str, list[FitMappingCollection]]]
@@ -134,6 +139,7 @@ class FitDefinition:
     description: str = ""
     groupings: Sequence[Grouping] = ()
     jit_optimization: JitOptimization | None = None
+    prior_correlation: Covariance | None = None
 
     def __post_init__(self) -> None:
         """Check the optimization level, a name of a level becomes the level.
@@ -198,6 +204,7 @@ class FitDefinition:
             data_path=self.data_path,
             hybridizations=self.hybridizations,
             jit_optimization=self.jit_optimization,
+            prior_correlation=self.prior_correlation,
         )
 
 
@@ -240,6 +247,23 @@ class FitRun:
             parameters.
         """
         return fisher_information(
+            problem=self.problem,
+            settings=self.result.settings_stored,
+            parameter_set=self.result.parameter_set(),
+            **kwargs,
+        )
+
+    def posterior(self, **kwargs: Any) -> ParameterPosterior:
+        """Get the Laplace approximation of the posterior around the best run.
+
+        Args:
+            kwargs: additional arguments of `posterior_laplace`, e.g. the
+                `fisher` information of `fisher()`, whose jacobian it reuses.
+
+        Returns:
+            The posterior, a normal in the space of the optimizer.
+        """
+        return posterior_laplace(
             problem=self.problem,
             settings=self.result.settings_stored,
             parameter_set=self.result.parameter_set(),

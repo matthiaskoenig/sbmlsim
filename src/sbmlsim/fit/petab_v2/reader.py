@@ -83,6 +83,7 @@ if TYPE_CHECKING:
     from petab.v2.extensions.sciml import SciMLConfig
 
     from sbmlsim.fit.petab_v2.sciml import SciMLReader
+    from sbmlsim.uncertainty.covariance import Covariance
 
 logger = logging.getLogger(__name__)
 
@@ -1979,7 +1980,21 @@ class PetabReader:
             base_path=self.base_path,
             data_path=self.base_path,
             hybridizations=None if self.sciml is None else self.sciml.hybridizations(),
+            prior_correlation=self.prior_correlation(),
         )
+
+    def prior_correlation(self) -> Covariance | None:
+        """Get the correlation of the priors of the extension, see `sbmlsim.fit.priors`.
+
+        Returns:
+            The correlation, `None` for independent priors, which a problem
+            without the extension has.
+        """
+        if self.extension is None or self.extension.prior_correlation is None:
+            return None
+        from sbmlsim.uncertainty.covariance import Covariance
+
+        return Covariance.from_dict(self.extension.prior_correlation)
 
 
 def _local_path(location: AnyUrl | Path | str) -> Path:

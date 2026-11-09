@@ -265,6 +265,20 @@ def test_fisher_writes_fisher_json(fit_out: Path, tmp_path: Path) -> None:
         assert (out / name).exists()
 
 
+def test_fisher_refuses_the_posterior_of_an_unconstrained_fit(
+    fit_out: Path, tmp_path: Path
+) -> None:
+    """The intravenous data does not constrain the absorption, the posterior raises."""
+    with pytest.raises(ValueError, match="do not constrain"):
+        run.execute(
+            "fisher",
+            {"project": PROJECT, "subset": "IV", "posterior": True},
+            tmp_path / "out",
+            workers=1,
+            inputs={"fit": fit_out},
+        )
+
+
 def fisher_rank(out: Path) -> int:
     from sbmlsim.fit.cli import load_fit_records
 

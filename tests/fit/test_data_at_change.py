@@ -1044,7 +1044,7 @@ def test_an_extension_before_0_4_0_compares_the_data_after_a_change(
     )
     config = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
     block = config["extensions"]["sbmlsim"]
-    assert block["version"] == EXTENSION_VERSION == "0.4.0"
+    assert block["version"] == EXTENSION_VERSION == "0.5.0"
     assert block["settings"]["data_at_change"] == DataAtChangeType.BEFORE.value
     assert PetabReader.from_yaml(yaml_file).settings.data_at_change is (
         DataAtChangeType.BEFORE

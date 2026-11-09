@@ -7,7 +7,7 @@ import uuid
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,9 @@ from sbmlsim.fit.options import FitSettings, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet, ParameterSets
 from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.serialization import ObjectJSONEncoder, from_json, to_json
+
+if TYPE_CHECKING:
+    from sbmlsim.uncertainty.covariance import Covariance
 
 logger = logging.getLogger(__name__)
 
@@ -207,6 +210,7 @@ class OptimizationResult(ObjectJSONEncoder):
         settings: FitSettings | dict[str, Any] | None = None,
         units: Mapping[str, str | None] | None = None,
         provenance: FitProvenance | dict[str, Any] | None = None,
+        prior_correlation: Covariance | Mapping[str, Any] | None = None,
     ):
         """Initialize optimization result.
 
@@ -227,6 +231,8 @@ class OptimizationResult(ObjectJSONEncoder):
             provenance: what the fit ran with (arguments, seeds, versions, git
                 revision, checksums), `None` for a result of a fit which did not
                 record it.
+            prior_correlation: the correlation of the priors of the problem,
+                see `sbmlsim.fit.priors`, `None` for independent priors.
         """
         super().__init__()
         self.opid = opid
@@ -251,6 +257,14 @@ class OptimizationResult(ObjectJSONEncoder):
             provenance = FitProvenance.from_dict(provenance)
         #: what the fit ran with, `None` for a result of a fit before #334
         self.provenance: FitProvenance | None = provenance
+
+        if isinstance(prior_correlation, Mapping):
+            from sbmlsim.uncertainty.covariance import Covariance
+
+            prior_correlation = Covariance.from_dict(prior_correlation)
+        #: the correlation of the priors of the problem, `None` for independent
+        #: priors
+        self.prior_correlation: Covariance | None = prior_correlation
 
         self.fits: list[OptimizeResult] = []
         for fit in fits:
@@ -288,6 +302,7 @@ class OptimizationResult(ObjectJSONEncoder):
         settings: FitSettings | None = None,
         units: Mapping[str, str | None] | None = None,
         provenance: FitProvenance | None = None,
+        prior_correlation: Covariance | None = None,
     ) -> Path:
         """Store a single optimization run as JSON.
 
@@ -309,6 +324,7 @@ class OptimizationResult(ObjectJSONEncoder):
             settings: settings of the fit.
             units: the units of pint of the parameters, see `__init__`.
             provenance: what the fit ran with, every run carries it.
+            prior_correlation: the correlation of the priors of the problem.
 
         Returns:
             Path of the file the run was written to.
@@ -324,6 +340,7 @@ class OptimizationResult(ObjectJSONEncoder):
             settings=settings,
             units=units,
             provenance=provenance,
+            prior_correlation=prior_correlation,
         ).to_json()
         write_text_atomic(path, str(text))
         return path
@@ -389,6 +406,8 @@ class OptimizationResult(ObjectJSONEncoder):
             d[key] = self.__dict__[key]
         d["settings"] = self.settings.to_dict() if self.settings else None
         d["provenance"] = self.provenance.to_dict() if self.provenance else None
+        if self.prior_correlation is not None:
+            d["prior_correlation"] = self.prior_correlation.to_dict()
         return d
 
     def to_json(self, path: Path | None = None) -> str | Path:
@@ -532,6 +551,7 @@ class OptimizationResult(ObjectJSONEncoder):
             settings=opt_results[0].settings,
             units=opt_results[0].units,
             provenance=opt_results[0].provenance,
+            prior_correlation=opt_results[0].prior_correlation,
         )
 
     @property

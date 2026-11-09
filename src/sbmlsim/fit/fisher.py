@@ -14,6 +14,13 @@ parameters:
 
     FIM = J' J,   cov = σ² (J' J)⁻¹,   σ² = 2 cost / (n - k)
 
+A fit of the likelihood (`ObjectiveType.LIKELIHOOD` or `POSTERIOR`) has the
+scale of the noise in its residuals, so its covariance is `(J' J)⁻¹` without
+`σ²`, and its intervals are the ones of the normal distribution. The
+information is the one of the data: the residuals of the priors of a fit of
+the posterior are no part of it, the Laplace approximation of the posterior,
+`sbmlsim.fit.posterior`, adds the curvature of the priors.
+
 The two analyses answer different questions and disagree where the cost is not
 a quadratic: the Fisher information is a local statement about the optimum, the
 profile likelihood follows the cost until it rises by the threshold. A
@@ -32,10 +39,11 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from scipy.stats import t as student_t
 
 from sbmlsim.fit.optimization import OptimizationProblem
-from sbmlsim.fit.options import FitSettings, ParameterScaleType
+from sbmlsim.fit.options import FitSettings, ObjectiveType, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
 
 logger = logging.getLogger(__name__)
@@ -86,8 +94,9 @@ class FisherInformation:
             their own.
         scales: the space of every parameter, in the order of the matrix.
             Without them every parameter has the scale `scale`.
-        matrix: the Fisher information `J' J`.
-        cost: cost of the parameter set.
+        matrix: the Fisher information `J' J` of the residuals of the data.
+        cost: cost of the data at the parameter set, the weighted least
+            squares or the negative log-likelihood, without the priors.
         n: number of data points of the fit.
         alpha: confidence level of the intervals.
         rank_tolerance: eigenvalues below this fraction of the largest one are
@@ -101,6 +110,8 @@ class FisherInformation:
         targets: the target of the model every parameter is written to, in the
             order of the matrix (`FitParameter.target_id`); empty for an
             information which does not know them, then the pids are the targets.
+        objective: what the fit minimized; a fit of the likelihood has the
+            noise in its residuals, see `scaled`.
     """
 
     opid: str
@@ -117,6 +128,7 @@ class FisherInformation:
     units: list[str | None] = field(default_factory=list)
     scales: list[ParameterScaleType] = field(default_factory=list)
     targets: list[str] = field(default_factory=list)
+    objective: ObjectiveType = ObjectiveType.LEAST_SQUARES
 
     #: the covariance is read by the errors, the correlations and the table, so
     #: the warning of a rank deficient information is logged for the first of
@@ -198,12 +210,26 @@ class FisherInformation:
         )
 
     @property
+    def scaled(self) -> bool:
+        """Check whether the covariance is scaled by the variance of the residuals.
+
+        The residuals of a fit of least squares are weighted by weights whose
+        scale is arbitrary, so the variance of the residuals is estimated from
+        them; the residuals of a likelihood are in units of the noise.
+        """
+        return self.objective is ObjectiveType.LEAST_SQUARES
+
+    @property
     def sigma2(self) -> float:
         """Get the variance of the residuals, `2 cost / (n - k)`.
 
         A fit with as many parameters as data points has no degrees of freedom
-        left and no variance to estimate, which is `nan`.
+        left and no variance to estimate, which is `nan`. A fit of the
+        likelihood has residuals in units of the noise, the variance 1, see
+        `scaled`.
         """
+        if not self.scaled:
+            return 1.0
         dof = self.n - self.k
         if dof <= 0:
             return float("nan")
@@ -297,19 +323,23 @@ class FisherInformation:
         """Get the confidence interval of every parameter.
 
         The interval is `θ ± t · SE` in the space the optimizer searches, with
-        the quantile of the t distribution of `n - k` degrees of freedom, and
-        is transformed back into the units of the model, every parameter with
+        the quantile of the t distribution of `n - k` degrees of freedom (of
+        the normal distribution for a fit of the likelihood, see `scaled`),
+        and is transformed back into the units of the model, every parameter with
         its own scale. On a logarithmic scale the interval is therefore not
         symmetric around the value.
 
         Returns:
             The lower and the upper bound in the units of the model.
         """
-        dof = self.n - self.k
-        if dof <= 0:
-            nan = np.full(self.k, np.nan)
-            return nan, nan
-        quantile = float(student_t.ppf(0.5 + self.alpha / 2.0, dof))
+        if self.scaled:
+            dof = self.n - self.k
+            if dof <= 0:
+                nan = np.full(self.k, np.nan)
+                return nan, nan
+            quantile = float(student_t.ppf(0.5 + self.alpha / 2.0, dof))
+        else:
+            quantile = float(norm.ppf(0.5 + self.alpha / 2.0))
         scaled = self.to_scale(self.values)
         delta = quantile * self.standard_errors
         # the error of a direction the data does not constrain is huge, its
@@ -399,6 +429,8 @@ class FisherInformation:
             units=list(d.get("units", [])),
             scales=[ParameterScaleType[name] for name in d.get("scales", [])],
             targets=list(d.get("targets", [])),
+            # a record before the objective was stored is of least squares
+            objective=ObjectiveType(d.get("objective", "least_squares")),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -418,6 +450,7 @@ class FisherInformation:
             "step": self.step,
             "units": list(self.units),
             "targets": list(self.targets),
+            "objective": self.objective.value,
         }
 
 
@@ -478,8 +511,8 @@ def fisher_information(
     values = problem.bind_parameter_set(parameter_set).x(problem.pids)
     x = problem.to_scale(values)
 
-    residuals = np.asarray(problem.residuals(x), dtype=float)
-    jac = jacobian(problem, x, step=step)
+    residuals, cost, n = data_residuals(problem, x)
+    jac = jacobian(problem, x, step=step)[: residuals.size]
     matrix = jac.T @ jac
 
     return FisherInformation(
@@ -489,8 +522,8 @@ def fisher_information(
         values=values,
         scale=problem.parameter_scale,
         matrix=matrix,
-        cost=float(0.5 * np.sum(np.square(residuals))),
-        n=int(residuals.size),
+        cost=cost,
+        n=n,
         alpha=alpha,
         rank_tolerance=rank_tolerance,
         step=step,
@@ -498,4 +531,34 @@ def fisher_information(
         units=list(problem.parameter_units.values()),
         scales=list(problem.scales_initialized),
         targets=[p.target_id for p in problem.parameters],
+        objective=problem.objective,
     )
+
+
+def data_residuals(
+    problem: OptimizationProblem, x: np.ndarray
+) -> tuple[np.ndarray, float, int]:
+    """Get the residuals of the data at parameters, without the ones of the priors.
+
+    Args:
+        problem: initialized optimization problem.
+        x: parameters in the space the optimizer searches.
+
+    Returns:
+        The residuals of the data, the first ones of `problem.residuals`, the
+        cost of the data (half their sum of squares minus the offset of a
+        likelihood, i.e. the negative log-likelihood) and the number of data
+        points: a residual per point for least squares, two (of the data and
+        of the scale of its noise) for a likelihood.
+    """
+    residuals = np.asarray(problem.residuals(x), dtype=float)
+    offset = problem._cost_offset
+    n_prior = problem.prior_residual_count
+    if n_prior:
+        offset -= problem.prior.residuals(problem.from_scale(x))[1]
+        residuals = residuals[:-n_prior]
+    cost = float(0.5 * np.sum(np.square(residuals))) - offset
+    n = residuals.size
+    if problem.objective is not ObjectiveType.LEAST_SQUARES:
+        n //= 2
+    return residuals, cost, int(n)
