@@ -47,8 +47,22 @@ constraint-dependencies = [
     {{ constraint | toml }},
 {% endfor %}
 ]
-{% if framework_path %}
+{% if framework_path or indexes %}
 
 [tool.uv.sources]
+{% if framework_path %}
 {{ framework }} = { path = {{ framework_path | toml }}, editable = true }
 {% endif %}
+{% for index in indexes %}
+{% for package in index.packages %}
+{{ package }} = { index = {{ index.name | toml }} }
+{% endfor %}
+{% endfor %}
+{% endif %}
+{% for index in indexes %}
+
+[[tool.uv.index]]
+name = {{ index.name | toml }}
+url = {{ index.url | toml }}
+explicit = true
+{% endfor %}

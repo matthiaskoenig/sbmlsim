@@ -2,7 +2,7 @@
 
 This tutorial takes one model through the main features of `sbmlsim`. You simulate a dose of a drug, change the patient, scan doses, fit the model to clinical data and find out how uncertain a prediction is. Each step builds on the previous one, and each code block is followed by what it prints and plots.
 
-The model describes hydrochlorothiazide (HCTZ), a diuretic used against high blood pressure, in the whole human body. An HCTZ tablet dissolves in the gut, the drug is absorbed into the blood, distributes into the organs and is excreted by the kidneys into the urine. The model ships with `sbmlsim`, so you only need `pip install sbmlsim` (see [Installation](installation.md)).
+The model describes hydrochlorothiazide (HCTZ), a diuretic used against high blood pressure, in the whole human body. An HCTZ tablet dissolves in the gut, the drug is absorbed into the blood, distributes into the organs and is excreted by the kidneys into the urine. The model ships with `sbmlsim`, so you only need `sbmlsim` itself (see [Installation](installation.md)).
 
 !!! tip "Running the code"
     Run the blocks one after another in a Jupyter notebook, or paste them into one script. A script shows a figure with `plt.show()` or saves it with `fig.savefig("figure.png")`. Large runs, like the uncertainty analysis at the end, start worker processes, so a script needs its code under `if __name__ == "__main__":`.

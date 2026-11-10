@@ -17,6 +17,7 @@ from sbmlsim.release.docs import write_docs
 from sbmlsim.release.hooks import ReleaseHook
 from sbmlsim.release.project import (
     UV_VERSION,
+    PackageIndex,
     ProjectContext,
     project_context,
     render,
@@ -183,6 +184,54 @@ def test_pyproject_local_framework_on_windows(context: ProjectContext) -> None:
     )
     data = tomllib.loads(render("pyproject.toml.j2", windows))
     assert data["tool"]["uv"]["sources"]["sbmlsim"]["path"] == "C:/Users/me/sbmlsim"
+
+
+#: the index of the builds of the develop branch of libroadrunner
+DEV_INDEX = "https://matthiaskoenig.github.io/roadrunner-wheels/simple"
+
+
+def test_an_index_of_the_source_lock_is_an_explicit_index_of_the_release(
+    source: SourceRepo,
+) -> None:
+    """libroadrunner of the develop index comes from it in the release project as well."""
+    (source.root / "pyproject.toml").write_text(
+        PYPROJECT
+        + '\n[tool.uv.sources]\nlibroadrunner = { index = "roadrunner-dev" }\n'
+        + f'\n[[tool.uv.index]]\nname = "roadrunner-dev"\nurl = "{DEV_INDEX}/"\n'
+        + "explicit = true\n",
+        encoding="utf-8",
+    )
+    (source.root / "uv.lock").write_text(
+        LOCK
+        + '\n[[package]]\nname = "libroadrunner"\nversion = "2.11.1.dev655"\n'
+        + f'source = {{ registry = "{DEV_INDEX}/" }}\n',
+        encoding="utf-8",
+    )
+    context = project_context(PROJECT, REFERENCE, SETTINGS, source, "0.1.0")
+    assert context.indexes == (
+        PackageIndex("roadrunner-dev", DEV_INDEX, ("libroadrunner",)),
+    )
+    # a source applies to a direct dependency only
+    assert context.dependencies == (
+        "sbmlsim>=0.9.7",
+        "sbmlutils>=0.16.0",
+        "libroadrunner",
+    )
+    assert "libroadrunner==2.11.1.dev655" in context.constraints
+    data = tomllib.loads(render("pyproject.toml.j2", context))
+    assert data["tool"]["uv"]["sources"] == {
+        "libroadrunner": {"index": "roadrunner-dev"}
+    }
+    assert data["tool"]["uv"]["index"] == [
+        {"name": "roadrunner-dev", "url": DEV_INDEX, "explicit": True}
+    ]
+
+
+def test_a_source_lock_from_pypi_has_no_index(context: ProjectContext) -> None:
+    assert context.indexes == ()
+    data = tomllib.loads(render("pyproject.toml.j2", context))
+    assert "index" not in data["tool"]["uv"]
+    assert "sources" not in data["tool"]["uv"]
 
 
 def test_pyproject_one_entry_per_line(source: SourceRepo) -> None:

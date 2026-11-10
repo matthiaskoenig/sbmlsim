@@ -33,15 +33,29 @@ DOCKER_PLATFORM = "linux/amd64"
 """The platform of the Docker image of a release."""
 
 
+def _declared_indexes(release_path: Path) -> dict[str, str]:
+    """Get the explicit package indexes of the release project, url by name."""
+    pyproject = release_path / "pyproject.toml"
+    if not pyproject.is_file():
+        return {}
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    return {
+        index["name"]: index["url"].rstrip("/")
+        for index in data.get("tool", {}).get("uv", {}).get("index", [])
+        if index.get("explicit") and "name" in index and "url" in index
+    }
+
+
 def _local_packages(release_path: Path) -> list[str]:
     lock = release_path / "uv.lock"
     if not lock.is_file():
         return []
+    registries = {_PYPI, *_declared_indexes(release_path).values()}
     data = tomllib.loads(lock.read_text(encoding="utf-8"))
     names = []
     for package in data.get("package", []):
         source = package.get("source", {})
-        if source.get("registry") == _PYPI or source in (
+        if source.get("registry", "").rstrip("/") in registries or source in (
             {"editable": "."},
             {"virtual": "."},
         ):
@@ -70,8 +84,18 @@ def _lock_problems(release_path: Path) -> list[str]:
     pyproject = release_path / "pyproject.toml"
     if pyproject.is_file():
         data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-        if data.get("tool", {}).get("uv", {}).get("sources"):
-            problems.append("pyproject.toml has tool.uv.sources")
+        indexes = _declared_indexes(release_path)
+        sources = data.get("tool", {}).get("uv", {}).get("sources", {})
+        # a package pinned to an explicit index of the project, e.g. the builds
+        # of libroadrunner, is a package of a registry; anything else is local
+        local = [
+            name
+            for name, source in sources.items()
+            if not (isinstance(source, dict) and source.keys() == {"index"})
+            or source["index"] not in indexes
+        ]
+        if local:
+            problems.append(f"pyproject.toml has tool.uv.sources: {', '.join(local)}")
     return problems
 
 
@@ -115,8 +139,9 @@ def check_lock(release_path: Path) -> None:
 
     Raises:
         ReleaseError: if there is no `uv.lock`, the lock has a package which is
-            not from PyPI or the project uses `tool.uv.sources`; one message
-            lists everything.
+            neither from PyPI nor from an explicit index of the project, or the
+            project has a source other than such an index (`tool.uv.sources`);
+            one message lists everything.
     """
     _refuse(_lock_problems(release_path))
 

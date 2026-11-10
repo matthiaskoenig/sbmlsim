@@ -42,7 +42,10 @@ dependencies = [
 	"sbmlode>=0.3.0",
 	"python-libsbml>=5.21.2",
 	# simulation
-	"libroadrunner>=2.11.0",
+	# the develop builds of matthiaskoenig/roadrunner-wheels: the executor relies
+	# on fixes of libroadrunner which are not released yet (roadrunner #1381,
+	# #1382, #1383, #1384, #1420), a release of libroadrunner satisfies it as well
+	"libroadrunner>=2.11.1.dev655",
 	# data structures, units and numerics
 	"numpy>=2.5.3",
 	"pandas>=3.0.6",
