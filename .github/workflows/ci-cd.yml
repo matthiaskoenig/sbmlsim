@@ -92,8 +92,14 @@ jobs:
     - name: Install the package without extras
       run: |
         uv venv "$RUNNER_TEMP/plain"
-        uv pip install --python "$RUNNER_TEMP/plain/bin/python" --no-sources \
-          --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ .
+        # libroadrunner from the index first, then the package from PyPI,
+        # as docs/installation.md: GitHub Pages answers a request for a
+        # package the index does not have with 503 now and then, which fails
+        # an install which asks the index for every package
+        uv pip install --python "$RUNNER_TEMP/plain/bin/python" --no-deps \
+          --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ \
+          "libroadrunner>=2.11.1.dev655"
+        uv pip install --python "$RUNNER_TEMP/plain/bin/python" --no-sources .
     - name: Run a scan and write its result as netCDF
       # isolated (-I) and outside of the repository, so the package is the
       # installed one and not the sources
