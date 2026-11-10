@@ -34,12 +34,15 @@ uv add sbmlsim libroadrunner
 
 uv applies a source to the direct dependencies of a project only, so `libroadrunner` is one of them; the index is `explicit`, uv asks it for libroadrunner only and every other package comes from PyPI. A project which already depends on `sbmlsim` adds the lines and runs `uv add libroadrunner`; `uv lock --upgrade-package libroadrunner` moves the lock to the latest build. The sources are not part of a wheel built from the project: a package which depends on `sbmlsim` is installed with the index as well.
 
-To install into a virtual environment instead:
+To install into a virtual environment instead, install libroadrunner from the index first and then `sbmlsim`, whose requirement the installed build satisfies:
 
 ```bash
 uv venv --python 3.14
-uv pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ sbmlsim
+uv pip install --no-deps --index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=2.11.1.dev655"
+uv pip install sbmlsim
 ```
+
+`uv pip install --extra-index-url ... sbmlsim` asks the index for every package of the install, and GitHub Pages, which serves it, answers a request for a package it does not have with a `503` now and then, which fails the install; pip skips such an answer, and a uv project with the explicit index asks it for libroadrunner only.
 
 The index keeps every build: a lock or a pinned version installs the same build later.
 
