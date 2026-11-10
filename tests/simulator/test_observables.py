@@ -365,7 +365,7 @@ def test_a_declared_unit_of_a_unitless_formula_is_taken() -> None:
         [Formula("a", "[A]", unit="mmol/l"), Formula("t", "24", unit="hr")], model
     )
     assert graph.units["a"] == "millimole / liter" and graph.units["t"] == "hour"
-    assert all(node.factor == 1.0 for node in graph.nodes)  # ty: ignore[unresolved-attribute]
+    assert all(node.factor == 1.0 for node in graph.nodes)  # ty: ignore[missing-union-attribute]
 
 
 def test_a_real_dimensionless_unit_is_converted(pk_model: RoadrunnerSBMLModel) -> None:

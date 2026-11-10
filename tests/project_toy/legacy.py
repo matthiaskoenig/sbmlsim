@@ -10,7 +10,7 @@ from tests.project_toy import PROJECT
 class LegacyProject(Project):
     """A project whose `run_experiments` has its own signature and result."""
 
-    def run_experiments(  # ty: ignore[invalid-method-override]
+    def run_experiments(  # ty: ignore[incompatible-method-override]
         self, experiments: Any = None, output_dir: Path | None = None
     ) -> Path:
         """Fail: the run layer must call the base implementation."""

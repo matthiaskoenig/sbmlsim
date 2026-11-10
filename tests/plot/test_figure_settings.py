@@ -426,9 +426,9 @@ def test_other_attributes_of_a_figure_are_as_before() -> None:
     assert figure.width == 10
     assert Figure.__name__ == "Figure"
     with pytest.raises(AttributeError, match="'Figure' object has no attribute 'nope'"):
-        _ = figure.nope  # ty: ignore[unresolved-attribute]
+        _ = figure.nope  # ty: ignore[missing-attribute]
     with pytest.raises(AttributeError, match="type object 'Figure' has no attribute"):
-        _ = Figure.nope  # ty: ignore[unresolved-attribute]
+        _ = Figure.nope  # ty: ignore[missing-attribute]
 
 
 def test_a_figure_is_copied_and_pickled_with_its_settings() -> None:
@@ -522,7 +522,7 @@ class OldSignature(Plain):
     """An experiment whose override of `run` has no `figure_settings`."""
 
     @override
-    def run(  # ty: ignore[invalid-method-override]
+    def run(  # ty: ignore[incompatible-method-override]
         self,
         simulator: Simulator | None = None,
         output_path: Path | None = None,

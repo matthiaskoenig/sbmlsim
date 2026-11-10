@@ -7,7 +7,7 @@ import numpy as np
 import petab.v2 as petab_v2
 import pytest
 
-from conftest import is_intravenous, is_oral  # ty: ignore[unresolved-import]
+from conftest import is_intravenous, is_oral  # ty: ignore[import-not-found]
 from examples.hctz_fitting.fitting.fitting import FIT_DEFINITIONS
 from sbmlsim.experiment import SimulationExperiment
 from sbmlsim.fit import FitSettings

@@ -14,7 +14,7 @@ import libsbml
 import numpy as np
 import pandas as pd
 import roadrunner
-from roadrunner import _roadrunner  # ty: ignore[unresolved-import]
+from roadrunner import _roadrunner  # ty: ignore[import-not-found]
 
 from sbmlsim.engine import Engine, JitOptimization
 from sbmlsim.memory import release_freed_memory

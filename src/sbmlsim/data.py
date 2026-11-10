@@ -1254,11 +1254,14 @@ class DataSet(pd.DataFrame):
                 # remove unit column
                 del df["unit"]
 
-            elif key in DIMENSIONLESS_COLUMNS:
-                # a count and a geometric SD, a factor, are dimensionless unless
-                # the table or the caller gives their unit
-                if f"{key}_unit" not in df.columns and key not in udict:
-                    udict[key] = "dimensionless"
+            # a count and a geometric SD, a factor, are dimensionless unless the
+            # table or the caller gives their unit
+            elif (
+                key in DIMENSIONLESS_COLUMNS
+                and f"{key}_unit" not in df.columns
+                and key not in udict
+            ):
+                udict[key] = "dimensionless"
 
         # add external definitions
         if udict:

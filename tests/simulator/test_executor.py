@@ -820,7 +820,7 @@ def test_a_failure_of_the_integrator_at_the_end_raises() -> None:
 def test_a_model_without_events_at_the_end_is_not_integrated_again() -> None:
     """roadrunner leaves the model at the end of its steps (libroadrunner 2.11)."""
     r = _FailingRoadRunner()
-    r.getTime = lambda: 1.0  # ty: ignore[invalid-assignment]
+    r.getTime = lambda: 1.0
     assert _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
 
 

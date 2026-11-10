@@ -701,7 +701,7 @@ def test_a_figure_is_saved_without_a_second_drawing(tmp_path: Path) -> None:
         draws.append(renderer)
         draw(renderer)
 
-    fig.draw = counted  # ty: ignore[invalid-assignment]
+    fig.draw = counted
     experiment = SimulationExperiment(sid="exp")
     saved = experiment.save_mpl_figures(tmp_path, {"fig": fig})
 

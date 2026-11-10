@@ -732,7 +732,7 @@ def test_the_chunks_share_a_plan_and_are_bounded(
     run_chunk = simulator_module.run_chunk
 
     def recording(chunk: object, model: RoadrunnerSBMLModel) -> object:
-        sizes.append((id(chunk.plan), len(chunk.indices)))  # ty: ignore[unresolved-attribute]
+        sizes.append((id(chunk.plan), len(chunk.indices)))  # ty: ignore[missing-attribute]
         return run_chunk(chunk, model)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(simulator_module, "run_chunk", recording)

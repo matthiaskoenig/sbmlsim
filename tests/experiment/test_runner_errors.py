@@ -461,7 +461,7 @@ class OldSignature(_Base):
     """An experiment whose override of `run` predates `keep_results`."""
 
     @override
-    def run(  # ty: ignore[invalid-method-override]
+    def run(  # ty: ignore[incompatible-method-override]
         self,
         simulator: Simulator | None = None,
         output_path: Path | None = None,
@@ -484,7 +484,7 @@ class RaisesBeforeRun(_Base):
     """An override of `run` with the old signature which fails itself."""
 
     @override
-    def run(  # ty: ignore[invalid-method-override]
+    def run(  # ty: ignore[incompatible-method-override]
         self, simulator: Simulator | None = None, output_path: Path | None = None
     ) -> ExperimentResult:
         raise RuntimeError("override broken")

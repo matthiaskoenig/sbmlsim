@@ -130,7 +130,7 @@ def _fake_profiler(
     """Put a module `profiling.sampling.binary_collector` with the collector."""
     module = types.ModuleType("profiling.sampling.binary_collector")
     if collector is not None:
-        module.BinaryCollector = collector  # ty: ignore[unresolved-attribute]
+        module.BinaryCollector = collector  # ty: ignore[missing-attribute]
     monkeypatch.setitem(sys.modules, module.__name__, module)
     return module
 

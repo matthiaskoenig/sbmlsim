@@ -87,5 +87,5 @@ def test_emit_never_raises(tmp_path: Path) -> None:
     assert line["x"] is None and line["y"] == [None, 1.0]
     closed = tmp_path / "closed.jsonl"
     with events.recording(closed):
-        events._sink.close()  # ty: ignore[unresolved-attribute]
+        events._sink.close()  # ty: ignore[missing-union-attribute]
         events.emit("after")
