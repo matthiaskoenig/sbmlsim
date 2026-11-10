@@ -59,17 +59,13 @@ from __future__ import annotations
 
 import logging
 import warnings
-from collections.abc import Callable, Generator, Sequence
-from contextlib import contextmanager, nullcontext
+from collections.abc import Sequence
 
 import numpy as np
 import roadrunner
 
 from sbmlsim.model.event_rows import EPSILON, at_event_times, event_pairs
-from sbmlsim.model.model_roadrunner import (
-    RoadrunnerSBMLModel,
-    apply_pending_step_event,
-)
+from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.model.symbols import ModelSymbols
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.changes import apply_changes, fire_events, triggers
@@ -101,62 +97,6 @@ TOO_CLOSE = "CV_TOO_CLOSE"
 
 class SteadyStateError(RuntimeError):
     """A presimulation did not reach a steady state."""
-
-
-class _EventAtTheHorizon(Exception):
-    """roadrunner fired an event of the model before its time at the end of a horizon.
-
-    CVODE locates the root of a trigger in its steps within its root
-    tolerance, also a little before the time the trigger becomes true, e.g.
-    `time > 10` at `10 - 7.5e-12`, and roadrunner fires the event there. If
-    that is within the resolution of the time before the end of a horizon of
-    a steady state, see `steady_state`, roadrunner starts the next horizon
-    with the triggers evaluated at its start, where such a trigger is still
-    false, and fires the event a second time when it becomes true. `execute`
-    runs the plan again, which integrates the horizon with exact output at
-    its end, where CVODE does not fire the event before its time: it fires
-    once, in the next horizon, as with COPASI and AMICI. A plan runs again
-    at most once per horizon.
-
-    Attributes:
-        exact: the horizons of the steady state with exact output at their
-            end, which the horizon is added to.
-        horizon: the index of the horizon, from 0.
-    """
-
-    def __init__(self, exact: set[int], horizon: int) -> None:
-        super().__init__(f"An event fired at the end of the horizon {horizon}.")
-        self.exact = exact
-        self.horizon = horizon
-
-
-class _PastTheEnd(Exception):
-    """roadrunner integrated a segment with the steps of the integrator past its end.
-
-    An event of the model in the last step of roadrunner after the end of the
-    segment fired or is pending, see `_steps`, and the state after the
-    segment is wrong. `_execute` runs the plan again, which integrates the
-    segment with exact output at the times of its steps, see `_exact_times`.
-    If a later segment of that run is past its end as well, the plan runs a
-    third time with both segments with exact output, and keeps the state at
-    the start of every segment of the steps after them in memory
-    (`_saved_state`): a later segment past its end starts again from its
-    state at the start with exact output at the times of its steps. A plan
-    runs at most three times however many of its segments roadrunner
-    integrates past their end, besides the runs of `_EventAtTheHorizon`, and
-    only a third run keeps states, one save per later segment and one load
-    per later segment past its end.
-
-    Attributes:
-        segment: the index of the segment.
-        output: its output times in the time of roadrunner, the times it is
-            integrated to and the times of its rows, see `_exact_times`.
-    """
-
-    def __init__(self, segment: int, output: tuple[np.ndarray, np.ndarray]) -> None:
-        super().__init__(f"The segment {segment} was integrated past its end.")
-        self.segment = segment
-        self.output = output
 
 
 def execute(
@@ -204,60 +144,23 @@ def execute(
     # integrations, see `sbmlsim.model.event_rows`
     selected = [*columns, *model.event_markers]
     variable_step_size = bool(r.getIntegrator().getValue(VARIABLE_STEP_SIZE))
-    # the output times of the segments of the steps of the integrator with
-    # exact output, see `_PastTheEnd`
-    exact: dict[int, tuple[np.ndarray, np.ndarray]] = {}
-    # the horizons of the steady states before the simulation and after its
-    # end with exact output at their end, see `_EventAtTheHorizon`
-    presimulation: set[int] = set()
-    after_the_end: set[int] = set()
-    run = 1
     # the time the simulation integrates to, see `discard_pending_events`
     horizon = (
         np.inf
         if plan.steady_state is not None or plan.steady_state_output is not None
         else plan.end + time_tolerance(plan.start, plan.end)
     )
-    while True:
-        model.discard_pending_events(horizon)
-        model.initialize(preinit_targets(plan))
-        if list(r.timeCourseSelections) != selected:
-            r.timeCourseSelections = selected
-        try:
-            if plan.steady_state is not None:
-                steady_state(model, plan.steady_state, exact=presimulation)
-            values = _simulate(plan, model, r, selected, local, exact, after_the_end)
-        except _EventAtTheHorizon as err:
-            err.exact.add(err.horizon)
-            run += 1
-            logger.debug(
-                "roadrunner fired an event of the model '%s' before the end of the "
-                "horizon %s of a steady state, the plan runs again with exact "
-                "output at its end (run %s).",
-                model.sid or r.model.getModelName(),
-                err.horizon,
-                run,
-            )
-            continue
-        except _PastTheEnd as err:
-            # a segment with exact output is never past its end
-            exact[err.segment] = err.output
-            run += 1
-            logger.debug(
-                "roadrunner integrated the segment %s of the model '%s' past its "
-                "end, the plan runs again with exact output in it (run %s).",
-                err.segment,
-                model.sid or r.model.getModelName(),
-                run,
-            )
-            continue
-        finally:
-            if model.event_markers:
-                # see `apply_pending_step_event`
-                apply_pending_step_event(r)
-            r.getIntegrator().setValue(VARIABLE_STEP_SIZE, variable_step_size)
-            model.simulated()
-        break
+    model.discard_pending_events(horizon)
+    model.initialize(preinit_targets(plan))
+    if list(r.timeCourseSelections) != selected:
+        r.timeCourseSelections = selected
+    try:
+        if plan.steady_state is not None:
+            steady_state(model, plan.steady_state)
+        values = _simulate(plan, model, r, selected, local)
+    finally:
+        r.getIntegrator().setValue(VARIABLE_STEP_SIZE, variable_step_size)
+        model.simulated()
 
     values = output_time(values[:, : len(columns)], columns, plan, model.symbols)
     return TimecourseResult(columns=tuple(columns), values=values)
@@ -323,8 +226,6 @@ def _simulate(
     r: roadrunner.RoadRunner,
     columns: list[str],
     local: bool,
-    exact: dict[int, tuple[np.ndarray, np.ndarray]] | None = None,
-    after_the_end: set[int] | None = None,
 ) -> np.ndarray:
     """Integrate the segments of a plan, see the module.
 
@@ -335,22 +236,11 @@ def _simulate(
         columns: the selections, the markers of the events of the model last.
         local: integrate every segment from the time 0 of roadrunner (local
             time) instead of its absolute time.
-        exact: the output times in the time of roadrunner of the segments of
-            the steps of the integrator with exact output, by the index of
-            the segment, see `_PastTheEnd`.
-        after_the_end: the horizons of the steady state after the end with
-            exact output at their end, see `_EventAtTheHorizon`.
 
     Returns:
         The values, a row per output time and a column per selection, two
         rows at the time of a change after the start which is an output
         time.
-
-    Raises:
-        _PastTheEnd: if roadrunner integrated a segment of the steps of the
-            integrator past its end before any segment with exact output.
-        _EventAtTheHorizon: if roadrunner fired an event of the model before
-            the end of a horizon of the steady state after the end.
     """
     events = {event.time: event for event in plan.events}
     points = sorted({plan.start, plan.end, *events})
@@ -358,7 +248,6 @@ def _simulate(
     markers = len(model.event_markers)
     times = np.asarray(plan.times, dtype=float)
     tolerance = time_tolerance(plan.start, plan.end)
-    exact = exact or {}
 
     blocks: list[np.ndarray] = []
     # whether the last segment is not integrated, and the time of roadrunner
@@ -409,27 +298,7 @@ def _simulate(
                     wanted = np.append(wanted, b)
                 block = _held(r, wanted)
         elif plan.output is OutputMode.INTEGRATOR:
-            output = exact.get(k)
-            if output is None:
-                # after the second segment past its end the state at the start
-                # of every later segment is kept, see `_PastTheEnd`
-                keep = len(exact) > 1 and k > max(exact)
-                with _saved_state(r) if keep else nullcontext(None) as load:
-                    block, at_end = _steps(r, start, end_stop, tolerance, markers)
-                    if not at_end:
-                        # the steps are sorted once their events have their
-                        # times; a row of roadrunner which `at_event_times`
-                        # cannot pair can be before an earlier step
-                        output = _exact_times(
-                            start, np.sort(block[1:-1, 0]), end_stop, tolerance
-                        )
-                        if load is None:
-                            raise _PastTheEnd(k, output)
-                        load()
-            if output is not None:
-                times_k, labels = output
-                block = _simulate_times(r, times_k, end, bool(model_events))
-                block[:, 0] = labels
+            block = _steps(r, start, end_stop, tolerance, markers)
             block[:, 0] += offset
             # the end of the segment, not its end in the time of roadrunner
             # shifted back: the state at the end of the simulation, or the
@@ -513,12 +382,7 @@ def _simulate(
         # the time of the model, after the events at the end: an event of the
         # time it fired does not fire again
         start = 0.0 if local else float(r.model.getTime())
-        steady_state(
-            model,
-            plan.steady_state_output,
-            start=start,
-            exact=set() if after_the_end is None else after_the_end,
-        )
+        steady_state(model, plan.steady_state_output, start=start)
         row = _state(r, columns, np.inf)
         blocks.append(row[np.newaxis, :])
 
@@ -529,66 +393,56 @@ def _simulate(
 
 def _steps(
     r: roadrunner.RoadRunner, start: float, end: float, tolerance: float, markers: int
-) -> tuple[np.ndarray, bool]:
+) -> np.ndarray:
     """Integrate a segment with the steps of the integrator.
 
     roadrunner integrates with the steps of CVODE up to the step after the
     end and interpolates its last row to the end with the dense output of
-    CVODE, the model is left in the state at the end (libroadrunner 2.11).
-    roadrunner also fires an event of the model it finds in that step after
-    the end, or keeps it pending and fires it in its next integration, also
-    of the next simulation: `_to_the_end` fires such an event, and the
-    segment is integrated past its end and gets exact output, see
-    `_PastTheEnd`.
+    CVODE, as if an event of the model in that step after the end did not
+    fire: the model is left in the state at the end and the event fires in
+    the next integration (roadrunner #1384).
 
     roadrunner reports an event of the model inside the segment as two rows,
     the states before and after it, a little before and after its time; both
-    rows get the time of the event, see `sbmlsim.model.event_rows`, also for
-    an event just before or after the end, see `_events_at_the_end`.
+    rows get the time of the event, see `sbmlsim.model.event_rows`. An event
+    closer to the end than the resolution of the time is in the chain at the
+    end: its rows are left out, and the last row, at the end, is the state
+    after it, as `sbmlsim.result.timecourse.grid_weights` sees the end.
 
     Args:
         r: the roadrunner instance, in the state at the start.
         start: the start of the segment in the time of roadrunner.
         end: its end in the time of roadrunner.
-        tolerance: the resolution of the time: a step of a model with events
-            which is closer to the end is an event which roadrunner fired at
-            the end.
+        tolerance: the resolution of the time.
         markers: the number of markers of the events of the model, the last
             columns, see `sbmlsim.model.event_rows`; 0 without events.
 
     Returns:
         The values in the time of roadrunner, a row per step, the first at
-        the start and the last at the end, and whether the segment ended at
-        its end; if not, the last row is the one of roadrunner.
+        the start and the last at the end.
     """
     events = markers > 0
     block = _variable_steps(r, start, end)
-    if not events and block[-1, 0] == end:
-        return block, True
     if events:
-        block, inside = _events_at_the_end(r, block, end, tolerance, markers)
-        if not inside:
-            return block, False
-    if not _to_the_end(r, end, events):
-        return block, False
-    steps = block[1:-1, 0]
-    if events and steps.size and steps[-1] > end - tolerance:
-        return block, False
+        _at_event_times(block, end, tolerance, markers)
+        near = np.flatnonzero(block[1:-1, 0] > end - tolerance) + 1
+        if near.size:
+            block = np.delete(block, near, axis=0)
+    if block[-1, 0] == end:
+        return block
+    # roadrunner stopped at the most rows of its output, the integrator goes
+    # on to the end
+    _to_the_end(r, end)
     state = np.array(r.getSelectedValues(), dtype=float)
     state[0] = end
-    if block[-1, 0] < end - tolerance:
-        # roadrunner stopped at the most rows of its output, the integrator
-        # went on to the end
-        logger.warning(
-            "The steps of the integrator stopped at the time %s before the end %s "
-            "of a segment: roadrunner keeps at most `max_output_rows` rows of them, "
-            "the state at the end follows the last one.",
-            block[-1, 0],
-            end,
-        )
-        return np.vstack([block, state]), True
-    block[-1] = state
-    return block, True
+    logger.warning(
+        "The steps of the integrator stopped at the time %s before the end %s "
+        "of a segment: roadrunner keeps at most `max_output_rows` rows of them, "
+        "the state at the end follows the last one.",
+        block[-1, 0],
+        end,
+    )
+    return np.vstack([block, state])
 
 
 def segment_stop(start: float, end: float) -> float:
@@ -712,7 +566,8 @@ def _event_at_the_end(
         The state after the last event within the resolution after the end,
         at the time of the event, `None` without one.
     """
-    block, _ = _steps(r, start, end + tolerance, tolerance, markers)
+    block = _variable_steps(r, start, end + tolerance)
+    _at_event_times(block, end + tolerance, tolerance, markers)
     # roadrunner's last row is no row of an event
     rows = block[:-1]
     pairs = event_pairs(rows, markers, tolerance)
@@ -722,75 +577,14 @@ def _event_at_the_end(
     return block[pairs[-1] + 1].copy()
 
 
-def _events_at_the_end(
-    r: roadrunner.RoadRunner,
-    block: np.ndarray,
-    end: float,
-    tolerance: float,
-    markers: int,
-) -> tuple[np.ndarray, bool]:
-    """Give the events of the steps their times, also the ones near the end.
-
-    The two rows of an event inside the steps get its time, see
-    `at_event_times`. roadrunner reports the state after an event a little
-    after its time, see `sbmlsim.model.event_rows`; for an event less than
-    that before the end, or after it, that row is after the end and
-    roadrunner folds it into its last row, and the row before the event is
-    left alone, see `_folded_event`. The model is then in the state after it:
-
-    - an event before the end: the row before it gets its time, and the steps
-      continue from the event, whose first row is the state after it, so a
-      further event before the end gets its rows as well; an event within
-      the resolution of the end gets the state of the model as its row after
-      it, and the segment is past its end as it is when roadrunner reports
-      both rows, see `_steps`;
-    - an event at or after the end: roadrunner applied it before the change
-      at the end, the segment is past its end, and the row before the event,
-      at roadrunner's offset rather than at a step, is left out of its steps.
-
-    Args:
-        r: the roadrunner instance after the steps of the integrator.
-        block: the steps.
-        end: the end in the time of roadrunner.
-        tolerance: the resolution of the time.
-        markers: the number of markers of the events, see `_steps`.
-
-    Returns:
-        The steps with the times of their events, and whether no event after
-        the end was applied.
-    """
-    _at_event_times(block, end, tolerance, markers)
-    done: list[np.ndarray] = []
-    last = -np.inf
-    while (event := _folded_event(r, block, end, tolerance, markers)) is not None:
-        if event >= end:
-            return np.concatenate([*done, np.delete(block, -2, axis=0)]), False
-        if event <= last:
-            break
-        last = event
-        block[-2, 0] = event
-        if end - event <= tolerance:
-            after = np.array(r.getSelectedValues(), dtype=float)
-            after[0] = event
-            block = np.insert(block, block.shape[0] - 1, after, axis=0)
-            break
-        done.append(block[:-1])
-        block = _variable_steps(r, event, end)
-        _at_event_times(block, end, tolerance, markers)
-    if done:
-        block = np.concatenate([*done, block])
-    return block, True
-
-
 def _at_event_times(
     block: np.ndarray, end: float, tolerance: float, markers: int
 ) -> None:
     """Give the two rows of every event inside the steps the time of the event.
 
     The last row, which roadrunner interpolated to the end, is no row of an
-    event: it is left out, also where roadrunner folded the row after an
-    event into it, see `_folded_event`. A last row before the end is a step,
-    roadrunner stopped at the most rows of its output.
+    event: it is left out. A last row before the end is a step, roadrunner
+    stopped at the most rows of its output.
 
     Args:
         block: the steps, their times are changed.
@@ -800,45 +594,6 @@ def _at_event_times(
     """
     rows = block.shape[0] - 1 if block[-1, 0] >= end - tolerance else block.shape[0]
     block[:rows, 0] = at_event_times(block[:rows], markers, tolerance)
-
-
-def _folded_event(
-    r: roadrunner.RoadRunner,
-    block: np.ndarray,
-    end: float,
-    tolerance: float,
-    markers: int,
-) -> float | None:
-    """Get the time of an event whose row after it roadrunner folded into the end.
-
-    The last row is the one roadrunner interpolated to the end and the row
-    before the last is the state before an event which roadrunner applied
-    after it: the markers of the model differ from the ones of that row, see
-    `sbmlsim.model.event_rows`. The model is at the time of the event in the
-    state after it, or at the end if CVODE interpolates the end from the
-    event, a few units in the last place from it.
-
-    Args:
-        r: the roadrunner instance after the steps of the integrator, before
-            `_to_the_end`.
-        block: the steps, their events inside at their times.
-        end: the end in the time of roadrunner.
-        tolerance: the resolution of the time: the last row is the one
-            roadrunner interpolated to the end if it is closer to the end.
-        markers: the number of markers of the events, see `_steps`.
-
-    Returns:
-        The time of the event, before, at or after the end, or `None`.
-    """
-    if block.shape[0] < 3 or block[-1, 0] < end - tolerance:
-        return None
-    time = float(r.model.getTime())
-    if time < float(block[-2, 0]):
-        return None
-    state = np.asarray(r.getSelectedValues(), dtype=float)
-    if np.array_equal(state[-markers:], block[-2, -markers:]):
-        return None
-    return time
 
 
 def _variable_steps(r: roadrunner.RoadRunner, start: float, end: float) -> np.ndarray:
@@ -870,8 +625,8 @@ def _integrate(r: roadrunner.RoadRunner, times: list[float], steps: bool) -> np.
     before it, see `_event_at_the_end`, or a unit in the last place after a
     change. As for a segment which is not integrated, the state is the one at
     the start up to the first time CVODE integrates to from it, from which
-    roadrunner integrates again and fires the event in its first step, late
-    as every delayed event of roadrunner (#1382). An event pending too close
+    roadrunner integrates again and fires the event in its first step. An
+    event pending too close
     before a later output time is not handled: roadrunner fails after it
     integrated to the event.
 
@@ -935,105 +690,26 @@ def _first_integrable(start: float) -> float:
     return stop
 
 
-def _to_the_end(r: roadrunner.RoadRunner, end: float, events: bool) -> bool:
-    """Set the model to its state at the end of an integration with its steps.
+def _to_the_end(r: roadrunner.RoadRunner, end: float) -> None:
+    """Integrate the model to the end of an integration with its steps.
 
-    roadrunner leaves the model at the end of an integration with its steps
-    (libroadrunner 2.11), unless it stopped at the most rows of its output.
-    Else, and for a model with events, the integrator is called with exact
-    output at the end, which CVODE interpolates from its last step without
-    integrating: an event of the model which roadrunner keeps pending fires
-    first, after the end.
+    roadrunner leaves the model at the end of an integration with its steps,
+    unless it stopped at the most rows of its output: the integrator is then
+    called with exact output at the end.
 
     Args:
         r: the roadrunner instance after an integration with the steps of
             the integrator to `end`.
         end: the end in the time of roadrunner.
-        events: whether the model has events.
-
-    Returns:
-        Whether the model is in the state at the end; not if a pending event
-        fired, or if roadrunner fired an event after the end and the
-        integrator cannot go back.
 
     Raises:
-        RuntimeError: if the integrator fails for a model without events.
+        RuntimeError: if the integrator fails.
     """
-    if not events and float(r.model.getTime()) == end:
-        return True
+    if float(r.model.getTime()) == end:
+        return
     integrator: roadrunner.Integrator = r.getIntegrator()
     integrator.setValue(VARIABLE_STEP_SIZE, False)
-    try:
-        return float(integrator.integrate(end, 0.0)) == end
-    except RuntimeError as err:
-        if not events:
-            raise
-        logger.debug(
-            "The integrator does not reach the end %s after an event of the model "
-            "after it: %s",
-            end,
-            err,
-        )
-        return False
-
-
-def _exact_times(
-    start: float, steps: np.ndarray, end: float, tolerance: float
-) -> tuple[np.ndarray, np.ndarray]:
-    """Get the output times of a segment with exact output, see `_PastTheEnd`.
-
-    The times are the start, the steps before the end and the end. A step
-    closer to the end than the resolution of the time is an event which
-    roadrunner fired at the end and is left out. Steps closer to each other
-    than the resolution are an event of the model, the states before and
-    after it, which `_steps` gives at the time of the event, with the first
-    steps of CVODE after it: the segment is integrated to a resolution
-    before the first and after the last of them, where CVODE has not found
-    the event yet and has found it, and the rows have the times of the first
-    and the last, as the steps of the integrator have them, so data at the
-    event sees the state after it. Two events less than two resolutions
-    apart share the time between them, half way: both rows are the state
-    between the events. An event closer to the start than the resolution has
-    no row before it, the start is the state before it.
-
-    Args:
-        start: the start of the segment in the time of roadrunner.
-        steps: the steps of the integrator inside the segment, sorted.
-        end: its end in the time of roadrunner.
-        tolerance: the resolution of the time.
-
-    Returns:
-        The times the segment is integrated to, sorted, a time twice between
-        two events, and the times of the rows, sorted.
-    """
-    steps = np.asarray(steps, dtype=float)
-    steps = steps[steps <= end - tolerance]
-    times, labels = [start], [start]
-    k = 0
-    while k < steps.size:
-        last = k
-        while last + 1 < steps.size and steps[last + 1] - steps[last] < tolerance:
-            last += 1
-        if last == k:
-            times.append(steps[k])
-            labels.append(steps[k])
-        else:
-            # at most half way to the steps next to the event, which are at
-            # least a resolution away
-            before = steps[k] - tolerance
-            if k > 0:
-                before = max(before, (steps[k - 1] + steps[k]) / 2)
-            after = steps[last] + tolerance
-            if last + 1 < steps.size:
-                after = min(after, (steps[last] + steps[last + 1]) / 2)
-            for time, label in ((before, steps[k]), (after, steps[last])):
-                if start < time < end:
-                    times.append(time)
-                    labels.append(label)
-        k = last + 1
-    times.append(end)
-    labels.append(end)
-    return np.array(times), np.array(labels)
+    integrator.integrate(end, 0.0)
 
 
 def _simulate_times(
@@ -1108,96 +784,44 @@ def intermediate_time(previous: float, last: float, end: float) -> float | None:
     return between
 
 
-@contextmanager
-def _saved_state(r: roadrunner.RoadRunner) -> Generator[Callable[[], None]]:
-    """Keep the state of a roadrunner instance in memory for a block.
-
-    Up to libroadrunner 2.10 `RoadRunner.saveStateS` kept a copy of every
-    state it saved for the life of the process; the state of a block is
-    released with it.
-
-    Args:
-        r: the roadrunner instance.
-
-    Yields:
-        A function which loads the state into the instance.
-    """
-    state = r.saveStateS()
-    yield lambda: r.loadStateS(state)
-
-
 def _state(r: roadrunner.RoadRunner, columns: list[str], time: float) -> np.ndarray:
     """Get the current values of the selections, `time` first, see `output_time`."""
     return np.array([time, *(r.getValue(c) for c in columns[1:])])
 
 
 def steady_state(
-    model: RoadrunnerSBMLModel,
-    plan: SteadyStatePlan,
-    start: float = 0.0,
-    exact: set[int] | None = None,
+    model: RoadrunnerSBMLModel, plan: SteadyStatePlan, start: float = 0.0
 ) -> float:
     """Integrate a model until its rates of change vanish.
 
-    The model is integrated with the steps of the integrator over horizons
-    which grow by a factor of ten, from `start`, until
-    `|dx/dt| <= absolute_tolerance + relative_tolerance * |x|` for every
-    state, events active. Every horizon ends in the state at its end, see
-    `_to_the_end`; after an event which roadrunner kept pending and which
-    fires after the end, the next horizon starts at the time of the model
-    after it, so its trigger is not false again at the start of the next
-    horizon and the event fires once. A horizon at whose end roadrunner
-    fired an event before its time is integrated with exact output at its
-    end, see `_EventAtTheHorizon`.
+    The model is integrated over horizons which grow by a factor of ten,
+    from `start`, until `|dx/dt| <= absolute_tolerance + relative_tolerance
+    * |x|` for every state, events active. A horizon is integrated with exact
+    output at its end, where CVODE stops: an event of the model whose trigger
+    becomes true at the end of a horizon fires once, at the end or in the
+    next horizon, as with COPASI and AMICI (#444).
 
     Args:
         model: the model in the state the integration starts from, the
             markers of its events the last selections, see `execute`.
         plan: the steady state.
         start: the time the integration starts at.
-        exact: the horizons with exact output at their end, by their index.
 
     Returns:
         The time the steady state was reached at.
 
     Raises:
         SteadyStateError: if the steady state is not reached by `max_time`.
-        _EventAtTheHorizon: if roadrunner fired an event of the model before
-            its time at the end of a horizon which is not in `exact`.
     """
     r = model.r_loaded
     events = bool(model.symbols.events)
-    markers = len(model.event_markers)
-    exact = set() if exact is None else exact
     states = model.state_ids()
     time = start
     horizon = 1.0
-    index = 0
     while True:
         end = start + min(horizon, plan.max_time)
-        if index in exact:
-            _simulate_times(r, np.array([time, end]), end, events)
-        else:
-            # the rows of the steps are only read at the end: roadrunner stops
-            # at its maximum number of rows before the end of a horizon with
-            # many events and warns, `_to_the_end` integrates the rest of it
-            # (case 01627)
-            with warnings.catch_warnings():
-                warnings.filterwarnings(
-                    "ignore",
-                    message="Simulation requested end time point",
-                    category=UserWarning,
-                )
-                block = _variable_steps(r, time, end)
-            if markers and _event_at_the_horizon(model, block, end, markers):
-                raise _EventAtTheHorizon(exact, index)
-        # the state at the end of the horizon, an event of the model which
-        # roadrunner keeps pending fires in the presimulation; the next
-        # horizon starts at the time of the model after it, from the end its
-        # trigger would be false again and the event fire a second time
-        time = (
-            end if _to_the_end(r, end, events) else max(end, float(r.model.getTime()))
-        )
+        _simulate_times(r, np.array([time, end]), end, events)
+        time = end
         # the rates of every state of the integrator, the targets of rate
         # rules and the species; roadrunner's `getRatesOfChangeNamedArray`
         # has the values of every state but no name of a species reference
@@ -1214,45 +838,3 @@ def steady_state(
                 f"change is {worst:.3g}."
             )
         horizon *= 10.0
-        index += 1
-
-
-def _event_at_the_horizon(
-    model: RoadrunnerSBMLModel, block: np.ndarray, end: float, markers: int
-) -> bool:
-    """Tell whether roadrunner fired an event before its time at the end of a horizon.
-
-    An event fired within the resolution of the time before the end, which
-    the markers of the events tell, see `sbmlsim.model.event_rows`, and the
-    trigger of an event of the model, in the state after it, is false at the
-    end and true at the resolution of the time after it: roadrunner
-    evaluates the triggers again at the start of the next horizon, at the
-    end, and would fire such an event a second time right after it, see
-    `_EventAtTheHorizon`. An event whose assignments make its own trigger
-    false, e.g. one which fires every 0.01 and records the time it fired, is
-    no such event. A trigger which is no math the simulator evaluates is not
-    evaluated.
-
-    Args:
-        model: the model after the steps of the horizon.
-        block: the steps of the horizon, the markers the last columns.
-        end: the end of the horizon in the time of roadrunner.
-        markers: the number of markers.
-
-    Returns:
-        Whether the horizon is integrated again with exact output at its end.
-    """
-    tolerance = time_tolerance(float(block[0, 0]), end)
-    before = np.flatnonzero(block[:, 0] < end - tolerance)
-    if block[-1, 0] < end - tolerance or before.size == 0:
-        return False
-    if np.array_equal(block[before[-1], -markers:], block[-1, -markers:]):
-        return False
-    r = model.r_loaded
-    events = model.symbols.events
-    at_the_end = triggers(events, r, end, model)
-    after_it = triggers(events, r, end + tolerance, model)
-    return any(
-        at is False and later is True
-        for at, later in zip(at_the_end, after_it, strict=True)
-    )

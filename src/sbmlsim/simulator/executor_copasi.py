@@ -66,20 +66,9 @@ Known differences to roadrunner:
 - roadrunner evaluates the triggers of the events when the model is
   initialized, at the time 0, also for a simulation from a negative start;
   COPASI evaluates them at the start.
-- roadrunner fires a delayed event of the model late in the steps of the
-  integrator, at the end of the next step of CVODE (roadrunner #1382);
-  COPASI at its time.
-- roadrunner keeps an event pending after the steps of the integrator found
-  its root after the end, which the executor of roadrunner applies after the
-  run (`apply_pending_step_event`); COPASI keeps none.
 - roadrunner integrates a model which does not read the time in local time,
   every segment from its time 0; COPASI integrates every model in absolute
   time.
-- An event whose trigger becomes true within the rounding of the state one
-  unit in the last place before the end (e.g. `X >= 8` of `X' = 1` from 2 at
-  the end 6) fires before it in roadrunner, whose steps have one row at the
-  end, the state after it; COPASI fires it at the end, its steps have the
-  states before and after it at the end.
 - A model with a delayed event (an SBML `delay` of an event) is refused in
   a simulation with a change after the start or a presimulation
   (`NotImplementedError`): COPASI keeps a delayed event pending across the

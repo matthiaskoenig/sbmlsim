@@ -83,6 +83,32 @@ uv add "sbmlsim @ git+https://github.com/matthiaskoenig/sbmlsim.git@develop"
 
 To work on `sbmlsim` itself, with the tests and the documentation, see [Development](development.md).
 
+### The develop builds of libroadrunner
+
+`sbmlsim` from PyPI depends on the released libroadrunner of PyPI. Its development environment runs on the builds of the `develop` branch of libroadrunner instead, which are served as the package index [roadrunner-wheels](https://github.com/matthiaskoenig/roadrunner-wheels) under development versions such as `2.11.1.dev655`. A project which builds on `sbmlsim`, e.g. a model package, takes them for its own environment with the same lines in its `pyproject.toml`; `libroadrunner` must be a dependency of the project itself, since uv applies a source to the direct dependencies only:
+
+```toml
+[project]
+dependencies = [
+    "sbmlsim",
+    "libroadrunner>=2.11.0",
+]
+
+[tool.uv.sources]
+libroadrunner = { index = "roadrunner-dev" }
+
+[[tool.uv.index]]
+name = "roadrunner-dev"
+url = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/"
+explicit = true
+```
+
+`uv lock` then locks the latest build, `uv lock --upgrade-package libroadrunner` moves the lock to a newer one. The sources are not part of a built package, so the wheel of the project published on PyPI still installs the released libroadrunner. With pip, the specifier with a development version takes the builds for libroadrunner only:
+
+```bash
+pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=0.0.dev0"
+```
+
 ## Dependencies
 
 pip installs these packages together with `sbmlsim`:

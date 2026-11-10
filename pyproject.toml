@@ -214,8 +214,21 @@ cache-keys = [{ file = "pyproject.toml" }, { file = "src/sbmlsim/__init__.py" }]
 # libraries, which the comparison of a forward pass does not need. A single
 # table and not a list of sources, which tox-uv cannot read
 torch = { index = "pytorch-cpu", marker = "sys_platform == 'linux'" }
+# the development environment, its lock, the continuous integration and tox
+# run on the builds of the branch `develop` of libroadrunner, a package index
+# of their wheels (matthiaskoenig/roadrunner-wheels, versions
+# `<version>.dev<run>`); the sources are not part of the built package, which
+# depends on the libroadrunner of PyPI (`uv pip install --no-sources .` and the
+# job `plain install`). `uv lock --upgrade-package libroadrunner` moves the lock
+# to the latest build
+libroadrunner = { index = "roadrunner-dev" }
 
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "roadrunner-dev"
+url = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/"
 explicit = true
