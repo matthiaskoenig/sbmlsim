@@ -7,11 +7,13 @@ result as netCDF and reads it back, in an install without extras:
 
 ```bash
 uv venv plain
-uv pip install --python plain/bin/python .
+uv pip install --python plain/bin/python --no-sources \
+    --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ .
 plain/bin/python -I scripts/plain_install.py
 ```
 
-The job `plain install` of the workflow `ci-cd.yml` runs it.
+The job `plain install` of the workflow `ci-cd.yml` runs it, and after a
+release `scripts/published_install.py` in an install of the release.
 """
 
 import tempfile

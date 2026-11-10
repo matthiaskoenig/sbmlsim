@@ -6,7 +6,7 @@
 `sbmlsim` is a python library for simulating models in the [Systems Biology Markup Language](https://sbml.org) (SBML), the exchange format for models in systems biology ([Keating *et al.* 2020](references.md#standards)). It runs on the fast simulator [libroadrunner](https://libroadrunner.org) ([Welsh *et al.* 2023](references.md#simulation)), or on [COPASI](https://copasi.org) ([Hoops *et al.* 2006](references.md#simulation)) or [AMICI](https://github.com/AMICI-dev/AMICI) ([Fröhlich *et al.* 2021](references.md#simulation)) as a second and a third engine, see [Engines](simulation.md#engines), and adds what a simulation study needs around it: doses and other changes at given times, values with units, parameter scans, comparisons with experimental data, figures and reports, parameter fitting, and sensitivity and uncertainty analysis. The source code is on [GitHub](https://github.com/matthiaskoenig/sbmlsim).
 
 !!! tip "New to sbmlsim?"
-    [Install](installation.md) the package with `pip install sbmlsim`, then work through the [Tutorial](tutorial.md). It takes one drug model from a first simulation to a parameter fit and an uncertainty analysis, one small step at a time.
+    [Install](installation.md) the package with pip or uv and the index of the builds of libroadrunner, then work through the [Tutorial](tutorial.md). It takes one drug model from a first simulation to a parameter fit and an uncertainty analysis, one small step at a time.
 
 ## A first simulation
 

@@ -64,7 +64,7 @@ Once per release repository:
 - The repository exists on GitHub (the command does not create it), it may be empty; the command clones it when there is no checkout.
 - The GitHub integration of Zenodo is switched on for the repository (Zenodo, account settings, GitHub), so that Zenodo archives every GitHub release under the concept DOI.
 
-A release depends on released packages only: the versions of sbmlsim and of the libraries which the lock of the release holds must be on PyPI.
+A release depends on released packages only: the versions of sbmlsim and of the libraries which the lock of the release holds must be on PyPI or on a package index of the lock of the source. A package of such an index, e.g. libroadrunner of the builds of its develop branch ([Installation](installation.md)), is taken from it in the release as well: the release project declares the index as an explicit index, pins the package to it (`tool.uv.sources`) and has it as a dependency, so its lock has the build of the source lock.
 
 ## The build
 

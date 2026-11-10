@@ -3187,7 +3187,7 @@ requires-dist = [
     { name = "hdf5plugin", specifier = ">=7.1.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "latex2mathml", specifier = ">=3.77" },
-    { name = "libroadrunner", specifier = ">=2.11.0", index = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/" },
+    { name = "libroadrunner", specifier = ">=2.11.1.dev655", index = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/" },
     { name = "matplotlib", specifier = ">=3.11.2" },
     { name = "mkdocstrings-python", marker = "extra == 'dev'", specifier = ">=2.0.9" },
     { name = "ninja", marker = "extra == 'amici'" },

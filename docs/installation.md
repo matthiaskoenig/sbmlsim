@@ -1,29 +1,47 @@
 # Installation
 
-`sbmlsim` needs python 3.14 or newer and runs on Linux, macOS and Windows. Install it from [PyPI](https://pypi.org/project/sbmlsim/) with pip:
+`sbmlsim` needs python 3.14 or newer and runs on Linux, macOS and Windows. It is on [PyPI](https://pypi.org/project/sbmlsim/), its simulator [libroadrunner](https://libroadrunner.org) comes from the builds of the `develop` branch of libroadrunner: `sbmlsim` relies on fixes of libroadrunner which are not released yet, so it depends on `libroadrunner>=2.11.1.dev655`, a development version which is not on PyPI. The builds are served by the package index [roadrunner-wheels](https://github.com/matthiaskoenig/roadrunner-wheels), which every install names as an additional index:
 
 ```bash
-pip install sbmlsim
+pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ sbmlsim
 ```
 
-The simulator [libroadrunner](https://libroadrunner.org) comes as a binary wheel for all three platforms, so you need no compiler. The one exception is python 3.15: h5py, which writes the result files, has no wheels for it yet, so pip builds it from source. That needs a C compiler and the HDF5 library (`libhdf5-dev` on Debian and Ubuntu, `brew install hdf5` on macOS).
+Without the index the install stops with `No matching distribution found for libroadrunner>=2.11.1.dev655`. The index serves the wheels of libroadrunner (and of rrplugins) only, every other package comes from PyPI. Once libroadrunner is released with these fixes, the release on PyPI satisfies the requirement as well and the index is no longer needed.
+
+libroadrunner comes as a binary wheel for all three platforms, so you need no compiler. The one exception is python 3.15: h5py, which writes the result files, has no wheels for it yet, so pip builds it from source. That needs a C compiler and the HDF5 library (`libhdf5-dev` on Debian and Ubuntu, `brew install hdf5` on macOS).
 
 On python 3.15, libroadrunner 2.11 takes the symbols of the GDB JIT interface from the interpreter, which not every python 3.15 exports: with the python 3.15 of Ubuntu, for example, `import roadrunner` fails with `undefined symbol: __jit_debug_register_code`. The python of uv exports them, so use it for python 3.15, e.g. `uv venv --python 3.15 --managed-python`. Python 3.14 works with any interpreter.
 
 ## With uv
 
-With [uv](https://docs.astral.sh/uv/), add `sbmlsim` to your project, which locks it together with the rest of your environment:
+With [uv](https://docs.astral.sh/uv/), add the index to the `pyproject.toml` of your project and take libroadrunner from it:
 
-```bash
-uv add sbmlsim
+```toml
+[tool.uv.sources]
+libroadrunner = { index = "roadrunner-dev" }
+
+[[tool.uv.index]]
+name = "roadrunner-dev"
+url = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/"
+explicit = true
 ```
 
-or install it into a virtual environment:
+and add `sbmlsim` together with `libroadrunner`, which locks them with the rest of your environment:
+
+```bash
+uv add sbmlsim libroadrunner
+```
+
+uv applies a source to the direct dependencies of a project only, so `libroadrunner` is one of them; the index is `explicit`, uv asks it for libroadrunner only and every other package comes from PyPI. A project which already depends on `sbmlsim` adds the lines and runs `uv add libroadrunner`; `uv lock --upgrade-package libroadrunner` moves the lock to the latest build. The sources are not part of a wheel built from the project: a package which depends on `sbmlsim` is installed with the index as well.
+
+To install into a virtual environment instead:
 
 ```bash
 uv venv --python 3.14
-uv pip install sbmlsim
+uv pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ sbmlsim
 ```
+
+The index keeps every build: a lock or a pinned version installs the same build later.
 
 ## Check the installation
 
@@ -49,7 +67,7 @@ Now continue with the [Tutorial](tutorial.md).
 
 ## Optional packages
 
-Five features need packages which are not installed with `sbmlsim`:
+Five features need packages which are not installed with `sbmlsim`; install them into the environment of `sbmlsim`, with the index of the builds of libroadrunner as above (`--extra-index-url`, or a uv project with the index):
 
 | feature | install |
 | --- | --- |
@@ -69,45 +87,19 @@ CMake and SWIG come from PyPI with the build of AMICI, and the extra installs `n
 
 ## Development version
 
-Install the current state of the `develop` branch from GitHub:
+Install the current state of the `develop` branch from GitHub, with the index of the builds of libroadrunner:
 
 ```bash
-pip install git+https://github.com/matthiaskoenig/sbmlsim.git@develop
+pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ git+https://github.com/matthiaskoenig/sbmlsim.git@develop
 ```
 
-or with uv:
+or with uv, in a project with the index of [With uv](#with-uv):
 
 ```bash
 uv add "sbmlsim @ git+https://github.com/matthiaskoenig/sbmlsim.git@develop"
 ```
 
 To work on `sbmlsim` itself, with the tests and the documentation, see [Development](development.md).
-
-### The develop builds of libroadrunner
-
-`sbmlsim` from PyPI depends on the released libroadrunner of PyPI. Its development environment runs on the builds of the `develop` branch of libroadrunner instead, which are served as the package index [roadrunner-wheels](https://github.com/matthiaskoenig/roadrunner-wheels) under development versions such as `2.11.1.dev655`. A project which builds on `sbmlsim`, e.g. a model package, takes them for its own environment with the same lines in its `pyproject.toml`; `libroadrunner` must be a dependency of the project itself, since uv applies a source to the direct dependencies only:
-
-```toml
-[project]
-dependencies = [
-    "sbmlsim",
-    "libroadrunner>=2.11.0",
-]
-
-[tool.uv.sources]
-libroadrunner = { index = "roadrunner-dev" }
-
-[[tool.uv.index]]
-name = "roadrunner-dev"
-url = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/"
-explicit = true
-```
-
-`uv lock` then locks the latest build, `uv lock --upgrade-package libroadrunner` moves the lock to a newer one. The sources are not part of a built package, so the wheel of the project published on PyPI still installs the released libroadrunner. With pip, the specifier with a development version takes the builds for libroadrunner only:
-
-```bash
-pip install --extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/ "libroadrunner>=0.0.dev0"
-```
 
 ## Dependencies
 

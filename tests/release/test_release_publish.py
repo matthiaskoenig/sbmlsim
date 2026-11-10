@@ -259,6 +259,40 @@ def test_check_lock_local_source(tmp_path: Path) -> None:
         check_lock(tmp_path)
 
 
+#: an explicit index of a release project and a package pinned to it
+INDEX_PROJECT = """\
+[tool.uv.sources]
+pkpdsim = { index = "dev" }
+
+[[tool.uv.index]]
+name = "dev"
+url = "https://example.org/simple/"
+explicit = true
+"""
+
+
+def test_check_lock_explicit_index(tmp_path: Path) -> None:
+    """A package of an explicit index of the project is a package of a registry."""
+    _lock(tmp_path, '{ registry = "https://example.org/simple" }')
+    (tmp_path / "pyproject.toml").write_text(INDEX_PROJECT, encoding="utf-8")
+    check_lock(tmp_path)
+
+
+def test_check_lock_undeclared_index(tmp_path: Path) -> None:
+    _lock(tmp_path, '{ registry = "https://example.org/simple" }')
+    with pytest.raises(ReleaseError, match="pkpdsim"):
+        check_lock(tmp_path)
+
+
+def test_check_lock_source_of_an_undeclared_index(tmp_path: Path) -> None:
+    _lock(tmp_path, '{ registry = "https://example.org/simple" }')
+    (tmp_path / "pyproject.toml").write_text(
+        INDEX_PROJECT.replace('index = "dev" }', 'index = "other" }'), encoding="utf-8"
+    )
+    with pytest.raises(ReleaseError, match=r"tool\.uv\.sources: pkpdsim"):
+        check_lock(tmp_path)
+
+
 def test_check_lock_uv_sources(tmp_path: Path) -> None:
     _lock(tmp_path, '{ registry = "https://pypi.org/simple" }')
     (tmp_path / "pyproject.toml").write_text(

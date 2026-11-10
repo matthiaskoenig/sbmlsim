@@ -34,9 +34,36 @@ from sbmlsim.release.source import ReleaseError, SourceRepo
 if TYPE_CHECKING:
     from sbmlsim.project import Project
 
+#: the registry of PyPI in a uv lock
+PYPI = "https://pypi.org/simple"
+
+
+@dataclass(frozen=True)
+class PackageIndex:
+    """A package index other than PyPI which packages of the source lock come from.
+
+    E.g. the index of the builds of the develop branch of libroadrunner
+    (matthiaskoenig/roadrunner-wheels), which a model on sbmlsim takes
+    libroadrunner from. The release project declares it as an explicit index
+    and pins its packages to it (`tool.uv.sources`), so its lock has the same
+    builds as the source lock.
+
+    Attributes:
+        name: the name of the index, the one of the source project.
+        url: its url, as the source lock has it.
+        packages: the packages of the source lock from it, sorted.
+    """
+
+    name: str
+    url: str
+    packages: tuple[str, ...]
+
+
 __all__ = [
+    "PYPI",
     "TEMPLATES",
     "UV_VERSION",
+    "PackageIndex",
     "ProjectContext",
     "project_context",
     "render",
@@ -93,6 +120,7 @@ class ProjectContext:
         hook: the release hook of the project.
         source_commit: the commit of the source repository.
         built_steps: the steps the build ran, `None` before the build.
+        indexes: the package indexes other than PyPI of the source lock.
     """
 
     project: Project
@@ -109,6 +137,7 @@ class ProjectContext:
     hook: ReleaseHook = field(default_factory=ReleaseHook)
     source_commit: str | None = None
     built_steps: tuple[BuildStep, ...] | None = None
+    indexes: tuple[PackageIndex, ...] = ()
 
     @property
     def repo_name(self) -> str:
@@ -219,6 +248,70 @@ def _constraints(
     return tuple(constraints)
 
 
+def _registry(url: str) -> str:
+    """Get the url of a registry without its trailing slash, as a uv lock has it."""
+    return url.rstrip("/")
+
+
+def _indexes(source: SourceRepo) -> tuple[PackageIndex, ...]:
+    """Get the package indexes other than PyPI which packages of the source lock come from.
+
+    An index is named as in the `[[tool.uv.index]]` of the source project; one
+    the project does not name is `index-<k>`.
+    """
+    lock = tomllib.loads((source.root / "uv.lock").read_text(encoding="utf-8"))
+    packages: dict[str, set[str]] = {}
+    for package in lock.get("package", []):
+        registry = package.get("source", {}).get("registry")
+        if registry and _registry(registry) != PYPI:
+            packages.setdefault(_registry(registry), set()).add(package["name"])
+    if not packages:
+        return ()
+    pyproject = tomllib.loads(
+        (source.root / "pyproject.toml").read_text(encoding="utf-8")
+    )
+    names = {
+        _registry(index["url"]): index["name"]
+        for index in pyproject.get("tool", {}).get("uv", {}).get("index", [])
+        if "url" in index and "name" in index
+    }
+    return tuple(
+        PackageIndex(
+            name=names.get(url, f"index-{k}"),
+            url=url,
+            packages=tuple(sorted(found)),
+        )
+        for k, (url, found) in enumerate(sorted(packages.items()), start=1)
+    )
+
+
+def _requirement_name(requirement: str) -> str:
+    """Get the normalized name of the package of a requirement."""
+    match = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", requirement)
+    name = match.group(1) if match else requirement
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
+def _with_index_packages(
+    dependencies: tuple[str, ...], indexes: tuple[PackageIndex, ...]
+) -> tuple[str, ...]:
+    """Add the packages of the indexes which are no dependencies to the dependencies.
+
+    uv applies a source to the direct dependencies of a project only, so a
+    package pinned to an index, e.g. libroadrunner which a model gets with
+    sbmlsim, is a dependency of the release project; its version is the one
+    of its constraint.
+    """
+    names = {_requirement_name(d) for d in dependencies}
+    added = [
+        package
+        for index in indexes
+        for package in index.packages
+        if _requirement_name(package) not in names
+    ]
+    return (*dependencies, *added)
+
+
 def project_context(
     project: Project,
     reference: str,
@@ -256,6 +349,7 @@ def project_context(
             f"'{pyproject_path}' has no requires-python in its [project] table."
         )
     python = _python_version(source, requires_python)
+    indexes = _indexes(source)
     try:
         hook = project.release_hook()
     except (ImportError, AttributeError, ValueError) as err:
@@ -267,13 +361,16 @@ def project_context(
         version=version,
         python=python,
         pythons=_python_versions(table, python),
-        dependencies=tuple(table.get("dependencies", ())),
+        dependencies=_with_index_packages(
+            tuple(table.get("dependencies", ())), indexes
+        ),
         constraints=_constraints(source, settings.framework, framework_path),
         framework_path=framework_path,
         year=datetime.date.today().year,
         requires_python=requires_python,
         hook=hook,
         source_commit=source.commit,
+        indexes=indexes,
     )
 
 
@@ -358,6 +455,7 @@ def render(
         "uv": UV_VERSION,
         "dependencies": context.dependencies,
         "constraints": context.constraints,
+        "indexes": context.indexes,
         "framework": context.settings.framework,
         # forward slashes on Windows too: a TOML string and a path which uv accepts
         "framework_path": (
