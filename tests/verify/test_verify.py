@@ -415,7 +415,7 @@ def test_settings_of_a_run_which_misses_sbmlsim_exit_with_2(
 class ToyDesign(ToyDecay):
     """The decay with a local design of k, whose creation constructs simulators."""
 
-    def simulations(self) -> dict[str, Simulation | Scan]:  # ty: ignore[invalid-method-override]
+    def simulations(self) -> dict[str, Simulation | Scan]:  # ty: ignore[incompatible-method-override]
         """The decay and its local design."""
         sim = Simulation(end=10, steps=50)
         return {
@@ -687,7 +687,7 @@ def test_a_dump_and_the_fits_load_at_the_level_of_the_project(
     seen: list[str] = []
 
     def recording_run_fit(definition: object, **kwargs: object) -> dict:
-        seen.append(str(definition.problem(opid="level").jit_optimization))  # ty: ignore[unresolved-attribute]
+        seen.append(str(definition.problem(opid="level").jit_optimization))  # ty: ignore[missing-attribute]
         return {}
 
     monkeypatch.setattr(sbmlsim.fit.cli, "run_fit", recording_run_fit)

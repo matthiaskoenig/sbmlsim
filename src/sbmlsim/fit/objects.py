@@ -754,9 +754,12 @@ class FitMappingCollection:
         if self.use_mapping_weights is True:
             mapping_weights: list[float | None] = [None] * len(self.mappings)
             # no weights provided use default empty weights
-            weights_processed = (
-                mapping_weights if weights is None else list(weights)  # ty: ignore[invalid-argument-type]
-            )
+            if weights is None:
+                weights_processed = mapping_weights
+            elif isinstance(weights, (float, int)):
+                weights_processed = [weights]
+            else:
+                weights_processed = list(weights)
 
             # all weights have to be None, i.e [None, ..., None].
             # the weights are calculated dynamically by evaluating the fit mappings.

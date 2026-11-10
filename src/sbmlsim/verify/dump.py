@@ -196,7 +196,7 @@ def _time_number(time: object, time_unit: str | None) -> float:
         raise ValueError(
             f"the time {time} is a quantity and the simulation has no time unit"
         )
-    return float(time.m_as(time_unit))  # ty: ignore[unresolved-attribute]
+    return float(time.m_as(time_unit))  # ty: ignore[missing-attribute]
 
 
 def on_grid(simulation: Simulation | Scan, n: int) -> Simulation | Scan:

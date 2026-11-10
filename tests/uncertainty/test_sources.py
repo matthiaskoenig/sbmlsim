@@ -98,7 +98,7 @@ def test_from_covariance() -> None:
     normal = UncertaintyModel.from_covariance(
         {"CL": 10.0, "V": 50.0}, linear, shape="normal"
     )
-    assert normal.parameters["V"].sd == pytest.approx(3.0)  # ty: ignore[unresolved-attribute]
+    assert normal.parameters["V"].sd == pytest.approx(3.0)  # ty: ignore[missing-union-attribute]
 
 
 def test_a_parameter_which_a_scenario_sets_raises() -> None:

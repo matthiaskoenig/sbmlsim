@@ -510,9 +510,9 @@ def test_evaluate_fits(credibility_project: Project, tmp_path: Path) -> None:
     kinds = dict(zip(pairs, table.kind, strict=True))
     assert kinds == KINDS
     assert kind_differences(table, fits.recorded_kinds) == []
-    assert fits.lookup("CredB", "fm_zero").metadata.route is Route.PO  # ty: ignore[unresolved-attribute]
+    assert fits.lookup("CredB", "fm_zero").metadata.route is Route.PO  # ty: ignore[missing-attribute]
     assert set(fits.reports) == {"DECAY"}
-    assert fits.lookup("CredA", "fm_renal").metadata.health is Health.RENAL_IMPAIRMENT  # ty: ignore[unresolved-attribute]
+    assert fits.lookup("CredA", "fm_renal").metadata.health is Health.RENAL_IMPAIRMENT  # ty: ignore[missing-attribute]
 
     # the static table has the same mappings with the same observables
     static = mapping_table(credibility_project)

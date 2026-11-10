@@ -163,7 +163,7 @@ MAX_HALVINGS = 8
 #: the output of a run of COPASI into a data handler, without the report of
 #: the task, which has no file and of which COPASI warns otherwise; SWIG sets
 #: the flag on the class when COPASI is imported
-OUTPUT = COPASI.CCopasiTask.OUTPUT_DURING  # ty: ignore[unresolved-attribute]
+OUTPUT = COPASI.CCopasiTask.OUTPUT_DURING  # ty: ignore[missing-attribute]
 
 
 class _TimeCourse:

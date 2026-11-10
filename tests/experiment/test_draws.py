@@ -431,7 +431,7 @@ class ToyInitialScan(ToyDecay):
     """The decay at three initial concentrations, A at its end over them."""
 
     @override
-    def simulations(self) -> dict[str, Simulation | Scan]:  # ty: ignore[invalid-method-override]
+    def simulations(self) -> dict[str, Simulation | Scan]:  # ty: ignore[incompatible-method-override]
         return {
             **super().simulations(),
             "scan_initial": Scan(

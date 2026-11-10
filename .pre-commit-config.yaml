@@ -45,7 +45,7 @@ repos:
 - repo: https://github.com/astral-sh/ruff-pre-commit
   # Ruff version, the one locked in uv.lock, which the `ruff` check of
   # continuous integration installs; raise it when the lock moves.
-  rev: v0.17.0
+  rev: v0.17.4
   hooks:
     # Run the linter.
     - id: ruff-check
@@ -58,7 +58,7 @@ repos:
 - repo: https://github.com/astral-sh/ty-pre-commit
   # ty version, the one locked in uv.lock, which the `ty` check of continuous
   # integration runs; raise it when the lock moves.
-  rev: v0.0.86
+  rev: v0.0.100
   hooks:
     # Run the type checker on the whole project (see `[tool.ty]` in pyproject.toml).
     # `--extra dev` syncs the environment with the dev dependencies, so that the

@@ -6,7 +6,7 @@ import pickle
 import numpy as np
 import pytest
 
-from conftest import is_intravenous, is_oral  # ty: ignore[unresolved-import]
+from conftest import is_intravenous, is_oral  # ty: ignore[import-not-found]
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.cli import FitDefinition
 from sbmlsim.fit.objects import FitParameter, MappingKind
