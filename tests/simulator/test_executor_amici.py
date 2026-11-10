@@ -964,8 +964,8 @@ def test_a_strict_trigger_of_the_time_at_a_horizon_of_the_steady_state(
     the time is continuous across them; after the presimulation the time is
     set back to 0 and `time > 1` fires again after the end 1. AMICI fires a
     strict trigger at its root at the end of a horizon, the next horizon does
-    not fire it again (`_Course.horizon`); roadrunner fires it once as well
-    (#444, `sbmlsim.simulator.executor._EventAtTheHorizon`).
+    not fire it again (`_Course.horizon`); roadrunner fires it once as well,
+    its horizons end with exact output (#444, `sbmlsim.simulator.executor.steady_state`).
     """
     model = f"model horizon\n  X = 1\n  X' = -X\n  n = 0\n  E: at ({trigger}), t0=true: n = n + 1\nend"
     simulation = Simulation(end=1, times=[0, 1], presimulation=SteadyState())

@@ -102,18 +102,27 @@ def test_the_two_rows_of_every_event_are_paired() -> None:
     assert rows[pairs[0], 0] != times[pairs[0]]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "libroadrunner develop: a delayed event in the steps of the integrator "
+        "has no row of the state before it (sys-bio/roadrunner#1446)"
+    ),
+)
 def test_the_rows_of_a_delayed_event_and_of_its_trigger_are_paired() -> None:
     """The trigger of an event with a delay changes nothing, its rows are paired.
 
-    roadrunner executes a delayed event in the steps of the integrator at the
-    end of the step of CVODE after its time, here at the trigger at 0.5 and at
-    the reset at 1; its rows are paired wherever they are.
+    roadrunner executes a delayed event in the steps of the integrator at its
+    time (roadrunner #1382), `L` at 0.45 and `D` at 0.8, and the reset at 1;
+    its rows are paired at the time of the event.
     """
     rows = _rows(DELAYS, 1.5, "X", "Y")
     times = at_event_times(rows, 2, 1.5e-9)
     pairs = event_pairs(rows, 2, 1.5e-9)
     np.testing.assert_array_equal(times[pairs], times[pairs + 1])
-    np.testing.assert_allclose(np.unique(times[pairs]), [0.25, 0.5, 1.0], atol=1e-12)
+    np.testing.assert_allclose(
+        np.unique(times[pairs]), [0.25, 0.45, 0.5, 0.8, 1.0], atol=1e-12
+    )
     # every change of Y is the row after an event
     jumps = np.flatnonzero(np.diff(rows[:, 2]) != 0)
     assert jumps.size > 0 and set(jumps) <= set(pairs)

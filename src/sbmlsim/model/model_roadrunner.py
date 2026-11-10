@@ -115,39 +115,6 @@ def fire_initial_events(r: roadrunner.RoadRunner) -> None:
     _roadrunner.Integrator_restart(integrator, 0.0)
 
 
-def apply_pending_step_event(r: roadrunner.RoadRunner) -> None:
-    """Apply an event which the integrator keeps pending after a simulation.
-
-    An integration with the steps of the integrator whose last step of
-    CVODE found the root of an event after the end leaves that event pending
-    in the integrator, which neither a reset nor the next `simulate` clears
-    (`variableStepPendingEvent` of `CVODEIntegrator`, roadrunner #1381): the
-    first call of the integrator of the next simulation applies it with the
-    states of the triggers before it, and an event whose trigger is not
-    persistent misses its next rise (case 01590 of the SBML Test Suite). The
-    integrator is called once with exact output at the time of the model,
-    which applies such an event after the simulation, and does not integrate
-    without one.
-
-    Args:
-        r: the roadrunner instance after a simulation.
-    """
-    integrator: roadrunner.Integrator = r.getIntegrator()
-    if integrator.getName() != "cvode":
-        return
-    variable_step_size = bool(integrator.getValue("variable_step_size"))
-    level = roadrunner.Logger.getLevel()
-    roadrunner.Logger.setLevel(min(level, roadrunner.Logger.LOG_CRITICAL))
-    try:
-        integrator.setValue("variable_step_size", False)
-        integrator.integrate(float(r.model.getTime()), 0.0)
-    except RuntimeError:
-        pass
-    finally:
-        integrator.setValue("variable_step_size", variable_step_size)
-        roadrunner.Logger.setLevel(level)
-
-
 #: the level of a model loaded without one, unless `JIT_OPTIMIZATION_VARIABLE`
 #: sets another
 DEFAULT_JIT_OPTIMIZATION = JitOptimization.O2
@@ -198,39 +165,20 @@ def resolve_jit_optimization(
 def load_roadrunner(
     source: str | Path, optimization: JitOptimization | str | None = None
 ) -> roadrunner.RoadRunner:
-    """Load an instance of roadrunner, its model always compiled (#313).
-
-    roadrunner (2.10 and 2.11) takes the compiled model of a new instance from
-    its cache in the process when another instance of the same SBML is alive,
-    and the data of such a model has no piecewise triggers
-    (`createModelData(..., 0)` in `LLVMModelGenerator::createModel`): CVODE's
-    root finding does not stop at the switch of a piecewise of the model, and
-    the instance integrates a few 1e-9 apart from a compiled one. Which
-    instance is alive differs between the first experiment of a run, the
-    later ones, a serial run and the workers of a pool, so a model is compiled
-    whenever it is loaded (`LoadSBMLOptions.RECOMPILE`), which also keeps it
-    out of the cache. The compilation is paid once per loaded model, i.e. once
-    per model of an `ExperimentRunner` and of a worker of a pool, and an
-    instance no longer shares its code with another one.
+    """Load an instance of roadrunner.
 
     The model is compiled with LLJIT at the given optimization level, see
-    `JitOptimization`, which compiles faster than roadrunner's default JIT,
-    MCJIT. Up to libroadrunner 2.10 LLJIT crashed when the code of a model and
-    its jump tables were more than 2 GiB apart (#331, roadrunner #1368), e.g.
-    when a model was compiled again while an earlier instance of it was alive.
-    The memory the compilation freed is returned to the system
-    (`sbmlsim.memory.release_freed_memory`).
+    `JitOptimization`, which compiles faster than MCJIT. roadrunner keeps the
+    compiled models of a process in its cache, keyed by the SBML, the JIT and
+    its optimization level (roadrunner #1420), and a model taken from the
+    cache integrates as a compiled one (roadrunner #1383, sbmlsim #313), so a
+    model loaded again is not compiled again. The memory the compilation
+    freed is returned to the system (`sbmlsim.memory.release_freed_memory`).
 
-    LLJIT of libroadrunner 2.11 keeps the code of an SBML once it compiled it
-    in the process, also after the instance was released and also with
-    `RECOMPILE`, and gives a later compilation of the same SBML at another
-    optimization level that code: a model compiled at `O0` (e.g. by
-    `sbmlsim.sensitivity.parameters.parameters_from_sbml`) made every later
-    instance of the model in the process an `O0` one, which integrates a
-    little apart from the `O2` instances of the workers of a pool. The SBML
-    roadrunner compiles carries its level as a comment (`_with_level`), so the
-    code of one level is never the code of another; a model which references
-    models of other files (`externalModelDefinition`) is flattened first.
+    A model which references models of other files (`externalModelDefinition`)
+    is flattened first, its references resolved relative to its file (to the
+    current directory for SBML given as a string), as `SBMLModel` simulates
+    it.
 
     Args:
         source: the path of an SBML file or the SBML itself.
@@ -241,13 +189,10 @@ def load_roadrunner(
         The instance.
     """
     options = roadrunner.LoadSBMLOptions()
-    options.modelGeneratorOpt = (
-        options.modelGeneratorOpt | roadrunner.LoadSBMLOptions.RECOMPILE
-    )
     options.setLLVMBackend(roadrunner.LoadSBMLOptions.LLJIT)
     level = resolve_jit_optimization(optimization)
     options.setLLJitOptimizationLevel(_LLJIT_LEVELS[level])
-    instance = roadrunner.RoadRunner(_with_level(source, level), options)
+    instance = roadrunner.RoadRunner(_loadable(source), options)
     # the compilation leaves the memory of its allocations free in the heap
     release_freed_memory()
     return instance
@@ -271,22 +216,20 @@ _ENCODING = re.compile(
 )
 
 
-def _with_level(source: str | Path, level: JitOptimization) -> str:
-    """Get the SBML of a source with its optimization level as a comment, see `load_roadrunner`.
+def _loadable(source: str | Path) -> str:
+    """Get the SBML of a source which roadrunner loads, see `load_roadrunner`.
 
     A path is read (in the encoding of its XML declaration), a string which
     starts with `<` (after a byte order mark and whitespace) is the SBML. A
     hierarchical model with external model definitions is flattened, its
     references resolved relative to its file (to the current directory for
-    SBML given as a string), as `SBMLModel` simulates it. The comment follows
-    the root element, so the XML declaration stays first.
+    SBML given as a string), as `SBMLModel` simulates it.
 
     Args:
         source: the path of an SBML file or the SBML itself.
-        level: the optimization level.
 
     Returns:
-        The SBML with the comment of its level.
+        The SBML.
     """
     path: Path | None = None
     text = str(source)
@@ -295,7 +238,7 @@ def _with_level(source: str | Path, level: JitOptimization) -> str:
         text = _sbml_text(path.read_bytes())
     if "externalModelDefinition" in text:
         text = _flatten(text, path=path)
-    return f"{text.rstrip()}\n<!-- sbmlsim LLJIT {level} -->\n"
+    return text
 
 
 logger = logging.getLogger(__name__)

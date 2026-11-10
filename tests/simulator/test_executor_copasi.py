@@ -882,19 +882,17 @@ def test_an_event_of_the_time_fires_after_a_presimulation(
 
 
 def test_an_event_at_the_end_in_the_rounding_of_the_state() -> None:
-    """A known difference: an event within the rounding of the state at the end.
+    """An event within the rounding of the state at the end is two rows at the end.
 
-    `X >= 8` of `X' = 1` from 2 at the end 6: roadrunner fires it before the
-    end and its steps have one row at the end, the state after it; COPASI
-    has the states before and after it at the end. The states at the end
-    agree.
+    `X >= 8` of `X' = 1` from 2 at the end 6: the steps of both engines have
+    the states before and after it at the end; libroadrunner 2.11 fired it
+    before the end and had one row at the end, the state after it.
     """
     copasi, roadrunner = both(sbml(M1), Simulation(end=6), ["time", "X", "n"])
     np.testing.assert_allclose(
         copasi.values[-2:], [[6.0, 8.0, 0.0], [6.0, 0.0, 1.0]], atol=1e-9
     )
-    assert roadrunner.time[-2] < 6.0
-    np.testing.assert_allclose(copasi.values[-1], roadrunner.values[-1], atol=1e-9)
+    np.testing.assert_allclose(roadrunner.values[-2:], copasi.values[-2:], atol=1e-9)
 
 
 @pytest.mark.parametrize("change", [-0.007312715117751976, -3.3])

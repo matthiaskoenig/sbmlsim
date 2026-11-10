@@ -18,7 +18,7 @@ from sbmlsim.model import AbstractModel, JitOptimization, RoadrunnerSBMLModel
 from sbmlsim.model.model_roadrunner import (
     DEFAULT_JIT_OPTIMIZATION,
     JIT_OPTIMIZATION_VARIABLE,
-    _with_level,
+    _loadable,
     resolve_jit_optimization,
 )
 from sbmlsim.simulation import Simulation
@@ -192,11 +192,12 @@ def _hierarchical(directory: Path) -> Path:
 def test_a_level_compiled_before_in_the_process_does_not_change_another(
     tmp_path: Path, hierarchical: bool
 ) -> None:
-    """LLJIT reuses the code of an SBML it compiled before, also at another level.
+    """A model compiled at another level before in the process is compiled again.
 
-    The SBML carries its level, so an instance at `O2` after one at `O0` is an
-    `O2` one, bitwise; HCTZ integrates differently at the two levels. A
-    hierarchical model is flattened before, so it carries its level as well.
+    roadrunner keys its compiled models by the optimization level (roadrunner
+    #1420), so an instance at `O2` after one at `O0` is an `O2` one, bitwise;
+    HCTZ integrates differently at the two levels. libroadrunner 2.11 gave it
+    the code of `O0`.
     """
     path = _hierarchical(tmp_path) if hierarchical else MODEL_PATH
 
@@ -216,25 +217,16 @@ def test_a_level_compiled_before_in_the_process_does_not_change_another(
     assert timecourse("O0") != o2
 
 
-def test_the_level_follows_the_root_and_the_declaration_stays_first(
-    tmp_path: Path,
-) -> None:
+def test_a_string_is_the_sbml_and_a_path_is_read(tmp_path: Path) -> None:
     text = sbml()
-    tagged = _with_level(text, JitOptimization.O0)
-    assert tagged == text.rstrip() + "\n<!-- sbmlsim LLJIT O0 -->\n"
-    assert tagged.startswith(text[:5])
+    assert _loadable(text) == text
     # a string with a byte order mark and whitespace is SBML, not a path
-    assert _with_level("\ufeff \n" + text, JitOptimization.O2).endswith(
-        "<!-- sbmlsim LLJIT O2 -->\n"
-    )
-    # a path, given as a path or a string, is read; a leading comment which
-    # names the root changes nothing
+    assert _loadable("\ufeff \n" + text) == "\ufeff \n" + text
+    # a path, given as a path or a string, is read without its byte order mark
     path = tmp_path / "model.xml"
-    commented = text.replace("<sbml", "<!-- <sbml> --><sbml", 1)
-    path.write_bytes(b"\xef\xbb\xbf" + commented.encode("utf-8"))
+    path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
     for source in (path, str(path)):
-        tagged = _with_level(source, JitOptimization.O1)
-        assert tagged == commented.rstrip() + "\n<!-- sbmlsim LLJIT O1 -->\n"
+        assert _loadable(source) == text
 
 
 def test_a_file_is_read_in_the_encoding_of_its_declaration(tmp_path: Path) -> None:
@@ -243,11 +235,10 @@ def test_a_file_is_read_in_the_encoding_of_its_declaration(tmp_path: Path) -> No
     text = text.replace("<model ", '<model name="Ödem" ', 1)
     path = tmp_path / "latin.xml"
     path.write_bytes(text.encode("latin-1"))
-    assert 'name="Ödem"' in _with_level(path, JitOptimization.O2)
+    assert 'name="Ödem"' in _loadable(path)
 
 
 def test_a_hierarchical_model_is_flattened(tmp_path: Path) -> None:
-    tagged = _with_level(_hierarchical(tmp_path), JitOptimization.O2)
-    assert "externalModelDefinition" not in tagged
-    assert "sub__PODOSE_hctz" in tagged
-    assert tagged.endswith("<!-- sbmlsim LLJIT O2 -->\n")
+    flat = _loadable(_hierarchical(tmp_path))
+    assert "externalModelDefinition" not in flat
+    assert "sub__PODOSE_hctz" in flat

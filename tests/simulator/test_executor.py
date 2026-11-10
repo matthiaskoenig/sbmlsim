@@ -1,6 +1,5 @@
 """The executor runs a plan with the initialization and change semantics of PEtab v2."""
 
-import logging
 import warnings
 
 import numpy as np
@@ -13,7 +12,6 @@ from sbmlsim.simulation import Change, Simulation, SteadyState
 from sbmlsim.simulator import Simulator
 from sbmlsim.simulator.executor import (
     SteadyStateError,
-    _exact_times,
     _output_grid,
     _to_the_end,
     execute,
@@ -477,71 +475,54 @@ HORIZON_SIMULATIONS = {
 }
 
 
-def _horizon_run(
-    trigger: str, simulation: str, caplog: pytest.LogCaptureFixture
-) -> tuple[float, bool]:
+def _horizon_run(trigger: str, simulation: str) -> float:
     """Run a simulation of `HORIZON_SIMULATIONS` with a trigger of the time.
 
     Returns:
-        The number of firings at the end and whether the plan ran again with
-        exact output at the end of a horizon.
+        The number of firings at the end.
     """
     model = RoadrunnerSBMLModel(source=sbml(TIME_TRIGGER.replace("TRIGGER", trigger)))
-    caplog.clear()
-    with caplog.at_level(logging.DEBUG, logger="sbmlsim.simulator.executor"):
-        res = run_on(model, HORIZON_SIMULATIONS[simulation][0], ["time", "n", "X"])
-    again = any("exact output at its end" in m for m in caplog.messages)
+    res = run_on(model, HORIZON_SIMULATIONS[simulation][0], ["time", "n", "X"])
     assert res["X"][-1] == pytest.approx(0.0, abs=1e-6)
-    return float(res["n"][-1]), again
+    return float(res["n"][-1])
 
 
 @pytest.mark.parametrize("simulation", HORIZON_SIMULATIONS)
 @pytest.mark.parametrize("horizon", [1.0, 10.0, 100.0])
 def test_a_strict_trigger_of_the_time_fires_once_at_the_end_of_a_horizon(
-    simulation: str, horizon: float, caplog: pytest.LogCaptureFixture
+    simulation: str, horizon: float
 ) -> None:
     """A strict trigger of the time at the end of a horizon of a steady state fires once (#444).
 
-    CVODE finds the root a little before the end, roadrunner fires the event
-    there and evaluates the trigger, still false, again at the start of the
-    next horizon, where it fired a second time; the horizon is integrated
-    again with exact output at its end.
+    CVODE finds the root a little before the end in its steps, where
+    libroadrunner 2.11 fired the event and evaluated the trigger, still
+    false, again at the start of the next horizon, where it fired a second
+    time; a horizon is integrated with exact output at its end.
     """
     time = HORIZON_SIMULATIONS[simulation][1] + horizon
-    n, again = _horizon_run(f"time > {time!r}", simulation, caplog)
-    assert n == 1.0
-    assert again
+    assert _horizon_run(f"time > {time!r}", simulation) == 1.0
 
 
 @pytest.mark.parametrize("simulation", HORIZON_SIMULATIONS)
 @pytest.mark.parametrize("operator", [">", ">="])
 @pytest.mark.parametrize("after", [1e-9, 1e-6, 1e-3, 0.1])
 def test_a_trigger_of_the_time_after_the_end_of_a_horizon_fires_once(
-    simulation: str, operator: str, after: float, caplog: pytest.LogCaptureFixture
+    simulation: str, operator: str, after: float
 ) -> None:
     """A trigger of the time a little after the end of a horizon fires once (#444).
 
-    The last step of CVODE after the end of the horizon finds its root and
-    roadrunner keeps the event pending; `_to_the_end` fires it after the
-    end, and the next horizon starts at the time of the model after it.
-    From the end of the horizon its trigger was false again and the event
-    fired a second time.
+    The integration of the horizon stops at its end, the event fires in the
+    next horizon.
     """
     time = HORIZON_SIMULATIONS[simulation][1] + 10.0 + after
-    n, again = _horizon_run(f"time {operator} {time!r}", simulation, caplog)
-    assert n == 1.0
-    assert not again
+    assert _horizon_run(f"time {operator} {time!r}", simulation) == 1.0
 
 
 @pytest.mark.parametrize("simulation", HORIZON_SIMULATIONS)
-def test_a_trigger_true_at_the_end_of_a_horizon_keeps_the_steps(
-    simulation: str, caplog: pytest.LogCaptureFixture
-) -> None:
-    """A trigger which is true at the end of a horizon fires once in its steps."""
+def test_a_trigger_true_at_the_end_of_a_horizon_fires_once(simulation: str) -> None:
+    """A trigger which becomes true at the end of a horizon fires once, at its end."""
     time = HORIZON_SIMULATIONS[simulation][1] + 10.0
-    n, again = _horizon_run(f"time >= {time!r}", simulation, caplog)
-    assert n == 1.0
-    assert not again
+    assert _horizon_run(f"time >= {time!r}", simulation) == 1.0
 
 
 #: an event which fires every 0.01 and records its time, which makes its
@@ -557,16 +538,10 @@ end
 """
 
 
-def test_an_event_which_makes_its_trigger_false_keeps_the_steps_of_a_horizon(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """An event at the end of a horizon whose assignments make its trigger false is no event before its time."""
+def test_an_event_which_makes_its_trigger_false_fires_in_every_horizon() -> None:
+    """An event whose assignments make its trigger false fires through the horizons."""
     model = RoadrunnerSBMLModel(source=sbml(PERIODIC))
-    with caplog.at_level(logging.DEBUG, logger="sbmlsim.simulator.executor"):
-        res = run_on(
-            model, Simulation(end=0.5, presimulation=SteadyState()), ["time", "n"]
-        )
-    assert not any("exact output at its end" in m for m in caplog.messages)
+    res = run_on(model, Simulation(end=0.5, presimulation=SteadyState()), ["time", "n"])
     assert res["n"][-1] > 100
 
 
@@ -810,18 +785,17 @@ class _FailingRoadRunner:
 
 
 def test_a_failure_of_the_integrator_at_the_end_raises() -> None:
-    """The integrator fails at the end: an error, or an event after the end."""
+    """The integrator fails on the way to the end."""
     r = _FailingRoadRunner()
     with pytest.raises(RuntimeError, match="CV_TOO_MUCH_WORK"):
-        _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
-    assert not _to_the_end(r, 1.0, events=True)  # ty: ignore[invalid-argument-type]
+        _to_the_end(r, 1.0)  # ty: ignore[invalid-argument-type]
 
 
-def test_a_model_without_events_at_the_end_is_not_integrated_again() -> None:
-    """roadrunner leaves the model at the end of its steps (libroadrunner 2.11)."""
+def test_a_model_at_the_end_is_not_integrated_again() -> None:
+    """roadrunner leaves the model at the end of its steps."""
     r = _FailingRoadRunner()
     r.getTime = lambda: 1.0
-    assert _to_the_end(r, 1.0, events=False)  # ty: ignore[invalid-argument-type]
+    _to_the_end(r, 1.0)  # ty: ignore[invalid-argument-type]
 
 
 def test_a_plan_without_changes_after_the_start_has_one_row_per_time() -> None:
@@ -990,15 +964,16 @@ def _count_runs(monkeypatch: pytest.MonkeyPatch) -> list[int]:
     return runs
 
 
-def test_segments_past_their_end_are_integrated_again_at_most_twice(
+def test_an_event_in_the_last_step_after_a_change_fires_after_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The plan runs three times however many segments roadrunner integrated past their end.
+    """An event in the last step of CVODE after the end of a segment fires in the next one.
 
     A change of `k` to its own value 0.002 before every reset: the last step
-    of roadrunner before every change ends after the reset. The second run
-    finds the second segment past its end, the third one keeps the state at
-    the start of every later segment in memory.
+    of CVODE before every change ends after the reset, which libroadrunner
+    2.11 applied before the change, so the segment was integrated again with
+    exact output; roadrunner leaves it to the next integration (#1384), the
+    plan runs once.
     """
     runs = _count_runs(monkeypatch)
     model = RoadrunnerSBMLModel(source=sbml(SAWTOOTH))
@@ -1008,12 +983,12 @@ def test_segments_past_their_end_are_integrated_again_at_most_twice(
         Simulation(end=10.5, changes=[Change(times, {"k": 1.0})]),
         ["time", "X", "Y"],
     )
-    assert len(runs) == 3
+    assert len(runs) == 1
     at = np.isin(result.time, times) & _after(result)
     np.testing.assert_allclose(np.asarray(result["X"])[at], 0.998, rtol=1e-6)
     np.testing.assert_array_equal(np.asarray(result["Y"])[at], np.arange(10))
     assert result["Y"][-1] == 10.0
-    # the states of the third run are the ones of exact output times
+    # the states are the ones of exact output times
     exact = run_on(
         RoadrunnerSBMLModel(source=sbml(SAWTOOTH)),
         Simulation(end=10.5, changes=[Change(times, {"k": 1.0})], times=times),
@@ -1040,15 +1015,13 @@ def test_a_model_without_events_is_integrated_once(
     assert len(runs) == 1
 
 
-def test_an_exact_segment_keeps_the_states_before_and_after_an_event(
+def test_a_segment_whose_last_step_ends_after_an_event_keeps_an_event_inside(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A segment integrated again with exact output keeps an event inside as two rows.
+    """The steps of a segment whose last step ends after an event keep an event inside as two rows.
 
     The segment up to the change at 1.998 has the reset at 1 inside, and its
-    last step ends after the reset at 2: it is integrated again with exact
-    output, which has the state before the reset at 1 and the state after it,
-    as the steps of the integrator have them.
+    last step ends after the reset at 2, which fires after the change.
     """
     runs = _count_runs(monkeypatch)
     model = RoadrunnerSBMLModel(source=sbml(SAWTOOTH))
@@ -1057,7 +1030,7 @@ def test_an_exact_segment_keeps_the_states_before_and_after_an_event(
         Simulation(end=2.5, changes=[Change(1.998, {"k": 1.0})]),
         ["time", "X", "Y"],
     )
-    assert len(runs) == 2
+    assert len(runs) == 1
     time, x = result.time, np.asarray(result["X"])
     jump = np.flatnonzero(
         (x[:-1] > 0.999) & (x[1:] < 1e-3) & (np.abs(time[:-1] - 1) < 1e-6)
@@ -1067,92 +1040,14 @@ def test_an_exact_segment_keeps_the_states_before_and_after_an_event(
     assert np.asarray(result["Y"])[-1] == 2.0
 
 
-def test_the_exact_times_of_a_segment_keep_the_events() -> None:
-    """Steps closer than the resolution of the time are an event, before and after it.
-
-    A step closer to the end than the resolution is an event roadrunner fired
-    at the end and is left out.
-    """
-    times, labels = _exact_times(
-        0.0,
-        np.array([0.003, 0.004, 0.5, 1.0, 1.0, 1.0 + 1e-12, 1.7, 1.98, 1.995]),
-        2.0,
-        0.01,
-    )
-    # the integration a resolution before and after an event, the rows at the
-    # times of the steps; a cluster at the start keeps the state after it
-    np.testing.assert_allclose(times, [0.0, 0.014, 0.5, 0.99, 1.01, 1.7, 1.98, 2.0])
-    np.testing.assert_allclose(
-        labels, [0.0, 0.004, 0.5, 1.0, 1.0 + 1e-12, 1.7, 1.98, 2.0]
-    )
-
-
-def test_the_exact_times_of_two_close_events_are_sorted() -> None:
-    """Two events less than two resolutions apart share the time between them.
-
-    A resolution after the first event is after the time a resolution before
-    the second one, which roadrunner rejects; both are half way between the
-    events, the state between them.
-    """
-    times, labels = _exact_times(
-        0.0, np.array([0.5, 1.0, 1.0, 1.015, 1.015, 1.5]), 2.0, 0.01
-    )
-    np.testing.assert_allclose(times, [0.0, 0.5, 0.99, 1.0075, 1.0075, 1.025, 1.5, 2.0])
-    np.testing.assert_allclose(labels, [0.0, 0.5, 1.0, 1.0, 1.015, 1.015, 1.5, 2.0])
-    assert np.all(np.diff(times) >= 0.0)
-
-
-class _Folded:
-    """A roadrunner instance which roadrunner left at a time in a state."""
-
-    def __init__(self, time: float, state: list[float]) -> None:
-        self.time, self.state = time, state
-        self.model = self
-
-    def getTime(self) -> float:
-        return self.time
-
-    def getSelectedValues(self) -> list[float]:
-        return self.state
-
-
-@pytest.mark.parametrize(
-    ("end", "model_time", "marker", "last", "folded"),
-    [
-        (2.0, 1.9999995, 1.0, 2.0, True),  # an event before the end
-        (2.0, 2.0000004, 1.0, 2.0, True),  # an event after the end
-        (2.0, 2.0000004, 0.0, 2.0, False),  # a step of CVODE past the end
-        (2.0, 1.9999995, 1.0, 1.5, False),  # the most rows, before the end
-    ],
-)
-def test_an_event_whose_row_after_it_roadrunner_folded_into_the_end(
-    end: float, model_time: float, marker: float, last: float, folded: bool
-) -> None:
-    """The markers of the model differ from the ones of the row before the last."""
-    from sbmlsim.simulator.executor import _folded_event
-
-    block = np.array(
-        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.2, 2.0, 0.0], [last, 0.7, 0.0]]
-    )
-    event = _folded_event(
-        _Folded(model_time, [model_time, 0.0, marker]),  # ty: ignore[invalid-argument-type]
-        block,
-        end,
-        1e-8,
-        1,
-    )
-    assert event == (model_time if folded else None)
-
-
 @pytest.mark.parametrize(("last", "paired"), [(2.0, False), (2.0 - 1e-6, True)])
 def test_the_last_row_of_roadrunner_is_no_row_of_an_event(
     last: float, paired: bool
 ) -> None:
     """The row roadrunner interpolated to the end is left out of the events.
 
-    roadrunner folded the row after an event a few ulps after the end into its
-    last row. A last row before the end is a step, roadrunner stopped at the
-    most rows of its output.
+    A last row before the end is a step, roadrunner stopped at the most rows
+    of its output.
     """
     from sbmlsim.simulator.executor import _at_event_times
 
@@ -1164,51 +1059,6 @@ def test_the_last_row_of_roadrunner_is_no_row_of_an_event(
         assert block[2, 0] == block[3, 0] == pytest.approx(last - 0.5e-6, abs=1e-15)
     else:
         np.testing.assert_array_equal(block[:, 0], [0.0, 1.0, 2.0 - 1e-6, 2.0])
-
-
-def test_an_event_after_the_end_which_roadrunner_applied_is_past_the_end() -> None:
-    """An event at a change fires after it: the segment gets exact output.
-
-    roadrunner applied the event after the end, and the row before it is no
-    step of CVODE, so it is left out of the steps.
-    """
-    from sbmlsim.simulator import executor
-
-    end = float(np.nextafter(2.0, -np.inf))
-    block = np.array(
-        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [2.0 - 1e-6, 2.0, 0.0], [end, 0.7, 0.0]]
-    )
-    out, inside = executor._events_at_the_end(
-        _Folded(2.0 + 1e-13, [2.0 + 1e-13, 0.0, 1.0]),  # ty: ignore[invalid-argument-type]
-        block.copy(),
-        end,
-        1e-8,
-        1,
-    )
-    assert not inside
-    np.testing.assert_array_equal(out, block[[0, 1, 3]])
-
-
-def test_an_event_within_the_resolution_before_the_end_gets_its_row_after_it() -> None:
-    """The state of the model is the row after the event, the steps do not go on."""
-    from sbmlsim.simulator import executor
-
-    event = 2.0 - 5e-9
-    block = np.array(
-        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [event - 1e-6, 2.0, 0.0], [2.0, 0.7, 0.0]]
-    )
-    out, inside = executor._events_at_the_end(
-        _Folded(event, [event, 0.0, 1.0]),  # ty: ignore[invalid-argument-type]
-        block,
-        2.0,
-        1e-8,
-        1,
-    )
-    assert inside
-    np.testing.assert_array_equal(
-        out,
-        [[0, 0, 0], [1, 1, 0], [event, 2, 0], [event, 0, 1], [2.0, 0.7, 0]],
-    )
 
 
 #: two events of the time less than two resolutions of the time of a simulation
@@ -1226,28 +1076,26 @@ end
 """
 
 
-def test_two_close_events_in_a_segment_past_its_end(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+def test_two_close_events_in_a_segment_whose_last_step_ends_after_an_event(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A segment past its end with two events closer than two resolutions runs again.
+    """Two events closer than two resolutions in a segment whose last step ends after an event.
 
-    The last step of roadrunner before the change at 1.998 ends after the
-    reset at 2, the segment is integrated again with exact output at its
-    steps, which have the events at 1 and 1.5 resolutions after it.
+    The last step of CVODE before the change at 1.998 ends after the reset at
+    2, which fires after the change; the steps have the events at 1 and 1.5
+    resolutions after it.
     """
     runs = _count_runs(monkeypatch)
     end = 2.5
     second = 1.0 + 1.5 * time_tolerance(0.0, end)
     model = RoadrunnerSBMLModel(source=sbml(TWINS.format(second=second)))
     assert model.symbols.time_dependent
-    with caplog.at_level(logging.DEBUG, logger="sbmlsim.simulator.executor"):
-        result = run_on(
-            model,
-            Simulation(end=end, changes=[Change(1.998, {"k": 1.0})]),
-            ["time", "X", "Y"],
-        )
-    assert len(runs) == 2
-    assert "the plan runs again with exact output in it (run 2)" in caplog.text
+    result = run_on(
+        model,
+        Simulation(end=end, changes=[Change(1.998, {"k": 1.0})]),
+        ["time", "X", "Y"],
+    )
+    assert len(runs) == 1
     near = np.abs(result.time - 1.0) < 1e-6
     # the states before the first event, between the events and after the second
     np.testing.assert_array_equal(np.asarray(result["Y"])[near], [0, 1, 1, 11])
@@ -1554,12 +1402,21 @@ def _ulps_after(time: float, ulps: int) -> float:
     return time
 
 
+#: an event whose trigger is true at the end of the steps of the integrator,
+#: e.g. at the stop a unit in the last place before a change, never fires in
+#: the develop builds of libroadrunner
+LOST_AT_THE_END = (
+    "libroadrunner develop: an event whose trigger is true at the end of a "
+    "variable step simulate never fires (sys-bio/roadrunner#1445)"
+)
+
+
 @pytest.mark.parametrize("times", [False, True])
 @pytest.mark.parametrize("at", ["first", "between", "second"])
 @pytest.mark.parametrize("ulps", [1, 3, 9])
 @pytest.mark.parametrize("c1", [1.0, 0.0, -1.0])
 def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
-    c1: float, ulps: int, at: str, times: bool
+    c1: float, ulps: int, at: str, times: bool, request: pytest.FixtureRequest
 ) -> None:
     """A dose at the first, between or at the second of two close changes fires once.
 
@@ -1568,6 +1425,8 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
     time the integration stopped before the first one, so the dose fired at
     the first change fired again at the second.
     """
+    if (c1, ulps, at, times) == (1.0, 9, "between", False):
+        request.applymarker(pytest.mark.xfail(strict=True, reason=LOST_AT_THE_END))
     c2 = _ulps_after(c1, ulps)
     te = {"first": c1, "between": _ulps_after(c1, 1), "second": c2}[at]
     start, end = c1 - 1.0, c1 + 1.0
@@ -1588,6 +1447,7 @@ def test_a_dose_at_two_changes_a_few_units_in_the_last_place_apart(
     assert np.all(np.diff(result.time) >= 0.0)
 
 
+@pytest.mark.xfail(strict=True, reason=LOST_AT_THE_END)
 def test_a_dose_a_few_units_in_the_last_place_before_a_change_fires_once() -> None:
     """A dose between the stop before a change and the change fires once.
 
