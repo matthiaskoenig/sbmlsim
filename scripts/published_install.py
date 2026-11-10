@@ -78,6 +78,24 @@ def run(*args: str | Path, cwd: Path | None = None) -> None:
     subprocess.run([str(a) for a in args], check=True, cwd=cwd)
 
 
+def install(*args: str | Path, cwd: Path | None = None, attempts: int = 10) -> None:
+    """Run an install, again while the mirrors of PyPI do not serve the release yet.
+
+    PyPI lists a new release in its simple index before every mirror of its
+    CDN serves it: an install right after the publication, on another
+    mirror than the one `wait_for` asked, does not find the version.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            run(*args, cwd=cwd)
+            return
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            print(f"the install failed, again in 30 s ({attempt}/{attempts})")
+            time.sleep(30)
+
+
 def venv_python(venv: Path) -> Path:
     """Get the python of a virtual environment."""
     return venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -100,12 +118,14 @@ def check(installer: str, python: str, version: str, index: str) -> None:
             run("uv", "init", "--bare", "--python", python, cwd=work)
             with (work / "pyproject.toml").open("a", encoding="utf-8") as f:
                 f.write(PROJECT_INDEX.format(index=index))
-            run("uv", "add", "--python", python, requirement, "libroadrunner", cwd=work)
+            install(
+                "uv", "add", "--python", python, requirement, "libroadrunner", cwd=work
+            )
             venv = work / ".venv"
         else:
             venv = work / "venv"
             run("uv", "venv", "--seed", "--python", python, venv)
-            run(
+            install(
                 venv_python(venv),
                 "-m",
                 "pip",
