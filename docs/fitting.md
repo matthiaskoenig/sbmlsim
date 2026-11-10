@@ -69,7 +69,7 @@ runs                4
 workers             1 (serial)
 converged           4/4 runs
 best cost           0.0496035
-optimizer time      0.4 s
+optimizer time      0.1 s
    run      cost  Ka_dis_hctz  KI__HCTZEX_k
 0    1  0.049603     0.304794      0.005028
 1    0  0.049603     0.304794      0.005028
@@ -562,10 +562,10 @@ Ka_dis_hctz    -       0.01    10      1/hr
 KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                2
 workers             1 (serial)
-  optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:02 ~ 0:00:03 total
+  optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:00 ~ 0:00:00 total
 converged           2/2 runs
 best cost           1.09898
-optimizer time      2.8 s
+optimizer time      0.3 s
 2 runs read back
 versions: python, sbmlsim, libroadrunner, scipy, numpy
 checksums of 10 files
