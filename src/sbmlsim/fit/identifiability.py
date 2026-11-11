@@ -53,8 +53,12 @@ optimum reports it: the fit did not converge, and the threshold is taken
 relative to the lowest cost of all profiles.
 
 The scans are independent, so they run in the worker pool of the fit runner,
-two scans per parameter. A parallel analysis needs the same
-`if __name__ == "__main__":` guard as a parallel fit.
+two scans per parameter. An analysis of fewer scans than one re-optimization
+spreads over, e.g. a profile of a single parameter, runs its scans one after
+another instead and evaluates the points of the jacobian of every
+re-optimization on all workers, see `sbmlsim.fit.runner.split_cores`. A
+parallel analysis needs the same `if __name__ == "__main__":` guard as a
+parallel fit.
 
 References:
     Raue A, Kreutz C, Maiwald T, Bachmann J, Schilling M, Klingmüller U,
@@ -97,6 +101,7 @@ import json
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
@@ -114,7 +119,11 @@ from sbmlsim.events import emit
 from sbmlsim.fit import display, runner
 from sbmlsim.fit.derived import group_parameters, hook_summaries
 from sbmlsim.fit.objects import FitParameter
-from sbmlsim.fit.optimization import FitTimeout, OptimizationProblem
+from sbmlsim.fit.optimization import (
+    FitTimeout,
+    OptimizationProblem,
+    ResidualsEvaluator,
+)
 from sbmlsim.fit.options import (
     FitSettings,
     OptimizationAlgorithmType,
@@ -879,6 +888,7 @@ def _evaluate_point(
     theta: np.ndarray,
     index: int,
     settings: ProfileSettings,
+    jacobian: ResidualsEvaluator | None = None,
 ) -> ProfilePoint:
     """Evaluate a point of a scan.
 
@@ -891,6 +901,11 @@ def _evaluate_point(
             optimization of the other parameters.
         index: index of the fixed parameter.
         settings: settings of the analysis.
+        jacobian: evaluates the points of the jacobian of the re-optimization
+            of the other parameters on the workers of the fit, see
+            `OptimizationProblem.jacobian_map`; the jacobian is the serial one
+            bitwise. The scans of a parallel analysis are the tasks of the
+            pool and get none.
 
     Returns:
         The point: the parameter vector the cost was reached with, the cost
@@ -906,12 +921,21 @@ def _evaluate_point(
 
         lower, upper = _scaled_bounds(problem)
 
-        def residuals(theta_free: np.ndarray) -> np.ndarray:
-            """Residuals as a function of the free parameters."""
+        def embed(theta_free: np.ndarray) -> np.ndarray:
+            """Put the free parameters into the vector of all parameters."""
             theta_full = theta.copy()
             theta_full[free] = theta_free
-            return problem.residuals(theta_full)  # ty: ignore[invalid-return-type]
+            return theta_full
 
+        def residuals(theta_free: np.ndarray) -> np.ndarray:
+            """Residuals as a function of the free parameters."""
+            return problem.residuals(embed(theta_free))  # ty: ignore[invalid-return-type]
+
+        arguments = problem.optimizer_arguments(
+            OptimizationAlgorithmType.LEAST_SQUARE, settings.optimizer_kwargs
+        )
+        if jacobian is not None:
+            arguments["workers"] = problem.jacobian_map(jacobian, embed=embed)
         # the start must be within the bounds, a warm start from the previous
         # point is, the optimum of the fit is by the checks of the problem
         x0 = np.clip(theta[free], lower[free], upper[free])
@@ -919,9 +943,7 @@ def _evaluate_point(
             fun=residuals,
             x0=x0,
             bounds=(lower[free], upper[free]),
-            **problem.optimizer_arguments(
-                OptimizationAlgorithmType.LEAST_SQUARE, settings.optimizer_kwargs
-            ),
+            **arguments,
         )
         theta_opt = theta.copy()
         theta_opt[free] = opt_result.x
@@ -945,6 +967,7 @@ def _scan_direction(
     index: int,
     direction: int,
     settings: ProfileSettings,
+    jacobian: ResidualsEvaluator | None = None,
 ) -> list[ProfilePoint]:
     """Scan a parameter from the optimum in one direction.
 
@@ -962,6 +985,8 @@ def _scan_direction(
         index: index of the scanned parameter.
         direction: `-1` towards the lower bound, `+1` towards the upper bound.
         settings: settings of the analysis.
+        jacobian: evaluates the jacobian of every point on the workers of the
+            fit, see `_evaluate_point`.
 
     Returns:
         The points of the scan, from the optimum outward, without the optimum.
@@ -987,7 +1012,7 @@ def _scan_direction(
             theta_start = theta_prev.copy()
             theta_start[index] = value
             theta, cost, converged = _evaluate_point(
-                problem, theta_start, index, settings
+                problem, theta_start, index, settings, jacobian=jacobian
             )
             rise = cost - cost_prev
             if converged and rise > max_rise and step > settings.min_step:
@@ -1008,7 +1033,9 @@ def _scan_direction(
 
 
 def _scan_task(
-    problem: OptimizationProblem, task: Mapping[str, Any]
+    problem: OptimizationProblem,
+    task: Mapping[str, Any],
+    jacobian: ResidualsEvaluator | None = None,
 ) -> list[ProfilePoint]:
     """Run the scan of a task, see `_scan_direction`."""
     return _scan_direction(
@@ -1018,6 +1045,7 @@ def _scan_task(
         index=int(task["index"]),
         direction=int(task["direction"]),
         settings=task["settings"],
+        jacobian=jacobian,
     )
 
 
@@ -1090,7 +1118,10 @@ def profile_likelihood(
             profiled when they are named: one scan per element is impractical
             for hundreds of elements.
         n_cores: number of worker processes, the scans of the parameters run
-            in parallel. A parallel analysis needs the
+            in parallel, or, for fewer scans than one re-optimization spreads
+            over, the scans run one after another and the points of the
+            jacobian of every re-optimization run on all workers, see
+            `sbmlsim.fit.runner.split_cores`. A parallel analysis needs the
             `if __name__ == "__main__":` guard like a parallel fit.
         serial: run the scans in this process, whatever `n_cores` says.
         show_progress: show the progress of the scans on the console.
@@ -1195,8 +1226,20 @@ def profile_likelihood(
         for pid in pids
         for direction in (-1, +1)
     ]
-    n_cores = min(runner.resolve_n_cores(n_cores), len(tasks))
-    parallel = not serial and n_cores > 1
+    # a worker cannot start workers of its own, so the workers go either to the
+    # scans or to the jacobian of the re-optimization of one point: one
+    # parameter is fixed, the others are optimized, see `split_cores`
+    scan_workers, jacobian_workers = runner.split_cores(
+        OptimizationAlgorithmType.LEAST_SQUARE,
+        size=len(tasks),
+        n_cores=1 if serial else runner.resolve_n_cores(n_cores),
+        kwargs=profile_settings.optimizer_kwargs,
+        n_parameters=(
+            max(len(problem.parameters) - 1, 1) if profile_settings.reoptimize else 1
+        ),
+    )
+    parallel = scan_workers > 1
+    parallel_jacobian = jacobian_workers > 1
 
     display.section("Identifiability", icon=display.ICON_IDENTIFIABILITY)
     display.key_values(
@@ -1212,7 +1255,12 @@ def profile_likelihood(
             ),
             "profiles": ", ".join(pids),
             "reoptimize": profile_settings.reoptimize,
-            "scans": f"{len(tasks)} on {n_cores if parallel else 1} core(s)",
+            "scans": (
+                f"{len(tasks)} one after another, the jacobian of a point on "
+                f"{jacobian_workers} core(s)"
+                if parallel_jacobian
+                else f"{len(tasks)} on {scan_workers} core(s)"
+            ),
         }
     )
 
@@ -1266,10 +1314,10 @@ def profile_likelihood(
         len(tasks),
         show_progress,
         unit="scans",
-        workers=n_cores if parallel else 1,
+        workers=scan_workers,
     ) as progress:
         if parallel:
-            with runner.worker_pool(problem, settings, n_cores) as pool:
+            with runner.worker_pool(problem, settings, scan_workers) as pool:
                 for _, outcome in pool.run(_worker_scan, dict(enumerate(tasks))):
                     if isinstance(outcome, Exception):
                         raise outcome
@@ -1277,10 +1325,20 @@ def profile_likelihood(
                     runner._advance(progress)
                     collect(index, direction, points)
         else:
-            for task in tasks:
-                points = _scan_task(problem, task)
-                runner._advance(progress)
-                collect(task["index"], task["direction"], points)
+            with ExitStack() as stack:
+                jacobian: runner.JacobianPool | None = None
+                if parallel_jacobian:
+                    # the scans run here, their re-optimizations on the workers
+                    jacobian = runner.JacobianPool(
+                        stack.enter_context(
+                            runner.worker_pool(problem, settings, jacobian_workers)
+                        )
+                    )
+                    jacobian.start()
+                for task in tasks:
+                    points = _scan_task(problem, task, jacobian=jacobian)
+                    runner._advance(progress)
+                    collect(task["index"], task["direction"], points)
 
     result = IdentifiabilityResult(
         opid=problem.opid,

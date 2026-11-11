@@ -115,7 +115,7 @@ How the scans work:
 - The step size adapts. A step that raises the cost by more than `max_cost_fraction` of the distance to the threshold is made smaller and repeated, a step that raises it only a little is made larger. This resolves the profile where it changes.
 - Each point starts the optimization of the other parameters from the previous point, and their paths are stored.
 - A scan stops when the profile crosses the threshold, at the bound of the parameter, or after `max_points` points.
-- Each parameter needs two scans, one in each direction. They are independent and run in parallel with `n_cores` workers.
+- Each parameter needs two scans, one in each direction. They are independent and run in parallel with `n_cores` workers. An analysis of fewer scans than the jacobian of a re-optimization is wide, e.g. a profile of a single parameter with `pids`, runs its scans one after another instead and evaluates the points of the jacobian of every re-optimization on all workers (`split_cores` of `sbmlsim.fit.runner`), so a profile of one parameter uses every core as a fit does.
 - `pids` restricts the analysis to some of the parameters.
 - `ProfileSettings(reoptimize=False)` keeps the other parameters at the optimum. That is a plain scan of the cost and a lower bound of the profile: fast and enough to find non-identifiable parameters, but its intervals are too narrow for coupled parameters.
 

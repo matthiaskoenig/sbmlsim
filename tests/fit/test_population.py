@@ -96,7 +96,7 @@ def kill_the_last_member(
     and the two which run again alone after the crash.
     """
     call = _claim(token)
-    if task["member"] == LAST_MEMBER and call <= 8:
+    if task["index"] == LAST_MEMBER and call <= 8:
         os._exit(1)
     return _REAL_WORKER_COST(token, problem, settings, task)
 
@@ -111,7 +111,7 @@ def sleep_from_member_2(
     token: str, problem: Any, settings: Any, task: dict[str, Any]
 ) -> Any:
     """Evaluate the members 0 and 1, never answer for the others."""
-    if task["member"] >= 2:
+    if task["index"] >= 2:
         time.sleep(NEVER)
     return _REAL_WORKER_COST(token, problem, settings, task)
 
@@ -125,6 +125,11 @@ def sleep_long(token: str, problem: Any, settings: Any, task: dict[str, Any]) ->
 def fail_always(token: str, problem: Any, settings: Any, task: dict[str, Any]) -> Any:
     """Fail like a worker which could not initialize the problem."""
     raise RuntimeError("the worker could not initialize the problem: broken")
+
+
+def _analytic_jacobian(x: np.ndarray) -> np.ndarray:
+    """A jacobian of the caller, which is no jacobian of finite differences."""
+    raise AssertionError("not called")
 
 
 @pytest.fixture
@@ -169,26 +174,34 @@ def _assert_same_fits(pooled: OptimizationResult, serial: OptimizationResult) ->
 
 
 @pytest.mark.parametrize(
-    "algorithm, size, n_cores, kwargs, expected",
+    "algorithm, size, n_cores, kwargs, n_parameters, expected",
     [
         # one worker is a serial fit
-        (DE, 1, 1, {}, (1, 1)),
-        (LSQ, 1, 1, {}, (1, 1)),
-        # least squares runs its runs in parallel, never a population
-        (LSQ, 1, 4, {}, (1, 1)),
-        (LSQ, 2, 4, {}, (2, 1)),
-        (LSQ, 10, 4, {}, (4, 1)),
+        (DE, 1, 1, {}, 3, (1, 1)),
+        (LSQ, 1, 1, {}, 3, (1, 1)),
+        # fewer runs than the jacobian of a run is wide: the jacobian of every
+        # run on its points, at most one worker per point
+        (LSQ, 1, 4, {}, 3, (1, 3)),
+        (LSQ, 2, 4, {}, 3, (1, 3)),
+        (LSQ, 1, 2, {}, 3, (1, 2)),
+        (LSQ, 1, 4, {"jac": "3-point"}, 2, (1, 4)),
+        # as many runs as the jacobian is wide or more: a run per worker
+        (LSQ, 3, 4, {}, 3, (3, 1)),
+        (LSQ, 10, 4, {}, 3, (4, 1)),
+        # a jacobian of a single point, or one of the caller, spreads over nothing
+        (LSQ, 1, 4, {}, 1, (1, 1)),
+        (LSQ, 1, 4, {"jac": _analytic_jacobian}, 3, (1, 1)),
         # fewer runs than workers: the population of every run on all workers
-        (DE, 1, 4, {}, (1, 4)),
-        (DE, 3, 4, {}, (1, 4)),
-        (DE, 3, 4, {"updating": "deferred"}, (1, 4)),
+        (DE, 1, 4, {}, 3, (1, 4)),
+        (DE, 3, 4, {}, 3, (1, 4)),
+        (DE, 3, 4, {"updating": "deferred"}, 3, (1, 4)),
         # as many runs as workers or more: a run per worker
-        (DE, 4, 4, {}, (4, 1)),
-        (DE, 10, 4, {}, (4, 1)),
+        (DE, 4, 4, {}, 3, (4, 1)),
+        (DE, 10, 4, {}, 3, (4, 1)),
         # a population which is updated after every member is evaluated serially
-        (DE, 1, 4, {"updating": "immediate"}, (1, 1)),
-        (DE, 4, 4, {"updating": "immediate"}, (4, 1)),
-        (DE, 1, 4, {"vectorized": True}, (1, 1)),
+        (DE, 1, 4, {"updating": "immediate"}, 3, (1, 1)),
+        (DE, 4, 4, {"updating": "immediate"}, 3, (4, 1)),
+        (DE, 1, 4, {"vectorized": True}, 3, (1, 1)),
     ],
 )
 def test_split_cores(
@@ -196,10 +209,14 @@ def test_split_cores(
     size: int,
     n_cores: int,
     kwargs: dict[str, Any],
+    n_parameters: int,
     expected: tuple[int, int],
 ) -> None:
-    """The workers go to the runs or to the population of differential evolution."""
-    assert split_cores(algorithm, size, n_cores, kwargs) == expected
+    """The workers go to the runs or to the evaluations of a single run."""
+    assert (
+        split_cores(algorithm, size, n_cores, kwargs, n_parameters=n_parameters)
+        == expected
+    )
 
 
 def test_a_population_on_workers_equals_the_serial_population(

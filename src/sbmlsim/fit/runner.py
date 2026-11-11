@@ -7,10 +7,11 @@ which is free. The pool is stopped after the fit, so the workers do not keep the
 initialized problem, and it is started again, a few times, when a worker dies.
 
 A worker cannot start workers of its own, so the workers of a fit go either to
-its repeats or to the population of differential evolution, see `split_cores`:
-a fit of differential evolution with fewer repeats than workers runs them one
-after another, and every repeat evaluates the members of its population on all
-workers (`PopulationPool`), so a single global optimization uses every core.
+its repeats or to the evaluations of one repeat, see `split_cores`: a fit with
+fewer repeats than one repeat spreads over runs them one after another, and
+every repeat evaluates the members of its population (differential evolution,
+`PopulationPool`) or the points of its jacobian (least squares,
+`JacobianPool`) on all workers, so a single optimization uses every core.
 
 The `OptimizationProblem` is pickled and sent to the workers, so it must be
 picklable: every worker initializes it once and runs repeats on it. The start
@@ -33,7 +34,7 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, override
 from uuid import uuid4
 
 import numpy as np
@@ -94,39 +95,81 @@ def resolve_n_cores(n_cores: int | None) -> int:
     return max(1, n_cores)
 
 
+#: the points of the finite differences of one jacobian per parameter, by the
+#: `jac` of `scipy.optimize.least_squares`: a forward difference evaluates the
+#: residuals once per parameter, a central difference twice. It is the width a
+#: jacobian parallelizes over, see `split_cores`
+JACOBIAN_POINTS: dict[str, int] = {"2-point": 1, "3-point": 2, "cs": 1}
+
+
+def jacobian_width(n_parameters: int, kwargs: Mapping[str, Any]) -> int:
+    """Get the number of residual evaluations of one jacobian of a run.
+
+    The jacobian of finite differences of `scipy.optimize.least_squares` is
+    `JACOBIAN_POINTS` independent evaluations of the residuals per parameter,
+    which is how wide it parallelizes; a jacobian of the caller is not
+    evaluated by finite differences and has a width of one.
+
+    Args:
+        n_parameters: number of parameters of the problem.
+        kwargs: additional arguments of the optimizer.
+
+    Returns:
+        The number of points, at least one.
+    """
+    jac = kwargs.get("jac", "2-point")
+    if not isinstance(jac, str):
+        return 1
+    return max(int(n_parameters), 1) * JACOBIAN_POINTS.get(jac, 1)
+
+
 def split_cores(
     algorithm: OptimizationAlgorithmType,
     size: int,
     n_cores: int,
     kwargs: Mapping[str, Any],
+    *,
+    n_parameters: int,
 ) -> tuple[int, int]:
-    """Split the workers of a fit between its runs and a population.
+    """Split the workers of a fit between its runs and the evaluations of a run.
 
     The workers of a fit are the processes of one pool, and a worker cannot
     start workers of its own, so a run is either a task of the pool or it
-    evaluates the members of its population on the pool, never both. The runs
-    are the tasks as long as there are as many of them as workers or more:
-    every worker optimizes a run of its own, without waiting for the others.
-    Differential evolution with fewer runs than workers runs its runs one after
-    another instead, and every run evaluates the members of its population on
-    all workers (`PopulationPool`), so a single global optimization uses every
-    core; the polishing of the best member at the end evaluates its steps on
-    the workers one after another. Least squares runs its runs in parallel only.
+    evaluates its own points on the pool, never both. The runs are the tasks
+    as long as there are as many of them as workers or more: every worker
+    optimizes a run of its own, without waiting for the others. A fit with
+    fewer runs than it can spread one run over runs its runs one after another
+    instead, and every run evaluates on all workers, so a single optimization
+    uses every core:
 
-    A population is evaluated on the workers only if it is updated once per
-    generation, `updating="deferred"` (the default of the fit, see
-    `OptimizationProblem.optimizer_arguments`), and its objective is not
-    `vectorized`. The result of a seed is the same either way: a run evaluates
-    every generation together, in its worker or on all workers.
+    - differential evolution evaluates the members of its population
+      (`PopulationPool`), so a single global optimization uses every core; the
+      polishing of the best member at the end evaluates its steps on the
+      workers one after another. A population is evaluated on the workers only
+      if it is updated once per generation, `updating="deferred"` (the default
+      of the fit, see `OptimizationProblem.optimizer_arguments`), and its
+      objective is not `vectorized`.
+    - least squares evaluates the points of the finite differences of its
+      jacobian (`JacobianPool`), the `n` residual vectors of an iteration of
+      `n` parameters, which are the whole cost of a fit of many parameters. A
+      jacobian is `jacobian_width` points wide, so the runs stay the tasks of
+      the pool unless a single run spreads further than they do: a fit of two
+      parameters on twelve workers runs its runs in parallel.
+
+    The result of a seed does not depend on the split: a run evaluates every
+    generation together, in its worker or on all workers, and the points of a
+    jacobian are evaluated at the same step either way.
 
     Args:
         algorithm: optimization algorithm.
         size: number of runs.
         n_cores: number of workers, see `resolve_n_cores`.
         kwargs: additional arguments of the optimizer.
+        n_parameters: number of parameters of the problem, the width a
+            jacobian of least squares parallelizes over.
 
     Returns:
-        The workers of the runs and the workers of the population of a run;
+        The workers of the runs and the workers of the evaluations of a run;
         one of them is one, both are one for a serial fit.
     """
     n_cores = max(int(n_cores), 1)
@@ -137,6 +180,10 @@ def split_cores(
         and not kwargs.get("vectorized", False)
     ):
         return 1, n_cores
+    if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
+        width = min(n_cores, jacobian_width(n_parameters, kwargs))
+        if size < width:
+            return 1, width
     return max(min(n_cores, size), 1), 1
 
 
@@ -279,10 +326,11 @@ def run_optimization(
         seed: random seed (for sampling of the start values).
         n_cores: number of workers, `None` uses all available cores but one;
             one worker fits without starting a process. The workers optimize
-            the runs in parallel, or, for differential evolution with fewer
-            runs than workers, the runs run one after another and every run
-            evaluates its population on all workers, see `split_cores`. The
-            result of a seed does not depend on the number of workers.
+            the runs in parallel, or, for a fit with fewer runs than one run
+            spreads over, the runs run one after another and every run
+            evaluates its population (differential evolution) or the points of
+            its jacobian (least squares) on all workers, see `split_cores`.
+            The result of a seed does not depend on the number of workers.
         serial: run the optimization in a serial fashion (debugging), whatever
             `n_cores` says.
         show_progress: show the progress of the runs on the console.
@@ -346,13 +394,14 @@ def run_optimization(
 
     # a worker without a repeat only costs the start of a process, and one
     # worker is a serial fit without the start of a process
-    workers, population_workers = split_cores(
+    workers, evaluation_workers = split_cores(
         algorithm=algorithm,
         size=len(selected),
         n_cores=1 if serial else resolve_n_cores(n_cores),
         kwargs=kwargs,
+        n_parameters=len(problem.parameters),
     )
-    if max(workers, population_workers) > 1 and parallel.in_worker():
+    if max(workers, evaluation_workers) > 1 and parallel.in_worker():
         # a worker which runs the fit again starts workers of its own
         raise RuntimeError(
             f"'{problem.opid}': a worker process started a parallel fit, "
@@ -360,18 +409,23 @@ def run_optimization(
             f"{parallel.GUARD_MESSAGE}"
         )
     opt_result: OptimizationResult
-    if population_workers > 1:
+    if evaluation_workers > 1:
+        # the runs run one after another and evaluate on all workers
+        evolution = algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
         display.key_values(
             {
                 "runs": _runs_label(size, selected),
-                "workers": f"{population_workers} (population of a run)",
+                "workers": (
+                    f"{evaluation_workers} "
+                    f"({'population' if evolution else 'jacobian'} of a run)"
+                ),
             }
         )
         with (
             optimization_progress(
                 "optimizing", len(selected), show_progress
             ) as progress,
-            worker_pool(problem, settings, population_workers) as pool,
+            worker_pool(problem, settings, evaluation_workers) as pool,
         ):
             opt_result = _run_optimization_serial(
                 problem=problem,
@@ -384,7 +438,8 @@ def run_optimization(
                 runs_dir=runs_dir,
                 provenance=provenance,
                 on_progress=lambda: _advance(progress),
-                population=PopulationPool(pool),
+                population=PopulationPool(pool) if evolution else None,
+                jacobian=None if evolution else JacobianPool(pool),
                 indices=selected,
                 **kwargs,
             )
@@ -554,6 +609,30 @@ def _worker_cost(
         PoolError: if the worker could not initialize the problem.
     """
     return worker_problem(token, problem, settings).evaluate_cost(task["x"])
+
+
+def _worker_residuals(
+    token: str,
+    problem: OptimizationProblem,
+    settings: FitSettings,
+    task: dict[str, Any],
+) -> tuple[np.ndarray, float]:
+    """Evaluate a point of the jacobian of a run in a worker process.
+
+    Args:
+        token: identifies the fit, see `FitPool`.
+        problem: the problem of the fit.
+        settings: the settings of the fit.
+        task: the point `x`, in the space the optimizer searches.
+
+    Returns:
+        The residuals of the point and their cost, see
+        `OptimizationProblem.evaluate_residuals`.
+
+    Raises:
+        PoolError: if the worker could not initialize the problem.
+    """
+    return worker_problem(token, problem, settings).evaluate_residuals(task["x"])
 
 
 def _worker_warm(
@@ -931,29 +1010,28 @@ def worker_pool(
 
 
 @dataclass
-class PopulationPool:
-    """Evaluates the population of differential evolution on the workers of a fit.
+class _EvaluationPool:
+    """Evaluates parameter vectors of one run on the workers of a fit.
 
-    It is the `PopulationEvaluator` of a run, see
-    `OptimizationProblem.optimize_run`: every member is a task of the pool,
-    `_worker_cost`, so at most one member per worker is in flight and a worker
-    takes the next member when it is free; the run gets the costs as they
-    finish and returns them to scipy in the order of the members. The workers
-    initialize the problem once per fit, see `worker_problem`, so the runs of a
-    fit share them; `start` initializes them before the budget of a run.
+    The base of `PopulationPool` and `JacobianPool`: a batch of vectors is a
+    batch of tasks of the pool, `_function`, so at most one vector per worker
+    is in flight and a worker takes the next vector when it is free; the run
+    gets the values as they finish. The workers initialize the problem once
+    per fit, see `worker_problem`, so the runs of a fit share them; `start`
+    initializes them before the budget of a run.
 
-    A member whose worker dies runs again alone on a new pool, see
-    `FitPool.run`, and the cap `MAX_POOL_RESTARTS` counts per generation, so
-    crashes spread over a fit lose no member. A member which kills its worker
-    when it runs alone is a failed simulation, its cost is infinite. Members
-    which fail together, once the restarts of a generation are spent, end the
-    run with a `PoolError`: which of them killed the worker is not known, and
-    an infinite cost for all of them would make the result depend on the
-    timing of the crashes. Any other error of a worker ends the run with that
-    error, as in a serial run. The members which are not evaluated at the
-    deadline of the run are given up. After a deadline, an error or an
-    interrupt the workers are stopped, so no member which is still in flight
-    holds them, and the next generation, or the next run, starts new ones.
+    A vector whose worker dies runs again alone on a new pool, see
+    `FitPool.run`, and the cap `MAX_POOL_RESTARTS` counts per batch, so
+    crashes spread over a fit lose no vector. A vector which kills its worker
+    when it runs alone is left to `_alone`, which ends the run unless the
+    batch can answer for it. Vectors which fail together, once the restarts of
+    a batch are spent, end the run with a `PoolError`: which of them killed
+    the worker is not known, and a value for all of them would make the result
+    depend on the timing of the crashes. Any other error of a worker ends the
+    run with that error, as in a serial run. The vectors which are not
+    evaluated at the deadline of the run are given up. After a deadline, an
+    error or an interrupt the workers are stopped, so no vector which is still
+    in flight holds them, and the next batch, or the next run, starts new ones.
 
     Attributes:
         pool: the workers of the fit.
@@ -963,15 +1041,48 @@ class PopulationPool:
     pool: FitPool
     warmed: ProcessPoolExecutor | None = None
 
+    #: what one vector is called in the messages
+    item: ClassVar[str] = "vector"
+
+    #: what several vectors are called in the messages
+    items: ClassVar[str] = "vectors"
+
+    #: what one batch of vectors is called in the messages
+    batch: ClassVar[str] = "batch"
+
+    def _function(self) -> Callable[..., Any]:
+        """Get the function a worker runs for one vector.
+
+        It is read at the call, so that a test can replace it.
+        """
+        raise NotImplementedError
+
+    def _alone(self, k: int) -> Any:
+        """Get the value of a vector which killed its worker when it ran alone.
+
+        Args:
+            k: the index of the vector in its batch.
+
+        Returns:
+            Its value, if the batch has one for a failed simulation.
+
+        Raises:
+            PoolError: if the batch cannot be completed without the vector.
+        """
+        raise PoolError(
+            f"the {self.item} {k} killed its worker, the {self.batch} of the run "
+            f"cannot be evaluated without it."
+        )
+
     def start(self) -> None:
         """Start the workers and initialize the problem in every one of them.
 
-        One task per worker initializes the problem, which the members of the
+        One task per worker initializes the problem, which the vectors of the
         run then find initialized; it runs before the budget of a run, see
         `OptimizationProblem._optimize_single`. A worker which takes a second
         task before another started initializes the problem with its first
-        member instead. A worker which fails to initialize the problem fails
-        the members of the run with that error, so the failure is left to them.
+        vector instead. A worker which fails to initialize the problem fails
+        the vectors of the run with that error, so the failure is left to them.
 
         Raises:
             RuntimeError: if the workers do not start.
@@ -982,6 +1093,96 @@ class PopulationPool:
         for _ in self.pool.run(_worker_warm, {k: {} for k in range(self.pool.n_cores)}):
             pass
         self.warmed = self.pool.executor
+
+    def _evaluate(
+        self, vectors: Sequence[np.ndarray], deadline: float | None
+    ) -> Iterator[tuple[int, Any]]:
+        """Evaluate every vector of a batch on the workers.
+
+        Args:
+            vectors: the parameter vectors in the space the optimizer searches.
+            deadline: the time of `time.monotonic` at which the vectors which
+                are not evaluated are given up, no limit if `None`.
+
+        Yields:
+            The index of a vector and its value, as they finish.
+
+        Raises:
+            FitTimeout: if the deadline passed before every vector was evaluated.
+            PoolError: if the workers failed, see the class.
+        """
+        # the cap of the restarts counts per batch
+        self.pool.restarts = 0
+        outcomes = self.pool.run(
+            self._function(),
+            {k: {"x": vector, "index": k} for k, vector in enumerate(vectors)},
+            deadline=deadline,
+        )
+        timed_out = finished = False
+        try:
+            for k, outcome in outcomes:
+                if isinstance(outcome, TimeoutError):
+                    timed_out = True
+                    break
+                if isinstance(outcome, WorkerDied) and outcome.alone:
+                    yield k, self._alone(k)
+                    continue
+                if isinstance(outcome, WorkerDied):
+                    raise PoolError(
+                        f"the {self.item} {k} failed with the {self.items} in "
+                        f"flight after {MAX_POOL_RESTARTS} restarts of the pool "
+                        f"in one {self.batch}: {outcome}"
+                    )
+                if isinstance(outcome, Exception):
+                    raise outcome
+                yield k, outcome
+            else:
+                finished = True
+        finally:
+            outcomes.close()
+            if not finished:
+                # the vectors still in flight, after a deadline, an error or an
+                # interrupt, would hold the workers of the next batch
+                self.pool.stop()
+        if timed_out:
+            raise FitTimeout(
+                f"'{self.pool.problem.opid}': the optimization did not finish in "
+                f"its budget."
+            )
+
+
+@dataclass
+class PopulationPool(_EvaluationPool):
+    """Evaluates the population of differential evolution on the workers of a fit.
+
+    It is the `PopulationEvaluator` of a run, see
+    `OptimizationProblem.optimize_run`: every member is a task of the pool,
+    `_worker_cost`, and the run returns the costs to scipy in the order of the
+    members. The cap `MAX_POOL_RESTARTS` of the restarts of the pool counts
+    per generation, and a member which kills its worker when it runs alone is
+    a failed simulation: its cost is infinite. See `_EvaluationPool` for the
+    rest.
+    """
+
+    item: ClassVar[str] = "member"
+    items: ClassVar[str] = "members"
+    batch: ClassVar[str] = "generation"
+
+    @override
+    def _function(self) -> Callable[..., Any]:
+        """Get the function which evaluates the cost of a member."""
+        return _worker_cost
+
+    @override
+    def _alone(self, k: int) -> float:
+        """Get the infinite cost of a member which killed its worker alone."""
+        logger.error(
+            "'%s': the member %s of the population killed its worker, "
+            "its cost is infinite.",
+            self.pool.problem.opid,
+            k,
+        )
+        return float("inf")
 
     def __call__(
         self, members: Sequence[np.ndarray], deadline: float | None
@@ -1000,50 +1201,54 @@ class PopulationPool:
             FitTimeout: if the deadline passed before every member was evaluated.
             PoolError: if the workers failed, see the class.
         """
-        # the cap of the restarts counts per generation
-        self.pool.restarts = 0
-        outcomes = self.pool.run(
-            _worker_cost,
-            {k: {"x": member, "member": k} for k, member in enumerate(members)},
-            deadline=deadline,
-        )
-        timed_out = finished = False
-        try:
-            for k, outcome in outcomes:
-                if isinstance(outcome, TimeoutError):
-                    timed_out = True
-                    break
-                if isinstance(outcome, WorkerDied) and outcome.alone:
-                    logger.error(
-                        "'%s': the member %s of the population killed its worker, "
-                        "its cost is infinite.",
-                        self.pool.problem.opid,
-                        k,
-                    )
-                    yield k, float("inf")
-                    continue
-                if isinstance(outcome, WorkerDied):
-                    raise PoolError(
-                        f"the member {k} of the population failed with the "
-                        f"members in flight after {MAX_POOL_RESTARTS} restarts "
-                        f"of the pool in one generation: {outcome}"
-                    )
-                if isinstance(outcome, Exception):
-                    raise outcome
-                yield k, float(outcome)
-            else:
-                finished = True
-        finally:
-            outcomes.close()
-            if not finished:
-                # the members still in flight, after a deadline, an error or an
-                # interrupt, would hold the workers of the next generation
-                self.pool.stop()
-        if timed_out:
-            raise FitTimeout(
-                f"'{self.pool.problem.opid}': the optimization did not finish in "
-                f"its budget."
-            )
+        for k, cost in self._evaluate(members, deadline):
+            yield k, float(cost)
+
+
+@dataclass
+class JacobianPool(_EvaluationPool):
+    """Evaluates the jacobian of a least squares run on the workers of a fit.
+
+    It is the `ResidualsEvaluator` of a run, see
+    `OptimizationProblem.jacobian_map`: every point of the finite differences
+    of one jacobian is a task of the pool, `_worker_residuals`, and the run
+    returns the residuals to scipy in the order of the points, so the jacobian
+    is the jacobian of a serial run bitwise. The cap `MAX_POOL_RESTARTS` of
+    the restarts of the pool counts per jacobian, and a point which kills its
+    worker when it runs alone ends the run, which keeps the best parameters it
+    reached: a column of the jacobian cannot be built without its point, while
+    a serial run would lose the whole fit with the process. See
+    `_EvaluationPool` for the rest.
+    """
+
+    item: ClassVar[str] = "point"
+    items: ClassVar[str] = "points"
+    batch: ClassVar[str] = "jacobian"
+
+    @override
+    def _function(self) -> Callable[..., Any]:
+        """Get the function which evaluates the residuals of a point."""
+        return _worker_residuals
+
+    def __call__(
+        self, points: Sequence[np.ndarray], deadline: float | None
+    ) -> Iterator[tuple[int, tuple[np.ndarray, float]]]:
+        """Evaluate the residuals and the cost of every point on the workers.
+
+        Args:
+            points: the parameter vectors in the space the optimizer searches.
+            deadline: the time of `time.monotonic` at which the points which
+                are not evaluated are given up, no limit if `None`.
+
+        Yields:
+            The index of a point with its residuals and its cost, as they
+            finish.
+
+        Raises:
+            FitTimeout: if the deadline passed before every point was evaluated.
+            PoolError: if the workers failed, see the class.
+        """
+        yield from self._evaluate(points, deadline)
 
 
 def _run_optimization_parallel(
@@ -1226,6 +1431,7 @@ def _run_optimization_serial(
     run_prefix: str = "run",
     provenance: FitProvenance | None = None,
     population: PopulationPool | None = None,
+    jacobian: JacobianPool | None = None,
     indices: Sequence[int] | None = None,
     **kwargs: Any,
 ) -> OptimizationResult:
@@ -1233,9 +1439,10 @@ def _run_optimization_serial(
 
     This function should not be called directly, `run_optimization` executes the
     optimizations. See `run_optimization` for the arguments; `population`
-    evaluates the population of differential evolution on the workers of the
-    fit, the runs run one after another; only the runs of `indices` run, all
-    `size` runs if `None`.
+    evaluates the population of differential evolution and `jacobian` the
+    points of the jacobian of a least squares run on the workers of the fit,
+    the runs run one after another; only the runs of `indices` run, all `size`
+    runs if `None`.
     """
     # initialize problem, which resolves the data and calculates the weights
     problem.initialize(settings)
@@ -1270,6 +1477,7 @@ def _run_optimization_serial(
             timeout=timeout,
             on_run_finished=on_run_finished,
             population=population,
+            jacobian=jacobian,
             indices=indices,
             **kwargs,
         )
