@@ -16,6 +16,9 @@ from sbmlsim.progress import resources
 
 linux = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="/proc")
 
+#: windows has neither `/proc` nor `resource`, so a sample there has no CPU
+with_cpu = pytest.mark.skipif(sys.platform == "win32", reason="/proc or resource")
+
 
 def _busy(seconds: float = 0.2) -> None:
     """Burn the CPU of the process for a while."""
@@ -31,6 +34,7 @@ def test_a_sample_names_the_cores_of_the_run():
     assert "cores 4/" in resources.format_resources(sample)
 
 
+@with_cpu
 def test_the_cpu_percent_is_measured_between_two_samples(clock):
     sampler = resources.Sampler(now=clock)
     assert sampler.sample().cpu_percent is None

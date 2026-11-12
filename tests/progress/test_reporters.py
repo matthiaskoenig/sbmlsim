@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import logging
+from collections.abc import Iterator
 
 import pytest
 from rich.console import Console
@@ -17,6 +19,17 @@ def ticking(clock, monkeypatch):
     """A clock which the activities and the reporters share."""
     monkeypatch.setattr(progress.core, "_now", clock)
     return clock
+
+
+@contextlib.contextmanager
+def _propagating(logger: logging.Logger) -> Iterator[None]:
+    """Let the records of a logger reach the handlers of the root while this runs."""
+    before = logger.propagate
+    logger.propagate = True
+    try:
+        yield
+    finally:
+        logger.propagate = before
 
 
 def test_resolve_picks_the_bar_on_a_terminal(monkeypatch):
@@ -155,25 +168,38 @@ def test_bar_reporter_draws_an_activity_and_its_child():
 
 def test_a_reporter_which_fails_does_not_stop_the_others(caplog, tmp_path, ticking):
     class Exploding:
+        def __init__(self) -> None:
+            self.calls = 0
+
         def started(self, activity):
+            self.calls += 1
             raise RuntimeError("no console")
 
         def advanced(self, activity):
+            self.calls += 1
             raise RuntimeError("no console")
 
         def finished(self, activity, error):
+            self.calls += 1
             raise RuntimeError("no console")
 
+    exploding = Exploding()
     path = tmp_path / "progress.jsonl"
     multi = progress.MultiReporter(
-        [Exploding(), progress.EventReporter(throttle=0.0, now=ticking)]
+        [exploding, progress.EventReporter(throttle=0.0, now=ticking)]
     )
+    # the logger of a failed reporter reaches caplog whatever a test before set
+    logger = logging.getLogger(progress.core.__name__)
     with (
+        caplog.at_level(logging.WARNING, logger=logger.name),
+        _propagating(logger),
         events.recording(path),
         progress.reporter(multi),
         progress.activity("scan", total=2) as a,
     ):
         a.advance()
+    # the reporter is dropped with its first failure and is not called again
+    assert exploding.calls == 1
     assert len(path.read_text(encoding="utf-8").splitlines()) == 3
     assert "progress reporter" in caplog.text
 
