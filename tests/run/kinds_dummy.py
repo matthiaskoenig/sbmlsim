@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from sbmlsim import events
+from sbmlsim.progress import activity
 from sbmlsim.run import Kind, RunContext, SplitSpec
 from sbmlsim.run.units import MissingUnits, unit_blocks
 
@@ -68,9 +69,11 @@ def run(spec: DummySpec, ctx: RunContext) -> dict[str, Any]:
     if spec.invalid:
         DummySpec.model_validate({"n": "no number"})
     assert spec.units is not None
-    for index in range(spec.units):
-        if not (ctx.resume and _part(ctx, index).exists()):
-            compute_unit(spec, index, ctx)
+    with activity("dummy", "units", total=spec.units) as units:
+        for index in range(spec.units):
+            if not (ctx.resume and _part(ctx, index).exists()):
+                compute_unit(spec, index, ctx)
+            units.advance()
     return merge(spec, ctx)
 
 

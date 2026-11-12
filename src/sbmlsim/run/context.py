@@ -41,6 +41,8 @@ from sbmlsim import events
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.cgroup import available_cpus
 from sbmlsim.hashing import canonical_json_sha256
+from sbmlsim.progress import reporter
+from sbmlsim.progress import resolve as resolve_progress
 from sbmlsim.run.kinds import ConfigurationError, Kind, OutInUse, PlanMismatch, Spec
 
 __all__ = [
@@ -153,6 +155,11 @@ class RunContext:
             on, `None` outside of simrun.
         unit: the index of the unit a split run computes, `None` for a whole
             run or a merge.
+        progress: how the progress of the run is rendered, `auto`, `bar`,
+            `log` or `none`; `None` reads `SBMLSIM_PROGRESS` or renders a bar
+            on a terminal and lines without one, see
+            `sbmlsim.progress.resolve`. The events of the progress are
+            recorded whatever is rendered.
     """
 
     out: Path
@@ -160,6 +167,7 @@ class RunContext:
     resume: bool
     provenance: list[dict[str, Any]] | None
     unit: int | None = None
+    progress: str | None = None
 
     def write_json(self, name: str, data: Any) -> Path:
         """Write a JSON file into the output atomically, see `to_json`.
@@ -584,7 +592,10 @@ def record_run(
     progress = ctx.progress_path
     progress.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with events.recording(progress):
+        with (
+            events.recording(progress),
+            reporter(resolve_progress(ctx.progress)),
+        ):
             summary = body()
         ctx.write_json(SUMMARY_FILE, summary)
     except BaseException as err:

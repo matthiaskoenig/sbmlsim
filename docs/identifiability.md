@@ -119,6 +119,8 @@ How the scans work:
 - `pids` restricts the analysis to some of the parameters.
 - `ProfileSettings(reoptimize=False)` keeps the other parameters at the optimum. That is a plain scan of the cost and a lower bound of the profile: fast and enough to find non-identifiable parameters, but its intervals are too narrow for coupled parameters.
 
+A long analysis says how far it is: every scan is a step of the activity of the analysis, with the count, the elapsed time, the estimate of the time which is left and the cores, the CPU and the memory of the run, and a scan which runs in this process reports its points as well, see [Progress](run.md#progress-and-provenance).
+
 ## Fisher information
 
 The Fisher information is the local alternative to the profile: the curvature of the cost at the optimum, computed from one jacobian. For a fit that minimizes `cost = 0.5 * Σ r²`, the Gauss-Newton approximation of the Hessian is the Fisher information matrix, and its inverse, scaled by the variance of the residuals, is the covariance of the parameters:
