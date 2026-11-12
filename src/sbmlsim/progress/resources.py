@@ -13,7 +13,8 @@ tree, `meminfo` the memory of the machine. The pool of a run is a tree of
 children, so the sample covers the workers as well, which
 `resource.getrusage` does not: it counts a child when it ends. Without `/proc`
 (a platform which has none) the CPU is the one of `getrusage` and the memory is
-left out, which the reporters leave out of their text.
+left out, and on a platform without `resource` (windows) the CPU is left out as
+well, which the reporters leave out of their text.
 
 The sample costs a scan of `/proc`, so it is taken at most every second and
 every reporter of a process takes the same one, see `SAMPLER`.
@@ -23,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
-import resource
+import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -32,6 +33,18 @@ from sbmlsim.progress.core import _now
 
 logger = logging.getLogger(__name__)
 
+if sys.platform == "win32":
+    # windows has neither the module `resource` nor `os.sysconf`
+    _getrusage = None
+    _RUSAGE_SELF = 0
+    _RUSAGE_CHILDREN = -1
+else:
+    import resource
+
+    _getrusage = resource.getrusage
+    _RUSAGE_SELF = resource.RUSAGE_SELF
+    _RUSAGE_CHILDREN = resource.RUSAGE_CHILDREN
+
 #: where the processes and the memory of the machine are read, `/proc` on linux
 PROC = Path("/proc")
 
@@ -39,10 +52,10 @@ PROC = Path("/proc")
 INTERVAL = 1.0
 
 #: the bytes of a page of memory, for the resident memory of `/proc/<pid>/stat`
-PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
+PAGE_SIZE = os.sysconf("SC_PAGE_SIZE") if hasattr(os, "sysconf") else 4096
 
 #: the ticks of a second of the CPU, for the times of `/proc/<pid>/stat`
-CLOCK_TICKS = os.sysconf("SC_CLK_TCK")
+CLOCK_TICKS = os.sysconf("SC_CLK_TCK") if hasattr(os, "sysconf") else 100
 
 #: the bytes of a gigabyte, for the text of a sample
 GIGABYTE = 1024**3
@@ -166,10 +179,16 @@ def _machine(root: Path) -> tuple[int, int] | None:
     return max(total - available, 0), total
 
 
-def _own_cpu() -> float:
-    """Get the CPU seconds of the process and of the children which ended."""
-    own = resource.getrusage(resource.RUSAGE_SELF)
-    children = resource.getrusage(resource.RUSAGE_CHILDREN)
+def _own_cpu() -> float | None:
+    """Get the CPU seconds of the process and of the children which ended.
+
+    Returns:
+        The seconds, `None` on a platform without `resource` (windows).
+    """
+    if _getrusage is None:
+        return None
+    own = _getrusage(_RUSAGE_SELF)
+    children = _getrusage(_RUSAGE_CHILDREN)
     return own.ru_utime + own.ru_stime + children.ru_utime + children.ru_stime
 
 
@@ -219,7 +238,12 @@ class Sampler:
         machine = _machine(PROC)
         cpu = tree[0] if tree is not None else _own_cpu()
         percent: float | None = None
-        if self._cpu is not None and self._taken is not None and now > self._taken:
+        if (
+            cpu is not None
+            and self._cpu is not None
+            and self._taken is not None
+            and now > self._taken
+        ):
             percent = 100.0 * (cpu - self._cpu) / (now - self._taken)
         self._taken = now
         self._cpu = cpu
