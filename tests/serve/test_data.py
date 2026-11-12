@@ -11,21 +11,28 @@ model, for a panel which declares no `x_unit` of its own.
 
 A panel of another declaration is served by an application of its own
 (`served`), and the series themselves are read with `panel_data`, which takes
-that unit from its caller and needs no application at all.
+the units of the panel from the runner (`series_of`): the runner of the module
+resolves them on one warm model, as the application does.
 """
 
+from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from sbmlsim.panel import Panel, PanelData
+from sbmlsim.panel import Panel, PanelCurve, PanelData
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, create_app
-from sbmlsim.serve.data import panel_data
+from sbmlsim.serve.data import PanelSeries, panel_data
 from sbmlsim.serve.payload import DATA_CONTRACT
-from sbmlsim.serve.runner import ModelEntry, ModelRegistry
+from sbmlsim.serve.runner import (
+    ModelEntry,
+    ModelRegistry,
+    PanelRunner,
+    PanelUnits,
+)
 from tests.serve.conftest import DATA, MR_HCTZ, SIMULATE, URINE
 
 #: the time unit of the HCTZ model, the one the x of its panels is in
@@ -54,6 +61,59 @@ PATEL = PanelData(
     unit="uM",
 )
 
+#: the series of the crafted dataset of `crafted`, under the curve of the urine
+MINE = PanelData(
+    id="mine1999",
+    label="Mine 1999",
+    curve="Aurine_hctz",
+    dataset="Mine1999_Tab1",
+    x="time",
+    y="mean",
+    conversion=MR_HCTZ,
+)
+#: the same series of the crafted dataset whose times carry no unit
+PLAIN = MINE.model_copy(update={"dataset": "Mine1999_Tab2"})
+#: the times of both crafted datasets, in hours
+MINE_TIMES = [12.0, 96.0]
+
+
+@pytest.fixture(scope="module")
+def runner(registry: ModelRegistry) -> PanelRunner:
+    """One runner of the module, which resolves the units on a warm model."""
+    return PanelRunner(registry)
+
+
+@pytest.fixture
+def crafted(project: Project, tmp_path: Path) -> Project:
+    """A project whose data is two datasets, a relative CV and plain times.
+
+    No dataset of the HCTZ example carries a column of a relative `cv` or
+    times without a unit, which are the two shapes the unit of a column is
+    read in (`sbmlsim.serve.data._unit_of`): `Mine1999_Tab1` has the CV,
+    `Mine1999_Tab2` the times without a unit and `Mine1999_Tab3` an error
+    which is measured in another unit than its values.
+    """
+    folder = tmp_path / "Mine1999"
+    folder.mkdir()
+    (folder / ".Mine1999_Tab1.tsv").write_text(
+        "label\ttime\ttime_unit\tmean\tmean_cv\tmean_unit\tcount\n"
+        "urine\t12\thr\t3.01\t12.0\tmg\t4\n"
+        "urine\t96\thr\t4.13\t9.0\tmg\t4\n",
+        encoding="utf-8",
+    )
+    (folder / ".Mine1999_Tab3.tsv").write_text(
+        "label\ttime\ttime_unit\tmean\tmean_sd\tmean_unit\tmean_sd_unit\n"
+        "urine\t12\thr\t3.01\t120.0\tmg\tug\n",
+        encoding="utf-8",
+    )
+    (folder / ".Mine1999_Tab2.tsv").write_text(
+        "label\ttime\tmean\tmean_unit\tcount\n"
+        "urine\t12\t3.01\tmg\t4\n"
+        "urine\t96\t4.13\tmg\t4\n",
+        encoding="utf-8",
+    )
+    return project.replace(data_path=tmp_path)
+
 
 def entry_of(project: Project) -> ModelEntry:
     """The model entry of the project, which `panel_data` reads the data of."""
@@ -66,6 +126,12 @@ def served(project: Project, panel: Panel) -> TestClient:
     return TestClient(create_app(ModelRegistry({entry.id: entry})))
 
 
+def series_of(runner: PanelRunner, project: Project, panel: Panel) -> list[PanelSeries]:
+    """Read the study data of a panel in the units the runner resolves."""
+    entry = entry_of(project)
+    return panel_data(entry, panel, runner.units(entry, panel))
+
+
 def with_data(panel: Panel, data: PanelData) -> Panel:
     """The panel with one series of study data instead of its own."""
     return panel.model_copy(update={"data": (data,)})
@@ -74,6 +140,13 @@ def with_data(panel: Panel, data: PanelData) -> Panel:
 def changed(data: PanelData, **fields: Any) -> PanelData:
     """The series with the fields changed, which the panel of a test declares."""
     return data.model_copy(update=fields)
+
+
+def in_hours(panel: Panel) -> Panel:
+    """The panel with its time axis declared in hours."""
+    return panel.model_copy(
+        update={"simulation": panel.simulation.model_copy(update={"x_unit": "hr"})}
+    )
 
 
 def test_the_data_of_a_panel_is_served_in_the_unit_of_its_curve(
@@ -94,9 +167,10 @@ def test_the_data_of_a_panel_is_served_in_the_unit_of_its_curve(
     assert series["yerr"] is None
 
 
-def test_a_panel_without_data_answers_an_empty_series_list(
-    project: Project, panel: Panel
+def test_a_panel_without_data_answers_an_empty_list_without_its_model(
+    project: Project, panel: Panel, never_loads: None
 ) -> None:
+    """There is no unit to resolve, so the answer costs no model."""
     without = panel.model_copy(update={"data": ()})
     assert served(project, without).get(DATA).json() == {
         "contract": DATA_CONTRACT,
@@ -142,18 +216,41 @@ def test_the_x_of_the_data_is_the_x_of_the_simulation_of_the_same_panel(
     # the dataset is in hours, the x of the panel in the minutes of the model
     assert data["series"][0]["x_unit"] == X_UNIT
     assert data["series"][0]["x"] == pytest.approx(MINUTES)
+    # a property of the fixture and of no route: the study reaches 168 hr and
+    # the panel simulates a day of it, which a renderer clips
     assert max(data["series"][0]["x"]) > max(simulated["x"])
 
 
-def test_the_data_of_a_panel_which_declares_its_x_unit_loads_no_model(
-    project: Project, panel: Panel, never_loads: None
+def test_the_x_of_the_data_is_the_x_unit_the_panel_declares(
+    project: Project, panel: Panel
 ) -> None:
-    """Only the x unit of a panel which declares none needs the model."""
-    hours = panel.simulation.model_copy(update={"x_unit": "hr"})
-    declared = panel.model_copy(update={"simulation": hours})
-    body = served(project, declared).get(DATA).json()
-    assert body["series"][0]["x_unit"] == "hr"
-    assert body["series"][0]["x"] == pytest.approx(TIMES)
+    """The two routes deliver the declared unit, and not one of them alone."""
+    client = served(project, in_hours(panel))
+    data = client.get(DATA).json()
+    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    assert data["series"][0]["x_unit"] == simulated["units"]["x"] == "hr"
+    assert data["series"][0]["x"] == pytest.approx(TIMES)
+
+
+def test_a_unit_id_of_the_model_is_served_on_both_routes_as_well(
+    project: Project, panel: Panel
+) -> None:
+    """`KI__min` and `substance` are units of the HCTZ model and none of pint."""
+    urine = PanelCurve(id="Aurine_hctz", label="urine", unit="substance")
+    declared = panel.model_copy(
+        update={
+            "curves": (panel.curves[0], urine),
+            "simulation": panel.simulation.model_copy(update={"x_unit": "KI__min"}),
+        }
+    )
+    client = served(project, declared)
+    data = client.get(DATA).json()
+    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    series = data["series"][0]
+    assert series["x_unit"] == simulated["units"]["x"] == "KI__min"
+    assert series["unit"] == simulated["units"]["Aurine_hctz"] == "substance"
+    assert series["x"] == pytest.approx(MINUTES)
+    assert series["y"] == pytest.approx([amount * 1e-6 for amount in AMOUNTS])
 
 
 def test_the_body_of_a_series_is_json_without_a_nan(client: TestClient) -> None:
@@ -162,20 +259,20 @@ def test_the_body_of_a_series_is_json_without_a_nan(client: TestClient) -> None:
 
 
 def test_the_values_of_a_series_are_converted_before_the_unit_of_its_curve(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
-    [series] = panel_data(entry_of(project), panel, X_UNIT)
+    [series] = series_of(runner, project, panel)
     assert (series.unit, series.x_unit) == ("umol", X_UNIT)
     assert series.y == pytest.approx(AMOUNTS)
     assert series.count == [1, 1, 1, 1]
 
 
 def test_a_series_which_cannot_be_converted_to_the_unit_of_its_curve_is_refused(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     plain = with_data(panel, changed(URINE, conversion=None))
     with pytest.raises(ValueError, match="umol") as error:
-        panel_data(entry_of(project), plain, X_UNIT)
+        series_of(runner, project, plain)
     message = str(error.value)
     assert "mg" in message
     assert URINE.id in message
@@ -202,36 +299,36 @@ def test_two_series_of_one_curve_are_both_answered_in_its_unit(
 
 
 def test_the_unit_a_series_declares_wins_over_the_one_of_its_curve(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     declared = with_data(panel, changed(URINE, unit="nmol"))
-    [series] = panel_data(entry_of(project), declared, X_UNIT)
+    [series] = series_of(runner, project, declared)
     assert series.unit == "nmol"
     assert series.y == pytest.approx([amount * 1e3 for amount in AMOUNTS])
 
 
 def test_a_series_which_names_no_curve_keeps_the_unit_of_its_dataset(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     own = with_data(panel, changed(URINE, curve=None, conversion=None))
-    [series] = panel_data(entry_of(project), own, X_UNIT)
+    [series] = series_of(runner, project, own)
     assert series.unit == "mg"
     assert series.y == pytest.approx(MASSES)
 
 
 def test_the_times_of_a_series_are_the_x_unit_a_panel_declares(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     """The `x_unit` of a panel is the one its curves are delivered in as well."""
-    [series] = panel_data(entry_of(project), panel, "hr")
+    [series] = series_of(runner, project, in_hours(panel))
     assert series.x_unit == "hr"
     assert series.x == pytest.approx(TIMES)
 
 
 def test_the_error_and_the_count_of_a_series_are_the_ones_of_its_study(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
-    [series] = panel_data(entry_of(project), with_data(panel, PATEL), X_UNIT)
+    [series] = series_of(runner, project, with_data(panel, PATEL))
     assert series.unit == "uM"
     assert len(series.x) == len(series.y) == 11
     assert series.y[0] == pytest.approx(22.8 / 297.7)
@@ -242,20 +339,79 @@ def test_the_error_and_the_count_of_a_series_are_the_ones_of_its_study(
 
 
 def test_a_row_without_a_value_is_no_point_of_the_series(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     """The group data of Patel 1984 has its mean and no value of a subject."""
     values = with_data(panel, changed(PATEL, y="value", yerr=None))
-    [series] = panel_data(entry_of(project), values, X_UNIT)
+    [series] = series_of(runner, project, values)
     assert (series.x, series.y, series.count) == ([], [], None)
 
 
+def test_a_relative_cv_is_no_error_bar_of_a_series(
+    runner: PanelRunner, crafted: Project, panel: Panel
+) -> None:
+    """A `_cv` is relative, so it is no quantity in the unit of its column."""
+    relative = with_data(panel, changed(MINE, yerr="mean_cv"))
+    with pytest.raises(ValueError, match="mean_cv") as error:
+        series_of(runner, crafted, relative)
+    message = str(error.value)
+    assert MINE.id in message
+    assert "no unit" in message
+
+
+def test_an_error_measured_in_another_unit_is_delivered_in_the_one_of_its_values(
+    runner: PanelRunner, crafted: Project, panel: Panel
+) -> None:
+    """The dataset measures the mean in `mg` and its deviation in `ug`."""
+    own = with_data(
+        panel,
+        PanelData(
+            id="mine1999",
+            label="Mine 1999",
+            dataset="Mine1999_Tab3",
+            x="time",
+            y="mean",
+            yerr="mean_sd",
+        ),
+    )
+    [series] = series_of(runner, crafted, own)
+    assert series.unit == "mg"
+    assert series.y == pytest.approx([3.01])
+    assert series.yerr == pytest.approx([0.12])
+
+
+def test_the_times_of_a_dataset_without_a_unit_are_delivered_as_they_are(
+    runner: PanelRunner, crafted: Project, panel: Panel
+) -> None:
+    """A model whose time has no unit and a dataset which has none agree."""
+    declared = with_data(panel, PLAIN)
+    entry = entry_of(crafted)
+    units = runner.units(entry, declared)
+    [series] = panel_data(entry, declared, PanelUnits(x=None, series=units.series))
+    assert series.x_unit is None
+    assert series.x == pytest.approx(MINE_TIMES)
+    assert series.unit == "umol"
+
+
+def test_the_times_of_a_dataset_a_unitless_model_cannot_draw_are_refused(
+    runner: PanelRunner, project: Project, panel: Panel
+) -> None:
+    """The times of the study are hours and the time of the model has no unit."""
+    entry = entry_of(project)
+    units = runner.units(entry, panel)
+    with pytest.raises(ValueError, match="hr") as error:
+        panel_data(entry, panel, PanelUnits(x=None, series=units.series))
+    message = str(error.value)
+    assert URINE.id in message
+    assert ".tsv" not in message
+
+
 def test_a_selection_which_no_row_has_is_refused_without_a_path(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     other = with_data(panel, changed(URINE, sel={"label": "nothing"}))
     with pytest.raises(ValueError, match="nothing") as error:
-        panel_data(entry_of(project), other, X_UNIT)
+        series_of(runner, project, other)
     message = str(error.value)
     assert URINE.dataset in message
     assert ".tsv" not in message
@@ -265,20 +421,20 @@ def test_a_selection_which_no_row_has_is_refused_without_a_path(
 
 
 def test_a_selection_of_a_column_the_dataset_has_not_is_refused(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     other = with_data(panel, changed(URINE, sel={"nothing": "x"}))
     with pytest.raises(ValueError, match="nothing") as error:
-        panel_data(entry_of(project), other, X_UNIT)
+        series_of(runner, project, other)
     assert URINE.dataset in str(error.value)
 
 
 def test_a_column_the_dataset_has_not_is_refused(
-    project: Project, panel: Panel
+    runner: PanelRunner, project: Project, panel: Panel
 ) -> None:
     other = with_data(panel, changed(URINE, y="nothing"))
     with pytest.raises(ValueError, match="nothing") as error:
-        panel_data(entry_of(project), other, X_UNIT)
+        series_of(runner, project, other)
     message = str(error.value)
     assert URINE.id in message
     assert ".tsv" not in message

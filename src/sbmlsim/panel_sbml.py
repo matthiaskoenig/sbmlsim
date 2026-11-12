@@ -31,12 +31,12 @@ in the time unit of the model (a day of a model of minutes above) and `xUnit`
 is the unit its time axis is delivered in. The `option` children of a knob are
 the `choices` of a knob of the kind `choice`, the `preinit` children of the
 simulation are its `preinit` and the `select` children of a series of the data
-are its `sel`, the rows of its dataset. The `dataset` of a series is the id of
+are its `sel`, the rows of its dataset, each of them of a `column` and a
+`value`. The `dataset` of a series is the id of
 a figure or a table of a study and no path, its `curve` is the curve of the
 panel it belongs under, whose unit it is delivered in, and its `conversion` is
 a quantity its values are multiplied by, the molecular weight of a substance
-above. The
-tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
+above. The tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
 `_KNOB_ATTRIBUTES`, `_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and
 `_DATA_ATTRIBUTES` own these names, so the reader and the writer cannot
 disagree: `panels_from_sbml` reads the annotation, `panels_to_annotation` and
@@ -315,12 +315,30 @@ def _panel_payload(element: libsbml.XMLNode) -> dict[str, Any]:
 
 
 def _data_payload(element: libsbml.XMLNode) -> dict[str, Any]:
-    """Get the payload of a `data` element, its `select` children its rows."""
+    """Get the payload of a `data` element, its `select` children its rows.
+
+    Args:
+        element: the `data` element.
+
+    Returns:
+        The fields of the element with its `select` children as its `sel`.
+
+    Raises:
+        ValueError: naming the series, for a `select` child without a
+            `column`, which selects no rows and which `panels_from_sbml`
+            reports as a problem of its panel.
+    """
     payload = _fields_of(element, _DATA_ATTRIBUTES)
-    sel = {
-        select.getAttrValue("column"): select.getAttrValue("value")
-        for select in _children(element, SELECT_ELEMENT)
-    }
+    sel: dict[str, str] = {}
+    for select in _children(element, SELECT_ELEMENT):
+        column = select.getAttrValue("column")
+        if not column:
+            raise ValueError(
+                f"A '{SELECT_ELEMENT}' of the series "
+                f"'{element.getAttrValue('id')}' has no 'column': the rows of a "
+                f"series are selected by the value of a column of its dataset."
+            )
+        sel[column] = select.getAttrValue("value")
     if sel:
         payload["sel"] = sel
     return payload

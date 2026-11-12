@@ -221,6 +221,20 @@ def test_the_documented_panel_round_trips_through_the_writer(tmp_path: Path) -> 
     assert panels_from_sbml(tmp_path / "m.xml") == ({DOCUMENTED.id: DOCUMENTED}, ())
 
 
+def test_a_select_without_a_column_is_reported_as_a_problem(tmp_path: Path) -> None:
+    """A malformed child is a problem of its panel, as a malformed knob is."""
+    out = tmp_path / "m.xml"
+    write_panels(SBML_IN, out, [DOCUMENTED])
+    written = out.read_text(encoding="utf-8")
+    assert '<select column="label" value="hctz25"/>' in written
+    broken = written.replace('<select column="label" value="hctz25"/>', "<select/>")
+    panels, problems = panels_from_sbml(broken)
+    assert panels == {}
+    assert [problem.panel_id for problem in problems] == [DOCUMENTED.id]
+    assert "column" in problems[0].reason
+    assert "vormfelde2006" in problems[0].reason
+
+
 def test_a_duplicate_panel_id_is_reported_and_neither_is_dropped_silently() -> None:
     panels, problems = panels_from_sbml(DUPLICATE_SBML)
     assert panels["renal"].title == "the first panel"

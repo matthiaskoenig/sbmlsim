@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from pint.errors import UndefinedUnitError
 
 from sbmlsim.panel import Panel, PanelCurve
 from sbmlsim.serve import runner as runner_module
@@ -21,7 +22,8 @@ from sbmlsim.serve.runner import (
     UnknownModel,
     UnknownPanel,
 )
-from tests.serve.conftest import DOSE, EGFR, END
+from sbmlsim.units import ureg
+from tests.serve.conftest import DOSE, EGFR, END, URINE
 
 #: the reference of the project of the HCTZ example
 HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"
@@ -106,45 +108,86 @@ def test_a_declared_x_unit_delivers_the_time_axis_in_it(
     assert result.curves == runner.run("hctz", panel, {"egfr": 1.0}, {}).curves
 
 
-def test_the_x_unit_of_a_panel_is_the_one_of_the_x_of_its_result(
-    runner: PanelRunner, panel: Panel
+def test_the_units_of_a_panel_are_the_ones_of_its_result(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
 ) -> None:
-    """`x_unit` answers without a run what a run delivers, see the module."""
-    assert runner.x_unit("hctz", panel) == "min"
+    """`units` answers without a run what a run delivers, see the module."""
+    units = runner.units(registry.entry("hctz"), panel)
+    assert units.x is not None
+    assert units.x.text == "min"
+    urine = units.series[URINE.id]
+    assert urine is not None
+    assert urine.text == "umol"
     result = runner.run("hctz", panel, {"egfr": 1.0, "dose": 25.0}, {})
-    assert runner.x_unit("hctz", panel) == result.units["x"]
+    assert units.x.text == result.units["x"]
 
 
-def test_the_x_unit_a_panel_declares_is_answered_without_its_model(
-    registry: ModelRegistry, panel: Panel, loads: list[tuple[str, Path]]
+def test_the_x_unit_a_panel_declares_is_the_unit_of_its_units(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
 ) -> None:
-    """A panel which declares its x unit is answered by a cold runner."""
     in_hours = panel.model_copy(
         update={"simulation": panel.simulation.model_copy(update={"x_unit": "hr"})}
     )
-    assert PanelRunner(registry).x_unit("hctz", in_hours) == "hr"
-    assert loads == []
+    units = runner.units(registry.entry("hctz"), in_hours)
+    assert units.x is not None
+    assert units.x.text == "hr"
+    assert units.x.unit == ureg.Unit("hour")
 
 
-def test_the_x_unit_of_an_unknown_model_is_refused(
-    runner: PanelRunner, panel: Panel
+def test_a_unit_id_of_the_model_is_resolved_for_the_x_and_for_the_data(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
 ) -> None:
-    with pytest.raises(UnknownModel):
-        runner.x_unit("nothing", panel)
+    """A panel may declare a unit id of its model, which pint does not know."""
+    # `KI__min` is the minute and `substance` the mole of the HCTZ model
+    with pytest.raises(UndefinedUnitError):
+        ureg.Unit("KI__min")
+    urine = PanelCurve(id="Aurine_hctz", label="urine", unit="substance")
+    declared = panel.model_copy(
+        update={
+            "curves": (panel.curves[0], urine),
+            "simulation": panel.simulation.model_copy(update={"x_unit": "KI__min"}),
+        }
+    )
+    units = runner.units(registry.entry("hctz"), declared)
+    assert units.x is not None
+    assert (units.x.text, units.x.unit) == ("KI__min", ureg.Unit("minute"))
+    series = units.series[URINE.id]
+    assert series is not None
+    assert (series.text, series.unit) == ("substance", ureg.Unit("mole"))
+    result = runner.run("hctz", declared, {"egfr": 1.0}, {})
+    assert result.units["x"] == units.x.text
+    assert result.units["Aurine_hctz"] == series.text
 
 
 @pytest.mark.parametrize("x_unit", ["mg", "not_a_unit"])
 def test_an_x_unit_which_is_no_time_of_the_model_is_refused(
-    runner: PanelRunner, panel: Panel, x_unit: str
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel, x_unit: str
 ) -> None:
     """A unit which is no time and one which is no unit at all are refused."""
     bogus = panel.model_copy(
         update={"simulation": panel.simulation.model_copy(update={"x_unit": x_unit})}
     )
+    for run in (
+        lambda: runner.run("hctz", bogus, {"egfr": 1.0}, {}),
+        lambda: runner.units(registry.entry("hctz"), bogus),
+    ):
+        with pytest.raises(ValueError) as error:
+            run()
+        assert x_unit in str(error.value)
+        assert "min" in str(error.value)
+
+
+def test_a_unit_of_a_series_which_is_no_unit_is_refused(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
+) -> None:
+    """It is refused where it is resolved, before a series is read."""
+    bogus = panel.model_copy(
+        update={"data": (URINE.model_copy(update={"unit": "not_a_unit"}),)}
+    )
     with pytest.raises(ValueError) as error:
-        runner.run("hctz", bogus, {"egfr": 1.0}, {})
-    assert x_unit in str(error.value)
-    assert "min" in str(error.value)
+        runner.units(registry.entry("hctz"), bogus)
+    assert "not_a_unit" in str(error.value)
+    assert URINE.id in str(error.value)
 
 
 def test_a_curve_without_a_unit_carries_the_one_of_the_model(

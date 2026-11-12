@@ -222,7 +222,9 @@ class PanelData(BaseModel):
             curve, e.g. of two studies.
         label: the series as it is shown, e.g. the study it comes from.
         curve: the curve of the panel the series belongs under, whose unit it
-            is delivered in; its own `id` without, see `curve_id`.
+            is delivered in; its own `id` without, see `curve_id`. A curve
+            which is set is a curve the panel declares, see
+            `Panel._check_curves`.
         dataset: the dataset of the series, the id of a figure or a table of a
             study, e.g. `"Beermann1976_Fig2"`; it is no path, see `_DATASET`.
         x: the column of the times.
@@ -236,7 +238,8 @@ class PanelData(BaseModel):
             before they are delivered, e.g. `"1/(297.7 g/mole)"` for the mass
             of a study which the model carries as a substance; none without.
         unit: the unit of the values, the one of its curve without, and the
-            one of the dataset for a series which names no curve of the panel.
+            one of the dataset for a series whose own `id` is no curve of the
+            panel, see `Panel.series_unit`.
     """
 
     model_config = _CONFIG
@@ -323,7 +326,8 @@ class Panel(BaseModel):
             `MAX_CURVES`.
         data: the study data of the panel, drawn under its curves; several
             series may belong under one curve, e.g. two studies, and their
-            ids are distinct whether they do or not.
+            ids are distinct whether they do or not. A series which names a
+            curve names one of `curves`, see `_check_curves`.
         simulation: the simulation the panel runs.
     """
 
@@ -358,6 +362,56 @@ class Panel(BaseModel):
                     "an id is the key of its values in a result."
                 )
         return self
+
+    @model_validator(mode="after")
+    def _check_curves(self) -> Self:
+        """Check that every series which names a curve names a declared one.
+
+        The `curve` of a series is a reference to a curve of the panel, whose
+        unit the series is delivered in (`series_unit`): a value which is no
+        curve of the panel, e.g. a typo or a curve which was renamed, would be
+        delivered in the unit of its own dataset under a curve of another unit,
+        which is why it is refused here and not read as the default.
+
+        A series which declares no `curve` belongs under the curve of its own
+        `id` (`PanelData.curve_id`) and may have none, which is a series of a
+        panel which draws no curve of it.
+
+        Raises:
+            ValueError: naming the series, the curve it names and the curves
+                the panel declares, for a `curve` which is none of them.
+        """
+        declared = sorted(curve.id for curve in self.curves)
+        for data in self.data:
+            if data.curve is not None and data.curve not in declared:
+                raise ValueError(
+                    f"The series '{data.id}' of the panel '{self.id}' belongs "
+                    f"under the curve '{data.curve}', which the panel does not "
+                    f"declare; its curves are {declared}."
+                )
+        return self
+
+    def series_unit(self, data: PanelData) -> str | None:
+        """Get the unit a series of the study data is delivered in.
+
+        It is the one place the unit of a series lives, so the study data of a
+        panel and the curve it is drawn under are delivered in one unit, see
+        `sbmlsim.serve.data`.
+
+        Args:
+            data: the declaration of the series, one of `data`.
+
+        Returns:
+            The unit the series declares, else the unit of the curve it belongs
+            under (`PanelData.curve_id`, a curve of the panel whenever
+            `PanelData.curve` is set, see `_check_curves`), `None` for a series
+            whose curve declares no unit and for one whose own `id` is no curve
+            of the panel, which is delivered in the unit of its dataset.
+        """
+        if data.unit is not None:
+            return data.unit
+        wanted = data.curve_id
+        return next((curve.unit for curve in self.curves if curve.id == wanted), None)
 
 
 def panel_payload(panel: Panel) -> dict[str, Any]:

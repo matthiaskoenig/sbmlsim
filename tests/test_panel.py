@@ -243,6 +243,66 @@ def test_two_series_of_one_curve_are_accepted_and_of_one_id_are_not() -> None:
         )
 
 
+def test_a_series_which_names_a_curve_the_panel_has_not_is_refused() -> None:
+    """A curve which is no curve of the panel would be a unit of its own."""
+    series = PanelData(
+        id="study2000",
+        label="Study 2000",
+        curve="[S2]",
+        dataset="Study2000_Fig1",
+        x="t",
+        y="mean",
+    )
+    with pytest.raises(ValidationError, match=r"\[S2\]") as error:
+        Panel(
+            id="p",
+            title="p",
+            curves=(PanelCurve(id="[S1]", label="S1"),),
+            data=(series,),
+            simulation=PanelSimulation(end=1.0),
+        )
+    message = str(error.value)
+    assert "study2000" in message
+    assert "[S1]" in message
+
+
+def test_a_series_whose_own_id_is_no_curve_of_the_panel_is_accepted() -> None:
+    """Only a `curve` which is set is a reference to a curve of the panel."""
+    series = PanelData(
+        id="study2000", label="Study 2000", dataset="Study2000_Fig1", x="t", y="mean"
+    )
+    panel = Panel(
+        id="p",
+        title="p",
+        curves=(PanelCurve(id="[S1]", label="S1", unit="mM"),),
+        data=(series,),
+        simulation=PanelSimulation(end=1.0),
+    )
+    assert panel.series_unit(series) is None
+
+
+def test_the_unit_of_a_series_is_the_one_of_its_curve_and_else_its_own() -> None:
+    series = PanelData(
+        id="study2000",
+        label="Study 2000",
+        curve="[S1]",
+        dataset="Study2000_Fig1",
+        x="t",
+        y="mean",
+    )
+    without = PanelCurve(id="[S1]", label="S1")
+    panel = Panel(
+        id="p",
+        title="p",
+        curves=(PanelCurve(id="[S1]", label="S1", unit="mM"),),
+        data=(series,),
+        simulation=PanelSimulation(end=1.0),
+    )
+    assert panel.series_unit(series) == "mM"
+    assert panel.series_unit(series.model_copy(update={"unit": "uM"})) == "uM"
+    assert panel.model_copy(update={"curves": (without,)}).series_unit(series) is None
+
+
 def test_two_knobs_of_one_id_are_refused() -> None:
     with pytest.raises(ValidationError, match="egfr"):
         Panel(

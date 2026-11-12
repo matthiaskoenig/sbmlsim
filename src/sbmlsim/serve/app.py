@@ -250,12 +250,13 @@ def create_app(
         route is a sync `def` and reads the files in the thread pool of the
         server, as `panel_of` does.
 
-        The times are delivered in the unit the x of a simulation of the same
-        panel is delivered in (`PanelRunner.x_unit`), so a reader draws the
-        points on the axis of the curves. A panel which declares its `x_unit`
-        is answered without its model; a panel which declares none is
-        answered in the time unit of its model, which loads it, the one load
-        a run of the panel pays as well.
+        The series are delivered in the units of the panel
+        (`PanelRunner.units`), which the model of the panel resolves: the
+        times in the unit the x of a simulation of the same panel is
+        delivered in and the values in the unit of the curve they belong
+        under, so a reader draws the points on the axes of the curves. A panel
+        which declares no study data is answered without its model, every
+        other one with the load a run of the panel pays as well.
 
         Args:
             model: the id of the model.
@@ -275,10 +276,10 @@ def create_app(
                 neither the dataset nor a path.
         """
         entry, declaration, _ = resolved(model, panel)
+        if not declaration.data:
+            return PanelDataResponse(series=[])
         try:
-            series = panel_data(entry, declaration, runner.x_unit(model, declaration))
-        except UnknownModel, UnknownPanel:
-            raise
+            series = panel_data(entry, declaration, runner.units(entry, declaration))
         except Exception:
             logger.exception(
                 "The study data of the panel '%s' of the model '%s' cannot be read.",
