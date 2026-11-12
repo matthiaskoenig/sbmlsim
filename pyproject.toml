@@ -46,6 +46,12 @@ dependencies = [
 	# on fixes of libroadrunner which are not released yet (roadrunner #1381,
 	# #1382, #1383, #1384, #1420), a release of libroadrunner satisfies it as well
 	"libroadrunner>=2.11.1.dev655",
+	# the comparison of the installed libroadrunner with this requirement at
+	# `import sbmlsim` (`sbmlsim.engine.check_roadrunner`), which imports
+	# `packaging.version` (2 ms) and `packaging.requirements` only for a
+	# requirement which is no floor; the floor is a low one, the two have been
+	# stable for years and a tight one would conflict with other packages
+	"packaging>=25.0",
 	# data structures, units and numerics
 	"numpy>=2.5.3",
 	"pandas>=3.0.6",
