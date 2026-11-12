@@ -64,6 +64,7 @@ from pydantic import (
 
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.engine import Engine, JitOptimization
+from sbmlsim.panel import Panel
 from sbmlsim.reference import check_reference
 from sbmlsim.release.settings import ReleaseSettings
 from sbmlsim.simulation import Observable, Scan, Simulation
@@ -801,6 +802,10 @@ class Project(BaseModel):
             it a domain can claim and the evidence extensions of the
             credibility of the project.
         scans: the scans by their name.
+        panels: the interactive panels of the model by their id, see
+            `sbmlsim.panel`: the override for a model whose SBML carries no
+            panel annotation; a panel of an id which the annotation declares
+            as well wins over the annotated one.
         uncertainties: the uncertainty analyses by their name.
         sensitivities: the sensitivity analyses of the model over the groups
             of its simulations by their name, see
@@ -841,6 +846,7 @@ class Project(BaseModel):
     credibility: Any = None
     credibility_settings: CredibilitySettings = CredibilitySettings()
     scans: Mapping[str, ScanAnalysis] = {}
+    panels: dict[str, Panel] = {}
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
     sensitivities: Mapping[str, Any] = {}
     actions: Mapping[str, ProjectAction] = {}
