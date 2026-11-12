@@ -180,7 +180,7 @@ def test_a_panel_of_the_defaults_round_trips_as_well(
 def test_the_sbml_itself_is_read_as_well(tmp_path: Path, panel: Panel) -> None:
     """A service reads the panels of the SBML of a model it has loaded."""
     write_panels(SBML_IN, tmp_path / "m.xml", [panel])
-    assert panels_from_sbml((tmp_path / "m.xml").read_text()) == (
+    assert panels_from_sbml((tmp_path / "m.xml").read_text(encoding="utf-8")) == (
         {panel.id: panel},
         (),
     )
@@ -223,7 +223,7 @@ def test_writing_the_annotation_twice_replaces_it_instead_of_appending(
     panels, problems = panels_from_sbml(twice)
     assert problems == ()
     assert panels == {minimal.id: minimal}
-    assert twice.read_text().count(f'"{PANEL_NS}"') == 1
+    assert twice.read_text(encoding="utf-8").count(f'"{PANEL_NS}"') == 1
 
 
 def test_writing_no_panel_removes_the_annotation(tmp_path: Path, panel: Panel) -> None:
@@ -231,7 +231,7 @@ def test_writing_no_panel_removes_the_annotation(tmp_path: Path, panel: Panel) -
     write_panels(SBML_IN, once, [panel])
     write_panels(once, twice, [])
     assert panels_from_sbml(twice) == ({}, ())
-    assert PANEL_NS not in twice.read_text()
+    assert PANEL_NS not in twice.read_text(encoding="utf-8")
 
 
 def test_writing_the_annotation_keeps_the_rdf_of_the_model(
@@ -240,7 +240,7 @@ def test_writing_the_annotation_keeps_the_rdf_of_the_model(
     """The panels are a child of the annotation, the metadata stays."""
     out = tmp_path / "m.xml"
     write_panels(SBML_IN, out, [panel])
-    written = out.read_text()
+    written = out.read_text(encoding="utf-8")
     assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#" in written
     assert "lenov@ebi.ac.uk" in written
 
@@ -274,7 +274,7 @@ def test_a_path_which_is_no_file_is_an_error(tmp_path: Path) -> None:
 
 def test_a_file_which_is_no_model_is_an_error(tmp_path: Path) -> None:
     sbml = tmp_path / "m.xml"
-    sbml.write_text("<not-an-sbml/>")
+    sbml.write_text("<not-an-sbml/>", encoding="utf-8")
     with pytest.raises(ValueError, match="SBML"):
         panels_from_sbml(sbml)
 
