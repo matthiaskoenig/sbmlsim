@@ -10,13 +10,6 @@ from sbmlsim import progress
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, OptimizationAlgorithmType
 from sbmlsim.fit.runner import run_optimization
-from tests.progress.conftest import Recorder
-
-
-@pytest.fixture
-def recorder() -> Recorder:
-    """A reporter which keeps a snapshot of every call."""
-    return Recorder()
 
 
 def _run(problem: OptimizationProblem, settings: FitSettings, **kwargs: Any) -> None:

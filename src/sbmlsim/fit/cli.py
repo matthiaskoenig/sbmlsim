@@ -1215,6 +1215,7 @@ def identifiability_cli(
             settings=settings,
             parameter_set=parameter_set,
             alpha=options.alpha,
+            n_cores=options.cores,
         )
         display.section("Fisher information", icon=display.ICON_IDENTIFIABILITY)
         display.key_values(

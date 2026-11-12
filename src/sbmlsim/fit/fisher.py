@@ -31,9 +31,10 @@ the optimum, which is what the profile is for.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -45,8 +46,13 @@ from scipy.stats import t as student_t
 from sbmlsim.fit.optimization import OptimizationProblem
 from sbmlsim.fit.options import FitSettings, ObjectiveType, ParameterScaleType
 from sbmlsim.fit.parameters import ParameterSet
+from sbmlsim.progress import activity as progress_activity
 
 logger = logging.getLogger(__name__)
+
+#: what evaluates the points of the central differences of a jacobian, in the
+#: order of the points, see `evaluator`
+Evaluate = Callable[[Sequence[np.ndarray]], Sequence[np.ndarray]]
 
 #: relative step of the finite differences of a record which does not store
 #: its step, the step of the information before it followed the tolerance of
@@ -454,8 +460,99 @@ class FisherInformation:
         }
 
 
+def _points(x: np.ndarray, step: float) -> tuple[list[np.ndarray], list[float]]:
+    """Get the points of the central differences of a jacobian and their steps.
+
+    The points are the pairs of one parameter after another, `x + h` before
+    `x - h`, which is the order the columns are built from.
+
+    Args:
+        x: parameters in the space the optimizer searches.
+        step: relative step of the differences.
+
+    Returns:
+        The points and the step of every parameter.
+    """
+    points: list[np.ndarray] = []
+    steps: list[float] = []
+    for k in range(len(x)):
+        h = step * max(abs(float(x[k])), 1.0)
+        x_plus, x_minus = np.array(x, dtype=float), np.array(x, dtype=float)
+        x_plus[k] += h
+        x_minus[k] -= h
+        points += [x_plus, x_minus]
+        steps.append(h)
+    return points, steps
+
+
+def _residuals_serial(
+    problem: OptimizationProblem, points: Sequence[np.ndarray]
+) -> list[np.ndarray]:
+    """Evaluate the residuals of the points in this process, with its progress."""
+    rows: list[np.ndarray] = []
+    with progress_activity(
+        "jacobian", "Fisher information", total=len(points)
+    ) as evaluated:
+        for point in points:
+            rows.append(np.asarray(problem.residuals(point), dtype=float))
+            if evaluated is not None:
+                evaluated.advance()
+    return rows
+
+
+@contextlib.contextmanager
+def evaluator(
+    problem: OptimizationProblem, settings: FitSettings, n_cores: int = 1
+) -> Generator[Evaluate | None]:
+    """Get what evaluates the residuals of the points of a jacobian.
+
+    The points of the central differences are independent of each other, so
+    they are evaluated on a pool of workers, the pool of a fit with the
+    problem initialized in every worker (`sbmlsim.fit.runner.JacobianPool`,
+    what the jacobian of least squares uses). The values are the values of
+    this process bitwise, see `JacobianPool`.
+
+    Args:
+        problem: initialized optimization problem.
+        settings: the settings the problem was initialized with, which the
+            workers initialize it with.
+        n_cores: the number of workers, one for the evaluation in this
+            process.
+
+    Yields:
+        What evaluates the points, `None` for the evaluation in this process.
+    """
+    # imported here, so that the fisher information of a module which does not
+    # fit (a report, a record) does not pull in the runner of the fits
+    from sbmlsim.fit.runner import JacobianPool, resolve_n_cores, worker_pool
+
+    if resolve_n_cores(n_cores) <= 1:
+        yield None
+        return
+    with worker_pool(problem, settings, resolve_n_cores(n_cores)) as pool:
+        points_pool = JacobianPool(pool)
+        points_pool.start()
+
+        def evaluate(points: Sequence[np.ndarray]) -> list[np.ndarray]:
+            """Evaluate the points on the workers, in the order of the points."""
+            rows: list[np.ndarray | None] = [None] * len(points)
+            for index, (residuals, _) in points_pool(points, None):
+                rows[index] = np.asarray(residuals, dtype=float)
+            missing = [k for k, row in enumerate(rows) if row is None]
+            if missing:
+                raise RuntimeError(
+                    f"the points {missing} of the jacobian were not evaluated."
+                )
+            return [row for row in rows if row is not None]
+
+        yield evaluate
+
+
 def jacobian(
-    problem: OptimizationProblem, x: np.ndarray, step: float = DEFAULT_STEP
+    problem: OptimizationProblem,
+    x: np.ndarray,
+    step: float = DEFAULT_STEP,
+    evaluate: Evaluate | None = None,
 ) -> np.ndarray:
     """Get the jacobian of the weighted residuals by central differences.
 
@@ -463,19 +560,17 @@ def jacobian(
         problem: initialized optimization problem.
         x: parameters in the space the optimizer searches.
         step: relative step of the differences.
+        evaluate: what evaluates the points of the differences, see
+            `evaluator`; the evaluation in this process by default.
 
     Returns:
         The jacobian with one row per residual and one column per parameter.
     """
-    columns: list[np.ndarray] = []
-    for k in range(len(x)):
-        h = step * max(abs(float(x[k])), 1.0)
-        x_plus, x_minus = np.array(x, dtype=float), np.array(x, dtype=float)
-        x_plus[k] += h
-        x_minus[k] -= h
-        r_plus = np.asarray(problem.residuals(x_plus), dtype=float)
-        r_minus = np.asarray(problem.residuals(x_minus), dtype=float)
-        columns.append((r_plus - r_minus) / (2.0 * h))
+    points, steps = _points(x, step)
+    rows = _residuals_serial(problem, points) if evaluate is None else evaluate(points)
+    columns = [
+        (rows[2 * k] - rows[2 * k + 1]) / (2.0 * steps[k]) for k in range(len(steps))
+    ]
     return np.column_stack(columns)
 
 
@@ -486,6 +581,7 @@ def fisher_information(
     alpha: float = 0.95,
     step: float | None = None,
     rank_tolerance: float = DEFAULT_RANK_TOLERANCE,
+    n_cores: int = 1,
 ) -> FisherInformation:
     """Calculate the Fisher information of a parameter set on a problem.
 
@@ -500,6 +596,10 @@ def fisher_information(
             default.
         rank_tolerance: eigenvalues below this fraction of the largest one are
             a direction the data does not constrain.
+        n_cores: the workers which evaluate the points of the jacobian, the
+            two points of every parameter, see `evaluator`; one evaluates them
+            in this process, which is `2 k` simulations of the experiments one
+            after another.
 
     Returns:
         The Fisher information with the errors, the correlations and the
@@ -512,7 +612,8 @@ def fisher_information(
     x = problem.to_scale(values)
 
     residuals, cost, n = data_residuals(problem, x)
-    jac = jacobian(problem, x, step=step)[: residuals.size]
+    with evaluator(problem, settings, n_cores) as evaluate:
+        jac = jacobian(problem, x, step=step, evaluate=evaluate)[: residuals.size]
     matrix = jac.T @ jac
 
     return FisherInformation(

@@ -30,6 +30,13 @@ from sbmlsim.fit.options import (
 )
 from sbmlsim.fit.report import FitReport
 from sbmlsim.fit.result import OptimizationResult
+from tests.progress.conftest import Recorder
+
+
+@pytest.fixture
+def recorder() -> Recorder:
+    """A reporter of the progress which keeps a snapshot of every call."""
+    return Recorder()
 
 
 @pytest.fixture(scope="session")

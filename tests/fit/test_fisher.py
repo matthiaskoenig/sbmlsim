@@ -6,11 +6,13 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
+from sbmlsim import progress
 from sbmlsim.fit import FitSettings
 from sbmlsim.fit.fisher import (
     DEFAULT_STEP,
     FisherInformation,
     default_step,
+    evaluator,
     fisher_information,
     jacobian,
 )
@@ -307,3 +309,39 @@ def test_the_step_balances_the_noise_of_the_integrator() -> None:
     """A central difference divides the noise of the integrator by its step."""
     assert default_step(1e-6) == pytest.approx(1e-2)
     assert default_step(1e-9) == pytest.approx(1e-3)
+
+
+def test_the_jacobian_on_workers_is_the_jacobian_of_this_process(
+    op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The points of a jacobian on a pool give the values of this process.
+
+    The two points of every parameter are independent, so they are evaluated
+    on the workers of a fit; the step of a point is the same either way, so
+    the jacobian is the same bitwise.
+    """
+    problem = op_hctz_iv
+    problem.initialize(fit_settings)
+    x = problem.to_scale(np.asarray(problem.x0, dtype=float))
+
+    serial = jacobian(problem, x)
+    with evaluator(problem, fit_settings, n_cores=2) as evaluate:
+        assert evaluate is not None
+        on_workers = jacobian(problem, x, evaluate=evaluate)
+    assert np.array_equal(serial, on_workers)
+
+
+def test_the_points_of_a_jacobian_report_their_progress(
+    recorder, op_hctz_iv: OptimizationProblem, fit_settings: FitSettings
+) -> None:
+    """The points of a jacobian in this process are the steps of an activity."""
+    problem = op_hctz_iv
+    problem.initialize(fit_settings)
+    x = problem.to_scale(np.asarray(problem.x0, dtype=float))
+
+    with progress.reporter(recorder):
+        jacobian(problem, x)
+    jacobians = [event for event in recorder.events if event.kind == "jacobian"]
+    assert jacobians[0].total == 2 * len(problem.pids)
+    assert jacobians[0].label == "Fisher information"
+    assert jacobians[-1].completed == 2 * len(problem.pids)

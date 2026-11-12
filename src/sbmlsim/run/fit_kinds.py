@@ -1016,7 +1016,12 @@ def _fit_identifiability(
     }
     if spec.fisher and not (ctx.resume and (records / FISHER_FILE).exists()):
         _write_fisher(
-            records, problem, settings, parameter_set, alpha=result.settings.alpha
+            records,
+            problem,
+            settings,
+            parameter_set,
+            alpha=result.settings.alpha,
+            n_cores=ctx.workers or available_cpus(),
         )
     return summary
 
@@ -1265,7 +1270,14 @@ def _merge_identifiability(
     _copy_records(directory, ctx)
     if spec.fisher:
         problem, settings, parameter_set = _stored_fit(spec, directory)
-        _write_fisher(ctx.out, problem, settings, parameter_set, alpha=spec.alpha)
+        _write_fisher(
+            ctx.out,
+            problem,
+            settings,
+            parameter_set,
+            alpha=spec.alpha,
+            n_cores=ctx.workers or available_cpus(),
+        )
     return {"n_identifiable": result.n_identifiable, "n_parameters": len(pids)}
 
 
@@ -1294,6 +1306,7 @@ def _run_fisher(spec: FisherSpec, ctx: RunContext) -> dict[str, Any]:
         parameter_set,
         posterior=spec.posterior,
         step=spec.step,
+        n_cores=ctx.workers or available_cpus(),
     )
     _copy_records(directory, ctx)
     return summary
