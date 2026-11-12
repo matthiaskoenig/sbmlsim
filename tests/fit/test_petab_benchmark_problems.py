@@ -6,8 +6,10 @@ collection compares with, converted to PEtab v2 as `BenchmarkCollection`
 converts them; a problem of PEtab v1 is converted as the collection is.
 """
 
+import gc
 import logging
 import signal
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -336,7 +338,19 @@ def test_simulations_of_conditions_which_were_renamed(tmp_path: Path) -> None:
 )
 def test_a_problem_which_takes_too_long(tmp_path: Path) -> None:
     """A problem which takes longer than its time is the status `error`."""
-    result = _problem(tmp_path).run(timeout=1e-4)
+    problem = _problem(tmp_path)
+    # the timer raises the timeout wherever the problem is, also between the
+    # `open` of a reader and the `with` which closes it (`load_yaml` of petab
+    # reads the YAML of a problem through `pandas.io.common.get_handle`) or in
+    # a walk of a directory: such a handle is unreachable instead of closed,
+    # and its finalization raises a `ResourceWarning`, which `filterwarnings =
+    # error` turns into an unraisable exception of this test or of whichever
+    # test runs when the garbage is collected. The handles of the interrupted
+    # run are collected here while the warning is ignored
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", ResourceWarning)
+        result = problem.run(timeout=1e-4)
+        gc.collect()
     assert result.status is BenchmarkStatus.ERROR
     assert result.message.startswith("ProblemTimeout")
 
