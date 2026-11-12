@@ -39,7 +39,7 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
 </model>
 ```
 
-A model declares as many `<panel>` elements as it has panels, each with one `<simulation>`, its knobs, its curves and the study data under them. Every attribute is the field of the declaration it carries, with the two exceptions `xLabel` and `xUnit`; an attribute which is not set means the default of its field, and an empty text is no attribute at all, so a required text which is empty is a panel which cannot be read.
+A model declares as many `<panel>` elements as it has panels, each with one `<simulation>`, its knobs, its curves and the study data under them. Every attribute is the field of the declaration it carries, with the two exceptions `xLabel` and `xUnit`; an attribute which is not set means the default of its field, and a required text which is not set is a panel which cannot be read; the writer leaves out a text which is empty, which is read back as the default of its field, while a hand-written empty text is read as the empty text it is.
 
 `<panel>`:
 
@@ -55,7 +55,7 @@ A model declares as many `<panel>` elements as it has panels, each with one `<si
 | attribute | what it is |
 | --- | --- |
 | `variant` | the variant of the model (`Project.variants`), its default variant without |
-| `end` | the end of the simulation, in the time unit of the model, required, at most `10000` |
+| `end` | the end of the simulation, in the time unit of the model, required, greater than 0 and at most `10000` |
 | `points` | the output steps, `200` without, from 2 to `2000`; a run answers the `points + 1` times from 0 to `end` |
 | `xUnit` | the unit the time axis is delivered in, the time unit of the model without |
 
@@ -70,7 +70,7 @@ Its `<preinit target="BW" value="75"/>` children are the values of the pre-initi
 | `target` | the entity of the model it sets, a selection of the simulation, required |
 | `unit` | the unit of its values, the unit of its target without |
 | `kind` | `range` (the default) or `choice` |
-| `min`, `max` | the bounds of a range knob, both required for one |
+| `min`, `max` | the bounds of a range knob, both required for one, `min` below `max` |
 | `steps` | the points a grid over a range knob runs, `5` without, from 2 to `64` |
 | `default` | the value the knob starts at, required; inside the bounds of a range knob and one of the choices of a choice knob |
 
@@ -116,7 +116,7 @@ A model whose SBML we do not own is covered by `Project.panels`, a mapping of pa
 | `grid` | 64 | the points of one axis, and the product of the axes of one request |
 | `curves` | 16 | the curves of a panel |
 
-They are the bounds of the declaration and of a request alike, so a request over them is refused where it is read, before a model is loaded, and every `panel/1` payload carries them under `limits`: a renderer reads the limits of the endpoint it talks to instead of carrying its own.
+They are the bounds of the declaration and of a request alike, so a request over them is refused where it is read, before a model is loaded, and the declaration of a panel carries them under `limits`: a renderer reads the limits of the endpoint it talks to instead of carrying its own.
 
 ## Units
 
@@ -124,7 +124,7 @@ A unit a panel declares is a promise its model has to keep, and this is the one 
 
 - **The unit of a curve is the unit it declares, else the unit the model gives that selection.** `<curve id="[Cve_hctz]" unit="uM"/>` is delivered in `uM`; `<curve id="Aurine_hctz"/>` is delivered in the unit the model carries `Aurine_hctz` in.
 - **A declared unit which the values of the model cannot convert to is refused**, where the units of a panel are resolved and therefore alike on a run and on the study data: `<curve id="Cve_hctz" unit="uM"/>` on a model which carries `Cve_hctz` as an amount raises `The unit 'uM' of the curve 'Cve_hctz' is no unit of its values, which the model gives in 'mmol'.`, which the service logs with its traceback and answers with its fixed 500. The concentration of that species is the selection `[Cve_hctz]`, which is `mmol/litre` and converts.
-- **The delivered unit is identical on `simulate` and on the study data.** The `units` of a simulation and the `unit` of a series of `paneldata/1` of the same panel are the same text for one axis, and so are `units["x"]` and the `x_unit` of a series, so the points of a study and the curve above them share a scale.
+- **The delivered unit is identical on `simulate` and on the study data**, unless a series declares a unit of its own. The `units` of a simulation and the `unit` of a series of `paneldata/1` of the same panel are the same text for one axis, and so are `units["x"]` and the `x_unit` of a series, so the points of a study and the curve above them share a scale.
 - **"No unit" is `null` on both contracts.** A curve whose selection the model gives no unit, and a model whose time has no unit, deliver their values as they are; a dataset under them must carry no unit either.
 - **A unit may be a unit id of the model**, e.g. `mmole_per_l`, because every unit of a panel is resolved in the unit registry of its model, the only registry which knows these ids.
 - **The x** is the `xUnit` of the simulation, else the time unit of the model; `end` and `points` stay in the time unit of the model whatever `xUnit` is, so `end="1440"` of a model of minutes is one day delivered on an axis of hours.
@@ -385,10 +385,10 @@ What a renderer may rely on:
 - **the version**, which every payload carries as `contract`: a renderer reads it and refuses a payload of a version it does not know, as `sbmlsim.panel.panel_from_payload` does on the python side;
 - **plain JSON**, no type of sbmlsim and no python at all: objects, arrays, numbers, strings and `null`, where `null` is "no unit" and "no value" and nothing else;
 - **the ids are data**: the ids of the models, panels, knobs, curves and series come from the payloads, so no model name and no entity of a model is built into a renderer;
-- **the limits**, which every `panel/1` payload carries under `limits`, so a renderer reads the bounds of the endpoint instead of carrying its own numbers;
-- **one unit per axis**: the `units` of a simulation and the `unit` and `x_unit` of the series of the same panel state one unit, see [Units](#units);
+- **the limits**, which the declaration of a panel carries under `limits`, so a renderer reads the bounds of the endpoint instead of carrying its own numbers;
+- **one unit per axis**: the `units` of a simulation and the `unit` and `x_unit` of the series of the same panel state one unit unless a series declares a unit of its own, see [Units](#units);
 - **the shape of a grid**: `curves[id]` is one row per point of `dims` in C order, `x` is the output times of every row, and a point which failed is `null` with its flat index in `status.failed`;
-- **an added field keeps the version**: a payload may grow a field within `panel/1`, so a renderer ignores the fields it does not know; a field which is removed or changes its meaning is a new contract version, `panel/2`.
+- **an added field keeps the version**: a payload may grow a field within `panel/1`, so a renderer ignores the fields it does not know, while the python readers of this package are strict and refuse a field they do not know; a field which is removed or changes its meaning is a new contract version, `panel/2`.
 
 What a renderer must not rely on:
 

@@ -25,8 +25,8 @@ fields `Project.panels` and `Project.app`.
 
 The hard limits `MAX_END`, `MAX_POINTS`, `MAX_KNOBS`, `MAX_GRID` and
 `MAX_CURVES` bound what a panel declares and what a request of a grid over its
-knobs may ask for. Every payload carries them, so a renderer knows the limits
-of the endpoint it talks to without a contract of its own.
+knobs may ask for. The declaration of a panel carries them, so a renderer
+knows the limits of the endpoint it talks to without a contract of its own.
 """
 
 import re
