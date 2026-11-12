@@ -85,6 +85,30 @@ def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
     assert result.stdout.strip() == "[]"
 
 
+def test_import_sbmlsim_does_not_import_the_service() -> None:
+    """The service of the panels is the extra `web`, which an install may lack.
+
+    `sbmlsim.serve` and its dependencies are imported by the module which
+    serves, e.g. `from sbmlsim.serve.app import create_app`, and by nothing of
+    the package itself.
+    """
+    code = (
+        "import sys, sbmlsim, sbmlsim.project; "
+        "print(sorted(m for m in ('sbmlsim.serve', 'sbmlsim.serve.app',"
+        " 'sbmlsim.serve.runner', 'fastapi', 'starlette', 'uvicorn')"
+        " if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
 def test_the_project_imports_the_panel_annotation_when_it_reads_one() -> None:
     """`sbmlsim.project` reads the panels of a model when it is asked for them.
 

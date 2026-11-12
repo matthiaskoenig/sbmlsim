@@ -7,9 +7,12 @@ as the versioned payload `panel/1` and runs the simulations behind it.
 `runner` holds the two halves which need no HTTP: `ModelRegistry`, the models
 a request may name, built once at startup from a mapping of model id to
 project reference, and `PanelRunner`, which turns a panel and the values of
-its knobs into the curves of a `PanelResult` with warm models.
+its knobs into the curves of a `PanelResult` with warm models. `app` is the
+HTTP API over them, `create_app(registry)`, and `payload` the bodies it reads
+and answers.
 
 Nothing of the package imports this one, so `import sbmlsim` imports neither
 the service nor its dependencies; its modules are imported explicitly, e.g.
-`from sbmlsim.serve.runner import ModelRegistry`.
+`from sbmlsim.serve.runner import ModelRegistry`. The service needs the extra
+`web` (`pip install sbmlsim[web]`), which the package itself does not.
 """

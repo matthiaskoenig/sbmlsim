@@ -122,8 +122,16 @@ amici = [
 simrun = [
 	"simrun>=0.3.2",
 ]
+# the HTTP service which serves the interactive panels of a model and their
+# simulations, see sbmlsim.serve: the ASGI application, the server which runs
+# it and the client its tests and `fastapi.testclient` talk through
+web = [
+	"fastapi>=0.121.0",
+	"uvicorn>=0.41.0",
+	"httpx>=0.28.1",
+]
 dev = [
-	"sbmlsim[sciml,copasi,simrun]",
+	"sbmlsim[sciml,copasi,simrun,web]",
 	# the reference of the forward pass in the tests, never imported by the package
 	"torch>=2.14.1",
 	"bump-my-version>=1.5.1",
