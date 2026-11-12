@@ -4,7 +4,9 @@ The release is installed as `docs/installation.md` describes it, in a new
 environment of a python managed by uv, with the index of the builds of the
 develop branch of libroadrunner:
 
-- `pip`: `pip install --extra-index-url <index> sbmlsim==<version>`;
+- `pip`: the build of libroadrunner from the index of the builds first,
+  `pip install --no-deps --index-url <index> libroadrunner`, and then
+  `pip install sbmlsim==<version>` from PyPI;
 - `uv`: a project with the explicit index and libroadrunner pinned to it in
   its `pyproject.toml`, and `uv add sbmlsim==<version> libroadrunner`.
 
@@ -125,14 +127,26 @@ def check(installer: str, python: str, version: str, index: str) -> None:
         else:
             venv = work / "venv"
             run("uv", "venv", "--seed", "--python", python, venv)
+            # the build of libroadrunner from the index of the builds first,
+            # as `docs/installation.md` describes it: its numpy comes from
+            # PyPI with sbmlsim
             install(
                 venv_python(venv),
                 "-m",
                 "pip",
                 "install",
                 "--no-cache-dir",
-                "--extra-index-url",
+                "--no-deps",
+                "--index-url",
                 index,
+                "libroadrunner",
+            )
+            install(
+                venv_python(venv),
+                "-m",
+                "pip",
+                "install",
+                "--no-cache-dir",
                 requirement,
             )
         python_path = venv_python(venv)

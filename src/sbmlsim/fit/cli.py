@@ -284,7 +284,8 @@ class FitRun:
 
         Args:
             profile_settings: settings of the profile likelihood.
-            n_cores: number of worker processes of the scans.
+            n_cores: number of worker processes of the scans, or of the
+                jacobian of their re-optimizations, see `profile_likelihood`.
             kwargs: additional arguments of `profile_likelihood`.
 
         Returns:

@@ -590,12 +590,13 @@ class FitTimeout(Exception):
 
 
 class PoolError(RuntimeError):
-    """The workers which evaluate the population of a run failed.
+    """The workers which evaluate the points of a run failed.
 
     E.g. a worker could not initialize the problem, the pool could not be
-    started again, or workers died while several members were in flight once
-    the restarts of a generation were spent, see `sbmlsim.fit.runner.FitPool`.
-    The run ends and keeps the best parameters it reached.
+    started again, or workers died while several points were in flight once
+    the restarts of a generation or of a jacobian were spent, see
+    `sbmlsim.fit.runner.FitPool`. The run ends and keeps the best parameters
+    it reached.
     """
 
 
@@ -631,6 +632,47 @@ class PopulationEvaluator(Protocol):
 
         Raises:
             FitTimeout: if the deadline passed before every member was evaluated.
+        """
+        ...
+
+
+class ResidualsEvaluator(Protocol):
+    """Evaluates the points of the jacobian of a least squares run.
+
+    A fit which evaluates the finite differences of a run on its workers hands
+    one to the run, see `sbmlsim.fit.runner.JacobianPool`. The points of a
+    jacobian are independent evaluations of the residuals at the same step,
+    so the jacobian of the workers is the jacobian of a serial run bitwise;
+    the run records the costs of the points in its trajectory in the order of
+    the points, see `OptimizationProblem.jacobian_map`.
+    """
+
+    def start(self) -> None:
+        """Prepare the workers before the budget of a run starts.
+
+        E.g. start the workers and initialize the problem in them, so the
+        timeout of a run is not spent on the start of its workers.
+        """
+        ...
+
+    def __call__(
+        self, points: Sequence[np.ndarray], deadline: float | None
+    ) -> Iterator[tuple[int, tuple[np.ndarray, float]]]:
+        """Evaluate the residuals and the cost of every point.
+
+        Args:
+            points: the parameter vectors in the space the optimizer searches.
+            deadline: the time of `time.monotonic` at which the points which
+                are not evaluated are given up, no limit if `None`.
+
+        Yields:
+            The index of a point with its residuals and its cost, in any
+            order, as they finish.
+
+        Raises:
+            FitTimeout: if the deadline passed before every point was evaluated.
+            PoolError: if the workers failed; a jacobian cannot be built
+                without one of its points.
         """
         ...
 
@@ -3140,6 +3182,7 @@ class OptimizationProblem(ObjectJSONEncoder):
             Callable[[int, scipy.optimize.OptimizeResult, list[float]], None] | None
         ) = None,
         population: PopulationEvaluator | None = None,
+        jacobian: ResidualsEvaluator | None = None,
         indices: Sequence[int] | None = None,
         **kwargs: Any,
     ) -> tuple[list[scipy.optimize.OptimizeResult], list[list[float]]]:
@@ -3160,6 +3203,8 @@ class OptimizationProblem(ObjectJSONEncoder):
                 a fit and to store the runs while it runs.
             population: evaluates the population of differential evolution,
                 e.g. on the workers of a fit, see `optimize_run`.
+            jacobian: evaluates the points of the jacobian of a least squares
+                run, e.g. on the workers of a fit, see `optimize_run`.
             indices: the runs which run, all `size` runs if `None`. The start
                 values and the seeds are drawn for all runs, every given run
                 keeps its index, so the runs are the ones of the whole fit.
@@ -3190,6 +3235,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 size=size,
                 run_seed=seeds[k],
                 population=population,
+                jacobian=jacobian,
                 **kwargs,
             )
             fits.append(fit)
@@ -3298,15 +3344,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                 "Optimizer 'loss' and 'f_scale' cannot change the fit objective. "
                 "Configure the loss with FitSettings.loss_function instead."
             )
-        if (
-            algorithm is OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION
-            and isinstance(arguments, Mapping)
-            and arguments.get("workers", 1) != 1
+        if isinstance(arguments, Mapping) and arguments.get("workers", 1) not in (
+            1,
+            None,
         ):
             raise ValueError(
                 "Optimizer 'workers' is set by the fit: it evaluates the population "
-                "of differential evolution on the workers of 'n_cores' when it has "
-                "fewer runs than workers, see sbmlsim.fit.runner.split_cores."
+                "of differential evolution, or the jacobian of a least squares run, "
+                "on the workers of 'n_cores' when it has fewer runs than workers, "
+                "see sbmlsim.fit.runner.split_cores."
             )
         arguments = tuple(arguments)
         accepted = set(inspect.signature(optimizer).parameters) - {
@@ -3332,7 +3378,10 @@ class OptimizationProblem(ObjectJSONEncoder):
         gets the step `default_diff_step` of the relative tolerance of the
         integrator of the settings, unless `diff_step` is given, and the
         tolerances `ftol`, `xtol` and `gtol` of `default_tolerance`, unless
-        given. Differential evolution updates its population once per
+        given. Its `workers=1` or `workers=None`, the default of scipy, is
+        dropped; the fit sets the workers of the jacobian, see
+        `sbmlsim.fit.runner.split_cores`. Differential evolution updates its
+        population once per
         generation, `updating="deferred"`, unless `updating` is given: the
         members of a generation are evaluated together, serially or on
         workers, so the result of a seed does not depend on the number of
@@ -3360,6 +3409,10 @@ class OptimizationProblem(ObjectJSONEncoder):
                 arguments["diff_step"] = default_diff_step(relative_tolerance)
             for name in ("ftol", "xtol", "gtol"):
                 arguments.setdefault(name, default_tolerance(relative_tolerance))
+            if arguments.get("workers", 1) in (1, None):
+                # `None` is the default of scipy; the fit sets the workers of
+                # the jacobian, see `sbmlsim.fit.runner.split_cores`
+                arguments.pop("workers", None)
         if algorithm == OptimizationAlgorithmType.DIFFERENTIAL_EVOLUTION:
             arguments.setdefault("updating", "deferred")
             arguments.setdefault("popsize", DE_POPSIZE)
@@ -3377,6 +3430,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         size: int = 1,
         run_seed: int | None = None,
         population: PopulationEvaluator | None = None,
+        jacobian: ResidualsEvaluator | None = None,
         **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list[float]]:
         """Run a single optimization, which never raises.
@@ -3401,6 +3455,11 @@ class OptimizationProblem(ObjectJSONEncoder):
                 the best parameters, its timeout gives up the members which are
                 not evaluated. The population needs `updating="deferred"`, the
                 default, which makes the result independent of the workers.
+            jacobian: evaluates the points of the finite differences of the
+                jacobian of a least squares run, e.g. on the workers of a fit,
+                instead of the calling process; it is the `workers` of scipy.
+                The run records the cost of every point in its trajectory, as
+                a serial run does, and the jacobian is the serial one bitwise.
             **kwargs: additional arguments of the optimizer.
 
         Returns:
@@ -3422,6 +3481,7 @@ class OptimizationProblem(ObjectJSONEncoder):
                 algorithm=algorithm,
                 timeout=timeout,
                 population=population,
+                jacobian=jacobian,
                 **kwargs,
             )
         except Exception as err:
@@ -3454,6 +3514,7 @@ class OptimizationProblem(ObjectJSONEncoder):
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         timeout: float | None = None,
         population: PopulationEvaluator | None = None,
+        jacobian: ResidualsEvaluator | None = None,
         **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run single optimization with x0 start values.
@@ -3464,6 +3525,8 @@ class OptimizationProblem(ObjectJSONEncoder):
             timeout: seconds the optimization may run, no limit if `None`.
             population: evaluates the population of differential evolution, see
                 `optimize_run`.
+            jacobian: evaluates the jacobian of a least squares run, see
+                `optimize_run`.
             **kwargs: additional arguments of the optimizer.
 
         Returns:
@@ -3473,15 +3536,21 @@ class OptimizationProblem(ObjectJSONEncoder):
             ValueError: if the algorithm is not supported or start values are
                 required and missing.
         """
+        # before the budget: the start of the workers is no part of the run
         if population is not None:
-            # before the budget: the start of the workers is no part of the run
             population.start()
+        if jacobian is not None:
+            jacobian.start()
         self._deadline = None if timeout is None else time.monotonic() + timeout
         self._trajectory = []
         self._best = None
         try:
             return self._optimize_single_run(
-                x0=x0, algorithm=algorithm, population=population, **kwargs
+                x0=x0,
+                algorithm=algorithm,
+                population=population,
+                jacobian=jacobian,
+                **kwargs,
             )
         finally:
             # the deadline is the budget of this run, the residuals are
@@ -3493,15 +3562,18 @@ class OptimizationProblem(ObjectJSONEncoder):
         x0: np.ndarray | None = None,
         algorithm: OptimizationAlgorithmType = OptimizationAlgorithmType.LEAST_SQUARE,
         population: PopulationEvaluator | None = None,
+        jacobian: ResidualsEvaluator | None = None,
         **kwargs: Any,
     ) -> tuple[scipy.optimize.OptimizeResult, list]:
         """Run a single optimization, see `_optimize_single`.
 
         Raises:
             ValueError: if the algorithm is not supported, start values are
-                required and missing, or a population evaluator is given for
+                required and missing, a population evaluator is given for
                 another algorithm than differential evolution or for a
-                population which is updated after every member.
+                population which is updated after every member, or a jacobian
+                evaluator is given for another algorithm than least squares or
+                for a jacobian which is not one of finite differences.
         """
         self.check_optimizer_arguments(algorithm, kwargs)
         kwargs = self.optimizer_arguments(algorithm, kwargs)
@@ -3513,6 +3585,15 @@ class OptimizationProblem(ObjectJSONEncoder):
                 f"{self.opid}: a population evaluator is for differential evolution "
                 f"with updating='deferred', not for '{algorithm}' with "
                 f"{kwargs.get('updating')!r}."
+            )
+        if jacobian is not None and (
+            algorithm != OptimizationAlgorithmType.LEAST_SQUARE
+            or not isinstance(kwargs.get("jac", "2-point"), str)
+        ):
+            raise ValueError(
+                f"{self.opid}: a jacobian evaluator is for least squares with a "
+                f"jacobian of finite differences, not for '{algorithm}' with "
+                f"{kwargs.get('jac')!r}."
             )
         if x0 is None:
             if algorithm == OptimizationAlgorithmType.LEAST_SQUARE and any(
@@ -3531,6 +3612,9 @@ class OptimizationProblem(ObjectJSONEncoder):
 
         if algorithm == OptimizationAlgorithmType.LEAST_SQUARE:
             assert x0log is not None
+            if jacobian is not None:
+                # the points of the finite differences on the workers of the fit
+                kwargs["workers"] = self.jacobian_map(jacobian)
             # scipy least square optimizer
             # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.least_squares.html
             ts = time.time()
@@ -3552,6 +3636,14 @@ class OptimizationProblem(ObjectJSONEncoder):
                 # the cost of scipy is the half sum of squares, which holds the
                 # offsets of the residuals of a likelihood, see `ObjectiveType`
                 opt_result.cost = self._validate_optimum(opt_result)
+            except PoolError as err:
+                logger.error(
+                    "%s: the workers of the jacobian failed, the run keeps the "
+                    "best parameters it reached: %s",
+                    self.opid,
+                    err,
+                )
+                opt_result = self._interrupted_result(err, x0log)
             except (RuntimeError, FitTimeout) as err:
                 logger.error(
                     "%s in ODE integration (optimize) for '%s = %s': \n%s",
@@ -4518,6 +4610,31 @@ class OptimizationProblem(ObjectJSONEncoder):
         finally:
             self._trajectory, self._best = trajectory, best
 
+    def evaluate_residuals(self, xlog: np.ndarray) -> tuple[np.ndarray, float]:
+        """Get the residuals and the cost of parameters without recording them.
+
+        This is what a worker evaluates for a point of the jacobian of a least
+        squares run, the run in the parent records the cost, see
+        `jacobian_map`. The trajectory and the best parameters of the problem
+        are left as they are.
+
+        Args:
+            xlog: the parameters in the space the optimizer searches.
+
+        Returns:
+            The weighted residuals and the cost the run records, which is
+            infinite for a simulation which failed.
+        """
+        trajectory, best = self._trajectory, self._best
+        self._trajectory = []
+        try:
+            residuals: np.ndarray = self.residuals(xlog)  # ty: ignore[invalid-assignment]
+            # the cost `residuals` recorded, with the offsets of a likelihood
+            cost = self._trajectory[-1] if self._trajectory else float("inf")
+            return np.asarray(residuals, dtype=float), float(cost)
+        finally:
+            self._trajectory, self._best = trajectory, best
+
     def _record(self, x: np.ndarray, cost: float) -> None:
         """Record the cost of an evaluation and keep the best parameters.
 
@@ -4663,6 +4780,55 @@ class OptimizationProblem(ObjectJSONEncoder):
                 for k in sorted(costs):
                     self._record(self.from_scale(vectors[k]), costs[k])
             return [costs[k] for k in range(len(vectors))]
+
+        return evaluate
+
+    def jacobian_map(
+        self,
+        jacobian: ResidualsEvaluator,
+        embed: Callable[[np.ndarray], np.ndarray] | None = None,
+    ) -> Callable[[Any, Iterable[np.ndarray]], list[np.ndarray]]:
+        """Get the map of scipy which evaluates a jacobian with an evaluator.
+
+        The map of `scipy.optimize.least_squares` (its `workers`) gets the
+        objective and the points of the finite differences of one jacobian,
+        one point per parameter for a forward difference and two for a central
+        one. The objective is `residuals` of this problem, which the evaluator
+        evaluates instead, e.g. on the workers of a fit. The residuals come
+        back in the order of the points, which is the order scipy builds the
+        columns of the jacobian from, so the jacobian is the jacobian of a
+        serial run bitwise, and their costs are recorded in that order, like
+        the evaluations of a serial run. A jacobian which starts after the
+        deadline of the run raises `FitTimeout`, like a serial evaluation, and
+        the evaluator gives up the points which are not evaluated at the
+        deadline; the points which were evaluated are recorded.
+
+        Args:
+            jacobian: evaluates the residuals of the points.
+            embed: turns a point of the optimizer into the parameter vector of
+                the problem, for an optimization of some of the parameters,
+                e.g. a scan of a profile which fixes one of them; the points
+                are the parameters of the problem if `None`.
+
+        Returns:
+            The map, `map(fun, points)` with the residuals of the points.
+        """
+
+        def evaluate(fun: Any, points: Iterable[np.ndarray]) -> list[np.ndarray]:
+            vectors = [
+                np.asarray(point if embed is None else embed(point), dtype=float)
+                for point in points
+            ]
+            self._check_deadline()
+            values: dict[int, np.ndarray] = {}
+            costs: dict[int, float] = {}
+            try:
+                for k, (residuals, cost) in jacobian(vectors, self._deadline):
+                    values[k], costs[k] = residuals, float(cost)
+            finally:
+                for k in sorted(costs):
+                    self._record(self.from_scale(vectors[k]), costs[k])
+            return [values[k] for k in range(len(vectors))]
 
         return evaluate
 

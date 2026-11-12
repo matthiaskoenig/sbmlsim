@@ -316,7 +316,7 @@ runs                5
 workers             1 (serial)
 converged           5/5 runs
 best cost           425.867
-optimizer time      0.1 s
+optimizer time      0.2 s
 Ka_dis_hctz   0.297 / h
 KI__HCTZEX_k  0.00512 / ml
 ```

@@ -115,10 +115,16 @@ def test_initialize_is_fast() -> None:
     """An initialization sets values and does not regenerate the model.
 
     Setting an initial value with `init(...)` regenerates the model, which
-    takes 25 ms on this model and 0.3 to 0.5 s on the HCTZ model. The mean of
-    an initialization (0.04 ms) must be below a tenth of one regeneration.
+    takes 1.5 ms on this model and 0.3 to 0.5 s on the HCTZ model, and an
+    initialization which regenerates pays it per value it sets. The mean of
+    an initialization (0.045 ms) must be below a third of one regeneration.
     Both are measured here, so a loaded machine, which slows both, does not
-    fail the test the way a bound in seconds does.
+    fail the test the way a bound in seconds does; the margin is a third and
+    not a tenth because the short calls of an initialization are preempted
+    more often than the single call of a regeneration, which a runner of the
+    continuous integration showed with 0.45 ms against 4.4 ms, exactly a
+    tenth of it, while this machine measures a factor of 30 to 60 whether it
+    is idle or busy.
     """
     model = RoadrunnerSBMLModel(source=sbml())
     reference = RoadrunnerSBMLModel(source=sbml())
@@ -126,7 +132,10 @@ def test_initialize_is_fast() -> None:
     initialization = _best_time(
         lambda: model.initialize([_a("f", 5.0), _a("b0", 0.0)]), repeat=5, number=20
     )
-    assert initialization < regeneration / 10
+    assert initialization < regeneration / 3, (
+        f"an initialization takes {initialization * 1e3:.4f} ms and a "
+        f"regeneration {regeneration * 1e3:.4f} ms"
+    )
 
 
 def _p1(model: RoadrunnerSBMLModel) -> list[float]:

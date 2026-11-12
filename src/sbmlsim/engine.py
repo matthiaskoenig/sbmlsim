@@ -3,10 +3,166 @@
 import contextlib
 import importlib
 import locale
+import os
 import sys
 from collections.abc import Generator, Iterable
 from enum import StrEnum
+from importlib import metadata
 from types import ModuleType
+from typing import Final
+
+#: the package index of the builds of the `develop` branch of libroadrunner
+#: (matthiaskoenig/roadrunner-wheels), which every install of the package
+#: names: the builds are not on PyPI
+ROADRUNNER_INDEX: Final[str] = (
+    "https://matthiaskoenig.github.io/roadrunner-wheels/simple/"
+)
+
+#: the page which describes the install, named by the report of a libroadrunner
+#: which does not satisfy the requirement
+INSTALLATION_DOCS: Final[str] = "https://matthiaskoenig.github.io/sbmlsim/installation/"
+
+#: the environment variable which skips the check of the installed
+#: libroadrunner, for an install the metadata of which does not describe it,
+#: e.g. a libroadrunner built from source
+SKIP_ROADRUNNER_CHECK: Final[str] = "SBMLSIM_SKIP_ROADRUNNER_CHECK"
+
+
+#: the distribution of the simulator, the name of its requirement
+ROADRUNNER_DISTRIBUTION: Final[str] = "libroadrunner"
+
+
+def installed_roadrunner() -> str | None:
+    """Get the version of the installed libroadrunner.
+
+    The version of the distribution `libroadrunner`, read from the metadata of
+    the environment, which does not import roadrunner.
+
+    :return: the version, `None` when libroadrunner is not installed
+    """
+    try:
+        return metadata.version(ROADRUNNER_DISTRIBUTION)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def roadrunner_requirement() -> str | None:
+    """Get the requirement of libroadrunner of the package.
+
+    The requirement of the metadata of the installed sbmlsim, e.g.
+    `libroadrunner>=2.11.1.dev655`, so the requirement of `pyproject.toml` is
+    the only place the build is named.
+
+    :return: the requirement, `None` when the metadata of sbmlsim or the
+        requirement is missing, e.g. in a checkout which is not installed
+    """
+    try:
+        requires = metadata.requires("sbmlsim") or ()
+    except metadata.PackageNotFoundError:
+        return None
+    for requirement in requires:
+        # the requirement of a dependency of an extra carries a marker and is
+        # not the requirement of the package; the name is read from the text
+        # and not with `packaging.requirements`, which imports `packaging.tags`
+        # and costs 30 ms of every import of the package, while
+        # `packaging.version` costs 2 ms
+        if ";" in requirement:
+            continue
+        text = requirement.strip()
+        rest = text.removeprefix(ROADRUNNER_DISTRIBUTION)
+        # the name of another distribution continues after the one of the
+        # simulator, e.g. `libroadrunner-plugins`
+        if rest != text and (not rest or not (rest[0].isalnum() or rest[0] in "-_.")):
+            return text
+    return None
+
+
+def roadrunner_problem(installed: str | None, requirement: str) -> str | None:
+    """Report an installed libroadrunner which does not satisfy the requirement.
+
+    The simulations of the package rely on fixes of libroadrunner which are
+    not released yet (roadrunner #1381, #1382, #1383, #1384, #1420), so it
+    needs a build of the `develop` branch of libroadrunner, which the index
+    `ROADRUNNER_INDEX` serves and PyPI does not have. The release of PyPI
+    loads the models and simulates them, with other rows at the events and
+    the changes of a simulation, i.e. it gives wrong results instead of an
+    error, which is why the install is checked.
+
+    :param installed: the version of the installed libroadrunner, `None` when
+        it is not installed
+    :param requirement: the requirement of the package, e.g.
+        `libroadrunner>=2.11.1.dev655`
+    :return: the message which names the install, `None` when the installed
+        version satisfies the requirement
+    """
+    if installed is not None and satisfies_requirement(installed, requirement):
+        return None
+    what = (
+        "libroadrunner is not installed"
+        if installed is None
+        else f"libroadrunner {installed} is installed"
+    )
+    return (
+        f"{what}, sbmlsim needs {requirement}: a build of the `develop` branch "
+        "of libroadrunner, which is not on PyPI, since sbmlsim relies on fixes "
+        "of libroadrunner which are not released yet.\n"
+        "Install the build from the index of the builds first and then "
+        "sbmlsim, whose requirement the installed build satisfies:\n"
+        f'    pip install --no-deps --index-url {ROADRUNNER_INDEX} "{requirement}"\n'
+        "    pip install sbmlsim\n"
+        f"{INSTALLATION_DOCS} describes the install with uv and in a project "
+        f"which locks the build. Set {SKIP_ROADRUNNER_CHECK}=1 to skip this "
+        "check, e.g. for a libroadrunner built from source."
+    )
+
+
+def satisfies_requirement(installed: str, requirement: str) -> bool:
+    """Compare an installed version with the requirement of the package.
+
+    The floor of a requirement of the form `libroadrunner>=<version>` is
+    compared with `packaging.version`, which costs 2 ms of the import of the
+    package; a requirement of another form is parsed with
+    `packaging.requirements`, which imports `packaging.tags` and costs 30 ms.
+    A development version satisfies a floor which is one (`>=2.11.1.dev655`
+    is satisfied by `2.11.1.dev655`, by a later build and by the release
+    `2.11.1`), which is why the comparison is not a comparison of the texts.
+
+    :param installed: the installed version
+    :param requirement: the requirement, e.g. `libroadrunner>=2.11.1.dev655`
+    :return: whether the installed version satisfies the requirement
+    """
+    from packaging.version import InvalidVersion, Version
+
+    floor = requirement.removeprefix(ROADRUNNER_DISTRIBUTION).strip()
+    if floor.startswith(">=") and "," not in floor:
+        try:
+            return Version(installed) >= Version(floor.removeprefix(">=").strip())
+        except InvalidVersion:
+            pass
+    from packaging.requirements import Requirement
+
+    return Requirement(requirement).specifier.contains(installed, prereleases=True)
+
+
+def check_roadrunner() -> None:
+    """Check the installed libroadrunner against the requirement of the package.
+
+    Called by `import sbmlsim`, where it costs the metadata of two
+    distributions and imports no roadrunner. The environment variable
+    `SKIP_ROADRUNNER_CHECK` skips it, and a checkout which is not installed,
+    whose requirement is unknown, is not checked.
+
+    :raises ImportError: when libroadrunner is missing or does not satisfy the
+        requirement, with the commands which install the build
+    """
+    if os.environ.get(SKIP_ROADRUNNER_CHECK):
+        return
+    requirement = roadrunner_requirement()
+    if requirement is None:
+        return
+    problem = roadrunner_problem(installed_roadrunner(), requirement)
+    if problem is not None:
+        raise ImportError(problem)
 
 
 class UnsupportedModelError(ValueError, NotImplementedError):
