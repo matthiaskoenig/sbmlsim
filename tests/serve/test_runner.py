@@ -10,6 +10,7 @@ The time unit of the HCTZ model is minutes, which is the unit the `end` of a
 
 import math
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,7 @@ from examples.hctz_fitting import MODEL_PATH
 from examples.hctz_fitting.project import PROJECT
 from sbmlsim.panel import Choice, Knob, Panel, PanelCurve, PanelSimulation
 from sbmlsim.project import Project
+from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.runner import (
     ModelEntry,
     ModelRegistry,
@@ -32,6 +34,10 @@ HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"
 END = 24 * 60.0
 #: the output points of the panel, fewer than a real panel so the tests are quick
 POINTS = 50
+#: the seconds a wait which must succeed gives up after, i.e. a failed test
+TIMEOUT = 20.0
+#: the seconds a parked load of a model gives up after, so nothing hangs
+PARKED = 120.0
 
 EGFR = Knob(
     id="egfr",
@@ -268,6 +274,125 @@ def test_a_failing_point_of_a_grid_is_flagged_by_its_flat_index(
     assert result.failed == (0,)
     assert all(math.isnan(value) for value in result.curves["Cve_hctz"][0])
     assert not any(math.isnan(value) for value in result.curves["Cve_hctz"][2])
+
+
+@pytest.fixture
+def loads(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Path]]:
+    """Record every load of a model, which the runner still really loads."""
+    real = runner_module._load
+    recorded: list[tuple[str, Path]] = []
+
+    def record(entry: ModelEntry, path: Path) -> runner_module._Warm:
+        recorded.append((entry.id, path))
+        return real(entry, path)
+
+    monkeypatch.setattr(runner_module, "_load", record)
+    return recorded
+
+
+def test_the_default_variant_and_its_name_are_one_warm_model(
+    registry: ModelRegistry, panel: Panel, loads: list[tuple[str, Path]]
+) -> None:
+    """A variant which is not named and its name are one model, not two."""
+    named = panel.model_copy(
+        update={
+            "simulation": panel.simulation.model_copy(update={"variant": "default"})
+        }
+    )
+    runner = PanelRunner(registry)
+    first = runner.run("hctz", panel, {"egfr": 1.0}, {})
+    second = runner.run("hctz", named, {"egfr": 1.0}, {})
+    assert len(loads) == 1
+    assert second.curves == first.curves
+
+
+def test_two_threads_which_ask_for_a_cold_model_load_it_once(
+    registry: ModelRegistry, panel: Panel, loads: list[tuple[str, Path]]
+) -> None:
+    runner = PanelRunner(registry)
+    start = threading.Barrier(2)
+    results: list[PanelResult] = []
+    errors: list[BaseException] = []
+
+    def work() -> None:
+        try:
+            start.wait(TIMEOUT)
+            results.append(runner.run("hctz", panel, {"egfr": 1.0}, {}))
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=work) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(TIMEOUT)
+    assert errors == []
+    assert len(loads) == 1
+    assert results[0].curves == results[1].curves
+
+
+def test_a_warm_model_does_not_wait_for_a_model_which_is_loading(
+    registry: ModelRegistry, panel: Panel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A load holds the lock of its own key, not one of the whole runner.
+
+    The project is served under a second id as well, so the runner has two
+    warm models of one project. Parking the load of the second one is the
+    stimulus of the test and no stand in for what is tested: the model is
+    really loaded once the test releases it.
+    """
+    served = registry.entry("hctz")
+    both = ModelRegistry(
+        {
+            "hctz": served,
+            "slow": ModelEntry(
+                id="slow", project=served.project, title="the same model"
+            ),
+        }
+    )
+    runner = PanelRunner(both)
+    expected = runner.run("hctz", panel, {"egfr": 1.0}, {})
+    real = runner_module._load
+    loading, release, read = (threading.Event() for _ in range(3))
+
+    def parked(entry: ModelEntry, path: Path) -> runner_module._Warm:
+        loading.set()
+        release.wait(PARKED)
+        return real(entry, path)
+
+    monkeypatch.setattr(runner_module, "_load", parked)
+    results: list[PanelResult] = []
+    errors: list[BaseException] = []
+
+    def load_the_cold_model() -> None:
+        try:
+            results.append(runner.run("slow", panel, {"egfr": 1.0}, {}))
+        except BaseException as error:
+            errors.append(error)
+
+    def read_the_warm_model() -> None:
+        try:
+            runner.run("hctz", panel, {"egfr": 1.0}, {})
+            read.set()
+        except BaseException as error:
+            errors.append(error)
+
+    threads = [
+        threading.Thread(target=load_the_cold_model),
+        threading.Thread(target=read_the_warm_model),
+    ]
+    try:
+        threads[0].start()
+        assert loading.wait(TIMEOUT), "the load of the cold model did not start"
+        threads[1].start()
+        assert read.wait(TIMEOUT), "the warm model waited for the one which loads"
+    finally:
+        release.set()
+        for thread in threads:
+            thread.join(TIMEOUT)
+    assert errors == []
+    assert [thread.is_alive() for thread in threads] == [False, False]
+    assert results[0].curves == expected.curves
 
 
 def test_concurrent_runs_of_one_model_do_not_interleave(

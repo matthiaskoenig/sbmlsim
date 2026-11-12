@@ -19,7 +19,7 @@ names. A point which does not integrate is `NaN` and its flat index is in
 `failed`, never an exception: a knob value a reader turns to may be a value
 the model does not simulate.
 
-A model and its simulator are loaded once per `(model_id, variant)` and kept
+A model and its simulator are loaded once per model id and SBML file and kept
 warm, and every run of one of them holds its lock: roadrunner instances are
 not thread safe and a service runs its sync endpoints in a thread pool.
 """
@@ -30,6 +30,7 @@ import logging
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
@@ -203,7 +204,8 @@ class PanelResult:
     """The result of a run of a panel, see the module.
 
     Attributes:
-        x: the output times, in the time unit of the model.
+        x: the output times, in the unit `units[X]` names: the `x_unit` the
+            panel declares, else the time unit of the model.
         dims: the axes of the grid, empty for a run of one point.
         curves: the values of every declared curve, a row per point of the
             grid in C order.
@@ -217,6 +219,11 @@ class PanelResult:
     curves: Mapping[str, list[list[float]]]
     units: Mapping[str, str]
     failed: tuple[int, ...]
+
+
+#: the key of a warm model: the id of its entry and the SBML file it is loaded
+#: from, so that the default variant and its name are one model
+type _WarmKey = tuple[str, Path]
 
 
 @dataclass(frozen=True)
@@ -249,10 +256,10 @@ class PanelRunner:
             registry: the models a request may name.
         """
         self.registry = registry
-        #: the warm model of every model id and variant, see `_warm_model`
-        self._warm: dict[tuple[str, str | None], _Warm] = {}
-        #: held while a model is looked up or loaded, so it is loaded once
-        self._loading = threading.Lock()
+        #: the warm model of every model id and SBML file, see `_warm_model`
+        self._warm: dict[_WarmKey, _Warm] = {}
+        #: the lock of the load of one such key, see `_warm_model`
+        self._loads: dict[_WarmKey, threading.Lock] = {}
 
     def __repr__(self) -> str:
         """Get the representation."""
@@ -318,9 +325,14 @@ class PanelRunner:
     def _warm_model(self, entry: ModelEntry, variant: str | None) -> _Warm:
         """Get the warm model of a variant of an entry, loaded on its first use.
 
-        A model is loaded once: the lock is held while it is looked up and
-        loaded, so two threads which ask for the same model at once do not
-        compile it twice and the second one waits for the first.
+        A model which is warm is answered without any lock, and a model which
+        is not is loaded under the lock of its key alone, so a request for one
+        model never waits for the compilation of another; the key is read
+        again under that lock, so two threads which ask for one cold model at
+        once compile it once and the second one waits for the first. The two
+        dictionaries are read and written with the atomic operations of a
+        `dict` (`get`, `setdefault` and an assignment of a key), and only a
+        model which is ready is published.
 
         Args:
             entry: the entry of the model.
@@ -333,22 +345,26 @@ class PanelRunner:
             ValueError: if the project of the entry has no model variants.
             KeyError: for a variant the project does not have.
         """
-        key = (entry.id, variant)
-        with self._loading:
+        path = entry.project.variant_path(variant).resolve()
+        key: _WarmKey = (entry.id, path)
+        warm = self._warm.get(key)
+        if warm is not None:
+            return warm
+        with self._loads.setdefault(key, threading.Lock()):
             warm = self._warm.get(key)
             if warm is None:
-                warm = _load(entry, variant)
+                warm = _load(entry, path)
                 self._warm[key] = warm
                 logger.info(
-                    "The model '%s' (%s) is loaded and stays warm.",
+                    "The model '%s' is loaded from '%s' and stays warm.",
                     entry.id,
-                    variant or "default variant",
+                    path,
                 )
             return warm
 
 
-def _load(entry: ModelEntry, variant: str | None) -> _Warm:
-    """Load a variant of the model of an entry with its simulator.
+def _load(entry: ModelEntry, path: Path) -> _Warm:
+    """Load the model of an entry from an SBML file with its simulator.
 
     The model is loaded in the engine and at the optimization level of the
     project and the simulator is the serial one of its settings, so a project
@@ -356,7 +372,7 @@ def _load(entry: ModelEntry, variant: str | None) -> _Warm:
 
     Args:
         entry: the entry of the model.
-        variant: the variant of the model, its default variant without.
+        path: the SBML file of the variant, see `PanelRunner._warm_model`.
 
     Returns:
         The warm model.
@@ -365,7 +381,7 @@ def _load(entry: ModelEntry, variant: str | None) -> _Warm:
     simulator = settings.simulator(n_workers=1)
     model = simulator.load(
         load_model(
-            entry.project.variant_path(variant),
+            path,
             settings.engine,
             jit_optimization=settings.jit_optimization,
         )
