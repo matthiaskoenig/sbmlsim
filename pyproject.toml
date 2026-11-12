@@ -120,7 +120,7 @@ amici = [
 # the task types of simrun, which runs the analyses of `python -m sbmlsim.run` on
 # a cluster, see sbmlsim.simrun; simrun needs python 3.14
 simrun = [
-	"simrun>=0.3.0",
+	"simrun>=0.3.2",
 ]
 dev = [
 	"sbmlsim[sciml,copasi,simrun]",
