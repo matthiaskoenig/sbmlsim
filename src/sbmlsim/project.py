@@ -44,6 +44,7 @@ directory of the records of the adopted fits (`Project.fits_dir`):
 import dataclasses
 import importlib
 import json
+import logging
 import re
 import shutil
 import sys
@@ -117,6 +118,8 @@ __all__ = [
     "same_sbml",
     "write_adopted",
 ]
+
+logger = logging.getLogger(__name__)
 
 #: the formats of the figures which a run of experiments with `collect_figures`
 #: copies into `FIGURES_DIR` of its output, see `Project.run_experiments`
@@ -313,6 +316,22 @@ class _Resolved(dict[tuple[str | None, str], Any]):
     def __eq__(self, other: object) -> bool:
         """Every cache equals every other one."""
         return isinstance(other, _Resolved)
+
+    __hash__ = None
+
+
+class _Panels(dict[Path, dict[str, Panel]]):
+    """The panels of the annotations of the models of a project, by their path.
+
+    A cache, which is no part of the value of a project, as `_Resolved` is:
+    two projects are equal whatever they read, and the panels of a model are
+    keyed by the resolved path of its SBML.
+    """
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Every cache equals every other one."""
+        return isinstance(other, _Panels)
 
     __hash__ = None
 
@@ -858,6 +877,8 @@ class Project(BaseModel):
 
     #: the objects of the references, resolved on their first use
     _resolved: _Resolved = PrivateAttr(default_factory=_Resolved)
+    #: the panels of the annotations of the models, read on their first use
+    _panels: _Panels = PrivateAttr(default_factory=_Panels)
 
     # ------------------------------------------------------------------------
     # validation
@@ -1121,10 +1142,11 @@ class Project(BaseModel):
 
     @override
     def __getstate__(self) -> dict[Any, Any]:
-        """Get the state of a project without its resolved references."""
+        """Get the state of a project without its caches."""
         state = super().__getstate__()
         private = dict(state.get("__pydantic_private__") or {})
         private["_resolved"] = _Resolved()
+        private["_panels"] = _Panels()
         state["__pydantic_private__"] = private
         return state
 
@@ -1186,6 +1208,48 @@ class Project(BaseModel):
         return model_roadrunner.load_roadrunner(
             self.variant_path(variant), self.simulator.jit_optimization
         )
+
+    def panels_of(self, variant: str | None = None) -> dict[str, Panel]:
+        """Get the interactive panels of a variant of the model.
+
+        The panels of a model are declared in an annotation of its SBML
+        (`sbmlsim.panel_sbml`), so that they travel with the model; `panels`
+        is the declaration of the project, which wins per id, for a model
+        whose SBML carries none. The panels of a variant are read once and
+        kept, by the path of its SBML.
+
+        A panel of the annotation which cannot be read is logged and left out,
+        so a malformed annotation does not take the project down; a caller
+        which needs the problems themselves reads them with
+        `sbmlsim.panel_sbml.panels_from_sbml`.
+
+        Args:
+            variant: the name of the variant, the first variant without.
+
+        Returns:
+            The panels by their id, the annotated ones in their order, the
+            ones of the project after them.
+
+        Raises:
+            ValueError: if the project has no model variants, or if the SBML
+                of the variant is no model.
+            KeyError: for an unknown variant.
+            FileNotFoundError: if the SBML of the variant is no file.
+        """
+        from sbmlsim import panel_sbml
+
+        path = self.variant_path(variant).resolve()
+        if path not in self._panels:
+            annotated, problems = panel_sbml.panels_from_sbml(path)
+            for problem in problems:
+                logger.warning(
+                    "The panel '%s' of the model '%s' is left out: %s",
+                    problem.panel_id,
+                    path,
+                    problem.reason,
+                )
+            self._panels[path] = annotated
+        return {**self._panels[path], **self.panels}
 
     def load_factory(self) -> Callable[[Path], Any]:
         """Get the function which builds the models.

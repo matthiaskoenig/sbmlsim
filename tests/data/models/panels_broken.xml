@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model id="panels_broken" name="two panels, the second one malformed">
+    <annotation>
+      <panels xmlns="https://sbmlsim.org/ns/panel/1">
+        <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]">
+          <simulation variant="hctz_body" end="24" points="200">
+            <preinit target="BW" value="75"/>
+          </simulation>
+          <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
+          <knob id="impairment" target="f_renal_function" label="renal function" kind="choice" default="1.0">
+            <option label="normal" value="1.0"/>
+            <option label="severe" value="0.2"/>
+          </knob>
+          <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
+          <data id="vormfelde2006" label="Vormfelde 2006" dataset="hctz_plasma.tsv" x="time" y="cp" yerr="cp_sd" unit="uM"/>
+        </panel>
+        <panel id="broken" title="a range knob without its bounds">
+          <simulation end="24"/>
+          <knob id="dose" target="PODOSE_hctz" label="dose" kind="range" default="25"/>
+          <curve id="Cve_hctz" label="hctz, plasma"/>
+        </panel>
+      </panels>
+    </annotation>
+    <listOfCompartments>
+      <compartment id="Vce" size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="Cve_hctz" compartment="Vce" initialConcentration="0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+  </model>
+</sbml>

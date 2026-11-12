@@ -1,0 +1,488 @@
+"""The interactive panels of a model in an annotation of its SBML.
+
+A panel (`sbmlsim.panel`) belongs to the model and not to a python checkout, so
+it is declared as an element of the annotation of the `<model>` element, in the
+namespace `PANEL_NS`, and travels with the SBML and with the COMBINE archive of
+a release:
+
+    <annotation>
+      <panels xmlns="https://sbmlsim.org/ns/panel/1">
+        <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]">
+          <simulation variant="hctz_body" end="24" points="200">
+            <preinit target="BW" value="75"/>
+          </simulation>
+          <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
+          <knob id="impairment" target="f_renal_function" label="renal function" kind="choice" default="1.0">
+            <option label="normal" value="1.0"/>
+            <option label="severe" value="0.2"/>
+          </knob>
+          <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
+          <data id="vormfelde2006" label="Vormfelde 2006" dataset="hctz_plasma.tsv" x="time" y="cp" yerr="cp_sd" unit="uM"/>
+        </panel>
+      </panels>
+    </annotation>
+
+An attribute is the field of the object of `sbmlsim.panel` it carries, with the
+one exception `xLabel` for `x_label`; an attribute which is not set means the
+default of its field. The `option` children of a knob are the `choices` of a
+knob of the kind `choice` and the `preinit` children of the simulation are its
+`preinit`. The tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
+`_KNOB_ATTRIBUTES`, `_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and
+`_DATA_ATTRIBUTES` own these names, so the reader and the writer cannot
+disagree: `panels_from_sbml` reads the annotation, `panels_to_annotation` and
+`write_panels` write it, each the inverse of the other for every field.
+
+A text which is empty is no attribute either, because libsbml does not write
+one, and is read back as the default of its field: the default of `subtitle`
+is empty, and a panel, a knob, a curve and a series of the data each need a
+title or a label which is not.
+
+`panels_from_sbml` never raises for a panel it cannot read: it reports every
+such panel as a `PanelProblem` and reads the others, so one malformed panel
+does not take the model down. The element is read and written with libsbml
+alone, so neither a simulator nor a project is imported.
+"""
+
+import logging
+from collections.abc import Iterator, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Final
+from xml.sax.saxutils import quoteattr
+
+import libsbml
+
+from sbmlsim.panel import (
+    CONTRACT,
+    Choice,
+    Knob,
+    Panel,
+    PanelCurve,
+    PanelData,
+    PanelSimulation,
+    panel_from_payload,
+)
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "PANEL_NS",
+    "PanelProblem",
+    "panels_from_sbml",
+    "panels_to_annotation",
+    "write_panels",
+]
+
+#: the namespace of the annotation of the panels, the version of its XML
+PANEL_NS: Final = "https://sbmlsim.org/ns/panel/1"
+
+#: the element of the annotation which carries the panels
+PANELS_ELEMENT: Final = "panels"
+#: the element of one panel
+PANEL_ELEMENT: Final = "panel"
+#: the element of the simulation of a panel
+SIMULATION_ELEMENT: Final = "simulation"
+#: the element of one value of the pre-initialization of the simulation
+PREINIT_ELEMENT: Final = "preinit"
+#: the element of one knob of a panel
+KNOB_ELEMENT: Final = "knob"
+#: the element of one choice of a knob of the kind `choice`
+OPTION_ELEMENT: Final = "option"
+#: the element of one curve of a panel
+CURVE_ELEMENT: Final = "curve"
+#: the element of one series of the study data of a panel
+DATA_ELEMENT: Final = "data"
+
+#: the fields of a panel by the attribute which carries them
+_PANEL_ATTRIBUTES: Final = {
+    "id": "id",
+    "title": "title",
+    "subtitle": "subtitle",
+    "xLabel": "x_label",
+}
+#: the fields of the simulation of a panel, its `preinit` are children
+_SIMULATION_ATTRIBUTES: Final = {
+    "variant": "variant",
+    "end": "end",
+    "points": "points",
+}
+#: the fields of a knob, its `choices` are the `option` children
+_KNOB_ATTRIBUTES: Final = {
+    name: name
+    for name in (
+        "id",
+        "label",
+        "target",
+        "unit",
+        "kind",
+        "min",
+        "max",
+        "steps",
+        "default",
+    )
+}
+#: the fields of one choice of a knob
+_CHOICE_ATTRIBUTES: Final = {"label": "label", "value": "value"}
+#: the fields of a curve
+_CURVE_ATTRIBUTES: Final = {name: name for name in ("id", "label", "unit", "scale")}
+#: the fields of one series of the study data
+_DATA_ATTRIBUTES: Final = {
+    name: name for name in ("id", "label", "dataset", "x", "y", "yerr", "unit")
+}
+
+#: a panel or one of its parts, which the writer reads the fields of
+type _Part = Panel | PanelSimulation | Knob | Choice | PanelCurve | PanelData
+
+
+@dataclass(frozen=True)
+class PanelProblem:
+    """A panel of the annotation of a model which cannot be read.
+
+    Attributes:
+        panel_id: the id of the panel, empty for an element without one.
+        reason: why the panel cannot be read, the message of the error.
+    """
+
+    panel_id: str
+    reason: str
+
+
+# ----------------------------------------------------------------------------
+# reading
+# ----------------------------------------------------------------------------
+def panels_from_sbml(
+    sbml: Path | str,
+) -> tuple[dict[str, Panel], tuple[PanelProblem, ...]]:
+    """Read the panels of the annotation of the model of an SBML.
+
+    Args:
+        sbml: the path of the SBML file or the SBML itself, i.e. a string
+            which starts with `<`.
+
+    Returns:
+        The panels by their id, in the order of the annotation, and the
+        problems: a panel which is not valid, one of another contract version
+        and one of an id which another panel of the model has as well, which
+        keeps the first of them. A model without the annotation has neither.
+
+    Raises:
+        FileNotFoundError: for a path which is no file.
+        ValueError: for a source which is no SBML model; a panel which cannot
+            be read is a problem and no error.
+    """
+    model: libsbml.Model = _document_of(sbml).getModel()
+    panels: dict[str, Panel] = {}
+    problems: list[PanelProblem] = []
+    for element in _panel_elements(model):
+        panel_id: str = element.getAttrValue("id")
+        try:
+            panel = panel_from_payload(_panel_payload(element))
+        except (TypeError, ValueError) as error:
+            problems.append(PanelProblem(panel_id, str(error)))
+            continue
+        if panel.id in panels:
+            problems.append(
+                PanelProblem(
+                    panel.id,
+                    f"The model declares the panel '{panel.id}' twice; the first "
+                    "one is read.",
+                )
+            )
+            continue
+        panels[panel.id] = panel
+    return panels, tuple(problems)
+
+
+def _document_of(sbml: Path | str) -> libsbml.SBMLDocument:
+    """Read the document of an SBML file or of the SBML itself.
+
+    Args:
+        sbml: the path of the SBML file or the SBML itself.
+
+    Returns:
+        The document, which has a model.
+
+    Raises:
+        FileNotFoundError: for a path which is no file.
+        ValueError: for a source which is no SBML model.
+    """
+    content = sbml if isinstance(sbml, str) and sbml.lstrip().startswith("<") else None
+    if content is None and not Path(sbml).is_file():
+        raise FileNotFoundError(f"The SBML file '{sbml}' does not exist.")
+    document: libsbml.SBMLDocument = (
+        libsbml.readSBMLFromString(content)
+        if content is not None
+        else libsbml.readSBMLFromFile(str(sbml))
+    )
+    if document.getModel() is None:
+        where = "The SBML" if content is not None else f"'{sbml}'"
+        raise ValueError(f"{where} is no SBML model, it has no panels.")
+    return document
+
+
+def _panels_index(model: libsbml.Model) -> int:
+    """Get the index of the `panels` element in the annotation, `-1` for none."""
+    if not model.isSetAnnotation():
+        return -1
+    annotation: libsbml.XMLNode = model.getAnnotation()
+    for k in range(annotation.getNumChildren()):
+        child: libsbml.XMLNode = annotation.getChild(k)
+        if child.getName() == PANELS_ELEMENT and child.getURI() == PANEL_NS:
+            return k
+    return -1
+
+
+def _panel_elements(model: libsbml.Model) -> Iterator[libsbml.XMLNode]:
+    """Iterate the `panel` elements of the annotation of a model, in their order.
+
+    Yields:
+        The elements; none for a model without the annotation.
+    """
+    k = _panels_index(model)
+    if k < 0:
+        return
+    yield from _children(model.getAnnotation().getChild(k), PANEL_ELEMENT)
+
+
+def _children(element: libsbml.XMLNode, name: str) -> Iterator[libsbml.XMLNode]:
+    """Iterate the children of an element which have a name, in their order.
+
+    Yields:
+        The children; the text between two elements has no name and is left
+        out.
+    """
+    for k in range(element.getNumChildren()):
+        child: libsbml.XMLNode = element.getChild(k)
+        if child.getName() == name:
+            yield child
+
+
+def _fields_of(element: libsbml.XMLNode, names: Mapping[str, str]) -> dict[str, Any]:
+    """Get the fields an element declares, by the name of the field.
+
+    Args:
+        element: the element.
+        names: the field of every attribute, by the attribute.
+
+    Returns:
+        The text of every attribute which is set, by its field; an attribute
+        which is not set is left out, so the field keeps its default.
+    """
+    return {
+        field: element.getAttrValue(attribute)
+        for attribute, field in names.items()
+        if element.hasAttr(attribute)
+    }
+
+
+def _panel_payload(element: libsbml.XMLNode) -> dict[str, Any]:
+    """Get the `panel/1` payload of a `panel` element, `panel_from_payload` reads it."""
+    return {
+        "contract": CONTRACT,
+        "panel": _fields_of(element, _PANEL_ATTRIBUTES),
+        "axes": [_knob_payload(knob) for knob in _children(element, KNOB_ELEMENT)],
+        "curves": [
+            _fields_of(curve, _CURVE_ATTRIBUTES)
+            for curve in _children(element, CURVE_ELEMENT)
+        ],
+        "data": [
+            _fields_of(data, _DATA_ATTRIBUTES)
+            for data in _children(element, DATA_ELEMENT)
+        ],
+        "simulation": _simulation_payload(element),
+    }
+
+
+def _knob_payload(element: libsbml.XMLNode) -> dict[str, Any]:
+    """Get the payload of a `knob` element, its `option` children its choices."""
+    payload = _fields_of(element, _KNOB_ATTRIBUTES)
+    choices = [
+        _fields_of(option, _CHOICE_ATTRIBUTES)
+        for option in _children(element, OPTION_ELEMENT)
+    ]
+    if choices:
+        payload["choices"] = choices
+    return payload
+
+
+def _simulation_payload(element: libsbml.XMLNode) -> dict[str, Any]:
+    """Get the payload of the `simulation` of a `panel` element.
+
+    Args:
+        element: the `panel` element.
+
+    Returns:
+        The fields of its first `simulation` element with its `preinit`
+        children, empty for a panel without one, which is no panel.
+    """
+    simulations = list(_children(element, SIMULATION_ELEMENT))
+    if not simulations:
+        return {}
+    payload = _fields_of(simulations[0], _SIMULATION_ATTRIBUTES)
+    preinit = {
+        value.getAttrValue("target"): value.getAttrValue("value")
+        for value in _children(simulations[0], PREINIT_ELEMENT)
+    }
+    if preinit:
+        payload["preinit"] = preinit
+    return payload
+
+
+# ----------------------------------------------------------------------------
+# writing
+# ----------------------------------------------------------------------------
+def panels_to_annotation(panels: Sequence[Panel]) -> str:
+    """Get the XML of the annotation of the panels of a model.
+
+    Args:
+        panels: the panels, in the order they are written.
+
+    Returns:
+        The `annotation` element with the `panels` element of the namespace
+        `PANEL_NS`, which `panels_from_sbml` reads back.
+    """
+    return f"<annotation>{_panels_xml(panels)}</annotation>"
+
+
+def write_panels(sbml_in: Path, sbml_out: Path, panels: Sequence[Panel]) -> None:
+    """Write an SBML with the annotation of the panels of its model.
+
+    The `panels` element of an annotation the model carries is replaced and
+    its other annotations, e.g. its RDF metadata, stay; no panel removes the
+    element. Nothing of the model itself is changed, so it simulates as it
+    did.
+
+    Args:
+        sbml_in: the SBML file which is read.
+        sbml_out: the SBML file which is written.
+        panels: the panels of the model, in the order they are written.
+
+    Raises:
+        FileNotFoundError: if the SBML which is read is no file.
+        ValueError: for a source which is no SBML model, and if the
+            annotation cannot be written into the model.
+        OSError: if the SBML cannot be written.
+    """
+    document: libsbml.SBMLDocument = _document_of(sbml_in)
+    model: libsbml.Model = document.getModel()
+    _remove_panels(model)
+    if panels:
+        _add_panels(model, panels)
+    if libsbml.writeSBMLToFile(document, str(sbml_out)) != 1:
+        raise OSError(f"The SBML with the panels cannot be written into '{sbml_out}'.")
+    logger.info(
+        "The annotation of %d panels was written into '%s'", len(panels), sbml_out
+    )
+
+
+def _remove_panels(model: libsbml.Model) -> None:
+    """Remove the `panels` element from the annotation of a model, if it has one."""
+    k = _panels_index(model)
+    if k < 0:
+        return
+    annotation: libsbml.XMLNode = model.getAnnotation()
+    annotation.removeChild(k)
+    if annotation.getNumChildren() == 0:
+        model.unsetAnnotation()
+
+
+def _add_panels(model: libsbml.Model, panels: Sequence[Panel]) -> None:
+    """Add the `panels` element to the annotation of a model.
+
+    The element is added to the annotation in place, as the record of a
+    derivation is (`sbmlsim.model.provenance`): libsbml checks an annotation
+    it is given as a whole against the `metaid` of the model, which a model of
+    the wild does not always have.
+
+    Args:
+        model: the model, without a `panels` element.
+        panels: the panels, in the order they are written.
+
+    Raises:
+        ValueError: if the annotation cannot be written into the model.
+    """
+    xml = (
+        _panels_xml(panels) if model.isSetAnnotation() else panels_to_annotation(panels)
+    )
+    node: libsbml.XMLNode | None = libsbml.XMLNode.convertStringToXMLNode(xml)
+    if node is None:
+        raise ValueError(f"The annotation of the panels is no XML: {xml}")
+    success: int = (
+        model.getAnnotation().addChild(node)
+        if model.isSetAnnotation()
+        else model.setAnnotation(node)
+    )
+    if success != libsbml.LIBSBML_OPERATION_SUCCESS:
+        raise ValueError(
+            f"The annotation of {len(panels)} panels cannot be written into the "
+            f"model '{model.getId()}': "
+            f"{libsbml.OperationReturnValue_toString(success)}"
+        )
+
+
+def _panels_xml(panels: Sequence[Panel]) -> str:
+    """Get the XML of the `panels` element of the panels."""
+    elements = "".join(_panel_xml(panel) for panel in panels)
+    return f'<{PANELS_ELEMENT} xmlns="{PANEL_NS}">{elements}</{PANELS_ELEMENT}>'
+
+
+def _panel_xml(panel: Panel) -> str:
+    """Get the XML of the `panel` element of a panel and of its parts."""
+    children = "".join(
+        (
+            _simulation_xml(panel.simulation),
+            *(_knob_xml(knob) for knob in panel.knobs),
+            *(
+                _element_xml(CURVE_ELEMENT, curve, _CURVE_ATTRIBUTES)
+                for curve in panel.curves
+            ),
+            *(
+                _element_xml(DATA_ELEMENT, data, _DATA_ATTRIBUTES)
+                for data in panel.data
+            ),
+        )
+    )
+    return _element_xml(PANEL_ELEMENT, panel, _PANEL_ATTRIBUTES, children)
+
+
+def _simulation_xml(simulation: PanelSimulation) -> str:
+    """Get the XML of the `simulation` element, its `preinit` its children."""
+    preinit = "".join(
+        f"<{PREINIT_ELEMENT} target={quoteattr(target)} value={quoteattr(str(value))}/>"
+        for target, value in simulation.preinit.items()
+    )
+    return _element_xml(SIMULATION_ELEMENT, simulation, _SIMULATION_ATTRIBUTES, preinit)
+
+
+def _knob_xml(knob: Knob) -> str:
+    """Get the XML of a `knob` element, its choices the `option` children."""
+    options = "".join(
+        _element_xml(OPTION_ELEMENT, choice, _CHOICE_ATTRIBUTES)
+        for choice in knob.choices
+    )
+    return _element_xml(KNOB_ELEMENT, knob, _KNOB_ATTRIBUTES, options)
+
+
+def _element_xml(
+    name: str, part: _Part, names: Mapping[str, str], children: str = ""
+) -> str:
+    """Get the XML of the element of a panel or of one of its parts.
+
+    Args:
+        name: the name of the element.
+        part: the panel or the part of it the attributes are read from.
+        names: the field of every attribute, by the attribute.
+        children: the XML of the children of the element, none without.
+
+    Returns:
+        The element; a field which is `None` or empty is no attribute, so it
+        is read back as the default of its field.
+    """
+    attributes = "".join(
+        f" {attribute}={quoteattr(str(value))}"
+        for attribute, field in names.items()
+        if (value := getattr(part, field)) is not None and value != ""
+    )
+    if not children:
+        return f"<{name}{attributes}/>"
+    return f"<{name}{attributes}>{children}</{name}>"

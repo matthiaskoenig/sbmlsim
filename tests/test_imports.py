@@ -85,6 +85,27 @@ def test_import_sbmlsim_does_not_import_the_run_layer() -> None:
     assert result.stdout.strip() == "[]"
 
 
+def test_the_project_imports_the_panel_annotation_when_it_reads_one() -> None:
+    """`sbmlsim.project` reads the panels of a model when it is asked for them.
+
+    Importing the module of a project stays as light as it is, see
+    `Project.panels_of`.
+    """
+    code = (
+        "import sys, sbmlsim.project; "
+        "print(sorted(m for m in ('sbmlsim.panel_sbml',) if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
+
+
 def test_the_run_layer_imports_no_analysis() -> None:
     """`sbmlsim.run` imports the fit, the simulator and the project when it runs."""
     code = (
@@ -116,6 +137,7 @@ def test_the_run_layer_imports_no_analysis() -> None:
         "sbmlsim.release.settings",
         "sbmlsim.release.archive",
         "sbmlsim.reference",
+        "sbmlsim.panel_sbml",
     ],
 )
 def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
@@ -124,7 +146,8 @@ def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
     The PBPK library of pkpdsim reads the support of a distrib formula and the
     start values of a scan result, defines units and writes the license texts
     of a model without loading roadrunner; a model package defines the release
-    metadata of its project.
+    metadata of its project, and the panels of a model are read from and
+    written into its SBML with libsbml alone.
     """
     code = (
         f"import sys, {module}; "

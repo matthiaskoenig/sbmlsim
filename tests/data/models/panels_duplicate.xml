@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model id="panels_duplicate" name="two panels of one id">
+    <annotation>
+      <panels xmlns="https://sbmlsim.org/ns/panel/1">
+        <panel id="renal" title="the first panel">
+          <simulation end="24"/>
+          <curve id="Cve_hctz" label="hctz, plasma"/>
+        </panel>
+        <panel id="renal" title="the second panel of the id 'renal'">
+          <simulation end="48"/>
+          <curve id="Cve_hctz" label="hctz, plasma"/>
+        </panel>
+      </panels>
+    </annotation>
+    <listOfCompartments>
+      <compartment id="Vce" size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="Cve_hctz" compartment="Vce" initialConcentration="0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+  </model>
+</sbml>

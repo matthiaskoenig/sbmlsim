@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model metaid="meta_panels_foreign" id="panels_foreign" name="an RDF annotation and panels of another namespace">
+    <annotation>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:bqbiol="http://biomodels.net/biology-qualifiers/">
+        <rdf:Description rdf:about="#meta_panels_foreign">
+          <bqbiol:is>
+            <rdf:Bag>
+              <rdf:li rdf:resource="http://identifiers.org/taxonomy/9606"/>
+            </rdf:Bag>
+          </bqbiol:is>
+        </rdf:Description>
+      </rdf:RDF>
+      <panels xmlns="https://example.org/ns/panel/1">
+        <panel id="foreign" title="of another namespace">
+          <simulation end="24"/>
+          <curve id="Cve_hctz" label="hctz, plasma"/>
+        </panel>
+      </panels>
+    </annotation>
+    <listOfCompartments>
+      <compartment id="Vce" size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="Cve_hctz" compartment="Vce" initialConcentration="0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+  </model>
+</sbml>
