@@ -13,7 +13,8 @@ the warm model of the entry. The curves of the `PanelResult` are the declared
 curves of the panel, one row per point of the grid in C order and one row for a
 request without a grid, in the unit the curve declares or else in the unit of
 the model; the x of the result is the grid of `points + 1` times from 0 to the
-`end` of the panel, both in the time unit of the model, which `units["x"]`
+`end` of the panel, which are in the time unit of the model, delivered in the
+`x_unit` the panel declares or else in that time unit, which `units["x"]`
 names. A point which does not integrate is `NaN` and its flat index is in
 `failed`, never an exception: a knob value a reader turns to may be a value
 the model does not simulate.
@@ -32,6 +33,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
+from pint.errors import DimensionalityError, UndefinedUnitError
 
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.panel import Knob, Panel
@@ -286,9 +288,10 @@ class PanelRunner:
             UnknownModel: for a model which is not served.
             ValueError: naming the ids, if `values` or `grid` name something
                 which is no knob of the panel; for a grid of fewer than one
-                point, see `Knob.values`. The limits of a request
-                (`sbmlsim.panel.MAX_KNOBS`, `MAX_GRID`) are checked where a
-                request is read.
+                point, see `Knob.values`; naming both units, for an `x_unit`
+                of the panel which is no time unit of the model, see `_times`.
+                The limits of a request (`sbmlsim.panel.MAX_KNOBS`,
+                `MAX_GRID`) are checked where a request is read.
         """
         entry = self.registry.entry(model_id)
         knobs = {knob.id: knob for knob in panel.knobs}
@@ -456,6 +459,43 @@ def _in_model_units(model: SBMLModel, knob: Knob, value: Any) -> Any:
     return model.Q(value, knob.unit)
 
 
+def _times(
+    model: SBMLModel, panel: Panel, result: ScanResult
+) -> tuple[tuple[float, ...], str]:
+    """Get the output times of a result in the x unit of the panel, and that unit.
+
+    The `end` and the `points` of a panel are in the time unit of the model,
+    the `x_unit` it declares is the unit the times are delivered in, e.g. a
+    day of a model of minutes as `end=1440` delivered in hours.
+
+    Args:
+        model: the model of the panel, whose unit ids the unit may name.
+        panel: the panel.
+        result: the result of the scan of the run, on a grid of times.
+
+    Returns:
+        The times and their unit.
+
+    Raises:
+        ValueError: naming the declared unit and the time unit of the model,
+            for an `x_unit` which is no unit of pint or of the model, or no
+            time of it.
+    """
+    times = result.quantity(TIME)
+    declared = panel.simulation.x_unit
+    model_unit = result.units.get(TIME, "")
+    if declared is None:
+        return tuple(float(time) for time in times.magnitude), model_unit
+    try:
+        times = times.to(model.Q(1.0, declared).units)
+    except (DimensionalityError, UndefinedUnitError) as err:
+        raise ValueError(
+            f"The x unit '{declared}' of the panel is no time unit of the "
+            f"model, whose time unit is '{model_unit}'."
+        ) from err
+    return tuple(float(time) for time in times.magnitude), declared
+
+
 def _result(
     model: SBMLModel,
     panel: Panel,
@@ -475,12 +515,14 @@ def _result(
 
     Raises:
         KeyError: for a curve which is no variable of the result.
+        ValueError: naming both units, for an `x_unit` which is no time unit
+            of the model, see `_times`.
         pint.DimensionalityError: for a curve whose declared unit is not the
             unit of its values in the model.
     """
-    x = tuple(float(time) for time in np.asarray(result.ds.coords[TIME].values))
+    x, x_unit = _times(model, panel, result)
     curves: dict[str, list[list[float]]] = {}
-    units: dict[str, str] = {X: result.units.get(TIME, "")}
+    units: dict[str, str] = {X: x_unit}
     for curve in panel.curves:
         quantity = result.quantity(curve.id)
         if curve.unit is not None:

@@ -8,7 +8,7 @@ a release:
     <annotation>
       <panels xmlns="https://sbmlsim.org/ns/panel/1">
         <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]">
-          <simulation variant="hctz_body" end="24" points="200">
+          <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
           </simulation>
           <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
@@ -23,8 +23,10 @@ a release:
     </annotation>
 
 An attribute is the field of the object of `sbmlsim.panel` it carries, with the
-one exception `xLabel` for `x_label`; an attribute which is not set means the
-default of its field. The `option` children of a knob are the `choices` of a
+two exceptions `xLabel` for `x_label` and `xUnit` for `x_unit`; an attribute
+which is not set means the default of its field. The `end` of the simulation is
+in the time unit of the model (a day of a model of minutes above) and `xUnit`
+is the unit its time axis is delivered in. The `option` children of a knob are the `choices` of a
 knob of the kind `choice` and the `preinit` children of the simulation are its
 `preinit`. The tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
 `_KNOB_ATTRIBUTES`, `_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and
@@ -105,6 +107,7 @@ _SIMULATION_ATTRIBUTES: Final = {
     "variant": "variant",
     "end": "end",
     "points": "points",
+    "xUnit": "x_unit",
 }
 #: the fields of a knob, its `choices` are the `option` children
 _KNOB_ATTRIBUTES: Final = {

@@ -234,6 +234,10 @@ class PanelSimulation(BaseModel):
         end: the end of the simulation, in the time unit of the model; at most
             `MAX_END`.
         points: the output times of the simulation, at most `MAX_POINTS`.
+        x_unit: the unit the time axis of a result is delivered in, e.g.
+            `"hr"` for a model whose time unit is minutes; `None` delivers it
+            in the time unit of the model. The `end` and the `points` are in
+            the time unit of the model whatever it is.
         preinit: the values of the pre-initialization which are no knob, e.g.
             the body weight, by the entity of the model they set.
     """
@@ -243,6 +247,7 @@ class PanelSimulation(BaseModel):
     variant: str | None = None
     end: float = Field(gt=0.0, le=MAX_END)
     points: int = Field(default=200, ge=2, le=MAX_POINTS)
+    x_unit: str | None = None
     preinit: Mapping[str, float] = {}
 
 

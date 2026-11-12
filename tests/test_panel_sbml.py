@@ -82,7 +82,11 @@ DOCUMENTED = Panel(
         ),
     ),
     simulation=PanelSimulation(
-        variant="hctz_body", end=24.0, points=200, preinit={"BW": 75.0}
+        variant="hctz_body",
+        end=1440.0,
+        points=200,
+        x_unit="hr",
+        preinit={"BW": 75.0},
     ),
 )
 
@@ -134,7 +138,11 @@ def panel() -> Panel:
             ),
         ),
         simulation=PanelSimulation(
-            variant="default", end=100.0, points=200, preinit={"beta": 0.2}
+            variant="default",
+            end=100.0,
+            points=200,
+            x_unit="min",
+            preinit={"beta": 0.2},
         ),
     )
 
@@ -238,12 +246,14 @@ def test_writing_the_annotation_keeps_the_rdf_of_the_model(
 
 
 def test_the_annotation_names_the_attributes_of_the_contract(panel: Panel) -> None:
-    """`xLabel` is the one attribute which is not the name of its field."""
+    """`xLabel` and `xUnit` are the attributes which are not their field names."""
     annotation = panels_to_annotation([panel])
     assert annotation.startswith("<annotation>")
     assert f'<panels xmlns="{PANEL_NS}">' in annotation
     assert 'xLabel="time (min)"' in annotation
+    assert 'xUnit="min"' in annotation
     assert "x_label" not in annotation
+    assert "x_unit" not in annotation
 
 
 def test_the_annotated_model_still_loads_in_roadrunner(

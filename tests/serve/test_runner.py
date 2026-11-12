@@ -142,9 +142,41 @@ def test_the_curves_carry_the_units_of_the_model(
     runner: PanelRunner, panel: Panel
 ) -> None:
     result = runner.run("hctz", panel, {"egfr": 1.0, "dose": 25.0}, {})
-    # the time unit of the HCTZ model, the unit of the `end` of the panel
+    # the panel declares no x unit, so the x is in the time unit of the model,
+    # which is the unit of the `end` of the panel
     assert result.units["x"] == "min"
     assert result.units["Cve_hctz"] == "umol"
+
+
+def test_a_declared_x_unit_delivers_the_time_axis_in_it(
+    runner: PanelRunner, panel: Panel
+) -> None:
+    in_hours = panel.model_copy(
+        update={"simulation": panel.simulation.model_copy(update={"x_unit": "hr"})}
+    )
+    result = runner.run("hctz", in_hours, {"egfr": 1.0, "dose": 25.0}, {})
+    assert result.units["x"] == "hr"
+    # the `end` of the panel stays in the time unit of the model, a day of it
+    assert len(result.x) == panel.simulation.points + 1
+    assert result.x[0] == 0.0
+    assert result.x[-1] == pytest.approx(END / 60.0)
+    assert result.x[-1] == pytest.approx(24.0)
+    # the curves are the ones of the same simulation
+    assert result.curves == runner.run("hctz", panel, {"egfr": 1.0}, {}).curves
+
+
+@pytest.mark.parametrize("x_unit", ["mg", "not_a_unit"])
+def test_an_x_unit_which_is_no_time_of_the_model_is_refused(
+    runner: PanelRunner, panel: Panel, x_unit: str
+) -> None:
+    """A unit which is no time and one which is no unit at all are refused."""
+    bogus = panel.model_copy(
+        update={"simulation": panel.simulation.model_copy(update={"x_unit": x_unit})}
+    )
+    with pytest.raises(ValueError) as error:
+        runner.run("hctz", bogus, {"egfr": 1.0}, {})
+    assert x_unit in str(error.value)
+    assert "min" in str(error.value)
 
 
 def test_a_curve_without_a_unit_carries_the_one_of_the_model(

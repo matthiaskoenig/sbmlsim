@@ -4,7 +4,7 @@
     <annotation>
       <panels xmlns="https://sbmlsim.org/ns/panel/1">
         <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]">
-          <simulation variant="hctz_body" end="24" points="200">
+          <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
           </simulation>
           <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>

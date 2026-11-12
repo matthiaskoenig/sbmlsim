@@ -79,7 +79,11 @@ def panel() -> Panel:
             ),
         ),
         simulation=PanelSimulation(
-            variant="default", end=24.0, points=200, preinit={"BW": 75.0}
+            variant="default",
+            end=24.0,
+            points=200,
+            x_unit="hr",
+            preinit={"BW": 75.0},
         ),
     )
 
@@ -219,6 +223,21 @@ def test_a_simulation_over_the_limits_is_refused(simulation: dict[str, Any]) -> 
 def test_a_simulation_at_the_limits_is_accepted() -> None:
     simulation = PanelSimulation(end=MAX_END, points=MAX_POINTS)
     assert (simulation.end, simulation.points) == (MAX_END, MAX_POINTS)
+
+
+def test_the_time_axis_is_the_unit_of_the_model_without_an_x_unit() -> None:
+    """`x_unit` is the unit the time axis of a result is delivered in."""
+    assert PanelSimulation(end=10.0).x_unit is None
+    # the end and the points stay in the time unit of the model, minutes here
+    declared = PanelSimulation(end=1440.0, x_unit="hr")
+    assert (declared.end, declared.x_unit) == (1440.0, "hr")
+    panel = Panel(
+        id="p",
+        title="p",
+        curves=(PanelCurve(id="[S1]", label="S1"),),
+        simulation=declared,
+    )
+    assert panel_payload(panel)["simulation"]["x_unit"] == "hr"
 
 
 def test_more_curves_than_the_limit_are_refused() -> None:
