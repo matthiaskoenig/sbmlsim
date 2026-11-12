@@ -104,7 +104,9 @@ def test_the_event_carries_the_resources(tmp_path, clock, monkeypatch):
         progress.activity("scan", total=2, workers=2) as a,
     ):
         a.advance()
-    records = [json.loads(line) for line in path.read_text().splitlines()]
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+    ]
     assert records[-1]["resources"]["cores"] >= 1
     assert records[-1]["resources"]["workers"] == 2
 

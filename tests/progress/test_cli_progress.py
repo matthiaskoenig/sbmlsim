@@ -26,7 +26,7 @@ def _progress_events(out: Path) -> list[dict]:
     """The progress events of a run."""
     return [
         record
-        for line in (out / "progress.jsonl").read_text().splitlines()
+        for line in (out / "progress.jsonl").read_text(encoding="utf-8").splitlines()
         if (record := json.loads(line))["event"] == "progress"
     ]
 

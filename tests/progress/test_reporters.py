@@ -127,7 +127,9 @@ def test_event_reporter_throttles_to_one_event_per_second(tmp_path, ticking):
     ):
         a.advance()
         a.advance()
-    records = [json.loads(line) for line in path.read_text().splitlines()]
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
+    ]
     assert [r["event"] for r in records] == ["progress"] * 3
     assert [r["state"] for r in records] == ["started", "running", "finished"]
     assert records[-1]["completed"] == 2
@@ -172,7 +174,7 @@ def test_a_reporter_which_fails_does_not_stop_the_others(caplog, tmp_path, ticki
         progress.activity("scan", total=2) as a,
     ):
         a.advance()
-    assert len(path.read_text().splitlines()) == 3
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 3
     assert "progress reporter" in caplog.text
 
 
