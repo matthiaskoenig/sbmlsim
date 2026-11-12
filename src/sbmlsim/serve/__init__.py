@@ -1,0 +1,15 @@
+"""The service which serves the interactive panels of the models.
+
+A model declares its interactive surface in an annotation of its SBML
+(`sbmlsim.panel`, `sbmlsim.panel_sbml`); this package serves that declaration
+as the versioned payload `panel/1` and runs the simulations behind it.
+
+`runner` holds the two halves which need no HTTP: `ModelRegistry`, the models
+a request may name, built once at startup from a mapping of model id to
+project reference, and `PanelRunner`, which turns a panel and the values of
+its knobs into the curves of a `PanelResult` with warm models.
+
+Nothing of the package imports this one, so `import sbmlsim` imports neither
+the service nor its dependencies; its modules are imported explicitly, e.g.
+`from sbmlsim.serve.runner import ModelRegistry`.
+"""
