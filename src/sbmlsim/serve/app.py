@@ -28,6 +28,13 @@ simulated again, so a presentation of many viewers costs one simulation, and
 one fixed message (`NOT_STORED`), so the route tells a caller nothing but
 whether it holds the body it asks for.
 
+The simulation experiments of a model are minutes and not seconds, so they are
+submitted and not awaited: `POST /api/models/{model}/experiments` answers a
+202 with the `Job` the `JobStore` of the application created
+(`sbmlsim.serve.jobs`), `GET /api/jobs/{job_id}` is that job as it is now and
+`GET /api/jobs/{job_id}/figures/{path}` serves a figure it collected, by a
+path of the job and never a path of the host.
+
 `static` serves a directory under the API, so the local mode delivers the
 javascript component of the panels from the origin of the API, and
 `allow_origins` lets the named origins talk to it from another one.
@@ -37,8 +44,11 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
+import tempfile
 import time
-from collections.abc import Sequence
+from collections.abc import AsyncGenerator, Sequence
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -46,7 +56,7 @@ from typing import Any, Final
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import sbmlsim
@@ -54,9 +64,12 @@ from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.panel import CONTRACT, Panel, panel_payload
 from sbmlsim.serve.cache import ResponseCache
 from sbmlsim.serve.data import panel_data
+from sbmlsim.serve.jobs import JobStore, TooManyJobs, UnknownExperiment
 from sbmlsim.serve.payload import (
     AppResponse,
+    ExperimentsRequest,
     HealthResponse,
+    JobResponse,
     ModelPayload,
     ModelsResponse,
     PanelDataResponse,
@@ -79,7 +92,17 @@ from sbmlsim.serve.runner import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["CACHE_CONTROL", "FAILED", "NOT_STORED", "NO_APP", "create_app"]
+__all__ = [
+    "BUSY",
+    "CACHE_CONTROL",
+    "FAILED",
+    "JOBS_PREFIX",
+    "NOT_STORED",
+    "NO_APP",
+    "NO_FIGURE",
+    "NO_JOB",
+    "create_app",
+]
 
 #: the body of a failure of the service, which carries nothing of it
 FAILED: Final = "The request failed in the service."
@@ -97,6 +120,25 @@ NOT_STORED: Final = "No response is stored under this hash."
 #: year is what `max-age` takes at most in practice, `immutable` says that it
 #: is never revalidated and `public` lets a proxy of a presentation keep it
 CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
+
+#: the body of a job which the service does not hold, see `create_app.job_of`;
+#: a job of another application and one of a service which was restarted are
+#: answered with it as well, since the jobs are the ones of an application
+NO_JOB: Final = "No job is stored under this id."
+
+#: the body of a path which is no figure of a job, see `create_app.figure_of`;
+#: a path which leaves the directory of the job is answered with it as well, so
+#: the route tells a caller nothing of the files of the host
+NO_FIGURE: Final = "This job has no such figure."
+
+#: the body of a submission to a service which runs as many experiments as it
+#: keeps in flight, see `create_app.submit_experiments`; it names neither the
+#: jobs which run nor what the service is made of
+BUSY: Final = "The service runs as many experiments as it can at once."
+
+#: the prefix of the directory of the jobs of an application which was given
+#: no store of its own, which it removes when it shuts down, see `create_app`
+JOBS_PREFIX: Final = "sbmlsim-jobs-"
 
 #: the shape of a hash of the API, the sha256 of
 #: `sbmlsim.hashing.canonical_json_sha256`, checked before anything is looked
@@ -117,6 +159,7 @@ def create_app(
     *,
     static: Path | None = None,
     allow_origins: Sequence[str] = (),
+    jobs: JobStore | None = None,
 ) -> FastAPI:
     """Create the application which serves the panels of a registry.
 
@@ -131,11 +174,48 @@ def create_app(
             served without.
         allow_origins: the origins which may talk to the API from another
             origin (CORS); without one the API answers its own origin only.
+        jobs: the store of the runs of the simulation experiments, see
+            `sbmlsim.serve.jobs`; without one the application creates a store
+            over a temporary directory of its own and removes that directory
+            when it shuts down, while a store which is given it belongs to its
+            caller and is neither closed nor removed.
 
     Returns:
-        The application.
+        The application, whose store of the jobs is `app.state.jobs`.
     """
-    app = FastAPI(title=TITLE, version=sbmlsim.__version__)
+    store = (
+        jobs
+        if jobs is not None
+        else JobStore(Path(tempfile.mkdtemp(prefix=JOBS_PREFIX)))
+    )
+    #: the store this application created itself, which it alone removes
+    owned = None if jobs is not None else store
+
+    @asynccontextmanager
+    async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
+        """Remove the jobs of an application which created their store itself.
+
+        The worker of the store is stopped first and the job which runs is
+        waited for, so the directory is complete and nothing writes into it
+        while it is removed.
+
+        Args:
+            application: the application, which serves until it shuts down.
+
+        Yields:
+            Nothing; what follows the `yield` is the shutdown.
+        """
+        try:
+            yield
+        finally:
+            if owned is not None:
+                owned.close()
+                shutil.rmtree(owned.root, ignore_errors=True)
+                logger.debug("The jobs of the service were removed.")
+
+    app = FastAPI(title=TITLE, version=sbmlsim.__version__, lifespan=lifespan)
+    # the store of the jobs of this application, which its routes close over
+    app.state.jobs = store
     runner = PanelRunner(registry)
     #: the answers of the simulations of this application alone, see
     #: `sbmlsim.serve.cache`
@@ -419,6 +499,102 @@ def create_app(
             raise HTTPException(status_code=404, detail=NOT_STORED)
         reply.headers["cache-control"] = CACHE_CONTROL
         return response
+
+    @app.post("/api/models/{model}/experiments", status_code=202)
+    def submit_experiments(model: str, request: ExperimentsRequest) -> JobResponse:
+        """Submit the simulation experiments of a model as a job.
+
+        The experiments of a model are minutes and not seconds, so the route
+        answers the job which was created and not its result: a caller follows
+        it with `GET /api/jobs/{job_id}` and fetches its figures once it is
+        `done`.
+
+        The route is a sync `def`, which the server runs in its thread pool:
+        the names of the experiments are checked against the ones of the model
+        before the job is created, which imports them.
+
+        Args:
+            model: the id of the model.
+            request: the names of the groups and experiment classes which run.
+
+        Returns:
+            The job as it was created, `queued`, with a 202.
+
+        Raises:
+            UnknownModel: for a model which is not served, a 404.
+            HTTPException: a 422 for a name the model does not have, which
+                submits nothing, a 429 for a service which runs as many
+                experiments as it keeps in flight, and a 500 for every other
+                failure of the submission, e.g. a model without simulation
+                experiments, whose message is the one of the service.
+        """
+        entry = registry.entry(model)
+        try:
+            job = store.submit(entry, request.experiments)
+        except UnknownExperiment as error:
+            # the names which are no experiments of the model, the one message
+            # of a submission which carries nothing of the service
+            raise HTTPException(status_code=422, detail=str(error)) from None
+        except TooManyJobs:
+            raise HTTPException(status_code=429, detail=BUSY) from None
+        except Exception:
+            logger.exception(
+                "The experiments %s of the model '%s' were not submitted.",
+                request.experiments,
+                model,
+            )
+            raise HTTPException(status_code=500, detail=FAILED) from None
+        return JobResponse.of(job)
+
+    @app.get("/api/jobs/{job_id}")
+    def job_of(job_id: str) -> JobResponse:
+        """Get a job of the service as it is now, with its figures.
+
+        The figures are read from the directory of the job, so the route is a
+        sync `def` and reads it in the thread pool of the server.
+
+        Args:
+            job_id: the id of the job, the one its submission answered.
+
+        Returns:
+            The job, its figures once it is finished.
+
+        Raises:
+            HTTPException: a 404 of `NO_JOB` for an id the service does not
+                hold, which is every id of another application as well, since
+                the jobs belong to the one which ran them.
+        """
+        job = store.job(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=NO_JOB)
+        return JobResponse.of(job, store.figures(job_id))
+
+    @app.get("/api/jobs/{job_id}/figures/{path:path}")
+    def figure_of(job_id: str, path: str) -> FileResponse:
+        """Get one figure of a job, by a path of the job itself.
+
+        The path is the one the job lists (`JobResponse.figures`) and is
+        resolved against the directory of that job: a path which leaves it,
+        over `..`, as an absolute path or through a symbolic link, is a 404 of
+        the same message as a figure which does not exist, so no path of the
+        host is reachable and the route tells a caller nothing about one.
+
+        Args:
+            job_id: the id of the job.
+            path: the path of the figure relative to the directory of the job,
+                e.g. `_figures/Study_Fig1.svg`.
+
+        Returns:
+            The file, whose media type is the one of its name.
+
+        Raises:
+            HTTPException: a 404 of `NO_FIGURE` for an id the service does not
+                hold and for a path which is no file of its job.
+        """
+        file = store.figure(job_id, path)
+        if file is None:
+            raise HTTPException(status_code=404, detail=NO_FIGURE)
+        return FileResponse(file)
 
     async def not_found(request: Request, exc: Exception) -> JSONResponse:
         """Answer a model or a panel which is not served with a 404.

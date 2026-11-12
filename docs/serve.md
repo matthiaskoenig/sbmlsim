@@ -189,6 +189,9 @@ A page which is served from another origin, a deck on GitHub Pages or a course i
 | `GET /api/models/{model}/panels/{panel}/data` | the study data behind its curves, the contract `paneldata/1` |
 | `POST /api/models/{model}/panels/{panel}/simulate` | the curves of a run of the panel at the values of its knobs or over a grid of them |
 | `GET /api/sim/{spec_hash}` | the stored answer of a simulation by its hash, as immutable |
+| `POST /api/models/{model}/experiments` | a 202 with the job of a run of the simulation experiments of the model |
+| `GET /api/jobs/{job_id}` | that job as it is now, with the figures of a finished one |
+| `GET /api/jobs/{job_id}/figures/{path}` | one figure of a job, by a path the job lists |
 | `GET /docs`, `GET /openapi.json` | the OpenAPI document of the API, which FastAPI renders from the bodies |
 
 `--static DIR` is mounted at `/` after these routes, so it shadows none of them.
@@ -352,6 +355,41 @@ Every answer of a simulation is stored under its `spec_hash`, the sha256 of the 
 
 `GET /api/sim/{spec_hash}` serves a stored body by its hash alone, with `Cache-Control: public, max-age=31536000, immutable`, so a reader who follows a link of a hash fetches it once and a proxy may keep it. A hash which is not stored is a 404 of one fixed message whatever its shape, so the route tells a caller nothing but whether it holds the body it asks for. The cache keeps 256 responses, the one used least recently is evicted, and it belongs to the application: two services in one process never serve each other's bodies.
 
+### The simulation experiments as jobs
+
+A panel is a simulation of a second, which a request waits for. The simulation experiments of a model are minutes: they run their scans, evaluate their data and render their figures. They are therefore submitted and not awaited.
+
+```json
+{"experiments": ["Beermann1976", "Patel1984"]}
+```
+
+The names are groups of the project or experiment classes of it, at most sixteen of them, and `all` is every experiment of the model in one name; a name the model does not have is a 422 and submits nothing. The answer is a 202 with the job which was created:
+
+```json
+{
+  "contract": "panel/1",
+  "id": "6b2f1a0c9d4e4f7a8b1c2d3e4f5a6b7c",
+  "model": "hctz",
+  "experiments": ["Beermann1976", "Patel1984"],
+  "status": "queued",
+  "created": "2026-11-13T09:12:44.118302+00:00",
+  "message": "",
+  "figures": []
+}
+```
+
+A caller follows it with `GET /api/jobs/{job_id}` until its `status` is `done` or `failed`, and a finished job lists the static figures its run collected, as the paths a request of one of them names:
+
+```json
+{"figures": ["_figures/Patel1984_Fig1.svg", "_figures/Patel1984_Fig_pk.svg"]}
+```
+
+`GET /api/jobs/{job_id}/figures/_figures/Patel1984_Fig1.svg` serves that file. A path is resolved against the directory of its job and is served only when it is a file inside it, so a path of `..`, an absolute path and a symbolic link which leaves the directory are the same 404 as a figure which does not exist, and no path of the host is reachable.
+
+The service runs one job at a time, in a thread of its own, and keeps at most eight of them in flight, the queued and the running one together: a submission above that is a 429. A run is serial, one process and no pool, so a job occupies one core of the service for its minutes; a job which failed says so in its `message`, which names no path and carries no traceback, while the traceback is logged.
+
+The jobs belong to the application and not to a directory the service keeps: they live below a temporary directory which is removed when the service stops, so a job of a service which was restarted is a 404, and nothing of a run outlives it.
+
 ### The errors
 
 | status | when | body |
@@ -359,8 +397,11 @@ Every answer of a simulation is stored under its `spec_hash`, the sha256 of the 
 | 404 | a model which is not served, a panel the model does not declare | `{"detail": "'nope' is no model of this service."}`, which names the id of the request and nothing of the service |
 | 404 | a model which declares no app | `{"detail": "This model declares no app."}` |
 | 404 | a hash which is not stored | `{"detail": "No response is stored under this hash."}` |
+| 404 | a job the service does not hold, a path which is no figure of one | `{"detail": "No job is stored under this id."}`, `{"detail": "This job has no such figure."}` |
+| 429 | a submission to a service which runs as many experiments as it keeps in flight | `{"detail": "The service runs as many experiments as it can at once."}` |
 | 422 | a request over the limits, a body of an unknown field, a value which is no number | the `type`, the `loc` and the `msg` of at most ten errors, never the input which was sent |
 | 422 | an id which is no knob of the panel | the ids and the knobs the panel has; it is checked before a model is loaded and before the cache is read |
+| 422 | a name which is no experiment of the model | the names and the groups and experiment classes the model has; it is checked before the job is created |
 | 500 | every failure of the service, e.g. a declaration whose unit does not convert | `{"detail": "The request failed in the service."}`, logged with its traceback |
 
 No error body carries a traceback, a path or anything of the configuration of the service.
@@ -408,4 +449,5 @@ What a renderer must not rely on:
 | the registry of the models and the runner of their panels | `sbmlsim.serve.runner` |
 | the HTTP API, its bodies and the cache of the answers | `sbmlsim.serve.app`, `sbmlsim.serve.payload`, `sbmlsim.serve.cache` |
 | the study data behind the curves | `sbmlsim.serve.data` |
+| the runs of the simulation experiments as jobs | `sbmlsim.serve.jobs` |
 | the command line | `sbmlsim.serve.cli`, `python -m sbmlsim.serve` |

@@ -14,7 +14,10 @@ the study data a panel declares out of the data of its project, the measured
 points under the curves, and needs no model either. `app` is the HTTP API over
 them, `create_app(registry)`, `payload` the bodies it reads and answers and
 `cache` the answers of the simulations by their hash, which an application
-keeps so that the same request is simulated once.
+keeps so that the same request is simulated once. `jobs` is the other half of
+a run: the simulation experiments of a model are minutes and not seconds, so a
+`JobStore` takes them, runs one at a time in a thread of its own and lets a
+caller follow the `Job` by its id and fetch the figures it collected.
 
 Nothing of the package imports this one, so `import sbmlsim` imports neither
 the service nor its dependencies; its modules are imported explicitly, e.g.

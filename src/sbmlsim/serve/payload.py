@@ -28,6 +28,13 @@ declares, the contract `sbmlsim.panel.APP_CONTRACT`: the pages of its panels,
 which a shell places. Its shape is the one `sbmlsim.panel.app_payload` writes,
 which it reads back field by field (`AppResponse.of`), so the payload is the
 one source of the contract and this body is its schema.
+
+The simulation experiments of a model are not awaited but submitted
+(`sbmlsim.serve.jobs`): an `ExperimentsRequest` names the groups and the
+experiment classes which run, at most `MAX_EXPERIMENTS` of them, and the
+answer is the `JobResponse` of the job which was created, which a caller
+follows by its id until it is `done` or `failed` and which carries the figures
+of a finished one.
 """
 
 from __future__ import annotations
@@ -38,10 +45,14 @@ from typing import TYPE_CHECKING, Annotated, Final, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sbmlsim.panel import APP_CONTRACT, CONTRACT, MAX_GRID, MAX_KNOBS, app_payload
+from sbmlsim.serve.jobs import MAX_EXPERIMENTS, JobStatus
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from sbmlsim.panel import App
     from sbmlsim.serve.data import PanelSeries
+    from sbmlsim.serve.jobs import Job
     from sbmlsim.serve.runner import GridAxis, PanelResult
 
 __all__ = [
@@ -49,8 +60,10 @@ __all__ = [
     "AppPagePayload",
     "AppResponse",
     "AppVariantPayload",
+    "ExperimentsRequest",
     "GridAxisPayload",
     "HealthResponse",
+    "JobResponse",
     "ModelPayload",
     "ModelsResponse",
     "PanelDataResponse",
@@ -468,6 +481,73 @@ class AppResponse(BaseModel):
             The response.
         """
         return cls.model_validate(app_payload(app))
+
+
+class ExperimentsRequest(BaseModel):
+    """The body of a submission of the experiments of a model, see the module.
+
+    Attributes:
+        experiments: the names of the groups and of the experiment classes
+            which run, at least one and at most `MAX_EXPERIMENTS`; the group
+            `all` is every experiment of the model. A name the model does not
+            have is a 422 and submits nothing, see
+            `sbmlsim.serve.jobs.check_experiments`.
+    """
+
+    model_config = _CONFIG
+
+    experiments: list[str] = Field(min_length=1, max_length=MAX_EXPERIMENTS)
+
+
+class JobResponse(BaseModel):
+    """One run of the simulation experiments of a model, see the module.
+
+    Attributes:
+        contract: the version of the payloads, `sbmlsim.panel.CONTRACT`.
+        id: the id of the job, which a caller follows it by.
+        model: the id of the model whose experiments run.
+        experiments: the names the submission gave, in its order.
+        status: `queued`, `running`, `done` or `failed`.
+        created: when the job was submitted, an ISO 8601 timestamp in UTC.
+        message: why a job failed, empty for every other status; it names no
+            path and carries no traceback.
+        figures: the figures the job collected, as the paths a request of one
+            of them names (`GET /api/jobs/{job_id}/figures/{path}`); empty
+            until it is finished.
+    """
+
+    model_config = _CONFIG
+
+    contract: str = CONTRACT
+    id: str
+    model: str
+    experiments: list[str]
+    status: JobStatus
+    created: str
+    message: str
+    figures: list[str]
+
+    @classmethod
+    def of(cls, job: Job, figures: Sequence[str] = ()) -> JobResponse:
+        """Get the payload of a job.
+
+        Args:
+            job: the record of the job as it is now.
+            figures: the figures it collected, none for a job which is not
+                finished.
+
+        Returns:
+            The response.
+        """
+        return cls(
+            id=job.id,
+            model=job.model,
+            experiments=list(job.experiments),
+            status=job.status,
+            created=job.created,
+            message=job.message,
+            figures=list(figures),
+        )
 
 
 class HealthResponse(BaseModel):
