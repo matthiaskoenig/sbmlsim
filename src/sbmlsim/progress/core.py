@@ -42,8 +42,10 @@ def _now() -> float:
 #: the number of the next activity, which identifies it in a renderer
 _UIDS = count(1)
 
-#: the reporters which failed and are dropped, by their id
-_DROPPED: set[int] = set()
+#: the reporters which failed and are dropped, by their id; the reporter is
+#: kept as the value, so that it stays alive and no later reporter is taken for
+#: it at the address it had
+_DROPPED: dict[int, object] = {}
 
 
 def remaining(
@@ -232,7 +234,7 @@ def report(
         else:
             target.advanced(activity_)
     except Exception as err:
-        _DROPPED.add(id(target))
+        _DROPPED[id(target)] = target
         logger.warning(
             "The progress reporter %r failed and is dropped: %s", target, err
         )

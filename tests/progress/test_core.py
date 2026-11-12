@@ -107,3 +107,20 @@ def test_an_activity_estimates_its_own_remaining_time(clock, monkeypatch):
         a.advance()
         assert a.elapsed == pytest.approx(10.0)
         assert a.remaining() == pytest.approx(30.0)
+
+
+def test_a_dropped_reporter_is_kept_so_that_its_address_means_it_alone(recorder):
+    """A dropped reporter stays alive, and a later reporter reports.
+
+    The dropped reporters are held by their id. Python gives the address of an
+    object which is gone to the next one, so a reporter which is only
+    remembered by its id would silently drop the reporter which lands on its
+    address.
+    """
+    exploding = Exploding()
+    with progress.reporter(exploding), progress.activity("scan", total=1):
+        pass
+    assert progress.core._DROPPED[id(exploding)] is exploding
+    with progress.reporter(recorder), progress.activity("scan", total=1) as a:
+        a.advance()
+    assert [event.kind for event in recorder.events] == ["scan", "scan", "scan"]
