@@ -17,6 +17,15 @@ The route of a simulation is a sync `def`, which the server runs in its thread
 pool, and the runner holds the lock of its model while it simulates, so the
 event loop keeps answering while a model integrates.
 
+Every answer of a simulation is kept in the `ResponseCache` of the application
+(`sbmlsim.serve.cache`) under its `spec_hash`, which identifies what was
+simulated: the same request is answered with the stored body instead of being
+simulated again, so a presentation of many viewers costs one simulation, and
+`GET /api/sim/{spec_hash}` serves that body by its hash alone, as immutable
+(`CACHE_CONTROL`). A hash which is not stored, whatever its shape, is a 404 of
+one fixed message (`NOT_STORED`), so the route tells a caller nothing but
+whether it holds the body it asks for.
+
 `static` serves a directory under the API, so the local mode delivers the
 javascript component of the panels from the origin of the API, and
 `allow_origins` lets the named origins talk to it from another one.
@@ -25,13 +34,14 @@ javascript component of the panels from the origin of the API, and
 from __future__ import annotations
 
 import logging
+import re
 import time
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -40,6 +50,7 @@ from fastapi.staticfiles import StaticFiles
 import sbmlsim
 from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.panel import CONTRACT, Panel, panel_payload
+from sbmlsim.serve.cache import ResponseCache
 from sbmlsim.serve.payload import (
     HealthResponse,
     ModelPayload,
@@ -57,14 +68,30 @@ from sbmlsim.serve.runner import (
     UnknownKnob,
     UnknownModel,
     UnknownPanel,
+    check_knobs,
 )
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["FAILED", "create_app"]
+__all__ = ["CACHE_CONTROL", "FAILED", "NOT_STORED", "create_app"]
 
 #: the body of a failure of the service, which carries nothing of it
 FAILED: Final = "The request failed in the service."
+
+#: the body of a hash which is not stored, see `create_app.stored`; a hash of
+#: another shape is answered with it as well, so the route is no surface a
+#: caller learns anything from but whether it holds the body it asks for
+NOT_STORED: Final = "No response is stored under this hash."
+
+#: the caching of a stored response, which is the one answer of its hash: a
+#: year is what `max-age` takes at most in practice, `immutable` says that it
+#: is never revalidated and `public` lets a proxy of a presentation keep it
+CACHE_CONTROL: Final = "public, max-age=31536000, immutable"
+
+#: the shape of a hash of the API, the sha256 of
+#: `sbmlsim.hashing.canonical_json_sha256`, checked before anything is looked
+#: up, see `create_app.stored`
+HASH: Final = re.compile(r"[0-9a-f]{64}")
 
 #: the title of the application, which its OpenAPI document carries
 TITLE: Final = "sbmlsim panels"
@@ -100,6 +127,9 @@ def create_app(
     """
     app = FastAPI(title=TITLE, version=sbmlsim.__version__)
     runner = PanelRunner(registry)
+    #: the answers of the simulations of this application alone, see
+    #: `sbmlsim.serve.cache`
+    cache = ResponseCache()
     #: the sha256 of every SBML file which was simulated, by its resolved path
     hashes: dict[Path, str] = {}
 
@@ -223,25 +253,32 @@ def create_app(
 
         Returns:
             The curves of the run with their provenance and the hash of the
-            resolved request.
+            resolved request; the stored answer of a request which was
+            simulated already, as it is, see `sbmlsim.serve.cache`.
 
         Raises:
             UnknownModel: for a model which is not served, a 404.
             UnknownPanel: for a panel the model does not declare, a 404.
             HTTPException: a 422 for a knob id the panel does not declare,
-                which is the one error of a run a request is answered with,
-                and a 500 for every other failure of the run, whose message
-                is the one of the service and not of the exception.
+                which is the one error of a run a request is answered with and
+                which is checked before the cache is read, and a 500 for every
+                other failure of the run, whose message is the one of the
+                service and not of the exception.
         """
         entry, declaration, sha = resolved(model, panel)
-        started = time.perf_counter()
         try:
+            check_knobs(declaration, request.values, request.grid)
+            spec_hash = _spec_hash(entry, declaration, request, sha)
+            cached = cache.get(spec_hash)
+            if cached is not None:
+                return cached
+            started = time.perf_counter()
             result = runner.run(model, declaration, request.values, request.grid)
             seconds = time.perf_counter() - started
             settings = entry.project.simulator
-            return SimulateResponse.of(
+            response = SimulateResponse.of(
                 result,
-                spec_hash=_spec_hash(entry, declaration, request, sha),
+                spec_hash=spec_hash,
                 provenance=Provenance(
                     model=entry.id,
                     panel=declaration.id,
@@ -254,14 +291,51 @@ def create_app(
                 ),
             )
         except UnknownKnob as error:
-            # the runner names the knob ids which are no knobs of the panel,
-            # the one message of a run which carries nothing of the service
+            # the ids which are no knobs of the panel, the one message of a
+            # run which carries nothing of the service
             raise HTTPException(status_code=422, detail=str(error)) from None
         except Exception:
             logger.exception(
                 "The panel '%s' of the model '%s' did not run.", panel, model
             )
             raise HTTPException(status_code=500, detail=FAILED) from None
+        # after the try, so a run which failed stores nothing and the next
+        # request of it is run again
+        cache.put(response)
+        return response
+
+    @app.get("/api/sim/{spec_hash}")
+    def stored(spec_hash: str, reply: Response) -> SimulateResponse:
+        """Get the answer of a simulation by the hash of its request.
+
+        The body of a hash is the one answer of that request, see
+        `_spec_hash`, so it is served as immutable and a reader who follows a
+        link of a hash fetches it once.
+
+        The shape of the hash is checked before anything is looked up, and a
+        hash the service does not hold is answered with the same fixed message
+        whatever its shape, so the route carries nothing of the service and is
+        no surface to probe it with.
+
+        Args:
+            spec_hash: the `spec_hash` of a response, 64 lower case
+                hexadecimal digits.
+            reply: the response of the server, whose headers the answer takes.
+
+        Returns:
+            The response as it was stored, its provenance included: the
+            seconds and the time of the run which computed it.
+
+        Raises:
+            HTTPException: a 404 for a hash which is not stored.
+        """
+        if HASH.fullmatch(spec_hash) is None:
+            raise HTTPException(status_code=404, detail=NOT_STORED)
+        response = cache.get(spec_hash)
+        if response is None:
+            raise HTTPException(status_code=404, detail=NOT_STORED)
+        reply.headers["cache-control"] = CACHE_CONTROL
+        return response
 
     async def not_found(request: Request, exc: Exception) -> JSONResponse:
         """Answer a model or a panel which is not served with a 404.

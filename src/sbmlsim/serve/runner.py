@@ -58,6 +58,7 @@ __all__ = [
     "UnknownModel",
     "UnknownPanel",
     "X",
+    "check_knobs",
 ]
 
 #: the key of the time of a result in `PanelResult.units`
@@ -79,6 +80,33 @@ class UnknownKnob(ValueError):
     service answers it and no other `ValueError` of the simulation, which
     would carry what the service is made of into a response.
     """
+
+
+def check_knobs(
+    panel: Panel, values: Mapping[str, float], grid: Mapping[str, int]
+) -> None:
+    """Check the ids of a request against the knobs a panel declares.
+
+    It is the one check of a request which needs the panel and no model, so a
+    request which names something else costs nothing: a run does it before it
+    loads a model and a service does it before it answers from its cache,
+    which must not turn an id the panel does not declare into an answer.
+
+    Args:
+        panel: the panel of the request.
+        values: the value of a knob by its id.
+        grid: the points of a knob of the grid by its id.
+
+    Raises:
+        UnknownKnob: naming the ids, if `values` or `grid` name something
+            which is no knob of the panel.
+    """
+    knobs = sorted(knob.id for knob in panel.knobs)
+    unknown = sorted((set(values) | set(grid)).difference(knobs))
+    if unknown:
+        raise UnknownKnob(
+            f"{unknown} are no knobs of the panel '{panel.id}', which has {knobs}."
+        )
 
 
 @dataclass(frozen=True)
@@ -313,13 +341,7 @@ class PanelRunner:
                 request is read.
         """
         entry = self.registry.entry(model_id)
-        knobs = {knob.id: knob for knob in panel.knobs}
-        unknown = sorted((set(values) | set(grid)) - set(knobs))
-        if unknown:
-            raise UnknownKnob(
-                f"{unknown} are no knobs of the panel '{panel.id}', which has "
-                f"{sorted(knobs)}."
-            )
+        check_knobs(panel, values, grid)
         warm = self._warm_model(entry, panel.simulation.variant)
         times = np.linspace(0.0, panel.simulation.end, panel.simulation.points + 1)
         with warm.lock:

@@ -112,6 +112,18 @@ def client(app: FastAPI) -> Iterator[TestClient]:
 
 
 @pytest.fixture
+def fresh_client(registry: ModelRegistry) -> Iterator[TestClient]:
+    """A client of an app of its own, whose cache of the responses is empty.
+
+    A request which the cache of the module's client answers is no run, so a
+    test of a run which fails asks an app which has not simulated it, see
+    `tests/serve/test_cache.py`.
+    """
+    with TestClient(create_app(registry)) as client:
+        yield client
+
+
+@pytest.fixture
 def never_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fail the test if a panel is run at all."""
 
@@ -303,7 +315,7 @@ def test_an_unknown_knob_id_is_422_and_loads_no_model(
 
 
 def test_a_value_error_of_a_run_is_500_and_carries_nothing_of_it(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    fresh_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Only the knob ids of a request are answered, no other `ValueError`.
 
@@ -315,7 +327,7 @@ def test_a_value_error_of_a_run_is_500_and_carries_nothing_of_it(
         raise ValueError("'f_renal_function' is no selection of src/sbmlsim")
 
     monkeypatch.setattr(PanelRunner, "run", broken)
-    response = client.post(SIMULATE, json={"values": {}, "grid": {}})
+    response = fresh_client.post(SIMULATE, json={"values": {}, "grid": {}})
     assert response.status_code == 500
     assert response.json() == {"detail": FAILED}
     assert "f_renal_function" not in response.text
@@ -366,13 +378,13 @@ def test_a_value_which_is_no_number_is_422_and_runs_nothing(
 
 
 def test_the_error_body_carries_no_traceback_and_no_path(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    fresh_client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def broken(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError(f"'{MODEL_PATH}' of {HCTZ_REFERENCE} did not integrate")
 
     monkeypatch.setattr(PanelRunner, "run", broken)
-    response = client.post(SIMULATE, json={"values": {}, "grid": {}})
+    response = fresh_client.post(SIMULATE, json={"values": {}, "grid": {}})
     assert response.status_code == 500
     assert set(response.json()) == {"detail"}
     text = response.text

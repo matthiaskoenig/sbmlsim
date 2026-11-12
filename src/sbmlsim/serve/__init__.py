@@ -8,8 +8,9 @@ as the versioned payload `panel/1` and runs the simulations behind it.
 a request may name, built once at startup from a mapping of model id to
 project reference, and `PanelRunner`, which turns a panel and the values of
 its knobs into the curves of a `PanelResult` with warm models. `app` is the
-HTTP API over them, `create_app(registry)`, and `payload` the bodies it reads
-and answers.
+HTTP API over them, `create_app(registry)`, `payload` the bodies it reads and
+answers and `cache` the answers of the simulations by their hash, which an
+application keeps so that the same request is simulated once.
 
 Nothing of the package imports this one, so `import sbmlsim` imports neither
 the service nor its dependencies; its modules are imported explicitly, e.g.
