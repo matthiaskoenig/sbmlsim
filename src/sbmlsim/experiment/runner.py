@@ -27,7 +27,13 @@ every experiment took in every phase, see `sbmlsim.experiment.progress`: the
 phases are measured where they run, in a worker too, and the result of every
 experiment carries them (`ExperimentResult.timings`). The workers of a run
 with progress send what their experiments do through a queue, which a thread
-of the parent forwards to the display.
+of the parent forwards to the display, see `sbmlsim.progress.workers`.
+
+The run of the experiments is an activity of `sbmlsim.progress` as well, which
+says how many experiments are done, how long the rest takes and what of the
+machine the run uses: a run without a display of its own (a log file, a pipe,
+continuous integration) reports it as a line every 30 seconds, and every run
+records it in the events, see `sbmlsim.progress.reporters`.
 """
 
 import contextlib
@@ -36,10 +42,8 @@ import inspect
 import logging
 import math
 import pickle
-import queue
-import threading
 import time
-from collections.abc import Callable, Generator, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from concurrent.futures import Future
 from concurrent.futures.process import BrokenProcessPool
 from multiprocessing.queues import Queue
@@ -75,6 +79,12 @@ from sbmlsim.model import AbstractModel, SBMLModel
 from sbmlsim.model.model_roadrunner import JitOptimization, resolve_jit_optimization
 from sbmlsim.model.model_sbml import IntegratorSetting, _is_hierarchical, load_model
 from sbmlsim.plot import FigureSettings
+from sbmlsim.progress import EventReporter, MultiReporter
+from sbmlsim.progress import activity as progress_activity
+from sbmlsim.progress import current_reporter as current_progress_reporter
+from sbmlsim.progress import reporter as progress_reporter
+from sbmlsim.progress import resolve as resolve_progress
+from sbmlsim.progress.workers import forwarding, worker_reporting
 from sbmlsim.report.experiment_report import ExperimentReport, ReportResults
 from sbmlsim.simulation import Scan
 from sbmlsim.simulator import Simulator
@@ -510,6 +520,7 @@ class ExperimentRunner:
             else None
         )
         exp_results: list[ExperimentResult] = []
+        counted: set[str] = set()
         with contextlib.ExitStack() as stack:
             if display is not None:
                 # before the workers start, which takes a moment
@@ -530,7 +541,42 @@ class ExperimentRunner:
             if executor is not None:
                 stack.callback(parallel.stop, executor)
             stack.enter_context(reporting(listener, shown=display is not None))
-            stack.enter_context(_forwarded(events, listener))
+            # a reporter of the context, e.g. of the run layer, reports the
+            # run; without one the display of the run draws the experiments
+            # itself and the activity is only recorded in the events, and a
+            # run without a display renders what `progress` asks for
+            if current_progress_reporter() is None:
+                stack.enter_context(
+                    progress_reporter(
+                        MultiReporter([EventReporter()])
+                        if display is not None
+                        else resolve_progress(progress)
+                    )
+                )
+            run = stack.enter_context(
+                progress_activity(
+                    "experiments", total=len(self._order), workers=workers
+                )
+            )
+            run.advance(len(self.failed))
+
+            def count(sid: str, failed: bool = False) -> None:
+                """Count an experiment as done, once, in the run and the display."""
+                if display is not None:
+                    display.finished(sid, failed=failed)
+                if sid not in counted:
+                    counted.add(sid)
+                    run.advance()
+
+            stack.enter_context(
+                forwarding(
+                    events,
+                    target=current_progress_reporter(),
+                    listener=listener,
+                    parent=run,
+                    close=True,
+                )
+            )
             # the most expensive experiments first, so that none of them
             # starts last and keeps the others waiting
             futures: dict[str, Future[_Outcome]] = (
@@ -543,9 +589,8 @@ class ExperimentRunner:
                 if executor is not None
                 else {}
             )
-            if display is not None:
-                for sid, future in futures.items():
-                    future.add_done_callback(_on_done(display, sid))
+            for sid, future in futures.items():
+                future.add_done_callback(_on_done(display, count, sid))
             for sid in self._order:
                 if sid in self.failed:
                     # the definition raised, the experiment is reported, not run
@@ -570,8 +615,7 @@ class ExperimentRunner:
                     if outcome is None
                     else outcome.result(self.experiments[sid], output_path / sid)
                 )
-                if display is not None:
-                    display.finished(sid, failed=result.failed)
+                count(sid, failed=result.failed)
                 exp_results.append(result)
         # the initialization is in the timings of this run, not of the next
         self._timings.clear()
@@ -1150,6 +1194,7 @@ def _run_job(job: _Job) -> _Outcome:
         with (
             matplotlib.rc_context(job.rc),
             reporting(_EVENTS.put if _EVENTS is not None else None),
+            worker_reporting(_EVENTS),
             using_amici_cache(job.amici_cache),
         ):
             runner = ExperimentRunner(
@@ -1196,56 +1241,20 @@ def _set_events(events: Queue[Event]) -> None:
     _EVENTS = events
 
 
-@contextlib.contextmanager
-def _forwarded(
-    events: Queue[Event] | None, display: Listener | None
-) -> Generator[None]:
-    """Forward the events of the workers to the display while the run lasts.
-
-    A thread of the parent takes the events from the queue. A worker which is
-    terminated while it writes, e.g. when Ctrl-C stops the pool, can leave a
-    message half written, which the thread waits for in vain: it is a daemon
-    and is not waited for longer than a second, so it never holds up the end
-    of a run.
-
-    Args:
-        events: the queue of the workers, `None` for a run without one.
-        display: what receives the events.
-    """
-    if events is None or display is None:
-        yield
-        return
-    stop = threading.Event()
-
-    def forward() -> None:
-        """Take the events from the queue until the run ends."""
-        while not stop.is_set():
-            try:
-                event = events.get(timeout=0.05)
-            except queue.Empty:
-                continue
-            except EOFError, OSError:
-                return
-            display(event)
-
-    thread = threading.Thread(target=forward, name="sbmlsim-progress", daemon=True)
-    thread.start()
-    try:
-        yield
-    finally:
-        stop.set()
-        thread.join(timeout=1.0)
-        if not thread.is_alive():
-            events.close()
-
-
-def _on_done(display: RunProgress, sid: str) -> Callable[[Future[_Outcome]], None]:
+def _on_done(
+    display: RunProgress | None, count: Callable[..., None], sid: str
+) -> Callable[[Future[_Outcome]], None]:
     """Get what counts an experiment of a worker as done when its result arrives.
 
     The results arrive in the order the experiments end, while the loop of
     the run takes them in the order of the experiments, so the bar counts an
     experiment when it ends. An experiment whose worker died runs again in
     the parent, which counts it then.
+
+    Args:
+        display: the display of the run, `None` for a run without one.
+        count: what counts an experiment as done, once.
+        sid: the experiment.
     """
 
     def done(future: Future[_Outcome]) -> None:
@@ -1253,10 +1262,11 @@ def _on_done(display: RunProgress, sid: str) -> Callable[[Future[_Outcome]], Non
         if future.cancelled():
             return
         if future.exception() is not None:
-            display.note(sid, "[yellow]its worker died, it runs again")
+            if display is not None:
+                display.note(sid, "[yellow]its worker died, it runs again")
             return
         outcome = future.result()
-        display.finished(sid, failed=bool(outcome.error or outcome.failed_figures))
+        count(sid, failed=bool(outcome.error or outcome.failed_figures))
 
     return done
 
