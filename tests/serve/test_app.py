@@ -180,6 +180,41 @@ def test_the_hash_is_the_one_of_the_resolved_request(client: TestClient) -> None
     assert other["spec_hash"] != given["spec_hash"]
 
 
+def test_the_hash_covers_the_declaration_of_the_panel(
+    client: TestClient, project: Project, panel: Panel
+) -> None:
+    """A panel of a project changes no SBML, so the model hash alone is not enough.
+
+    A response is read back by its hash, so a changed declaration must not
+    answer under the hash of the one before it.
+    """
+    shorter = panel.model_copy(
+        update={"simulation": panel.simulation.model_copy(update={"end": END / 2.0})}
+    )
+    changed = ModelRegistry(
+        {
+            "hctz": ModelEntry(
+                id="hctz",
+                project=project.replace(panels={"renal": shorter}),
+                title="Hydrochlorothiazide",
+            )
+        }
+    )
+    body = {"values": {}, "grid": {}}
+    declared = client.post(SIMULATE, json=body).json()
+    with TestClient(create_app(changed)) as other:
+        redeclared = other.post(SIMULATE, json=body).json()
+    # the same model, the same ids and the same request, another panel
+    assert redeclared["provenance"]["model"] == declared["provenance"]["model"]
+    assert redeclared["provenance"]["panel"] == declared["provenance"]["panel"]
+    assert (
+        redeclared["provenance"]["model_sha256"]
+        == declared["provenance"]["model_sha256"]
+    )
+    assert redeclared["x"][-1] == declared["x"][-1] / 2.0
+    assert redeclared["spec_hash"] != declared["spec_hash"]
+
+
 def test_a_point_which_does_not_integrate_is_null_and_flagged(
     client: TestClient,
 ) -> None:
@@ -202,18 +237,19 @@ def test_an_unknown_model_or_panel_is_404(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize(
-    "grid",
+    "body",
     [
-        {"egfr": 100},
-        {"egfr": 0},
-        {"egfr": 9, "dose": 8},
-        {"a": 2, "b": 2, "c": 2, "d": 2, "e": 2},
+        {"values": {}, "grid": {"egfr": 100}},
+        {"values": {}, "grid": {"egfr": 0}},
+        {"values": {}, "grid": {"egfr": 9, "dose": 8}},
+        {"values": {}, "grid": {"a": 2, "b": 2, "c": 2, "d": 2, "e": 2}},
+        {"values": {str(knob): 1.0 for knob in range(10_000)}, "grid": {}},
     ],
 )
 def test_a_request_over_the_limits_is_422_and_runs_nothing(
-    client: TestClient, never_runs: None, grid: dict[str, int]
+    client: TestClient, never_runs: None, body: dict[str, Any]
 ) -> None:
-    response = client.post(SIMULATE, json={"values": {}, "grid": grid})
+    response = client.post(SIMULATE, json=body)
     assert response.status_code == 422
 
 

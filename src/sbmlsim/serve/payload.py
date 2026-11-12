@@ -4,10 +4,11 @@ A request of a simulation is a `SimulateRequest`: the value of every knob a
 reader set and the points of every knob a grid runs over. The limits of
 `sbmlsim.panel` are the bounds of its fields and of its validator, so a request
 over them is refused where it is read, before a handler runs and before a model
-is loaded: at most `MAX_KNOBS` axes, at least one and at most `MAX_GRID` points
-per axis and at most `MAX_GRID` points in all. A knob id the panel does not
-declare is refused by `sbmlsim.serve.runner.PanelRunner.run`, which knows the
-panel, and is a 422 as well.
+is loaded: at most `MAX_KNOBS` values and `MAX_KNOBS` axes, at least one and at
+most `MAX_GRID` points per axis and at most `MAX_GRID` points in all. A knob id
+the panel does not declare is refused by
+`sbmlsim.serve.runner.PanelRunner.run`, which knows the panel, and is a 422 as
+well.
 
 The answer is a `SimulateResponse`, the `PanelResult` of that run with its
 `spec_hash`, which identifies the resolved request, its `Provenance` and its
@@ -54,7 +55,8 @@ class SimulateRequest(BaseModel):
     """The body of a simulation of a panel, see the module.
 
     Attributes:
-        values: the value of a knob by its id, in the unit of the knob; a knob
+        values: the value of a knob by its id, in the unit of the knob, at
+            most `MAX_KNOBS` of them, which is the knobs of a request; a knob
             which a request leaves out runs at its `default`.
         grid: the points of a knob of the grid by its id, at most `MAX_KNOBS`
             knobs and `MAX_GRID` points in all; a knob of the grid takes no
@@ -63,7 +65,7 @@ class SimulateRequest(BaseModel):
 
     model_config = _CONFIG
 
-    values: dict[str, float] = Field(default_factory=dict)
+    values: dict[str, float] = Field(default_factory=dict, max_length=MAX_KNOBS)
     grid: dict[str, _Points] = Field(default_factory=dict, max_length=MAX_KNOBS)
 
     @model_validator(mode="after")

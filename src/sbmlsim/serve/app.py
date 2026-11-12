@@ -297,6 +297,12 @@ def _spec_hash(
     have one hash, and the model is its sha256 and not its path, so the hash
     does not depend on where the service keeps its models.
 
+    The declaration of the panel is hashed whole (`panel_payload`) and not by
+    its id: a panel which a project declares or overrides
+    (`sbmlsim.project.Project.panels`) changes no SBML and so no
+    `model_sha256`, and a changed declaration must not answer under the hash
+    of the one before it, which a cache of the responses reads.
+
     Args:
         entry: the model of the request.
         panel: the panel of the request.
@@ -313,6 +319,7 @@ def _spec_hash(
             "contract": CONTRACT,
             "model": entry.id,
             "panel": panel.id,
+            "declaration": panel_payload(panel),
             "variant": panel.simulation.variant,
             "model_sha256": model_sha256,
             "values": {
