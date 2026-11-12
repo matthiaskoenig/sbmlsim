@@ -162,7 +162,11 @@ def test_the_trajectory_has_every_evaluation(
     # the evaluations, the points of the jacobians and the check of the optimum
     assert len(pooled.trajectories[0]) > fit.nfev + 1
     assert pooled.trajectories[0] == serial.trajectories[0]
-    assert min(pooled.trajectories[0]) == pytest.approx(fit.cost)
+    # the cost of the optimum is among them; a point of a jacobian may be
+    # below it, since the trajectory has every evaluation and not only the
+    # steps the optimizer took (on macOS and windows one is, #505)
+    assert any(cost == pytest.approx(fit.cost) for cost in pooled.trajectories[0])
+    assert min(pooled.trajectories[0]) <= fit.cost
 
 
 def test_a_serial_fit_starts_no_workers(
