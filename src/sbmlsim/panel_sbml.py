@@ -17,7 +17,9 @@ a release:
             <option label="severe" value="0.2"/>
           </knob>
           <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
-          <data id="vormfelde2006" label="Vormfelde 2006" dataset="hctz_plasma.tsv" x="time" y="cp" yerr="cp_sd" unit="uM"/>
+          <data id="vormfelde2006" label="Vormfelde 2006" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)" unit="uM">
+            <select column="label" value="hctz25"/>
+          </data>
         </panel>
       </panels>
     </annotation>
@@ -26,9 +28,13 @@ An attribute is the field of the object of `sbmlsim.panel` it carries, with the
 two exceptions `xLabel` for `x_label` and `xUnit` for `x_unit`; an attribute
 which is not set means the default of its field. The `end` of the simulation is
 in the time unit of the model (a day of a model of minutes above) and `xUnit`
-is the unit its time axis is delivered in. The `option` children of a knob are the `choices` of a
-knob of the kind `choice` and the `preinit` children of the simulation are its
-`preinit`. The tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
+is the unit its time axis is delivered in. The `option` children of a knob are
+the `choices` of a knob of the kind `choice`, the `preinit` children of the
+simulation are its `preinit` and the `select` children of a series of the data
+are its `sel`, the rows of its dataset. The `dataset` of a series is the id of
+a figure or a table of a study and no path, and its `conversion` is a quantity
+its values are multiplied by, the molecular weight of a substance above. The
+tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
 `_KNOB_ATTRIBUTES`, `_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and
 `_DATA_ATTRIBUTES` own these names, so the reader and the writer cannot
 disagree: `panels_from_sbml` reads the annotation, `panels_to_annotation` and
@@ -94,6 +100,8 @@ OPTION_ELEMENT: Final = "option"
 CURVE_ELEMENT: Final = "curve"
 #: the element of one series of the study data of a panel
 DATA_ELEMENT: Final = "data"
+#: the element of one column which selects the rows of such a series
+SELECT_ELEMENT: Final = "select"
 
 #: the fields of a panel by the attribute which carries them
 _PANEL_ATTRIBUTES: Final = {
@@ -128,9 +136,10 @@ _KNOB_ATTRIBUTES: Final = {
 _CHOICE_ATTRIBUTES: Final = {"label": "label", "value": "value"}
 #: the fields of a curve
 _CURVE_ATTRIBUTES: Final = {name: name for name in ("id", "label", "unit", "scale")}
-#: the fields of one series of the study data
+#: the fields of one series of the study data, its `sel` the `select` children
 _DATA_ATTRIBUTES: Final = {
-    name: name for name in ("id", "label", "dataset", "x", "y", "yerr", "unit")
+    name: name
+    for name in ("id", "label", "dataset", "x", "y", "yerr", "conversion", "unit")
 }
 
 #: a panel or one of its parts, which the writer reads the fields of
@@ -288,12 +297,21 @@ def _panel_payload(element: libsbml.XMLNode) -> dict[str, Any]:
             _fields_of(curve, _CURVE_ATTRIBUTES)
             for curve in _children(element, CURVE_ELEMENT)
         ],
-        "data": [
-            _fields_of(data, _DATA_ATTRIBUTES)
-            for data in _children(element, DATA_ELEMENT)
-        ],
+        "data": [_data_payload(data) for data in _children(element, DATA_ELEMENT)],
         "simulation": _simulation_payload(element),
     }
+
+
+def _data_payload(element: libsbml.XMLNode) -> dict[str, Any]:
+    """Get the payload of a `data` element, its `select` children its rows."""
+    payload = _fields_of(element, _DATA_ATTRIBUTES)
+    sel = {
+        select.getAttrValue("column"): select.getAttrValue("value")
+        for select in _children(element, SELECT_ELEMENT)
+    }
+    if sel:
+        payload["sel"] = sel
+    return payload
 
 
 def _knob_payload(element: libsbml.XMLNode) -> dict[str, Any]:
@@ -439,10 +457,7 @@ def _panel_xml(panel: Panel) -> str:
                 _element_xml(CURVE_ELEMENT, curve, _CURVE_ATTRIBUTES)
                 for curve in panel.curves
             ),
-            *(
-                _element_xml(DATA_ELEMENT, data, _DATA_ATTRIBUTES)
-                for data in panel.data
-            ),
+            *(_data_xml(data) for data in panel.data),
         )
     )
     return _element_xml(PANEL_ELEMENT, panel, _PANEL_ATTRIBUTES, children)
@@ -455,6 +470,15 @@ def _simulation_xml(simulation: PanelSimulation) -> str:
         for target, value in simulation.preinit.items()
     )
     return _element_xml(SIMULATION_ELEMENT, simulation, _SIMULATION_ATTRIBUTES, preinit)
+
+
+def _data_xml(data: PanelData) -> str:
+    """Get the XML of a `data` element, its rows the `select` children."""
+    select = "".join(
+        f"<{SELECT_ELEMENT} column={quoteattr(column)} value={quoteattr(value)}/>"
+        for column, value in (data.sel or {}).items()
+    )
+    return _element_xml(DATA_ELEMENT, data, _DATA_ATTRIBUTES, select)
 
 
 def _knob_xml(knob: Knob) -> str:

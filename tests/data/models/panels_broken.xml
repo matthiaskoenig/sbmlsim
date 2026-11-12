@@ -13,7 +13,9 @@
             <option label="severe" value="0.2"/>
           </knob>
           <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
-          <data id="vormfelde2006" label="Vormfelde 2006" dataset="hctz_plasma.tsv" x="time" y="cp" yerr="cp_sd" unit="uM"/>
+          <data id="vormfelde2006" label="Vormfelde 2006" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)" unit="uM">
+            <select column="label" value="hctz25"/>
+          </data>
         </panel>
         <panel id="broken" title="a range knob without its bounds">
           <simulation end="24"/>

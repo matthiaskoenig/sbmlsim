@@ -71,11 +71,13 @@ def panel() -> Panel:
             PanelData(
                 id="beermann1976",
                 label="Beermann 1976",
-                dataset="beermann1976_fig1.tsv",
+                dataset="Beermann1976_Fig2",
                 x="time",
                 y="mean",
                 yerr="mean_sd",
-                unit="mg/l",
+                sel={"label": "hctz5po_4"},
+                conversion="1/(297.7 g/mole)",
+                unit="mmol/l",
             ),
         ),
         simulation=PanelSimulation(
@@ -181,6 +183,27 @@ def test_a_knob_default_outside_its_range_is_refused() -> None:
 def test_an_incoherent_knob_is_refused(build: Callable[[], Knob], match: str) -> None:
     with pytest.raises(ValidationError, match=match):
         build()
+
+
+@pytest.mark.parametrize(
+    "dataset",
+    [
+        "../../etc/passwd",
+        "/etc/passwd",
+        "data/Beermann1976_Fig2",
+        "data\\Beermann1976_Fig2",
+        "Beermann1976_Fig2.tsv",
+        ".Beermann1976_Fig2",
+        "..",
+        ".",
+        "",
+        "Beermann 1976",
+    ],
+)
+def test_a_dataset_which_is_no_dataset_id_is_refused(dataset: str) -> None:
+    """A dataset is the id of a figure or a table and never a path."""
+    with pytest.raises(ValidationError, match="no dataset"):
+        PanelData(id="d", label="d", dataset=dataset, x="time", y="mean")
 
 
 def test_two_knobs_of_one_id_are_refused() -> None:

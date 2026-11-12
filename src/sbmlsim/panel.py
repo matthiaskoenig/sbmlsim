@@ -17,6 +17,7 @@ knobs may ask for. Every payload carries them, so a renderer knows the limits
 of the endpoint it talks to without a contract of its own.
 """
 
+import re
 from collections.abc import Mapping
 from typing import Any, Final, Literal, Self
 
@@ -56,6 +57,14 @@ MAX_CURVES: Final = 16
 
 #: a panel and its parts forbid unknown fields and do not change
 _CONFIG = ConfigDict(extra="forbid", frozen=True)
+
+#: the shape of the dataset of a series of the study data: the id of a figure
+#: or a table of a study, e.g. `Beermann1976_Fig2`, which names the study and
+#: the file of the data of the project (`sbmlsim.data.load_pkdb_dataframe`).
+#: It is no path: a separator, a dot and a drive are refused where a panel is
+#: read, so a declaration can never name a file outside of that data and no
+#: reader of a panel has to resolve a path to find out, see `PanelData`.
+_DATASET = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 
 class ContractError(ValueError):
@@ -204,14 +213,29 @@ class PanelCurve(BaseModel):
 class PanelData(BaseModel):
     """The study data of a panel, drawn under its curves.
 
+    The series is read from the data of the project the model belongs to, see
+    `sbmlsim.serve.data`.
+
     Attributes:
-        id: the id of the series, the key of its values in a result.
+        id: the id of the series, the key of its values in a result; a series
+            whose id is the id of a curve of the panel belongs under that
+            curve and is delivered in its unit.
         label: the series as it is shown, e.g. the study it comes from.
-        dataset: the dataset of the series, a file of the data of the project.
+        dataset: the dataset of the series, the id of a figure or a table of a
+            study, e.g. `"Beermann1976_Fig2"`; it is no path, see `_DATASET`.
         x: the column of the times.
         y: the column of the values.
         yerr: the column of the error of the values, none without.
-        unit: the unit of the values, the one of the dataset without.
+        sel: the rows of the dataset the series is, by the values of the
+            columns which select them, e.g. `{"label": "hctz5po_4"}`; one
+            dataset holds several series, and a series without a selection is
+            every row of its dataset.
+        conversion: a quantity the values and their error are multiplied by
+            before they are delivered, e.g. `"1/(297.7 g/mole)"` for the mass
+            of a study which the model carries as a substance; none without.
+        unit: the unit of the values, the one of the curve the `id` names
+            without, and the one of the dataset for a series which names no
+            curve.
     """
 
     model_config = _CONFIG
@@ -222,7 +246,27 @@ class PanelData(BaseModel):
     x: str
     y: str
     yerr: str | None = None
+    sel: Mapping[str, str] | None = None
+    conversion: str | None = None
     unit: str | None = None
+
+    @model_validator(mode="after")
+    def _check_dataset(self) -> Self:
+        """Check that the dataset is the id of a dataset and no path.
+
+        Raises:
+            ValueError: naming the dataset and the series, for a dataset which
+                is no id of the shape of `_DATASET`, e.g. a path, a name of a
+                path separator or a name of a dot.
+        """
+        if _DATASET.fullmatch(self.dataset) is None:
+            raise ValueError(
+                f"The dataset '{self.dataset}' of the series '{self.id}' is no "
+                f"dataset id: a dataset is the id of a figure or a table of a "
+                f"study, e.g. 'Beermann1976_Fig2', of letters, digits, '_' and "
+                f"'-', and never a path."
+            )
+        return self
 
 
 class PanelSimulation(BaseModel):

@@ -1344,7 +1344,11 @@ class DataSet(pd.DataFrame):
 
 
 def load_pkdb_dataframe(
-    sid, data_path: Path | list[Path], sep="\t", comment="#", **kwargs
+    sid,
+    data_path: Path | Sequence[Path] | None,
+    sep="\t",
+    comment="#",
+    **kwargs,
 ) -> pd.DataFrame:
     """Load TSV data from PKDB figure or table id.
 

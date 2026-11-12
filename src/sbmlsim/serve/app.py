@@ -2,8 +2,9 @@
 
 `create_app(registry)` is the ASGI application of a `ModelRegistry`: it serves
 the declaration of the panels of its models (`sbmlsim.panel.panel_payload`,
-the contract `panel/1`) and runs their simulations on one `PanelRunner` with
-warm models.
+the contract `panel/1`), the study data behind their curves
+(`sbmlsim.serve.data`, the contract `paneldata/1`) and runs their simulations
+on one `PanelRunner` with warm models.
 
 A request names a model id of the registry and a panel id of that model and
 nothing else: no project reference, no module and no path reaches the service,
@@ -51,10 +52,13 @@ import sbmlsim
 from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.panel import CONTRACT, Panel, panel_payload
 from sbmlsim.serve.cache import ResponseCache
+from sbmlsim.serve.data import panel_data
 from sbmlsim.serve.payload import (
+    DataSeriesPayload,
     HealthResponse,
     ModelPayload,
     ModelsResponse,
+    PanelDataResponse,
     PanelPayload,
     PanelsResponse,
     Provenance,
@@ -237,6 +241,43 @@ def create_app(
         """
         _, declaration, _ = resolved(model, panel)
         return panel_payload(declaration)
+
+    @app.get("/api/models/{model}/panels/{panel}/data")
+    def data_of(model: str, panel: str) -> PanelDataResponse:
+        """Get the study data behind the curves of a panel.
+
+        The data is read from the data of the project of the model and no
+        model is loaded, so the route is a sync `def` and reads the files in
+        the thread pool of the server, as `panel_of` does.
+
+        Args:
+            model: the id of the model.
+            panel: the id of the panel.
+
+        Returns:
+            The series of the panel, see `sbmlsim.serve.data`; none for a
+            panel which declares no study data.
+
+        Raises:
+            UnknownModel: for a model which is not served, a 404.
+            UnknownPanel: for a panel the model does not declare, a 404.
+            HTTPException: a 500 for study data which cannot be read, e.g. a
+                dataset which is no file of the project or a column it has
+                not, which is a problem of the declaration and not of the
+                request; the message is the one of the service and carries
+                neither the dataset nor a path.
+        """
+        entry, declaration, _ = resolved(model, panel)
+        try:
+            series = panel_data(entry, declaration)
+        except Exception:
+            logger.exception(
+                "The study data of the panel '%s' of the model '%s' cannot be read.",
+                panel,
+                model,
+            )
+            raise HTTPException(status_code=500, detail=FAILED) from None
+        return PanelDataResponse(series=[DataSeriesPayload.of(one) for one in series])
 
     @app.post("/api/models/{model}/panels/{panel}/simulate")
     def simulate(model: str, panel: str, request: SimulateRequest) -> SimulateResponse:

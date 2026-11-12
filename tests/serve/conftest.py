@@ -7,6 +7,11 @@ its panels is not part of these tests.
 The time unit of the HCTZ model is minutes, which is the unit the `end` of a
 `PanelSimulation` and the x of a result are in.
 
+The panel draws the plasma and the urine of hydrochlorothiazide and declares
+the cumulative amount in the urine of Beermann 1976 as the study data under
+the curve of the urine: the data of that study is a mass, which `MR_HCTZ`
+converts into the substance the model carries.
+
 The panel, the project and the registry are of the module, so a model is
 loaded once per file, while the application and its client are of the test:
 the cache of the responses belongs to the application
@@ -23,7 +28,7 @@ from fastapi.testclient import TestClient
 
 from examples.hctz_fitting import MODEL_PATH
 from examples.hctz_fitting.project import PROJECT
-from sbmlsim.panel import Choice, Knob, Panel, PanelCurve, PanelSimulation
+from sbmlsim.panel import Choice, Knob, Panel, PanelCurve, PanelData, PanelSimulation
 from sbmlsim.project import Project
 from sbmlsim.serve.app import create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
@@ -36,6 +41,13 @@ POINTS = 50
 PANEL = "/api/models/hctz/panels/renal"
 #: the simulation of that panel
 SIMULATE = f"{PANEL}/simulate"
+#: the study data of that panel
+DATA = f"{PANEL}/data"
+
+#: the inverse of the molecular weight of hydrochlorothiazide, with which the
+#: mass a study measured is the substance the model carries, as the
+#: experiments of the HCTZ example convert it
+MR_HCTZ = "1/(297.7 g/mole)"
 
 EGFR = Knob(
     id="egfr",
@@ -62,6 +74,19 @@ DOSE = Knob(
     default=25.0,
 )
 
+#: the cumulative amount of hydrochlorothiazide in the urine of the fourth
+#: subject of Beermann 1976 after 5 mg orally, measured in mg and delivered in
+#: the unit of the curve its id names, `umol`
+URINE = PanelData(
+    id="Aurine_hctz",
+    label="Beermann 1976 (5 mg, oral)",
+    dataset="Beermann1976_Tab1A",
+    x="time",
+    y="value",
+    sel={"label": "amount_urine_hctz5po_4"},
+    conversion=MR_HCTZ,
+)
+
 
 @pytest.fixture(scope="module")
 def panel() -> Panel:
@@ -73,7 +98,11 @@ def panel() -> Panel:
         knobs=(EGFR, DOSE),
         curves=(
             PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
+            PanelCurve(
+                id="Aurine_hctz", label="hydrochlorothiazide urine", unit="umol"
+            ),
         ),
+        data=(URINE,),
         # the panel pre-initializes the dose to zero, which the knob overrides
         simulation=PanelSimulation(
             end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}

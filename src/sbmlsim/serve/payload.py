@@ -17,25 +17,34 @@ The answer is a `SimulateResponse`, the `PanelResult` of that run with its
 
 JSON has no `NaN`: a point which did not integrate is `null` in the curves and
 its flat index is in `Status.failed`, which is where a renderer reads it.
+
+The study data behind the curves is a `PanelDataResponse` of the `DataSeries`
+of `sbmlsim.serve.data`, which carries the contract `DATA_CONTRACT` of its own:
+the series are no part of the declaration of a panel and a renderer which draws
+them reads their version.
 """
 
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Annotated, Self
+from typing import TYPE_CHECKING, Annotated, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from sbmlsim.panel import CONTRACT, MAX_GRID, MAX_KNOBS
 
 if TYPE_CHECKING:
+    from sbmlsim.serve.data import DataSeries
     from sbmlsim.serve.runner import GridAxis, PanelResult
 
 __all__ = [
+    "DATA_CONTRACT",
+    "DataSeriesPayload",
     "GridAxisPayload",
     "HealthResponse",
     "ModelPayload",
     "ModelsResponse",
+    "PanelDataResponse",
     "PanelPayload",
     "PanelsResponse",
     "Provenance",
@@ -43,6 +52,10 @@ __all__ = [
     "SimulateResponse",
     "Status",
 ]
+
+#: the version of the wire contract of the study data of a panel, in the body
+#: of every answer of it, see the module
+DATA_CONTRACT: Final = "paneldata/1"
 
 #: a body of the API forbids unknown fields and does not change
 _CONFIG = ConfigDict(extra="forbid", frozen=True)
@@ -228,6 +241,72 @@ class SimulateResponse(BaseModel):
                 failed=list(result.failed),
             ),
         )
+
+
+class DataSeriesPayload(BaseModel):
+    """One series of the study data of a panel, the payload of a `DataSeries`.
+
+    Attributes:
+        id: the id of the series, which names the curve it belongs under.
+        label: the series as it is shown, e.g. the study it comes from.
+        x: the times of the points, in the unit `x_unit` names.
+        y: the values of the points, in the unit `unit` names.
+        yerr: the error of every value, `null` for a point without one, and
+            `null` for a series without a column of the error.
+        x_unit: the unit of the times, `null` for a time column without one.
+        unit: the unit of the values, `null` for a series which names no curve
+            and whose column has no unit.
+        count: the number of subjects behind every point, `null` for a dataset
+            which does not carry them.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    label: str
+    x: list[float]
+    y: list[float]
+    yerr: list[float | None] | None
+    x_unit: str | None
+    unit: str | None
+    count: list[int] | None
+
+    @classmethod
+    def of(cls, series: DataSeries) -> DataSeriesPayload:
+        """Get the payload of a series of the study data.
+
+        Args:
+            series: the series.
+
+        Returns:
+            The payload; a series carries no value which is not finite, see
+            `sbmlsim.serve.data`.
+        """
+        return cls(
+            id=series.id,
+            label=series.label,
+            x=list(series.x),
+            y=list(series.y),
+            yerr=None if series.yerr is None else list(series.yerr),
+            x_unit=series.x_unit,
+            unit=series.unit,
+            count=None if series.count is None else list(series.count),
+        )
+
+
+class PanelDataResponse(BaseModel):
+    """The study data behind the curves of a panel, see the module.
+
+    Attributes:
+        contract: the version of the payloads of the data, `DATA_CONTRACT`.
+        series: the series the panel declares, in its order; none for a panel
+            without study data.
+    """
+
+    model_config = _CONFIG
+
+    contract: str = DATA_CONTRACT
+    series: list[DataSeriesPayload]
 
 
 class ModelPayload(BaseModel):
