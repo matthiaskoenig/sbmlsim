@@ -207,15 +207,18 @@ class BarReporter:
 
 
 class LogReporter:
-    """Write a line per activity, when it starts, every interval and at its end.
+    """Write a line per activity, every interval and at its end.
 
     A run without a terminal (a log file, a pipe, continuous integration) says
-    how far it is this way; the interval keeps the file short.
+    how far it is this way. The interval keeps the file short: the first line
+    of an activity is written when it is older than the interval, so the
+    activities which are over in a moment, e.g. the scans of a fit, write no
+    line at all.
     """
 
     def __init__(
         self,
-        interval: float = LOG_INTERVAL,
+        interval: float | None = None,
         *,
         target: logging.Logger | None = None,
         now: object = _now,
@@ -223,32 +226,39 @@ class LogReporter:
         """Create the reporter.
 
         Args:
-            interval: the seconds between two lines of an activity.
+            interval: the seconds between two lines of an activity,
+                `LOG_INTERVAL` by default.
             target: what writes the lines, by default the logger of the
                 progress.
             now: the monotonic clock, for the tests.
         """
-        self.interval = interval
+        self.interval = LOG_INTERVAL if interval is None else interval
         self.logger = target if target is not None else logger
         self._now = now
         self._last: dict[int, float] = {}
+        self._written: set[int] = set()
 
     def started(self, activity: Activity) -> None:
-        """Note the start of an activity, whose first step writes the line."""
-        self._last[activity.uid] = float("-inf")
+        """Note the start of an activity, whose line comes after the interval."""
+        self._last[activity.uid] = activity.started_at
 
     def advanced(self, activity: Activity) -> None:
         """Write the line of an activity, at most every interval."""
         now = float(self._now())  # ty: ignore[call-non-callable]
-        last = self._last.get(activity.uid, float("-inf"))
+        last = self._last.get(activity.uid, activity.started_at)
         if now - last < self.interval:
             return
         self._last[activity.uid] = now
+        self._written.add(activity.uid)
         self.logger.info("%s", _line(activity))
 
     def finished(self, activity: Activity, error: BaseException | None) -> None:
-        """Write the last line of an activity, which names an error."""
+        """Write the last line of an activity which wrote one, took a while or failed."""
         self._last.pop(activity.uid, None)
+        written = activity.uid in self._written
+        self._written.discard(activity.uid)
+        if error is None and not written and activity.elapsed < self.interval:
+            return
         self.logger.info("%s", _line(activity, "failed" if error else "done"))
 
 

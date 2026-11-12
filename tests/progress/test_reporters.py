@@ -90,9 +90,21 @@ def test_log_reporter_writes_a_last_line_when_the_activity_finishes(caplog, tick
     caplog.set_level(logging.INFO, logger="sbmlsim.progress")
     reporter = progress.LogReporter(interval=30.0, now=ticking)
     with progress.reporter(reporter), progress.activity("fit", "NMP", total=2) as a:
+        ticking.tick(31.0)
         a.update(completed=2)
     assert "fit NMP 2/2" in caplog.records[-1].message
     assert "done" in caplog.records[-1].message
+
+
+def test_log_reporter_is_silent_for_an_activity_which_is_over_in_a_moment(
+    caplog, ticking
+):
+    """The scans of a fit are thousands, their lines would be the log."""
+    caplog.set_level(logging.INFO, logger="sbmlsim.progress")
+    reporter = progress.LogReporter(interval=30.0, now=ticking)
+    with progress.reporter(reporter), progress.activity("scan", total=2) as a:
+        a.advance(2)
+    assert caplog.records == []
 
 
 def test_log_reporter_names_an_activity_which_failed(caplog, ticking):

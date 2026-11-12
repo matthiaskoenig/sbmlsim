@@ -128,14 +128,19 @@ def test_a_run_of_experiments_reports_how_many_are_done(tmp_path, recorder):
     assert recorder.ends == [("experiments", None)]
 
 
-def test_a_run_of_experiments_logs_its_progress_without_a_terminal(tmp_path, caplog):
+def test_a_run_of_experiments_logs_its_progress_without_a_terminal(
+    tmp_path, caplog, monkeypatch
+):
     """A run in a log file says how far it is, which a bar cannot."""
     import logging
 
     from sbmlsim.experiment import ExperimentRunner
+    from sbmlsim.progress import reporters
     from sbmlsim.simulator import Simulator
     from tests.experiment.test_experiment_run import FitMappingExperiment
 
+    # a run of a single experiment is over before the interval of a line
+    monkeypatch.setattr(reporters, "LOG_INTERVAL", 0.0)
     runner = ExperimentRunner(FitMappingExperiment, simulator=Simulator())
     with caplog.at_level(logging.INFO, logger="sbmlsim.progress"):
         runner.run_experiments(output_path=tmp_path, save_results=False, progress=None)
