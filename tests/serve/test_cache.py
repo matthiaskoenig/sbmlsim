@@ -1,64 +1,37 @@
 """The cache of the responses of the simulations and the route which serves it.
 
-The fixtures are the ones of the tests of the app, built here again: the two
-files share no fixture, so a cache of one of them is never the cache of the
-other. The app of a test is its own, as the cache belongs to the app, and the
-registry is the one of the HCTZ example with the panel of the tests.
+The model, the panel and the application of the tests are the fixtures of
+`tests/serve/conftest.py`, whose application and client are of the test, so
+every test is answered by a cache of its own.
 """
 
 import threading
-from collections.abc import Iterator
+from collections import OrderedDict
+from collections.abc import Callable
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import sbmlsim
-from examples.hctz_fitting import MODEL_PATH
-from examples.hctz_fitting.project import PROJECT
-from sbmlsim.panel import Choice, Knob, Panel, PanelCurve, PanelSimulation
-from sbmlsim.project import Project
 from sbmlsim.serve.app import CACHE_CONTROL, NOT_STORED, create_app
 from sbmlsim.serve.cache import MAX_ENTRIES, ResponseCache
 from sbmlsim.serve.payload import Provenance, SimulateResponse, Status
-from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
+from sbmlsim.serve.runner import ModelRegistry, PanelRunner
+from tests.serve.conftest import SIMULATE
 
-#: one day in the time unit of the model
-END = 24 * 60.0
-#: the output points of the panel, fewer than a real panel so the tests are quick
-POINTS = 20
-#: the simulation of the panel of the tests
-SIMULATE = "/api/models/hctz/panels/renal/simulate"
 #: the request of the tests, which is simulated once
 BODY = {"values": {"dose": 25.0}, "grid": {"egfr": 3}}
 #: another request, which is another simulation
 OTHER = {"values": {"dose": 12.5}, "grid": {}}
-
-EGFR = Knob(
-    id="egfr",
-    label="renal function",
-    target="f_renal_function",
-    unit="dimensionless",
-    kind="range",
-    min=0.2,
-    max=1.0,
-    steps=5,
-    default=1.0,
-)
-DOSE = Knob(
-    id="dose",
-    label="dose",
-    target="PODOSE_hctz",
-    unit="mg",
-    kind="choice",
-    choices=(
-        Choice(label="12.5 mg", value=12.5),
-        Choice(label="25 mg", value=25.0),
-        Choice(label="50 mg", value=50.0),
-    ),
-    default=25.0,
-)
+#: the caching of a stored response, the contract of the route; the literal and
+#: not `CACHE_CONTROL`, which is the code under test
+IMMUTABLE = "public, max-age=31536000, immutable"
+#: the seconds an interleaved `put` is given to run inside the window of
+#: another one, see `test_a_put_which_interleaves_another_one_waits_for_it`
+INTERLEAVE = 0.2
+#: the seconds a wait which must succeed gives up after, i.e. a failed test
+TIMEOUT = 60.0
 
 
 class Counter:
@@ -68,46 +41,23 @@ class Counter:
         self.calls = 0
 
 
-@pytest.fixture(scope="module")
-def panel() -> Panel:
-    return Panel(
-        id="renal",
-        title="Hydrochlorothiazide in renal impairment",
-        subtitle="the plasma concentration over the renal function",
-        x_label="time (min)",
-        knobs=(EGFR, DOSE),
-        curves=(
-            PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
-        ),
-        simulation=PanelSimulation(
-            end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}
-        ),
-    )
+class Interleaved(OrderedDict[str, SimulateResponse]):
+    """The entries of a cache which let a hook in while a `put` stores.
 
+    The hook runs once, inside `__setitem__` and after the entry was added,
+    which is the window in the middle of a `put`: the entry is in the mapping
+    and the eviction has not run yet.
+    """
 
-@pytest.fixture(scope="module")
-def project(panel: Panel) -> Project:
-    """The project of the HCTZ example with the panel of the tests."""
-    return PROJECT.replace(variants={"default": MODEL_PATH}, panels={"renal": panel})
+    def __init__(self, hook: Callable[[], None]) -> None:
+        super().__init__()
+        self._hook: Callable[[], None] | None = hook
 
-
-@pytest.fixture(scope="module")
-def registry(project: Project) -> ModelRegistry:
-    return ModelRegistry(
-        {"hctz": ModelEntry(id="hctz", project=project, title="Hydrochlorothiazide")}
-    )
-
-
-@pytest.fixture
-def app(registry: ModelRegistry) -> FastAPI:
-    """An app of its own, whose cache of the responses is empty."""
-    return create_app(registry)
-
-
-@pytest.fixture
-def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app) as client:
-        yield client
+    def __setitem__(self, key: str, value: SimulateResponse) -> None:
+        super().__setitem__(key, value)
+        hook, self._hook = self._hook, None
+        if hook is not None:
+            hook()
 
 
 @pytest.fixture
@@ -122,16 +72,6 @@ def counting_runner(monkeypatch: pytest.MonkeyPatch) -> Counter:
 
     monkeypatch.setattr(PanelRunner, "run", counted)
     return counter
-
-
-@pytest.fixture
-def never_runs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fail the test if a panel is run at all."""
-
-    def refuse(*args: Any, **kwargs: Any) -> Any:
-        pytest.fail("the request reached the runner")
-
-    monkeypatch.setattr(PanelRunner, "run", refuse)
 
 
 def _response(spec_hash: str, *, seconds: float = 1.0) -> SimulateResponse:
@@ -167,6 +107,16 @@ def _response(spec_hash: str, *, seconds: float = 1.0) -> SimulateResponse:
 def _hash(character: str) -> str:
     """Get a hash of one character, see `_response`."""
     return character * 64
+
+
+def _put(
+    cache: ResponseCache, response: SimulateResponse, failed: list[BaseException]
+) -> None:
+    """Store a response and record what the `put` raised, if anything."""
+    try:
+        cache.put(response)
+    except BaseException as error:
+        failed.append(error)
 
 
 def test_the_same_request_twice_simulates_once(
@@ -207,7 +157,8 @@ def test_a_stored_response_is_served_by_its_hash_as_immutable(
     assert answer.json()["curves"] == body["curves"]
     assert answer.json() == body
     assert "immutable" in answer.headers["cache-control"]
-    assert answer.headers["cache-control"] == CACHE_CONTROL
+    assert answer.headers["cache-control"] == IMMUTABLE
+    assert CACHE_CONTROL == IMMUTABLE
     # the hash of a response is its lower case hexadecimal digits and nothing
     # else, so the route answers that one spelling of it
     upper = client.get(f"/api/sim/{body['spec_hash'].upper()}")
@@ -332,8 +283,50 @@ def test_a_cache_of_no_entry_is_refused() -> None:
         ResponseCache(max_entries=0)
 
 
-def test_the_cache_is_safe_from_several_threads() -> None:
-    """The route is a sync `def`, so two requests are genuinely concurrent."""
+def test_a_put_which_interleaves_another_one_waits_for_it() -> None:
+    """The lock of the cache, pinned where a `put` without it breaks.
+
+    A `put` of a full cache adds its entry and then evicts, and the thread of
+    the second `put` is let in exactly between the two (`Interleaved`): it
+    parks on the lock until the first `put` is through, which is the only
+    order in which both entries are stored and one of them is evicted. A cache
+    whose `put` does not hold the lock runs the second one inside that window,
+    which evicts the entry the first one is storing and leaves it to fail in
+    `move_to_end`.
+    """
+    cache = ResponseCache(max_entries=1)
+    first, second = _response(_hash("a")), _response(_hash("b"))
+    failed: list[BaseException] = []
+    threads: list[threading.Thread] = []
+
+    def interleave() -> None:
+        thread = threading.Thread(target=_put, args=(cache, second, failed))
+        threads.append(thread)
+        thread.start()
+        # the lock parks it, so the wait is the whole of it; an unlocked cache
+        # runs the `put` here, well inside this window
+        thread.join(timeout=INTERLEAVE)
+
+    cache._entries = Interleaved(interleave)
+    _put(cache, first, failed)
+    for thread in threads:
+        thread.join(timeout=TIMEOUT)
+        assert not thread.is_alive()
+    assert failed == []
+    assert len(cache) == 1
+    # the second `put` is the later one, so it is the entry which is kept
+    assert cache.get(second.spec_hash) is second
+    assert cache.get(first.spec_hash) is None
+
+
+def test_many_threads_put_and_get_without_breaking_the_cache() -> None:
+    """A smoke test of the workload, which a cache without its lock passes too.
+
+    The guarantee of the lock is pinned by
+    `test_a_put_which_interleaves_another_one_waits_for_it`; this one is the
+    broad workload, four threads over more hashes than the cache keeps, and
+    only says that it runs through and ends with the entries it may hold.
+    """
     entries = 16
     cache = ResponseCache(max_entries=entries)
     hashes = [f"{index:064x}" for index in range(256)]
@@ -349,7 +342,7 @@ def test_the_cache_is_safe_from_several_threads() -> None:
     for thread in threads:
         thread.start()
     for thread in threads:
-        thread.join(timeout=60.0)
+        thread.join(timeout=TIMEOUT)
     assert not [thread for thread in threads if thread.is_alive()]
     assert len(cache) == entries
     stored = {

@@ -1,146 +1,26 @@
 """The HTTP API over the panels of the served models.
 
-The panel of the tests is built here and bound to the project of the HCTZ
-example with `Project.replace(panels=...)`, as a model whose SBML carries the
-annotation of its panels is not part of this task; the tests of the runner
-build their own, the two share no fixture.
-
-The time unit of the HCTZ model is minutes, which is the unit the `end` of a
-`PanelSimulation` and the x of a result are in.
+The model, the panel and the application of the tests are the fixtures of
+`tests/serve/conftest.py`; the tests of the runner build their own.
 """
 
 import json
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
-from examples.hctz_fitting.project import PROJECT
-from sbmlsim.panel import (
-    CONTRACT,
-    Choice,
-    Knob,
-    Panel,
-    PanelCurve,
-    PanelSimulation,
-)
+from sbmlsim.panel import CONTRACT, Panel
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
+from tests.serve.conftest import END, PANEL, POINTS, SIMULATE
 
 #: the reference of the project of the HCTZ example
 HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"
-#: one day in the time unit of the model
-END = 24 * 60.0
-#: the output points of the panel, fewer than a real panel so the tests are quick
-POINTS = 50
-#: the panel of the tests
-PANEL = "/api/models/hctz/panels/renal"
-#: the simulation of that panel
-SIMULATE = f"{PANEL}/simulate"
-
-EGFR = Knob(
-    id="egfr",
-    label="renal function",
-    target="f_renal_function",
-    unit="dimensionless",
-    kind="range",
-    min=0.2,
-    max=1.0,
-    steps=5,
-    default=1.0,
-)
-DOSE = Knob(
-    id="dose",
-    label="dose",
-    target="PODOSE_hctz",
-    unit="mg",
-    kind="choice",
-    choices=(
-        Choice(label="12.5 mg", value=12.5),
-        Choice(label="25 mg", value=25.0),
-        Choice(label="50 mg", value=50.0),
-    ),
-    default=25.0,
-)
-
-
-@pytest.fixture(scope="module")
-def panel() -> Panel:
-    return Panel(
-        id="renal",
-        title="Hydrochlorothiazide in renal impairment",
-        subtitle="the plasma concentration over the renal function",
-        x_label="time (min)",
-        knobs=(EGFR, DOSE),
-        curves=(
-            PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
-        ),
-        simulation=PanelSimulation(
-            end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}
-        ),
-    )
-
-
-@pytest.fixture(scope="module")
-def project(panel: Panel) -> Project:
-    """The project of the HCTZ example with the panel of the tests."""
-    return PROJECT.replace(variants={"default": MODEL_PATH}, panels={"renal": panel})
-
-
-@pytest.fixture(scope="module")
-def registry(project: Project) -> ModelRegistry:
-    return ModelRegistry(
-        {"hctz": ModelEntry(id="hctz", project=project, title="Hydrochlorothiazide")}
-    )
-
-
-@pytest.fixture(scope="module")
-def app(registry: ModelRegistry) -> FastAPI:
-    return create_app(registry)
-
-
-@pytest.fixture(scope="module")
-def client(app: FastAPI) -> Iterator[TestClient]:
-    with TestClient(app) as client:
-        yield client
-
-
-@pytest.fixture
-def fresh_client(registry: ModelRegistry) -> Iterator[TestClient]:
-    """A client of an app of its own, whose cache of the responses is empty.
-
-    A request which the cache of the module's client answers is no run, so a
-    test of a run which fails asks an app which has not simulated it, see
-    `tests/serve/test_cache.py`.
-    """
-    with TestClient(create_app(registry)) as client:
-        yield client
-
-
-@pytest.fixture
-def never_runs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fail the test if a panel is run at all."""
-
-    def refuse(*args: Any, **kwargs: Any) -> Any:
-        pytest.fail("the request reached the runner")
-
-    monkeypatch.setattr(PanelRunner, "run", refuse)
-
-
-@pytest.fixture
-def never_loads(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fail the test if a model is loaded or read at all."""
-
-    def refuse(*args: Any, **kwargs: Any) -> Any:
-        pytest.fail("the request reached the model")
-
-    monkeypatch.setattr(PanelRunner, "_warm_model", refuse)
 
 
 def test_healthz_answers_without_a_model(client: TestClient) -> None:
@@ -315,7 +195,7 @@ def test_an_unknown_knob_id_is_422_and_loads_no_model(
 
 
 def test_a_value_error_of_a_run_is_500_and_carries_nothing_of_it(
-    fresh_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Only the knob ids of a request are answered, no other `ValueError`.
 
@@ -327,7 +207,7 @@ def test_a_value_error_of_a_run_is_500_and_carries_nothing_of_it(
         raise ValueError("'f_renal_function' is no selection of src/sbmlsim")
 
     monkeypatch.setattr(PanelRunner, "run", broken)
-    response = fresh_client.post(SIMULATE, json={"values": {}, "grid": {}})
+    response = client.post(SIMULATE, json={"values": {}, "grid": {}})
     assert response.status_code == 500
     assert response.json() == {"detail": FAILED}
     assert "f_renal_function" not in response.text
@@ -378,13 +258,13 @@ def test_a_value_which_is_no_number_is_422_and_runs_nothing(
 
 
 def test_the_error_body_carries_no_traceback_and_no_path(
-    fresh_client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def broken(*args: Any, **kwargs: Any) -> Any:
         raise RuntimeError(f"'{MODEL_PATH}' of {HCTZ_REFERENCE} did not integrate")
 
     monkeypatch.setattr(PanelRunner, "run", broken)
-    response = fresh_client.post(SIMULATE, json={"values": {}, "grid": {}})
+    response = client.post(SIMULATE, json={"values": {}, "grid": {}})
     assert response.status_code == 500
     assert set(response.json()) == {"detail"}
     text = response.text

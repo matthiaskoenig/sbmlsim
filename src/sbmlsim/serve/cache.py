@@ -106,12 +106,11 @@ class ResponseCache:
         Args:
             response: the response, stored under its `spec_hash`.
         """
+        evicted: list[str] = []
         with self._lock:
             self._entries[response.spec_hash] = response
             self._entries.move_to_end(response.spec_hash)
-            evicted = [
-                self._entries.popitem(last=False)[0]
-                for _ in range(len(self._entries) - self._max_entries)
-            ]
+            while len(self._entries) > self._max_entries:
+                evicted.append(self._entries.popitem(last=False)[0])
         for spec_hash in evicted:
             logger.debug("The response '%s' was evicted from the cache.", spec_hash)
