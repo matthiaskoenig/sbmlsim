@@ -76,10 +76,11 @@ DOSE = Knob(
 
 #: the cumulative amount of hydrochlorothiazide in the urine of the fourth
 #: subject of Beermann 1976 after 5 mg orally, measured in mg and delivered in
-#: the unit of the curve its id names, `umol`
+#: the unit of the curve it belongs under, the `umol` of `Aurine_hctz`
 URINE = PanelData(
-    id="Aurine_hctz",
+    id="beermann1976_urine",
     label="Beermann 1976 (5 mg, oral)",
+    curve="Aurine_hctz",
     dataset="Beermann1976_Tab1A",
     x="time",
     y="value",

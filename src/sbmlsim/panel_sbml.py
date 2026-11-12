@@ -17,7 +17,7 @@ a release:
             <option label="severe" value="0.2"/>
           </knob>
           <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
-          <data id="vormfelde2006" label="Vormfelde 2006" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)" unit="uM">
+          <data id="vormfelde2006" label="Vormfelde 2006" curve="Cve_hctz" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
             <select column="label" value="hctz25"/>
           </data>
         </panel>
@@ -32,8 +32,10 @@ is the unit its time axis is delivered in. The `option` children of a knob are
 the `choices` of a knob of the kind `choice`, the `preinit` children of the
 simulation are its `preinit` and the `select` children of a series of the data
 are its `sel`, the rows of its dataset. The `dataset` of a series is the id of
-a figure or a table of a study and no path, and its `conversion` is a quantity
-its values are multiplied by, the molecular weight of a substance above. The
+a figure or a table of a study and no path, its `curve` is the curve of the
+panel it belongs under, whose unit it is delivered in, and its `conversion` is
+a quantity its values are multiplied by, the molecular weight of a substance
+above. The
 tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
 `_KNOB_ATTRIBUTES`, `_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and
 `_DATA_ATTRIBUTES` own these names, so the reader and the writer cannot
@@ -139,7 +141,17 @@ _CURVE_ATTRIBUTES: Final = {name: name for name in ("id", "label", "unit", "scal
 #: the fields of one series of the study data, its `sel` the `select` children
 _DATA_ATTRIBUTES: Final = {
     name: name
-    for name in ("id", "label", "dataset", "x", "y", "yerr", "conversion", "unit")
+    for name in (
+        "id",
+        "label",
+        "curve",
+        "dataset",
+        "x",
+        "y",
+        "yerr",
+        "conversion",
+        "unit",
+    )
 }
 
 #: a panel or one of its parts, which the writer reads the fields of

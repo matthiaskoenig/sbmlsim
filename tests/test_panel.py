@@ -71,6 +71,7 @@ def panel() -> Panel:
             PanelData(
                 id="beermann1976",
                 label="Beermann 1976",
+                curve="[Cve_hctz]",
                 dataset="Beermann1976_Fig2",
                 x="time",
                 y="mean",
@@ -204,6 +205,42 @@ def test_a_dataset_which_is_no_dataset_id_is_refused(dataset: str) -> None:
     """A dataset is the id of a figure or a table and never a path."""
     with pytest.raises(ValidationError, match="no dataset"):
         PanelData(id="d", label="d", dataset=dataset, x="time", y="mean")
+
+
+def test_the_curve_of_a_series_is_its_own_id_without_one() -> None:
+    series = PanelData(id="[S1]", label="S1", dataset="Study2000_Fig1", x="t", y="mean")
+    assert series.curve is None
+    assert series.curve_id == "[S1]"
+    assert series.model_copy(update={"curve": "[S2]"}).curve_id == "[S2]"
+
+
+def test_two_series_of_one_curve_are_accepted_and_of_one_id_are_not() -> None:
+    """A panel shows two studies under one curve, with distinct ids."""
+    first = PanelData(
+        id="study2000",
+        label="Study 2000",
+        curve="[S1]",
+        dataset="Study2000_Fig1",
+        x="t",
+        y="mean",
+    )
+    second = first.model_copy(update={"id": "study2010", "label": "Study 2010"})
+    panel = Panel(
+        id="p",
+        title="p",
+        curves=(PanelCurve(id="[S1]", label="S1"),),
+        data=(first, second),
+        simulation=PanelSimulation(end=1.0),
+    )
+    assert [series.curve_id for series in panel.data] == ["[S1]", "[S1]"]
+    with pytest.raises(ValidationError, match="study2000"):
+        Panel(
+            id="p",
+            title="p",
+            curves=(PanelCurve(id="[S1]", label="S1"),),
+            data=(first, first),
+            simulation=PanelSimulation(end=1.0),
+        )
 
 
 def test_two_knobs_of_one_id_are_refused() -> None:

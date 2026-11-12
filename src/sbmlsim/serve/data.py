@@ -1,9 +1,9 @@
 """The study data behind the curves of a panel.
 
-`panel_data(entry, panel)` reads the study data a panel declares
+`panel_data(entry, panel, x_unit)` reads the study data a panel declares
 (`sbmlsim.panel.PanelData`) out of the data of the project of its model and
-gives one `DataSeries` per declaration: the measured points a reader sees under
-the simulated curves.
+gives one `PanelSeries` per declaration: the measured points a reader sees
+under the simulated curves.
 
 A series names its dataset by the id of a figure or a table of a study, e.g.
 `Beermann1976_Fig2`, which `sbmlsim.data.load_pkdb_dataframe` resolves below
@@ -16,20 +16,27 @@ and its columns `x` and `y` are read with the units of the dataset
 (`sbmlsim.data.DataSet.from_df`). The values and their error are multiplied by
 the `conversion` the series declares, e.g. by the inverse of a molecular weight
 for the mass of a study which the model carries as a substance, and are
-delivered in the unit the series declares, else in the unit of the curve its
-`id` names, so the points and the curve share the axis of the panel. A row
-whose time or value is no number is no point of the series, so the answer
-carries no `NaN`, which JSON has not.
+delivered in the unit the series declares, else in the unit of the curve it
+belongs under (`PanelData.curve`, its own id without), so the points and the
+curve share the axis of the panel. Several series may belong under one curve,
+e.g. two studies, and are delivered in that one unit. A row whose time or value
+is no number is no point of the series, so the answer carries no `NaN`, which
+JSON has not.
 
-The times are delivered in the `x_unit` of the panel, else in the unit of the
-time column of the dataset, which `DataSeries.x_unit` names: a panel whose
-model has another time unit declares `x_unit`, which the curves of its
-simulation are delivered in as well (`sbmlsim.serve.runner`).
+The times are delivered in `x_unit`, the unit the x of the panel is delivered
+in: the caller resolves it, and the one caller of the service is the route,
+which takes it from `sbmlsim.serve.runner.PanelRunner.x_unit`, the unit a run
+of the same panel reports in `units["x"]`. The points of a reader are therefore
+on the axis of its lines, whatever the time unit of the dataset is; a model
+whose time has no unit (an empty `x_unit`) delivers the times of the dataset as
+they are.
 
 Every problem of a declaration is a `ValueError` which names the series, its
 dataset and its columns or units and never a path of the service, which the
 route answers with its own fixed message (`sbmlsim.serve.app`). Nothing here
-loads a model: the data of a panel is read from the files of its project alone.
+loads a model: the data of a panel is read from the files of its project alone,
+and only the `x_unit` of a panel which declares none needs the model, which the
+runner keeps warm.
 """
 
 from __future__ import annotations
@@ -52,7 +59,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["COUNT", "DataSeries", "panel_data"]
+__all__ = ["COUNT", "PanelSeries", "panel_data"]
 
 #: the column of the number of subjects behind a point, as a table of a study
 #: carries it; a series of a dataset without it has no counts
@@ -60,18 +67,20 @@ COUNT: Final = "count"
 
 
 @dataclass(frozen=True)
-class DataSeries:
+class PanelSeries:
     """One series of the study data of a panel, see the module.
 
     Attributes:
-        id: the id of the series, the one the panel declares; it names the
-            curve the series belongs under.
+        id: the id of the series, the one the panel declares; the curve it
+            belongs under is `PanelData.curve` of that declaration.
         label: the series as it is shown, e.g. the study it comes from.
-        x: the times of the points, in the unit `x_unit` names.
+        x: the times of the points, in the unit `x_unit` names, which is the
+            unit of the x of a simulation of the same panel.
         y: the values of the points, in the unit `unit` names.
         yerr: the error of every value, `None` for a point without one; `None`
             for a series which declares no column of the error.
-        x_unit: the unit of the times, `None` for a time column without one.
+        x_unit: the unit of the times, `None` for a model whose time has no
+            unit, whose times are the ones of the dataset.
         unit: the unit of the values, `None` for a series which names no curve
             and whose column has no unit.
         count: the number of subjects behind every point, `None` for a dataset
@@ -89,12 +98,17 @@ class DataSeries:
     count: list[int] | None
 
 
-def panel_data(entry: ModelEntry, panel: Panel) -> list[DataSeries]:
+def panel_data(entry: ModelEntry, panel: Panel, x_unit: str) -> list[PanelSeries]:
     """Read the study data a panel declares, see the module.
 
     Args:
         entry: the model of the panel, whose project holds the data.
         panel: the panel.
+        x_unit: the unit the times are delivered in, the unit the x of the
+            panel is delivered in: `sbmlsim.serve.runner.PanelRunner.x_unit`
+            of the same panel, so the points are on the axis of the curves.
+            An empty unit, i.e. a model whose time has no unit, delivers the
+            times of the dataset as they are.
 
     Returns:
         One series per declaration of the panel, in the order the panel
@@ -106,18 +120,21 @@ def panel_data(entry: ModelEntry, panel: Panel) -> list[DataSeries]:
         ValueError: naming the series and what is wrong with it, for a dataset
             of a project without a `data_path`, a selection which no row has,
             a column the dataset has not or which carries no numbers, a
-            conversion which is no quantity and a series which cannot be
-            delivered in the unit it is declared in.
+            conversion which is no quantity, a series whose times cannot be
+            delivered in `x_unit` and one which cannot be delivered in the
+            unit it is declared in.
     """
-    return [_series(entry, panel, declared) for declared in panel.data]
+    return [_series(entry, panel, declared, x_unit) for declared in panel.data]
 
 
-def _series(entry: ModelEntry, panel: Panel, declared: PanelData) -> DataSeries:
+def _series(
+    entry: ModelEntry, panel: Panel, declared: PanelData, x_unit: str
+) -> PanelSeries:
     """Read one series of the study data of a panel, see `panel_data`."""
     frame = load_pkdb_dataframe(declared.dataset, data_path=entry.project.data_path)
     dset = DataSet.from_df(_selected(frame, declared))
     conversion = _conversion(declared)
-    times, x_unit = _delivered(dset, declared, declared.x, panel.simulation.x_unit)
+    times, time_unit = _delivered(dset, declared, declared.x, x_unit or None)
     values, unit = _delivered(
         dset, declared, declared.y, _unit_of_series(panel, declared), conversion
     )
@@ -135,13 +152,13 @@ def _series(entry: ModelEntry, panel: Panel, declared: PanelData) -> DataSeries:
         int(keep.sum()),
         unit,
     )
-    return DataSeries(
+    return PanelSeries(
         id=declared.id,
         label=declared.label,
         x=[float(value) for value in times[keep]],
         y=[float(value) for value in values[keep]],
         yerr=errors,
-        x_unit=x_unit,
+        x_unit=time_unit,
         unit=unit,
         count=_counts(dset, keep),
     )
@@ -210,13 +227,15 @@ def _unit_of_series(panel: Panel, declared: PanelData) -> str | None:
         declared: the declaration of the series.
 
     Returns:
-        The unit the series declares, else the unit of the curve its `id`
-        names, `None` for a series which names no curve or a curve without a
-        unit, which is delivered in the unit of its dataset.
+        The unit the series declares, else the unit of the curve it belongs
+        under (`PanelData.curve_id`), `None` for a series which names no curve
+        of the panel or one without a unit, which is delivered in the unit of
+        its dataset.
     """
     if declared.unit is not None:
         return declared.unit
-    return next((curve.unit for curve in panel.curves if curve.id == declared.id), None)
+    wanted = declared.curve_id
+    return next((curve.unit for curve in panel.curves if curve.id == wanted), None)
 
 
 def _delivered(

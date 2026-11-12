@@ -15,7 +15,9 @@ request without a grid, in the unit the curve declares or else in the unit of
 the model; the x of the result is the grid of `points + 1` times from 0 to the
 `end` of the panel, which are in the time unit of the model, delivered in the
 `x_unit` the panel declares or else in that time unit, which `units["x"]`
-names. A point which does not integrate is `NaN` and its flat index is in
+names and which `x_unit(model_id, panel)` answers without a run, so the study
+data of a panel (`sbmlsim.serve.data`) is drawn on the axis of its curves. A
+point which does not integrate is `NaN` and its flat index is in
 `failed`, never an exception: a knob value a reader turns to may be a value
 the model does not simulate.
 
@@ -356,6 +358,38 @@ class PanelRunner:
             )
             return _result(warm.model, panel, axes, result)
 
+    def x_unit(self, model_id: str, panel: Panel) -> str:
+        """Get the unit the x of a panel is delivered in, see `_times`.
+
+        It is the unit `PanelResult.units[X]` of a run of the panel names, so
+        a reader which draws the study data of a panel
+        (`sbmlsim.serve.data.panel_data`) draws it on the axis of its curves:
+        the `x_unit` the panel declares, else the time unit of its model.
+
+        The time unit needs the model, which is the warm model of the entry,
+        the one a run of the panel integrates on, so the two cannot disagree;
+        a panel which declares its `x_unit` is answered without it.
+
+        Args:
+            model_id: the id of the model, see `ModelRegistry`.
+            panel: the panel.
+
+        Returns:
+            The unit, empty for a model whose time has no unit, whose times
+            are delivered as they are.
+
+        Raises:
+            UnknownModel: for a model which is not served.
+            ValueError: if the project of the entry has no model variants.
+            KeyError: for a variant the project does not have.
+        """
+        declared = panel.simulation.x_unit
+        if declared is not None:
+            return declared
+        entry = self.registry.entry(model_id)
+        warm = self._warm_model(entry, panel.simulation.variant)
+        return _time_unit(warm.model)
+
     def _warm_model(self, entry: ModelEntry, variant: str | None) -> _Warm:
         """Get the warm model of a variant of an entry, loaded on its first use.
 
@@ -472,6 +506,22 @@ def _scan(
     return Scan(simulation, dimensions), tuple(axes)
 
 
+def _time_unit(model: SBMLModel) -> str:
+    """Get the time unit of a model, the unit the time of a result is in.
+
+    It is the unit the scan core puts into `ScanResult.units[TIME]`, read
+    from the same place, so the x of a result and the x of its study data are
+    the same unit, see `PanelRunner.x_unit`.
+
+    Args:
+        model: the model.
+
+    Returns:
+        The unit, empty for a model whose time has no unit.
+    """
+    return model.uinfo.get(TIME, "") or ""
+
+
 def _unit_of(model: SBMLModel, knob: Knob) -> str | None:
     """Get the unit of the values of a knob, the one of its target without one.
 
@@ -533,7 +583,7 @@ def _times(
     """
     times = result.quantity(TIME)
     declared = panel.simulation.x_unit
-    model_unit = result.units.get(TIME, "")
+    model_unit = _time_unit(model)
     if declared is None:
         return tuple(float(time) for time in times.magnitude), model_unit
     try:

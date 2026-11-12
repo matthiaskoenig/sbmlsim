@@ -54,7 +54,6 @@ from sbmlsim.panel import CONTRACT, Panel, panel_payload
 from sbmlsim.serve.cache import ResponseCache
 from sbmlsim.serve.data import panel_data
 from sbmlsim.serve.payload import (
-    DataSeriesPayload,
     HealthResponse,
     ModelPayload,
     ModelsResponse,
@@ -62,6 +61,7 @@ from sbmlsim.serve.payload import (
     PanelPayload,
     PanelsResponse,
     Provenance,
+    SeriesPayload,
     SimulateRequest,
     SimulateResponse,
 )
@@ -246,9 +246,16 @@ def create_app(
     def data_of(model: str, panel: str) -> PanelDataResponse:
         """Get the study data behind the curves of a panel.
 
-        The data is read from the data of the project of the model and no
-        model is loaded, so the route is a sync `def` and reads the files in
-        the thread pool of the server, as `panel_of` does.
+        The data is read from the data of the project of the model, so the
+        route is a sync `def` and reads the files in the thread pool of the
+        server, as `panel_of` does.
+
+        The times are delivered in the unit the x of a simulation of the same
+        panel is delivered in (`PanelRunner.x_unit`), so a reader draws the
+        points on the axis of the curves. A panel which declares its `x_unit`
+        is answered without its model; a panel which declares none is
+        answered in the time unit of its model, which loads it, the one load
+        a run of the panel pays as well.
 
         Args:
             model: the id of the model.
@@ -269,7 +276,9 @@ def create_app(
         """
         entry, declaration, _ = resolved(model, panel)
         try:
-            series = panel_data(entry, declaration)
+            series = panel_data(entry, declaration, runner.x_unit(model, declaration))
+        except UnknownModel, UnknownPanel:
+            raise
         except Exception:
             logger.exception(
                 "The study data of the panel '%s' of the model '%s' cannot be read.",
@@ -277,7 +286,7 @@ def create_app(
                 model,
             )
             raise HTTPException(status_code=500, detail=FAILED) from None
-        return PanelDataResponse(series=[DataSeriesPayload.of(one) for one in series])
+        return PanelDataResponse(series=[SeriesPayload.of(one) for one in series])
 
     @app.post("/api/models/{model}/panels/{panel}/simulate")
     def simulate(model: str, panel: str, request: SimulateRequest) -> SimulateResponse:

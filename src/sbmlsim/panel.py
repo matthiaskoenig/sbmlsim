@@ -217,10 +217,12 @@ class PanelData(BaseModel):
     `sbmlsim.serve.data`.
 
     Attributes:
-        id: the id of the series, the key of its values in a result; a series
-            whose id is the id of a curve of the panel belongs under that
-            curve and is delivered in its unit.
+        id: the id of the series, the key of its values in a result; the ids
+            of the series of a panel are distinct, also of two series of one
+            curve, e.g. of two studies.
         label: the series as it is shown, e.g. the study it comes from.
+        curve: the curve of the panel the series belongs under, whose unit it
+            is delivered in; its own `id` without, see `curve_id`.
         dataset: the dataset of the series, the id of a figure or a table of a
             study, e.g. `"Beermann1976_Fig2"`; it is no path, see `_DATASET`.
         x: the column of the times.
@@ -233,15 +235,15 @@ class PanelData(BaseModel):
         conversion: a quantity the values and their error are multiplied by
             before they are delivered, e.g. `"1/(297.7 g/mole)"` for the mass
             of a study which the model carries as a substance; none without.
-        unit: the unit of the values, the one of the curve the `id` names
-            without, and the one of the dataset for a series which names no
-            curve.
+        unit: the unit of the values, the one of its curve without, and the
+            one of the dataset for a series which names no curve of the panel.
     """
 
     model_config = _CONFIG
 
     id: str
     label: str
+    curve: str | None = None
     dataset: str
     x: str
     y: str
@@ -249,6 +251,17 @@ class PanelData(BaseModel):
     sel: Mapping[str, str] | None = None
     conversion: str | None = None
     unit: str | None = None
+
+    @property
+    def curve_id(self) -> str:
+        """The id of the curve the series belongs under, its own `id` without.
+
+        It is the one place the default of `curve` lives: a series which
+        declares none belongs under the curve of its own id, so a panel of one
+        series per curve names it once, and a panel of two studies under one
+        curve names the curve in both of them.
+        """
+        return self.curve if self.curve is not None else self.id
 
     @model_validator(mode="after")
     def _check_dataset(self) -> Self:
@@ -308,7 +321,9 @@ class Panel(BaseModel):
             `MAX_KNOBS` of them, the knobs one request drives.
         curves: the curves of the panel, in the order they are drawn; at most
             `MAX_CURVES`.
-        data: the study data of the panel, drawn under its curves.
+        data: the study data of the panel, drawn under its curves; several
+            series may belong under one curve, e.g. two studies, and their
+            ids are distinct whether they do or not.
         simulation: the simulation the panel runs.
     """
 

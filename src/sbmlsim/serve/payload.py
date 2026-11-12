@@ -18,7 +18,7 @@ The answer is a `SimulateResponse`, the `PanelResult` of that run with its
 JSON has no `NaN`: a point which did not integrate is `null` in the curves and
 its flat index is in `Status.failed`, which is where a renderer reads it.
 
-The study data behind the curves is a `PanelDataResponse` of the `DataSeries`
+The study data behind the curves is a `PanelDataResponse` of the `PanelSeries`
 of `sbmlsim.serve.data`, which carries the contract `DATA_CONTRACT` of its own:
 the series are no part of the declaration of a panel and a renderer which draws
 them reads their version.
@@ -34,12 +34,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sbmlsim.panel import CONTRACT, MAX_GRID, MAX_KNOBS
 
 if TYPE_CHECKING:
-    from sbmlsim.serve.data import DataSeries
+    from sbmlsim.serve.data import PanelSeries
     from sbmlsim.serve.runner import GridAxis, PanelResult
 
 __all__ = [
     "DATA_CONTRACT",
-    "DataSeriesPayload",
     "GridAxisPayload",
     "HealthResponse",
     "ModelPayload",
@@ -48,6 +47,7 @@ __all__ = [
     "PanelPayload",
     "PanelsResponse",
     "Provenance",
+    "SeriesPayload",
     "SimulateRequest",
     "SimulateResponse",
     "Status",
@@ -243,17 +243,20 @@ class SimulateResponse(BaseModel):
         )
 
 
-class DataSeriesPayload(BaseModel):
-    """One series of the study data of a panel, the payload of a `DataSeries`.
+class SeriesPayload(BaseModel):
+    """One series of the study data of a panel, the payload of a `PanelSeries`.
 
     Attributes:
-        id: the id of the series, which names the curve it belongs under.
+        id: the id of the series, the one of its declaration, which names the
+            curve it belongs under (`sbmlsim.panel.PanelData.curve`).
         label: the series as it is shown, e.g. the study it comes from.
-        x: the times of the points, in the unit `x_unit` names.
+        x: the times of the points, in the unit `x_unit` names, which is the
+            unit of the x of a simulation of the same panel.
         y: the values of the points, in the unit `unit` names.
         yerr: the error of every value, `null` for a point without one, and
             `null` for a series without a column of the error.
-        x_unit: the unit of the times, `null` for a time column without one.
+        x_unit: the unit of the times, `null` for a model whose time has no
+            unit.
         unit: the unit of the values, `null` for a series which names no curve
             and whose column has no unit.
         count: the number of subjects behind every point, `null` for a dataset
@@ -272,7 +275,7 @@ class DataSeriesPayload(BaseModel):
     count: list[int] | None
 
     @classmethod
-    def of(cls, series: DataSeries) -> DataSeriesPayload:
+    def of(cls, series: PanelSeries) -> SeriesPayload:
         """Get the payload of a series of the study data.
 
         Args:
@@ -306,7 +309,7 @@ class PanelDataResponse(BaseModel):
     model_config = _CONFIG
 
     contract: str = DATA_CONTRACT
-    series: list[DataSeriesPayload]
+    series: list[SeriesPayload]
 
 
 class ModelPayload(BaseModel):

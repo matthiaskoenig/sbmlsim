@@ -74,13 +74,13 @@ DOCUMENTED = Panel(
         PanelData(
             id="vormfelde2006",
             label="Vormfelde 2006",
+            curve="Cve_hctz",
             dataset="Vormfelde2006_Fig2",
             x="time",
             y="mean",
             yerr="mean_sd",
             sel={"label": "hctz25"},
             conversion="1/(297.7 g/mole)",
-            unit="uM",
         ),
     ),
     simulation=PanelSimulation(
@@ -132,6 +132,7 @@ def panel() -> Panel:
             PanelData(
                 id="elowitz2000",
                 label="Elowitz 2000",
+                curve="[PX]",
                 dataset="Elowitz2000_Fig1",
                 x="time",
                 y="mean",
@@ -211,9 +212,10 @@ def test_the_documented_xml_shape_reads_into_the_panel_it_declares() -> None:
 
 
 def test_the_documented_panel_round_trips_through_the_writer(tmp_path: Path) -> None:
-    """The selection and the conversion of a series are written as well."""
+    """The curve, the selection and the conversion of a series are written too."""
     annotation = panels_to_annotation([DOCUMENTED])
     assert '<select column="label" value="hctz25"/>' in annotation
+    assert 'curve="Cve_hctz"' in annotation
     assert 'conversion="1/(297.7 g/mole)"' in annotation
     write_panels(SBML_IN, tmp_path / "m.xml", [DOCUMENTED])
     assert panels_from_sbml(tmp_path / "m.xml") == ({DOCUMENTED.id: DOCUMENTED}, ())

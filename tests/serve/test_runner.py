@@ -106,6 +106,33 @@ def test_a_declared_x_unit_delivers_the_time_axis_in_it(
     assert result.curves == runner.run("hctz", panel, {"egfr": 1.0}, {}).curves
 
 
+def test_the_x_unit_of_a_panel_is_the_one_of_the_x_of_its_result(
+    runner: PanelRunner, panel: Panel
+) -> None:
+    """`x_unit` answers without a run what a run delivers, see the module."""
+    assert runner.x_unit("hctz", panel) == "min"
+    result = runner.run("hctz", panel, {"egfr": 1.0, "dose": 25.0}, {})
+    assert runner.x_unit("hctz", panel) == result.units["x"]
+
+
+def test_the_x_unit_a_panel_declares_is_answered_without_its_model(
+    registry: ModelRegistry, panel: Panel, loads: list[tuple[str, Path]]
+) -> None:
+    """A panel which declares its x unit is answered by a cold runner."""
+    in_hours = panel.model_copy(
+        update={"simulation": panel.simulation.model_copy(update={"x_unit": "hr"})}
+    )
+    assert PanelRunner(registry).x_unit("hctz", in_hours) == "hr"
+    assert loads == []
+
+
+def test_the_x_unit_of_an_unknown_model_is_refused(
+    runner: PanelRunner, panel: Panel
+) -> None:
+    with pytest.raises(UnknownModel):
+        runner.x_unit("nothing", panel)
+
+
 @pytest.mark.parametrize("x_unit", ["mg", "not_a_unit"])
 def test_an_x_unit_which_is_no_time_of_the_model_is_refused(
     runner: PanelRunner, panel: Panel, x_unit: str
