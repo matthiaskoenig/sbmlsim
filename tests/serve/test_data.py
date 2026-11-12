@@ -15,6 +15,7 @@ the units of the panel from the runner (`series_of`): the runner of the module
 resolves them on one warm model, as the application does.
 """
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from sbmlsim.panel import Panel, PanelCurve, PanelData
+from sbmlsim.panel import Panel, PanelCurve, PanelData, PanelSimulation
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, create_app
 from sbmlsim.serve.data import PanelSeries, panel_data
@@ -81,6 +82,29 @@ MINE_MINUTES = [time * 60.0 for time in MINE_TIMES]
 #: the values of the column of `Mine1999_Tab1` which carries no unit
 RATIOS = [0.21, 0.29]
 
+#: a model which declares no units at all, whose species therefore carry none
+#: while its time is the `second` a model without time units falls back to
+#: (`sbmlsim.units.UnitsInformation.from_sbml`)
+PLAIN_MODEL = Path(__file__).parent.parent / "data" / "models" / "lotka_volterra.xml"
+#: a panel of that model: a curve of a species without a unit and, under it,
+#: the series of the crafted column which carries none either
+PLAIN_PANEL = Panel(
+    id="renal",
+    title="Lotka Volterra",
+    curves=(PanelCurve(id="prey", label="prey"),),
+    data=(
+        PanelData(
+            id="mine1999",
+            label="Mine 1999",
+            curve="prey",
+            dataset="Mine1999_Tab1",
+            x="time",
+            y="ratio",
+        ),
+    ),
+    simulation=PanelSimulation(end=10.0, points=5),
+)
+
 
 @pytest.fixture(scope="module")
 def runner(registry: ModelRegistry) -> PanelRunner:
@@ -90,14 +114,14 @@ def runner(registry: ModelRegistry) -> PanelRunner:
 
 @pytest.fixture
 def crafted(project: Project, tmp_path: Path) -> Project:
-    """A project whose data is two datasets, a relative CV and plain times.
+    """A project whose data is the crafted datasets no study of the example has.
 
-    No dataset of the HCTZ example carries a column of a relative `cv` or
-    times without a unit, which are the two shapes the unit of a column is
-    read in (`sbmlsim.serve.data._unit_of`): `Mine1999_Tab1` has the CV and a
-    column without a unit,
-    `Mine1999_Tab2` the times without a unit and `Mine1999_Tab3` an error
-    which is measured in another unit than its values.
+    `Mine1999_Tab1` carries a relative `cv` and a column without a unit,
+    `Mine1999_Tab2` times without a unit, `Mine1999_Tab3` an error which is
+    measured in another unit than its values, `Mine1999_Tab4` a count which is
+    no number and `Mine1999_Tab5` a point without a count. The CV and the
+    column without a unit are the two shapes the unit of a column is read in
+    (`sbmlsim.serve.data._unit_of`).
     """
     folder = tmp_path / "Mine1999"
     folder.mkdir()
@@ -116,6 +140,17 @@ def crafted(project: Project, tmp_path: Path) -> Project:
         "label\ttime\tmean\tmean_unit\tcount\n"
         "urine\t12\t3.01\tmg\t4\n"
         "urine\t96\t4.13\tmg\t4\n",
+        encoding="utf-8",
+    )
+    (folder / ".Mine1999_Tab4.tsv").write_text(
+        "label\ttime\ttime_unit\tmean\tmean_unit\tcount\n"
+        "urine\t12\thr\t3.01\tmg\tfour\n",
+        encoding="utf-8",
+    )
+    (folder / ".Mine1999_Tab5.tsv").write_text(
+        "label\ttime\ttime_unit\tmean\tmean_unit\tcount\n"
+        "urine\t12\thr\t3.01\tmg\t4\n"
+        "urine\t96\thr\t4.13\tmg\t\n",
         encoding="utf-8",
     )
     return project.replace(data_path=tmp_path)
@@ -275,6 +310,27 @@ def test_a_curve_which_declares_no_unit_is_served_in_the_unit_of_the_model(
     assert series["y"] == pytest.approx([amount * 1e-3 for amount in AMOUNTS])
 
 
+def test_a_curve_the_model_gives_no_unit_is_null_on_both_routes(
+    crafted: Project,
+) -> None:
+    """No unit has one shape on the wire, `null`, and not two texts.
+
+    A renderer compares the unit of a series with the one of the curve it is
+    drawn under, so `paneldata/1` and `panel/1` must state it alike. The model
+    of this panel declares no units, so its species carry none.
+    """
+    client = served(crafted.replace(variants={"default": PLAIN_MODEL}), PLAIN_PANEL)
+    data = client.get(DATA).json()
+    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    series = data["series"][0]
+    assert series["unit"] is None
+    assert series["unit"] == simulated["units"]["prey"]
+    assert simulated["units"]["prey"] != ""
+    # the time of a model without time units is the `second` it falls back to
+    assert series["x_unit"] == simulated["units"]["x"] == "second"
+    assert series["y"] == pytest.approx(RATIOS)
+
+
 def test_the_body_of_a_series_is_json_without_a_nan(client: TestClient) -> None:
     """A row of a dataset which carries no point is no point of the series."""
     assert "NaN" not in client.get(DATA).text
@@ -367,6 +423,36 @@ def test_a_row_without_a_value_is_no_point_of_the_series(
     values = with_data(panel, changed(PATEL, y="value", yerr=None))
     [series] = series_of(runner, project, values)
     assert (series.x, series.y, series.count) == ([], [], None)
+
+
+def test_a_count_which_is_no_number_is_refused_naming_the_series(
+    runner: PanelRunner, crafted: Project, panel: Panel
+) -> None:
+    """The counts are numbers of subjects, a text of the column is a problem."""
+    declared = with_data(panel, changed(MINE, dataset="Mine1999_Tab4"))
+    with pytest.raises(ValueError, match="count") as error:
+        series_of(runner, crafted, declared)
+    message = str(error.value)
+    assert MINE.id in message
+    assert "Mine1999_Tab4" in message
+    assert ".tsv" not in message
+
+
+def test_a_series_whose_points_do_not_all_carry_a_count_carries_none(
+    runner: PanelRunner,
+    crafted: Project,
+    panel: Panel,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A point without a count is no count of one, which is reported."""
+    declared = with_data(panel, changed(MINE, dataset="Mine1999_Tab5"))
+    with caplog.at_level(logging.WARNING, logger="sbmlsim.serve.data"):
+        [series] = series_of(runner, crafted, declared)
+    assert series.count is None
+    assert len(series.y) == 2
+    assert caplog.records
+    for named in (MINE.id, "Mine1999_Tab5", "count"):
+        assert named in caplog.text
 
 
 def test_a_relative_cv_is_no_error_bar_of_a_series(

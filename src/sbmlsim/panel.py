@@ -239,7 +239,10 @@ class PanelData(BaseModel):
             of a study which the model carries as a substance; none without.
         unit: the unit of the values, the one of its curve without, and the
             one of the dataset for a series whose own `id` is no curve of the
-            panel, see `Panel.series_unit`.
+            panel, see `Panel.series_unit`. A unit the series declares itself
+            is the unit its values are delivered in as it is and is not
+            checked against the unit of its curve, so a series may be drawn on
+            a scale of its own.
     """
 
     model_config = _CONFIG

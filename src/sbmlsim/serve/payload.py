@@ -194,7 +194,11 @@ class SimulateResponse(BaseModel):
         dims: the axes of the grid, empty for a run of one point.
         curves: the values of every declared curve, a row per point of the
             grid in C order; a value which is not finite is `null`.
-        units: the unit of every curve and, under `"x"`, of the x.
+        units: the unit of every curve and, under `"x"`, of the x, `null`
+            for values which carry none. They correspond to the `unit` and the
+            `x_unit` of the series of `paneldata/1` of the same panel, which
+            are `null` for no unit as well, so the two sides of an axis state
+            one unit.
         provenance: where the curves come from.
         status: the outcome of the run.
     """
@@ -206,7 +210,7 @@ class SimulateResponse(BaseModel):
     x: list[float]
     dims: list[GridAxisPayload]
     curves: dict[str, list[list[float | None]]]
-    units: dict[str, str]
+    units: dict[str, str | None]
     provenance: Provenance
     status: Status
 

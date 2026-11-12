@@ -101,11 +101,14 @@ class PanelSeries:
             for a series which declares no column of the error.
         x_unit: the unit of the times, `None` for times without one, i.e. a
             model whose time has no unit and a dataset whose time column has
-            none either, whose times are delivered as they are.
+            none either, whose times are delivered as they are. It is the
+            `units["x"]` a simulation of the same panel reports, which is
+            `null` for no unit as well (`sbmlsim.serve.payload`).
         unit: the unit of the values, the one of the curve the series belongs
             under, `None` for a curve the model gives no unit and for a series
             which is delivered in the unit of its dataset and whose column has
-            none.
+            none. It is the unit that curve is drawn in, the `units[<curve>]`
+            a simulation of the same panel reports.
         count: the number of subjects behind every point, `None` for a dataset
             without the column `COUNT` and for one whose points do not all
             carry it.

@@ -178,6 +178,34 @@ def test_an_x_unit_which_is_no_time_of_the_model_is_refused(
         assert "min" in str(error.value)
 
 
+@pytest.mark.parametrize("unit", ["mg", "not_a_unit"])
+def test_a_unit_of_a_curve_which_is_no_unit_of_its_values_is_refused(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel, unit: str
+) -> None:
+    """The declaration is refused once, where a run and the study data meet it.
+
+    `run` is the path of a simulation of the panel, which converts the values
+    of the model, and `units` the path of its study data, which only asks for
+    the unit the curve is drawn in: a declaration the model does not convert
+    to is no unit of the panel on either, and both answer a 500.
+    """
+    bogus = panel.model_copy(
+        update={
+            "curves": (panel.curves[0].model_copy(update={"unit": unit}),),
+            "data": (URINE.model_copy(update={"curve": "Cve_hctz"}),),
+        }
+    )
+    for refuses in (
+        lambda: runner.run("hctz", bogus, {"egfr": 1.0}, {}),
+        lambda: runner.units(registry.entry("hctz"), bogus),
+    ):
+        with pytest.raises(ValueError) as error:
+            refuses()
+        assert unit in str(error.value)
+        # the unit the model gives the selection of the curve
+        assert "mmol" in str(error.value)
+
+
 def test_a_unit_of_a_series_which_is_no_unit_is_refused(
     runner: PanelRunner, registry: ModelRegistry, panel: Panel
 ) -> None:

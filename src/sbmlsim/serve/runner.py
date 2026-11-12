@@ -29,7 +29,11 @@ the curves of a run and for the study data of the same panel alike. The unit of
 a curve is the one rule `_curve_unit` states, the unit it declares and else the
 unit the model gives its selection, so a series of the study data under a curve
 is delivered in the unit that curve is drawn in whether the panel declares it
-or not.
+or not. A declared unit is checked against the unit the model gives those
+values (`_checked`), the `x_unit` against the time of the model and the unit of
+a curve against the unit of its selection, so a declaration which does not
+convert is refused once and alike whether a run converts the values or only the
+units of the panel are asked for.
 
 A model and its simulator are loaded once per model id and SBML file and kept
 warm, and every run of one of them holds its lock: roadrunner instances are
@@ -273,7 +277,7 @@ class DeliveredUnit:
         text: the unit as the panel declares it or as the model gives it,
             which a result reports, e.g. `PanelResult.units` and
             `sbmlsim.serve.data.PanelSeries.unit`; empty for values which
-            carry no unit.
+            carry no unit, which both of them report as `None`.
         unit: that unit, the one the values are converted to, `None` for
             values which carry none (`UNITLESS`), which are delivered as they
             are and whose dataset must carry none either.
@@ -319,7 +323,10 @@ class PanelResult:
         dims: the axes of the grid, empty for a run of one point.
         curves: the values of every declared curve, a row per point of the
             grid in C order.
-        units: the unit of every curve and, under `X`, of the x.
+        units: the unit of every curve and, under `X`, of the x, `None` for
+            values which carry none, as `sbmlsim.serve.data.PanelSeries.unit`
+            and `x_unit` of the study data of the same panel are, so the two
+            sides of an axis state one unit.
         failed: the flat indices in C order of the points which did not
             integrate, whose rows are `NaN`.
     """
@@ -327,7 +334,7 @@ class PanelResult:
     x: tuple[float, ...]
     dims: tuple[GridAxis, ...]
     curves: Mapping[str, list[list[float]]]
-    units: Mapping[str, str]
+    units: Mapping[str, str | None]
     failed: tuple[int, ...]
 
 
@@ -408,9 +415,10 @@ class PanelRunner:
                 loaded, so a request which names one costs nothing.
             ValueError: for a grid of fewer than one point, see `Knob.values`;
                 naming both units, for an `x_unit` of the panel which is no
-                time unit of the model, see `_times`. The limits of a request
-                (`sbmlsim.panel.MAX_KNOBS`, `MAX_GRID`) are checked where a
-                request is read.
+                time unit of the model, see `_times`, and for a unit of a
+                curve which is no unit of its values, see `_curve_unit`. The
+                limits of a request (`sbmlsim.panel.MAX_KNOBS`, `MAX_GRID`)
+                are checked where a request is read.
         """
         entry = self.registry.entry(model_id)
         check_knobs(panel, values, grid)
@@ -446,10 +454,11 @@ class PanelRunner:
 
         Raises:
             ValueError: naming both units, for an `x_unit` which is no time
-                unit of the model, see `_x_unit`; naming the series and its
-                unit, for a unit of a series which is no unit of pint and
-                none of the model; if the project of the entry has no model
-                variants.
+                unit of the model, see `_x_unit`, or for a unit of a curve
+                which is no unit of its values, see `_curve_unit`; naming the
+                series and its unit, for a unit of a series which is no unit
+                of pint and none of the model; if the project of the entry has
+                no model variants.
             KeyError: for a variant the project does not have.
         """
         warm = self._warm_model(entry, panel.simulation.variant)
@@ -583,8 +592,9 @@ def _panel_units(model: SBMLModel, panel: Panel) -> PanelUnits:
 
     Raises:
         ValueError: naming both units, for an `x_unit` which is no time unit
-            of the model, see `_x_unit`; naming the series and its unit, for a
-            unit of a series which is no unit, see `_series_unit`.
+            of the model, see `_x_unit`, or for a unit of a curve which is no
+            unit of its values, see `_curve_unit`; naming the series and its
+            unit, for a unit of a series which is no unit, see `_series_unit`.
     """
     return PanelUnits(
         x=_x_unit(model, panel),
@@ -624,6 +634,46 @@ def _resolved(model: SBMLModel, text: str, what: str) -> DeliveredUnit:
         ) from err
 
 
+def _checked(
+    model: SBMLModel, declared: str, model_text: str, what: str
+) -> DeliveredUnit:
+    """Resolve a declared unit of a panel and check it against its values.
+
+    It is the one check of a declaration: of the `x_unit` against the time
+    unit of the model (`_x_unit`) and of the unit of a curve against the unit
+    the model gives its selection (`_curve_unit`). A declaration which does
+    not convert is therefore refused where the units of a panel are resolved,
+    the same way for a run of the panel, which converts the values, and for
+    its study data, which only asks for the units.
+
+    Args:
+        model: the model of the panel, whose unit ids the unit may name.
+        declared: the declared unit, which is not empty.
+        model_text: the unit the model gives the values, empty for values
+            which carry none.
+        what: the declaration the unit belongs to, which a problem names, e.g.
+            `the curve 'Cve_hctz'`.
+
+    Returns:
+        The declared unit, see `DeliveredUnit`.
+
+    Raises:
+        ValueError: naming the declared unit and the unit of the model, for a
+            declaration which is no unit at all and for one the values of the
+            model do not convert to.
+    """
+    try:
+        delivered = _resolved(model, declared, what)
+        model.Q(1.0, model_text or "dimensionless").to(delivered.unit)
+    except _UNIT_ERRORS as err:
+        gives = f"in '{model_text}'" if model_text else "no unit"
+        raise ValueError(
+            f"The unit '{declared}' of {what} is no unit of its values, which "
+            f"the model gives {gives}."
+        ) from err
+    return delivered
+
+
 def _x_unit(model: SBMLModel, panel: Panel) -> DeliveredUnit:
     """Get the unit the x of a panel is delivered in, see `PanelUnits`.
 
@@ -644,15 +694,7 @@ def _x_unit(model: SBMLModel, panel: Panel) -> DeliveredUnit:
     declared = panel.simulation.x_unit
     if not declared:
         return _resolved(model, model_unit, "the time of the model")
-    try:
-        delivered = _resolved(model, declared, "the x of the panel")
-        model.Q(1.0, model_unit or "dimensionless").to(delivered.unit)
-    except _UNIT_ERRORS as err:
-        raise ValueError(
-            f"The x unit '{declared}' of the panel is no time unit of the "
-            f"model, whose time unit is '{model_unit}'."
-        ) from err
-    return delivered
+    return _checked(model, declared, model_unit, "the x of the panel")
 
 
 def _curve_unit(model: SBMLModel, curve: PanelCurve) -> DeliveredUnit:
@@ -667,16 +709,24 @@ def _curve_unit(model: SBMLModel, curve: PanelCurve) -> DeliveredUnit:
         model: the model of the panel, whose unit ids the unit may name.
         curve: the curve, one of `Panel.curves`.
 
+    A declared unit is checked against the unit the model gives the
+    selection (`_checked`), so a curve which declares a unit its values do not
+    convert to is refused where the units are resolved and not only where a
+    run converts them.
+
     Returns:
         The unit, `UNITLESS` for a curve which declares none and whose
         selection the model gives none either.
 
     Raises:
-        ValueError: naming the curve and the unit, for a unit which is no unit
-            of pint and no unit of the model.
+        ValueError: naming both units, for a declared unit which is no unit at
+            all or which the values of the model do not convert to.
     """
-    text = curve.unit or model.uinfo.get(curve.id, "") or ""
-    return _resolved(model, text, f"the curve '{curve.id}'")
+    model_text = model.uinfo.get(curve.id, "") or ""
+    what = f"the curve '{curve.id}'"
+    if not curve.unit:
+        return _resolved(model, model_text, what)
+    return _checked(model, curve.unit, model_text, what)
 
 
 def _series_unit(
@@ -689,20 +739,24 @@ def _series_unit(
         panel: the panel of the series.
         data: the declaration of the series, one of `Panel.data`.
 
+    The unit a series declares itself is delivered as it is, it is not
+    checked against the unit of its curve (`sbmlsim.panel.PanelData.unit`),
+    while the unit of the curve is the checked one of `_curve_unit`, so one
+    rule holds for a curve and the series under it.
+
     Returns:
-        The unit the series declares (`sbmlsim.panel.Panel.series_unit`), else
-        the unit of the curve it belongs under (`_curve_unit`, the unit of the
-        model for a curve which declares none), `None` for a series whose own
-        `id` is no curve of the panel, which is delivered in the unit of its
-        own dataset.
+        The unit the series declares itself, else the unit of the curve it
+        belongs under (`_curve_unit`, the unit of the model for a curve which
+        declares none), `None` for a series whose own `id` is no curve of the
+        panel, which is delivered in the unit of its own dataset.
 
     Raises:
-        ValueError: naming the series or its curve and the unit, for a unit
-            which is no unit of pint and none of the model.
+        ValueError: naming the series and the unit, for a unit of the series
+            which is no unit of pint and none of the model; naming both units,
+            for a unit of its curve which is no unit of its values.
     """
-    declared = panel.series_unit(data)
-    if declared is not None:
-        return _resolved(model, declared, f"the series '{data.id}'")
+    if data.unit:
+        return _resolved(model, data.unit, f"the series '{data.id}'")
     curve = panel.curve_of(data)
     return None if curve is None else _curve_unit(model, curve)
 
@@ -718,7 +772,10 @@ def _time_unit(model: SBMLModel) -> str:
         model: the model.
 
     Returns:
-        The unit, empty for a model whose time has no unit.
+        The unit, empty for a model whose time has no unit. An SBML without
+        time units has the `second` the units of a model fall back to
+        (`sbmlsim.units.UnitsInformation.from_sbml`), so the empty text is the
+        time of a `UnitsInformation` which carries none.
     """
     return model.uinfo.get(TIME, "") or ""
 
@@ -762,7 +819,7 @@ def _in_model_units(model: SBMLModel, knob: Knob, value: Any) -> Any:
 
 def _times(
     model: SBMLModel, panel: Panel, result: ScanResult
-) -> tuple[tuple[float, ...], str]:
+) -> tuple[tuple[float, ...], str | None]:
     """Get the output times of a result in the x unit of the panel, and that unit.
 
     The `end` and the `points` of a panel are in the time unit of the model,
@@ -778,8 +835,8 @@ def _times(
         result: the result of the scan of the run, on a grid of times.
 
     Returns:
-        The times and their unit, which is empty for a model whose time has no
-        unit and a panel which declares none.
+        The times and their unit, which is `None` for a model whose time has
+        no unit and a panel which declares none.
 
     Raises:
         ValueError: naming the declared unit and the time unit of the model,
@@ -790,7 +847,7 @@ def _times(
     delivered = _x_unit(model, panel)
     if delivered.unit is not None:
         times = times.to(delivered.unit)
-    return tuple(float(time) for time in times.magnitude), delivered.text
+    return tuple(float(time) for time in times.magnitude), delivered.text or None
 
 
 def _result(
@@ -813,14 +870,12 @@ def _result(
     Raises:
         KeyError: for a curve which is no variable of the result.
         ValueError: naming both units, for an `x_unit` which is no time unit
-            of the model, see `_times`; naming the curve, for a unit of a
-            curve which is no unit, see `_curve_unit`.
-        pint.DimensionalityError: for a curve whose declared unit is not the
-            unit of its values in the model.
+            of the model, see `_times`, and for a unit of a curve which is no
+            unit of its values, see `_curve_unit`.
     """
     x, x_unit = _times(model, panel, result)
     curves: dict[str, list[list[float]]] = {}
-    units: dict[str, str] = {X: x_unit}
+    units: dict[str, str | None] = {X: x_unit}
     for curve in panel.curves:
         quantity = result.quantity(curve.id)
         delivered = _curve_unit(model, curve)
@@ -828,7 +883,7 @@ def _result(
             quantity = quantity.to(delivered.unit)
         values = np.asarray(quantity.magnitude, dtype=float).reshape(-1, len(x))
         curves[curve.id] = values.tolist()
-        units[curve.id] = delivered.text
+        units[curve.id] = delivered.text or None
     status = result.ds.get(STATUS)
     failed: tuple[int, ...] = ()
     if status is not None:
