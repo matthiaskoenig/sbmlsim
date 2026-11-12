@@ -12,7 +12,8 @@ from pathlib import Path
 import pytest
 from pint.errors import UndefinedUnitError
 
-from sbmlsim.panel import Panel, PanelCurve
+from sbmlsim.panel import App, AppPage, AppVariant, Panel, PanelCurve
+from sbmlsim.project import Project
 from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.runner import (
     DeliveredUnit,
@@ -279,6 +280,59 @@ def test_the_registry_loads_the_project_of_a_reference() -> None:
     assert entry.project.name == "hctz"
     # the project of the example has no title, so its name is the one
     assert entry.title == "hctz"
+
+
+def test_an_app_page_names_panels_of_the_model(project: Project) -> None:
+    """Every panel id of every page of the app is a panel the model declares."""
+    app = project.app
+    assert app is not None
+    declared = set(project.panels_of())
+    assert {panel for page in app.pages for panel in page.panels} <= declared
+
+
+def test_a_page_naming_an_unknown_panel_is_refused_when_the_registry_is_built(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The panels of a model are read from its SBML, so the check is the registry's.
+
+    A project is imported without its SBML, which is why the app itself cannot
+    check it: the registry of a service reads it once, before any request.
+    """
+    broken = project.replace(
+        app=App(
+            title="Hydrochlorothiazide",
+            pages=(AppPage(id="renal", title="Renal", panels=("tubular",)),),
+        )
+    )
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: broken)
+    with pytest.raises(ValueError, match="tubular") as error:
+        ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+    message = str(error.value)
+    assert "hctz" in message
+    assert "renal" in message
+
+
+def test_a_variant_of_an_app_which_the_project_has_not_is_refused(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    broken = project.replace(
+        app=App(
+            title="Hydrochlorothiazide",
+            pages=(AppPage(id="renal", title="Renal", panels=("renal",)),),
+            variants=(AppVariant(id="impaired", label="renal impairment"),),
+        )
+    )
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: broken)
+    with pytest.raises(ValueError, match="impaired"):
+        ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+
+
+def test_the_registry_takes_the_app_of_a_model_as_it_is_declared(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: project)
+    registry = ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+    assert registry.entry("hctz").project.app == project.app
 
 
 def test_an_unknown_model_raises_unknown_model(registry: ModelRegistry) -> None:

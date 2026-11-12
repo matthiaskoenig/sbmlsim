@@ -2,9 +2,10 @@
 
 `create_app(registry)` is the ASGI application of a `ModelRegistry`: it serves
 the declaration of the panels of its models (`sbmlsim.panel.panel_payload`,
-the contract `panel/1`), the study data behind their curves
-(`sbmlsim.serve.data`, the contract `paneldata/1`) and runs their simulations
-on one `PanelRunner` with warm models.
+the contract `panel/1`), the app of a model, the pages of these panels
+(`sbmlsim.panel.app_payload`, the contract `app/1`), the study data behind
+their curves (`sbmlsim.serve.data`, the contract `paneldata/1`) and runs their
+simulations on one `PanelRunner` with warm models.
 
 A request names a model id of the registry and a panel id of that model and
 nothing else: no project reference, no module and no path reaches the service,
@@ -54,6 +55,7 @@ from sbmlsim.panel import CONTRACT, Panel, panel_payload
 from sbmlsim.serve.cache import ResponseCache
 from sbmlsim.serve.data import panel_data
 from sbmlsim.serve.payload import (
+    AppResponse,
     HealthResponse,
     ModelPayload,
     ModelsResponse,
@@ -77,10 +79,14 @@ from sbmlsim.serve.runner import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["CACHE_CONTROL", "FAILED", "NOT_STORED", "create_app"]
+__all__ = ["CACHE_CONTROL", "FAILED", "NOT_STORED", "NO_APP", "create_app"]
 
 #: the body of a failure of the service, which carries nothing of it
 FAILED: Final = "The request failed in the service."
+
+#: the body of a model which declares no app, see `create_app.app_of`; it
+#: names neither the model nor its project, as every error body of the service
+NO_APP: Final = "This model declares no app."
 
 #: the body of a hash which is not stored, see `create_app.stored`; a hash of
 #: another shape is answered with it as well, so the route is no surface a
@@ -190,6 +196,32 @@ def create_app(
                 for entry in (registry.entry(model_id) for model_id in registry.ids())
             ]
         )
+
+    @app.get("/api/models/{model}/app")
+    async def app_of(model: str) -> AppResponse:
+        """Get the app of a model, the pages of its panels.
+
+        The app is the declaration of the project of the model
+        (`sbmlsim.project.Project.app`): no model is loaded and no file is
+        read for it, so the route is an `async def`. Its pages name the panels
+        a shell then asks for, which the registry checked against the panels
+        of the model when it was built (`ModelRegistry.of`).
+
+        Args:
+            model: the id of the model.
+
+        Returns:
+            The app, see `sbmlsim.panel.app_payload`.
+
+        Raises:
+            UnknownModel: for a model which is not served, a 404.
+            HTTPException: a 404 of `NO_APP` for a model which declares no
+                app, which is a model whose panels are served on their own.
+        """
+        declared = registry.entry(model).project.app
+        if declared is None:
+            raise HTTPException(status_code=404, detail=NO_APP)
+        return AppResponse.of(declared)
 
     @app.get("/api/models/{model}/panels")
     def panels(model: str) -> PanelsResponse:

@@ -7,6 +7,9 @@ its panels is not part of these tests.
 The time unit of the HCTZ model is minutes, which is the unit the `end` of a
 `PanelSimulation` and the x of a result are in.
 
+The app of the project is one page of that one panel, so the route of the app
+answers what a model app is configured with (`sbmlsim.panel.App`).
+
 The panel draws the plasma and the urine of hydrochlorothiazide and declares
 the cumulative amount in the urine of Beermann 1976 as the study data under
 the curve of the urine: the data of that study is a mass, which `MR_HCTZ`
@@ -28,7 +31,16 @@ from fastapi.testclient import TestClient
 
 from examples.hctz_fitting import MODEL_PATH
 from examples.hctz_fitting.project import PROJECT
-from sbmlsim.panel import Choice, Knob, Panel, PanelCurve, PanelData, PanelSimulation
+from sbmlsim.panel import (
+    App,
+    AppPage,
+    Choice,
+    Knob,
+    Panel,
+    PanelCurve,
+    PanelData,
+    PanelSimulation,
+)
 from sbmlsim.project import Project
 from sbmlsim.serve.app import create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
@@ -43,6 +55,8 @@ PANEL = "/api/models/hctz/panels/renal"
 SIMULATE = f"{PANEL}/simulate"
 #: the study data of that panel
 DATA = f"{PANEL}/data"
+#: the app of the model of the tests
+APP = "/api/models/hctz/app"
 
 #: the inverse of the molecular weight of hydrochlorothiazide, with which the
 #: mass a study measured is the substance the model carries, as the
@@ -89,6 +103,17 @@ URINE = PanelData(
 )
 
 
+#: the app of the model of the tests: one page of the one panel
+HCTZ_APP = App(
+    title="Hydrochlorothiazide",
+    subtitle="the model of hydrochlorothiazide in renal impairment",
+    pages=(AppPage(id="renal", title="Renal impairment", panels=("renal",)),),
+    citation="Beermann et al. (1976)",
+    doi="10.5281/zenodo.0000000",
+    licenses=("CC BY-SA 4.0",),
+)
+
+
 @pytest.fixture(scope="module")
 def panel() -> Panel:
     return Panel(
@@ -113,8 +138,12 @@ def panel() -> Panel:
 
 @pytest.fixture(scope="module")
 def project(panel: Panel) -> Project:
-    """The project of the HCTZ example with the panel of the tests."""
-    return PROJECT.replace(variants={"default": MODEL_PATH}, panels={"renal": panel})
+    """The project of the HCTZ example with the panel and the app of the tests."""
+    return PROJECT.replace(
+        variants={"default": MODEL_PATH},
+        panels={"renal": panel},
+        app=HCTZ_APP,
+    )
 
 
 @pytest.fixture(scope="module")

@@ -4,7 +4,11 @@
 a mapping of model id to project reference (`ModelRegistry.of`) and is the only
 way from a request to a model: `entry` answers an id of that mapping and
 raises `UnknownModel` for everything else, so a request can never name a
-module, a project reference or a path.
+module, a project reference or a path. A model whose project declares an app
+(`sbmlsim.panel.App`) is checked there as well (`_check_app`): a page which
+names a panel the model does not declare and a variant the project does not
+have are refused at startup, since the panels of a model are read from its
+SBML, which a project is imported without.
 
 `PanelRunner` runs a panel of such a model: the values of its knobs become the
 pre-initialization of one `Simulation`, a knob of the grid becomes a
@@ -181,17 +185,23 @@ class ModelRegistry:
 
         Raises:
             ValueError: for a reference which is no project, see
-                `sbmlsim.project.load_project`.
+                `sbmlsim.project.load_project`; naming the model, the page and
+                the panels, for an app whose page names a panel the model does
+                not declare, and naming the model and the variants, for an app
+                which names a variant the project does not have, see
+                `_check_app`.
             ImportError: if the module of a reference is not imported.
         """
         entries: dict[str, ModelEntry] = {}
         for model_id, reference in specs.items():
             project = load_project(reference)
-            entries[model_id] = ModelEntry(
+            entry = ModelEntry(
                 id=model_id,
                 project=project,
                 title=project.title or project.name,
             )
+            _check_app(entry)
+            entries[model_id] = entry
             logger.info("The model '%s' is the project '%s'.", model_id, project.name)
         return cls(entries)
 
@@ -243,6 +253,56 @@ class ModelRegistry:
             raise UnknownPanel(
                 f"'{panel_id}' is no panel of the model '{model_id}'."
             ) from None
+
+
+def _check_app(entry: ModelEntry) -> None:
+    """Check the app of a model against the panels and variants of its project.
+
+    A page of an app is a list of panel ids and a variant of an app is a
+    variant of the model (`sbmlsim.panel.App`), neither of which the
+    declaration can check itself: the panels of a model are read from its SBML
+    and a project is imported without it. It is checked here, where the models
+    of a service are registered, so an app which names something the model does
+    not declare is a problem of the startup of the service, before any request,
+    and never one of a request.
+
+    The panels are the ones of the default variant of the model, the panels
+    `ModelRegistry.panel` serves; the variants are checked first, so an app of
+    an unknown variant is refused without reading an SBML.
+
+    A model which declares no app is not checked and reads nothing.
+
+    Args:
+        entry: the model of the registry.
+
+    Raises:
+        ValueError: naming the model and the variants, for an app which names
+            a variant the project does not have; naming the model, the page and
+            the panels, for a page which names a panel the model does not
+            declare; if the project has no model variants, see
+            `sbmlsim.project.Project.panels_of`.
+        FileNotFoundError: if the SBML the panels are read from is no file,
+            which is a problem of the service and not of a request.
+    """
+    app = entry.project.app
+    if app is None:
+        return
+    variants = sorted(entry.project.variants)
+    unknown = sorted({variant.id for variant in app.variants}.difference(variants))
+    if unknown:
+        raise ValueError(
+            f"The app of the model '{entry.id}' names the variants {unknown}, "
+            f"which its project does not have; its variants are {variants}."
+        )
+    declared = sorted(entry.project.panels_of())
+    for page in app.pages:
+        missing = sorted(set(page.panels).difference(declared))
+        if missing:
+            raise ValueError(
+                f"The page '{page.id}' of the app of the model '{entry.id}' shows "
+                f"the panels {missing}, which the model does not declare; its "
+                f"panels are {declared}."
+            )
 
 
 @dataclass(frozen=True)

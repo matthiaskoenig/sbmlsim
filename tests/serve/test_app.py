@@ -15,9 +15,9 @@ import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
 from sbmlsim.panel import CONTRACT, Panel
 from sbmlsim.project import Project
-from sbmlsim.serve.app import FAILED, MAX_ERRORS, create_app
+from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
-from tests.serve.conftest import END, PANEL, POINTS, SIMULATE
+from tests.serve.conftest import APP, END, PANEL, POINTS, SIMULATE
 
 #: the reference of the project of the HCTZ example
 HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"
@@ -48,6 +48,45 @@ def test_a_panel_is_served_as_the_contract(client: TestClient) -> None:
     assert body["contract"] == "panel/1"
     assert [axis["id"] for axis in body["axes"]] == ["egfr", "dose"]
     assert body["limits"]["grid"] == 64
+
+
+def test_the_app_route_answers_the_contract(client: TestClient) -> None:
+    body = client.get(APP).json()
+    assert body["contract"] == "app/1"
+    assert body["pages"][0]["panels"] == ["renal"]
+    assert body["title"] == "Hydrochlorothiazide"
+    assert body["pages"][0]["id"] == "renal"
+    assert body["licenses"] == ["CC BY-SA 4.0"]
+    assert body["doi"] == "10.5281/zenodo.0000000"
+    assert body["variants"] == []
+
+
+def test_the_app_route_loads_no_model(client: TestClient, never_loads: None) -> None:
+    """The app is the declaration of the project, no model is read for it."""
+    assert client.get(APP).status_code == 200
+
+
+def test_a_model_without_an_app_is_404(project: Project) -> None:
+    without = ModelRegistry(
+        {
+            "hctz": ModelEntry(
+                id="hctz",
+                project=project.replace(app=None),
+                title="Hydrochlorothiazide",
+            )
+        }
+    )
+    with TestClient(create_app(without)) as client:
+        response = client.get(APP)
+        assert response.status_code == 404
+        assert response.json() == {"detail": NO_APP}
+        assert "hctz" not in response.text
+
+
+def test_the_app_of_an_unknown_model_is_404(client: TestClient) -> None:
+    assert client.get("/api/models/nope/app").status_code == 404
+    reference = "/api/models/pkdb_models.models.hctz:PROJECT/app"
+    assert client.get(reference).status_code == 404
 
 
 def test_simulate_answers_a_grid_with_provenance_and_a_hash(

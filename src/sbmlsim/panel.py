@@ -7,9 +7,21 @@ picklable data, and the versioned wire contract `panel/1` which a renderer
 sees: `panel_payload` gives the JSON of a panel and `panel_from_payload` reads
 it back, each the inverse of the other for every field.
 
+The `App` of a model is the surface above these panels: a nav of `AppPage`s,
+each a list of panel ids, the `AppVariant`s a reader switches between and the
+citation, the DOI and the licenses of the provenance footer, so a model app is
+configuration and no code of its own. It is the declaration of the project
+(`Project.app`) and no part of the SBML, since pages and navigation are no
+model semantics, and it carries the contract `APP_CONTRACT` of its own
+(`app_payload`, `app_from_payload`): a renderer of an app reads its version and
+the one of every panel it places. A page names the panels of the model, which
+the declaration cannot check itself, since a project is imported without its
+SBML; it is checked where the models of a service are registered
+(`sbmlsim.serve.runner.ModelRegistry.of`), before any request.
+
 The module is pure data: it imports pydantic and the standard library only, no
 simulator, no libsbml and no project, so `sbmlsim.project` imports it for the
-field `Project.panels`.
+fields `Project.panels` and `Project.app`.
 
 The hard limits `MAX_END`, `MAX_POINTS`, `MAX_KNOBS`, `MAX_GRID` and
 `MAX_CURVES` bound what a panel declares and what a request of a grid over its
@@ -24,12 +36,16 @@ from typing import Any, Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
+    "APP_CONTRACT",
     "CONTRACT",
     "MAX_CURVES",
     "MAX_END",
     "MAX_GRID",
     "MAX_KNOBS",
     "MAX_POINTS",
+    "App",
+    "AppPage",
+    "AppVariant",
     "Choice",
     "ContractError",
     "Knob",
@@ -37,12 +53,18 @@ __all__ = [
     "PanelCurve",
     "PanelData",
     "PanelSimulation",
+    "app_from_payload",
+    "app_payload",
     "panel_from_payload",
     "panel_payload",
 ]
 
 #: the version of the wire contract of a panel, in every payload
 CONTRACT: Final = "panel/1"
+
+#: the version of the wire contract of the app of a model, in every payload of
+#: it, see `app_payload`
+APP_CONTRACT: Final = "app/1"
 
 #: the largest end of the simulation of a panel, in the time unit of its model
 MAX_END: Final = 10000.0
@@ -66,9 +88,18 @@ _CONFIG = ConfigDict(extra="forbid", frozen=True)
 #: reader of a panel has to resolve a path to find out, see `PanelData`.
 _DATASET = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
+#: the shape of the id of a page and of a variant of an app: an SBML `SId`,
+#: a letter or `_` and then letters, digits and `_`. The id of a page is the
+#: one a link of the app names, so it is no path, no separator and no dot.
+_SID = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
 
 class ContractError(ValueError):
-    """A payload which is not of the contract `CONTRACT` of this package."""
+    """A payload which is of none of the contracts of this package.
+
+    The contracts are `CONTRACT`, the one of a panel, and `APP_CONTRACT`, the
+    one of the app of a model.
+    """
 
 
 class Choice(BaseModel):
@@ -496,4 +527,193 @@ def panel_from_payload(payload: Mapping[str, Any]) -> Panel:
             "data": list(payload.get("data") or ()),
             "simulation": dict(payload.get("simulation") or {}),
         }
+    )
+
+
+class AppPage(BaseModel):
+    """One page of the app of a model: a title and the panels it shows.
+
+    Attributes:
+        id: the id of the page, an SBML `SId` (`_SID`): the id a link of the
+            app names, so it is no path and no text which has to be escaped.
+        title: the page as it is shown, its entry in the navigation; it is not
+            empty.
+        panels: the ids of the panels of the page, in the order they are
+            shown; at least one and every one once. A panel id is a panel the
+            model declares, which is checked where the models of a service are
+            registered (`sbmlsim.serve.runner.ModelRegistry.of`) and not here,
+            see the module.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    title: str
+    panels: tuple[str, ...]
+
+    @model_validator(mode="after")
+    def _check_page(self) -> Self:
+        """Check the id, the title and the panels of the page.
+
+        Raises:
+            ValueError: naming the id, for an id which is no `SId`; naming the
+                page, for an empty title and for a page without a panel;
+                naming the ids, for a panel the page lists twice.
+        """
+        if _SID.fullmatch(self.id) is None:
+            raise ValueError(
+                f"The id '{self.id}' of a page of an app is no SId: the id of a "
+                f"page is a letter or '_' and then letters, digits and '_', e.g. "
+                f"'renal', and never a path."
+            )
+        if not self.title.strip():
+            raise ValueError(f"The page '{self.id}' of an app needs its title.")
+        if not self.panels:
+            raise ValueError(f"The page '{self.id}' of an app needs a panel.")
+        panels = list(self.panels)
+        twice = sorted({panel for panel in panels if panels.count(panel) > 1})
+        if twice:
+            raise ValueError(
+                f"The page '{self.id}' of an app shows the panels {twice} twice; "
+                "a page shows a panel once."
+            )
+        return self
+
+
+class AppVariant(BaseModel):
+    """One variant of the model a reader of the app switches to.
+
+    Attributes:
+        id: the id of the variant, a variant of the project
+            (`sbmlsim.project.Project.variants`), which is checked where the
+            models of a service are registered
+            (`sbmlsim.serve.runner.ModelRegistry.of`) and not here, see the
+            module; an SBML `SId` (`_SID`).
+        label: the variant as it is shown, e.g. `"renal impairment"`; it is
+            not empty.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    label: str
+
+    @model_validator(mode="after")
+    def _check_variant(self) -> Self:
+        """Check the id and the label of the variant.
+
+        Raises:
+            ValueError: naming the id, for an id which is no `SId`, and for an
+                empty label.
+        """
+        if _SID.fullmatch(self.id) is None:
+            raise ValueError(
+                f"The id '{self.id}' of a variant of an app is no SId: the id of a "
+                f"variant is a letter or '_' and then letters, digits and '_', "
+                f"e.g. 'renal', and never a path."
+            )
+        if not self.label.strip():
+            raise ValueError(f"The variant '{self.id}' of an app needs its label.")
+        return self
+
+
+class App(BaseModel):
+    """The app of a model: the pages of its panels, see the module.
+
+    Attributes:
+        title: the title of the app, the model as it is shown; it is not empty.
+        subtitle: what the model is, shown below the title.
+        pages: the pages of the app, in the order they are shown; at least
+            one, and no two of them share an id.
+        variants: the variants of the model a reader switches between, in the
+            order they are shown; none means the default variant of the
+            project alone.
+        citation: the citation of the model, shown in the provenance footer of
+            a page; free text, e.g. `"König et al. (2026)"`.
+        doi: the DOI of the model, shown in that footer; free text.
+        licenses: the licenses of the model and its data, shown in that
+            footer; free text, e.g. `("CC BY-SA 4.0",)`.
+    """
+
+    model_config = _CONFIG
+
+    title: str
+    subtitle: str = ""
+    pages: tuple[AppPage, ...]
+    variants: tuple[AppVariant, ...] = ()
+    citation: str = ""
+    doi: str = ""
+    licenses: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _check_app(self) -> Self:
+        """Check the title, the pages and the variants of the app.
+
+        Raises:
+            ValueError: for an empty title and for an app without a page;
+                naming the ids, for two pages or two variants of one id.
+        """
+        if not self.title.strip():
+            raise ValueError("An app needs its title.")
+        if not self.pages:
+            raise ValueError("An app needs a page, which is a list of its panels.")
+        parts: tuple[tuple[str, list[str]], ...] = (
+            ("pages", [page.id for page in self.pages]),
+            ("variants", [variant.id for variant in self.variants]),
+        )
+        for kind, ids in parts:
+            twice = sorted({id_ for id_ in ids if ids.count(id_) > 1})
+            if twice:
+                raise ValueError(
+                    f"The {kind} of the app '{self.title}' declare {twice} twice; "
+                    "an id is the one a reader of the app names."
+                )
+        return self
+
+
+def app_payload(app: App) -> dict[str, Any]:
+    """Get the `app/1` payload of the app of a model, the shape a shell sees.
+
+    Args:
+        app: the app.
+
+    Returns:
+        The payload: its `contract`, the texts of the app, its `pages`, its
+        `variants` and the `citation`, the `doi` and the `licenses` of the
+        provenance footer. Plain JSON values only, no object of this package,
+        see `app_from_payload`.
+    """
+    return {
+        "contract": APP_CONTRACT,
+        "title": app.title,
+        "subtitle": app.subtitle,
+        "pages": [page.model_dump(mode="json") for page in app.pages],
+        "variants": [variant.model_dump(mode="json") for variant in app.variants],
+        "citation": app.citation,
+        "doi": app.doi,
+        "licenses": list(app.licenses),
+    }
+
+
+def app_from_payload(payload: Mapping[str, Any]) -> App:
+    """Read the app of an `app/1` payload, the inverse of `app_payload`.
+
+    Args:
+        payload: the payload.
+
+    Returns:
+        The app.
+
+    Raises:
+        ContractError: for a payload of another contract version.
+        pydantic.ValidationError: for a payload which declares no app, naming
+            the field which is wrong or unknown.
+    """
+    contract = payload.get("contract")
+    if contract != APP_CONTRACT:
+        raise ContractError(
+            f"The payload is of the contract {contract!r} and not of {APP_CONTRACT!r}."
+        )
+    return App.model_validate(
+        {key: value for key, value in payload.items() if key != "contract"}
     )

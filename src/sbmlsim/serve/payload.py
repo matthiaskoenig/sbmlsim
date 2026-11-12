@@ -22,6 +22,12 @@ The study data behind the curves is a `PanelDataResponse` of the `PanelSeries`
 of `sbmlsim.serve.data`, which carries the contract `DATA_CONTRACT` of its own:
 the series are no part of the declaration of a panel and a renderer which draws
 them reads their version.
+
+The app of a model is an `AppResponse` of the `sbmlsim.panel.App` its project
+declares, the contract `sbmlsim.panel.APP_CONTRACT`: the pages of its panels,
+which a shell places. Its shape is the one `sbmlsim.panel.app_payload` writes,
+which it reads back field by field (`AppResponse.of`), so the payload is the
+one source of the contract and this body is its schema.
 """
 
 from __future__ import annotations
@@ -31,14 +37,18 @@ from typing import TYPE_CHECKING, Annotated, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from sbmlsim.panel import CONTRACT, MAX_GRID, MAX_KNOBS
+from sbmlsim.panel import APP_CONTRACT, CONTRACT, MAX_GRID, MAX_KNOBS, app_payload
 
 if TYPE_CHECKING:
+    from sbmlsim.panel import App
     from sbmlsim.serve.data import PanelSeries
     from sbmlsim.serve.runner import GridAxis, PanelResult
 
 __all__ = [
     "DATA_CONTRACT",
+    "AppPagePayload",
+    "AppResponse",
+    "AppVariantPayload",
     "GridAxisPayload",
     "HealthResponse",
     "ModelPayload",
@@ -379,6 +389,85 @@ class PanelsResponse(BaseModel):
     contract: str = CONTRACT
     model: str
     panels: list[PanelPayload]
+
+
+class AppPagePayload(BaseModel):
+    """One page of the app of a model, see `AppResponse`.
+
+    Attributes:
+        id: the id of the page, the one a link of the app names.
+        title: the page as it is shown, its entry in the navigation.
+        panels: the ids of the panels of the page, in the order they are
+            shown; every one a panel the model declares, which a shell asks
+            for with `GET /api/models/{model}/panels/{panel}`.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    title: str
+    panels: list[str]
+
+
+class AppVariantPayload(BaseModel):
+    """One variant of the model of an app, see `AppResponse`.
+
+    Attributes:
+        id: the id of the variant, a variant of the model.
+        label: the variant as it is shown.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    label: str
+
+
+class AppResponse(BaseModel):
+    """The app of a model: the pages of its panels, see the module.
+
+    Attributes:
+        contract: the version of the payloads of the app,
+            `sbmlsim.panel.APP_CONTRACT`.
+        title: the title of the app, the model as it is shown.
+        subtitle: what the model is, shown below the title.
+        pages: the pages of the app, in the order they are shown.
+        variants: the variants of the model a reader switches between, in the
+            order they are shown; none for an app of the default variant
+            alone.
+        citation: the citation of the model, shown in the provenance footer.
+        doi: the DOI of the model, shown in that footer.
+        licenses: the licenses of the model and its data, shown in that
+            footer.
+    """
+
+    model_config = _CONFIG
+
+    contract: str = APP_CONTRACT
+    title: str
+    subtitle: str
+    pages: list[AppPagePayload]
+    variants: list[AppVariantPayload]
+    citation: str
+    doi: str
+    licenses: list[str]
+
+    @classmethod
+    def of(cls, app: App) -> AppResponse:
+        """Get the payload of the app of a model.
+
+        The body is read from `sbmlsim.panel.app_payload`, the one place the
+        contract of the app is written, and this model is its schema: a field
+        which the two do not share is refused here (`extra="forbid"`), so the
+        document of the API cannot drift from the payload.
+
+        Args:
+            app: the app the project of the model declares.
+
+        Returns:
+            The response.
+        """
+        return cls.model_validate(app_payload(app))
 
 
 class HealthResponse(BaseModel):

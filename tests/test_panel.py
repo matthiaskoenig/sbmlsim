@@ -1,4 +1,4 @@
-"""The panel declaration of a model and its `panel/1` contract."""
+"""The panel declaration of a model, its `panel/1` and its `app/1` contract."""
 
 import ast
 import json
@@ -12,12 +12,16 @@ import pytest
 from pydantic import ValidationError
 
 from sbmlsim.panel import (
+    APP_CONTRACT,
     CONTRACT,
     MAX_CURVES,
     MAX_END,
     MAX_GRID,
     MAX_KNOBS,
     MAX_POINTS,
+    App,
+    AppPage,
+    AppVariant,
     Choice,
     ContractError,
     Knob,
@@ -25,6 +29,8 @@ from sbmlsim.panel import (
     PanelCurve,
     PanelData,
     PanelSimulation,
+    app_from_payload,
+    app_payload,
     panel_from_payload,
     panel_payload,
 )
@@ -88,6 +94,25 @@ def panel() -> Panel:
             x_unit="hr",
             preinit={"BW": 75.0},
         ),
+    )
+
+
+@pytest.fixture
+def app() -> App:
+    return App(
+        title="Hydrochlorothiazide",
+        subtitle="the model of hydrochlorothiazide and its clinical questions",
+        pages=(
+            AppPage(id="renal", title="Renal impairment", panels=("renal", "tubular")),
+            AppPage(id="pk", title="Pharmacokinetics", panels=("pk",)),
+        ),
+        variants=(
+            AppVariant(id="default", label="healthy"),
+            AppVariant(id="impaired", label="renal impairment"),
+        ),
+        citation="König et al. (2026)",
+        doi="10.5281/zenodo.0000000",
+        licenses=("CC BY-SA 4.0", "MIT"),
     )
 
 
@@ -468,6 +493,133 @@ def _leaves(value: Any) -> list[Any]:
     return [value]
 
 
+def test_the_contract_of_an_app_is_its_version() -> None:
+    assert APP_CONTRACT == "app/1"
+
+
+def test_the_app_payload_round_trips(app: App) -> None:
+    payload = app_payload(app)
+    assert payload["contract"] == "app/1"
+    assert [page["id"] for page in payload["pages"]] == ["renal", "pk"]
+    assert [page["panels"] for page in payload["pages"]] == [
+        ["renal", "tubular"],
+        ["pk"],
+    ]
+    assert [variant["label"] for variant in payload["variants"]] == [
+        "healthy",
+        "renal impairment",
+    ]
+    assert payload["licenses"] == ["CC BY-SA 4.0", "MIT"]
+    assert app_from_payload(payload) == app
+
+
+def test_the_app_payload_round_trips_a_minimal_app() -> None:
+    """An app of the required fields only, so the defaults round trip too."""
+    minimal = App(
+        title="decay",
+        pages=(AppPage(id="decay", title="decay", panels=("decay",)),),
+    )
+    assert (minimal.subtitle, minimal.citation, minimal.doi) == ("", "", "")
+    assert (minimal.variants, minimal.licenses) == ((), ())
+    assert app_from_payload(app_payload(minimal)) == minimal
+
+
+def test_the_app_payload_is_json_and_carries_no_python_type(app: App) -> None:
+    payload = app_payload(app)
+    assert json.loads(json.dumps(payload)) == payload
+    for value in _leaves(payload):
+        assert value is None or isinstance(value, (str, int, float, bool)), value
+
+
+def test_an_app_payload_of_another_contract_version_is_refused() -> None:
+    with pytest.raises(ContractError, match="app/2"):
+        app_from_payload({"contract": "app/2", "title": "decay", "pages": []})
+    with pytest.raises(ContractError):
+        app_from_payload({"title": "decay", "pages": []})
+
+
+def test_an_unknown_field_of_an_app_payload_is_refused(app: App) -> None:
+    payload = app_payload(app)
+    payload["pages"][0]["unknown"] = 1
+    with pytest.raises(ValidationError, match="unknown"):
+        app_from_payload(payload)
+
+
+def test_an_app_without_a_page_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        App(title="decay", pages=())
+
+
+def test_a_page_without_a_panel_is_refused() -> None:
+    with pytest.raises(ValidationError, match="panel"):
+        App(title="decay", pages=(AppPage(id="decay", title="decay", panels=()),))
+
+
+def test_a_page_which_lists_one_panel_twice_is_refused() -> None:
+    with pytest.raises(ValidationError, match="renal"):
+        AppPage(id="kidney", title="Kidney", panels=("renal", "pk", "renal"))
+
+
+def test_two_pages_of_one_id_are_refused() -> None:
+    page = AppPage(id="renal", title="Renal impairment", panels=("renal",))
+    with pytest.raises(ValidationError, match="renal"):
+        App(title="hctz", pages=(page, page))
+
+
+def test_two_variants_of_one_id_are_refused() -> None:
+    variant = AppVariant(id="default", label="healthy")
+    with pytest.raises(ValidationError, match="default"):
+        App(
+            title="hctz",
+            pages=(AppPage(id="renal", title="Renal", panels=("renal",)),),
+            variants=(variant, variant),
+        )
+
+
+@pytest.mark.parametrize(
+    "id_",
+    ["", "1page", "renal pk", "renal/pk", "../pk", "renal.pk", "renal-pk"],
+)
+def test_an_id_of_a_page_or_a_variant_which_is_no_sid_is_refused(id_: str) -> None:
+    """The id of a page is the one a link of the app names, so it is no path."""
+    with pytest.raises(ValidationError, match="SId"):
+        AppPage(id=id_, title="Renal impairment", panels=("renal",))
+    with pytest.raises(ValidationError, match="SId"):
+        AppVariant(id=id_, label="healthy")
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        lambda: App(
+            title="  ",
+            pages=(AppPage(id="renal", title="Renal", panels=("renal",)),),
+        ),
+        lambda: AppPage(id="renal", title="", panels=("renal",)),
+        lambda: AppVariant(id="default", label=""),
+    ],
+)
+def test_a_title_which_is_empty_is_refused(build: Callable[[], Any]) -> None:
+    """A title and a label are shown, so they are no empty text."""
+    with pytest.raises(ValidationError):
+        build()
+
+
+def test_an_app_is_frozen_and_forbids_unknown_fields(app: App) -> None:
+    with pytest.raises(ValidationError):
+        app.title = "another title"
+    with pytest.raises(ValidationError, match="footer"):
+        App(
+            title="hctz",
+            pages=(AppPage(id="renal", title="Renal", panels=("renal",)),),
+            footer="a footer",
+        )
+
+
+def test_an_app_is_picklable(app: App) -> None:
+    assert pickle.loads(pickle.dumps(app)) == app
+
+
 def test_the_module_imports_pydantic_and_the_standard_library_only() -> None:
     """`sbmlsim.project` imports it, so it imports no simulator and no libsbml."""
     path = Path(__file__).parents[1] / "src" / "sbmlsim" / "panel.py"
@@ -489,3 +641,14 @@ def test_a_project_declares_the_panels_of_a_model_without_an_annotation(
     project = Project(name="toy", root=tmp_path, panels={panel.id: panel})
     assert project.panels == {"renal": panel}
     assert Project(name="toy", root=tmp_path).panels == {}
+
+
+def test_a_project_declares_the_app_of_its_model(tmp_path: Path, app: App) -> None:
+    """The pages of the app are the project's, they are no model semantics."""
+    from sbmlsim.project import Project
+
+    project = Project(name="toy", root=tmp_path, app=app)
+    assert project.app == app
+    assert Project(name="toy", root=tmp_path).app is None
+    with pytest.raises(ValidationError):
+        Project(name="toy", root=tmp_path, app="an app")

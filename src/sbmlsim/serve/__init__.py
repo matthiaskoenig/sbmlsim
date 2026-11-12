@@ -2,7 +2,9 @@
 
 A model declares its interactive surface in an annotation of its SBML
 (`sbmlsim.panel`, `sbmlsim.panel_sbml`); this package serves that declaration
-as the versioned payload `panel/1` and runs the simulations behind it.
+as the versioned payload `panel/1`, the app of a model, the pages of its
+panels which its project declares (`sbmlsim.panel.App`, the payload `app/1`),
+and runs the simulations behind them.
 
 `runner` holds the two halves which need no HTTP: `ModelRegistry`, the models
 a request may name, built once at startup from a mapping of model id to
