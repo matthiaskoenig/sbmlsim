@@ -223,3 +223,33 @@ def test_the_remaining_column_shows_the_estimate_of_the_activity(ticking):
         ticking.tick(110.0)
         a.update(completed=4)
         assert str(column.render(bar.tasks[0])) == "eta 0:00:00"
+
+
+def test_the_lines_of_the_log_stay_an_interval_apart(caplog, ticking):
+    """Activities which run at the same time do not fill the log between them.
+
+    The scans of an identifiability run on sixteen workers and report their
+    points, so a line per activity and interval would be a line per second;
+    the line of an activity which ends is written whatever else ran.
+    """
+    logger = logging.getLogger("progress.test")
+    reporter = progress.LogReporter(interval=30.0, target=logger, now=ticking)
+    with (
+        caplog.at_level(logging.INFO, logger=logger.name),
+        _propagating(logger),
+        progress.reporter(reporter),
+        progress.activity("identifiability", "profiling", total=4) as run,
+        contextlib.ExitStack() as stack,
+    ):
+        children = [
+            stack.enter_context(run.child("scan", f"p{k}", total=10)) for k in range(4)
+        ]
+        ticking.tick(31.0)
+        for child in children:
+            child.advance()
+    advances = [
+        record.message
+        for record in caplog.records
+        if "scan" in record.message and not record.message.endswith(("done", "failed"))
+    ]
+    assert len(advances) == 1

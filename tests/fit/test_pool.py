@@ -171,11 +171,18 @@ def test_tasks_which_did_not_run_fail_if_the_pool_cannot_restart(
     }
     real, calls = parallel.start_pool, []
 
-    def start_pool(n_workers: int, preload: Any = ()) -> Any:
+    def start_pool(
+        n_workers: int,
+        preload: Any = (),
+        initializer: Any = None,
+        initargs: Any = (),
+    ) -> Any:
         calls.append(n_workers)
         if len(calls) > 1:
             raise RuntimeError("no workers")
-        return real(n_workers, preload=preload)
+        return real(
+            n_workers, preload=preload, initializer=initializer, initargs=initargs
+        )
 
     monkeypatch.setattr(parallel, "start_pool", start_pool)
     with runner.worker_pool(problem, settings, 2) as pool:  # ty: ignore[invalid-argument-type]
@@ -220,7 +227,12 @@ def test_the_pool_of_a_fit_preloads_the_modules_of_the_problem(
     calls: list[tuple[int, Any]] = []
     real = parallel.start_pool
 
-    def start_pool(n_workers: int, preload: Any = ()) -> Any:
+    def start_pool(
+        n_workers: int,
+        preload: Any = (),
+        initializer: Any = None,
+        initargs: Any = (),
+    ) -> Any:
         calls.append((n_workers, list(preload)))
         return real(1)
 
@@ -311,7 +323,12 @@ def _fake_pool(
     """Make a `FitPool` on a fake executor, which restarts to forgiving ones."""
     started: list[FakeExecutor] = []
 
-    def start_pool(n_workers: int, preload: Any = ()) -> FakeExecutor:
+    def start_pool(
+        n_workers: int,
+        preload: Any = (),
+        initializer: Any = None,
+        initargs: Any = (),
+    ) -> FakeExecutor:
         executor = later() if later else FakeExecutor(forgiving=True)
         started.append(executor)
         return executor
@@ -406,6 +423,35 @@ def test_a_submit_into_a_broken_pool_keeps_the_results_in_flight(
     outcomes = _run(pool, _tasks("ok", "ok", "ok"))
     assert outcomes == {0: 0, 1: 1, 2: 2}
     assert pool.restarts == 1
+
+
+def test_a_restart_keeps_the_initializer_of_the_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workers of a restarted pool report their progress as the first did."""
+    starts: list[tuple[Any, Any]] = []
+
+    def start_pool(
+        n_workers: int,
+        preload: Any = (),
+        initializer: Any = None,
+        initargs: Any = (),
+    ) -> FakeExecutor:
+        starts.append((initializer, initargs))
+        return FakeExecutor(forgiving=True)
+
+    monkeypatch.setattr(parallel, "start_pool", start_pool)
+    pool = runner.FitPool(
+        executor=FakeExecutor(break_at_submit=0),  # ty: ignore[invalid-argument-type]
+        token="t",
+        problem=SimpleNamespace(opid="p"),  # ty: ignore[invalid-argument-type]
+        settings=None,  # ty: ignore[invalid-argument-type]
+        n_cores=2,
+        initializer=runner._set_progress,
+        initargs=("queue",),
+    )
+    _run(pool, _tasks("ok", "ok"))
+    assert starts == [(runner._set_progress, ("queue",))]
 
 
 def test_a_pool_which_is_broken_with_nothing_in_flight_restarts_once(
