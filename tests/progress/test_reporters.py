@@ -6,7 +6,7 @@ import contextlib
 import io
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import Generator
 
 import pytest
 from rich.console import Console
@@ -22,7 +22,7 @@ def ticking(clock, monkeypatch):
 
 
 @contextlib.contextmanager
-def _propagating(logger: logging.Logger) -> Iterator[None]:
+def _propagating(logger: logging.Logger) -> Generator[None]:
     """Let the records of a logger reach the handlers of the root while this runs."""
     before = logger.propagate
     logger.propagate = True
