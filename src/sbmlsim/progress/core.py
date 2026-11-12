@@ -170,7 +170,7 @@ class Activity:
             self.label = label
         if workers is not None:
             self.workers = workers
-        _report(self.reporter, "advanced", self)
+        report(self.reporter, "advanced", self)
 
     def child(
         self,
@@ -205,7 +205,7 @@ _ACTIVITY: ContextVar[Activity | None] = ContextVar("sbmlsim_activity", default=
 _REPORTER: ContextVar[Reporter | None] = ContextVar("sbmlsim_reporter", default=None)
 
 
-def _report(
+def report(
     target: Reporter | None,
     method: str,
     activity_: Activity,
@@ -303,7 +303,7 @@ def activity(
         reporter=target,
     )
     token = _ACTIVITY.set(current)
-    _report(target, "started", current)
+    report(target, "started", current)
     error: BaseException | None = None
     try:
         yield current
@@ -312,4 +312,4 @@ def activity(
         raise
     finally:
         _ACTIVITY.reset(token)
-        _report(target, "finished", current, error)
+        report(target, "finished", current, error)

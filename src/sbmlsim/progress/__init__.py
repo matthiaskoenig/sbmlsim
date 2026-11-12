@@ -16,16 +16,34 @@ from sbmlsim.progress.core import (
     current_activity,
     current_reporter,
     remaining,
+    report,
     reporter,
+)
+from sbmlsim.progress.reporters import (
+    ENV_NAME,
+    NAMES,
+    BarReporter,
+    EventReporter,
+    LogReporter,
+    MultiReporter,
+    resolve,
 )
 
 __all__ = [
+    "ENV_NAME",
+    "NAMES",
     "Activity",
+    "BarReporter",
+    "EventReporter",
+    "LogReporter",
+    "MultiReporter",
     "Reporter",
     "activity",
     "core",
     "current_activity",
     "current_reporter",
     "remaining",
+    "report",
     "reporter",
+    "resolve",
 ]
