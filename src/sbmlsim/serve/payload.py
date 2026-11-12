@@ -512,8 +512,9 @@ class JobResponse(BaseModel):
         message: why a job failed, empty for every other status; it names no
             path and carries no traceback.
         figures: the figures the job collected, as the paths a request of one
-            of them names (`GET /api/jobs/{job_id}/figures/{path}`); empty
-            until it is finished.
+            of them names (`GET /api/jobs/{job_id}/figures/{path}`); a run
+            collects them at its end, so a job which is not finished usually
+            has none.
     """
 
     model_config = _CONFIG

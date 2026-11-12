@@ -47,12 +47,15 @@ import re
 import shutil
 import tempfile
 import time
+import uuid
+import weakref
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
+import anyio.to_thread
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -136,8 +139,9 @@ NO_FIGURE: Final = "This job has no such figure."
 #: jobs which run nor what the service is made of
 BUSY: Final = "The service runs as many experiments as it can at once."
 
-#: the prefix of the directory of the jobs of an application which was given
-#: no store of its own, which it removes when it shuts down, see `create_app`
+#: the prefix of the name of the directory of the jobs of an application which
+#: was given no store of its own, which it removes when it shuts down, see
+#: `create_app` and `_temporary_root`
 JOBS_PREFIX: Final = "sbmlsim-jobs-"
 
 #: the shape of a hash of the API, the sha256 of
@@ -176,20 +180,23 @@ def create_app(
             origin (CORS); without one the API answers its own origin only.
         jobs: the store of the runs of the simulation experiments, see
             `sbmlsim.serve.jobs`; without one the application creates a store
-            over a temporary directory of its own and removes that directory
-            when it shuts down, while a store which is given it belongs to its
-            caller and is neither closed nor removed.
+            over a temporary directory of its own (`_temporary_root`, which is
+            created with the first job) and removes that directory when it
+            shuts down, while a store which is given it belongs to its caller
+            and is neither closed nor removed.
 
     Returns:
         The application, whose store of the jobs is `app.state.jobs`.
     """
-    store = (
-        jobs
-        if jobs is not None
-        else JobStore(Path(tempfile.mkdtemp(prefix=JOBS_PREFIX)))
-    )
+    store = jobs if jobs is not None else JobStore(_temporary_root())
     #: the store this application created itself, which it alone removes
     owned = None if jobs is not None else store
+    if owned is not None:
+        # the lifespan below is the orderly way out; this one covers a process
+        # which ends another way than through the shutdown of its server,
+        # where every finalizer runs, and an application which is collected
+        # before that, e.g. one which never started a server at all
+        weakref.finalize(owned, _remove_jobs, owned.root)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
@@ -197,7 +204,9 @@ def create_app(
 
         The worker of the store is stopped first and the job which runs is
         waited for, so the directory is complete and nothing writes into it
-        while it is removed.
+        while it is removed. The wait is a thread of its own: it is the length
+        of a run of simulation experiments, which must not block the event
+        loop of the server while it shuts down.
 
         Args:
             application: the application, which serves until it shuts down.
@@ -209,8 +218,8 @@ def create_app(
             yield
         finally:
             if owned is not None:
-                owned.close()
-                shutil.rmtree(owned.root, ignore_errors=True)
+                await anyio.to_thread.run_sync(owned.close)
+                _remove_jobs(owned.root)
                 logger.debug("The jobs of the service were removed.")
 
     app = FastAPI(title=TITLE, version=sbmlsim.__version__, lifespan=lifespan)
@@ -550,14 +559,17 @@ def create_app(
     def job_of(job_id: str) -> JobResponse:
         """Get a job of the service as it is now, with its figures.
 
-        The figures are read from the directory of the job, so the route is a
-        sync `def` and reads it in the thread pool of the server.
+        The figures are the ones which are in the directory of the job when it
+        is asked for, read from that directory, so the route is a sync `def`
+        and reads it in the thread pool of the server. A run collects them at
+        its end, so a job which is not finished usually has none, and a poll
+        which lands in that window sees some of them on a `running` job.
 
         Args:
             job_id: the id of the job, the one its submission answered.
 
         Returns:
-            The job, its figures once it is finished.
+            The job with the figures its directory holds.
 
         Raises:
             HTTPException: a 404 of `NO_JOB` for an id the service does not
@@ -658,6 +670,37 @@ def create_app(
         app.mount("/", StaticFiles(directory=static, html=True), name="static")
     logger.info("The service serves the models %s.", list(registry.ids()))
     return app
+
+
+def _temporary_root() -> Path:
+    """Get the directory of the jobs of an application which was given no store.
+
+    The directory is a name of its own under the temporary directory of the
+    system and is not created here: the store creates its root with the first
+    job it takes (and reads it by its owner alone), so an application which
+    never runs one leaves nothing behind, which `tempfile.mkdtemp` would not.
+    The name carries a `uuid4`, so two applications of one process never share
+    their jobs and no other process guesses the name.
+
+    Returns:
+        The directory, which does not exist.
+    """
+    return Path(tempfile.gettempdir()) / f"{JOBS_PREFIX}{uuid.uuid4().hex}"
+
+
+def _remove_jobs(root: Path) -> None:
+    """Remove the directory of the jobs of an application which created it.
+
+    It is the finalizer of such a store as well as the last step of the
+    lifespan, so it tolerates a root which was never created, which is every
+    application whose jobs nobody ran. It logs nothing: a finalizer which runs
+    while the interpreter shuts down may run after the handlers of logging
+    were closed.
+
+    Args:
+        root: the directory of the jobs, which may not exist.
+    """
+    shutil.rmtree(root, ignore_errors=True)
 
 
 def _spec_hash(

@@ -191,7 +191,7 @@ A page which is served from another origin, a deck on GitHub Pages or a course i
 | `GET /api/sim/{spec_hash}` | the stored answer of a simulation by its hash, as immutable |
 | `POST /api/models/{model}/experiments` | a 202 with the job of a run of the simulation experiments of the model |
 | `GET /api/jobs/{job_id}` | that job as it is now, with the figures of a finished one |
-| `GET /api/jobs/{job_id}/figures/{path}` | one figure of a job, by a path the job lists |
+| `GET /api/jobs/{job_id}/figures/{path}` | one file of the directory of a job, e.g. a figure the job lists |
 | `GET /docs`, `GET /openapi.json` | the OpenAPI document of the API, which FastAPI renders from the bodies |
 
 `--static DIR` is mounted at `/` after these routes, so it shadows none of them.
@@ -384,11 +384,13 @@ A caller follows it with `GET /api/jobs/{job_id}` until its `status` is `done` o
 {"figures": ["_figures/Patel1984_Fig1.svg", "_figures/Patel1984_Fig_pk.svg"]}
 ```
 
-`GET /api/jobs/{job_id}/figures/_figures/Patel1984_Fig1.svg` serves that file. A path is resolved against the directory of its job and is served only when it is a file inside it, so a path of `..`, an absolute path and a symbolic link which leaves the directory are the same 404 as a figure which does not exist, and no path of the host is reachable.
+`GET /api/jobs/{job_id}/figures/_figures/Patel1984_Fig1.svg` serves that file. A path is resolved against the directory of its job and is served only when it is a file inside it, so a path of `..`, an absolute path and a symbolic link which leaves the directory are the same 404 as a figure which does not exist, and no path of the host is reachable. The rule is the directory and not the list, so the `index.html` of the report of a run and its datasets are served under the same route.
 
-The service runs one job at a time, in a thread of its own, and keeps at most eight of them in flight, the queued and the running one together: a submission above that is a 429. A run is serial, one process and no pool, so a job occupies one core of the service for its minutes; a job which failed says so in its `message`, which names no path and carries no traceback, while the traceback is logged.
+The service runs one job at a time, in a thread of its own, and keeps at most eight of them in flight, the queued and the running one together: a submission above that is a 429. A run is serial, one process and no pool, so a job occupies one core of the service for its minutes; a job which failed says so in its `message`, which names no path and carries no traceback, while the traceback is logged. What a service keeps is bounded as well: the records of at most 32 finished jobs with their directories, the oldest of which is dropped when a job finishes above that, so a service which runs for weeks does not fill its disk with reports nobody reads any more.
 
-The jobs belong to the application and not to a directory the service keeps: they live below a temporary directory which is removed when the service stops, so a job of a service which was restarted is a 404, and nothing of a run outlives it.
+A job loads models of its own, in its own thread: it runs the experiments of the model as a script would, and its runner is not the one which keeps the panels of the service warm. The store runs one job at a time, so two runs never load or simulate at once, but a load in a job is not serialized against a panel of the same model, which is answered in the thread pool of the server while the job runs. Taking the lock of the panel runner for the length of a run would block every panel of that model for minutes, which is the opposite of what the service is for.
+
+The jobs belong to the application and not to a directory the service keeps: they live below a temporary directory which is created with the first job and removed when the service stops, so a service which never runs one writes nothing, a job of a service which was restarted is a 404, and nothing of a run outlives it.
 
 ### The errors
 
