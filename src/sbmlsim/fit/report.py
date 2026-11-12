@@ -87,6 +87,7 @@ from sbmlsim.fit.posterior import POSTERIOR_FILE, ParameterPosterior
 from sbmlsim.fit.report_document import FIGURES, fit_document
 from sbmlsim.fit.result import OptimizationResult, bound_warnings
 from sbmlsim.model.tolerances import AbsoluteTolerance
+from sbmlsim.progress import activity as progress_activity
 from sbmlsim.report.document import Document
 from sbmlsim.report.references import write_bibliography
 from sbmlsim.report.render import (
@@ -2409,45 +2410,53 @@ class FitReport:
         res_data = {pset.sid: self.residual_data(pset) for pset in self.parameter_sets}
         points = {pset.sid: self.points(pset) for pset in self.parameter_sets}
 
-        for k, mapping_id in enumerate(self.problem.mapping_keys):
-            fig = Figure(figsize=(10, 10), layout="constrained")
-            (ax1, ax2), (ax3, ax4) = fig.subplots(nrows=2, ncols=2)
-            sid = self.problem.experiment_keys[k]
-            self._set_mapping_title(fig, k)
-            for ax in (ax1, ax2):
-                self._draw_curve(ax, k, res_data)
-            self._set_log_scale(ax2, "y")
-            if ax2.get_yscale() == "log":
-                self._set_log_y_limits(ax2, self.problem.y_references[k])
-                self._mask_nonpositive_lines(ax2)
+        # a figure per fit mapping, the long part of a report of a large fit
+        with progress_activity(
+            "report", "mapping figures", total=len(self.problem.mapping_keys)
+        ) as drawn:
+            for k, mapping_id in enumerate(self.problem.mapping_keys):
+                fig = Figure(figsize=(10, 10), layout="constrained")
+                (ax1, ax2), (ax3, ax4) = fig.subplots(nrows=2, ncols=2)
+                sid = self.problem.experiment_keys[k]
+                self._set_mapping_title(fig, k)
+                for ax in (ax1, ax2):
+                    self._draw_curve(ax, k, res_data)
+                self._set_log_scale(ax2, "y")
+                if ax2.get_yscale() == "log":
+                    self._set_log_y_limits(ax2, self.problem.y_references[k])
+                    self._mask_nonpositive_lines(ax2)
 
-            of_mapping = {
-                pset.sid: self._of_mapping(points[pset.sid], k)
-                for pset in self.parameter_sets
-            }
-            limits = self._log_limits(
-                *[dp.DV for dp in of_mapping.values()],
-                *[dp.IPRED for dp in of_mapping.values()],
-            )
-            self._draw_goodness_of_fit(
-                ax3, of_mapping, limits, label_band=True, point_labels=False
-            )
-            ax3.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
-            self._add_metrics_box(ax3, self.mapping_text(k))
-            self._draw_bland_altman(
-                ax4,
-                of_mapping,
-                label_band=True,
-                point_labels=False,
-                own_agreement=self.problem.mapping_kinds[k] is not MappingKind.OUTLIER,
-            )
-            ax4.set_ylabel("$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold")
-            self._add_metrics_box(ax4, self._panel_text(of_mapping, "bland_altman"))
-            self._set_mapping_legend(fig, [ax1, ax2, ax3, ax4])
+                of_mapping = {
+                    pset.sid: self._of_mapping(points[pset.sid], k)
+                    for pset in self.parameter_sets
+                }
+                limits = self._log_limits(
+                    *[dp.DV for dp in of_mapping.values()],
+                    *[dp.IPRED for dp in of_mapping.values()],
+                )
+                self._draw_goodness_of_fit(
+                    ax3, of_mapping, limits, label_band=True, point_labels=False
+                )
+                ax3.set_ylabel("Prediction $f(x_{i,k})$", fontweight="bold")
+                self._add_metrics_box(ax3, self.mapping_text(k))
+                self._draw_bland_altman(
+                    ax4,
+                    of_mapping,
+                    label_band=True,
+                    point_labels=False,
+                    own_agreement=self.problem.mapping_kinds[k]
+                    is not MappingKind.OUTLIER,
+                )
+                ax4.set_ylabel(
+                    "$\\log_{10}\\frac{f(x_{i,k})}{y_{i,k}}$", fontweight="bold"
+                )
+                self._add_metrics_box(ax4, self._panel_text(of_mapping, "bland_altman"))
+                self._set_mapping_legend(fig, [ax1, ax2, ax3, ax4])
 
-            self._save_mpl_figure(
-                fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
-            )
+                self._save_mpl_figure(
+                    fig, path=output_dir / f"{sid}_{mapping_id}.{self.image_format}"
+                )
+                drawn.advance()
 
     def _of_mapping(self, df: pd.DataFrame, k: int) -> pd.DataFrame:
         """Get the data points of mapping `k`."""

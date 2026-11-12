@@ -102,3 +102,19 @@ def test_an_identifiability_reports_its_scans_and_their_points(
     assert scans
     assert {e.depth for e in scans} == {1}
     assert any(e.label.endswith("up") for e in scans)
+
+
+def test_a_fit_report_reports_a_figure_per_mapping(recorder, fitted, tmp_path) -> None:
+    """The figures of the fit mappings are the long part of a report."""
+    from sbmlsim.fit.report import FitReport
+
+    problem, result = fitted
+    report = FitReport.from_optimization_result(
+        problem=problem, opt_result=result, mapping_figures=True
+    )
+    with progress.reporter(recorder):
+        report.create(output_dir=tmp_path)
+    figures = [e for e in recorder.events if e.kind == "report"]
+    assert figures
+    assert figures[0].label == "mapping figures"
+    assert figures[-1].completed == figures[-1].total == len(problem.mapping_keys)
