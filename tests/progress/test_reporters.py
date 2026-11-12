@@ -174,3 +174,24 @@ def test_a_reporter_which_fails_does_not_stop_the_others(caplog, tmp_path, ticki
         a.advance()
     assert len(path.read_text().splitlines()) == 3
     assert "progress reporter" in caplog.text
+
+
+def test_the_remaining_column_shows_the_estimate_of_the_activity(ticking):
+    """The column of the bar shows the estimate of the activity, not of rich."""
+    from rich.progress import Progress
+
+    from sbmlsim.progress.reporters import RemainingColumn
+
+    column = RemainingColumn()
+    with progress.activity("fit", "optimizing", total=4, workers=2) as a:
+        bar = Progress(column)
+        task_id = bar.add_task("optimizing", total=4, activity=a)
+        assert str(column.render(bar.tasks[0])) == "eta -:--:--"
+        ticking.tick(90.0)
+        a.advance()
+        bar.update(task_id, completed=1)
+        # one of two batches is done after 90 seconds
+        assert str(column.render(bar.tasks[0])) == "eta 0:01:30"
+        ticking.tick(110.0)
+        a.update(completed=4)
+        assert str(column.render(bar.tasks[0])) == "eta 0:00:00"

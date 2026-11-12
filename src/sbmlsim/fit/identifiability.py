@@ -130,6 +130,7 @@ from sbmlsim.fit.options import (
     ParameterScaleType,
 )
 from sbmlsim.fit.parameters import ParameterSet, dump_json, load_json
+from sbmlsim.progress import activity as progress_activity
 
 logger = logging.getLogger(__name__)
 
@@ -991,45 +992,56 @@ def _scan_direction(
     Returns:
         The points of the scan, from the optimum outward, without the optimum.
     """
-    lower, upper = _scaled_bounds(problem)
-    bound = upper[index] if direction > 0 else lower[index]
-    threshold = settings.threshold(cost_optimum)
-    max_rise = settings.max_cost_fraction * settings.delta / 2.0
+    # the points of a scan which runs in this process, see `sbmlsim.progress`;
+    # a scan which runs in a worker of the fit reports nothing, its task is a
+    # step of the activity of the analysis
+    with progress_activity(
+        "scan",
+        f"{problem.pids[index]} {'up' if direction > 0 else 'down'}",
+        total=settings.max_points,
+    ) as scanned:
+        lower, upper = _scaled_bounds(problem)
+        bound = upper[index] if direction > 0 else lower[index]
+        threshold = settings.threshold(cost_optimum)
+        max_rise = settings.max_cost_fraction * settings.delta / 2.0
 
-    points: list[ProfilePoint] = []
-    theta_prev, cost_prev = np.array(theta_optimum, dtype=float), cost_optimum
-    step = settings.initial_step
+        points: list[ProfilePoint] = []
+        theta_prev, cost_prev = np.array(theta_optimum, dtype=float), cost_optimum
+        step = settings.initial_step
 
-    while len(points) < settings.max_points:
-        if abs(theta_prev[index] - bound) <= BOUND_TOLERANCE:
-            # the parameter is at its bound, the interval is open
-            break
+        while len(points) < settings.max_points:
+            if abs(theta_prev[index] - bound) <= BOUND_TOLERANCE:
+                # the parameter is at its bound, the interval is open
+                break
 
-        while True:
-            value = theta_prev[index] + direction * step
-            if (direction > 0 and value >= bound) or (direction < 0 and value <= bound):
-                value = bound
-            theta_start = theta_prev.copy()
-            theta_start[index] = value
-            theta, cost, converged = _evaluate_point(
-                problem, theta_start, index, settings, jacobian=jacobian
-            )
-            rise = cost - cost_prev
-            if converged and rise > max_rise and step > settings.min_step:
-                # the profile changes fast here, resolve it
-                step = max(step / settings.step_factor, settings.min_step)
-                continue
-            break
+            while True:
+                value = theta_prev[index] + direction * step
+                if (direction > 0 and value >= bound) or (
+                    direction < 0 and value <= bound
+                ):
+                    value = bound
+                theta_start = theta_prev.copy()
+                theta_start[index] = value
+                theta, cost, converged = _evaluate_point(
+                    problem, theta_start, index, settings, jacobian=jacobian
+                )
+                rise = cost - cost_prev
+                if converged and rise > max_rise and step > settings.min_step:
+                    # the profile changes fast here, resolve it
+                    step = max(step / settings.step_factor, settings.min_step)
+                    continue
+                break
 
-        points.append((theta, cost, converged))
-        if not converged or cost >= threshold:
-            break
-        if rise < max_rise / settings.step_factor:
-            # the profile changes slowly, larger steps
-            step = min(step * settings.step_factor, settings.max_step)
-        theta_prev, cost_prev = theta, cost
+            points.append((theta, cost, converged))
+            scanned.advance()
+            if not converged or cost >= threshold:
+                break
+            if rise < max_rise / settings.step_factor:
+                # the profile changes slowly, larger steps
+                step = min(step * settings.step_factor, settings.max_step)
+            theta_prev, cost_prev = theta, cost
 
-    return points
+        return points
 
 
 def _scan_task(
@@ -1315,6 +1327,7 @@ def profile_likelihood(
         show_progress,
         unit="scans",
         workers=scan_workers,
+        kind="identifiability",
     ) as progress:
         if parallel:
             with runner.worker_pool(problem, settings, scan_workers) as pool:

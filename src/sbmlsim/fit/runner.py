@@ -23,7 +23,6 @@ settings of the fit, and `sbmlsim.fit.report.FitReport` turns them into figures
 and reports, see `sbmlsim.fit.parameters`.
 """
 
-import datetime
 import logging
 import os
 import time
@@ -31,28 +30,16 @@ from collections import deque
 from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar, override
 from uuid import uuid4
 
 import numpy as np
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    ProgressColumn,
-    SpinnerColumn,
-    Task,
-    TextColumn,
-    TimeElapsedColumn,
-)
-from rich.text import Text
 from scipy.optimize import OptimizeResult
 
 from sbmlsim import cgroup, parallel
-from sbmlsim.console import console
 from sbmlsim.events import emit
 from sbmlsim.fit import display
 from sbmlsim.fit.derived import hook_summaries
@@ -68,6 +55,11 @@ from sbmlsim.fit.provenance import FitProvenance
 from sbmlsim.fit.result import OptimizationResult
 from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.log import PACKAGE_LOGGER
+from sbmlsim.progress import Activity, remaining
+from sbmlsim.progress import activity as progress_activity
+from sbmlsim.progress import current_reporter as current_progress_reporter
+from sbmlsim.progress import reporter as progress_reporter
+from sbmlsim.progress import resolve as resolve_progress
 
 logger = logging.getLogger(__name__)
 
@@ -208,40 +200,8 @@ def estimate_total_time(
         The estimated total runtime in seconds, `None` before the first run
         is done.
     """
-    if completed <= 0 or total <= 0 or elapsed <= 0:
-        return None
-    workers = max(int(workers), 1)
-    batches_done = -(-completed // workers)
-    batches_total = -(-total // workers)
-    return elapsed / batches_done * batches_total
-
-
-class TotalTimeColumn(ProgressColumn):
-    """The estimated total runtime, `~ H:MM:SS` behind the elapsed time.
-
-    The estimate is `estimate_total_time` with the `workers` field of the
-    task, so it is corrected for the runs a pool processes at once.
-    """
-
-    def render(self, task: Task) -> Text:
-        """Render the estimate of a task."""
-        elapsed = task.elapsed
-        estimate = (
-            None
-            if elapsed is None or task.total is None
-            else estimate_total_time(
-                elapsed=elapsed,
-                completed=task.completed,
-                total=task.total,
-                workers=int(task.fields.get("workers", 1)),
-            )
-        )
-        if estimate is None:
-            return Text("~ -:--:-- total", style="progress.remaining")
-        return Text(
-            f"~ {datetime.timedelta(seconds=round(estimate))} total",
-            style="progress.remaining",
-        )
+    left = remaining(completed=completed, total=total, elapsed=elapsed, workers=workers)
+    return None if left is None else elapsed + left
 
 
 @contextmanager
@@ -251,46 +211,41 @@ def optimization_progress(
     enabled: bool = True,
     unit: str = "runs",
     workers: int = 1,
-) -> Generator[Progress | None]:
-    """Show the progress of the optimization runs on the console.
+    kind: str = "fit",
+) -> Generator[Activity | None]:
+    """Report the progress of the runs of a fit, see `sbmlsim.progress`.
 
-    The bar shows the count, the elapsed time and the estimated total runtime,
-    see `TotalTimeColumn`.
+    The activity is rendered by the reporter of the context, e.g. of the run
+    layer; a fit which is asked for its progress and has no reporter renders
+    its own: a bar on a terminal with the count, the elapsed time and the
+    estimate of the time which is left, a line every 30 seconds without one.
 
     Args:
-        description: text in front of the progress bar.
-        size: total number of optimization runs.
-        enabled: show the progress, a plain context without display if `False`.
-        unit: what is counted, behind the count.
+        description: what the runs are, the label of the activity.
+        size: the runs in total.
+        enabled: report the progress, a plain context without one if `False`.
+        unit: what is counted, kept for the callers which name it.
         workers: runs which are processed at once, for the estimate.
+        kind: what kind of activity it is, e.g. `fit`, `identifiability`.
 
     Yields:
-        The progress with a single task, or `None` if it is disabled.
+        The activity, or `None` if it is disabled.
     """
     if not enabled:
         yield None
         return
-
-    progress = Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TextColumn(unit),
-        TimeElapsedColumn(),
-        TotalTimeColumn(),
-        console=console,
-        transient=False,
-    )
-    with progress:
-        progress.add_task(description, total=size, workers=workers)
-        yield progress
+    with ExitStack() as stack:
+        if current_progress_reporter() is None:
+            stack.enter_context(progress_reporter(resolve_progress("auto")))
+        yield stack.enter_context(
+            progress_activity(kind, description, total=size, workers=workers)
+        )
 
 
-def _advance(progress: Progress | None, advance: int = 1) -> None:
-    """Advance the single task of the progress, if there is one."""
-    if progress is not None and progress.task_ids:
-        progress.advance(progress.task_ids[0], advance=advance)
+def _advance(activity: Activity | None, advance: int = 1) -> None:
+    """Advance the activity of a fit, if there is one."""
+    if activity is not None:
+        activity.advance(advance)
 
 
 def run_optimization(
@@ -1120,24 +1075,31 @@ class _EvaluationPool:
         )
         timed_out = finished = False
         try:
-            for k, outcome in outcomes:
-                if isinstance(outcome, TimeoutError):
-                    timed_out = True
-                    break
-                if isinstance(outcome, WorkerDied) and outcome.alone:
-                    yield k, self._alone(k)
-                    continue
-                if isinstance(outcome, WorkerDied):
-                    raise PoolError(
-                        f"the {self.item} {k} failed with the {self.items} in "
-                        f"flight after {MAX_POOL_RESTARTS} restarts of the pool "
-                        f"in one {self.batch}: {outcome}"
-                    )
-                if isinstance(outcome, Exception):
-                    raise outcome
-                yield k, outcome
-            else:
-                finished = True
+            # the points of a jacobian and the members of a generation are
+            # the steps of an activity of the progress, see `sbmlsim.progress`
+            with progress_activity(
+                self.batch, total=len(vectors), workers=self.pool.n_cores
+            ) as evaluated:
+                for k, outcome in outcomes:
+                    if isinstance(outcome, TimeoutError):
+                        timed_out = True
+                        break
+                    if isinstance(outcome, WorkerDied) and outcome.alone:
+                        yield k, self._alone(k)
+                        evaluated.advance()
+                        continue
+                    if isinstance(outcome, WorkerDied):
+                        raise PoolError(
+                            f"the {self.item} {k} failed with the {self.items} in "
+                            f"flight after {MAX_POOL_RESTARTS} restarts of the pool "
+                            f"in one {self.batch}: {outcome}"
+                        )
+                    if isinstance(outcome, Exception):
+                        raise outcome
+                    yield k, outcome
+                    evaluated.advance()
+                else:
+                    finished = True
         finally:
             outcomes.close()
             if not finished:

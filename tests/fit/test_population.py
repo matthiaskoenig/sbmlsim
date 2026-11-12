@@ -464,6 +464,7 @@ def _fake_pool(*outcomes: Any) -> Any:
         run=run,
         restarts=0,
         stopped=False,
+        n_cores=1,
         problem=SimpleNamespace(opid="p"),
         stop=lambda: None,
     )
