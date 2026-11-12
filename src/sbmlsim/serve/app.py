@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -53,6 +54,7 @@ from sbmlsim.serve.runner import (
     ModelEntry,
     ModelRegistry,
     PanelRunner,
+    UnknownKnob,
     UnknownModel,
     UnknownPanel,
 )
@@ -66,6 +68,11 @@ FAILED: Final = "The request failed in the service."
 
 #: the title of the application, which its OpenAPI document carries
 TITLE: Final = "sbmlsim panels"
+
+#: the errors of an invalid body which are answered, see `create_app.invalid`;
+#: a body of many values has an error per value, which would answer a large
+#: request with a larger response
+MAX_ERRORS: Final = 10
 
 
 def create_app(
@@ -221,38 +228,40 @@ def create_app(
         Raises:
             UnknownModel: for a model which is not served, a 404.
             UnknownPanel: for a panel the model does not declare, a 404.
-            HTTPException: a 422 for a request the panel does not take, e.g.
-                a knob it does not declare, and a 500 for a failure of the
-                service.
+            HTTPException: a 422 for a knob id the panel does not declare,
+                which is the one error of a run a request is answered with,
+                and a 500 for every other failure of the run, whose message
+                is the one of the service and not of the exception.
         """
         entry, declaration, sha = resolved(model, panel)
         started = time.perf_counter()
         try:
             result = runner.run(model, declaration, request.values, request.grid)
-        except ValueError as error:
-            # the runner names the knob ids which are no knobs of the panel
+            seconds = time.perf_counter() - started
+            settings = entry.project.simulator
+            return SimulateResponse.of(
+                result,
+                spec_hash=_spec_hash(entry, declaration, request, sha),
+                provenance=Provenance(
+                    model=entry.id,
+                    panel=declaration.id,
+                    model_sha256=sha,
+                    variant=declaration.simulation.variant,
+                    engine=settings.engine.value,
+                    sbmlsim=sbmlsim.__version__,
+                    seconds=seconds,
+                    created=datetime.now(UTC).isoformat(),
+                ),
+            )
+        except UnknownKnob as error:
+            # the runner names the knob ids which are no knobs of the panel,
+            # the one message of a run which carries nothing of the service
             raise HTTPException(status_code=422, detail=str(error)) from None
         except Exception:
             logger.exception(
                 "The panel '%s' of the model '%s' did not run.", panel, model
             )
             raise HTTPException(status_code=500, detail=FAILED) from None
-        seconds = time.perf_counter() - started
-        engine = entry.project.simulator.engine.value
-        return SimulateResponse.of(
-            result,
-            spec_hash=_spec_hash(entry, declaration, request, sha, engine),
-            provenance=Provenance(
-                model=entry.id,
-                panel=declaration.id,
-                model_sha256=sha,
-                variant=declaration.simulation.variant,
-                engine=engine,
-                sbmlsim=sbmlsim.__version__,
-                seconds=seconds,
-                created=datetime.now(UTC).isoformat(),
-            ),
-        )
 
     async def not_found(request: Request, exc: Exception) -> JSONResponse:
         """Answer a model or a panel which is not served with a 404.
@@ -267,9 +276,44 @@ def create_app(
         """
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
+    async def invalid(request: Request, exc: Exception) -> JSONResponse:
+        """Answer a body which is not a `SimulateRequest` with a 422.
+
+        The body of the answer is what is wrong and not what was sent: the
+        `type`, the `loc` and the `msg` of at most `MAX_ERRORS` errors of
+        pydantic, never its `input` and never its `ctx`, which FastAPI's own
+        handler repeats, so the answer of a large body is small and carries
+        nothing back.
+
+        Args:
+            request: the request which was read.
+            exc: the `RequestValidationError` of the body.
+
+        Returns:
+            The body `{"detail": [...]}` of the errors.
+        """
+        errors = exc.errors() if isinstance(exc, RequestValidationError) else []
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": [
+                    {
+                        "type": str(error.get("type", "")),
+                        "loc": [str(part) for part in error.get("loc", ())],
+                        "msg": str(error.get("msg", "")),
+                    }
+                    for error in errors[:MAX_ERRORS]
+                ]
+            },
+        )
+
     app.add_exception_handler(UnknownModel, not_found)
     app.add_exception_handler(UnknownPanel, not_found)
+    app.add_exception_handler(RequestValidationError, invalid)
     if allow_origins:
+        # `allow_headers` is open because the service takes no credential:
+        # `allow_credentials` stays `False`, so a browser sends no cookie and
+        # no authorization header of another origin
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(allow_origins),
@@ -288,7 +332,6 @@ def _spec_hash(
     panel: Panel,
     request: SimulateRequest,
     model_sha256: str,
-    engine: str,
 ) -> str:
     """Get the hash which identifies what a request simulated.
 
@@ -296,6 +339,11 @@ def _spec_hash(
     leaves out is its `default`, so two requests which run the same simulation
     have one hash, and the model is its sha256 and not its path, so the hash
     does not depend on where the service keeps its models.
+
+    The settings of the simulator of the project are hashed whole and not by
+    their engine alone: the tolerances, the optimization level and the
+    settings of the integrator are the numbers of the curves as much as the
+    engine is.
 
     The declaration of the panel is hashed whole (`panel_payload`) and not by
     its id: a panel which a project declares or overrides
@@ -308,7 +356,6 @@ def _spec_hash(
         panel: the panel of the request.
         request: the values of the knobs and the grid.
         model_sha256: the sha256 of the SBML file which is simulated.
-        engine: the engine which integrates.
 
     Returns:
         The sha256 of the canonical JSON, see
@@ -332,7 +379,7 @@ def _spec_hash(
                 for knob in panel.knobs
                 if knob.id in request.grid
             },
-            "engine": engine,
+            "simulator": entry.project.simulator.model_dump(mode="json"),
             "sbmlsim": sbmlsim.__version__,
         }
     )

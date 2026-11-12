@@ -54,6 +54,7 @@ __all__ = [
     "ModelRegistry",
     "PanelResult",
     "PanelRunner",
+    "UnknownKnob",
     "UnknownModel",
     "UnknownPanel",
     "X",
@@ -69,6 +70,15 @@ class UnknownModel(LookupError):
 
 class UnknownPanel(LookupError):
     """A panel id which a served model does not declare."""
+
+
+class UnknownKnob(ValueError):
+    """A knob id which the panel of a run does not declare.
+
+    It is the one error of a run which a request is answered with, so a
+    service answers it and no other `ValueError` of the simulation, which
+    would carry what the service is made of into a response.
+    """
 
 
 @dataclass(frozen=True)
@@ -293,18 +303,20 @@ class PanelRunner:
 
         Raises:
             UnknownModel: for a model which is not served.
-            ValueError: naming the ids, if `values` or `grid` name something
-                which is no knob of the panel; for a grid of fewer than one
-                point, see `Knob.values`; naming both units, for an `x_unit`
-                of the panel which is no time unit of the model, see `_times`.
-                The limits of a request (`sbmlsim.panel.MAX_KNOBS`,
-                `MAX_GRID`) are checked where a request is read.
+            UnknownKnob: naming the ids, if `values` or `grid` name something
+                which is no knob of the panel; it is raised before a model is
+                loaded, so a request which names one costs nothing.
+            ValueError: for a grid of fewer than one point, see `Knob.values`;
+                naming both units, for an `x_unit` of the panel which is no
+                time unit of the model, see `_times`. The limits of a request
+                (`sbmlsim.panel.MAX_KNOBS`, `MAX_GRID`) are checked where a
+                request is read.
         """
         entry = self.registry.entry(model_id)
         knobs = {knob.id: knob for knob in panel.knobs}
         unknown = sorted((set(values) | set(grid)) - set(knobs))
         if unknown:
-            raise ValueError(
+            raise UnknownKnob(
                 f"{unknown} are no knobs of the panel '{panel.id}', which has "
                 f"{sorted(knobs)}."
             )

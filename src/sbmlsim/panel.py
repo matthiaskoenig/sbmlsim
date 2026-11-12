@@ -260,7 +260,8 @@ class Panel(BaseModel):
         subtitle: the question the panel answers, shown below the title.
         x_label: the label of the time axis, e.g. `"time (hr)"`.
         knobs: the knobs of the panel, in the order they are shown; they are
-            the axes of the grid a request runs.
+            the axes of the grid a request runs, so there are at most
+            `MAX_KNOBS` of them, the knobs one request drives.
         curves: the curves of the panel, in the order they are drawn; at most
             `MAX_CURVES`.
         data: the study data of the panel, drawn under its curves.
@@ -273,7 +274,7 @@ class Panel(BaseModel):
     title: str
     subtitle: str = ""
     x_label: str = "time"
-    knobs: tuple[Knob, ...] = ()
+    knobs: tuple[Knob, ...] = Field(default=(), max_length=MAX_KNOBS)
     curves: tuple[PanelCurve, ...] = Field(max_length=MAX_CURVES)
     data: tuple[PanelData, ...] = ()
     simulation: PanelSimulation

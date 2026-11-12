@@ -9,6 +9,7 @@ The time unit of the HCTZ model is minutes, which is the unit the `end` of a
 `PanelSimulation` and the x of a result are in.
 """
 
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -29,7 +30,7 @@ from sbmlsim.panel import (
     PanelSimulation,
 )
 from sbmlsim.project import Project
-from sbmlsim.serve.app import create_app
+from sbmlsim.serve.app import FAILED, MAX_ERRORS, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
 
 #: the reference of the project of the HCTZ example
@@ -118,6 +119,16 @@ def never_runs(monkeypatch: pytest.MonkeyPatch) -> None:
         pytest.fail("the request reached the runner")
 
     monkeypatch.setattr(PanelRunner, "run", refuse)
+
+
+@pytest.fixture
+def never_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fail the test if a model is loaded or read at all."""
+
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("the request reached the model")
+
+    monkeypatch.setattr(PanelRunner, "_warm_model", refuse)
 
 
 def test_healthz_answers_without_a_model(client: TestClient) -> None:
@@ -215,6 +226,25 @@ def test_the_hash_covers_the_declaration_of_the_panel(
     assert redeclared["spec_hash"] != declared["spec_hash"]
 
 
+def test_the_hash_covers_the_settings_of_the_simulator(
+    client: TestClient, project: Project
+) -> None:
+    """The tolerances are the numbers of the curves as much as the engine is."""
+    tightened = project.replace(
+        simulator=project.simulator.model_copy(update={"relative_tolerance": 1e-10})
+    )
+    changed = ModelRegistry(
+        {"hctz": ModelEntry(id="hctz", project=tightened, title="Hydrochlorothiazide")}
+    )
+    body = {"values": {}, "grid": {}}
+    loose = client.post(SIMULATE, json=body).json()
+    with TestClient(create_app(changed)) as other:
+        tight = other.post(SIMULATE, json=body).json()
+    assert tight["provenance"]["model_sha256"] == loose["provenance"]["model_sha256"]
+    assert tight["provenance"]["engine"] == loose["provenance"]["engine"]
+    assert tight["spec_hash"] != loose["spec_hash"]
+
+
 def test_a_point_which_does_not_integrate_is_null_and_flagged(
     client: TestClient,
 ) -> None:
@@ -260,13 +290,79 @@ def test_a_request_of_an_unknown_field_is_422_and_runs_nothing(
     assert response.status_code == 422
 
 
-def test_an_unknown_knob_id_is_422(client: TestClient) -> None:
+def test_an_unknown_knob_id_is_422_and_loads_no_model(
+    client: TestClient, never_loads: None
+) -> None:
+    """The knobs are checked against the panel before a model is loaded."""
     response = client.post(SIMULATE, json={"values": {"kidney": 1.0}, "grid": {}})
     assert response.status_code == 422
     assert "kidney" in response.json()["detail"]
     response = client.post(SIMULATE, json={"values": {}, "grid": {"kidney": 3}})
     assert response.status_code == 422
     assert "kidney" in response.json()["detail"]
+
+
+def test_a_value_error_of_a_run_is_500_and_carries_nothing_of_it(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the knob ids of a request are answered, no other `ValueError`.
+
+    A `ValueError` below the runner, e.g. of a knob whose target is no entity
+    of the model, carries the inside of the service in its message.
+    """
+
+    def broken(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError("'f_renal_function' is no selection of src/sbmlsim")
+
+    monkeypatch.setattr(PanelRunner, "run", broken)
+    response = client.post(SIMULATE, json={"values": {}, "grid": {}})
+    assert response.status_code == 500
+    assert response.json() == {"detail": FAILED}
+    assert "f_renal_function" not in response.text
+
+
+def test_the_body_of_an_invalid_request_does_not_repeat_it(
+    client: TestClient, never_runs: None
+) -> None:
+    """The errors name what is wrong, they do not send the input back."""
+    sent = "a_knob_of_no_panel"
+    response = client.post(
+        SIMULATE, json={"values": {sent: 1.0}, "grid": {"egfr": 1000}}
+    )
+    assert response.status_code == 422
+    assert sent not in response.text
+    assert set(response.json()) == {"detail"}
+    error = response.json()["detail"][0]
+    assert set(error) == {"type", "loc", "msg"}
+    assert error["loc"] == ["body", "grid", "egfr"]
+
+
+def test_a_large_body_is_not_answered_with_a_larger_one(
+    client: TestClient, never_runs: None
+) -> None:
+    """A body of a value per error is answered with `MAX_ERRORS` of them."""
+    body = {"values": {str(knob): float("inf") for knob in range(10_000)}, "grid": {}}
+    response = client.post(
+        SIMULATE,
+        content=json.dumps(body),
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert len(response.json()["detail"]) <= MAX_ERRORS
+    assert len(response.content) < 1024
+
+
+@pytest.mark.parametrize("value", ["NaN", "Infinity", "-Infinity"])
+def test_a_value_which_is_no_number_is_422_and_runs_nothing(
+    client: TestClient, never_runs: None, value: str
+) -> None:
+    """`json.loads` reads them, the knobs of a panel do not take them."""
+    response = client.post(
+        SIMULATE,
+        content=f'{{"values": {{"egfr": {value}}}, "grid": {{}}}}',
+        headers={"content-type": "application/json"},
+    )
+    assert response.status_code == 422
 
 
 def test_the_error_body_carries_no_traceback_and_no_path(

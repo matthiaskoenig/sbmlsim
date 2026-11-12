@@ -47,6 +47,10 @@ __all__ = [
 #: a body of the API forbids unknown fields and does not change
 _CONFIG = ConfigDict(extra="forbid", frozen=True)
 
+#: the value of one knob, see `SimulateRequest`; `json.loads` reads `NaN` and
+#: `Infinity`, which are no value of a knob and are refused at the edge
+type _Value = Annotated[float, Field(allow_inf_nan=False)]
+
 #: the points of one axis of a grid, see `SimulateRequest`
 type _Points = Annotated[int, Field(ge=1, le=MAX_GRID)]
 
@@ -56,8 +60,9 @@ class SimulateRequest(BaseModel):
 
     Attributes:
         values: the value of a knob by its id, in the unit of the knob, at
-            most `MAX_KNOBS` of them, which is the knobs of a request; a knob
-            which a request leaves out runs at its `default`.
+            most `MAX_KNOBS` of them, which is the knobs of a request, and
+            every one a number; a knob which a request leaves out runs at its
+            `default`.
         grid: the points of a knob of the grid by its id, at most `MAX_KNOBS`
             knobs and `MAX_GRID` points in all; a knob of the grid takes no
             value.
@@ -65,7 +70,7 @@ class SimulateRequest(BaseModel):
 
     model_config = _CONFIG
 
-    values: dict[str, float] = Field(default_factory=dict, max_length=MAX_KNOBS)
+    values: dict[str, _Value] = Field(default_factory=dict, max_length=MAX_KNOBS)
     grid: dict[str, _Points] = Field(default_factory=dict, max_length=MAX_KNOBS)
 
     @model_validator(mode="after")
