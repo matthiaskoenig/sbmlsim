@@ -12,6 +12,10 @@ reporters, and `resolve` chooses between them:
   `sbmlsim.events`, so something outside the process (`simrun`, an agent)
   follows the run by reading `progress.jsonl`.
 
+Every rendering says what of the machine the run uses, the cores, the CPU and
+the memory of `sbmlsim.progress.resources`: the bar of the outermost activity,
+the end of every line and the field `resources` of every event.
+
 The rendering is chosen by `--progress auto|bar|log|none` of the run, by the
 environment variable `SBMLSIM_PROGRESS` or by the argument of a function which
 takes one, e.g. `show_progress` of a fit. `auto` draws bars on a terminal and
@@ -44,6 +48,7 @@ from rich.text import Text
 import sbmlsim.console
 from sbmlsim import events
 from sbmlsim.progress.core import Activity, Reporter, _now, report
+from sbmlsim.progress.resources import SAMPLER, format_resources
 
 #: what writes the lines of the progress of a run
 logger = logging.getLogger("sbmlsim.progress")
@@ -92,9 +97,30 @@ def _line(activity: Activity, suffix: str = "") -> str:
         parts.append(f"{activity.completed} steps")
     parts.append(f"elapsed {_clock(activity.elapsed)}")
     parts.append(f"eta {_clock(activity.remaining())}")
+    parts.append(format_resources(SAMPLER.sample(workers=activity.workers)))
     if suffix:
         parts.append(suffix)
     return " ".join(parts)
+
+
+class ResourcesColumn(ProgressColumn):
+    """What of the machine the run uses, on the outermost activity only.
+
+    The resources are those of the process, not of the activity, so one line
+    carries them and the bars of the activities inside stay readable, see
+    `sbmlsim.progress.resources`.
+    """
+
+    @override
+    def render(self, task: Task) -> Text:
+        """Render the resources of the run on an outermost task."""
+        activity = task.fields.get("activity")
+        if not isinstance(activity, Activity) or activity.depth:
+            return Text("")
+        return Text(
+            format_resources(SAMPLER.sample(workers=activity.workers)),
+            style="progress.remaining",
+        )
 
 
 class RemainingColumn(ProgressColumn):
@@ -136,6 +162,7 @@ class BarReporter:
             MofNCompleteColumn(),
             TimeElapsedColumn(),
             RemainingColumn(),
+            ResourcesColumn(),
             console=self.console,
             transient=False,
         )
@@ -259,6 +286,7 @@ class EventReporter:
             eta=activity.remaining(),
             uid=activity.uid,
             error=error,
+            resources=SAMPLER.sample(workers=activity.workers).as_dict(),
         )
 
     def started(self, activity: Activity) -> None:

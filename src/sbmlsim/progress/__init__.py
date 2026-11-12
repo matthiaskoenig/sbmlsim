@@ -8,7 +8,7 @@ event in `progress.jsonl`.
 
 from __future__ import annotations
 
-from sbmlsim.progress import core
+from sbmlsim.progress import core, resources
 from sbmlsim.progress.core import (
     Activity,
     Reporter,
@@ -28,6 +28,7 @@ from sbmlsim.progress.reporters import (
     MultiReporter,
     resolve,
 )
+from sbmlsim.progress.resources import Resources, format_resources
 
 __all__ = [
     "ENV_NAME",
@@ -38,12 +39,15 @@ __all__ = [
     "LogReporter",
     "MultiReporter",
     "Reporter",
+    "Resources",
     "activity",
     "core",
     "current_activity",
     "current_reporter",
+    "format_resources",
     "remaining",
     "report",
     "reporter",
     "resolve",
+    "resources",
 ]
