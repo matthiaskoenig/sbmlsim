@@ -32,6 +32,8 @@ from typing import Any
 
 from sbmlsim import events
 from sbmlsim.atomic import write_text_atomic
+from sbmlsim.progress import reporter
+from sbmlsim.progress import resolve as resolve_progress
 from sbmlsim.run.context import (
     SUMMARY_FILE,
     RunContext,
@@ -138,6 +140,7 @@ def execute(
     provenance: Path | None = None,
     inputs: Mapping[str, Path] | None = None,
     summary: Path | None = None,
+    progress: str | None = None,
 ) -> dict[str, Any]:
     """Run an analysis whole into an output directory.
 
@@ -168,6 +171,8 @@ def execute(
             resolved to absolute paths.
         summary: a file the summary of a successful run is also written to,
             e.g. the summary of a task of simrun outside of `out`.
+        progress: how the progress of the run is rendered, `auto`, `bar`,
+            `log` or `none`, see `sbmlsim.progress.resolve`.
 
     Returns:
         The summary of the run.
@@ -194,6 +199,7 @@ def execute(
         workers=resolved_workers(the_kind, workers),
         resume=resume,
         provenance=sources,
+        progress=progress,
     )
     result = record_run(
         the_kind, planned, given_hash, ctx, lambda: the_kind.run(planned, ctx)
@@ -223,6 +229,7 @@ def check_out(
         out: the output directory.
         resume: whether the run would resume the run in `out`.
         inputs: the paths of the input fields of the spec by their name.
+        progress: how the progress is rendered, see `sbmlsim.progress.resolve`.
 
     Raises:
         OutInUse: for an output the run may not run into; its `out` and
@@ -274,6 +281,7 @@ def compute_unit(
     out: Path,
     *,
     inputs: Mapping[str, Path] | None = None,
+    progress: str | None = None,
 ) -> None:
     """Compute one unit of a planned spec into an output directory, serially.
 
@@ -289,6 +297,7 @@ def compute_unit(
         index: the index of the unit, in `range(count_units(kind, spec))`.
         out: the output directory, created.
         inputs: the paths of the input fields of the spec by their name.
+        progress: how the progress is rendered, see `sbmlsim.progress.resolve`.
 
     Raises:
         ConfigurationError: for a kind which is not split, a spec which is not
@@ -309,10 +318,20 @@ def compute_unit(
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     check_plan(the_kind, given, out)
-    ctx = RunContext(out=out, workers=1, resume=True, provenance=sources, unit=index)
-    progress = ctx.progress_path
-    progress.parent.mkdir(parents=True, exist_ok=True)
-    with events.recording(progress):
+    ctx = RunContext(
+        out=out,
+        workers=1,
+        resume=True,
+        provenance=sources,
+        unit=index,
+        progress=progress,
+    )
+    events_path = ctx.progress_path
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    with (
+        events.recording(events_path),
+        reporter(resolve_progress(ctx.progress)),
+    ):
         compute(given, index, ctx)
 
 
@@ -323,6 +342,7 @@ def merge(
     *,
     inputs: Mapping[str, Path] | None = None,
     summary: Path | None = None,
+    progress: str | None = None,
 ) -> dict[str, Any]:
     """Merge the units of a planned spec in an output directory.
 
@@ -334,6 +354,7 @@ def merge(
         out: the output directory the units were computed into.
         inputs: the paths of the input fields of the spec by their name.
         summary: a file the summary of a successful merge is also written to.
+        progress: how the progress is rendered, see `sbmlsim.progress.resolve`.
 
     Returns:
         The summary of the run.
@@ -359,6 +380,7 @@ def merge(
         workers=resolved_workers(the_kind, None),
         resume=True,
         provenance=sources,
+        progress=progress,
     )
     result = record_run(
         the_kind,

@@ -20,6 +20,10 @@ The top level modules: data, units and the shared output.
 | [project](project.md) | `Project`, a model package: its model variants and factory, experiments, fits and their records, scans and uncertainty analyses, which the run layer resolves, with the settings of its simulator, figures, checks and release |
 | [project_checks](project_checks.md) | the checks of a model package as functions over a `Project` |
 | [events](events.md) | the events of a run as JSON lines |
+| [progress.core](progress.core.md) | the activities of a long run, what reports them and the estimate of the time which is left |
+| [progress.reporters](progress.reporters.md) | what renders the activities: a rich bar, a line every 30 seconds, an event in `progress.jsonl` |
+| [progress.resources](progress.resources.md) | the cores, the CPU and the memory a run uses, which every rendering says |
+| [progress.workers](progress.workers.md) | the progress of the activities of a worker through the queue of its parent |
 | [atomic](atomic.md) | atomic writes of files and directories |
 | [cgroup](cgroup.md) | the CPU quota of the cgroup of the process |
 | [console](console.md) | shared rich console |

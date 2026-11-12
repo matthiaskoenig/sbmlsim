@@ -47,6 +47,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from sbmlsim.progress import NAMES as PROGRESS_NAMES
 from sbmlsim.run.kinds import RESERVED_NAMES, ConfigurationError
 from sbmlsim.run.profiling import (
     PROFILE_OPTION,
@@ -151,6 +152,17 @@ def _parser() -> argparse.ArgumentParser:
             help="the path of an input field of the spec, repeated per input",
         )
 
+    def progress_option(command: argparse.ArgumentParser) -> None:
+        command.add_argument(
+            "--progress",
+            choices=PROGRESS_NAMES,
+            default=None,
+            help="how the progress is shown: bars on a terminal and lines "
+            "without one (auto), bars (bar), a line every 30 seconds (log) or "
+            "nothing (none); $SBMLSIM_PROGRESS without. The progress is "
+            "recorded in progress.jsonl whatever is shown",
+        )
+
     def summary_file(command: argparse.ArgumentParser) -> None:
         command.add_argument(
             "--summary",
@@ -164,6 +176,7 @@ def _parser() -> argparse.ArgumentParser:
     kind_and_spec(run)
     out_and_inputs(run)
     summary_file(run)
+    progress_option(run)
     run.add_argument(
         "--workers",
         type=positive_number,
@@ -192,11 +205,13 @@ def _parser() -> argparse.ArgumentParser:
     kind_and_spec(unit)
     unit.add_argument("index", type=int, help="the index of the unit")
     out_and_inputs(unit)
+    progress_option(unit)
 
     merge = commands.add_parser("merge", help="merge the units of a planned spec")
     kind_and_spec(merge)
     out_and_inputs(merge)
     summary_file(merge)
+    progress_option(merge)
 
     analyses = commands.add_parser("list", help="list the analyses of a project")
     analyses.add_argument("project", help="the project, module:attribute")
@@ -241,6 +256,7 @@ def _command(args: argparse.Namespace) -> None:
             provenance=args.provenance,
             inputs=inputs,
             summary=args.summary,
+            progress=args.progress,
         )
     elif args.command == "plan":
         text = api.plan(args.kind, args.spec).model_dump_json(indent=2) + "\n"
@@ -249,9 +265,23 @@ def _command(args: argparse.Namespace) -> None:
         else:
             args.output.write_text(text, encoding="utf-8")
     elif args.command == "unit":
-        api.compute_unit(args.kind, args.spec, args.index, args.out, inputs=inputs)
+        api.compute_unit(
+            args.kind,
+            args.spec,
+            args.index,
+            args.out,
+            inputs=inputs,
+            progress=args.progress,
+        )
     elif args.command == "merge":
-        api.merge(args.kind, args.spec, args.out, inputs=inputs, summary=args.summary)
+        api.merge(
+            args.kind,
+            args.spec,
+            args.out,
+            inputs=inputs,
+            summary=args.summary,
+            progress=args.progress,
+        )
     else:
         entries = api.list_analyses(args.project, experiments=args.experiments)
         if args.json:

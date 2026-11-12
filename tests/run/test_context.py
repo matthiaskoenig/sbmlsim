@@ -47,8 +47,16 @@ def test_execute_writes_spec_run_summary_progress(tmp_path: Path) -> None:
     assert record["started"] <= record["finished"]
     assert record["sources"] is None
     assert record["git"] is None
-    lines = (out / "progress.jsonl").read_text(encoding="utf-8").splitlines()
-    assert [json.loads(line)["index"] for line in lines] == list(range(10))
+    records = [
+        json.loads(line)
+        for line in (out / "progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [r["index"] for r in records if r["event"] != "progress"] == list(range(10))
+    # the progress of the run is recorded whatever is rendered
+    progress = [r for r in records if r["event"] == "progress"]
+    assert progress
+    assert progress[-1]["state"] == "finished"
+    assert progress[-1]["resources"]["cores"] >= 1
 
 
 def test_run_json_records_sources_and_environment(

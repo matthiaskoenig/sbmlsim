@@ -244,6 +244,12 @@ simrun outputs <run> report --local --to results/report
 ...
 ```
 
+A task of simrun runs the command line, which has no terminal: it writes a line
+of its progress every 30 seconds into the log of the task and the `progress`
+events into `out/progress.jsonl` (`out/progress/unit-<index>.jsonl` for a unit),
+so how far a task is and what of its worker it uses are in the log and in the
+file, see [Progress](run.md#progress-and-provenance).
+
 The results are the objects of the tutorial, read from their files:
 
 ```py

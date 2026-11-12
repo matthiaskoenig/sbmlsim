@@ -68,6 +68,7 @@ The first form runs an analysis whole (its command is `run`, which may be left o
 | `--provenance FILE` | the provenance of the sources the run runs on, see [Provenance](#progress-and-provenance) |
 | `--input PORT=PATH` | the path of an input of the spec, the output of another run, e.g. `--input fit=results/fit`; repeated per input, also as `--input=PORT=PATH` |
 | `--summary FILE` | write the summary of a successful run also into this file |
+| `--progress MODE` | how the progress is shown: `auto` (bars on a terminal, a line every 30 seconds without one), `bar`, `log` or `none`; `$SBMLSIM_PROGRESS` without, see [Progress](#progress-and-provenance) |
 
 `plan` writes the planned spec as JSON to stdout or to `-o FILE`; the messages of every command go to stderr. `unit` and `merge` take no `--workers`, `--resume` or `--provenance`: a unit runs serially in its process, a unit or a merge into an output with files continues it, and the provenance of their sources is the file of the environment variable `SIMRUN_PROVENANCE`, if set.
 
@@ -301,6 +302,21 @@ A resume runs the planned spec of `spec.json`, so a drawn seed stays, and is acc
 
 ## Progress and provenance
 
+A run says how far it is while it runs. The long operations of sbmlsim - the experiments of a run, the points of a scan, the runs of a fit and the points of their jacobians, the scans of an identifiability and the figures of a fit report - are *activities*, each with its steps, its elapsed time, an estimate of the time which is left and what of the machine the run uses (the cores, the CPU and the memory, see `sbmlsim.progress.resources`). `--progress` chooses what is rendered:
+
+| mode | what it does |
+| --- | --- |
+| `auto` | bars on a terminal, a line every 30 seconds without one; the default |
+| `bar` | the bars, also without a terminal |
+| `log` | the lines only, e.g. for `nohup`, a pipe or continuous integration |
+| `none` | nothing is rendered |
+
+```
+identifiability profiling 12/70 (17%) elapsed 0:21:40 eta 1:44:40 cores 16/24 cpu 1480% mem 12.4 GB, machine 18.3/31.0 GB
+```
+
+An activity which is over in less than the interval writes no line, so the thousands of scans of a fit do not fill the log. The environment variable `SBMLSIM_PROGRESS` sets the same modes, for a run which is started by another program. Whatever is rendered, the progress is recorded in `progress.jsonl` as `progress` events, so a program outside of the run follows it there.
+
 `progress.jsonl` has one JSON line per step of the analysis, which a program outside of the run can follow, e.g. `tail -f`:
 
 ```json
@@ -317,6 +333,7 @@ A resume runs the planned spec of `spec.json`, so a drawn seed stays, and is acc
 | `sensitivity.analysis` | `analysis`, `folder`: an analysis of a sensitivity analysis over groups finished, its folder written |
 | `propagation.block` | `scenario`, `start`, `stop`: a block of draws ran or was read |
 | `experiment` | `sid`, `phase`, `activity`, `completed`, `total`: a phase of a simulation experiment |
+| `progress` | `state` (`started`, `running`, `finished`), `kind` (`experiments`, `scan`, `fit`, `jacobian`, `identifiability`, `report`), `label`, `completed`, `total`, `depth`, `elapsed`, `eta`, `uid`, `error`, `resources` (`cores`, `workers`, `cpu_percent`, `rss`, `memory_used`, `memory_total`): an activity started, got on or ended, at most one per activity and second |
 
 The provenance of a run is the git revision of the root of the project, recorded in `run.json`. A run on a snapshot of the sources, e.g. on a cluster, has no checkout: `--provenance FILE`, or the file the environment variable `SIMRUN_PROVENANCE` names, is the JSON list of its sources (name, branch, commit, uncommitted changes), which `run.json`, the records of a fit (`FitProvenance.sources`) and the methods of its report record instead of the git revision.
 

@@ -62,13 +62,13 @@ worker says, see `sbmlsim.model.model_amici.using_cache`.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
 from collections import Counter
-from collections.abc import Callable, Generator, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, wait
 from concurrent.futures.process import BrokenProcessPool
-from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Unpack
@@ -76,21 +76,17 @@ from typing import Any, Unpack
 import numpy as np
 import xarray as xr
 from numpy.typing import ArrayLike
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    TextColumn,
-    TimeRemainingColumn,
-)
 
 from sbmlsim import parallel
-from sbmlsim.console import console
 from sbmlsim.engine import Engine, import_amici, import_copasi, resolve_engine
 from sbmlsim.events import emit
 from sbmlsim.model import AbstractModel, SBMLModel, load_model
 from sbmlsim.model.model_sbml import IntegratorSetting, IntegratorSettings
 from sbmlsim.model.tolerances import AbsoluteTolerance
+from sbmlsim.progress import activity as progress_activity
+from sbmlsim.progress import current_reporter as current_progress_reporter
+from sbmlsim.progress import reporter as progress_reporter
+from sbmlsim.progress import resolve as resolve_progress
 from sbmlsim.result.scan import (
     BLOCK,
     CHANGES,
@@ -349,12 +345,28 @@ class Simulator:
         show = workers > 1 if progress is None else progress
         assembly = _Assembly(compiled, block)
         done = 0
-        with _progress(show, len(block)) as advance:
+        with contextlib.ExitStack() as stack:
+            # `False` reports nothing, also to a reporter of the context, e.g.
+            # of a run of experiments without progress; a scan which is asked
+            # for its progress and has no reporter renders its own
+            if progress is False:
+                stack.enter_context(progress_reporter(None))
+            elif show and current_progress_reporter() is None:
+                stack.enter_context(progress_reporter(resolve_progress("auto")))
+            # a simulation is a scan of one point, which reports nothing
+            scanned = (
+                stack.enter_context(
+                    progress_activity("scan", total=len(block), workers=workers)
+                )
+                if len(block) > 1
+                else None
+            )
 
             def collect(result: ChunkResult) -> None:
                 nonlocal done
                 assembly.add(result)
-                advance(len(result.indices))
+                if scanned is not None:
+                    scanned.advance(len(result.indices))
                 done += len(result.indices)
                 emit(
                     "scan.chunk",
@@ -1427,21 +1439,3 @@ def _grid(
     for times in given:
         counts |= Counter(times)
     return np.asarray(sorted(counts.elements()), dtype=float), True
-
-
-@contextmanager
-def _progress(show: bool, total: int) -> Generator[Callable[[int], None]]:
-    """Show the progress of a run, yield the function which advances it."""
-    if not show:
-        yield lambda n: None
-        return
-    with Progress(
-        TextColumn("scan"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TimeRemainingColumn(),
-        console=console,
-        transient=True,
-    ) as progress:
-        task = progress.add_task("scan", total=total)
-        yield lambda n: progress.advance(task, n)

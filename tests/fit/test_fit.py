@@ -492,28 +492,6 @@ def test_estimate_total_time() -> None:
     assert estimate_total_time(elapsed=42.0, completed=8, total=8, workers=4) == 42.0
 
 
-def test_total_time_column() -> None:
-    """The progress shows the estimated total runtime."""
-    from rich.progress import Progress
-
-    from sbmlsim.fit.runner import TotalTimeColumn
-
-    clock = [0.0]
-    progress = Progress(TotalTimeColumn(), get_time=lambda: clock[0])
-    task_id = progress.add_task("optimizing", total=4, workers=2)
-    task = progress.tasks[0]
-    column = TotalTimeColumn()
-
-    assert str(column.render(task)) == "~ -:--:-- total"
-    clock[0] = 90.0
-    progress.update(task_id, completed=1)
-    # one of two batches done after 90 seconds
-    assert str(column.render(task)) == "~ 0:03:00 total"
-    clock[0] = 200.0
-    progress.update(task_id, completed=4)
-    assert str(column.render(task)) == "~ 0:03:20 total"
-
-
 def test_settings_tolerance_per_kind() -> None:
     """The absolute tolerance of the settings is one per kind of state."""
     tolerance = AbsoluteTolerance(amount=1e-9, concentration=1e-8, other=1e-7)

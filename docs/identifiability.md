@@ -119,6 +119,8 @@ How the scans work:
 - `pids` restricts the analysis to some of the parameters.
 - `ProfileSettings(reoptimize=False)` keeps the other parameters at the optimum. That is a plain scan of the cost and a lower bound of the profile: fast and enough to find non-identifiable parameters, but its intervals are too narrow for coupled parameters.
 
+A long analysis says how far it is: every scan is a step of the activity of the analysis, with the count, the elapsed time, the estimate of the time which is left and the cores, the CPU and the memory of the run, and a scan which runs in this process reports its points as well, see [Progress](run.md#progress-and-provenance).
+
 ## Fisher information
 
 The Fisher information is the local alternative to the profile: the curvature of the cost at the optimum, computed from one jacobian. For a fit that minimizes `cost = 0.5 * Σ r²`, the Gauss-Newton approximation of the Hessian is the Fisher information matrix, and its inverse, scaled by the variance of the residuals, is the covariance of the parameters:
@@ -135,12 +137,14 @@ Here `J = ∂r/∂θ` is the jacobian in the space the optimizer searches (`FitS
 from sbmlsim.fit.fisher import fisher_information
 
 fim = fisher_information(
-    problem=problem, settings=settings, parameter_set=parameter_sets[0]
+    problem=problem, settings=settings, parameter_set=parameter_sets[0], n_cores=4
 )
 print(fim.summary_df)
 print(fim.correlation)
 print(fim.rank, fim.is_identifiable, fim.condition_number)
 ```
+
+The jacobian is `2 k` evaluations of the residuals, two per parameter, which are independent of each other: `n_cores` evaluates them on the workers of a fit, the pool the jacobian of least squares uses, so a Fisher information of 35 parameters costs five rounds of simulations on 16 workers instead of seventy one after another. The step of a point is the same either way, so the jacobian is the one of a single process bitwise. The commands pass their `--cores`, and the points report their [progress](run.md#progress).
 
 What the result tells you:
 

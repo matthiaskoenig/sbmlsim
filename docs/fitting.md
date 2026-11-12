@@ -77,6 +77,8 @@ optimizer time      0.1 s
 3    3  0.049603     0.304797      0.005028
 ```
 
+`show_progress` says whether the fit reports what it does: on a terminal a bar per activity (the runs of the fit and the points of their jacobians), without one a line every 30 seconds, each with the count, the elapsed time, the estimate of the time which is left and the cores, the CPU and the memory of the run, see [Progress](run.md#progress-and-provenance). The setting is the same everywhere, `--progress` of `python -m sbmlsim.run` or `SBMLSIM_PROGRESS`.
+
 Every run ends at about the same parameters, so the optimum is well defined. With a seed the start points, and therefore the result, are the same in every session.
 
 ### Look at the report
