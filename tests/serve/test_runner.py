@@ -15,6 +15,7 @@ from pint.errors import UndefinedUnitError
 from sbmlsim.panel import Panel, PanelCurve
 from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.runner import (
+    DeliveredUnit,
     ModelEntry,
     ModelRegistry,
     PanelResult,
@@ -191,13 +192,19 @@ def test_a_unit_of_a_series_which_is_no_unit_is_refused(
 
 
 def test_a_curve_without_a_unit_carries_the_one_of_the_model(
-    runner: PanelRunner, panel: Panel
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
 ) -> None:
     curve = PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma")
-    without = panel.model_copy(update={"curves": (curve,)})
+    without = panel.model_copy(update={"curves": (curve,), "data": ()})
     declared = runner.run("hctz", panel, {"egfr": 1.0, "dose": 25.0}, {})
     result = runner.run("hctz", without, {"egfr": 1.0, "dose": 25.0}, {})
     assert result.units["Cve_hctz"] == "mmol"
+    # the study data under such a curve is delivered in that unit as well
+    under = without.model_copy(
+        update={"data": (URINE.model_copy(update={"curve": "Cve_hctz"}),)}
+    )
+    series = runner.units(registry.entry("hctz"), under).series
+    assert series[URINE.id] == DeliveredUnit(text="mmol", unit=ureg.Unit("mmol"))
     # the declared unit converts the values of the model, it does not relabel them
     assert result.curves["Cve_hctz"][0][-1] * 1000.0 == pytest.approx(
         declared.curves["Cve_hctz"][0][-1]

@@ -28,6 +28,7 @@ from sbmlsim.serve.app import FAILED, create_app
 from sbmlsim.serve.data import PanelSeries, panel_data
 from sbmlsim.serve.payload import DATA_CONTRACT
 from sbmlsim.serve.runner import (
+    UNITLESS,
     ModelEntry,
     ModelRegistry,
     PanelRunner,
@@ -75,6 +76,10 @@ MINE = PanelData(
 PLAIN = MINE.model_copy(update={"dataset": "Mine1999_Tab2"})
 #: the times of both crafted datasets, in hours
 MINE_TIMES = [12.0, 96.0]
+#: those times in the unit of the x of the panel
+MINE_MINUTES = [time * 60.0 for time in MINE_TIMES]
+#: the values of the column of `Mine1999_Tab1` which carries no unit
+RATIOS = [0.21, 0.29]
 
 
 @pytest.fixture(scope="module")
@@ -89,16 +94,17 @@ def crafted(project: Project, tmp_path: Path) -> Project:
 
     No dataset of the HCTZ example carries a column of a relative `cv` or
     times without a unit, which are the two shapes the unit of a column is
-    read in (`sbmlsim.serve.data._unit_of`): `Mine1999_Tab1` has the CV,
+    read in (`sbmlsim.serve.data._unit_of`): `Mine1999_Tab1` has the CV and a
+    column without a unit,
     `Mine1999_Tab2` the times without a unit and `Mine1999_Tab3` an error
     which is measured in another unit than its values.
     """
     folder = tmp_path / "Mine1999"
     folder.mkdir()
     (folder / ".Mine1999_Tab1.tsv").write_text(
-        "label\ttime\ttime_unit\tmean\tmean_cv\tmean_unit\tcount\n"
-        "urine\t12\thr\t3.01\t12.0\tmg\t4\n"
-        "urine\t96\thr\t4.13\t9.0\tmg\t4\n",
+        "label\ttime\ttime_unit\tmean\tmean_cv\tmean_unit\tcount\tratio\n"
+        "urine\t12\thr\t3.01\t12.0\tmg\t4\t0.21\n"
+        "urine\t96\thr\t4.13\t9.0\tmg\t4\t0.29\n",
         encoding="utf-8",
     )
     (folder / ".Mine1999_Tab3.tsv").write_text(
@@ -253,6 +259,22 @@ def test_a_unit_id_of_the_model_is_served_on_both_routes_as_well(
     assert series["y"] == pytest.approx([amount * 1e-6 for amount in AMOUNTS])
 
 
+def test_a_curve_which_declares_no_unit_is_served_in_the_unit_of_the_model(
+    project: Project, panel: Panel
+) -> None:
+    """The curve of a run and its study data are one unit, declared or not."""
+    urine = PanelCurve(id="Aurine_hctz", label="urine")
+    assert urine.unit is None
+    declared = panel.model_copy(update={"curves": (panel.curves[0], urine)})
+    client = served(project, declared)
+    data = client.get(DATA).json()
+    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    series = data["series"][0]
+    # the model carries the amount in the urine in `mmol`, the study in `mg`
+    assert series["unit"] == simulated["units"]["Aurine_hctz"] == "mmol"
+    assert series["y"] == pytest.approx([amount * 1e-3 for amount in AMOUNTS])
+
+
 def test_the_body_of_a_series_is_json_without_a_nan(client: TestClient) -> None:
     """A row of a dataset which carries no point is no point of the series."""
     assert "NaN" not in client.get(DATA).text
@@ -387,10 +409,38 @@ def test_the_times_of_a_dataset_without_a_unit_are_delivered_as_they_are(
     declared = with_data(panel, PLAIN)
     entry = entry_of(crafted)
     units = runner.units(entry, declared)
-    [series] = panel_data(entry, declared, PanelUnits(x=None, series=units.series))
+    [series] = panel_data(entry, declared, PanelUnits(x=UNITLESS, series=units.series))
     assert series.x_unit is None
     assert series.x == pytest.approx(MINE_TIMES)
     assert series.unit == "umol"
+
+
+def test_a_curve_the_model_gives_no_unit_delivers_the_values_as_they_are(
+    runner: PanelRunner, crafted: Project, panel: Panel
+) -> None:
+    """A curve without a unit and a column without one are one scale."""
+    declared = with_data(panel, changed(MINE, y="ratio", conversion=None))
+    entry = entry_of(crafted)
+    units = runner.units(entry, declared)
+    [series] = panel_data(
+        entry, declared, PanelUnits(x=units.x, series={MINE.id: UNITLESS})
+    )
+    assert series.unit is None
+    assert series.y == pytest.approx(RATIOS)
+    assert (series.x_unit, series.x) == (X_UNIT, pytest.approx(MINE_MINUTES))
+
+
+def test_values_which_carry_a_unit_under_a_curve_without_one_are_refused(
+    runner: PanelRunner, project: Project, panel: Panel
+) -> None:
+    """The study is a mass and the curve of the model carries no unit."""
+    entry = entry_of(project)
+    units = runner.units(entry, panel)
+    with pytest.raises(ValueError, match="mg") as error:
+        panel_data(entry, panel, PanelUnits(x=units.x, series={URINE.id: UNITLESS}))
+    message = str(error.value)
+    assert URINE.id in message
+    assert "no one scale" in message
 
 
 def test_the_times_of_a_dataset_a_unitless_model_cannot_draw_are_refused(
@@ -400,7 +450,7 @@ def test_the_times_of_a_dataset_a_unitless_model_cannot_draw_are_refused(
     entry = entry_of(project)
     units = runner.units(entry, panel)
     with pytest.raises(ValueError, match="hr") as error:
-        panel_data(entry, panel, PanelUnits(x=None, series=units.series))
+        panel_data(entry, panel, PanelUnits(x=UNITLESS, series=units.series))
     message = str(error.value)
     assert URINE.id in message
     assert ".tsv" not in message

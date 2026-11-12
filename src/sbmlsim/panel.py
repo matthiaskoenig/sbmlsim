@@ -391,27 +391,42 @@ class Panel(BaseModel):
                 )
         return self
 
-    def series_unit(self, data: PanelData) -> str | None:
-        """Get the unit a series of the study data is delivered in.
+    def curve_of(self, data: PanelData) -> PanelCurve | None:
+        """Get the curve a series of the study data belongs under.
 
-        It is the one place the unit of a series lives, so the study data of a
-        panel and the curve it is drawn under are delivered in one unit, see
-        `sbmlsim.serve.data`.
+        Args:
+            data: the declaration of the series, one of `data`.
+
+        Returns:
+            The curve of `PanelData.curve_id`, which is a curve of the panel
+            whenever `PanelData.curve` is set (`_check_curves`), `None` for a
+            series whose own `id` is no curve of the panel, which the panel
+            gives no unit at all.
+        """
+        wanted = data.curve_id
+        return next((curve for curve in self.curves if curve.id == wanted), None)
+
+    def series_unit(self, data: PanelData) -> str | None:
+        """Get the unit a series of the study data declares.
+
+        It is the one place the declared unit of a series lives, so the study
+        data of a panel and the curve it is drawn under are delivered in one
+        unit, see `sbmlsim.serve.data`.
 
         Args:
             data: the declaration of the series, one of `data`.
 
         Returns:
             The unit the series declares, else the unit of the curve it belongs
-            under (`PanelData.curve_id`, a curve of the panel whenever
-            `PanelData.curve` is set, see `_check_curves`), `None` for a series
-            whose curve declares no unit and for one whose own `id` is no curve
-            of the panel, which is delivered in the unit of its dataset.
+            under (`curve_of`), `None` for a series whose curve declares no
+            unit, which is the unit the model gives that curve, and for one
+            whose own `id` is no curve of the panel, which is delivered in the
+            unit of its dataset.
         """
         if data.unit is not None:
             return data.unit
-        wanted = data.curve_id
-        return next((curve.unit for curve in self.curves if curve.id == wanted), None)
+        curve = self.curve_of(data)
+        return curve.unit if curve is not None else None
 
 
 def panel_payload(panel: Panel) -> dict[str, Any]:

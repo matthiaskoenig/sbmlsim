@@ -258,8 +258,11 @@ class SeriesPayload(BaseModel):
         x_unit: the unit of the times, `null` for times without one, i.e. a
             model whose time has no unit and a dataset whose time column has
             none either.
-        unit: the unit of the values, `null` for a series which is delivered
-            in the unit of its dataset and whose column has none.
+        unit: the unit of the values, the one of the curve the series belongs
+            under, which is the unit a simulation of the panel delivers that
+            curve in; `null` for a curve which carries no unit and for a
+            series which is delivered in the unit of its dataset and whose
+            column has none.
         count: the number of subjects behind every point, `null` for a dataset
             which does not carry them.
     """

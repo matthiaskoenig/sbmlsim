@@ -31,9 +31,13 @@ for a run. The times are therefore on the axis of the lines of the panel and
 the values in the unit of their curve, whatever the units of the dataset are,
 and nothing of a declaration is parsed twice.
 
-A panel whose model has no time unit and whose dataset has none either delivers
-the times as they are, without a unit; a dataset whose times carry a unit which
-the time of the model has not is refused, since the two are no one axis.
+A series whose curve declares no unit is delivered in the unit the model gives
+that curve, the unit a run of the panel delivers the curve in
+(`sbmlsim.serve.runner.PanelUnits`), and only a series which belongs under no
+curve of the panel at all is delivered in the unit of its own dataset. Where
+the panel has no unit, a curve the model gives none and a model whose time has
+no unit, the values are delivered as they are and the dataset must carry no
+unit either, which keeps the two sides of one axis one scale (`_plain`).
 
 Every problem of a declaration is a `ValueError` which names the series, its
 dataset and its columns or units and never a path of the service, which the
@@ -98,8 +102,10 @@ class PanelSeries:
         x_unit: the unit of the times, `None` for times without one, i.e. a
             model whose time has no unit and a dataset whose time column has
             none either, whose times are delivered as they are.
-        unit: the unit of the values, `None` for a series which is delivered
-            in the unit of its dataset and whose column has none.
+        unit: the unit of the values, the one of the curve the series belongs
+            under, `None` for a curve the model gives no unit and for a series
+            which is delivered in the unit of its dataset and whose column has
+            none.
         count: the number of subjects behind every point, `None` for a dataset
             without the column `COUNT` and for one whose points do not all
             carry it.
@@ -151,7 +157,7 @@ def panel_data(entry: ModelEntry, panel: Panel, units: PanelUnits) -> list[Panel
 def _series(
     entry: ModelEntry,
     declared: PanelData,
-    x: DeliveredUnit | None,
+    x: DeliveredUnit,
     target: DeliveredUnit | None,
 ) -> PanelSeries:
     """Read one series of the study data of a panel, see `panel_data`.
@@ -159,7 +165,7 @@ def _series(
     Args:
         entry: the model of the panel, whose project holds the data.
         declared: the declaration of the series.
-        x: the unit the times are delivered in, see `_times_of`.
+        x: the unit the times are delivered in, the one of the x of the panel.
         target: the unit the values are delivered in, the unit of its dataset
             without.
 
@@ -173,7 +179,7 @@ def _series(
     frame = load_pkdb_dataframe(declared.dataset, data_path=entry.project.data_path)
     dset = DataSet.from_df(_selected(frame, declared))
     conversion = _conversion(declared)
-    times, time_unit = _times_of(dset, declared, x)
+    times, time_unit = _delivered(dset, declared, declared.x, x)
     values, unit = _delivered(dset, declared, declared.y, target, conversion)
     keep = np.isfinite(times) & np.isfinite(values)
     errors: list[float | None] | None = None
@@ -260,39 +266,6 @@ def _conversion(declared: PanelData) -> Quantity | None:
         ) from err
 
 
-def _times_of(
-    dset: DataSet, declared: PanelData, x: DeliveredUnit | None
-) -> tuple[np.ndarray, str | None]:
-    """Get the times of a series in the unit the x of its panel is delivered in.
-
-    Args:
-        dset: the rows of the series with the units of their columns.
-        declared: the declaration of the series.
-        x: the unit of the x of the panel (`PanelUnits.x`), `None` for a model
-            whose time has no unit and a panel which declares none.
-
-    Returns:
-        The times and their unit, `None` for times which are delivered as they
-        are, i.e. a dataset whose time column has no unit either.
-
-    Raises:
-        ValueError: naming the series and the unit of its times, for a dataset
-            whose times carry a unit while the time of the model has none,
-            which are no one axis; see `_delivered` for the times which cannot
-            be delivered in the unit of the x.
-    """
-    if x is not None:
-        return _delivered(dset, declared, declared.x, x)
-    unit = _unit_of(dset, declared.x)
-    if unit is not None:
-        raise ValueError(
-            f"The times '{declared.x}' of the series '{declared.id}' are "
-            f"measured in '{unit}' and the time of the model has no unit, so "
-            f"the two are no one axis."
-        )
-    return _values(dset, declared, declared.x), None
-
-
 def _delivered(
     dset: DataSet,
     declared: PanelData,
@@ -307,7 +280,9 @@ def _delivered(
         declared: the declaration of the series.
         column: the column which is read.
         target: the unit the values are delivered in, resolved by the caller,
-            their own without.
+            their own without; a target of no unit
+            (`sbmlsim.serve.runner.UNITLESS`) delivers them as they are, see
+            `_plain`.
         conversion: the quantity the values are multiplied by, none without.
 
     Returns:
@@ -318,10 +293,13 @@ def _delivered(
     Raises:
         ValueError: naming the series, for a column the dataset has not, one
             which carries no numbers, one without a unit which is converted,
-            and for values which cannot be delivered in `target`.
+            one which carries a unit the panel has not (`_plain`) and for
+            values which cannot be delivered in `target`.
     """
     values = _values(dset, declared, column)
     unit = _unit_of(dset, column)
+    if target is not None and target.unit is None:
+        return _plain(declared, column, values, unit, conversion), None
     if conversion is None and target is None:
         return values, unit
     if unit is None:
@@ -343,6 +321,50 @@ def _delivered(
             f"be delivered in '{target.text}': {err}"
         ) from err
     return np.asarray(quantity.magnitude, dtype=float), target.text
+
+
+def _plain(
+    declared: PanelData,
+    column: str,
+    values: np.ndarray,
+    unit: str | None,
+    conversion: Quantity | None,
+) -> np.ndarray:
+    """Get the values of a column which the panel delivers without a unit.
+
+    The panel delivers the column without a unit, which is a curve whose
+    selection the model gives none and a model whose time has none
+    (`sbmlsim.serve.runner.UNITLESS`), so the dataset must carry none either:
+    there is nothing the values could be converted into, and a dataset which
+    does carry one is no one scale with the curve or the axis it is drawn on.
+
+    Args:
+        declared: the declaration of the series.
+        column: the column which is read.
+        values: the values of the column.
+        unit: the unit of the column, `None` for none.
+        conversion: the quantity the values are multiplied by, none without.
+
+    Returns:
+        The values as they are.
+
+    Raises:
+        ValueError: naming the series, its column and the unit, for a column
+            which carries a unit and for a series which declares a conversion.
+    """
+    if unit is not None:
+        raise ValueError(
+            f"The column '{column}' of the series '{declared.id}' is measured "
+            f"in '{unit}' and the panel delivers it without a unit, which its "
+            f"model gives none either, so the two are no one scale."
+        )
+    if conversion is not None:
+        raise ValueError(
+            f"The series '{declared.id}' is converted by "
+            f"'{declared.conversion}' and the panel delivers its column "
+            f"'{column}' without a unit, so there is nothing to convert."
+        )
+    return values
 
 
 def _values(dset: DataSet, declared: PanelData, column: str) -> np.ndarray:
