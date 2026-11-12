@@ -1,11 +1,8 @@
 """The registry of the served models and the runner of their panels.
 
-The panel of the tests is built here and bound to the project of the HCTZ
-example with `Project.replace(panels=...)`, as a model whose SBML carries the
-annotation of its panels is not part of this task.
-
-The time unit of the HCTZ model is minutes, which is the unit the `end` of a
-`PanelSimulation` and the x of a result are in.
+The model, the panel and the registry of the tests are the fixtures of
+`tests/serve/conftest.py`; the runner of them is built here, as the tests of
+the API build the application instead.
 """
 
 import math
@@ -14,10 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from examples.hctz_fitting import MODEL_PATH
-from examples.hctz_fitting.project import PROJECT
-from sbmlsim.panel import Choice, Knob, Panel, PanelCurve, PanelSimulation
-from sbmlsim.project import Project
+from sbmlsim.panel import Panel, PanelCurve
 from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.runner import (
     ModelEntry,
@@ -27,73 +21,14 @@ from sbmlsim.serve.runner import (
     UnknownModel,
     UnknownPanel,
 )
+from tests.serve.conftest import DOSE, EGFR, END
 
 #: the reference of the project of the HCTZ example
 HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"
-#: one day in the time unit of the model
-END = 24 * 60.0
-#: the output points of the panel, fewer than a real panel so the tests are quick
-POINTS = 50
 #: the seconds a wait which must succeed gives up after, i.e. a failed test
 TIMEOUT = 20.0
 #: the seconds a parked load of a model gives up after, so nothing hangs
 PARKED = 120.0
-
-EGFR = Knob(
-    id="egfr",
-    label="renal function",
-    target="f_renal_function",
-    unit="dimensionless",
-    kind="range",
-    min=0.2,
-    max=1.0,
-    steps=5,
-    default=1.0,
-)
-DOSE = Knob(
-    id="dose",
-    label="dose",
-    target="PODOSE_hctz",
-    unit="mg",
-    kind="choice",
-    choices=(
-        Choice(label="12.5 mg", value=12.5),
-        Choice(label="25 mg", value=25.0),
-        Choice(label="50 mg", value=50.0),
-    ),
-    default=25.0,
-)
-
-
-@pytest.fixture(scope="module")
-def panel() -> Panel:
-    return Panel(
-        id="renal",
-        title="Hydrochlorothiazide in renal impairment",
-        subtitle="the plasma concentration over the renal function",
-        x_label="time (min)",
-        knobs=(EGFR, DOSE),
-        curves=(
-            PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
-        ),
-        # the panel pre-initializes the dose to zero, which the knob overrides
-        simulation=PanelSimulation(
-            end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}
-        ),
-    )
-
-
-@pytest.fixture(scope="module")
-def project(panel: Panel) -> Project:
-    """The project of the HCTZ example with the panel of the tests."""
-    return PROJECT.replace(variants={"default": MODEL_PATH}, panels={"renal": panel})
-
-
-@pytest.fixture(scope="module")
-def registry(project: Project) -> ModelRegistry:
-    return ModelRegistry(
-        {"hctz": ModelEntry(id="hctz", project=project, title="Hydrochlorothiazide")}
-    )
 
 
 @pytest.fixture(scope="module")

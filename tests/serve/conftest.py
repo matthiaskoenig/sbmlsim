@@ -74,6 +74,7 @@ def panel() -> Panel:
         curves=(
             PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
         ),
+        # the panel pre-initializes the dose to zero, which the knob overrides
         simulation=PanelSimulation(
             end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}
         ),
