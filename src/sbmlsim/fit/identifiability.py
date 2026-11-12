@@ -1073,7 +1073,9 @@ def _worker_scan(
         The index of the parameter, the direction and the points of the scan.
     """
     initialized = runner.worker_problem(token, problem, settings)
-    return int(task["index"]), int(task["direction"]), _scan_task(initialized, task)
+    with runner.worker_progress():
+        points = _scan_task(initialized, task)
+    return int(task["index"]), int(task["direction"]), points
 
 
 def _assemble_profile(

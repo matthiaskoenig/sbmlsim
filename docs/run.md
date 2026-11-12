@@ -315,7 +315,7 @@ A run says how far it is while it runs. The long operations of sbmlsim - the exp
 identifiability profiling 12/70 (17%) elapsed 0:21:40 eta 1:44:40 cores 16/24 cpu 1480% mem 12.4 GB, machine 18.3/31.0 GB
 ```
 
-An activity which is over in less than the interval writes no line, so the thousands of scans of a fit do not fill the log. The environment variable `SBMLSIM_PROGRESS` sets the same modes, for a run which is started by another program. Whatever is rendered, the progress is recorded in `progress.jsonl` as `progress` events, so a program outside of the run follows it there.
+An activity which is over in less than the interval writes no line, and two lines stay an interval apart whatever runs, so the thousands of scans of a fit do not fill the log; an activity which failed is always written. An activity which a worker of a fit opens, e.g. the points of the scan of an identifiability, is reported as a child of the activity the parent hands the tasks out in, so the workers of a pool are seen as one run. The environment variable `SBMLSIM_PROGRESS` sets the same modes, for a run which is started by another program. Whatever is rendered, the progress is recorded in `progress.jsonl` as `progress` events, so a program outside of the run follows it there.
 
 `progress.jsonl` has one JSON line per step of the analysis, which a program outside of the run can follow, e.g. `tail -f`:
 

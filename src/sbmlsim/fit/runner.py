@@ -32,6 +32,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from concurrent.futures.process import BrokenProcessPool
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
+from multiprocessing.queues import Queue
 from pathlib import Path
 from typing import Any, ClassVar, override
 from uuid import uuid4
@@ -57,9 +58,11 @@ from sbmlsim.fit.sampling import SamplingType
 from sbmlsim.log import PACKAGE_LOGGER
 from sbmlsim.progress import Activity, remaining
 from sbmlsim.progress import activity as progress_activity
+from sbmlsim.progress import current_activity as current_progress_activity
 from sbmlsim.progress import current_reporter as current_progress_reporter
 from sbmlsim.progress import reporter as progress_reporter
 from sbmlsim.progress import resolve as resolve_progress
+from sbmlsim.progress.workers import Snapshot, forwarding, worker_reporting
 
 logger = logging.getLogger(__name__)
 
@@ -539,7 +542,8 @@ def _worker_run(
             RuntimeErrorOptimizeResult(x0=arguments.get("x0"), message=str(err)),
             [],
         )
-    fit, trajectory = initialized.optimize_run(run=run, **arguments)
+    with worker_progress():
+        fit, trajectory = initialized.optimize_run(run=run, **arguments)
     return run, fit, trajectory
 
 
@@ -563,7 +567,8 @@ def _worker_cost(
     Raises:
         PoolError: if the worker could not initialize the problem.
     """
-    return worker_problem(token, problem, settings).evaluate_cost(task["x"])
+    with worker_progress():
+        return worker_problem(token, problem, settings).evaluate_cost(task["x"])
 
 
 def _worker_residuals(
@@ -587,7 +592,8 @@ def _worker_residuals(
     Raises:
         PoolError: if the worker could not initialize the problem.
     """
-    return worker_problem(token, problem, settings).evaluate_residuals(task["x"])
+    with worker_progress():
+        return worker_problem(token, problem, settings).evaluate_residuals(task["x"])
 
 
 def _worker_warm(
@@ -608,6 +614,31 @@ def _worker_warm(
         PoolError: if the worker could not initialize the problem.
     """
     worker_problem(token, problem, settings)
+
+
+#: the queue of the progress of a worker to the reporter of the parent, see
+#: `_set_progress` and `worker_progress`
+_PROGRESS: Queue[Snapshot] | None = None
+
+
+def _set_progress(events: Queue[Snapshot] | None) -> None:
+    """Keep the queue of the progress, the initializer of a worker of a fit."""
+    global _PROGRESS
+    _PROGRESS = events
+
+
+@contextmanager
+def worker_progress() -> Generator[None]:
+    """Report the activities of this worker to the reporter of the parent.
+
+    The entry points of the workers of a fit run in this, so an activity which
+    a worker opens, e.g. the points of a scan of an identifiability, is a
+    child of the activity the parent handed the tasks out in. Without a queue,
+    i.e. a parent without a reporter, the activities of the worker are
+    reported to nothing.
+    """
+    with worker_reporting(_PROGRESS):
+        yield
 
 
 class WorkerDied(PoolError):
@@ -663,6 +694,10 @@ class FitPool:
         preload: the modules the forkserver imports, see `_preload`.
         restarts: how often the pool was started again after a crash, for the
             cap `MAX_POOL_RESTARTS`.
+        initializer: what every worker calls when it starts, see
+            `sbmlsim.parallel.start_pool`; the queue of the progress of the
+            workers is handed over this way, see `worker_pool`.
+        initargs: the arguments of the initializer.
         stopped: whether the workers are stopped, e.g. after a crash with no
             task left or by `stop`; the next `run` starts new ones.
     """
@@ -673,6 +708,8 @@ class FitPool:
     settings: FitSettings
     n_cores: int = 1
     preload: Sequence[str] = ()
+    initializer: Callable[..., object] | None = None
+    initargs: tuple[Any, ...] = ()
     restarts: int = 0
     stopped: bool = False
 
@@ -689,7 +726,12 @@ class FitPool:
                 `sbmlsim.parallel.start_pool`.
         """
         if self.stopped:
-            self.executor = parallel.start_pool(self.n_cores, preload=self.preload)
+            self.executor = parallel.start_pool(
+                self.n_cores,
+                preload=self.preload,
+                initializer=self.initializer,
+                initargs=self.initargs,
+            )
             self.stopped = False
 
     def submit(self, function: Callable[..., Any], task: dict[str, Any]) -> Future[Any]:
@@ -949,19 +991,44 @@ def worker_pool(
             the guard, see `sbmlsim.parallel.start_pool`.
     """
     preload = _preload(problem)
+    stack = ExitStack()
+    events: Queue[Snapshot] | None = None
+    target = current_progress_reporter()
+    if target is not None:
+        # the activities of the workers, e.g. the points of a scan, reach the
+        # reporter of this process through the queue, see `worker_progress`
+        events = parallel.process_context().Queue()
+        stack.enter_context(
+            forwarding(
+                events,
+                target=target,
+                parent=current_progress_activity(),
+                close=True,
+            )
+        )
     pool = FitPool(
-        executor=parallel.start_pool(n_cores, preload=preload),
+        executor=parallel.start_pool(
+            n_cores,
+            preload=preload,
+            initializer=_set_progress if events is not None else None,
+            initargs=(events,) if events is not None else (),
+        ),
         token=uuid4().hex,
         problem=problem,
         settings=settings,
         n_cores=n_cores,
         preload=preload,
+        initializer=_set_progress if events is not None else None,
+        initargs=(events,) if events is not None else (),
     )
     try:
         yield pool
     finally:
         # the pool of the fit, which may be another one than the one it started
         pool.stop()
+        # the thread which forwards the activities of the workers, closed
+        # after the workers stopped, so that no event of theirs is lost
+        stack.close()
 
 
 @dataclass

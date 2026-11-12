@@ -213,7 +213,9 @@ class LogReporter:
     how far it is this way. The interval keeps the file short: the first line
     of an activity is written when it is older than the interval, so the
     activities which are over in a moment, e.g. the scans of a fit, write no
-    line at all.
+    line at all, and two lines are an interval apart whatever runs, so the
+    workers of a run cannot fill the file between them. The line of an
+    activity which failed is always written.
     """
 
     def __init__(
@@ -237,6 +239,8 @@ class LogReporter:
         self._now = now
         self._last: dict[int, float] = {}
         self._written: set[int] = set()
+        # the last line of any activity, so the lines stay an interval apart
+        self._line_at: float | None = None
 
     def started(self, activity: Activity) -> None:
         """Note the start of an activity, whose line comes after the interval."""
@@ -248,7 +252,10 @@ class LogReporter:
         last = self._last.get(activity.uid, activity.started_at)
         if now - last < self.interval:
             return
+        if self._line_at is not None and now - self._line_at < self.interval:
+            return
         self._last[activity.uid] = now
+        self._line_at = now
         self._written.add(activity.uid)
         self.logger.info("%s", _line(activity))
 
@@ -259,6 +266,7 @@ class LogReporter:
         self._written.discard(activity.uid)
         if error is None and not written and activity.elapsed < self.interval:
             return
+        self._line_at = float(self._now())  # ty: ignore[call-non-callable]
         self.logger.info("%s", _line(activity, "failed" if error else "done"))
 
 
