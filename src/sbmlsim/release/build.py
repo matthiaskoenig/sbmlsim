@@ -374,10 +374,14 @@ def _copy_models(
             shutil.copy2(output_dir / name, release_path / name)
             written.append(Path(name))
 
+    # the figures of an earlier release are removed when the factory has none,
+    # so the README and the site never show a figure which the prune removes
     figures_dir = output_dir / "figures"
     if figures_dir.is_dir():
         _replace(figures_dir, release_path / BuildPaths.FIGURES)
         written.append(Path(BuildPaths.FIGURES))
+    else:
+        _remove(release_path / BuildPaths.FIGURES)
     return written
 
 
