@@ -17,6 +17,7 @@ from sbmlsim.panel import (
     PanelSimulation,
 )
 from sbmlsim.panel_sbml import (
+    AT_ELEMENT,
     PANEL_NS,
     PanelProblem,
     panels_from_sbml,
@@ -43,6 +44,7 @@ DOCUMENTED = Panel(
     title="Renal impairment",
     subtitle="hctz, single oral dose",
     x_label="time [hr]",
+    y_label="plasma concentration",
     knobs=(
         Knob(
             id="dose",
@@ -80,6 +82,7 @@ DOCUMENTED = Panel(
             y="mean",
             yerr="mean_sd",
             sel={"label": "hctz25"},
+            at={"impairment": 1.0},
             conversion="1/(297.7 g/mole)",
         ),
     ),
@@ -212,13 +215,113 @@ def test_the_documented_xml_shape_reads_into_the_panel_it_declares() -> None:
 
 
 def test_the_documented_panel_round_trips_through_the_writer(tmp_path: Path) -> None:
-    """The curve, the selection and the conversion of a series are written too."""
+    """The curve, the selection, the state and the conversion are written too."""
     annotation = panels_to_annotation([DOCUMENTED])
     assert '<select column="label" value="hctz25"/>' in annotation
+    assert '<at knob="impairment" value="1.0"/>' in annotation
     assert 'curve="Cve_hctz"' in annotation
     assert 'conversion="1/(297.7 g/mole)"' in annotation
     write_panels(SBML_IN, tmp_path / "m.xml", [DOCUMENTED])
     assert panels_from_sbml(tmp_path / "m.xml") == ({DOCUMENTED.id: DOCUMENTED}, ())
+
+
+def test_the_state_of_a_series_round_trips_through_the_annotation(
+    tmp_path: Path,
+) -> None:
+    """A series names the state of two knobs it was measured under."""
+    knobs = (
+        Knob(
+            id="dose",
+            label="dose",
+            target="PODOSE_hctz",
+            unit="mg",
+            kind="choice",
+            choices=(
+                Choice(label="25 mg", value=25.0),
+                Choice(label="50 mg", value=50.0),
+            ),
+            default=25.0,
+        ),
+        Knob(
+            id="impairment",
+            label="renal function",
+            target="f_renal_function",
+            kind="choice",
+            choices=(
+                Choice(label="normal", value=1.0),
+                Choice(label="severe", value=0.08),
+            ),
+            default=1.0,
+        ),
+    )
+    measured = Panel(
+        id="renal",
+        title="Renal impairment",
+        knobs=knobs,
+        curves=(PanelCurve(id="[PX]", label="protein X"),),
+        data=(
+            PanelData(
+                id="study2000",
+                label="Study 2000",
+                curve="[PX]",
+                dataset="Study2000_Fig1",
+                x="time",
+                y="mean",
+                at={"impairment": 0.08, "dose": 50.0},
+            ),
+        ),
+        simulation=PanelSimulation(end=10.0),
+    )
+    annotation = panels_to_annotation([measured])
+    assert '<at knob="impairment" value="0.08"/>' in annotation
+    assert '<at knob="dose" value="50.0"/>' in annotation
+    write_panels(SBML_IN, tmp_path / "m.xml", [measured])
+    assert panels_from_sbml(tmp_path / "m.xml") == ({measured.id: measured}, ())
+
+
+def test_a_series_without_a_state_reads_back_as_none(
+    tmp_path: Path, panel: Panel
+) -> None:
+    """A series which was measured at no state writes no child, as `sel` does."""
+    without = panel.data[0].model_copy(update={"sel": None})
+    assert without.at is None
+    written = panel.model_copy(update={"data": (without,)})
+    write_panels(SBML_IN, tmp_path / "m.xml", [written])
+    assert f"<{AT_ELEMENT} " not in (tmp_path / "m.xml").read_text(encoding="utf-8")
+    panels, problems = panels_from_sbml(tmp_path / "m.xml")
+    assert problems == ()
+    assert panels[written.id].data[0].at is None
+    assert panels[written.id].data[0].sel is None
+
+
+def test_an_at_without_a_knob_is_reported_as_a_problem(tmp_path: Path) -> None:
+    """A malformed child is a problem of its panel, as a malformed `select` is."""
+    out = tmp_path / "m.xml"
+    write_panels(SBML_IN, out, [DOCUMENTED])
+    written = out.read_text(encoding="utf-8")
+    assert '<at knob="impairment" value="1.0"/>' in written
+    broken = written.replace('<at knob="impairment" value="1.0"/>', "<at/>")
+    panels, problems = panels_from_sbml(broken)
+    assert panels == {}
+    assert [problem.panel_id for problem in problems] == [DOCUMENTED.id]
+    assert "knob" in problems[0].reason
+    assert "vormfelde2006" in problems[0].reason
+
+
+def test_the_label_of_the_value_axis_round_trips_and_is_empty_without_one(
+    tmp_path: Path, panel: Panel, minimal: Panel
+) -> None:
+    """`yLabel` is the attribute of `y_label`, as `xLabel` is of `x_label`."""
+    assert minimal.y_label == ""
+    labelled = panel.model_copy(update={"y_label": "protein X"})
+    annotation = panels_to_annotation([labelled])
+    assert 'yLabel="protein X"' in annotation
+    assert "y_label" not in annotation
+    write_panels(SBML_IN, tmp_path / "m.xml", [labelled, minimal])
+    panels, problems = panels_from_sbml(tmp_path / "m.xml")
+    assert problems == ()
+    assert panels == {labelled.id: labelled, minimal.id: minimal}
+    assert panels[minimal.id].y_label == ""
 
 
 def test_a_select_without_a_column_is_reported_as_a_problem(tmp_path: Path) -> None:

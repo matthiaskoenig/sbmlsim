@@ -7,7 +7,7 @@ a release:
 
     <annotation>
       <panels xmlns="https://sbmlsim.org/ns/panel/1">
-        <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]">
+        <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration">
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
           </simulation>
@@ -19,19 +19,22 @@ a release:
           <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
           <data id="vormfelde2006" label="Vormfelde 2006" curve="Cve_hctz" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
             <select column="label" value="hctz25"/>
+            <at knob="impairment" value="1.0"/>
           </data>
         </panel>
       </panels>
     </annotation>
 
 An attribute is the field of the object of `sbmlsim.panel` it carries, with the
-two exceptions `xLabel` for `x_label` and `xUnit` for `x_unit`; an attribute
-which is not set means the default of its field. The `end` of the simulation is
-in the time unit of the model (a day of a model of minutes above) and `xUnit`
-is the unit its time axis is delivered in. The `option` children of a knob are
-the `choices` of a knob of the kind `choice`, the `preinit` children of the
-simulation are its `preinit` and the `select` children of a series of the data
-are its `sel`, the rows of its dataset, each of them of a `column` and a
+three exceptions `xLabel` for `x_label`, `yLabel` for `y_label` and `xUnit` for
+`x_unit`; an attribute which is not set means the default of its field. The
+`end` of the simulation is in the time unit of the model (a day of a model of
+minutes above) and `xUnit` is the unit its time axis is delivered in. The
+`option` children of a knob are the `choices` of a knob of the kind `choice`,
+the `preinit` children of the simulation are its `preinit`, the `select`
+children of a series of the data are its `sel`, the rows of its dataset, each
+of them of a `column` and a `value`, and its `at` children are its `at`, the
+state of the knobs it was measured under, each of them of a `knob` and a
 `value`. The `dataset` of a series is the id of
 a figure or a table of a study and no path, its `curve` is the curve of the
 panel it belongs under, whose unit it is delivered in, and its `conversion` is
@@ -104,6 +107,8 @@ CURVE_ELEMENT: Final = "curve"
 DATA_ELEMENT: Final = "data"
 #: the element of one column which selects the rows of such a series
 SELECT_ELEMENT: Final = "select"
+#: the element of one knob of the state such a series was measured under
+AT_ELEMENT: Final = "at"
 
 #: the fields of a panel by the attribute which carries them
 _PANEL_ATTRIBUTES: Final = {
@@ -111,6 +116,7 @@ _PANEL_ATTRIBUTES: Final = {
     "title": "title",
     "subtitle": "subtitle",
     "xLabel": "x_label",
+    "yLabel": "y_label",
 }
 #: the fields of the simulation of a panel, its `preinit` are children
 _SIMULATION_ATTRIBUTES: Final = {
@@ -139,6 +145,7 @@ _CHOICE_ATTRIBUTES: Final = {"label": "label", "value": "value"}
 #: the fields of a curve
 _CURVE_ATTRIBUTES: Final = {name: name for name in ("id", "label", "unit", "scale")}
 #: the fields of one series of the study data, its `sel` the `select` children
+#: and its `at` the `at` children
 _DATA_ATTRIBUTES: Final = {
     name: name
     for name in (
@@ -315,18 +322,20 @@ def _panel_payload(element: libsbml.XMLNode) -> dict[str, Any]:
 
 
 def _data_payload(element: libsbml.XMLNode) -> dict[str, Any]:
-    """Get the payload of a `data` element, its `select` children its rows.
+    """Get the payload of a `data` element, its `select` and `at` children.
 
     Args:
         element: the `data` element.
 
     Returns:
-        The fields of the element with its `select` children as its `sel`.
+        The fields of the element with its `select` children as its `sel` and
+        its `at` children as its `at`.
 
     Raises:
         ValueError: naming the series, for a `select` child without a
-            `column`, which selects no rows and which `panels_from_sbml`
-            reports as a problem of its panel.
+            `column`, which selects no rows, and for an `at` child without a
+            `knob`, which is the state of no knob; `panels_from_sbml` reports
+            either as a problem of its panel.
     """
     payload = _fields_of(element, _DATA_ATTRIBUTES)
     sel: dict[str, str] = {}
@@ -341,6 +350,19 @@ def _data_payload(element: libsbml.XMLNode) -> dict[str, Any]:
         sel[column] = select.getAttrValue("value")
     if sel:
         payload["sel"] = sel
+    at: dict[str, str] = {}
+    for condition in _children(element, AT_ELEMENT):
+        knob = condition.getAttrValue("knob")
+        if not knob:
+            raise ValueError(
+                f"An '{AT_ELEMENT}' of the series "
+                f"'{element.getAttrValue('id')}' has no 'knob': the state a "
+                f"series was measured under is the value a knob of the panel "
+                f"takes."
+            )
+        at[knob] = condition.getAttrValue("value")
+    if at:
+        payload["at"] = at
     return payload
 
 
@@ -503,12 +525,16 @@ def _simulation_xml(simulation: PanelSimulation) -> str:
 
 
 def _data_xml(data: PanelData) -> str:
-    """Get the XML of a `data` element, its rows the `select` children."""
+    """Get the XML of a `data` element, its rows and its state its children."""
     select = "".join(
         f"<{SELECT_ELEMENT} column={quoteattr(column)} value={quoteattr(value)}/>"
         for column, value in (data.sel or {}).items()
     )
-    return _element_xml(DATA_ELEMENT, data, _DATA_ATTRIBUTES, select)
+    at = "".join(
+        f"<{AT_ELEMENT} knob={quoteattr(knob)} value={quoteattr(str(value))}/>"
+        for knob, value in (data.at or {}).items()
+    )
+    return _element_xml(DATA_ELEMENT, data, _DATA_ATTRIBUTES, select + at)
 
 
 def _knob_xml(knob: Knob) -> str:

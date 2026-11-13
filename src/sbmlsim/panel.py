@@ -265,6 +265,13 @@ class PanelData(BaseModel):
             columns which select them, e.g. `{"label": "hctz5po_4"}`; one
             dataset holds several series, and a series without a selection is
             every row of its dataset.
+        at: the knob state the series was measured under, by the id of the
+            knob and the value it takes, e.g. `{"impairment": 0.08,
+            "dose": 50.0}`; a series without it is drawn whatever the knobs
+            are set to, which is right for data of a condition the panel does
+            not vary. A knob the mapping does not name is not constrained, and
+            a knob it names is a choice knob of the panel whose choices carry
+            the value, see `Panel._check_data_at`.
         conversion: a quantity the values and their error are multiplied by
             before they are delivered, e.g. `"1/(297.7 g/mole)"` for the mass
             of a study which the model carries as a substance; none without.
@@ -286,6 +293,7 @@ class PanelData(BaseModel):
     y: str
     yerr: str | None = None
     sel: Mapping[str, str] | None = None
+    at: Mapping[str, float] | None = None
     conversion: str | None = None
     unit: str | None = None
 
@@ -353,6 +361,10 @@ class Panel(BaseModel):
         title: the title of the panel.
         subtitle: the question the panel answers, shown below the title.
         x_label: the label of the time axis, e.g. `"time (hr)"`.
+        y_label: the label of the value axis, e.g. `"plasma concentration"`;
+            empty for a panel whose renderer names that axis after its curves,
+            which is what every panel does today. The unit is no part of it: a
+            renderer appends the unit its curves share.
         knobs: the knobs of the panel, in the order they are shown; they are
             the axes of the grid a request runs, so there are at most
             `MAX_KNOBS` of them, the knobs one request drives.
@@ -361,7 +373,9 @@ class Panel(BaseModel):
         data: the study data of the panel, drawn under its curves; several
             series may belong under one curve, e.g. two studies, and their
             ids are distinct whether they do or not. A series which names a
-            curve names one of `curves`, see `_check_curves`.
+            curve names one of `curves`, see `_check_curves`, and one which
+            names the state it was measured under names choices of the knobs
+            of the panel, see `_check_data_at`.
         simulation: the simulation the panel runs.
     """
 
@@ -371,6 +385,7 @@ class Panel(BaseModel):
     title: str
     subtitle: str = ""
     x_label: str = "time"
+    y_label: str = ""
     knobs: tuple[Knob, ...] = Field(default=(), max_length=MAX_KNOBS)
     curves: tuple[PanelCurve, ...] = Field(max_length=MAX_CURVES)
     data: tuple[PanelData, ...] = ()
@@ -423,6 +438,55 @@ class Panel(BaseModel):
                     f"under the curve '{data.curve}', which the panel does not "
                     f"declare; its curves are {declared}."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_data_at(self) -> Self:
+        """Check the knob state every series of the study data was measured at.
+
+        The `at` of a series (`PanelData.at`) is the state of the knobs it was
+        measured under, and a renderer draws the series only while the knobs
+        are at it: a key which is no knob of the panel and a value which is no
+        choice of its knob are therefore a series which is drawn nowhere,
+        which is why they are refused here.
+
+        A knob of the kind `range` is no condition either: a condition is one
+        of a set of conditions and not a point of a continuum, and a reader
+        who slides a range knob past the one point of its grid which matches
+        would see the series come and go. A panel which conditions on a
+        continuous input declares that knob as a `choice` knob.
+
+        Raises:
+            ValueError: naming the series, the knob and what the panel
+                declares, for a key which is no knob of the panel, for a knob
+                of the kind `range` and for a value which is none of the
+                choices of its knob.
+        """
+        knobs = {knob.id: knob for knob in self.knobs}
+        for data in self.data:
+            for knob_id, value in (data.at or {}).items():
+                knob = knobs.get(knob_id)
+                if knob is None:
+                    raise ValueError(
+                        f"The series '{data.id}' of the panel '{self.id}' was "
+                        f"measured at the knob '{knob_id}', which the panel does "
+                        f"not declare; its knobs are {sorted(knobs)}."
+                    )
+                if knob.kind != "choice":
+                    raise ValueError(
+                        f"The series '{data.id}' of the panel '{self.id}' was "
+                        f"measured at the knob '{knob_id}', which is a knob of the "
+                        f"kind '{knob.kind}'; a condition is one of a set of "
+                        f"conditions, so a knob a series is measured at is a knob "
+                        f"of the kind 'choice'."
+                    )
+                choices = [choice.value for choice in knob.choices]
+                if value not in choices:
+                    raise ValueError(
+                        f"The series '{data.id}' of the panel '{self.id}' was "
+                        f"measured at {value} of the knob '{knob_id}', which is "
+                        f"none of its choices {choices}."
+                    )
         return self
 
     def curve_of(self, data: PanelData) -> PanelCurve | None:
@@ -482,6 +546,7 @@ def panel_payload(panel: Panel) -> dict[str, Any]:
             "title": panel.title,
             "subtitle": panel.subtitle,
             "x_label": panel.x_label,
+            "y_label": panel.y_label,
         },
         "axes": [knob.model_dump(mode="json") for knob in panel.knobs],
         "curves": [curve.model_dump(mode="json") for curve in panel.curves],

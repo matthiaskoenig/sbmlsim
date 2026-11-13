@@ -39,7 +39,7 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
 </model>
 ```
 
-A model declares as many `<panel>` elements as it has panels, each with one `<simulation>`, its knobs, its curves and the study data under them. Every attribute is the field of the declaration it carries, with the two exceptions `xLabel` and `xUnit`; an attribute which is not set means the default of its field, and a required text which is not set is a panel which cannot be read; the writer leaves out a text which is empty, which is read back as the default of its field, while a hand-written empty text is read as the empty text it is.
+A model declares as many `<panel>` elements as it has panels, each with one `<simulation>`, its knobs, its curves and the study data under them. Every attribute is the field of the declaration it carries, with the three exceptions `xLabel`, `yLabel` and `xUnit`; an attribute which is not set means the default of its field, and a required text which is not set is a panel which cannot be read; the writer leaves out a text which is empty, which is read back as the default of its field, while a hand-written empty text is read as the empty text it is.
 
 `<panel>`:
 
@@ -49,6 +49,7 @@ A model declares as many `<panel>` elements as it has panels, each with one `<si
 | `title` | the title of the panel, required |
 | `subtitle` | the question the panel answers, empty without |
 | `xLabel` | the label of the time axis, `time` without |
+| `yLabel` | the label of the value axis, e.g. `plasma concentration`, empty without; a renderer names that axis after the curves then, and appends the unit they share in either case, so the unit is no part of it |
 
 `<simulation>`, the one simulation every point of a panel runs:
 
@@ -99,6 +100,8 @@ A choice knob has its choices as `<option label="25 mg" value="25"/>` children, 
 | `unit` | the unit the series is delivered in, the unit of its curve without, see [Units](#units) |
 
 Its `<select column="label" value="amount_urine_hctz5po_4"/>` children are the rows of the dataset the series is, by the value of every column which selects them; a series without one is every row of its dataset.
+
+Its `<at knob="dose" value="50"/>` children are the state of the knobs the series was measured under, by the value every one of them takes: a renderer draws the series only while the knobs are at that state, so a panel never shows data of one condition under a curve of another, and a knob the children do not name is not constrained. A knob of such a child is a knob of the panel of the kind `choice` and its value is one of its choices, because a condition is one of a set of conditions and not a point of a continuum; a panel which conditions on a continuous input declares that knob as a choice knob. A series without such a child is drawn whatever the knobs are set to, which is right for data of a condition the panel does not vary.
 
 The `dataset` is an id and never a path: a separator, a dot and a drive are refused where a panel is read, so a declaration cannot name a file outside of the data of the project of its model.
 
@@ -207,7 +210,8 @@ The declaration of a panel is its `panel/1` payload:
     "id": "renal",
     "title": "Renal impairment",
     "subtitle": "hydrochlorothiazide after a single oral dose",
-    "x_label": "time [hr]"
+    "x_label": "time [hr]",
+    "y_label": ""
   },
   "axes": [
     {
@@ -252,6 +256,7 @@ The declaration of a panel is its `panel/1` payload:
       "y": "value",
       "yerr": null,
       "sel": {"label": "amount_urine_hctz5po_4"},
+      "at": null,
       "conversion": "1/(297.7 g/mole)",
       "unit": null
     }

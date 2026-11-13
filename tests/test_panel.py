@@ -328,6 +328,122 @@ def test_the_unit_of_a_series_is_the_one_of_its_curve_and_else_its_own() -> None
     assert panel.model_copy(update={"curves": (without,)}).series_unit(series) is None
 
 
+def test_the_state_a_series_was_measured_at_round_trips_through_the_payload() -> None:
+    """A series names the state of two knobs it was measured under."""
+    dose = Knob(
+        id="dose",
+        label="dose",
+        target="PODOSE_hctz",
+        unit="mg",
+        kind="choice",
+        choices=(Choice(label="25 mg", value=25.0), Choice(label="50 mg", value=50.0)),
+        default=25.0,
+    )
+    impairment = Knob(
+        id="impairment",
+        label="renal function",
+        target="f_renal_function",
+        kind="choice",
+        choices=(Choice(label="normal", value=1.0), Choice(label="severe", value=0.08)),
+        default=1.0,
+    )
+    series = PanelData(
+        id="study2000",
+        label="Study 2000",
+        curve="[S1]",
+        dataset="Study2000_Fig1",
+        x="t",
+        y="mean",
+        at={"impairment": 0.08, "dose": 50.0},
+    )
+    panel = Panel(
+        id="p",
+        title="p",
+        knobs=(dose, impairment),
+        curves=(PanelCurve(id="[S1]", label="S1"),),
+        data=(series,),
+        simulation=PanelSimulation(end=1.0),
+    )
+    payload = panel_payload(panel)
+    assert payload["data"][0]["at"] == {"impairment": 0.08, "dose": 50.0}
+    assert panel_from_payload(payload) == panel
+
+
+def test_a_series_without_a_state_is_drawn_at_every_state() -> None:
+    """Data of a condition the panel does not vary states no condition."""
+    series = PanelData(
+        id="study2000", label="Study 2000", dataset="Study2000_Fig1", x="t", y="mean"
+    )
+    assert series.at is None
+    payload = panel_payload(
+        Panel(
+            id="p",
+            title="p",
+            knobs=(DOSE,),
+            curves=(PanelCurve(id="study2000", label="S1"),),
+            data=(series,),
+            simulation=PanelSimulation(end=1.0),
+        )
+    )
+    assert payload["data"][0]["at"] is None
+
+
+def _measured_at(at: dict[str, float]) -> Panel:
+    """A panel of a choice knob and a range knob whose series names `at`."""
+    return Panel(
+        id="p",
+        title="p",
+        knobs=(EGFR, DOSE),
+        curves=(PanelCurve(id="[S1]", label="S1"),),
+        data=(
+            PanelData(
+                id="study2000",
+                label="Study 2000",
+                curve="[S1]",
+                dataset="Study2000_Fig1",
+                x="t",
+                y="mean",
+                at=at,
+            ),
+        ),
+        simulation=PanelSimulation(end=1.0),
+    )
+
+
+@pytest.mark.parametrize(
+    ("at", "knob", "match"),
+    [
+        ({"weight": 75.0}, "weight", "does not declare"),
+        ({"egfr": 0.2}, "egfr", "kind 'range'"),
+        ({"dose": 50.0}, "dose", "none of its choices"),
+    ],
+)
+def test_a_state_which_is_no_choice_of_a_knob_is_refused(
+    at: dict[str, float], knob: str, match: str
+) -> None:
+    """A series of such a state is a series which is drawn nowhere."""
+    with pytest.raises(ValidationError, match=match) as error:
+        _measured_at(at)
+    message = str(error.value)
+    assert "study2000" in message
+    assert knob in message
+
+
+def test_a_state_of_a_choice_of_a_knob_is_accepted() -> None:
+    assert _measured_at({"dose": 12.5}).data[0].at == {"dose": 12.5}
+
+
+def test_the_label_of_the_value_axis_is_empty_without_one(panel: Panel) -> None:
+    """A panel which declares none leaves that label to its renderer."""
+    assert panel.y_label == ""
+    labelled = panel.model_copy(update={"y_label": "plasma concentration"})
+    payload = panel_payload(labelled)
+    assert payload["panel"]["y_label"] == "plasma concentration"
+    assert panel_from_payload(payload) == labelled
+    assert panel_payload(panel)["panel"]["y_label"] == ""
+    assert panel_from_payload(panel_payload(panel)).y_label == ""
+
+
 def test_two_knobs_of_one_id_are_refused() -> None:
     with pytest.raises(ValidationError, match="egfr"):
         Panel(
@@ -447,6 +563,7 @@ def test_the_payload_names_the_knobs_as_the_axes_of_the_grid(panel: Panel) -> No
         "title": panel.title,
         "subtitle": panel.subtitle,
         "x_label": panel.x_label,
+        "y_label": panel.y_label,
     }
 
 

@@ -3,7 +3,7 @@
   <model id="panels_broken" name="two panels, the second one malformed">
     <annotation>
       <panels xmlns="https://sbmlsim.org/ns/panel/1">
-        <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]">
+        <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration">
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
           </simulation>
@@ -15,6 +15,7 @@
           <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
           <data id="vormfelde2006" label="Vormfelde 2006" curve="Cve_hctz" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
             <select column="label" value="hctz25"/>
+            <at knob="impairment" value="1.0"/>
           </data>
         </panel>
         <panel id="broken" title="a range knob without its bounds">
