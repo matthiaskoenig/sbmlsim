@@ -355,7 +355,9 @@ def two_variants(project: Project, tmp_path: Path) -> TestClient:
     marker = 'id="f_GFR_Qki" name="relationship GFR and Qki" value="151"'
     assert marker in text
     other = tmp_path / "other.xml"
-    other.write_text(text.replace(marker, marker.replace('"151"', '"60"')), "utf-8")
+    other.write_text(
+        text.replace(marker, marker.replace('"151"', '"60"')), encoding="utf-8"
+    )
     two = project.replace(variants={"default": MODEL_PATH, "other": other})
     entry = ModelEntry(id="hctz", project=two, title="Hydrochlorothiazide")
     return TestClient(create_app(ModelRegistry({"hctz": entry})))

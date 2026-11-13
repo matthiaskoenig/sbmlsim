@@ -175,7 +175,10 @@ class Provenance(BaseModel):
         model: the id of the model, the one the request named.
         panel: the id of the panel.
         model_sha256: the sha256 of the SBML file which was simulated.
-        variant: the variant of the model, the default variant without.
+        variant: the name of the SBML which was simulated, the one the
+            request asked for, else the one the panel declares, else the
+            first variant of the project, which is its default; it is
+            resolved, so a response of a simulation always names one.
         engine: the engine which integrated, e.g. `"roadrunner"`.
         sbmlsim: the version of sbmlsim which ran the simulation.
         seconds: the seconds the run took in the service.
