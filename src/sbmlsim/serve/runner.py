@@ -8,7 +8,7 @@ module, a project reference or a path. A model whose project declares an app
 (`sbmlsim.panel.App`) is checked there as well (`_check_app`): a page which
 names a panel the model does not declare, a variant the project does not
 have and two panels of a page which declare one knob id differently
-(`_check_shared_knobs`) are refused at startup, since the panels of a model are
+(`ModelEntry.shared`) are refused at startup, since the panels of a model are
 read from its SBML, which a project is imported without.
 
 `PanelRunner` runs a panel of such a model: the values of its knobs become the
@@ -51,6 +51,7 @@ import logging
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from tokenize import TokenError
 from typing import TYPE_CHECKING, Any, Final
@@ -80,6 +81,7 @@ __all__ = [
     "PanelResult",
     "PanelRunner",
     "PanelUnits",
+    "SharedKnob",
     "UnknownKnob",
     "UnknownModel",
     "UnknownPanel",
@@ -170,6 +172,23 @@ def check_knobs(
 
 
 @dataclass(frozen=True)
+class SharedKnob:
+    """A knob more than one panel of a page of an app declares, see `ModelEntry.shared`.
+
+    A shell shows one control of it for the page and sets every panel of
+    `panels` from that control, so the plots of the page are of one state.
+
+    Attributes:
+        knob: its declaration, which every panel of `panels` declares alike.
+        panels: the panels of the page which declare it, in the order the page
+            shows them.
+    """
+
+    knob: Knob
+    panels: tuple[Panel, ...]
+
+
+@dataclass(frozen=True)
 class ModelEntry:
     """A model of the registry, see `ModelRegistry`.
 
@@ -182,6 +201,42 @@ class ModelEntry:
     id: str
     project: Project
     title: str
+
+    @cached_property
+    def shared(self) -> dict[str, tuple[SharedKnob, ...]]:
+        """Get the knobs the panels of each page of the app of the model share.
+
+        They are derived from the panels and are no part of the declaration of
+        the app (`sbmlsim.panel.App`): the app names the panels of a page, the
+        panels declare their knobs, and a knob id which more than one panel of
+        a page declares is one knob of that page. They are worked out once,
+        from the panels `ModelRegistry.panel` serves, which a service does when
+        its registry is built (`ModelRegistry.of`), so a page whose panels
+        declare one id differently is refused at startup.
+
+        Returns:
+            The shared knobs of every page by its id, each in the order the
+            first panel which declares one lists them (`_shared_knobs`); a page
+            whose panels share none has none, and a model without an app has
+            no pages.
+
+        Raises:
+            ValueError: naming the model, the page, the knob id, the two panels
+                and the fields, for a page two of whose panels declare one knob
+                id differently, see `_shared_knobs`.
+            KeyError: for a page which names a panel the model does not
+                declare, which `_check_app` refuses first.
+        """
+        app = self.project.app
+        if app is None:
+            return {}
+        panels = self.project.panels_of()
+        return {
+            page.id: _shared_knobs(
+                self.id, page.id, [panels[one] for one in dict.fromkeys(page.panels)]
+            )
+            for page in app.pages
+        }
 
 
 class ModelRegistry:
@@ -313,7 +368,7 @@ def _check_app(entry: ModelEntry) -> None:
             the panels, for a page which names a panel the model does not
             declare; naming the model, the page, the knob id and the two
             panels, for a page whose panels declare one knob id differently,
-            see `_check_shared_knobs`; if the project has no model variants, see
+            see `ModelEntry.shared`; if the project has no model variants, see
             `sbmlsim.project.Project.panels_of`.
         FileNotFoundError: if the SBML the panels are read from is no file,
             which is a problem of the service and not of a request.
@@ -338,11 +393,14 @@ def _check_app(entry: ModelEntry) -> None:
                 f"the panels {missing}, which the model does not declare; its "
                 f"panels are {declared}."
             )
-        _check_shared_knobs(entry.id, page.id, [panels[one] for one in page.panels])
+    # the shared knobs of every page, which raise for one id declared twice
+    _ = entry.shared
 
 
-def _check_shared_knobs(model_id: str, page_id: str, panels: Sequence[Panel]) -> None:
-    """Check that the panels of a page declare a knob id they share alike.
+def _shared_knobs(
+    model_id: str, page_id: str, panels: Sequence[Panel]
+) -> tuple[SharedKnob, ...]:
+    """Get the knobs the panels of a page share, and check they declare them alike.
 
     An app shows one control for a knob id which more than one panel of a page
     declares and sets every one of those panels from it, so the declarations of
@@ -352,10 +410,18 @@ def _check_shared_knobs(model_id: str, page_id: str, panels: Sequence[Panel]) ->
     and the fields which differ are named. The same id on different pages is
     no such knob, since a page shows its own controls.
 
+    The shared knobs are listed in the order the first panel which declares one
+    lists them: the panels are walked in the order of the page and the knobs of
+    each in the order of its declaration.
+
     Args:
         model_id: the id of the model.
         page_id: the id of the page.
-        panels: the panels of the page, in the order it shows them.
+        panels: the panels of the page, in the order it shows them, each once.
+
+    Returns:
+        The knobs more than one of the panels declares, with the panels which
+        declare each.
 
     Raises:
         ValueError: naming the model, the page, the knob id, the two panels
@@ -363,9 +429,11 @@ def _check_shared_knobs(model_id: str, page_id: str, panels: Sequence[Panel]) ->
             differently.
     """
     first: dict[str, tuple[Panel, Knob]] = {}
+    declaring: dict[str, list[Panel]] = {}
     for panel in panels:
         for knob in panel.knobs:
             seen = first.setdefault(knob.id, (panel, knob))
+            declaring.setdefault(knob.id, []).append(panel)
             other_panel, other = seen
             fields = [
                 name
@@ -380,6 +448,11 @@ def _check_shared_knobs(model_id: str, page_id: str, panels: Sequence[Panel]) ->
                     "the panels of a page share a knob they both declare, so they "
                     "must declare it alike."
                 )
+    return tuple(
+        SharedKnob(knob=knob, panels=tuple(declaring[knob_id]))
+        for knob_id, (_, knob) in first.items()
+        if len(declaring[knob_id]) > 1
+    )
 
 
 @dataclass(frozen=True)

@@ -71,6 +71,98 @@ def test_the_app_route_answers_the_contract(client: TestClient) -> None:
     assert body["variants"] == []
 
 
+def test_the_app_route_names_the_knobs_the_panels_of_each_page_share(
+    client: TestClient,
+) -> None:
+    """Both panels of either HCTZ page declare both knobs, so both are shared.
+
+    The knobs are derived from the panels and are no part of the declaration
+    of the app: they are the declarations of the panels, in the order the first
+    panel of a page lists them, and name the panels they set.
+    """
+    body = client.get(APP).json()
+    panels = {
+        one: client.get(f"/api/models/hctz/panels/{one}").json()
+        for page in body["pages"]
+        for one in page["panels"]
+    }
+    assert body["shared"] == {
+        page["id"]: [
+            {
+                "knob": axis,
+                "panels": [
+                    {"id": one, "title": panels[one]["panel"]["title"]}
+                    for one in page["panels"]
+                ],
+            }
+            for axis in panels[page["panels"][0]]["axes"]
+        ]
+        for page in body["pages"]
+    }
+    assert [one["knob"]["id"] for one in body["shared"]["renal"]] == ["egfr", "dose"]
+    assert [one["knob"]["id"] for one in body["shared"]["dose"]] == ["dose", "egfr"]
+    assert body["shared"]["renal"][1]["knob"]["kind"] == "choice"
+    assert body["shared"]["dose"][0]["knob"]["kind"] == "range"
+    assert [one["title"] for one in body["shared"]["renal"][0]["panels"]] == [
+        "Plasma concentration over the renal function",
+        "Urinary excretion over the renal function",
+    ]
+
+
+def test_a_knob_one_panel_of_a_page_declares_is_no_shared_knob(
+    project: Project,
+) -> None:
+    """A knob one panel of a page declares is that panel's and no knob of the page."""
+    app = project.app
+    assert app is not None
+    plasma = project.panels_of()["renal_plasma"]
+    renal_only = plasma.model_copy(update={"id": "renal_only", "knobs": (EGFR_STAGES,)})
+    urine = project.panels_of()["dose_urine"]
+    reordered = urine.model_copy(
+        update={"id": "reordered", "knobs": tuple(reversed(urine.knobs))}
+    )
+    lone = project.replace(
+        panels={**project.panels, "renal_only": renal_only, "reordered": reordered},
+        app=app.model_copy(
+            update={
+                "pages": (
+                    app.pages[0].model_copy(
+                        update={"panels": ("renal_only", "renal_urine")}
+                    ),
+                    app.pages[1].model_copy(update={"panels": ("dose_plasma",)}),
+                    app.pages[1].model_copy(
+                        update={
+                            "id": "order",
+                            "panels": ("dose_plasma", "reordered", "dose_urine"),
+                        }
+                    ),
+                )
+            }
+        ),
+    )
+    registry = ModelRegistry(
+        {"hctz": ModelEntry(id="hctz", project=lone, title="Hydrochlorothiazide")}
+    )
+    with TestClient(create_app(registry)) as client:
+        shared = client.get(APP).json()["shared"]
+    # the renal function is declared by both panels of the page and the dose by
+    # the urine panel alone; a page of one panel shares nothing
+    assert [one["knob"]["id"] for one in shared["renal"]] == ["egfr"]
+    assert [one["id"] for one in shared["renal"][0]["panels"]] == [
+        "renal_only",
+        "renal_urine",
+    ]
+    assert shared["dose"] == []
+    # the order is the one of the first panel which declares the knobs
+    assert [one["knob"]["id"] for one in shared["order"]] == ["dose", "egfr"]
+    # and a knob sets every panel of the page which declares it
+    assert [one["id"] for one in shared["order"][0]["panels"]] == [
+        "dose_plasma",
+        "reordered",
+        "dose_urine",
+    ]
+
+
 def test_the_app_route_loads_no_model(client: TestClient, never_loads: None) -> None:
     """The app is the declaration of the project, no model is read for it."""
     assert client.get(APP).status_code == 200

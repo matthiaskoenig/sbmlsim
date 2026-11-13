@@ -173,7 +173,7 @@ The pages above the panels are the declaration of the project of the model (`Pro
 
 What the declaration cannot check itself is checked when the service registers its models, before any request: a page which names a panel the model does not declare and a variant the project does not have are refused at startup, with a message which names them.
 
-A knob id which more than one panel of a page declares is one knob of that page: the app shows one control for it above the panels and sets every panel which declares it from that control, so the plots of a page are always of one state of the model. The panels must therefore declare such an id alike, field for field, and two panels of one page which declare it differently are refused at startup, with a message which names the model, the page, the knob id, the two panels and the fields which differ, e.g. `The page 'renal' of the app of the model 'hctz' shows the panels 'renal_plasma' and 'renal_urine', which declare the knob 'dose' differently (default); the panels of a page share a knob they both declare, so they must declare it alike.`. The same id on different pages is two knobs, so the HCTZ app declares `dose` as a choice of tablets on its page `renal` and as a range on its page `dose`.
+A knob id which more than one panel of a page declares is one knob of that page: the app shows one control for it above the panels and sets every panel which declares it from that control, so every plot of a page is of the state its controls show: a panel whose run failed says that it cannot draw that state rather than draw another one. The panels must therefore declare such an id alike, field for field, and two panels of one page which declare it differently are refused at startup, with a message which names the model, the page, the knob id, the two panels and the fields which differ, e.g. `The page 'renal' of the app of the model 'hctz' shows the panels 'renal_plasma' and 'renal_urine', which declare the knob 'dose' differently (default); the panels of a page share a knob they both declare, so they must declare it alike.`. The same id on different pages is two knobs, so the HCTZ app declares `dose` as a choice of tablets on its page `renal` and as a range on its page `dose`.
 
 ## The service
 
@@ -390,9 +390,22 @@ The app of the model is `app/1`:
   "variants": [],
   "citation": "Koenig et al. (2026)",
   "doi": "10.5281/zenodo.0000000",
-  "licenses": ["CC BY-SA 4.0"]
+  "licenses": ["CC BY-SA 4.0"],
+  "shared": {
+    "renal": [
+      {
+        "knob": {"id": "egfr", "label": "renal function", "target": "f_renal_function", "unit": "dimensionless", "kind": "choice", "min": null, "max": null, "steps": 5, "choices": [{"label": "impaired", "value": 0.4}, {"label": "mildly impaired", "value": 0.7}, {"label": "normal", "value": 1.0}], "default": 1.0},
+        "panels": [
+          {"id": "renal_plasma", "title": "Plasma concentration over the renal function"},
+          {"id": "renal_urine", "title": "Urinary excretion over the renal function"}
+        ]
+      }
+    ]
+  }
 }
 ```
+
+Next to the declaration of the app the body carries `shared`, which the service derives from the panels and which is no part of the declaration (neither of `Project.app` nor of an annotation): for every page, the knobs more than one of its panels declares, each as the item of the `axes` of the panels which declare it and with the ids and the titles of those panels, in the order the first panel which declares one lists them. Every page has an entry, an empty list for a page whose panels share no knob. The service works them out once, when it registers its models, which is also where it refuses a page whose panels declare one id differently, so a shell reads which controls a page shares from the app and never from the declarations of its panels. The example is shortened to one shared knob; the HCTZ page `renal` shares the dose as well.
 
 ### One simulation per request, once
 

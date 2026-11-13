@@ -27,7 +27,10 @@ The app of a model is an `AppResponse` of the `sbmlsim.panel.App` its project
 declares, the contract `sbmlsim.panel.APP_CONTRACT`: the pages of its panels,
 which a shell places. Its shape is the one `sbmlsim.panel.app_payload` writes,
 which it reads back field by field (`AppResponse.of`), so the payload is the
-one source of the contract and this body is its schema.
+one source of the contract and this body is its schema. Next to it the body
+carries what the service derives from the panels of each page and is no part of
+the declaration: the knobs the panels of a page share (`shared`, see
+`sbmlsim.serve.runner.ModelEntry.shared`), which a shell shows one control of.
 
 The simulation experiments of a model are not awaited but submitted
 (`sbmlsim.serve.jobs`): an `ExperimentsRequest` names the groups and the
@@ -40,7 +43,7 @@ of a finished one.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Annotated, Final, Self
+from typing import TYPE_CHECKING, Annotated, Any, Final, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -48,12 +51,12 @@ from sbmlsim.panel import APP_CONTRACT, CONTRACT, MAX_GRID, MAX_KNOBS, app_paylo
 from sbmlsim.serve.jobs import MAX_EXPERIMENTS, JobStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from sbmlsim.panel import App
     from sbmlsim.serve.data import PanelSeries
     from sbmlsim.serve.jobs import Job
-    from sbmlsim.serve.runner import GridAxis, PanelResult
+    from sbmlsim.serve.runner import GridAxis, PanelResult, SharedKnob
 
 __all__ = [
     "DATA_CONTRACT",
@@ -71,6 +74,8 @@ __all__ = [
     "PanelsResponse",
     "Provenance",
     "SeriesPayload",
+    "SharedKnobPayload",
+    "SharedPanelPayload",
     "SimulateRequest",
     "SimulateResponse",
     "Status",
@@ -445,6 +450,56 @@ class AppVariantPayload(BaseModel):
     label: str
 
 
+class SharedPanelPayload(BaseModel):
+    """A panel a shared knob of a page sets, see `SharedKnobPayload`.
+
+    Attributes:
+        id: the id of the panel, one of the panels of the page.
+        title: the title of the panel, which names it to a reader of the
+            control which sets it.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    title: str
+
+
+class SharedKnobPayload(BaseModel):
+    """A knob more than one panel of a page declares, see `AppResponse`.
+
+    Attributes:
+        knob: its declaration, an item of the `axes` of the declaration of
+            every panel which declares it (`sbmlsim.panel.panel_payload`),
+            which those panels declare alike.
+        panels: the panels of the page which declare it, in the order the
+            page shows them, at least two.
+    """
+
+    model_config = _CONFIG
+
+    knob: dict[str, Any]
+    panels: list[SharedPanelPayload] = Field(min_length=2)
+
+    @classmethod
+    def of(cls, shared: SharedKnob) -> SharedKnobPayload:
+        """Get the payload of a shared knob.
+
+        Args:
+            shared: the knob and the panels which declare it.
+
+        Returns:
+            The payload.
+        """
+        return cls(
+            knob=shared.knob.model_dump(mode="json"),
+            panels=[
+                SharedPanelPayload(id=panel.id, title=panel.title)
+                for panel in shared.panels
+            ],
+        )
+
+
 class AppResponse(BaseModel):
     """The app of a model: the pages of its panels, see the module.
 
@@ -461,6 +516,11 @@ class AppResponse(BaseModel):
         doi: the DOI of the model, shown in that footer.
         licenses: the licenses of the model and its data, shown in that
             footer.
+        shared: the knobs the panels of a page share, by the id of the page,
+            each in the order the first panel which declares one lists them;
+            every page has an entry, empty for a page whose panels share none.
+            They are derived from the panels by the service and are no part of
+            the declaration of the app.
     """
 
     model_config = _CONFIG
@@ -473,23 +533,31 @@ class AppResponse(BaseModel):
     citation: str
     doi: str
     licenses: list[str]
+    shared: dict[str, list[SharedKnobPayload]]
 
     @classmethod
-    def of(cls, app: App) -> AppResponse:
+    def of(cls, app: App, shared: Mapping[str, Sequence[SharedKnob]]) -> AppResponse:
         """Get the payload of the app of a model.
 
         The body is read from `sbmlsim.panel.app_payload`, the one place the
         contract of the app is written, and this model is its schema: a field
         which the two do not share is refused here (`extra="forbid"`), so the
-        document of the API cannot drift from the payload.
+        document of the API cannot drift from the payload. The shared knobs
+        are added to it, which the payload of the declaration does not carry.
 
         Args:
             app: the app the project of the model declares.
+            shared: the knobs the panels of each page share, by the id of the
+                page, see `sbmlsim.serve.runner.ModelEntry.shared`.
 
         Returns:
             The response.
         """
-        return cls.model_validate(app_payload(app))
+        knobs = {
+            page.id: [SharedKnobPayload.of(one) for one in shared.get(page.id, ())]
+            for page in app.pages
+        }
+        return cls.model_validate({**app_payload(app), "shared": knobs})
 
 
 class ExperimentsRequest(BaseModel):

@@ -297,14 +297,17 @@ def create_app(
         )
 
     @app.get("/api/models/{model}/app")
-    async def app_of(model: str) -> AppResponse:
+    def app_of(model: str) -> AppResponse:
         """Get the app of a model, the pages of its panels.
 
         The app is the declaration of the project of the model
-        (`sbmlsim.project.Project.app`): no model is loaded and no file is
-        read for it, so the route is an `async def`. Its pages name the panels
-        a shell then asks for, which the registry checked against the panels
-        of the model when it was built (`ModelRegistry.of`).
+        (`sbmlsim.project.Project.app`), and the knobs the panels of each of
+        its pages share are derived from the panels of the model
+        (`ModelEntry.shared`), which reads the SBML of the model once: the
+        registry of a service did so when it was built (`ModelRegistry.of`),
+        and a registry built otherwise does it on the first request, which is
+        why the route is a sync `def`. Its pages name the panels a shell then
+        asks for, which the registry checked against the panels of the model.
 
         Args:
             model: the id of the model.
@@ -317,10 +320,11 @@ def create_app(
             HTTPException: a 404 of `NO_APP` for a model which declares no
                 app, which is a model whose panels are served on their own.
         """
-        declared = registry.entry(model).project.app
+        entry = registry.entry(model)
+        declared = entry.project.app
         if declared is None:
             raise HTTPException(status_code=404, detail=NO_APP)
-        return AppResponse.of(declared)
+        return AppResponse.of(declared, entry.shared)
 
     @app.get("/api/models/{model}/panels")
     def panels(model: str) -> PanelsResponse:
