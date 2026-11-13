@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 from pint.errors import UndefinedUnitError
 
-from examples.panels.hctz import DOSE, EGFR, END, URINE
-from sbmlsim.panel import App, AppPage, AppVariant, Panel, PanelCurve
+from examples.panels.hctz import DOSE, EGFR_STAGES, END, URINE
+from sbmlsim.panel import App, AppPage, AppVariant, Choice, Panel, PanelCurve
 from sbmlsim.project import Project
 from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.runner import (
@@ -57,13 +57,14 @@ def test_a_point_gives_one_curve_per_declared_curve(
 
 
 def test_a_grid_gives_a_row_per_knob_value(runner: PanelRunner, panel: Panel) -> None:
-    result = runner.run("hctz", panel, {"dose": 25.0}, {"egfr": 5})
+    # a grid over a choice knob runs its choices, the three stages of the knob
+    result = runner.run("hctz", panel, {"dose": 25.0}, {"egfr": 3})
     assert [axis.id for axis in result.dims] == ["egfr"]
-    assert len(result.dims[0].values) == 5
-    assert result.dims[0].values == EGFR.values(5)
+    assert len(result.dims[0].values) == 3
+    assert result.dims[0].values == EGFR_STAGES.values(None)
     assert result.dims[0].label == "renal function"
     assert result.dims[0].unit == "dimensionless"
-    assert len(result.curves["Cve_hctz"]) == 5
+    assert len(result.curves["Cve_hctz"]) == 3
     assert all(len(row) == len(result.x) for row in result.curves["Cve_hctz"])
     # a lower renal function clears less, so more of the dose is left in the
     # plasma at the end of the day
@@ -76,11 +77,12 @@ def test_a_grid_of_two_knobs_gives_a_row_per_point_in_c_order(
 ) -> None:
     result = runner.run("hctz", panel, {}, {"egfr": 2, "dose": 3})
     assert [axis.id for axis in result.dims] == ["egfr", "dose"]
+    assert result.dims[0].values == EGFR_STAGES.values(None)
     assert result.dims[1].values == DOSE.values(None)
     rows = result.curves["Cve_hctz"]
-    assert len(rows) == 6
+    assert len(rows) == len(EGFR_STAGES.choices) * len(DOSE.choices)
     # the rows of one renal function follow each other, the dose fastest
-    assert max(rows[0]) < max(rows[1]) < max(rows[2])
+    assert max(rows[0]) < max(rows[1]) < max(rows[2]) < max(rows[3])
 
 
 def test_the_curves_carry_the_units_of_the_model(
@@ -361,10 +363,13 @@ def test_a_point_which_does_not_integrate_is_flagged_and_not_raised(
 def test_a_failing_point_of_a_grid_is_flagged_by_its_flat_index(
     runner: PanelRunner, panel: Panel
 ) -> None:
+    # a renal function below its bounds as the first choice of the knob, for
+    # which the model does not integrate
+    stages = (Choice(label="broken", value=-1.0), *EGFR_STAGES.choices)
     broken = panel.model_copy(
-        update={"knobs": (EGFR.model_copy(update={"min": -1.0}), DOSE)}
+        update={"knobs": (EGFR_STAGES.model_copy(update={"choices": stages}), DOSE)}
     )
-    result = runner.run("hctz", broken, {"dose": 25.0}, {"egfr": 3})
+    result = runner.run("hctz", broken, {"dose": 25.0}, {"egfr": 4})
     assert result.failed == (0,)
     assert all(math.isnan(value) for value in result.curves["Cve_hctz"][0])
     assert not any(math.isnan(value) for value in result.curves["Cve_hctz"][2])

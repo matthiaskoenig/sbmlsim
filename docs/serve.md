@@ -23,16 +23,30 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
           <preinit target="BW" value="75"/>
         </simulation>
         <knob id="dose" label="dose" target="PODOSE_hctz" unit="mg" kind="choice" default="25">
+          <option label="5 mg" value="5"/>
           <option label="12.5 mg" value="12.5"/>
           <option label="25 mg" value="25"/>
           <option label="50 mg" value="50"/>
         </knob>
-        <knob id="egfr" label="renal function" target="f_renal_function" unit="dimensionless" kind="range" min="0.2" max="1.0" steps="9" default="1.0"/>
+        <knob id="egfr" label="renal function" target="f_renal_function" unit="dimensionless" kind="choice" default="1.0">
+          <option label="impaired" value="0.4"/>
+          <option label="mildly impaired" value="0.7"/>
+          <option label="normal" value="1.0"/>
+        </knob>
         <curve id="[Cve_hctz]" label="hydrochlorothiazide, plasma" unit="uM" scale="linear"/>
         <curve id="Aurine_hctz" label="hydrochlorothiazide, urine" unit="umol"/>
         <data id="beermann1976_urine" label="Beermann 1976 (5 mg, oral)" curve="Aurine_hctz" dataset="Beermann1976_Tab1A" x="time" y="value" conversion="1/(297.7 g/mole)">
           <select column="label" value="amount_urine_hctz5po_4"/>
+          <at knob="egfr" value="1.0"/>
+          <at knob="dose" value="5"/>
         </data>
+      </panel>
+      <panel id="dose_plasma" title="Plasma concentration over the dose" xLabel="time [hr]" yLabel="plasma concentration">
+        <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
+          <preinit target="BW" value="75"/>
+        </simulation>
+        <knob id="dose" label="dose" target="PODOSE_hctz" unit="mg" kind="range" min="12.5" max="50" steps="4" default="25"/>
+        <curve id="[Cve_hctz]" label="hydrochlorothiazide, plasma" unit="uM"/>
       </panel>
     </panels>
   </annotation>
@@ -101,7 +115,7 @@ A choice knob has its choices as `<option label="25 mg" value="25"/>` children, 
 
 Its `<select column="label" value="amount_urine_hctz5po_4"/>` children are the rows of the dataset the series is, by the value of every column which selects them; a series without one is every row of its dataset.
 
-Its `<at knob="dose" value="50"/>` children are the state of the knobs the series was measured under, by the value every one of them takes: a renderer draws the series only while the knobs are at that state, so a panel never shows data of one condition under a curve of another, and a knob the children do not name is not constrained. A knob of such a child is a knob of the panel of the kind `choice` and its value is one of its choices, because a condition is one of a set of conditions and not a point of a continuum; a panel which conditions on a continuous input declares that knob as a choice knob. A series without such a child is drawn whatever the knobs are set to, which is right for data of a condition the panel does not vary.
+Its `<at knob="dose" value="50"/>` children are the state of the knobs the series was measured under, by the value every one of them takes: a renderer draws the series only while the knobs are at that state, so a panel never shows data of one condition under a curve of another, and a knob the children do not name is not constrained. A knob of such a child is a knob of the panel of the kind `choice` and its value is one of its choices, because a condition is one of a set of conditions and not a point of a continuum; a panel which conditions on a continuous input declares that knob as a choice knob. A series without such a child is drawn whatever the knobs are set to, which is right for data of a condition the panel does not vary. The example above shows both halves of that rule: the panel which draws Beermann 1976 declares the dose and the renal function as choices and names the state its series was measured at, the healthy volunteer who took 5 mg, while the panel of the dose alone, which draws no study data, varies the dose as the continuum of a range knob.
 
 The `dataset` is an id and never a path: a separator, a dot and a drive are refused where a panel is read, so a declaration cannot name a file outside of the data of the project of its model.
 
@@ -199,7 +213,7 @@ A page which is served from another origin, a deck on GitHub Pages or a course i
 
 `--static DIR` is mounted at `/` after these routes, so it shadows none of them.
 
-The bodies below are the answers of a service of the hydrochlorothiazide model. Its panel is the one of the annotation above with a shorter simulation (120 min and two output steps), two doses, a coarser range knob and the default variant of the project, so that the arrays fit on this page.
+The bodies below are the answers of a service of the hydrochlorothiazide model. Its panel is the `renal` one of the annotation above with a shorter simulation (120 min and two output steps), two of its doses and the default variant of the project, so that the arrays fit on this page.
 
 The declaration of a panel is its `panel/1` payload:
 
@@ -224,7 +238,7 @@ The declaration of a panel is its `panel/1` payload:
       "max": null,
       "steps": 5,
       "choices": [
-        {"label": "12.5 mg", "value": 12.5},
+        {"label": "5 mg", "value": 5.0},
         {"label": "25 mg", "value": 25.0}
       ],
       "default": 25.0
@@ -234,11 +248,15 @@ The declaration of a panel is its `panel/1` payload:
       "label": "renal function",
       "target": "f_renal_function",
       "unit": "dimensionless",
-      "kind": "range",
-      "min": 0.2,
-      "max": 1.0,
-      "steps": 3,
-      "choices": [],
+      "kind": "choice",
+      "min": null,
+      "max": null,
+      "steps": 5,
+      "choices": [
+        {"label": "impaired", "value": 0.4},
+        {"label": "mildly impaired", "value": 0.7},
+        {"label": "normal", "value": 1.0}
+      ],
       "default": 1.0
     }
   ],
@@ -256,7 +274,7 @@ The declaration of a panel is its `panel/1` payload:
       "y": "value",
       "yerr": null,
       "sel": {"label": "amount_urine_hctz5po_4"},
-      "at": null,
+      "at": {"egfr": 1.0, "dose": 5.0},
       "conversion": "1/(297.7 g/mole)",
       "unit": null
     }
@@ -285,20 +303,20 @@ A request may also name the `variant` of the model to simulate (`Project.variant
 ```json
 {
   "contract": "panel/1",
-  "spec_hash": "31f8db7d3d6d14a46ad2a5d1642c36999a6ce89ea1ff9863bb2a97d553642e6d",
+  "spec_hash": "21e0b51906ffc50dc57ec2add91f6d87daf2fab5a8be2ab78acb31d5d5aca815",
   "x": [0.0, 1.0, 2.0],
   "dims": [
-    {"id": "egfr", "label": "renal function", "unit": "dimensionless", "values": [0.2, 0.6, 1.0]}
+    {"id": "egfr", "label": "renal function", "unit": "dimensionless", "values": [0.4, 0.7, 1.0]}
   ],
   "curves": {
     "[Cve_hctz]": [
-      [1.727788792509682e-45, 0.4657270384445122, 0.7080096418038107],
-      [1.7277887925096822e-45, 0.3916815929135674, 0.5462303310110749],
+      [1.727788792509682e-45, 0.4247207865337207, 0.61515746136907],
+      [1.727788792509682e-45, 0.3774826773795736, 0.5181364140723064],
       [1.727788792509682e-45, 0.34200231622543875, 0.4516395144971838]
     ],
     "Aurine_hctz": [
-      [1.6234091601443682e-69, 0.5849593608918757, 2.2902077861891277],
-      [4.870219778211929e-69, 1.436210578900252, 5.26572987877097],
+      [3.246815752879649e-69, 1.0535880995177316, 3.9776920837544276],
+      [5.681920828103848e-69, 1.6021217035156439, 5.800488021783508],
       [8.117020126691858e-69, 2.0211049712399904, 7.0914377715035295]
     ]
   },
@@ -310,8 +328,8 @@ A request may also name the `variant` of the model to simulate (`Project.variant
     "variant": "default",
     "engine": "roadrunner",
     "sbmlsim": "0.22.0",
-    "seconds": 0.07926412999950117,
-    "created": "2026-11-12T22:41:35.090689+00:00"
+    "seconds": 0.19032805900496896,
+    "created": "2026-11-13T05:53:37.552625+00:00"
   },
   "status": {"ok": true, "points": 3, "failed": []}
 }

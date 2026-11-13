@@ -11,6 +11,13 @@ The time unit of the HCTZ model is minutes, which is the unit the `end` of the
 simulation and the x of a result are in. The panel draws the plasma and the
 urine of hydrochlorothiazide and declares the cumulative amount in the urine of
 Beermann 1976 as the study data under the curve of the urine.
+
+That series was measured in a healthy volunteer after 5 mg orally and says so
+(`PanelData.at`), so it is drawn at that state of the knobs and under no other:
+the knobs which condition it, the renal function and the dose, are therefore
+the choices of `EGFR_STAGES` and of `DOSE`, which is what a panel with study
+data looks like. The dose of the two panels of the page `dose` is a range
+(`DOSE_RANGE`), since they draw no study data.
 """
 
 from examples.hctz_fitting import MODEL_PATH
@@ -37,59 +44,11 @@ POINTS = 50
 #: experiments of the HCTZ example convert it
 MR_HCTZ = "1/(297.7 g/mole)"
 
-EGFR = Knob(
-    id="egfr",
-    label="renal function",
-    target="f_renal_function",
-    unit="dimensionless",
-    kind="range",
-    min=0.2,
-    max=1.0,
-    steps=5,
-    default=1.0,
-)
-DOSE = Knob(
-    id="dose",
-    label="dose",
-    target="PODOSE_hctz",
-    unit="mg",
-    kind="choice",
-    choices=(
-        Choice(label="12.5 mg", value=12.5),
-        Choice(label="25 mg", value=25.0),
-        Choice(label="50 mg", value=50.0),
-    ),
-    default=25.0,
-)
-
-#: the cumulative amount of hydrochlorothiazide in the urine of the fourth
-#: subject of Beermann 1976 after 5 mg orally, measured in mg and delivered in
-#: the unit of the curve it belongs under, the `umol` of `Aurine_hctz`
-URINE = PanelData(
-    id="beermann1976_urine",
-    label="Beermann 1976 (5 mg, oral)",
-    curve="Aurine_hctz",
-    dataset="Beermann1976_Tab1A",
-    x="time",
-    y="value",
-    sel={"label": "amount_urine_hctz5po_4"},
-    conversion=MR_HCTZ,
-)
-
-
-#: the dose as a range and the renal function as stages, the knobs of the
-#: panels of the page which varies the dose
-DOSE_RANGE = Knob(
-    id="dose",
-    label="dose",
-    target="PODOSE_hctz",
-    unit="mg",
-    kind="range",
-    min=12.5,
-    max=50.0,
-    steps=4,
-    default=25.0,
-)
+#: the renal function as the stages of a choice knob: the study data of the
+#: `renal` panel was measured at one of them, and the state a series was
+#: measured under names choices (`PanelData.at`, `Panel._check_data_at`), so a
+#: panel which overlays study data declares the knobs which condition it this
+#: way. The reference 1.0 is its default and the state of a healthy volunteer
 EGFR_STAGES = Knob(
     id="egfr",
     label="renal function",
@@ -102,6 +61,57 @@ EGFR_STAGES = Knob(
         Choice(label="normal", value=1.0),
     ),
     default=1.0,
+)
+#: the doses of the tablets with the 5 mg of Beermann 1976 in front of them, so
+#: the panel can be put at the dose its study data was measured at; the default
+#: is the 25 mg of a tablet, where that series is therefore not drawn
+DOSE = Knob(
+    id="dose",
+    label="dose",
+    target="PODOSE_hctz",
+    unit="mg",
+    kind="choice",
+    choices=(
+        Choice(label="5 mg", value=5.0),
+        Choice(label="12.5 mg", value=12.5),
+        Choice(label="25 mg", value=25.0),
+        Choice(label="50 mg", value=50.0),
+    ),
+    default=25.0,
+)
+
+#: the cumulative amount of hydrochlorothiazide in the urine of the fourth
+#: subject of Beermann 1976 after 5 mg orally, measured in mg and delivered in
+#: the unit of the curve it belongs under, the `umol` of `Aurine_hctz`. The
+#: subject was a healthy volunteer and took 5 mg, which `at` states, so the
+#: series is drawn at that state of the knobs and never under the curve of
+#: another dose or of an impaired kidney
+URINE = PanelData(
+    id="beermann1976_urine",
+    label="Beermann 1976 (5 mg, oral)",
+    curve="Aurine_hctz",
+    dataset="Beermann1976_Tab1A",
+    x="time",
+    y="value",
+    sel={"label": "amount_urine_hctz5po_4"},
+    at={"egfr": 1.0, "dose": 5.0},
+    conversion=MR_HCTZ,
+)
+
+
+#: the dose as a range, the knob of the panels of the page which varies it:
+#: they draw no study data, so the dose is a continuum there and not the
+#: choices of the `renal` panel
+DOSE_RANGE = Knob(
+    id="dose",
+    label="dose",
+    target="PODOSE_hctz",
+    unit="mg",
+    kind="range",
+    min=12.5,
+    max=50.0,
+    steps=4,
+    default=25.0,
 )
 #: the pre-initialization the panels share, the dose being a knob
 SIMULATION = PanelSimulation(
@@ -129,7 +139,7 @@ HCTZ_PANEL = Panel(
     title="Hydrochlorothiazide in renal impairment",
     subtitle="the plasma concentration over the renal function",
     x_label="time (min)",
-    knobs=(EGFR, DOSE),
+    knobs=(EGFR_STAGES, DOSE),
     curves=(
         PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
         PanelCurve(id="Aurine_hctz", label="hydrochlorothiazide urine", unit="umol"),

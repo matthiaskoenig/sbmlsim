@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
-from examples.panels.hctz import END, POINTS
+from examples.panels.hctz import EGFR_STAGES, END, POINTS
 from sbmlsim.panel import CONTRACT, Panel
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
@@ -101,17 +101,19 @@ def test_the_app_of_an_unknown_model_is_404(client: TestClient) -> None:
 def test_simulate_answers_a_grid_with_provenance_and_a_hash(
     client: TestClient,
 ) -> None:
+    # the renal function is a choice knob, so a grid over it runs its stages
+    stages = len(EGFR_STAGES.choices)
     body = client.post(
-        SIMULATE, json={"values": {"dose": 25.0}, "grid": {"egfr": 5}}
+        SIMULATE, json={"values": {"dose": 25.0}, "grid": {"egfr": stages}}
     ).json()
     assert body["contract"] == CONTRACT
-    assert len(body["curves"]["Cve_hctz"]) == 5
+    assert len(body["curves"]["Cve_hctz"]) == stages
     assert len(body["x"]) == POINTS + 1
     assert [axis["id"] for axis in body["dims"]] == ["egfr"]
-    assert len(body["dims"][0]["values"]) == 5
+    assert len(body["dims"][0]["values"]) == stages
     assert body["units"]["x"] == "min"
     assert body["units"]["Cve_hctz"] == "umol"
-    assert body["status"] == {"ok": True, "points": 5, "failed": []}
+    assert body["status"] == {"ok": True, "points": stages, "failed": []}
     provenance = body["provenance"]
     assert provenance["sbmlsim"] == sbmlsim.__version__
     assert provenance["model"] == "hctz"
