@@ -13,11 +13,12 @@ from fastapi.testclient import TestClient
 
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
+from examples.panels.hctz import END, POINTS
 from sbmlsim.panel import CONTRACT, Panel
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
-from tests.serve.conftest import APP, END, PANEL, POINTS, SIMULATE
+from tests.serve.conftest import APP, PANEL, SIMULATE
 
 #: the reference of the project of the HCTZ example
 HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"

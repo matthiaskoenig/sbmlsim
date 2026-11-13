@@ -23,6 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from examples.panels.hctz import MR_HCTZ, URINE
 from sbmlsim.panel import Panel, PanelCurve, PanelData, PanelSimulation
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, create_app
@@ -35,7 +36,7 @@ from sbmlsim.serve.runner import (
     PanelRunner,
     PanelUnits,
 )
-from tests.serve.conftest import DATA, MR_HCTZ, SIMULATE, URINE
+from tests.serve.conftest import DATA, SIMULATE
 
 #: the time unit of the HCTZ model, the one the x of its panels is in
 X_UNIT = "min"

@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from pint.errors import UndefinedUnitError
 
+from examples.panels.hctz import DOSE, EGFR, END, URINE
 from sbmlsim.panel import App, AppPage, AppVariant, Panel, PanelCurve
 from sbmlsim.project import Project
 from sbmlsim.serve import runner as runner_module
@@ -25,7 +26,6 @@ from sbmlsim.serve.runner import (
     UnknownPanel,
 )
 from sbmlsim.units import ureg
-from tests.serve.conftest import DOSE, EGFR, END, URINE
 
 #: the reference of the project of the HCTZ example
 HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"

@@ -1,8 +1,7 @@
 """The model, the panel and the application the tests of the service share.
 
 The panel and the app are declared in `examples/panels/hctz.py`, which the end
-to end tests of sbmlsim-web serve as well, and bound here to the project with
-`Project.replace(panels=...)`.
+to end tests of sbmlsim-web serve as well, and come with its `PROJECT`.
 
 The time unit of the HCTZ model is minutes, which is the unit the `end` of a
 `PanelSimulation` and the x of a result are in.
@@ -29,17 +28,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from examples.panels.hctz import (  # noqa: F401 - the other tests import these
-    DOSE,
-    EGFR,
-    END,
-    HCTZ_APP,
-    HCTZ_PANEL,
-    MR_HCTZ,
-    POINTS,
-    PROJECT,
-    URINE,
-)
+from examples.panels.hctz import HCTZ_PANEL, PROJECT
 from sbmlsim.panel import Panel
 from sbmlsim.project import Project
 from sbmlsim.serve.app import create_app
@@ -61,9 +50,9 @@ def panel() -> Panel:
 
 
 @pytest.fixture(scope="module")
-def project(panel: Panel) -> Project:
-    """The project of the HCTZ example with the panel and the app of the tests."""
-    return PROJECT.replace(panels={"renal": panel}, app=HCTZ_APP)
+def project() -> Project:
+    """The project of the HCTZ panel example, which carries its panel and its app."""
+    return PROJECT
 
 
 @pytest.fixture(scope="module")
