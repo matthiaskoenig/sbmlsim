@@ -564,10 +564,9 @@ Ka_dis_hctz    -       0.01    10      1/hr
 KI__HCTZEX_k   -       1e-05   1       1/ml
 runs                2
 workers             1 (serial)
-  optimizing ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2/2 runs 0:00:01 ~ 0:00:01 total
 converged           2/2 runs
 best cost           1.09898
-optimizer time      1.2 s
+optimizer time      0.3 s
 2 runs read back
 versions: python, sbmlsim, libroadrunner, scipy, numpy
 checksums of 10 files
