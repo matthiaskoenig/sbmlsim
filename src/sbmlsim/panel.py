@@ -230,7 +230,9 @@ class PanelCurve(BaseModel):
             and the key of its values in a result.
         label: the curve as it is shown, its entry in the legend.
         unit: the unit of the values, the unit of the selection without.
-        scale: the scale of the axis of the curve, `linear` or `log`.
+        scale: the scale the value axis of the panel opens on, `linear` or
+            `log`; the curves of a panel share that axis and declare one
+            scale, see `Panel._check_scales`.
     """
 
     model_config = _CONFIG
@@ -369,7 +371,8 @@ class Panel(BaseModel):
             the axes of the grid a request runs, so there are at most
             `MAX_KNOBS` of them, the knobs one request drives.
         curves: the curves of the panel, in the order they are drawn; at most
-            `MAX_CURVES`.
+            `MAX_CURVES`. They share one value axis and declare one scale of
+            it, see `_check_scales`.
         data: the study data of the panel, drawn under its curves; several
             series may belong under one curve, e.g. two studies, and their
             ids are distinct whether they do or not. A series which names a
@@ -438,6 +441,32 @@ class Panel(BaseModel):
                     f"under the curve '{data.curve}', which the panel does not "
                     f"declare; its curves are {declared}."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_scales(self) -> Self:
+        """Check that the curves of the panel declare one scale.
+
+        The curves of a panel share one value axis, which a renderer opens on
+        the scale they declare (`PanelCurve.scale`): curves which declare
+        different scales declare no scale of that axis at all, which is why
+        they are refused here and not settled by the order of the curves.
+
+        Raises:
+            ValueError: naming the panel and the curves of every scale, for
+                curves which declare more than one.
+        """
+        scales: dict[str, list[str]] = {}
+        for curve in self.curves:
+            scales.setdefault(curve.scale, []).append(curve.id)
+        if len(scales) > 1:
+            named = "; ".join(
+                f"{scale}: {ids}" for scale, ids in sorted(scales.items())
+            )
+            raise ValueError(
+                f"The curves of the panel '{self.id}' declare different scales "
+                f"({named}); they share one value axis, so they declare one."
+            )
         return self
 
     @model_validator(mode="after")

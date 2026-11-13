@@ -115,7 +115,7 @@ A choice knob has its choices as `<option label="25 mg" value="25"/>` children, 
 | `id` | a selection of the model, e.g. `[Cve_hctz]`, and the key of its values in a result, required |
 | `label` | its entry in the legend, required |
 | `unit` | the unit of its values, the unit the model gives the selection without, see [Units](#units) |
-| `scale` | `linear` (the default) or `log` |
+| `scale` | `linear` (the default) or `log`, the scale the value axis opens on; the curves of a panel share that axis and declare one scale, a panel whose curves declare two is refused |
 
 The curves of a panel share one axis, so a panel draws one quantity: a concentration of 0.45 and an amount of 47 on one axis is the concentration drawn flat on zero. A model which shows both declares two panels, which the example does with `renal_plasma`, the concentration in the venous plasma and in the plasma of the kidney in `uM`, and `renal_urine`, the amount excreted in `umol`. The label of a curve is then the site alone, since the title of the panel carries the substance.
 

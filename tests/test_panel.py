@@ -466,6 +466,24 @@ def test_two_curves_of_one_id_are_refused() -> None:
         )
 
 
+def test_curves_which_declare_different_scales_are_refused() -> None:
+    curves = (
+        PanelCurve(id="[S1]", label="S1", scale="log"),
+        PanelCurve(id="[S2]", label="S2"),
+        PanelCurve(id="[S3]", label="S3", scale="log"),
+    )
+    with pytest.raises(
+        ValidationError, match=r"'p'.*linear: \['\[S2\]'\]; log: \['\[S1\]', '\[S3\]'\]"
+    ):
+        Panel(id="p", title="p", curves=curves, simulation=PanelSimulation(end=1.0))
+    # one scale, either of them, is one axis
+    for scale in ("linear", "log"):
+        same = tuple(curve.model_copy(update={"scale": scale}) for curve in curves)
+        assert Panel(
+            id="p", title="p", curves=same, simulation=PanelSimulation(end=1.0)
+        )
+
+
 @pytest.mark.parametrize(
     "simulation",
     [
