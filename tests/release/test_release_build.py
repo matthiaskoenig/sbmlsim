@@ -84,6 +84,7 @@ class FakeRunner:
             (models / "toy.xml").write_text("<sbml/>", encoding="utf-8")
             (models / "toy.md").write_text("# toy", encoding="utf-8")
             (models / "other.txt").write_text("not copied", encoding="utf-8")
+            (models / "toy.svg").write_text("<svg/>", encoding="utf-8")
             (out / "mit.txt").write_text("MIT", encoding="utf-8")
             (out / "cc-by-sa-4.0.txt").write_text("CC", encoding="utf-8")
             (out / "figures").mkdir()
@@ -191,6 +192,8 @@ def test_build_copies_outputs(tmp_path: Path) -> None:
     assert (release / "models/toy.xml").is_file()
     assert (release / "models/toy.md").is_file()
     assert not (release / "models/other.txt").exists()
+    # the diagram of the model which the factory draws beside it
+    assert (release / "models/toy.svg").is_file()
     assert (release / "simulations/Exp/index.html").is_file()
     assert not (release / "simulations/run.json").exists()
     assert (release / "simulations_uncertainty/Exp/index.html").is_file()

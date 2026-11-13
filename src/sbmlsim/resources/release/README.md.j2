@@ -7,6 +7,19 @@
 {{ settings.description }}
 
 Documentation: <{{ settings.site_url }}>
+{% if figure or diagrams %}
+
+## Model
+
+{% if figure %}
+![model overview](figures/{{ figure }})
+
+{% endif %}
+{% for diagram in diagrams %}
+![{{ diagram.file[:-4] }}](models/{{ diagram.file }})
+
+{% endfor %}
+{% endif %}
 {% if credibility %}
 
 Credibility of the model for its contexts of use: [{{ settings.site_url }}credibility.html]({{ settings.site_url }}credibility.html)

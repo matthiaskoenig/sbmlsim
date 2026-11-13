@@ -10,10 +10,14 @@ The models are distributed in [SBML](http://sbml.org) format.
 * Equations: [`{{ entry.stem }}.md`](https://github.com/{{ settings.repository }}/blob/main/models/{{ entry.stem }}.md)
 {% endif %}
 * Report: [SBML4humans](https://sbml4humans.de/report?url={{ (settings.raw_url ~ "models/" ~ entry.file) | query }})
-{% if entry.figure %}
+{% for figure in entry.figures %}
 
-![{{ entry.stem }} model diagram](images/{{ entry.figure }}){ style="max-height: 420px; width: auto; max-width: 100%" }
+{% if figure.endswith(".svg") %}
+![{{ figure[:-4] }}](images/{{ figure }}){ style="width: 100%" }
+{% else %}
+![{{ entry.stem }} model diagram](images/{{ figure }}){ style="max-height: 420px; width: auto; max-width: 100%" }
 {% endif %}
+{% endfor %}
 
 {% endfor %}
 {% if omex %}
