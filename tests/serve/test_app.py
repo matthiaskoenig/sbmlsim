@@ -40,11 +40,12 @@ def test_models_lists_the_registered_models(client: TestClient) -> None:
 def test_the_panels_of_a_model_are_listed(client: TestClient) -> None:
     body = client.get("/api/models/hctz/panels").json()
     assert [panel["id"] for panel in body["panels"]] == [
-        "renal",
+        "renal_plasma",
+        "renal_urine",
         "dose_plasma",
         "dose_urine",
     ]
-    assert body["panels"][0]["title"] == "Hydrochlorothiazide in renal impairment"
+    assert body["panels"][0]["title"] == "Plasma concentration over the renal function"
     assert body["contract"] == CONTRACT
 
 
@@ -58,11 +59,11 @@ def test_a_panel_is_served_as_the_contract(client: TestClient) -> None:
 def test_the_app_route_answers_the_contract(client: TestClient) -> None:
     body = client.get(APP).json()
     assert body["contract"] == "app/1"
-    assert body["pages"][0]["panels"] == ["renal"]
+    assert body["pages"][0]["panels"] == ["renal_plasma", "renal_urine"]
     assert body["title"] == "Hydrochlorothiazide"
     assert body["pages"][0]["id"] == "renal"
     assert [page["panels"] for page in body["pages"]] == [
-        ["renal"],
+        ["renal_plasma", "renal_urine"],
         ["dose_plasma", "dose_urine"],
     ]
     assert body["licenses"] == ["CC BY-SA 4.0"]
@@ -117,7 +118,7 @@ def test_simulate_answers_a_grid_with_provenance_and_a_hash(
     provenance = body["provenance"]
     assert provenance["sbmlsim"] == sbmlsim.__version__
     assert provenance["model"] == "hctz"
-    assert provenance["panel"] == "renal"
+    assert provenance["panel"] == "renal_plasma"
     assert provenance["engine"] == "roadrunner"
     assert len(provenance["model_sha256"]) == 64
     assert provenance["seconds"] > 0.0
@@ -148,7 +149,7 @@ def test_the_hash_covers_the_declaration_of_the_panel(
         {
             "hctz": ModelEntry(
                 id="hctz",
-                project=project.replace(panels={"renal": shorter}),
+                project=project.replace(panels={panel.id: shorter}),
                 title="Hydrochlorothiazide",
             )
         }

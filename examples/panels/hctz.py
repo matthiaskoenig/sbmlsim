@@ -8,9 +8,12 @@ tests of sbmlsim-web serve:
     python -m sbmlsim.serve --model hctz=examples.panels.hctz:PROJECT
 
 The time unit of the HCTZ model is minutes, which is the unit the `end` of the
-simulation and the x of a result are in. The panel draws the plasma and the
-urine of hydrochlorothiazide and declares the cumulative amount in the urine of
-Beermann 1976 as the study data under the curve of the urine.
+simulation and the x of a result are in. A panel draws one quantity on its
+axis, so each of the two pages has a panel of the plasma concentration and one
+of the amount in the urine: `renal_plasma` and `renal_urine` over the renal
+function, `dose_plasma` and `dose_urine` over the dose. The cumulative amount
+in the urine of Beermann 1976 is the study data under the urine curve of
+`renal_urine`.
 
 That series was measured in a healthy volunteer after 5 mg orally and says so
 (`PanelData.at`), so it is drawn at that state of the knobs and under no other:
@@ -19,11 +22,14 @@ the choices of `EGFR_STAGES` and of `DOSE`, which is what a panel with study
 data looks like. The dose of the two panels of the page `dose` is a range
 (`DOSE_RANGE`), since they draw no study data.
 
-The plasma curve is the concentration `[Cve_hctz]`, `mmol/litre` in the model
-and drawn in `uM`: `Cve_hctz` is a species of the compartment `Vve` which is
-not in substance units, so the bare selection is its amount and no panel about
-a plasma concentration draws it. `Aurine_hctz` is in substance units and is the
-amount excreted so far, `mmol` in the model and drawn in `umol`.
+The plasma curves are the concentrations `[Cve_hctz]` at the sampling site and
+`[Car_hctz]` in the arterial blood, both `mmol/litre` in the model and drawn in
+`uM`: `Cve_hctz` is a species of the compartment `Vve` which is not in
+substance units, so the bare selection is its amount and no panel about a
+plasma concentration draws it. `Aurine_hctz` is in substance units and is the
+amount excreted so far, `mmol` in the model and drawn in `umol`. The labels of
+the curves are the quantity and the site alone, since every panel is titled
+with the drug, and `y_label` names the axis the curves of a panel share.
 """
 
 from examples.hctz_fitting import MODEL_PATH
@@ -124,15 +130,19 @@ SIMULATION = PanelSimulation(
     end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}
 )
 
-#: the app of the model of the tests: the panel of the renal function on one
-#: page and the two panels of the dose on another, which is what a switch of
-#: the page of an app has something real to show; the project has one SBML
+#: the app of the model of the tests: the two panels of the renal function on
+#: one page and the two panels of the dose on another, which is what a switch
+#: of the page of an app has something real to show; the project has one SBML
 #: file, so the app declares no variants
 HCTZ_APP = App(
     title="Hydrochlorothiazide",
     subtitle="the model of hydrochlorothiazide in renal impairment",
     pages=(
-        AppPage(id="renal", title="Renal impairment", panels=("renal",)),
+        AppPage(
+            id="renal",
+            title="Renal impairment",
+            panels=("renal_plasma", "renal_urine"),
+        ),
         AppPage(id="dose", title="Dose", panels=("dose_plasma", "dose_urine")),
     ),
     citation="Beermann et al. (1976)",
@@ -140,21 +150,30 @@ HCTZ_APP = App(
     licenses=("CC BY-SA 4.0",),
 )
 
-HCTZ_PANEL = Panel(
-    id="renal",
-    title="Hydrochlorothiazide in renal impairment",
-    subtitle="the plasma concentration over the renal function",
+HCTZ_RENAL_PLASMA = Panel(
+    id="renal_plasma",
+    title="Plasma concentration over the renal function",
+    subtitle="hydrochlorothiazide in the venous and in the arterial plasma",
     x_label="time (min)",
+    y_label="plasma concentration",
     knobs=(EGFR_STAGES, DOSE),
     curves=(
-        PanelCurve(id="[Cve_hctz]", label="hydrochlorothiazide plasma", unit="uM"),
-        PanelCurve(id="Aurine_hctz", label="hydrochlorothiazide urine", unit="umol"),
+        PanelCurve(id="[Cve_hctz]", label="plasma", unit="uM"),
+        PanelCurve(id="[Car_hctz]", label="arterial", unit="uM"),
     ),
+    simulation=SIMULATION,
+)
+
+HCTZ_RENAL_URINE = Panel(
+    id="renal_urine",
+    title="Urinary excretion over the renal function",
+    subtitle="the cumulative amount of hydrochlorothiazide in the urine",
+    x_label="time (min)",
+    y_label="amount excreted",
+    knobs=(EGFR_STAGES, DOSE),
+    curves=(PanelCurve(id="Aurine_hctz", label="urine", unit="umol"),),
     data=(URINE,),
-    # the panel pre-initializes the dose to zero, which the knob overrides
-    simulation=PanelSimulation(
-        end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}
-    ),
+    simulation=SIMULATION,
 )
 
 HCTZ_DOSE_PLASMA = Panel(
@@ -162,10 +181,9 @@ HCTZ_DOSE_PLASMA = Panel(
     title="Plasma concentration over the dose",
     subtitle="hydrochlorothiazide in plasma",
     x_label="time (min)",
+    y_label="plasma concentration",
     knobs=(DOSE_RANGE, EGFR_STAGES),
-    curves=(
-        PanelCurve(id="[Cve_hctz]", label="hydrochlorothiazide plasma", unit="uM"),
-    ),
+    curves=(PanelCurve(id="[Cve_hctz]", label="plasma", unit="uM"),),
     simulation=SIMULATION,
 )
 
@@ -174,10 +192,9 @@ HCTZ_DOSE_URINE = Panel(
     title="Urinary excretion over the dose",
     subtitle="the cumulative amount of hydrochlorothiazide in the urine",
     x_label="time (min)",
+    y_label="amount excreted",
     knobs=(DOSE_RANGE, EGFR_STAGES),
-    curves=(
-        PanelCurve(id="Aurine_hctz", label="hydrochlorothiazide urine", unit="umol"),
-    ),
+    curves=(PanelCurve(id="Aurine_hctz", label="urine", unit="umol"),),
     simulation=SIMULATION,
 )
 
@@ -185,7 +202,8 @@ HCTZ_DOSE_URINE = Panel(
 PROJECT: Project = HCTZ_PROJECT.replace(
     variants={"default": MODEL_PATH},
     panels={
-        "renal": HCTZ_PANEL,
+        "renal_plasma": HCTZ_RENAL_PLASMA,
+        "renal_urine": HCTZ_RENAL_URINE,
         "dose_plasma": HCTZ_DOSE_PLASMA,
         "dose_urine": HCTZ_DOSE_URINE,
     },

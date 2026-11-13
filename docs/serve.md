@@ -18,7 +18,7 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
 <model id="hctz" name="hydrochlorothiazide" timeUnits="min">
   <annotation>
     <panels xmlns="https://sbmlsim.org/ns/panel/1">
-      <panel id="renal" title="Renal impairment" subtitle="hydrochlorothiazide after a single oral dose" xLabel="time [hr]">
+      <panel id="renal_plasma" title="Plasma concentration over the renal function" subtitle="hydrochlorothiazide after a single oral dose" xLabel="time [hr]" yLabel="plasma concentration">
         <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
           <preinit target="BW" value="75"/>
         </simulation>
@@ -33,8 +33,25 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
           <option label="mildly impaired" value="0.7"/>
           <option label="normal" value="1.0"/>
         </knob>
-        <curve id="[Cve_hctz]" label="hydrochlorothiazide, plasma" unit="uM" scale="linear"/>
-        <curve id="Aurine_hctz" label="hydrochlorothiazide, urine" unit="umol"/>
+        <curve id="[Cve_hctz]" label="plasma" unit="uM" scale="linear"/>
+        <curve id="[Car_hctz]" label="arterial" unit="uM"/>
+      </panel>
+      <panel id="renal_urine" title="Urinary excretion over the renal function" subtitle="hydrochlorothiazide after a single oral dose" xLabel="time [hr]" yLabel="amount excreted">
+        <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
+          <preinit target="BW" value="75"/>
+        </simulation>
+        <knob id="dose" label="dose" target="PODOSE_hctz" unit="mg" kind="choice" default="25">
+          <option label="5 mg" value="5"/>
+          <option label="12.5 mg" value="12.5"/>
+          <option label="25 mg" value="25"/>
+          <option label="50 mg" value="50"/>
+        </knob>
+        <knob id="egfr" label="renal function" target="f_renal_function" unit="dimensionless" kind="choice" default="1.0">
+          <option label="impaired" value="0.4"/>
+          <option label="mildly impaired" value="0.7"/>
+          <option label="normal" value="1.0"/>
+        </knob>
+        <curve id="Aurine_hctz" label="urine" unit="umol"/>
         <data id="beermann1976_urine" label="Beermann 1976 (5 mg, oral)" curve="Aurine_hctz" dataset="Beermann1976_Tab1A" x="time" y="value" conversion="1/(297.7 g/mole)">
           <select column="label" value="amount_urine_hctz5po_4"/>
           <at knob="egfr" value="1.0"/>
@@ -46,7 +63,7 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
           <preinit target="BW" value="75"/>
         </simulation>
         <knob id="dose" label="dose" target="PODOSE_hctz" unit="mg" kind="range" min="12.5" max="50" steps="4" default="25"/>
-        <curve id="[Cve_hctz]" label="hydrochlorothiazide, plasma" unit="uM"/>
+        <curve id="[Cve_hctz]" label="plasma" unit="uM"/>
       </panel>
     </panels>
   </annotation>
@@ -99,6 +116,8 @@ A choice knob has its choices as `<option label="25 mg" value="25"/>` children, 
 | `label` | its entry in the legend, required |
 | `unit` | the unit of its values, the unit the model gives the selection without, see [Units](#units) |
 | `scale` | `linear` (the default) or `log` |
+
+The curves of a panel share one axis, so a panel draws one quantity: a concentration of 0.45 and an amount of 47 on one axis is the concentration drawn flat on zero. A model which shows both declares two panels, which the example does with `renal_plasma`, the venous and the arterial concentration in `uM`, and `renal_urine`, the amount excreted in `umol`. The label of a curve is then the quantity and the site alone, since the title of the panel carries the substance.
 
 `<data>`, the measured points drawn under a curve:
 
@@ -213,19 +232,19 @@ A page which is served from another origin, a deck on GitHub Pages or a course i
 
 `--static DIR` is mounted at `/` after these routes, so it shadows none of them.
 
-The bodies below are the answers of a service of the hydrochlorothiazide model. Its panel is the `renal` one of the annotation above with a shorter simulation (120 min and two output steps), two of its doses and the default variant of the project, so that the arrays fit on this page.
+The bodies below are the answers of a service of the hydrochlorothiazide model. The panels are the `renal_plasma` and the `renal_urine` of the annotation above with a shorter simulation (120 min and two output steps), two of their doses and the default variant of the project, so that the arrays fit on this page.
 
-The declaration of a panel is its `panel/1` payload:
+The declaration of a panel is its `panel/1` payload, here the one of `renal_urine`:
 
 ```json
 {
   "contract": "panel/1",
   "panel": {
-    "id": "renal",
-    "title": "Renal impairment",
+    "id": "renal_urine",
+    "title": "Urinary excretion over the renal function",
     "subtitle": "hydrochlorothiazide after a single oral dose",
     "x_label": "time [hr]",
-    "y_label": ""
+    "y_label": "amount excreted"
   },
   "axes": [
     {
@@ -261,8 +280,7 @@ The declaration of a panel is its `panel/1` payload:
     }
   ],
   "curves": [
-    {"id": "[Cve_hctz]", "label": "hydrochlorothiazide, plasma", "unit": "uM", "scale": "linear"},
-    {"id": "Aurine_hctz", "label": "hydrochlorothiazide, urine", "unit": "umol", "scale": "linear"}
+    {"id": "Aurine_hctz", "label": "urine", "unit": "umol", "scale": "linear"}
   ],
   "data": [
     {
@@ -290,7 +308,7 @@ The declaration of a panel is its `panel/1` payload:
 }
 ```
 
-A simulation takes the value of every knob a reader set and the points of every knob a grid runs over, and nothing else:
+A simulation takes the value of every knob a reader set and the points of every knob a grid runs over, and nothing else; the body below is a run of `renal_plasma`, whose two curves are one quantity in one unit:
 
 ```json
 {"values": {"dose": 25.0}, "grid": {"egfr": 3}}
@@ -303,7 +321,7 @@ A request may also name the `variant` of the model to simulate (`Project.variant
 ```json
 {
   "contract": "panel/1",
-  "spec_hash": "21e0b51906ffc50dc57ec2add91f6d87daf2fab5a8be2ab78acb31d5d5aca815",
+  "spec_hash": "7f7219730e35733b3f4a077513d7f24118c8ba9d1e264f6bdfe7ae1dddd907ba",
   "x": [0.0, 1.0, 2.0],
   "dims": [
     {"id": "egfr", "label": "renal function", "unit": "dimensionless", "values": [0.4, 0.7, 1.0]}
@@ -314,22 +332,22 @@ A request may also name the `variant` of the model to simulate (`Project.variant
       [1.727788792509682e-45, 0.3774826773795736, 0.5181364140723064],
       [1.727788792509682e-45, 0.34200231622543875, 0.4516395144971838]
     ],
-    "Aurine_hctz": [
-      [3.246815752879649e-69, 1.0535880995177316, 3.9776920837544276],
-      [5.681920828103848e-69, 1.6021217035156439, 5.800488021783508],
-      [8.117020126691858e-69, 2.0211049712399904, 7.0914377715035295]
+    "[Car_hctz]": [
+      [2.9095671631598354e-56, 0.422919513625918, 0.6148673884272808],
+      [2.9095671631598363e-56, 0.3760114082931891, 0.5179960803674282],
+      [2.9095671631598363e-56, 0.3407585204627051, 0.45157970338001585]
     ]
   },
-  "units": {"x": "hr", "[Cve_hctz]": "uM", "Aurine_hctz": "umol"},
+  "units": {"x": "hr", "[Cve_hctz]": "uM", "[Car_hctz]": "uM"},
   "provenance": {
     "model": "hctz",
-    "panel": "renal",
+    "panel": "renal_plasma",
     "model_sha256": "e47e40b60ff28f8d3a12b0b99d09482ed3cba8e239dcb5cd9cc14cadae48f82c",
     "variant": "default",
     "engine": "roadrunner",
     "sbmlsim": "0.22.0",
-    "seconds": 0.19032805900496896,
-    "created": "2026-11-13T05:53:37.552625+00:00"
+    "seconds": 0.20096865999221336,
+    "created": "2026-11-13T06:33:36.331772+00:00"
   },
   "status": {"ok": true, "points": 3, "failed": []}
 }
@@ -337,7 +355,7 @@ A request may also name the `variant` of the model to simulate (`Project.variant
 
 A grid is one request per figure and not one per movement of a knob: a renderer fetches it once and interpolates between its points while a knob moves. A point which did not integrate, a knob value the model does not simulate, is `null` in every curve and its flat index is in `status.failed`; the request stays a 200, since a model which does not integrate everywhere is a fact of the model and no error of the request.
 
-The study data of the same panel is `paneldata/1`, on the axis of the curves and in their units:
+The study data of `renal_urine` is `paneldata/1`, on the axis of its curves and in their units:
 
 ```json
 {
@@ -366,7 +384,7 @@ The app of the model is `app/1`:
   "contract": "app/1",
   "title": "Hydrochlorothiazide",
   "subtitle": "a physiologically based model of hydrochlorothiazide",
-  "pages": [{"id": "renal", "title": "Renal impairment", "panels": ["renal"]}],
+  "pages": [{"id": "renal", "title": "Renal impairment", "panels": ["renal_plasma", "renal_urine"]}],
   "variants": [],
   "citation": "Koenig et al. (2026)",
   "doi": "10.5281/zenodo.0000000",

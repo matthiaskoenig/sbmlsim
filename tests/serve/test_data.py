@@ -23,7 +23,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from examples.panels.hctz import MR_HCTZ, URINE
+from examples.panels.hctz import HCTZ_RENAL_URINE, MR_HCTZ, URINE
 from sbmlsim.panel import Panel, PanelCurve, PanelData, PanelSimulation
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, create_app
@@ -36,7 +36,7 @@ from sbmlsim.serve.runner import (
     PanelRunner,
     PanelUnits,
 )
-from tests.serve.conftest import DATA, SIMULATE
+from tests.serve.conftest import DATA, DATA_SIMULATE
 
 #: the time unit of the HCTZ model, the one the x of its panels is in
 X_UNIT = "min"
@@ -90,7 +90,7 @@ PLAIN_MODEL = Path(__file__).parent.parent / "data" / "models" / "lotka_volterra
 #: a panel of that model: a curve of a species without a unit and, under it,
 #: the series of the crafted column which carries none either
 PLAIN_PANEL = Panel(
-    id="renal",
+    id=HCTZ_RENAL_URINE.id,
     title="Lotka Volterra",
     curves=(PanelCurve(id="prey", label="prey"),),
     data=(
@@ -105,6 +105,17 @@ PLAIN_PANEL = Panel(
     ),
     simulation=PanelSimulation(end=10.0, points=5),
 )
+
+
+@pytest.fixture(scope="module")
+def panel() -> Panel:
+    """The panel of this file is the one which carries the study data.
+
+    A panel draws one quantity, so the series of Beermann 1976 sits under the
+    urine curve of `renal_urine` and not under a plasma concentration; the
+    routes `DATA` and `DATA_SIMULATE` are the ones of that panel.
+    """
+    return HCTZ_RENAL_URINE
 
 
 @pytest.fixture(scope="module")
@@ -253,7 +264,7 @@ def test_the_x_of_the_data_is_the_x_of_the_simulation_of_the_same_panel(
 ) -> None:
     """A reader draws the points of a series on the axis of the lines."""
     data = client.get(DATA).json()
-    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    simulated = client.post(DATA_SIMULATE, json={"values": {}, "grid": {}}).json()
     assert data["series"][0]["x_unit"] == simulated["units"]["x"]
     # the dataset is in hours, the x of the panel in the minutes of the model
     assert data["series"][0]["x_unit"] == X_UNIT
@@ -269,7 +280,7 @@ def test_the_x_of_the_data_is_the_x_unit_the_panel_declares(
     """The two routes deliver the declared unit, and not one of them alone."""
     client = served(project, in_hours(panel))
     data = client.get(DATA).json()
-    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    simulated = client.post(DATA_SIMULATE, json={"values": {}, "grid": {}}).json()
     assert data["series"][0]["x_unit"] == simulated["units"]["x"] == "hr"
     assert data["series"][0]["x"] == pytest.approx(TIMES)
 
@@ -281,13 +292,13 @@ def test_a_unit_id_of_the_model_is_served_on_both_routes_as_well(
     urine = PanelCurve(id="Aurine_hctz", label="urine", unit="substance")
     declared = panel.model_copy(
         update={
-            "curves": (panel.curves[0], urine),
+            "curves": (urine,),
             "simulation": panel.simulation.model_copy(update={"x_unit": "KI__min"}),
         }
     )
     client = served(project, declared)
     data = client.get(DATA).json()
-    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    simulated = client.post(DATA_SIMULATE, json={"values": {}, "grid": {}}).json()
     series = data["series"][0]
     assert series["x_unit"] == simulated["units"]["x"] == "KI__min"
     assert series["unit"] == simulated["units"]["Aurine_hctz"] == "substance"
@@ -301,10 +312,10 @@ def test_a_curve_which_declares_no_unit_is_served_in_the_unit_of_the_model(
     """The curve of a run and its study data are one unit, declared or not."""
     urine = PanelCurve(id="Aurine_hctz", label="urine")
     assert urine.unit is None
-    declared = panel.model_copy(update={"curves": (panel.curves[0], urine)})
+    declared = panel.model_copy(update={"curves": (urine,)})
     client = served(project, declared)
     data = client.get(DATA).json()
-    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    simulated = client.post(DATA_SIMULATE, json={"values": {}, "grid": {}}).json()
     series = data["series"][0]
     # the model carries the amount in the urine in `mmol`, the study in `mg`
     assert series["unit"] == simulated["units"]["Aurine_hctz"] == "mmol"
@@ -322,7 +333,7 @@ def test_a_curve_the_model_gives_no_unit_is_null_on_both_routes(
     """
     client = served(crafted.replace(variants={"default": PLAIN_MODEL}), PLAIN_PANEL)
     data = client.get(DATA).json()
-    simulated = client.post(SIMULATE, json={"values": {}, "grid": {}}).json()
+    simulated = client.post(DATA_SIMULATE, json={"values": {}, "grid": {}}).json()
     series = data["series"][0]
     assert series["unit"] is None
     assert series["unit"] == simulated["units"]["prey"]

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from pint.errors import UndefinedUnitError
 
-from examples.panels.hctz import DOSE, EGFR_STAGES, END, URINE
+from examples.panels.hctz import DOSE, EGFR_STAGES, END, HCTZ_RENAL_URINE, URINE
 from sbmlsim.panel import App, AppPage, AppVariant, Choice, Panel, PanelCurve
 from sbmlsim.project import Project
 from sbmlsim.serve import runner as runner_module
@@ -113,16 +113,21 @@ def test_a_declared_x_unit_delivers_the_time_axis_in_it(
 
 
 def test_the_units_of_a_panel_are_the_ones_of_its_result(
-    runner: PanelRunner, registry: ModelRegistry, panel: Panel
+    runner: PanelRunner, registry: ModelRegistry
 ) -> None:
-    """`units` answers without a run what a run delivers, see the module."""
-    units = runner.units(registry.entry("hctz"), panel)
+    """`units` answers without a run what a run delivers, see the module.
+
+    The study data is declared under the curve of the amount in the urine, so
+    the panel of this test is the one which carries it.
+    """
+    with_data = HCTZ_RENAL_URINE
+    units = runner.units(registry.entry("hctz"), with_data)
     assert units.x is not None
     assert units.x.text == "min"
     urine = units.series[URINE.id]
     assert urine is not None
     assert urine.text == "umol"
-    result = runner.run("hctz", panel, {"egfr": 1.0, "dose": 25.0}, {})
+    result = runner.run("hctz", with_data, {"egfr": 1.0, "dose": 25.0}, {})
     assert units.x.text == result.units["x"]
 
 
@@ -139,17 +144,18 @@ def test_the_x_unit_a_panel_declares_is_the_unit_of_its_units(
 
 
 def test_a_unit_id_of_the_model_is_resolved_for_the_x_and_for_the_data(
-    runner: PanelRunner, registry: ModelRegistry, panel: Panel
+    runner: PanelRunner, registry: ModelRegistry
 ) -> None:
     """A panel may declare a unit id of its model, which pint does not know."""
     # `KI__min` is the minute and `substance` the mole of the HCTZ model
     with pytest.raises(UndefinedUnitError):
         ureg.Unit("KI__min")
+    with_data = HCTZ_RENAL_URINE
     urine = PanelCurve(id="Aurine_hctz", label="urine", unit="substance")
-    declared = panel.model_copy(
+    declared = with_data.model_copy(
         update={
-            "curves": (panel.curves[0], urine),
-            "simulation": panel.simulation.model_copy(update={"x_unit": "KI__min"}),
+            "curves": (urine,),
+            "simulation": with_data.simulation.model_copy(update={"x_unit": "KI__min"}),
         }
     )
     units = runner.units(registry.entry("hctz"), declared)
@@ -210,10 +216,10 @@ def test_a_unit_of_a_curve_which_is_no_unit_of_its_values_is_refused(
 
 
 def test_a_unit_of_a_series_which_is_no_unit_is_refused(
-    runner: PanelRunner, registry: ModelRegistry, panel: Panel
+    runner: PanelRunner, registry: ModelRegistry
 ) -> None:
     """It is refused where it is resolved, before a series is read."""
-    bogus = panel.model_copy(
+    bogus = HCTZ_RENAL_URINE.model_copy(
         update={"data": (URINE.model_copy(update={"unit": "not_a_unit"}),)}
     )
     with pytest.raises(ValueError) as error:
@@ -273,7 +279,7 @@ def test_a_value_of_no_knob_of_the_panel_is_refused(
 def test_the_registry_reads_the_panels_of_the_annotation(
     registry: ModelRegistry,
 ) -> None:
-    assert registry.panel("hctz", "renal").knobs[0].id == "egfr"
+    assert registry.panel("hctz", "renal_plasma").knobs[0].id == "egfr"
 
 
 def test_the_registry_loads_the_project_of_a_reference() -> None:
@@ -322,7 +328,7 @@ def test_a_variant_of_an_app_which_the_project_has_not_is_refused(
     broken = project.replace(
         app=App(
             title="Hydrochlorothiazide",
-            pages=(AppPage(id="renal", title="Renal", panels=("renal",)),),
+            pages=(AppPage(id="renal", title="Renal", panels=("renal_plasma",)),),
             variants=(AppVariant(id="impaired", label="renal impairment"),),
         )
     )
