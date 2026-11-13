@@ -35,6 +35,7 @@ from sbmlsim.simulation.sampling.fit import (
     profile_parameters,
 )
 from sbmlsim.simulation.sampling.model_distributions import (
+    MAX_SIGMA,
     UNCERTAINTY_DIMENSION,
     distribution_from_formula,
     parameter_distributions,
@@ -45,6 +46,7 @@ from sbmlsim.simulation.sampling.references import parameters_of, references
 from sbmlsim.simulation.scan import Design
 
 __all__ = [
+    "MAX_SIGMA",
     "UNCERTAINTY_DIMENSION",
     "Design",
     "Distribution",
