@@ -57,9 +57,11 @@ class FakeRunner:
         no_archive: bool = False,
         no_sim: bool = False,
         no_credibility: bool = False,
+        no_figures: bool = False,
         reported: Sequence[str] = tuple(FIT_IDS),
     ) -> None:
         self.reported = reported
+        self.no_figures = no_figures
         self.no_archive = no_archive
         self.no_sim = no_sim
         self.no_credibility = no_credibility
@@ -84,10 +86,12 @@ class FakeRunner:
             (models / "toy.xml").write_text("<sbml/>", encoding="utf-8")
             (models / "toy.md").write_text("# toy", encoding="utf-8")
             (models / "other.txt").write_text("not copied", encoding="utf-8")
+            (models / "toy.svg").write_text("<svg/>", encoding="utf-8")
             (out / "mit.txt").write_text("MIT", encoding="utf-8")
             (out / "cc-by-sa-4.0.txt").write_text("CC", encoding="utf-8")
-            (out / "figures").mkdir()
-            (out / "figures" / "model.svg").write_text("<svg/>", encoding="utf-8")
+            if not self.no_figures:
+                (out / "figures").mkdir()
+                (out / "figures" / "model.svg").write_text("<svg/>", encoding="utf-8")
             if not self.no_archive:
                 (out / "toy.omex").write_text("omex", encoding="utf-8")
         elif kind == "simulate" and ("uncertainty" in joined or not self.no_sim):
@@ -191,6 +195,8 @@ def test_build_copies_outputs(tmp_path: Path) -> None:
     assert (release / "models/toy.xml").is_file()
     assert (release / "models/toy.md").is_file()
     assert not (release / "models/other.txt").exists()
+    # the diagram of the model which the factory draws beside it
+    assert (release / "models/toy.svg").is_file()
     assert (release / "simulations/Exp/index.html").is_file()
     assert not (release / "simulations/run.json").exists()
     assert (release / "simulations_uncertainty/Exp/index.html").is_file()
@@ -206,6 +212,17 @@ def test_build_copies_outputs(tmp_path: Path) -> None:
     assert Path("simulations") in written
     assert Path("fit") / FIT_ID in written
     assert Path("fit") / OTHER_FIT_ID in written
+
+
+def test_build_removes_the_figures_of_an_earlier_release(tmp_path: Path) -> None:
+    """A factory without figures leaves no figure of an earlier release behind."""
+    release = tmp_path / "release"
+    (release / "figures").mkdir(parents=True)
+    (release / "figures" / "toy_model.png").write_bytes(b"png")
+    build(
+        project_with(tmp_path), REFERENCE, release, runner=FakeRunner(no_figures=True)
+    )
+    assert not (release / "figures").exists()
 
 
 def test_build_replaces_stale_reports(tmp_path: Path) -> None:

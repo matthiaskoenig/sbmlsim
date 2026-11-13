@@ -11,6 +11,18 @@ Documentation: <{{ settings.site_url }}>
 
 Credibility of the model for its contexts of use: [{{ settings.site_url }}credibility.html]({{ settings.site_url }}credibility.html)
 {% endif %}
+{% if figure or diagrams %}
+
+## Model
+{% if figure %}
+
+![model overview](figures/{{ figure }})
+{% endif %}
+{% for diagram in diagrams %}
+
+![{{ diagram.file[:-4] }}](models/{{ diagram.file }})
+{% endfor %}
+{% endif %}
 
 ## Quick start
 

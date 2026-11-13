@@ -48,7 +48,9 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant")
+#: the outputs of the factory which the release copies into `models`: the SBML,
+#: the equations (markdown), the antimony and the diagrams of the models (SVG)
+_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant", "*.svg")
 _LICENSES = ("mit.txt", "cc-by-sa-4.0.txt")
 
 #: the folder of the specs of the steps in the release repository
@@ -342,8 +344,9 @@ def _copy_models(
     """Copy the models, the archive, the licenses and the figures into the release.
 
     `base` is the exported package, with the outputs of the factory copied
-    over it. The models are the SBML, markdown and antimony files of its
-    `factory_dir`, the licenses and the folder `figures` are taken from the
+    over it. The models are the SBML, markdown, antimony and SVG files of its
+    `factory_dir` (an SVG is a diagram of a model, which the README and the
+    documentation show), the licenses and the folder `figures` are taken from the
     parent of it, the archive from its path relative to the root.
     """
     assert project.factory_dir is not None
@@ -371,10 +374,14 @@ def _copy_models(
             shutil.copy2(output_dir / name, release_path / name)
             written.append(Path(name))
 
+    # the figures of an earlier release are removed when the factory has none,
+    # so the README and the site never show a figure which the prune removes
     figures_dir = output_dir / "figures"
     if figures_dir.is_dir():
         _replace(figures_dir, release_path / BuildPaths.FIGURES)
         written.append(Path(BuildPaths.FIGURES))
+    else:
+        _remove(release_path / BuildPaths.FIGURES)
     return written
 
 

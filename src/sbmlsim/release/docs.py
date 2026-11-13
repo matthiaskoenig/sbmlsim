@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import shutil
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
@@ -29,6 +30,7 @@ from sbmlsim.release.source import ReleaseError
 __all__ = [
     "PAGES",
     "Badge",
+    "Diagram",
     "FitEntry",
     "FitRow",
     "ModelEntry",
@@ -68,13 +70,34 @@ class ModelEntry:
         stem: the name of the model file without extension.
         file: the file name of the SBML model.
         equations: if the model has an equations file.
-        figure: the name of the figure in the images of the site, if any.
+        figures: the names of its figures in the images of the site: the
+            figure `figures/<stem>.png` and its diagrams (`Diagram`).
     """
 
     stem: str
     file: str
     equations: bool
-    figure: str | None
+    figures: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class Diagram:
+    """A diagram of a model, an SVG which the factory writes beside the models.
+
+    The factory of a model can draw its models next to them, e.g. the schematic
+    `<stem>.svg` and the anatomy `<stem>_body.svg` of a model of the PBPK
+    library of pkpdsim. The release copies them into `models`, the README shows
+    them from there and the site from its images.
+
+    Attributes:
+        file: the file name of the diagram in `models` and in the images.
+        model: the stem of the model it belongs to, the longest stem of a
+            model which is its name or the start of its name followed by `_`;
+            None if it belongs to no model.
+    """
+
+    file: str
+    model: str | None
 
 
 @dataclass(frozen=True)
@@ -314,9 +337,11 @@ def _credibility(context: ProjectContext, release_path: Path) -> dict[str, Any] 
     return context.hook.credibility(assessment, data)
 
 
-def _copy_image(release_path: Path, name: str, images: Path) -> bool:
+def _copy_image(
+    release_path: Path, name: str, images: Path, folder: str = BuildPaths.FIGURES
+) -> bool:
     """Copy a figure of the release into the images of the site, if it exists."""
-    source = release_path / BuildPaths.FIGURES / name
+    source = release_path / folder / name
     if not source.is_file():
         return False
     images.mkdir(parents=True, exist_ok=True)
@@ -324,16 +349,48 @@ def _copy_image(release_path: Path, name: str, images: Path) -> bool:
     return True
 
 
-def _models(release_path: Path, images: Path) -> list[ModelEntry]:
+def _overview(release_path: Path, name: str, images: Path) -> str | None:
+    """Get the overview figure of the model, `figures/<name>_model.png` or `.svg`."""
+    for suffix in (".png", ".svg"):
+        figure = f"{name}_model{suffix}"
+        if _copy_image(release_path, figure, images):
+            return figure
+    return None
+
+
+def _diagrams(release_path: Path, images: Path) -> list[Diagram]:
+    """Get the diagrams of the models and copy them into the images of the site.
+
+    A diagram belongs to the model with the longest stem which is its name or
+    the start of its name followed by `_`, see `Diagram`.
+    """
+    models = release_path / BuildPaths.MODELS
+    stems = sorted((path.stem for path in models.glob("*.xml")), key=len, reverse=True)
+    diagrams = []
+    for path in sorted(models.glob("*.svg")):
+        _copy_image(release_path, path.name, images, BuildPaths.MODELS)
+        model = next(
+            (s for s in stems if path.stem == s or path.stem.startswith(f"{s}_")),
+            None,
+        )
+        diagrams.append(Diagram(file=path.name, model=model))
+    return diagrams
+
+
+def _models(
+    release_path: Path, images: Path, diagrams: Sequence[Diagram]
+) -> list[ModelEntry]:
     entries = []
     for path in sorted((release_path / BuildPaths.MODELS).glob("*.xml")):
         figure = f"{path.stem}.png"
+        figures = [figure] if _copy_image(release_path, figure, images) else []
+        figures += [d.file for d in diagrams if d.model == path.stem]
         entries.append(
             ModelEntry(
                 stem=path.stem,
                 file=path.name,
                 equations=path.with_suffix(".md").is_file(),
-                figure=figure if _copy_image(release_path, figure, images) else None,
+                figures=tuple(figures),
             )
         )
     return entries
@@ -399,15 +456,16 @@ def write_docs(context: ProjectContext, release_path: Path) -> list[Path]:
     docs.mkdir()
     images = docs / _IMAGES
 
-    figure = f"{context.project.name}_model.png"
     archive = context.settings.archive
     site_pages = pages(context, release_path)
+    diagrams = _diagrams(release_path, images)
     extra = {
-        "figure": figure if _copy_image(release_path, figure, images) else None,
+        "figure": _overview(release_path, context.project.name, images),
+        "diagrams": diagrams,
         "citation": citation(context),
         "badges": badges(context),
         "authors": context.settings.author_names,
-        "models": _models(release_path, images),
+        "models": _models(release_path, images, diagrams),
         "omex": PurePosixPath(archive).name if archive is not None else None,
         "experiments": _experiments(release_path),
         "fits": _fit_entries(context, release_path),

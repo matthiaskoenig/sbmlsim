@@ -373,6 +373,49 @@ def test_readme_thin(release: tuple[ProjectContext, Path]) -> None:
     assert "10.5281/zenodo.0000000" in readme
 
 
+def test_the_diagrams_of_the_models(release: tuple[ProjectContext, Path]) -> None:
+    """The SVGs of the factory beside the models are shown by the README and the site."""
+    context, path = release
+    for name in ("toy.svg", "toy_body.svg", "pathway.svg"):
+        write(path / BuildPaths.MODELS / name, "<svg/>")
+    written = write_docs(context, path)
+    for name in ("toy.svg", "toy_body.svg", "pathway.svg"):
+        assert path / "docs" / "images" / name in written
+    readme = (path / "README.md").read_text(encoding="utf-8")
+    assert "## Model\n" in readme
+    assert "![model overview](figures/toy_model.png)" in readme
+    assert "![toy_body](models/toy_body.svg)" in readme
+    assert "![pathway](models/pathway.svg)" in readme
+    index = (path / "docs" / "index.md").read_text(encoding="utf-8")
+    assert "![toy](images/toy.svg)" in index
+    assert "![pathway](images/pathway.svg)" in index
+    models = (path / "docs" / "models.md").read_text(encoding="utf-8")
+    # a model shows its own diagrams (`<stem>.svg`, `<stem>_<x>.svg`), not the others
+    assert '![toy](images/toy.svg){ style="width: 100%" }' in models
+    assert '![toy_body](images/toy_body.svg){ style="width: 100%" }' in models
+    assert "images/pathway.svg" not in models
+
+
+def test_an_svg_overview_figure(release: tuple[ProjectContext, Path]) -> None:
+    context, path = release
+    (path / BuildPaths.FIGURES / "toy_model.png").unlink()
+    write(path / BuildPaths.FIGURES / "toy_model.svg", "<svg/>")
+    write_docs(context, path)
+    index = (path / "docs" / "index.md").read_text(encoding="utf-8")
+    assert "![model overview](images/toy_model.svg)" in index
+    readme = (path / "README.md").read_text(encoding="utf-8")
+    assert "![model overview](figures/toy_model.svg)" in readme
+
+
+def test_no_model_section_without_figures(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    context, path = release
+    (path / BuildPaths.FIGURES / "toy_model.png").unlink()
+    write_docs(context, path)
+    assert "## Model\n" not in (path / "README.md").read_text(encoding="utf-8")
+
+
 @pytest.mark.slow
 def test_zensical_strict(release: tuple[ProjectContext, Path]) -> None:
     context, path = release
