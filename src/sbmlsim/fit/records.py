@@ -322,11 +322,19 @@ class ParameterUncertainty:
     def distribution(self) -> str:
         """Get the distribution of the draws as a formula of distrib.
 
+        A standard deviation which covers the bounds of the fit says that the
+        data do not constrain the parameter: the truncated distribution is flat
+        over the bounds, so it is written as the uniform it is. The Fisher
+        information of a rank deficient problem gives such a standard error for
+        the directions it does not constrain, and the lognormal of one is not a
+        number any sampler can draw from.
+
         Returns:
             On a logarithmic scale `lognormal(ln(value), sigma, lb, ub)` with
             sigma in natural logarithms, on the linear scale `normal(value,
             sigma, lb, ub)`, both truncated to the bounds of the fit; without a
-            closed side of the profile `uniform(lb, ub)`.
+            closed side of the profile, and for a standard deviation which
+            covers the bounds, `uniform(lb, ub)`.
         """
         lb, ub = _number(self.lower_bound), _number(self.upper_bound)
         sigma = self.sigma()
@@ -338,8 +346,17 @@ class ParameterUncertainty:
                 if self.scale is ParameterScaleType.LOG10
                 else sigma
             )
+            span = (
+                math.log(self.upper_bound / self.lower_bound)
+                if self.lower_bound > 0.0 and self.upper_bound > 0.0
+                else math.inf
+            )
+            if sigma_ln >= span:
+                return f"uniform({lb}, {ub})"
             mu = math.log(self.value)
             return f"lognormal({_number(mu)}, {_number(sigma_ln)}, {lb}, {ub})"
+        if sigma >= self.upper_bound - self.lower_bound:
+            return f"uniform({lb}, {ub})"
         return f"normal({_number(self.value)}, {_number(sigma)}, {lb}, {ub})"
 
     def notes(self) -> str:

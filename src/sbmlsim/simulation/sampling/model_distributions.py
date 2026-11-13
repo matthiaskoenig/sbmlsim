@@ -40,11 +40,18 @@ if TYPE_CHECKING:
     from sbmlsim.uncertainty.covariance import Covariance
 
 __all__ = [
+    "MAX_SIGMA",
     "UNCERTAINTY_DIMENSION",
     "distribution_from_formula",
     "parameter_distributions",
     "uncertainty_dimension",
 ]
+
+
+#: the largest sigma of a lognormal whose variance is a number:
+#: `expm1(sigma**2)` overflows above it, and a lognormal that wide over any
+#: bounds is the uniform of a parameter the data do not constrain
+MAX_SIGMA = 26.0
 
 
 def distribution_from_formula(formula: str) -> Distribution:
@@ -60,7 +67,8 @@ def distribution_from_formula(formula: str) -> Distribution:
         The distribution, truncated if the formula has bounds.
 
     Raises:
-        ValueError: for another formula.
+        ValueError: for another formula, or for a lognormal whose sigma is so
+            large that its variance is no number (`MAX_SIGMA`).
     """
     parsed = distrib.parse(formula)
     args = parsed.args
@@ -69,6 +77,13 @@ def distribution_from_formula(formula: str) -> Distribution:
     inner: Distribution
     if parsed.name == "lognormal":
         mu, sigma = args[0], args[1]
+        if sigma >= MAX_SIGMA:
+            raise ValueError(
+                f"the sigma of a lognormal must be below {MAX_SIGMA}, got "
+                f"'{sigma}' in '{formula}'; a parameter which the data do not "
+                f"constrain is a uniform over its bounds, see "
+                f"`sbmlsim.fit.records`."
+            )
         inner = LogNormal(math.exp(mu), math.sqrt(math.expm1(sigma**2)))
     else:
         inner = Normal(args[0], args[1])

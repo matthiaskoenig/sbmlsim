@@ -27,6 +27,7 @@ from sbmlsim.fit.records import (
 )
 from sbmlsim.report.render import compile_pdf
 from sbmlsim.simulation.sampling import (
+    MAX_SIGMA,
     UNCERTAINTY_DIMENSION,
     Truncated,
     Uniform,
@@ -310,6 +311,34 @@ def test_the_fisher_fallback_takes_the_standard_error() -> None:
     assert p.sigma() == 0.1
     assert p.distribution() == (f"lognormal(0.0, {0.1 * math.log(10)!r}, 0.01, 10.0)")
     assert p.standard_error_model() == pytest.approx(math.log(10) * 0.1)
+
+
+def test_a_standard_error_which_covers_the_bounds_is_uniform() -> None:
+    """The Fisher information of a direction it does not constrain."""
+    # 3.0 decades of standard error over bounds which span 3 decades
+    p = uncertainty(method=UncertaintyMethod.FISHER, standard_error=3.0)
+    assert p.distribution() == "uniform(0.01, 10.0)"
+    assert isinstance(distribution_from_formula(p.distribution()), Uniform)
+    # a standard error of the size of the model is uniform as well, and no
+    # lognormal of a sigma which has no variance, see `MAX_SIGMA`
+    wide = uncertainty(method=UncertaintyMethod.FISHER, standard_error=694000.0)
+    assert wide.distribution() == "uniform(0.01, 10.0)"
+
+
+def test_a_standard_error_which_covers_the_bounds_is_uniform_on_a_linear_scale() -> (
+    None
+):
+    p = uncertainty(
+        scale=ParameterScaleType.LINEAR,
+        method=UncertaintyMethod.FISHER,
+        standard_error=9.99,
+    )
+    assert p.distribution() == "uniform(0.01, 10.0)"
+
+
+def test_a_lognormal_whose_sigma_has_no_variance_is_refused() -> None:
+    with pytest.raises(ValueError, match="sigma of a lognormal"):
+        distribution_from_formula(f"lognormal(0.0, {MAX_SIGMA + 1}, 0.01, 10.0)")
 
 
 def test_the_notes_have_the_provenance() -> None:
