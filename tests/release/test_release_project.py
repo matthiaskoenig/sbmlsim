@@ -426,6 +426,18 @@ def test_ci_workflow_puts_libpython_on_the_library_path(
     assert line.split("=", 1)[1].split(":")[0].endswith("/lib")
 
 
+def test_ci_workflow_installs_hdf5_before_the_dependencies(
+    context: ProjectContext,
+) -> None:
+    """h5py has no wheel for every python of the matrix, and its build from the
+    source distribution needs the library of HDF5 on the runner."""
+    ci = yaml.safe_load(render("workflows/ci.yml.j2", context))
+    runs = [s.get("run", "") for s in ci["jobs"]["simulate"]["steps"]]
+    (index,) = [k for k, run in enumerate(runs) if "libhdf5-dev" in run]
+    sync = runs.index("uv sync --locked")
+    assert index < sync
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="the workflow runs on linux")
 @pytest.mark.parametrize(
     "folders",

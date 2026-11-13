@@ -32,6 +32,14 @@ jobs:
           prefix=$(uv run --no-project python -c "import sys; print(sys.base_prefix)")
           echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
 
+      - name: Install the library of HDF5
+        # h5py, a dependency of sbmlsim, publishes no wheel for the newest python
+        # of the matrix yet (3.15), and its build from the source distribution
+        # fails without the library: `libhdf5.so: cannot open shared object file`
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libhdf5-dev
+
       - name: Install dependencies
         run: uv sync --locked
 
