@@ -70,13 +70,13 @@ DOCUMENTED = Panel(
         ),
     ),
     curves=(
-        PanelCurve(id="Cve_hctz", label="hctz, plasma", unit="uM", scale="linear"),
+        PanelCurve(id="[Cve_hctz]", label="hctz, plasma", unit="uM", scale="linear"),
     ),
     data=(
         PanelData(
             id="vormfelde2006",
             label="Vormfelde 2006",
-            curve="Cve_hctz",
+            curve="[Cve_hctz]",
             dataset="Vormfelde2006_Fig2",
             x="time",
             y="mean",
@@ -219,7 +219,7 @@ def test_the_documented_panel_round_trips_through_the_writer(tmp_path: Path) -> 
     annotation = panels_to_annotation([DOCUMENTED])
     assert '<select column="label" value="hctz25"/>' in annotation
     assert '<at knob="impairment" value="1.0"/>' in annotation
-    assert 'curve="Cve_hctz"' in annotation
+    assert 'curve="[Cve_hctz]"' in annotation
     assert 'conversion="1/(297.7 g/mole)"' in annotation
     write_panels(SBML_IN, tmp_path / "m.xml", [DOCUMENTED])
     assert panels_from_sbml(tmp_path / "m.xml") == ({DOCUMENTED.id: DOCUMENTED}, ())

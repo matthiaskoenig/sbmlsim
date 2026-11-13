@@ -107,12 +107,12 @@ def test_simulate_answers_a_grid_with_provenance_and_a_hash(
         SIMULATE, json={"values": {"dose": 25.0}, "grid": {"egfr": stages}}
     ).json()
     assert body["contract"] == CONTRACT
-    assert len(body["curves"]["Cve_hctz"]) == stages
+    assert len(body["curves"]["[Cve_hctz]"]) == stages
     assert len(body["x"]) == POINTS + 1
     assert [axis["id"] for axis in body["dims"]] == ["egfr"]
     assert len(body["dims"][0]["values"]) == stages
     assert body["units"]["x"] == "min"
-    assert body["units"]["Cve_hctz"] == "umol"
+    assert body["units"]["[Cve_hctz]"] == "uM"
     assert body["status"] == {"ok": True, "points": stages, "failed": []}
     provenance = body["provenance"]
     assert provenance["sbmlsim"] == sbmlsim.__version__
@@ -193,7 +193,7 @@ def test_a_point_which_does_not_integrate_is_null_and_flagged(
     """JSON has no `NaN`, a point which failed is `null` and is in the status."""
     body = client.post(SIMULATE, json={"values": {"egfr": -1.0}, "grid": {}}).json()
     assert body["status"] == {"ok": False, "points": 1, "failed": [0]}
-    assert body["curves"]["Cve_hctz"][0][-1] is None
+    assert body["curves"]["[Cve_hctz]"][0][-1] is None
 
 
 def test_an_unknown_model_or_panel_is_404(client: TestClient) -> None:
@@ -376,7 +376,7 @@ def test_a_request_names_the_variant_which_ran_and_it_selects_another_model(
     assert named["spec_hash"] != declared["spec_hash"]
     assert named["provenance"]["model_sha256"] != declared["provenance"]["model_sha256"]
     # the curves are the ones of the other model and not of the default
-    assert named["curves"]["Cve_hctz"] != declared["curves"]["Cve_hctz"]
+    assert named["curves"]["[Cve_hctz]"] != declared["curves"]["[Cve_hctz]"]
 
 
 def test_a_request_without_a_variant_and_one_naming_the_default_are_one_request(

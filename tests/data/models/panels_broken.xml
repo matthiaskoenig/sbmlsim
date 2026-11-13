@@ -12,8 +12,8 @@
             <option label="normal" value="1.0"/>
             <option label="severe" value="0.2"/>
           </knob>
-          <curve id="Cve_hctz" label="hctz, plasma" unit="uM" scale="linear"/>
-          <data id="vormfelde2006" label="Vormfelde 2006" curve="Cve_hctz" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
+          <curve id="[Cve_hctz]" label="hctz, plasma" unit="uM" scale="linear"/>
+          <data id="vormfelde2006" label="Vormfelde 2006" curve="[Cve_hctz]" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
             <select column="label" value="hctz25"/>
             <at knob="impairment" value="1.0"/>
           </data>

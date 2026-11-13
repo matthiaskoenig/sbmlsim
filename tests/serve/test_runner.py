@@ -50,7 +50,7 @@ def test_a_point_gives_one_curve_per_declared_curve(
     assert set(result.curves) == {curve.id for curve in panel.curves}
     assert result.dims == ()
     assert result.failed == ()
-    row = result.curves["Cve_hctz"]
+    row = result.curves["[Cve_hctz]"]
     assert len(row) == 1
     assert len(row[0]) == len(result.x)
     assert max(row[0]) > 0.0
@@ -64,11 +64,11 @@ def test_a_grid_gives_a_row_per_knob_value(runner: PanelRunner, panel: Panel) ->
     assert result.dims[0].values == EGFR_STAGES.values(None)
     assert result.dims[0].label == "renal function"
     assert result.dims[0].unit == "dimensionless"
-    assert len(result.curves["Cve_hctz"]) == 3
-    assert all(len(row) == len(result.x) for row in result.curves["Cve_hctz"])
+    assert len(result.curves["[Cve_hctz]"]) == 3
+    assert all(len(row) == len(result.x) for row in result.curves["[Cve_hctz]"])
     # a lower renal function clears less, so more of the dose is left in the
     # plasma at the end of the day
-    ends = [row[-1] for row in result.curves["Cve_hctz"]]
+    ends = [row[-1] for row in result.curves["[Cve_hctz]"]]
     assert ends == sorted(ends, reverse=True)
 
 
@@ -79,7 +79,7 @@ def test_a_grid_of_two_knobs_gives_a_row_per_point_in_c_order(
     assert [axis.id for axis in result.dims] == ["egfr", "dose"]
     assert result.dims[0].values == EGFR_STAGES.values(None)
     assert result.dims[1].values == DOSE.values(None)
-    rows = result.curves["Cve_hctz"]
+    rows = result.curves["[Cve_hctz]"]
     assert len(rows) == len(EGFR_STAGES.choices) * len(DOSE.choices)
     # the rows of one renal function follow each other, the dose fastest
     assert max(rows[0]) < max(rows[1]) < max(rows[2]) < max(rows[3])
@@ -92,7 +92,7 @@ def test_the_curves_carry_the_units_of_the_model(
     # the panel declares no x unit, so the x is in the time unit of the model,
     # which is the unit of the `end` of the panel
     assert result.units["x"] == "min"
-    assert result.units["Cve_hctz"] == "umol"
+    assert result.units["[Cve_hctz]"] == "uM"
 
 
 def test_a_declared_x_unit_delivers_the_time_axis_in_it(
@@ -195,7 +195,7 @@ def test_a_unit_of_a_curve_which_is_no_unit_of_its_values_is_refused(
     bogus = panel.model_copy(
         update={
             "curves": (panel.curves[0].model_copy(update={"unit": unit}),),
-            "data": (URINE.model_copy(update={"curve": "Cve_hctz"}),),
+            "data": (URINE.model_copy(update={"curve": "[Cve_hctz]"}),),
         }
     )
     for refuses in (
@@ -225,20 +225,22 @@ def test_a_unit_of_a_series_which_is_no_unit_is_refused(
 def test_a_curve_without_a_unit_carries_the_one_of_the_model(
     runner: PanelRunner, registry: ModelRegistry, panel: Panel
 ) -> None:
-    curve = PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma")
+    curve = PanelCurve(id="[Cve_hctz]", label="hydrochlorothiazide plasma")
     without = panel.model_copy(update={"curves": (curve,), "data": ()})
     declared = runner.run("hctz", panel, {"egfr": 1.0, "dose": 25.0}, {})
     result = runner.run("hctz", without, {"egfr": 1.0, "dose": 25.0}, {})
-    assert result.units["Cve_hctz"] == "mmol"
+    assert result.units["[Cve_hctz]"] == "mmol/litre"
     # the study data under such a curve is delivered in that unit as well
     under = without.model_copy(
-        update={"data": (URINE.model_copy(update={"curve": "Cve_hctz"}),)}
+        update={"data": (URINE.model_copy(update={"curve": "[Cve_hctz]"}),)}
     )
     series = runner.units(registry.entry("hctz"), under).series
-    assert series[URINE.id] == DeliveredUnit(text="mmol", unit=ureg.Unit("mmol"))
+    assert series[URINE.id] == DeliveredUnit(
+        text="mmol/litre", unit=ureg.Unit("mmol/litre")
+    )
     # the declared unit converts the values of the model, it does not relabel them
-    assert result.curves["Cve_hctz"][0][-1] * 1000.0 == pytest.approx(
-        declared.curves["Cve_hctz"][0][-1]
+    assert result.curves["[Cve_hctz]"][0][-1] * 1000.0 == pytest.approx(
+        declared.curves["[Cve_hctz]"][0][-1]
     )
 
 
@@ -248,7 +250,7 @@ def test_a_knob_value_overrides_the_preinit_of_the_panel(
     # the panel pre-initializes the dose to zero, the knob sets it
     low = runner.run("hctz", panel, {"egfr": 1.0, "dose": 12.5}, {})
     high = runner.run("hctz", panel, {"egfr": 1.0, "dose": 50.0}, {})
-    assert 0.0 < max(low.curves["Cve_hctz"][0]) < max(high.curves["Cve_hctz"][0])
+    assert 0.0 < max(low.curves["[Cve_hctz]"][0]) < max(high.curves["[Cve_hctz]"][0])
 
 
 def test_a_knob_which_a_request_leaves_out_runs_at_its_default(
@@ -357,7 +359,7 @@ def test_a_point_which_does_not_integrate_is_flagged_and_not_raised(
     # a renal function below its bounds, for which the model does not integrate
     result = runner.run("hctz", panel, {"egfr": -1.0, "dose": 25.0}, {})
     assert result.failed == (0,)
-    assert math.isnan(result.curves["Cve_hctz"][0][-1])
+    assert math.isnan(result.curves["[Cve_hctz]"][0][-1])
 
 
 def test_a_failing_point_of_a_grid_is_flagged_by_its_flat_index(
@@ -371,8 +373,8 @@ def test_a_failing_point_of_a_grid_is_flagged_by_its_flat_index(
     )
     result = runner.run("hctz", broken, {"dose": 25.0}, {"egfr": 4})
     assert result.failed == (0,)
-    assert all(math.isnan(value) for value in result.curves["Cve_hctz"][0])
-    assert not any(math.isnan(value) for value in result.curves["Cve_hctz"][2])
+    assert all(math.isnan(value) for value in result.curves["[Cve_hctz]"][0])
+    assert not any(math.isnan(value) for value in result.curves["[Cve_hctz]"][2])
 
 
 @pytest.fixture

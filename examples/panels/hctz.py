@@ -18,6 +18,12 @@ the knobs which condition it, the renal function and the dose, are therefore
 the choices of `EGFR_STAGES` and of `DOSE`, which is what a panel with study
 data looks like. The dose of the two panels of the page `dose` is a range
 (`DOSE_RANGE`), since they draw no study data.
+
+The plasma curve is the concentration `[Cve_hctz]`, `mmol/litre` in the model
+and drawn in `uM`: `Cve_hctz` is a species of the compartment `Vve` which is
+not in substance units, so the bare selection is its amount and no panel about
+a plasma concentration draws it. `Aurine_hctz` is in substance units and is the
+amount excreted so far, `mmol` in the model and drawn in `umol`.
 """
 
 from examples.hctz_fitting import MODEL_PATH
@@ -141,7 +147,7 @@ HCTZ_PANEL = Panel(
     x_label="time (min)",
     knobs=(EGFR_STAGES, DOSE),
     curves=(
-        PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
+        PanelCurve(id="[Cve_hctz]", label="hydrochlorothiazide plasma", unit="uM"),
         PanelCurve(id="Aurine_hctz", label="hydrochlorothiazide urine", unit="umol"),
     ),
     data=(URINE,),
@@ -158,7 +164,7 @@ HCTZ_DOSE_PLASMA = Panel(
     x_label="time (min)",
     knobs=(DOSE_RANGE, EGFR_STAGES),
     curves=(
-        PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
+        PanelCurve(id="[Cve_hctz]", label="hydrochlorothiazide plasma", unit="uM"),
     ),
     simulation=SIMULATION,
 )
