@@ -34,7 +34,7 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
           <option label="normal" value="1.0"/>
         </knob>
         <curve id="[Cve_hctz]" label="plasma" unit="uM" scale="linear"/>
-        <curve id="[Car_hctz]" label="arterial" unit="uM"/>
+        <curve id="[Cki_plasma_hctz]" label="kidney" unit="uM"/>
       </panel>
       <panel id="renal_urine" title="Urinary excretion over the renal function" subtitle="hydrochlorothiazide after a single oral dose" xLabel="time [hr]" yLabel="amount excreted">
         <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
@@ -117,7 +117,7 @@ A choice knob has its choices as `<option label="25 mg" value="25"/>` children, 
 | `unit` | the unit of its values, the unit the model gives the selection without, see [Units](#units) |
 | `scale` | `linear` (the default) or `log` |
 
-The curves of a panel share one axis, so a panel draws one quantity: a concentration of 0.45 and an amount of 47 on one axis is the concentration drawn flat on zero. A model which shows both declares two panels, which the example does with `renal_plasma`, the venous and the arterial concentration in `uM`, and `renal_urine`, the amount excreted in `umol`. The label of a curve is then the quantity and the site alone, since the title of the panel carries the substance.
+The curves of a panel share one axis, so a panel draws one quantity: a concentration of 0.45 and an amount of 47 on one axis is the concentration drawn flat on zero. A model which shows both declares two panels, which the example does with `renal_plasma`, the concentration in the venous plasma and in the plasma of the kidney in `uM`, and `renal_urine`, the amount excreted in `umol`. The label of a curve is then the site alone, since the title of the panel carries the substance.
 
 `<data>`, the measured points drawn under a curve:
 
@@ -321,7 +321,7 @@ A request may also name the `variant` of the model to simulate (`Project.variant
 ```json
 {
   "contract": "panel/1",
-  "spec_hash": "7f7219730e35733b3f4a077513d7f24118c8ba9d1e264f6bdfe7ae1dddd907ba",
+  "spec_hash": "f5c84c9d5506be690bf9682ee5c07a61cfa38d6bb18dbed3d475d69d3a91b8e8",
   "x": [0.0, 1.0, 2.0],
   "dims": [
     {"id": "egfr", "label": "renal function", "unit": "dimensionless", "values": [0.4, 0.7, 1.0]}
@@ -332,13 +332,13 @@ A request may also name the `variant` of the model to simulate (`Project.variant
       [1.727788792509682e-45, 0.3774826773795736, 0.5181364140723064],
       [1.727788792509682e-45, 0.34200231622543875, 0.4516395144971838]
     ],
-    "[Car_hctz]": [
-      [2.9095671631598354e-56, 0.422919513625918, 0.6148673884272808],
-      [2.9095671631598363e-56, 0.3760114082931891, 0.5179960803674282],
-      [2.9095671631598363e-56, 0.3407585204627051, 0.45157970338001585]
+    "[Cki_plasma_hctz]": [
+      [6.348050654969098e-61, 0.3943226427434958, 0.5733082744820354],
+      [6.348043125433088e-61, 0.33367381124285306, 0.4596838367900904],
+      [6.348035595914937e-61, 0.28847389926841266, 0.3823005712958242]
     ]
   },
-  "units": {"x": "hr", "[Cve_hctz]": "uM", "[Car_hctz]": "uM"},
+  "units": {"x": "hr", "[Cve_hctz]": "uM", "[Cki_plasma_hctz]": "uM"},
   "provenance": {
     "model": "hctz",
     "panel": "renal_plasma",
@@ -346,8 +346,8 @@ A request may also name the `variant` of the model to simulate (`Project.variant
     "variant": "default",
     "engine": "roadrunner",
     "sbmlsim": "0.22.0",
-    "seconds": 0.20096865999221336,
-    "created": "2026-11-13T06:33:36.331772+00:00"
+    "seconds": 0.2634315009927377,
+    "created": "2026-11-13T06:49:03.777256+00:00"
   },
   "status": {"ok": true, "points": 3, "failed": []}
 }

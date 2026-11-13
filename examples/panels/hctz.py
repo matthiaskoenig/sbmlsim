@@ -23,13 +23,17 @@ data looks like. The dose of the two panels of the page `dose` is a range
 (`DOSE_RANGE`), since they draw no study data.
 
 The plasma curves are the concentrations `[Cve_hctz]` at the sampling site and
-`[Car_hctz]` in the arterial blood, both `mmol/litre` in the model and drawn in
-`uM`: `Cve_hctz` is a species of the compartment `Vve` which is not in
-substance units, so the bare selection is its amount and no panel about a
-plasma concentration draws it. `Aurine_hctz` is in substance units and is the
-amount excreted so far, `mmol` in the model and drawn in `umol`. The labels of
-the curves are the quantity and the site alone, since every panel is titled
-with the drug, and `y_label` names the axis the curves of a panel share.
+`[Cki_plasma_hctz]` in the plasma of the kidney, both `mmol/litre` in the model
+and drawn in `uM`: `Cve_hctz` is a species of the compartment `Vve` which is
+not in substance units, so the bare selection is its amount and no panel about
+a plasma concentration draws it. The kidney is the site the knob of the panel
+changes, so the two curves separate as it is turned, by 15 % of the axis at the
+normal renal function and by 7 % at the impaired one, which the arterial
+concentration does not do: it is the venous one to within 1.3 %.
+`Aurine_hctz` is in substance units and is the amount excreted so far, `mmol`
+in the model and drawn in `umol`. The labels of the curves are the site alone,
+since every panel is titled with the drug, and `y_label` names the axis the
+curves of a panel share.
 """
 
 from examples.hctz_fitting import MODEL_PATH
@@ -153,13 +157,13 @@ HCTZ_APP = App(
 HCTZ_RENAL_PLASMA = Panel(
     id="renal_plasma",
     title="Plasma concentration over the renal function",
-    subtitle="hydrochlorothiazide in the venous and in the arterial plasma",
+    subtitle="hydrochlorothiazide in the venous plasma and in the kidney",
     x_label="time (min)",
     y_label="plasma concentration",
     knobs=(EGFR_STAGES, DOSE),
     curves=(
         PanelCurve(id="[Cve_hctz]", label="plasma", unit="uM"),
-        PanelCurve(id="[Car_hctz]", label="arterial", unit="uM"),
+        PanelCurve(id="[Cki_plasma_hctz]", label="kidney", unit="uM"),
     ),
     simulation=SIMULATION,
 )
