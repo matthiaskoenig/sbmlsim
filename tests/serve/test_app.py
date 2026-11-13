@@ -346,25 +346,53 @@ def test_the_origins_of_a_request_are_the_ones_the_service_is_given(
 
 @pytest.fixture
 def two_variants(project: Project, tmp_path: Path) -> TestClient:
-    """A client of the HCTZ project with a second variant, a copy of its SBML."""
-    copy = tmp_path / "copy.xml"
-    copy.write_bytes(MODEL_PATH.read_bytes())
-    two = project.replace(variants={"default": MODEL_PATH, "copy": copy})
+    """A client of the HCTZ project with a second variant of another model.
+
+    The variant is the SBML with one parameter changed, so a request which
+    ignores its variant after validating it runs the wrong model.
+    """
+    text = MODEL_PATH.read_text(encoding="utf-8")
+    marker = 'id="f_GFR_Qki" name="relationship GFR and Qki" value="151"'
+    assert marker in text
+    other = tmp_path / "other.xml"
+    other.write_text(text.replace(marker, marker.replace('"151"', '"60"')), "utf-8")
+    two = project.replace(variants={"default": MODEL_PATH, "other": other})
     entry = ModelEntry(id="hctz", project=two, title="Hydrochlorothiazide")
     return TestClient(create_app(ModelRegistry({"hctz": entry})))
 
 
-def test_a_request_names_the_variant_which_ran_and_the_provenance_says_it(
+def test_a_request_names_the_variant_which_ran_and_it_selects_another_model(
     two_variants: TestClient,
 ) -> None:
     body: dict[str, Any] = {"values": {"dose": 25.0}, "grid": {}}
     declared = two_variants.post(SIMULATE, json=body).json()
-    named = two_variants.post(SIMULATE, json={**body, "variant": "copy"}).json()
-    assert declared["provenance"]["variant"] is None
-    assert named["provenance"]["variant"] == "copy"
-    # the same SBML in another variant is another request, the variant is hashed
+    named = two_variants.post(SIMULATE, json={**body, "variant": "other"}).json()
+    assert declared["provenance"]["variant"] == "default"
+    assert named["provenance"]["variant"] == "other"
     assert named["spec_hash"] != declared["spec_hash"]
-    assert named["curves"] == declared["curves"]
+    assert named["provenance"]["model_sha256"] != declared["provenance"]["model_sha256"]
+    # the curves are the ones of the other model and not of the default
+    assert named["curves"]["Cve_hctz"] != declared["curves"]["Cve_hctz"]
+
+
+def test_a_request_without_a_variant_and_one_naming_the_default_are_one_request(
+    two_variants: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runs: list[object] = []
+    original = PanelRunner.run
+
+    def counted(self: PanelRunner, *args: Any, **kwargs: Any) -> Any:
+        runs.append(args)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(PanelRunner, "run", counted)
+    body: dict[str, Any] = {"values": {"dose": 25.0}, "grid": {}}
+    left_out = two_variants.post(SIMULATE, json=body).json()
+    named = two_variants.post(SIMULATE, json={**body, "variant": "default"}).json()
+    assert named["spec_hash"] == left_out["spec_hash"]
+    assert named == left_out
+    # the second was served from the cache of the first
+    assert len(runs) == 1
 
 
 def test_an_unknown_variant_is_422_and_loads_no_model(

@@ -453,10 +453,12 @@ def create_app(
         except UnknownVariant as error:
             # the model and its variants, which carry nothing of the service
             raise HTTPException(status_code=422, detail=str(error)) from None
+        # the name of the SBML which runs, so a request which leaves the
+        # variant out and one which names the default are one simulation
         variant = (
-            declaration.simulation.variant
-            if request.variant is None
-            else request.variant
+            request.variant
+            or declaration.simulation.variant
+            or next(iter(entry.project.variants))
         )
         try:
             check_knobs(declaration, request.values, request.grid)
@@ -466,7 +468,7 @@ def create_app(
                 return cached
             started = time.perf_counter()
             result = runner.run(
-                model, declaration, request.values, request.grid, request.variant
+                model, declaration, request.values, request.grid, variant
             )
             seconds = time.perf_counter() - started
             settings = entry.project.simulator
@@ -730,7 +732,7 @@ def _spec_hash(
     panel: Panel,
     request: SimulateRequest,
     model_sha256: str,
-    variant: str | None,
+    variant: str,
 ) -> str:
     """Get the hash which identifies what a request simulated.
 
@@ -755,8 +757,9 @@ def _spec_hash(
         panel: the panel of the request.
         request: the values of the knobs and the grid.
         model_sha256: the sha256 of the SBML file which is simulated.
-        variant: the variant which is simulated, the one the request names
-            else the one the panel declares.
+        variant: the name of the variant which is simulated, the one the
+            request names, else the one the panel declares, else the default
+            variant of the project.
 
     Returns:
         The sha256 of the canonical JSON, see

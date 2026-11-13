@@ -257,7 +257,7 @@ The declaration of a panel is its `panel/1` payload:
     }
   ],
   "simulation": {
-    "variant": null,
+    "variant": "default",
     "end": 120.0,
     "points": 2,
     "x_unit": "hr",
@@ -275,7 +275,7 @@ A simulation takes the value of every knob a reader set and the points of every 
 
 A knob of the grid takes no value, a knob which a request leaves out runs at its `default`, and a body which names an id the panel does not declare, or a field the request does not have, is a 422 before a model is loaded. The answer is the grid, one row per point in C order:
 
-A request may also name the `variant` of the model to simulate (`Project.variants`), which an app switches between, e.g. `{"values": {}, "grid": {}, "variant": "impaired"}`: the one the panel declares without. A variant the project does not have is a 422 which names the model and its variants. The knobs, the curves and the study data of a panel do not depend on the variant, only the SBML which is integrated does, so the declaration and the data routes take none, the `spec_hash` covers it, and `provenance.variant` says which one ran.
+A request may also name the `variant` of the model to simulate (`Project.variants`), which an app switches between, e.g. `{"values": {}, "grid": {}, "variant": "impaired"}`: the one the panel declares, else the default variant of the project, without. A variant the project does not have is a 422 which names the model and its variants. The knobs, the curves and the study data of a panel do not depend on the variant, only the SBML which is integrated does, so the declaration and the data routes take none, the `spec_hash` covers it, and `provenance.variant` says which one ran.
 
 ```json
 {
@@ -302,7 +302,7 @@ A request may also name the `variant` of the model to simulate (`Project.variant
     "model": "hctz",
     "panel": "renal",
     "model_sha256": "e47e40b60ff28f8d3a12b0b99d09482ed3cba8e239dcb5cd9cc14cadae48f82c",
-    "variant": null,
+    "variant": "default",
     "engine": "roadrunner",
     "sbmlsim": "0.22.0",
     "seconds": 0.07926412999950117,
