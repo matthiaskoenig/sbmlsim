@@ -90,7 +90,9 @@ from sbmlsim.serve.runner import (
     UnknownKnob,
     UnknownModel,
     UnknownPanel,
+    UnknownVariant,
     check_knobs,
+    check_variant,
 )
 
 logger = logging.getLogger(__name__)
@@ -232,12 +234,16 @@ def create_app(
     #: the sha256 of every SBML file which was simulated, by its resolved path
     hashes: dict[Path, str] = {}
 
-    def resolved(model_id: str, panel_id: str) -> tuple[ModelEntry, Panel, str]:
+    def resolved(
+        model_id: str, panel_id: str, variant: str | None = None
+    ) -> tuple[ModelEntry, Panel, str]:
         """Get the model and the panel a request names, and the hash of its SBML.
 
         Args:
             model_id: the id of the model.
             panel_id: the id of the panel.
+            variant: the variant a request asks for, the one the panel
+                declares without.
 
         Returns:
             The entry, the panel and the sha256 of the SBML file of its
@@ -246,6 +252,7 @@ def create_app(
         Raises:
             UnknownModel: for a model which is not served, a 404.
             UnknownPanel: for a panel the model does not declare, a 404.
+            UnknownVariant: for a variant the project does not have.
             HTTPException: a 500 for a model whose panels or whose SBML cannot
                 be read, which is a problem of the service and not of the
                 request.
@@ -253,13 +260,16 @@ def create_app(
         try:
             entry = registry.entry(model_id)
             panel = registry.panel(model_id, panel_id)
-            path = entry.project.variant_path(panel.simulation.variant).resolve()
+            check_variant(entry, variant)
+            path = entry.project.variant_path(
+                panel.simulation.variant if variant is None else variant
+            ).resolve()
             sha = hashes.get(path)
             if sha is None:
                 sha = file_sha256(path)
                 hashes[path] = sha
             return entry, panel, sha
-        except UnknownModel, UnknownPanel:
+        except UnknownModel, UnknownPanel, UnknownVariant:
             raise
         except Exception:
             logger.exception(
@@ -431,21 +441,33 @@ def create_app(
         Raises:
             UnknownModel: for a model which is not served, a 404.
             UnknownPanel: for a panel the model does not declare, a 404.
-            HTTPException: a 422 for a knob id the panel does not declare,
-                which is the one error of a run a request is answered with and
-                which is checked before the cache is read, and a 500 for every
-                other failure of the run, whose message is the one of the
-                service and not of the exception.
+            HTTPException: a 422 for a variant the project does not have and
+                for a knob id the panel does not declare, which are the errors
+                of a request a run is answered with and which are checked
+                before the cache is read, and a 500 for every other failure of
+                the run, whose message is the one of the service and not of
+                the exception.
         """
-        entry, declaration, sha = resolved(model, panel)
+        try:
+            entry, declaration, sha = resolved(model, panel, request.variant)
+        except UnknownVariant as error:
+            # the model and its variants, which carry nothing of the service
+            raise HTTPException(status_code=422, detail=str(error)) from None
+        variant = (
+            declaration.simulation.variant
+            if request.variant is None
+            else request.variant
+        )
         try:
             check_knobs(declaration, request.values, request.grid)
-            spec_hash = _spec_hash(entry, declaration, request, sha)
+            spec_hash = _spec_hash(entry, declaration, request, sha, variant)
             cached = cache.get(spec_hash)
             if cached is not None:
                 return cached
             started = time.perf_counter()
-            result = runner.run(model, declaration, request.values, request.grid)
+            result = runner.run(
+                model, declaration, request.values, request.grid, request.variant
+            )
             seconds = time.perf_counter() - started
             settings = entry.project.simulator
             response = SimulateResponse.of(
@@ -455,7 +477,7 @@ def create_app(
                     model=entry.id,
                     panel=declaration.id,
                     model_sha256=sha,
-                    variant=declaration.simulation.variant,
+                    variant=variant,
                     engine=settings.engine.value,
                     sbmlsim=sbmlsim.__version__,
                     seconds=seconds,
@@ -708,6 +730,7 @@ def _spec_hash(
     panel: Panel,
     request: SimulateRequest,
     model_sha256: str,
+    variant: str | None,
 ) -> str:
     """Get the hash which identifies what a request simulated.
 
@@ -732,6 +755,8 @@ def _spec_hash(
         panel: the panel of the request.
         request: the values of the knobs and the grid.
         model_sha256: the sha256 of the SBML file which is simulated.
+        variant: the variant which is simulated, the one the request names
+            else the one the panel declares.
 
     Returns:
         The sha256 of the canonical JSON, see
@@ -743,7 +768,7 @@ def _spec_hash(
             "model": entry.id,
             "panel": panel.id,
             "declaration": panel_payload(panel),
-            "variant": panel.simulation.variant,
+            "variant": variant,
             "model_sha256": model_sha256,
             "values": {
                 knob.id: float(request.values.get(knob.id, knob.default))

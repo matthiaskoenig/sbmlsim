@@ -39,7 +39,11 @@ def test_models_lists_the_registered_models(client: TestClient) -> None:
 
 def test_the_panels_of_a_model_are_listed(client: TestClient) -> None:
     body = client.get("/api/models/hctz/panels").json()
-    assert [panel["id"] for panel in body["panels"]] == ["renal"]
+    assert [panel["id"] for panel in body["panels"]] == [
+        "renal",
+        "dose_plasma",
+        "dose_urine",
+    ]
     assert body["panels"][0]["title"] == "Hydrochlorothiazide in renal impairment"
     assert body["contract"] == CONTRACT
 
@@ -57,6 +61,10 @@ def test_the_app_route_answers_the_contract(client: TestClient) -> None:
     assert body["pages"][0]["panels"] == ["renal"]
     assert body["title"] == "Hydrochlorothiazide"
     assert body["pages"][0]["id"] == "renal"
+    assert [page["panels"] for page in body["pages"]] == [
+        ["renal"],
+        ["dose_plasma", "dose_urine"],
+    ]
     assert body["licenses"] == ["CC BY-SA 4.0"]
     assert body["doi"] == "10.5281/zenodo.0000000"
     assert body["variants"] == []
@@ -334,3 +342,37 @@ def test_the_origins_of_a_request_are_the_ones_the_service_is_given(
     with TestClient(create_app(registry)) as client:
         response = client.get("/api/models", headers={"origin": origin})
         assert "access-control-allow-origin" not in response.headers
+
+
+@pytest.fixture
+def two_variants(project: Project, tmp_path: Path) -> TestClient:
+    """A client of the HCTZ project with a second variant, a copy of its SBML."""
+    copy = tmp_path / "copy.xml"
+    copy.write_bytes(MODEL_PATH.read_bytes())
+    two = project.replace(variants={"default": MODEL_PATH, "copy": copy})
+    entry = ModelEntry(id="hctz", project=two, title="Hydrochlorothiazide")
+    return TestClient(create_app(ModelRegistry({"hctz": entry})))
+
+
+def test_a_request_names_the_variant_which_ran_and_the_provenance_says_it(
+    two_variants: TestClient,
+) -> None:
+    body: dict[str, Any] = {"values": {"dose": 25.0}, "grid": {}}
+    declared = two_variants.post(SIMULATE, json=body).json()
+    named = two_variants.post(SIMULATE, json={**body, "variant": "copy"}).json()
+    assert declared["provenance"]["variant"] is None
+    assert named["provenance"]["variant"] == "copy"
+    # the same SBML in another variant is another request, the variant is hashed
+    assert named["spec_hash"] != declared["spec_hash"]
+    assert named["curves"] == declared["curves"]
+
+
+def test_an_unknown_variant_is_422_and_loads_no_model(
+    client: TestClient, never_loads: None
+) -> None:
+    response = client.post(SIMULATE, json={"values": {}, "grid": {}, "variant": "x"})
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert "'x'" in detail
+    assert "default" in detail
+    assert "/" not in detail

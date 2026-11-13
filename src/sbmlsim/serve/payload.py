@@ -102,12 +102,18 @@ class SimulateRequest(BaseModel):
         grid: the points of a knob of the grid by its id, at most `MAX_KNOBS`
             knobs and `MAX_GRID` points in all; a knob of the grid takes no
             value.
+        variant: the variant of the model to simulate (`Project.variants`),
+            which an app switches between; the one the panel declares
+            (`PanelSimulation.variant`) without. The knobs, the curves and the
+            study data of a panel do not depend on it, only the SBML which is
+            integrated does.
     """
 
     model_config = _CONFIG
 
     values: dict[str, _Value] = Field(default_factory=dict, max_length=MAX_KNOBS)
     grid: dict[str, _Points] = Field(default_factory=dict, max_length=MAX_KNOBS)
+    variant: str | None = None
 
     @model_validator(mode="after")
     def _check_grid(self) -> Self:

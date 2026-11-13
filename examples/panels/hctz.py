@@ -77,11 +77,48 @@ URINE = PanelData(
 )
 
 
-#: the app of the model of the tests: one page of the one panel
+#: the dose as a range and the renal function as stages, the knobs of the
+#: panels of the page which varies the dose
+DOSE_RANGE = Knob(
+    id="dose",
+    label="dose",
+    target="PODOSE_hctz",
+    unit="mg",
+    kind="range",
+    min=12.5,
+    max=50.0,
+    steps=4,
+    default=25.0,
+)
+EGFR_STAGES = Knob(
+    id="egfr",
+    label="renal function",
+    target="f_renal_function",
+    unit="dimensionless",
+    kind="choice",
+    choices=(
+        Choice(label="impaired", value=0.4),
+        Choice(label="mildly impaired", value=0.7),
+        Choice(label="normal", value=1.0),
+    ),
+    default=1.0,
+)
+#: the pre-initialization the panels share, the dose being a knob
+SIMULATION = PanelSimulation(
+    end=END, points=POINTS, preinit={"PODOSE_hctz": 0.0, "BW": 75.0}
+)
+
+#: the app of the model of the tests: the panel of the renal function on one
+#: page and the two panels of the dose on another, which is what a switch of
+#: the page of an app has something real to show; the project has one SBML
+#: file, so the app declares no variants
 HCTZ_APP = App(
     title="Hydrochlorothiazide",
     subtitle="the model of hydrochlorothiazide in renal impairment",
-    pages=(AppPage(id="renal", title="Renal impairment", panels=("renal",)),),
+    pages=(
+        AppPage(id="renal", title="Renal impairment", panels=("renal",)),
+        AppPage(id="dose", title="Dose", panels=("dose_plasma", "dose_urine")),
+    ),
     citation="Beermann et al. (1976)",
     doi="10.5281/zenodo.0000000",
     licenses=("CC BY-SA 4.0",),
@@ -104,9 +141,37 @@ HCTZ_PANEL = Panel(
     ),
 )
 
-#: the HCTZ project with the panel and the app, which the service serves
+HCTZ_DOSE_PLASMA = Panel(
+    id="dose_plasma",
+    title="Plasma concentration over the dose",
+    subtitle="hydrochlorothiazide in plasma",
+    x_label="time (min)",
+    knobs=(DOSE_RANGE, EGFR_STAGES),
+    curves=(
+        PanelCurve(id="Cve_hctz", label="hydrochlorothiazide plasma", unit="umol"),
+    ),
+    simulation=SIMULATION,
+)
+
+HCTZ_DOSE_URINE = Panel(
+    id="dose_urine",
+    title="Urinary excretion over the dose",
+    subtitle="the cumulative amount of hydrochlorothiazide in the urine",
+    x_label="time (min)",
+    knobs=(DOSE_RANGE, EGFR_STAGES),
+    curves=(
+        PanelCurve(id="Aurine_hctz", label="hydrochlorothiazide urine", unit="umol"),
+    ),
+    simulation=SIMULATION,
+)
+
+#: the HCTZ project with the panels and the app, which the service serves
 PROJECT: Project = HCTZ_PROJECT.replace(
     variants={"default": MODEL_PATH},
-    panels={"renal": HCTZ_PANEL},
+    panels={
+        "renal": HCTZ_PANEL,
+        "dose_plasma": HCTZ_DOSE_PLASMA,
+        "dose_urine": HCTZ_DOSE_URINE,
+    },
     app=HCTZ_APP,
 )

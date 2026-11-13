@@ -82,8 +82,10 @@ __all__ = [
     "UnknownKnob",
     "UnknownModel",
     "UnknownPanel",
+    "UnknownVariant",
     "X",
     "check_knobs",
+    "check_variant",
 ]
 
 #: the key of the time of a result in `PanelResult.units`
@@ -110,6 +112,33 @@ class UnknownKnob(ValueError):
     service answers it and no other `ValueError` of the simulation, which
     would carry what the service is made of into a response.
     """
+
+
+class UnknownVariant(ValueError):
+    """A variant which the project of a model does not have.
+
+    Like `UnknownKnob` it is an error of a request, with a message which names
+    the model and its variants and nothing of the service.
+    """
+
+
+def check_variant(entry: ModelEntry, variant: str | None) -> None:
+    """Check the variant of a request against the variants of a project.
+
+    Args:
+        entry: the entry of the model of the request.
+        variant: the variant the request names, `None` for the one the panel
+            declares, which needs no check.
+
+    Raises:
+        UnknownVariant: naming the model and its variants, for a variant the
+            project does not have.
+    """
+    if variant is not None and variant not in entry.project.variants:
+        raise UnknownVariant(
+            f"The model '{entry.id}' has no variant '{variant}'; "
+            f"its variants are {sorted(entry.project.variants)}."
+        )
 
 
 def check_knobs(
@@ -448,6 +477,7 @@ class PanelRunner:
         panel: Panel,
         values: Mapping[str, float],
         grid: Mapping[str, int],
+        variant: str | None = None,
     ) -> PanelResult:
         """Run a panel of a model at a point of its knobs or over a grid.
 
@@ -463,6 +493,8 @@ class PanelRunner:
             values: the value of a knob by its id, in the unit of the knob.
             grid: the points of a knob of the grid by its id, see
                 `Knob.values`.
+            variant: the variant of the model to simulate, the one the panel
+                declares without.
 
         Returns:
             The result, see `PanelResult`; a point which did not integrate is
@@ -473,6 +505,8 @@ class PanelRunner:
             UnknownKnob: naming the ids, if `values` or `grid` name something
                 which is no knob of the panel; it is raised before a model is
                 loaded, so a request which names one costs nothing.
+            UnknownVariant: for a variant the project does not have, also
+                before a model is loaded.
             ValueError: for a grid of fewer than one point, see `Knob.values`;
                 naming both units, for an `x_unit` of the panel which is no
                 time unit of the model, see `_times`, and for a unit of a
@@ -482,7 +516,10 @@ class PanelRunner:
         """
         entry = self.registry.entry(model_id)
         check_knobs(panel, values, grid)
-        warm = self._warm_model(entry, panel.simulation.variant)
+        check_variant(entry, variant)
+        warm = self._warm_model(
+            entry, panel.simulation.variant if variant is None else variant
+        )
         times = np.linspace(0.0, panel.simulation.end, panel.simulation.points + 1)
         with warm.lock:
             scan, axes = _scan(warm.model, panel, values, grid)

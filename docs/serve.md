@@ -275,6 +275,8 @@ A simulation takes the value of every knob a reader set and the points of every 
 
 A knob of the grid takes no value, a knob which a request leaves out runs at its `default`, and a body which names an id the panel does not declare, or a field the request does not have, is a 422 before a model is loaded. The answer is the grid, one row per point in C order:
 
+A request may also name the `variant` of the model to simulate (`Project.variants`), which an app switches between, e.g. `{"values": {}, "grid": {}, "variant": "impaired"}`: the one the panel declares without. A variant the project does not have is a 422 which names the model and its variants. The knobs, the curves and the study data of a panel do not depend on the variant, only the SBML which is integrated does, so the declaration and the data routes take none, the `spec_hash` covers it, and `provenance.variant` says which one ran.
+
 ```json
 {
   "contract": "panel/1",
