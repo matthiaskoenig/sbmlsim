@@ -35,15 +35,15 @@ the `preinit` children of the simulation are its `preinit`, the `select`
 children of a series of the data are its `sel`, the rows of its dataset, each
 of them of a `column` and a `value`, and its `at` children are its `at`, the
 state of the knobs it was measured under, each of them of a `knob` and a
-`value`. The `dataset` of a series is the id of
-a figure or a table of a study and no path, its `curve` is the curve of the
-panel it belongs under, whose unit it is delivered in, and its `conversion` is
-a quantity its values are multiplied by, the molecular weight of a substance
-above. The tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
-`_KNOB_ATTRIBUTES`, `_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and
-`_DATA_ATTRIBUTES` own these names, so the reader and the writer cannot
-disagree: `panels_from_sbml` reads the annotation, `panels_to_annotation` and
-`write_panels` write it, each the inverse of the other for every field.
+`value`. The `dataset` of a series is the id of a figure or a table of a study
+and no path, its `curve` is the curve of the panel it belongs under, whose
+unit it is delivered in, and its `conversion` is a quantity its values are
+multiplied by, the molecular weight of a substance above. The tables
+`_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`, `_KNOB_ATTRIBUTES`,
+`_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and `_DATA_ATTRIBUTES` own these
+names, so the reader and the writer cannot disagree: `panels_from_sbml` reads
+the annotation, `panels_to_annotation` and `write_panels` write it, each the
+inverse of the other for every field.
 
 A text which is empty is no attribute either, because libsbml does not write
 one, and is read back as the default of its field: the default of `subtitle`
