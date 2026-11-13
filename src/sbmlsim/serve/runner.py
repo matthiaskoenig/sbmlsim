@@ -203,6 +203,31 @@ class ModelEntry:
     title: str
 
     @cached_property
+    def pages(self) -> dict[str, tuple[Panel, ...]]:
+        """Get the panels of each page of the app of the model.
+
+        They are the panels `ModelRegistry.panel` serves, read once, so the
+        knobs a page shares (`shared`) and the heads of its panels which the
+        app carries (`sbmlsim.serve.payload.AppResponse`) are of one reading
+        of the SBML of the model.
+
+        Returns:
+            The panels of every page by its id, in the order the page shows
+            them; a model without an app has no pages.
+
+        Raises:
+            KeyError: for a page which names a panel the model does not
+                declare, which `_check_app` refuses first.
+        """
+        app = self.project.app
+        if app is None:
+            return {}
+        panels = self.project.panels_of()
+        return {
+            page.id: tuple(panels[one] for one in page.panels) for page in app.pages
+        }
+
+    @cached_property
     def shared(self) -> dict[str, tuple[SharedKnob, ...]]:
         """Get the knobs the panels of each page of the app of the model share.
 
@@ -227,15 +252,9 @@ class ModelEntry:
             KeyError: for a page which names a panel the model does not
                 declare, which `_check_app` refuses first.
         """
-        app = self.project.app
-        if app is None:
-            return {}
-        panels = self.project.panels_of()
         return {
-            page.id: _shared_knobs(
-                self.id, page.id, [panels[one] for one in dict.fromkeys(page.panels)]
-            )
-            for page in app.pages
+            page: _shared_knobs(self.id, page, list(panels))
+            for page, panels in self.pages.items()
         }
 
 

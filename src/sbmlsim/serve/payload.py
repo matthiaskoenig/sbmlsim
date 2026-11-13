@@ -30,7 +30,10 @@ which it reads back field by field (`AppResponse.of`), so the payload is the
 one source of the contract and this body is its schema. Next to it the body
 carries what the service derives from the panels of each page and is no part of
 the declaration: the knobs the panels of a page share (`shared`, see
-`sbmlsim.serve.runner.ModelEntry.shared`), which a shell shows one control of.
+`sbmlsim.serve.runner.ModelEntry.shared`), which a shell shows one control of,
+and the title and the subtitle of every panel of a page (`heads`), which a
+shell reserves the head of each card for before the panel has read its own
+declaration, so a card does not move when it does.
 
 The simulation experiments of a model are not awaited but submitted
 (`sbmlsim.serve.jobs`): an `ExperimentsRequest` names the groups and the
@@ -53,7 +56,7 @@ from sbmlsim.serve.jobs import MAX_EXPERIMENTS, JobStatus
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from sbmlsim.panel import App
+    from sbmlsim.panel import App, Panel
     from sbmlsim.serve.data import PanelSeries
     from sbmlsim.serve.jobs import Job
     from sbmlsim.serve.runner import GridAxis, PanelResult, SharedKnob
@@ -521,6 +524,12 @@ class AppResponse(BaseModel):
             every page has an entry, empty for a page whose panels share none.
             They are derived from the panels by the service and are no part of
             the declaration of the app.
+        heads: the panels of a page with their titles and subtitles, by the id
+            of the page, in the order the page shows them; every page has an
+            entry. They are the heads of the declarations of the panels, which
+            a shell lays the head of each card out with before the panel has
+            read its declaration, and are no part of the declaration of the
+            app either.
     """
 
     model_config = _CONFIG
@@ -534,21 +543,30 @@ class AppResponse(BaseModel):
     doi: str
     licenses: list[str]
     shared: dict[str, list[SharedKnobPayload]]
+    heads: dict[str, list[PanelPayload]]
 
     @classmethod
-    def of(cls, app: App, shared: Mapping[str, Sequence[SharedKnob]]) -> AppResponse:
+    def of(
+        cls,
+        app: App,
+        shared: Mapping[str, Sequence[SharedKnob]],
+        pages: Mapping[str, Sequence[Panel]],
+    ) -> AppResponse:
         """Get the payload of the app of a model.
 
         The body is read from `sbmlsim.panel.app_payload`, the one place the
         contract of the app is written, and this model is its schema: a field
         which the two do not share is refused here (`extra="forbid"`), so the
         document of the API cannot drift from the payload. The shared knobs
-        are added to it, which the payload of the declaration does not carry.
+        and the heads of the panels are added to it, which the payload of the
+        declaration does not carry.
 
         Args:
             app: the app the project of the model declares.
             shared: the knobs the panels of each page share, by the id of the
                 page, see `sbmlsim.serve.runner.ModelEntry.shared`.
+            pages: the panels of each page, by the id of the page, see
+                `sbmlsim.serve.runner.ModelEntry.pages`.
 
         Returns:
             The response.
@@ -557,7 +575,14 @@ class AppResponse(BaseModel):
             page.id: [SharedKnobPayload.of(one) for one in shared.get(page.id, ())]
             for page in app.pages
         }
-        return cls.model_validate({**app_payload(app), "shared": knobs})
+        heads = {
+            page.id: [
+                PanelPayload(id=panel.id, title=panel.title, subtitle=panel.subtitle)
+                for panel in pages.get(page.id, ())
+            ]
+            for page in app.pages
+        }
+        return cls.model_validate({**app_payload(app), "shared": knobs, "heads": heads})
 
 
 class ExperimentsRequest(BaseModel):

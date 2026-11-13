@@ -109,6 +109,40 @@ def test_the_app_route_names_the_knobs_the_panels_of_each_page_share(
     ]
 
 
+def test_the_app_route_names_the_heads_of_the_panels_of_each_page(
+    client: TestClient,
+) -> None:
+    """The app carries the title and the subtitle of every panel of a page.
+
+    They are the heads of the declarations of the panels, in the order the page
+    shows them, which a shell reserves the head of a card for before its panel
+    has read its own declaration; they are no part of the declaration of the
+    app.
+    """
+    body = client.get(APP).json()
+    panels = {
+        one: client.get(f"/api/models/hctz/panels/{one}").json()["panel"]
+        for page in body["pages"]
+        for one in page["panels"]
+    }
+    assert body["heads"] == {
+        page["id"]: [
+            {
+                "id": one,
+                "title": panels[one]["title"],
+                "subtitle": panels[one]["subtitle"],
+            }
+            for one in page["panels"]
+        ]
+        for page in body["pages"]
+    }
+    assert [one["id"] for one in body["heads"]["renal"]] == [
+        "renal_plasma",
+        "renal_urine",
+    ]
+    assert all(one["subtitle"] != "" for one in body["heads"]["renal"])
+
+
 def test_a_knob_one_panel_of_a_page_declares_is_no_shared_knob(
     project: Project,
 ) -> None:
@@ -144,7 +178,16 @@ def test_a_knob_one_panel_of_a_page_declares_is_no_shared_knob(
         {"hctz": ModelEntry(id="hctz", project=lone, title="Hydrochlorothiazide")}
     )
     with TestClient(create_app(registry)) as client:
-        shared = client.get(APP).json()["shared"]
+        body = client.get(APP).json()
+    shared = body["shared"]
+    # every page names the heads of its panels, also a page which shares nothing
+    assert {
+        page: [one["id"] for one in heads] for page, heads in body["heads"].items()
+    } == {
+        "renal": ["renal_only", "renal_urine"],
+        "dose": ["dose_plasma"],
+        "order": ["dose_plasma", "reordered", "dose_urine"],
+    }
     # the renal function is declared by both panels of the page and the dose by
     # the urine panel alone; a page of one panel shares nothing
     assert [one["knob"]["id"] for one in shared["renal"]] == ["egfr"]

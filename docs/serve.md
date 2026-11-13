@@ -401,11 +401,19 @@ The app of the model is `app/1`:
         ]
       }
     ]
+  },
+  "heads": {
+    "renal": [
+      {"id": "renal_plasma", "title": "Plasma concentration over the renal function", "subtitle": "..."},
+      {"id": "renal_urine", "title": "Urinary excretion over the renal function", "subtitle": "..."}
+    ]
   }
 }
 ```
 
 Next to the declaration of the app the body carries `shared`, which the service derives from the panels and which is no part of the declaration (neither of `Project.app` nor of an annotation): for every page, the knobs more than one of its panels declares, each as the item of the `axes` of the panels which declare it and with the ids and the titles of those panels, in the order the first panel which declares one lists them. Every page has an entry, an empty list for a page whose panels share no knob. The service works them out once, when it registers its models, which is also where it refuses a page whose panels declare one id differently, so a shell reads which controls a page shares from the app and never from the declarations of its panels. The example is shortened to one shared knob; the HCTZ page `renal` shares the dose as well.
+
+Next to it the body carries `heads`, derived from the panels as `shared` is and no part of the declaration either: for every page, its panels in the order the page shows them, each with its id, its title and its subtitle as its declaration states them. A shell lays out the head of each card with them before the panel has read its own declaration, so the head row of a row of cards is as tall as its tallest head from the first frame and a card does not move when the head of its panel arrives; the subtitles are elided in the example.
 
 ### One simulation per request, once
 
