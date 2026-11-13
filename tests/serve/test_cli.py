@@ -6,11 +6,13 @@ which imports no simulator, and never start a server: `serve` is replaced, so
 a test runs the whole command up to the point where uvicorn would take over.
 """
 
+import os
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from sbmlsim.serve import __main__ as entry
 from sbmlsim.serve import cli
 
 #: the project of the models of the tests, which loads nothing heavy
@@ -225,3 +227,17 @@ def test_the_command_imports_no_server_and_no_application_until_it_runs() -> Non
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[]"
+
+
+def test_the_service_draws_without_a_display(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The entry point names the backend which needs no display."""
+    monkeypatch.delenv("MPLBACKEND", raising=False)
+    entry._default_backend()
+    assert os.environ["MPLBACKEND"] == "Agg"
+
+
+def test_a_backend_of_the_environment_is_kept(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A backend the environment names is the one the service draws with."""
+    monkeypatch.setenv("MPLBACKEND", "pdf")
+    entry._default_backend()
+    assert os.environ["MPLBACKEND"] == "pdf"
