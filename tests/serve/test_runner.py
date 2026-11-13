@@ -337,6 +337,70 @@ def test_a_variant_of_an_app_which_the_project_has_not_is_refused(
         ModelRegistry.of({"hctz": HCTZ_REFERENCE})
 
 
+def test_a_page_whose_panels_declare_one_knob_differently_is_refused(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A page shows one control for a knob id its panels share, so it is one knob.
+
+    The same id on another page is another control and may be declared
+    otherwise, which the HCTZ app does with the dose.
+    """
+    panels = project.panels_of()
+    plasma = panels["renal_plasma"]
+    urine = panels["renal_urine"]
+    stepped = urine.model_copy(
+        update={"knobs": (EGFR_STAGES, DOSE.model_copy(update={"default": 50.0}))}
+    )
+    broken = project.replace(
+        panels={**project.panels, "renal_urine": stepped},
+        app=App(
+            title="Hydrochlorothiazide",
+            pages=(AppPage(id="renal", title="Renal", panels=(plasma.id, urine.id)),),
+        ),
+    )
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: broken)
+    with pytest.raises(ValueError, match="differently") as error:
+        ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+    message = str(error.value)
+    for named in ("'hctz'", "'renal'", "'dose'", "'renal_plasma'", "'renal_urine'"):
+        assert named in message
+    assert "(default)" in message
+    # a label which differs is a field which differs as well
+    relabelled = urine.model_copy(
+        update={"knobs": (EGFR_STAGES.model_copy(update={"label": "eGFR"}), DOSE)}
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "load_project",
+        lambda reference: broken.replace(
+            panels={**project.panels, "renal_urine": relabelled}
+        ),
+    )
+    with pytest.raises(ValueError, match=r"'egfr' differently \(label\)"):
+        ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+
+
+def test_one_knob_id_declared_alike_on_a_page_and_otherwise_on_another_is_served(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # the HCTZ app declares `dose` as a choice on `renal` and as a range on `dose`
+    app = project.app
+    assert app is not None
+    panels = project.panels_of()
+    kinds = {
+        page.id: {
+            knob.kind
+            for one in page.panels
+            for knob in panels[one].knobs
+            if knob.id == "dose"
+        }
+        for page in app.pages
+    }
+    assert kinds == {"renal": {"choice"}, "dose": {"range"}}
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: project)
+    assert ModelRegistry.of({"hctz": HCTZ_REFERENCE}).ids() == ("hctz",)
+
+
 def test_the_registry_takes_the_app_of_a_model_as_it_is_declared(
     project: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:

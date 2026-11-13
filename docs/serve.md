@@ -173,6 +173,8 @@ The pages above the panels are the declaration of the project of the model (`Pro
 
 What the declaration cannot check itself is checked when the service registers its models, before any request: a page which names a panel the model does not declare and a variant the project does not have are refused at startup, with a message which names them.
 
+A knob id which more than one panel of a page declares is one knob of that page: the app shows one control for it above the panels and sets every panel which declares it from that control, so the plots of a page are always of one state of the model. The panels must therefore declare such an id alike, field for field, and two panels of one page which declare it differently are refused at startup, with a message which names the model, the page, the knob id, the two panels and the fields which differ, e.g. `The page 'renal' of the app of the model 'hctz' shows the panels 'renal_plasma' and 'renal_urine', which declare the knob 'dose' differently (default); the panels of a page share a knob they both declare, so they must declare it alike.`. The same id on different pages is two knobs, so the HCTZ app declares `dose` as a choice of tablets on its page `renal` and as a range on its page `dose`.
+
 ## The service
 
 `sbmlsim.serve` is a FastAPI application over `Simulator.run`. It needs the extra `web` (fastapi, uvicorn and httpx), which `pip install "sbmlsim[web]"` installs and which the package itself does not need: nothing of sbmlsim imports the service, so `import sbmlsim` imports neither fastapi nor uvicorn.
@@ -194,7 +196,7 @@ python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...] [--host 
 
 The projects are loaded once, before the server starts, and the registry of the models is what a request reaches: a request names a model id of this command line and a panel id of that model and nothing else, never a module, a project reference or a path. A model is loaded and compiled when a panel of it is first simulated, or when the study data of a panel is first asked for, whose units its model resolves, and stays warm after that.
 
-The address of the service is written on stdout, everything else is logged on stderr. The exit codes are the ones of [`python -m sbmlsim.run`](run.md): 0 when the server stopped, 2 for a bad command line, which argparse writes with its usage, and 4 for a model which is no project or whose app names something the model does not declare.
+The address of the service is written on stdout, everything else is logged on stderr. The exit codes are the ones of [`python -m sbmlsim.run`](run.md): 0 when the server stopped, 2 for a bad command line, which argparse writes with its usage, and 4 for a model which is no project, whose app names something the model does not declare or whose page declares one knob id differently on two panels.
 
 ### The teaching mode: one command
 

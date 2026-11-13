@@ -6,9 +6,10 @@ way from a request to a model: `entry` answers an id of that mapping and
 raises `UnknownModel` for everything else, so a request can never name a
 module, a project reference or a path. A model whose project declares an app
 (`sbmlsim.panel.App`) is checked there as well (`_check_app`): a page which
-names a panel the model does not declare and a variant the project does not
-have are refused at startup, since the panels of a model are read from its
-SBML, which a project is imported without.
+names a panel the model does not declare, a variant the project does not
+have and two panels of a page which declare one knob id differently
+(`_check_shared_knobs`) are refused at startup, since the panels of a model are
+read from its SBML, which a project is imported without.
 
 `PanelRunner` runs a panel of such a model: the values of its knobs become the
 pre-initialization of one `Simulation`, a knob of the grid becomes a
@@ -48,7 +49,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from tokenize import TokenError
@@ -216,8 +217,10 @@ class ModelRegistry:
             ValueError: for a reference which is no project, see
                 `sbmlsim.project.load_project`; naming the model, the page and
                 the panels, for an app whose page names a panel the model does
-                not declare, and naming the model and the variants, for an app
-                which names a variant the project does not have, see
+                not declare, naming the model and the variants, for an app
+                which names a variant the project does not have, and naming
+                the model, the page, the knob id and the two panels, for a page
+                whose panels declare one knob id differently, see
                 `_check_app`.
             ImportError: if the module of a reference is not imported.
         """
@@ -308,7 +311,9 @@ def _check_app(entry: ModelEntry) -> None:
         ValueError: naming the model and the variants, for an app which names
             a variant the project does not have; naming the model, the page and
             the panels, for a page which names a panel the model does not
-            declare; if the project has no model variants, see
+            declare; naming the model, the page, the knob id and the two
+            panels, for a page whose panels declare one knob id differently,
+            see `_check_shared_knobs`; if the project has no model variants, see
             `sbmlsim.project.Project.panels_of`.
         FileNotFoundError: if the SBML the panels are read from is no file,
             which is a problem of the service and not of a request.
@@ -323,7 +328,8 @@ def _check_app(entry: ModelEntry) -> None:
             f"The app of the model '{entry.id}' names the variants {unknown}, "
             f"which its project does not have; its variants are {variants}."
         )
-    declared = sorted(entry.project.panels_of())
+    panels = entry.project.panels_of()
+    declared = sorted(panels)
     for page in app.pages:
         missing = sorted(set(page.panels).difference(declared))
         if missing:
@@ -332,6 +338,48 @@ def _check_app(entry: ModelEntry) -> None:
                 f"the panels {missing}, which the model does not declare; its "
                 f"panels are {declared}."
             )
+        _check_shared_knobs(entry.id, page.id, [panels[one] for one in page.panels])
+
+
+def _check_shared_knobs(model_id: str, page_id: str, panels: Sequence[Panel]) -> None:
+    """Check that the panels of a page declare a knob id they share alike.
+
+    An app shows one control for a knob id which more than one panel of a page
+    declares and sets every one of those panels from it, so the declarations of
+    that id must be one declaration: two panels which gave it other bounds, an
+    other default or an other target would be set from a control which is
+    right for one of them only. The declarations are compared field for field,
+    and the fields which differ are named. The same id on different pages is
+    no such knob, since a page shows its own controls.
+
+    Args:
+        model_id: the id of the model.
+        page_id: the id of the page.
+        panels: the panels of the page, in the order it shows them.
+
+    Raises:
+        ValueError: naming the model, the page, the knob id, the two panels
+            and the fields, for a knob id which two panels of the page declare
+            differently.
+    """
+    first: dict[str, tuple[Panel, Knob]] = {}
+    for panel in panels:
+        for knob in panel.knobs:
+            seen = first.setdefault(knob.id, (panel, knob))
+            other_panel, other = seen
+            fields = [
+                name
+                for name in type(knob).model_fields
+                if getattr(knob, name) != getattr(other, name)
+            ]
+            if fields:
+                raise ValueError(
+                    f"The page '{page_id}' of the app of the model '{model_id}' "
+                    f"shows the panels '{other_panel.id}' and '{panel.id}', which "
+                    f"declare the knob '{knob.id}' differently ({', '.join(fields)}); "
+                    "the panels of a page share a knob they both declare, so they "
+                    "must declare it alike."
+                )
 
 
 @dataclass(frozen=True)
