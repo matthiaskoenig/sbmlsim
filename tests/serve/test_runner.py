@@ -38,6 +38,8 @@ from sbmlsim.serve.runner import (
 )
 from sbmlsim.units import ureg
 
+#: the root of the repository, whose documentation quotes the refusals
+ROOT = Path(__file__).parents[2]
 #: the reference of the project of the HCTZ example
 HCTZ_REFERENCE = "examples.hctz_fitting.project:PROJECT"
 #: the seconds a wait which must succeed gives up after, i.e. a failed test
@@ -525,6 +527,74 @@ def test_a_derived_target_the_service_cannot_run_is_refused_at_startup(
         assert one in message
 
 
+@pytest.mark.parametrize(
+    ("knobs", "derived", "preinit", "named"),
+    [
+        (
+            (CRCL, DOSE),
+            {"f_renal_fucntion": "min(crcl / 110, 1)"},
+            None,
+            ["'f_renal_fucntion', a derived target"],
+        ),
+        (
+            (_renal_function([1.0]).model_copy(update={"target": "f_renal"}), DOSE),
+            {},
+            None,
+            ["'f_renal', the target of the knob 'egfr'"],
+        ),
+        (
+            (CRCL, DOSE),
+            RENAL_FUNCTION,
+            {"PODOSE_hctz": 0.0, "body_weight": 75.0},
+            ["'body_weight', a target of the preinit"],
+        ),
+    ],
+)
+def test_a_target_which_is_no_entity_of_the_model_is_refused_at_startup(
+    project: Project,
+    panel: Panel,
+    monkeypatch: pytest.MonkeyPatch,
+    knobs: tuple[Knob, ...],
+    derived: dict[str, str],
+    preinit: dict[str, float] | None,
+    named: list[str],
+) -> None:
+    """A typo of a target is refused once, from the SBML read for the panels."""
+    bogus = _derived(panel, knobs, derived).model_copy(update={"id": "typo"})
+    if preinit is not None:
+        bogus = bogus.model_copy(
+            update={
+                "simulation": bogus.simulation.model_copy(update={"preinit": preinit})
+            }
+        )
+    broken = project.replace(panels={**project.panels, bogus.id: bogus})
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: broken)
+    with pytest.raises(ValueError, match="no entity of the model") as error:
+        ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+    message = str(error.value)
+    for one in ("'hctz'", "variant 'default'", "panel 'typo'", *named):
+        assert one in message
+
+
+def test_a_concentration_of_a_species_is_a_target_of_a_knob(
+    project: Project, panel: Panel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`[S]` is the concentration of a species `S`, which a change may set."""
+    concentration = _renal_function([0.0]).model_copy(
+        update={"id": "initial", "target": "[Cve_hctz]"}
+    )
+    served = _derived(panel, (concentration, DOSE), {}).model_copy(
+        update={"id": "concentration"}
+    )
+    fine = project.replace(panels={**project.panels, served.id: served})
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: fine)
+    assert ModelRegistry.of({"hctz": HCTZ_REFERENCE}).panel("hctz", served.id) == served
+    entities = fine.model_entities()
+    assert entities is not None
+    assert {"[Cve_hctz]", "Cve_hctz", "BW", "f_renal_function", "Vve"} <= entities
+    assert "[BW]" not in entities
+
+
 def test_a_panel_of_derived_targets_which_read_its_knobs_is_served(
     project: Project, panel: Panel, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -625,6 +695,8 @@ def test_a_page_whose_panels_declare_one_knob_differently_is_refused(
     for named in ("'hctz'", "'renal'", "'dose'", "'renal_plasma'", "'renal_urine'"):
         assert named in message
     assert "(default)" in message
+    # the documentation quotes this refusal as the code writes it
+    assert f"`{message}`" in (ROOT / "docs" / "serve.md").read_text(encoding="utf-8")
     # a label which differs is a field which differs as well
     relabelled = urine.model_copy(
         update={"knobs": (EGFR_STAGES.model_copy(update={"label": "eGFR"}), DOSE)}

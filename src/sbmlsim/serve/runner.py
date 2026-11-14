@@ -2,38 +2,38 @@
 
 `ModelRegistry` is the models of the service. It is built once at startup from
 a mapping of model id to project reference (`ModelRegistry.of`) and is the only
-way from a request to a model: `entry` answers an id of that mapping and
-raises `UnknownModel` for everything else, so a request can never name a
-module, a project reference or a path. A model whose project declares an app
+way from a request to a model: `entry` answers an id of that mapping and raises
+`UnknownModel` for everything else, so a request can never name a module, a
+project reference or a path. A model whose project declares an app
 (`sbmlsim.panel.App`) is checked there as well (`_check_app`): a page which
-names a panel the model does not declare, a variant the project does not
-have, two panels of a page which declare one knob id differently
+names a panel the model does not declare, a variant the project does not have,
+two panels of a page which declare one knob id differently
 (`ModelEntry.shared`) and a scenario of a page which sets a knob its panels do
 not declare or a value which is none of that knob (`_check_scenarios`) are
-refused at startup, since the panels of a model are read from its SBML, which
-a project is imported without. The declaration of a panel in a variant is the
-one of the SBML of that variant (`sbmlsim.project.Project.panels_of`), so the
-app is checked in every variant it is served in (`ModelEntry.app_variants`),
-and the formulas of the derived targets of every panel of every variant are
-checked as well (`_check_derived`), which are math of PEtab the declaration
-does not parse.
+refused at startup, since the panels of a model are read from its SBML, which a
+project is imported without. The declaration of a panel in a variant is the one
+of the SBML of that variant (`sbmlsim.project.Project.panels_of`), so the app
+is checked in every variant it is served in (`ModelEntry.app_variants`), and
+the formulas of the derived targets of every panel of every variant are checked
+as well (`_check_derived`), which are math of PEtab the declaration does not
+parse.
 
 `PanelRunner` runs a panel of such a model: the values of its knobs become the
 pre-initialization of one `Simulation`, the knobs of the grid become a
 `Dimension` of the product of the values of `Knob.values(n)`, a derived target
 is the value of its formula over the knobs, a value of that dimension when it
 reads a knob of the grid and of the pre-initialization otherwise, and the scan
-of the two runs on the warm model of the entry. The curves of the `PanelResult` are the declared
-curves of the panel, one row per point of the grid in C order and one row for a
-request without a grid, in the unit the curve declares or else in the unit of
-the model; the x of the result is the grid of `points + 1` times from 0 to the
-`end` of the panel, which are in the time unit of the model, delivered in the
-`x_unit` the panel declares or else in that time unit, which `units["x"]`
-names and which `units(entry, panel)` answers without a run, so the study
-data of a panel (`sbmlsim.serve.data`) is drawn on the axis of its curves. A
-point which does not integrate is `NaN` and its flat index is in
-`failed`, never an exception: a knob value a reader turns to may be a value
-the model does not simulate.
+of the two runs on the warm model of the entry. The curves of the `PanelResult`
+are the declared curves of the panel, one row per point of the grid in C order
+and one row for a request without a grid, in the unit the curve declares or
+else in the unit of the model; the x of the result is the grid of `points + 1`
+times from 0 to the `end` of the panel, which are in the time unit of the
+model, delivered in the `x_unit` the panel declares or else in that time unit,
+which `units["x"]` names and which `units(entry, panel)` answers without a run,
+so the study data of a panel (`sbmlsim.serve.data`) is drawn on the axis of its
+curves. A point which does not integrate is `NaN` and its flat index is in
+`failed`, never an exception: a knob value a reader turns to may be a value the
+model does not simulate.
 
 A panel declares its units as text, which may be a unit id of its model, e.g.
 `mmole_per_l`, so every such text is resolved in the registry of the model
@@ -620,7 +620,7 @@ def _no_value_of(knob: Knob, value: float) -> str:
 
 
 def _check_derived(entry: ModelEntry) -> None:
-    """Check the derived targets of every panel of every variant of a model.
+    """Check the targets and the derived targets of every panel of every variant.
 
     A formula of a derived target (`sbmlsim.panel.PanelSimulation.derived`)
     is math of PEtab, which the declaration does not parse, since
@@ -633,6 +633,12 @@ def _check_derived(entry: ModelEntry) -> None:
     them or not, since a request may name any variant; the SBML of each
     variant is read once.
 
+    The targets of the knobs, the derived targets and the keys of `preinit`
+    are checked here as well, against the entities of the model of the
+    variant, which are read with its panels (`_check_entities`); a
+    hierarchical model, whose entities are the ones of its flattened model, is
+    not checked.
+
     Args:
         entry: the model of the registry.
 
@@ -641,12 +647,17 @@ def _check_derived(entry: ModelEntry) -> None:
             the formula, for a formula which is no math of PEtab; naming them
             and the symbols, for a formula which reads a symbol which is no
             knob of its panel; naming the model, the variant, the panel and
-            the knob, for a knob without a target which no formula reads.
+            the knob, for a knob without a target which no formula reads; and
+            naming the model, the variant, the panel and the id, for a target
+            which is no entity of the model, see `_check_entities`.
         FileNotFoundError: if the SBML of a variant is no file.
     """
     for variant in entry.project.variants:
+        entities = entry.project.model_entities(variant)
         for panel in entry.project.panels_of(variant).values():
             where = f" of the model '{entry.id}' in its variant '{variant}'"
+            if entities is not None:
+                _check_entities(panel, entities, where)
             formulas = _formulas(panel, where)
             read = {s for formula in formulas.values() for s in formula.symbols}
             for knob in panel.knobs:
@@ -656,6 +667,47 @@ def _check_derived(entry: ModelEntry) -> None:
                         f"no target and no formula of its derived targets reads it; "
                         f"a knob without a target is an input of a formula."
                     )
+
+
+def _check_entities(panel: Panel, entities: Set[str], where: str) -> None:
+    """Check that a panel sets entities of its model and no other ids.
+
+    The targets of the knobs, the derived targets and the keys of `preinit`
+    of a panel are the values of a pre-initialization, which the simulator
+    refuses for an id which is no entity of the model, e.g. a typo, on every
+    request of the panel; it is refused once, when the service starts,
+    against the entities read from the SBML of the variant
+    (`sbmlsim.project.Project.model_entities`).
+
+    Args:
+        panel: the panel.
+        entities: the ids a pre-initialization of the model can set, see
+            `sbmlsim.panel_sbml.ModelPanels.entities`.
+        where: the model and the variant of the panel, which a problem names
+            after the panel, e.g. ` of the model 'hctz' in its variant
+            'default'`.
+
+    Raises:
+        ValueError: naming the panel, the model, the variant, what sets the id
+            and the id, for an id which is no entity of the model.
+    """
+    targets = [
+        *(
+            (f"the target of the knob '{knob.id}'", knob.target)
+            for knob in panel.knobs
+            if knob.target is not None
+        ),
+        *(("a derived target", target) for target in panel.simulation.derived),
+        *(("a target of the preinit", target) for target in panel.simulation.preinit),
+    ]
+    for what, target in targets:
+        if target not in entities:
+            raise ValueError(
+                f"The panel '{panel.id}'{where} sets '{target}', {what}, which is "
+                f"no entity of the model: a target is a parameter, a species, a "
+                f"compartment or a species reference of the model, or '[S]', the "
+                f"concentration of a species 'S'."
+            )
 
 
 def _shared_knobs(

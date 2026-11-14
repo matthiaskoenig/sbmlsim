@@ -732,6 +732,18 @@ def test_limits_of_the_axes_which_are_no_axis_are_refused(
         assert "'renal'" in str(error.value)
 
 
+@pytest.mark.parametrize("limit", ["y_min", "y_max"])
+def test_a_y_limit_of_a_panel_without_curves_is_refused(
+    minimal: Panel, limit: str
+) -> None:
+    """Its value axis has no unit, so no number is a limit of it."""
+    without = {**minimal.model_dump(), "curves": []}
+    assert Panel.model_validate({**without, "x_max": 5.0}).x_max == 5.0
+    with pytest.raises(ValidationError, match="'decay' limits its value axis") as error:
+        Panel.model_validate({**without, limit: 1.0})
+    assert "draws no curve" in str(error.value)
+
+
 def test_a_y_limit_of_zero_is_a_limit_of_a_linear_axis(minimal: Panel) -> None:
     limited = Panel.model_validate(
         {**minimal.model_dump(), "y_min": 0.0, "y_max": 5.0, "x_max": 8.0}

@@ -83,6 +83,7 @@ if TYPE_CHECKING:
     from sbmlsim.fit.cli import FitDefinition
     from sbmlsim.fit.records import AdoptedRecords
     from sbmlsim.model.tolerances import AbsoluteTolerance
+    from sbmlsim.panel_sbml import ModelPanels
     from sbmlsim.plot.plotting import FigureSettings
     from sbmlsim.release.hooks import ReleaseHook
     from sbmlsim.simulator import Simulator
@@ -320,12 +321,13 @@ class _Resolved(dict[tuple[str | None, str], Any]):
     __hash__ = None
 
 
-class _Panels(dict[Path, dict[str, Panel]]):
+class _Panels(dict[Path, "ModelPanels"]):
     """The panels of the annotations of the models of a project, by their path.
 
     A cache, which is no part of the value of a project, as `_Resolved` is:
-    two projects are equal whatever they read, and the panels of a model are
-    keyed by the resolved path of its SBML.
+    two projects are equal whatever they read, and the panels of a model and
+    its entities (`sbmlsim.panel_sbml.ModelPanels`) are keyed by the resolved
+    path of its SBML.
     """
 
     @override
@@ -1273,25 +1275,67 @@ class Project(BaseModel):
             KeyError: for an unknown variant.
             FileNotFoundError: if the SBML of the variant is no file.
         """
+        name = next(iter(self.variants), None) if variant is None else variant
+        return {
+            **self._model_panels(variant).panels,
+            **self.panels,
+            **self.variant_panels.get(name or "", {}),
+        }
+
+    def model_entities(self, variant: str | None = None) -> frozenset[str] | None:
+        """Get the ids a pre-initialization of a variant of the model can set.
+
+        They are read from the SBML of the variant together with its panels
+        (`sbmlsim.panel_sbml.read_panels`), once, so a check of the targets of
+        the panels reads nothing more and loads no model.
+
+        Args:
+            variant: the name of the variant, the first variant without.
+
+        Returns:
+            The ids, see `sbmlsim.panel_sbml.ModelPanels.entities`; `None`
+            for a hierarchical model.
+
+        Raises:
+            ValueError: if the project has no model variants, or if the SBML
+                of the variant is no model.
+            KeyError: for an unknown variant.
+            FileNotFoundError: if the SBML of the variant is no file.
+        """
+        return self._model_panels(variant).entities
+
+    def _model_panels(self, variant: str | None) -> ModelPanels:
+        """Get what the SBML of a variant declares, read once and kept.
+
+        A panel of the annotation which cannot be read is logged when the
+        SBML is read, see `panels_of`.
+
+        Args:
+            variant: the name of the variant, the first variant without.
+
+        Returns:
+            The panels of the annotation and the entities of the model.
+
+        Raises:
+            ValueError: if the project has no model variants, or if the SBML
+                of the variant is no model.
+            KeyError: for an unknown variant.
+            FileNotFoundError: if the SBML of the variant is no file.
+        """
         from sbmlsim import panel_sbml
 
         path = self.variant_path(variant).resolve()
         if path not in self._panels:
-            annotated, problems = panel_sbml.panels_from_sbml(path)
-            for problem in problems:
+            read = panel_sbml.read_panels(path)
+            for problem in read.problems:
                 logger.warning(
                     "The panel '%s' of the model '%s' is left out: %s",
                     problem.panel_id,
                     path,
                     problem.reason,
                 )
-            self._panels[path] = annotated
-        name = next(iter(self.variants)) if variant is None else variant
-        return {
-            **self._panels[path],
-            **self.panels,
-            **self.variant_panels.get(name, {}),
-        }
+            self._panels[path] = read
+        return self._panels[path]
 
     def load_factory(self) -> Callable[[Path], Any]:
         """Get the function which builds the models.

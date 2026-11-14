@@ -11,14 +11,13 @@ A request names a model id of the registry and a panel id of that model and
 nothing else: no project reference, no module and no path reaches the service,
 and an id which is not served is a 404 with the message of the registry. The
 declaration of a panel may differ by the variant of its model, so the panel,
-its study data, the app and a simulation take a variant (the query `variant`
-of the routes which read, the field of a `SimulateRequest`), whose
-declaration they are, the default variant without; a variant the model does
-not have is a 422. A
-request which is over the limits of `sbmlsim.panel` or which names a knob the
-panel does not declare is a 422, a failure of the service is a 500 of one
-fixed message, logged with its traceback: an error body carries no traceback,
-no path and nothing of the configuration of the service.
+its study data, the app and a simulation take a variant (the query `variant` of
+the routes which read, the field of a `SimulateRequest`), whose declaration
+they are, the default variant without; a variant the model does not have is a
+422. A request which is over the limits of `sbmlsim.panel` or which names a
+knob the panel does not declare is a 422, a failure of the service is a 500 of
+one fixed message, logged with its traceback: an error body carries no
+traceback, no path and nothing of the configuration of the service.
 
 The route of a simulation is a sync `def`, which the server runs in its thread
 pool, and the runner holds the lock of its model while it simulates, so the

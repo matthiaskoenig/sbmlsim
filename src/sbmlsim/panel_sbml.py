@@ -30,26 +30,25 @@ An attribute is the field of the object of `sbmlsim.panel` it carries, with the
 exceptions `xLabel` for `x_label`, `yLabel` for `y_label`, `yMin`, `yMax` and
 `xMax` for the limits of the axes `y_min`, `y_max` and `x_max` and `xUnit` for
 `x_unit`, which are camel case; an attribute which is not set means the default
-of its field, e.g. an axis without a limit or a knob without a target, which
-is an input of the formulas of the derived targets alone. The
-`end` of the simulation is in the time unit of the model (a day of a model of
-minutes above) and `xUnit` is the unit its time axis is delivered in. The
-`option` children of a knob are its `choices`, the choices of a knob of the
-kind `choice` and the named stops of one of the kind `range`,
-the `preinit` children of the simulation are its `preinit`, its `derived`
-children its `derived`, each of a `target` and its `formula`, the `select`
-children of a series of the data are its `sel`, the rows of its dataset, each
-of them of a `column` and a `value`, and its `at` children are its `at`, the
-state of the knobs it was measured under, each of them of a `knob` and a
-`value`. The `dataset` of a series is the id of a figure or a table of a study
-and no path, its `curve` is the curve of the panel it belongs under, whose
-unit it is delivered in, and its `conversion` is a quantity its values are
-multiplied by, the molecular weight of a substance above. The tables
-`_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`, `_KNOB_ATTRIBUTES`,
-`_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and `_DATA_ATTRIBUTES` own these
-names, so the reader and the writer cannot disagree: `panels_from_sbml` reads
-the annotation, `panels_to_annotation` and `write_panels` write it, each the
-inverse of the other for every field.
+of its field, e.g. an axis without a limit or a knob without a target, which is
+an input of the formulas of the derived targets alone. The `end` of the
+simulation is in the time unit of the model (a day of a model of minutes above)
+and `xUnit` is the unit its time axis is delivered in. The `option` children of
+a knob are its `choices`, the choices of a knob of the kind `choice` and the
+named stops of one of the kind `range`, the `preinit` children of the
+simulation are its `preinit`, its `derived` children its `derived`, each of a
+`target` and its `formula`, the `select` children of a series of the data are
+its `sel`, the rows of its dataset, each of them of a `column` and a `value`,
+and its `at` children are its `at`, the state of the knobs it was measured
+under, each of them of a `knob` and a `value`. The `dataset` of a series is the
+id of a figure or a table of a study and no path, its `curve` is the curve of
+the panel it belongs under, whose unit it is delivered in, and its `conversion`
+is a quantity its values are multiplied by, the molecular weight of a substance
+above. The tables `_PANEL_ATTRIBUTES`, `_SIMULATION_ATTRIBUTES`,
+`_KNOB_ATTRIBUTES`, `_CHOICE_ATTRIBUTES`, `_CURVE_ATTRIBUTES` and
+`_DATA_ATTRIBUTES` own these names, so the reader and the writer cannot
+disagree: `panels_from_sbml` reads the annotation, `panels_to_annotation` and
+`write_panels` write it, each the inverse of the other for every field.
 
 A text which is empty is no attribute either, because libsbml does not write
 one, and is read back as the default of its field: the default of `subtitle`
@@ -59,7 +58,11 @@ title or a label which is not.
 `panels_from_sbml` never raises for a panel it cannot read: it reports every
 such panel as a `PanelProblem` and reads the others, so one malformed panel
 does not take the model down. The element is read and written with libsbml
-alone, so neither a simulator nor a project is imported.
+alone, so neither a simulator nor a project is imported. `read_panels` reads
+the panels together with the entities of the model a target of a panel may
+name (`ModelPanels`), in the one reading of the SBML a project keeps per
+variant, so the service checks the targets of the panels when it starts
+without loading a model.
 """
 
 import logging
@@ -86,9 +89,11 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "PANEL_NS",
+    "ModelPanels",
     "PanelProblem",
     "panels_from_sbml",
     "panels_to_annotation",
+    "read_panels",
     "write_panels",
 ]
 
@@ -191,6 +196,27 @@ class PanelProblem:
     reason: str
 
 
+@dataclass(frozen=True)
+class ModelPanels:
+    """The panels of the annotation of a model and the entities they may set.
+
+    Attributes:
+        panels: the panels by their id, in the order of the annotation.
+        problems: the panels which cannot be read, see `panels_from_sbml`.
+        entities: the ids a pre-initialization of the model can set, the
+            target of a knob, of a derived target or of `preinit`: its
+            parameters, species, compartments and species references of an
+            id, and `[S]`, the concentration, of every species `S`; `None`
+            for a hierarchical model, whose entities are the ones of its
+            flattened model, which libsbml does not read without flattening
+            it.
+    """
+
+    panels: dict[str, Panel]
+    problems: tuple[PanelProblem, ...]
+    entities: frozenset[str] | None
+
+
 # ----------------------------------------------------------------------------
 # reading
 # ----------------------------------------------------------------------------
@@ -208,6 +234,30 @@ def panels_from_sbml(
         problems: a panel which is not valid, one of another contract version
         and one of an id which another panel of the model has as well, which
         keeps the first of them. A model without the annotation has neither.
+
+    Raises:
+        FileNotFoundError: for a path which is no file.
+        ValueError: for a source which is no SBML model; a panel which cannot
+            be read is a problem and no error.
+    """
+    read = read_panels(sbml)
+    return read.panels, read.problems
+
+
+def read_panels(sbml: Path | str) -> ModelPanels:
+    """Read the panels of the annotation of a model and the entities of the model.
+
+    It reads the SBML once for both, which is what a project keeps per variant
+    (`sbmlsim.project.Project.panels_of`, `Project.model_entities`), so the
+    service checks the targets of the panels against the model when it starts
+    without reading or loading it again.
+
+    Args:
+        sbml: the path of the SBML file or the SBML itself, i.e. a string
+            which starts with `<`.
+
+    Returns:
+        The panels, their problems and the entities, see `ModelPanels`.
 
     Raises:
         FileNotFoundError: for a path which is no file.
@@ -234,7 +284,38 @@ def panels_from_sbml(
             )
             continue
         panels[panel.id] = panel
-    return panels, tuple(problems)
+    return ModelPanels(
+        panels=panels, problems=tuple(problems), entities=_entities_of(model)
+    )
+
+
+def _entities_of(model: libsbml.Model) -> frozenset[str] | None:
+    """Get the ids a pre-initialization of a model can set, see `ModelPanels`.
+
+    Args:
+        model: the model.
+
+    Returns:
+        The ids, `None` for a model with submodels.
+    """
+    comp: libsbml.CompModelPlugin | None = model.getPlugin("comp")
+    if comp is not None and comp.getNumSubmodels() > 0:
+        return None
+    species = [model.getSpecies(k).getId() for k in range(model.getNumSpecies())]
+    ids = {
+        *species,
+        *(f"[{one}]" for one in species),
+        *(model.getParameter(k).getId() for k in range(model.getNumParameters())),
+        *(model.getCompartment(k).getId() for k in range(model.getNumCompartments())),
+    }
+    for k in range(model.getNumReactions()):
+        reaction: libsbml.Reaction = model.getReaction(k)
+        references = [
+            *(reaction.getReactant(j) for j in range(reaction.getNumReactants())),
+            *(reaction.getProduct(j) for j in range(reaction.getNumProducts())),
+        ]
+        ids.update(one.getId() for one in references if one.isSetId())
+    return frozenset(ids)
 
 
 def _document_of(sbml: Path | str) -> libsbml.SBMLDocument:

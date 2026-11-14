@@ -325,16 +325,20 @@ def test_the_derived_targets_are_checked_in_a_variant_no_app_names(
 def test_the_panels_of_every_variant_are_read_once(
     declared: Project, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The startup reads the SBML of each variant once, the cache of `panels_of`."""
+    """The startup reads the SBML of each variant once, the cache of `panels_of`.
+
+    The panels and the entities the targets are checked against are of that
+    one reading, see `Project.model_entities`.
+    """
     fresh = declared.replace()
     reads: list[Path] = []
-    original = panel_sbml.panels_from_sbml
+    original = panel_sbml.read_panels
 
     def counted(sbml: Path | str) -> Any:
         reads.append(Path(sbml))
         return original(sbml)
 
-    monkeypatch.setattr(panel_sbml, "panels_from_sbml", counted)
+    monkeypatch.setattr(panel_sbml, "read_panels", counted)
     monkeypatch.setattr(runner_module, "load_project", lambda reference: fresh)
     ModelRegistry.of({"hctz": HCTZ_REFERENCE})
     assert sorted(path.name for path in reads) == sorted(

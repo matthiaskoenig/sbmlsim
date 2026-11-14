@@ -168,7 +168,39 @@ The `dataset` is an id and never a path: a separator, a dot and a drive are refu
 
 A model whose SBML we do not own is covered by `Project.panels`, a mapping of panel id to panel in the project of the model package: the panels of the annotation are read first and the ones of the project are laid over them by id. Both together are what the service serves.
 
-The declaration of a panel in a variant is the one of the SBML of that variant: each build of a model carries its own annotation, so a female build whose reference GFR differs from the male one declares its own stops of a renal impairment and its own study data, and nothing of a panel names a variant. `Project.panels` is the override of every variant and `Project.variant_panels`, a mapping of a variant to its panels, the override of one, laid over `Project.panels` for that variant, which is what a checkout whose SBML of a variant carries no annotation needs. `Project.panels_of(variant)` is the result: the annotated panels of the variant, then `panels`, then `variant_panels[variant]`, reading every SBML once. `PROJECT_VARIANTS` of `examples/panels/hctz.py` declares its page `patient` otherwise in its variant `low_reference`, a renal function whose reference is a clearance of 90 ml/min and titles which say so.
+The declaration of a panel in a variant is the one of the SBML of that variant: each build of a model carries its own annotation, so a female build whose reference GFR differs from the male one declares its own stops of a renal impairment and its own study data, and nothing of a panel names a variant. `Project.panels` is the override of every variant and `Project.variant_panels`, a mapping of a variant to its panels, the override of one, laid over `Project.panels` for that variant, which is what a checkout whose SBML of a variant carries no annotation needs. `Project.panels_of(variant)` is the result: the annotated panels of the variant, then `panels`, then `variant_panels[variant]`, reading every SBML once. A model of a male and a female build of other reference creatinine clearances, each build its own SBML file, declares the page of a patient otherwise in its female build:
+
+```py
+FEMALE_PLASMA = PATIENT_PLASMA.model_copy(
+    update={
+        "title": "Plasma concentration of a patient (female)",
+        "simulation": PATIENT_PLASMA.simulation.model_copy(
+            update={"derived": {"f_renal_function": "min(crcl / 95, 1)"}}
+        ),
+    }
+)
+
+PROJECT = Project(
+    name="drug",
+    root=Path(__file__).parent,
+    variants={
+        "male": Path("models/drug_male.xml"),
+        "female": Path("models/drug_female.xml"),
+    },
+    panels={"patient_plasma": PATIENT_PLASMA},
+    variant_panels={"female": {"patient_plasma": FEMALE_PLASMA}},
+    app=App(
+        title="A drug",
+        pages=(AppPage(id="patient", title="Patient", panels=("patient_plasma",)),),
+        variants=(
+            AppVariant(id="male", label="male"),
+            AppVariant(id="female", label="female"),
+        ),
+    ),
+)
+```
+
+The end to end tests of the renderer serve such a project of the HCTZ model, `examples.panels.hctz_variants:PROJECT_VARIANTS`, whose second variant is a copy of the one SBML file of the example, a device of the demo and of its tests, since a project gives every variant a file of its own.
 
 ### Derived targets
 
@@ -177,6 +209,7 @@ A knob sets one entity of the model, while an entity of a model is often a formu
 - **The units are the formula's.** A formula sees the value of each knob as the number the knob carries, in the unit the knob declares and without a conversion, and its result is the value of the target in the unit of the model: `min(crcl / 110, 1)` reads a clearance in `ml/min` and gives the dimensionless renal function, so a formula states its conversion itself.
 - **A derived target is set by its formula alone**: it is no target of a knob of the panel and no key of its `preinit`, which the declaration refuses.
 - **The service compiles the formulas and a renderer never evaluates one.** When it starts, the service checks the formulas of every panel of every variant of a model, whether an app shows it or not: a formula which is no math, one which reads a symbol which is no knob of its panel and a knob without a target which no formula reads are refused with a message which names the model, the variant, the panel and the target or the knob, e.g. `The formula 'min(clearance / 110, 1)' of the derived target 'f_renal_function' of the panel 'patient_plasma' of the model 'hctz' in its variant 'default' reads ['clearance'], which are no knobs of the panel; ...`.
+- **A target is an entity of the model.** When it starts, the service checks that the target of every knob, every derived target and every key of a `preinit` is a parameter, a species, a compartment or a species reference of an id of the model of each variant, or `[S]`, the concentration of a species `S`, read with libsbml from the SBML it reads for the panels anyway; a typo is refused with a message which names the model, the variant, the panel and the id, e.g. `The panel 'patient_plasma' of the model 'hctz' in its variant 'default' sets 'f_renal_fucntion', a derived target, which is no entity of the model: ...`, and not answered with a 500 on every request. A hierarchical model, whose entities are the ones of its flattened model, is not checked.
 - **A run evaluates them with numpy.** A formula which reads a knob of the grid is a value of the dimension of the grid, evaluated at its points at once, and one which reads no knob of the grid is one value of the pre-initialization. The knobs of a grid are one dimension of the points of their product in C order, so a formula of two knobs of the grid has its value at every point, and the rows of the answer are in the C order of the knobs as they are without one.
 
 ### The limits
@@ -211,7 +244,7 @@ The pages above the panels are the declaration of the project of the model (`Pro
 
 What the declaration cannot check itself is checked when the service registers its models, before any request: a page which names a panel the model does not declare and a variant the project does not have are refused at startup, with a message which names them. The declaration of a panel may differ by the variant, so the pages are checked in every variant the app is served in: the default variant of the project and every variant the app names. In each of them, every panel of every page is a panel of the variant, the shared knobs below are declared alike and the scenarios set values of their knobs; the app route answers these variants and refuses another one with a 422.
 
-A knob id which more than one panel of a page declares is one knob of that page: the app shows one control for it above the panels and sets every panel which declares it from that control, so every plot of a page is of the state its controls show: a panel whose run failed says that it cannot draw that state rather than draw another one. The panels must therefore declare such an id alike, field for field, and two panels of one page which declare it differently are refused at startup, with a message which names the model, the page, the knob id, the two panels and the fields which differ, e.g. `The page 'renal' of the app of the model 'hctz' shows the panels 'renal_plasma' and 'renal_urine', which declare the knob 'dose' differently (default); the panels of a page share a knob they both declare, so they must declare it alike.`. The same id on different pages is two knobs, so the HCTZ app declares `dose` as a choice of tablets on its page `renal` and as a range on its page `dose`.
+A knob id which more than one panel of a page declares is one knob of that page: the app shows one control for it above the panels and sets every panel which declares it from that control, so every plot of a page is of the state its controls show: a panel whose run failed says that it cannot draw that state rather than draw another one. The panels must therefore declare such an id alike, field for field, and two panels of one page which declare it differently are refused at startup, with a message which names the model, the page, the knob id, the two panels and the fields which differ, e.g. `The page 'renal' of the app of the model 'hctz' in its variant 'default' shows the panels 'renal_plasma' and 'renal_urine', which declare the knob 'dose' differently (default); the panels of a page share a knob they both declare, so they must declare it alike.`. The same id on different pages is two knobs, so the HCTZ app declares `dose` as a choice of tablets on its page `renal` and as a range on its page `dose`.
 
 A page may declare scenarios (`AppPage.scenarios`, `sbmlsim.panel.Scenario`): named states of its knobs a reader picks from, an id distinct within the page, a label and the values of the knobs it sets, e.g. the example patients of a clinical question or the classes of an impairment. A reader who picks one sets every knob it names at once, and a knob it does not name keeps its value. When it registers its models the service checks that every knob a scenario names is a knob some panel of the page declares, and that its value is a value of that knob in every panel which declares it, inside the bounds of a range knob (a stop or not) and one of the choices of a choice knob, with a message which names the model, the variant, the page, the scenario, the knob and the panel. The shell owns every knob it sets, so a knob a scenario names is one control of the page and in `shared` even when one panel declares it, and the panel shows no control of its own for it. The page `patient` of the example has three patients, a healthy one at 25 mg, a moderate impairment at 25 mg and a severe one at 12.5 mg:
 
@@ -424,7 +457,7 @@ A knob of the grid takes no value, a knob which a request leaves out runs at its
 
 A grid is one request per figure and not one per movement of a knob: a renderer fetches it once and interpolates between its points while a knob moves. A point which did not integrate, a knob value the model does not simulate, is `null` in every curve and its flat index is in `status.failed`; the request stays a 200, since a model which does not integrate everywhere is a fact of the model and no error of the request.
 
-A request may also name the `variant` of the model to simulate (`Project.variants`), which an app switches between, e.g. `{"values": {"crcl": 45.0}, "grid": {}, "variant": "low_reference"}`: the declaration of the panel in that variant runs on the SBML of that variant, so the knobs, the derived targets and the curves are the ones that variant declares. Without one the declaration of the default variant runs on the variant it declares, else on the default variant of the project. A variant the project does not have is a 422 which names the model and its variants, and a panel the variant does not declare is a 404. The `spec_hash` covers the variant and the whole declaration, and `provenance.variant` says which one ran. The declaration and the data routes take the same variant as the query `variant`, so a renderer which switches the variant reads the declaration, the data and the curves of one variant.
+A request may also name the `variant` of the model to simulate (`Project.variants`), which an app switches between, e.g. `{"values": {"crcl": 45.0}, "grid": {}, "variant": "female"}`: the declaration of the panel in that variant runs on the SBML of that variant, so the knobs, the derived targets and the curves are the ones that variant declares. Without one the declaration of the default variant runs on the variant it declares, else on the default variant of the project. A variant the project does not have is a 422 which names the model and its variants, and a panel the variant does not declare is a 404. The `spec_hash` covers the variant and the whole declaration, and `provenance.variant` says which one ran. The declaration and the data routes take the same variant as the query `variant`, so a renderer which switches the variant reads the declaration, the data and the curves of one variant.
 
 The study data of `renal_urine` is `paneldata/1`, on the axis of its curves and in their units:
 
@@ -587,7 +620,7 @@ What a renderer must not rely on:
 | the declaration, the payloads and the limits | `sbmlsim.panel` |
 | the annotation of the SBML, its reader and its writer | `sbmlsim.panel_sbml` |
 | the panels of a model, the overrides of a project and its app | `Project.panels_of`, `Project.panels`, `Project.variant_panels`, `Project.app`, see [Projects](project.md) |
-| the demo of every feature, which the end to end tests of the renderer serve | `examples/panels/hctz.py`, `PROJECT` and `PROJECT_VARIANTS` |
+| the demo of every feature, which the end to end tests of the renderer serve | `examples.panels.hctz:PROJECT`; for the variants `examples.panels.hctz_variants:PROJECT_VARIANTS`, a device of the demo and no pattern to follow |
 | the registry of the models and the runner of their panels | `sbmlsim.serve.runner` |
 | the HTTP API, its bodies and the cache of the answers | `sbmlsim.serve.app`, `sbmlsim.serve.payload`, `sbmlsim.serve.cache` |
 | the study data behind the curves | `sbmlsim.serve.data` |

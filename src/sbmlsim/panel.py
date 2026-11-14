@@ -587,9 +587,16 @@ class Panel(BaseModel):
         Raises:
             ValueError: naming the panel and the limits, for a `y_min` which
                 is not below `y_max`, for a y limit which is not positive on a
-                value axis of the `log` scale and for an `x_max` which is not
-                positive.
+                value axis of the `log` scale, for a y limit of a panel without
+                curves, whose value axis has no unit a limit could be in, and
+                for an `x_max` which is not positive.
         """
+        if not self.curves and (self.y_min is not None or self.y_max is not None):
+            raise ValueError(
+                f"The panel '{self.id}' limits its value axis but draws no curve; "
+                f"a limit of the value axis is in the unit its curves are "
+                f"delivered in."
+            )
         if (
             self.y_min is not None
             and self.y_max is not None
@@ -713,10 +720,9 @@ def panel_payload(panel: Panel) -> dict[str, Any]:
 
     Returns:
         The payload: its `contract`, the texts and the limits of the axes of
-        the `panel`, its knobs as the
-        `axes` of the grid, its `curves`, its `data`, its `simulation` and the
-        `limits` of a request. Plain JSON values only, no object of this
-        package, see `panel_from_payload`.
+        the `panel`, its knobs as the `axes` of the grid, its `curves`, its
+        `data`, its `simulation` and the `limits` of a request. Plain JSON
+        values only, no object of this package, see `panel_from_payload`.
     """
     return {
         "contract": CONTRACT,
@@ -991,9 +997,8 @@ def app_payload(app: App) -> dict[str, Any]:
     Returns:
         The payload: its `contract`, the texts of the app, its `pages` with
         their scenarios, its `variants` and the `citation`, the `doi` and the
-        `licenses` of the
-        provenance footer. Plain JSON values only, no object of this package,
-        see `app_from_payload`.
+        `licenses` of the provenance footer. Plain JSON values only, no object
+        of this package, see `app_from_payload`.
     """
     return {
         "contract": APP_CONTRACT,

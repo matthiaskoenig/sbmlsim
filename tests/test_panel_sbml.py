@@ -23,6 +23,7 @@ from sbmlsim.panel_sbml import (
     PanelProblem,
     panels_from_sbml,
     panels_to_annotation,
+    read_panels,
     write_panels,
 )
 from sbmlsim.project import Project
@@ -210,6 +211,51 @@ def test_a_range_knob_with_named_stops_round_trips_through_the_annotation(
     assert problems == ()
     assert panels == {stopped.id: stopped}
     assert panels[stopped.id].knobs[0].kind == "range"
+
+
+#: a hierarchical model, whose entities are in a submodel
+HIERARCHICAL_SBML = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version1/core"
+      xmlns:comp="http://www.sbml.org/sbml/level3/version1/comp/version1"
+      level="3" version="1" comp:required="true">
+  <model id="top">
+    <comp:listOfSubmodels>
+      <comp:submodel comp:id="sub" comp:modelRef="inner"/>
+    </comp:listOfSubmodels>
+  </model>
+  <comp:listOfModelDefinitions>
+    <comp:modelDefinition id="inner">
+      <listOfParameters>
+        <parameter id="k" value="3" constant="true"/>
+      </listOfParameters>
+    </comp:modelDefinition>
+  </comp:listOfModelDefinitions>
+</sbml>
+"""
+
+
+def test_the_entities_of_a_model_are_read_with_its_panels(
+    tmp_path: Path, panel: Panel
+) -> None:
+    """The ids a pre-initialization can set, with the concentration of a species."""
+    write_panels(SBML_IN, tmp_path / "m.xml", [panel])
+    read = read_panels(tmp_path / "m.xml")
+    assert read.panels == {panel.id: panel}
+    assert read.problems == ()
+    entities = read.entities
+    assert entities is not None
+    # parameters, species, a concentration of a species and a compartment
+    assert {"beta", "n", "PX", "[PX]", "cell"} <= entities
+    # a reaction and an id of nothing are no entity
+    assert "Reaction1" not in entities
+    assert "[beta]" not in entities
+    assert panels_from_sbml(tmp_path / "m.xml") == (read.panels, read.problems)
+
+
+def test_a_hierarchical_model_has_no_entities_read_without_flattening() -> None:
+    read = read_panels(HIERARCHICAL_SBML)
+    assert read.panels == {}
+    assert read.entities is None
 
 
 def test_the_sbml_itself_is_read_as_well(tmp_path: Path, panel: Panel) -> None:

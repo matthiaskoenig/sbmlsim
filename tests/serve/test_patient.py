@@ -1,6 +1,7 @@
 """The page `patient` of the HCTZ demo and its project of two variants.
 
-`examples/panels/hctz.py` is what the end to end tests of sbmlsim-web serve, so
+`examples/panels/hctz.py` and `examples/panels/hctz_variants.py` are what the
+end to end tests of sbmlsim-web serve, so
 these tests hold it to every feature it is there to exercise: a knob without a
 target read by the formula of a derived target, the named stops of a range
 knob and a series of the study data measured at one, the fixed limits of the
@@ -8,27 +9,34 @@ axes, the scenarios of a page and, with `PROJECT_VARIANTS`, a declaration
 which differs by the variant.
 """
 
+import json
+import os
+import subprocess
+import sys
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from examples.panels import hctz
+from examples.panels import hctz, hctz_variants
 from examples.panels.hctz import (
     HCTZ_PATIENT_PLASMA,
     HCTZ_PATIENT_URINE,
-    LOW_REFERENCE,
     PATIENT_PLASMA_MAX,
     PATIENT_URINE_MAX,
     PATIENT_X_MAX,
     PROJECT,
 )
+from examples.panels.hctz_variants import LOW_REFERENCE
 from sbmlsim.panel import Panel
 from sbmlsim.serve.app import create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
 
+#: the root of the repository, which the package `examples` is imported from
+ROOT = Path(__file__).parents[2]
 #: the routes of the page `patient`
 PLASMA = "/api/models/hctz/panels/patient_plasma"
 URINE = "/api/models/hctz/panels/patient_urine"
@@ -37,7 +45,9 @@ URINE = "/api/models/hctz/panels/patient_urine"
 @pytest.fixture(scope="module")
 def variants() -> Iterator[TestClient]:
     """A client of `PROJECT_VARIANTS`, registered as a service registers it."""
-    registry = ModelRegistry.of({"hctz": "examples.panels.hctz:PROJECT_VARIANTS"})
+    registry = ModelRegistry.of(
+        {"hctz": "examples.panels.hctz_variants:PROJECT_VARIANTS"}
+    )
     with TestClient(create_app(registry)) as client:
         yield client
 
@@ -171,14 +181,64 @@ def test_a_simulation_of_a_variant_of_the_demo_runs_its_renal_function(
     assert np.allclose(low, peak({"crcl": 55.0}), rtol=1e-6, atol=1e-12)
 
 
-def test_the_project_of_the_variants_is_made_on_its_first_use() -> None:
-    """Importing the module for `PROJECT` writes no copy of the model."""
-    assert "PROJECT_VARIANTS" not in vars(hctz)
-    assert hctz.PROJECT_VARIANTS is hctz.PROJECT_VARIANTS
-    copy = hctz.PROJECT_VARIANTS.variants[LOW_REFERENCE]
+#: the script of `test_the_project_of_the_variants_is_made_on_its_first_use`:
+#: the device of the copy before and after `PROJECT_VARIANTS` is asked for
+FIRST_USE = """
+import json, pathlib, tempfile
+import examples.panels.hctz_variants as variants
+
+def directories():
+    root = pathlib.Path(tempfile.gettempdir())
+    return sorted(str(path) for path in root.glob(variants.DIRECTORY_PREFIX + "*"))
+
+before = [variants._variants_project.cache_info().currsize, directories()]
+project = variants.PROJECT_VARIANTS
+after = [variants._variants_project.cache_info().currsize, directories()]
+copy = str(project.variants[variants.LOW_REFERENCE])
+print(json.dumps({"before": before, "after": after, "copy": copy}))
+"""
+
+
+def test_the_project_of_the_variants_is_made_on_its_first_use(tmp_path: Path) -> None:
+    """Importing the module writes no copy, asking for the project writes one.
+
+    The process is a fresh interpreter whose temporary directory is `tmp_path`,
+    so nothing of this one or of another test is seen, and the copy is removed
+    when the process ends.
+    """
+    environment = {**os.environ, "TMPDIR": str(tmp_path)}
+    completed = subprocess.run(
+        [sys.executable, "-c", FIRST_USE],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    seen = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert seen["before"] == [0, []]
+    count, directories = seen["after"]
+    assert count == 1
+    assert len(directories) == 1
+    assert Path(seen["copy"]).parent == Path(directories[0])
+    # the process removed its copy when it ended
+    assert not Path(directories[0]).exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_the_documented_example_declares_and_copies_no_model() -> None:
+    """The copy is a device of `hctz_variants` and no part of the example to copy."""
+    assert not hasattr(hctz, "PROJECT_VARIANTS")
+    assert not hasattr(hctz, "__getattr__")
+    assert "tempfile" not in Path(hctz.__file__).read_text(encoding="utf-8")
+
+
+def test_the_copy_of_the_variants_is_the_model_and_no_other_name_is_made() -> None:
+    copy = hctz_variants.PROJECT_VARIANTS.variants[LOW_REFERENCE]
+    assert hctz_variants.PROJECT_VARIANTS is hctz_variants.PROJECT_VARIANTS
     assert copy.read_bytes() == PROJECT.variants["default"].read_bytes()
     with pytest.raises(AttributeError, match="PROJECT_VARIANTZ"):
-        _ = hctz.PROJECT_VARIANTZ
+        _ = hctz_variants.PROJECT_VARIANTZ
 
 
 @pytest.fixture(scope="module")
