@@ -112,9 +112,9 @@ def test_the_study_data_of_a_variant_is_the_one_it_declares(
     loads: list[Path] = []
     original = runner_module._load
 
-    def counted(entry: ModelEntry, path: Path) -> Any:
+    def counted(entry: ModelEntry, path: Path, sha256: str) -> Any:
         loads.append(path)
-        return original(entry, path)
+        return original(entry, path, sha256)
 
     monkeypatch.setattr(runner_module, "_load", counted)
     default = client.get(DATA).json()

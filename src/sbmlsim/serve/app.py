@@ -77,7 +77,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 import sbmlsim
-from sbmlsim.hashing import canonical_json_sha256, file_sha256
+from sbmlsim.hashing import canonical_json_sha256
 from sbmlsim.panel import CONTRACT, Panel, panel_payload
 from sbmlsim.serve.cache import ResponseCache
 from sbmlsim.serve.data import panel_data
@@ -282,8 +282,6 @@ def create_app(
     #: the answers of the simulations of this application alone, see
     #: `sbmlsim.serve.cache`
     cache = ResponseCache()
-    #: the sha256 of every SBML file which was simulated, by its resolved path
-    hashes: dict[Path, str] = {}
 
     def resolved(
         model_id: str, panel_id: str, variant: str | None = None
@@ -316,11 +314,7 @@ def create_app(
             path = entry.project.variant_path(
                 panel.simulation.variant if variant is None else variant
             ).resolve()
-            sha = hashes.get(path)
-            if sha is None:
-                sha = file_sha256(path)
-                hashes[path] = sha
-            return entry, panel, sha
+            return entry, panel, runner.sha256(path)
         except UnknownModel, UnknownPanel, UnknownVariant:
             raise
         except Exception:

@@ -898,9 +898,9 @@ def loads(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Path]]:
     real = runner_module._load
     recorded: list[tuple[str, Path]] = []
 
-    def record(entry: ModelEntry, path: Path) -> runner_module._Warm:
+    def record(entry: ModelEntry, path: Path, sha256: str) -> runner_module._Warm:
         recorded.append((entry.id, path))
-        return real(entry, path)
+        return real(entry, path, sha256)
 
     monkeypatch.setattr(runner_module, "_load", record)
     return recorded
@@ -971,10 +971,10 @@ def test_a_warm_model_does_not_wait_for_a_model_which_is_loading(
     real = runner_module._load
     loading, release, read = (threading.Event() for _ in range(3))
 
-    def parked(entry: ModelEntry, path: Path) -> runner_module._Warm:
+    def parked(entry: ModelEntry, path: Path, sha256: str) -> runner_module._Warm:
         loading.set()
         release.wait(PARKED)
-        return real(entry, path)
+        return real(entry, path, sha256)
 
     monkeypatch.setattr(runner_module, "_load", parked)
     results: list[PanelResult] = []

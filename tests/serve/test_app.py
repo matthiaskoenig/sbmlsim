@@ -787,3 +787,27 @@ def test_the_provenance_of_a_response_always_names_its_variant() -> None:
     assert Provenance(**fields, variant="default").variant == "default"
     with pytest.raises(ValidationError):
         Provenance(**fields, variant=None)  # ty: ignore[invalid-argument-type]
+
+
+def test_the_hash_of_the_sbml_has_one_source(
+    registry: ModelRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hash of a request, its provenance and the warm model read one value.
+
+    The file is hashed once, by the runner, and every reader takes that value,
+    so a file rewritten between two reads never gives a request the hash of
+    another file than the one its model was loaded from.
+    """
+    hashed: list[Path] = []
+
+    def fake(path: Path) -> str:
+        hashed.append(path)
+        return "a" * 64
+
+    monkeypatch.setattr("sbmlsim.serve.runner.file_sha256", fake)
+    app = create_app(registry)
+    with TestClient(app) as client:
+        assert client.get(PANEL).status_code == 200
+        body = client.post(SIMULATE, json={}).json()
+    assert body["provenance"]["model_sha256"] == "a" * 64
+    assert len(hashed) == 1

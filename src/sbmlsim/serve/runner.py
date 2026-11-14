@@ -1120,6 +1120,8 @@ class PanelRunner:
         self._in_runner: dict[str, int] = {}
         #: the lock of `_in_runner`, never held over anything slow
         self._admission = threading.Lock()
+        #: the sha256 of every SBML file by its resolved path, see `sha256`
+        self._hashes: dict[Path, str] = {}
         #: the warm model of every model id and SBML file, see `_warm_model`
         self._warm: dict[_WarmKey, _Warm] = {}
         #: the lock of the load of one such key, see `_warm_model`
@@ -1135,6 +1137,29 @@ class PanelRunner:
     def __repr__(self) -> str:
         """Get the representation."""
         return f"PanelRunner({self.registry!r})"
+
+    def sha256(self, path: Path) -> str:
+        """Get the sha256 of an SBML file, the one source of it in the service.
+
+        A file is hashed once, when it is first asked for, and the hash is
+        kept for the life of the runner: the hash of a request
+        (`sbmlsim.serve.app`), the provenance of its answer and the key of the
+        warm model which runs it (`_load`) are this one value, so a file which
+        is rewritten while the service runs never gives a request the hash of
+        another file than the model it simulates. A rewritten model is served
+        by a service which is started again.
+
+        Args:
+            path: the resolved path of the SBML file.
+
+        Returns:
+            The sha256 of the file as it was when it was first asked for.
+        """
+        sha = self._hashes.get(path)
+        if sha is None:
+            # `setdefault`, so two threads which hash one file at once agree
+            sha = self._hashes.setdefault(path, file_sha256(path))
+        return sha
 
     @contextmanager
     def _admitted(self, model_id: str) -> Generator[None]:
@@ -1343,7 +1368,7 @@ class PanelRunner:
         with self._loads.setdefault(key, threading.Lock()):
             warm = self._warm.get(key)
             if warm is None:
-                warm = _load(entry, path)
+                warm = _load(entry, path, self.sha256(path))
                 self._warm[key] = warm
                 logger.info(
                     "The model '%s' is loaded from '%s' and stays warm.",
@@ -1353,24 +1378,24 @@ class PanelRunner:
             return warm
 
 
-def _load(entry: ModelEntry, path: Path) -> _Warm:
+def _load(entry: ModelEntry, path: Path, sha256: str) -> _Warm:
     """Load the model of an entry from an SBML file with its simulator.
 
     The model is loaded in the engine and at the optimization level of the
     project and the simulator is the serial one of its settings, so a project
     which pins an engine or the tolerances of its integrator is honoured. The
-    SBML is hashed before it is loaded, so a file which is rewritten during
-    the load gives a hash of another model and never the hash of this one to
-    a model of another file.
+    SBML was hashed before it is loaded (`PanelRunner.sha256`), so a file which
+    is rewritten during the load gives a hash of another model and never the
+    hash of this one to a model of another file.
 
     Args:
         entry: the entry of the model.
         path: the SBML file of the variant, see `PanelRunner._warm_model`.
+        sha256: the sha256 of the file, see `PanelRunner.sha256`.
 
     Returns:
         The warm model.
     """
-    sha256 = file_sha256(path)
     settings = entry.project.simulator
     simulator = settings.simulator(n_workers=1)
     model = simulator.load(
