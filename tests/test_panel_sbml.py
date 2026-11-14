@@ -698,3 +698,14 @@ def test_a_panel_keyed_by_another_id_than_its_own_is_refused(
             variants={"default": Path("m.xml")},
             variant_panels={"default": {"b": minimal}},
         )
+
+
+def test_two_panels_of_one_id_are_refused_and_nothing_is_written(
+    tmp_path: Path, panel: Panel
+) -> None:
+    """A reader keeps the first panel of an id, so the writer refuses a second."""
+    with pytest.raises(ValueError, match=r"repeat the ids \['oscillation'\]"):
+        panels_to_annotation([panel, panel])
+    with pytest.raises(ValueError, match=r"repeat the ids \['oscillation'\]"):
+        write_panels(SBML_IN, tmp_path / "m.xml", [panel, panel])
+    assert not (tmp_path / "m.xml").exists()
