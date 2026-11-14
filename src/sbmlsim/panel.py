@@ -985,7 +985,9 @@ class App(BaseModel):
             order they are shown; none means the default variant of the
             project alone.
         citation: the citation of the model, shown in the provenance footer of
-            a page; free text, e.g. `"König et al. (2026)"`.
+            a page; free text, e.g. `"König et al. (2026)"`, and for a released
+            model the citation of its release,
+            `sbmlsim.release.settings.ReleaseSettings.citation(markdown=False)`.
         doi: the DOI of the model, shown in that footer; free text.
         licenses: the licenses of the model and its data, shown in that
             footer; free text, e.g. `("CC BY-SA 4.0",)`.

@@ -5,6 +5,7 @@ The module uses the standard library only, so importing the project of a model
 package stays light.
 """
 
+import datetime
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, fields
@@ -152,6 +153,35 @@ class ReleaseSettings:
     def raw_url(self) -> str:
         """The base URL of the raw files of the main branch."""
         return f"https://raw.githubusercontent.com/{self.repository}/main/"
+
+    def citation(self, year: int | None = None, *, markdown: bool = True) -> str:
+        """Get the citation of the release, the one formatter of it.
+
+        It is the citation the README and the docs of a release repository
+        carry (`sbmlsim.release.docs.citation`) and the one an app of the model
+        shows in its provenance footer (`sbmlsim.panel.App.citation`): the
+        authors as `"Family, G."`, the last joined with `&`, the year, the
+        title, Zenodo and the DOI.
+
+        Args:
+            year: the year of the release; the current year without, which is
+                the year a release which is built now carries.
+            markdown: the title in the emphasis of markdown, as the README and
+                the docs have it; `False` for the plain text of a footer.
+
+        Returns:
+            The citation, e.g. `"König, M. (2026). *A model*. Zenodo.
+            https://doi.org/10.5281/zenodo.1"`.
+        """
+        names = [author.citation_name for author in self.authors]
+        authors = (
+            "".join(names)
+            if len(names) <= 1
+            else ", ".join(names[:-1]) + " & " + names[-1]
+        )
+        when = datetime.date.today().year if year is None else year
+        title = f"*{self.title}*" if markdown else self.title
+        return f"{authors} ({when}). {title}. Zenodo. https://doi.org/{self.doi}"
 
     def missing(self) -> list[str]:
         """Get the names of the fields a release lacks, sorted.
