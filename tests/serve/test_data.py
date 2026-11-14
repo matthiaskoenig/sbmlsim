@@ -28,6 +28,7 @@ from pydantic import ValidationError
 from examples.panels.hctz import HCTZ_RENAL_URINE, MR_HCTZ, URINE
 from sbmlsim.panel import Panel, PanelCurve, PanelData, PanelSimulation
 from sbmlsim.project import Project
+from sbmlsim.serve import app as app_module
 from sbmlsim.serve.app import FAILED, create_app
 from sbmlsim.serve.data import PanelSeries, panel_data
 from sbmlsim.serve.payload import DATA_CONTRACT
@@ -588,3 +589,22 @@ def test_a_column_the_dataset_has_not_is_refused(
     message = str(error.value)
     assert URINE.id in message
     assert ".tsv" not in message
+
+
+def test_the_study_data_of_a_panel_is_read_once(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The data and the declaration do not change while a service runs."""
+    calls: list[str] = []
+    real = app_module.panel_data
+
+    def counted(entry: ModelEntry, panel: Panel, units: Any) -> Any:
+        calls.append(panel.id)
+        return real(entry, panel, units)
+
+    monkeypatch.setattr(app_module, "panel_data", counted)
+    first = client.get(DATA)
+    second = client.get(DATA)
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert calls == ["renal_urine"]

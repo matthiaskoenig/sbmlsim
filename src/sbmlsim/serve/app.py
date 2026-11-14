@@ -60,6 +60,7 @@ import logging
 import re
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 import weakref
@@ -282,6 +283,12 @@ def create_app(
     #: the answers of the simulations of this application alone, see
     #: `sbmlsim.serve.cache`
     cache = ResponseCache()
+    #: the study data of every panel which was asked for, by the model, the
+    #: variant of the request and the panel, see `data_of`; a declaration and
+    #: the data of a project do not change while a service runs, and the keys
+    #: are the panels the models declare, so it is bounded by them
+    series_of: dict[tuple[str, str | None, str], PanelDataResponse] = {}
+    series_lock = threading.Lock()
 
     def resolved(
         model_id: str, panel_id: str, variant: str | None = None
@@ -450,7 +457,9 @@ def create_app(
 
         The data is read from the data of the project of the model, so the
         route is a sync `def` and reads the files in the thread pool of the
-        server, as `panel_of` does.
+        server, as `panel_of` does. It is read and converted once per model,
+        variant and panel and kept by the application, since neither the
+        declaration nor the data of a project changes while it serves.
 
         The series are delivered in the units of the panel
         (`PanelRunner.units`), which the model of the panel resolves: the
@@ -486,6 +495,11 @@ def create_app(
         entry, declaration, _ = resolved(model, panel, variant)
         if not declaration.data:
             return PanelDataResponse(series=[])
+        key = (model, variant, panel)
+        with series_lock:
+            kept = series_of.get(key)
+        if kept is not None:
+            return kept
         try:
             units = runner.units(entry, declaration, variant)
             series = panel_data(entry, declaration, units)
@@ -498,7 +512,10 @@ def create_app(
                 model,
             )
             raise HTTPException(status_code=500, detail=FAILED) from None
-        return PanelDataResponse(series=[SeriesPayload.of(one) for one in series])
+        response = PanelDataResponse(series=[SeriesPayload.of(one) for one in series])
+        with series_lock:
+            series_of[key] = response
+        return response
 
     @app.post("/api/models/{model}/panels/{panel}/simulate")
     def simulate(model: str, panel: str, request: SimulateRequest) -> SimulateResponse:
