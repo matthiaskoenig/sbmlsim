@@ -148,7 +148,7 @@ A model whose SBML we do not own is covered by `Project.panels`, a mapping of pa
 | --- | --- | --- |
 | `end` | 10000.0 | the end of the simulation of a panel, in the time unit of its model |
 | `points` | 2000 | the output steps of that simulation, whose run answers one time more |
-| `knobs` | 4 | the knobs of a panel, which are the axes one request may grid over |
+| `knobs` | 8 | the knobs of a panel, which are the axes one request may grid over; the work of a request is bounded by `grid` and `points`, and a knob which is not gridded is one value of the pre-initialization |
 | `grid` | 64 | the points of one axis, and the product of the axes of one request |
 | `curves` | 16 | the curves of a panel |
 
@@ -306,7 +306,7 @@ The declaration of a panel is its `panel/1` payload, here the one of `renal_urin
     "x_unit": "hr",
     "preinit": {"BW": 75.0}
   },
-  "limits": {"end": 10000.0, "points": 2000, "knobs": 4, "grid": 64, "curves": 16}
+  "limits": {"end": 10000.0, "points": 2000, "knobs": 8, "grid": 64, "curves": 16}
 }
 ```
 

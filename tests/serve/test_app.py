@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
 from examples.panels.hctz import EGFR_STAGES, END, POINTS
-from sbmlsim.panel import CONTRACT, Panel
+from sbmlsim.panel import CONTRACT, MAX_KNOBS, Panel
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
@@ -350,7 +350,7 @@ def test_an_unknown_model_or_panel_is_404(client: TestClient) -> None:
         {"values": {}, "grid": {"egfr": 100}},
         {"values": {}, "grid": {"egfr": 0}},
         {"values": {}, "grid": {"egfr": 9, "dose": 8}},
-        {"values": {}, "grid": {"a": 2, "b": 2, "c": 2, "d": 2, "e": 2}},
+        {"values": {}, "grid": {f"k{i}": 1 for i in range(MAX_KNOBS + 1)}},
         {"values": {str(knob): 1.0 for knob in range(10_000)}, "grid": {}},
     ],
 )

@@ -527,6 +527,29 @@ def test_more_curves_than_the_limit_are_refused() -> None:
         Panel(id="p", title="p", curves=curves, simulation=PanelSimulation(end=1.0))
 
 
+def test_a_panel_of_eight_knobs_is_accepted_and_of_more_is_refused() -> None:
+    """A knob which is not gridded is one value, the grid bounds the work."""
+    assert MAX_KNOBS == 8
+
+    def knobs(n: int) -> tuple[Knob, ...]:
+        return tuple(
+            EGFR.model_copy(update={"id": f"k{i}", "target": f"p{i}"}) for i in range(n)
+        )
+
+    def build(n: int) -> Panel:
+        return Panel(
+            id="p",
+            title="p",
+            knobs=knobs(n),
+            curves=(PanelCurve(id="[S1]", label="S1"),),
+            simulation=PanelSimulation(end=1.0),
+        )
+
+    assert len(build(MAX_KNOBS).knobs) == MAX_KNOBS
+    with pytest.raises(ValidationError, match="at most 8"):
+        build(MAX_KNOBS + 1)
+
+
 def test_a_panel_is_frozen_and_forbids_unknown_fields(panel: Panel) -> None:
     with pytest.raises(ValidationError):
         panel.title = "another title"

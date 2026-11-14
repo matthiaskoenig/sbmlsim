@@ -70,8 +70,10 @@ APP_CONTRACT: Final = "app/1"
 MAX_END: Final = 10000.0
 #: the most output points of the simulation of a panel
 MAX_POINTS: Final = 2000
-#: the most knobs a request may grid over
-MAX_KNOBS: Final = 4
+#: the most knobs of a panel, which are the most a request may set or grid
+#: over; the work of a request is bounded by `MAX_GRID` and `MAX_POINTS`, and a
+#: knob which is not gridded is one value of the pre-initialization
+MAX_KNOBS: Final = 8
 #: the largest product of the sizes of the grid of a request
 MAX_GRID: Final = 64
 #: the most curves of a panel
