@@ -321,11 +321,18 @@ def _initialize_worker(
     handles it and stops a pool whose run it interrupts, see `stop`. On POSIX
     the worker started with SIGINT blocked, see `_SigintBlocked`: ignoring it
     discards a SIGINT which arrived since, and it is unblocked again.
+
+    SIGTERM is unblocked as well. A worker of `forkserver` has the mask of the
+    thread which started the forkserver, and a thread which blocks SIGTERM -
+    a thread of a library, or of a test runner, which started the first pool -
+    would give every worker of the process SIGTERM blocked: a pool which broke
+    terminates its workers with it and waits for them, and waited forever for
+    a worker which never received it.
     """
     _end_with_the_parent()
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sys.platform != "win32":
-        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT, signal.SIGTERM})
     if initializer is not None:
         initializer(*initargs)
 
