@@ -483,14 +483,18 @@ def test_a_reset_after_an_initialization_leaves_the_model_as_loaded(
         )
         model.reset()
         np.testing.assert_array_equal(_values(model), loaded)
-    # a failed initialization, which the next one sets back
-    with pytest.raises(ZeroDivisionError):
+    # a failed initialization, which the next one sets back: the formula reads
+    # a selection the model has not, after the values were set (a division by
+    # zero is infinite, as in the math of SBML, and does not fail)
+    with pytest.raises(RuntimeError, match="no_such_entity"):
         model.initialize(
             [
                 _a("FVpa", fraction),
                 _a("[S]", concentration, TargetKind.SPECIES_CONCENTRATION),
                 Assignment(
-                    target="Fblood", kind=TargetKind.PARAMETER, formula="1 / (BW - 75)"
+                    target="Fblood",
+                    kind=TargetKind.PARAMETER,
+                    formula="1 / (BW - 75) + no_such_entity",
                 ),
             ]
         )
