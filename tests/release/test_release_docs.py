@@ -25,6 +25,7 @@ from sbmlsim.release.docs import PAGES, pages, write_docs
 from sbmlsim.release.hooks import ReleaseHook
 from sbmlsim.release.notes import fits_prefix
 from sbmlsim.release.project import ProjectContext, write_project_files
+from sbmlsim.release.settings import Author
 from tests.credibility.tables import (
     PROVENANCE,
     battery_of,
@@ -792,3 +793,32 @@ def test_the_hook_adds_between_the_uncertainty_and_the_variability(
     variability = dose.index("Variability, the visual predictive check")
     assert uncertainty < inputs < variability
     assert "\n\n\n" not in page
+
+
+def test_the_citation_of_a_release_is_the_one_of_its_settings(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    """The README and the docs carry `ReleaseSettings.citation`, which an app shows."""
+    context, path = release
+    settings = dataclasses.replace(
+        context.settings,
+        authors=(
+            Author("Myshkina, Mariia"),
+            Author("Chang, Lin"),
+            Author("König, Matthias"),
+        ),
+    )
+    context = dataclasses.replace(context, settings=settings)
+    write_project_files(context, path)
+    write_docs(context, path)
+    expected = settings.citation(context.year)
+    assert expected == (
+        "Myshkina, M., Chang, L. & König, M. (2026). *Toy model of the decay of a "
+        "substance*. Zenodo. https://doi.org/10.5281/zenodo.0000000"
+    )
+    readme = (path / "README.md").read_text(encoding="utf-8")
+    index = (path / "docs" / "index.md").read_text(encoding="utf-8")
+    assert f"> {expected}" in readme
+    assert f"> {expected}" in index
+    # the plain text of the footer of an app is the same citation
+    assert settings.citation(context.year, markdown=False) == expected.replace("*", "")

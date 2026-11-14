@@ -409,8 +409,13 @@ class BenchmarkProblem:
             timeout = None
         if timeout is not None:
             previous = signal.signal(signal.SIGALRM, _timeout)
-            signal.setitimer(signal.ITIMER_REAL, timeout)
         try:
+            # the timer is armed inside the block which catches it: a short
+            # time on a loaded machine expires while the call which arms it
+            # returns, and a timeout raised outside the block would leave the
+            # run without its result and the handler installed
+            if timeout is not None:
+                signal.setitimer(signal.ITIMER_REAL, timeout)
             return self._run(llh_reference, settings, timings)
         except ProblemTimeout as err:
             return BenchmarkResult(

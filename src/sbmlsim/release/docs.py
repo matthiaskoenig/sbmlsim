@@ -199,12 +199,6 @@ def badges(context: ProjectContext) -> list[Badge]:
     ]
 
 
-def _join(names: list[str], last: str) -> str:
-    if len(names) <= 1:
-        return "".join(names)
-    return ", ".join(names[:-1]) + last + names[-1]
-
-
 def citation(context: ProjectContext) -> str:
     """Get the citation of the release.
 
@@ -212,14 +206,10 @@ def citation(context: ProjectContext) -> str:
         context: the project context.
 
     Returns:
-        The authors, the year, the title and the DOI of the Zenodo record.
+        The authors, the year, the title and the DOI of the Zenodo record, see
+        `sbmlsim.release.settings.ReleaseSettings.citation`.
     """
-    settings = context.settings
-    authors = _join([a.citation_name for a in settings.authors], " & ")
-    return (
-        f"{authors} ({context.year}). *{context.settings.title}*. Zenodo. "
-        f"https://doi.org/{settings.doi}"
-    )
+    return context.settings.citation(context.year)
 
 
 def _number(value: float | None) -> str:

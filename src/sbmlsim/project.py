@@ -44,6 +44,7 @@ directory of the records of the adopted fits (`Project.fits_dir`):
 import dataclasses
 import importlib
 import json
+import logging
 import re
 import shutil
 import sys
@@ -64,6 +65,7 @@ from pydantic import (
 
 from sbmlsim.atomic import write_text_atomic
 from sbmlsim.engine import Engine, JitOptimization
+from sbmlsim.panel import App, Panel
 from sbmlsim.reference import check_reference
 from sbmlsim.release.settings import ReleaseSettings
 from sbmlsim.simulation import Observable, Scan, Simulation
@@ -81,6 +83,7 @@ if TYPE_CHECKING:
     from sbmlsim.fit.cli import FitDefinition
     from sbmlsim.fit.records import AdoptedRecords
     from sbmlsim.model.tolerances import AbsoluteTolerance
+    from sbmlsim.panel_sbml import ModelPanels
     from sbmlsim.plot.plotting import FigureSettings
     from sbmlsim.release.hooks import ReleaseHook
     from sbmlsim.simulator import Simulator
@@ -116,6 +119,8 @@ __all__ = [
     "same_sbml",
     "write_adopted",
 ]
+
+logger = logging.getLogger(__name__)
 
 #: the formats of the figures which a run of experiments with `collect_figures`
 #: copies into `FIGURES_DIR` of its output, see `Project.run_experiments`
@@ -312,6 +317,23 @@ class _Resolved(dict[tuple[str | None, str], Any]):
     def __eq__(self, other: object) -> bool:
         """Every cache equals every other one."""
         return isinstance(other, _Resolved)
+
+    __hash__ = None
+
+
+class _Panels(dict[Path, "ModelPanels"]):
+    """The panels of the annotations of the models of a project, by their path.
+
+    A cache, which is no part of the value of a project, as `_Resolved` is:
+    two projects are equal whatever they read, and the panels of a model and
+    its entities (`sbmlsim.panel_sbml.ModelPanels`) are keyed by the resolved
+    path of its SBML.
+    """
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        """Every cache equals every other one."""
+        return isinstance(other, _Panels)
 
     __hash__ = None
 
@@ -801,6 +823,23 @@ class Project(BaseModel):
             it a domain can claim and the evidence extensions of the
             credibility of the project.
         scans: the scans by their name.
+        panels: the interactive panels of the model by their id, each key
+            the `id` of its panel, see `sbmlsim.panel`: the override for a model whose SBML carries no
+            panel annotation; a panel of an id which the annotation declares
+            as well wins over the annotated one. It is the override of every
+            variant.
+        variant_panels: the override of the panels of one variant, by the
+            name of the variant and the id of the panel, laid over `panels`
+            for that variant (`panels_of`); every name is a variant of the
+            project. The declaration of a panel in a variant is the one of the
+            SBML of that variant, and this is the override of a checkout whose
+            SBML of a variant carries no annotation, e.g. one which was not
+            built again.
+        app: the app of the model, the pages of its panels and the variants a
+            reader switches between, see `sbmlsim.panel.App`; `None` for a
+            model without one. The pages are the project's and no part of the
+            SBML: a page is a list of panel ids, which the service checks
+            against the panels of the model when it registers it.
         uncertainties: the uncertainty analyses by their name.
         sensitivities: the sensitivity analyses of the model over the groups
             of its simulations by their name, see
@@ -841,6 +880,9 @@ class Project(BaseModel):
     credibility: Any = None
     credibility_settings: CredibilitySettings = CredibilitySettings()
     scans: Mapping[str, ScanAnalysis] = {}
+    panels: dict[str, Panel] = {}
+    variant_panels: dict[str, dict[str, Panel]] = {}
+    app: App | None = None
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
     sensitivities: Mapping[str, Any] = {}
     actions: Mapping[str, ProjectAction] = {}
@@ -852,6 +894,8 @@ class Project(BaseModel):
 
     #: the objects of the references, resolved on their first use
     _resolved: _Resolved = PrivateAttr(default_factory=_Resolved)
+    #: the panels of the annotations of the models, read on their first use
+    _panels: _Panels = PrivateAttr(default_factory=_Panels)
 
     # ------------------------------------------------------------------------
     # validation
@@ -1072,6 +1116,58 @@ class Project(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _check_panel_ids(self) -> Self:
+        """Check that every panel of `panels` and `variant_panels` is keyed by its id.
+
+        A panel is served under its key (`panels_of`) and answers its own `id`
+        in its declaration, so a key which is not that id would serve one panel
+        under the id of another.
+
+        Raises:
+            ValueError: naming the keys and the ids, for panels whose key is not
+                their id.
+        """
+        declared = [
+            (where, key, panel.id)
+            for where, panels in (
+                ("panels", self.panels),
+                *(
+                    (f"variant_panels['{variant}']", panels)
+                    for variant, panels in self.variant_panels.items()
+                ),
+            )
+            for key, panel in panels.items()
+            if key != panel.id
+        ]
+        if declared:
+            named = "; ".join(
+                f"{where}: '{key}' is the panel '{panel_id}'"
+                for where, key, panel_id in declared
+            )
+            raise ValueError(
+                f"The project '{self.name}' keys panels by another id than their "
+                f"own ({named}); a panel is keyed by its id."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_variant_panels(self) -> Self:
+        """Check that the panels of a variant are the panels of a variant.
+
+        Raises:
+            ValueError: naming the names and the variants, for panels of a
+                name which is no variant of the project.
+        """
+        unknown = sorted(set(self.variant_panels).difference(self.variants))
+        if unknown:
+            raise ValueError(
+                f"The project '{self.name}' declares the panels of the variants "
+                f"{unknown}, which it does not have; its variants are "
+                f"{sorted(self.variants)}."
+            )
+        return self
+
     def replace(self, **changes: Any) -> Self:
         """Get a copy of the project with other fields, validated again.
 
@@ -1115,10 +1211,11 @@ class Project(BaseModel):
 
     @override
     def __getstate__(self) -> dict[Any, Any]:
-        """Get the state of a project without its resolved references."""
+        """Get the state of a project without its caches."""
         state = super().__getstate__()
         private = dict(state.get("__pydantic_private__") or {})
         private["_resolved"] = _Resolved()
+        private["_panels"] = _Panels()
         state["__pydantic_private__"] = private
         return state
 
@@ -1180,6 +1277,100 @@ class Project(BaseModel):
         return model_roadrunner.load_roadrunner(
             self.variant_path(variant), self.simulator.jit_optimization
         )
+
+    def panels_of(self, variant: str | None = None) -> dict[str, Panel]:
+        """Get the interactive panels of a variant of the model.
+
+        The panels of a model are declared in an annotation of its SBML
+        (`sbmlsim.panel_sbml`), so that they travel with the model, and the
+        declaration of a panel in a variant is the one of the SBML of that
+        variant, so two builds of a model may declare one panel differently.
+        `panels` is the declaration of the project for every variant and
+        `variant_panels` the one for this variant, which win per id in that
+        order, for a model whose SBML carries none. The panels of a variant
+        are read once and kept, by the path of its SBML.
+
+        A panel of the annotation which cannot be read is logged and left out,
+        so a malformed annotation does not take the project down; a caller
+        which needs the problems themselves reads them with
+        `sbmlsim.panel_sbml.panels_from_sbml`.
+
+        Args:
+            variant: the name of the variant, the first variant without.
+
+        Returns:
+            The panels by their id: the annotated ones in their order, then
+            the ones of `panels` and then the ones of `variant_panels` of the
+            variant, each of an id which is not one of the ones before it
+            after them.
+
+        Raises:
+            ValueError: if the project has no model variants, or if the SBML
+                of the variant is no model.
+            KeyError: for an unknown variant.
+            FileNotFoundError: if the SBML of the variant is no file.
+        """
+        name = next(iter(self.variants), None) if variant is None else variant
+        return {
+            **self._model_panels(variant).panels,
+            **self.panels,
+            **self.variant_panels.get(name or "", {}),
+        }
+
+    def model_entities(self, variant: str | None = None) -> frozenset[str] | None:
+        """Get the ids a pre-initialization of a variant of the model can set.
+
+        They are read from the SBML of the variant together with its panels
+        (`sbmlsim.panel_sbml.read_panels`), once, so a check of the targets of
+        the panels reads nothing more and loads no model.
+
+        Args:
+            variant: the name of the variant, the first variant without.
+
+        Returns:
+            The ids, see `sbmlsim.panel_sbml.ModelPanels.entities`; `None`
+            for a hierarchical model.
+
+        Raises:
+            ValueError: if the project has no model variants, or if the SBML
+                of the variant is no model.
+            KeyError: for an unknown variant.
+            FileNotFoundError: if the SBML of the variant is no file.
+        """
+        return self._model_panels(variant).entities
+
+    def _model_panels(self, variant: str | None) -> ModelPanels:
+        """Get what the SBML of a variant declares, read once and kept.
+
+        A panel of the annotation which cannot be read is logged when the
+        SBML is read, see `panels_of`.
+
+        Args:
+            variant: the name of the variant, the first variant without.
+
+        Returns:
+            The panels of the annotation and the entities of the model.
+
+        Raises:
+            ValueError: if the project has no model variants, or if the SBML
+                of the variant is no model.
+            KeyError: for an unknown variant.
+            FileNotFoundError: if the SBML of the variant is no file.
+        """
+        from sbmlsim import panel_sbml
+
+        path = self.variant_path(variant).resolve()
+        if path not in self._panels:
+            read = panel_sbml.read_panels(path)
+            for problem in read.problems:
+                logger.warning(
+                    "The panel '%s' of the model '%s' is left out: %s",
+                    problem.panel_id,
+                    path,
+                    problem.reason,
+                )
+            self._panels[path] = read
+        return self._panels[path]
 
     def load_factory(self) -> Callable[[Path], Any]:
         """Get the function which builds the models.

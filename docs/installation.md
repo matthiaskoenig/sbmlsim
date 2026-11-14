@@ -73,7 +73,7 @@ Now continue with the [Tutorial](tutorial.md).
 
 ## Optional packages
 
-Five features need packages which are not installed with `sbmlsim`; install them into the environment of `sbmlsim`, where the installed build of libroadrunner satisfies the requirement, so the index is needed only when the install upgrades libroadrunner (`--extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/`, or a uv project with the index as in [With uv](#with-uv)):
+Six features need packages which are not installed with `sbmlsim`; install them into the environment of `sbmlsim`, where the installed build of libroadrunner satisfies the requirement, so the index is needed only when the install upgrades libroadrunner (`--extra-index-url https://matthiaskoenig.github.io/roadrunner-wheels/simple/`, or a uv project with the index as in [With uv](#with-uv)):
 
 | feature | install |
 | --- | --- |
@@ -82,6 +82,7 @@ Five features need packages which are not installed with `sbmlsim`; install them
 | COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [COPASI](simulation.md#copasi)) | `pip install "sbmlsim[copasi]"` |
 | AMICI as a third simulation engine (`Simulator(engine="amici")`, see [AMICI](simulation.md#amici)) | `pip install "sbmlsim[amici]"` |
 | the analyses as task types of [simrun](https://github.com/matthiaskoenig/simrun), which runs them on a cluster (see [simrun](run.md#simrun)) | `pip install "sbmlsim[simrun]"` |
+| the service of the interactive panels of a model, `python -m sbmlsim.serve` ([fastapi](https://fastapi.tiangolo.com), [uvicorn](https://www.uvicorn.org), [anyio](https://anyio.readthedocs.io) and [httpx2](https://pypi.org/project/httpx2/), see [Interactive panels](serve.md)) | `pip install "sbmlsim[web]"` |
 
 AMICI has no wheels and is built from source when it is installed. It needs a C++ compiler, a BLAS library with its `cblas` header and the headers of HDF5 from the system, e.g. on Debian or Ubuntu:
 

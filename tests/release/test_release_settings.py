@@ -1,5 +1,7 @@
 """Tests of the release metadata of a model."""
 
+import datetime
+
 import pytest
 
 from sbmlsim.release.settings import Author, ReleaseSettings
@@ -89,3 +91,18 @@ def test_title_required() -> None:
 def test_the_toy_has_a_complete_release() -> None:
     assert PROJECT.release is not None
     assert PROJECT.release.missing() == []
+
+
+def test_the_citation_joins_the_authors_and_names_the_year() -> None:
+    authors = [Author("A, Bea"), Author("C, Dan"), Author("Consortium")]
+    settings = make_settings(authors=authors)
+    assert settings.citation(2026) == (
+        "A, B., C, D. & Consortium (2026). *A model of hydrochlorothiazide*. "
+        "Zenodo. https://doi.org/10.5281/zenodo.15427418"
+    )
+    assert make_settings().citation(2025, markdown=False) == (
+        "König, M. (2025). A model of hydrochlorothiazide. Zenodo. "
+        "https://doi.org/10.5281/zenodo.15427418"
+    )
+    # without a year, the year of a release which is built now
+    assert f"({datetime.date.today().year})" in make_settings().citation()

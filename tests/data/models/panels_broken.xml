@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model id="panels_broken" name="two panels, the second one malformed">
+    <annotation>
+      <panels xmlns="https://sbmlsim.org/ns/panel/1">
+        <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time after the dose" yLabel="plasma concentration" yMax="2" xMax="24">
+          <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
+            <preinit target="BW" value="75"/>
+            <derived target="f_renal_function" formula="min(crcl / 110, 1)"/>
+          </simulation>
+          <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
+          <knob id="crcl" label="creatinine clearance" unit="ml/min" kind="range" min="10" max="150" steps="8" default="110">
+            <option label="normal" value="110"/>
+            <option label="severe impairment" value="20"/>
+          </knob>
+          <curve id="[Cve_hctz]" label="hctz, plasma" unit="uM" scale="linear"/>
+          <data id="vormfelde2006" label="Vormfelde 2006" curve="[Cve_hctz]" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
+            <select column="label" value="hctz25"/>
+            <at knob="crcl" value="110"/>
+          </data>
+        </panel>
+        <panel id="broken" title="a range knob without its bounds">
+          <simulation end="24"/>
+          <knob id="dose" target="PODOSE_hctz" label="dose" kind="range" default="25"/>
+          <curve id="Cve_hctz" label="hctz, plasma"/>
+        </panel>
+      </panels>
+    </annotation>
+    <listOfCompartments>
+      <compartment id="Vce" size="1" constant="true"/>
+    </listOfCompartments>
+    <listOfSpecies>
+      <species id="Cve_hctz" compartment="Vce" initialConcentration="0" hasOnlySubstanceUnits="false" boundaryCondition="false" constant="false"/>
+    </listOfSpecies>
+  </model>
+</sbml>
