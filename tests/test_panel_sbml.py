@@ -45,6 +45,8 @@ DOCUMENTED = Panel(
     subtitle="hctz, single oral dose",
     x_label="time [hr]",
     y_label="plasma concentration",
+    y_max=2.0,
+    x_max=24.0,
     knobs=(
         Knob(
             id="dose",
@@ -395,6 +397,19 @@ def test_writing_the_annotation_keeps_the_rdf_of_the_model(
     written = out.read_text(encoding="utf-8")
     assert "http://www.w3.org/1999/02/22-rdf-syntax-ns#" in written
     assert "lenov@ebi.ac.uk" in written
+
+
+def test_the_limits_of_the_axes_round_trip_through_the_annotation(
+    tmp_path: Path, panel: Panel
+) -> None:
+    limited = panel.model_copy(update={"y_min": 0.01, "y_max": 50.0, "x_max": 80.0})
+    annotation = panels_to_annotation([limited])
+    assert 'yMin="0.01" yMax="50.0" xMax="80.0"' in annotation
+    assert "y_min" not in annotation
+    write_panels(SBML_IN, tmp_path / "m.xml", [limited])
+    assert panels_from_sbml(tmp_path / "m.xml") == ({limited.id: limited}, ())
+    # an axis without a limit is no attribute and reads back as none
+    assert "yMin" not in panels_to_annotation([panel])
 
 
 def test_the_annotation_names_the_attributes_of_the_contract(panel: Panel) -> None:

@@ -48,6 +48,7 @@ not thread safe and a service runs its sync endpoints in a thread pool.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -650,7 +651,9 @@ class PanelRunner:
             ValueError: for a grid of fewer than one point, see `Knob.values`;
                 naming both units, for an `x_unit` of the panel which is no
                 time unit of the model, see `_times`, and for a unit of a
-                curve which is no unit of its values, see `_curve_unit`. The
+                curve which is no unit of its values, see `_curve_unit`;
+                naming the panel, for limits of its axes which are no limits
+                of the units it is delivered in, see `_check_limits`. The
                 limits of a request (`sbmlsim.panel.MAX_KNOBS`, `MAX_GRID`)
                 are checked where a request is read.
         """
@@ -661,6 +664,7 @@ class PanelRunner:
             entry, panel.simulation.variant if variant is None else variant
         )
         times = np.linspace(0.0, panel.simulation.end, panel.simulation.points + 1)
+        _check_limits(warm.model, panel)
         with warm.lock:
             scan, axes = _scan(warm.model, panel, values, grid)
             result = warm.simulator.run(
@@ -694,8 +698,10 @@ class PanelRunner:
                 unit of the model, see `_x_unit`, or for a unit of a curve
                 which is no unit of its values, see `_curve_unit`; naming the
                 series and its unit, for a unit of a series which is no unit
-                of pint and none of the model; if the project of the entry has
-                no model variants.
+                of pint and none of the model; naming the panel, for y limits
+                of curves which are delivered in different units and for an
+                `x_max` past the end of its simulation, see `_check_limits`;
+                if the project of the entry has no model variants.
             KeyError: for a variant the project does not have.
         """
         warm = self._warm_model(entry, panel.simulation.variant)
@@ -831,12 +837,92 @@ def _panel_units(model: SBMLModel, panel: Panel) -> PanelUnits:
         ValueError: naming both units, for an `x_unit` which is no time unit
             of the model, see `_x_unit`, or for a unit of a curve which is no
             unit of its values, see `_curve_unit`; naming the series and its
-            unit, for a unit of a series which is no unit, see `_series_unit`.
+            unit, for a unit of a series which is no unit, see `_series_unit`;
+            naming the panel, for limits of its axes which are no limits of
+            the units it is delivered in, see `_check_limits`.
     """
+    _check_limits(model, panel)
     return PanelUnits(
         x=_x_unit(model, panel),
         series={data.id: _series_unit(model, panel, data) for data in panel.data},
     )
+
+
+def _check_limits(model: SBMLModel, panel: Panel) -> None:
+    """Check the limits of the axes of a panel against the units it is delivered in.
+
+    A limit of the value axis (`Panel.y_min`, `Panel.y_max`) is a number in
+    the unit the curves of the panel are delivered in (`_curve_unit`), which
+    is therefore one unit: curves of different units share no axis a number
+    could be a limit of. The `x_max` is a number in the unit the x is
+    delivered in (`_x_unit`) and lies within the simulation, whose `end` is in
+    the time unit of the model. Both are checked where the units of a panel
+    are resolved, for a run of the panel and for its study data alike, see
+    `_panel_units`.
+
+    Args:
+        model: the model of the panel, whose unit ids the units may name.
+        panel: the panel.
+
+    Raises:
+        ValueError: naming the panel and the curves with their units, for y
+            limits of curves which are delivered in different units; naming
+            the panel, the `x_max`, the end and its unit, for an `x_max` past
+            the end of the simulation; naming both units, for a unit of a
+            curve or an `x_unit` which is no unit of its values, see
+            `_curve_unit` and `_x_unit`.
+    """
+    if panel.y_min is not None or panel.y_max is not None:
+        delivered = [(curve.id, _curve_unit(model, curve)) for curve in panel.curves]
+        first = delivered[0][1]
+        if not all(_same_unit(first, unit) for _, unit in delivered):
+            named = ", ".join(
+                f"the curve '{curve_id}' in "
+                + (f"'{unit.text}'" if unit.text else "no unit")
+                for curve_id, unit in delivered
+            )
+            raise ValueError(
+                f"The limits of the value axis of the panel '{panel.id}' are in "
+                f"the unit its curves are delivered in, which they do not share: "
+                f"{named}."
+            )
+    if panel.x_max is not None:
+        x_unit = _x_unit(model, panel)
+        end = panel.simulation.end
+        if x_unit.unit is not None:
+            end = float(
+                model.Q(end, _time_unit(model) or "dimensionless").to(x_unit.unit).m
+            )
+        if panel.x_max > end and not math.isclose(panel.x_max, end, rel_tol=1e-12):
+            unit = f" '{x_unit.text}'" if x_unit.text else " no unit"
+            raise ValueError(
+                f"The x_max={panel.x_max} of the panel '{panel.id}' lies beyond the "
+                f"end of its simulation, which is {end} in{unit}, the unit of its x."
+            )
+
+
+def _same_unit(one: DeliveredUnit, other: DeliveredUnit) -> bool:
+    """Tell whether two delivered units are one unit, whatever their texts.
+
+    A unit is compared by what it is and not by how it is written: `uM` and
+    `umol/l` are one unit, which pint does not tell by the equality of its
+    units, so a value of one is converted into the other.
+
+    Args:
+        one: a unit.
+        other: another unit.
+
+    Returns:
+        Whether a value in `one` is the same value in `other`; values without
+        a unit (`UNITLESS`) are one unit with each other and with no other.
+    """
+    if one.unit is None or other.unit is None:
+        return one.unit is None and other.unit is None
+    try:
+        factor = float((1.0 * one.unit).to(other.unit).m)
+    except _UNIT_ERRORS:
+        return False
+    return math.isclose(factor, 1.0, rel_tol=1e-12)
 
 
 def _resolved(model: SBMLModel, text: str, what: str) -> DeliveredUnit:

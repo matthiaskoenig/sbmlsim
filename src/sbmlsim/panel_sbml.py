@@ -7,7 +7,7 @@ a release:
 
     <annotation>
       <panels xmlns="https://sbmlsim.org/ns/panel/1">
-        <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration">
+        <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration" yMax="2" xMax="24">
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
           </simulation>
@@ -26,8 +26,10 @@ a release:
     </annotation>
 
 An attribute is the field of the object of `sbmlsim.panel` it carries, with the
-three exceptions `xLabel` for `x_label`, `yLabel` for `y_label` and `xUnit` for
-`x_unit`; an attribute which is not set means the default of its field. The
+exceptions `xLabel` for `x_label`, `yLabel` for `y_label`, `yMin`, `yMax` and
+`xMax` for the limits of the axes `y_min`, `y_max` and `x_max` and `xUnit` for
+`x_unit`, which are camel case; an attribute which is not set means the default
+of its field, e.g. an axis without a limit. The
 `end` of the simulation is in the time unit of the model (a day of a model of
 minutes above) and `xUnit` is the unit its time axis is delivered in. The
 `option` children of a knob are its `choices`, the choices of a knob of the
@@ -119,6 +121,9 @@ _PANEL_ATTRIBUTES: Final = {
     "subtitle": "subtitle",
     "xLabel": "x_label",
     "yLabel": "y_label",
+    "yMin": "y_min",
+    "yMax": "y_max",
+    "xMax": "x_max",
 }
 #: the fields of the simulation of a panel, its `preinit` are children
 _SIMULATION_ATTRIBUTES: Final = {

@@ -64,6 +64,9 @@ def panel() -> Panel:
         title="Hydrochlorothiazide in renal impairment",
         subtitle="the plasma concentration over the renal function",
         x_label="time (hr)",
+        y_min=0.001,
+        y_max=1.0,
+        x_max=24.0,
         knobs=(EGFR, DOSE),
         curves=(
             PanelCurve(
@@ -632,6 +635,44 @@ def test_a_panel_of_eight_knobs_is_accepted_and_of_more_is_refused() -> None:
         build(MAX_KNOBS + 1)
 
 
+def test_the_limits_of_the_axes_are_none_without_one(minimal: Panel) -> None:
+    assert (minimal.y_min, minimal.y_max, minimal.x_max) == (None, None, None)
+    payload = panel_payload(minimal)["panel"]
+    assert (payload["y_min"], payload["y_max"], payload["x_max"]) == (None, None, None)
+
+
+@pytest.mark.parametrize(
+    ("limits", "match"),
+    [
+        ({"y_min": 2.0, "y_max": 1.0}, "y_min < y_max"),
+        ({"y_min": 1.0, "y_max": 1.0}, "y_min < y_max"),
+        ({"y_min": 0.0}, "y_min=0.0 .* not positive"),
+        ({"y_min": None, "y_max": -1.0}, "y_max=-1.0 .* not positive"),
+        ({"x_max": 0.0}, "x_max=0.0 .* not positive"),
+        ({"y_max": float("inf")}, "finite"),
+        ({"x_max": float("nan")}, "finite"),
+    ],
+)
+def test_limits_of_the_axes_which_are_no_axis_are_refused(
+    panel: Panel, limits: dict[str, float | None], match: str
+) -> None:
+    """The curves of `panel` declare the `log` scale."""
+    with pytest.raises(ValidationError, match=match) as error:
+        Panel.model_validate({**panel.model_dump(), **limits})
+    if "finite" not in match:
+        assert "'renal'" in str(error.value)
+
+
+def test_a_y_limit_of_zero_is_a_limit_of_a_linear_axis(minimal: Panel) -> None:
+    limited = Panel.model_validate(
+        {**minimal.model_dump(), "y_min": 0.0, "y_max": 5.0, "x_max": 8.0}
+    )
+    assert (limited.y_min, limited.y_max, limited.x_max) == (0.0, 5.0, 8.0)
+    # a lower limit alone and an upper limit alone are limits as well
+    assert Panel.model_validate({**minimal.model_dump(), "y_min": -1.0}).y_min == -1.0
+    assert Panel.model_validate({**minimal.model_dump(), "y_max": -1.0}).y_max == -1.0
+
+
 def test_a_panel_is_frozen_and_forbids_unknown_fields(panel: Panel) -> None:
     with pytest.raises(ValidationError):
         panel.title = "another title"
@@ -687,6 +728,9 @@ def test_the_payload_names_the_knobs_as_the_axes_of_the_grid(panel: Panel) -> No
         "subtitle": panel.subtitle,
         "x_label": panel.x_label,
         "y_label": panel.y_label,
+        "y_min": 0.001,
+        "y_max": 1.0,
+        "x_max": 24.0,
     }
 
 

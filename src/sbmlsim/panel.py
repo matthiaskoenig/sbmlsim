@@ -404,6 +404,15 @@ class Panel(BaseModel):
             names the state it was measured under names choices of the knobs
             of the panel, see `_check_data_at`.
         simulation: the simulation the panel runs.
+        y_min: the lower limit of the value axis, in the unit the curves of
+            the panel are delivered in, which they then share; `None` leaves
+            it to the renderer, which fits the axis to the curves. A fixed
+            axis keeps two settings of the knobs comparable.
+        y_max: the upper limit of the value axis, as `y_min`; both are
+            positive on a panel whose curves declare the `log` scale.
+        x_max: the upper limit of the time axis, in the unit it is delivered
+            in (`PanelSimulation.x_unit`, the time unit of the model without),
+            at most the end of the simulation; `None` is the end.
     """
 
     model_config = _CONFIG
@@ -413,6 +422,9 @@ class Panel(BaseModel):
     subtitle: str = ""
     x_label: str = "time"
     y_label: str = ""
+    y_min: float | None = Field(default=None, allow_inf_nan=False)
+    y_max: float | None = Field(default=None, allow_inf_nan=False)
+    x_max: float | None = Field(default=None, allow_inf_nan=False)
     knobs: tuple[Knob, ...] = Field(default=(), max_length=MAX_KNOBS)
     curves: tuple[PanelCurve, ...] = Field(max_length=MAX_CURVES)
     data: tuple[PanelData, ...] = ()
@@ -490,6 +502,45 @@ class Panel(BaseModel):
             raise ValueError(
                 f"The curves of the panel '{self.id}' declare different scales "
                 f"({named}); they share one value axis, so they declare one."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_limits(self) -> Self:
+        """Check the limits of the axes of the panel.
+
+        The units the limits are in are resolved where the model is, see
+        `sbmlsim.serve.runner.PanelRunner.units`, which refuses y limits of
+        curves of different units and an `x_max` past the end of the
+        simulation.
+
+        Raises:
+            ValueError: naming the panel and the limits, for a `y_min` which
+                is not below `y_max`, for a y limit which is not positive on a
+                value axis of the `log` scale and for an `x_max` which is not
+                positive.
+        """
+        if (
+            self.y_min is not None
+            and self.y_max is not None
+            and self.y_min >= self.y_max
+        ):
+            raise ValueError(
+                f"The panel '{self.id}' needs y_min < y_max, not "
+                f"y_min={self.y_min} and y_max={self.y_max}."
+            )
+        if any(curve.scale == "log" for curve in self.curves):
+            limits = {"y_min": self.y_min, "y_max": self.y_max}
+            for name, limit in limits.items():
+                if limit is not None and limit <= 0.0:
+                    raise ValueError(
+                        f"The {name}={limit} of the panel '{self.id}' is not "
+                        f"positive, which a value axis of the 'log' scale needs."
+                    )
+        if self.x_max is not None and self.x_max <= 0.0:
+            raise ValueError(
+                f"The x_max={self.x_max} of the panel '{self.id}' is not "
+                f"positive; the time axis starts at 0."
             )
         return self
 
@@ -591,7 +642,8 @@ def panel_payload(panel: Panel) -> dict[str, Any]:
         panel: the panel.
 
     Returns:
-        The payload: its `contract`, the texts of the `panel`, its knobs as the
+        The payload: its `contract`, the texts and the limits of the axes of
+        the `panel`, its knobs as the
         `axes` of the grid, its `curves`, its `data`, its `simulation` and the
         `limits` of a request. Plain JSON values only, no object of this
         package, see `panel_from_payload`.
@@ -604,6 +656,9 @@ def panel_payload(panel: Panel) -> dict[str, Any]:
             "subtitle": panel.subtitle,
             "x_label": panel.x_label,
             "y_label": panel.y_label,
+            "y_min": panel.y_min,
+            "y_max": panel.y_max,
+            "x_max": panel.x_max,
         },
         "axes": [knob.model_dump(mode="json") for knob in panel.knobs],
         "curves": [curve.model_dump(mode="json") for curve in panel.curves],

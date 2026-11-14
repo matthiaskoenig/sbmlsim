@@ -215,6 +215,104 @@ def test_a_unit_of_a_curve_which_is_no_unit_of_its_values_is_refused(
         assert "mmol" in str(error.value)
 
 
+def test_y_limits_of_curves_of_one_unit_are_served(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
+) -> None:
+    """The two curves of the panel are delivered in `uM`, so a number is a limit."""
+    limited = panel.model_copy(update={"y_min": 0.0, "y_max": 2.0, "x_max": END / 60})
+    limited = limited.model_copy(
+        update={
+            "simulation": limited.simulation.model_copy(update={"x_unit": "hr"}),
+        }
+    )
+    units = runner.units(registry.entry("hctz"), limited)
+    assert units.x.text == "hr"
+    result = runner.run("hctz", limited, {"egfr": 1.0}, {})
+    assert result.x[-1] == pytest.approx(END / 60)
+
+
+def test_y_limits_of_curves_of_different_units_are_refused(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
+) -> None:
+    """Curves of `uM` and `nM` share no number which could be a limit of their axis.
+
+    It is refused where the units of the panel are resolved, for a run and for
+    the study data alike, as the units of a curve are; a panel without limits
+    is no such problem, since a renderer fits each curve as it is.
+    """
+    mixed = panel.model_copy(
+        update={
+            "curves": (
+                panel.curves[0],
+                panel.curves[1].model_copy(update={"unit": "nM"}),
+            ),
+        }
+    )
+    assert runner.units(registry.entry("hctz"), mixed).x.text == "min"
+    for limits in ({"y_max": 2.0}, {"y_min": 0.1}):
+        bogus = mixed.model_copy(update=limits)
+        for refuses in (
+            lambda: runner.run("hctz", bogus, {"egfr": 1.0}, {}),  # noqa: B023
+            lambda: runner.units(registry.entry("hctz"), bogus),  # noqa: B023
+        ):
+            # each lambda is called within the iteration which binds `bogus`
+            with pytest.raises(ValueError, match="do not share") as error:
+                refuses()
+            message = str(error.value)
+            for named in ("'renal_plasma'", "'[Cve_hctz]' in 'uM'", "'nM'"):
+                assert named in message
+
+
+def test_y_limits_of_curves_of_one_unit_spelled_otherwise_are_served(
+    runner: PanelRunner, registry: ModelRegistry, panel: Panel
+) -> None:
+    """The unit is compared and not its text: `uM` and `umol/l` are one unit."""
+    spelled = panel.model_copy(
+        update={
+            "y_max": 2.0,
+            "curves": (
+                panel.curves[0],
+                panel.curves[1].model_copy(update={"unit": "umol/l"}),
+            ),
+        }
+    )
+    assert runner.units(registry.entry("hctz"), spelled).x.text == "min"
+
+
+@pytest.mark.parametrize(
+    ("x_unit", "x_max", "end"),
+    [(None, END + 1.0, "1440.0 in 'min'"), ("hr", 25.0, "24.0 in 'hr'")],
+)
+def test_an_x_max_beyond_the_end_of_the_simulation_is_refused(
+    runner: PanelRunner,
+    registry: ModelRegistry,
+    panel: Panel,
+    x_unit: str | None,
+    x_max: float,
+    end: str,
+) -> None:
+    """The `x_max` is in the unit of the x, the `end` in the time unit of the model."""
+    bogus = panel.model_copy(
+        update={
+            "x_max": x_max,
+            "simulation": panel.simulation.model_copy(update={"x_unit": x_unit}),
+        }
+    )
+    for refuses in (
+        lambda: runner.run("hctz", bogus, {"egfr": 1.0}, {}),
+        lambda: runner.units(registry.entry("hctz"), bogus),
+    ):
+        with pytest.raises(ValueError, match="beyond the end") as error:
+            refuses()
+        message = str(error.value)
+        assert f"x_max={x_max}" in message
+        assert end in message
+        assert "'renal_plasma'" in message
+    # the end itself is a limit, in either unit
+    at_end = bogus.model_copy(update={"x_max": END if x_unit is None else 24.0})
+    assert runner.units(registry.entry("hctz"), at_end).x.text == (x_unit or "min")
+
+
 def test_a_unit_of_a_series_which_is_no_unit_is_refused(
     runner: PanelRunner, registry: ModelRegistry
 ) -> None:

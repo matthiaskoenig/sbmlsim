@@ -3,7 +3,7 @@
   <model id="panels_broken" name="two panels, the second one malformed">
     <annotation>
       <panels xmlns="https://sbmlsim.org/ns/panel/1">
-        <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration">
+        <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration" yMax="2" xMax="24">
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
           </simulation>
