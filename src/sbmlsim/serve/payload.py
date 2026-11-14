@@ -29,8 +29,9 @@ which a shell places. Its shape is the one `sbmlsim.panel.app_payload` writes,
 which it reads back field by field (`AppResponse.of`), so the payload is the
 one source of the contract and this body is its schema. Next to it the body
 carries what the service derives from the panels of each page and is no part of
-the declaration: the knobs the panels of a page share (`shared`, see
-`sbmlsim.serve.runner.ModelEntry.shared`), which a shell shows one control of,
+the declaration: the knobs the panels of a page share and the ones a scenario
+of the page sets (`shared`, see `sbmlsim.serve.runner.ModelEntry.shared`),
+which a shell shows one control of,
 and the title and the subtitle of every panel of a page (`heads`), which a
 shell reserves the head of each card for before the panel has read its own
 declaration, so a card does not move when it does.
@@ -76,6 +77,7 @@ __all__ = [
     "PanelPayload",
     "PanelsResponse",
     "Provenance",
+    "ScenarioPayload",
     "SeriesPayload",
     "SharedKnobPayload",
     "SharedPanelPayload",
@@ -421,6 +423,24 @@ class PanelsResponse(BaseModel):
     panels: list[PanelPayload]
 
 
+class ScenarioPayload(BaseModel):
+    """A named state of the knobs of a page, see `AppPagePayload`.
+
+    Attributes:
+        id: the id of the scenario, distinct within its page.
+        label: the scenario as it is shown.
+        values: the value of every knob the scenario sets, by the id of the
+            knob, in the unit of the knob; every one a knob of `shared` of
+            its page, which a shell sets all at once.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    label: str
+    values: dict[str, float]
+
+
 class AppPagePayload(BaseModel):
     """One page of the app of a model, see `AppResponse`.
 
@@ -430,6 +450,8 @@ class AppPagePayload(BaseModel):
         panels: the ids of the panels of the page, in the order they are
             shown; every one a panel the model declares, which a shell asks
             for with `GET /api/models/{model}/panels/{panel}`.
+        scenarios: the named states of the knobs of the page a reader picks
+            from, in the order they are shown; none for a page without.
     """
 
     model_config = _CONFIG
@@ -437,6 +459,7 @@ class AppPagePayload(BaseModel):
     id: str
     title: str
     panels: list[str]
+    scenarios: list[ScenarioPayload]
 
 
 class AppVariantPayload(BaseModel):
@@ -469,20 +492,24 @@ class SharedPanelPayload(BaseModel):
 
 
 class SharedKnobPayload(BaseModel):
-    """A knob more than one panel of a page declares, see `AppResponse`.
+    """A knob the shell of a page owns, see `AppResponse`.
+
+    It is a knob more than one panel of the page declares, or one a scenario
+    of the page sets, which the shell owns even when one panel declares it,
+    since it sets it, see `sbmlsim.serve.runner.ModelEntry.shared`.
 
     Attributes:
         knob: its declaration, an item of the `axes` of the declaration of
             every panel which declares it (`sbmlsim.panel.panel_payload`),
             which those panels declare alike.
         panels: the panels of the page which declare it, in the order the
-            page shows them, at least two.
+            page shows them, at least one.
     """
 
     model_config = _CONFIG
 
     knob: dict[str, Any]
-    panels: list[SharedPanelPayload] = Field(min_length=2)
+    panels: list[SharedPanelPayload] = Field(min_length=1)
 
     @classmethod
     def of(cls, shared: SharedKnob) -> SharedKnobPayload:
@@ -519,11 +546,13 @@ class AppResponse(BaseModel):
         doi: the DOI of the model, shown in that footer.
         licenses: the licenses of the model and its data, shown in that
             footer.
-        shared: the knobs the panels of a page share, by the id of the page,
-            each in the order the first panel which declares one lists them;
-            every page has an entry, empty for a page whose panels share none.
-            They are derived from the panels by the service and are no part of
-            the declaration of the app.
+        shared: the knobs the shell of a page owns, by the id of the page,
+            each in the order the first panel which declares one lists them:
+            the knobs the panels of the page share and the knobs a scenario
+            of the page sets; every page has an entry, empty for a page whose
+            panels share none and which has no scenario. They are derived
+            from the panels by the service and are no part of the declaration
+            of the app.
         heads: the panels of a page with their titles and subtitles, by the id
             of the page, in the order the page shows them; every page has an
             entry. They are the heads of the declarations of the panels, which

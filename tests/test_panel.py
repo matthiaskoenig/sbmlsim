@@ -29,6 +29,7 @@ from sbmlsim.panel import (
     PanelCurve,
     PanelData,
     PanelSimulation,
+    Scenario,
     app_from_payload,
     app_payload,
     panel_from_payload,
@@ -122,7 +123,21 @@ def app() -> App:
         title="Hydrochlorothiazide",
         subtitle="the model of hydrochlorothiazide and its clinical questions",
         pages=(
-            AppPage(id="renal", title="Renal impairment", panels=("renal", "tubular")),
+            AppPage(
+                id="renal",
+                title="Renal impairment",
+                panels=("renal", "tubular"),
+                scenarios=(
+                    Scenario(
+                        id="healthy", label="healthy, 25 mg", values={"dose": 25.0}
+                    ),
+                    Scenario(
+                        id="severe",
+                        label="severe impairment, 12.5 mg",
+                        values={"egfr": 0.2, "dose": 12.5},
+                    ),
+                ),
+            ),
             AppPage(id="pk", title="Pharmacokinetics", panels=("pk",)),
         ),
         variants=(
@@ -848,7 +863,46 @@ def test_the_app_payload_round_trips(app: App) -> None:
         "renal impairment",
     ]
     assert payload["licenses"] == ["CC BY-SA 4.0", "MIT"]
+    assert payload["pages"][0]["scenarios"] == [
+        {"id": "healthy", "label": "healthy, 25 mg", "values": {"dose": 25.0}},
+        {
+            "id": "severe",
+            "label": "severe impairment, 12.5 mg",
+            "values": {"egfr": 0.2, "dose": 12.5},
+        },
+    ]
+    assert payload["pages"][1]["scenarios"] == []
     assert app_from_payload(payload) == app
+
+
+@pytest.mark.parametrize(
+    ("scenario", "match"),
+    [
+        ({"id": "1st", "label": "x", "values": {"dose": 1.0}}, "'1st' .* no SId"),
+        ({"id": "s", "label": " ", "values": {"dose": 1.0}}, "needs its label"),
+        ({"id": "s", "label": "x", "values": {}}, "sets no knob"),
+        ({"id": "s", "label": "x", "values": {"dose": float("nan")}}, "finite"),
+    ],
+)
+def test_a_scenario_which_is_no_state_of_knobs_is_refused(
+    scenario: dict[str, Any], match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        Scenario.model_validate(scenario)
+
+
+def test_two_scenarios_of_one_id_on_a_page_are_refused() -> None:
+    one = Scenario(id="healthy", label="healthy", values={"dose": 25.0})
+    with pytest.raises(ValidationError, match=r"scenarios \['healthy'\] twice"):
+        AppPage(id="renal", title="Renal", panels=("renal",), scenarios=(one, one))
+    # the same id on two pages is two scenarios
+    App(
+        title="t",
+        pages=(
+            AppPage(id="a", title="A", panels=("renal",), scenarios=(one,)),
+            AppPage(id="b", title="B", panels=("renal",), scenarios=(one,)),
+        ),
+    )
 
 
 def test_the_app_payload_round_trips_a_minimal_app() -> None:

@@ -7,8 +7,10 @@ raises `UnknownModel` for everything else, so a request can never name a
 module, a project reference or a path. A model whose project declares an app
 (`sbmlsim.panel.App`) is checked there as well (`_check_app`): a page which
 names a panel the model does not declare, a variant the project does not
-have and two panels of a page which declare one knob id differently
-(`ModelEntry.shared`) are refused at startup, since the panels of a model are
+have, two panels of a page which declare one knob id differently
+(`ModelEntry.shared`) and a scenario of a page which sets a knob its panels do
+not declare or a value which is none of that knob (`_check_scenarios`) are
+refused at startup, since the panels of a model are
 read from its SBML, which a project is imported without. So are the formulas of
 the derived targets of every panel of every variant (`_check_derived`), which
 are math of PEtab the declaration does not parse.
@@ -54,7 +56,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -66,7 +68,7 @@ from pint.errors import PintError
 from pint.facets.plain import PlainUnit
 
 from sbmlsim.model.model_sbml import SBMLModel, load_model
-from sbmlsim.panel import Knob, Panel, PanelCurve, PanelData
+from sbmlsim.panel import AppPage, Knob, Panel, PanelCurve, PanelData
 from sbmlsim.project import Project, load_project
 from sbmlsim.result.scan import STATUS, TIME
 from sbmlsim.simulation import Dimension, Scan, Simulation
@@ -179,10 +181,12 @@ def check_knobs(
 
 @dataclass(frozen=True)
 class SharedKnob:
-    """A knob more than one panel of a page of an app declares, see `ModelEntry.shared`.
+    """A knob the shell of a page of an app owns, see `ModelEntry.shared`.
 
-    A shell shows one control of it for the page and sets every panel of
-    `panels` from that control, so the plots of the page are of one state.
+    It is a knob more than one panel of the page declares or one a scenario
+    of the page sets. A shell shows one control of it for the page and sets
+    every panel of `panels` from that control, so the plots of the page are of
+    one state.
 
     Attributes:
         knob: its declaration, which every panel of `panels` declares alike.
@@ -235,21 +239,25 @@ class ModelEntry:
 
     @cached_property
     def shared(self) -> dict[str, tuple[SharedKnob, ...]]:
-        """Get the knobs the panels of each page of the app of the model share.
+        """Get the knobs the shell of each page of the app of the model owns.
 
         They are derived from the panels and are no part of the declaration of
         the app (`sbmlsim.panel.App`): the app names the panels of a page, the
         panels declare their knobs, and a knob id which more than one panel of
-        a page declares is one knob of that page. They are worked out once,
-        from the panels `ModelRegistry.panel` serves, which a service does when
-        its registry is built (`ModelRegistry.of`), so a page whose panels
-        declare one id differently is refused at startup.
+        a page declares is one knob of that page. A knob a scenario of the
+        page sets (`sbmlsim.panel.Scenario`) is a knob of the page as well,
+        even when one panel declares it: the shell sets it when a reader picks
+        the scenario, so it owns its control, and a panel shows no control of
+        a knob the shell sets. They are worked out once, from the panels
+        `ModelRegistry.panel` serves, which a service does when its registry
+        is built (`ModelRegistry.of`), so a page whose panels declare one id
+        differently is refused at startup.
 
         Returns:
             The shared knobs of every page by its id, each in the order the
             first panel which declares one lists them (`_shared_knobs`); a page
-            whose panels share none has none, and a model without an app has
-            no pages.
+            whose panels share none and which has no scenario has none, and a
+            model without an app has no pages.
 
         Raises:
             ValueError: naming the model, the page, the knob id, the two panels
@@ -258,9 +266,18 @@ class ModelEntry:
             KeyError: for a page which names a panel the model does not
                 declare, which `_check_app` refuses first.
         """
+        app = self.project.app
+        if app is None:
+            return {}
+        pages = self.pages
         return {
-            page: _shared_knobs(self.id, page, list(panels))
-            for page, panels in self.pages.items()
+            page.id: _shared_knobs(
+                self.id,
+                page.id,
+                list(pages[page.id]),
+                {knob for scenario in page.scenarios for knob in scenario.values},
+            )
+            for page in app.pages
         }
 
 
@@ -300,7 +317,9 @@ class ModelRegistry:
                 not declare, naming the model and the variants, for an app
                 which names a variant the project does not have, and naming
                 the model, the page, the knob id and the two panels, for a page
-                whose panels declare one knob id differently, see
+                whose panels declare one knob id differently, and naming the
+                model, the page, the scenario, the knob and the panel, for a
+                scenario of a value no panel of its page takes, see
                 `_check_app`; naming the model, the variant, the panel and
                 the target or the knob, for a formula of a derived target
                 which is no math or reads no knob of its panel and for a knob
@@ -397,7 +416,10 @@ def _check_app(entry: ModelEntry) -> None:
             the panels, for a page which names a panel the model does not
             declare; naming the model, the page, the knob id and the two
             panels, for a page whose panels declare one knob id differently,
-            see `ModelEntry.shared`; if the project has no model variants, see
+            see `ModelEntry.shared`; naming the model, the page, the scenario,
+            the knob and the panel, for a scenario which sets a knob no panel
+            of its page declares or a value which is no value of that knob,
+            see `_check_scenarios`; if the project has no model variants, see
             `sbmlsim.project.Project.panels_of`.
         FileNotFoundError: if the SBML the panels are read from is no file,
             which is a problem of the service and not of a request.
@@ -422,8 +444,79 @@ def _check_app(entry: ModelEntry) -> None:
                 f"the panels {missing}, which the model does not declare; its "
                 f"panels are {declared}."
             )
-    # the shared knobs of every page, which raise for one id declared twice
+    # the shared knobs of every page, which raise for one id declared twice,
+    # so the knobs a scenario sets are of one declaration per page
     _ = entry.shared
+    pages = entry.pages
+    for page in app.pages:
+        _check_scenarios(entry.id, page, pages[page.id])
+
+
+def _check_scenarios(model_id: str, page: AppPage, panels: Sequence[Panel]) -> None:
+    """Check the scenarios of a page of an app against the knobs of its panels.
+
+    A scenario (`sbmlsim.panel.Scenario`) sets knobs of its page, which the
+    declaration cannot check, since the panels are read from the SBML: a key
+    which no panel of the page declares sets nothing a reader sees, and a
+    value which is no value of its knob in a panel which declares it, outside
+    the bounds of a range knob or none of the choices of a choice knob, is a
+    state that panel cannot be in.
+
+    Args:
+        model_id: the id of the model.
+        page: the page of the app.
+        panels: the panels of the page, in the order it shows them.
+
+    Raises:
+        ValueError: naming the model, the page, the scenario and the knob, for
+            a knob no panel of the page declares, and naming the panel as
+            well, for a value which is no value of the knob in that panel.
+    """
+    for scenario in page.scenarios:
+        for knob_id, value in scenario.values.items():
+            where = (
+                f"The scenario '{scenario.id}' of the page '{page.id}' of the app "
+                f"of the model '{model_id}'"
+            )
+            declaring = [
+                (panel, knob)
+                for panel in panels
+                for knob in panel.knobs
+                if knob.id == knob_id
+            ]
+            if not declaring:
+                raise ValueError(
+                    f"{where} sets the knob '{knob_id}', which no panel of the page "
+                    f"declares; the panels are {[panel.id for panel in panels]}."
+                )
+            for panel, knob in declaring:
+                problem = _no_value_of(knob, value)
+                if problem:
+                    raise ValueError(
+                        f"{where} sets the knob '{knob_id}' to {value}, which is "
+                        f"{problem} of the knob in the panel '{panel.id}'."
+                    )
+
+
+def _no_value_of(knob: Knob, value: float) -> str:
+    """Tell why a value is no value of a knob, see `_check_scenarios`.
+
+    Args:
+        knob: the knob.
+        value: the value, in the unit of the knob.
+
+    Returns:
+        What the value is not, e.g. `outside the bounds [10.0, 150.0]`, empty
+        for a value of the knob: one within the bounds of a range knob, a stop
+        or not, and one of the choices of a choice knob.
+    """
+    if knob.kind == "choice":
+        choices = [choice.value for choice in knob.choices]
+        return "" if value in choices else f"none of the choices {choices}"
+    low, high = knob.min, knob.max
+    if low is not None and high is not None and not low <= value <= high:
+        return f"outside the bounds [{low}, {high}]"
+    return ""
 
 
 def _check_derived(entry: ModelEntry) -> None:
@@ -466,7 +559,10 @@ def _check_derived(entry: ModelEntry) -> None:
 
 
 def _shared_knobs(
-    model_id: str, page_id: str, panels: Sequence[Panel]
+    model_id: str,
+    page_id: str,
+    panels: Sequence[Panel],
+    named: Set[str] = frozenset(),
 ) -> tuple[SharedKnob, ...]:
     """Get the knobs the panels of a page share, and check they declare them alike.
 
@@ -478,6 +574,10 @@ def _shared_knobs(
     and the fields which differ are named. The same id on different pages is
     no such knob, since a page shows its own controls.
 
+    A knob a scenario of the page sets (`named`) is a knob of the page whether
+    one panel declares it or more, since the shell sets it, see
+    `ModelEntry.shared`.
+
     The shared knobs are listed in the order the first panel which declares one
     lists them: the panels are walked in the order of the page and the knobs of
     each in the order of its declaration.
@@ -486,10 +586,11 @@ def _shared_knobs(
         model_id: the id of the model.
         page_id: the id of the page.
         panels: the panels of the page, in the order it shows them, each once.
+        named: the ids of the knobs the scenarios of the page set.
 
     Returns:
-        The knobs more than one of the panels declares, with the panels which
-        declare each.
+        The knobs more than one of the panels declares and the knobs of
+        `named` which a panel declares, with the panels which declare each.
 
     Raises:
         ValueError: naming the model, the page, the knob id, the two panels
@@ -519,7 +620,7 @@ def _shared_knobs(
     return tuple(
         SharedKnob(knob=knob, panels=tuple(declaring[knob_id]))
         for knob_id, (_, knob) in first.items()
-        if len(declaring[knob_id]) > 1
+        if len(declaring[knob_id]) > 1 or knob_id in named
     )
 
 

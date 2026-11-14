@@ -8,7 +8,8 @@ sees: `panel_payload` gives the JSON of a panel and `panel_from_payload` reads
 it back, each the inverse of the other for every field.
 
 The `App` of a model is the surface above these panels: a nav of `AppPage`s,
-each a list of panel ids, the `AppVariant`s a reader switches between and the
+each a list of panel ids with the `Scenario`s a reader picks from, named
+states of their knobs, the `AppVariant`s a reader switches between and the
 citation, the DOI and the licenses of the provenance footer, so a model app is
 configuration and no code of its own. It is the declaration of the project
 (`Project.app`) and no part of the SBML, since pages and navigation are no
@@ -31,7 +32,7 @@ knows the limits of the endpoint it talks to without a contract of its own.
 
 import re
 from collections.abc import Mapping
-from typing import Any, Final, Literal, Self
+from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -53,6 +54,7 @@ __all__ = [
     "PanelCurve",
     "PanelData",
     "PanelSimulation",
+    "Scenario",
     "app_from_payload",
     "app_payload",
     "panel_from_payload",
@@ -775,6 +777,57 @@ def panel_from_payload(payload: Mapping[str, Any]) -> Panel:
     )
 
 
+class Scenario(BaseModel):
+    """A named state of the knobs of a page of an app, e.g. an example patient.
+
+    A reader who picks a scenario sets every knob it names to its value at
+    once, e.g. the creatinine clearance and the dose of a patient of a
+    severe renal impairment; a knob it does not name keeps the value it has.
+    The knobs a scenario names are knobs some panel of its page declares, and
+    each value is a value of that knob in every panel which declares it,
+    which is checked where the models of a service are registered
+    (`sbmlsim.serve.runner.ModelRegistry.of`) and not here, since the panels
+    are read from the SBML of the model.
+
+    Attributes:
+        id: the id of the scenario, an SBML `SId` (`_SID`), distinct within
+            its page.
+        label: the scenario as it is shown, e.g. `"severe impairment, 12.5
+            mg"`; it is not empty.
+        values: the value of every knob the scenario sets, by the id of the
+            knob, in the unit of the knob; at least one.
+    """
+
+    model_config = _CONFIG
+
+    id: str
+    label: str
+    values: Mapping[str, Annotated[float, Field(allow_inf_nan=False)]]
+
+    @model_validator(mode="after")
+    def _check_scenario(self) -> Self:
+        """Check the id, the label and the values of the scenario.
+
+        Raises:
+            ValueError: naming the id, for an id which is no `SId`, for an
+                empty label and for a scenario which sets no knob.
+        """
+        if _SID.fullmatch(self.id) is None:
+            raise ValueError(
+                f"The id '{self.id}' of a scenario of an app is no SId: the id of a "
+                f"scenario is a letter or '_' and then letters, digits and '_', "
+                f"e.g. 'healthy'."
+            )
+        if not self.label.strip():
+            raise ValueError(f"The scenario '{self.id}' of an app needs its label.")
+        if not self.values:
+            raise ValueError(
+                f"The scenario '{self.id}' of an app sets no knob; a scenario is "
+                f"the values of the knobs it sets."
+            )
+        return self
+
+
 class AppPage(BaseModel):
     """One page of the app of a model: a title and the panels it shows.
 
@@ -788,6 +841,10 @@ class AppPage(BaseModel):
             model declares, which is checked where the models of a service are
             registered (`sbmlsim.serve.runner.ModelRegistry.of`) and not here,
             see the module.
+        scenarios: the named states of the knobs of the page a reader picks
+            from, in the order they are shown, e.g. example patients; none
+            without, and no two of one id. A knob a scenario names is one
+            control of the page, see `Scenario`.
     """
 
     model_config = _CONFIG
@@ -795,6 +852,7 @@ class AppPage(BaseModel):
     id: str
     title: str
     panels: tuple[str, ...]
+    scenarios: tuple[Scenario, ...] = ()
 
     @model_validator(mode="after")
     def _check_page(self) -> Self:
@@ -803,7 +861,8 @@ class AppPage(BaseModel):
         Raises:
             ValueError: naming the id, for an id which is no `SId`; naming the
                 page, for an empty title and for a page without a panel;
-                naming the ids, for a panel the page lists twice.
+                naming the ids, for a panel the page lists twice and for two
+                scenarios of one id.
         """
         if _SID.fullmatch(self.id) is None:
             raise ValueError(
@@ -821,6 +880,13 @@ class AppPage(BaseModel):
             raise ValueError(
                 f"The page '{self.id}' of an app shows the panels {twice} twice; "
                 "a page shows a panel once."
+            )
+        ids = [scenario.id for scenario in self.scenarios]
+        twice = sorted({id_ for id_ in ids if ids.count(id_) > 1})
+        if twice:
+            raise ValueError(
+                f"The page '{self.id}' of an app declares the scenarios {twice} "
+                "twice; a reader picks a scenario of a page by its id."
             )
         return self
 
@@ -923,8 +989,9 @@ def app_payload(app: App) -> dict[str, Any]:
         app: the app.
 
     Returns:
-        The payload: its `contract`, the texts of the app, its `pages`, its
-        `variants` and the `citation`, the `doi` and the `licenses` of the
+        The payload: its `contract`, the texts of the app, its `pages` with
+        their scenarios, its `variants` and the `citation`, the `doi` and the
+        `licenses` of the
         provenance footer. Plain JSON values only, no object of this package,
         see `app_from_payload`.
     """

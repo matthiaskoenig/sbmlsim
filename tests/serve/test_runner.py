@@ -6,6 +6,7 @@ the API build the application instead.
 """
 
 import math
+import re
 import threading
 from pathlib import Path
 
@@ -14,7 +15,16 @@ import pytest
 from pint.errors import UndefinedUnitError
 
 from examples.panels.hctz import DOSE, EGFR_STAGES, END, HCTZ_RENAL_URINE, URINE
-from sbmlsim.panel import App, AppPage, AppVariant, Choice, Knob, Panel, PanelCurve
+from sbmlsim.panel import (
+    App,
+    AppPage,
+    AppVariant,
+    Choice,
+    Knob,
+    Panel,
+    PanelCurve,
+    Scenario,
+)
 from sbmlsim.project import Project
 from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.runner import (
@@ -627,6 +637,119 @@ def test_a_page_whose_panels_declare_one_knob_differently_is_refused(
     )
     with pytest.raises(ValueError, match=r"'egfr' differently \(label\)"):
         ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+
+
+@pytest.mark.parametrize(
+    ("values", "named"),
+    [
+        ({"weight": 75.0}, ["'weight'", "no panel of the page declares"]),
+        ({"dose": 30.0}, ["'dose' to 30.0", "none of the choices", "'renal_plasma'"]),
+        ({"egfr": 0.4, "dose": 5.0}, None),
+    ],
+)
+def test_a_scenario_of_a_knob_no_panel_of_its_page_can_take_is_refused(
+    project: Project,
+    monkeypatch: pytest.MonkeyPatch,
+    values: dict[str, float],
+    named: list[str] | None,
+) -> None:
+    """A scenario sets knobs of its page to values of these knobs."""
+    app = project.app
+    assert app is not None
+    scenario = Scenario(id="patient", label="a patient", values=values)
+    with_scenario = project.replace(
+        app=app.model_copy(
+            update={
+                "pages": (
+                    app.pages[0].model_copy(update={"scenarios": (scenario,)}),
+                    *app.pages[1:],
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: with_scenario)
+    if named is None:
+        registry = ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+        assert registry.entry("hctz").project.app == with_scenario.app
+        return
+    with pytest.raises(ValueError) as error:
+        ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+    message = str(error.value)
+    for one in ("'hctz'", "page 'renal'", "scenario 'patient'", *named):
+        assert one in message
+
+
+def test_a_scenario_value_outside_the_bounds_of_a_range_knob_is_refused(
+    project: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A value of a knob is a value of its declaration on the page of the scenario.
+
+    The dose of the page `dose` is a range of 12.5 to 50 mg: 60 mg is no value
+    of it, and neither is 5 mg, which is a choice of the dose of the page
+    `renal`, another knob of the same id.
+    """
+    app = project.app
+    assert app is not None
+    for value in (60.0, 5.0):
+        problem = re.escape(f"to {value}, which is outside the bounds [12.5, 50.0]")
+        scenario = Scenario(id="high", label="a dose", values={"dose": value})
+        with_scenario = project.replace(
+            app=app.model_copy(
+                update={
+                    "pages": (
+                        app.pages[0],
+                        app.pages[1].model_copy(update={"scenarios": (scenario,)}),
+                    )
+                }
+            )
+        )
+        monkeypatch.setattr(
+            runner_module, "load_project", lambda reference, p=with_scenario: p
+        )
+        with pytest.raises(ValueError, match=problem) as error:
+            ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+        # the first panel of the page which declares the knob
+        assert "panel 'dose_plasma'" in str(error.value)
+    # a value within the bounds which is no point of the grid is a value
+    scenario = Scenario(id="mid", label="a dose", values={"dose": 33.3})
+    monkeypatch.setattr(
+        runner_module,
+        "load_project",
+        lambda reference: project.replace(
+            app=app.model_copy(
+                update={
+                    "pages": (
+                        app.pages[0],
+                        app.pages[1].model_copy(update={"scenarios": (scenario,)}),
+                    )
+                }
+            )
+        ),
+    )
+    assert ModelRegistry.of({"hctz": HCTZ_REFERENCE}).ids() == ("hctz",)
+
+
+def test_a_knob_a_scenario_sets_is_shared_even_when_one_panel_declares_it(
+    project: Project,
+) -> None:
+    app = project.app
+    assert app is not None
+    plasma = project.panels_of()["dose_plasma"]
+    scenario = Scenario(id="low", label="12.5 mg", values={"dose": 12.5})
+    page = app.pages[1].model_copy(update={"panels": ("dose_plasma",)})
+    single = project.replace(
+        app=app.model_copy(
+            update={"pages": (page.model_copy(update={"scenarios": (scenario,)}),)}
+        )
+    )
+    entry = ModelEntry(id="hctz", project=single, title="Hydrochlorothiazide")
+    shared = entry.shared["dose"]
+    assert [one.knob.id for one in shared] == ["dose"]
+    assert shared[0].knob == plasma.knobs[0]
+    assert shared[0].panels == (plasma,)
+    # without the scenario a page of one panel shares nothing
+    lone = project.replace(app=app.model_copy(update={"pages": (page,)}))
+    assert ModelEntry(id="hctz", project=lone, title="x").shared == {"dose": ()}
 
 
 def test_one_knob_id_declared_alike_on_a_page_and_otherwise_on_another_is_served(

@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
 from examples.panels.hctz import EGFR_STAGES, END, POINTS
-from sbmlsim.panel import CONTRACT, MAX_KNOBS, Knob, Panel
+from sbmlsim.panel import CONTRACT, MAX_KNOBS, Knob, Panel, Scenario
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
@@ -204,6 +204,48 @@ def test_a_knob_one_panel_of_a_page_declares_is_no_shared_knob(
         "reordered",
         "dose_urine",
     ]
+
+
+def test_a_knob_a_scenario_sets_is_owned_by_the_shell_of_its_page(
+    project: Project,
+) -> None:
+    """A scenario sets a knob one panel of the page declares, so the shell owns it.
+
+    The page of one panel shares no knob of its own, and the scenario hoists the
+    dose into `shared`, while the renal function, which it does not set, stays
+    the panel's.
+    """
+    app = project.app
+    assert app is not None
+    scenario = Scenario(id="low", label="12.5 mg", values={"dose": 12.5})
+    hoisted = project.replace(
+        app=app.model_copy(
+            update={
+                "pages": (
+                    app.pages[0],
+                    app.pages[1].model_copy(
+                        update={"panels": ("dose_plasma",), "scenarios": (scenario,)}
+                    ),
+                )
+            }
+        )
+    )
+    registry = ModelRegistry(
+        {"hctz": ModelEntry(id="hctz", project=hoisted, title="Hydrochlorothiazide")}
+    )
+    with TestClient(create_app(registry)) as client:
+        body = client.get(APP).json()
+        axes = client.get("/api/models/hctz/panels/dose_plasma").json()["axes"]
+    assert body["pages"][1]["scenarios"] == [
+        {"id": "low", "label": "12.5 mg", "values": {"dose": 12.5}}
+    ]
+    assert body["pages"][0]["scenarios"] == []
+    title = "Plasma concentration over the dose"
+    assert axes[0]["id"] == "dose"
+    assert body["shared"]["dose"] == [
+        {"knob": axes[0], "panels": [{"id": "dose_plasma", "title": title}]}
+    ]
+    assert [one["knob"]["id"] for one in body["shared"]["renal"]] == ["egfr", "dose"]
 
 
 def test_the_app_route_loads_no_model(client: TestClient, never_loads: None) -> None:
