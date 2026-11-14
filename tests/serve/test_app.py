@@ -44,6 +44,8 @@ def test_the_panels_of_a_model_are_listed(client: TestClient) -> None:
         "renal_urine",
         "dose_plasma",
         "dose_urine",
+        "patient_plasma",
+        "patient_urine",
     ]
     assert body["panels"][0]["title"] == "Plasma concentration over the renal function"
     assert body["contract"] == CONTRACT
@@ -65,6 +67,13 @@ def test_the_app_route_answers_the_contract(client: TestClient) -> None:
     assert [page["panels"] for page in body["pages"]] == [
         ["renal_plasma", "renal_urine"],
         ["dose_plasma", "dose_urine"],
+        ["patient_plasma", "patient_urine"],
+    ]
+    assert [page["scenarios"] for page in body["pages"][:2]] == [[], []]
+    assert [one["id"] for one in body["pages"][2]["scenarios"]] == [
+        "healthy",
+        "moderate",
+        "severe",
     ]
     assert body["licenses"] == ["CC BY-SA 4.0"]
     assert body["doi"] == "10.5281/zenodo.0000000"
@@ -74,7 +83,7 @@ def test_the_app_route_answers_the_contract(client: TestClient) -> None:
 def test_the_app_route_names_the_knobs_the_panels_of_each_page_share(
     client: TestClient,
 ) -> None:
-    """Both panels of either HCTZ page declare both knobs, so both are shared.
+    """Both panels of every HCTZ page declare both knobs, so both are shared.
 
     The knobs are derived from the panels and are no part of the declaration
     of the app: they are the declarations of the panels, in the order the first

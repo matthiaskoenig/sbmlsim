@@ -768,7 +768,7 @@ def test_one_knob_id_declared_alike_on_a_page_and_otherwise_on_another_is_served
         }
         for page in app.pages
     }
-    assert kinds == {"renal": {"choice"}, "dose": {"range"}}
+    assert kinds == {"renal": {"choice"}, "dose": {"range"}, "patient": {"choice"}}
     monkeypatch.setattr(runner_module, "load_project", lambda reference: project)
     assert ModelRegistry.of({"hctz": HCTZ_REFERENCE}).ids() == ("hctz",)
 

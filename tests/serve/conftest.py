@@ -6,7 +6,7 @@ to end tests of sbmlsim-web serve as well, and come with its `PROJECT`.
 The time unit of the HCTZ model is minutes, which is the unit the `end` of a
 `PanelSimulation` and the x of a result are in.
 
-The app of the project has two pages of two panels each, so the route of the
+The app of the project has three pages of two panels each, so the route of the
 app answers what a model app is configured with (`sbmlsim.panel.App`).
 
 A panel draws one quantity: `panel`, the panel of these tests, is the plasma
