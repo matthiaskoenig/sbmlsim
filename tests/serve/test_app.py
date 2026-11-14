@@ -19,6 +19,7 @@ from examples.panels.hctz import EGFR_STAGES, END, POINTS
 from sbmlsim.panel import CONTRACT, MAX_KNOBS, Choice, Knob, Panel, Scenario
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
+from sbmlsim.serve.payload import MAX_ID
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
 from tests.serve.conftest import APP, PANEL, SIMULATE
 
@@ -719,3 +720,46 @@ def test_an_unknown_variant_is_422_and_loads_no_model(
     assert "'x'" in detail
     assert "default" in detail
     assert "/" not in detail
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"values": {"k" * (MAX_ID + 1): 1.0}},
+        {"grid": {"k" * (MAX_ID + 1): 2}},
+        {"variant": "v" * (MAX_ID + 1)},
+    ],
+    ids=["value", "grid", "variant"],
+)
+def test_an_id_longer_than_any_declaration_is_422_and_not_echoed(
+    client: TestClient, body: dict[str, Any], never_loads: None
+) -> None:
+    answer = client.post(SIMULATE, json=body)
+    assert answer.status_code == 422
+    assert "k" * (MAX_ID + 1) not in answer.text
+    assert "v" * (MAX_ID + 1) not in answer.text
+
+
+def test_the_key_of_a_large_body_is_not_echoed_whole(
+    client: TestClient, never_loads: None
+) -> None:
+    """A key is a part of the `loc` of its error, which is cut to `MAX_ID`."""
+    key = "k" * 100_000
+    answer = client.post(SIMULATE, json={"values": {key: 1.0}})
+    assert answer.status_code == 422
+    assert len(answer.content) < 2 * MAX_ID + 1000
+
+
+@pytest.mark.parametrize("route", [PANEL, f"{PANEL}/data", APP])
+def test_a_variant_query_longer_than_any_declaration_is_422_and_not_echoed(
+    client: TestClient, route: str, never_loads: None
+) -> None:
+    long = "v" * (MAX_ID + 1)
+    answer = client.get(route, params={"variant": long})
+    assert answer.status_code == 422
+    assert long not in answer.text
+    # the query is still the query: a variant the model does not have is the
+    # 422 of the registry, which names it
+    answer = client.get(route, params={"variant": "nope"})
+    assert answer.status_code == 422
+    assert "nope" in answer.text

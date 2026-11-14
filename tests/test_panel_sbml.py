@@ -3,6 +3,7 @@
 import pickle
 import re
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -662,3 +663,38 @@ def test_a_problem_is_a_value() -> None:
         len({PanelProblem("renal", "no bounds")} | {PanelProblem("renal", "no bounds")})
         == 1
     )
+
+
+@pytest.mark.parametrize(
+    "update", [{"title": ""}, {"x_label": ""}], ids=["empty-title", "empty-x-label"]
+)
+def test_a_panel_which_does_not_read_back_is_not_written(
+    tmp_path: Path, panel: Panel, update: dict[str, Any]
+) -> None:
+    """A panel built without its validation is refused before anything is written.
+
+    An empty text is no attribute of the annotation and reads back as the
+    default of its field, a title as no panel at all.
+    """
+    broken = panel.model_copy(update=update)
+    out = tmp_path / "out.xml"
+    with pytest.raises(ValueError, match=f"'{panel.id}'"):
+        write_panels(SBML_IN, out, [broken])
+    assert not out.exists()
+
+
+def test_a_panel_keyed_by_another_id_than_its_own_is_refused(
+    tmp_path: Path, panel: Panel, minimal: Panel
+) -> None:
+    """A panel is served under its key and answers its id, so the two are one."""
+    with pytest.raises(ValueError, match=r"panels: 'other' is the panel 'oscillation'"):
+        _project(tmp_path, {"other": panel})
+    with pytest.raises(
+        ValueError, match=r"variant_panels\['default'\]: 'b' is the panel 'decay'"
+    ):
+        Project(
+            name="panels",
+            root=tmp_path,
+            variants={"default": Path("m.xml")},
+            variant_panels={"default": {"b": minimal}},
+        )

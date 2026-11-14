@@ -67,10 +67,10 @@ from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import Annotated, Any, Final
 
 import anyio.to_thread
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -83,6 +83,7 @@ from sbmlsim.serve.cache import ResponseCache
 from sbmlsim.serve.data import panel_data
 from sbmlsim.serve.jobs import JobStore, TooManyJobs, UnknownExperiment
 from sbmlsim.serve.payload import (
+    MAX_ID,
     AppResponse,
     ExperimentsRequest,
     HealthResponse,
@@ -177,6 +178,11 @@ JOBS_PREFIX: Final = "sbmlsim-jobs-"
 #: `sbmlsim.hashing.canonical_json_sha256`, checked before anything is looked
 #: up, see `create_app.stored`
 HASH: Final = re.compile(r"[0-9a-f]{64}")
+
+#: the query `variant` of the routes which read, an id of at most `MAX_ID`
+#: characters as the `variant` of a `SimulateRequest`, since it is echoed in the
+#: 422 of a variant the model does not have
+type _Variant = Annotated[str | None, Query(max_length=MAX_ID)]
 
 #: the title of the application, which its OpenAPI document carries
 TITLE: Final = "sbmlsim panels"
@@ -343,7 +349,7 @@ def create_app(
         )
 
     @app.get("/api/models/{model}/app")
-    def app_of(model: str, variant: str | None = None) -> AppResponse:
+    def app_of(model: str, variant: _Variant = None) -> AppResponse:
         """Get the app of a model, the pages of its panels.
 
         The app is the declaration of the project of the model
@@ -419,7 +425,7 @@ def create_app(
         )
 
     @app.get("/api/models/{model}/panels/{panel}")
-    def panel_of(model: str, panel: str, variant: str | None = None) -> dict[str, Any]:
+    def panel_of(model: str, panel: str, variant: _Variant = None) -> dict[str, Any]:
         """Get the declaration of a panel, the payload of the contract.
 
         The declaration and the hash of the model are read from the files of
@@ -445,9 +451,7 @@ def create_app(
         return panel_payload(declaration)
 
     @app.get("/api/models/{model}/panels/{panel}/data")
-    def data_of(
-        model: str, panel: str, variant: str | None = None
-    ) -> PanelDataResponse:
+    def data_of(model: str, panel: str, variant: _Variant = None) -> PanelDataResponse:
         """Get the study data behind the curves of a panel.
 
         The data is read from the data of the project of the model, so the
@@ -660,8 +664,9 @@ def create_app(
         The body of the answer is what is wrong and not what was sent: the
         `type`, the `loc` and the `msg` of at most `MAX_ERRORS` errors of
         pydantic, never its `input` and never its `ctx`, which FastAPI's own
-        handler repeats, so the answer of a large body is small and carries
-        nothing back.
+        handler repeats, and every part of a `loc` at most `MAX_ID`
+        characters, since the key of a mapping is a part of it, so the answer
+        of a large body is small and carries nothing back.
 
         Args:
             request: the request which was read.
@@ -677,7 +682,7 @@ def create_app(
                 "detail": [
                     {
                         "type": str(error.get("type", "")),
-                        "loc": [str(part) for part in error.get("loc", ())],
+                        "loc": [str(part)[:MAX_ID] for part in error.get("loc", ())],
                         "msg": str(error.get("msg", "")),
                     }
                     for error in errors[:MAX_ERRORS]

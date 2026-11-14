@@ -64,6 +64,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DATA_CONTRACT",
+    "MAX_ID",
     "AppPagePayload",
     "AppResponse",
     "AppVariantPayload",
@@ -93,6 +94,15 @@ DATA_CONTRACT: Final = "paneldata/1"
 #: a body of the API forbids unknown fields and does not change
 _CONFIG = ConfigDict(extra="forbid", frozen=True)
 
+#: the longest id a request names, of a knob or a variant: an id of a request
+#: is echoed in the message of a 422 which refuses it (`UnknownKnob`,
+#: `UnknownVariant`), so a request is no way to make the service answer a large
+#: body, and no declaration names a longer one
+MAX_ID: Final = 128
+
+#: an id a request names, see `MAX_ID`
+type _Id = Annotated[str, Field(max_length=MAX_ID)]
+
 #: the value of one knob, see `SimulateRequest`; `json.loads` reads `NaN` and
 #: `Infinity`, which are no value of a knob and are refused at the edge
 type _Value = Annotated[float, Field(allow_inf_nan=False)]
@@ -117,13 +127,15 @@ class SimulateRequest(BaseModel):
             that variant (`Project.panels_of`) runs on its SBML. Without, the
             declaration of the default variant runs on the variant it
             declares (`PanelSimulation.variant`), the default without.
+
+    The ids of the knobs and the variant are at most `MAX_ID` characters.
     """
 
     model_config = _CONFIG
 
-    values: dict[str, _Value] = Field(default_factory=dict, max_length=MAX_KNOBS)
-    grid: dict[str, _Points] = Field(default_factory=dict, max_length=MAX_KNOBS)
-    variant: str | None = None
+    values: dict[_Id, _Value] = Field(default_factory=dict, max_length=MAX_KNOBS)
+    grid: dict[_Id, _Points] = Field(default_factory=dict, max_length=MAX_KNOBS)
+    variant: _Id | None = None
 
     @model_validator(mode="after")
     def _check_grid(self) -> Self:

@@ -823,8 +823,8 @@ class Project(BaseModel):
             it a domain can claim and the evidence extensions of the
             credibility of the project.
         scans: the scans by their name.
-        panels: the interactive panels of the model by their id, see
-            `sbmlsim.panel`: the override for a model whose SBML carries no
+        panels: the interactive panels of the model by their id, each key
+            the `id` of its panel, see `sbmlsim.panel`: the override for a model whose SBML carries no
             panel annotation; a panel of an id which the annotation declares
             as well wins over the annotated one. It is the override of every
             variant.
@@ -1113,6 +1113,41 @@ class Project(BaseModel):
             raise ValueError(
                 f"The directory of the factory {self.factory_dir} is outside of "
                 f"the root {self.root} of the project."
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _check_panel_ids(self) -> Self:
+        """Check that every panel of `panels` and `variant_panels` is keyed by its id.
+
+        A panel is served under its key (`panels_of`) and answers its own `id`
+        in its declaration, so a key which is not that id would serve one panel
+        under the id of another.
+
+        Raises:
+            ValueError: naming the keys and the ids, for panels whose key is not
+                their id.
+        """
+        declared = [
+            (where, key, panel.id)
+            for where, panels in (
+                ("panels", self.panels),
+                *(
+                    (f"variant_panels['{variant}']", panels)
+                    for variant, panels in self.variant_panels.items()
+                ),
+            )
+            for key, panel in panels.items()
+            if key != panel.id
+        ]
+        if declared:
+            named = "; ".join(
+                f"{where}: '{key}' is the panel '{panel_id}'"
+                for where, key, panel_id in declared
+            )
+            raise ValueError(
+                f"The project '{self.name}' keys panels by another id than their "
+                f"own ({named}); a panel is keyed by its id."
             )
         return self
 

@@ -2,6 +2,7 @@
 
 import ast
 import json
+import math
 import pickle
 import sys
 from collections.abc import Callable
@@ -1080,3 +1081,104 @@ def test_a_project_declares_the_app_of_its_model(tmp_path: Path, app: App) -> No
     assert Project(name="toy", root=tmp_path).app is None
     with pytest.raises(ValidationError):
         Project(name="toy", root=tmp_path, app="an app")
+
+
+#: the parts of a declaration, each with every required text set, which the
+#: tests of the empty texts and the numbers which are not finite vary
+_PARTS: dict[str, tuple[type, dict[str, Any]]] = {
+    "choice": (Choice, {"label": "12.5 mg", "value": 12.5}),
+    "knob": (
+        Knob,
+        {"id": "dose", "label": "dose", "min": 1.0, "max": 2.0, "default": 1.0},
+    ),
+    "curve": (PanelCurve, {"id": "[S1]", "label": "S1"}),
+    "data": (
+        PanelData,
+        {"id": "s", "label": "a study", "dataset": "Study_Fig1", "x": "t", "y": "y"},
+    ),
+    "simulation": (PanelSimulation, {"end": 10.0}),
+    "panel": (
+        Panel,
+        {"id": "p", "title": "a panel", "curves": (), "simulation": {"end": 10.0}},
+    ),
+}
+
+
+@pytest.mark.parametrize(
+    ("part", "field"),
+    [
+        ("choice", "label"),
+        ("knob", "id"),
+        ("knob", "label"),
+        ("knob", "target"),
+        ("knob", "unit"),
+        ("curve", "id"),
+        ("curve", "label"),
+        ("curve", "unit"),
+        ("data", "id"),
+        ("data", "label"),
+        ("data", "curve"),
+        ("data", "x"),
+        ("data", "y"),
+        ("data", "yerr"),
+        ("data", "conversion"),
+        ("data", "unit"),
+        ("simulation", "variant"),
+        ("simulation", "x_unit"),
+        ("panel", "id"),
+        ("panel", "title"),
+        ("panel", "x_label"),
+    ],
+)
+@pytest.mark.parametrize("text", ["", "  "])
+def test_an_empty_text_of_a_declaration_is_refused(
+    part: str, field: str, text: str
+) -> None:
+    """An empty text is no attribute of the annotation, which drops the panel."""
+    cls, fields = _PARTS[part]
+    cls(**fields)
+    with pytest.raises(ValidationError, match="not empty"):
+        cls(**{**fields, field: text})
+
+
+def test_the_texts_which_may_be_empty_are_the_ones_whose_default_is() -> None:
+    """The subtitle and the label of the value axis read back empty as they are."""
+    cls, fields = _PARTS["panel"]
+    panel = cls(**{**fields, "subtitle": "", "y_label": ""})
+    assert (panel.subtitle, panel.y_label) == ("", "")
+
+
+@pytest.mark.parametrize("value", [math.inf, -math.inf, math.nan])
+@pytest.mark.parametrize(
+    ("part", "field"),
+    [
+        ("choice", "value"),
+        ("knob", "min"),
+        ("knob", "max"),
+        ("knob", "default"),
+    ],
+)
+def test_a_number_which_is_not_finite_is_refused(
+    part: str, field: str, value: float
+) -> None:
+    """A bound of infinity has a grid of infinities, which is no JSON."""
+    cls, fields = _PARTS[part]
+    with pytest.raises(ValidationError, match="finite"):
+        cls(**{**fields, field: value})
+
+
+@pytest.mark.parametrize("value", [math.inf, math.nan])
+def test_a_value_of_the_preinitialization_or_a_state_which_is_not_finite_is_refused(
+    value: float,
+) -> None:
+    with pytest.raises(ValidationError, match="finite"):
+        PanelSimulation(end=10.0, preinit={"BW": value})
+    with pytest.raises(ValidationError, match="finite"):
+        PanelData(
+            id="s",
+            label="a study",
+            dataset="Study_Fig1",
+            x="t",
+            y="y",
+            at={"dose": value},
+        )

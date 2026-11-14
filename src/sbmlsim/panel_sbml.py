@@ -52,8 +52,10 @@ disagree: `panels_from_sbml` reads the annotation, `panels_to_annotation` and
 
 A text which is empty is no attribute either, because libsbml does not write
 one, and is read back as the default of its field: the default of `subtitle`
-is empty, and a panel, a knob, a curve and a series of the data each need a
-title or a label which is not.
+and of `yLabel` is empty, and every other text of a declaration is refused
+empty where it is declared (`sbmlsim.panel`), so it never reaches the
+annotation; `write_panels` reads the annotation back before it writes the SBML
+and refuses a panel which does not read back as itself.
 
 `panels_from_sbml` never raises for a panel it cannot read: it reports every
 such panel as a `PanelProblem` and reads the others, so one malformed panel
@@ -531,10 +533,17 @@ def write_panels(sbml_in: Path, sbml_out: Path, panels: Sequence[Panel]) -> None
         sbml_out: the SBML file which is written.
         panels: the panels of the model, in the order they are written.
 
+    The annotation is read back before the SBML is written and compared with
+    the panels, so a panel which would not read back as itself, e.g. one built
+    without its validation (`model_copy`, `model_construct`), is refused here
+    and never written into a model it would silently drop out of.
+
     Raises:
         FileNotFoundError: if the SBML which is read is no file.
-        ValueError: for a source which is no SBML model, and if the
-            annotation cannot be written into the model.
+        ValueError: for a source which is no SBML model, if the annotation
+            cannot be written into the model and, naming the panels, for
+            panels which do not read back as themselves; nothing is written
+            then.
         OSError: if the SBML cannot be written.
     """
     document: libsbml.SBMLDocument = _document_of(sbml_in)
@@ -542,11 +551,43 @@ def write_panels(sbml_in: Path, sbml_out: Path, panels: Sequence[Panel]) -> None
     _remove_panels(model)
     if panels:
         _add_panels(model, panels)
+        _check_read_back(model, panels)
     if libsbml.writeSBMLToFile(document, str(sbml_out)) != 1:
         raise OSError(f"The SBML with the panels cannot be written into '{sbml_out}'.")
     logger.info(
         "The annotation of %d panels was written into '%s'", len(panels), sbml_out
     )
+
+
+def _check_read_back(model: libsbml.Model, panels: Sequence[Panel]) -> None:
+    """Check that the annotation of a model reads back as the panels it was written of.
+
+    Args:
+        model: the model with the annotation of the panels.
+        panels: the panels, in the order they were written.
+
+    Raises:
+        ValueError: naming the panels and why, for every panel which does not
+            read back as itself.
+    """
+    elements = list(_panel_elements(model))
+    lost: list[str] = []
+    for k, panel in enumerate(panels):
+        if k >= len(elements):
+            lost.append(f"'{panel.id}': not written")
+            continue
+        try:
+            back = panel_from_payload(_panel_payload(elements[k]))
+        except (TypeError, ValueError) as error:
+            lost.append(f"'{panel.id}': {error}")
+            continue
+        if back != panel:
+            lost.append(f"'{panel.id}': it reads back as another declaration")
+    if lost:
+        raise ValueError(
+            "The panels do not read back from the annotation as they were "
+            "declared, so they are not written: " + "; ".join(lost)
+        )
 
 
 def _remove_panels(model: libsbml.Model) -> None:

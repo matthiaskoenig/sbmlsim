@@ -34,7 +34,7 @@ import re
 from collections.abc import Mapping
 from typing import Annotated, Any, Final, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
     "APP_CONTRACT",
@@ -92,6 +92,37 @@ _CONFIG = ConfigDict(extra="forbid", frozen=True)
 #: reader of a panel has to resolve a path to find out, see `PanelData`.
 _DATASET = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
+
+def _has_text(value: str) -> str:
+    """Check that a text of a declaration is not empty.
+
+    An empty text is written into the annotation of a model as no attribute
+    (`sbmlsim.panel_sbml`) and read back as the default of its field: a
+    required text would then be missing and an optional one `None`, so the
+    declaration would not survive its own SBML. A text which says nothing is
+    therefore refused where it is declared, and an optional one which is not
+    given is `None`.
+
+    Args:
+        value: the text.
+
+    Returns:
+        The text as it is.
+
+    Raises:
+        ValueError: for a text which is empty or only white space.
+    """
+    if not value.strip():
+        raise ValueError("a text of a panel is not empty; leave out one which is none")
+    return value
+
+
+#: a text of a declaration which is not empty, see `_has_text`
+type _Text = Annotated[str, AfterValidator(_has_text)]
+#: a number of a declaration, which is finite: a bound, a default or a value
+#: of infinity or `NaN` has no JSON and no point of a grid
+type _Number = Annotated[float, Field(allow_inf_nan=False)]
+
 #: the shape of the id of a page and of a variant of an app: an SBML `SId`,
 #: a letter or `_` and then letters, digits and `_`. The id of a page is the
 #: one a link of the app names, so it is no path, no separator and no dot.
@@ -119,8 +150,8 @@ class Choice(BaseModel):
 
     model_config = _CONFIG
 
-    label: str
-    value: float
+    label: _Text
+    value: _Number
 
 
 class Knob(BaseModel):
@@ -161,16 +192,16 @@ class Knob(BaseModel):
 
     model_config = _CONFIG
 
-    id: str
-    label: str
-    target: str | None = None
-    unit: str | None = None
+    id: _Text
+    label: _Text
+    target: _Text | None = None
+    unit: _Text | None = None
     kind: Literal["range", "choice"] = "range"
-    min: float | None = None
-    max: float | None = None
+    min: _Number | None = None
+    max: _Number | None = None
     steps: int = Field(default=5, ge=2, le=MAX_GRID)
     choices: tuple[Choice, ...] = ()
-    default: float
+    default: _Number
 
     @model_validator(mode="after")
     def _check_kind(self) -> Self:
@@ -276,9 +307,9 @@ class PanelCurve(BaseModel):
 
     model_config = _CONFIG
 
-    id: str
-    label: str
-    unit: str | None = None
+    id: _Text
+    label: _Text
+    unit: _Text | None = None
     scale: Literal["linear", "log"] = "linear"
 
 
@@ -327,17 +358,17 @@ class PanelData(BaseModel):
 
     model_config = _CONFIG
 
-    id: str
-    label: str
-    curve: str | None = None
+    id: _Text
+    label: _Text
+    curve: _Text | None = None
     dataset: str
-    x: str
-    y: str
-    yerr: str | None = None
+    x: _Text
+    y: _Text
+    yerr: _Text | None = None
     sel: Mapping[str, str] | None = None
-    at: Mapping[str, float] | None = None
-    conversion: str | None = None
-    unit: str | None = None
+    at: Mapping[str, _Number] | None = None
+    conversion: _Text | None = None
+    unit: _Text | None = None
 
     @property
     def curve_id(self) -> str:
@@ -401,11 +432,11 @@ class PanelSimulation(BaseModel):
 
     model_config = _CONFIG
 
-    variant: str | None = None
+    variant: _Text | None = None
     end: float = Field(gt=0.0, le=MAX_END)
     points: int = Field(default=200, ge=2, le=MAX_POINTS)
-    x_unit: str | None = None
-    preinit: Mapping[str, float] = {}
+    x_unit: _Text | None = None
+    preinit: Mapping[str, _Number] = {}
     derived: Mapping[str, str] = {}
 
     @model_validator(mode="after")
@@ -473,10 +504,10 @@ class Panel(BaseModel):
 
     model_config = _CONFIG
 
-    id: str
-    title: str
+    id: _Text
+    title: _Text
     subtitle: str = ""
-    x_label: str = "time"
+    x_label: _Text = "time"
     y_label: str = ""
     y_min: float | None = Field(default=None, allow_inf_nan=False)
     y_max: float | None = Field(default=None, allow_inf_nan=False)
