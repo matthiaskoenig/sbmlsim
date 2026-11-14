@@ -516,6 +516,9 @@ def panels_to_annotation(panels: Sequence[Panel]) -> str:
     Returns:
         The `annotation` element with the `panels` element of the namespace
         `PANEL_NS`, which `panels_from_sbml` reads back.
+
+    Raises:
+        ValueError: naming the ids, if two panels have one id.
     """
     return f"<annotation>{_panels_xml(panels)}</annotation>"
 
@@ -540,8 +543,9 @@ def write_panels(sbml_in: Path, sbml_out: Path, panels: Sequence[Panel]) -> None
 
     Raises:
         FileNotFoundError: if the SBML which is read is no file.
-        ValueError: for a source which is no SBML model, if the annotation
-            cannot be written into the model and, naming the panels, for
+        ValueError: for a source which is no SBML model, naming the ids for
+            two panels of one id, if the annotation cannot be written into
+            the model and, naming the panels, for
             panels which do not read back as themselves; nothing is written
             then.
         OSError: if the SBML cannot be written.
@@ -636,7 +640,20 @@ def _add_panels(model: libsbml.Model, panels: Sequence[Panel]) -> None:
 
 
 def _panels_xml(panels: Sequence[Panel]) -> str:
-    """Get the XML of the `panels` element of the panels."""
+    """Get the XML of the `panels` element of the panels.
+
+    Raises:
+        ValueError: naming the ids, if two panels have one id: a reader keeps
+            the first panel of an id and reports the others
+            (`panels_from_sbml`), so the annotation would not read back as the
+            panels it was written of.
+    """
+    ids = [panel.id for panel in panels]
+    repeated = sorted({one for one in ids if ids.count(one) > 1})
+    if repeated:
+        raise ValueError(
+            f"The panels repeat the ids {repeated}; an id names one panel."
+        )
     elements = "".join(_panel_xml(panel) for panel in panels)
     return f'<{PANELS_ELEMENT} xmlns="{PANEL_NS}">{elements}</{PANELS_ELEMENT}>'
 

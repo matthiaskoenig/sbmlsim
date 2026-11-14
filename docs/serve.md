@@ -6,7 +6,7 @@ The three parts are separate on purpose:
 
 - **the declaration** travels with the model, as an annotation of its `<model>` element (`sbmlsim.panel`, `sbmlsim.panel_sbml`), so a panel is part of the SBML and of the COMBINE archive of a release and not of a checkout;
 - **the service** is the python side (`sbmlsim.serve`, the extra `web`): a registry of models, the declarations as JSON and the simulations behind them;
-- **the renderer** is javascript of a repository of its own, which draws a panel from the declaration alone.
+- **the renderer** is javascript of a repository of its own, [sbmlsim-web](https://github.com/matthiaskoenig/sbmlsim-web), the web components `<sbmlsim-panel>` and `<sbmlsim-app>`, which draw a panel from the declaration alone; its README says how to embed them in a page of documentation, a slide or a course.
 
 They meet at three versioned JSON contracts, `panel/1`, `paneldata/1` and `app/1`, and at nothing else: see [The contracts](#the-contracts).
 
