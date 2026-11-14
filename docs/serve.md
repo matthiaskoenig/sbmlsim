@@ -275,7 +275,7 @@ Scenarios are of the app and not of the SBML, so they have no annotation.
 
 ## The service
 
-`sbmlsim.serve` is a FastAPI application over `Simulator.run`. It needs the extra `web` (fastapi, uvicorn and httpx), which `pip install "sbmlsim[web]"` installs and which the package itself does not need: nothing of sbmlsim imports the service, so `import sbmlsim` imports neither fastapi nor uvicorn.
+`sbmlsim.serve` is a FastAPI application over `Simulator.run`. It needs the extra `web` (fastapi, uvicorn, anyio and httpx), which `pip install "sbmlsim[web]"` installs and which the package itself does not need: nothing of sbmlsim imports the service, so `import sbmlsim` imports neither fastapi nor uvicorn.
 
 ### The command
 
