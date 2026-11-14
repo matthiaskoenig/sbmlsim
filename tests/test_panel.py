@@ -80,7 +80,7 @@ def panel() -> Panel:
         id="renal",
         title="Hydrochlorothiazide in renal impairment",
         subtitle="the plasma concentration over the renal function",
-        x_label="time (hr)",
+        x_label="time",
         y_min=0.001,
         y_max=1.0,
         x_max=24.0,

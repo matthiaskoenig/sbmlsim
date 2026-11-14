@@ -18,7 +18,7 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
 <model id="hctz" name="hydrochlorothiazide" timeUnits="min">
   <annotation>
     <panels xmlns="https://sbmlsim.org/ns/panel/1">
-      <panel id="renal_plasma" title="Plasma concentration over the renal function" subtitle="hydrochlorothiazide after a single oral dose" xLabel="time [hr]" yLabel="plasma concentration">
+      <panel id="renal_plasma" title="Plasma concentration over the renal function" subtitle="hydrochlorothiazide after a single oral dose" yLabel="plasma concentration">
         <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
           <preinit target="BW" value="75"/>
         </simulation>
@@ -36,7 +36,7 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
         <curve id="[Cve_hctz]" label="plasma" unit="uM" scale="linear"/>
         <curve id="[Cki_plasma_hctz]" label="kidney" unit="uM"/>
       </panel>
-      <panel id="renal_urine" title="Urinary excretion over the renal function" subtitle="hydrochlorothiazide after a single oral dose" xLabel="time [hr]" yLabel="amount excreted">
+      <panel id="renal_urine" title="Urinary excretion over the renal function" subtitle="hydrochlorothiazide after a single oral dose" yLabel="amount excreted">
         <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
           <preinit target="BW" value="75"/>
         </simulation>
@@ -58,14 +58,14 @@ The panels of a model are an `<annotation>` of its `<model>` element, in the nam
           <at knob="dose" value="5"/>
         </data>
       </panel>
-      <panel id="dose_plasma" title="Plasma concentration over the dose" xLabel="time [hr]" yLabel="plasma concentration">
+      <panel id="dose_plasma" title="Plasma concentration over the dose" yLabel="plasma concentration">
         <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
           <preinit target="BW" value="75"/>
         </simulation>
         <knob id="dose" label="dose" target="PODOSE_hctz" unit="mg" kind="range" min="12.5" max="50" steps="4" default="25"/>
         <curve id="[Cve_hctz]" label="plasma" unit="uM"/>
       </panel>
-      <panel id="patient_plasma" title="Plasma concentration of a patient" xLabel="time (hr)" yLabel="plasma concentration" yMin="0" yMax="2" xMax="24">
+      <panel id="patient_plasma" title="Plasma concentration of a patient" yLabel="plasma concentration" yMin="0" yMax="2" xMax="24">
         <simulation end="1440" points="50" xUnit="hr">
           <preinit target="PODOSE_hctz" value="0"/>
           <preinit target="BW" value="75"/>
@@ -101,7 +101,7 @@ A model declares as many `<panel>` elements as it has panels, each with one `<si
 | `id` | the id a request names, required |
 | `title` | the title of the panel, required |
 | `subtitle` | the question the panel answers, empty without |
-| `xLabel` | the label of the time axis, `time` without |
+| `xLabel` | the label of the time axis, `time` without; a renderer appends the unit the x axis is delivered in (`xUnit`), so the unit is no part of it |
 | `yLabel` | the label of the value axis, e.g. `plasma concentration`, empty without; a renderer names that axis after the curves then, and appends the unit they share in either case, so the unit is no part of it |
 | `yMin`, `yMax` | the limits of the value axis, in the unit the curves of the panel are delivered in, which they then share; none without, which a renderer fits to the curves. `yMin` is below `yMax`, and both are positive on a panel whose curves declare the `log` scale |
 | `xMax` | the end of the time axis, in the unit it is delivered in (`xUnit`, the time unit of the model without), greater than 0 and at most the end of the simulation; the end without |
@@ -345,7 +345,7 @@ The declaration of a panel is its `panel/1` payload, here the one of `renal_urin
     "id": "renal_urine",
     "title": "Urinary excretion over the renal function",
     "subtitle": "hydrochlorothiazide after a single oral dose",
-    "x_label": "time [hr]",
+    "x_label": "time",
     "y_label": "amount excreted",
     "y_min": null,
     "y_max": null,

@@ -46,7 +46,7 @@ DOCUMENTED = Panel(
     id="ok",
     title="Renal impairment",
     subtitle="hctz, single oral dose",
-    x_label="time [hr]",
+    x_label="time after the dose",
     y_label="plasma concentration",
     y_max=2.0,
     x_max=24.0,
@@ -112,7 +112,7 @@ def panel() -> Panel:
         id="oscillation",
         title="The repressilator",
         subtitle="the protein over the decay of its mRNA",
-        x_label="time (min)",
+        x_label="time after the dose",
         knobs=(
             Knob(
                 id="beta",
@@ -532,7 +532,7 @@ def test_the_annotation_names_the_attributes_of_the_contract(panel: Panel) -> No
     annotation = panels_to_annotation([panel])
     assert annotation.startswith("<annotation>")
     assert f'<panels xmlns="{PANEL_NS}">' in annotation
-    assert 'xLabel="time (min)"' in annotation
+    assert 'xLabel="time after the dose"' in annotation
     assert 'xUnit="min"' in annotation
     assert "x_label" not in annotation
     assert "x_unit" not in annotation

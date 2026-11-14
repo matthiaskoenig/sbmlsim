@@ -7,7 +7,7 @@ a release:
 
     <annotation>
       <panels xmlns="https://sbmlsim.org/ns/panel/1">
-        <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration" yMax="2" xMax="24">
+        <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time after the dose" yLabel="plasma concentration" yMax="2" xMax="24">
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
             <derived target="f_renal_function" formula="min(crcl / 110, 1)"/>

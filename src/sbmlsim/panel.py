@@ -473,7 +473,8 @@ class Panel(BaseModel):
         id: the id of the panel, the one a request names.
         title: the title of the panel.
         subtitle: the question the panel answers, shown below the title.
-        x_label: the label of the time axis, e.g. `"time (hr)"`.
+        x_label: the label of the time axis without its unit, which a renderer
+            appends (the unit of `PanelSimulation.x_unit`), `"time"` by default.
         y_label: the label of the value axis, e.g. `"plasma concentration"`;
             empty for a panel whose renderer names that axis after its curves,
             which is what every panel does today. The unit is no part of it: a
