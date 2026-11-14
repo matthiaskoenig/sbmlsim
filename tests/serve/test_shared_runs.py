@@ -22,22 +22,28 @@ from examples.panels.hctz import (
     HCTZ_APP,
     HCTZ_PATIENT_PLASMA,
     HCTZ_PATIENT_URINE,
+    HCTZ_RENAL_PLASMA,
+    HCTZ_RENAL_URINE,
     PATIENT_PAGE,
     PATIENT_SIMULATION,
     POINTS,
     PROJECT,
+    SIMULATION,
 )
+from sbmlsim.engine import Engine
 from sbmlsim.panel import AppPage, Panel, PanelCurve
-from sbmlsim.project import Project
+from sbmlsim.project import Project, SimulatorSettings
 from sbmlsim.serve import app as app_module
 from sbmlsim.serve.app import create_app
 from sbmlsim.serve.runner import (
+    SHARED_ENGINES,
     ModelEntry,
     ModelRegistry,
     PanelResult,
     PanelRunner,
 )
 from sbmlsim.simulator import Simulator
+from tests.engines import OTHER_ENGINES, require
 
 #: the seconds a wait which must succeed gives up after, i.e. a failed test
 TIMEOUT = 60.0
@@ -84,6 +90,34 @@ UNSELECTABLE = HCTZ_PATIENT_PLASMA.model_copy(
         "y_max": None,
     }
 )
+#: the simulation of the renal panels without a pre-initialization of its own,
+#: so the order of the values of a state is the order of the knobs which set it
+BARE = SIMULATION.model_copy(update={"preinit": {}})
+#: the renal plasma and urine of that simulation, the urine with its knobs
+#: declared in the other order
+ORDERED = HCTZ_RENAL_PLASMA.model_copy(
+    update={"id": "renal_plasma_bare", "simulation": BARE}
+)
+URINE_REORDERED = HCTZ_RENAL_URINE.model_copy(
+    update={
+        "id": "renal_urine_reordered",
+        "knobs": tuple(reversed(HCTZ_RENAL_URINE.knobs)),
+        "data": (),
+        "simulation": BARE,
+    }
+)
+#: the body weight of a patient on the axis of minutes: another simulation, the
+#: scan of the page `patient`, and a curve none of its panels draws
+WEIGHT = HCTZ_PATIENT_PLASMA.model_copy(
+    update={
+        "id": "patient_weight",
+        "curves": (PanelCurve(id="BW", label="body weight"),),
+        "y_min": None,
+        "y_max": None,
+        "x_max": None,
+        "simulation": PATIENT_SIMULATION.model_copy(update={"x_unit": "min"}),
+    }
+)
 #: a page of two panels of one model which share no simulation
 APART_PAGE = AppPage(
     id="apart",
@@ -97,6 +131,9 @@ SHARED_PROJECT: Project = PROJECT.replace(
         URINE_APART.id: URINE_APART,
         URINE_RENAMED.id: URINE_RENAMED,
         UNSELECTABLE.id: UNSELECTABLE,
+        ORDERED.id: ORDERED,
+        URINE_REORDERED.id: URINE_REORDERED,
+        WEIGHT.id: WEIGHT,
     },
     app=HCTZ_APP.model_copy(update={"pages": (*HCTZ_APP.pages, APART_PAGE)}),
 )
@@ -253,6 +290,87 @@ def test_the_runs_a_runner_keeps_are_bounded(
     # the first state was evicted by the second
     shared.run("hctz", urine, {"dose": 25.0}, {})
     assert len(runs) == 3
+
+
+def test_a_state_is_one_run_whatever_order_a_panel_declares_its_knobs_in(
+    registry: ModelRegistry, alone: PanelRunner, runs: list[list[str]]
+) -> None:
+    shared = PanelRunner(registry)
+    # a point sets both targets, the renal function and the dose, in the order
+    # of the knobs of each panel
+    for values, grid in (
+        ({"egfr": 0.5, "dose": 12.5}, {}),
+        ({"dose": 5.0}, {"egfr": 3}),
+    ):
+        del runs[:]
+        shared.run("hctz", _panel(registry, ORDERED.id), values, grid)
+        reordered = _panel(registry, URINE_REORDERED.id)
+        result = shared.run("hctz", reordered, values, grid)
+        assert len(runs) == 1
+        _assert_bitwise(result, alone.run("hctz", reordered, values, grid))
+
+
+def test_two_groups_of_one_state_share_its_run_and_do_not_replace_it(
+    registry: ModelRegistry, alone: PanelRunner, runs: list[list[str]]
+) -> None:
+    """A run again for the curves of a group keeps the curves of the run before."""
+    shared = PanelRunner(registry)
+    weight, plasma = _panel(registry, WEIGHT.id), _panel(registry, "patient_plasma")
+    state: tuple[dict[str, float], dict[str, int]] = ({"dose": 25.0}, {"crcl": 8})
+    for _ in range(2):
+        for panel in (weight, plasma):
+            shared.run("hctz", panel, *state)
+    assert runs == [
+        ["BW"],
+        ["[Cve_hctz]", "[Cki_plasma_hctz]", "Aurine_hctz", "BW"],
+    ]
+    del runs[:]
+    for panel in (weight, plasma):
+        _assert_bitwise(
+            shared.run("hctz", panel, *state), alone.run("hctz", panel, *state)
+        )
+
+
+def test_a_run_is_kept_by_its_last_use(
+    registry: ModelRegistry, runs: list[list[str]]
+) -> None:
+    shared = PanelRunner(registry, max_runs=2)
+    plasma = _panel(registry, "patient_plasma")
+    first, second, third = (({"dose": dose}, {}) for dose in (5.0, 12.5, 25.0))
+    shared.run("hctz", plasma, *first)
+    shared.run("hctz", plasma, *second)
+    # a use of the first run makes the second one the least recently used
+    shared.run("hctz", plasma, *first)
+    shared.run("hctz", plasma, *third)
+    assert len(runs) == 3
+    shared.run("hctz", plasma, *first)
+    assert len(runs) == 3
+    shared.run("hctz", plasma, *second)
+    assert len(runs) == 4
+
+
+def test_only_roadrunner_shares_a_run() -> None:
+    """A run is shared only where a curve does not change with the selections."""
+    assert frozenset({Engine.ROADRUNNER}) == SHARED_ENGINES
+    assert not SHARED_ENGINES.intersection(OTHER_ENGINES)
+
+
+@pytest.mark.parametrize("engine", OTHER_ENGINES, ids=lambda one: one.value)
+def test_a_panel_of_another_engine_runs_alone(
+    engine: Engine, runs: list[list[str]]
+) -> None:
+    require(engine)
+    project = SHARED_PROJECT.replace(simulator=SimulatorSettings(engine=engine))
+    registry = ModelRegistry(
+        {"hctz": ModelEntry(id="hctz", project=project, title="HCTZ")}
+    )
+    shared = PanelRunner(registry)
+    values, grid = STATES[2]
+    for panel_id in PATIENT_PAGE.panels:
+        result = shared.run("hctz", registry.panel("hctz", panel_id), values, grid)
+        assert result.failed == ()
+    # one run per panel, each of the curves of its own panel
+    assert runs == [["[Cve_hctz]", "[Cki_plasma_hctz]"], ["Aurine_hctz"]]
 
 
 def test_a_runner_of_a_negative_number_of_runs_is_refused(

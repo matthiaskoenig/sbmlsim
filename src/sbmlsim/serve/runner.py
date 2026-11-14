@@ -61,14 +61,27 @@ the selections of every panel of the variant which shares the simulation
 (`_selections`) and kept (`MAX_RUNS`), so the requests of the other panels at
 that state read their curves out of it without integrating. A stored run is
 keyed on what decides its numbers (`_run_key`): the warm model, the sha256 of
-its SBML and the settings of its simulator, the times and the resolved scan,
-i.e. the values of the pre-initialization and of the grid as the panel gives
-them to the simulator, in their order, never on the panel. The key is read
-under the lock of the warm model, after it was taken, so a request whose state
-is running waits for that run and reads it, and every read and write of a
-stored run is under the lock of the model which ran it. A curve does not
-change with the selections a scan keeps, so an answer read out of a shared run
-is the answer of a run of the panel alone, bitwise.
+its SBML, the engine and the settings of its simulator, the times and the
+resolved scan, i.e. the values of the pre-initialization and of the grid by
+their targets, which `_scan` gives the simulator in the canonical order of the
+targets, so two panels which declare one state with their knobs in another
+order share it, never on the panel. The key is read under the lock of the warm
+model, after it was taken, so a request whose state is running waits for that
+run and reads it, and every read and write of a stored run is under the lock of
+the model which ran it. A run is kept by its last use (`BoundedCache`), and a
+panel whose curves a stored run of its state lacks runs it again with the
+curves of both, so two groups of panels of one state do not evict each other.
+
+A run is shared only where sharing is bitwise, which is the engine roadrunner
+(`SHARED_ENGINES`): its integrator takes its steps whatever a scan selects, so
+a curve does not change with the selections a scan keeps and an answer read
+out of a shared run is the answer of a run of the panel alone, bitwise. AMICI
+outputs a substitute of the steps of its integrator which it refines where the
+interpolation between two rows misses a selection
+(`sbmlsim.simulator.executor_amici`), so a curve of another panel refines the
+rows of this one, and a result of COPASI is not bitwise reproducible across
+two runs at all; a panel of either engine is therefore run alone, with its own
+curves, as a runner which shares nothing (`max_runs=0`) runs every panel.
 """
 
 from __future__ import annotations
@@ -86,6 +99,7 @@ import numpy as np
 from pint.errors import PintError
 from pint.facets.plain import PlainUnit
 
+from sbmlsim.engine import Engine
 from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.panel import AppPage, Knob, Panel, PanelCurve, PanelData
@@ -104,6 +118,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "MAX_RUNS",
+    "SHARED_ENGINES",
     "UNITLESS",
     "DeliveredUnit",
     "GridAxis",
@@ -128,14 +143,23 @@ __all__ = [
 #: the key of the time of a result in `PanelResult.units`
 X: Final = "x"
 
-#: the runs a runner keeps for the panels which share them, see the module:
-#: the panels of a page ask for one state at once, so a run is read within a
-#: second of its run and a few entries cover the pages several readers turn at
-#: once, while every answer is kept by the cache of the responses
-#: (`sbmlsim.serve.cache.MAX_ENTRIES`) anyway; a run holds the curves of every
-#: panel of its simulation over its grid, at most `MAX_GRID` points of
-#: `MAX_POINTS` times per curve, about 1 MB for four curves
+#: the runs a runner keeps for the panels which share them, see the module: the
+#: panels of a page ask for one state at once, so a run is read within a second
+#: of its run and a few entries cover the pages several readers turn at once,
+#: while every answer is kept by the cache of the responses
+#: (`sbmlsim.serve.cache.MAX_ENTRIES`) anyway. It bounds the number of runs and
+#: not their bytes: a run holds every curve of the panels which share its
+#: simulation, each at most `MAX_GRID` points of `MAX_POINTS + 1` times of 8
+#: bytes, 1.0 MB, so the runs of a runner hold at most `MAX_RUNS` times the
+#: curves of the largest such group of a served model in MB, each group of
+#: panels at most `MAX_CURVES` curves per panel. The four curves of the page of
+#: glimepiride of pkdb_models at the limits, a grid of 64 doses of its 501
+#: times, are 1.03 MB of a run
 MAX_RUNS: Final = 32
+
+#: the engines whose runs the panels of one simulation share, see the module:
+#: the ones whose curves do not change with the selections of a scan
+SHARED_ENGINES: Final = frozenset({Engine.ROADRUNNER})
 
 #: the errors the parsing of a unit raises: the ones of pint, whose
 #: `UndefinedUnitError` is an `AttributeError`, and the ones of its parser, see
@@ -994,9 +1018,10 @@ class _Resolved:
         axes: the axes of its grid, one per knob of the grid in the order of
             the knobs of the panel.
         preinit: the values of the pre-initialization by their target, in the
-            order the simulation gets them.
+            order of the targets, which the simulation gets them in.
         grid: the values of the dimension of the grid by their target, in the
-            order the dimension gets them, empty for a request of a point.
+            order of the targets, which the dimension gets them in, empty for
+            a request of a point.
     """
 
     scan: Scan
@@ -1113,11 +1138,12 @@ class PanelRunner:
         with warm.lock:
             resolved = _scan(warm.model, panel, values, grid)
             curves = [curve.id for curve in panel.curves]
-            if self._runs is None:
+            runs = self._runs
+            if runs is None or entry.project.simulator.engine not in SHARED_ENGINES:
                 result = _run(warm, panel, resolved.scan, curves)
                 return _result(warm.model, panel, resolved.axes, result)
             key = _run_key(warm, entry, panel, resolved)
-            stored = self._runs.get(key)
+            stored = runs.get(key)
             if stored is not None and stored.selections.issuperset(curves):
                 logger.debug(
                     "The panel '%s' of the model '%s' is read out of the run '%s'.",
@@ -1129,8 +1155,13 @@ class PanelRunner:
             selections = _selections(
                 warm.model, panel, entry.project.panels_of(name).values()
             )
+            # the curves of the run it replaces as well, so the panels which
+            # read that run read this one and two groups of one state do not
+            # replace each other's run back and forth
+            if stored is not None:
+                selections += sorted(stored.selections.difference(selections))
             result = _run(warm, panel, resolved.scan, selections)
-            self._runs.store(key, _Run(result=result, selections=frozenset(selections)))
+            runs.store(key, _Run(result=result, selections=frozenset(selections)))
             return _result(warm.model, panel, resolved.axes, result)
 
     def units(
@@ -1303,14 +1334,15 @@ def _run_key(warm: _Warm, entry: ModelEntry, panel: Panel, resolved: _Resolved) 
     """Get the key of a run, of what decides its numbers and not of the panel.
 
     It is the warm model, which a stored run is read on under its lock, the
-    sha256 of its SBML, the settings of the simulator of the project, the
-    times and the resolved scan: the values of the pre-initialization and of
-    the dimension of the grid by their target, in the order the simulation and
-    the dimension get them, since a value of a concentration is set through
-    the volume its compartment has at that moment. Every number is the exact
-    double (`_exact`), so two states which differ in the last bit are two
-    runs. The ids of the knobs and the panel are no part of it: a panel whose
-    knobs resolve to the scan of another one is answered by its run.
+    sha256 of its SBML, the engine and the settings of the simulator of the
+    project, the times and the resolved scan: the values of the
+    pre-initialization and of the dimension of the grid by their target, in
+    the canonical order of the targets in which `_scan` gives them to the
+    simulator, whatever order the panel declares its knobs in. Every number is
+    the exact double (`_exact`), so two states which differ in the last bit
+    are two runs. The ids of the knobs and the panel are no part of it: a
+    panel whose knobs resolve to the scan of another one is answered by its
+    run.
 
     Args:
         warm: the warm model.
@@ -1328,6 +1360,7 @@ def _run_key(warm: _Warm, entry: ModelEntry, panel: Panel, resolved: _Resolved) 
             "model": model_id,
             "path": str(path),
             "model_sha256": warm.sha256,
+            "engine": entry.project.simulator.engine.value,
             "simulator": entry.project.simulator.model_dump(mode="json"),
             "end": _exact(panel.simulation.end),
             "points": panel.simulation.points,
@@ -1445,6 +1478,10 @@ def _scan(
             f"The knobs {[knob.id for knob in gridded]} of the grid of the panel "
             f"'{panel.id}' set no target and no derived target reads them."
         )
+    # the values in the order of their targets and not of the declaration of
+    # the knobs, so one state is one scan whichever panel resolves it
+    preinit = dict(sorted(preinit.items()))
+    changed = dict(sorted(changed.items()))
     dimensions = (
         [Dimension("__".join(axis.id for axis in axes), values=changed)]
         if gridded
