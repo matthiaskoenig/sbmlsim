@@ -86,6 +86,7 @@ __all__ = [
     "UNITLESS",
     "DeliveredUnit",
     "GridAxis",
+    "KnobValueError",
     "ModelEntry",
     "ModelRegistry",
     "PanelResult",
@@ -99,6 +100,7 @@ __all__ = [
     "X",
     "check_app_variant",
     "check_knobs",
+    "check_values",
     "check_variant",
 ]
 
@@ -125,6 +127,17 @@ class UnknownKnob(ValueError):
     It is the one error of a run which a request is answered with, so a
     service answers it and no other `ValueError` of the simulation, which
     would carry what the service is made of into a response.
+    """
+
+
+class KnobValueError(UnknownKnob):
+    """A value of a knob, or the points of a grid over it, which its declaration does not take.
+
+    A request is answered with it as with `UnknownKnob`, a 422 whose message
+    names the knob, the value and what the knob takes, and nothing of the
+    service: a value outside the bounds of a range knob, a value which is none
+    of the choices of a choice knob, or a grid over a choice knob of other
+    points than its choices.
     """
 
 
@@ -203,6 +216,53 @@ def check_knobs(
     if unknown:
         raise UnknownKnob(
             f"{unknown} are no knobs of the panel '{panel.id}', which has {knobs}."
+        )
+
+
+def check_values(
+    panel: Panel, values: Mapping[str, float], grid: Mapping[str, int]
+) -> None:
+    """Check the values of a request against the knobs a panel declares.
+
+    A value is a value its knob takes: within the bounds of a range knob,
+    whether it is a named stop of it or not, or one of the choices of a choice
+    knob; and a grid over a choice knob runs its choices, so it has as many
+    points as the knob has choices. A request of another value runs a model
+    in a state the panel does not declare, e.g. a renal function a build of
+    the model has no class of, and is refused before it runs or is answered
+    from the cache. The ids are checked first (`check_knobs`), so every id
+    here is a knob of the panel; it is a check of a request and not of a run,
+    which `PanelRunner.run` runs as it is given.
+
+    Args:
+        panel: the panel of the request, the declaration of the variant the
+            request names.
+        values: the value of a knob by its id.
+        grid: the points of a knob of the grid by its id.
+
+    Raises:
+        KnobValueError: naming the knob, the value and what the knob takes,
+            for the first value of `values` or `grid` its knob does not take.
+    """
+    knobs = {knob.id: knob for knob in panel.knobs}
+    for knob_id, value in values.items():
+        knob = knobs.get(knob_id)
+        if knob is None:
+            continue
+        taken = _no_value_of(knob, value)
+        if taken:
+            raise KnobValueError(
+                f"The value {value!r} of the knob '{knob_id}' of the panel "
+                f"'{panel.id}' is {taken}."
+            )
+    for knob_id, points in grid.items():
+        knob = knobs.get(knob_id)
+        if knob is None or knob.kind != "choice" or points == len(knob.choices):
+            continue
+        raise KnobValueError(
+            f"A grid of {points} points over the knob '{knob_id}' of the panel "
+            f"'{panel.id}' is none it runs: a grid over it runs its "
+            f"{len(knob.choices)} choices."
         )
 
 
@@ -599,7 +659,7 @@ def _check_scenarios(model: str, page: AppPage, panels: Sequence[Panel]) -> None
 
 
 def _no_value_of(knob: Knob, value: float) -> str:
-    """Tell why a value is no value of a knob, see `_check_scenarios`.
+    """Tell why a value is no value of a knob, see `_check_scenarios` and `check_values`.
 
     Args:
         knob: the knob.

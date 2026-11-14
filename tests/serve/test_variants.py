@@ -167,6 +167,53 @@ def test_a_simulation_of_a_variant_runs_the_declaration_of_that_variant(
         assert np.array_equal(np.asarray(rows), np.asarray(at.json()["curves"][curve]))
 
 
+def test_the_app_of_a_variant_names_it(client: TestClient) -> None:
+    assert client.get(APP).json()["variant"] == "default"
+    assert client.get(APP, params={"variant": "other"}).json()["variant"] == "other"
+
+
+def test_a_value_of_a_knob_is_checked_against_the_declaration_of_its_variant(
+    declared: Project,
+) -> None:
+    """A value one build takes and the other does not is a 422 of that other one.
+
+    The renal function of `other` takes 0.1 as well, which the default
+    declaration does not: a request of it runs in `other` and is the 422 of the
+    knob without a variant, naming the knob, the value and its choices.
+    """
+    panels = declared.variant_panels["other"]
+    wider = IMPAIRED.model_copy(
+        update={"choices": (*IMPAIRED.choices, Choice(label="failing", value=0.1))}
+    )
+    widened = {
+        name: one.model_copy(
+            update={
+                "knobs": tuple(
+                    wider if knob.id == "egfr" else knob for knob in one.knobs
+                )
+            }
+        )
+        for name, one in panels.items()
+    }
+    project = declared.replace(variant_panels={"other": widened})
+    registry = ModelRegistry(
+        {"hctz": ModelEntry(id="hctz", project=project, title="Hydrochlorothiazide")}
+    )
+    body: dict[str, Any] = {"values": {"egfr": 0.1, "dose": 25.0}, "grid": {}}
+    with TestClient(create_app(registry)) as client:
+        assert (
+            client.post(SIMULATE, json={**body, "variant": "other"}).status_code == 200
+        )
+        refused = client.post(SIMULATE, json=body)
+        assert refused.status_code == 422
+        assert refused.json()["detail"] == (
+            "The value 0.1 of the knob 'egfr' of the panel 'renal_plasma' is none "
+            "of the choices [0.4, 0.7, 1.0]."
+        )
+        named = client.post(SIMULATE, json={**body, "variant": "default"})
+        assert named.status_code == 422
+
+
 def test_a_panel_one_variant_declares_is_no_panel_of_the_other(
     client: TestClient,
 ) -> None:

@@ -559,6 +559,12 @@ class AppResponse(BaseModel):
             a shell lays the head of each card out with before the panel has
             read its declaration, and are no part of the declaration of the
             app either.
+        variant: the id of the variant of the model the app answers, whose
+            panels its shared knobs and its heads are worked out of: the
+            variant a request names with `?variant=`, else the default variant
+            of the project, which a request without one is answered with. A
+            shell which reads the app knows by it which variant it holds, and
+            refuses an answer of another one than it asked for.
     """
 
     model_config = _CONFIG
@@ -573,6 +579,7 @@ class AppResponse(BaseModel):
     licenses: list[str]
     shared: dict[str, list[SharedKnobPayload]]
     heads: dict[str, list[PanelPayload]]
+    variant: str
 
     @classmethod
     def of(
@@ -580,6 +587,7 @@ class AppResponse(BaseModel):
         app: App,
         shared: Mapping[str, Sequence[SharedKnob]],
         pages: Mapping[str, Sequence[Panel]],
+        variant: str,
     ) -> AppResponse:
         """Get the payload of the app of a model.
 
@@ -596,6 +604,8 @@ class AppResponse(BaseModel):
                 page, see `sbmlsim.serve.runner.ModelEntry.shared`.
             pages: the panels of each page, by the id of the page, see
                 `sbmlsim.serve.runner.ModelEntry.pages`.
+            variant: the id of the variant the app answers, the default one
+                of the project for a request without one.
 
         Returns:
             The response.
@@ -611,7 +621,9 @@ class AppResponse(BaseModel):
             ]
             for page in app.pages
         }
-        return cls.model_validate({**app_payload(app), "shared": knobs, "heads": heads})
+        return cls.model_validate(
+            {**app_payload(app), "shared": knobs, "heads": heads, "variant": variant}
+        )
 
 
 class ExperimentsRequest(BaseModel):

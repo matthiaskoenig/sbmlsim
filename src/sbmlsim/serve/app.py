@@ -97,6 +97,7 @@ from sbmlsim.serve.runner import (
     UnknownVariant,
     check_app_variant,
     check_knobs,
+    check_values,
 )
 
 logger = logging.getLogger(__name__)
@@ -323,7 +324,8 @@ def create_app(
                 variant without.
 
         Returns:
-            The app, see `sbmlsim.panel.app_payload`.
+            The app, see `sbmlsim.panel.app_payload`, with the id of the
+            variant it answers, the default variant without a query.
 
         Raises:
             UnknownModel: for a model which is not served, a 404.
@@ -337,7 +339,12 @@ def create_app(
         if declared is None:
             raise HTTPException(status_code=404, detail=NO_APP)
         check_app_variant(entry, variant)
-        return AppResponse.of(declared, entry.shared(variant), entry.pages(variant))
+        return AppResponse.of(
+            declared,
+            entry.shared(variant),
+            entry.pages(variant),
+            entry.variant_name(variant) or "",
+        )
 
     @app.get("/api/models/{model}/panels")
     def panels(model: str) -> PanelsResponse:
@@ -480,8 +487,10 @@ def create_app(
             UnknownVariant: a 422 for a variant the project does not have,
                 checked before the cache is read.
             HTTPException: a 422 for a knob id the panel does not declare,
-                which is the error of a request a run is answered with and
-                which is checked before the cache is read, and a 500 for every
+                and for a value of a knob, or the points of a grid over it,
+                which the declaration of the variant does not take
+                (`check_values`), which are the errors of a request a run is
+                answered with and which are checked before the cache is read, and a 500 for every
                 other failure of the run, whose message is the one of the
                 service and not of the exception.
         """
@@ -495,6 +504,7 @@ def create_app(
         )
         try:
             check_knobs(declaration, request.values, request.grid)
+            check_values(declaration, request.values, request.grid)
             spec_hash = _spec_hash(entry, declaration, request, sha, variant)
             cached = cache.get(spec_hash)
             if cached is not None:
@@ -520,8 +530,9 @@ def create_app(
                 ),
             )
         except UnknownKnob as error:
-            # the ids which are no knobs of the panel, the one message of a
-            # run which carries nothing of the service
+            # the ids which are no knobs of the panel and the values which
+            # are no values of their knobs (`KnobValueError`), the messages of
+            # a request which carry nothing of the service
             raise HTTPException(status_code=422, detail=str(error)) from None
         except Exception:
             logger.exception(

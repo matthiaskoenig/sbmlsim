@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
 from examples.panels.hctz import EGFR_STAGES, END, POINTS
-from sbmlsim.panel import CONTRACT, MAX_KNOBS, Knob, Panel, Scenario
+from sbmlsim.panel import CONTRACT, MAX_KNOBS, Choice, Knob, Panel, Scenario
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
@@ -78,6 +78,15 @@ def test_the_app_route_answers_the_contract(client: TestClient) -> None:
     assert body["licenses"] == ["CC BY-SA 4.0"]
     assert body["doi"] == "10.5281/zenodo.0000000"
     assert body["variants"] == []
+
+
+def test_the_app_names_the_variant_it_answers(
+    client: TestClient, project: Project
+) -> None:
+    """The default variant of the project without a query, the queried one with it."""
+    default = next(iter(project.variants))
+    assert client.get(APP).json()["variant"] == default
+    assert client.get(APP, params={"variant": default}).json()["variant"] == default
 
 
 def test_the_app_route_names_the_knobs_the_panels_of_each_page_share(
@@ -418,12 +427,82 @@ def test_the_hash_covers_the_settings_of_the_simulator(
 
 
 def test_a_point_which_does_not_integrate_is_null_and_flagged(
-    client: TestClient,
+    project: Project, panel: Panel
 ) -> None:
-    """JSON has no `NaN`, a point which failed is `null` and is in the status."""
-    body = client.post(SIMULATE, json={"values": {"egfr": -1.0}, "grid": {}}).json()
+    """JSON has no `NaN`, a point which failed is `null` and is in the status.
+
+    The panel declares a renal function below its bounds as a choice, for which
+    the model does not integrate, so the request is one of the declaration.
+    """
+    stages = (Choice(label="broken", value=-1.0), *EGFR_STAGES.choices)
+    broken = panel.model_copy(
+        update={
+            "knobs": tuple(
+                knob.model_copy(update={"choices": stages})
+                if knob.id == "egfr"
+                else knob
+                for knob in panel.knobs
+            )
+        }
+    )
+    registry = ModelRegistry(
+        {
+            "hctz": ModelEntry(
+                id="hctz",
+                project=project.replace(panels={panel.id: broken}),
+                title="Hydrochlorothiazide",
+            )
+        }
+    )
+    with TestClient(create_app(registry)) as client:
+        body = client.post(SIMULATE, json={"values": {"egfr": -1.0}, "grid": {}}).json()
     assert body["status"] == {"ok": False, "points": 1, "failed": [0]}
     assert body["curves"]["[Cve_hctz]"][0][-1] is None
+
+
+def test_a_value_its_knob_does_not_take_is_422_and_runs_nothing(
+    client: TestClient, never_runs: None
+) -> None:
+    """A request runs the states the panel declares and no other.
+
+    A value of a choice knob which is none of its choices, the points of a grid
+    over a choice knob which are not its choices, and a value of a range knob
+    outside its bounds are the 422 of a knob, naming the knob, the value and
+    what the knob takes, before the cache is read.
+    """
+    for body, said in (
+        (
+            {"values": {"egfr": 0.5}, "grid": {}},
+            "The value 0.5 of the knob 'egfr' of the panel 'renal_plasma' is none "
+            "of the choices [0.4, 0.7, 1.0].",
+        ),
+        (
+            {"values": {"dose": 25.0}, "grid": {"egfr": 2}},
+            "A grid of 2 points over the knob 'egfr' of the panel 'renal_plasma' "
+            "is none it runs: a grid over it runs its 3 choices.",
+        ),
+    ):
+        response = client.post(SIMULATE, json=body)
+        assert response.status_code == 422
+        assert response.json() == {"detail": said}
+    patient = "/api/models/hctz/panels/patient_plasma/simulate"
+    for crcl in (9.0, 150.5):
+        response = client.post(patient, json={"values": {"crcl": crcl}, "grid": {}})
+        assert response.status_code == 422
+        assert response.json() == {
+            "detail": f"The value {crcl!r} of the knob 'crcl' of the panel "
+            "'patient_plasma' is outside the bounds [10.0, 150.0]."
+        }
+
+
+def test_a_value_its_knob_takes_runs_a_stop_or_not(client: TestClient) -> None:
+    """A range knob takes every value within its bounds, its stops and the rest."""
+    patient = "/api/models/hctz/panels/patient_plasma/simulate"
+    for crcl in (10.0, 45.0, 52.3, 150.0):
+        response = client.post(
+            patient, json={"values": {"crcl": crcl, "dose": 12.5}, "grid": {}}
+        )
+        assert response.status_code == 200
 
 
 def test_an_unknown_model_or_panel_is_404(client: TestClient) -> None:

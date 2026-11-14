@@ -418,7 +418,7 @@ A simulation takes the value of every knob a reader set, the points of every kno
 {"values": {"dose": 25.0}, "grid": {"egfr": 3}}
 ```
 
-A knob of the grid takes no value, a knob which a request leaves out runs at its `default`, and a body which names an id the panel does not declare, or a field the request does not have, is a 422 before a model is loaded. The answer is the grid, one row per point in C order:
+A knob of the grid takes no value, a knob which a request leaves out runs at its `default`, and a body which names an id the panel does not declare, or a field the request does not have, is a 422 before a model is loaded. So is a value its knob does not take in the declaration of the variant of the request - a value of a range knob outside `[min, max]`, a stop or not, a value of a choice knob which is none of its choices - and a grid over a choice knob of other points than its choices; the message names the knob, the value and what the knob takes, e.g. `The value 9.0 of the knob 'crcl' of the panel 'patient_plasma' is outside the bounds [10.0, 150.0].` The answer is the grid, one row per point in C order:
 
 ```json
 {
@@ -509,13 +509,16 @@ The app of the model is `app/1`:
       {"id": "renal_plasma", "title": "Plasma concentration over the renal function", "subtitle": "..."},
       {"id": "renal_urine", "title": "Urinary excretion over the renal function", "subtitle": "..."}
     ]
-  }
+  },
+  "variant": "default"
 }
 ```
 
 Next to the declaration of the app the body carries `shared`, which the service derives from the panels and which is no part of the declaration (neither of `Project.app` nor of an annotation): for every page, the knobs the shell of the page owns, the ones more than one of its panels declares and the ones a scenario of the page sets, each as the item of the `axes` of the panels which declare it and with the ids and the titles of those panels, in the order the first panel which declares one lists them. Every page has an entry, an empty list for a page whose panels share no knob and which has no scenario. With `?variant=` they are worked out of the panels of that variant, as `heads` are. The service works them out once, when it registers its models, which is also where it refuses a page whose panels declare one id differently, so a shell reads which controls a page shares from the app and never from the declarations of its panels. The example is shortened to one shared knob; the HCTZ page `renal` shares the dose as well.
 
 Next to it the body carries `heads`, derived from the panels as `shared` is and no part of the declaration either: for every page, its panels in the order the page shows them, each with its id, its title and its subtitle as its declaration states them. A shell lays out the head of each card with them before the panel has read its own declaration, so the head row of a row of cards is as tall as its tallest head from the first frame and a card does not move when the head of its panel arrives; the subtitles are elided in the example.
+
+Last, the body names the `variant` it answers: the one a request names with `?variant=`, else the default variant of the project, which a request without one is answered with. A shell which reads the app knows by it which variant its controls and heads are of, so it needs no assumption about which variant the app lists first, and it refuses an answer of another variant than it asked for.
 
 ### One simulation per request, once
 
@@ -573,6 +576,7 @@ The jobs belong to the application and not to a directory the service keeps: the
 | 429 | a submission to a service which runs as many experiments as it keeps in flight | `{"detail": "The service runs as many experiments as it can at once."}` |
 | 422 | a request over the limits, a body of an unknown field, a value which is no number | the `type`, the `loc` and the `msg` of at most ten errors, never the input which was sent |
 | 422 | an id which is no knob of the panel | the ids and the knobs the panel has; it is checked before a model is loaded and before the cache is read |
+| 422 | a value a knob does not take, or a grid over a choice knob of other points than its choices | the knob, the value and the bounds or the choices of the knob in the declaration of the variant of the request; it is checked before a model is loaded and before the cache is read |
 | 422 | a variant the model does not have, or for the app one the app does not name | the model and its variants; it is checked before a model is loaded |
 | 422 | a name which is no experiment of the model | the names and the groups and experiment classes the model has; it is checked before the job is created |
 | 500 | every failure of the service, e.g. a declaration whose unit does not convert | `{"detail": "The request failed in the service."}`, logged with its traceback |
