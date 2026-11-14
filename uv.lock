@@ -3166,6 +3166,7 @@ dev = [
     { name = "python-copasi" },
     { name = "ruff" },
     { name = "simrun" },
+    { name = "starlette" },
     { name = "torch", version = "2.15.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
     { name = "torch", version = "2.15.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'linux'" },
     { name = "tox" },
@@ -3184,6 +3185,7 @@ web = [
     { name = "anyio" },
     { name = "fastapi" },
     { name = "httpx2" },
+    { name = "starlette" },
     { name = "uvicorn" },
 ]
 
@@ -3238,6 +3240,8 @@ requires-dist = [
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "simrun", marker = "extra == 'dev'", specifier = ">=0.3.2" },
     { name = "simrun", marker = "extra == 'simrun'", specifier = ">=0.3.2" },
+    { name = "starlette", marker = "extra == 'dev'", specifier = ">=1.10.0" },
+    { name = "starlette", marker = "extra == 'web'", specifier = ">=1.10.0" },
     { name = "sympy", specifier = ">=1.14.0" },
     { name = "torch", marker = "sys_platform == 'linux' and extra == 'dev'", specifier = ">=2.14.1", index = "https://download.pytorch.org/whl/cpu" },
     { name = "torch", marker = "sys_platform != 'linux' and extra == 'dev'", specifier = ">=2.14.1" },

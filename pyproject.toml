@@ -126,9 +126,11 @@ simrun = [
 # simulations, see sbmlsim.serve: the ASGI application, the server which runs
 # it, the threads of anyio the application waits for the jobs in and the
 # client its tests and `fastapi.testclient` talk through, httpx2, which
-# starlette takes (httpx is deprecated there, a warning which fails the tests)
+# starlette takes from 1.10 on (httpx is deprecated there, a warning which fails
+# the tests; an older starlette takes httpx only, so its floor is 1.10)
 web = [
 	"fastapi>=0.121.0",
+	"starlette>=1.10.0",
 	"uvicorn>=0.41.0",
 	"anyio>=4.6.0",
 	"httpx2>=2.16.0",
