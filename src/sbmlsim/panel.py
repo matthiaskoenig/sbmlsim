@@ -105,7 +105,10 @@ class ContractError(ValueError):
 
 
 class Choice(BaseModel):
-    """One choice of a knob of the kind `choice`, e.g. a dose of a tablet.
+    """One choice of a knob, e.g. a dose of a tablet.
+
+    It is a choice of a knob of the kind `choice` and a named stop of one of
+    the kind `range`, see `Knob.choices`.
 
     Attributes:
         label: the choice as it is shown, e.g. `"12.5 mg"`.
@@ -123,7 +126,11 @@ class Knob(BaseModel):
 
     A knob of the kind `range` has the bounds `min` and `max` and a grid of
     `steps` points over them, one of the kind `choice` its `choices`; see
-    `values`.
+    `values`. A range knob may carry `choices` as well, its named stops: points
+    of its range with a label, e.g. the stages of a renal impairment on a
+    slider of the creatinine clearance, which a renderer offers as a select of
+    stops next to the slider. They are no grid and no kind of their own: the
+    grid of a range knob is its `steps` whatever its stops are.
 
     Attributes:
         id: the id of the knob, the key of its value in a request and the id
@@ -137,9 +144,11 @@ class Knob(BaseModel):
         max: the largest value of a range knob.
         steps: the points of the grid of a range knob, at most `MAX_GRID`,
             see `values`.
-        choices: the choices of a choice knob, in their order.
+        choices: the choices of a choice knob, in their order, or the named
+            stops of a range knob, each inside its bounds.
         default: the value the knob starts at, inside the bounds of a range
-            knob and one of the values of a choice knob.
+            knob, which need not be a stop, and one of the values of a choice
+            knob.
     """
 
     model_config = _CONFIG
@@ -161,9 +170,9 @@ class Knob(BaseModel):
 
         Raises:
             ValueError: for a range knob without its bounds, with bounds which
-                are no interval or with a default outside them, and for a
-                choice knob without choices or with a default which is no
-                choice.
+                are no interval, with a default outside them or with a stop
+                outside them, and for a choice knob without choices or with a
+                default which is no choice.
         """
         if self.kind == "range":
             if self.min is None or self.max is None:
@@ -179,6 +188,17 @@ class Knob(BaseModel):
                 raise ValueError(
                     f"The default {self.default} of the knob '{self.id}' is outside "
                     f"its bounds [{self.min}, {self.max}]."
+                )
+            outside = [
+                choice.value
+                for choice in self.choices
+                if not self.min <= choice.value <= self.max
+            ]
+            if outside:
+                raise ValueError(
+                    f"The stops {outside} of the range knob '{self.id}' are outside "
+                    f"its bounds [{self.min}, {self.max}]; a stop is a point of the "
+                    f"range of its knob."
                 )
         elif not self.choices:
             raise ValueError(f"The choice knob '{self.id}' needs its choices.")
@@ -198,7 +218,8 @@ class Knob(BaseModel):
 
         Returns:
             The points from `min` to `max`, both included, for a range knob,
-            the values of the choices for a choice knob.
+            whatever its stops are, the values of the choices for a choice
+            knob.
 
         Raises:
             ValueError: for fewer than one point, and for a range knob without
@@ -274,8 +295,9 @@ class PanelData(BaseModel):
             "dose": 50.0}`; a series without it is drawn whatever the knobs
             are set to, which is right for data of a condition the panel does
             not vary. A knob the mapping does not name is not constrained, and
-            a knob it names is a choice knob of the panel whose choices carry
-            the value, see `Panel._check_data_at`.
+            a knob it names is a knob of the panel whose choices carry the
+            value: a choice knob, or a range knob whose named stops do, see
+            `Panel._check_data_at`.
         conversion: a quantity the values and their error are multiplied by
             before they are delivered, e.g. `"1/(297.7 g/mole)"` for the mass
             of a study which the model carries as a substance; none without.
@@ -481,17 +503,19 @@ class Panel(BaseModel):
         choice of its knob are therefore a series which is drawn nowhere,
         which is why they are refused here.
 
-        A knob of the kind `range` is no condition either: a condition is one
-        of a set of conditions and not a point of a continuum, and a reader
-        who slides a range knob past the one point of its grid which matches
-        would see the series come and go. A panel which conditions on a
-        continuous input declares that knob as a `choice` knob.
+        A knob of the kind `range` without stops is no condition either: a
+        condition is one of a set of conditions and not a point of a
+        continuum, and a reader who slides a range knob past the one point of
+        its grid which matches would see the series come and go. A panel which
+        conditions on a continuous input declares that knob as a `choice` knob
+        or gives the range knob named stops (`Knob.choices`), and the value of
+        the condition is then one of its stops, which a reader selects.
 
         Raises:
             ValueError: naming the series, the knob and what the panel
                 declares, for a key which is no knob of the panel, for a knob
-                of the kind `range` and for a value which is none of the
-                choices of its knob.
+                of the kind `range` without stops and for a value which is
+                none of the choices or the stops of its knob.
         """
         knobs = {knob.id: knob for knob in self.knobs}
         for data in self.data:
@@ -503,20 +527,22 @@ class Panel(BaseModel):
                         f"measured at the knob '{knob_id}', which the panel does "
                         f"not declare; its knobs are {sorted(knobs)}."
                     )
-                if knob.kind != "choice":
+                if not knob.choices:
                     raise ValueError(
                         f"The series '{data.id}' of the panel '{self.id}' was "
                         f"measured at the knob '{knob_id}', which is a knob of the "
-                        f"kind '{knob.kind}'; a condition is one of a set of "
-                        f"conditions, so a knob a series is measured at is a knob "
-                        f"of the kind 'choice'."
+                        f"kind '{knob.kind}' without stops; a condition is one of "
+                        f"a set of conditions, so a knob a series is measured at "
+                        f"is a knob of the kind 'choice' or a range knob with "
+                        f"named stops."
                     )
                 choices = [choice.value for choice in knob.choices]
                 if value not in choices:
+                    named = "choices" if knob.kind == "choice" else "stops"
                     raise ValueError(
                         f"The series '{data.id}' of the panel '{self.id}' was "
                         f"measured at {value} of the knob '{knob_id}', which is "
-                        f"none of its choices {choices}."
+                        f"none of its {named} {choices}."
                     )
         return self
 

@@ -184,6 +184,27 @@ def test_a_panel_of_the_defaults_round_trips_as_well(
     assert list(panels) == [panel.id, minimal.id]
 
 
+def test_a_range_knob_with_named_stops_round_trips_through_the_annotation(
+    tmp_path: Path, panel: Panel
+) -> None:
+    """The stops of a range knob are its `option` children, as the choices are."""
+    beta = panel.knobs[0].model_copy(
+        update={
+            "choices": (
+                Choice(label="slow", value=0.1),
+                Choice(label="fast", value=1.0),
+            )
+        }
+    )
+    stopped = panel.model_copy(update={"knobs": (beta, panel.knobs[1])})
+    assert '<option label="slow" value="0.1"/>' in panels_to_annotation([stopped])
+    write_panels(SBML_IN, tmp_path / "m.xml", [stopped])
+    panels, problems = panels_from_sbml(tmp_path / "m.xml")
+    assert problems == ()
+    assert panels == {stopped.id: stopped}
+    assert panels[stopped.id].knobs[0].kind == "range"
+
+
 def test_the_sbml_itself_is_read_as_well(tmp_path: Path, panel: Panel) -> None:
     """A service reads the panels of the SBML of a model it has loaded."""
     write_panels(SBML_IN, tmp_path / "m.xml", [panel])

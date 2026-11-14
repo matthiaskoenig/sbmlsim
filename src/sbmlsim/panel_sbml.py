@@ -30,7 +30,8 @@ three exceptions `xLabel` for `x_label`, `yLabel` for `y_label` and `xUnit` for
 `x_unit`; an attribute which is not set means the default of its field. The
 `end` of the simulation is in the time unit of the model (a day of a model of
 minutes above) and `xUnit` is the unit its time axis is delivered in. The
-`option` children of a knob are the `choices` of a knob of the kind `choice`,
+`option` children of a knob are its `choices`, the choices of a knob of the
+kind `choice` and the named stops of one of the kind `range`,
 the `preinit` children of the simulation are its `preinit`, the `select`
 children of a series of the data are its `sel`, the rows of its dataset, each
 of them of a `column` and a `value`, and its `at` children are its `at`, the
@@ -99,7 +100,8 @@ SIMULATION_ELEMENT: Final = "simulation"
 PREINIT_ELEMENT: Final = "preinit"
 #: the element of one knob of a panel
 KNOB_ELEMENT: Final = "knob"
-#: the element of one choice of a knob of the kind `choice`
+#: the element of one choice of a knob of the kind `choice` or one named stop
+#: of a knob of the kind `range`
 OPTION_ELEMENT: Final = "option"
 #: the element of one curve of a panel
 CURVE_ELEMENT: Final = "curve"

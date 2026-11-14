@@ -414,7 +414,7 @@ def _measured_at(at: dict[str, float]) -> Panel:
     ("at", "knob", "match"),
     [
         ({"weight": 75.0}, "weight", "does not declare"),
-        ({"egfr": 0.2}, "egfr", "kind 'range'"),
+        ({"egfr": 0.2}, "egfr", "kind 'range' without stops"),
         ({"dose": 50.0}, "dose", "none of its choices"),
     ],
 )
@@ -431,6 +431,88 @@ def test_a_state_which_is_no_choice_of_a_knob_is_refused(
 
 def test_a_state_of_a_choice_of_a_knob_is_accepted() -> None:
     assert _measured_at({"dose": 12.5}).data[0].at == {"dose": 12.5}
+
+
+#: the renal function as a range with named stops, e.g. the stages of an
+#: impairment; the default 0.9 is no stop
+STOPPED = EGFR.model_copy(
+    update={
+        "choices": (
+            Choice(label="severe", value=0.2),
+            Choice(label="moderate", value=0.5),
+            Choice(label="normal", value=1.0),
+        ),
+        "default": 0.9,
+    }
+)
+
+
+def test_a_range_knob_carries_named_stops_which_its_grid_ignores() -> None:
+    knob = Knob.model_validate(STOPPED.model_dump())
+    assert knob.kind == "range"
+    assert [choice.label for choice in knob.choices] == ["severe", "moderate", "normal"]
+    # the default need not be a stop and the grid is the one of `steps`
+    assert knob.default == 0.9
+    assert knob.values() == EGFR.values()
+    assert knob.values(3) == EGFR.values(3)
+
+
+@pytest.mark.parametrize("value", [0.1, 1.5])
+def test_a_stop_outside_the_range_of_its_knob_is_refused(value: float) -> None:
+    with pytest.raises(ValidationError, match="outside its bounds") as error:
+        EGFR.model_validate(
+            {**EGFR.model_dump(), "choices": [{"label": "off", "value": value}]}
+        )
+    assert f"[{value}]" in str(error.value)
+    assert "'egfr'" in str(error.value)
+
+
+def test_a_state_of_a_stop_of_a_range_knob_is_accepted() -> None:
+    panel = Panel(
+        id="p",
+        title="p",
+        knobs=(STOPPED, DOSE),
+        curves=(PanelCurve(id="[S1]", label="S1"),),
+        data=(
+            PanelData(
+                id="study2000",
+                label="Study 2000",
+                curve="[S1]",
+                dataset="Study2000_Fig1",
+                x="t",
+                y="mean",
+                at={"egfr": 0.5, "dose": 25.0},
+            ),
+        ),
+        simulation=PanelSimulation(end=1.0),
+    )
+    assert panel.data[0].at == {"egfr": 0.5, "dose": 25.0}
+    assert panel_from_payload(panel_payload(panel)) == panel
+
+
+def test_a_state_which_is_no_stop_of_a_range_knob_is_refused() -> None:
+    """A point of the range which is no stop is no condition, the default neither."""
+    for value in (0.9, 0.6):
+        with pytest.raises(ValidationError, match="none of its stops") as error:
+            Panel(
+                id="p",
+                title="p",
+                knobs=(STOPPED,),
+                curves=(PanelCurve(id="[S1]", label="S1"),),
+                data=(
+                    PanelData(
+                        id="study2000",
+                        label="Study 2000",
+                        curve="[S1]",
+                        dataset="Study2000_Fig1",
+                        x="t",
+                        y="mean",
+                        at={"egfr": value},
+                    ),
+                ),
+                simulation=PanelSimulation(end=1.0),
+            )
+        assert "[0.2, 0.5, 1.0]" in str(error.value)
 
 
 def test_the_label_of_the_value_axis_is_empty_without_one(panel: Panel) -> None:
