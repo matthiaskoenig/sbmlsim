@@ -37,7 +37,11 @@ submitted and not awaited: `POST /api/models/{model}/experiments` answers a
 202 with the `Job` the `JobStore` of the application created
 (`sbmlsim.serve.jobs`), `GET /api/jobs/{job_id}` is that job as it is now and
 `GET /api/jobs/{job_id}/figures/{path}` serves a figure it collected, by a
-path of the job and never a path of the host.
+path of the job and never a path of the host. These routes exist only in an
+application created with `experiments=True` (`python -m sbmlsim.serve
+--experiments`): a submission is one cheap request which costs minutes of a
+core, so a public deployment leaves them off, and an application without them
+answers them with the 404 of a route which does not exist and creates no store.
 
 `static` serves a directory under the API, so the local mode delivers the
 javascript component of the panels from the origin of the API, and
@@ -170,6 +174,7 @@ def create_app(
     *,
     static: Path | None = None,
     allow_origins: Sequence[str] = (),
+    experiments: bool = False,
     jobs: JobStore | None = None,
 ) -> FastAPI:
     """Create the application which serves the panels of a registry.
@@ -185,19 +190,36 @@ def create_app(
             served without.
         allow_origins: the origins which may talk to the API from another
             origin (CORS); without one the API answers its own origin only.
-        jobs: the store of the runs of the simulation experiments, see
-            `sbmlsim.serve.jobs`; without one the application creates a store
-            over a temporary directory of its own (`_temporary_root`, which is
-            created with the first job) and removes that directory when it
-            shuts down, while a store which is given it belongs to its caller
-            and is neither closed nor removed.
+        experiments: serve the routes of the jobs of the simulation
+            experiments, see the module; off by default, so an application
+            has neither the routes nor a store of jobs unless it is asked for
+            them.
+        jobs: the store of the runs of the simulation experiments of an
+            application with `experiments`, see `sbmlsim.serve.jobs`; without
+            one the application creates a store over a temporary directory of
+            its own (`_temporary_root`, which is created with the first job)
+            and removes that directory when it shuts down, while a store which
+            is given it belongs to its caller and is neither closed nor
+            removed.
 
     Returns:
-        The application, whose store of the jobs is `app.state.jobs`.
+        The application, whose store of the jobs is `app.state.jobs`, `None`
+        for an application without `experiments`.
+
+    Raises:
+        ValueError: for a store of jobs given to an application without
+            `experiments`, which would never run one.
     """
-    store = jobs if jobs is not None else JobStore(_temporary_root())
+    if jobs is not None and not experiments:
+        raise ValueError(
+            "A store of jobs is given to an application without the routes of the "
+            "experiments; create it with `experiments=True`."
+        )
+    store: JobStore | None = None
+    if experiments:
+        store = jobs if jobs is not None else JobStore(_temporary_root())
     #: the store this application created itself, which it alone removes
-    owned = None if jobs is not None else store
+    owned = store if jobs is None else None
     if owned is not None:
         # the lifespan below is the orderly way out; this one covers a process
         # which ends another way than through the shutdown of its server,
@@ -577,6 +599,99 @@ def create_app(
         reply.headers["cache-control"] = CACHE_CONTROL
         return response
 
+    if store is not None:
+        _add_job_routes(app, registry, store)
+
+    async def unprocessable(request: Request, exc: Exception) -> JSONResponse:
+        """Answer a variant which the model does not have with a 422.
+
+        Args:
+            request: the request which named it.
+            exc: the `UnknownVariant` of the registry.
+
+        Returns:
+            The body `{"detail": ...}` of the message of the exception, which
+            names the model and its variants and nothing of the service.
+        """
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+    async def not_found(request: Request, exc: Exception) -> JSONResponse:
+        """Answer a model or a panel which is not served with a 404.
+
+        Args:
+            request: the request which named it.
+            exc: the `UnknownModel` or `UnknownPanel` of the registry.
+
+        Returns:
+            The body `{"detail": ...}` of the message of the exception, which
+            names the id the request gave and nothing of the service.
+        """
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    async def invalid(request: Request, exc: Exception) -> JSONResponse:
+        """Answer a body which is not a `SimulateRequest` with a 422.
+
+        The body of the answer is what is wrong and not what was sent: the
+        `type`, the `loc` and the `msg` of at most `MAX_ERRORS` errors of
+        pydantic, never its `input` and never its `ctx`, which FastAPI's own
+        handler repeats, so the answer of a large body is small and carries
+        nothing back.
+
+        Args:
+            request: the request which was read.
+            exc: the `RequestValidationError` of the body.
+
+        Returns:
+            The body `{"detail": [...]}` of the errors.
+        """
+        errors = exc.errors() if isinstance(exc, RequestValidationError) else []
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": [
+                    {
+                        "type": str(error.get("type", "")),
+                        "loc": [str(part) for part in error.get("loc", ())],
+                        "msg": str(error.get("msg", "")),
+                    }
+                    for error in errors[:MAX_ERRORS]
+                ]
+            },
+        )
+
+    app.add_exception_handler(UnknownModel, not_found)
+    app.add_exception_handler(UnknownPanel, not_found)
+    app.add_exception_handler(UnknownVariant, unprocessable)
+    app.add_exception_handler(RequestValidationError, invalid)
+    if allow_origins:
+        # `allow_headers` is open because the service takes no credential:
+        # `allow_credentials` stays `False`, so a browser sends no cookie and
+        # no authorization header of another origin
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(allow_origins),
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
+    if static is not None:
+        # after the routes of the API, which a mount at the root would shadow
+        app.mount("/", StaticFiles(directory=static, html=True), name="static")
+    logger.info("The service serves the models %s.", list(registry.ids()))
+    return app
+
+
+def _add_job_routes(app: FastAPI, registry: ModelRegistry, store: JobStore) -> None:
+    """Add the routes of the jobs of the simulation experiments to an application.
+
+    They are the routes of an application created with `experiments`, see
+    `create_app` and the module.
+
+    Args:
+        app: the application.
+        registry: the models a submission may name.
+        store: the store of the jobs, which the routes submit to and read.
+    """
+
     @app.post("/api/models/{model}/experiments", status_code=202)
     def submit_experiments(model: str, request: ExperimentsRequest) -> JobResponse:
         """Submit the simulation experiments of a model as a job.
@@ -675,83 +790,6 @@ def create_app(
         if file is None:
             raise HTTPException(status_code=404, detail=NO_FIGURE)
         return FileResponse(file)
-
-    async def unprocessable(request: Request, exc: Exception) -> JSONResponse:
-        """Answer a variant which the model does not have with a 422.
-
-        Args:
-            request: the request which named it.
-            exc: the `UnknownVariant` of the registry.
-
-        Returns:
-            The body `{"detail": ...}` of the message of the exception, which
-            names the model and its variants and nothing of the service.
-        """
-        return JSONResponse(status_code=422, content={"detail": str(exc)})
-
-    async def not_found(request: Request, exc: Exception) -> JSONResponse:
-        """Answer a model or a panel which is not served with a 404.
-
-        Args:
-            request: the request which named it.
-            exc: the `UnknownModel` or `UnknownPanel` of the registry.
-
-        Returns:
-            The body `{"detail": ...}` of the message of the exception, which
-            names the id the request gave and nothing of the service.
-        """
-        return JSONResponse(status_code=404, content={"detail": str(exc)})
-
-    async def invalid(request: Request, exc: Exception) -> JSONResponse:
-        """Answer a body which is not a `SimulateRequest` with a 422.
-
-        The body of the answer is what is wrong and not what was sent: the
-        `type`, the `loc` and the `msg` of at most `MAX_ERRORS` errors of
-        pydantic, never its `input` and never its `ctx`, which FastAPI's own
-        handler repeats, so the answer of a large body is small and carries
-        nothing back.
-
-        Args:
-            request: the request which was read.
-            exc: the `RequestValidationError` of the body.
-
-        Returns:
-            The body `{"detail": [...]}` of the errors.
-        """
-        errors = exc.errors() if isinstance(exc, RequestValidationError) else []
-        return JSONResponse(
-            status_code=422,
-            content={
-                "detail": [
-                    {
-                        "type": str(error.get("type", "")),
-                        "loc": [str(part) for part in error.get("loc", ())],
-                        "msg": str(error.get("msg", "")),
-                    }
-                    for error in errors[:MAX_ERRORS]
-                ]
-            },
-        )
-
-    app.add_exception_handler(UnknownModel, not_found)
-    app.add_exception_handler(UnknownPanel, not_found)
-    app.add_exception_handler(UnknownVariant, unprocessable)
-    app.add_exception_handler(RequestValidationError, invalid)
-    if allow_origins:
-        # `allow_headers` is open because the service takes no credential:
-        # `allow_credentials` stays `False`, so a browser sends no cookie and
-        # no authorization header of another origin
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=list(allow_origins),
-            allow_methods=["GET", "POST"],
-            allow_headers=["*"],
-        )
-    if static is not None:
-        # after the routes of the API, which a mount at the root would shadow
-        app.mount("/", StaticFiles(directory=static, html=True), name="static")
-    logger.info("The service serves the models %s.", list(registry.ids()))
-    return app
 
 
 def _temporary_root() -> Path:

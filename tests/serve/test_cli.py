@@ -154,6 +154,14 @@ def test_a_service_without_origins_allows_none(
     assert cli.main(["--model", f"toy={TOY}"]) == cli.EXIT_OK
     assert created["static"] is None
     assert created["allow_origins"] == ()
+    assert created["experiments"] is False
+
+
+def test_the_experiments_are_served_when_they_are_asked_for(
+    served: dict[str, Any], created: dict[str, Any]
+) -> None:
+    assert cli.main(["--model", f"toy={TOY}", "--experiments"]) == cli.EXIT_OK
+    assert created["experiments"] is True
 
 
 def test_a_static_path_which_is_no_directory_exits_with_the_usage(

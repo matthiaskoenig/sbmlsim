@@ -2,7 +2,7 @@
 
     python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...]
         [--host HOST] [--port PORT] [--static DIR]
-        [--allow-origin ORIGIN ...] [--open]
+        [--allow-origin ORIGIN ...] [--experiments] [--open]
 
 A model is `ID=REFERENCE`, the id a request names and the project of the model
 package it is served from, `module:attribute` of a `sbmlsim.project.Project`
@@ -20,6 +20,11 @@ comes from the origin of the API: a page which is served this way needs no CORS
 and no permission of the browser, while a page of another origin needs
 `--allow-origin ORIGIN` for every origin it is served from. `--open` opens the
 browser on the service once it is up and is off by default.
+
+`--experiments` adds the routes which run the simulation experiments of a model
+as jobs (`sbmlsim.serve.jobs`), which are off by default: one request of them
+costs minutes of a core, so a public deployment leaves them off and a local
+one which runs the experiments of its models turns them on.
 
 The exit codes are the ones of `python -m sbmlsim.run`: 0 when the server
 stopped, 2 for a bad command line, which argparse writes with the usage, and 4
@@ -168,6 +173,12 @@ def _parser() -> argparse.ArgumentParser:
         metavar="ORIGIN",
         help="an origin which may talk to the API from another origin (CORS); "
         "repeat it per origin, none without",
+    )
+    parser.add_argument(
+        "--experiments",
+        action="store_true",
+        help="serve the routes which run the simulation experiments of a model "
+        "as jobs; off by default, which is what a public deployment keeps",
     )
     parser.add_argument(
         "--open",
@@ -339,6 +350,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             registry,
             static=args.static,
             allow_origins=tuple(args.allow_origin or ()),
+            experiments=args.experiments,
         )
     except (ImportError, OSError, ValueError) as err:
         # the models are named as well: the error of a reference which is no

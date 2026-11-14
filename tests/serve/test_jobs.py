@@ -58,7 +58,7 @@ from pathlib import Path
 from sbmlsim.serve.app import create_app
 from sbmlsim.serve.runner import ModelRegistry
 
-app = create_app(ModelRegistry({}))
+app = create_app(ModelRegistry({}), experiments=True)
 root = Path(app.state.jobs.root)
 (root / "a-job").mkdir(parents=True)
 (root / "a-job" / "report.html").write_text("<p>a report</p>", encoding="utf-8")
@@ -77,7 +77,7 @@ def store(tmp_path: Path) -> Iterator[JobStore]:
 @pytest.fixture
 def client(registry: ModelRegistry, store: JobStore) -> Iterator[TestClient]:
     """The client of an application over the store of the test."""
-    with TestClient(create_app(registry, jobs=store)) as client:
+    with TestClient(create_app(registry, experiments=True, jobs=store)) as client:
         yield client
 
 
@@ -330,7 +330,7 @@ def test_a_finished_job_over_the_cap_is_dropped_with_its_directory(
 ) -> None:
     """What a service keeps is bounded as what it runs at once is."""
     store = JobStore(tmp_path / "jobs", max_finished=2)
-    with TestClient(create_app(registry, jobs=store)) as client:
+    with TestClient(create_app(registry, experiments=True, jobs=store)) as client:
         ids = []
         for _ in range(4):
             job = submit(client, ONE)
@@ -422,7 +422,7 @@ def test_an_application_which_runs_no_job_creates_no_directory(
     registry: ModelRegistry,
 ) -> None:
     """The root is created with the first job, never by `create_app` itself."""
-    app = create_app(registry)
+    app = create_app(registry, experiments=True)
     root = Path(app.state.jobs.root)
     assert root.name.startswith(JOBS_PREFIX)
     assert not root.exists()
@@ -434,7 +434,7 @@ def test_an_application_which_runs_no_job_creates_no_directory(
 def test_the_application_removes_the_directory_of_the_jobs_it_created(
     registry: ModelRegistry, quick: None
 ) -> None:
-    app = create_app(registry)
+    app = create_app(registry, experiments=True)
     root = Path(app.state.jobs.root)
     with TestClient(app) as client:
         job = submit(client, ONE)
@@ -468,7 +468,7 @@ def test_a_store_which_was_given_is_not_removed(
     registry: ModelRegistry, store: JobStore
 ) -> None:
     store.root.mkdir(parents=True, exist_ok=True)
-    with TestClient(create_app(registry, jobs=store)):
+    with TestClient(create_app(registry, experiments=True, jobs=store)):
         pass
     assert store.root.is_dir()
 
@@ -519,8 +519,35 @@ def test_a_model_without_simulation_experiments_is_500(
         raise ValueError("the project 'hctz' has no simulation experiments")
 
     monkeypatch.setattr(Project, "experiment_classes", refuse)
-    with TestClient(create_app(registry, jobs=store)) as client:
+    with TestClient(create_app(registry, experiments=True, jobs=store)) as client:
         answer = client.post(EXPERIMENTS, json={"experiments": [ONE]})
     assert answer.status_code == 500
     assert "simulation experiments" not in answer.text
     assert len(store) == 0
+
+
+def test_the_routes_of_the_experiments_are_off_by_default(
+    registry: ModelRegistry, nothing_ran: None
+) -> None:
+    """An application which is not asked for them has neither routes nor store."""
+    app = create_app(registry)
+    assert app.state.jobs is None
+    with TestClient(app) as client:
+        answer = client.post(EXPERIMENTS, json={"experiments": [ONE]})
+        assert answer.status_code == 404
+        assert answer.json() == {"detail": "Not Found"}
+        assert client.get("/api/jobs/a-job").status_code == 404
+        assert (
+            client.get(f"/api/jobs/a-job/figures/{FIGURES_DIR}/a.svg").status_code
+            == 404
+        )
+    paths = {getattr(route, "path", "") for route in app.routes}
+    assert not any(path.startswith("/api/jobs") for path in paths)
+    assert "/api/models/{model}/experiments" not in paths
+
+
+def test_a_store_without_the_routes_of_the_experiments_is_refused(
+    registry: ModelRegistry, store: JobStore
+) -> None:
+    with pytest.raises(ValueError, match="experiments=True"):
+        create_app(registry, jobs=store)

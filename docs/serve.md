@@ -280,7 +280,7 @@ Scenarios are of the app and not of the SBML, so they have no annotation.
 ### The command
 
 ```bash
-python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...] [--host HOST] [--port PORT] [--static DIR] [--allow-origin ORIGIN ...] [--open]
+python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...] [--host HOST] [--port PORT] [--static DIR] [--allow-origin ORIGIN ...] [--experiments] [--open]
 ```
 
 | option | what it does |
@@ -290,6 +290,7 @@ python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...] [--host 
 | `--port PORT` | the port, `8000` without |
 | `--static DIR` | a directory served under the API, e.g. the slides or the pages which embed the panels |
 | `--allow-origin ORIGIN` | an origin which may talk to the API from another one (CORS); repeat it per origin, none without |
+| `--experiments` | serve the routes which run the simulation experiments of a model as jobs, see [The simulation experiments as jobs](#the-simulation-experiments-as-jobs); off without, which is what a public deployment keeps |
 | `--open` | open the browser on the service once it is up; off without |
 
 The projects are loaded once, before the server starts, and the registry of the models is what a request reaches: a request names a model id of this command line and a panel id of that model and nothing else, never a module, a project reference or a path. A model is loaded and compiled when a panel of it is first simulated, or when the study data of a panel is first asked for, whose units its model resolves, and stays warm after that.
@@ -325,9 +326,9 @@ A page which is served from another origin, a deck on GitHub Pages or a course i
 | `GET /api/models/{model}/panels/{panel}/data?variant=` | the study data behind its curves in a variant, the contract `paneldata/1` |
 | `POST /api/models/{model}/panels/{panel}/simulate` | the curves of a run of the panel at the values of its knobs or over a grid of them |
 | `GET /api/sim/{spec_hash}` | the stored answer of a simulation by its hash, as immutable |
-| `POST /api/models/{model}/experiments` | a 202 with the job of a run of the simulation experiments of the model |
-| `GET /api/jobs/{job_id}` | that job as it is now, with the figures of a finished one |
-| `GET /api/jobs/{job_id}/figures/{path}` | one file of the directory of a job, e.g. a figure the job lists |
+| `POST /api/models/{model}/experiments` | a 202 with the job of a run of the simulation experiments of the model; with `--experiments` only |
+| `GET /api/jobs/{job_id}` | that job as it is now, with the figures of a finished one; with `--experiments` only |
+| `GET /api/jobs/{job_id}/figures/{path}` | one file of the directory of a job, e.g. a figure the job lists; with `--experiments` only |
 | `GET /docs`, `GET /openapi.json` | the OpenAPI document of the API, which FastAPI renders from the bodies |
 
 `--static DIR` is mounted at `/` after these routes, so it shadows none of them. The query `variant` is optional: without it a route answers the declaration of the default variant, and a variant the model does not have is a 422 which names the model and its variants.
@@ -540,6 +541,8 @@ The runner keeps 32 runs, the one used least recently is evicted: the panels of 
 
 A panel is a simulation of a second, which a request waits for. The simulation experiments of a model are minutes: they run their scans, evaluate their data and render their figures. They are therefore submitted and not awaited.
 
+The routes of the jobs exist only in a service started with `--experiments` (`create_app(registry, experiments=True)`); without it they are the 404 of a route which does not exist and the service creates no store of jobs. One submission is a cheap request which costs minutes of a core, so a public deployment leaves them off, and a local service which runs the experiments of its models, e.g. for a lecture, turns them on.
+
 ```json
 {"experiments": ["Beermann1976", "Patel1984"]}
 ```
@@ -599,6 +602,7 @@ The defaults are the ones of the teaching mode. A service which is reachable fro
 
 - **`--host 0.0.0.0` behind a reverse proxy which terminates TLS.** The service speaks plain HTTP and binds the loopback address without `--host`; a page on `https` can only talk to an `https` endpoint.
 - **`--allow-origin` for every origin which embeds the panels.** Without one the API answers its own origin alone, which is right for the local mode and wrong for a public one.
+- **No `--experiments`.** The routes of the jobs are off without it, and a public service keeps them off: one submission costs minutes of a core and a caller can keep the queue of the jobs full.
 - **A rate limit and a body limit in the proxy.** An open simulation endpoint is remote compute. The limits above bound one request (and the models are the fixed list of `--model`), but nothing in the service bounds how many requests a caller makes; it has no authentication of its own either.
 - **One process per service.** The warm models and the cache of the responses are of the process, so several workers would each load every model and keep a cache of their own. A model integrates under its own lock, so one model answers one simulation at a time while the other models and every other route keep answering; scale by running more services behind the proxy rather than more workers in one.
 - **`GET /healthz` as the probe.** It answers without loading a model, so it stays cheap while a model compiles.
