@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import functools
 import importlib.util
-import math
 import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -87,17 +86,13 @@ class CompiledFormula:
     def evaluate(self, values: Sequence[float]) -> float:
         """Evaluate the formula.
 
-        A function of numpy at a pole or outside of its domain gives `inf` or
-        `NaN` without a warning, e.g. `log(0)` is `-inf`.
-
         Args:
             values: the values of the symbols, in the order of `symbols`.
 
         Returns:
             The value of the formula.
         """
-        with np.errstate(all="ignore"):
-            return float(self._function(*values))
+        return float(self._function(*values))
 
     def apply(self, values: Sequence[Any]) -> Any:
         """Evaluate the formula on values of any type numpy operates on.
@@ -122,11 +117,9 @@ class CompiledFormula:
             size: the number of values, which a formula without symbols needs.
 
         Returns:
-            The `size` values of the formula, `inf` or `NaN` without a warning
-            where numpy gives them, see `evaluate`.
+            The `size` values of the formula.
         """
-        with np.errstate(all="ignore"):
-            value = np.asarray(self._function(*values), dtype=float)
+        value = np.asarray(self._function(*values), dtype=float)
         return np.broadcast_to(value, (size,)).copy()
 
 
@@ -194,13 +187,22 @@ def _parser() -> Callable[[str], sp.Basic]:
 def compile_formula(formula: str) -> CompiledFormula:
     """Compile a formula, see the module.
 
-    The formula is checked by the parser of PEtab, `parse_math`, and compiled
-    from its parse tree by `_NumpyCode`: every number is the double of its
-    text and every operation the one written, in the order written, e.g.
-    `x / 90` divides once by `90.0` and `0.1 + 0.2` is 0.30000000000000004.
-    The sympy expression of `parse_math` is not compiled, sympy evaluates on
-    construction with numbers of 15 digits and writes `x / 90` as
-    `0.0111111111111111 * x`.
+    Whether a formula is valid math is decided by the parser of PEtab with
+    the evaluation of sympy, `parse_math`, as before: it refuses what sympy
+    evaluates to a value which is not real, e.g. `1/0` and `sqrt(-1)`, and
+    accepts what sympy folds to a number, e.g. `(2 > 1) * x` and `log(0)`.
+    Its expression is not compiled, sympy evaluates on construction with
+    numbers of 15 digits and writes `x / 90` as `0.0111111111111111 * x`.
+
+    The function is compiled from the parse tree by `_NumpyCode` instead:
+    every number is the double of its text and every operation the one
+    written, in the order written, e.g. `x / 90` divides once by `90.0` and
+    `0.1 + 0.2` is 0.30000000000000004. It computes in the doubles of numpy,
+    as the math of SBML does (`sbmlsim.sbml_math.compile_math`): a number it
+    is given, a python float included, is a double of numpy, so a division by
+    zero is infinite and the root of a negative number is `NaN`, without the
+    warnings of numpy; arrays, the quantities of pint and the arrays of
+    xarray are passed as they are.
 
     Args:
         formula: the formula.
@@ -237,10 +239,23 @@ def compile_formula(formula: str) -> CompiledFormula:
     ordered = sorted(code.arguments, key=selection)
     symbols = tuple(selection(identifier) for identifier in ordered)
     arguments = ", ".join(code.arguments[identifier] for identifier in ordered)
-    # the code is written from the tree alone: numbers, the generated names of
-    # the arguments and the functions of numpy, never a text of the formula
-    function = eval(f"lambda {arguments}: {body}", {"numpy": np})
+    # the code is written from the tree alone: the generated names of the
+    # arguments and the numbers, the functions of numpy and the operators of
+    # fixed tables, never a text of the formula
+    compiled = eval(f"lambda {arguments}: {body}", {"numpy": np, **code.constants})
+
+    def function(*values: Any) -> Any:
+        # a number as a double of numpy; an array or a quantity as it is
+        with np.errstate(all="ignore"):
+            return compiled(
+                *[np.float64(v) if isinstance(v, _NUMBERS) else v for v in values]
+            )
+
     return CompiledFormula(formula=formula, symbols=symbols, _function=function)
+
+
+#: the types of the numbers a compiled formula computes with as doubles of numpy
+_NUMBERS = (int, float, np.number)
 
 
 def _parse_tree(formula: str) -> Any:
@@ -323,6 +338,14 @@ _COMPARISONS: dict[str, str] = {
     ">=": "greater_equal",
 }
 
+#: the operators which group to the left in python and their precedences
+_OPERATORS: dict[str, tuple[str, int]] = {
+    "+": ("+", _ADD),
+    "-": ("-", _ADD),
+    "*": ("*", _MUL),
+    "/": ("/", _MUL),
+}
+
 #: the nodes of the operations which group to the left, see `_NumpyCode._chain`
 _CHAINED = frozenset({"AddExprContext", "MultExprContext"})
 
@@ -351,9 +374,10 @@ class _NumpyCode:
     """Write the parse tree of the math of PEtab as the code of a numpy function.
 
     The code computes the operations as written: a number is the double of its
-    text (`repr(float(text))`, which python reads back as the same double),
-    `a / b` is one division, `(a + b) + c` and `a + (b + c)` are added in
-    their order, a function is the one of numpy of its name, `sec(x)` is
+    text, a double of numpy which the code reads by a name (`constants`), so
+    an operation of numbers computes as numpy does, e.g. `x / (2 - 2)` is
+    infinite; `a / b` is one division, `(a + b) + c` and `a + (b + c)` are
+    added in their order, an operator is one of a fixed table, a function is the one of numpy of its name, `sec(x)` is
     `1.0 / numpy.cos(x)` and `log(x, b)` is `numpy.log(x) / numpy.log(b)`, of
     the base 10 or 2 `numpy.log10` or `numpy.log2`. A comparison is the one
     of numpy, `piecewise` is `numpy.select`, a truth value read as a number
@@ -364,11 +388,23 @@ class _NumpyCode:
     Attributes:
         arguments: the identifiers of the formula with the names of the
             arguments of the function which stand for them.
+        constants: the numbers of the formula, doubles of numpy, by the names
+            the code reads them by.
     """
 
     def __init__(self) -> None:
         """Create the writer of one formula."""
         self.arguments: dict[str, str] = {}
+        self.constants: dict[str, np.float64] = {}
+        self._names: dict[bytes, str] = {}
+
+    def _number(self, value: float) -> _Code:
+        """Write a number as the name of its double of numpy."""
+        # by its bits, so that 0.0 and -0.0 are two numbers
+        key = np.float64(value).tobytes()
+        name = self._names.setdefault(key, f"_c{len(self._names)}")
+        self.constants[name] = np.float64(value)
+        return _Code(name, _ATOM, literal=value)
 
     def compile(self, tree: Any) -> str:
         """Write the code of the parse tree of a formula.
@@ -405,10 +441,7 @@ class _NumpyCode:
 
     def visitNumber(self, ctx: Any) -> _Code:
         """Write a number as the double of its text."""
-        value = float(ctx.getText())
-        if math.isinf(value):
-            return _Code("numpy.inf", _ATOM, literal=value)
-        return _Code(repr(value), _ATOM, literal=value)
+        return self._number(float(ctx.getText()))
 
     def visitVar(self, ctx: Any) -> _Code:
         """Write an identifier as the argument which stands for it."""
@@ -453,8 +486,10 @@ class _NumpyCode:
             spine.append(spine[-1].getChild(0))
         code = self._numeric(self._visit(spine[-1].getChild(0)))
         for node in reversed(spine):
-            operator = node.getChild(1).getText()
-            level = _MUL if operator in ("*", "/") else _ADD
+            token = node.getChild(1).getText()
+            if token not in _OPERATORS:
+                raise ValueError(f"Unexpected operator '{token}' in {node.getText()}")
+            operator, level = _OPERATORS[token]
             right = self._numeric(self._visit(node.getChild(2)))
             code = _Code(
                 f"{_grouped(code, code.level < level)} {operator} "
@@ -541,14 +576,12 @@ class _NumpyCode:
             _ATOM,
         )
 
-    @staticmethod
-    def _numeric(code: _Code) -> _Code:
+    def _numeric(self, code: _Code) -> _Code:
         """Read a truth value as a number, 1 or 0, as `petab.v1.math` does."""
         if not code.boolean:
             return code
         if code.literal is not None:
-            value = 1.0 if code.literal else 0.0
-            return _Code(repr(value), _ATOM, literal=value)
+            return self._number(1.0 if code.literal else 0.0)
         return _Code(f"numpy.where({code.text}, 1.0, 0.0)", _ATOM)
 
     @staticmethod

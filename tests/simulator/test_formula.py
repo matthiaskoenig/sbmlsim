@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pytest
@@ -263,3 +264,76 @@ def test_formula_of_many_terms() -> None:
     for i in range(1, n):
         expected = expected + terms[i] / (i + 1)
     assert compiled.evaluate([values[s] for s in compiled.symbols]) == expected
+
+
+@pytest.mark.parametrize(
+    ("formula", "values", "expected"),
+    [
+        ("1 / x", [0.0], np.inf),
+        ("1 / x", [-0.0], -np.inf),
+        ("x / y", [1, 0], np.inf),
+        ("x / y", [np.int64(1), np.float32(0.0)], np.inf),
+        ("x ^ 0.5", [-4.0], np.nan),
+        ("(x - 9) ^ (1 / 3)", [1.0], np.nan),
+        ("x / (2 - 2)", [1.0], np.inf),
+        # the product underflows to 0 in doubles, sympy keeps it
+        ("1 / (1e-200 * 1e-200)", [], np.inf),
+        ("log(x)", [0.0], -np.inf),
+        ("exp(x)", [1000.0], np.inf),
+    ],
+)
+def test_formula_computes_in_doubles_of_numpy(
+    formula: str, values: list[Any], expected: float
+) -> None:
+    """A number, a python float included, is a double of numpy, as in the math of SBML.
+
+    A division by zero is infinite and the root of a negative number `NaN`,
+    never a `ZeroDivisionError` or a complex number, and without a warning.
+    """
+    np.testing.assert_array_equal(compile_formula(formula).evaluate(values), expected)
+
+
+def test_formula_on_arrays_gives_doubles_without_warnings() -> None:
+    """The arrays of `apply` compute without the warnings of numpy."""
+    compiled = compile_formula("1 / x + log(y)")
+    value = compiled.apply([np.array([0.0, 2.0]), np.array([1.0, 0.0])])
+    np.testing.assert_array_equal(value, [np.inf, -np.inf])
+
+
+class _Leaf:
+    """A number of a fake parse tree."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def getText(self) -> str:
+        return self.text
+
+    def accept(self, visitor: Any) -> Any:
+        return visitor.visitNumber(self)
+
+
+class AddExprContext:
+    """An operation of a fake parse tree, of the name of the node of the grammar."""
+
+    def __init__(self, *children: Any) -> None:
+        self.children = children
+
+    def getChild(self, i: int) -> Any:
+        return self.children[i]
+
+    def getText(self) -> str:
+        return "".join(child.getText() for child in self.children)
+
+    def accept(self, visitor: Any) -> Any:
+        return visitor.visitAddExpr(self)
+
+
+@pytest.mark.parametrize("token", ["; import os", "**", "//", "+ 1 +"])
+def test_formula_operator_is_one_of_a_table(token: str) -> None:
+    """An operator token is mapped through a fixed table, no text reaches the code."""
+    from sbmlsim.simulator.formula import _NumpyCode
+
+    tree = AddExprContext(_Leaf("1"), _Leaf(token), _Leaf("2"))
+    with pytest.raises(ValueError, match="Unexpected operator"):
+        _NumpyCode().compile(tree)
