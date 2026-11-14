@@ -179,8 +179,9 @@ class Knob(BaseModel):
         Raises:
             ValueError: for a range knob without its bounds, with bounds which
                 are no interval, with a default outside them or with a stop
-                outside them, and for a choice knob without choices or with a
-                default which is no choice.
+                outside them, and for a choice knob without choices, with more
+                choices than `MAX_GRID`, the points a grid over it runs, or with
+                a default which is no choice.
         """
         if self.kind == "range":
             if self.min is None or self.max is None:
@@ -210,6 +211,13 @@ class Knob(BaseModel):
                 )
         elif not self.choices:
             raise ValueError(f"The choice knob '{self.id}' needs its choices.")
+        elif len(self.choices) > MAX_GRID:
+            # a grid over a choice knob runs its choices, so they are the points
+            # of a request, which `MAX_GRID` bounds: a knob of more could never run
+            raise ValueError(
+                f"The choice knob '{self.id}' has {len(self.choices)} choices, more "
+                f"than the {MAX_GRID} points of a grid over it (`MAX_GRID`)."
+            )
         elif self.default not in [choice.value for choice in self.choices]:
             raise ValueError(
                 f"The default {self.default} of the knob '{self.id}' is none of its "

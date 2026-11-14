@@ -177,6 +177,30 @@ def test_range_knob_values_are_its_grid() -> None:
     assert knob.values(3) == (0.2, 0.6, 1.0)
 
 
+def test_a_choice_knob_of_more_choices_than_a_grid_holds_is_refused() -> None:
+    """A grid over a choice knob runs its choices, which `MAX_GRID` bounds."""
+
+    def knob(count: int) -> Knob:
+        return Knob(
+            id="stage",
+            label="stage",
+            target="f_stage",
+            kind="choice",
+            choices=tuple(
+                Choice(label=str(index), value=float(index)) for index in range(count)
+            ),
+            default=0.0,
+        )
+
+    assert len(knob(MAX_GRID).choices) == MAX_GRID
+    with pytest.raises(ValidationError) as error:
+        knob(MAX_GRID + 1)
+    assert (
+        f"The choice knob 'stage' has {MAX_GRID + 1} choices, more than the "
+        f"{MAX_GRID} points of a grid over it (`MAX_GRID`)."
+    ) in str(error.value)
+
+
 def test_a_grid_of_one_point_is_the_lower_bound() -> None:
     assert EGFR.values(1) == (0.2,)
 

@@ -132,7 +132,7 @@ Its `<preinit target="BW" value="75"/>` children are the values of the pre-initi
 | `steps` | the points a grid over a range knob runs, `5` without, from 2 to `64` |
 | `default` | the value the knob starts at, required; inside the bounds of a range knob and one of the choices of a choice knob |
 
-A choice knob has its choices as `<option label="25 mg" value="25"/>` children, in their order. A range knob may have them as well, as its named stops: labelled points of its range, each inside its bounds, which a renderer offers as a select of stops above the slider, e.g. the categories of a renal impairment on a slider of the creatinine clearance. The stops are no grid and no kind of their own: the grid of a range knob is its `steps` whatever its stops are, and its `default` need not be a stop.
+A choice knob has its choices as `<option label="25 mg" value="25"/>` children, in their order. A grid over a choice knob runs its choices, so a choice knob has at most `MAX_GRID` (64) of them, which the declaration checks. A range knob may have them as well, as its named stops: labelled points of its range, each inside its bounds, which a renderer offers as a select of stops above the slider, e.g. the categories of a renal impairment on a slider of the creatinine clearance. The stops are no grid and no kind of their own: the grid of a range knob is its `steps` whatever its stops are, and its `default` need not be a stop.
 
 `<curve>`, one output over the time:
 
