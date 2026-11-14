@@ -322,6 +322,51 @@ def test_a_worker_runs_its_tasks_with_sigint_unblocked() -> None:
     assert not _sigint_blocked()
 
 
+#: a script which starts its first pool from a thread which blocks SIGTERM
+SIGTERM_SCRIPT = """
+import signal
+import sys
+
+from sbmlsim import parallel
+
+
+def blocked():
+    return signal.SIGTERM in signal.pthread_sigmask(signal.SIG_BLOCK, set())
+
+
+if __name__ == "__main__":
+    import multiprocessing
+
+    multiprocessing.set_start_method(sys.argv[1])
+    # the forkserver, and every worker it forks, takes the mask of this thread
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+    executor = parallel.start_pool(1)
+    try:
+        print(executor.submit(blocked).result())
+    finally:
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+        parallel.stop(executor)
+"""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="a signal mask of POSIX")
+@pytest.mark.parametrize("method", ["forkserver", "spawn"])
+def test_a_worker_takes_sigterm_whatever_the_thread_which_started_it_blocks(
+    tmp_path: Path, method: str
+) -> None:
+    """A pool which broke terminates its workers and waits for them to end."""
+    script = tmp_path / "blocked.py"
+    script.write_text(SIGTERM_SCRIPT, encoding="utf-8")
+    done = subprocess.run(
+        [sys.executable, str(script), method],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    assert done.stdout.strip() == "False"
+
+
 #: a script whose workers import it slowly and get Ctrl-C meanwhile
 STARTING_SCRIPT = """
 import multiprocessing
