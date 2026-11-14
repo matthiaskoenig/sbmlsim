@@ -52,6 +52,23 @@ units of the panel are asked for.
 A model and its simulator are loaded once per model id and SBML file and kept
 warm, and every run of one of them holds its lock: roadrunner instances are
 not thread safe and a service runs its sync endpoints in a thread pool.
+
+The panels of a model which share a simulation (`sbmlsim.panel.PanelSimulation`,
+the same variant, `end`, `points`, `x_unit`, `preinit` and `derived`) share a
+run as well: a page of several panels of one model asks for every panel at the
+same state of its knobs at once, and the scan of that state is run once with
+the selections of every panel of the variant which shares the simulation
+(`_selections`) and kept (`MAX_RUNS`), so the requests of the other panels at
+that state read their curves out of it without integrating. A stored run is
+keyed on what decides its numbers (`_run_key`): the warm model, the sha256 of
+its SBML and the settings of its simulator, the times and the resolved scan,
+i.e. the values of the pre-initialization and of the grid as the panel gives
+them to the simulator, in their order, never on the panel. The key is read
+under the lock of the warm model, after it was taken, so a request whose state
+is running waits for that run and reads it, and every read and write of a
+stored run is under the lock of the model which ran it. A curve does not
+change with the selections a scan keeps, so an answer read out of a shared run
+is the answer of a run of the panel alone, bitwise.
 """
 
 from __future__ import annotations
@@ -59,7 +76,7 @@ from __future__ import annotations
 import logging
 import math
 import threading
-from collections.abc import Mapping, Sequence, Set
+from collections.abc import Iterable, Mapping, Sequence, Set
 from dataclasses import dataclass, field
 from pathlib import Path
 from tokenize import TokenError
@@ -69,12 +86,15 @@ import numpy as np
 from pint.errors import PintError
 from pint.facets.plain import PlainUnit
 
+from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.panel import AppPage, Knob, Panel, PanelCurve, PanelData
 from sbmlsim.project import Project, load_project
 from sbmlsim.result.scan import STATUS, TIME
+from sbmlsim.serve.cache import BoundedCache
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator.formula import CompiledFormula, compile_formula
+from sbmlsim.units import Quantity
 
 if TYPE_CHECKING:
     from sbmlsim.result import ScanResult
@@ -83,6 +103,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "MAX_RUNS",
     "UNITLESS",
     "DeliveredUnit",
     "GridAxis",
@@ -106,6 +127,15 @@ __all__ = [
 
 #: the key of the time of a result in `PanelResult.units`
 X: Final = "x"
+
+#: the runs a runner keeps for the panels which share them, see the module:
+#: the panels of a page ask for one state at once, so a run is read within a
+#: second of its run and a few entries cover the pages several readers turn at
+#: once, while every answer is kept by the cache of the responses
+#: (`sbmlsim.serve.cache.MAX_ENTRIES`) anyway; a run holds the curves of every
+#: panel of its simulation over its grid, at most `MAX_GRID` points of
+#: `MAX_POINTS` times per curve, about 1 MB for four curves
+MAX_RUNS: Final = 32
 
 #: the errors the parsing of a unit raises: the ones of pint, whose
 #: `UndefinedUnitError` is an `AttributeError`, and the ones of its parser, see
@@ -940,15 +970,53 @@ class _Warm:
     """A loaded model with its simulator and the lock of its runs.
 
     Attributes:
+        key: the model id and the SBML file of the model, see `_WarmKey`.
+        sha256: the sha256 of the SBML file the model was loaded from.
         model: the model, in the engine and at the optimization level of the
             project.
         simulator: the serial simulator of the settings of the project.
         lock: the lock a run of the model holds, see the module.
     """
 
+    key: _WarmKey
+    sha256: str
     model: SBMLModel
     simulator: Simulator
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+
+@dataclass(frozen=True)
+class _Resolved:
+    """The scan of a request of a panel, see `_scan`.
+
+    Attributes:
+        scan: the scan.
+        axes: the axes of its grid, one per knob of the grid in the order of
+            the knobs of the panel.
+        preinit: the values of the pre-initialization by their target, in the
+            order the simulation gets them.
+        grid: the values of the dimension of the grid by their target, in the
+            order the dimension gets them, empty for a request of a point.
+    """
+
+    scan: Scan
+    axes: tuple[GridAxis, ...]
+    preinit: Mapping[str, Any]
+    grid: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class _Run:
+    """A run of a scan which the panels of its simulation share, see the module.
+
+    Attributes:
+        result: the result of the scan.
+        selections: the selections the result keeps, the curves of every panel
+            of the simulation which the model can select.
+    """
+
+    result: ScanResult
+    selections: frozenset[str]
 
 
 class PanelRunner:
@@ -958,17 +1026,30 @@ class PanelRunner:
         registry: the models a request may name.
     """
 
-    def __init__(self, registry: ModelRegistry) -> None:
+    def __init__(self, registry: ModelRegistry, max_runs: int = MAX_RUNS) -> None:
         """Create a runner of the models of a registry, which loads none yet.
 
         Args:
             registry: the models a request may name.
+            max_runs: the runs the runner keeps for the panels which share
+                them, see the module; 0 shares none, so every request runs the
+                scan of its panel with the curves of that panel alone.
+
+        Raises:
+            ValueError: for a negative number of runs.
         """
+        if max_runs < 0:
+            raise ValueError(f"A runner keeps no negative number of runs: {max_runs}.")
         self.registry = registry
         #: the warm model of every model id and SBML file, see `_warm_model`
         self._warm: dict[_WarmKey, _Warm] = {}
         #: the lock of the load of one such key, see `_warm_model`
         self._loads: dict[_WarmKey, threading.Lock] = {}
+        #: the runs the panels of a simulation share by `_run_key`, `None` for
+        #: a runner which shares none
+        self._runs: BoundedCache[_Run] | None = (
+            BoundedCache(max_runs, what="run") if max_runs else None
+        )
 
     def __repr__(self) -> str:
         """Get the representation."""
@@ -989,6 +1070,10 @@ class PanelRunner:
         else to its `default`, over the pre-initialization the panel declares.
         The axes are in the order of the knobs of the panel, so the result does
         not depend on the order of a request.
+
+        The scan of the state is run once for every panel of the variant which
+        shares the simulation of the panel, with the curves of all of them,
+        and a state which ran already is read out of that run, see the module.
 
         Args:
             model_id: the id of the model, see `ModelRegistry`.
@@ -1022,22 +1107,31 @@ class PanelRunner:
         entry = self.registry.entry(model_id)
         check_knobs(panel, values, grid)
         check_variant(entry, variant)
-        warm = self._warm_model(
-            entry, panel.simulation.variant if variant is None else variant
-        )
-        times = np.linspace(0.0, panel.simulation.end, panel.simulation.points + 1)
+        name = panel.simulation.variant if variant is None else variant
+        warm = self._warm_model(entry, name)
         _check_limits(warm.model, panel)
         with warm.lock:
-            scan, axes = _scan(warm.model, panel, values, grid)
-            result = warm.simulator.run(
-                warm.model,
-                scan,
-                time=times,
-                keep=[curve.id for curve in panel.curves],
-                on_error="flag",
-                progress=False,
+            resolved = _scan(warm.model, panel, values, grid)
+            curves = [curve.id for curve in panel.curves]
+            if self._runs is None:
+                result = _run(warm, panel, resolved.scan, curves)
+                return _result(warm.model, panel, resolved.axes, result)
+            key = _run_key(warm, entry, panel, resolved)
+            stored = self._runs.get(key)
+            if stored is not None and stored.selections.issuperset(curves):
+                logger.debug(
+                    "The panel '%s' of the model '%s' is read out of the run '%s'.",
+                    panel.id,
+                    model_id,
+                    key,
+                )
+                return _result(warm.model, panel, resolved.axes, stored.result)
+            selections = _selections(
+                warm.model, panel, entry.project.panels_of(name).values()
             )
-            return _result(warm.model, panel, axes, result)
+            result = _run(warm, panel, resolved.scan, selections)
+            self._runs.store(key, _Run(result=result, selections=frozenset(selections)))
+            return _result(warm.model, panel, resolved.axes, result)
 
     def units(
         self, entry: ModelEntry, panel: Panel, variant: str | None = None
@@ -1121,7 +1215,10 @@ def _load(entry: ModelEntry, path: Path) -> _Warm:
 
     The model is loaded in the engine and at the optimization level of the
     project and the simulator is the serial one of its settings, so a project
-    which pins an engine or the tolerances of its integrator is honoured.
+    which pins an engine or the tolerances of its integrator is honoured. The
+    SBML is hashed before it is loaded, so a file which is rewritten during
+    the load gives a hash of another model and never the hash of this one to
+    a model of another file.
 
     Args:
         entry: the entry of the model.
@@ -1130,6 +1227,7 @@ def _load(entry: ModelEntry, path: Path) -> _Warm:
     Returns:
         The warm model.
     """
+    sha256 = file_sha256(path)
     settings = entry.project.simulator
     simulator = settings.simulator(n_workers=1)
     model = simulator.load(
@@ -1139,7 +1237,129 @@ def _load(entry: ModelEntry, path: Path) -> _Warm:
             jit_optimization=settings.jit_optimization,
         )
     )
-    return _Warm(model=model, simulator=simulator)
+    return _Warm(key=(entry.id, path), sha256=sha256, model=model, simulator=simulator)
+
+
+def _run(
+    warm: _Warm, panel: Panel, scan: Scan, selections: Sequence[str]
+) -> ScanResult:
+    """Run the scan of a panel on a warm model, which the caller holds the lock of.
+
+    Args:
+        warm: the warm model.
+        panel: the panel, whose simulation gives the times.
+        scan: the scan, see `_scan`.
+        selections: the selections the result keeps.
+
+    Returns:
+        The result, on the grid of `points + 1` times from 0 to the `end` of
+        the simulation of the panel; a point which did not integrate is `NaN`
+        and flagged.
+    """
+    times = np.linspace(0.0, panel.simulation.end, panel.simulation.points + 1)
+    return warm.simulator.run(
+        warm.model,
+        scan,
+        time=times,
+        keep=list(selections),
+        on_error="flag",
+        progress=False,
+    )
+
+
+def _selections(model: SBMLModel, panel: Panel, panels: Iterable[Panel]) -> list[str]:
+    """Get the selections of a run which the panels of a simulation share.
+
+    They are the curves of the panel, in their order, and then the curves of
+    every other panel of the variant which shares its simulation, the same
+    variant, `end`, `points`, `x_unit`, `preinit` and `derived`, so the panels
+    of a page which ask for one state are answered by one run. A curve of
+    another panel which the model cannot select is left out, so a panel which
+    shares the simulation never fails the run of another one; a curve of the
+    panel itself is kept whatever it is, so the panel fails as it fails alone.
+
+    Args:
+        model: the warm model the run integrates on.
+        panel: the panel of the request.
+        panels: the panels of the variant, see
+            `sbmlsim.project.Project.panels_of`.
+
+    Returns:
+        The selections, each once.
+    """
+    selections = [curve.id for curve in panel.curves]
+    seen = set(selections)
+    for other in panels:
+        if other.simulation != panel.simulation:
+            continue
+        for curve in other.curves:
+            if curve.id not in seen and model.has_selection(curve.id):
+                selections.append(curve.id)
+                seen.add(curve.id)
+    return selections
+
+
+def _run_key(warm: _Warm, entry: ModelEntry, panel: Panel, resolved: _Resolved) -> str:
+    """Get the key of a run, of what decides its numbers and not of the panel.
+
+    It is the warm model, which a stored run is read on under its lock, the
+    sha256 of its SBML, the settings of the simulator of the project, the
+    times and the resolved scan: the values of the pre-initialization and of
+    the dimension of the grid by their target, in the order the simulation and
+    the dimension get them, since a value of a concentration is set through
+    the volume its compartment has at that moment. Every number is the exact
+    double (`_exact`), so two states which differ in the last bit are two
+    runs. The ids of the knobs and the panel are no part of it: a panel whose
+    knobs resolve to the scan of another one is answered by its run.
+
+    Args:
+        warm: the warm model.
+        entry: the entry of the model, whose project gives the settings.
+        panel: the panel, whose simulation gives the times.
+        resolved: the scan of the request, see `_scan`.
+
+    Returns:
+        The sha256 of the canonical JSON of the key, see
+        `sbmlsim.hashing.canonical_json_sha256`.
+    """
+    model_id, path = warm.key
+    return canonical_json_sha256(
+        {
+            "model": model_id,
+            "path": str(path),
+            "model_sha256": warm.sha256,
+            "simulator": entry.project.simulator.model_dump(mode="json"),
+            "end": _exact(panel.simulation.end),
+            "points": panel.simulation.points,
+            "preinit": [[t, _exact(v)] for t, v in resolved.preinit.items()],
+            "grid": [[t, _exact(v)] for t, v in resolved.grid.items()],
+        }
+    )
+
+
+def _exact(value: Any) -> Any:
+    """Get a value of a scan as JSON which holds it exactly, see `_run_key`.
+
+    Args:
+        value: a number, an array of numbers or a quantity of either, e.g. the
+            value of a knob in its unit.
+
+    Returns:
+        A number as the hexadecimal text of its double, an array as its shape
+        and its numbers, a quantity as its magnitude and its unit, and any
+        other value as its type and its representation.
+    """
+    if isinstance(value, Quantity):
+        return {"magnitude": _exact(value.magnitude), "unit": str(value.units)}
+    if isinstance(value, np.ndarray):
+        numbers = np.asarray(value, dtype=float)
+        return {
+            "shape": list(numbers.shape),
+            "values": [float(number).hex() for number in numbers.ravel()],
+        }
+    if isinstance(value, (int, float, np.number)):
+        return float(value).hex()
+    return {"type": type(value).__name__, "repr": repr(value)}
 
 
 def _scan(
@@ -1147,7 +1367,7 @@ def _scan(
     panel: Panel,
     values: Mapping[str, float],
     grid: Mapping[str, int],
-) -> tuple[Scan, tuple[GridAxis, ...]]:
+) -> _Resolved:
     """Get the scan of a request and the axes of its grid.
 
     The knobs of the grid span one `Dimension` of the points of their product
@@ -1173,8 +1393,8 @@ def _scan(
 
     Returns:
         The scan, of one dimension for a request of a grid and none for one of
-        a point, and the axes of the grid, one per knob of the grid in the
-        order of the knobs of the panel.
+        a point, the axes of the grid, one per knob of the grid in the order
+        of the knobs of the panel, and the values it sets, see `_Resolved`.
 
     Raises:
         ValueError: if a formula of a derived target is no math of PEtab or
@@ -1231,7 +1451,9 @@ def _scan(
         else []
     )
     simulation = Simulation(end=panel.simulation.end, preinit_changes=preinit)
-    return Scan(simulation, dimensions), axes
+    return _Resolved(
+        scan=Scan(simulation, dimensions), axes=axes, preinit=preinit, grid=changed
+    )
 
 
 def _formulas(panel: Panel, where: str = "") -> dict[str, CompiledFormula]:

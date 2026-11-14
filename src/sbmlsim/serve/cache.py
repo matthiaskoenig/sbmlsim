@@ -20,6 +20,10 @@ slow, a simulation least of all - a run happens between the `get` which missed
 and the `put` which stores its answer. Two concurrent requests of one hash may
 therefore both simulate and both store the same body, which costs a second run
 and never a wrong answer.
+
+`BoundedCache` is the bounded mapping both caches of the service are: the
+responses here and the runs which the panels of one simulation share
+(`sbmlsim.serve.runner.PanelRunner`), each of its own bound.
 """
 
 from __future__ import annotations
@@ -34,13 +38,94 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MAX_ENTRIES", "ResponseCache"]
+__all__ = ["MAX_ENTRIES", "BoundedCache", "ResponseCache"]
 
 #: the responses a cache keeps by default, see `ResponseCache`
 MAX_ENTRIES: Final = 256
 
 
-class ResponseCache:
+class BoundedCache[V]:
+    """A mapping of at most a number of entries by their key, see the module.
+
+    The entry which was used least recently is the one which is evicted when
+    the cache is full, and a `get` of an entry is a use of it. Every operation
+    holds the lock of the cache and none of them holds it over anything slow,
+    so the cache is safe under the thread pool of a server.
+    """
+
+    def __init__(self, max_entries: int, what: str = "entry") -> None:
+        """Create an empty cache of at most a number of entries.
+
+        Args:
+            max_entries: the entries the cache keeps; the one which was used
+                least recently is evicted when one more is stored.
+            what: what an entry is, e.g. `response`, which the refusal of a
+                bound and the log of an eviction name.
+
+        Raises:
+            ValueError: for a cache of fewer than one entry.
+        """
+        if max_entries < 1:
+            raise ValueError(f"A cache keeps at least one {what}, not {max_entries}.")
+        self._max_entries = max_entries
+        self._what = what
+        #: the entries by their key, the least recently used one first
+        self._entries: OrderedDict[str, V] = OrderedDict()
+        #: the lock of every read and write of the entries, see the module
+        self._lock = threading.Lock()
+
+    def __repr__(self) -> str:
+        """Get the representation, which carries no entry."""
+        return f"{type(self).__name__}(max_entries={self._max_entries})"
+
+    def __len__(self) -> int:
+        """Get the number of entries the cache holds."""
+        with self._lock:
+            return len(self._entries)
+
+    @property
+    def max_entries(self) -> int:
+        """The entries the cache keeps, see `__init__`."""
+        return self._max_entries
+
+    def get(self, key: str) -> V | None:
+        """Get the entry which is stored under a key, and use it.
+
+        Args:
+            key: the key of the entry.
+
+        Returns:
+            The entry as it was stored, or `None` for a key the cache does not
+            hold.
+        """
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None:
+                return None
+            self._entries.move_to_end(key)
+            return entry
+
+    def store(self, key: str, entry: V) -> None:
+        """Store an entry under a key as the most recently used one.
+
+        A key which is stored already is replaced by the given entry and stays
+        one entry.
+
+        Args:
+            key: the key of the entry.
+            entry: the entry.
+        """
+        evicted: list[str] = []
+        with self._lock:
+            self._entries[key] = entry
+            self._entries.move_to_end(key)
+            while len(self._entries) > self._max_entries:
+                evicted.append(self._entries.popitem(last=False)[0])
+        for one in evicted:
+            logger.debug("The %s '%s' was evicted from the cache.", self._what, one)
+
+
+class ResponseCache(BoundedCache["SimulateResponse"]):
     """The responses of the simulations by their hash, see the module.
 
     The entry which was used least recently is the one which is evicted when
@@ -58,44 +143,7 @@ class ResponseCache:
         Raises:
             ValueError: for a cache of fewer than one entry.
         """
-        if max_entries < 1:
-            raise ValueError(f"A cache keeps at least one response, not {max_entries}.")
-        self._max_entries = max_entries
-        #: the responses by their hash, the least recently used one first
-        self._entries: OrderedDict[str, SimulateResponse] = OrderedDict()
-        #: the lock of every read and write of the entries, see the module
-        self._lock = threading.Lock()
-
-    def __repr__(self) -> str:
-        """Get the representation, which carries no body."""
-        return f"ResponseCache(max_entries={self._max_entries})"
-
-    def __len__(self) -> int:
-        """Get the number of responses the cache holds."""
-        with self._lock:
-            return len(self._entries)
-
-    @property
-    def max_entries(self) -> int:
-        """The responses the cache keeps, see `__init__`."""
-        return self._max_entries
-
-    def get(self, spec_hash: str) -> SimulateResponse | None:
-        """Get the response which is stored under a hash, and use it.
-
-        Args:
-            spec_hash: the hash of the resolved request.
-
-        Returns:
-            The response as it was stored, provenance included, or `None` for
-            a hash the cache does not hold.
-        """
-        with self._lock:
-            response = self._entries.get(spec_hash)
-            if response is None:
-                return None
-            self._entries.move_to_end(spec_hash)
-            return response
+        super().__init__(max_entries, what="response")
 
     def put(self, response: SimulateResponse) -> None:
         """Store a response under its own hash as the most recently used one.
@@ -106,11 +154,4 @@ class ResponseCache:
         Args:
             response: the response, stored under its `spec_hash`.
         """
-        evicted: list[str] = []
-        with self._lock:
-            self._entries[response.spec_hash] = response
-            self._entries.move_to_end(response.spec_hash)
-            while len(self._entries) > self._max_entries:
-                evicted.append(self._entries.popitem(last=False)[0])
-        for spec_hash in evicted:
-            logger.debug("The response '%s' was evicted from the cache.", spec_hash)
+        self.store(response.spec_hash, response)

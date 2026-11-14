@@ -1012,8 +1012,10 @@ def test_a_warm_model_does_not_wait_for_a_model_which_is_loading(
 
 
 def test_concurrent_runs_of_one_model_do_not_interleave(
-    runner: PanelRunner, panel: Panel
+    registry: ModelRegistry, panel: Panel
 ) -> None:
+    # a runner which shares no run, so both threads run the scan
+    runner = PanelRunner(registry, max_runs=0)
     serial = runner.run("hctz", panel, {"dose": 25.0}, {"egfr": 5})
     results: list[PanelResult] = []
     errors: list[BaseException] = []

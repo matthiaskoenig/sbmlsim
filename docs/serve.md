@@ -526,6 +526,13 @@ Every answer of a simulation is stored under its `spec_hash`, the sha256 of the 
 
 `GET /api/sim/{spec_hash}` serves a stored body by its hash alone, with `Cache-Control: public, max-age=31536000, immutable`, so a reader who follows a link of a hash fetches it once and a proxy may keep it. A hash which is not stored is a 404 of one fixed message whatever its shape, so the route tells a caller nothing but whether it holds the body it asks for. The cache keeps 256 responses, the one used least recently is evicted, and it belongs to the application: two services in one process never serve each other's bodies.
 
+### One run per state of a page
+
+The panels of a page ask for one state of their knobs at once, and the panels of a model which share a simulation (the same variant, `end`, `points`, `x_unit`, `preinit` and `derived`) share its run: the first request of a state runs the scan once with the curves of every panel of the variant which shares the simulation, and the requests of the other panels at that state read their curves out of it without integrating. Four panels of one simulation on a page cost one run and not four, and every answer is the one its panel gives alone, bitwise.
+
+A run is kept under what decides its numbers and never under a panel: the warm model, the sha256 of its SBML, the settings of the simulator, the times and the values of the pre-initialization and of the grid as the panel resolves them, each number as its exact double. A panel whose knobs resolve to the scan of another panel is therefore answered by its run as well, whatever its knobs are called, as long as the run keeps its curves. The requests of one model run one at a time under its lock, and a request reads the kept runs after it took the lock, so a request of a state which is running waits for that run and reads it. The runner keeps 32 runs, the one used least recently is evicted: the panels of a page read a run within a second of it, and every answer is kept by the cache of the responses anyway. A curve of another panel which the model cannot select is left out of the shared run, so a panel never fails the run of another one.
+
+
 ### The simulation experiments as jobs
 
 A panel is a simulation of a second, which a request waits for. The simulation experiments of a model are minutes: they run their scans, evaluate their data and render their figures. They are therefore submitted and not awaited.
