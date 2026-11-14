@@ -125,12 +125,13 @@ simrun = [
 # the HTTP service which serves the interactive panels of a model and their
 # simulations, see sbmlsim.serve: the ASGI application, the server which runs
 # it, the threads of anyio the application waits for the jobs in and the
-# client its tests and `fastapi.testclient` talk through
+# client its tests and `fastapi.testclient` talk through, httpx2, which
+# starlette takes (httpx is deprecated there, a warning which fails the tests)
 web = [
 	"fastapi>=0.121.0",
 	"uvicorn>=0.41.0",
 	"anyio>=4.6.0",
-	"httpx>=0.28.1",
+	"httpx2>=2.16.0",
 ]
 dev = [
 	"sbmlsim[sciml,copasi,simrun,web]",

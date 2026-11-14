@@ -82,7 +82,7 @@ Six features need packages which are not installed with `sbmlsim`; install them 
 | COPASI as a second simulation engine (`Simulator(engine="copasi")`, see [COPASI](simulation.md#copasi)) | `pip install "sbmlsim[copasi]"` |
 | AMICI as a third simulation engine (`Simulator(engine="amici")`, see [AMICI](simulation.md#amici)) | `pip install "sbmlsim[amici]"` |
 | the analyses as task types of [simrun](https://github.com/matthiaskoenig/simrun), which runs them on a cluster (see [simrun](run.md#simrun)) | `pip install "sbmlsim[simrun]"` |
-| the service of the interactive panels of a model, `python -m sbmlsim.serve` ([fastapi](https://fastapi.tiangolo.com), [uvicorn](https://www.uvicorn.org), [anyio](https://anyio.readthedocs.io) and [httpx](https://www.python-httpx.org), see [Interactive panels](serve.md)) | `pip install "sbmlsim[web]"` |
+| the service of the interactive panels of a model, `python -m sbmlsim.serve` ([fastapi](https://fastapi.tiangolo.com), [uvicorn](https://www.uvicorn.org), [anyio](https://anyio.readthedocs.io) and [httpx2](https://pypi.org/project/httpx2/), see [Interactive panels](serve.md)) | `pip install "sbmlsim[web]"` |
 
 AMICI has no wheels and is built from source when it is installed. It needs a C++ compiler, a BLAS library with its `cblas` header and the headers of HDF5 from the system, e.g. on Debian or Ubuntu:
 

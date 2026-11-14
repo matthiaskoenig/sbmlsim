@@ -3155,7 +3155,7 @@ dev = [
     { name = "anyio" },
     { name = "bump-my-version" },
     { name = "fastapi" },
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "mkdocstrings-python" },
     { name = "petab-sciml" },
     { name = "plotly" },
@@ -3183,7 +3183,7 @@ simrun = [
 web = [
     { name = "anyio" },
     { name = "fastapi" },
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "uvicorn" },
 ]
 
@@ -3200,8 +3200,8 @@ requires-dist = [
     { name = "h5netcdf", specifier = ">=1.6.0" },
     { name = "h5py", specifier = ">=3.16.0" },
     { name = "hdf5plugin", specifier = ">=7.1.0" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
-    { name = "httpx", marker = "extra == 'web'", specifier = ">=0.28.1" },
+    { name = "httpx2", marker = "extra == 'dev'", specifier = ">=2.16.0" },
+    { name = "httpx2", marker = "extra == 'web'", specifier = ">=2.16.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "latex2mathml", specifier = ">=3.77" },
     { name = "libroadrunner", specifier = ">=2.11.1.dev655", index = "https://matthiaskoenig.github.io/roadrunner-wheels/simple/" },
