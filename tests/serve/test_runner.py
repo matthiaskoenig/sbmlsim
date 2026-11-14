@@ -743,13 +743,13 @@ def test_a_knob_a_scenario_sets_is_shared_even_when_one_panel_declares_it(
         )
     )
     entry = ModelEntry(id="hctz", project=single, title="Hydrochlorothiazide")
-    shared = entry.shared["dose"]
+    shared = entry.shared()["dose"]
     assert [one.knob.id for one in shared] == ["dose"]
     assert shared[0].knob == plasma.knobs[0]
     assert shared[0].panels == (plasma,)
     # without the scenario a page of one panel shares nothing
     lone = project.replace(app=app.model_copy(update={"pages": (page,)}))
-    assert ModelEntry(id="hctz", project=lone, title="x").shared == {"dose": ()}
+    assert ModelEntry(id="hctz", project=lone, title="x").shared() == {"dose": ()}
 
 
 def test_one_knob_id_declared_alike_on_a_page_and_otherwise_on_another_is_served(

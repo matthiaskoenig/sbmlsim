@@ -113,10 +113,10 @@ class SimulateRequest(BaseModel):
             knobs and `MAX_GRID` points in all; a knob of the grid takes no
             value.
         variant: the variant of the model to simulate (`Project.variants`),
-            which an app switches between; the one the panel declares
-            (`PanelSimulation.variant`) without. The knobs, the curves and the
-            study data of a panel do not depend on it, only the SBML which is
-            integrated does.
+            which an app switches between: the declaration of the panel in
+            that variant (`Project.panels_of`) runs on its SBML. Without, the
+            declaration of the default variant runs on the variant it
+            declares (`PanelSimulation.variant`), the default without.
     """
 
     model_config = _CONFIG

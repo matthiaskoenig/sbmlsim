@@ -824,7 +824,15 @@ class Project(BaseModel):
         panels: the interactive panels of the model by their id, see
             `sbmlsim.panel`: the override for a model whose SBML carries no
             panel annotation; a panel of an id which the annotation declares
-            as well wins over the annotated one.
+            as well wins over the annotated one. It is the override of every
+            variant.
+        variant_panels: the override of the panels of one variant, by the
+            name of the variant and the id of the panel, laid over `panels`
+            for that variant (`panels_of`); every name is a variant of the
+            project. The declaration of a panel in a variant is the one of the
+            SBML of that variant, and this is the override of a checkout whose
+            SBML of a variant carries no annotation, e.g. one which was not
+            built again.
         app: the app of the model, the pages of its panels and the variants a
             reader switches between, see `sbmlsim.panel.App`; `None` for a
             model without one. The pages are the project's and no part of the
@@ -871,6 +879,7 @@ class Project(BaseModel):
     credibility_settings: CredibilitySettings = CredibilitySettings()
     scans: Mapping[str, ScanAnalysis] = {}
     panels: dict[str, Panel] = {}
+    variant_panels: dict[str, dict[str, Panel]] = {}
     app: App | None = None
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
     sensitivities: Mapping[str, Any] = {}
@@ -1105,6 +1114,23 @@ class Project(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _check_variant_panels(self) -> Self:
+        """Check that the panels of a variant are the panels of a variant.
+
+        Raises:
+            ValueError: naming the names and the variants, for panels of a
+                name which is no variant of the project.
+        """
+        unknown = sorted(set(self.variant_panels).difference(self.variants))
+        if unknown:
+            raise ValueError(
+                f"The project '{self.name}' declares the panels of the variants "
+                f"{unknown}, which it does not have; its variants are "
+                f"{sorted(self.variants)}."
+            )
+        return self
+
     def replace(self, **changes: Any) -> Self:
         """Get a copy of the project with other fields, validated again.
 
@@ -1219,10 +1245,13 @@ class Project(BaseModel):
         """Get the interactive panels of a variant of the model.
 
         The panels of a model are declared in an annotation of its SBML
-        (`sbmlsim.panel_sbml`), so that they travel with the model; `panels`
-        is the declaration of the project, which wins per id, for a model
-        whose SBML carries none. The panels of a variant are read once and
-        kept, by the path of its SBML.
+        (`sbmlsim.panel_sbml`), so that they travel with the model, and the
+        declaration of a panel in a variant is the one of the SBML of that
+        variant, so two builds of a model may declare one panel differently.
+        `panels` is the declaration of the project for every variant and
+        `variant_panels` the one for this variant, which win per id in that
+        order, for a model whose SBML carries none. The panels of a variant
+        are read once and kept, by the path of its SBML.
 
         A panel of the annotation which cannot be read is logged and left out,
         so a malformed annotation does not take the project down; a caller
@@ -1233,8 +1262,10 @@ class Project(BaseModel):
             variant: the name of the variant, the first variant without.
 
         Returns:
-            The panels by their id, the annotated ones in their order, the
-            ones of the project after them.
+            The panels by their id: the annotated ones in their order, then
+            the ones of `panels` and then the ones of `variant_panels` of the
+            variant, each of an id which is not one of the ones before it
+            after them.
 
         Raises:
             ValueError: if the project has no model variants, or if the SBML
@@ -1255,7 +1286,12 @@ class Project(BaseModel):
                     problem.reason,
                 )
             self._panels[path] = annotated
-        return {**self._panels[path], **self.panels}
+        name = next(iter(self.variants)) if variant is None else variant
+        return {
+            **self._panels[path],
+            **self.panels,
+            **self.variant_panels.get(name, {}),
+        }
 
     def load_factory(self) -> Callable[[Path], Any]:
         """Get the function which builds the models.

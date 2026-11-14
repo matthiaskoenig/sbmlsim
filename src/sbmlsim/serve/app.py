@@ -9,7 +9,12 @@ simulations on one `PanelRunner` with warm models.
 
 A request names a model id of the registry and a panel id of that model and
 nothing else: no project reference, no module and no path reaches the service,
-and an id which is not served is a 404 with the message of the registry. A
+and an id which is not served is a 404 with the message of the registry. The
+declaration of a panel may differ by the variant of its model, so the panel,
+its study data, the app and a simulation take a variant (the query `variant`
+of the routes which read, the field of a `SimulateRequest`), whose
+declaration they are, the default variant without; a variant the model does
+not have is a 422. A
 request which is over the limits of `sbmlsim.panel` or which names a knob the
 panel does not declare is a 422, a failure of the service is a 500 of one
 fixed message, logged with its traceback: an error body carries no traceback,
@@ -91,8 +96,8 @@ from sbmlsim.serve.runner import (
     UnknownModel,
     UnknownPanel,
     UnknownVariant,
+    check_app_variant,
     check_knobs,
-    check_variant,
 )
 
 logger = logging.getLogger(__name__)
@@ -242,12 +247,14 @@ def create_app(
         Args:
             model_id: the id of the model.
             panel_id: the id of the panel.
-            variant: the variant a request asks for, the one the panel
-                declares without.
+            variant: the variant a request asks for, whose declaration of the
+                panel it is and whose SBML is simulated; without, the
+                declaration of the default variant, which simulates the
+                variant it declares.
 
         Returns:
-            The entry, the panel and the sha256 of the SBML file of its
-            variant.
+            The entry, the panel of the variant and the sha256 of the SBML file
+            which is simulated.
 
         Raises:
             UnknownModel: for a model which is not served, a 404.
@@ -259,8 +266,7 @@ def create_app(
         """
         try:
             entry = registry.entry(model_id)
-            panel = registry.panel(model_id, panel_id)
-            check_variant(entry, variant)
+            panel = registry.panel(model_id, panel_id, variant)
             path = entry.project.variant_path(
                 panel.simulation.variant if variant is None else variant
             ).resolve()
@@ -297,27 +303,33 @@ def create_app(
         )
 
     @app.get("/api/models/{model}/app")
-    def app_of(model: str) -> AppResponse:
+    def app_of(model: str, variant: str | None = None) -> AppResponse:
         """Get the app of a model, the pages of its panels.
 
         The app is the declaration of the project of the model
-        (`sbmlsim.project.Project.app`), and the knobs the panels of each of
-        its pages share and the heads of those panels are derived from the
-        panels of the model (`ModelEntry.shared`, `ModelEntry.pages`), which
-        reads the SBML of the model once: the
+        (`sbmlsim.project.Project.app`), and the knobs the shell of each of
+        its pages owns and the heads of its panels are derived from the
+        panels of the model in a variant (`ModelEntry.shared`,
+        `ModelEntry.pages`), which reads the SBML of the variant once: the
         registry of a service did so when it was built (`ModelRegistry.of`),
         and a registry built otherwise does it on the first request, which is
         why the route is a sync `def`. Its pages name the panels a shell then
-        asks for, which the registry checked against the panels of the model.
+        asks for, which the registry checked against the panels of every
+        variant the app is served in.
 
         Args:
             model: the id of the model.
+            variant: the variant whose panels the knobs and the heads are
+                worked out of, one of `ModelEntry.app_variants`; the default
+                variant without.
 
         Returns:
             The app, see `sbmlsim.panel.app_payload`.
 
         Raises:
             UnknownModel: for a model which is not served, a 404.
+            UnknownVariant: a 422 for a variant the project does not have or
+                the app does not name.
             HTTPException: a 404 of `NO_APP` for a model which declares no
                 app, which is a model whose panels are served on their own.
         """
@@ -325,14 +337,18 @@ def create_app(
         declared = entry.project.app
         if declared is None:
             raise HTTPException(status_code=404, detail=NO_APP)
-        return AppResponse.of(declared, entry.shared, entry.pages)
+        check_app_variant(entry, variant)
+        return AppResponse.of(declared, entry.shared(variant), entry.pages(variant))
 
     @app.get("/api/models/{model}/panels")
     def panels(model: str) -> PanelsResponse:
         """List the panels a model declares, in the order it declares them.
 
-        The panels of a model are read from its SBML once, so the route is a
-        sync `def` and reads it in the thread pool of the server.
+        The panels are the ones of the default variant of the model: the list
+        names the panels a model has, while the declaration of one of them in
+        another variant is served by `panel_of` with its `variant`. They are
+        read from its SBML once, so the route is a sync `def` and reads it in
+        the thread pool of the server.
 
         Args:
             model: the id of the model.
@@ -357,7 +373,7 @@ def create_app(
         )
 
     @app.get("/api/models/{model}/panels/{panel}")
-    def panel_of(model: str, panel: str) -> dict[str, Any]:
+    def panel_of(model: str, panel: str, variant: str | None = None) -> dict[str, Any]:
         """Get the declaration of a panel, the payload of the contract.
 
         The declaration and the hash of the model are read from the files of
@@ -367,19 +383,25 @@ def create_app(
         Args:
             model: the id of the model.
             panel: the id of the panel.
+            variant: the variant whose declaration of the panel it is, see
+                `sbmlsim.project.Project.panels_of`; the default variant
+                without.
 
         Returns:
             The payload, see `sbmlsim.panel.panel_payload`.
 
         Raises:
             UnknownModel: for a model which is not served, a 404.
-            UnknownPanel: for a panel the model does not declare, a 404.
+            UnknownPanel: for a panel the variant does not declare, a 404.
+            UnknownVariant: a 422 for a variant the project does not have.
         """
-        _, declaration, _ = resolved(model, panel)
+        _, declaration, _ = resolved(model, panel, variant)
         return panel_payload(declaration)
 
     @app.get("/api/models/{model}/panels/{panel}/data")
-    def data_of(model: str, panel: str) -> PanelDataResponse:
+    def data_of(
+        model: str, panel: str, variant: str | None = None
+    ) -> PanelDataResponse:
         """Get the study data behind the curves of a panel.
 
         The data is read from the data of the project of the model, so the
@@ -397,6 +419,9 @@ def create_app(
         Args:
             model: the id of the model.
             panel: the id of the panel.
+            variant: the variant whose declaration of the panel the series are
+                and whose model resolves their units, as `simulate` does with
+                its `variant`; the default variant without.
 
         Returns:
             The series of the panel, see `sbmlsim.serve.data`; none for a
@@ -404,18 +429,20 @@ def create_app(
 
         Raises:
             UnknownModel: for a model which is not served, a 404.
-            UnknownPanel: for a panel the model does not declare, a 404.
+            UnknownPanel: for a panel the variant does not declare, a 404.
+            UnknownVariant: a 422 for a variant the project does not have.
             HTTPException: a 500 for study data which cannot be read, e.g. a
                 dataset which is no file of the project or a column it has
                 not, which is a problem of the declaration and not of the
                 request; the message is the one of the service and carries
                 neither the dataset nor a path.
         """
-        entry, declaration, _ = resolved(model, panel)
+        entry, declaration, _ = resolved(model, panel, variant)
         if not declaration.data:
             return PanelDataResponse(series=[])
         try:
-            series = panel_data(entry, declaration, runner.units(entry, declaration))
+            units = runner.units(entry, declaration, variant)
+            series = panel_data(entry, declaration, units)
         except Exception:
             logger.exception(
                 "The study data of the panel '%s' of the model '%s' cannot be read.",
@@ -443,21 +470,23 @@ def create_app(
             resolved request; the stored answer of a request which was
             simulated already, as it is, see `sbmlsim.serve.cache`.
 
+        The declaration which runs is the one of the variant of the request
+        (`sbmlsim.project.Project.panels_of`), simulated on the SBML of that
+        variant, and the one of the default variant without, simulated on the
+        variant it declares.
+
         Raises:
             UnknownModel: for a model which is not served, a 404.
-            UnknownPanel: for a panel the model does not declare, a 404.
-            HTTPException: a 422 for a variant the project does not have and
-                for a knob id the panel does not declare, which are the errors
-                of a request a run is answered with and which are checked
-                before the cache is read, and a 500 for every other failure of
-                the run, whose message is the one of the service and not of
-                the exception.
+            UnknownPanel: for a panel the variant does not declare, a 404.
+            UnknownVariant: a 422 for a variant the project does not have,
+                checked before the cache is read.
+            HTTPException: a 422 for a knob id the panel does not declare,
+                which is the error of a request a run is answered with and
+                which is checked before the cache is read, and a 500 for every
+                other failure of the run, whose message is the one of the
+                service and not of the exception.
         """
-        try:
-            entry, declaration, sha = resolved(model, panel, request.variant)
-        except UnknownVariant as error:
-            # the model and its variants, which carry nothing of the service
-            raise HTTPException(status_code=422, detail=str(error)) from None
+        entry, declaration, sha = resolved(model, panel, request.variant)
         # the name of the SBML which runs, so a request which leaves the
         # variant out and one which names the default are one simulation
         variant = (
@@ -637,6 +666,19 @@ def create_app(
             raise HTTPException(status_code=404, detail=NO_FIGURE)
         return FileResponse(file)
 
+    async def unprocessable(request: Request, exc: Exception) -> JSONResponse:
+        """Answer a variant which the model does not have with a 422.
+
+        Args:
+            request: the request which named it.
+            exc: the `UnknownVariant` of the registry.
+
+        Returns:
+            The body `{"detail": ...}` of the message of the exception, which
+            names the model and its variants and nothing of the service.
+        """
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
+
     async def not_found(request: Request, exc: Exception) -> JSONResponse:
         """Answer a model or a panel which is not served with a 404.
 
@@ -683,6 +725,7 @@ def create_app(
 
     app.add_exception_handler(UnknownModel, not_found)
     app.add_exception_handler(UnknownPanel, not_found)
+    app.add_exception_handler(UnknownVariant, unprocessable)
     app.add_exception_handler(RequestValidationError, invalid)
     if allow_origins:
         # `allow_headers` is open because the service takes no credential:

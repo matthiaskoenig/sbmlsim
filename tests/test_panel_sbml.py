@@ -534,6 +534,53 @@ def test_project_panels_override_the_annotation(
     assert project.panels_of("default")[panel.id].title == "the panel of the project"
 
 
+def test_the_panels_of_a_variant_are_laid_over_the_ones_of_every_variant(
+    tmp_path: Path, panel: Panel, minimal: Panel
+) -> None:
+    """The declaration of a panel in a variant is the one of its SBML and overrides.
+
+    The SBML of `default` carries the annotation and the one of `other` none;
+    `panels` is the override of every variant and `variant_panels` the one of
+    a variant, which wins.
+    """
+    write_panels(SBML_IN, tmp_path / "m.xml", [panel, minimal])
+    (tmp_path / "other.xml").write_bytes(SBML_IN.read_bytes())
+    every = minimal.model_copy(update={"title": "of every variant"})
+    other = panel.model_copy(update={"title": "of the variant other"})
+    only = minimal.model_copy(update={"id": "only"})
+    project = Project(
+        name="panels",
+        root=tmp_path,
+        variants={"default": Path("m.xml"), "other": Path("other.xml")},
+        panels={minimal.id: every},
+        variant_panels={"other": {panel.id: other, only.id: only}},
+    )
+    assert project.panels_of() == {panel.id: panel, minimal.id: every}
+    assert project.panels_of("default") == project.panels_of()
+    assert project.panels_of("other") == {
+        minimal.id: every,
+        panel.id: other,
+        "only": only,
+    }
+    assert list(project.panels_of("other")) == [minimal.id, panel.id, "only"]
+    # the default variant by its name takes its own overrides as well
+    named = project.replace(variant_panels={"default": {only.id: only}})
+    assert set(named.panels_of()) == {panel.id, minimal.id, "only"}
+    assert set(named.panels_of("other")) == {minimal.id}
+
+
+def test_the_panels_of_a_variant_the_project_has_not_are_refused(
+    tmp_path: Path, panel: Panel
+) -> None:
+    with pytest.raises(ValueError, match=r"variants \['female'\], which it does not"):
+        Project(
+            name="panels",
+            root=tmp_path,
+            variants={"default": Path("m.xml")},
+            variant_panels={"female": {panel.id: panel}},
+        )
+
+
 def test_project_panels_of_a_model_without_the_annotation_are_the_declared_ones(
     tmp_path: Path, panel: Panel
 ) -> None:

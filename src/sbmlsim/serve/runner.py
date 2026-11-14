@@ -10,10 +10,13 @@ names a panel the model does not declare, a variant the project does not
 have, two panels of a page which declare one knob id differently
 (`ModelEntry.shared`) and a scenario of a page which sets a knob its panels do
 not declare or a value which is none of that knob (`_check_scenarios`) are
-refused at startup, since the panels of a model are
-read from its SBML, which a project is imported without. So are the formulas of
-the derived targets of every panel of every variant (`_check_derived`), which
-are math of PEtab the declaration does not parse.
+refused at startup, since the panels of a model are read from its SBML, which
+a project is imported without. The declaration of a panel in a variant is the
+one of the SBML of that variant (`sbmlsim.project.Project.panels_of`), so the
+app is checked in every variant it is served in (`ModelEntry.app_variants`),
+and the formulas of the derived targets of every panel of every variant are
+checked as well (`_check_derived`), which are math of PEtab the declaration
+does not parse.
 
 `PanelRunner` runs a panel of such a model: the values of its knobs become the
 pre-initialization of one `Simulation`, the knobs of the grid become a
@@ -58,7 +61,6 @@ import math
 import threading
 from collections.abc import Mapping, Sequence, Set
 from dataclasses import dataclass, field
-from functools import cached_property
 from pathlib import Path
 from tokenize import TokenError
 from typing import TYPE_CHECKING, Any, Final
@@ -95,6 +97,7 @@ __all__ = [
     "UnknownPanel",
     "UnknownVariant",
     "X",
+    "check_app_variant",
     "check_knobs",
     "check_variant",
 ]
@@ -152,6 +155,30 @@ def check_variant(entry: ModelEntry, variant: str | None) -> None:
         )
 
 
+def check_app_variant(entry: ModelEntry, variant: str | None) -> None:
+    """Check the variant of a request of the app of a model.
+
+    The app is served in the variants of `ModelEntry.app_variants`, the ones
+    its pages were checked in when the registry was built, and in no other.
+
+    Args:
+        entry: the entry of the model of the request.
+        variant: the variant the request names, `None` for the default one.
+
+    Raises:
+        UnknownVariant: naming the model and its variants, for a variant the
+            project does not have, and naming the model and the variants of
+            its app, for a variant the app does not name.
+    """
+    check_variant(entry, variant)
+    offered = entry.app_variants()
+    if variant is not None and variant not in offered:
+        raise UnknownVariant(
+            f"The app of the model '{entry.id}' offers no variant '{variant}'; "
+            f"its variants are {sorted(str(name) for name in offered)}."
+        )
+
+
 def check_knobs(
     panel: Panel, values: Mapping[str, float], grid: Mapping[str, int]
 ) -> None:
@@ -202,6 +229,12 @@ class SharedKnob:
 class ModelEntry:
     """A model of the registry, see `ModelRegistry`.
 
+    The panels of a model may differ by its variant: the declaration of a
+    panel in a variant is the one of the SBML of that variant
+    (`sbmlsim.project.Project.panels_of`), so the pages of the app and the
+    knobs they share are worked out per variant (`pages`, `shared`), once for
+    each and kept.
+
     Attributes:
         id: the id of the model, the one a request names.
         project: the project of the model package.
@@ -211,34 +244,81 @@ class ModelEntry:
     id: str
     project: Project
     title: str
+    #: the panels of each page of the app, by the name of the variant
+    _pages: dict[str | None, dict[str, tuple[Panel, ...]]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+    #: the knobs the shell of each page owns, by the name of the variant
+    _shared: dict[str | None, dict[str, tuple[SharedKnob, ...]]] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
-    @cached_property
-    def pages(self) -> dict[str, tuple[Panel, ...]]:
-        """Get the panels of each page of the app of the model.
+    def variant_name(self, variant: str | None) -> str | None:
+        """Get the name of a variant of the model, the default one for `None`.
 
-        They are the panels `ModelRegistry.panel` serves, read once, so the
-        knobs a page shares (`shared`) and the heads of its panels which the
-        app carries (`sbmlsim.serve.payload.AppResponse`) are of one reading
-        of the SBML of the model.
+        Args:
+            variant: the name of a variant, `None` for the default variant.
+
+        Returns:
+            The name, the first variant of the project for `None`, which is
+            its default; `None` for a project without variants, whose panels
+            cannot be read (`sbmlsim.project.Project.panels_of`).
+        """
+        if variant is not None or not self.project.variants:
+            return variant
+        return next(iter(self.project.variants))
+
+    def app_variants(self) -> tuple[str | None, ...]:
+        """Get the variants the app of the model is served in.
+
+        They are the default variant of the project, which a request without
+        a variant is answered with, and the variants the app names
+        (`sbmlsim.panel.App.variants`), which a reader switches between: the
+        pages of the app are checked in each of them when the registry of a
+        service is built (`_check_app`), and the app is served in no other.
+
+        Returns:
+            The names, the default variant first and the others in the order
+            the app names them; the default variant alone for a model without
+            an app.
+        """
+        default = self.variant_name(None)
+        app = self.project.app
+        named = [] if app is None else [variant.id for variant in app.variants]
+        return (default, *(name for name in named if name != default))
+
+    def pages(self, variant: str | None = None) -> dict[str, tuple[Panel, ...]]:
+        """Get the panels of each page of the app of the model in a variant.
+
+        They are the panels `ModelRegistry.panel` serves for that variant,
+        read once, so the knobs a page shares (`shared`) and the heads of its
+        panels which the app carries (`sbmlsim.serve.payload.AppResponse`) are
+        of one reading of the SBML of the variant.
+
+        Args:
+            variant: the name of the variant, the default variant without.
 
         Returns:
             The panels of every page by its id, in the order the page shows
             them; a model without an app has no pages.
 
         Raises:
-            KeyError: for a page which names a panel the model does not
-                declare, which `_check_app` refuses first.
+            KeyError: for a page which names a panel the variant does not
+                declare, which `_check_app` refuses first for the variants of
+                `app_variants`, and for a variant the project does not have.
         """
-        app = self.project.app
-        if app is None:
-            return {}
-        panels = self.project.panels_of()
-        return {
-            page.id: tuple(panels[one] for one in page.panels) for page in app.pages
-        }
+        name = self.variant_name(variant)
+        if name not in self._pages:
+            app = self.project.app
+            if app is None:
+                return {}
+            panels = self.project.panels_of(name)
+            self._pages[name] = {
+                page.id: tuple(panels[one] for one in page.panels) for page in app.pages
+            }
+        return self._pages[name]
 
-    @cached_property
-    def shared(self) -> dict[str, tuple[SharedKnob, ...]]:
+    def shared(self, variant: str | None = None) -> dict[str, tuple[SharedKnob, ...]]:
         """Get the knobs the shell of each page of the app of the model owns.
 
         They are derived from the panels and are no part of the declaration of
@@ -248,10 +328,13 @@ class ModelEntry:
         page sets (`sbmlsim.panel.Scenario`) is a knob of the page as well,
         even when one panel declares it: the shell sets it when a reader picks
         the scenario, so it owns its control, and a panel shows no control of
-        a knob the shell sets. They are worked out once, from the panels
-        `ModelRegistry.panel` serves, which a service does when its registry
-        is built (`ModelRegistry.of`), so a page whose panels declare one id
-        differently is refused at startup.
+        a knob the shell sets. They are worked out once per variant, from the
+        panels `ModelRegistry.panel` serves for it, which a service does when
+        its registry is built (`ModelRegistry.of`), so a page whose panels
+        declare one id differently is refused at startup.
+
+        Args:
+            variant: the name of the variant, the default variant without.
 
         Returns:
             The shared knobs of every page by its id, each in the order the
@@ -260,25 +343,28 @@ class ModelEntry:
             model without an app has no pages.
 
         Raises:
-            ValueError: naming the model, the page, the knob id, the two panels
-                and the fields, for a page two of whose panels declare one knob
-                id differently, see `_shared_knobs`.
-            KeyError: for a page which names a panel the model does not
+            ValueError: naming the model, the variant, the page, the knob id,
+                the two panels and the fields, for a page two of whose panels
+                declare one knob id differently, see `_shared_knobs`.
+            KeyError: for a page which names a panel the variant does not
                 declare, which `_check_app` refuses first.
         """
-        app = self.project.app
-        if app is None:
-            return {}
-        pages = self.pages
-        return {
-            page.id: _shared_knobs(
-                self.id,
-                page.id,
-                list(pages[page.id]),
-                {knob for scenario in page.scenarios for knob in scenario.values},
-            )
-            for page in app.pages
-        }
+        name = self.variant_name(variant)
+        if name not in self._shared:
+            app = self.project.app
+            if app is None:
+                return {}
+            pages = self.pages(name)
+            self._shared[name] = {
+                page.id: _shared_knobs(
+                    f"the model '{self.id}' in its variant '{name}'",
+                    page.id,
+                    list(pages[page.id]),
+                    {knob for scenario in page.scenarios for knob in scenario.values},
+                )
+                for page in app.pages
+            }
+        return self._shared[name]
 
 
 class ModelRegistry:
@@ -361,32 +447,38 @@ class ModelRegistry:
         except KeyError:
             raise UnknownModel(f"'{model_id}' is no model of this service.") from None
 
-    def panel(self, model_id: str, panel_id: str) -> Panel:
-        """Get a panel of a served model.
+    def panel(self, model_id: str, panel_id: str, variant: str | None = None) -> Panel:
+        """Get a panel of a served model in a variant.
 
-        The panels are the ones of the default variant of the model, the
-        annotated ones with the declaration of the project over them
+        The panels are the ones of the variant, the annotated ones of its SBML
+        with the declarations of the project over them
         (`sbmlsim.project.Project.panels_of`), which reads the SBML once and
-        keeps them.
+        keeps them: the declaration of a panel in a variant is the one of that
+        variant.
 
         Args:
             model_id: the id of the model.
             panel_id: the id of the panel.
+            variant: the name of the variant, the default variant without.
 
         Returns:
             The panel.
 
         Raises:
             UnknownModel: for a model which is not served.
-            UnknownPanel: naming the id, for a panel the model does not
+            UnknownVariant: for a variant the project does not have.
+            UnknownPanel: naming the id, for a panel the variant does not
                 declare.
         """
-        panels = self.entry(model_id).project.panels_of()
+        entry = self.entry(model_id)
+        check_variant(entry, variant)
+        panels = entry.project.panels_of(variant)
         try:
             return panels[panel_id]
         except KeyError:
+            within = "" if variant is None else f" in its variant '{variant}'"
             raise UnknownPanel(
-                f"'{panel_id}' is no panel of the model '{model_id}'."
+                f"'{panel_id}' is no panel of the model '{model_id}'{within}."
             ) from None
 
 
@@ -401,25 +493,30 @@ def _check_app(entry: ModelEntry) -> None:
     not declare is a problem of the startup of the service, before any request,
     and never one of a request.
 
-    The panels are the ones of the default variant of the model, the panels
-    `ModelRegistry.panel` serves; the variants are checked first, so an app of
-    an unknown variant is refused without reading an SBML.
+    The panels of a model may differ by its variant, so the app is checked in
+    every variant it is served in (`ModelEntry.app_variants`): the default
+    variant and the variants the app names. In each, every panel of every page
+    is a panel of the variant, the panels of a page declare a knob id alike
+    (`ModelEntry.shared`) and the scenarios of a page set knobs of its panels
+    to values of them (`_check_scenarios`). The variants are checked first, so
+    an app of an unknown variant is refused without reading an SBML.
 
-    A model which declares no app is not checked and reads nothing.
+    A model which declares no app is not checked here and reads nothing.
 
     Args:
         entry: the model of the registry.
 
     Raises:
         ValueError: naming the model and the variants, for an app which names
-            a variant the project does not have; naming the model, the page and
-            the panels, for a page which names a panel the model does not
-            declare; naming the model, the page, the knob id and the two
-            panels, for a page whose panels declare one knob id differently,
-            see `ModelEntry.shared`; naming the model, the page, the scenario,
-            the knob and the panel, for a scenario which sets a knob no panel
-            of its page declares or a value which is no value of that knob,
-            see `_check_scenarios`; if the project has no model variants, see
+            a variant the project does not have; naming the model, the
+            variant, the page and the panels, for a page which names a panel
+            the variant does not declare; naming the model, the variant, the
+            page, the knob id and the two panels, for a page whose panels
+            declare one knob id differently, see `ModelEntry.shared`; naming
+            the model, the variant, the page, the scenario, the knob and the
+            panel, for a scenario which sets a knob no panel of its page
+            declares or a value which is no value of that knob, see
+            `_check_scenarios`; if the project has no model variants, see
             `sbmlsim.project.Project.panels_of`.
         FileNotFoundError: if the SBML the panels are read from is no file,
             which is a problem of the service and not of a request.
@@ -434,25 +531,26 @@ def _check_app(entry: ModelEntry) -> None:
             f"The app of the model '{entry.id}' names the variants {unknown}, "
             f"which its project does not have; its variants are {variants}."
         )
-    panels = entry.project.panels_of()
-    declared = sorted(panels)
-    for page in app.pages:
-        missing = sorted(set(page.panels).difference(declared))
-        if missing:
-            raise ValueError(
-                f"The page '{page.id}' of the app of the model '{entry.id}' shows "
-                f"the panels {missing}, which the model does not declare; its "
-                f"panels are {declared}."
-            )
-    # the shared knobs of every page, which raise for one id declared twice,
-    # so the knobs a scenario sets are of one declaration per page
-    _ = entry.shared
-    pages = entry.pages
-    for page in app.pages:
-        _check_scenarios(entry.id, page, pages[page.id])
+    for variant in entry.app_variants():
+        model = f"the model '{entry.id}' in its variant '{variant}'"
+        declared = sorted(entry.project.panels_of(variant))
+        for page in app.pages:
+            missing = sorted(set(page.panels).difference(declared))
+            if missing:
+                raise ValueError(
+                    f"The page '{page.id}' of the app of {model} shows the panels "
+                    f"{missing}, which the variant does not declare; its panels "
+                    f"are {declared}."
+                )
+        # the shared knobs of every page, which raise for one id declared
+        # twice, so the knobs a scenario sets are of one declaration per page
+        _ = entry.shared(variant)
+        pages = entry.pages(variant)
+        for page in app.pages:
+            _check_scenarios(model, page, pages[page.id])
 
 
-def _check_scenarios(model_id: str, page: AppPage, panels: Sequence[Panel]) -> None:
+def _check_scenarios(model: str, page: AppPage, panels: Sequence[Panel]) -> None:
     """Check the scenarios of a page of an app against the knobs of its panels.
 
     A scenario (`sbmlsim.panel.Scenario`) sets knobs of its page, which the
@@ -463,20 +561,22 @@ def _check_scenarios(model_id: str, page: AppPage, panels: Sequence[Panel]) -> N
     state that panel cannot be in.
 
     Args:
-        model_id: the id of the model.
+        model: the model and the variant of the panels, which a problem
+            names, e.g. `the model 'hctz' in its variant 'default'`.
         page: the page of the app.
         panels: the panels of the page, in the order it shows them.
 
     Raises:
-        ValueError: naming the model, the page, the scenario and the knob, for
-            a knob no panel of the page declares, and naming the panel as
-            well, for a value which is no value of the knob in that panel.
+        ValueError: naming the model, the variant, the page, the scenario and
+            the knob, for a knob no panel of the page declares, and naming the
+            panel as well, for a value which is no value of the knob in that
+            panel.
     """
     for scenario in page.scenarios:
         for knob_id, value in scenario.values.items():
             where = (
                 f"The scenario '{scenario.id}' of the page '{page.id}' of the app "
-                f"of the model '{model_id}'"
+                f"of {model}"
             )
             declaring = [
                 (panel, knob)
@@ -559,7 +659,7 @@ def _check_derived(entry: ModelEntry) -> None:
 
 
 def _shared_knobs(
-    model_id: str,
+    model: str,
     page_id: str,
     panels: Sequence[Panel],
     named: Set[str] = frozenset(),
@@ -583,7 +683,8 @@ def _shared_knobs(
     each in the order of its declaration.
 
     Args:
-        model_id: the id of the model.
+        model: the model and the variant of the panels, which a problem
+            names, e.g. `the model 'hctz' in its variant 'default'`.
         page_id: the id of the page.
         panels: the panels of the page, in the order it shows them, each once.
         named: the ids of the knobs the scenarios of the page set.
@@ -593,9 +694,9 @@ def _shared_knobs(
         `named` which a panel declares, with the panels which declare each.
 
     Raises:
-        ValueError: naming the model, the page, the knob id, the two panels
-            and the fields, for a knob id which two panels of the page declare
-            differently.
+        ValueError: naming the model, the variant, the page, the knob id, the
+            two panels and the fields, for a knob id which two panels of the
+            page declare differently.
     """
     first: dict[str, tuple[Panel, Knob]] = {}
     declaring: dict[str, list[Panel]] = {}
@@ -611,7 +712,7 @@ def _shared_knobs(
             ]
             if fields:
                 raise ValueError(
-                    f"The page '{page_id}' of the app of the model '{model_id}' "
+                    f"The page '{page_id}' of the app of {model} "
                     f"shows the panels '{other_panel.id}' and '{panel.id}', which "
                     f"declare the knob '{knob.id}' differently ({', '.join(fields)}); "
                     "the panels of a page share a knob they both declare, so they "
@@ -826,7 +927,9 @@ class PanelRunner:
             )
             return _result(warm.model, panel, axes, result)
 
-    def units(self, entry: ModelEntry, panel: Panel) -> PanelUnits:
+    def units(
+        self, entry: ModelEntry, panel: Panel, variant: str | None = None
+    ) -> PanelUnits:
         """Get the units a panel is delivered in, see `PanelUnits`.
 
         The x is the one `PanelResult.units[X]` of a run of the panel names,
@@ -838,6 +941,8 @@ class PanelRunner:
         Args:
             entry: the entry of the model, the one the caller holds.
             panel: the panel.
+            variant: the variant of the model whose units are resolved, the
+                one the panel declares without, as for `run`.
 
         Returns:
             The units, see `PanelUnits`.
@@ -853,7 +958,9 @@ class PanelRunner:
                 if the project of the entry has no model variants.
             KeyError: for a variant the project does not have.
         """
-        warm = self._warm_model(entry, panel.simulation.variant)
+        warm = self._warm_model(
+            entry, panel.simulation.variant if variant is None else variant
+        )
         return _panel_units(warm.model, panel)
 
     def _warm_model(self, entry: ModelEntry, variant: str | None) -> _Warm:
