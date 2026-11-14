@@ -260,18 +260,19 @@ def test_y_limits_of_curves_of_different_units_are_refused(
         }
     )
     assert runner.units(registry.entry("hctz"), mixed).x.text == "min"
-    for limits in ({"y_max": 2.0}, {"y_min": 0.1}):
-        bogus = mixed.model_copy(update=limits)
-        for refuses in (
-            lambda: runner.run("hctz", bogus, {"egfr": 1.0}, {}),  # noqa: B023
-            lambda: runner.units(registry.entry("hctz"), bogus),  # noqa: B023
-        ):
-            # each lambda is called within the iteration which binds `bogus`
-            with pytest.raises(ValueError, match="do not share") as error:
-                refuses()
-            message = str(error.value)
-            for named in ("'renal_plasma'", "'[Cve_hctz]' in 'uM'", "'nM'"):
-                assert named in message
+    bogus = [
+        mixed.model_copy(update=limits) for limits in ({"y_max": 2.0}, {"y_min": 0.1})
+    ]
+    refusals = [
+        *(lambda one=one: runner.run("hctz", one, {"egfr": 1.0}, {}) for one in bogus),
+        *(lambda one=one: runner.units(registry.entry("hctz"), one) for one in bogus),
+    ]
+    for refuses in refusals:
+        with pytest.raises(ValueError, match="do not share") as error:
+            refuses()
+        message = str(error.value)
+        for named in ("'renal_plasma'", "'[Cve_hctz]' in 'uM'", "'nM'"):
+            assert named in message
 
 
 def test_y_limits_of_curves_of_one_unit_spelled_otherwise_are_served(

@@ -172,7 +172,7 @@ The declaration of a panel in a variant is the one of the SBML of that variant: 
 
 ### Derived targets
 
-A knob sets one entity of the model, while a clinical input is often a formula of several: the renal function of a model from a creatinine clearance, the activity of an enzyme from two alleles. `<derived target="..." formula="..."/>` children of the `<simulation>` (`PanelSimulation.derived`) declare them: an entity of the model (an SBML `SId`) and a formula of the math of PEtab over the ids of the knobs of the panel and numbers, e.g. `min(crcl / 110, 1)` or `(a1 + a2) / 2 / 100`. A knob without a `target` is an input of such formulas alone.
+A knob sets one entity of the model, while an entity of a model is often a formula of the inputs a reader knows: the renal function of a model from a creatinine clearance, the activity of an enzyme from the activities of its two alleles. `<derived target="..." formula="..."/>` children of the `<simulation>` (`PanelSimulation.derived`) declare them: an entity of the model (an SBML `SId`) and a formula of the math of PEtab over the ids of the knobs of the panel and numbers, e.g. `min(crcl / 110, 1)` or `(a1 + a2) / 2 / 100`. A knob without a `target` is an input of such formulas alone.
 
 - **The units are the formula's.** A formula sees the value of each knob as the number the knob carries, in the unit the knob declares and without a conversion, and its result is the value of the target in the unit of the model: `min(crcl / 110, 1)` reads a clearance in `ml/min` and gives the dimensionless renal function, so a formula states its conversion itself.
 - **A derived target is set by its formula alone**: it is no target of a knob of the panel and no key of its `preinit`, which the declaration refuses.
