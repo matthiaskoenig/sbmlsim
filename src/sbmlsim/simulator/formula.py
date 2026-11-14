@@ -7,7 +7,12 @@ before the formula is parsed and mapped back afterwards; so is an identifier
 with a dot, the parameter of a PK observable, e.g. `hctz.cmax`.
 
 A formula is compiled to a numpy function once and cached, a `CompiledFormula`
-is not pickled: a plan keeps the formula as a string.
+is not pickled: a plan keeps the formula as a string. The parser of PEtab
+decides what is valid math, `parse_math`, and the function is written from
+its parse tree with the meaning the package gives the math of SBML as well
+(`sbmlsim.sbml_math`): a number is the double of its text and the operations
+are the ones written, in the order written, `x / 90` is one division by 90 and
+`0.1 + 0.2` is 0.30000000000000004, see `_NumpyCode`.
 
 The formulas of observables extend the math by four reductions over the time
 of one simulation, see `reduce_formula` and `evaluate_reduced`: `max(x)` and
@@ -24,6 +29,7 @@ from __future__ import annotations
 
 import functools
 import importlib.util
+import math
 import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -81,13 +87,17 @@ class CompiledFormula:
     def evaluate(self, values: Sequence[float]) -> float:
         """Evaluate the formula.
 
+        A function of numpy at a pole or outside of its domain gives `inf` or
+        `NaN` without a warning, e.g. `log(0)` is `-inf`.
+
         Args:
             values: the values of the symbols, in the order of `symbols`.
 
         Returns:
             The value of the formula.
         """
-        return float(self._function(*values))
+        with np.errstate(all="ignore"):
+            return float(self._function(*values))
 
     def apply(self, values: Sequence[Any]) -> Any:
         """Evaluate the formula on values of any type numpy operates on.
@@ -112,9 +122,11 @@ class CompiledFormula:
             size: the number of values, which a formula without symbols needs.
 
         Returns:
-            The `size` values of the formula.
+            The `size` values of the formula, `inf` or `NaN` without a warning
+            where numpy gives them, see `evaluate`.
         """
-        value = np.asarray(self._function(*values), dtype=float)
+        with np.errstate(all="ignore"):
+            value = np.asarray(self._function(*values), dtype=float)
         return np.broadcast_to(value, (size,)).copy()
 
 
@@ -182,11 +194,19 @@ def _parser() -> Callable[[str], sp.Basic]:
 def compile_formula(formula: str) -> CompiledFormula:
     """Compile a formula, see the module.
 
+    The formula is checked by the parser of PEtab, `parse_math`, and compiled
+    from its parse tree by `_NumpyCode`: every number is the double of its
+    text and every operation the one written, in the order written, e.g.
+    `x / 90` divides once by `90.0` and `0.1 + 0.2` is 0.30000000000000004.
+    The sympy expression of `parse_math` is not compiled, sympy evaluates on
+    construction with numbers of 15 digits and writes `x / 90` as
+    `0.0111111111111111 * x`.
+
     Args:
         formula: the formula.
 
     Returns:
-        The compiled formula.
+        The compiled formula, which reads every identifier of the formula.
 
     Raises:
         ValueError: if the formula is not valid math of PEtab.
@@ -208,13 +228,349 @@ def compile_formula(formula: str) -> CompiledFormula:
         return name
 
     try:
-        expression = parse_math(escaped)
+        # the parser of PEtab decides what is valid math
+        parse_math(escaped)
+        code = _NumpyCode()
+        body = code.compile(_parse_tree(escaped))
     except Exception as err:
         raise ValueError(f"The formula '{formula}' is not valid math: {err}") from err
-    ordered = sorted(expression.free_symbols, key=lambda s: selection(str(s)))
-    symbols = tuple(selection(str(s)) for s in ordered)
-    function = sp.lambdify(ordered, expression, modules="numpy")
+    ordered = sorted(code.arguments, key=selection)
+    symbols = tuple(selection(identifier) for identifier in ordered)
+    arguments = ", ".join(code.arguments[identifier] for identifier in ordered)
+    # the code is written from the tree alone: numbers, the generated names of
+    # the arguments and the functions of numpy, never a text of the formula
+    function = eval(f"lambda {arguments}: {body}", {"numpy": np})
     return CompiledFormula(formula=formula, symbols=symbols, _function=function)
+
+
+def _parse_tree(formula: str) -> Any:
+    """Parse the math of PEtab into the parse tree of its grammar.
+
+    Args:
+        formula: the math, without the brackets of a concentration.
+
+    Returns:
+        The tree, a `PetabExpressionContext` of the parser of PEtab.
+
+    Raises:
+        ValueError: if the formula is not valid math of PEtab.
+    """
+    from antlr4 import CommonTokenStream, InputStream
+
+    grammar = sys.modules[_parser().__module__]
+    lexer = grammar.PetabMathExprLexer(InputStream(formula))
+    lexer.removeErrorListeners()
+    lexer.addErrorListener(grammar.MathErrorListener())
+    parser = grammar.PetabMathExprParser(CommonTokenStream(lexer))
+    parser.removeErrorListeners()
+    parser.addErrorListener(grammar.MathErrorListener())
+    return parser.petabExpression()
+
+
+#: the precedences of python of the code of `_NumpyCode`, lowest first
+_ADD, _MUL, _UNARY, _POW, _ATOM = range(5)
+
+#: the functions of PEtab of one argument which numpy has
+_NUMPY_FUNCTIONS: dict[str, str] = {
+    "exp": "exp",
+    "ln": "log",
+    "log10": "log10",
+    "log2": "log2",
+    "sqrt": "sqrt",
+    "abs": "abs",
+    "sign": "sign",
+    "sin": "sin",
+    "cos": "cos",
+    "tan": "tan",
+    "sinh": "sinh",
+    "cosh": "cosh",
+    "tanh": "tanh",
+    "arcsin": "arcsin",
+    "arccos": "arccos",
+    "arctan": "arctan",
+    "arcsinh": "arcsinh",
+    "arccosh": "arccosh",
+    "arctanh": "arctanh",
+}
+
+#: the functions of PEtab which are the reciprocal of a function of numpy
+_RECIPROCALS: dict[str, str] = {
+    "sec": "cos",
+    "csc": "sin",
+    "cot": "tan",
+    "sech": "cosh",
+    "csch": "sinh",
+    "coth": "tanh",
+}
+
+#: the functions of PEtab which are a function of numpy of the reciprocal
+_OF_RECIPROCAL: dict[str, str] = {
+    "arcsec": "arccos",
+    "arccsc": "arcsin",
+    "arccot": "arctan",
+    "arcsech": "arccosh",
+    "arccsch": "arcsinh",
+    "arccoth": "arctanh",
+}
+
+#: the comparisons of PEtab as functions of numpy
+_COMPARISONS: dict[str, str] = {
+    "==": "equal",
+    "!=": "not_equal",
+    "<": "less",
+    ">": "greater",
+    "<=": "less_equal",
+    ">=": "greater_equal",
+}
+
+#: the nodes of the operations which group to the left, see `_NumpyCode._chain`
+_CHAINED = frozenset({"AddExprContext", "MultExprContext"})
+
+#: the logarithms with a base which numpy has
+_LOGARITHMS: dict[float, str] = {10.0: "log10", 2.0: "log2"}
+
+
+@dataclass(frozen=True)
+class _Code:
+    """The python code of a node of a parse tree, see `_NumpyCode`.
+
+    Attributes:
+        text: the code.
+        level: its precedence in python, `_ADD` to `_ATOM`.
+        boolean: whether it is a truth value.
+        literal: the value of a literal, a number or a truth value.
+    """
+
+    text: str
+    level: int
+    boolean: bool = False
+    literal: float | bool | None = None
+
+
+class _NumpyCode:
+    """Write the parse tree of the math of PEtab as the code of a numpy function.
+
+    The code computes the operations as written: a number is the double of its
+    text (`repr(float(text))`, which python reads back as the same double),
+    `a / b` is one division, `(a + b) + c` and `a + (b + c)` are added in
+    their order, a function is the one of numpy of its name, `sec(x)` is
+    `1.0 / numpy.cos(x)` and `log(x, b)` is `numpy.log(x) / numpy.log(b)`, of
+    the base 10 or 2 `numpy.log10` or `numpy.log2`. A comparison is the one
+    of numpy, `piecewise` is `numpy.select`, a truth value read as a number
+    is 1 or 0 and a number read as a truth value is true when it is not 0, as
+    the parser of PEtab reads them. Parentheses are written only where python
+    would group otherwise, so a sum of many terms does not nest.
+
+    Attributes:
+        arguments: the identifiers of the formula with the names of the
+            arguments of the function which stand for them.
+    """
+
+    def __init__(self) -> None:
+        """Create the writer of one formula."""
+        self.arguments: dict[str, str] = {}
+
+    def compile(self, tree: Any) -> str:
+        """Write the code of the parse tree of a formula.
+
+        Args:
+            tree: the parse tree, see `_parse_tree`.
+
+        Returns:
+            The code of the value of the formula; a truth value literal is 1
+            or 0, as the parser of PEtab gives it.
+        """
+        code = self._visit(tree)
+        return self._numeric(code).text if code.literal is not None else code.text
+
+    def _visit(self, ctx: Any) -> _Code:
+        result = ctx.accept(self)
+        if not isinstance(result, _Code):
+            raise ValueError(f"Unexpected expression: {ctx.getText()}")
+        return result
+
+    def visitChildren(self, ctx: Any) -> _Code:
+        """Visit the only child of a node which wraps a rule."""
+        if ctx.getChildCount() != 1:
+            raise ValueError(f"Unexpected expression: {ctx.getText()}")
+        return self._visit(ctx.getChild(0))
+
+    def visitPetabExpression(self, ctx: Any) -> _Code:
+        """Visit the root."""
+        return self._visit(ctx.getChild(0))
+
+    def visitParenExpr(self, ctx: Any) -> _Code:
+        """Visit an expression in parentheses, which the tree groups."""
+        return self._visit(ctx.getChild(1))
+
+    def visitNumber(self, ctx: Any) -> _Code:
+        """Write a number as the double of its text."""
+        value = float(ctx.getText())
+        if math.isinf(value):
+            return _Code("numpy.inf", _ATOM, literal=value)
+        return _Code(repr(value), _ATOM, literal=value)
+
+    def visitVar(self, ctx: Any) -> _Code:
+        """Write an identifier as the argument which stands for it."""
+        name = self.arguments.setdefault(ctx.getText(), f"_{len(self.arguments)}")
+        return _Code(name, _ATOM)
+
+    def visitBooleanLiteral(self, ctx: Any) -> _Code:
+        """Write `true` or `false`."""
+        value = ctx.TRUE() is not None
+        return _Code(str(value), _ATOM, boolean=True, literal=value)
+
+    def visitUnaryExpr(self, ctx: Any) -> _Code:
+        """Write `-a` or `+a`."""
+        operand = self._numeric(self._visit(ctx.getChild(1)))
+        if ctx.getChild(0).getText() == "+":
+            return operand
+        return _Code(f"-{_grouped(operand, operand.level <= _UNARY)}", _UNARY)
+
+    def visitMultExpr(self, ctx: Any) -> _Code:
+        """Write `a * b` or `a / b`."""
+        return self._chain(ctx)
+
+    def visitAddExpr(self, ctx: Any) -> _Code:
+        """Write `a + b` or `a - b`."""
+        return self._chain(ctx)
+
+    def visitPowerExpr(self, ctx: Any) -> _Code:
+        """Write `a ^ b` as `a ** b`, which groups to the right in python."""
+        base = self._numeric(self._visit(ctx.getChild(0)))
+        exponent = self._numeric(self._visit(ctx.getChild(2)))
+        return _power(base, exponent)
+
+    def _chain(self, ctx: Any) -> _Code:
+        """Write a chain of operations which group to the left in python.
+
+        The tree of `a + b + c + ...` nests to the left, one node per
+        operation; it is walked down without recursion, so a sum of many terms
+        is written in the depth of one.
+        """
+        spine = [ctx]
+        while type(spine[-1].getChild(0)).__name__ in _CHAINED:
+            spine.append(spine[-1].getChild(0))
+        code = self._numeric(self._visit(spine[-1].getChild(0)))
+        for node in reversed(spine):
+            operator = node.getChild(1).getText()
+            level = _MUL if operator in ("*", "/") else _ADD
+            right = self._numeric(self._visit(node.getChild(2)))
+            code = _Code(
+                f"{_grouped(code, code.level < level)} {operator} "
+                f"{_grouped(right, right.level <= level)}",
+                level,
+            )
+        return code
+
+    def visitComparisonExpr(self, ctx: Any) -> _Code:
+        """Write a comparison as the function of numpy."""
+        left = self._numeric(self._visit(ctx.getChild(0)))
+        right = self._numeric(self._visit(ctx.getChild(2)))
+        function = _COMPARISONS[ctx.getChild(1).getText()]
+        return _Code(
+            f"numpy.{function}({left.text}, {right.text})", _ATOM, boolean=True
+        )
+
+    def visitBooleanNotExpr(self, ctx: Any) -> _Code:
+        """Write `!a`."""
+        operand = self._condition(self._visit(ctx.getChild(1)))
+        return _Code(f"numpy.logical_not({operand.text})", _ATOM, boolean=True)
+
+    def visitBooleanAndOrExpr(self, ctx: Any) -> _Code:
+        """Write `a && b` or `a || b`."""
+        left = self._condition(self._visit(ctx.getChild(0)))
+        right = self._condition(self._visit(ctx.getChild(2)))
+        function = "logical_and" if ctx.BOOLEAN_AND() else "logical_or"
+        return _Code(
+            f"numpy.{function}({left.text}, {right.text})", _ATOM, boolean=True
+        )
+
+    def visitArgumentList(self, ctx: Any) -> list[_Code]:
+        """Write the arguments of a call."""
+        return [self._visit(child) for child in ctx.children[::2]]
+
+    def visitFunctionCall(self, ctx: Any) -> _Code:
+        """Write a call of a function of PEtab."""
+        name = ctx.getChild(0).getText()
+        arguments: list[_Code] = (
+            ctx.getChild(2).accept(self) if ctx.getChildCount() >= 4 else []
+        )
+        if name == "piecewise":
+            return self._piecewise(ctx, arguments)
+        values = [self._numeric(argument) for argument in arguments]
+        arity = 2 if name in ("pow", "min", "max") else 1
+        if name == "log" and len(values) == 2:
+            arity = 2
+        if len(values) != arity:
+            raise ValueError(
+                f"Unexpected number of arguments: {len(values)} in {ctx.getText()}"
+            )
+        texts = [value.text for value in values]
+        if name in _NUMPY_FUNCTIONS or (name == "log" and arity == 1):
+            return _Code(
+                f"numpy.{_NUMPY_FUNCTIONS.get(name, 'log')}({texts[0]})", _ATOM
+            )
+        if name in _RECIPROCALS:
+            return _Code(f"1.0 / numpy.{_RECIPROCALS[name]}({texts[0]})", _MUL)
+        if name in _OF_RECIPROCAL:
+            return _Code(f"numpy.{_OF_RECIPROCAL[name]}(1.0 / {texts[0]})", _ATOM)
+        if name == "pow":
+            return _power(values[0], values[1])
+        if name in ("min", "max"):
+            function = "minimum" if name == "min" else "maximum"
+            return _Code(f"numpy.{function}({texts[0]}, {texts[1]})", _ATOM)
+        if name == "log":
+            base = values[1].literal
+            if isinstance(base, float) and base in _LOGARITHMS:
+                return _Code(f"numpy.{_LOGARITHMS[base]}({texts[0]})", _ATOM)
+            return _Code(f"numpy.log({texts[0]}) / numpy.log({texts[1]})", _MUL)
+        raise ValueError(f"Unknown function: {ctx.getText()}")
+
+    def _piecewise(self, ctx: Any, arguments: list[_Code]) -> _Code:
+        """Write `piecewise(value, condition, ..., otherwise)` as `numpy.select`."""
+        if len(arguments) % 2 != 1:
+            raise ValueError(
+                f"Unexpected number of arguments: {len(arguments)} in {ctx.getText()}"
+            )
+        values = [self._numeric(value).text for value in arguments[::2]]
+        conditions = [self._condition(c).text for c in arguments[1::2]] + ["True"]
+        return _Code(
+            f"numpy.select([{', '.join(conditions)}], [{', '.join(values)}], "
+            f"default=numpy.nan)",
+            _ATOM,
+        )
+
+    @staticmethod
+    def _numeric(code: _Code) -> _Code:
+        """Read a truth value as a number, 1 or 0, as `petab.v1.math` does."""
+        if not code.boolean:
+            return code
+        if code.literal is not None:
+            value = 1.0 if code.literal else 0.0
+            return _Code(repr(value), _ATOM, literal=value)
+        return _Code(f"numpy.where({code.text}, 1.0, 0.0)", _ATOM)
+
+    @staticmethod
+    def _condition(code: _Code) -> _Code:
+        """Read a number as a truth value, true when it is not 0."""
+        if code.boolean:
+            return code
+        return _Code(f"numpy.not_equal({code.text}, 0.0)", _ATOM, boolean=True)
+
+
+def _grouped(code: _Code, parentheses: bool) -> str:
+    """Get the text of the code, in parentheses if they are needed."""
+    return f"({code.text})" if parentheses else code.text
+
+
+def _power(base: _Code, exponent: _Code) -> _Code:
+    """Write `base ** exponent`; `**` groups to the right in python."""
+    return _Code(
+        f"{_grouped(base, base.level <= _POW)} ** "
+        f"{_grouped(exponent, exponent.level < _POW)}",
+        _POW,
+    )
 
 
 @dataclass(frozen=True)

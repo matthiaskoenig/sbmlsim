@@ -21,7 +21,7 @@ from tests.simulator.models import sbml, sbml_pk
 def result() -> ScanResult:
     draws = random({"k1": LogNormal(0.8, 0.3)}, 2000, seed=1)
     doses = Dimension("a", values={"a0": [1.0, 2.0]})
-    observables = [Formula("rate", "k1 * a0 + 0 * time"), Formula("k", "max(k1)")]
+    observables = [Formula("rate", "k1 * a0"), Formula("k", "max(k1)")]
     scan = Scan(Simulation(end=1, steps=4), [draws, doses])
     return Simulator(n_workers=1).run(sbml(), scan, observables)
 
