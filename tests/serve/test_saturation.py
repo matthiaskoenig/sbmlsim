@@ -32,7 +32,7 @@ from sbmlsim.serve.runner import (
     ModelRegistry,
     PanelRunner,
 )
-from tests.serve.conftest import SIMULATE
+from tests.serve.conftest import DATA, SIMULATE
 
 #: the requests of the saturated model, more than the threads of the server
 REQUESTS = 48
@@ -153,3 +153,39 @@ def test_a_runner_takes_at_least_one_request_of_a_model(
 ) -> None:
     with pytest.raises(ValueError, match="at least one request"):
         PanelRunner(registry, max_waiting=0)
+
+
+def test_a_page_of_four_panels_of_a_cold_model_is_never_refused(
+    registry: ModelRegistry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The simulation and the study data of four panels wait for one load.
+
+    The page of glimepiride of pkdb_models is four panels of one model, which a
+    shell asks for at once, each its simulation and its study data, and every
+    one of them waits for the load of the model when it is cold.
+    """
+    release = threading.Event()
+    load = runner_module._load
+
+    def held(*args: Any) -> Any:
+        if not release.wait(timeout=TIMEOUT):
+            raise TimeoutError("the test did not release the load")
+        return load(*args)
+
+    monkeypatch.setattr(runner_module, "_load", held)
+    with (
+        TestClient(create_app(registry)) as client,
+        ThreadPoolExecutor(max_workers=8) as pool,
+    ):
+        try:
+            futures = [
+                *(pool.submit(client.post, SIMULATE, json={}) for _ in range(4)),
+                *(pool.submit(client.get, DATA) for _ in range(4)),
+            ]
+            # a refusal would answer at once, while the load is held
+            time.sleep(1.0)
+            assert not any(future.done() for future in futures)
+        finally:
+            release.set()
+        statuses = [future.result(timeout=TIMEOUT).status_code for future in futures]
+    assert statuses == [200] * 8

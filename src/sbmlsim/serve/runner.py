@@ -173,13 +173,15 @@ MAX_RUN_BYTES: Final = 64 * 2**20
 
 #: the requests of one model id which may be in the runner at once, the one
 #: which integrates and the ones which wait for its lock or its load, see the
-#: module: a page asks for its panels at once, so a few requests of one model
-#: are its normal load, while every request beyond the bound would hold a
-#: thread of the server for a run of seconds and is refused instead. The thread
-#: pool of the server (anyio's, 40 threads) thus keeps threads for the other
-#: models and routes as long as fewer than 40 / `MAX_WAITING` models are
-#: saturated at once
-MAX_WAITING: Final = 4
+#: module: a page asks for its panels at once, the simulation and the study
+#: data of each, so a page of four panels, the largest a model serves (the page
+#: of glimepiride of pkdb_models), is eight requests of one model, which wait
+#: together for the load of a cold model; every request beyond the bound would
+#: hold a thread of the server for a run of seconds and is refused instead. The
+#: thread pool of the server (anyio's, 40 threads) thus keeps threads for the
+#: other models and routes as long as fewer than 40 / `MAX_WAITING`, five,
+#: models are saturated at once
+MAX_WAITING: Final = 8
 
 #: the engines whose runs the panels of one simulation share, see the module:
 #: the ones whose curves do not change with the selections of a scan
