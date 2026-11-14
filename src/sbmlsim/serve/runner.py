@@ -53,6 +53,16 @@ A model and its simulator are loaded once per model id and SBML file and kept
 warm, and every run of one of them holds its lock: roadrunner instances are
 not thread safe and a service runs its sync endpoints in a thread pool.
 
+A request which waits for the lock of a model, or for its load, holds a thread
+of that pool, so the requests of one model could take every thread of the
+server and stall the other models and every other sync route. The requests of
+one model id which are in the runner at once are therefore bounded
+(`MAX_WAITING`, over its variants): one integrates and the others wait, and a
+request beyond the bound is refused at once with `ModelBusy`, before it loads
+or waits for anything, which a service answers with a 503 to retry. A model
+thus holds at most `MAX_WAITING` threads of the server whatever its callers
+send, and the threads of the other models and routes stay free.
+
 The panels of a model which share a simulation (`sbmlsim.panel.PanelSimulation`,
 the same variant, `end`, `points`, `x_unit`, `preinit` and `derived`) share a
 run as well: a page of several panels of one model asks for every panel at the
@@ -89,7 +99,8 @@ from __future__ import annotations
 import logging
 import math
 import threading
-from collections.abc import Iterable, Mapping, Sequence, Set
+from collections.abc import Generator, Iterable, Mapping, Sequence, Set
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from tokenize import TokenError
@@ -118,11 +129,13 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "MAX_RUNS",
+    "MAX_WAITING",
     "SHARED_ENGINES",
     "UNITLESS",
     "DeliveredUnit",
     "GridAxis",
     "KnobValueError",
+    "ModelBusy",
     "ModelEntry",
     "ModelRegistry",
     "PanelResult",
@@ -156,6 +169,16 @@ X: Final = "x"
 #: glimepiride of pkdb_models at the limits, a grid of 64 doses of its 501
 #: times, are 1.03 MB of a run
 MAX_RUNS: Final = 32
+
+#: the requests of one model id which may be in the runner at once, the one
+#: which integrates and the ones which wait for its lock or its load, see the
+#: module: a page asks for its panels at once, so a few requests of one model
+#: are its normal load, while every request beyond the bound would hold a
+#: thread of the server for a run of seconds and is refused instead. The thread
+#: pool of the server (anyio's, 40 threads) thus keeps threads for the other
+#: models and routes as long as fewer than 40 / `MAX_WAITING` models are
+#: saturated at once
+MAX_WAITING: Final = 4
 
 #: the engines whose runs the panels of one simulation share, see the module:
 #: the ones whose curves do not change with the selections of a scan
@@ -192,6 +215,15 @@ class KnobValueError(UnknownKnob):
     service: a value outside the bounds of a range knob, a value which is none
     of the choices of a choice knob, or a grid over a choice knob of other
     points than its choices.
+    """
+
+
+class ModelBusy(RuntimeError):
+    """A request of a model which has as many requests in the runner as it may.
+
+    It is refused before it loads or waits for anything, see the module and
+    `MAX_WAITING`; a service answers it with a 503 to retry, whose message
+    names nothing of the service.
     """
 
 
@@ -1051,7 +1083,12 @@ class PanelRunner:
         registry: the models a request may name.
     """
 
-    def __init__(self, registry: ModelRegistry, max_runs: int = MAX_RUNS) -> None:
+    def __init__(
+        self,
+        registry: ModelRegistry,
+        max_runs: int = MAX_RUNS,
+        max_waiting: int = MAX_WAITING,
+    ) -> None:
         """Create a runner of the models of a registry, which loads none yet.
 
         Args:
@@ -1059,13 +1096,26 @@ class PanelRunner:
             max_runs: the runs the runner keeps for the panels which share
                 them, see the module; 0 shares none, so every request runs the
                 scan of its panel with the curves of that panel alone.
+            max_waiting: the requests of one model id which may be in the
+                runner at once, see `MAX_WAITING`.
 
         Raises:
-            ValueError: for a negative number of runs.
+            ValueError: for a negative number of runs and for fewer than one
+                request of a model.
         """
         if max_runs < 0:
             raise ValueError(f"A runner keeps no negative number of runs: {max_runs}.")
+        if max_waiting < 1:
+            raise ValueError(
+                f"A runner takes at least one request of a model, not {max_waiting}."
+            )
         self.registry = registry
+        self._max_waiting = max_waiting
+        #: the requests of every model id which are in the runner, see
+        #: `_admitted`
+        self._in_runner: dict[str, int] = {}
+        #: the lock of `_in_runner`, never held over anything slow
+        self._admission = threading.Lock()
         #: the warm model of every model id and SBML file, see `_warm_model`
         self._warm: dict[_WarmKey, _Warm] = {}
         #: the lock of the load of one such key, see `_warm_model`
@@ -1079,6 +1129,33 @@ class PanelRunner:
     def __repr__(self) -> str:
         """Get the representation."""
         return f"PanelRunner({self.registry!r})"
+
+    @contextmanager
+    def _admitted(self, model_id: str) -> Generator[None]:
+        """Admit a request of a model into the runner, see the module.
+
+        Args:
+            model_id: the id of the model of the request.
+
+        Yields:
+            Nothing; the request is in the runner until the block ends.
+
+        Raises:
+            ModelBusy: if the model has `max_waiting` requests in the runner,
+                at once and before anything is loaded or waited for.
+        """
+        with self._admission:
+            count = self._in_runner.get(model_id, 0)
+            if count >= self._max_waiting:
+                raise ModelBusy(
+                    f"The model '{model_id}' has {count} requests in the runner."
+                )
+            self._in_runner[model_id] = count + 1
+        try:
+            yield
+        finally:
+            with self._admission:
+                self._in_runner[model_id] -= 1
 
     def run(
         self,
@@ -1120,6 +1197,8 @@ class PanelRunner:
                 loaded, so a request which names one costs nothing.
             UnknownVariant: for a variant the project does not have, also
                 before a model is loaded.
+            ModelBusy: for a model which has as many requests in the runner
+                as it may, see the module; before a model is loaded.
             ValueError: for a grid of fewer than one point, see `Knob.values`;
                 naming both units, for an `x_unit` of the panel which is no
                 time unit of the model, see `_times`, and for a unit of a
@@ -1133,6 +1212,30 @@ class PanelRunner:
         check_knobs(panel, values, grid)
         check_variant(entry, variant)
         name = panel.simulation.variant if variant is None else variant
+        with self._admitted(entry.id):
+            return self._run_admitted(entry, panel, values, grid, name)
+
+    def _run_admitted(
+        self,
+        entry: ModelEntry,
+        panel: Panel,
+        values: Mapping[str, float],
+        grid: Mapping[str, int],
+        name: str | None,
+    ) -> PanelResult:
+        """Run a panel of a request which was admitted into the runner, see `run`.
+
+        Args:
+            entry: the entry of the model.
+            panel: the panel.
+            values: the value of a knob by its id.
+            grid: the points of a knob of the grid by its id.
+            name: the variant of the model to simulate.
+
+        Returns:
+            The result, see `run`.
+        """
+        model_id = entry.id
         warm = self._warm_model(entry, name)
         _check_limits(warm.model, panel)
         with warm.lock:
@@ -1194,11 +1297,14 @@ class PanelRunner:
                 `x_max` past the end of its simulation, see `_check_limits`;
                 if the project of the entry has no model variants.
             KeyError: for a variant the project does not have.
+            ModelBusy: for a model which has as many requests in the runner
+                as it may, see the module, since a cold model is loaded here.
         """
-        warm = self._warm_model(
-            entry, panel.simulation.variant if variant is None else variant
-        )
-        return _panel_units(warm.model, panel)
+        with self._admitted(entry.id):
+            warm = self._warm_model(
+                entry, panel.simulation.variant if variant is None else variant
+            )
+            return _panel_units(warm.model, panel)
 
     def _warm_model(self, entry: ModelEntry, variant: str | None) -> _Warm:
         """Get the warm model of a variant of an entry, loaded on its first use.

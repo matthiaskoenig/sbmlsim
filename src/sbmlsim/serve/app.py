@@ -21,7 +21,13 @@ traceback, no path and nothing of the configuration of the service.
 
 The route of a simulation is a sync `def`, which the server runs in its thread
 pool, and the runner holds the lock of its model while it simulates, so the
-event loop keeps answering while a model integrates.
+event loop keeps answering while a model integrates. The requests of one model
+which wait for its lock hold threads of that pool, so the runner admits at most
+`sbmlsim.serve.runner.MAX_WAITING` of them at once and refuses the others
+before they wait (`ModelBusy`), which is a 503 of `OVERLOADED` with a
+`Retry-After` of `RETRY_AFTER` seconds: one model never holds more than that
+many threads, so the other models and routes keep answering while it is
+saturated.
 
 Every answer of a simulation is kept in the `ResponseCache` of the application
 (`sbmlsim.serve.cache`) under its `spec_hash`, which identifies what was
@@ -92,6 +98,7 @@ from sbmlsim.serve.payload import (
     SimulateResponse,
 )
 from sbmlsim.serve.runner import (
+    ModelBusy,
     ModelEntry,
     ModelRegistry,
     PanelRunner,
@@ -115,11 +122,22 @@ __all__ = [
     "NO_APP",
     "NO_FIGURE",
     "NO_JOB",
+    "OVERLOADED",
+    "RETRY_AFTER",
     "create_app",
 ]
 
 #: the body of a failure of the service, which carries nothing of it
 FAILED: Final = "The request failed in the service."
+
+#: the body of a request of a model which has as many requests in the runner
+#: as it may (`sbmlsim.serve.runner.ModelBusy`), a 503; it names neither the
+#: model nor what the service is made of, as `FAILED` does
+OVERLOADED: Final = "The service is busy, retry the request shortly."
+
+#: the seconds after which a request answered with `OVERLOADED` is retried, the
+#: `Retry-After` of the 503: about one run of a grid of a page
+RETRY_AFTER: Final = 2
 
 #: the body of a model which declares no app, see `create_app.app_of`; it
 #: names neither the model nor its project, as every error body of the service
@@ -463,7 +481,9 @@ def create_app(
                 dataset which is no file of the project or a column it has
                 not, which is a problem of the declaration and not of the
                 request; the message is the one of the service and carries
-                neither the dataset nor a path.
+                neither the dataset nor a path; a 503 of `OVERLOADED` for a
+                model which has as many requests in the runner as it may,
+                which a cold model is loaded by.
         """
         entry, declaration, _ = resolved(model, panel, variant)
         if not declaration.data:
@@ -471,6 +491,8 @@ def create_app(
         try:
             units = runner.units(entry, declaration, variant)
             series = panel_data(entry, declaration, units)
+        except ModelBusy:
+            raise _overloaded() from None
         except Exception:
             logger.exception(
                 "The study data of the panel '%s' of the model '%s' cannot be read.",
@@ -512,9 +534,11 @@ def create_app(
                 and for a value of a knob, or the points of a grid over it,
                 which the declaration of the variant does not take
                 (`check_values`), which are the errors of a request a run is
-                answered with and which are checked before the cache is read, and a 500 for every
-                other failure of the run, whose message is the one of the
-                service and not of the exception.
+                answered with and which are checked before the cache is read,
+                a 503 of `OVERLOADED` with a `Retry-After` for a model which
+                has as many requests in the runner as it may, see the module,
+                and a 500 for every other failure of the run, whose message
+                is the one of the service and not of the exception.
         """
         entry, declaration, sha = resolved(model, panel, request.variant)
         # the name of the SBML which runs, so a request which leaves the
@@ -556,6 +580,8 @@ def create_app(
             # are no values of their knobs (`KnobValueError`), the messages of
             # a request which carry nothing of the service
             raise HTTPException(status_code=422, detail=str(error)) from None
+        except ModelBusy:
+            raise _overloaded() from None
         except Exception:
             logger.exception(
                 "The panel '%s' of the model '%s' did not run.", panel, model
@@ -790,6 +816,20 @@ def _add_job_routes(app: FastAPI, registry: ModelRegistry, store: JobStore) -> N
         if file is None:
             raise HTTPException(status_code=404, detail=NO_FIGURE)
         return FileResponse(file)
+
+
+def _overloaded() -> HTTPException:
+    """Get the 503 of a request of a model which is saturated, see the module.
+
+    Returns:
+        The exception of the status 503, the body `OVERLOADED` and the header
+        `Retry-After` of `RETRY_AFTER` seconds.
+    """
+    return HTTPException(
+        status_code=503,
+        detail=OVERLOADED,
+        headers={"Retry-After": str(RETRY_AFTER)},
+    )
 
 
 def _temporary_root() -> Path:

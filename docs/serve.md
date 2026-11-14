@@ -537,6 +537,12 @@ A run is kept under what decides its numbers and never under a panel: the warm m
 
 The runner keeps 32 runs, the one used least recently is evicted: the panels of a page read a run within a second of it, and every answer is kept by the cache of the responses anyway. The bound is a number of runs and not of bytes: a run holds every curve of the panels which share its simulation, each at most 64 points of a grid of 2001 times of 8 bytes, 1.0 MB, so the runs hold at most 32 times the curves of the largest such group in MB. The four curves of the glimepiride page of pkdb_models are 1.03 MB of a run at its largest grid.
 
+### One model never stalls the others
+
+The server answers the routes which read a declaration, the study data and a simulation in a thread pool of 40 threads, and a request of a simulation holds its thread while it waits for the lock of its model, or for its load when the model is cold. The service therefore admits at most four requests of one model at once (`MAX_WAITING` of `sbmlsim.serve.runner`, over the variants of the model): one integrates and three wait, which is what a page of several panels asks for at once. A request beyond that is not queued: it is answered at once with a 503, the body `{"detail": "The service is busy, retry the request shortly."}`, which names nothing of the service, and the header `Retry-After: 2`, about one run of the grid of a page. A request which is answered from the cache of the responses is never refused, since it needs no model.
+
+What this guarantees: one model holds at most four threads of the server whatever its callers send, so the other models and every other route keep answering within their own time while one model is saturated, as long as fewer than ten models are saturated at once. What it does not: the requests beyond the bound fail and are retried, and a model which is asked more than it integrates answers some of its callers late; a rate limit in the proxy decides who that is.
+
 ### The simulation experiments as jobs
 
 A panel is a simulation of a second, which a request waits for. The simulation experiments of a model are minutes: they run their scans, evaluate their data and render their figures. They are therefore submitted and not awaited.
@@ -586,6 +592,7 @@ The jobs belong to the application and not to a directory the service keeps: the
 | 404 | a model which declares no app | `{"detail": "This model declares no app."}` |
 | 404 | a hash which is not stored | `{"detail": "No response is stored under this hash."}` |
 | 404 | a job the service does not hold, a path which is no figure of one | `{"detail": "No job is stored under this id."}`, `{"detail": "This job has no such figure."}` |
+| 503 | a request of a model which has as many requests in the service as it may, see [One model never stalls the others](#one-model-never-stalls-the-others) | `{"detail": "The service is busy, retry the request shortly."}` with the header `Retry-After: 2` |
 | 429 | a submission to a service which runs as many experiments as it keeps in flight | `{"detail": "The service runs as many experiments as it can at once."}` |
 | 422 | a request over the limits, a body of an unknown field, a value which is no number | the `type`, the `loc` and the `msg` of at most ten errors, never the input which was sent |
 | 422 | an id which is no knob of the panel | the ids and the knobs the panel has; it is checked before a model is loaded and before the cache is read |
@@ -604,7 +611,7 @@ The defaults are the ones of the teaching mode. A service which is reachable fro
 - **`--allow-origin` for every origin which embeds the panels.** Without one the API answers its own origin alone, which is right for the local mode and wrong for a public one.
 - **No `--experiments`.** The routes of the jobs are off without it, and a public service keeps them off: one submission costs minutes of a core and a caller can keep the queue of the jobs full.
 - **A rate limit and a body limit in the proxy.** An open simulation endpoint is remote compute. The limits above bound one request (and the models are the fixed list of `--model`), but nothing in the service bounds how many requests a caller makes; it has no authentication of its own either.
-- **One process per service.** The warm models and the cache of the responses are of the process, so several workers would each load every model and keep a cache of their own. A model integrates under its own lock, so one model answers one simulation at a time while the other models and every other route keep answering; scale by running more services behind the proxy rather than more workers in one.
+- **One process per service.** The warm models and the caches are of the process, so several workers would each load every model and keep caches of their own. A model integrates under its own lock, so one model answers one simulation at a time; scale by running more services behind the proxy rather than more workers in one. See [One model never stalls the others](#one-model-never-stalls-the-others) for what the service guarantees while a model is saturated.
 - **`GET /healthz` as the probe.** It answers without loading a model, so it stays cheap while a model compiles.
 - **Memory.** Every model which is asked for stays loaded for the life of the process, one roadrunner instance per model and variant.
 
