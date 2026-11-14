@@ -6,6 +6,8 @@ which shares the simulation (`sbmlsim.serve.runner`). The tests compare every
 answer with the one of a runner which shares nothing (`max_runs=0`), bitwise,
 on the page `patient` of the HCTZ demo, whose two panels share a simulation,
 and on a page whose two panels do not, and count the runs of the simulator.
+The name ends in `_engines` so that the job `amici engine` of the continuous
+integration runs the case of AMICI, which runs alone and shares nothing.
 """
 
 import functools
