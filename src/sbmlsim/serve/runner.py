@@ -68,7 +68,7 @@ the same variant, `end`, `points`, `x_unit`, `preinit` and `derived`) share a
 run as well: a page of several panels of one model asks for every panel at the
 same state of its knobs at once, and the scan of that state is run once with
 the selections of every panel of the variant which shares the simulation
-(`_selections`) and kept (`MAX_RUNS`), so the requests of the other panels at
+(`_selections`) and kept (`MAX_RUN_BYTES`), so the requests of the other panels at
 that state read their curves out of it without integrating. A stored run is
 keyed on what decides its numbers (`_run_key`): the warm model, the sha256 of
 its SBML, the engine and the settings of its simulator, the times and the
@@ -91,7 +91,7 @@ interpolation between two rows misses a selection
 (`sbmlsim.simulator.executor_amici`), so a curve of another panel refines the
 rows of this one, and a result of COPASI is not bitwise reproducible across
 two runs at all; a panel of either engine is therefore run alone, with its own
-curves, as a runner which shares nothing (`max_runs=0`) runs every panel.
+curves, as a runner which shares nothing (`max_run_bytes=0`) runs every panel.
 """
 
 from __future__ import annotations
@@ -128,7 +128,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "MAX_RUNS",
+    "MAX_RUN_BYTES",
     "MAX_WAITING",
     "SHARED_ENGINES",
     "UNITLESS",
@@ -156,19 +156,20 @@ __all__ = [
 #: the key of the time of a result in `PanelResult.units`
 X: Final = "x"
 
-#: the runs a runner keeps for the panels which share them, see the module: the
-#: panels of a page ask for one state at once, so a run is read within a second
-#: of its run and a few entries cover the pages several readers turn at once,
-#: while every answer is kept by the cache of the responses
-#: (`sbmlsim.serve.cache.MAX_ENTRIES`) anyway. It bounds the number of runs and
-#: not their bytes: a run holds every curve of the panels which share its
-#: simulation, each at most `MAX_GRID` points of `MAX_POINTS + 1` times of 8
-#: bytes, 1.0 MB, so the runs of a runner hold at most `MAX_RUNS` times the
-#: curves of the largest such group of a served model in MB, each group of
-#: panels at most `MAX_CURVES` curves per panel. The four curves of the page of
-#: glimepiride of pkdb_models at the limits, a grid of 64 doses of its 501
-#: times, are 1.03 MB of a run
-MAX_RUNS: Final = 32
+#: the bytes of the runs a runner keeps for the panels which share them, 64 MiB,
+#: see the module: the panels of a page ask for one state at once, so a run is
+#: read within a second of its run and a few runs cover the pages several
+#: readers turn at once, while every answer is kept by the cache of the
+#: responses (`sbmlsim.serve.cache.MAX_BYTES`) anyway. A run is measured by the
+#: bytes of the arrays of its result (`_run_bytes`): every curve of the panels
+#: which share its simulation, each at most `MAX_GRID` points of
+#: `MAX_POINTS + 1` times of 8 bytes, 1.0 MB, and a panel at most `MAX_CURVES`
+#: curves. The four curves of the page of glimepiride of pkdb_models over its
+#: largest grid, 64 doses of its 501 times, are 1.03 MB of a run, so the runs
+#: keep 65 of them, and a run of one panel at the limits is 16.4 MB, of which
+#: they keep 4; the run used least recently is evicted first, and a run larger
+#: than the bound is not kept
+MAX_RUN_BYTES: Final = 64 * 2**20
 
 #: the requests of one model id which may be in the runner at once, the one
 #: which integrates and the ones which wait for its lock or its load, see the
@@ -1086,25 +1087,28 @@ class PanelRunner:
     def __init__(
         self,
         registry: ModelRegistry,
-        max_runs: int = MAX_RUNS,
+        max_run_bytes: int = MAX_RUN_BYTES,
         max_waiting: int = MAX_WAITING,
     ) -> None:
         """Create a runner of the models of a registry, which loads none yet.
 
         Args:
             registry: the models a request may name.
-            max_runs: the runs the runner keeps for the panels which share
-                them, see the module; 0 shares none, so every request runs the
-                scan of its panel with the curves of that panel alone.
+            max_run_bytes: the bytes of the runs the runner keeps for the
+                panels which share them, see the module; 0 shares none, so
+                every request runs the scan of its panel with the curves of
+                that panel alone.
             max_waiting: the requests of one model id which may be in the
                 runner at once, see `MAX_WAITING`.
 
         Raises:
-            ValueError: for a negative number of runs and for fewer than one
-                request of a model.
+            ValueError: for a negative number of bytes of runs and for fewer
+                than one request of a model.
         """
-        if max_runs < 0:
-            raise ValueError(f"A runner keeps no negative number of runs: {max_runs}.")
+        if max_run_bytes < 0:
+            raise ValueError(
+                f"A runner keeps no negative number of bytes of runs: {max_run_bytes}."
+            )
         if max_waiting < 1:
             raise ValueError(
                 f"A runner takes at least one request of a model, not {max_waiting}."
@@ -1123,7 +1127,9 @@ class PanelRunner:
         #: the runs the panels of a simulation share by `_run_key`, `None` for
         #: a runner which shares none
         self._runs: BoundedCache[_Run] | None = (
-            BoundedCache(max_runs, what="run") if max_runs else None
+            BoundedCache(max_run_bytes, _run_bytes, what="run")
+            if max_run_bytes
+            else None
         )
 
     def __repr__(self) -> str:
@@ -1375,6 +1381,19 @@ def _load(entry: ModelEntry, path: Path) -> _Warm:
         )
     )
     return _Warm(key=(entry.id, path), sha256=sha256, model=model, simulator=simulator)
+
+
+def _run_bytes(run: _Run) -> int:
+    """Get the bytes of a run, the measure of the runs a runner keeps.
+
+    Args:
+        run: the run.
+
+    Returns:
+        The bytes of the arrays of its result, its variables and coordinates,
+        which are what grows with its curves, points and times.
+    """
+    return int(run.result.ds.nbytes)
 
 
 def _run(

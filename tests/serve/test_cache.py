@@ -5,11 +5,14 @@ The model, the panel and the application of the tests are the fixtures of
 every test is answered by a cache of its own.
 """
 
+import gc
 import threading
+import tracemalloc
 from collections import OrderedDict
 from collections.abc import Callable
 from typing import Any
 
+import numpy as np
 import pytest
 
 pytest.importorskip("fastapi")
@@ -17,7 +20,7 @@ from fastapi.testclient import TestClient
 
 import sbmlsim
 from sbmlsim.serve.app import CACHE_CONTROL, NOT_STORED, create_app
-from sbmlsim.serve.cache import MAX_ENTRIES, ResponseCache
+from sbmlsim.serve.cache import MAX_BYTES, ResponseCache, response_bytes
 from sbmlsim.serve.payload import Provenance, SimulateResponse, Status
 from sbmlsim.serve.runner import ModelRegistry, PanelRunner
 from tests.serve.conftest import SIMULATE
@@ -104,6 +107,11 @@ def _response(spec_hash: str, *, seconds: float = 1.0) -> SimulateResponse:
         ),
         status=Status(ok=True, points=1, failed=[]),
     )
+
+
+def _bytes() -> int:
+    """Get the bytes of a response of `_response`, which are the same for all."""
+    return response_bytes(_response(_hash("a")))
 
 
 def _hash(character: str) -> str:
@@ -240,19 +248,21 @@ def test_the_cache_of_an_app_is_not_the_cache_of_another(
 
 def test_the_cache_answers_what_it_was_given() -> None:
     cache = ResponseCache()
-    assert cache.max_entries == MAX_ENTRIES
+    assert cache.max_bytes == MAX_BYTES
     assert len(cache) == 0
+    assert cache.nbytes == 0
     assert cache.get(_hash("a")) is None
     response = _response(_hash("a"))
-    cache.put(response)
+    assert cache.put(response)
     assert len(cache) == 1
+    assert cache.nbytes == response_bytes(response)
     assert cache.get(_hash("a")) is response
     assert cache.get(_hash("b")) is None
 
 
 def test_the_cache_evicts_the_least_recently_used_entry() -> None:
     """A `get` is a use, so the order is not the one of the puts alone."""
-    cache = ResponseCache(max_entries=2)
+    cache = ResponseCache(max_bytes=2 * _bytes())
     first, second, third = (_response(_hash(c)) for c in "abc")
     cache.put(first)
     cache.put(second)
@@ -266,7 +276,7 @@ def test_the_cache_evicts_the_least_recently_used_entry() -> None:
 
 
 def test_a_response_which_is_stored_again_is_one_entry_and_the_newer_one() -> None:
-    cache = ResponseCache(max_entries=2)
+    cache = ResponseCache(max_bytes=2 * _bytes())
     first = _response(_hash("a"), seconds=1.0)
     cache.put(first)
     cache.put(_response(_hash("b")))
@@ -280,26 +290,28 @@ def test_a_response_which_is_stored_again_is_one_entry_and_the_newer_one() -> No
     assert cache.get(_hash("a")) is again
 
 
-def test_a_cache_of_no_entry_is_refused() -> None:
-    with pytest.raises(ValueError, match="at least one"):
-        ResponseCache(max_entries=0)
+def test_a_cache_of_no_byte_is_refused() -> None:
+    with pytest.raises(ValueError, match="at least one byte"):
+        ResponseCache(max_bytes=0)
 
 
 def test_a_put_which_interleaves_another_one_waits_for_it() -> None:
     """The lock of the cache, pinned where a `put` without it breaks.
 
-    A `put` of a full cache adds its entry and then evicts, and the thread of
-    the second `put` is let in exactly between the two (`Interleaved`): it
-    parks on the lock until the first `put` is through, which is the only
-    order in which both entries are stored and one of them is evicted. A cache
-    whose `put` does not hold the lock runs the second one inside that window,
-    which evicts the entry the first one is storing and leaves it to fail in
-    `move_to_end`.
+    A `put` of a full cache adds its entry, then counts its bytes and then
+    evicts, and the thread of the second `put` is let in exactly between the
+    first two steps (`Interleaved`): it parks on the lock until the first `put`
+    is through, which is the only order in which both entries are counted and
+    one of them is evicted. A cache whose `put` does not hold the lock runs the
+    second one inside that window, which the test sees as a `put` which ended
+    inside it.
     """
-    cache = ResponseCache(max_entries=1)
+    cache = ResponseCache(max_bytes=_bytes())
     first, second = _response(_hash("a")), _response(_hash("b"))
     failed: list[BaseException] = []
     threads: list[threading.Thread] = []
+    #: whether the second `put` ended inside the window of the first one
+    inside: list[bool] = []
 
     def interleave() -> None:
         thread = threading.Thread(target=_put, args=(cache, second, failed))
@@ -308,6 +320,7 @@ def test_a_put_which_interleaves_another_one_waits_for_it() -> None:
         # the lock parks it, so the wait is the whole of it; an unlocked cache
         # runs the `put` here, well inside this window
         thread.join(timeout=INTERLEAVE)
+        inside.append(not thread.is_alive())
 
     cache._entries = Interleaved(interleave)
     _put(cache, first, failed)
@@ -315,7 +328,9 @@ def test_a_put_which_interleaves_another_one_waits_for_it() -> None:
         thread.join(timeout=TIMEOUT)
         assert not thread.is_alive()
     assert failed == []
+    assert inside == [False]
     assert len(cache) == 1
+    assert cache.nbytes == response_bytes(second)
     # the second `put` is the later one, so it is the entry which is kept
     assert cache.get(second.spec_hash) is second
     assert cache.get(first.spec_hash) is None
@@ -330,7 +345,7 @@ def test_many_threads_put_and_get_without_breaking_the_cache() -> None:
     only says that it runs through and ends with the entries it may hold.
     """
     entries = 16
-    cache = ResponseCache(max_entries=entries)
+    cache = ResponseCache(max_bytes=entries * _bytes())
     hashes = [f"{index:064x}" for index in range(256)]
 
     def fill(start: int) -> None:
@@ -352,3 +367,100 @@ def test_many_threads_put_and_get_without_breaking_the_cache() -> None:
     }
     assert len(stored) == entries
     assert all(key == response.spec_hash for key, response in stored.items())
+
+
+def test_the_cache_evicts_until_the_entries_fit_its_bytes() -> None:
+    """A bound of bytes: one large response takes the room of several small ones."""
+    small = _bytes()
+    cache = ResponseCache(max_bytes=4 * small)
+    for character in "abcd":
+        assert cache.put(_response(_hash(character)))
+    assert len(cache) == 4
+    large = _large(_hash("e"), numbers=2 * small // 32)
+    assert small < response_bytes(large) < 4 * small
+    assert cache.put(large)
+    assert cache.nbytes <= cache.max_bytes
+    assert cache.get(large.spec_hash) is large
+    # the least recently used ones made the room, the newest small one stays
+    assert cache.get(_hash("a")) is None
+    assert cache.get(_hash("d")) is not None
+
+
+def test_a_response_larger_than_the_cache_is_not_kept() -> None:
+    small = _bytes()
+    cache = ResponseCache(max_bytes=2 * small)
+    kept = _response(_hash("a"))
+    assert cache.put(kept)
+    assert not cache.put(_large(_hash("b"), numbers=4 * small // 32))
+    assert cache.get(_hash("b")) is None
+    # nothing was evicted for it
+    assert cache.get(_hash("a")) is kept
+    assert cache.nbytes == small
+    # and a key it replaces is no longer answered with an older body
+    assert not cache.put(_large(_hash("a"), numbers=4 * small // 32))
+    assert cache.get(_hash("a")) is None
+    assert cache.nbytes == 0
+
+
+def test_an_answer_larger_than_the_cache_is_served_and_not_stored(
+    registry: ModelRegistry,
+    counting_runner: Counter,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "sbmlsim.serve.app.ResponseCache", lambda: ResponseCache(max_bytes=1024)
+    )
+    with TestClient(create_app(registry)) as client:
+        answer = client.post(SIMULATE, json=BODY)
+        assert answer.status_code == 200
+        body = answer.json()
+        assert client.post(SIMULATE, json=BODY).json()["curves"] == body["curves"]
+        assert counting_runner.calls == 2
+        assert client.get(f"/api/sim/{body['spec_hash']}").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("curves", "points", "times"),
+    [(1, 1, 201), (2, 1, 201), (1, 64, 2), (4, 64, 501)],
+)
+def test_the_bytes_of_a_response_are_at_least_what_it_holds(
+    curves: int, points: int, times: int
+) -> None:
+    """The estimate of `response_bytes` against `tracemalloc`, see `cache`."""
+    gc.collect()
+    tracemalloc.start()
+    try:
+        response = _shaped(curves, points, times)
+        gc.collect()
+        held, _ = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    estimate = response_bytes(response)
+    assert estimate >= held
+    if curves * points * times > 10_000:
+        # within a few percent where the numbers are what a response holds
+        assert estimate <= 1.05 * held
+
+
+def _large(spec_hash: str, numbers: int) -> SimulateResponse:
+    """Get a response of a hash of about a number of numbers."""
+    return _response(spec_hash).model_copy(
+        update={"curves": {"Cve_hctz": [[float(k) for k in range(numbers)]]}}
+    )
+
+
+def _shaped(curves: int, points: int, times: int) -> SimulateResponse:
+    """Get a response of curves of distinct floats, as a run gives them."""
+    rng = np.random.default_rng(1)
+    return SimulateResponse(
+        spec_hash=_hash("f"),
+        x=rng.random(times).tolist(),
+        dims=[],
+        curves={
+            f"curve{k}": [rng.random(times).tolist() for _ in range(points)]
+            for k in range(curves)
+        },
+        units={"x": "min", **{f"curve{k}": "uM" for k in range(curves)}},
+        provenance=_response(_hash("f")).provenance,
+        status=Status(ok=True, points=points, failed=[]),
+    )

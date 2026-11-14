@@ -3,7 +3,7 @@
 A page of several panels of one model asks for every panel at one state of its
 knobs at once, and the runner runs the scan of that state once for every panel
 which shares the simulation (`sbmlsim.serve.runner`). The tests compare every
-answer with the one of a runner which shares nothing (`max_runs=0`), bitwise,
+answer with the one of a runner which shares nothing (`max_run_bytes=0`), bitwise,
 on the page `patient` of the HCTZ demo, whose two panels share a simulation,
 and on a page whose two panels do not, and count the runs of the simulator.
 The name ends in `_engines` so that the job `amici engine` of the continuous
@@ -40,6 +40,7 @@ from sbmlsim.project import Project, SimulatorSettings
 from sbmlsim.serve import app as app_module
 from sbmlsim.serve.app import create_app
 from sbmlsim.serve.runner import (
+    MAX_RUN_BYTES,
     SHARED_ENGINES,
     ModelEntry,
     ModelRegistry,
@@ -153,7 +154,7 @@ def registry() -> ModelRegistry:
 @pytest.fixture(scope="module")
 def alone(registry: ModelRegistry) -> PanelRunner:
     """A runner which shares no run, the answers of today."""
-    return PanelRunner(registry, max_runs=0)
+    return PanelRunner(registry, max_run_bytes=0)
 
 
 @pytest.fixture
@@ -168,6 +169,19 @@ def runs(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
 
     monkeypatch.setattr(Simulator, "run", record)
     return recorded
+
+
+def _run_bytes(registry: ModelRegistry) -> int:
+    """Get the bytes of the run of a point of the patient page.
+
+    The runs of the points of one panel differ by their values alone, so each
+    of them is these bytes, which a runner of a bound of `n` times them keeps
+    `n` of.
+    """
+    runner = PanelRunner(registry)
+    runner.run("hctz", _panel(registry, "patient_plasma"), {"dose": 25.0}, {})
+    assert runner._runs is not None
+    return runner._runs.nbytes
 
 
 def _panel(registry: ModelRegistry, panel_id: str) -> Panel:
@@ -287,7 +301,8 @@ def test_another_state_is_another_run(
 def test_the_runs_a_runner_keeps_are_bounded(
     registry: ModelRegistry, runs: list[list[str]]
 ) -> None:
-    shared = PanelRunner(registry, max_runs=1)
+    shared = PanelRunner(registry, max_run_bytes=_run_bytes(registry))
+    del runs[:]
     plasma, urine = (_panel(registry, one) for one in PATIENT_PAGE.panels)
     shared.run("hctz", plasma, {"dose": 25.0}, {})
     shared.run("hctz", plasma, {"dose": 12.5}, {})
@@ -338,7 +353,8 @@ def test_two_groups_of_one_state_share_its_run_and_do_not_replace_it(
 def test_a_run_is_kept_by_its_last_use(
     registry: ModelRegistry, runs: list[list[str]]
 ) -> None:
-    shared = PanelRunner(registry, max_runs=2)
+    shared = PanelRunner(registry, max_run_bytes=2 * _run_bytes(registry))
+    del runs[:]
     plasma = _panel(registry, "patient_plasma")
     first, second, third = (({"dose": dose}, {}) for dose in (5.0, 12.5, 25.0))
     shared.run("hctz", plasma, *first)
@@ -377,11 +393,39 @@ def test_a_panel_of_another_engine_runs_alone(
     assert runs == [["[Cve_hctz]", "[Cki_plasma_hctz]"], ["Aurine_hctz"]]
 
 
-def test_a_runner_of_a_negative_number_of_runs_is_refused(
+def test_a_runner_of_a_negative_number_of_bytes_is_refused(
     registry: ModelRegistry,
 ) -> None:
     with pytest.raises(ValueError, match="negative"):
-        PanelRunner(registry, max_runs=-1)
+        PanelRunner(registry, max_run_bytes=-1)
+
+
+def test_a_run_larger_than_the_bound_is_not_kept(
+    registry: ModelRegistry, alone: PanelRunner, runs: list[list[str]]
+) -> None:
+    shared = PanelRunner(registry, max_run_bytes=_run_bytes(registry) - 1)
+    del runs[:]
+    plasma = _panel(registry, "patient_plasma")
+    for _ in range(2):
+        _assert_bitwise(
+            shared.run("hctz", plasma, {"dose": 25.0}, {}),
+            alone.run("hctz", plasma, {"dose": 25.0}, {}),
+        )
+    # every request of the state ran it, the runner shares nothing it cannot keep
+    assert len(runs) == 4
+    assert shared._runs is not None
+    assert len(shared._runs) == 0
+
+
+def test_the_runs_are_measured_by_the_bytes_of_their_arrays(
+    registry: ModelRegistry,
+) -> None:
+    """A point of the patient page: two curves and the weight of 201 times."""
+    shared = PanelRunner(registry)
+    shared.run("hctz", _panel(registry, "patient_plasma"), {"dose": 25.0}, {})
+    assert shared._runs is not None
+    assert shared._runs.max_bytes == MAX_RUN_BYTES
+    assert 0 < shared._runs.nbytes < MAX_RUN_BYTES
 
 
 def test_concurrent_requests_of_one_state_run_it_once(
@@ -432,7 +476,7 @@ def clients(
     """A client of an application which shares runs and one which shares none."""
     with TestClient(create_app(registry)) as shared:
         monkeypatch.setattr(
-            app_module, "PanelRunner", functools.partial(PanelRunner, max_runs=0)
+            app_module, "PanelRunner", functools.partial(PanelRunner, max_run_bytes=0)
         )
         with TestClient(create_app(registry)) as alone:
             yield shared, alone

@@ -1015,7 +1015,7 @@ def test_concurrent_runs_of_one_model_do_not_interleave(
     registry: ModelRegistry, panel: Panel
 ) -> None:
     # a runner which shares no run, so both threads run the scan
-    runner = PanelRunner(registry, max_runs=0)
+    runner = PanelRunner(registry, max_run_bytes=0)
     serial = runner.run("hctz", panel, {"dose": 25.0}, {"egfr": 5})
     results: list[PanelResult] = []
     errors: list[BaseException] = []
