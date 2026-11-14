@@ -175,10 +175,10 @@ def test_a_simulation_of_a_variant_of_the_demo_runs_its_renal_function(
     low = peak({"crcl": 45.0}, LOW_REFERENCE)
     default = peak({"crcl": 45.0})
     assert not np.allclose(low, default)
-    # the parser of PEtab reads 90 as a float of 15 digits, so the renal
-    # function is 0.5 to a few units in the last place and the curves agree
-    # within the tolerances of the integrator
-    assert np.allclose(low, peak({"crcl": 55.0}), rtol=1e-6, atol=1e-12)
+    # a number of a formula is the double of its text and the division is the
+    # one written, so 45 / 90 and 55 / 110 are both exactly 0.5 and the
+    # curves are the same bitwise
+    assert np.array_equal(low, peak({"crcl": 55.0}))
 
 
 #: the script of `test_the_project_of_the_variants_is_made_on_its_first_use`:
