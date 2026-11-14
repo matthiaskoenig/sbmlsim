@@ -9,11 +9,12 @@ import math
 import threading
 from pathlib import Path
 
+import numpy as np
 import pytest
 from pint.errors import UndefinedUnitError
 
 from examples.panels.hctz import DOSE, EGFR_STAGES, END, HCTZ_RENAL_URINE, URINE
-from sbmlsim.panel import App, AppPage, AppVariant, Choice, Panel, PanelCurve
+from sbmlsim.panel import App, AppPage, AppVariant, Choice, Knob, Panel, PanelCurve
 from sbmlsim.project import Project
 from sbmlsim.serve import runner as runner_module
 from sbmlsim.serve.runner import (
@@ -372,6 +373,156 @@ def test_a_value_of_no_knob_of_the_panel_is_refused(
         runner.run("hctz", panel, {"kidney": 1.0}, {})
     with pytest.raises(ValueError, match="kidney"):
         runner.run("hctz", panel, {}, {"kidney": 3})
+
+
+#: the creatinine clearance, a knob without a target which the formula of the
+#: renal function reads, in its declared unit
+CRCL = Knob(
+    id="crcl",
+    label="creatinine clearance",
+    unit="ml/min",
+    min=10.0,
+    max=150.0,
+    steps=3,
+    default=110.0,
+)
+#: the renal function computed from the creatinine clearance
+RENAL_FUNCTION = {"f_renal_function": "min(crcl / 110, 1)"}
+
+
+def _derived(panel: Panel, knobs: tuple[Knob, ...], derived: dict[str, str]) -> Panel:
+    """The panel with other knobs and derived targets."""
+    return panel.model_copy(
+        update={
+            "knobs": knobs,
+            "simulation": panel.simulation.model_copy(update={"derived": derived}),
+        }
+    )
+
+
+def _renal_function(values: list[float]) -> Knob:
+    """The renal function as a knob which sets its target, at these values."""
+    return Knob(
+        id="egfr",
+        label="renal function",
+        target="f_renal_function",
+        kind="choice",
+        choices=tuple(Choice(label=str(v), value=v) for v in values),
+        default=values[0],
+    )
+
+
+def test_a_derived_target_over_the_knob_of_the_grid_is_the_target_set_directly(
+    runner: PanelRunner, panel: Panel
+) -> None:
+    """The formula is a value of the dimension of the grid, at each of its points."""
+    derived = _derived(panel, (CRCL, DOSE), RENAL_FUNCTION)
+    result = runner.run("hctz", derived, {"dose": 25.0}, {"crcl": 3})
+    assert [axis.id for axis in result.dims] == ["crcl"]
+    assert result.dims[0].values == (10.0, 80.0, 150.0)
+    assert result.dims[0].unit == "ml/min"
+    direct = _derived(panel, (_renal_function([10 / 110, 80 / 110, 1.0]), DOSE), {})
+    expected = runner.run("hctz", direct, {"dose": 25.0}, {"egfr": 3})
+    assert result.failed == expected.failed == ()
+    for curve in panel.curves:
+        rows = np.asarray(result.curves[curve.id])
+        assert rows.shape == (3, len(result.x))
+        assert np.array_equal(rows, np.asarray(expected.curves[curve.id]))
+    # the three rows are three renal functions and not one
+    plasma = np.asarray(result.curves["[Cve_hctz]"])
+    assert not np.array_equal(plasma[0], plasma[2])
+
+
+def test_a_derived_target_over_a_knob_which_is_no_grid_is_a_preinit_value(
+    runner: PanelRunner, panel: Panel
+) -> None:
+    derived = _derived(panel, (CRCL, DOSE), RENAL_FUNCTION)
+    result = runner.run("hctz", derived, {"crcl": 55.0}, {"dose": 4})
+    assert [axis.id for axis in result.dims] == ["dose"]
+    direct = _derived(panel, (_renal_function([0.5]), DOSE), {})
+    expected = runner.run("hctz", direct, {"egfr": 0.5}, {"dose": 4})
+    for curve in panel.curves:
+        assert np.array_equal(
+            np.asarray(result.curves[curve.id]), np.asarray(expected.curves[curve.id])
+        )
+    # and the knob is the formula's: another clearance is another curve
+    other = runner.run("hctz", derived, {"crcl": 110.0}, {"dose": 4})
+    assert other.curves["[Cve_hctz]"] != result.curves["[Cve_hctz]"]
+
+
+def test_a_formula_of_two_knobs_of_the_grid_has_its_value_at_every_point(
+    runner: PanelRunner, panel: Panel
+) -> None:
+    """The product of the grid is one dimension, in C order of the knobs."""
+    a1 = CRCL.model_copy(
+        update={"id": "a1", "unit": None, "min": 0.5, "max": 1.0, "default": 1.0}
+    )
+    a2 = a1.model_copy(update={"id": "a2"})
+    # a formula of exact numbers, whatever order sympy evaluates it in
+    derived = _derived(panel, (a1, a2, DOSE), {"f_renal_function": "(2 * a1 + a2) / 4"})
+    result = runner.run("hctz", derived, {"dose": 25.0}, {"a1": 2, "a2": 3})
+    assert [axis.id for axis in result.dims] == ["a1", "a2"]
+    assert [axis.values for axis in result.dims] == [(0.5, 1.0), (0.5, 0.75, 1.0)]
+    # the points in C order: a1 is the outer axis and a2 the inner one
+    values = [(2 * x1 + x2) / 4 for x1 in (0.5, 1.0) for x2 in (0.5, 0.75, 1.0)]
+    assert values == [0.375, 0.4375, 0.5, 0.625, 0.6875, 0.75]
+    direct = _derived(panel, (_renal_function(values), DOSE), {})
+    expected = runner.run("hctz", direct, {"dose": 25.0}, {"egfr": 6})
+    rows = np.asarray(result.curves["[Cve_hctz]"])
+    assert rows.shape == (6, len(result.x))
+    assert np.array_equal(rows, np.asarray(expected.curves["[Cve_hctz]"]))
+    assert not np.array_equal(rows[0], rows[-1])
+
+
+@pytest.mark.parametrize(
+    ("knobs", "derived", "named"),
+    [
+        (
+            (CRCL, DOSE),
+            {"f_renal_function": "min(clearance / 110, 1)"},
+            ["'f_renal_function'", "['clearance']", "'crcl'"],
+        ),
+        (
+            (CRCL, DOSE),
+            {"f_renal_function": "min(crcl / 110, "},
+            ["'f_renal_function'", "no math", "'min(crcl / 110, '"],
+        ),
+        ((CRCL, DOSE), {}, ["'crcl'", "sets no target"]),
+        (
+            (CRCL, DOSE, CRCL.model_copy(update={"id": "unused"})),
+            RENAL_FUNCTION,
+            ["'unused'", "sets no target"],
+        ),
+    ],
+)
+def test_a_derived_target_the_service_cannot_run_is_refused_at_startup(
+    project: Project,
+    panel: Panel,
+    monkeypatch: pytest.MonkeyPatch,
+    knobs: tuple[Knob, ...],
+    derived: dict[str, str],
+    named: list[str],
+) -> None:
+    """A panel which is in no app is checked as well, in every variant."""
+    bogus = _derived(panel, knobs, derived).model_copy(update={"id": "derived"})
+    broken = project.replace(panels={**project.panels, bogus.id: bogus})
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: broken)
+    with pytest.raises(ValueError) as error:
+        ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+    message = str(error.value)
+    for one in ("'hctz'", "variant 'default'", "panel 'derived'", *named):
+        assert one in message
+
+
+def test_a_panel_of_derived_targets_which_read_its_knobs_is_served(
+    project: Project, panel: Panel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    served = _derived(panel, (CRCL, DOSE), RENAL_FUNCTION)
+    served = served.model_copy(update={"id": "derived"})
+    fine = project.replace(panels={**project.panels, served.id: served})
+    monkeypatch.setattr(runner_module, "load_project", lambda reference: fine)
+    registry = ModelRegistry.of({"hctz": HCTZ_REFERENCE})
+    assert registry.panel("hctz", "derived") == served
 
 
 def test_the_registry_reads_the_panels_of_the_annotation(

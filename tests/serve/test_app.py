@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
 from examples.panels.hctz import EGFR_STAGES, END, POINTS
-from sbmlsim.panel import CONTRACT, MAX_KNOBS, Panel
+from sbmlsim.panel import CONTRACT, MAX_KNOBS, Knob, Panel
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
@@ -302,6 +302,49 @@ def test_the_hash_covers_the_declaration_of_the_panel(
     )
     assert redeclared["x"][-1] == declared["x"][-1] / 2.0
     assert redeclared["spec_hash"] != declared["spec_hash"]
+
+
+def test_the_hash_covers_the_derived_targets_and_the_limits_of_a_panel(
+    project: Project, panel: Panel
+) -> None:
+    """The extension of the declaration is part of it, so of the hash as well."""
+    crcl = Knob(
+        id="crcl",
+        label="creatinine clearance",
+        unit="ml/min",
+        min=10.0,
+        max=150.0,
+        default=55.0,
+    )
+
+    def answer(formula: str, **limits: float) -> dict[str, Any]:
+        derived = panel.model_copy(
+            update={
+                "knobs": (crcl, *panel.knobs[1:]),
+                "simulation": panel.simulation.model_copy(
+                    update={"derived": {"f_renal_function": formula}}
+                ),
+                **limits,
+            }
+        )
+        entry = ModelEntry(
+            id="hctz",
+            project=project.replace(panels={panel.id: derived}),
+            title="Hydrochlorothiazide",
+        )
+        with TestClient(create_app(ModelRegistry({"hctz": entry}))) as client:
+            response = client.post(SIMULATE, json={"values": {}, "grid": {}})
+            assert response.status_code == 200
+            return response.json()
+
+    declared = answer("min(crcl / 110, 1)")
+    other = answer("min(crcl / 55, 1)")
+    limited = answer("min(crcl / 110, 1)", y_max=2.0)
+    assert len({declared["spec_hash"], other["spec_hash"], limited["spec_hash"]}) == 3
+    # a clearance of 55 ml/min is half the renal function of the one and the
+    # whole of the other, so the curves differ, while the limits change none
+    assert declared["curves"] != other["curves"]
+    assert declared["curves"] == limited["curves"]
 
 
 def test_the_hash_covers_the_settings_of_the_simulator(

@@ -10,16 +10,17 @@ a release:
         <panel id="renal" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration" yMax="2" xMax="24">
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
+            <derived target="f_renal_function" formula="min(crcl / 110, 1)"/>
           </simulation>
           <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
-          <knob id="impairment" target="f_renal_function" label="renal function" kind="choice" default="1.0">
-            <option label="normal" value="1.0"/>
-            <option label="severe" value="0.2"/>
+          <knob id="crcl" label="creatinine clearance" unit="ml/min" kind="range" min="10" max="150" steps="8" default="110">
+            <option label="normal" value="110"/>
+            <option label="severe impairment" value="20"/>
           </knob>
           <curve id="[Cve_hctz]" label="hctz, plasma" unit="uM" scale="linear"/>
           <data id="vormfelde2006" label="Vormfelde 2006" curve="[Cve_hctz]" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
             <select column="label" value="hctz25"/>
-            <at knob="impairment" value="1.0"/>
+            <at knob="crcl" value="110"/>
           </data>
         </panel>
       </panels>
@@ -29,12 +30,14 @@ An attribute is the field of the object of `sbmlsim.panel` it carries, with the
 exceptions `xLabel` for `x_label`, `yLabel` for `y_label`, `yMin`, `yMax` and
 `xMax` for the limits of the axes `y_min`, `y_max` and `x_max` and `xUnit` for
 `x_unit`, which are camel case; an attribute which is not set means the default
-of its field, e.g. an axis without a limit. The
+of its field, e.g. an axis without a limit or a knob without a target, which
+is an input of the formulas of the derived targets alone. The
 `end` of the simulation is in the time unit of the model (a day of a model of
 minutes above) and `xUnit` is the unit its time axis is delivered in. The
 `option` children of a knob are its `choices`, the choices of a knob of the
 kind `choice` and the named stops of one of the kind `range`,
-the `preinit` children of the simulation are its `preinit`, the `select`
+the `preinit` children of the simulation are its `preinit`, its `derived`
+children its `derived`, each of a `target` and its `formula`, the `select`
 children of a series of the data are its `sel`, the rows of its dataset, each
 of them of a `column` and a `value`, and its `at` children are its `at`, the
 state of the knobs it was measured under, each of them of a `knob` and a
@@ -100,6 +103,8 @@ PANEL_ELEMENT: Final = "panel"
 SIMULATION_ELEMENT: Final = "simulation"
 #: the element of one value of the pre-initialization of the simulation
 PREINIT_ELEMENT: Final = "preinit"
+#: the element of one derived target of the simulation and its formula
+DERIVED_ELEMENT: Final = "derived"
 #: the element of one knob of a panel
 KNOB_ELEMENT: Final = "knob"
 #: the element of one choice of a knob of the kind `choice` or one named stop
@@ -125,7 +130,8 @@ _PANEL_ATTRIBUTES: Final = {
     "yMax": "y_max",
     "xMax": "x_max",
 }
-#: the fields of the simulation of a panel, its `preinit` are children
+#: the fields of the simulation of a panel, its `preinit` and its `derived`
+#: are children
 _SIMULATION_ATTRIBUTES: Final = {
     "variant": "variant",
     "end": "end",
@@ -392,8 +398,9 @@ def _simulation_payload(element: libsbml.XMLNode) -> dict[str, Any]:
         element: the `panel` element.
 
     Returns:
-        The fields of its first `simulation` element with its `preinit`
-        children, empty for a panel without one, which is no panel.
+        The fields of its first `simulation` element with its `preinit` and
+        its `derived` children, empty for a panel without one, which is no
+        panel.
     """
     simulations = list(_children(element, SIMULATION_ELEMENT))
     if not simulations:
@@ -405,6 +412,12 @@ def _simulation_payload(element: libsbml.XMLNode) -> dict[str, Any]:
     }
     if preinit:
         payload["preinit"] = preinit
+    derived = {
+        value.getAttrValue("target"): value.getAttrValue("formula")
+        for value in _children(simulations[0], DERIVED_ELEMENT)
+    }
+    if derived:
+        payload["derived"] = derived
     return payload
 
 
@@ -523,12 +536,18 @@ def _panel_xml(panel: Panel) -> str:
 
 
 def _simulation_xml(simulation: PanelSimulation) -> str:
-    """Get the XML of the `simulation` element, its `preinit` its children."""
+    """Get the XML of the `simulation` element, its `preinit` and `derived` children."""
     preinit = "".join(
         f"<{PREINIT_ELEMENT} target={quoteattr(target)} value={quoteattr(str(value))}/>"
         for target, value in simulation.preinit.items()
     )
-    return _element_xml(SIMULATION_ELEMENT, simulation, _SIMULATION_ATTRIBUTES, preinit)
+    derived = "".join(
+        f"<{DERIVED_ELEMENT} target={quoteattr(target)} formula={quoteattr(formula)}/>"
+        for target, formula in simulation.derived.items()
+    )
+    return _element_xml(
+        SIMULATION_ELEMENT, simulation, _SIMULATION_ATTRIBUTES, preinit + derived
+    )
 
 
 def _data_xml(data: PanelData) -> str:

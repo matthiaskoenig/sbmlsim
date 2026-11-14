@@ -1,6 +1,7 @@
 """The panel declaration in the annotation of the SBML model."""
 
 import pickle
+import re
 from pathlib import Path
 
 import numpy as np
@@ -60,15 +61,18 @@ DOCUMENTED = Panel(
             default=25.0,
         ),
         Knob(
-            id="impairment",
-            target="f_renal_function",
-            label="renal function",
-            kind="choice",
+            id="crcl",
+            label="creatinine clearance",
+            unit="ml/min",
+            kind="range",
+            min=10.0,
+            max=150.0,
+            steps=8,
             choices=(
-                Choice(label="normal", value=1.0),
-                Choice(label="severe", value=0.2),
+                Choice(label="normal", value=110.0),
+                Choice(label="severe impairment", value=20.0),
             ),
-            default=1.0,
+            default=110.0,
         ),
     ),
     curves=(
@@ -84,7 +88,7 @@ DOCUMENTED = Panel(
             y="mean",
             yerr="mean_sd",
             sel={"label": "hctz25"},
-            at={"impairment": 1.0},
+            at={"crcl": 110.0},
             conversion="1/(297.7 g/mole)",
         ),
     ),
@@ -94,6 +98,7 @@ DOCUMENTED = Panel(
         points=200,
         x_unit="hr",
         preinit={"BW": 75.0},
+        derived={"f_renal_function": "min(crcl / 110, 1)"},
     ),
 )
 
@@ -241,7 +246,11 @@ def test_the_documented_panel_round_trips_through_the_writer(tmp_path: Path) -> 
     """The curve, the selection, the state and the conversion are written too."""
     annotation = panels_to_annotation([DOCUMENTED])
     assert '<select column="label" value="hctz25"/>' in annotation
-    assert '<at knob="impairment" value="1.0"/>' in annotation
+    assert '<at knob="crcl" value="110.0"/>' in annotation
+    assert (
+        '<derived target="f_renal_function" formula="min(crcl / 110, 1)"/>'
+        in annotation
+    )
     assert 'curve="[Cve_hctz]"' in annotation
     assert 'conversion="1/(297.7 g/mole)"' in annotation
     write_panels(SBML_IN, tmp_path / "m.xml", [DOCUMENTED])
@@ -322,13 +331,72 @@ def test_an_at_without_a_knob_is_reported_as_a_problem(tmp_path: Path) -> None:
     out = tmp_path / "m.xml"
     write_panels(SBML_IN, out, [DOCUMENTED])
     written = out.read_text(encoding="utf-8")
-    assert '<at knob="impairment" value="1.0"/>' in written
-    broken = written.replace('<at knob="impairment" value="1.0"/>', "<at/>")
+    assert '<at knob="crcl" value="110.0"/>' in written
+    broken = written.replace('<at knob="crcl" value="110.0"/>', "<at/>")
     panels, problems = panels_from_sbml(broken)
     assert panels == {}
     assert [problem.panel_id for problem in problems] == [DOCUMENTED.id]
     assert "knob" in problems[0].reason
     assert "vormfelde2006" in problems[0].reason
+
+
+@pytest.mark.parametrize(
+    ("element", "match"),
+    [
+        ('<derived formula="min(crcl / 110, 1)"/>', "'' is no SId"),
+        ('<derived target="f_renal_function"/>', "needs its formula"),
+    ],
+)
+def test_a_derived_target_without_its_target_or_formula_is_a_problem(
+    tmp_path: Path, element: str, match: str
+) -> None:
+    out = tmp_path / "m.xml"
+    write_panels(SBML_IN, out, [DOCUMENTED])
+    written = out.read_text(encoding="utf-8")
+    derived = '<derived target="f_renal_function" formula="min(crcl / 110, 1)"/>'
+    assert derived in written
+    panels, problems = panels_from_sbml(written.replace(derived, element))
+    assert panels == {}
+    assert [problem.panel_id for problem in problems] == [DOCUMENTED.id]
+    assert re.search(match, problems[0].reason)
+
+
+def test_derived_targets_stops_a_targetless_knob_and_limits_round_trip(
+    tmp_path: Path, panel: Panel
+) -> None:
+    """Every field of the extension of the contract is written and read back."""
+    rate = Knob(
+        id="rate",
+        label="rate of decay",
+        unit="1/min",
+        kind="range",
+        min=0.5,
+        max=4.0,
+        steps=4,
+        choices=(Choice(label="slow", value=0.5), Choice(label="fast", value=4.0)),
+        default=1.0,
+    )
+    extended = panel.model_copy(
+        update={
+            "knobs": (*panel.knobs, rate),
+            "y_min": 1.0,
+            "y_max": 5000.0,
+            "x_max": 60.0,
+            "simulation": panel.simulation.model_copy(
+                update={"derived": {"alpha": "rate * 100", "alpha0": "rate / 1000"}}
+            ),
+        }
+    )
+    annotation = panels_to_annotation([extended])
+    assert '<derived target="alpha" formula="rate * 100"/>' in annotation
+    assert '<knob id="rate" label="rate of decay" unit="1/min"' in annotation
+    write_panels(SBML_IN, tmp_path / "m.xml", [extended])
+    panels, problems = panels_from_sbml(tmp_path / "m.xml")
+    assert problems == ()
+    assert panels == {extended.id: extended}
+    read = panels[extended.id]
+    assert read.knobs[-1].target is None
+    assert read.simulation.derived == {"alpha": "rate * 100", "alpha0": "rate / 1000"}
 
 
 def test_the_label_of_the_value_axis_round_trips_and_is_empty_without_one(

@@ -9,12 +9,16 @@ module, a project reference or a path. A model whose project declares an app
 names a panel the model does not declare, a variant the project does not
 have and two panels of a page which declare one knob id differently
 (`ModelEntry.shared`) are refused at startup, since the panels of a model are
-read from its SBML, which a project is imported without.
+read from its SBML, which a project is imported without. So are the formulas of
+the derived targets of every panel of every variant (`_check_derived`), which
+are math of PEtab the declaration does not parse.
 
 `PanelRunner` runs a panel of such a model: the values of its knobs become the
-pre-initialization of one `Simulation`, a knob of the grid becomes a
-`Dimension` of the values of `Knob.values(n)`, and the scan of the two runs on
-the warm model of the entry. The curves of the `PanelResult` are the declared
+pre-initialization of one `Simulation`, the knobs of the grid become a
+`Dimension` of the product of the values of `Knob.values(n)`, a derived target
+is the value of its formula over the knobs, a value of that dimension when it
+reads a knob of the grid and of the pre-initialization otherwise, and the scan
+of the two runs on the warm model of the entry. The curves of the `PanelResult` are the declared
 curves of the panel, one row per point of the grid in C order and one row for a
 request without a grid, in the unit the curve declares or else in the unit of
 the model; the x of the result is the grid of `points + 1` times from 0 to the
@@ -66,6 +70,7 @@ from sbmlsim.panel import Knob, Panel, PanelCurve, PanelData
 from sbmlsim.project import Project, load_project
 from sbmlsim.result.scan import STATUS, TIME
 from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.simulator.formula import CompiledFormula, compile_formula
 
 if TYPE_CHECKING:
     from sbmlsim.result import ScanResult
@@ -296,7 +301,10 @@ class ModelRegistry:
                 which names a variant the project does not have, and naming
                 the model, the page, the knob id and the two panels, for a page
                 whose panels declare one knob id differently, see
-                `_check_app`.
+                `_check_app`; naming the model, the variant, the panel and
+                the target or the knob, for a formula of a derived target
+                which is no math or reads no knob of its panel and for a knob
+                without a target which no formula reads, see `_check_derived`.
             ImportError: if the module of a reference is not imported.
         """
         entries: dict[str, ModelEntry] = {}
@@ -308,6 +316,7 @@ class ModelRegistry:
                 title=project.title or project.name,
             )
             _check_app(entry)
+            _check_derived(entry)
             entries[model_id] = entry
             logger.info("The model '%s' is the project '%s'.", model_id, project.name)
         return cls(entries)
@@ -415,6 +424,45 @@ def _check_app(entry: ModelEntry) -> None:
             )
     # the shared knobs of every page, which raise for one id declared twice
     _ = entry.shared
+
+
+def _check_derived(entry: ModelEntry) -> None:
+    """Check the derived targets of every panel of every variant of a model.
+
+    A formula of a derived target (`sbmlsim.panel.PanelSimulation.derived`)
+    is math of PEtab, which the declaration does not parse, since
+    `sbmlsim.panel` is pure data: it is compiled here, where the models of a
+    service are registered, so a formula which is no math, which reads a
+    symbol which is no knob of its panel, and a knob without a target which no
+    formula reads, an input of nothing, are problems of the startup of the
+    service and never of a request. The panels are the ones of every variant
+    of the project (`sbmlsim.project.Project.panels_of`), whether an app shows
+    them or not, since a request may name any variant; the SBML of each
+    variant is read once.
+
+    Args:
+        entry: the model of the registry.
+
+    Raises:
+        ValueError: naming the model, the variant, the panel, the target and
+            the formula, for a formula which is no math of PEtab; naming them
+            and the symbols, for a formula which reads a symbol which is no
+            knob of its panel; naming the model, the variant, the panel and
+            the knob, for a knob without a target which no formula reads.
+        FileNotFoundError: if the SBML of a variant is no file.
+    """
+    for variant in entry.project.variants:
+        for panel in entry.project.panels_of(variant).values():
+            where = f" of the model '{entry.id}' in its variant '{variant}'"
+            formulas = _formulas(panel, where)
+            read = {s for formula in formulas.values() for s in formula.symbols}
+            for knob in panel.knobs:
+                if knob.target is None and knob.id not in read:
+                    raise ValueError(
+                        f"The knob '{knob.id}' of the panel '{panel.id}'{where} sets "
+                        f"no target and no formula of its derived targets reads it; "
+                        f"a knob without a target is an input of a formula."
+                    )
 
 
 def _shared_knobs(
@@ -782,6 +830,21 @@ def _scan(
 ) -> tuple[Scan, tuple[GridAxis, ...]]:
     """Get the scan of a request and the axes of its grid.
 
+    The knobs of the grid span one `Dimension` of the points of their product
+    in C order, in the order of the knobs of the panel: the target of every
+    such knob and every derived target whose formula reads one of them
+    (`sbmlsim.panel.PanelSimulation.derived`) are values of that dimension,
+    coupled, so a formula which reads two knobs of the grid has its value at
+    every point of the product. A run of the product in one dimension has the
+    rows of the product of one dimension per knob, in the same order, which is
+    the order of the rows of `PanelResult`. Every other knob is a value of the
+    pre-initialization, and so is every derived target whose formula reads no
+    knob of the grid.
+
+    A formula is evaluated with numpy over the points of the grid at once, on
+    the numbers of the knobs in their declared units, and its value is the
+    value of its target in the unit of the model, see `PanelSimulation`.
+
     Args:
         model: the model, which resolves the units of the knobs.
         panel: the panel.
@@ -789,38 +852,107 @@ def _scan(
         grid: the points of a knob of the grid by its id.
 
     Returns:
-        The scan, one dimension per knob of the grid in the order of the
-        knobs of the panel, and the axes of these dimensions.
+        The scan, of one dimension for a request of a grid and none for one of
+        a point, and the axes of the grid, one per knob of the grid in the
+        order of the knobs of the panel.
+
+    Raises:
+        ValueError: if a formula of a derived target is no math of PEtab or
+            reads no knob of the panel, and naming the knob, for a knob of the
+            grid which sets nothing, which the registry of a service refuses
+            when it starts (`_check_derived`).
     """
     preinit: dict[str, Any] = dict(panel.simulation.preinit)
-    dimensions: list[Dimension] = []
-    axes: list[GridAxis] = []
+    gridded = [knob for knob in panel.knobs if knob.id in grid]
+    axes = tuple(
+        GridAxis(
+            id=knob.id,
+            label=knob.label,
+            unit=_unit_of(model, knob),
+            values=knob.values(grid[knob.id]),
+        )
+        for knob in gridded
+    )
+    # the numbers of every knob of the grid at the points of the product in C
+    # order, and the number of every other knob
+    mesh = np.meshgrid(*(np.asarray(axis.values) for axis in axes), indexing="ij")
+    points = {axis.id: one.ravel() for axis, one in zip(axes, mesh, strict=True)}
+    size = math.prod(len(axis.values) for axis in axes)
+    numbers = {
+        knob.id: float(values.get(knob.id, knob.default))
+        for knob in panel.knobs
+        if knob.id not in grid
+    }
+    changed: dict[str, Any] = {}
     for knob in panel.knobs:
-        if knob.id in grid:
-            points = knob.values(grid[knob.id])
-            axes.append(
-                GridAxis(
-                    id=knob.id,
-                    label=knob.label,
-                    unit=_unit_of(model, knob),
-                    values=points,
-                )
-            )
-            dimensions.append(
-                Dimension(
-                    knob.id,
-                    values={
-                        knob.target: _in_model_units(
-                            model, knob, np.asarray(points, dtype=float)
-                        )
-                    },
-                )
-            )
+        if knob.target is None:
+            continue
+        if knob.id in points:
+            changed[knob.target] = _in_model_units(model, knob, points[knob.id])
         else:
-            value = float(values.get(knob.id, knob.default))
-            preinit[knob.target] = _in_model_units(model, knob, value)
+            preinit[knob.target] = _in_model_units(model, knob, numbers[knob.id])
+    for target, formula in _formulas(panel).items():
+        if points.keys().isdisjoint(formula.symbols):
+            preinit[target] = formula.evaluate([numbers[s] for s in formula.symbols])
+            continue
+        arguments = [
+            points[s] if s in points else np.full(size, numbers[s])
+            for s in formula.symbols
+        ]
+        changed[target] = formula.evaluate_array(arguments, size)
+    if gridded and not changed:
+        raise ValueError(
+            f"The knobs {[knob.id for knob in gridded]} of the grid of the panel "
+            f"'{panel.id}' set no target and no derived target reads them."
+        )
+    dimensions = (
+        [Dimension("__".join(axis.id for axis in axes), values=changed)]
+        if gridded
+        else []
+    )
     simulation = Simulation(end=panel.simulation.end, preinit_changes=preinit)
-    return Scan(simulation, dimensions), tuple(axes)
+    return Scan(simulation, dimensions), axes
+
+
+def _formulas(panel: Panel, where: str = "") -> dict[str, CompiledFormula]:
+    """Compile the formulas of the derived targets of a panel.
+
+    Args:
+        panel: the panel.
+        where: the model and the variant of the panel, which a problem names
+            after the panel, e.g. ` of the model 'hctz' in its variant
+            'default'`; empty for a run, which names the panel alone.
+
+    Returns:
+        The compiled formula of every derived target, by the target, in the
+        order the panel declares them.
+
+    Raises:
+        ValueError: naming the panel, the target and the formula, for a
+            formula which is no math of PEtab; naming the panel, the target
+            and the symbols, for a formula which reads a symbol which is no
+            knob of the panel.
+    """
+    knobs = sorted(knob.id for knob in panel.knobs)
+    formulas: dict[str, CompiledFormula] = {}
+    for target, formula in panel.simulation.derived.items():
+        try:
+            compiled = compile_formula(formula)
+        except ValueError as error:
+            raise ValueError(
+                f"The formula '{formula}' of the derived target '{target}' of the "
+                f"panel '{panel.id}'{where} is no math of PEtab: {error}"
+            ) from error
+        unknown = sorted(set(compiled.symbols).difference(knobs))
+        if unknown:
+            raise ValueError(
+                f"The formula '{formula}' of the derived target '{target}' of the "
+                f"panel '{panel.id}'{where} reads {unknown}, which are no knobs of "
+                f"the panel; a formula reads the knobs of its panel, which are "
+                f"{knobs}."
+            )
+        formulas[target] = compiled
+    return formulas
 
 
 def _panel_units(model: SBMLModel, panel: Panel) -> PanelUnits:
@@ -1112,9 +1244,10 @@ def _unit_of(model: SBMLModel, knob: Knob) -> str | None:
 
     Returns:
         The unit the knob declares, else the unit of its target in the model,
-        `None` for a target which has none.
+        `None` for a target which has none and for a knob without a target
+        which declares none.
     """
-    if knob.unit is not None:
+    if knob.unit is not None or knob.target is None:
         return knob.unit
     unit: str | None = model.uinfo.get(knob.target)
     return unit

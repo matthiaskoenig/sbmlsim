@@ -122,7 +122,7 @@ class Choice(BaseModel):
 
 
 class Knob(BaseModel):
-    """A knob of a panel: an entity of the model a reader sets.
+    """A knob of a panel: an entity of the model a reader sets, or an input of one.
 
     A knob of the kind `range` has the bounds `min` and `max` and a grid of
     `steps` points over them, one of the kind `choice` its `choices`; see
@@ -137,8 +137,14 @@ class Knob(BaseModel):
             of its axis in a grid.
         label: the knob as it is shown, e.g. `"renal function"`.
         target: the entity of the model the knob sets, a selection of the
-            simulation, e.g. `"PODOSE_hctz"`.
-        unit: the unit of the values, the unit of the target without.
+            simulation, e.g. `"PODOSE_hctz"`; `None` for a knob which sets no
+            entity itself and is an input of the formulas of the derived
+            targets of the panel (`PanelSimulation.derived`), e.g. a
+            creatinine clearance from which the renal function is computed.
+            Such a knob is read by a formula, which the service checks when it
+            starts (`sbmlsim.serve.runner.ModelRegistry.of`).
+        unit: the unit of the values, the unit of the target without; a knob
+            without a target and without a unit carries values of no unit.
         kind: `range` for a knob of bounds, `choice` for one of choices.
         min: the smallest value of a range knob.
         max: the largest value of a range knob.
@@ -155,7 +161,7 @@ class Knob(BaseModel):
 
     id: str
     label: str
-    target: str
+    target: str | None = None
     unit: str | None = None
     kind: Literal["range", "choice"] = "range"
     min: float | None = None
@@ -368,6 +374,19 @@ class PanelSimulation(BaseModel):
             the time unit of the model whatever it is.
         preinit: the values of the pre-initialization which are no knob, e.g.
             the body weight, by the entity of the model they set.
+        derived: the targets of the model which are computed from the knobs,
+            by the target (an SBML `SId`) and its formula, a formula of the
+            math of PEtab over the ids of the knobs of the panel and numbers,
+            e.g. `{"f_renal_function": "min(crcl / 110, 1)"}`. A formula sees
+            the value of each knob as the number the knob carries, in the unit
+            the knob declares and without a conversion, and its result is the
+            value of the target in the unit of the model, so a formula states
+            its conversion itself. A derived target is set by its formula
+            alone: it is no target of a knob and no key of `preinit`. The
+            formulas are compiled and evaluated by the service, which checks
+            that they read knobs of the panel when it starts
+            (`sbmlsim.serve.runner.ModelRegistry.of`), and a renderer never
+            evaluates one: this module is pure data and has no parser.
     """
 
     model_config = _CONFIG
@@ -377,6 +396,33 @@ class PanelSimulation(BaseModel):
     points: int = Field(default=200, ge=2, le=MAX_POINTS)
     x_unit: str | None = None
     preinit: Mapping[str, float] = {}
+    derived: Mapping[str, str] = {}
+
+    @model_validator(mode="after")
+    def _check_derived(self) -> Self:
+        """Check the derived targets of the simulation.
+
+        Raises:
+            ValueError: naming the target, for a derived target which is no
+                `SId`, for one which is a key of `preinit`, which would set it
+                twice, and for a formula which is empty.
+        """
+        for target, formula in self.derived.items():
+            if _SID.fullmatch(target) is None:
+                raise ValueError(
+                    f"The derived target '{target}' is no SId: a derived target is "
+                    f"an entity of the model, a letter or '_' and then letters, "
+                    f"digits and '_'."
+                )
+            if target in self.preinit:
+                raise ValueError(
+                    f"The derived target '{target}' is set by the pre-initialization "
+                    f"of the simulation as well; a derived target is set by its "
+                    f"formula alone."
+                )
+            if not formula.strip():
+                raise ValueError(f"The derived target '{target}' needs its formula.")
+        return self
 
 
 class Panel(BaseModel):
@@ -448,6 +494,28 @@ class Panel(BaseModel):
                 raise ValueError(
                     f"The {kind} of the panel '{self.id}' declare {twice} twice; "
                     "an id is the key of its values in a result."
+                )
+        return self
+
+    @model_validator(mode="after")
+    def _check_targets(self) -> Self:
+        """Check that no derived target is the target of a knob.
+
+        A derived target (`PanelSimulation.derived`) is set by its formula
+        alone, so a knob which set it as well would be overwritten by the
+        formula, or the formula by the knob, which is no declaration of the
+        value the target takes.
+
+        Raises:
+            ValueError: naming the panel, the target and the knob, for a
+                derived target which a knob of the panel sets.
+        """
+        for knob in self.knobs:
+            if knob.target is not None and knob.target in self.simulation.derived:
+                raise ValueError(
+                    f"The derived target '{knob.target}' of the panel '{self.id}' is "
+                    f"the target of its knob '{knob.id}' as well; a derived target "
+                    f"is set by its formula alone."
                 )
         return self
 

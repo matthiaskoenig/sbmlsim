@@ -6,16 +6,17 @@
         <panel id="ok" title="Renal impairment" subtitle="hctz, single oral dose" xLabel="time [hr]" yLabel="plasma concentration" yMax="2" xMax="24">
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
+            <derived target="f_renal_function" formula="min(crcl / 110, 1)"/>
           </simulation>
           <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
-          <knob id="impairment" target="f_renal_function" label="renal function" kind="choice" default="1.0">
-            <option label="normal" value="1.0"/>
-            <option label="severe" value="0.2"/>
+          <knob id="crcl" label="creatinine clearance" unit="ml/min" kind="range" min="10" max="150" steps="8" default="110">
+            <option label="normal" value="110"/>
+            <option label="severe impairment" value="20"/>
           </knob>
           <curve id="[Cve_hctz]" label="hctz, plasma" unit="uM" scale="linear"/>
           <data id="vormfelde2006" label="Vormfelde 2006" curve="[Cve_hctz]" dataset="Vormfelde2006_Fig2" x="time" y="mean" yerr="mean_sd" conversion="1/(297.7 g/mole)">
             <select column="label" value="hctz25"/>
-            <at knob="impairment" value="1.0"/>
+            <at knob="crcl" value="110"/>
           </data>
         </panel>
         <panel id="broken" title="a range knob without its bounds">

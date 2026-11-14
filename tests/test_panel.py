@@ -56,6 +56,21 @@ DOSE = Knob(
     default=25.0,
 )
 
+#: the activity of one allele of CYP2C9, an input of the formula of a derived
+#: target and of no entity of its own, as a range with named stops
+ALLELE1 = Knob(
+    id="a1",
+    label="activity of allele 1",
+    unit="percent",
+    kind="range",
+    min=0.0,
+    max=100.0,
+    steps=3,
+    choices=(Choice(label="*1", value=100.0), Choice(label="*3", value=10.0)),
+    default=100.0,
+)
+ALLELE2 = ALLELE1.model_copy(update={"id": "a2", "label": "activity of allele 2"})
+
 
 @pytest.fixture
 def panel() -> Panel:
@@ -67,7 +82,7 @@ def panel() -> Panel:
         y_min=0.001,
         y_max=1.0,
         x_max=24.0,
-        knobs=(EGFR, DOSE),
+        knobs=(EGFR, DOSE, ALLELE1, ALLELE2),
         curves=(
             PanelCurve(
                 id="[Cve_hctz]",
@@ -96,6 +111,7 @@ def panel() -> Panel:
             points=200,
             x_unit="hr",
             preinit={"BW": 75.0},
+            derived={"f_cyp2c9": "(a1 + a2) / 2 / 100"},
         ),
     )
 
@@ -518,6 +534,44 @@ def test_a_state_which_is_no_stop_of_a_range_knob_is_refused() -> None:
         assert "[0.2, 0.5, 1.0]" in str(error.value)
 
 
+def test_a_knob_without_a_target_feeds_the_formulas_of_derived_targets(
+    panel: Panel,
+) -> None:
+    assert ALLELE1.target is None
+    assert panel.simulation.derived == {"f_cyp2c9": "(a1 + a2) / 2 / 100"}
+    payload = panel_payload(panel)
+    assert payload["axes"][2]["target"] is None
+    assert payload["simulation"]["derived"] == {"f_cyp2c9": "(a1 + a2) / 2 / 100"}
+    assert panel_from_payload(payload) == panel
+    assert PanelSimulation(end=1.0).derived == {}
+
+
+@pytest.mark.parametrize(
+    ("derived", "preinit", "match"),
+    [
+        ({"f-cyp2c9": "a1"}, {}, "'f-cyp2c9' is no SId"),
+        ({"2f": "a1"}, {}, "'2f' is no SId"),
+        ({"f_cyp2c9": "a1"}, {"f_cyp2c9": 1.0}, "pre-initialization"),
+        ({"f_cyp2c9": "  "}, {}, "needs its formula"),
+    ],
+)
+def test_a_derived_target_which_is_set_otherwise_or_is_no_target_is_refused(
+    derived: dict[str, str], preinit: dict[str, float], match: str
+) -> None:
+    with pytest.raises(ValidationError, match=match):
+        PanelSimulation(end=1.0, derived=derived, preinit=preinit)
+
+
+def test_a_derived_target_which_a_knob_sets_is_refused(panel: Panel) -> None:
+    simulation = panel.simulation.model_copy(
+        update={"derived": {"f_renal_function": "a1 / 100"}}
+    )
+    with pytest.raises(ValidationError, match="target of its knob 'egfr'") as error:
+        Panel.model_validate({**panel.model_dump(), "simulation": simulation})
+    assert "'renal'" in str(error.value)
+    assert "'f_renal_function'" in str(error.value)
+
+
 def test_the_label_of_the_value_axis_is_empty_without_one(panel: Panel) -> None:
     """A panel which declares none leaves that label to its renderer."""
     assert panel.y_label == ""
@@ -721,7 +775,7 @@ def test_a_panel_is_picklable(panel: Panel) -> None:
 
 def test_the_payload_names_the_knobs_as_the_axes_of_the_grid(panel: Panel) -> None:
     payload = panel_payload(panel)
-    assert [axis["id"] for axis in payload["axes"]] == ["egfr", "dose"]
+    assert [axis["id"] for axis in payload["axes"]] == ["egfr", "dose", "a1", "a2"]
     assert payload["panel"] == {
         "id": "renal",
         "title": panel.title,
