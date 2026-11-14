@@ -75,7 +75,7 @@ __all__ = [
     "ModelPayload",
     "ModelsResponse",
     "PanelDataResponse",
-    "PanelPayload",
+    "PanelSummary",
     "PanelsResponse",
     "Provenance",
     "ScenarioPayload",
@@ -213,7 +213,7 @@ class Provenance(BaseModel):
     model: str
     panel: str
     model_sha256: str
-    variant: str | None
+    variant: str
     engine: str
     sbmlsim: str
     seconds: float
@@ -402,8 +402,11 @@ class ModelsResponse(BaseModel):
     models: list[ModelPayload]
 
 
-class PanelPayload(BaseModel):
+class PanelSummary(BaseModel):
     """A panel of a model as it is listed, without its knobs and curves.
+
+    It is the `PanelSummary` of the contract of sbmlsim-web as well, the one
+    name of the body on both sides.
 
     Attributes:
         id: the id of the panel, the one a request names.
@@ -424,7 +427,7 @@ class PanelsResponse(BaseModel):
     Attributes:
         contract: the version of the payloads, `sbmlsim.panel.CONTRACT`.
         model: the id of the model.
-        panels: the panels, see `PanelPayload`; the declaration of one is
+        panels: the panels, see `PanelSummary`; the declaration of one is
             `sbmlsim.panel.panel_payload`.
     """
 
@@ -432,7 +435,7 @@ class PanelsResponse(BaseModel):
 
     contract: str = CONTRACT
     model: str
-    panels: list[PanelPayload]
+    panels: list[PanelSummary]
 
 
 class ScenarioPayload(BaseModel):
@@ -590,7 +593,7 @@ class AppResponse(BaseModel):
     doi: str
     licenses: list[str]
     shared: dict[str, list[SharedKnobPayload]]
-    heads: dict[str, list[PanelPayload]]
+    heads: dict[str, list[PanelSummary]]
     variant: str
 
     @classmethod
@@ -628,7 +631,7 @@ class AppResponse(BaseModel):
         }
         heads = {
             page.id: [
-                PanelPayload(id=panel.id, title=panel.title, subtitle=panel.subtitle)
+                PanelSummary(id=panel.id, title=panel.title, subtitle=panel.subtitle)
                 for panel in pages.get(page.id, ())
             ]
             for page in app.pages

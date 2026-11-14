@@ -12,6 +12,7 @@ import pytest
 
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 import sbmlsim
 from examples.hctz_fitting import MODEL_PATH
@@ -19,7 +20,7 @@ from examples.panels.hctz import EGFR_STAGES, END, POINTS
 from sbmlsim.panel import CONTRACT, MAX_KNOBS, Choice, Knob, Panel, Scenario
 from sbmlsim.project import Project
 from sbmlsim.serve.app import FAILED, MAX_ERRORS, NO_APP, create_app
-from sbmlsim.serve.payload import MAX_ID
+from sbmlsim.serve.payload import MAX_ID, PanelsResponse, PanelSummary, Provenance
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
 from tests.serve.conftest import APP, PANEL, SIMULATE
 
@@ -763,3 +764,26 @@ def test_a_variant_query_longer_than_any_declaration_is_422_and_not_echoed(
     answer = client.get(route, params={"variant": "nope"})
     assert answer.status_code == 422
     assert "nope" in answer.text
+
+
+def test_the_panels_of_a_model_are_listed_as_summaries(client: TestClient) -> None:
+    """The body of a listed panel is `PanelSummary`, its name in sbmlsim-web."""
+    answer = PanelsResponse.model_validate(client.get("/api/models/hctz/panels").json())
+    assert answer.panels
+    assert all(isinstance(panel, PanelSummary) for panel in answer.panels)
+
+
+def test_the_provenance_of_a_response_always_names_its_variant() -> None:
+    """The variant of a provenance is resolved, so it is never `null`."""
+    fields = {
+        "model": "hctz",
+        "panel": "renal_plasma",
+        "model_sha256": "0" * 64,
+        "engine": "roadrunner",
+        "sbmlsim": sbmlsim.__version__,
+        "seconds": 1.0,
+        "created": "2026-11-14T10:00:00+00:00",
+    }
+    assert Provenance(**fields, variant="default").variant == "default"
+    with pytest.raises(ValidationError):
+        Provenance(**fields, variant=None)  # ty: ignore[invalid-argument-type]

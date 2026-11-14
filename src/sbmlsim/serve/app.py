@@ -91,8 +91,8 @@ from sbmlsim.serve.payload import (
     ModelPayload,
     ModelsResponse,
     PanelDataResponse,
-    PanelPayload,
     PanelsResponse,
+    PanelSummary,
     Provenance,
     SeriesPayload,
     SimulateRequest,
@@ -419,7 +419,7 @@ def create_app(
         return PanelsResponse(
             model=model,
             panels=[
-                PanelPayload(id=panel.id, title=panel.title, subtitle=panel.subtitle)
+                PanelSummary(id=panel.id, title=panel.title, subtitle=panel.subtitle)
                 for panel in declared.values()
             ],
         )

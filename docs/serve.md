@@ -627,6 +627,7 @@ What a renderer may rely on:
 - **the limits**, which the declaration of a panel carries under `limits`, so a renderer reads the bounds of the endpoint instead of carrying its own numbers;
 - **one unit per axis**: the `units` of a simulation and the `unit` and `x_unit` of the series of the same panel state one unit unless a series declares a unit of its own, see [Units](#units);
 - **the shape of a grid**: `curves[id]` is one row per point of `dims` in C order, `x` is the output times of every row, and a point which failed is `null` with its flat index in `status.failed`;
+- **the names of `panel/1` as they are**: the knobs of a declaration are its `axes` (each knob is a possible axis of a grid), the axes of the grid of an answer are its `dims`, and the most knobs of a panel are `limits.knobs`; the three names are frozen with the contract, and a renderer reads a knob of `axes` and an axis of `dims` by the same `id`;
 - **an added field keeps the version**: a payload may grow a field within `panel/1`, so a renderer ignores the fields it does not know, while the python readers of this package are strict and refuse a field they do not know; a field which is removed or changes its meaning is a new contract version, `panel/2`.
 
 What a renderer must not rely on:
