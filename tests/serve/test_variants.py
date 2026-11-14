@@ -15,6 +15,8 @@ from typing import Any
 
 import numpy as np
 import pytest
+
+pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from examples.hctz_fitting import MODEL_PATH

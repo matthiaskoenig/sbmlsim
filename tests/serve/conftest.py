@@ -22,20 +22,29 @@ loaded once per file, while the application and its client are of the test:
 the cache of the responses belongs to the application
 (`sbmlsim.serve.cache`), so every test is answered by an empty one and a test
 of a run reaches the runner.
+
+The service is the extra `web`: this module imports fastapi only in the
+fixtures of the application, which skip without it, and a test module which
+imports fastapi skips through `pytest.importorskip`, so an install without the
+extra runs the tests which need no HTTP (`test_runner.py`) and skips the
+others instead of failing to collect the session.
 """
 
+from __future__ import annotations
+
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from examples.panels.hctz import HCTZ_RENAL_PLASMA, PROJECT
 from sbmlsim.panel import Panel
 from sbmlsim.project import Project
-from sbmlsim.serve.app import create_app
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
 
 #: the panel of the tests, the plasma concentration of the renal function
 PANEL = "/api/models/hctz/panels/renal_plasma"
@@ -72,11 +81,16 @@ def registry(project: Project) -> ModelRegistry:
 @pytest.fixture
 def app(registry: ModelRegistry) -> FastAPI:
     """An application of its own, whose cache of the responses is empty."""
+    pytest.importorskip("fastapi")
+    from sbmlsim.serve.app import create_app
+
     return create_app(registry)
 
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
+    from fastapi.testclient import TestClient
+
     with TestClient(app) as client:
         yield client
 

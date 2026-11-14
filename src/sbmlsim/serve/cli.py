@@ -24,7 +24,8 @@ browser on the service once it is up and is off by default.
 The exit codes are the ones of `python -m sbmlsim.run`: 0 when the server
 stopped, 2 for a bad command line, which argparse writes with the usage, and 4
 for a model which is no project or whose app names something the model does not
-declare, whose message is on stderr.
+declare and for an install without the extra `web`, whose message is on
+stderr.
 
 Neither uvicorn nor fastapi is imported when this module is imported: the
 application is created and the server is started in the functions which need
@@ -322,7 +323,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
     # after the command line is read, so a bad one is answered with its usage
     # in an install without the extra `web`
-    from sbmlsim.serve.app import create_app
+    try:
+        from sbmlsim.serve.app import create_app
+    except ImportError as err:
+        sys.stderr.write(
+            f"python -m sbmlsim.serve: error: the service needs the extra 'web', "
+            f"`pip install sbmlsim[web]`: {err}\n"
+        )
+        return EXIT_CONFIGURATION
     from sbmlsim.serve.runner import ModelRegistry
 
     try:

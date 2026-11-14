@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from examples.hctz_fitting import MODEL_PATH

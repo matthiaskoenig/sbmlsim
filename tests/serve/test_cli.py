@@ -7,6 +7,7 @@ a test runs the whole command up to the point where uvicorn would take over.
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ TOY = "tests.project_toy:PROJECT"
 @pytest.fixture
 def served(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Record what `main` would serve instead of running a server."""
+    pytest.importorskip("fastapi")
     recorded: dict[str, Any] = {}
 
     def record(app: Any, **kwargs: Any) -> None:
@@ -35,6 +37,7 @@ def served(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 @pytest.fixture
 def created(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """Record the arguments `main` creates the application with."""
+    pytest.importorskip("fastapi")
     recorded: dict[str, Any] = {}
 
     def record(registry: Any, **kwargs: Any) -> Any:
@@ -164,11 +167,24 @@ def test_a_static_path_which_is_no_directory_exits_with_the_usage(
 def test_a_model_which_is_no_project_is_a_configuration_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    pytest.importorskip("fastapi")
     code = cli.main(["--model", "toy=sbmlsim.no_such_module:PROJECT"])
     assert code == cli.EXIT_CONFIGURATION
     message = capsys.readouterr().err
     assert "toy" in message
     assert "sbmlsim.no_such_module" in message
+
+
+def test_an_install_without_the_extra_is_a_configuration_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # an install without fastapi, whatever this one has: the import of the
+    # application raises the `ImportError` of a missing module
+    monkeypatch.setitem(sys.modules, "sbmlsim.serve.app", None)
+    assert cli.main(["--model", f"toy={TOY}"]) == cli.EXIT_CONFIGURATION
+    message = capsys.readouterr().err
+    assert "pip install sbmlsim[web]" in message
+    assert "Traceback" not in message
 
 
 class _Server:
