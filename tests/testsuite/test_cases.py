@@ -5,12 +5,19 @@ import json
 import urllib.request
 from pathlib import Path
 
+import libsbml
 import numpy as np
 import pytest
 
 from sbmlsim.result import TimecourseResult
-from sbmlsim.testsuite.cases import API_URL, SemanticCase, SemanticSuite
+from sbmlsim.testsuite.cases import (
+    API_URL,
+    SemanticCase,
+    SemanticSuite,
+    converted_l3v2,
+)
 from sbmlsim.testsuite.comparison import compare_case
+from sbmlsim.testsuite.runner import CaseStatus, run_case
 
 SETTINGS = """start: 0
 duration: 2.0
@@ -361,3 +368,161 @@ def test_results_which_do_not_carry_one_column_per_variable_are_refused(
     assert case is not None
     with pytest.raises(ValueError, match="not the time and one column per variable"):
         case.expected()
+
+
+# the conversion of the cases which ship no level 3 version 2 encoding
+
+
+def _l2_source(directory: Path) -> Path:
+    """Write a level 2 model of a case into its directory."""
+    directory.mkdir(parents=True, exist_ok=True)
+    source = directory / "00001-sbml-l2v4.xml"
+    source.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" version="4">'
+        '<model id="m"><listOfCompartments>'
+        '<compartment id="c" size="1"/></listOfCompartments></model></sbml>',
+        encoding="utf-8",
+    )
+    return source
+
+
+def test_a_case_with_an_l3v2_encoding_is_not_converted(suite: SemanticSuite) -> None:
+    """The file of the suite is simulated as it is."""
+    case = suite.case("00001")
+    assert case.encoding == "l3v2" and case.converted_from == ""
+    assert case.model_path.name == "00001-sbml-l3v2.xml"
+
+
+def test_a_case_without_a_level_3_encoding_is_converted(suite: SemanticSuite) -> None:
+    """01743 ships level 2 only, newest l2v5."""
+    case = suite.case("01743")
+    assert case.encoding == "l3v2"
+    assert case.converted_from == "l2v5"
+    assert case.model_path.name == "01743-sbml-l3v2-converted.xml"
+
+
+def test_a_case_whose_newest_is_l3v1_is_converted(suite: SemanticSuite) -> None:
+    """00059 ships l3v1 as its newest encoding."""
+    case = suite.case("00059")
+    assert case.converted_from == "l3v1"
+    assert case.model_path.name.endswith("-l3v2-converted.xml")
+
+
+def test_a_conversion_is_cached(tmp_path: Path) -> None:
+    """A second call reads the pair and converts nothing."""
+    source = _l2_source(tmp_path)
+    xml, error = converted_l3v2(tmp_path, "00001", source, "l2v4")
+    assert not error
+    stamp = xml.stat().st_mtime_ns
+    side = (tmp_path / "00001-sbml-l3v2-converted.json").stat().st_mtime_ns
+    again, _ = converted_l3v2(tmp_path, "00001", source, "l2v4")
+    assert again == xml
+    assert xml.stat().st_mtime_ns == stamp
+    assert (tmp_path / "00001-sbml-l3v2-converted.json").stat().st_mtime_ns == side
+
+
+def test_a_conversion_is_not_run_again_when_cached(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The conversion function is called once for two requests."""
+    from sbmlsim.testsuite import cases
+
+    calls: list[str] = []
+    real = cases.to_level3
+    monkeypatch.setattr(
+        cases, "to_level3", lambda sbml, label: calls.append(label) or real(sbml, label)
+    )
+    source = _l2_source(tmp_path)
+    converted_l3v2(tmp_path, "00001", source, "l2v4")
+    converted_l3v2(tmp_path, "00001", source, "l2v4")
+    assert calls == ["00001"]
+
+
+def test_a_conversion_of_another_libsbml_is_converted_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sidecar of another libsbml invalidates the pair: the conversion runs again."""
+    from sbmlsim.testsuite import cases
+
+    calls: list[str] = []
+    real = cases.to_level3
+    monkeypatch.setattr(
+        cases, "to_level3", lambda sbml, label: calls.append(label) or real(sbml, label)
+    )
+    source = _l2_source(tmp_path)
+    converted_l3v2(tmp_path, "00001", source, "l2v4")
+    sidecar = tmp_path / "00001-sbml-l3v2-converted.json"
+    sidecar.write_text(json.dumps({"libsbml": "0.0.0", "from": "l2v4"}))
+    converted_l3v2(tmp_path, "00001", source, "l2v4")
+    assert calls == ["00001", "00001"]
+    assert json.loads(sidecar.read_text()) == {
+        "libsbml": libsbml.getLibSBMLDottedVersion(),
+        "from": "l2v4",
+    }
+
+
+def test_a_case_libsbml_refuses_is_not_converted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The message is returned and nothing is written."""
+    monkeypatch.setattr(
+        libsbml.SBMLDocument, "setLevelAndVersion", lambda *args, **kwargs: False
+    )
+    source = _l2_source(tmp_path)
+    xml, error = converted_l3v2(tmp_path, "00001", source, "l2v4")
+    assert "level 2 version 4" in error
+    assert not xml.exists()
+    assert not (tmp_path / "00001-sbml-l3v2-converted.json").exists()
+
+
+def test_a_case_libsbml_refuses_has_the_status_not_converted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`run_case` answers `not_converted`, not `not_read`."""
+    monkeypatch.setattr(
+        libsbml.SBMLDocument, "setLevelAndVersion", lambda *args, **kwargs: False
+    )
+    directory = _case(tmp_path, "00002")
+    (directory / "00002-sbml-l3v2.xml").unlink()
+    _l2_source(directory).rename(directory / "00002-sbml-l2v4.xml")
+    case = SemanticCase.from_directory(directory)
+    assert case is not None and case.conversion_error
+    result = run_case(case)
+    assert result.status is CaseStatus.NOT_CONVERTED
+    assert CaseStatus.NOT_CONVERTED != CaseStatus.NOT_READ
+
+
+def test_the_sidecar_is_written_after_its_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reader which trusts the sidecar finds the document: it is written first."""
+    from sbmlsim.testsuite import cases
+
+    real = cases.write_text_atomic
+    seen: list[tuple[str, bool]] = []
+
+    def record(path: Path, text: str) -> None:
+        if path.suffix == ".json":
+            seen.append(
+                (path.name, (tmp_path / "00001-sbml-l3v2-converted.xml").exists())
+            )
+        real(path, text)
+
+    monkeypatch.setattr(cases, "write_text_atomic", record)
+    converted_l3v2(tmp_path, "00001", _l2_source(tmp_path), "l2v4")
+    assert seen == [("00001-sbml-l3v2-converted.json", True)]
+
+
+def test_an_unwritable_case_directory_names_the_case(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A conversion which cannot be cached fails naming the case and directory."""
+    from sbmlsim.testsuite import cases
+
+    def refuse(path: Path, text: str) -> None:
+        raise PermissionError("read only")
+
+    monkeypatch.setattr(cases, "write_text_atomic", refuse)
+    with pytest.raises(OSError, match=r"'00001'.*" + str(tmp_path).replace("\\", "/")):
+        converted_l3v2(tmp_path, "00001", _l2_source(tmp_path), "l2v4")

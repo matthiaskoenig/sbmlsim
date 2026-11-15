@@ -62,6 +62,10 @@ class CaseStatus(StrEnum):
     loaded model after it differs from the first or fails, i.e. a simulation
     depends on the ones before it on the same model, see `repeat_check`.
 
+    `not_converted` : the case ships no level 3 version 2 encoding and libsbml
+    could not bring its newest one to it. This is a document which could not be
+    converted, not one roadrunner could not read (`not_read`).
+
     `not_read`, `simulation_error` and `missing_variable` are failures of the
     simulator and not of its numerics, so a report separates them: they say
     something different about what is missing.
@@ -73,6 +77,7 @@ class CaseStatus(StrEnum):
     SIMULATION_ERROR = "simulation_error"
     MISSING_VARIABLE = "missing_variable"
     REPEAT = "repeat"
+    NOT_CONVERTED = "not_converted"
 
 
 @dataclass(frozen=True)
@@ -430,6 +435,9 @@ def run_case(case: SemanticCase) -> CaseResult:
             test_tags=case.test_tags,
             encoding=case.encoding,
         )
+
+    if case.conversion_error:
+        return result(CaseStatus.NOT_CONVERTED, case.conversion_error[:300])
 
     simulator = Simulator(
         n_workers=1,
