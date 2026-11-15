@@ -542,16 +542,33 @@ def to_level3(sbml: str, label: str) -> str:
         else `sbml` unchanged.
 
     Raises:
-        ValueError: if libsbml cannot convert the model.
+        ValueError: if libsbml cannot convert the model, or converts it and
+            logs an error for what it could not convert, e.g. the `fast`
+            attribute of a reaction, which level 3 version 2 does not have and
+            which the converted model would silently lose. A document which is
+            level 3 already is not converted and so loses nothing, it is
+            returned as it is whatever it contains; the refusal is about what a
+            conversion drops, not about what sbmlsim can simulate.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
     if doc.getLevel() >= 3:
         return sbml
     level, version = doc.getLevel(), doc.getVersion()
-    if not doc.setLevelAndVersion(3, 2, False):
+    # reading logs entries of its own, only what the conversion logs counts
+    log: libsbml.SBMLErrorLog = doc.getErrorLog()
+    log.clearLog()
+    converted = doc.setLevelAndVersion(3, 2, False)
+    log = doc.getErrorLog()
+    problems = [
+        f"{log.getError(i).getMessage().strip()} (id {log.getError(i).getErrorId()})"
+        for i in range(log.getNumErrors())
+        if log.getError(i).getSeverity() >= libsbml.LIBSBML_SEV_ERROR
+    ]
+    if not converted or problems:
         raise ValueError(
             f"The model '{label}' of level {level} version {version} cannot be "
-            f"converted to SBML level 3 version 2."
+            f"converted to SBML level 3 version 2"
+            + (f": {' '.join(problems)}" if problems else ".")
         )
     return str(libsbml.writeSBMLToString(doc))
 

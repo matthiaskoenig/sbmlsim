@@ -421,3 +421,60 @@ def test_a_converted_model_simulates_as_before() -> None:
     # integrator; 1e-8 leaves room for integrator noise and still fails when
     # the conversion rescales a rate law or moves a constant
     assert deviation < 1e-8
+
+
+def _level_2_with_a_fast_reaction(level: int = 2, version: int = 4) -> str:
+    """Build a document of a level below 3 (or level 3 version 1) with a fast reaction."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(probe_sbml(PROBE))
+    assert doc.setLevelAndVersion(level, version)
+    doc.getModel().getReaction("J1").setFast(True)
+    return str(libsbml.writeSBMLToString(doc))
+
+
+def test_a_conversion_which_drops_a_feature_raises() -> None:
+    """A fast reaction has no level 3 version 2 encoding, libsbml logs it and converts."""
+    text = _level_2_with_a_fast_reaction()
+    with pytest.raises(ValueError, match=r"'toy' of level 2 version 4") as raised:
+        to_level3(text, "toy")
+    assert "fast reaction" in str(raised.value)
+    assert "'J1'" in str(raised.value)
+
+
+def test_a_level_2_model_without_such_a_feature_converts() -> None:
+    """The same document without the fast reaction converts to level 3 version 2."""
+    text = _level_2_with_a_fast_reaction().replace('fast="true"', 'fast="false"')
+    converted = libsbml.readSBMLFromString(to_level3(text, "toy"))
+    assert (converted.getLevel(), converted.getVersion()) == (3, 2)
+
+
+def test_a_level_3_model_with_a_fast_reaction_is_returned_unchanged() -> None:
+    """Nothing is converted and so nothing is lost, the document is not refused."""
+    text = _level_2_with_a_fast_reaction(3, 1)
+    assert to_level3(text, "toy") == text
+
+
+def test_a_conversion_which_logs_only_a_warning_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only an entry of the severity error or above refuses, a warning does not."""
+    original = libsbml.SBMLDocument.setLevelAndVersion
+
+    def warn(self: libsbml.SBMLDocument, *args: Any, **kwargs: Any) -> bool:
+        done = original(self, *args, **kwargs)
+        self.getErrorLog().add(
+            libsbml.SBMLError(
+                98010,
+                3,
+                2,
+                "a warning of the conversion",
+                0,
+                0,
+                libsbml.LIBSBML_SEV_WARNING,
+                libsbml.LIBSBML_CAT_SBML_L2V4_COMPAT,
+            )
+        )
+        return done
+
+    monkeypatch.setattr(libsbml.SBMLDocument, "setLevelAndVersion", warn)
+    text = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
+    assert "level3/version2" in to_level3(text, "toy")
