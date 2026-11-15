@@ -114,7 +114,7 @@ The limits fix the axes, so two settings of the knobs are compared on one scale 
 | --- | --- |
 | `variant` | the variant of the model (`Project.variants`), its default variant without |
 | `end` | the end of the simulation, in the time unit of the model, required, greater than 0 and at most `10000` |
-| `points` | the output steps, `200` without, from 2 to `2000`; a run answers the `points + 1` times from 0 to `end` |
+| `points` | the output steps, `200` without, from 2 to `2000`; a run answers the `points + 1` times from 0 to `end`, which the integrator integrates to, so a curve is the solution at its times and not interpolated between the steps of the integrator |
 | `xUnit` | the unit the time axis is delivered in, the time unit of the model without |
 
 Its `<preinit target="BW" value="75"/>` children are the values of the pre-initialization which are no knob, e.g. a body weight; a knob writes its target over them. Its `<derived target="f_renal_function" formula="min(crcl / 110, 1)"/>` children are its derived targets, see [Derived targets](#derived-targets).

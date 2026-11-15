@@ -459,7 +459,9 @@ def _recipe_curves(
             if recipe["parameter"] is not None:
                 preinit[recipe["parameter"]] = value
         simulation = Simulation(
-            end=run["end"], preinit_changes=dict(sorted(preinit.items()))
+            end=run["end"],
+            preinit_changes=dict(sorted(preinit.items())),
+            times=times.tolist(),
         )
         result = simulator.run(
             model,

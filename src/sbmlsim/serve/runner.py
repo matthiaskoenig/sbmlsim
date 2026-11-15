@@ -1670,7 +1670,13 @@ def _scan(
         if gridded
         else []
     )
-    simulation = Simulation(end=panel.simulation.end, preinit_changes=preinit)
+    # the output times are integrated to, so a curve is the solution at its
+    # times and not the line between the steps of the integrator around them
+    simulation = Simulation(
+        end=panel.simulation.end,
+        preinit_changes=preinit,
+        times=output_times(panel).tolist(),
+    )
     return _Resolved(
         scan=Scan(simulation, dimensions), axes=axes, preinit=preinit, grid=changed
     )
