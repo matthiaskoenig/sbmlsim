@@ -1354,19 +1354,9 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
 
     Raises:
         ValueError: if the model has an entity of the id of a parameter of
-            sbmlsim, or a model of a level before 3 cannot be converted to
-            level 3.
+            sbmlsim.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
-    if doc.getLevel() < 3 and not doc.setLevelAndVersion(3, 2, False):
-        # the initial assignments and the attributes of the triggers which
-        # sbmlsim sets are elements of level 3 (initial assignments from
-        # level 2 version 2), libsbml converts the semantics of the levels
-        raise ValueError(
-            f"The model '{label}' of level {doc.getLevel()} version "
-            f"{doc.getVersion()} cannot be converted to SBML level 3 version 2 "
-            f"for AMICI."
-        )
     model: libsbml.Model = doc.getModel()
     level = doc.getLevel()
     rules = symbols.assignment_rules

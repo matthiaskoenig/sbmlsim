@@ -1980,8 +1980,6 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> tuple[str, frozenset[str
         because their value is not finite.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
-    if doc.getLevel() < 2:
-        doc.setLevelAndVersion(2, 4)
     sbml_model: libsbml.Model = doc.getModel()
     symbols = model.symbols
     # a conversion factor is a constant parameter in SBML

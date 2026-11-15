@@ -141,6 +141,9 @@ class SBMLModel(AbstractModel, ABC):
             if self.source.content is not None
             else Path(str(self.source.path)).read_text(encoding="utf-8")
         )
+        # every engine simulates SBML level 3, a model of a lower level is
+        # converted once here, before `comp` is flattened
+        sbml = to_level3(sbml, self.sid or str(self.source.path or "model"))
         # roadrunner looks for the package comp in the text of the <sbml> tag
         # and misses it in a file with the line endings of Windows and in the
         # SBML as a string, it then simulates a hierarchical model unflattened;
@@ -525,6 +528,32 @@ def _is_helper(sid: str) -> bool:
     `sbmlsim.model.event_rows`.
     """
     return sid.endswith(INITIAL_SUFFIX) or sid.startswith(MARKER_PREFIX)
+
+
+def to_level3(sbml: str, label: str) -> str:
+    """Get the SBML as level 3 version 2, the text as given when it is level 3.
+
+    Args:
+        sbml: the SBML of the model.
+        label: the name of the model in a message.
+
+    Returns:
+        The SBML converted to level 3 version 2 when its level is below 3,
+        else `sbml` unchanged.
+
+    Raises:
+        ValueError: if libsbml cannot convert the model.
+    """
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    if doc.getLevel() >= 3:
+        return sbml
+    level, version = doc.getLevel(), doc.getVersion()
+    if not doc.setLevelAndVersion(3, 2, False):
+        raise ValueError(
+            f"The model '{label}' of level {level} version {version} cannot be "
+            f"converted to SBML level 3 version 2."
+        )
+    return str(libsbml.writeSBMLToString(doc))
 
 
 def _is_hierarchical(sbml: str) -> bool:

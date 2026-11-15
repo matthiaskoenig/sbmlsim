@@ -10,7 +10,7 @@ import pytest
 
 from sbmlsim.engine import Engine
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel, load_model
-from sbmlsim.model.model_sbml import description
+from sbmlsim.model.model_sbml import description, to_level3
 from sbmlsim.model.symbols import EventSymbols
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import DEMO_SBML, HCTZ_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
@@ -369,3 +369,55 @@ model ruled
   J1: s1 -> s4; p1 * s1
 end
 """
+
+
+def test_a_level_2_model_is_converted_at_load() -> None:
+    """A model of level 2 is level 3 version 2 in `sbml`, as every engine gets it."""
+    model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
+    assert "level3/version2" in model.sbml
+
+
+def test_a_level_3_model_is_not_rewritten() -> None:
+    """A level 3 version 2 document comes back as the text it was given."""
+    sbml = Path(HCTZ_SBML).read_text(encoding="utf-8")
+    assert to_level3(sbml, "hctz") == sbml
+
+
+def test_a_level_3_version_1_model_is_not_rewritten() -> None:
+    """A level 3 version 1 document is not upgraded, its text is kept."""
+    sbml = Path(MIDAZOLAM_SBML).read_text(encoding="utf-8")
+    assert to_level3(sbml, "midazolam") == sbml
+
+
+def test_a_document_which_cannot_be_converted_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused conversion raises a `ValueError` naming the model, level, version."""
+    # libsbml converts every level 1 document we tried, so the refusal is forced
+    monkeypatch.setattr(
+        libsbml.SBMLDocument, "setLevelAndVersion", lambda *args, **kwargs: False
+    )
+    sbml = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match=r"'toy' of level 2 version 3"):
+        to_level3(sbml, "toy")
+
+
+def test_a_converted_model_simulates_as_before() -> None:
+    """The repressilator of level 2 gives the same trajectory converted or raw."""
+    import numpy as np
+    import roadrunner
+
+    text = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
+    results = []
+    for sbml in (text, to_level3(text, "repressilator")):
+        r = roadrunner.RoadRunner(sbml)
+        r.integrator.relative_tolerance = 1e-10
+        r.integrator.absolute_tolerance = 1e-12
+        results.append(np.asarray(r.simulate(0, 100, 101)))
+    raw, converted = results
+    assert raw.shape == converted.shape
+    deviation = float(np.max(np.abs(raw - converted) / (np.abs(raw) + 1e-9)))
+    # measured 0.0 (bitwise equal) at a relative tolerance of 1e-10 of the
+    # integrator; 1e-8 leaves room for integrator noise and still fails when
+    # the conversion rescales a rate law or moves a constant
+    assert deviation < 1e-8
