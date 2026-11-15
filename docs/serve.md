@@ -280,7 +280,7 @@ Scenarios are of the app and not of the SBML, so they have no annotation.
 ### The command
 
 ```bash
-python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...] [--host HOST] [--port PORT] [--static DIR] [--allow-origin ORIGIN ...] [--experiments] [--open]
+python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...] [--host HOST] [--port PORT] [--static DIR] [--allow-origin ORIGIN ...] [--experiments] [--open] [--export DIR]
 ```
 
 | option | what it does |
@@ -292,10 +292,11 @@ python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...] [--host 
 | `--allow-origin ORIGIN` | an origin which may talk to the API from another one (CORS); repeat it per origin, none without |
 | `--experiments` | serve the routes which run the simulation experiments of a model as jobs, see [The simulation experiments as jobs](#the-simulation-experiments-as-jobs); off without, which is what a public deployment keeps |
 | `--open` | open the browser on the service once it is up; off without |
+| `--export DIR` | serve nothing and write the static bundle of every model into `DIR/<model id>/` instead, see [The static bundle](#the-static-bundle) |
 
 The projects are loaded once, before the server starts, and the registry of the models is what a request reaches: a request names a model id of this command line and a panel id of that model and nothing else, never a module, a project reference or a path. A model is loaded and compiled when a panel of it is first simulated, or when the study data of a panel is first asked for, whose units its model resolves, and stays warm after that.
 
-The address of the service is written on stdout, everything else is logged on stderr. The exit codes are the ones of [`python -m sbmlsim.run`](run.md): 0 when the server stopped, 2 for a bad command line, which argparse writes with its usage, and 4 for a model which is no project, whose app names something a variant of the model does not declare, whose page declares one knob id differently on two panels or has a scenario of a value its knob does not take, or whose formula of a derived target is no math or reads no knob of its panel.
+The address of the service is written on stdout, everything else is logged on stderr. The exit codes are the ones of [`python -m sbmlsim.run`](run.md): 0 when the server stopped or the bundles of `--export` are written, 2 for a bad command line, which argparse writes with its usage, and 4 for a model which is no project, whose app names something a variant of the model does not declare, whose page declares one knob id differently on two panels or has a scenario of a value its knob does not take, or whose formula of a derived target is no math or reads no knob of its panel.
 
 ### The teaching mode: one command
 
@@ -616,9 +617,40 @@ The defaults are the ones of the teaching mode. A service which is reachable fro
 - **`GET /healthz` as the probe.** It answers without loading a model, so it stays cheap while a model compiles.
 - **Memory.** Every model which is asked for stays loaded for the life of the process, one roadrunner instance per model and variant. On top of the models the caches take at most 320 MiB: 256 MiB of the answers of the simulations and 64 MiB of the runs the panels of a page share, see [One simulation per request, once](#one-simulation-per-request-once) and [One run per state of a page](#one-run-per-state-of-a-page); a service of several applications in one process has these caches per application.
 
+## The static bundle
+
+A page whose panels run without a server, e.g. an app of a model on GitHub Pages, answers the routes of the service inside the page: the engine sbmlsim-core runs the simulations in the browser of the reader, and the endpoint of the page reads everything else from a bundle which sbmlsim writes. `--export DIR` writes the bundle of every model of the command line and exits instead of serving:
+
+```bash
+python -m sbmlsim.serve --model hctz=examples.panels.hctz:PROJECT --export bundles
+```
+
+```text
+bundles/hctz/bundle.json
+bundles/hctz/models/<model key>/model.xml
+```
+
+The bundle is built from what the service has, so it carries the very bodies the routes answer: the models are checked as the service checks them at startup, and `bundle.json` holds, for a request without a `variant` (the key `""`) and for every variant the app is served in, the body of `GET .../app` (`null` without an app) and for every panel the bodies of `GET .../panels/{panel}` and `GET .../panels/{panel}/data` and the recipe of its simulation (`run`). The export needs no extra `web`; the directory of every bundle is written on stdout, and a bundle replaces the directory of an earlier export as a whole.
+
+The recipe leaves nothing of the semantics of a simulation to the page:
+
+| field of `run` | what it is |
+| --- | --- |
+| `variant`, `model_sha256` | the variant which runs and the sha256 of its SBML, as the provenance of the service names them |
+| `model` | the key of the model it runs on, in `models` |
+| `start`, `end`, `points` | the output times, `points + 1` equidistant times in the time unit of the model |
+| `x`, `units` | the `x` and the `units` of the answer of the service, the times converted as the service converts them |
+| `curves` | per curve the selection of the model and the factor from the unit of the model to the delivered unit |
+| `preinit` | the pre-initialization of the panel, in the units of the model |
+| `knobs` | per knob its `target`, the `factor` from the unit of the knob into the unit of the target, the `parameter` the formulas of the derived targets read, and the `unit` of an axis of the grid over it |
+
+A value `v` of a knob sets its target to `v * factor` and its parameter to `v`, and the pre-initialization of a point is these together with `preinit`. A panel without derived targets runs on the SBML of its variant; a panel with derived targets runs on a model of its own (the key `<variant>-<12 hex digits>`, shared by the panels of the same derived targets), the SBML of the variant with a constant parameter `panel_knob__<knob id>` per knob a formula reads and an initial assignment of every derived target to its formula over them. The MathML of a formula is written from the same parse tree the service evaluates it from, with the operations as written and the numbers as their doubles (`sbmlsim.simulator.formula.formula_mathml`), so the model computes the derived targets the service computes. A derived target which is no parameter or compartment, or which a rule sets, is refused. Every unit conversion is a factor: a unit with an offset is refused.
+
+Each model of `models` names its SBML, the directory its compiled model goes to (sbmlsim-core writes `model.wasm` and `model.json` there), its variant, the selections of the curves of its panels, the settings of the integrator of the project in the names of sbmlsim-core (`relative_tolerance`, `absolute_tolerance`, `maximum_num_steps`, `maximum_time_step`, `initial_time_step`, `stiff`, `linear_solver`, `jacobian`; a setting of roadrunner sbmlsim-core does not have is logged and not carried) and `absolute_tolerances`, the tolerance of every state by its id as the settings of the project give it in roadrunner (`RoadrunnerSBMLModel.tolerances`). Simulating the exported SBML with this recipe alone reproduces the answer of `POST .../simulate`, which `tests/serve/test_export.py` checks with roadrunner. No number of a bundle is `NaN` or infinite; the export refuses them.
+
 ## The contracts
 
-`panel/1` (the declaration and the answer of a simulation), `paneldata/1` (the study data) and `app/1` (the pages of a model) are the exchange point of this feature: the python side writes them and a renderer reads them, and neither knows anything else of the other.
+`panel/1` (the declaration and the answer of a simulation), `paneldata/1` (the study data), `app/1` (the pages of a model) and `panelbundle/1` (the static bundle) are the exchange point of this feature: the python side writes them and a renderer reads them, and neither knows anything else of the other.
 
 What a renderer may rely on:
 
@@ -653,3 +685,4 @@ What a renderer must not rely on:
 | the study data behind the curves | `sbmlsim.serve.data` |
 | the runs of the simulation experiments as jobs | `sbmlsim.serve.jobs` |
 | the command line | `sbmlsim.serve.cli`, `python -m sbmlsim.serve` |
+| the static bundle and the MathML of a formula | `sbmlsim.serve.export`, `sbmlsim.simulator.formula.formula_mathml` |

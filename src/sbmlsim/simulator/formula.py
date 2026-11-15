@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import functools
 import importlib.util
+import math
 import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -549,7 +550,8 @@ class _NumpyCode:
         if name in _RECIPROCALS:
             return _Code(f"1.0 / numpy.{_RECIPROCALS[name]}({texts[0]})", _MUL)
         if name in _OF_RECIPROCAL:
-            return _Code(f"numpy.{_OF_RECIPROCAL[name]}(1.0 / {texts[0]})", _ATOM)
+            argument = _grouped(values[0], values[0].level <= _MUL)
+            return _Code(f"numpy.{_OF_RECIPROCAL[name]}(1.0 / {argument})", _ATOM)
         if name == "pow":
             return _power(values[0], values[1])
         if name in ("min", "max"):
@@ -604,6 +606,355 @@ def _power(base: _Code, exponent: _Code) -> _Code:
         f"{_grouped(exponent, exponent.level < _POW)}",
         _POW,
     )
+
+
+#: the namespace of the MathML of SBML
+MATHML_NS = "http://www.w3.org/1998/Math/MathML"
+
+#: the symbol of the time of SBML, `time` of the math of PEtab
+_TIME_CSYMBOL = (
+    '<csymbol encoding="text" '
+    'definitionURL="http://www.sbml.org/sbml/symbols/time"> time </csymbol>'
+)
+
+#: the functions of PEtab of one argument as the elements of MathML
+_MATHML_FUNCTIONS: dict[str, str] = {
+    "exp": "exp",
+    "ln": "ln",
+    "sqrt": "root",
+    "abs": "abs",
+    "sin": "sin",
+    "cos": "cos",
+    "tan": "tan",
+    "sinh": "sinh",
+    "cosh": "cosh",
+    "tanh": "tanh",
+    "arcsin": "arcsin",
+    "arccos": "arccos",
+    "arctan": "arctan",
+    "arcsinh": "arcsinh",
+    "arccosh": "arccosh",
+    "arctanh": "arctanh",
+}
+
+#: the comparisons of PEtab as the elements of MathML
+_MATHML_COMPARISONS: dict[str, str] = {
+    "==": "eq",
+    "!=": "neq",
+    "<": "lt",
+    ">": "gt",
+    "<=": "leq",
+    ">=": "geq",
+}
+
+#: the operators of PEtab which group to the left as the elements of MathML
+_MATHML_OPERATORS: dict[str, str] = {
+    "+": "plus",
+    "-": "minus",
+    "*": "times",
+    "/": "divide",
+}
+
+
+def formula_mathml(formula: str, names: Mapping[str, str] | None = None) -> str:
+    """Write a formula of the math of PEtab as the MathML of SBML.
+
+    The MathML is written from the parse tree `compile_formula` compiles
+    (`_NumpyCode`), with the same meaning, so a model which carries it
+    computes what the compiled formula computes: a number is the double of its
+    text and every operation is the one written, in the order written, `x /
+    90` is one division by 90 and `a + b + c` adds `a` and `b` first. A
+    comparison, `&&`, `||` and `!` are the elements of MathML, `piecewise` is a
+    `piecewise` whose last value is its `otherwise`, a truth value read as a
+    number is `piecewise(1, b, 0)` and a number read as a truth value is `x !=
+    0`, as the parser of PEtab reads them. `sign(x)` is the piecewise of 1, -1
+    and 0 and else `x`, which is `NaN` for `NaN` as `numpy.sign`, `min(a, b)`
+    and `max(a, b)` are the piecewise of `a <= b` and `a >= b`, which a model
+    of every level of SBML carries, `log(x, b)` is `log` with its `logbase`,
+    `log10` and `log2` as well, `sec(x)` is `1 / cos(x)` and `arcsec(x)` is
+    `arccos(1 / x)`, and so on for the other reciprocal functions, `pow` is
+    `power`, and `time` is the symbol of the time of SBML.
+
+    Args:
+        formula: the formula, whose identifiers are SIds; a concentration
+            `[S]` and an identifier with a dot are refused, they are no
+            identifiers of SBML.
+        names: the identifier of the model of an identifier of the formula,
+            e.g. `{"crcl": "panel_knob__crcl"}`; an identifier without one is
+            written as it is.
+
+    Returns:
+        The MathML, a `math` element of the namespace `MATHML_NS`.
+
+    Raises:
+        ValueError: if the formula is not valid math of PEtab, and for a
+            concentration or an identifier with a dot.
+    """
+    if _BRACKETS.search(formula) or _DOTTED.search(formula):
+        raise ValueError(
+            f"The formula '{formula}' reads a concentration '[S]' or an identifier "
+            f"with a dot, which are no identifiers of SBML."
+        )
+    try:
+        parse_math(formula)
+        body = _MathMLCode(dict(names or {})).compile(_parse_tree(formula))
+    except Exception as err:
+        raise ValueError(f"The formula '{formula}' is not valid math: {err}") from err
+    return f'<math xmlns="{MATHML_NS}">{body}</math>'
+
+
+@dataclass(frozen=True)
+class _MathML:
+    """The MathML of a node of a parse tree, see `_MathMLCode`.
+
+    Attributes:
+        text: the MathML.
+        boolean: whether it is a truth value.
+        literal: the value of a literal, a number or a truth value.
+    """
+
+    text: str
+    boolean: bool = False
+    literal: float | bool | None = None
+
+
+def _applied(operator: str, *operands: _MathML) -> str:
+    """Write the application of an operator of MathML to its operands."""
+    return f"<apply><{operator}/>{''.join(o.text for o in operands)}</apply>"
+
+
+def _piecewise_of(pieces: Sequence[tuple[str, str]], otherwise: str) -> str:
+    """Write a `piecewise` of MathML of its pieces, value and condition."""
+    parts = "".join(f"<piece>{value}{condition}</piece>" for value, condition in pieces)
+    return f"<piecewise>{parts}<otherwise>{otherwise}</otherwise></piecewise>"
+
+
+class _MathMLCode:
+    """Write the parse tree of the math of PEtab as the MathML of SBML.
+
+    It is the twin of `_NumpyCode` on the same tree and the same rules, see
+    `formula_mathml`.
+    """
+
+    def __init__(self, names: Mapping[str, str]) -> None:
+        """Create the writer of one formula.
+
+        Args:
+            names: the identifier of the model of an identifier of the formula.
+        """
+        self._names = names
+
+    @staticmethod
+    def _number(value: float) -> _MathML:
+        """Write a number as the double of its text.
+
+        A finite number is written positionally with the shortest digits which
+        read back as its double (`numpy.format_float_positional`), so a reader
+        of MathML which reads the number with `strtod` gets that double and
+        none multiplies a mantissa by a power of ten.
+        """
+        if math.isnan(value):
+            return _MathML("<notanumber/>", literal=value)
+        if math.isinf(value):
+            text = "<infinity/>"
+            if value < 0:
+                text = f"<apply><minus/>{text}</apply>"
+            return _MathML(text, literal=value)
+        digits = np.format_float_positional(value, unique=True, trim="0")
+        return _MathML(f'<cn type="real"> {digits} </cn>', literal=value)
+
+    def compile(self, tree: Any) -> str:
+        """Write the MathML of the parse tree of a formula.
+
+        Args:
+            tree: the parse tree, see `_parse_tree`.
+
+        Returns:
+            The MathML of the value of the formula; a truth value literal is 1
+            or 0, as the parser of PEtab gives it.
+        """
+        code = self._visit(tree)
+        return self._numeric(code).text if code.literal is not None else code.text
+
+    def _visit(self, ctx: Any) -> _MathML:
+        result = ctx.accept(self)
+        if not isinstance(result, _MathML):
+            raise ValueError(f"Unexpected expression: {ctx.getText()}")
+        return result
+
+    def visitChildren(self, ctx: Any) -> _MathML:
+        """Visit the only child of a node which wraps a rule."""
+        if ctx.getChildCount() != 1:
+            raise ValueError(f"Unexpected expression: {ctx.getText()}")
+        return self._visit(ctx.getChild(0))
+
+    def visitPetabExpression(self, ctx: Any) -> _MathML:
+        """Visit the root."""
+        return self._visit(ctx.getChild(0))
+
+    def visitParenExpr(self, ctx: Any) -> _MathML:
+        """Visit an expression in parentheses, which the tree groups."""
+        return self._visit(ctx.getChild(1))
+
+    def visitNumber(self, ctx: Any) -> _MathML:
+        """Write a number as the double of its text."""
+        return self._number(float(ctx.getText()))
+
+    def visitVar(self, ctx: Any) -> _MathML:
+        """Write an identifier, `time` as the symbol of the time of SBML."""
+        name = ctx.getText()
+        if name in self._names:
+            return _MathML(f"<ci> {self._names[name]} </ci>")
+        if name == "time":
+            return _MathML(_TIME_CSYMBOL)
+        return _MathML(f"<ci> {name} </ci>")
+
+    def visitBooleanLiteral(self, ctx: Any) -> _MathML:
+        """Write `true` or `false`."""
+        value = ctx.TRUE() is not None
+        return _MathML("<true/>" if value else "<false/>", boolean=True, literal=value)
+
+    def visitUnaryExpr(self, ctx: Any) -> _MathML:
+        """Write `-a` or `+a`."""
+        operand = self._numeric(self._visit(ctx.getChild(1)))
+        if ctx.getChild(0).getText() == "+":
+            return operand
+        return _MathML(_applied("minus", operand))
+
+    def visitMultExpr(self, ctx: Any) -> _MathML:
+        """Write `a * b` or `a / b`."""
+        return self._chain(ctx)
+
+    def visitAddExpr(self, ctx: Any) -> _MathML:
+        """Write `a + b` or `a - b`."""
+        return self._chain(ctx)
+
+    def visitPowerExpr(self, ctx: Any) -> _MathML:
+        """Write `a ^ b` as `power`."""
+        base = self._numeric(self._visit(ctx.getChild(0)))
+        exponent = self._numeric(self._visit(ctx.getChild(2)))
+        return _MathML(_applied("power", base, exponent))
+
+    def _chain(self, ctx: Any) -> _MathML:
+        """Write a chain of binary operations which group to the left.
+
+        The tree is walked down without recursion, as `_NumpyCode._chain`
+        does, and every operation is one application of two operands, so the
+        operations are the ones written in the order written.
+        """
+        spine = [ctx]
+        while type(spine[-1].getChild(0)).__name__ in _CHAINED:
+            spine.append(spine[-1].getChild(0))
+        code = self._numeric(self._visit(spine[-1].getChild(0)))
+        for node in reversed(spine):
+            token = node.getChild(1).getText()
+            if token not in _MATHML_OPERATORS:
+                raise ValueError(f"Unexpected operator '{token}' in {node.getText()}")
+            right = self._numeric(self._visit(node.getChild(2)))
+            code = _MathML(_applied(_MATHML_OPERATORS[token], code, right))
+        return code
+
+    def visitComparisonExpr(self, ctx: Any) -> _MathML:
+        """Write a comparison."""
+        left = self._numeric(self._visit(ctx.getChild(0)))
+        right = self._numeric(self._visit(ctx.getChild(2)))
+        operator = _MATHML_COMPARISONS[ctx.getChild(1).getText()]
+        return _MathML(_applied(operator, left, right), boolean=True)
+
+    def visitBooleanNotExpr(self, ctx: Any) -> _MathML:
+        """Write `!a`."""
+        operand = self._condition(self._visit(ctx.getChild(1)))
+        return _MathML(_applied("not", operand), boolean=True)
+
+    def visitBooleanAndOrExpr(self, ctx: Any) -> _MathML:
+        """Write `a && b` or `a || b`."""
+        left = self._condition(self._visit(ctx.getChild(0)))
+        right = self._condition(self._visit(ctx.getChild(2)))
+        operator = "and" if ctx.BOOLEAN_AND() else "or"
+        return _MathML(_applied(operator, left, right), boolean=True)
+
+    def visitArgumentList(self, ctx: Any) -> list[_MathML]:
+        """Write the arguments of a call."""
+        return [self._visit(child) for child in ctx.children[::2]]
+
+    def visitFunctionCall(self, ctx: Any) -> _MathML:
+        """Write a call of a function of PEtab."""
+        name = ctx.getChild(0).getText()
+        arguments: list[_MathML] = (
+            ctx.getChild(2).accept(self) if ctx.getChildCount() >= 4 else []
+        )
+        if name == "piecewise":
+            return self._piecewise(ctx, arguments)
+        values = [self._numeric(argument) for argument in arguments]
+        arity = 2 if name in ("pow", "min", "max") else 1
+        if name == "log" and len(values) == 2:
+            arity = 2
+        if len(values) != arity:
+            raise ValueError(
+                f"Unexpected number of arguments: {len(values)} in {ctx.getText()}"
+            )
+        one = self._number(1.0)
+        if name in _MATHML_FUNCTIONS or (name == "log" and arity == 1):
+            return _MathML(_applied(_MATHML_FUNCTIONS.get(name, "ln"), values[0]))
+        if name in _RECIPROCALS:
+            inner = _MathML(_applied(_RECIPROCALS[name], values[0]))
+            return _MathML(_applied("divide", one, inner))
+        if name in _OF_RECIPROCAL:
+            inner = _MathML(_applied("divide", one, values[0]))
+            return _MathML(_applied(_OF_RECIPROCAL[name], inner))
+        if name == "pow":
+            return _MathML(_applied("power", values[0], values[1]))
+        if name in ("min", "max"):
+            a, b = values
+            comparison = _applied("leq" if name == "min" else "geq", a, b)
+            return _MathML(_piecewise_of([(a.text, comparison)], b.text))
+        if name == "sign":
+            x = values[0]
+            zero = self._number(0.0)
+            pieces = [
+                (self._number(1.0).text, _applied("gt", x, zero)),
+                (self._number(-1.0).text, _applied("lt", x, zero)),
+                (zero.text, _applied("eq", x, zero)),
+            ]
+            return _MathML(_piecewise_of(pieces, x.text))
+        if name in ("log10", "log2"):
+            base = self._number(10.0 if name == "log10" else 2.0)
+            return self._logarithm(values[0], base)
+        if name == "log":
+            return self._logarithm(values[0], values[1])
+        raise ValueError(f"Unknown function: {ctx.getText()}")
+
+    @staticmethod
+    def _logarithm(x: _MathML, base: _MathML) -> _MathML:
+        """Write the logarithm of a base, `log` with its `logbase`."""
+        return _MathML(f"<apply><log/><logbase>{base.text}</logbase>{x.text}</apply>")
+
+    def _piecewise(self, ctx: Any, arguments: list[_MathML]) -> _MathML:
+        """Write `piecewise(value, condition, ..., otherwise)`."""
+        if len(arguments) % 2 != 1:
+            raise ValueError(
+                f"Unexpected number of arguments: {len(arguments)} in {ctx.getText()}"
+            )
+        values = [self._numeric(value).text for value in arguments[::2]]
+        conditions = [self._condition(c).text for c in arguments[1::2]]
+        return _MathML(
+            _piecewise_of(list(zip(values[:-1], conditions, strict=True)), values[-1])
+        )
+
+    def _numeric(self, code: _MathML) -> _MathML:
+        """Read a truth value as a number, 1 or 0, as `petab.v1.math` does."""
+        if not code.boolean:
+            return code
+        if code.literal is not None:
+            return self._number(1.0 if code.literal else 0.0)
+        one, zero = self._number(1.0), self._number(0.0)
+        return _MathML(_piecewise_of([(one.text, code.text)], zero.text))
+
+    def _condition(self, code: _MathML) -> _MathML:
+        """Read a number as a truth value, true when it is not 0."""
+        if code.boolean:
+            return code
+        return _MathML(_applied("neq", code, self._number(0.0)), boolean=True)
 
 
 @dataclass(frozen=True)
