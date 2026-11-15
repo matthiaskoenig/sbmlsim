@@ -74,6 +74,12 @@ ENCODINGS: tuple[str, ...] = (
 #: it are converted to
 TARGET_ENCODING = "l3v2"
 
+#: the format of the cached conversions, raised whenever the behavior of
+#: `converted_l3v2` or of `to_level3` changes what a conversion is (a conversion
+#: which is refused or converted differently), so no cache of an older
+#: behavior is reused; the libsbml of the sidecar covers its own changes
+CONVERSION_FORMAT = 1
+
 
 def converted_l3v2(
     path: Path, cid: str, source: Path, encoding: str
@@ -82,9 +88,9 @@ def converted_l3v2(
 
     The conversion is `to_level3`, written into the directory of the case as
     `<cid>-sbml-l3v2-converted.xml` with the sidecar
-    `<cid>-sbml-l3v2-converted.json` which names the libsbml which wrote it and
-    the encoding it was converted from. A cached pair is reused only when its
-    sidecar names the running libsbml. The suite cache is shared by every
+    `<cid>-sbml-l3v2-converted.json` which names the libsbml which wrote it, the
+    `CONVERSION_FORMAT` and the encoding it was converted from. A cached pair is
+    reused only when its sidecar names the running libsbml and the current format. The suite cache is shared by every
     process of a run, so both files are written atomically, the document first
     and the sidecar after it: the sidecar is what a reader trusts, so it never
     exists before the document it vouches for.
@@ -111,7 +117,9 @@ def converted_l3v2(
     try:
         if (
             converted.exists()
-            and json.loads(sidecar.read_text(encoding="utf-8"))["libsbml"] == version
+            and (recorded := json.loads(sidecar.read_text(encoding="utf-8")))["libsbml"]
+            == version
+            and recorded["format"] == CONVERSION_FORMAT
         ):
             return converted, ""
     except OSError, ValueError, KeyError, TypeError:
@@ -124,7 +132,12 @@ def converted_l3v2(
         return converted, str(err)
     try:
         write_text_atomic(converted, text)
-        write_text_atomic(sidecar, json.dumps({"libsbml": version, "from": encoding}))
+        write_text_atomic(
+            sidecar,
+            json.dumps(
+                {"libsbml": version, "format": CONVERSION_FORMAT, "from": encoding}
+            ),
+        )
     except OSError as err:
         raise OSError(
             f"'{cid}': the conversion cannot be written into '{path}': {err}"
@@ -300,7 +313,7 @@ class SemanticCase:
 
         Returns:
             The SBML file, the encoding it was converted from (empty when the
-            suite ships `l3v2`) and the conversion error (empty unless libsbml
+            newest encoding is level 3, which is simulated as shipped) and the conversion error (empty unless libsbml
             refused, the file is then the newest encoding as the suite ships
             it), or `None` if the case has no model.
         """
@@ -308,7 +321,9 @@ class SemanticCase:
             model_path = path / f"{cid}-sbml-{encoding}.xml"
             if not model_path.exists():
                 continue
-            if encoding == TARGET_ENCODING:
+            if encoding.startswith("l3"):
+                # a level 3 document is simulated as the suite ships it, since
+                # the conversion returns it unchanged
                 return model_path, "", ""
             converted, error = converted_l3v2(path, cid, model_path, encoding)
             if error:

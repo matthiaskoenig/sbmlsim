@@ -25,11 +25,11 @@ The cases are cached in `~/.cache/sbmlsim/test-suite/<commit>/` (or under `XDG_C
 
 The cases come from the branch `develop` of the suite, pinned to a commit (`SUITE_COMMIT` in `sbmlsim.testsuite.cases`), and not from a release: the releases of the suite are rare, and a case fixed upstream would wait for the next one. Case 01511, whose output grid stepped across the window of its trigger in release 3.5.0, was fixed in [d6dcd2c](https://github.com/sbmlteam/sbml-test-suite/commit/d6dcd2cc6408d5eb881638ac6ce7a05fd7d2e4d1) and passes since. The pinned commit has 1789 timecourse cases, and 1576 of them pass. Of the 213 that do not, 206 cannot be read, 5 fail in the integrator (see [roadrunner and the stoichiometry math](#roadrunner-and-the-stoichiometry-math)) and 2 cannot be converted to SBML level 3.
 
-Only the timecourse cases run, each in SBML level 3 version 2, which is the only level `sbmlsim` simulates:
+Only the timecourse cases run, each in SBML level 3, which is the only level `sbmlsim` simulates:
 
 - The stochastic cases need many replicates and a comparison of distributions, and the flux balance cases are no timecourses (they have no duration). Neither is run.
-- The older encodings of a case (SBML L1V2 up to L3V2) contain the same model. They test the SBML reader, which [sbmlutils](https://github.com/matthiaskoenig/sbmlutils) covers, so only one is simulated: the `l3v2` encoding when the case ships it, else the newest encoding it ships, which is converted to level 3 version 2 with libsbml.
-- A conversion is written once into the directory of the case as `NNNNN-sbml-l3v2-converted.xml`, next to a sidecar `NNNNN-sbml-l3v2-converted.json` that names the version of libsbml which wrote it, and it is written again when the installed libsbml is another one. A cache from the same libsbml but from an older conversion is not noticed, so delete the `*-converted.*` files of the cache after a change of the conversion.
+- The older encodings of a case (SBML L1V2 up to L3V2) contain the same model. They test the SBML reader, which [sbmlutils](https://github.com/matthiaskoenig/sbmlutils) covers, so only one is simulated: the newest encoding the case ships. When that is level 3 (`l3v2`, or `l3v1` for 46 cases) it runs as shipped. A level 2 encoding is converted to level 3 version 2 with libsbml.
+- A conversion is written once into the directory of the case as `NNNNN-sbml-l3v2-converted.xml`, next to a sidecar `NNNNN-sbml-l3v2-converted.json` that names the version of libsbml which wrote it, the format of the conversion (`CONVERSION_FORMAT` in `sbmlsim.testsuite.cases`, raised whenever the conversion changes what it produces) and the encoding it was converted from. A pair is reused only when its libsbml and its format are the running ones, else it is written again, so a cache of an older conversion is never served. A level 3 case has no converted file.
 - A case is simulated from its `NNNNN-settings.txt` file, which has the start, the duration, the number of steps, the variables and the tolerances. The SED-ML file that also ships with a case is not used.
 
 A case passes when every point of every compared variable is within the tolerances of the case:
@@ -48,7 +48,7 @@ A case that does not pass gets one of six outcomes. The report shows them separa
 | --- | --- |
 | `tolerance` | the case was simulated and the results are wrong |
 | `not_read` | the model could not be loaded, e.g. because it has an algebraic rule |
-| `not_converted` | the case ships no `l3v2` encoding and libsbml could not convert the newest one to level 3 version 2 without dropping something, so `sbmlsim` refuses it instead of simulating a different model |
+| `not_converted` | the newest encoding of the case is below level 3 and libsbml could not convert it to level 3 version 2 without dropping something, so `sbmlsim` refuses it instead of simulating a different model |
 | `simulation_error` | the model was loaded and the integration failed |
 | `missing_variable` | the simulation ran but did not produce a variable the case compares |
 | `repeat` | the results are right, but simulating the same loaded model again gives different results |
@@ -63,7 +63,7 @@ libroadrunner runs simultaneous events of the same priority in a random order. T
 
 ## Cases which are refused or cannot be integrated
 
-`not_converted` is a refusal and no failure of the simulation. libsbml records what it cannot convert in its error log and still returns success, so `sbmlsim` refuses a conversion for which libsbml logged an error. The two cases are 01397 and 01572, whose only encodings are SBML level 2 and whose reaction is a fast reaction: level 3 version 2 has no `fast` attribute, so the converted model would simulate the reaction as a slow one and give wrong results at the start. The other 33 cases with a fast reaction ship an `l3v2` encoding, which is not converted and runs as it is.
+`not_converted` is a refusal and no failure of the simulation. libsbml records what it cannot convert in its error log and still returns success, so `sbmlsim` refuses a conversion for which libsbml logged an error. The two cases are 01397 and 01572, whose only encodings are SBML level 2 and whose reaction is a fast reaction: level 3 version 2 has no `fast` attribute, so the converted model would simulate the reaction as a slow one and give wrong results at the start. The other 33 of the 35 cases with a fast reaction have `l3v1` as their newest encoding, which is level 3 and so is not converted and keeps the attribute.
 
 ### roadrunner and the stoichiometry math
 

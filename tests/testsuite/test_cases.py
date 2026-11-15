@@ -402,11 +402,12 @@ def test_a_case_without_a_level_3_encoding_is_converted(suite: SemanticSuite) ->
     assert case.model_path.name == "01743-sbml-l3v2-converted.xml"
 
 
-def test_a_case_whose_newest_is_l3v1_is_converted(suite: SemanticSuite) -> None:
-    """00059 ships l3v1 as its newest encoding."""
+def test_a_case_whose_newest_is_l3v1_is_not_converted(suite: SemanticSuite) -> None:
+    """00059 ships l3v1 as its newest encoding, which is level 3 and run as it is."""
     case = suite.case("00059")
-    assert case.converted_from == "l3v1"
-    assert case.model_path.name.endswith("-l3v2-converted.xml")
+    assert case.converted_from == ""
+    assert case.encoding == "l3v1"
+    assert case.model_path.name == "00059-sbml-l3v1.xml"
 
 
 def test_a_conversion_is_cached(tmp_path: Path) -> None:
@@ -460,8 +461,33 @@ def test_a_conversion_of_another_libsbml_is_converted_again(
     assert calls == ["00001", "00001"]
     assert json.loads(sidecar.read_text(encoding="utf-8")) == {
         "libsbml": libsbml.getLibSBMLDottedVersion(),
+        "format": cases.CONVERSION_FORMAT,
         "from": "l2v4",
     }
+
+
+def test_a_conversion_of_another_format_is_converted_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sidecar without the format or of another one invalidates the pair."""
+    from sbmlsim.testsuite import cases
+
+    calls: list[str] = []
+    real = cases.to_level3
+    monkeypatch.setattr(
+        cases, "to_level3", lambda sbml, label: calls.append(label) or real(sbml, label)
+    )
+    source = _l2_source(tmp_path)
+    converted_l3v2(tmp_path, "00001", source, "l2v4")
+    sidecar = tmp_path / "00001-sbml-l3v2-converted.json"
+    version = libsbml.getLibSBMLDottedVersion()
+    for recorded in (
+        {"libsbml": version, "from": "l2v4"},
+        {"libsbml": version, "format": cases.CONVERSION_FORMAT + 1, "from": "l2v4"},
+    ):
+        sidecar.write_text(json.dumps(recorded), encoding="utf-8")
+        converted_l3v2(tmp_path, "00001", source, "l2v4")
+    assert calls == ["00001"] * 3
 
 
 def test_a_case_libsbml_refuses_is_not_converted(
