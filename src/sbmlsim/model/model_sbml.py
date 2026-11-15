@@ -558,7 +558,6 @@ def to_level3(sbml: str, label: str) -> str:
     log: libsbml.SBMLErrorLog = doc.getErrorLog()
     log.clearLog()
     converted = doc.setLevelAndVersion(3, 2, False)
-    log = doc.getErrorLog()
     problems = [
         f"{log.getError(i).getMessage().strip()} (id {log.getError(i).getErrorId()})"
         for i in range(log.getNumErrors())
@@ -761,10 +760,10 @@ class Feature(StrEnum):
 def variable_features(model: libsbml.Model) -> Iterator[tuple[Feature, str]]:
     """Get the features of a model which COPASI and AMICI do not simulate as roadrunner.
 
-    The algebraic rules, the species references which are not constant, the initial assignments of species references
-    and the delay csymbol, each with its element for a message, e.g. `the
-    non-constant species reference 'B_sr' of the reaction 'J1'`; an engine
-    adds why it does not simulate it.
+    The algebraic rules, the species references which are not constant, the
+    initial assignments of species references and the delay csymbol, each with
+    its element for a message, e.g. `the non-constant species reference 'B_sr'
+    of the reaction 'J1'`; an engine adds why it does not simulate it.
 
     Args:
         model: the model of the SBML.

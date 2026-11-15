@@ -1535,8 +1535,9 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
 
     COPASI loads the following without an error and simulates them otherwise
     than roadrunner: it ignores algebraic rules, makes the stoichiometry of a
-    non-constant species reference (a stoichiometry math is one, the model is
-    level 3) and of an initial assignment of a species reference a constant, and simulates the delay
+    non-constant species reference (which a stoichiometry math of level 2
+    becomes when the model is converted to level 3) and of an initial
+    assignment of a species reference a constant, and simulates the delay
     csymbol otherwise. The conversion factors are simulated after a
     compilation of the model, see `_compile_conversion_factors`.
 

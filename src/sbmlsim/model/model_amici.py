@@ -1273,11 +1273,11 @@ def _integrated(model: libsbml.Model, symbols: ModelSymbols) -> tuple[str, ...]:
 def _check_supported(model: libsbml.Model, label: str) -> None:
     """Check that AMICI simulates a model as roadrunner does.
 
-    AMICI does not import the delay csymbol, a delay of an event and a
-    fast reaction, and fails to build a model
-    which reads the csymbol rateOf (in an assignment rule, AMICI 1.2); it
-    integrates a model with algebraic rules as a system of
-    differential algebraic equations, which the executor does not, and makes
+    AMICI does not import the delay csymbol, a delay of an event and a fast
+    reaction, and fails to build a model which reads the csymbol rateOf (in an
+    assignment rule, AMICI 1.2); it integrates a model with algebraic rules as
+    a system of differential algebraic equations, which the executor does not,
+    and makes
     the stoichiometry of a species reference which is not constant, which
     roadrunner changes, and an initial assignment of a species reference or
     of a conversion factor a math which follows its parameters during a
