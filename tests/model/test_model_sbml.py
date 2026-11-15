@@ -458,12 +458,13 @@ def test_a_conversion_which_logs_only_a_warning_succeeds(
 ) -> None:
     """Only an entry of the severity error or above refuses, a warning does not."""
     original = libsbml.SBMLDocument.setLevelAndVersion
+    logged: list[int] = []
 
     def warn(self: libsbml.SBMLDocument, *args: Any, **kwargs: Any) -> bool:
         done = original(self, *args, **kwargs)
         self.getErrorLog().add(
             libsbml.SBMLError(
-                98010,
+                93001,
                 3,
                 2,
                 "a warning of the conversion",
@@ -473,8 +474,16 @@ def test_a_conversion_which_logs_only_a_warning_succeeds(
                 libsbml.LIBSBML_CAT_SBML_L2V4_COMPAT,
             )
         )
+        logged.append(self.getErrorLog().getNumErrors())
         return done
 
     monkeypatch.setattr(libsbml.SBMLDocument, "setLevelAndVersion", warn)
     text = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
     assert "level3/version2" in to_level3(text, "toy")
+    # the warning is in the log, so the success is the threshold's doing
+    assert logged == [1]
+
+
+def test_an_unreadable_text_is_returned_unchanged() -> None:
+    """The engine reports the read error, not an empty converted model."""
+    assert to_level3("not xml at all", "toy") == "not xml at all"

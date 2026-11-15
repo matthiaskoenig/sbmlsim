@@ -539,7 +539,8 @@ def to_level3(sbml: str, label: str) -> str:
 
     Returns:
         The SBML converted to level 3 version 2 when its level is below 3,
-        else `sbml` unchanged.
+        else `sbml` unchanged, also when libsbml cannot read it as SBML at all,
+        which the engine then reports with its own read error.
 
     Raises:
         ValueError: if libsbml cannot convert the model, or converts it and
@@ -551,7 +552,9 @@ def to_level3(sbml: str, label: str) -> str:
             conversion drops, not about what sbmlsim can simulate.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
-    if doc.getLevel() >= 3:
+    # level 0 is text libsbml could not read as SBML: converting it would hand
+    # the engine an empty model, so it gets the text and reports the read error
+    if doc.getLevel() == 0 or doc.getLevel() >= 3:
         return sbml
     level, version = doc.getLevel(), doc.getVersion()
     # reading logs entries of its own, only what the conversion logs counts
@@ -561,7 +564,7 @@ def to_level3(sbml: str, label: str) -> str:
     problems = [
         f"{log.getError(i).getMessage().strip()} (id {log.getError(i).getErrorId()})"
         for i in range(log.getNumErrors())
-        if log.getError(i).getSeverity() >= libsbml.LIBSBML_SEV_ERROR
+        if log.getError(i).isError() or log.getError(i).isFatal()
     ]
     if not converted or problems:
         raise ValueError(
