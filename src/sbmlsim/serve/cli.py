@@ -2,7 +2,7 @@
 
     python -m sbmlsim.serve --model ID=REFERENCE [--model ID=REFERENCE ...]
         [--host HOST] [--port PORT] [--static DIR]
-        [--allow-origin ORIGIN ...] [--experiments] [--open]
+        [--allow-origin ORIGIN ...] [--experiments] [--open] [--export DIR]
 
 A model is `ID=REFERENCE`, the id a request names and the project of the model
 package it is served from, `module:attribute` of a `sbmlsim.project.Project`
@@ -26,8 +26,14 @@ as jobs (`sbmlsim.serve.jobs`), which are off by default: one request of them
 costs minutes of a core, so a public deployment leaves them off and a local
 one which runs the experiments of its models turns them on.
 
+`--export DIR` serves nothing: it writes the static bundle `panelbundle/1` of
+every model into `DIR/<model id>/` (`sbmlsim.serve.export`), the answers of the
+routes and the recipes of the simulations of its panels which a page answers
+without a server, writes the directory of every bundle on stdout and exits;
+the options of the server are not used then. The export needs no extra `web`.
+
 The exit codes are the ones of `python -m sbmlsim.run`: 0 when the server
-stopped, 2 for a bad command line, which argparse writes with the usage, and 4
+stopped or the bundles are written, 2 for a bad command line, which argparse writes with the usage, and 4
 for a model which is no project or whose app names something the model does not
 declare and for an install without the extra `web`, whose message is on
 stderr.
@@ -185,6 +191,14 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="open the browser on the service once it is up",
     )
+    parser.add_argument(
+        "--export",
+        type=Path,
+        metavar="DIR",
+        help="serve nothing and write the static bundle of every model into "
+        "DIR/<model id>/ instead, which a page answers the routes from without a "
+        "server",
+    )
     return parser
 
 
@@ -323,15 +337,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         argv: the arguments without the program, `sys.argv[1:]` without.
 
     Returns:
-        The exit code: `EXIT_OK` when the server stopped, `EXIT_USAGE` for a
-        bad command line and `EXIT_CONFIGURATION` for a model which cannot be
-        served.
+        The exit code: `EXIT_OK` when the server stopped or the bundles are
+        written (`--export`), `EXIT_USAGE` for a bad command line and
+        `EXIT_CONFIGURATION` for a model which cannot be served or exported.
     """
     try:
         args = _parser().parse_args(list(sys.argv[1:] if argv is None else argv))
         models = parse_models(args.model)
     except SystemExit as exit_:
         return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
+    if args.export is not None:
+        return _export(models, args.export)
     # after the command line is read, so a bad one is answered with its usage
     # in an install without the extra `web`
     try:
@@ -361,4 +377,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return EXIT_CONFIGURATION
     serve(app, host=args.host, port=args.port, open_browser=args.open)
+    return EXIT_OK
+
+
+def _export(models: dict[str, str], out: Path) -> int:
+    """Write the static bundles of the models instead of serving them.
+
+    Args:
+        models: the project reference of every model id.
+        out: the directory of the bundles.
+
+    Returns:
+        `EXIT_OK` when every bundle is written, with the directory of every
+        bundle on stdout, and `EXIT_CONFIGURATION` for a model which cannot be
+        exported, whose message is on stderr.
+    """
+    from sbmlsim.serve.export import export_bundles
+    from sbmlsim.serve.runner import ModelRegistry
+
+    try:
+        written = export_bundles(ModelRegistry.of(models), out)
+    except (ImportError, OSError, KeyError, ValueError) as err:
+        sys.stderr.write(
+            f"python -m sbmlsim.serve: error: the models {list(models)} are not "
+            f"exported: {err}\n"
+        )
+        return EXIT_CONFIGURATION
+    for path in written:
+        sys.stdout.write(f"{path}\n")
+    sys.stdout.flush()
     return EXIT_OK

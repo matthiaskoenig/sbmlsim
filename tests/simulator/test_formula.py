@@ -13,7 +13,7 @@ from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.simulation import Change, Formula, Simulation
 from sbmlsim.simulation.scan import Scan
 from sbmlsim.simulator import Simulator
-from sbmlsim.simulator.formula import compile_formula, parse_math
+from sbmlsim.simulator.formula import compile_formula, formula_mathml, parse_math
 
 
 def test_formula_with_concentration_and_time() -> None:
@@ -337,3 +337,138 @@ def test_formula_operator_is_one_of_a_table(token: str) -> None:
     tree = AddExprContext(_Leaf("1"), _Leaf(token), _Leaf("2"))
     with pytest.raises(ValueError, match="Unexpected operator"):
         _NumpyCode().compile(tree)
+
+
+def test_a_function_of_a_reciprocal_reads_its_whole_argument() -> None:
+    """`arcsec(x + 1)` is `arccos(1 / (x + 1))`, not `arccos(1 / x + 1)`."""
+    x = 1.7
+    assert compile_formula("arcsec(x + 1)").evaluate([x]) == np.arccos(1.0 / (x + 1))
+    assert compile_formula("arccoth(x * 2)").evaluate([x]) == np.arctanh(1.0 / (x * 2))
+    assert compile_formula("arccsc(x / 0.5)").evaluate([x]) == np.arcsin(
+        1.0 / (x / 0.5)
+    )
+
+
+#: the values of the identifiers of the formulas of the MathML
+MATHML_VALUES = {"x": 1.7, "y": 0.4, "z": -2.5}
+
+#: formulas which cover every construct of the math of PEtab, and whether
+#: roadrunner computes them bitwise as numpy does: the operations IEEE 754
+#: rounds correctly (arithmetic, `sqrt`, comparisons, `abs`, `piecewise`) are
+#: the same on every platform, while the elementary functions (`exp`, `log`,
+#: the trigonometric and hyperbolic functions and `pow` of a fraction) are the
+#: ones of the libm of numpy and of roadrunner, which may differ in the last
+#: bits by platform (`arcsin` on windows and on python 3.15), a logarithm of a
+#: base is `log(x) / log(b)` in roadrunner and `log10` or `log2` in numpy, and
+#: a function of a reciprocal of a sum rounds twice
+MATHML_FORMULAS = [
+    ("x / 90", True),
+    ("0.1 + 0.2 + x", True),
+    ("x - y - 3", True),
+    ("x - (y - 3)", True),
+    ("-x^2", False),
+    ("+x * -y", True),
+    ("2^3^2 + x", True),
+    ("pow(x, y)", False),
+    ("x * y / 7", True),
+    ("1e-3 * x - 2.5e-7", True),
+    ("1e300 * x * 1e10", True),
+    ("inf - x", True),
+    ("min(x, y) + max(x, z)", True),
+    ("min(x / 110, 1)", True),
+    ("sign(z) + sign(x) + sign(y - y)", True),
+    ("abs(z) + sqrt(x)", True),
+    ("exp(x) + ln(x) + log(y)", False),
+    ("log(x, 10)", False),
+    ("log(x, 2) + log2(y)", False),
+    ("log(x, 3)", False),
+    ("log10(x)", False),
+    ("sin(x) + cos(x) + tan(x)", False),
+    ("sinh(x) + cosh(x) + tanh(y)", False),
+    ("arcsin(y) + arccos(y) + arctan(z)", False),
+    ("arcsinh(x) + arccosh(x) + arctanh(y)", False),
+    ("sec(x) + csc(x) + cot(x)", False),
+    ("sech(x) + csch(x) + coth(x)", False),
+    ("arcsec(x + 1) + arccsc(x + 1) + arccot(x)", False),
+    ("arcsech(y) + arccsch(x) + arccoth(x + 1)", False),
+    ("piecewise(1, x > 2, 2, y < 1, 3)", True),
+    ("piecewise(x, x >= 2 && y <= 3 || !(x == y), y)", True),
+    ("piecewise(x, x != y, y) + piecewise(z, x, y)", True),
+    ("true + false + x", True),
+    ("piecewise(1, true, 0) * x", True),
+]
+
+
+def _evaluated_by_roadrunner(mathml: str, values: dict[str, float]) -> float:
+    """Evaluate MathML as the initial assignment of a parameter in roadrunner."""
+    import libsbml
+    import roadrunner
+
+    doc = libsbml.SBMLDocument(3, 2)
+    model = doc.createModel()
+    model.setId("formula")
+    for sid, value in values.items():
+        parameter = model.createParameter()
+        parameter.setId(sid)
+        parameter.setValue(value)
+        parameter.setConstant(True)
+    out = model.createParameter()
+    out.setId("out")
+    out.setValue(0.0)
+    out.setConstant(True)
+    math = libsbml.readMathMLFromString(mathml)
+    assert math is not None, mathml
+    assignment = model.createInitialAssignment()
+    assignment.setSymbol("out")
+    assignment.setMath(math)
+    assert doc.checkInternalConsistency() == 0
+    r = roadrunner.RoadRunner(libsbml.writeSBMLToString(doc))
+    return float(r.getValue("out"))
+
+
+@pytest.mark.parametrize(("formula", "bitwise"), MATHML_FORMULAS)
+def test_the_mathml_of_a_formula_computes_the_compiled_formula(
+    formula: str, bitwise: bool
+) -> None:
+    """The MathML is the formula of `compile_formula`, evaluated by roadrunner."""
+    compiled = compile_formula(formula)
+    expected = compiled.evaluate([MATHML_VALUES[s] for s in compiled.symbols])
+    actual = _evaluated_by_roadrunner(formula_mathml(formula), MATHML_VALUES)
+    if bitwise:
+        assert actual == expected
+    else:
+        assert actual == pytest.approx(expected, rel=1e-14, abs=0.0)
+
+
+def test_the_mathml_of_a_formula_names_the_identifiers_of_the_model() -> None:
+    mathml = formula_mathml("min(crcl / 110, 1)", {"crcl": "panel_knob__crcl"})
+    assert "<ci> panel_knob__crcl </ci>" in mathml
+    assert "crcl <" not in mathml.replace("panel_knob__crcl", "")
+    assert _evaluated_by_roadrunner(mathml, {"panel_knob__crcl": 55.0}) == 0.5
+
+
+def test_the_mathml_of_a_formula_writes_numbers_as_their_doubles() -> None:
+    """A number is written with the shortest digits of its double."""
+    mathml = formula_mathml("0.1 * x + 1e-300 + 12345678901234567890")
+    assert '<cn type="real"> 0.1 </cn>' in mathml
+    assert '<cn type="real"> 12345678901234567000.0 </cn>' in mathml
+    assert (
+        _evaluated_by_roadrunner(formula_mathml("1e-300 * x"), {"x": 2.0})
+        == 1e-300 * 2.0
+    )
+
+
+def test_the_time_of_a_formula_is_the_time_of_sbml() -> None:
+    mathml = formula_mathml("time + 1")
+    assert "http://www.sbml.org/sbml/symbols/time" in mathml
+    import libsbml
+
+    assert libsbml.formulaToL3String(libsbml.readMathMLFromString(mathml)) == (
+        "time + 1"
+    )
+
+
+@pytest.mark.parametrize("formula", ["[S] + 1", "hctz.cmax * 2", "x +", "1 / 0"])
+def test_the_mathml_of_a_formula_refuses_what_sbml_does_not_read(formula: str) -> None:
+    with pytest.raises(ValueError, match=re.escape(f"'{formula}'")):
+        formula_mathml(formula)
