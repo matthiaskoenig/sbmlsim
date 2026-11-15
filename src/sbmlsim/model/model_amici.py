@@ -1273,8 +1273,8 @@ def _integrated(model: libsbml.Model, symbols: ModelSymbols) -> tuple[str, ...]:
 def _check_supported(model: libsbml.Model, label: str) -> None:
     """Check that AMICI simulates a model as roadrunner does.
 
-    AMICI does not import the delay csymbol, a delay of an event, a
-    stoichiometry math and a fast reaction, and fails to build a model
+    AMICI does not import the delay csymbol, a delay of an event and a
+    fast reaction, and fails to build a model
     which reads the csymbol rateOf (in an assignment rule, AMICI 1.2); it
     integrates a model with algebraic rules as a system of
     differential algebraic equations, which the executor does not, and makes
@@ -1358,7 +1358,6 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
     model: libsbml.Model = doc.getModel()
-    level = doc.getLevel()
     rules = symbols.assignment_rules
     factors = conversion_factors(model)
     event_targets = {
@@ -1448,7 +1447,7 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         if event.isSetPriority():
             event.unsetPriority()
         trigger = event.getTrigger()
-        if level >= 3 and trigger is not None:
+        if trigger is not None:
             trigger.setPersistent(True)
         if trigger is not None and trigger.isSetMath():
             node: libsbml.ASTNode = trigger.getMath().deepCopy()
@@ -1540,8 +1539,7 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
         event.setUseValuesFromTriggerTime(True)
         trigger: libsbml.Trigger = event.createTrigger()
         trigger.setMath(libsbml.ASTNode(libsbml.AST_CONSTANT_FALSE))
-        if level >= 3:
-            trigger.setPersistent(True)
+        trigger.setPersistent(True)
         for sid in targets:
             target: libsbml.EventAssignment = event.createEventAssignment()
             target.setVariable(sid)
@@ -1551,10 +1549,8 @@ def amici_sbml(sbml: str, symbols: ModelSymbols, label: str) -> AmiciSBML:
     for event in model.getListOfEvents():
         trigger = event.getTrigger()
         if event.getId() != TARGETS_EVENT:
-            start_events.append(
-                level >= 3 and trigger is not None and not trigger.getInitialValue()
-            )
-        if level >= 3 and trigger is not None:
+            start_events.append(trigger is not None and not trigger.getInitialValue())
+        if trigger is not None:
             trigger.setInitialValue(True)
 
     return AmiciSBML(

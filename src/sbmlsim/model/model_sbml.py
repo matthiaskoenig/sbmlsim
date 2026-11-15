@@ -753,7 +753,6 @@ class Feature(StrEnum):
     """A feature of SBML which an engine other than roadrunner may not simulate."""
 
     ALGEBRAIC_RULE = "algebraic rule"
-    STOICHIOMETRY_MATH = "stoichiometry math"
     NON_CONSTANT_REFERENCE = "non-constant species reference"
     REFERENCE_INITIAL_ASSIGNMENT = "initial assignment of a species reference"
     DELAY = "delay csymbol"
@@ -762,8 +761,7 @@ class Feature(StrEnum):
 def variable_features(model: libsbml.Model) -> Iterator[tuple[Feature, str]]:
     """Get the features of a model which COPASI and AMICI do not simulate as roadrunner.
 
-    The algebraic rules, the stoichiometry maths, the species references
-    which are not constant, the initial assignments of species references
+    The algebraic rules, the species references which are not constant, the initial assignments of species references
     and the delay csymbol, each with its element for a message, e.g. `the
     non-constant species reference 'B_sr' of the reaction 'J1'`; an engine
     adds why it does not simulate it.
@@ -777,19 +775,12 @@ def variable_features(model: libsbml.Model) -> Iterator[tuple[Feature, str]]:
     for rule in model.getListOfRules():
         if rule.isAlgebraic():
             yield Feature.ALGEBRAIC_RULE, "an algebraic rule"
-    level = model.getLevel()
     references: set[str] = set()
     for reaction in model.getListOfReactions():
         for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts()):
             if sr.isSetId():
                 references.add(sr.getId())
-            if sr.isSetStoichiometryMath():
-                yield (
-                    Feature.STOICHIOMETRY_MATH,
-                    f"the stoichiometry math of the species '{sr.getSpecies()}' in "
-                    f"the reaction '{reaction.getId()}'",
-                )
-            if level >= 3 and sr.isSetConstant() and not sr.getConstant():
+            if sr.isSetConstant() and not sr.getConstant():
                 name = sr.getId() or sr.getSpecies()
                 yield (
                     Feature.NON_CONSTANT_REFERENCE,
