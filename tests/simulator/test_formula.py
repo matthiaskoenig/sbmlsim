@@ -353,19 +353,23 @@ def test_a_function_of_a_reciprocal_reads_its_whole_argument() -> None:
 MATHML_VALUES = {"x": 1.7, "y": 0.4, "z": -2.5}
 
 #: formulas which cover every construct of the math of PEtab, and whether
-#: roadrunner computes them bitwise as numpy does: arithmetic, comparisons and
-#: the elementary functions of libm are the same operations, while a
-#: logarithm of a base is `log(x) / log(b)` in roadrunner and `log10` or
-#: `log2` in numpy, and a function of a reciprocal of a sum rounds twice
+#: roadrunner computes them bitwise as numpy does: the operations IEEE 754
+#: rounds correctly (arithmetic, `sqrt`, comparisons, `abs`, `piecewise`) are
+#: the same on every platform, while the elementary functions (`exp`, `log`,
+#: the trigonometric and hyperbolic functions and `pow` of a fraction) are the
+#: ones of the libm of numpy and of roadrunner, which may differ in the last
+#: bits by platform (`arcsin` on windows and on python 3.15), a logarithm of a
+#: base is `log(x) / log(b)` in roadrunner and `log10` or `log2` in numpy, and
+#: a function of a reciprocal of a sum rounds twice
 MATHML_FORMULAS = [
     ("x / 90", True),
     ("0.1 + 0.2 + x", True),
     ("x - y - 3", True),
     ("x - (y - 3)", True),
-    ("-x^2", True),
+    ("-x^2", False),
     ("+x * -y", True),
     ("2^3^2 + x", True),
-    ("pow(x, y)", True),
+    ("pow(x, y)", False),
     ("x * y / 7", True),
     ("1e-3 * x - 2.5e-7", True),
     ("1e300 * x * 1e10", True),
@@ -374,17 +378,17 @@ MATHML_FORMULAS = [
     ("min(x / 110, 1)", True),
     ("sign(z) + sign(x) + sign(y - y)", True),
     ("abs(z) + sqrt(x)", True),
-    ("exp(x) + ln(x) + log(y)", True),
+    ("exp(x) + ln(x) + log(y)", False),
     ("log(x, 10)", False),
     ("log(x, 2) + log2(y)", False),
     ("log(x, 3)", False),
     ("log10(x)", False),
-    ("sin(x) + cos(x) + tan(x)", True),
-    ("sinh(x) + cosh(x) + tanh(y)", True),
-    ("arcsin(y) + arccos(y) + arctan(z)", True),
-    ("arcsinh(x) + arccosh(x) + arctanh(y)", True),
-    ("sec(x) + csc(x) + cot(x)", True),
-    ("sech(x) + csch(x) + coth(x)", True),
+    ("sin(x) + cos(x) + tan(x)", False),
+    ("sinh(x) + cosh(x) + tanh(y)", False),
+    ("arcsin(y) + arccos(y) + arctan(z)", False),
+    ("arcsinh(x) + arccosh(x) + arctanh(y)", False),
+    ("sec(x) + csc(x) + cot(x)", False),
+    ("sech(x) + csch(x) + coth(x)", False),
     ("arcsec(x + 1) + arccsc(x + 1) + arccot(x)", False),
     ("arcsech(y) + arccsch(x) + arccoth(x + 1)", False),
     ("piecewise(1, x > 2, 2, y < 1, 3)", True),
@@ -433,7 +437,7 @@ def test_the_mathml_of_a_formula_computes_the_compiled_formula(
     if bitwise:
         assert actual == expected
     else:
-        assert actual == pytest.approx(expected, rel=1e-15, abs=0.0)
+        assert actual == pytest.approx(expected, rel=1e-14, abs=0.0)
 
 
 def test_the_mathml_of_a_formula_names_the_identifiers_of_the_model() -> None:
