@@ -487,3 +487,30 @@ def test_a_conversion_which_logs_only_a_warning_succeeds(
 def test_an_unreadable_text_is_returned_unchanged() -> None:
     """The engine reports the read error, not an empty converted model."""
     assert to_level3("not xml at all", "toy") == "not xml at all"
+
+
+def test_a_partially_read_document_is_returned_unchanged() -> None:
+    """A document libsbml read a part of is not converted either.
+
+    Its level is set from the header, so a conversion would succeed and hand
+    the engine the part libsbml managed to read instead of the text and the
+    read error of the engine.
+    """
+    broken = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" '
+        'version="4"><model id="m"><listOfSpecies>'
+        '<species id="S1" compartment="c" initialAmount="1"/>'
+        "</listOfCompartments></model></sbml>"
+    )
+    document: libsbml.SBMLDocument = libsbml.readSBMLFromString(broken)
+    log: libsbml.SBMLErrorLog = document.getErrorLog()
+    severities = [
+        log.getError(i).getSeverity()
+        for i in range(log.getNumErrors())
+        if log.getError(i).isError() or log.getError(i).isFatal()
+    ]
+    # the read failed on the mismatched tag while the level stayed 2
+    assert document.getLevel() == 2
+    assert severities
+    assert to_level3(broken, "toy") == broken
