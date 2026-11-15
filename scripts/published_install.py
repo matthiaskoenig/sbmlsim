@@ -117,7 +117,19 @@ def check(installer: str, python: str, version: str, index: str) -> None:
         work = Path(tmp)
         requirement = f"sbmlsim=={version}"
         if installer == "uv":
-            run("uv", "init", "--bare", "--python", python, cwd=work)
+            # the project is named, since `uv init` takes the name of the
+            # directory otherwise and refuses a temporary one which ends with
+            # an underscore (`tmpus_78ai_`)
+            run(
+                "uv",
+                "init",
+                "--bare",
+                "--name",
+                "published-install",
+                "--python",
+                python,
+                cwd=work,
+            )
             with (work / "pyproject.toml").open("a", encoding="utf-8") as f:
                 f.write(PROJECT_INDEX.format(index=index))
             install(
