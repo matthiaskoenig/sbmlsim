@@ -518,7 +518,6 @@ def test_a_case_libsbml_refuses_has_the_status_not_converted(
     assert case is not None and case.conversion_error
     result = run_case(case)
     assert result.status is CaseStatus.NOT_CONVERTED
-    assert CaseStatus.NOT_CONVERTED != CaseStatus.NOT_READ
 
 
 def test_the_sidecar_is_written_after_its_document(

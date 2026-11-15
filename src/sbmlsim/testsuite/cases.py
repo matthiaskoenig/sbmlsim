@@ -70,8 +70,8 @@ ENCODINGS: tuple[str, ...] = (
     "l1v2",
 )
 
-#: the encoding every case is simulated in, the one the cases which do not ship
-#: it are converted to
+#: the encoding the cases which ship no level 3 encoding are converted to (a
+#: case whose newest encoding is level 3 is simulated as shipped)
 TARGET_ENCODING = "l3v2"
 
 #: the format of the cached conversions, raised whenever the behavior of
@@ -90,8 +90,9 @@ def converted_l3v2(
     `<cid>-sbml-l3v2-converted.xml` with the sidecar
     `<cid>-sbml-l3v2-converted.json` which names the libsbml which wrote it, the
     `CONVERSION_FORMAT` and the encoding it was converted from. A cached pair is
-    reused only when its sidecar names the running libsbml and the current format. The suite cache is shared by every
-    process of a run, so both files are written atomically, the document first
+    reused only when its sidecar names the running libsbml, the current format
+    and the encoding the case would be converted from. The suite cache is shared
+    by every process of a run, so both files are written atomically, the document first
     and the sidecar after it: the sidecar is what a reader trusts, so it never
     exists before the document it vouches for.
 
@@ -120,6 +121,7 @@ def converted_l3v2(
             and (recorded := json.loads(sidecar.read_text(encoding="utf-8")))["libsbml"]
             == version
             and recorded["format"] == CONVERSION_FORMAT
+            and recorded["from"] == encoding
         ):
             return converted, ""
     except OSError, ValueError, KeyError, TypeError:
@@ -171,8 +173,9 @@ class SemanticCase:
     Attributes:
         cid: identifier of the case, i.e. its directory name such as `00028`.
         path: directory of the case.
-        model_path: the model which is simulated, level 3 version 2: the file
-            of the suite, or its conversion when the suite has none.
+        model_path: the model which is simulated, level 3: the newest level 3
+            file of the suite, or the conversion of the newest encoding to
+            level 3 version 2 when the suite ships none.
         start: start time of the simulation.
         duration: end time of the simulation.
         steps: number of steps, so the results have `steps + 1` points.
@@ -302,10 +305,11 @@ class SemanticCase:
 
     @staticmethod
     def model_of(path: Path, cid: str) -> tuple[Path, str, str] | None:
-        """Get the model of a case as level 3 version 2.
+        """Get the model of a case as level 3.
 
-        The file of the suite when it ships `l3v2`, which is never rewritten,
-        else the conversion of the newest encoding it provides.
+        The newest level 3 file of the suite when it ships one, which is never
+        rewritten, else the conversion of the newest encoding it provides to
+        level 3 version 2.
 
         Args:
             path: directory of the case.
@@ -313,9 +317,10 @@ class SemanticCase:
 
         Returns:
             The SBML file, the encoding it was converted from (empty when the
-            newest encoding is level 3, which is simulated as shipped) and the conversion error (empty unless libsbml
-            refused, the file is then the newest encoding as the suite ships
-            it), or `None` if the case has no model.
+            newest encoding is level 3, which is simulated as shipped) and the
+            conversion error (empty unless libsbml refused, the file is then
+            the newest encoding as the suite ships it), or `None` if the case
+            has no model.
         """
         for encoding in ENCODINGS:
             model_path = path / f"{cid}-sbml-{encoding}.xml"
