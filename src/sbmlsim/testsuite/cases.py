@@ -111,7 +111,7 @@ def converted_l3v2(
     try:
         if (
             converted.exists()
-            and json.loads(sidecar.read_text("utf-8"))["libsbml"] == version
+            and json.loads(sidecar.read_text(encoding="utf-8"))["libsbml"] == version
         ):
             return converted, ""
     except OSError, ValueError, KeyError, TypeError:

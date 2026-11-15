@@ -453,10 +453,12 @@ def test_a_conversion_of_another_libsbml_is_converted_again(
     source = _l2_source(tmp_path)
     converted_l3v2(tmp_path, "00001", source, "l2v4")
     sidecar = tmp_path / "00001-sbml-l3v2-converted.json"
-    sidecar.write_text(json.dumps({"libsbml": "0.0.0", "from": "l2v4"}))
+    sidecar.write_text(
+        json.dumps({"libsbml": "0.0.0", "from": "l2v4"}), encoding="utf-8"
+    )
     converted_l3v2(tmp_path, "00001", source, "l2v4")
     assert calls == ["00001", "00001"]
-    assert json.loads(sidecar.read_text()) == {
+    assert json.loads(sidecar.read_text(encoding="utf-8")) == {
         "libsbml": libsbml.getLibSBMLDottedVersion(),
         "from": "l2v4",
     }
