@@ -189,3 +189,28 @@ def test_a_framework_gives_the_default_panels_of_its_models(tmp_path: Path) -> N
     shown = _with_default_panels(project, project)
     assert list(shown.panels) == ["framework"]
     assert shown.panels["framework"].title == "model"
+
+
+def test_a_framework_gives_the_default_app_of_its_models(tmp_path: Path) -> None:
+    from sbmlsim.panel import App, AppPage, Panel, PanelCurve, PanelSimulation
+    from sbmlsim.project import Project
+    from sbmlsim.webapp.assets import _with_default_panels
+
+    class Framework(Project):
+        def default_app(self, sbml: Path) -> tuple[dict[str, Panel], App | None]:
+            panel = Panel(
+                id="readout",
+                title="readout",
+                curves=(PanelCurve(id="PX", label="X"),),
+                simulation=PanelSimulation(end=10),
+            )
+            page = AppPage(id="main", title="Main", panels=("readout",), size="small")
+            return {"readout": panel}, App(title="Framework", pages=(page,))
+
+    sbml = tmp_path / "model.xml"
+    shutil.copy(REPRESSILATOR_SBML, sbml)
+    project = Framework(name="model", root=tmp_path, variants={"model": sbml})
+    shown = _with_default_panels(project, project)
+    assert shown.app is not None
+    assert shown.app.pages[0].size == "small"
+    assert list(shown.panels) == ["readout"]

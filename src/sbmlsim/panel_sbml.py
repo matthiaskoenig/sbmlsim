@@ -11,6 +11,7 @@ a release:
           <simulation variant="hctz_body" end="1440" points="200" xUnit="hr">
             <preinit target="BW" value="75"/>
             <derived target="f_renal_function" formula="min(crcl / 110, 1)"/>
+            <dosing target="PODOSE_hctz" dose="dose" interval="interval" duration="days"/>
           </simulation>
           <knob id="dose" target="PODOSE_hctz" label="dose" unit="mg" kind="range" min="12.5" max="100" steps="9" default="25"/>
           <knob id="crcl" label="creatinine clearance" unit="ml/min" kind="range" min="10" max="150" steps="8" default="110">
@@ -37,7 +38,9 @@ and `xUnit` is the unit its time axis is delivered in. The `option` children of
 a knob are its `choices`, the choices of a knob of the kind `choice` and the
 named stops of one of the kind `range`, the `preinit` children of the
 simulation are its `preinit`, its `derived` children its `derived`, each of a
-`target` and its `formula`, the `select` children of a series of the data are
+`target` and its `formula`, its `dosing` children its `dosing`, each of a
+`target`, the knob of its `dose`, of its `interval` and of its `duration`
+(optional), the `select` children of a series of the data are
 its `sel`, the rows of its dataset, each of them of a `column` and a `value`,
 and its `at` children are its `at`, the state of the knobs it was measured
 under, each of them of a `knob` and a `value`. The `dataset` of a series is the
@@ -112,6 +115,8 @@ SIMULATION_ELEMENT: Final = "simulation"
 PREINIT_ELEMENT: Final = "preinit"
 #: the element of one derived target of the simulation and its formula
 DERIVED_ELEMENT: Final = "derived"
+#: the element of one dosing protocol of the simulation
+DOSING_ELEMENT: Final = "dosing"
 #: the element of one knob of a panel
 KNOB_ELEMENT: Final = "knob"
 #: the element of one choice of a knob of the kind `choice` or one named stop
@@ -481,9 +486,9 @@ def _simulation_payload(element: libsbml.XMLNode) -> dict[str, Any]:
         element: the `panel` element.
 
     Returns:
-        The fields of its first `simulation` element with its `preinit` and
-        its `derived` children, empty for a panel without one, which is no
-        panel.
+        The fields of its first `simulation` element with its `preinit`,
+        its `derived` and its `dosing` children, empty for a panel without
+        one, which is no panel.
     """
     simulations = list(_children(element, SIMULATION_ELEMENT))
     if not simulations:
@@ -501,6 +506,16 @@ def _simulation_payload(element: libsbml.XMLNode) -> dict[str, Any]:
     }
     if derived:
         payload["derived"] = derived
+    dosing = [
+        {
+            field: value.getAttrValue(field)
+            for field in ("target", "dose", "interval", "duration")
+            if value.hasAttr(field)
+        }
+        for value in _children(simulations[0], DOSING_ELEMENT)
+    ]
+    if dosing:
+        payload["dosing"] = dosing
     return payload
 
 
@@ -675,7 +690,7 @@ def _panel_xml(panel: Panel) -> str:
 
 
 def _simulation_xml(simulation: PanelSimulation) -> str:
-    """Get the XML of the `simulation` element, its `preinit` and `derived` children."""
+    """Get the XML of the `simulation` element, its `preinit`, `derived` and `dosing` children."""
     preinit = "".join(
         f"<{PREINIT_ELEMENT} target={quoteattr(target)} value={quoteattr(str(value))}/>"
         for target, value in simulation.preinit.items()
@@ -684,8 +699,18 @@ def _simulation_xml(simulation: PanelSimulation) -> str:
         f"<{DERIVED_ELEMENT} target={quoteattr(target)} formula={quoteattr(formula)}/>"
         for target, formula in simulation.derived.items()
     )
+    dosing = "".join(
+        f"<{DOSING_ELEMENT} target={quoteattr(item.target)} "
+        f"dose={quoteattr(item.dose)} interval={quoteattr(item.interval)}"
+        + ("" if item.duration is None else f" duration={quoteattr(item.duration)}")
+        + "/>"
+        for item in simulation.dosing
+    )
     return _element_xml(
-        SIMULATION_ELEMENT, simulation, _SIMULATION_ATTRIBUTES, preinit + derived
+        SIMULATION_ELEMENT,
+        simulation,
+        _SIMULATION_ATTRIBUTES,
+        preinit + derived + dosing,
     )
 
 

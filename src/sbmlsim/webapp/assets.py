@@ -9,10 +9,10 @@ the name of the SBML file without its suffix) and the app of the model,
 the SBML the factory just wrote, so the compiled models and the app are always
 the ones of the models next to them, also in a rebuild into another directory.
 
-A model which declares no panel and no app gets the panels of
-`Project.default_panels`, by default the panel of `default_panel`, the time
+A model which declares no panel and no app gets the panels and the app of
+`Project.default_app`, by default the panel of `default_panel`, the time
 courses of its species, so every model has an app (a framework overrides it
-with the panels it knows of its models); `app_project` is
+with the pages it knows of its models); `app_project` is
 the project of one SBML file, which `python -m sbmlsim.webapp` writes the app
 of.
 """
@@ -131,12 +131,13 @@ def _with_default_panels(project: Project, rooted: Project) -> Project:
     """Get the project of the app with the default panels if it declares none.
 
     Args:
-        project: the project, whose `Project.default_panels` gives them.
+        project: the project, whose `Project.default_app` gives them.
         rooted: the project of the models the factory wrote, see `_rooted`.
     """
     if not rooted.variants or rooted.app is not None or rooted.panels_of(None):
         return rooted
-    return rooted.replace(panels=project.default_panels(rooted.variant_path(None)))
+    panels, app = project.default_app(rooted.variant_path(None))
+    return rooted.replace(panels=panels, app=app)
 
 
 #: the fields of a project which its app reads: the panels and the app, the

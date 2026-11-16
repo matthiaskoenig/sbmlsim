@@ -1440,6 +1440,25 @@ class Project(BaseModel):
 
         return {DEFAULT_PANEL: default_panel(sbml)}
 
+    def default_app(self, sbml: Path) -> tuple[dict[str, Panel], App | None]:
+        """Get the panels and the app of the web app of a model which declares none.
+
+        The default is the panels of `default_panels` without an app, a page
+        of its panels; a framework which knows more of its models overrides it
+        with an app of several pages, e.g. the doses, the diseases and the
+        scans of a pharmacokinetic model, each a page of small panels of its
+        readouts under the knobs the page shares, and the variants a reader
+        switches between.
+
+        Args:
+            sbml: the SBML file of the default variant, the one the factory
+                just wrote.
+
+        Returns:
+            The panels by their id and the app, `None` for none.
+        """
+        return self.default_panels(sbml), None
+
     def create_models(self, out: Path | None = None) -> Path:
         """Build the models with the factory, in place or into a rebuild.
 
