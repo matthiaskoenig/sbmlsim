@@ -1158,6 +1158,8 @@ def _integrator(settings: FitSettings, engine: Engine = Engine.ROADRUNNER) -> Pa
         return _integrator_copasi(settings)
     if engine is Engine.AMICI:
         return _integrator_amici(settings)
+    if engine is Engine.CORE:
+        return _integrator_core(settings)
     step = (
         " It ran with the variable step size of libRoadRunner, i.e. with an output "
         "at every step of the integrator."
@@ -1170,13 +1172,35 @@ def _integrator(settings: FitSettings, engine: Engine = Engine.ROADRUNNER) -> Pa
         Cite(("Welsh2023",)),
         " and its integrator CVODE ",
         Cite(("Hindmarsh2005",)),
+        *_cvode_settings(settings, step),
+    ]
+    return p(*parts)
+
+
+def _cvode_settings(settings: FitSettings, step: str = "") -> list[Part]:
+    """Write the settings of CVODE which roadrunner and the engine core share.
+
+    The relative tolerance and the absolute tolerance of every state, which
+    both integrate with (`sbmlsim.model.tolerances`), the output of the
+    simulation (`step`, the variable step size of roadrunner, which the engine
+    core has not), the first step of the integrator and the data at a change.
+
+    Args:
+        settings: the settings of the fit, with the settings of the integrator.
+        step: the sentence of the output of the simulation, empty for none.
+
+    Returns:
+        The parts after the integrator of the paragraph.
+    """
+    parts: list[Part] = [
         " with the relative tolerance ",
         _number(settings.relative_tolerance),
         " and ",
         *_tolerance(AbsoluteTolerance.of(settings.absolute_tolerance)),
         ".",
-        step,
     ]
+    if step:
+        parts.append(step)
     if settings.initial_time_step > 0:
         parts.extend(
             [
@@ -1188,7 +1212,23 @@ def _integrator(settings: FitSettings, engine: Engine = Engine.ROADRUNNER) -> Pa
     parts.append(
         " " + _text(DATA_AT_CHANGE_TEXT, settings.data_at_change, "data at a change")
     )
-    return p(*parts)
+    return parts
+
+
+def _integrator_core(settings: FitSettings) -> Paragraph:
+    """Write the simulator sbmlsim-core and its integrator CVODE.
+
+    The engine core integrates with the absolute tolerance of every state of
+    roadrunner, computed from the same kinds and overrides, see
+    `sbmlsim.model.model_core.CoreSBMLModel.request_settings`, so it has no
+    factor of one tolerance as COPASI and AMICI have; the output of a
+    simulation is a field of its request and not a variable step size.
+    """
+    return p(
+        "The models were simulated with sbmlsim-core and its integrator CVODE ",
+        Cite(("Hindmarsh2005",)),
+        *_cvode_settings(settings),
+    )
 
 
 def _integrator_copasi(settings: FitSettings) -> Paragraph:

@@ -276,11 +276,11 @@ def test_the_result_does_not_depend_on_the_workers_or_the_chunks(
     for workers in (2, 4):
         res = Simulator(n_workers=workers).run(pk_sbml, scan, observables)
         xr.testing.assert_equal(res.ds, reference.ds)
-    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w: 1)
+    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w, most: 1)
     xr.testing.assert_equal(
         Simulator(n_workers=2).run(pk_sbml, scan, observables).ds, reference.ds
     )
-    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w: 1000)
+    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w, most: 1000)
     xr.testing.assert_equal(
         Simulator(n_workers=1).run(pk_sbml, scan, observables).ds, reference.ds
     )
@@ -362,9 +362,9 @@ def test_a_pk_parameter_of_a_ragged_scan_does_not_depend_on_the_chunks(
 ) -> None:
     scan = dose_scan(steps=None, doses=(50.0, 100.0, 200.0, 20.0))
     observables = [PK("p", "[C]", dose="PODOSE", route="oral")]
-    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w: 1000)
+    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w, most: 1000)
     one = Simulator(n_workers=1).run(pk_sbml, scan, observables)
-    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w: 1)
+    monkeypatch.setattr(simulator_module, "_chunk_size", lambda n, w, most: 1)
     many = Simulator(n_workers=1).run(pk_sbml, scan, observables)
     xr.testing.assert_equal(many.ds, one.ds)
 

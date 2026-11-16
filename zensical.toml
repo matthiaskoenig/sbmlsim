@@ -17,6 +17,7 @@ nav = [
   { "Core" = [
     { "Models" = "models.md" },
     { "Simulations" = "simulation.md" },
+    { "Benchmarks" = "benchmarks.md" },
     { "Observables" = "observables.md" },
     { "Units" = "units.md" },
     { "Simulation experiments" = "experiments.md" },

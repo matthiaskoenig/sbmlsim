@@ -8,11 +8,20 @@ points which ran are stacked into arrays padded with `NaN`, the observables of
 the run are evaluated on them, see `sbmlsim.simulator.observables`, and the
 kept timecourses are interpolated onto the grid of times of the chunk, if it
 has one. A run without observables needs no native solution: the kept
-selections of every point are interpolated right after its simulation, so the
-memory of a chunk is bounded by its grid. A point fails exactly when its own
-simulation or observables fail, not because of the other points of its chunk.
-Nothing in here uses pint or xarray, and a chunk and its result are numbers,
-strings, a plan and the graph of the observables, so they pickle.
+selections of every point are interpolated right after its simulation, so a
+chunk of the loop holds the grid of one point at a time. A point fails exactly
+when its own simulation or observables fail, not because of the other points of
+its chunk. Nothing in here uses pint or xarray, and a chunk and its result are
+numbers, strings, a plan and the graph of the observables, so they pickle.
+
+A chunk of a model of the engine core runs its points as one batch of the
+engine on its threads instead (`_run_chunk_core`), which is why a scan of
+that engine runs in one python process and starts no pool, see
+`sbmlsim.simulator.simulator`. The two paths share everything after the
+simulations, `_finish`. A batch answers with the table of every one of its
+points at once, so the memory of such a chunk grows with its points also
+without observables, which is why they are capped at `CORE_MAX_CHUNK`, well
+below the `MAX_CHUNK` of a chunk of a pool.
 
 In a worker process the model of a chunk is loaded once from its `ModelSpec`
 and kept, see `sbmlsim.parallel.worker_cache`, in the engine of the model of
@@ -40,23 +49,27 @@ import hashlib
 from collections.abc import Generator, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import roadrunner
 
 from sbmlsim import parallel
-from sbmlsim.engine import Engine, amici_cache, using_amici_cache
+from sbmlsim.engine import Engine, amici_cache, import_core, using_amici_cache
 from sbmlsim.model.model import AbstractModel
 from sbmlsim.model.model_roadrunner import JitOptimization, RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.result.scan import MAX_ERRORS, TIME
 from sbmlsim.result.timecourse import apply_weights, grid_weights
 from sbmlsim.simulator import shared
-from sbmlsim.simulator.engines import execute_plan
+from sbmlsim.simulator.engines import core_model, execute_plan
+from sbmlsim.simulator.executor import output_columns, output_time
 from sbmlsim.simulator.observables import TIMECOURSE, ObservableError, ObservableGraph
 from sbmlsim.simulator.plan import Plan, time_tolerance
 from sbmlsim.simulator.shared import SharedArray
+
+if TYPE_CHECKING:
+    from sbmlsim.model.model_core import CoreSBMLModel
 
 #: what a run does about a point which fails: raise its error or flag it
 OnError = Literal["raise", "flag"]
@@ -84,6 +97,11 @@ class ScanPointError(RuntimeError):
 @dataclass(frozen=True)
 class ModelSpec:
     """What a worker needs to load a model as the parent loaded it.
+
+    A model of every engine has a spec, the engine core included, although a
+    scan of that engine takes no pool and so loads no model in a worker, see
+    `_run_chunk_core`: a spec is what a model of it round trips through, and
+    a chunk of it would run in a worker as every other chunk does.
 
     Attributes:
         key: identifies the model, its engine, its optimization level, its
@@ -180,6 +198,27 @@ class ModelSpec:
         return model
 
 
+def core_threads(n_workers: int | None, n_points: int) -> int:
+    """Get the number of threads the engine core batches the chunks of a run with.
+
+    The threads of the batches of a run are counted like the processes of a
+    run of another engine, `parallel.resolve_workers`: a number is taken as
+    given, `None` is every CPU of the quota for a run of
+    `parallel.POOL_THRESHOLD` points or more, and a run of `n_workers=1`, a
+    smaller run and a run inside a worker of a pool, which has its cores
+    already, use one thread.
+
+    Args:
+        n_workers: the workers of the run, see `parallel.resolve_workers`.
+        n_points: the points of the run.
+
+    Returns:
+        The number of threads of a batch, which `parallel.resolve_workers`
+        decides.
+    """
+    return parallel.resolve_workers(n_workers, n_points)
+
+
 def point_plan(
     plan: Plan,
     values: Mapping[str, np.ndarray],
@@ -268,12 +307,15 @@ class ChunkResult:
     errors: tuple[tuple[int, str], ...]
 
 
-def run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
+def run_chunk(chunk: Chunk, model: SBMLModel, threads: int = 1) -> ChunkResult:
     """Run the points of a chunk on a loaded model, see the module.
 
     Args:
         chunk: the points.
         model: the loaded model of the chunk, of any engine.
+        threads: the threads of the engine core a chunk of a model of that
+            engine is batched on, see `_run_chunk_core`; every other engine
+            runs the points of a chunk one after the other in this process.
 
     Returns:
         The values of every point.
@@ -285,6 +327,8 @@ def run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
             with `on_error="flag"`.
     """
     chunk.plan.check_model(model.symbols, model.uinfo)
+    if model.engine is Engine.CORE:
+        return _run_chunk_core(chunk, core_model(model), threads)
     quiet: AbstractContextManager[None] = (
         quiet_roadrunner() if model.engine is Engine.ROADRUNNER else nullcontext()
     )
@@ -293,7 +337,10 @@ def run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
 
 
 def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
-    """Run the points of a chunk, see `run_chunk`.
+    """Run the points of a chunk one after the other, see `run_chunk`.
+
+    A chunk of a model of the engine core runs as one batch of its threads
+    instead, see `_run_chunk_core`, which shares the tail of this, `_finish`.
 
     With `on_error="raise"` the first point which fails in the order of the
     scan is raised, whatever the chunking: a failed simulation stops the
@@ -309,20 +356,13 @@ def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
     simulate, is raised as it is, see the module.
     """
     n = len(chunk.indices)
-    status = np.zeros(n, dtype=np.int8)
     failures: list[tuple[int, str, BaseException]] = []
     points: list[int] = []
     solutions: list[np.ndarray] = []
     plans: list[Plan] = []
     observed = bool(chunk.graph.nodes)
     selections = chunk.selections
-    # the first column of every selection, without a search per selection
-    position: dict[str, int] = {}
-    for j, selection in enumerate(selections):
-        position.setdefault(selection, j)
-    columns = (
-        [] if observed else [position[s] for s in (TIME, *chunk.graph.timecourses)]
-    )
+    columns = _kept_columns(chunk)
     for k in range(n):
         # a definition which does not fit the plan is no failed point
         plan = chunk.plan_of(k)
@@ -341,7 +381,201 @@ def _run_chunk(chunk: Chunk, model: SBMLModel) -> ChunkResult:
             plans.append(plan)
         else:
             solutions.append(_on_grid(chunk.time, result.values[:, columns].T, plan))
-    if observed:
+    return _finish(chunk, points, solutions, plans, failures)
+
+
+def _run_chunk_core(chunk: Chunk, model: CoreSBMLModel, threads: int) -> ChunkResult:
+    """Run the points of a chunk of the engine core as one batch, see the module.
+
+    The engine simulates a batch of requests on threads of its own and
+    answers with the output of every point or with the error which failed it
+    (`PointError`), so the points of a chunk run at once in this process
+    rather than one after the other, which is why a scan of the engine starts
+    no pool: `Simulator.run` gives a run of it one python worker and the
+    threads of the batch, see `sbmlsim.simulator.simulator`.
+
+    The result is the one of the points run one by one, bitwise: every thread
+    of the batch simulates on an instance of its own and the engine holds no
+    state between two requests, so neither the threads nor the chunking of
+    the points reach the numbers (measured, see
+    `tests/simulator/test_scan_core.py`). The failures of the points are
+    sorted and reported as the ones of the loop are, so a run raises the
+    error of the first point in the order of the scan whatever the threads
+    ran first, and a point the engine does not support raises for the whole
+    scan, also with `on_error="flag"`. A point whose request cannot be built
+    fails alone as well, as one whose simulation fails: the points of the
+    batch are the ones whose request was built, and `on_error` decides about
+    the others.
+
+    The model records no pre-initialization here, unlike `executor_core.execute`
+    of a single simulation: the engine is stateless and every point of the
+    batch carries its own values in its request.
+
+    The engine answers with the table of every point of the batch at once, so
+    a chunk of it holds the tables of its points, each released as soon as it
+    is read, and not the grid of one point at a time as the loop does: the
+    points of such a chunk are capped at `CORE_MAX_CHUNK` for that. Measured
+    on the midazolam model with a grid of 200 output times and all 268
+    selections, the widest scan of the package (2000 points, a result of 815
+    MiB): the process peaks at 1.45 GiB in the chunks of 250 points of the
+    cap against 1.87 GiB in chunks of 500, and the same scan of roadrunner,
+    which holds the grid of one point at a time, at 1.66 GiB. The cap costs
+    no measurable time: the pool of threads a batch builds is a few
+    milliseconds against the hundreds a batch of 250 points of such a model
+    integrates.
+
+    Args:
+        chunk: the points.
+        model: the loaded model of the chunk.
+        threads: the threads of the engine the batch runs on.
+
+    Returns:
+        The values of every point.
+
+    Raises:
+        ScanPointError: for the first point which fails, with
+            `on_error="raise"`.
+        NotImplementedError: for a feature the engine does not simulate, also
+            with `on_error="flag"`.
+        ValueError: if the engine refuses the batch, see `_batch`.
+    """
+    # the module of the executor of the engine core, imported here as
+    # `sbmlsim.simulator.engines` imports it, so that a run of another engine
+    # does not import it; the bindings are imported by `import_core`
+    from sbmlsim.simulator import executor_core
+
+    core = import_core()
+    observed = bool(chunk.graph.nodes)
+    kept = _kept_columns(chunk)
+    columns = output_columns(chunk.selections)
+    # the tolerance of every state is computed once for the whole chunk
+    settings = model.request_settings()
+    failures: list[tuple[int, str, BaseException]] = []
+    plans: list[Plan] = []
+    batched: list[int] = []
+    requests: list[dict[str, Any]] = []
+    for k in range(len(chunk.indices)):
+        # a definition which does not fit the plan is no failed point
+        plan = chunk.plan_of(k)
+        plans.append(plan)
+        try:
+            requests.append(executor_core.request_of(plan, model, columns, settings))
+        except NotImplementedError:
+            raise
+        except Exception as err:
+            failures.append((k, f"{type(err).__name__}: {err}", err))
+            if chunk.on_error == "raise":
+                break
+            continue
+        batched.append(k)
+    outputs = _batch(model, requests, threads)
+    # the requests of the batch are released with it, the engine has read them
+    del requests
+    points: list[int] = []
+    solutions: list[np.ndarray] = []
+    ran: list[Plan] = []
+    for position, k in enumerate(batched):
+        plan = plans[k]
+        output = outputs[position]
+        # the table of the point is released once its values are read: the
+        # array of a point of a chunk without observables is dropped with it
+        outputs[position] = None
+        if isinstance(output, core.PointError):
+            err = executor_core.point_error(output, model)
+            if isinstance(err, NotImplementedError):
+                raise err
+            failures.append((k, f"{type(err).__name__}: {err}", err))
+            continue
+        # the time is shifted in the array the bindings own, which
+        # `output.values` gives out again by every access: it is read once
+        values = output_time(output.values, columns, plan, model.symbols)
+        points.append(k)
+        ran.append(plan)
+        solutions.append(
+            values if observed else _on_grid(chunk.time, values[:, kept].T, plan)
+        )
+    return _finish(chunk, points, solutions, ran, failures)
+
+
+def _batch(
+    model: CoreSBMLModel, requests: list[dict[str, Any]], threads: int
+) -> list[Any]:
+    """Simulate the requests of a chunk as one batch of the engine core.
+
+    Args:
+        model: the loaded model of the chunk.
+        requests: the request of every point of the batch, in their order.
+        threads: the threads of the engine the batch runs on, the workers of
+            the run.
+
+    Returns:
+        The output of every request in the order of the requests, the
+        `PointError` of a point which failed among them.
+
+    Raises:
+        ValueError: if the engine refuses the batch, e.g. for more threads
+            than it runs on; the message names the threads, which the
+            `n_workers` of the simulator says.
+    """
+    try:
+        return model.loaded.simulate_many(requests, threads=threads)
+    except ValueError as err:
+        raise ValueError(
+            f"The engine 'core' refused the batch of a chunk on {threads} "
+            f"threads, the 'n_workers' of the run: {err}"
+        ) from err
+
+
+def _kept_columns(chunk: Chunk) -> list[int]:
+    """Get the columns of the time and of the kept timecourses of a chunk.
+
+    The first column of every selection, without a search per selection; a
+    chunk with observables keeps the native solutions of its points and has
+    none of them.
+    """
+    if chunk.graph.nodes:
+        return []
+    position: dict[str, int] = {}
+    for j, selection in enumerate(chunk.selections):
+        position.setdefault(selection, j)
+    return [position[s] for s in (TIME, *chunk.graph.timecourses)]
+
+
+def _finish(
+    chunk: Chunk,
+    points: list[int],
+    solutions: list[np.ndarray],
+    plans: Sequence[Plan],
+    failures: list[tuple[int, str, BaseException]],
+) -> ChunkResult:
+    """Build the result of a chunk from the points which ran, see `_run_chunk`.
+
+    The observables are evaluated on the native solutions, the kept
+    timecourses are interpolated onto the grid of the chunk and the points
+    which failed are reported in the order of the scan: the first of them is
+    raised with `on_error="raise"` and every one of them is flagged
+    otherwise. Every engine shares it, the loop over the points of
+    `_run_chunk` and the batch of `_run_chunk_core`.
+
+    Args:
+        chunk: the points.
+        points: the positions in the chunk of the points which ran.
+        solutions: their native solutions, or their timecourses on the grid
+            of the chunk when it has no observables.
+        plans: the plans of the points which ran; a chunk without observables
+            does not need them.
+        failures: the points which failed with their message and error, which
+            the observables of the chunk extend and which is sorted here.
+
+    Returns:
+        The values of every point.
+
+    Raises:
+        ScanPointError: for the first point which fails, with
+            `on_error="raise"`.
+    """
+    status = np.zeros(len(chunk.indices), dtype=np.int8)
+    if chunk.graph.nodes:
         plan_of = dict(zip(points, plans, strict=True))
         points, time, outputs, failed = _observe(chunk, points, solutions, plans)
         failures.extend(failed)

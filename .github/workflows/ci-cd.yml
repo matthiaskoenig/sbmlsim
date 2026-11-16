@@ -134,23 +134,51 @@ jobs:
       # the engine tests, in parallel (`addopts` of pyproject.toml)
       run: uv run --no-sync pytest --skip-slow tests/test_engine.py $(find tests -name 'test_*amici*.py' -o -name 'test_*_engines.py')
 
+  core:
+    # the engine `core` is sbmlsim-core, a Rust engine driven through its
+    # python bindings, which the package depends on (`sbmlsim-core>=0.6.0`),
+    # so the environment of the lock has them and this job builds nothing: it
+    # runs the engine against the version which ships, not against a checkout
+    # of `develop`, and is the focused signal of the engine while the matrix
+    # covers it as part of the suite; it runs every test file with `core` in
+    # its name, the tests of every engine besides roadrunner,
+    # `test_*_engines.py`, and the two files whose names those patterns miss:
+    # the battery of the credibility, whose cross simulator compares the
+    # engine core, and the benchmark of the engines
+    name: core engine
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Set up the environment
+      uses: ./.github/actions/setup
+      with:
+        python-version: "3.14"
+        sync: --extra dev
+    - name: Test
+      run: uv run --no-sync pytest --skip-slow tests/test_engine.py tests/credibility/test_battery.py tests/test_engine_benchmark.py $(find tests -name 'test_*core*.py' -o -name 'test_*_engines.py')
+
   tests:
     # the one check the branch protection requires; the names of the matrix
     # jobs change with the matrix, this name does not, see .github/rulesets/
     name: tests
-    needs: [test, install, amici]
+    needs: [test, install, amici, core]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-    - name: Check the results of the test matrix, of the plain install and of the amici engine
+    - name: Check the results of the test matrix, of the plain install and of the amici and core engines
       env:
         RESULT: ${{ needs.test.result }}
         INSTALL: ${{ needs.install.result }}
         AMICI: ${{ needs.amici.result }}
+        CORE: ${{ needs.core.result }}
       run: |
-        echo "test matrix: $RESULT, plain install: $INSTALL, amici engine: $AMICI"
-        test "$RESULT" = "success" && test "$INSTALL" = "success" && test "$AMICI" = "success"
+        echo "test matrix: $RESULT, plain install: $INSTALL, amici engine: $AMICI, core engine: $CORE"
+        test "$RESULT" = "success" && test "$INSTALL" = "success" && test "$AMICI" = "success" && test "$CORE" = "success"
 
   tested:
     # a release does not run the test matrix again. The tag is on a commit of

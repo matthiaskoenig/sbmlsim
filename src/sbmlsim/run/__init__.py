@@ -229,7 +229,6 @@ def check_out(
         out: the output directory.
         resume: whether the run would resume the run in `out`.
         inputs: the paths of the input fields of the spec by their name.
-        progress: how the progress is rendered, see `sbmlsim.progress.resolve`.
 
     Raises:
         OutInUse: for an output the run may not run into; its `out` and

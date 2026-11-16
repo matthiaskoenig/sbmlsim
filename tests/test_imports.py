@@ -175,7 +175,7 @@ def test_a_light_module_does_not_import_roadrunner(module: str) -> None:
     """
     code = (
         f"import sys, {module}; "
-        "print(sorted(m for m in ('roadrunner', 'COPASI', 'amici') if m in sys.modules))"
+        "print(sorted(m for m in ('roadrunner', 'COPASI', 'amici', 'sbmlsim_core') if m in sys.modules))"
     )
     result = subprocess.run(
         [sys.executable, "-c", code],

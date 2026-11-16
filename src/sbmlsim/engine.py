@@ -182,6 +182,7 @@ class Engine(StrEnum):
     ROADRUNNER = "roadrunner"
     COPASI = "copasi"
     AMICI = "amici"
+    CORE = "core"
 
 
 class JitOptimization(StrEnum):
@@ -305,6 +306,25 @@ def import_amici() -> ModuleType:
         "`pip install sbmlsim[amici]`. AMICI is built from source and needs "
         "a C++ compiler, a BLAS library and the headers of HDF5 (e.g. "
         "`apt install build-essential libopenblas-dev libhdf5-dev`).",
+    )
+
+
+def import_core() -> ModuleType:
+    """Import the bindings of sbmlsim-core, the Rust engine `core`.
+
+    `sbmlsim-core` is a dependency of sbmlsim, so the bindings come with every
+    install of the package and the engine needs no extra; they are imported
+    here, and never at the import of sbmlsim, so a run of another engine does
+    not load them.
+
+    :return: the module `sbmlsim_core`
+    :raises ImportError: when the bindings are not installed
+    """
+    return _import_optional(
+        "sbmlsim_core",
+        "The engine 'core' needs the python bindings of sbmlsim-core, which "
+        "is a dependency of sbmlsim, install them with "
+        "`pip install sbmlsim-core`.",
     )
 
 

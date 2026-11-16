@@ -46,6 +46,7 @@ Core:
 
 - [Models](models.md): load SBML models, inspect them and set default changes.
 - [Simulations](simulation.md): timecourses with changes before the start and at given times, e.g. repeated doses.
+- [Benchmarks](benchmarks.md): what a load, a simulation and a scan of the packaged models cost in each of the four engines.
 - [Observables](observables.md): values computed from every simulation, such as a peak concentration or a pharmacokinetic analysis.
 - [Units](units.md): give values in the units you have; `sbmlsim` converts them into the units of the model.
 - [Simulation experiments](experiments.md): models, data, simulations and figures of one study in one reproducible python class.

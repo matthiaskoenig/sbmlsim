@@ -5,6 +5,7 @@ from sbmlsim.engine import (
     UnsupportedModelError,
     import_amici,
     import_copasi,
+    import_core,
     resolve_engine,
 )
 from sbmlsim.model.model_sbml import IntegratorSettings
@@ -19,5 +20,6 @@ __all__ = [
     "UnsupportedModelError",
     "import_amici",
     "import_copasi",
+    "import_core",
     "resolve_engine",
 ]

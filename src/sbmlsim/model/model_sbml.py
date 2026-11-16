@@ -483,7 +483,7 @@ def load_model(
     Raises:
         ValueError: for a name which is no engine.
         ImportError: for the engine COPASI without python-copasi, AMICI without
-            AMICI.
+            AMICI, core without the bindings of sbmlsim-core.
     """
     engine = resolve_engine(engine)
     if isinstance(model, SBMLModel):
@@ -517,6 +517,13 @@ def load_model(
         if isinstance(model, AbstractModel):
             return AmiciSBMLModel.from_abstract_model(abstract_model=model, ureg=ureg)
         return AmiciSBMLModel(source=model, ureg=ureg)
+    if engine is Engine.CORE:
+        # the bindings of sbmlsim-core are imported when a model is loaded
+        from sbmlsim.model.model_core import CoreSBMLModel
+
+        if isinstance(model, AbstractModel):
+            return CoreSBMLModel.from_abstract_model(abstract_model=model, ureg=ureg)
+        return CoreSBMLModel(source=model, ureg=ureg)
     raise ValueError(f"The engine '{engine}' loads no models.")
 
 
@@ -532,6 +539,9 @@ def _is_helper(sid: str) -> bool:
 
 def to_level3(sbml: str, label: str) -> str:
     """Get the SBML as level 3 version 2, the text as given when it is level 3.
+
+    A conversion is logged at `DEBUG` with the model and its level, so that a
+    bare failure of the engine afterwards names its cause.
 
     Args:
         sbml: the SBML of the model.
@@ -565,6 +575,21 @@ def to_level3(sbml: str, label: str) -> str:
     if unread or doc.getLevel() >= 3:
         return sbml
     level, version = doc.getLevel(), doc.getVersion()
+    # a conversion is faithful but not free: it can hand the engine a model
+    # it integrates otherwise, e.g. the cases 01435 to 01443 of the SBML Test
+    # Suite (see `docs/testsuite.md`), and it is the one step between the file
+    # of the user and the engine, so it is named here and a bare failure of
+    # the engine afterwards can be read against it
+    logger.debug(
+        "The model '%s' of SBML level %s version %s is converted to level 3 "
+        "version 2, which every engine simulates; the conversion translates "
+        "what level 3 has no element of, e.g. a stoichiometry math into an "
+        "assignment rule of a non-constant species reference, which "
+        "roadrunner cannot integrate (CV_CONV_FAILURE)",
+        label,
+        level,
+        version,
+    )
     # reading logs entries of its own, only what the conversion logs counts
     log.clearLog()
     converted = doc.setLevelAndVersion(3, 2, False)
@@ -838,15 +863,25 @@ ROADRUNNER_ONLY_SETTINGS = frozenset(
 
 
 class EngineSettings:
-    """The settings of roadrunner in an engine which takes `PORTABLE_SETTINGS`.
+    """The settings of roadrunner in an engine which takes some of them.
 
     Checks and validates the settings and reports, once per model, the ones
     the engine ignores and an absolute tolerance per kind which it takes as
-    one number.
+    one number. An engine states which settings it takes and which it ignores,
+    `PORTABLE_SETTINGS` and `ROADRUNNER_ONLY_SETTINGS` by default, the ones of
+    COPASI and AMICI; the engine core takes `initial_time_step` and `stiff` as
+    well, see `sbmlsim.model.model_core`.
     """
 
     def __init__(
-        self, engine: str, integrator: str, label: str, log: logging.Logger
+        self,
+        engine: str,
+        integrator: str,
+        label: str,
+        log: logging.Logger,
+        *,
+        taken: frozenset[str] = PORTABLE_SETTINGS,
+        ignored: frozenset[str] = ROADRUNNER_ONLY_SETTINGS,
     ) -> None:
         """Create the settings of a model.
 
@@ -855,17 +890,25 @@ class EngineSettings:
             integrator: the name of its integrator.
             label: the name of the model in a message.
             log: the logger of the engine, which reports.
+            taken: the settings of roadrunner which the engine takes: the
+                absolute tolerance an `AbsoluteTolerance`, `maximum_num_steps`
+                a positive integer, `stiff` a boolean and every other setting
+                a number which is not negative.
+            ignored: the settings of roadrunner which the engine has no
+                equivalent of, reported once per model and left out.
         """
         self.engine = engine
         self.integrator = integrator
         self.label = label
         self._log = log
-        self._ignored: set[str] = set()
+        self._taken = taken
+        self._ignorable = ignored
+        self._reported: set[str] = set()
         self._tolerance_reported = False
 
     def checked(
         self, settings: Mapping[str, IntegratorSetting]
-    ) -> dict[str, float | int | AbsoluteTolerance]:
+    ) -> dict[str, float | int | bool | AbsoluteTolerance]:
         """Check settings and get the ones the engine takes, validated.
 
         A setting of roadrunner which the engine has no equivalent of is
@@ -875,23 +918,23 @@ class EngineSettings:
             settings: the settings by their names in roadrunner.
 
         Returns:
-            The settings of `PORTABLE_SETTINGS`: the absolute tolerance an
-            `AbsoluteTolerance`, the maximum number of steps an integer, the
-            others floats.
+            The settings the engine takes: the absolute tolerance an
+            `AbsoluteTolerance`, the maximum number of steps an integer,
+            `stiff` a boolean, the others floats.
 
         Raises:
             ValueError: if neither the engine nor roadrunner has a setting of
                 a name, or a value is not valid.
         """
-        unknown = sorted(set(settings) - PORTABLE_SETTINGS - ROADRUNNER_ONLY_SETTINGS)
+        unknown = sorted(set(settings) - self._taken - self._ignorable)
         if unknown:
             raise ValueError(
                 f"The integrator '{self.integrator}' of {self.engine} has no settings "
-                f"{unknown}, its settings are {sorted(PORTABLE_SETTINGS)}."
+                f"{unknown}, its settings are {sorted(self._taken)}."
             )
-        ignored = sorted((set(settings) & ROADRUNNER_ONLY_SETTINGS) - self._ignored)
+        ignored = sorted((set(settings) & self._ignorable) - self._reported)
         if ignored:
-            self._ignored.update(ignored)
+            self._reported.update(ignored)
             self._log.warning(
                 "%s has no equivalent of the settings %s of roadrunner, the "
                 "model '%s' ignores them.",
@@ -899,14 +942,22 @@ class EngineSettings:
                 ignored,
                 self.label,
             )
-        checked: dict[str, float | int | AbsoluteTolerance] = {}
+        checked: dict[str, float | int | bool | AbsoluteTolerance] = {}
         for key, value in settings.items():
-            if key not in PORTABLE_SETTINGS:
+            if key not in self._taken:
                 continue
             if key == "absolute_tolerance":
                 if isinstance(value, bool):
                     raise ValueError("The absolute tolerance is a number.")
                 checked[key] = AbsoluteTolerance.of(value)
+            elif key == "stiff":
+                # the one boolean a setting of an engine is, BDF or Adams
+                if isinstance(value, AbsoluteTolerance) or float(value) not in (
+                    0.0,
+                    1.0,
+                ):
+                    raise ValueError(f"The setting '{key}' is a boolean, not {value}.")
+                checked[key] = bool(value)
             elif key == "maximum_num_steps":
                 if (
                     isinstance(value, bool | AbsoluteTolerance)

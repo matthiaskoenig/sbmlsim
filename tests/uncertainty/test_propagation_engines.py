@@ -1,4 +1,4 @@
-"""The propagation of uncertain values with the engines COPASI and AMICI (#219).
+"""The propagation of uncertain values with the engines COPASI, AMICI and core (#219).
 
 The draws of a propagation are inputs of its scans: the references of a
 relative distribution are read with roadrunner whatever the engine of the

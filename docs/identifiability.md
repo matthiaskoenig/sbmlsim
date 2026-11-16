@@ -144,7 +144,7 @@ print(fim.correlation)
 print(fim.rank, fim.is_identifiable, fim.condition_number)
 ```
 
-The jacobian is `2 k` evaluations of the residuals, two per parameter, which are independent of each other: `n_cores` evaluates them on the workers of a fit, the pool the jacobian of least squares uses, so a Fisher information of 35 parameters costs five rounds of simulations on 16 workers instead of seventy one after another. The step of a point is the same either way, so the jacobian is the one of a single process bitwise. The commands pass their `--cores`, and the points report their [progress](run.md#progress).
+The jacobian is `2 k` evaluations of the residuals, two per parameter, which are independent of each other: `n_cores` evaluates them on the workers of a fit, the pool the jacobian of least squares uses, so a Fisher information of 35 parameters costs five rounds of simulations on 16 workers instead of seventy one after another. The step of a point is the same either way, so the jacobian is the one of a single process bitwise. The commands pass their `--cores`, and the points report their [progress](run.md#progress-and-provenance).
 
 What the result tells you:
 

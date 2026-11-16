@@ -1,4 +1,4 @@
-"""The evaluation of a fit problem with the engines COPASI and AMICI (#219).
+"""The evaluation of a fit problem with the engines COPASI, AMICI and core (#219).
 
 A problem evaluates its residuals, metrics and reports with the engine of
 its simulator: a problem of an engine loads its models in the engine at
@@ -40,6 +40,7 @@ from sbmlsim.report.render import HTMLRenderer
 from sbmlsim.simulator import Simulator
 from tests.engines import (
     INTEGRATORS,
+    OTHER_ENGINES,
     PACKAGES,
     model_class,
     relative_tolerance,
@@ -289,7 +290,7 @@ def test_an_evaluation_logs_no_warning(
         assert "initial_time_step" not in simulator.integrator_settings
 
 
-@pytest.mark.parametrize("engine", list(Engine), ids=str)
+@pytest.mark.parametrize("engine", [Engine.ROADRUNNER, *OTHER_ENGINES], ids=str)
 def test_the_engine_is_in_the_provenance(
     engine: Engine,
     op_hctz_pk: OptimizationProblem,
@@ -412,19 +413,30 @@ def test_the_methods_name_the_engine(
     assert roadrunner == _html(methods._integrator(fit_settings, Engine.ROADRUNNER))
     assert "libRoadRunner" in roadrunner and "its integrator CVODE " in roadrunner
 
-    name = {Engine.COPASI: "COPASI", Engine.AMICI: "AMICI"}[other_engine]
-    if other_engine is Engine.COPASI:
-        from sbmlsim.model.model_copasi import COPASI_ATOL_FACTOR as factor
-    else:
-        from sbmlsim.model.model_amici import AMICI_ATOL_FACTOR as factor
+    name = {
+        Engine.COPASI: "COPASI",
+        Engine.AMICI: "AMICI",
+        Engine.CORE: "sbmlsim-core",
+    }[other_engine]
     text = _html(methods._integrator(fit_settings, other_engine))
     assert name in text and f"its integrator {INTEGRATORS[other_engine]} " in text
     assert "libRoadRunner" not in text and "variable step size" not in text
     others = set(INTEGRATORS.values()) - {INTEGRATORS[other_engine]}
     assert not any(f"integrator {integrator} " in text for integrator in others)
-    # the tolerance the engine integrates with, the one of the fit times the
-    # factor of the engine
     smallest = AbsoluteTolerance.of(fit_settings.absolute_tolerance).smallest()
     assert smallest == 1e-6
+    if other_engine is Engine.CORE:
+        # the engine core integrates with the absolute tolerance of every
+        # state of roadrunner, so it has no factor of one tolerance
+        assert _rendered(smallest) in text
+        assert "the smallest absolute tolerance of the fit" not in text
+        return
+
+    if other_engine is Engine.COPASI:
+        from sbmlsim.model.model_copasi import COPASI_ATOL_FACTOR as factor
+    else:
+        from sbmlsim.model.model_amici import AMICI_ATOL_FACTOR as factor
+    # the tolerance the engine integrates with, the one of the fit times the
+    # factor of the engine
     assert _rendered(smallest * factor) in text
     assert f"the smallest absolute tolerance of the fit times {factor:g}" in text

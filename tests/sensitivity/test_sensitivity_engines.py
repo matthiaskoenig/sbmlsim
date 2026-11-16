@@ -1,4 +1,4 @@
-"""The sensitivity analyses of scans with the engines COPASI and AMICI.
+"""The sensitivity analyses of scans with the engines COPASI, AMICI and core.
 
 An analysis is a function of a `ScanResult`, so it is the one of roadrunner
 for the result of another engine. Every test runs with every engine besides

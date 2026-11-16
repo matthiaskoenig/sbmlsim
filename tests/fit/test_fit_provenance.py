@@ -44,11 +44,16 @@ def test_versions_name_the_simulation_stack() -> None:
     assert {"python", "sbmlsim", "libroadrunner", "scipy", "numpy"} <= set(versions)
     assert "python-copasi" not in versions
     assert "amici" not in versions
+    assert "sbmlsim-core" not in versions
 
 
 @pytest.mark.parametrize(
     ("engine", "package"),
-    [(Engine.COPASI, "python-copasi"), (Engine.AMICI, "amici")],
+    [
+        (Engine.COPASI, "python-copasi"),
+        (Engine.AMICI, "amici"),
+        (Engine.CORE, "sbmlsim-core"),
+    ],
 )
 def test_versions_of_a_fit_name_the_package_of_its_engine(
     engine: Engine, package: str, repo: Path

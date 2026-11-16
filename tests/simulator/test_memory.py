@@ -22,8 +22,10 @@ def test_scalar_scan_discards_time_buffers(
     chunks: list[ChunkResult] = []
     run_chunk = worker_module.run_chunk
 
-    def capture(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
-        result = run_chunk(chunk, model)
+    def capture(
+        chunk: Chunk, model: RoadrunnerSBMLModel, threads: int = 1
+    ) -> ChunkResult:
+        result = run_chunk(chunk, model, threads)
         chunks.append(result)
         return result
 
@@ -86,8 +88,10 @@ def test_the_chunks_are_released_when_written(
     chunks: list[weakref.ref[ChunkResult]] = []
     run_chunk = worker_module.run_chunk
 
-    def capture(chunk: Chunk, model: RoadrunnerSBMLModel) -> ChunkResult:
-        result = run_chunk(chunk, model)
+    def capture(
+        chunk: Chunk, model: RoadrunnerSBMLModel, threads: int = 1
+    ) -> ChunkResult:
+        result = run_chunk(chunk, model, threads)
         chunks.append(weakref.ref(result))
         return result
 
