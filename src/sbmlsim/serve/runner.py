@@ -113,11 +113,11 @@ from pint.facets.plain import PlainUnit
 from sbmlsim.engine import Engine
 from sbmlsim.hashing import canonical_json_sha256, file_sha256
 from sbmlsim.model.model_sbml import SBMLModel, load_model
-from sbmlsim.panel import AppPage, Knob, Panel, PanelCurve, PanelData
+from sbmlsim.panel import AppPage, Knob, Panel, PanelCurve, PanelData, dose_times
 from sbmlsim.project import Project, load_project
 from sbmlsim.result.scan import STATUS, TIME
 from sbmlsim.serve.cache import BoundedCache
-from sbmlsim.simulation import Dimension, Scan, Simulation
+from sbmlsim.simulation import Change, Dimension, Scan, Simulation
 from sbmlsim.simulator.formula import CompiledFormula, compile_formula
 from sbmlsim.units import Quantity
 
@@ -157,6 +157,7 @@ __all__ = [
     "knob_factor",
     "knob_unit",
     "output_times",
+    "time_factor",
     "time_unit",
 ]
 
@@ -832,13 +833,25 @@ def _check_derived(entry: ModelEntry) -> None:
                 _check_entities(panel, entities, where)
             formulas = _formulas(panel, where)
             read = {s for formula in formulas.values() for s in formula.symbols}
+            read |= _dosing_knobs(panel)
             for knob in panel.knobs:
                 if knob.target is None and knob.id not in read:
                     raise ValueError(
                         f"The knob '{knob.id}' of the panel '{panel.id}'{where} sets "
-                        f"no target and no formula of its derived targets reads it; "
-                        f"a knob without a target is an input of a formula."
+                        f"no target, no formula of its derived targets and no "
+                        f"dosing reads it; a knob without a target is an input of "
+                        f"a formula or a time of a dosing."
                     )
+
+
+def _dosing_knobs(panel: Panel) -> set[str]:
+    """Get the ids of the knobs of the times of the dosing protocols of a panel."""
+    return {
+        knob_id
+        for dosing in panel.simulation.dosing
+        for knob_id in (dosing.interval, dosing.duration)
+        if knob_id is not None
+    }
 
 
 def _check_entities(panel: Panel, entities: Set[str], where: str) -> None:
@@ -871,6 +884,10 @@ def _check_entities(panel: Panel, entities: Set[str], where: str) -> None:
         ),
         *(("a derived target", target) for target in panel.simulation.derived),
         *(("a target of the preinit", target) for target in panel.simulation.preinit),
+        *(
+            ("a target of a dosing", dosing.target)
+            for dosing in panel.simulation.dosing
+        ),
     ]
     for what, target in targets:
         if target not in entities:
@@ -1080,12 +1097,17 @@ class _Resolved:
         grid: the values of the dimension of the grid by their target, in the
             order of the targets, which the dimension gets them in, empty for
             a request of a point.
+        doses: the doses of the dosing protocols after their first one, per
+            point of the grid (one for a request of a point), each the target,
+            its times and the increment of a dose in the unit of the model;
+            empty for a panel without a dosing protocol, see `_doses`.
     """
 
     scan: Scan
     axes: tuple[GridAxis, ...]
     preinit: Mapping[str, Any]
     grid: Mapping[str, Any]
+    doses: tuple[tuple[tuple[str, tuple[float, ...], float], ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1565,6 +1587,10 @@ def _run_key(warm: _Warm, entry: ModelEntry, panel: Panel, resolved: _Resolved) 
             "points": panel.simulation.points,
             "preinit": [[t, _exact(v)] for t, v in resolved.preinit.items()],
             "grid": [[t, _exact(v)] for t, v in resolved.grid.items()],
+            "doses": [
+                [[t, [_exact(x) for x in times], _exact(d)] for t, times, d in point]
+                for point in resolved.doses
+            ],
         }
     )
 
@@ -1672,7 +1698,7 @@ def _scan(
             for s in formula.symbols
         ]
         changed[target] = formula.evaluate_array(arguments, size)
-    if gridded and not changed:
+    if gridded and not changed and points.keys().isdisjoint(_dosing_knobs(panel)):
         raise ValueError(
             f"The knobs {[knob.id for knob in gridded]} of the grid of the panel "
             f"'{panel.id}' set no target and no derived target reads them."
@@ -1683,19 +1709,123 @@ def _scan(
     changed = dict(sorted(changed.items()))
     dimensions = (
         [Dimension("__".join(axis.id for axis in axes), values=changed)]
-        if gridded
+        if gridded and changed
         else []
     )
     # the output times are integrated to, so a curve is the solution at its
     # times and not the line between the steps of the integrator around them
+    times = output_times(panel).tolist()
+    doses = _doses(model, panel, numbers, points, size)
+    if gridded and (not changed or len(set(doses)) > 1):
+        # the doses differ by the point: a simulation per point, the values of
+        # the grid in its pre-initialization, in C order as the dimension of
+        # values has them
+        simulations = {
+            str(i): Simulation(
+                end=panel.simulation.end,
+                preinit_changes={
+                    **preinit,
+                    **{target: value[i] for target, value in changed.items()},
+                },
+                changes=_dose_changes(doses[i]) if doses else [],
+                times=times,
+            )
+            for i in range(size)
+        }
+        dimension = Dimension(
+            "__".join(axis.id for axis in axes), simulations=simulations
+        )
+        simulation = next(iter(simulations.values()))
+        return _Resolved(
+            scan=Scan(simulation, [dimension]),
+            axes=axes,
+            preinit=preinit,
+            grid=changed,
+            doses=tuple(doses),
+        )
     simulation = Simulation(
         end=panel.simulation.end,
         preinit_changes=preinit,
-        times=output_times(panel).tolist(),
+        changes=_dose_changes(doses[0]) if doses else [],
+        times=times,
     )
     return _Resolved(
-        scan=Scan(simulation, dimensions), axes=axes, preinit=preinit, grid=changed
+        scan=Scan(simulation, dimensions),
+        axes=axes,
+        preinit=preinit,
+        grid=changed,
+        doses=tuple(doses[:1]),
     )
+
+
+def _doses(
+    model: SBMLModel,
+    panel: Panel,
+    numbers: Mapping[str, float],
+    points: Mapping[str, np.ndarray],
+    size: int,
+) -> list[tuple[tuple[str, tuple[float, ...], float], ...]]:
+    """Get the doses of the dosing protocols of a panel after their first one.
+
+    A dose is the value of the knob of the dose in the unit of its target
+    (`knob_factor`), added to the target at the times of `dose_times` from
+    the interval and the duration of their knobs in the time unit of the model
+    (`time_factor`), see `sbmlsim.panel.PanelDosing`.
+
+    Args:
+        model: the model, which resolves the units of the knobs.
+        panel: the panel.
+        numbers: the number of every knob which is not in the grid.
+        points: the numbers of every knob of the grid at the points of the
+            product in C order.
+        size: the points of the grid, 1 for a request of a point.
+
+    Returns:
+        Per point the doses of every dosing protocol which gives more than its
+        first dose: its target, the times and the increment; empty for a
+        panel without a dosing protocol.
+    """
+    if not panel.simulation.dosing:
+        return []
+    knobs = {knob.id: knob for knob in panel.knobs}
+
+    def value(knob_id: str, i: int) -> float:
+        return float(points[knob_id][i]) if knob_id in points else numbers[knob_id]
+
+    result = []
+    for i in range(size):
+        point = []
+        for dosing in panel.simulation.dosing:
+            dose = value(dosing.dose, i) * knob_factor(model, knobs[dosing.dose])
+            interval = value(dosing.interval, i) * time_factor(
+                model, knobs[dosing.interval]
+            )
+            duration = (
+                None
+                if dosing.duration is None
+                else value(dosing.duration, i)
+                * time_factor(model, knobs[dosing.duration])
+            )
+            times = dose_times(interval, duration, panel.simulation.end)
+            if times:
+                point.append((dosing.target, tuple(times), dose))
+        result.append(tuple(point))
+    return result
+
+
+def _dose_changes(
+    doses: Sequence[tuple[str, tuple[float, ...], float]],
+) -> list[Change]:
+    """Get the changes of the doses of a point, an increment of its target each.
+
+    A change adds the dose to the target in the state before it, the formula
+    `"<target> + <dose>"` with the dose as the exact text of its double, which
+    the formula reads back as that double.
+    """
+    return [
+        Change(times=list(times), values={target: f"{target} + {dose!r}"})
+        for target, times, dose in doses
+    ]
 
 
 def _formulas(panel: Panel, where: str = "") -> dict[str, CompiledFormula]:
@@ -2086,6 +2216,28 @@ def knob_factor(model: SBMLModel, knob: Knob) -> float:
         return 1.0
     target = model.uinfo.get(knob.target) or "dimensionless"
     return _factor(model, knob.unit, target, f"the knob '{knob.id}'")
+
+
+def time_factor(model: SBMLModel, knob: Knob) -> float:
+    """Get the factor from the unit of a knob of a time to the time unit of the model.
+
+    A knob of the interval or of the duration of a dosing protocol has no
+    target; a value `v` of it is `v * factor` in the time unit of the model.
+
+    Args:
+        model: the model of the knob, whose unit ids the unit may name.
+        knob: the knob.
+
+    Returns:
+        The factor, 1 for a knob which declares no unit, whose values are in
+        the time unit of the model.
+
+    Raises:
+        ValueError: naming the knob, for a unit which is no time.
+    """
+    if knob.unit is None:
+        return 1.0
+    return _factor(model, knob.unit, time_unit(model), f"the knob '{knob.id}'")
 
 
 def curve_factor(model: SBMLModel, curve: PanelCurve) -> float:

@@ -50,6 +50,8 @@ def test_the_panels_of_a_model_are_listed(client: TestClient) -> None:
         "dose_urine",
         "patient_plasma",
         "patient_urine",
+        "dosing_plasma",
+        "dosing_urine",
     ]
     assert body["panels"][0]["title"] == "Plasma concentration over the renal function"
     assert body["contract"] == CONTRACT
@@ -72,6 +74,7 @@ def test_the_app_route_answers_the_contract(client: TestClient) -> None:
         ["renal_plasma", "renal_urine"],
         ["dose_plasma", "dose_urine"],
         ["patient_plasma", "patient_urine"],
+        ["dosing_plasma", "dosing_urine"],
     ]
     assert [page["scenarios"] for page in body["pages"][:2]] == [[], []]
     assert [one["id"] for one in body["pages"][2]["scenarios"]] == [

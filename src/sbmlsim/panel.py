@@ -40,6 +40,7 @@ __all__ = [
     "APP_CONTRACT",
     "CONTRACT",
     "MAX_CURVES",
+    "MAX_DOSES",
     "MAX_END",
     "MAX_GRID",
     "MAX_KNOBS",
@@ -53,10 +54,12 @@ __all__ = [
     "Panel",
     "PanelCurve",
     "PanelData",
+    "PanelDosing",
     "PanelSimulation",
     "Scenario",
     "app_from_payload",
     "app_payload",
+    "dose_times",
     "panel_from_payload",
     "panel_payload",
 ]
@@ -80,6 +83,9 @@ MAX_KNOBS: Final = 8
 MAX_GRID: Final = 64
 #: the most curves of a panel
 MAX_CURVES: Final = 16
+#: the most doses a dosing protocol of a panel gives after its first one, see
+#: `dose_times`
+MAX_DOSES: Final = 1000
 
 #: a panel and its parts forbid unknown fields and do not change
 _CONFIG = ConfigDict(extra="forbid", frozen=True)
@@ -400,6 +406,83 @@ class PanelData(BaseModel):
         return self
 
 
+class PanelDosing(BaseModel):
+    """A dosing protocol of a panel: the dose of a knob, repeated at an interval.
+
+    The first dose is the value of the knob `dose` at the start, which the knob
+    sets on its target as every knob does (its `target` is the `target` of the
+    dosing). Every further dose adds the same value to the target at the times
+    `k * interval`, `k = 1, 2, ...`, before the end of the dosing and of the
+    simulation (`dose_times`): a change of the simulation which increments the
+    target in the state before it, e.g. the oral dose `PODOSE_x` once daily
+    (an interval of 24 h) for a week (a duration of 7 days). The model is not
+    changed. An interval of 0 is a single dose.
+
+    Attributes:
+        target: the entity of the model the doses are added to, an `SId`; the
+            target of the knob `dose`.
+        dose: the id of the knob of the dose.
+        interval: the id of the knob of the interval between two doses, a time
+            in the unit it declares (the time unit of the model without), 0
+            for a single dose.
+        duration: the id of the knob of the time the doses are given, in the
+            unit it declares (the time unit of the model without); `None`
+            gives them until the end of the simulation.
+    """
+
+    model_config = _CONFIG
+
+    target: _Text
+    dose: _Text
+    interval: _Text
+    duration: _Text | None = None
+
+    @model_validator(mode="after")
+    def _check_target(self) -> Self:
+        """Check that the target is an `SId`.
+
+        Raises:
+            ValueError: naming the target, for a target which is no `SId`.
+        """
+        if _SID.fullmatch(self.target) is None:
+            raise ValueError(
+                f"The target '{self.target}' of a dosing is no SId: it is an "
+                f"entity of the model, a letter or '_' and then letters, digits "
+                f"and '_'."
+            )
+        return self
+
+
+def dose_times(interval: float, duration: float | None, end: float) -> list[float]:
+    """Get the times of the doses of a dosing protocol after its first dose.
+
+    They are `k * interval` for `k = 1, 2, ...` while they are before the end
+    of the dosing (`duration`) and before the `end` of the simulation, at most
+    `MAX_DOSES`, all in the time unit of the model: the arithmetic of the
+    request of a renderer which simulates a panel itself (`panelbundle/1`),
+    so both give the same times.
+
+    Args:
+        interval: the interval between two doses, a single dose for one which
+            is not positive.
+        duration: the time the doses are given, until the end without.
+        end: the end of the simulation.
+
+    Returns:
+        The times, ascending; none for a single dose.
+    """
+    if not interval > 0.0:
+        return []
+    until = end if duration is None else min(duration, end)
+    times = []
+    for k in range(1, MAX_DOSES + 1):
+        time = k * interval
+        if not time < until:
+            break
+        times.append(time)
+    return times
+
+
 class PanelSimulation(BaseModel):
     """The simulation a panel runs, the same for every point of its grid.
 
@@ -428,6 +511,9 @@ class PanelSimulation(BaseModel):
             that they read knobs of the panel when it starts
             (`sbmlsim.serve.runner.ModelRegistry.of`), and a renderer never
             evaluates one: this module is pure data and has no parser.
+        dosing: the dosing protocols, a dose of a knob repeated at the
+            interval of another knob, see `PanelDosing`; at most one per
+            target.
     """
 
     model_config = _CONFIG
@@ -438,6 +524,7 @@ class PanelSimulation(BaseModel):
     x_unit: _Text | None = None
     preinit: Mapping[str, _Number] = {}
     derived: Mapping[str, str] = {}
+    dosing: tuple[PanelDosing, ...] = ()
 
     @model_validator(mode="after")
     def _check_derived(self) -> Self:
@@ -463,6 +550,12 @@ class PanelSimulation(BaseModel):
                 )
             if not formula.strip():
                 raise ValueError(f"The derived target '{target}' needs its formula.")
+        targets = [dosing.target for dosing in self.dosing]
+        twice = sorted({target for target in targets if targets.count(target) > 1})
+        if twice:
+            raise ValueError(
+                f"The targets {twice} are dosed by more than one dosing protocol."
+            )
         return self
 
 
@@ -559,6 +652,62 @@ class Panel(BaseModel):
                     f"the target of its knob '{knob.id}' as well; a derived target "
                     f"is set by its formula alone."
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _check_dosing(self) -> Self:
+        """Check that a dosing protocol reads knobs of the panel.
+
+        Raises:
+            ValueError: naming the panel and the knob, for a knob of a dosing
+                which the panel does not declare, for a knob of the dose whose
+                target is not the target of the dosing (the first dose is the
+                value of that knob on its target), and for a knob of the
+                interval or of the duration with a target or a negative value.
+        """
+        knobs = {knob.id: knob for knob in self.knobs}
+        for dosing in self.simulation.dosing:
+            for role, knob_id in (
+                ("dose", dosing.dose),
+                ("interval", dosing.interval),
+                ("duration", dosing.duration),
+            ):
+                if knob_id is None:
+                    continue
+                knob = knobs.get(knob_id)
+                if knob is None:
+                    raise ValueError(
+                        f"The {role} of the dosing of '{dosing.target}' of the panel "
+                        f"'{self.id}' is the knob '{knob_id}', which the panel does "
+                        f"not declare; its knobs are {sorted(knobs)}."
+                    )
+                if role == "dose":
+                    if knob.target != dosing.target:
+                        raise ValueError(
+                            f"The knob '{knob_id}' of the dose of the dosing of "
+                            f"'{dosing.target}' of the panel '{self.id}' sets "
+                            f"'{knob.target}'; it sets the target of the dosing, "
+                            f"whose first dose it is."
+                        )
+                    continue
+                if knob.target is not None:
+                    raise ValueError(
+                        f"The knob '{knob_id}' of the {role} of the dosing of "
+                        f"'{dosing.target}' of the panel '{self.id}' sets "
+                        f"'{knob.target}'; a knob of a time of a dosing sets nothing."
+                    )
+                lowest = (
+                    min(choice.value for choice in knob.choices)
+                    if knob.kind == "choice"
+                    else knob.min
+                )
+                if lowest is not None and lowest < 0:
+                    raise ValueError(
+                        f"The knob '{knob_id}' of the {role} of the dosing of "
+                        f"'{dosing.target}' of the panel '{self.id}' takes the "
+                        f"negative value {lowest}; a time of a dosing is not "
+                        f"negative."
+                    )
         return self
 
     @model_validator(mode="after")
@@ -891,6 +1040,10 @@ class AppPage(BaseModel):
             from, in the order they are shown, e.g. example patients; none
             without, and no two of one id. A knob a scenario names is one
             control of the page, see `Scenario`.
+        size: the size of the panels of the page: `regular`, or `small` for a
+            page of many readouts side by side, e.g. one small panel per
+            output of a model under the knobs the page shares; how a renderer
+            draws a size is its own, see sbmlsim-web.
     """
 
     model_config = _CONFIG
@@ -899,6 +1052,7 @@ class AppPage(BaseModel):
     title: str
     panels: tuple[str, ...]
     scenarios: tuple[Scenario, ...] = ()
+    size: Literal["regular", "small"] = "regular"
 
     @model_validator(mode="after")
     def _check_page(self) -> Self:

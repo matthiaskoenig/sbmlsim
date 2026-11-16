@@ -29,7 +29,7 @@ from examples.panels.hctz import CRCL, HCTZ_PATIENT_PLASMA, PROJECT
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.panel import PanelSimulation, panel_from_payload
+from sbmlsim.panel import PanelSimulation, dose_times, panel_from_payload
 from sbmlsim.serve import cli
 from sbmlsim.serve.export import (
     BUNDLE_FILE,
@@ -41,7 +41,7 @@ from sbmlsim.serve.export import (
     export_bundles,
 )
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
-from sbmlsim.simulation import Scan, Simulation
+from sbmlsim.simulation import Change, Scan, Simulation
 from sbmlsim.simulator import Simulator
 
 #: the reference of the HCTZ demo
@@ -351,13 +351,17 @@ def test_the_bodies_are_the_ones_the_service_answers(
 
 
 #: the requests of the simulations the recipe reproduces: a grid over a range
-#: knob of the derived renal function, a point of it in each variant, and a
-#: grid over two choice knobs of a panel without derived targets
+#: knob of the derived renal function, a point of it in each variant, a grid
+#: over two choice knobs of a panel without derived targets and the doses of a
+#: dosing protocol
 REQUESTS = [
     (HCTZ, "", "patient_plasma", {"dose": 12.5}, {"crcl": 3}),
     (HCTZ, "", "patient_urine", {"crcl": 45.0, "dose": 50.0}, {}),
     (HCTZ, "default", "renal_plasma", {}, {"egfr": 3, "dose": 4}),
     (VARIANTS, "low_reference", "patient_plasma", {"crcl": 75.0}, {}),
+    # a dosing protocol: a point twice daily and a grid over its interval
+    (HCTZ, "", "dosing_plasma", {"interval": 12.0, "days": 2.0}, {}),
+    (HCTZ, "", "dosing_urine", {"dose": 50.0}, {"interval": 4}),
 ]
 
 
@@ -458,9 +462,25 @@ def _recipe_curves(
                 preinit[recipe["target"]] = value * recipe["factor"]
             if recipe["parameter"] is not None:
                 preinit[recipe["parameter"]] = value
+        changes = []
+        for dosing in run["dosing"]:
+            dose = state[dosing["dose"]] * run["knobs"][dosing["dose"]]["factor"]
+            interval = state[dosing["interval"]] * dosing["interval_factor"]
+            duration = (
+                None
+                if dosing["duration"] is None
+                else state[dosing["duration"]] * dosing["duration_factor"]
+            )
+            doses = dose_times(interval, duration, run["end"])
+            if doses:
+                target = dosing["target"]
+                changes.append(
+                    Change(times=doses, values={target: f"{target} + {dose!r}"})
+                )
         simulation = Simulation(
             end=run["end"],
             preinit_changes=dict(sorted(preinit.items())),
+            changes=changes,
             times=times.tolist(),
         )
         result = simulator.run(

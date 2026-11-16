@@ -84,6 +84,7 @@ from sbmlsim.serve.runner import (
     knob_factor,
     knob_unit,
     output_times,
+    time_factor,
     time_unit,
 )
 from sbmlsim.simulator.formula import compile_formula, formula_mathml
@@ -393,6 +394,7 @@ def _run(
             raise ValueError(f"The panel '{panel.id}' is no bundle: {err}") from err
         curves[curve.id] = {"selection": curve.id, "factor": factor}
         units[curve.id] = curve_unit(model, curve).text or None
+    knob_of = {knob.id: knob for knob in panel.knobs}
     knobs: dict[str, Any] = {}
     for knob in panel.knobs:
         try:
@@ -420,6 +422,21 @@ def _run(
             for target, value in sorted(panel.simulation.preinit.items())
         ],
         "knobs": knobs,
+        "dosing": [
+            {
+                "target": dosing.target,
+                "dose": dosing.dose,
+                "interval": dosing.interval,
+                "interval_factor": time_factor(model, knob_of[dosing.interval]),
+                "duration": dosing.duration,
+                "duration_factor": (
+                    None
+                    if dosing.duration is None
+                    else time_factor(model, knob_of[dosing.duration])
+                ),
+            }
+            for dosing in panel.simulation.dosing
+        ],
     }
 
 

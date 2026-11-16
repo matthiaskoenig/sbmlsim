@@ -47,7 +47,7 @@ of a finished one.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Annotated, Any, Final, Self
+from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -467,6 +467,7 @@ class AppPagePayload(BaseModel):
             for with `GET /api/models/{model}/panels/{panel}`.
         scenarios: the named states of the knobs of the page a reader picks
             from, in the order they are shown; none for a page without.
+        size: the size of the panels of the page, `regular` or `small`.
     """
 
     model_config = _CONFIG
@@ -475,6 +476,7 @@ class AppPagePayload(BaseModel):
     title: str
     panels: list[str]
     scenarios: list[ScenarioPayload]
+    size: Literal["regular", "small"]
 
 
 class AppVariantPayload(BaseModel):

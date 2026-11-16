@@ -9,10 +9,12 @@ tests of sbmlsim-web serve:
 
 The time unit of the HCTZ model is minutes, which is the unit the `end` of the
 simulation and the x of a result are in. A panel draws one quantity on its
-axis, so each of the three pages has a panel of the plasma concentration and
+axis, so each of the four pages has a panel of the plasma concentration and
 one of the amount in the urine: `renal_plasma` and `renal_urine` over the
-renal function, `dose_plasma` and `dose_urine` over the dose and
-`patient_plasma` and `patient_urine` of a patient. The cumulative amount in the
+renal function, `dose_plasma` and `dose_urine` over the dose,
+`patient_plasma` and `patient_urine` of a patient and `dosing_plasma` and
+`dosing_urine` of a dosing protocol, the oral dose repeated once, twice or
+three times daily for one to three days (`PanelSimulation.dosing`). The cumulative amount in the
 urine of Beermann 1976 is the study data under the urine curves of
 `renal_urine` and `patient_urine`.
 
@@ -56,6 +58,7 @@ from sbmlsim.panel import (
     Panel,
     PanelCurve,
     PanelData,
+    PanelDosing,
     PanelSimulation,
     Scenario,
 )
@@ -291,6 +294,11 @@ HCTZ_APP = App(
         ),
         AppPage(id="dose", title="Dose", panels=("dose_plasma", "dose_urine")),
         PATIENT_PAGE,
+        AppPage(
+            id="dosing",
+            title="Dosing protocol",
+            panels=("dosing_plasma", "dosing_urine"),
+        ),
     ),
     citation="Beermann et al. (1976)",
     doi="10.5281/zenodo.0000000",
@@ -345,6 +353,68 @@ HCTZ_DOSE_URINE = Panel(
     simulation=SIMULATION,
 )
 
+#: the interval between two doses of the dosing protocol of the page
+#: `dosing`, a knob without a target which the protocol reads; 0 is a single
+#: dose
+INTERVAL = Knob(
+    id="interval",
+    label="dosing",
+    unit="hr",
+    kind="choice",
+    choices=(
+        Choice(label="single dose", value=0.0),
+        Choice(label="once daily", value=24.0),
+        Choice(label="twice daily", value=12.0),
+        Choice(label="three times daily", value=8.0),
+    ),
+    default=24.0,
+)
+#: the days the doses are given
+DAYS = Knob(
+    id="days",
+    label="days of dosing",
+    unit="day",
+    kind="range",
+    min=1.0,
+    max=3.0,
+    steps=3,
+    default=3.0,
+)
+#: three days of a dosing protocol: the oral dose of the knob `dose` repeated
+#: at the interval of the knob `interval` for the days of the knob `days`
+DOSING_SIMULATION = PanelSimulation(
+    end=3 * END,
+    points=3 * POINTS,
+    preinit={"BW": 75.0},
+    dosing=(
+        PanelDosing(
+            target="PODOSE_hctz", dose="dose", interval="interval", duration="days"
+        ),
+    ),
+)
+
+HCTZ_DOSING_PLASMA = Panel(
+    id="dosing_plasma",
+    title="Plasma concentration of repeated doses",
+    subtitle="hydrochlorothiazide in plasma",
+    x_label="time",
+    y_label="plasma concentration",
+    knobs=(DOSE_RANGE, INTERVAL, DAYS),
+    curves=(PanelCurve(id="[Cve_hctz]", label="plasma", unit="uM"),),
+    simulation=DOSING_SIMULATION,
+)
+
+HCTZ_DOSING_URINE = Panel(
+    id="dosing_urine",
+    title="Urinary excretion of repeated doses",
+    subtitle="the cumulative amount of hydrochlorothiazide in the urine",
+    x_label="time",
+    y_label="amount excreted",
+    knobs=(DOSE_RANGE, INTERVAL, DAYS),
+    curves=(PanelCurve(id="Aurine_hctz", label="urine", unit="umol"),),
+    simulation=DOSING_SIMULATION,
+)
+
 #: the HCTZ project with the panels and the app, which the service serves
 PROJECT: Project = HCTZ_PROJECT.replace(
     variants={"default": MODEL_PATH},
@@ -355,6 +425,8 @@ PROJECT: Project = HCTZ_PROJECT.replace(
         "dose_urine": HCTZ_DOSE_URINE,
         "patient_plasma": HCTZ_PATIENT_PLASMA,
         "patient_urine": HCTZ_PATIENT_URINE,
+        "dosing_plasma": HCTZ_DOSING_PLASMA,
+        "dosing_urine": HCTZ_DOSING_URINE,
     },
     app=HCTZ_APP,
 )
