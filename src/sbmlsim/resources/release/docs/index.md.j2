@@ -11,8 +11,12 @@
 
 {% endif %}
 {% for diagram in diagrams %}
+{% if diagram.snippet %}
+{{ diagram.snippet }}
+{% else %}
 ![{{ diagram.file[:-4] }}](images/{{ diagram.file }})
 
+{% endif %}
 {% endfor %}
 ## How to cite
 

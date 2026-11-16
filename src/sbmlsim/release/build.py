@@ -49,8 +49,9 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 #: the outputs of the factory which the release copies into `models`: the SBML,
-#: the equations (markdown), the antimony and the diagrams of the models (SVG)
-_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant", "*.svg")
+#: the equations (markdown), the antimony, the diagrams of the models (SVG)
+#: and the snippet of the interactive figure of a diagram (HTML)
+_FACTORY_PATTERNS = ("*.xml", "*.md", "*.ant", "*.svg", "*.html")
 _LICENSES = ("mit.txt", "cc-by-sa-4.0.txt")
 
 #: the folder of the specs of the steps in the release repository
@@ -344,10 +345,12 @@ def _copy_models(
     """Copy the models, the archive, the licenses and the figures into the release.
 
     `base` is the exported package, with the outputs of the factory copied
-    over it. The models are the SBML, markdown, antimony and SVG files of its
-    `factory_dir` (an SVG is a diagram of a model, which the README and the
-    documentation show), the licenses and the folder `figures` are taken from the
-    parent of it, the archive from its path relative to the root.
+    over it. The models are the SBML, markdown, antimony, SVG and HTML files of
+    its `factory_dir` (an SVG is a diagram of a model, which the README and the
+    documentation show, an HTML file the snippet of its interactive figure,
+    which the index of the site embeds), the licenses and the folder `figures`
+    are taken from the parent of it, the archive from its path relative to the
+    root.
     """
     assert project.factory_dir is not None
     factory_dir = base / project.factory_dir.relative_to(project.root)
