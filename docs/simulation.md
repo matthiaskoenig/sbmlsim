@@ -361,6 +361,8 @@ Simulation([0.0, 12] hr, preinit=0, changes=2, integrator)
 
 An engine is the simulator which integrates a model. `sbmlsim` compiles every simulation into one plan, the segments between its changes with the output of each, and an engine runs that plan: it integrates the segments and finds the events of the model, while `sbmlsim` applies the changes and fires the events a change triggers. Since all engines run the same plan, every rule of [The semantics](#the-semantics) holds for each of them: the pre-initialization, the changes and the events a change fires, the two rows at a change, and an event of the model as two rows in the steps of the integrator. The engines differ in their integrators, so the steps of the integrator differ between the engines, while the rows at the changes, at the events and at the end correspond. Use output times to compare the engines point by point.
 
+`sbmlsim` simulates SBML level 3. A document of a lower level is converted to level 3 version 2 with libsbml once, when the model is loaded, for every engine, and a level 3 document is used byte for byte as it is. A conversion for which libsbml logs an error is refused with a `ValueError`, because the converted model would silently lose what level 3 version 2 cannot hold: the `fast` attribute of a reaction is the example, and a level 2 model with a fast reaction cannot be loaded. A level 2 model with a `stoichiometryMath` is converted faithfully, the math becomes an assignment rule of a non-constant species reference, which roadrunner cannot integrate: such a model fails with a CVODE `CV_CONV_FAILURE` instead of a result (the cases 01435, 01437, 01439, 01441 and 01443 of the SBML Test Suite). A level 3 version 1 document is not converted and can still carry a fast reaction.
+
 The engine is a setting of the `Simulator`, and every model it runs is simulated with that engine. A model loaded with roadrunner is loaded again in COPASI or AMICI from the same SBML, with its changes and selections, but without a state you set on it. Selecting an engine without its extra raises an `ImportError` that names the install command. Everything that runs through a simulator can use another engine, shown here for COPASI, and the same with `engine="amici"`:
 
 - Simulations and scans: `Simulator(engine="copasi").run(model, simulation)`.
@@ -391,7 +393,7 @@ COPASI integrates with LSODA. Its absolute tolerance is the smallest tolerance o
 
 COPASI refuses:
 
-- A model with an algebraic rule, a stoichiometry math, a non-constant species reference, an initial assignment of a species reference or the `delay` csymbol raises a `ValueError` when it is loaded.
+- A model with an algebraic rule, a non-constant species reference (which is what the conversion to level 3 makes of a stoichiometry math), an initial assignment of a species reference or the `delay` csymbol raises a `ValueError` when it is loaded.
 - COPASI simulates conversion factors with the values they have when the model is loaded. A simulation which changes a conversion factor, or an entity its initial assignment reads, raises a `NotImplementedError`.
 - A model with a delayed event (an event with a `delay`) raises a `NotImplementedError` in a simulation with a change after the start or with a presimulation, before any point of a scan runs. Without these, COPASI simulates delayed events itself. In a model with a delayed event, a run in which an event of the model sets a trigger exactly to its threshold and COPASI misses its crossing raises a `NotImplementedError` as well.
 
@@ -417,7 +419,7 @@ AMICI outputs the states at given times only. The steps of the integrator, the d
 
 AMICI refuses:
 
-- A model with an algebraic rule, a stoichiometry math, a non-constant species reference, an initial assignment of a species reference or of a conversion factor, the `delay` csymbol, the csymbol `rateOf` ([AMICI#3504](https://github.com/AMICI-dev/AMICI/issues/3504)), a fast reaction, a delayed event or a trigger which compares for equality, `a == b` or `a != b`, raises a `ValueError` when it is loaded. AMICI finds no root of an equality, and roadrunner fires such an event only where a step of its integrator lands on the equality.
+- A model with an algebraic rule, a non-constant species reference (which is what the conversion to level 3 makes of a stoichiometry math), an initial assignment of a species reference or of a conversion factor, the `delay` csymbol, the csymbol `rateOf` ([AMICI#3504](https://github.com/AMICI-dev/AMICI/issues/3504)), a fast reaction, a delayed event or a trigger which compares for equality, `a == b` or `a != b`, raises a `ValueError` when it is loaded. AMICI finds no root of an equality, and roadrunner fires such an event only where a step of its integrator lands on the equality.
 - AMICI 1.2 does not import a trigger with a negated comparison, e.g. `!(X <= 3)`, which raises when the model is loaded.
 - A simulation which sets a compartment whose size in the SBML is not a number and which has no initial assignment raises.
 

@@ -41,6 +41,7 @@ STATUS_DESCRIPTION: dict[CaseStatus, str] = {
     CaseStatus.SIMULATION_ERROR: "the model was loaded and the integration failed",
     CaseStatus.MISSING_VARIABLE: "a compared variable was not produced by the simulation",
     CaseStatus.REPEAT: "the results are right, a second simulation of the loaded model differs",
+    CaseStatus.NOT_CONVERTED: "the case could not be converted to SBML level 3 version 2",
 }
 
 

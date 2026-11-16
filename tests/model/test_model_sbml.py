@@ -10,7 +10,7 @@ import pytest
 
 from sbmlsim.engine import Engine
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel, SBMLModel, load_model
-from sbmlsim.model.model_sbml import description
+from sbmlsim.model.model_sbml import description, to_level3
 from sbmlsim.model.symbols import EventSymbols
 from sbmlsim.model.tolerances import AbsoluteTolerance
 from sbmlsim.resources import DEMO_SBML, HCTZ_SBML, MIDAZOLAM_SBML, REPRESSILATOR_SBML
@@ -369,3 +369,148 @@ model ruled
   J1: s1 -> s4; p1 * s1
 end
 """
+
+
+def test_a_level_2_model_is_converted_at_load() -> None:
+    """A model of level 2 is level 3 version 2 in `sbml`, as every engine gets it."""
+    model = RoadrunnerSBMLModel(source=REPRESSILATOR_SBML)
+    assert "level3/version2" in model.sbml
+
+
+def test_a_level_3_model_is_not_rewritten() -> None:
+    """A level 3 version 2 document comes back as the text it was given."""
+    sbml = Path(HCTZ_SBML).read_text(encoding="utf-8")
+    assert to_level3(sbml, "hctz") == sbml
+
+
+def test_a_level_3_version_1_model_is_not_rewritten() -> None:
+    """A level 3 version 1 document is not upgraded, its text is kept."""
+    sbml = Path(MIDAZOLAM_SBML).read_text(encoding="utf-8")
+    assert to_level3(sbml, "midazolam") == sbml
+
+
+def test_a_document_which_cannot_be_converted_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A refused conversion raises a `ValueError` naming the model, level, version."""
+    # libsbml converts every level 1 document we tried, so the refusal is forced
+    monkeypatch.setattr(
+        libsbml.SBMLDocument, "setLevelAndVersion", lambda *args, **kwargs: False
+    )
+    sbml = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match=r"'toy' of level 2 version 3"):
+        to_level3(sbml, "toy")
+
+
+def test_a_converted_model_simulates_as_before() -> None:
+    """The repressilator of level 2 gives the same trajectory converted or raw."""
+    import numpy as np
+    import roadrunner
+
+    text = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
+    results = []
+    for sbml in (text, to_level3(text, "repressilator")):
+        r = roadrunner.RoadRunner(sbml)
+        r.integrator.relative_tolerance = 1e-10
+        r.integrator.absolute_tolerance = 1e-12
+        results.append(np.asarray(r.simulate(0, 100, 101)))
+    raw, converted = results
+    assert raw.shape == converted.shape
+    deviation = float(np.max(np.abs(raw - converted) / (np.abs(raw) + 1e-9)))
+    # measured 0.0 (bitwise equal) at a relative tolerance of 1e-10 of the
+    # integrator; 1e-8 leaves room for integrator noise and still fails when
+    # the conversion rescales a rate law or moves a constant
+    assert deviation < 1e-8
+
+
+def _level_2_with_a_fast_reaction(level: int = 2, version: int = 4) -> str:
+    """Build a document of a level below 3 (or level 3 version 1) with a fast reaction."""
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(probe_sbml(PROBE))
+    assert doc.setLevelAndVersion(level, version)
+    doc.getModel().getReaction("J1").setFast(True)
+    return str(libsbml.writeSBMLToString(doc))
+
+
+def test_a_conversion_which_drops_a_feature_raises() -> None:
+    """A fast reaction has no level 3 version 2 encoding, libsbml logs it and converts."""
+    text = _level_2_with_a_fast_reaction()
+    with pytest.raises(ValueError, match=r"'toy' of level 2 version 4") as raised:
+        to_level3(text, "toy")
+    assert "fast reaction" in str(raised.value)
+    assert "'J1'" in str(raised.value)
+
+
+def test_a_level_2_model_without_such_a_feature_converts() -> None:
+    """The same document without the fast reaction converts to level 3 version 2."""
+    text = _level_2_with_a_fast_reaction().replace('fast="true"', 'fast="false"')
+    converted = libsbml.readSBMLFromString(to_level3(text, "toy"))
+    assert (converted.getLevel(), converted.getVersion()) == (3, 2)
+
+
+def test_a_level_3_model_with_a_fast_reaction_is_returned_unchanged() -> None:
+    """Nothing is converted and so nothing is lost, the document is not refused."""
+    text = _level_2_with_a_fast_reaction(3, 1)
+    assert to_level3(text, "toy") == text
+
+
+def test_a_conversion_which_logs_only_a_warning_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only an entry of the severity error or above refuses, a warning does not."""
+    original = libsbml.SBMLDocument.setLevelAndVersion
+    logged: list[int] = []
+
+    def warn(self: libsbml.SBMLDocument, *args: Any, **kwargs: Any) -> bool:
+        done = original(self, *args, **kwargs)
+        self.getErrorLog().add(
+            libsbml.SBMLError(
+                93001,
+                3,
+                2,
+                "a warning of the conversion",
+                0,
+                0,
+                libsbml.LIBSBML_SEV_WARNING,
+                libsbml.LIBSBML_CAT_SBML_L2V4_COMPAT,
+            )
+        )
+        logged.append(self.getErrorLog().getNumErrors())
+        return done
+
+    monkeypatch.setattr(libsbml.SBMLDocument, "setLevelAndVersion", warn)
+    text = Path(REPRESSILATOR_SBML).read_text(encoding="utf-8")
+    assert "level3/version2" in to_level3(text, "toy")
+    # the warning is in the log, so the success is the threshold's doing
+    assert logged == [1]
+
+
+def test_an_unreadable_text_is_returned_unchanged() -> None:
+    """The engine reports the read error, not an empty converted model."""
+    assert to_level3("not xml at all", "toy") == "not xml at all"
+
+
+def test_a_partially_read_document_is_returned_unchanged() -> None:
+    """A document libsbml read a part of is not converted either.
+
+    Its level is set from the header, so a conversion would succeed and hand
+    the engine the part libsbml managed to read instead of the text and the
+    read error of the engine.
+    """
+    broken = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<sbml xmlns="http://www.sbml.org/sbml/level2/version4" level="2" '
+        'version="4"><model id="m"><listOfSpecies>'
+        '<species id="S1" compartment="c" initialAmount="1"/>'
+        "</listOfCompartments></model></sbml>"
+    )
+    document: libsbml.SBMLDocument = libsbml.readSBMLFromString(broken)
+    log: libsbml.SBMLErrorLog = document.getErrorLog()
+    severities = [
+        log.getError(i).getSeverity()
+        for i in range(log.getNumErrors())
+        if log.getError(i).isError() or log.getError(i).isFatal()
+    ]
+    # the read failed on the mismatched tag while the level stayed 2
+    assert document.getLevel() == 2
+    assert severities
+    assert to_level3(broken, "toy") == broken

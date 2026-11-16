@@ -141,6 +141,9 @@ class SBMLModel(AbstractModel, ABC):
             if self.source.content is not None
             else Path(str(self.source.path)).read_text(encoding="utf-8")
         )
+        # every engine simulates SBML level 3, a model of a lower level is
+        # converted once here, before `comp` is flattened
+        sbml = to_level3(sbml, self.sid or str(self.source.path or "model"))
         # roadrunner looks for the package comp in the text of the <sbml> tag
         # and misses it in a file with the line endings of Windows and in the
         # SBML as a string, it then simulates a hierarchical model unflattened;
@@ -527,6 +530,58 @@ def _is_helper(sid: str) -> bool:
     return sid.endswith(INITIAL_SUFFIX) or sid.startswith(MARKER_PREFIX)
 
 
+def to_level3(sbml: str, label: str) -> str:
+    """Get the SBML as level 3 version 2, the text as given when it is level 3.
+
+    Args:
+        sbml: the SBML of the model.
+        label: the name of the model in a message.
+
+    Returns:
+        The SBML converted to level 3 version 2 when its level is below 3,
+        else `sbml` unchanged, also when libsbml could not read it, whether it
+        read nothing at all or read a part of it, which the engine then reports
+        with its own read error.
+
+    Raises:
+        ValueError: if libsbml cannot convert the model, or converts it and
+            logs an error for what it could not convert, e.g. the `fast`
+            attribute of a reaction, which level 3 version 2 does not have and
+            which the converted model would silently lose. A document which is
+            level 3 already is not converted and so loses nothing, it is
+            returned as it is whatever it contains; the refusal is about what a
+            conversion drops, not about what sbmlsim can simulate.
+    """
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
+    log: libsbml.SBMLErrorLog = doc.getErrorLog()
+    # a document libsbml could not read is no document below level 3: level 0
+    # is text it read nothing of, and an error of the read is a document it
+    # read a part of, whose conversion would hand the engine an empty or a
+    # truncated model instead of the text and the read error of the engine
+    unread = doc.getLevel() == 0 or any(
+        log.getError(i).isError() or log.getError(i).isFatal()
+        for i in range(log.getNumErrors())
+    )
+    if unread or doc.getLevel() >= 3:
+        return sbml
+    level, version = doc.getLevel(), doc.getVersion()
+    # reading logs entries of its own, only what the conversion logs counts
+    log.clearLog()
+    converted = doc.setLevelAndVersion(3, 2, False)
+    problems = [
+        f"{log.getError(i).getMessage().strip()} (id {log.getError(i).getErrorId()})"
+        for i in range(log.getNumErrors())
+        if log.getError(i).isError() or log.getError(i).isFatal()
+    ]
+    if not converted or problems:
+        raise ValueError(
+            f"The model '{label}' of level {level} version {version} cannot be "
+            f"converted to SBML level 3 version 2"
+            + (f": {' '.join(problems)}" if problems else ".")
+        )
+    return str(libsbml.writeSBMLToString(doc))
+
+
 def _is_hierarchical(sbml: str) -> bool:
     """Check whether a model uses the package `comp` of hierarchical models."""
     if "comp" not in sbml:
@@ -707,7 +762,6 @@ class Feature(StrEnum):
     """A feature of SBML which an engine other than roadrunner may not simulate."""
 
     ALGEBRAIC_RULE = "algebraic rule"
-    STOICHIOMETRY_MATH = "stoichiometry math"
     NON_CONSTANT_REFERENCE = "non-constant species reference"
     REFERENCE_INITIAL_ASSIGNMENT = "initial assignment of a species reference"
     DELAY = "delay csymbol"
@@ -716,11 +770,10 @@ class Feature(StrEnum):
 def variable_features(model: libsbml.Model) -> Iterator[tuple[Feature, str]]:
     """Get the features of a model which COPASI and AMICI do not simulate as roadrunner.
 
-    The algebraic rules, the stoichiometry maths, the species references
-    which are not constant, the initial assignments of species references
-    and the delay csymbol, each with its element for a message, e.g. `the
-    non-constant species reference 'B_sr' of the reaction 'J1'`; an engine
-    adds why it does not simulate it.
+    The algebraic rules, the species references which are not constant, the
+    initial assignments of species references and the delay csymbol, each with
+    its element for a message, e.g. `the non-constant species reference 'B_sr'
+    of the reaction 'J1'`; an engine adds why it does not simulate it.
 
     Args:
         model: the model of the SBML.
@@ -731,19 +784,12 @@ def variable_features(model: libsbml.Model) -> Iterator[tuple[Feature, str]]:
     for rule in model.getListOfRules():
         if rule.isAlgebraic():
             yield Feature.ALGEBRAIC_RULE, "an algebraic rule"
-    level = model.getLevel()
     references: set[str] = set()
     for reaction in model.getListOfReactions():
         for sr in (*reaction.getListOfReactants(), *reaction.getListOfProducts()):
             if sr.isSetId():
                 references.add(sr.getId())
-            if sr.isSetStoichiometryMath():
-                yield (
-                    Feature.STOICHIOMETRY_MATH,
-                    f"the stoichiometry math of the species '{sr.getSpecies()}' in "
-                    f"the reaction '{reaction.getId()}'",
-                )
-            if level >= 3 and sr.isSetConstant() and not sr.getConstant():
+            if sr.isSetConstant() and not sr.getConstant():
                 name = sr.getId() or sr.getSpecies()
                 yield (
                     Feature.NON_CONSTANT_REFERENCE,

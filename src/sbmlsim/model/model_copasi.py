@@ -1535,7 +1535,8 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
 
     COPASI loads the following without an error and simulates them otherwise
     than roadrunner: it ignores algebraic rules, makes the stoichiometry of a
-    non-constant species reference, of a stoichiometry math and of an initial
+    non-constant species reference (which a stoichiometry math of level 2
+    becomes when the model is converted to level 3) and of an initial
     assignment of a species reference a constant, and simulates the delay
     csymbol otherwise. The conversion factors are simulated after a
     compilation of the model, see `_compile_conversion_factors`.
@@ -1558,7 +1559,6 @@ def _check_supported(model: libsbml.Model, label: str) -> None:
     features = list(variable_features(model))
     reasons = {
         Feature.ALGEBRAIC_RULE: ", which COPASI ignores",
-        Feature.STOICHIOMETRY_MATH: ", which COPASI makes a constant",
         Feature.NON_CONSTANT_REFERENCE: ", whose stoichiometry COPASI makes a constant",
         Feature.REFERENCE_INITIAL_ASSIGNMENT: (
             ", which COPASI evaluates once into a constant"
@@ -1945,8 +1945,6 @@ def _with_triggers_true_at_the_start(
     if not events or any(event.delayed for event in events):
         return sbml, tuple(False for _ in events)
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
-    if doc.getLevel() < 3:
-        return sbml, tuple(False for _ in events)
     sbml_model: libsbml.Model = doc.getModel()
     start: list[bool] = []
     for event in sbml_model.getListOfEvents():
@@ -1980,8 +1978,6 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> tuple[str, frozenset[str
         because their value is not finite.
     """
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml)
-    if doc.getLevel() < 2:
-        doc.setLevelAndVersion(2, 4)
     sbml_model: libsbml.Model = doc.getModel()
     symbols = model.symbols
     # a conversion factor is a constant parameter in SBML
@@ -2009,10 +2005,9 @@ def _with_targets_event(sbml: str, model: SBMLModel) -> tuple[str, frozenset[str
     event.setId(TARGETS_EVENT)
     trigger: libsbml.Trigger = event.createTrigger()
     trigger.setMath(libsbml.parseL3Formula("false"))
-    if doc.getLevel() >= 3:
-        event.setUseValuesFromTriggerTime(True)
-        trigger.setInitialValue(False)
-        trigger.setPersistent(True)
+    event.setUseValuesFromTriggerTime(True)
+    trigger.setInitialValue(False)
+    trigger.setPersistent(True)
     for target in targets:
         assignment: libsbml.EventAssignment = event.createEventAssignment()
         assignment.setVariable(target)

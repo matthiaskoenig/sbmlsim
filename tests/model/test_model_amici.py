@@ -669,13 +669,15 @@ def test_a_stoichiometry_math_raises() -> None:
     product: libsbml.SpeciesReference = doc.getModel().getReaction("J1").getProduct(0)
     math_: libsbml.StoichiometryMath = product.createStoichiometryMath()
     math_.setMath(libsbml.parseL3Formula("2 * f"))
-    with pytest.raises(ValueError, match="stoichiometry math of the species 'B'"):
+    # the conversion at load makes it a rule on a non-constant species reference
+    with pytest.raises(ValueError, match="non-constant species reference"):
         AmiciSBMLModel(source=libsbml.writeSBMLToString(doc))
 
 
 def test_a_fast_reaction_raises() -> None:
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PROBE))
-    doc.setLevelAndVersion(2, 4)
+    # level 3 version 1 has the attribute and is not converted, level 2 is refused
+    doc.setLevelAndVersion(3, 1)
     doc.getModel().getReaction("J1").setFast(True)
     with pytest.raises(ValueError, match="the fast reaction 'J1'"):
         AmiciSBMLModel(source=libsbml.writeSBMLToString(doc))

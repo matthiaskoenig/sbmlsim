@@ -21,8 +21,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import libsbml
 import pandas as pd
 
+from sbmlsim.atomic import write_text_atomic
+from sbmlsim.model.model_sbml import to_level3
 from sbmlsim.testsuite import cache
 
 logger = logging.getLogger(__name__)
@@ -67,6 +70,83 @@ ENCODINGS: tuple[str, ...] = (
     "l1v2",
 )
 
+#: the encoding the cases which ship no level 3 encoding are converted to (a
+#: case whose newest encoding is level 3 is simulated as shipped)
+TARGET_ENCODING = "l3v2"
+
+#: the format of the cached conversions, raised whenever the behavior of
+#: `converted_l3v2` or of `to_level3` changes what a conversion is (a conversion
+#: which is refused or converted differently), so no cache of an older
+#: behavior is reused; the libsbml of the sidecar covers its own changes
+CONVERSION_FORMAT = 1
+
+
+def converted_l3v2(
+    path: Path, cid: str, source: Path, encoding: str
+) -> tuple[Path, str]:
+    """Get the case as SBML level 3 version 2, converting and caching it.
+
+    The conversion is `to_level3`, written into the directory of the case as
+    `<cid>-sbml-l3v2-converted.xml` with the sidecar
+    `<cid>-sbml-l3v2-converted.json` which names the libsbml which wrote it, the
+    `CONVERSION_FORMAT` and the encoding it was converted from. A cached pair is
+    reused only when its sidecar names the running libsbml, the current format
+    and the encoding the case would be converted from. The suite cache is shared
+    by every process of a run, so both files are written atomically, the document first
+    and the sidecar after it: the sidecar is what a reader trusts, so it never
+    exists before the document it vouches for.
+
+    Args:
+        path: directory of the case, which the conversion is written into.
+        cid: identifier of the case.
+        source: the newest encoding the suite ships for the case.
+        encoding: the encoding of `source`, e.g. `l2v5`, recorded in the sidecar.
+
+    Returns:
+        The path of the converted document and the error message, which is empty
+        unless libsbml refused to convert it, in which case nothing is written.
+
+    Raises:
+        OSError: If the directory of the case cannot be written to, naming the
+            case and the directory. There is no fallback to an uncached
+            conversion: a suite directory which is read only is a setup to fix
+            (copy it or set `SBMLSIM_TEST_SUITE_PATH`), not one to hide.
+    """
+    converted = path / f"{cid}-sbml-{TARGET_ENCODING}-converted.xml"
+    sidecar = path / f"{cid}-sbml-{TARGET_ENCODING}-converted.json"
+    version = libsbml.getLibSBMLDottedVersion()
+    try:
+        if (
+            converted.exists()
+            and (recorded := json.loads(sidecar.read_text(encoding="utf-8")))["libsbml"]
+            == version
+            and recorded["format"] == CONVERSION_FORMAT
+            and recorded["from"] == encoding
+        ):
+            return converted, ""
+    except OSError, ValueError, KeyError, TypeError:
+        logger.debug("'%s': the cached conversion is unusable", cid)
+
+    try:
+        text = to_level3(source.read_text(encoding="utf-8"), cid)
+    except ValueError as err:
+        logger.debug("'%s': the case could not be converted: %s", cid, err)
+        return converted, str(err)
+    try:
+        write_text_atomic(converted, text)
+        write_text_atomic(
+            sidecar,
+            json.dumps(
+                {"libsbml": version, "format": CONVERSION_FORMAT, "from": encoding}
+            ),
+        )
+    except OSError as err:
+        raise OSError(
+            f"'{cid}': the conversion cannot be written into '{path}': {err}"
+        ) from err
+    return converted, ""
+
+
 #: keys of `NNNNN-model.m` which are read, all of them single line
 _TAG_PATTERN = re.compile(
     r"^(componentTags|testTags|testType|generatedBy|packagesPresent):(.*)$",
@@ -93,7 +173,9 @@ class SemanticCase:
     Attributes:
         cid: identifier of the case, i.e. its directory name such as `00028`.
         path: directory of the case.
-        model_path: the model which is simulated, the newest encoding present.
+        model_path: the model which is simulated, level 3: the newest level 3
+            file of the suite, or the conversion of the newest encoding to
+            level 3 version 2 when the suite ships none.
         start: start time of the simulation.
         duration: end time of the simulation.
         steps: number of steps, so the results have `steps + 1` points.
@@ -107,6 +189,9 @@ class SemanticCase:
         test_type: kind of the case, `TimeCourse` for the cases which are run.
         generated_by: `Analytic` or `Numeric`, how the results were produced.
         packages: SBML packages the case needs, e.g. `fbc`.
+        converted_from: the encoding a converted case came from, e.g. `l2v5`,
+            empty when the suite ships `l3v2`.
+        conversion_error: why libsbml refused to convert the case, else empty.
     """
 
     cid: str
@@ -125,6 +210,8 @@ class SemanticCase:
     test_type: str = ""
     generated_by: str = ""
     packages: frozenset[str] = field(default_factory=frozenset)
+    converted_from: str = ""
+    conversion_error: str = ""
 
     @staticmethod
     def settings(path: Path) -> dict[str, str]:
@@ -186,10 +273,11 @@ class SemanticCase:
         if not settings.get("duration"):
             return None
 
-        model_path = cls.model_of(path, cid)
-        if model_path is None:
+        model = cls.model_of(path, cid)
+        if model is None:
             logger.debug("'%s': no model in a known encoding", cid)
             return None
+        model_path, converted_from, conversion_error = model
 
         model_file = path / f"{cid}-model.m"
         tags = cls.tags(model_file) if model_file.exists() else {}
@@ -211,28 +299,48 @@ class SemanticCase:
             test_type=tags.get("testType", ""),
             generated_by=tags.get("generatedBy", ""),
             packages=frozenset(_split(tags.get("packagesPresent", ""))),
+            converted_from=converted_from,
+            conversion_error=conversion_error,
         )
 
     @staticmethod
-    def model_of(path: Path, cid: str) -> Path | None:
-        """Get the model of a case in the newest encoding it provides.
+    def model_of(path: Path, cid: str) -> tuple[Path, str, str] | None:
+        """Get the model of a case as level 3.
+
+        The newest level 3 file of the suite when it ships one, which is never
+        rewritten, else the conversion of the newest encoding it provides to
+        level 3 version 2.
 
         Args:
             path: directory of the case.
             cid: identifier of the case.
 
         Returns:
-            The SBML file, or `None` if the case has none.
+            The SBML file, the encoding it was converted from (empty when the
+            newest encoding is level 3, which is simulated as shipped) and the
+            conversion error (empty unless libsbml refused, the file is then
+            the newest encoding as the suite ships it), or `None` if the case
+            has no model.
         """
         for encoding in ENCODINGS:
             model_path = path / f"{cid}-sbml-{encoding}.xml"
-            if model_path.exists():
-                return model_path
+            if not model_path.exists():
+                continue
+            if encoding.startswith("l3"):
+                # a level 3 document is simulated as the suite ships it, since
+                # the conversion returns it unchanged
+                return model_path, "", ""
+            converted, error = converted_l3v2(path, cid, model_path, encoding)
+            if error:
+                return model_path, encoding, error
+            return converted, encoding, ""
         return None
 
     @property
     def encoding(self) -> str:
         """Get the SBML encoding which is simulated, e.g. `l3v2`."""
+        if self.converted_from and not self.conversion_error:
+            return TARGET_ENCODING
         match = re.search(r"-sbml-(l\d+v\d+)\.xml$", self.model_path.name)
         return match.group(1) if match else ""
 

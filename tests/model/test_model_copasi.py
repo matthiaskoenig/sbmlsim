@@ -23,6 +23,7 @@ from sbmlsim.model.model_copasi import (  # noqa: E402
     COPASI_ATOL_FACTOR,
     CopasiSBMLModel,
 )
+from sbmlsim.model.model_sbml import to_level3  # noqa: E402
 from sbmlsim.model.symbols import TargetKind  # noqa: E402
 from sbmlsim.model.tolerances import AbsoluteTolerance  # noqa: E402
 from sbmlsim.resources import (  # noqa: E402
@@ -426,14 +427,24 @@ def test_a_variable_stoichiometry_raises(rule: str, match: str) -> None:
 
 
 def test_a_stoichiometry_math_raises() -> None:
-    """COPASI makes the stoichiometry math of SBML level 2 a constant."""
+    """Level 2 stoichiometry math becomes a rule on a species reference at load."""
     doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(sbml(PROBE))
     doc.setLevelAndVersion(2, 4)
     product: libsbml.SpeciesReference = doc.getModel().getReaction("J1").getProduct(0)
     math: libsbml.StoichiometryMath = product.createStoichiometryMath()
     math.setMath(libsbml.parseL3Formula("2 * f"))
-    with pytest.raises(ValueError, match="stoichiometry math of the species 'B'"):
-        CopasiSBMLModel(source=libsbml.writeSBMLToString(doc))
+    text = libsbml.writeSBMLToString(doc)
+
+    # the conversion libsbml does at load: no stoichiometry math is left, the
+    # species reference is a variable of an assignment rule
+    converted = libsbml.readSBMLFromString(to_level3(text, "probe"))
+    reference = converted.getModel().getReaction("J1").getProduct(0)
+    assert reference.getLevel() == 3
+    assert not reference.getConstant()
+    assert converted.getModel().getRuleByVariable(reference.getId()) is not None
+
+    with pytest.raises(ValueError, match="non-constant species reference"):
+        CopasiSBMLModel(source=text)
 
 
 def test_a_delay_raises() -> None:

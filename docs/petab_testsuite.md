@@ -13,7 +13,7 @@ uv run pytest -m petab_testsuite tests/fit          # the same, one test per cas
 tox r -e petab                                      # download, then run the tests
 ```
 
-The suite is pinned by a commit (`PETAB_SUITE_COMMIT` in `sbmlsim.fit.petab_v2.testsuite`) and cached in `~/.cache/sbmlsim/petab-test-suite/<commit>/`, with the cases of both versions and the converted cases of PEtab v1 in `v1.0.0-converted`. Set `SBMLSIM_PETAB_SUITE_PATH` to use a checkout somewhere else; it points at the directory `petabtests/cases` of the checkout, next to whose versions `download` writes the converted cases.
+The suite is pinned by a commit (`PETAB_SUITE_COMMIT` in `sbmlsim.fit.petab_v2.testsuite`) and cached in `~/.cache/sbmlsim/petab-test-suite/<commit>/`, with the cases of both versions and the converted cases of PEtab v1 in `v1.0.0-converted`. Set `SBMLSIM_PETAB_SUITE_PATH` to use a checkout somewhere else; it points at the directory `petabtests/cases` of the checkout, next to whose versions `download` writes the converted cases. The SBML models of the cases are of level 2 version 4, which `sbmlsim` converts to level 3 version 2 when it loads them, and the outcomes of the cases are the same as without the conversion.
 
 A normal `pytest` skips these tests. `tests/data/petab_baseline.json` lists the cases that do not pass (none at the moment), and a run fails both when a case breaks and when a listed case starts to pass. After a change that fixes or breaks cases, refresh the list with `uv run python scripts/petab_testsuite.py baseline`.
 
