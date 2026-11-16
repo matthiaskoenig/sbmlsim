@@ -1,0 +1,9 @@
+{
+  "package": "sbmlsim-web",
+  "version": "0.2.0",
+  "integrity": "sha512-fQohnmXYA6uWoPUVI8nkM9kAwdPBmpjFwo1+Jp9a6PrT205BtSb1bZAb8GFLOmb8A0Iyl2pIx0bNbIcW6B9qFg==",
+  "files": {
+    "sbmlsim-web.iife.js": "c329cdbff64ff91b7fcd55c4539c8fd2fa62fdfcfa8313c7b528452d41e6fe14",
+    "LICENSE": "f9a33e596f41cca4fe4ba32b876cd94044c9bf84a7302f41a1a5ac474f0729e8"
+  }
+}

@@ -29,6 +29,7 @@ from sbmlsim.run.context import (
     SPEC_FILE,
     SUMMARY_FILE,
 )
+from sbmlsim.webapp import WASM_DIR
 
 if TYPE_CHECKING:
     from sbmlsim.project import Project
@@ -348,7 +349,9 @@ def _copy_models(
     over it. The models are the SBML, markdown, antimony, SVG and HTML files of
     its `factory_dir` (an SVG is a diagram of a model, which the README and the
     documentation show, an HTML file the snippet of its interactive figure,
-    which the index of the site embeds), the licenses and the folder `figures`
+    which the index of the site embeds, or the app of the model,
+    `<name>_app.html`, which the site shows) and the variants compiled by
+    sbmlsim-core (`wasm/`, see `sbmlsim.webapp`), the licenses and the folder `figures`
     are taken from the parent of it, the archive from its path relative to the
     root.
     """
@@ -363,6 +366,14 @@ def _copy_models(
         for source in sorted(factory_dir.glob(pattern)):
             shutil.copy2(source, models_dir / source.name)
             written.append(models_dir.relative_to(release_path) / source.name)
+    compiled = factory_dir / WASM_DIR
+    if compiled.is_dir():
+        shutil.copytree(compiled, models_dir / WASM_DIR)
+        written.extend(
+            path.relative_to(release_path)
+            for path in sorted((models_dir / WASM_DIR).rglob("*"))
+            if path.is_file()
+        )
     if not any(models_dir.glob("*.xml")):
         raise ReleaseError(f"The release has no SBML model in '{factory_dir}'.")
 

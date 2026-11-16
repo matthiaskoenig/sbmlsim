@@ -42,6 +42,7 @@ nav = [
   { "Projects & releases" = [
     { "Projects" = "project.md" },
     { "Interactive panels" = "serve.md" },
+    { "Web app" = "webapp.md" },
     { "Credibility" = "credibility.md" },
     { "Release" = "release.md" },
     { "Licenses" = "licenses.md" },

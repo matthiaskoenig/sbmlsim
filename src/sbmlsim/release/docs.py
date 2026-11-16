@@ -26,6 +26,7 @@ from sbmlsim.release.build import BuildPaths, is_experiment_folder
 from sbmlsim.release.notes import NOTES_DIR, fits_prefix, version_key
 from sbmlsim.release.project import ProjectContext, render
 from sbmlsim.release.source import ReleaseError
+from sbmlsim.webapp import APP_SUFFIX
 
 __all__ = [
     "DIAGRAM_ORDER",
@@ -55,6 +56,8 @@ The page `credibility` of a model with an assessment of its contexts of use
 and the pages of the release hook come before `release-notes`, see `pages`.
 """
 _CREDIBILITY = ("credibility", "Credibility")
+#: the page of the app of the model, after the home page
+_APP = ("app", "App")
 
 #: the diagrams of a model in the order the README and the index show them, by
 #: the suffix of the name of the diagram after the stem of its model: the
@@ -275,16 +278,39 @@ def pages(context: ProjectContext, release_path: Path) -> tuple[tuple[str, str],
         release_path: the folder of the release repository.
 
     Returns:
-        `PAGES`, with `credibility` if the release has the record of the
-        assessment of the contexts of use and then the pages of the release
-        hook (`ReleaseHook.pages`) before `release-notes`.
+        `PAGES`, with `app` after `index` if the factory wrote the app of
+        the model (`_app_file`), with `credibility` if the release has the
+        record of the assessment of the contexts of use and then the pages of
+        the release hook (`ReleaseHook.pages`) before `release-notes`.
     """
+    base = PAGES
+    if _app_file(context, release_path).is_file():
+        base = (PAGES[0], _APP, *PAGES[1:])
     added = []
     if _credibility_file(release_path).is_file():
         added.append(_CREDIBILITY)
     added.extend(context.hook.pages(context))
-    index = [page for page, _ in PAGES].index("release-notes")
-    return (*PAGES[:index], *added, *PAGES[index:])
+    index = [page for page, _ in base].index("release-notes")
+    return (*base[:index], *added, *base[index:])
+
+
+def _app_file(context: ProjectContext, release_path: Path) -> Path:
+    """Get the app of the model in the release, which the factory writes.
+
+    The factory of a project writes the app of the model beside its models
+    (`sbmlsim.webapp`, `<name>_app.html`), which the release copies into
+    `models`.
+    """
+    return release_path / BuildPaths.MODELS / f"{context.project.name}{APP_SUFFIX}"
+
+
+def _app(context: ProjectContext, release_path: Path, docs: Path) -> str | None:
+    """Copy the app of the model into the site, its file name there; None without."""
+    source = _app_file(context, release_path)
+    if not source.is_file():
+        return None
+    shutil.copy2(source, docs / source.name)
+    return source.name
 
 
 def _credibility_file(release_path: Path) -> Path:
@@ -469,8 +495,8 @@ def write_docs(context: ProjectContext, release_path: Path) -> list[Path]:
         release_path: the folder of the release repository.
 
     Returns:
-        The written files: the pages, the configuration of the site, the README
-        and the images of the site.
+        The written files: the pages, the configuration of the site, the README,
+        the images of the site and the app of the model.
 
     Raises:
         ReleaseError: if the record of an adopted fit or the assessment of the
@@ -499,6 +525,7 @@ def write_docs(context: ProjectContext, release_path: Path) -> list[Path]:
         "notes": _release_notes(release_path),
         "credibility": _credibility(context, release_path),
         "pages": site_pages,
+        "app": _app(context, release_path, docs),
     }
     extra.update(context.hook.values(context, release_path))
 
@@ -520,4 +547,6 @@ def write_docs(context: ProjectContext, release_path: Path) -> list[Path]:
     )
     written.append(readme)
     written.extend(sorted(images.glob("*")))
+    if extra["app"] is not None:
+        written.append(docs / extra["app"])
     return written

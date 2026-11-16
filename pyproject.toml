@@ -90,6 +90,9 @@ dependencies = [
 	"pillow>=13.0.0",
 	"seaborn>=0.13.2",
 	"jinja2>=3.1.6",
+	# the web app of a model (sbmlsim.webapp): the compiler of SBML to WebAssembly,
+	# the runtime of its engine and the inline build of its JavaScript host
+	"sbmlsim-core>=0.4.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",

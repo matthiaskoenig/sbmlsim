@@ -7,6 +7,10 @@
 {{ settings.description }}
 
 Documentation: <{{ settings.site_url }}>
+{% if app %}
+
+App of the model, simulated in your browser: <{{ settings.site_url }}{{ app }}> (one file, also [`models/{{ app }}`](models/{{ app }}))
+{% endif %}
 {% if credibility %}
 
 Credibility of the model for its contexts of use: [{{ settings.site_url }}credibility.html]({{ settings.site_url }}credibility.html)
