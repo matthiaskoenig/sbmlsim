@@ -9,8 +9,10 @@ the name of the SBML file without its suffix) and the app of the model,
 the SBML the factory just wrote, so the compiled models and the app are always
 the ones of the models next to them, also in a rebuild into another directory.
 
-A model which declares no panel and no app gets the panel of `default_panel`,
-the time courses of its species, so every model has an app; `app_project` is
+A model which declares no panel and no app gets the panels of
+`Project.default_panels`, by default the panel of `default_panel`, the time
+courses of its species, so every model has an app (a framework overrides it
+with the panels it knows of its models); `app_project` is
 the project of one SBML file, which `python -m sbmlsim.webapp` writes the app
 of.
 """
@@ -26,7 +28,7 @@ import libsbml
 from sbmlsim.panel import MAX_CURVES, Panel, PanelCurve, PanelSimulation
 from sbmlsim.project import Project
 from sbmlsim.webapp import WASM_DIR
-from sbmlsim.webapp.compile import compile_sbml, write_compiled
+from sbmlsim.webapp.compile import compile_sbml, prepare_sbml, write_compiled
 from sbmlsim.webapp.page import write_app
 
 logger = logging.getLogger(__name__)
@@ -48,12 +50,15 @@ DEFAULT_END: Final = 100.0
 
 
 def default_panel(sbml: Path) -> Panel:
-    """Get the panel of a model which declares none: the time courses of its species.
+    """Get the panel of a model which declares none: the time courses of its states.
 
-    The curves are the species of the model in their order, at most
-    `MAX_CURVES`: the concentration of a species in a compartment, the amount
-    of one which has only substance units, labelled by their name. The
-    simulation runs from 0 to `DEFAULT_END` in the time unit of the model.
+    The curves are the species of the model in their order, the concentration
+    of a species in a compartment and the amount of one which has only
+    substance units; a model without species shows the parameters and
+    compartments its rules set, the ones of rate rules first. At most
+    `MAX_CURVES` are shown, labelled by their name. The simulation runs from 0
+    to `DEFAULT_END` in the time unit of the model. A hierarchical model is
+    read flattened.
 
     Args:
         sbml: the SBML file of the model.
@@ -62,31 +67,48 @@ def default_panel(sbml: Path) -> Panel:
         The panel `DEFAULT_PANEL`.
 
     Raises:
-        ValueError: if the model has no species.
+        ValueError: if the model has neither species nor rules, nothing which
+            changes over time.
     """
-    doc: libsbml.SBMLDocument = libsbml.readSBMLFromFile(str(sbml))
+    text = prepare_sbml(sbml.read_text(encoding="utf-8"), base_path=sbml.parent)
+    doc: libsbml.SBMLDocument = libsbml.readSBMLFromString(text)
     model: libsbml.Model | None = doc.getModel()
-    if model is None or model.getNumSpecies() == 0:
-        raise ValueError(
-            f"The model '{sbml}' has no species to show in a default panel."
-        )
-    curves = []
-    for index in range(min(model.getNumSpecies(), MAX_CURVES)):
+    if model is None:
+        raise ValueError(f"The model '{sbml}' cannot be read.")
+    candidates: list[tuple[str, str]] = []
+    for index in range(model.getNumSpecies()):
         species: libsbml.Species = model.getSpecies(index)
         sid = species.getId()
         selection = sid if species.getHasOnlySubstanceUnits() else f"[{sid}]"
-        curves.append(PanelCurve(id=selection, label=species.getName() or sid))
+        candidates.append((selection, species.getName() or sid))
+    kind = "species"
+    if not candidates:
+        kind = "variables of the rules"
+        rules = [model.getRule(i) for i in range(model.getNumRules())]
+        for rule in sorted(rules, key=lambda rule: not rule.isRate()):
+            element: libsbml.SBase | None = model.getElementBySId(rule.getVariable())
+            if isinstance(element, (libsbml.Parameter, libsbml.Compartment)):
+                candidates.append(
+                    (rule.getVariable(), element.getName() or element.getId())
+                )
+    if not candidates:
+        raise ValueError(
+            f"The model '{sbml}' has neither species nor rules to show in a "
+            "default panel."
+        )
     name = model.getName() or model.getId() or sbml.stem
     shown = (
-        "the species"
-        if model.getNumSpecies() <= MAX_CURVES
-        else f"the first {MAX_CURVES} of {model.getNumSpecies()} species"
+        f"the {kind}"
+        if len(candidates) <= MAX_CURVES
+        else f"the first {MAX_CURVES} of {len(candidates)} {kind}"
     )
     return Panel(
         id=DEFAULT_PANEL,
         title=name,
         subtitle=f"{shown} of the model over time",
-        curves=tuple(curves),
+        curves=tuple(
+            PanelCurve(id=sid, label=label) for sid, label in candidates[:MAX_CURVES]
+        ),
         simulation=PanelSimulation(end=DEFAULT_END),
     )
 
@@ -102,16 +124,19 @@ def app_project(sbml: Path) -> Project:
     """
     sbml = sbml.resolve()
     project = Project(name=sbml.stem, root=sbml.parent, variants={"model": sbml})
-    return _with_default_panel(project)
+    return _with_default_panels(project, project)
 
 
-def _with_default_panel(project: Project) -> Project:
-    """Get a project which shows the default panel if it declares no panel."""
-    if not project.variants or project.app is not None or project.panels_of(None):
-        return project
-    return project.replace(
-        panels={DEFAULT_PANEL: default_panel(project.variant_path(None))}
-    )
+def _with_default_panels(project: Project, rooted: Project) -> Project:
+    """Get the project of the app with the default panels if it declares none.
+
+    Args:
+        project: the project, whose `Project.default_panels` gives them.
+        rooted: the project of the models the factory wrote, see `_rooted`.
+    """
+    if not rooted.variants or rooted.app is not None or rooted.panels_of(None):
+        return rooted
+    return rooted.replace(panels=project.default_panels(rooted.variant_path(None)))
 
 
 #: the fields of a project which its app reads: the panels and the app, the
@@ -204,7 +229,7 @@ def write_assets(project: Project, directory: Path) -> list[Path]:
             project.name,
         )
         return []
-    project = _with_default_panel(_rooted(project, directory))
-    written = write_wasm(project, directory)
-    written.append(write_app(project, directory))
+    shown = _with_default_panels(project, _rooted(project, directory))
+    written = write_wasm(shown, directory)
+    written.append(write_app(shown, directory))
     return written

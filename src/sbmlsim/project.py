@@ -1393,6 +1393,27 @@ class Project(BaseModel):
             )
         return factory
 
+    def default_panels(self, sbml: Path) -> dict[str, Panel]:
+        """Get the panels of the web app of a model which declares none.
+
+        The web app of a model shows its declared panels and its app; a model
+        without either shows these (`sbmlsim.webapp.assets`). The default is
+        the panel of the time courses of the species of the model
+        (`sbmlsim.webapp.assets.default_panel`); a framework which knows more
+        of its models overrides it, e.g. the panels of the doses and the
+        plasma concentrations of a pharmacokinetic model.
+
+        Args:
+            sbml: the SBML file of the default variant, the one the factory
+                just wrote.
+
+        Returns:
+            The panels by their id.
+        """
+        from sbmlsim.webapp.assets import DEFAULT_PANEL, default_panel
+
+        return {DEFAULT_PANEL: default_panel(sbml)}
+
     def create_models(self, out: Path | None = None) -> Path:
         """Build the models with the factory, in place or into a rebuild.
 

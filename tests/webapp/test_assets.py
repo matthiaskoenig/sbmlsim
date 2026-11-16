@@ -116,3 +116,76 @@ def test_a_project_without_the_web_app_writes_no_assets(toy) -> None:
     directory = toy.replace(web_app=False).create_models()
     assert not (directory / "wasm").exists()
     assert not (directory / f"{toy.name}_app.html").exists()
+
+
+RULES = """<?xml version="1.0" encoding="UTF-8"?>
+<sbml xmlns="http://www.sbml.org/sbml/level3/version2/core" level="3" version="2">
+  <model id="rules" name="rules only">
+    <listOfParameters>
+      <parameter id="a" name="the assigned" value="0" constant="false"/>
+      <parameter id="x" name="the integrated" value="1" constant="false"/>
+      <parameter id="k" value="0.1" constant="true"/>
+    </listOfParameters>
+    <listOfRules>
+      <assignmentRule variable="a">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply><times/><cn>2</cn><ci>x</ci></apply>
+        </math>
+      </assignmentRule>
+      <rateRule variable="x">
+        <math xmlns="http://www.w3.org/1998/Math/MathML">
+          <apply><times/><apply><minus/><ci>k</ci></apply><ci>x</ci></apply>
+        </math>
+      </rateRule>
+    </listOfRules>
+  </model>
+</sbml>
+"""
+
+
+def test_a_model_without_species_shows_the_variables_of_its_rules(
+    tmp_path: Path,
+) -> None:
+    sbml = tmp_path / "rules.xml"
+    sbml.write_text(RULES, encoding="utf-8")
+    panel = default_panel(sbml)
+    assert [(curve.id, curve.label) for curve in panel.curves] == [
+        ("x", "the integrated"),
+        ("a", "the assigned"),
+    ]
+    assert panel.title == "rules only"
+
+
+def test_a_model_without_species_and_rules_has_no_default_panel(
+    tmp_path: Path,
+) -> None:
+    sbml = tmp_path / "constant.xml"
+    sbml.write_text(
+        RULES.split("<listOfRules>")[0] + "  </model>\n</sbml>\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="neither species nor rules"):
+        default_panel(sbml)
+
+
+def test_a_framework_gives_the_default_panels_of_its_models(tmp_path: Path) -> None:
+    from sbmlsim.panel import Panel, PanelCurve, PanelSimulation
+    from sbmlsim.project import Project
+    from sbmlsim.webapp.assets import _with_default_panels
+
+    class Framework(Project):
+        def default_panels(self, sbml: Path) -> dict[str, Panel]:
+            return {
+                "framework": Panel(
+                    id="framework",
+                    title=sbml.stem,
+                    curves=(PanelCurve(id="PX", label="X"),),
+                    simulation=PanelSimulation(end=10),
+                )
+            }
+
+    sbml = tmp_path / "model.xml"
+    shutil.copy(REPRESSILATOR_SBML, sbml)
+    project = Framework(name="model", root=tmp_path, variants={"model": sbml})
+    shown = _with_default_panels(project, project)
+    assert list(shown.panels) == ["framework"]
+    assert shown.panels["framework"].title == "model"
