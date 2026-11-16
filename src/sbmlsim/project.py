@@ -69,6 +69,7 @@ from sbmlsim.panel import App, Panel
 from sbmlsim.reference import check_reference
 from sbmlsim.release.settings import ReleaseSettings
 from sbmlsim.simulation import Observable, Scan, Simulation
+from sbmlsim.webapp import APP_SUFFIX
 
 if TYPE_CHECKING:
     import roadrunner
@@ -116,6 +117,7 @@ __all__ = [
     "normalize_formats",
     "resolve",
     "same_antimony",
+    "same_app",
     "same_sbml",
     "write_adopted",
 ]
@@ -170,6 +172,10 @@ _HISTORY_DATE = re.compile(r"<dcterms:(created|modified)\b|<dcterms:W3CDTF>")
 #: `  model created "2026-10-17T19:35:15Z"`
 _ANTIMONY_DATE = re.compile(r'^\s*model (created|modified) "')
 
+#: the sha256 of the SBML of a run of the bundle of a web app, which the dates
+#: of the model history change, see `same_app`
+_APP_SHA256 = re.compile(r'"model_sha256":"[0-9a-f]{64}"')
+
 #: the suffixes of the outputs of a factory which are compared as SBML
 _SBML_SUFFIXES = frozenset({".xml", ".sbml"})
 
@@ -218,11 +224,31 @@ def same_antimony(a: str, b: str) -> bool:
     return lines(a) == lines(b)
 
 
+def same_app(a: str, b: str) -> bool:
+    """Compare the web apps of two models without the sha256 of their SBML.
+
+    The web app of a model (`sbmlsim.webapp`) names the sha256 of the SBML of
+    every run of its bundle, which the dates of the model history change, while
+    its compiled models do not read them; so a rebuild of an unchanged model
+    gives the app of the model but for these hashes.
+
+    Args:
+        a: the content of one file.
+        b: the content of the other.
+
+    Returns:
+        Whether they are equal but for the sha256 of the SBML of their runs.
+    """
+    return _APP_SHA256.sub("", a) == _APP_SHA256.sub("", b)
+
+
 def _same_output(a: Path, b: Path) -> bool:
-    """Compare two outputs of a factory, SBML and antimony without their dates."""
+    """Compare two outputs of a factory, SBML, antimony and app without their dates."""
     suffix = a.suffix.lower()
     compare = (
-        same_sbml
+        same_app
+        if a.name.endswith(APP_SUFFIX)
+        else same_sbml
         if suffix in _SBML_SUFFIXES
         else same_antimony
         if suffix in _ANTIMONY_SUFFIXES
@@ -1507,8 +1533,9 @@ class Project(BaseModel):
         Every output of `compared_outputs` is compared with the one of the
         package, the SBML of a model without the dates of its model history
         (`same_sbml`), its antimony (`.ant`) without the dates of its history
-        (`same_antimony`), any other file by its bytes; an output which only one
-        of them has differs.
+        (`same_antimony`), its web app without the sha256 of the SBML of its
+        runs (`same_app`), any other file by its bytes; an output which only
+        one of them has differs.
 
         Args:
             out: the root of a rebuild, see `create_models`.
