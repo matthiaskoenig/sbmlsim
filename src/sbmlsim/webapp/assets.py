@@ -130,6 +130,9 @@ def app_project(sbml: Path) -> Project:
 def _with_default_panels(project: Project, rooted: Project) -> Project:
     """Get the project of the app with the default panels if it declares none.
 
+    The panels of a variant which declares them otherwise are the ones of
+    `Project.default_variant_panels`.
+
     Args:
         project: the project, whose `Project.default_app` gives them.
         rooted: the project of the models the factory wrote, see `_rooted`.
@@ -137,7 +140,8 @@ def _with_default_panels(project: Project, rooted: Project) -> Project:
     if not rooted.variants or rooted.app is not None or rooted.panels_of(None):
         return rooted
     panels, app = project.default_app(rooted.variant_path(None))
-    return rooted.replace(panels=panels, app=app)
+    variant_panels = project.default_variant_panels(panels, rooted.variants)
+    return rooted.replace(panels=panels, app=app, variant_panels=variant_panels)
 
 
 #: the fields of a project which its app reads: the panels and the app, the

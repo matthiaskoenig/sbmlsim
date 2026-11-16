@@ -2,6 +2,7 @@
 
 import json
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
 
 import libsbml
@@ -214,3 +215,39 @@ def test_a_framework_gives_the_default_app_of_its_models(tmp_path: Path) -> None
     assert shown.app is not None
     assert shown.app.pages[0].size == "small"
     assert list(shown.panels) == ["readout"]
+
+
+def test_a_framework_gives_the_panels_of_a_variant(tmp_path: Path) -> None:
+    from sbmlsim.panel import App, AppPage, Panel, PanelCurve, PanelSimulation
+    from sbmlsim.project import Project
+    from sbmlsim.webapp.assets import _with_default_panels
+
+    def panel(title: str) -> Panel:
+        return Panel(
+            id="readout",
+            title=title,
+            curves=(PanelCurve(id="PX", label="X"),),
+            simulation=PanelSimulation(end=10),
+        )
+
+    class Framework(Project):
+        def default_app(self, sbml: Path) -> tuple[dict[str, Panel], App | None]:
+            page = AppPage(id="main", title="Main", panels=("readout",))
+            return {"readout": panel("male")}, App(title="Framework", pages=(page,))
+
+        def default_variant_panels(
+            self, panels: Mapping[str, Panel], variants: Mapping[str, Path]
+        ) -> dict[str, dict[str, Panel]]:
+            assert list(variants) == ["male", "female"]
+            return {"female": {"readout": panel("female")}}
+
+    male, female = tmp_path / "male.xml", tmp_path / "female.xml"
+    shutil.copy(REPRESSILATOR_SBML, male)
+    shutil.copy(REPRESSILATOR_SBML, female)
+    project = Framework(
+        name="model", root=tmp_path, variants={"male": male, "female": female}
+    )
+    shown = _with_default_panels(project, project)
+    assert shown.panels["readout"].title == "male"
+    assert shown.variant_panels["female"]["readout"].title == "female"
+    assert shown.panels_of("female")["readout"].title == "female"

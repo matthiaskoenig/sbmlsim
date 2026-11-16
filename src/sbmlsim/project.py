@@ -1459,6 +1459,28 @@ class Project(BaseModel):
         """
         return self.default_panels(sbml), None
 
+    def default_variant_panels(
+        self, panels: Mapping[str, Panel], variants: Mapping[str, Path]
+    ) -> dict[str, dict[str, Panel]]:
+        """Get the default panels of the variants which declare them otherwise.
+
+        The panels of `default_app` are the ones of the default variant; a
+        variant whose panels differ, e.g. the classes of a disease of the build
+        of the other sex, which are at the healthy GFR of that build, gives its
+        own declaration of them (`variant_panels`). The default is none, every
+        variant shows the panels of `default_app`.
+
+        Args:
+            panels: the panels of `default_app` by their id.
+            variants: the SBML file of every variant, the ones the factory
+                just wrote.
+
+        Returns:
+            The panels of a variant by its name and the id of the panel, only
+            the panels which differ.
+        """
+        return {}
+
     def create_models(self, out: Path | None = None) -> Path:
         """Build the models with the factory, in place or into a rebuild.
 
