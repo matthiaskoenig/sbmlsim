@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 import urllib.request
 from pathlib import Path
 
@@ -551,5 +552,5 @@ def test_an_unwritable_case_directory_names_the_case(
         raise PermissionError("read only")
 
     monkeypatch.setattr(cases, "write_text_atomic", refuse)
-    with pytest.raises(OSError, match=r"'00001'.*" + str(tmp_path).replace("\\", "/")):
+    with pytest.raises(OSError, match=r"'00001'.*" + re.escape(str(tmp_path))):
         converted_l3v2(tmp_path, "00001", _l2_source(tmp_path), "l2v4")
