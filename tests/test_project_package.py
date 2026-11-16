@@ -25,9 +25,11 @@ from sbmlsim.project import (
     Project,
     ProjectAction,
     SimulatorSettings,
+    _same_output,
     check_reference,
     resolve,
     same_antimony,
+    same_app,
     same_sbml,
     write_adopted,
 )
@@ -777,3 +779,22 @@ def test_the_simulate_kind_runs_a_subclass_which_overrides_run_experiments(
         tmp_path / "out",
     )
     assert summary == {"experiments": 1, "failed": 0}
+
+
+def test_a_rebuild_ignores_the_sha256_of_the_sbml_in_the_app(tmp_path: Path) -> None:
+    """The dates of the model history change the sha256 an app names, nothing else."""
+    page = '<script>{"run":{"model_sha256":"%s","x":[0,1]}}</script>'
+    one, other = "a" * 64, "b" * 64
+    assert same_app(page % one, page % other)
+    assert not same_app(page % one, (page % other).replace("[0,1]", "[0,2]"))
+    root = tmp_path / "package"
+    (root / "models").mkdir(parents=True)
+    (root / "models" / "toy_app.html").write_text(page % one, encoding="utf-8")
+    rebuild = tmp_path / "out" / "models"
+    rebuild.mkdir(parents=True)
+    (rebuild / "toy_app.html").write_text(page % other, encoding="utf-8")
+    assert _same_output(rebuild / "toy_app.html", root / "models" / "toy_app.html")
+    # another file of the same content is compared by its bytes
+    (rebuild / "toy.html").write_text(page % other, encoding="utf-8")
+    (root / "models" / "toy.html").write_text(page % one, encoding="utf-8")
+    assert not _same_output(rebuild / "toy.html", root / "models" / "toy.html")
