@@ -509,59 +509,12 @@ def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_and_a_number_
 
 
 @pytest.mark.parametrize(
-    ("model_id", "preinit", "named"),
-    [
-        ("probe", {"[A]": 5.0, "C": 3.0}, ("A", "C")),
-        ("volume", {"[A]": 5.0, "f": 3.0}, ("A", "f", "c")),
-        ("volume", {"[A]": 5.0, "g": 3.0}, ("A", "g", "c")),
-        ("volume", {"[N]": 5.0, "f": 3.0}, ("N", "f", "c")),
-    ],
-    ids=[
-        "the compartment itself",
-        "a parameter of its size",
-        "a parameter its size follows",
-        "a substance species by its concentration",
-    ],
-)
-def test_a_pre_initialization_of_a_concentration_whose_volume_it_changes_is_refused(
-    sources: dict[str, str],
-    model_id: str,
-    preinit: dict[str, float],
-    named: tuple[str, ...],
-) -> None:
-    """The engine converts a concentration with the volume at the assignment.
-
-    roadrunner holds the concentration across the initialization and converts
-    it with the size the compartment has once the model is initialized (PEtab
-    v2), so `{"[A]": 5.0, "C": 3.0}` is `A = 15` there and `A = 10` in the
-    engine, and so is `{"[A]": 5.0, "f": 3.0}` of a compartment `c = V*f`,
-    which names no compartment at all. The refusal is keyed on the
-    concentration and on every symbol the size of its compartment follows,
-    and not on the order of the request: the engine applies the values one
-    after the other, so the direct pair comes out right in the other order,
-    which is a symptom of the same rule and no second case.
-    """
-    source = sources[model_id]
-    simulations = [
-        Simulation(end=10, preinit_changes=values, times=[0.0, 10.0])
-        for values in _orders(preinit)
-    ]
-    for simulation in simulations:
-        with pytest.raises(UnsupportedModelError, match="volume") as failure:
-            Simulator(engine="core").simulate(source, simulation)
-        message = str(failure.value)
-        for name in named:
-            assert f"'{name}'" in message
-    # the orders are one initial state in roadrunner, the reference
-    first, second = (
-        Simulator(**TIGHT).simulate(source, simulation) for simulation in simulations
-    )
-    np.testing.assert_array_equal(first.values, second.values)
-
-
-@pytest.mark.parametrize(
     ("model_id", "preinit"),
     [
+        ("probe", {"[A]": 5.0, "C": 3.0}),
+        ("volume", {"[A]": 5.0, "f": 3.0}),
+        ("volume", {"[A]": 5.0, "g": 3.0}),
+        ("volume", {"[N]": 5.0, "f": 3.0}),
         ("probe", {"a0": 2.0, "C": 3.0}),
         ("probe", {"[A]": 5.0, "k1": 0.5}),
         ("probe", {"C": 3.0}),
@@ -575,6 +528,10 @@ def test_a_pre_initialization_of_a_concentration_whose_volume_it_changes_is_refu
         ("volume", {"g": 3.0}),
     ],
     ids=[
+        "a concentration and its compartment",
+        "a concentration and a parameter of its size",
+        "a concentration and a parameter its size follows",
+        "a substance species by its concentration",
         "a parameter and a compartment",
         "a concentration and a parameter",
         "a compartment alone",
@@ -588,17 +545,18 @@ def test_a_pre_initialization_of_a_concentration_whose_volume_it_changes_is_refu
         "a volume changed two steps away alone",
     ],
 )
-def test_a_pre_initialization_of_no_concentration_of_a_changed_volume_runs(
+def test_a_pre_initialization_of_a_changed_volume_is_the_one_of_roadrunner(
     sources: dict[str, str], model_id: str, preinit: dict[str, float]
 ) -> None:
-    """Only a concentration whose volume the pre-initialization changes is refused.
+    """Every pre-initialization of a changed volume is the one of roadrunner.
 
-    Every other pre-initialization of such a compartment is the one of
-    roadrunner in either order, measured here: an amount is set as it is
-    whenever the volume settles, the amount of a substance species among
-    them, and a compartment whose size the pre-initialization changes without
-    a species in it keeps the concentrations of its species in the engine as
-    well.
+    Measured here in either order: a concentration, which sbmlsim-core holds
+    across the initialization since 0.7.0 and converts with the size its
+    compartment has once the model is initialized, as roadrunner does (PEtab
+    v2, sbmlsim-core#7); an amount, which is set as it is whenever the volume
+    settles, the amount of a substance species among them; and a compartment
+    whose size the pre-initialization changes without a species in it, whose
+    concentrations the engine carries across the initialization as well.
     """
     source = sources[model_id]
     for values in _orders(preinit):

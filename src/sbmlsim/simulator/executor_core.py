@@ -69,38 +69,10 @@ the engine documents:
    formula reads, as the executor of roadrunner does. Only a formula of a
    parameter is folded: the size of a compartment and the amount or the
    concentration of a species are set with the bookkeeping of the volumes
-   and the amounts of the initialization, which the engine does otherwise,
-   see the next difference; the day the engine holds the concentrations of
-   a pre-initialization across the initialization, a formula of a
-   compartment and of a species can be folded as well.
-8. The engine converts the concentration of a species a pre-initialization
-   sets into an amount with the volume its compartment has at the moment of
-   the assignment, where every other executor holds the concentration
-   across the initialization and converts it with the size the compartment
-   has when the model is initialized (PEtab v2, a compartment keeps the
-   concentrations of the species in it). The two differ wherever the same
-   pre-initialization changes that size, whether it sets the compartment
-   itself or a symbol its size follows by an initial assignment:
-   `{"[A]": 5.0, "C": 3.0}` of the probe model, whose `C` is 2 as loaded, is
-   `A = 15` in roadrunner and `A = 10` in the engine, and on a model whose
-   compartment is `c = V*f` the pre-initialization `{"[A]": 5.0, "f": 3.0}`
-   is `A = 30` against `A = 10` (measured). The engine applies the values of
-   a request one after the other, so the direct pair comes out right in the
-   other order, `{"C": 3.0, "[A]": 5.0}`, which is a symptom of that one
-   rule and no second difference. `check_supported` refuses a
-   pre-initialization which sets the concentration of a species and changes
-   the size of its compartment (`_check_concentrations`) rather than
-   simulate a state neither engine would answer for, and the static bundle
-   of the panels of a model, whose recipe the engine runs in the browser
-   without a plan at all, shares that refusal (`concentration_problem`, the
-   one place the rule lives, see `sbmlsim.serve.export`). Measured and not
-   refused, since the engines agree on them: an amount of such a
-   compartment, the amount of a substance species among them, a
-   pre-initialization which changes the size of a compartment without
-   setting a species in it, whose concentrations the engine carries across
-   the initialization itself, and the values of a change, which the engine
-   applies at once.
-9. The engine integrates with the absolute tolerance of every state of
+   and the amounts of the initialization, which the engine does as every
+   other executor does since sbmlsim-core 0.7.0, so a formula of a
+   compartment and of a species can be folded as well and is not yet.
+8. The engine integrates with the absolute tolerance of every state of
    roadrunner (`CoreSBMLModel.request_settings`), so it needs no factor of
    one tolerance as COPASI and AMICI do, but its own build of CVODE chooses
    its own steps and its own evaluation of the model as loaded can differ
@@ -127,12 +99,12 @@ the engine documents:
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Final
 
 from sbmlsim.engine import UnsupportedModelError, import_core
-from sbmlsim.model.symbols import ModelSymbols, TargetKind
+from sbmlsim.model.symbols import TargetKind
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulator.executor import SteadyStateError, output_columns, output_time
 from sbmlsim.simulator.formula import compile_formula
@@ -299,12 +271,8 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
     cannot carry deserves: it fails every point of the scan alike.
 
     The steady state after the end of a simulation is no field of the
-    contract, a value of a request is a number, so a formula the executor
-    cannot fold is refused, and the engine converts the concentration of a
-    species with the volume its compartment has at the moment of the
-    assignment, so a pre-initialization which sets a concentration and
-    changes the size of its compartment is refused, see the module,
-    `_preinit_value` and `_check_concentrations`.
+    contract and a value of a request is a number, so a formula the executor
+    cannot fold is refused, see the module and `_preinit_value`.
 
     Args:
         plan: the plan, compiled against the model, with the values of a
@@ -314,9 +282,8 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
 
     Raises:
         UnsupportedModelError: a `NotImplementedError`, for a plan with a
-            steady state after the end of its simulation, for a formula the
-            executor cannot fold into a number and for a pre-initialization
-            of a concentration whose volume it changes.
+            steady state after the end of its simulation and for a formula
+            the executor cannot fold into a number.
     """
     if plan.steady_state_output is not None:
         raise UnsupportedModelError(
@@ -326,7 +293,6 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
             f"before the start of the simulation, so one request cannot continue "
             f"from the state the timecourse ended in."
         )
-    _check_concentrations(plan, model)
     # the values the request carries, which every formula of the plan is
     # folded into and which are discarded here: a formula the executor cannot
     # fold raises, see `_preinit_values` and `_change_values`
@@ -336,142 +302,6 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
         _preinit_values(plan.steady_state.preinit, plain, model)
     for event in plan.events:
         _change_values(event, model)
-
-
-def _check_concentrations(plan: Plan, model: CoreSBMLModel) -> None:
-    """Refuse a pre-initialization of a concentration whose volume it changes.
-
-    The rule is `concentration_problem`, which the static bundle of the panels
-    of a model shares; the plan applies its pre-initialization and the one of
-    its steady state as one pre-initialization (`preinit_targets`), and its
-    symbols give the compartment of a species and what its size depends on.
-
-    Args:
-        plan: the plan.
-        model: the model, which the error names.
-
-    Raises:
-        UnsupportedModelError: if the pre-initialization sets the
-            concentration of a species and changes the size of its
-            compartment.
-    """
-    problem = concentration_problem(
-        [a.target for a in preinit_targets(plan)],
-        plan.symbols,
-        f"of the model '{model.label}'",
-    )
-    if problem is not None:
-        raise UnsupportedModelError(problem)
-
-
-def concentration_problem(
-    targets: Iterable[str], symbols: ModelSymbols, where: str
-) -> str | None:
-    """Tell why the engine gets a pre-initialization of a concentration wrong.
-
-    The one place the rule of difference 8 of the module lives, so that the
-    executor and the static bundle of the panels of a model, whose recipe the
-    engine runs in the browser without a plan at all
-    (`sbmlsim.serve.export`), refuse the same pre-initializations with the
-    same words. It goes, with both of its callers, the day sbmlsim-core#7 is
-    released: the engine then holds the concentration across the
-    initialization itself and nothing is left to refuse. Two texts go with
-    them, which `grep sbmlsim-core#7` finds as well: the refusals of the
-    engine core in `docs/simulation.md` and the clause of the engines in
-    `CLAUDE.md`.
-
-    The engine converts the concentration of a species a pre-initialization
-    sets into an amount with the volume its compartment has at the moment of
-    the assignment, where every other executor holds the concentration across
-    the initialization and converts it with the size the compartment has when
-    the model is initialized (PEtab v2, a compartment keeps the concentrations
-    of the species in it, `RoadrunnerSBMLModel.initialize`). The two differ
-    wherever the same pre-initialization changes that size: `{"[A]": 5.0,
-    "C": 3.0}` of the probe model, whose `C` is 2 as loaded, is `A = 15` in
-    roadrunner and `A = 10` in the engine, and so is `{"[A]": 5.0, "f": 3.0}`
-    of a model whose compartment is `c = V*f`, where no value of the
-    pre-initialization is the compartment at all. The engine applies the
-    values of a request one after the other, so the direct pair comes out
-    right in the other order, which is a symptom of that one rule.
-
-    Every other pre-initialization of such a compartment is simulated, since
-    the engines agree on them (measured, see the module): an amount, the
-    amount of a substance species among them, which is set as it is whenever
-    the volume settles, and a change of the size alone, whose concentrations
-    the engine carries across the initialization itself.
-
-    Args:
-        targets: the targets of the pre-initialization, in the order a
-            problem reports them: `[S]` for the concentration of a species
-            and the id of the entity for every other value. A target the
-            model has no species or compartment of is no problem of this
-            rule.
-        symbols: the symbols of the model, which give the compartment of a
-            species and the symbols its size depends on.
-        where: the model and whatever else names the pre-initialization, which
-            the problem names after the species, e.g. `of the model 'hctz'`
-            or `of the panel 'patient_plasma' of the model 'hctz' in its
-            variant 'default'`.
-
-    Returns:
-        The problem of the first concentration whose volume the
-        pre-initialization changes, `None` for a pre-initialization the
-        engine simulates as every other executor does.
-    """
-    given = list(targets)
-    entities = {symbols.entity(target) for target in given}
-    for target in given:
-        species = symbols.entity(target)
-        if species == target:
-            continue
-        compartment = symbols.species_compartment.get(species)
-        if compartment is None:
-            continue
-        changed = sorted(_volume_symbols(symbols, compartment) & entities)
-        if not changed:
-            continue
-        named = ", ".join(f"'{symbol}'" for symbol in changed)
-        return (
-            f"The engine 'core' does not simulate the pre-initialization of "
-            f"the concentration of the species '{species}' {where} together "
-            f"with {named}, which the size of its compartment '{compartment}' "
-            f"follows: the engine converts the concentration into an amount "
-            f"with the volume at the moment of the assignment, where "
-            f"roadrunner holds the concentration across the initialization "
-            f"and converts it with the size the compartment has once the "
-            f"model is initialized (PEtab v2), so the two agree only where "
-            f"the pre-initialization leaves that size alone."
-        )
-    return None
-
-
-def _volume_symbols(symbols: ModelSymbols, compartment: str) -> set[str]:
-    """Get a compartment and every symbol its size depends on.
-
-    The size of a compartment of an initial assignment follows the symbols of
-    that assignment, and they follow theirs, so the dependencies are walked to
-    their end: on a model of `c = V*f` and `V = 2*g` the size of `c` follows
-    `V`, `f` and `g`. `ModelSymbols.initial_assignment_dependencies` has
-    expanded the assignment rules of every such symbol already, see
-    `sbmlsim.model.symbols`.
-
-    Args:
-        symbols: the symbols of the model.
-        compartment: the compartment.
-
-    Returns:
-        The compartment and the symbols its size depends on.
-    """
-    dependencies = symbols.initial_assignment_dependencies or {}
-    reached: set[str] = set()
-    stack = [compartment]
-    while stack:
-        symbol = stack.pop()
-        if symbol in reached:
-            continue
-        reached.add(symbol)
-        stack.extend(dependencies.get(symbol, ()))
-    return reached
 
 
 def point_error(point: Any, model: CoreSBMLModel) -> Exception:
@@ -716,8 +546,8 @@ def _preinit_value(
     Only a formula of a parameter is folded and only a number of a parameter
     is read: the size of a compartment and the amount or the concentration of
     a species are set with the bookkeeping of the volumes and the amounts of
-    the initialization, which the engine does otherwise, see the module and
-    `_check_concentrations`.
+    the initialization, which the engine does as every other executor does,
+    see the module.
 
     The symbol `time` is the value of an entity of that name in the model as
     loaded, which is what roadrunner reads (measured on a model with a

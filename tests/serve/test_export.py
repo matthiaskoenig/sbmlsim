@@ -42,7 +42,7 @@ from sbmlsim.serve.export import (
 )
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
 from sbmlsim.simulation import Change, Scan, Simulation
-from sbmlsim.simulator import Simulator, UnsupportedModelError
+from sbmlsim.simulator import Simulator
 
 #: the reference of the HCTZ demo
 HCTZ = "examples.panels.hctz:PROJECT"
@@ -61,21 +61,6 @@ VARIANTS = "examples.panels.hctz_variants:PROJECT_VARIANTS"
 #: project, e.g. 4e-10 of the peak between the glimepiride model compiled at
 #: O0 and at O2, which the bound admits.
 RTOL = 1e-9
-
-#: the clause of the refusal of a pre-initialization which sets the
-#: concentration of `Afeces_hctz` and changes the size of its compartment
-#: `Vfeces` (`sbmlsim.simulator.executor_core.concentration_problem`), which
-#: names the species, the panel, the model and the variant. Every branch of
-#: `sbmlsim.serve.export._check_concentrations` reports the same clause, since
-#: the `preinit` of the panel, the target of a knob and a derived target are
-#: one pre-initialization: `Afeces_hctz` is a species of `Vfeces`, one of the
-#: few compartments of the HCTZ model which no assignment rule sets, so it is
-#: a target a declaration can set
-CONCENTRATION_REFUSAL = (
-    "the concentration of the species 'Afeces_hctz' of the panel "
-    "'patient_plasma' of the model 'hctz' in its variant 'default' together "
-    "with 'Vfeces', which the size of its compartment 'Vfeces' follows"
-)
 
 
 @pytest.fixture(scope="module")
@@ -286,40 +271,39 @@ def test_a_derived_target_which_a_rule_sets_is_refused() -> None:
     _refused(panel.id, panel, "'GFR' of the panel 'patient_plasma' is set by a rule")
 
 
-def test_a_preinit_of_a_concentration_which_changes_its_volume_is_refused(
+def test_a_preinit_of_a_concentration_which_changes_its_volume_is_exported(
     tmp_path: Path,
 ) -> None:
-    """The engine core of the browser gets such a pre-initialization wrong.
+    """The engine of the browser holds such a concentration across the initialization.
 
-    It converts the concentration with the volume at the moment of the
-    assignment, where every executor of sbmlsim holds the concentration
-    across the initialization (PEtab v2), so
-    `sbmlsim.simulator.executor_core.check_supported` refuses it for every
-    plan of the engine, a request of the service among them. A bundle runs on
-    that engine whatever engine the project simulates with and its recipe is
-    no plan, so the export shares that one rule (`concentration_problem`) and
-    refuses before it writes a file of the bundle.
+    sbmlsim-core converted the concentration with the volume at the moment of
+    the assignment until 0.7.0, where every executor of sbmlsim holds it
+    across the initialization (PEtab v2), so the export refused such a
+    declaration. Since 0.7.0 the engine converts it with the size its
+    compartment has once the model is initialized, as every other executor
+    does (sbmlsim-core#7), and the bundle carries both values of the
+    pre-initialization.
     """
     panel = _with_preinit({"[Afeces_hctz]": 1.0, "Vfeces": 2.0})
-    with pytest.raises(ValueError, match=re.escape(CONCENTRATION_REFUSAL)) as failure:
-        export_bundles(_registry(panel.id, panel), tmp_path)
-    # the export is no feature check of an executor, so its refusals are the
-    # `ValueError` of every other problem of a bundle and of the checks of the
-    # registry and never the `UnsupportedModelError` of `check_supported`,
-    # which a `pytest.raises(ValueError)` alone would admit, since it is one
-    assert not isinstance(failure.value, UnsupportedModelError)
-    assert not (tmp_path / "hctz").exists()
+    export_bundles(_registry(panel.id, panel), tmp_path)
+    content = json.loads((tmp_path / "hctz" / BUNDLE_FILE).read_text(encoding="utf-8"))
+    run = content["answers"][""]["panels"][panel.id]["run"]
+    assert run["preinit"] == [
+        ["BW", 75.0],
+        ["PODOSE_hctz", 0.0],
+        ["Vfeces", 2.0],
+        ["[Afeces_hctz]", 1.0],
+    ]
 
 
-def test_a_knob_which_sets_a_concentration_of_a_changed_volume_is_refused() -> None:
+def test_a_knob_which_sets_a_concentration_of_a_changed_volume_is_exported() -> None:
     """The pre-initialization of a point sets the target of every knob as well.
 
     `sbmlsim.serve.runner._scan` puts the target of a knob which is no axis of
     the grid into the pre-initialization of the simulation and the target of
     one which is into the `Dimension`, whose values `Plan.with_values` appends
-    to it, so a plan of the live panel is refused for a concentration of a
-    knob. The recipe of a bundle carries that target as a knob of its own, so
-    the export reads the knobs with the `preinit` (`_check_concentrations`).
+    to it. The recipe of a bundle carries that target as a knob of its own,
+    which the engine sets before the initialization as the service does.
     """
     panel = _with_knob(
         _with_preinit({"Vfeces": 2.0}),
@@ -333,30 +317,46 @@ def test_a_knob_which_sets_a_concentration_of_a_changed_volume_is_refused() -> N
             default=1.0,
         ),
     )
-    _refused(panel.id, panel, CONCENTRATION_REFUSAL)
+    run = build_bundle(_registry(panel.id, panel), "hctz").content["answers"][""][
+        "panels"
+    ][panel.id]["run"]
+    assert run["preinit"] == [["BW", 75.0], ["PODOSE_hctz", 0.0], ["Vfeces", 2.0]]
+    assert run["knobs"]["feces"] == {
+        "target": "[Afeces_hctz]",
+        "factor": 1.0,
+        "parameter": None,
+        "unit": "mmol/litre",
+    }
 
 
-def test_a_derived_volume_of_a_preinitialized_concentration_is_refused() -> None:
+def test_a_derived_volume_of_a_preinitialized_concentration_is_exported() -> None:
     """A derived target is a value of the pre-initialization of a point as well.
 
     The service computes it from the numbers of the knobs and sets it before
-    the initialization, which is the plan the live panel is refused for; the
-    bundle carries it as an initial assignment of its SBML instead, which the
-    engine evaluates before it applies the values of the request, so the
-    volume of the conversion is the one of the model as loaded either way.
+    the initialization; the bundle carries it as an initial assignment of its
+    SBML instead, which the engine evaluates before it applies the values of
+    the request, so the panel gets a model of its own.
     """
     panel = _with_derived(
         _with_preinit({"[Afeces_hctz]": 1.0}), {"Vfeces": "crcl / 110"}
     )
-    _refused(panel.id, panel, CONCENTRATION_REFUSAL)
+    run = build_bundle(_registry(panel.id, panel), "hctz").content["answers"][""][
+        "panels"
+    ][panel.id]["run"]
+    assert run["preinit"] == [
+        ["BW", 75.0],
+        ["PODOSE_hctz", 0.0],
+        ["[Afeces_hctz]", 1.0],
+    ]
+    assert run["model"].startswith("default-")
 
 
 def test_a_preinit_of_a_concentration_alone_is_exported() -> None:
-    """Only a concentration whose volume the pre-initialization changes is refused.
+    """A concentration whose volume the pre-initialization leaves alone.
 
     The engine carries the concentrations of a compartment whose size the
-    pre-initialization leaves alone across the initialization itself, so the
-    refusal is no refusal of every concentration.
+    pre-initialization leaves alone across the initialization, which it did
+    before 0.7.0 as well.
     """
     panel = _with_preinit({"[Afeces_hctz]": 1.0})
     run = build_bundle(_registry(panel.id, panel), "hctz").content["answers"][""][
