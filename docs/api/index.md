@@ -12,7 +12,7 @@ The top level modules: data, units and the shared output.
 | [units](units.md) | unit registry of a model and unit conversions with pint |
 | [distrib](distrib.md) | the grammar of the distrib formulas of the fitted parameters (`normal`, `lognormal`, `uniform`, truncated), without a simulator |
 | [licenses](licenses.md) | the license texts of a model (CC BY-SA 4.0, MIT) and `write_license`, which writes them byte for byte |
-| [engine](engine.md) | `Engine`, the engines which simulate a model, roadrunner, COPASI and AMICI, the imports of the optional COPASI and AMICI and the directory of the compiled models of AMICI the workers of a pool load from |
+| [engine](engine.md) | `Engine`, the engines which simulate a model, roadrunner, COPASI, AMICI and the engine core of sbmlsim-core, the imports of the optional COPASI and AMICI and of the bindings of the engine core and the directory of the compiled models of AMICI the workers of a pool load from |
 | [sbml_math](sbml_math.md) | the math of SBML as sympy expressions and numpy functions, the math of the events of a model |
 | [serialization](serialization.md) | JSON serialization of experiments |
 | [utils](utils.md) | timing and other helpers |
@@ -41,6 +41,7 @@ Models and the changes of a model, see [Models](../models.md).
 | [model.model_roadrunner](model.model_roadrunner.md) | `RoadrunnerSBMLModel`, the roadrunner instance of an SBML model with its units and parameter changes |
 | [model.model_copasi](model.model_copasi.md) | `CopasiSBMLModel`, an SBML model loaded in COPASI, with the values and selections of roadrunner |
 | [model.model_amici](model.model_amici.md) | `AmiciSBMLModel`, an SBML model compiled with AMICI, with the values and selections of roadrunner, the cache of the compiled models and the refused features |
+| [model.model_core](model.model_core.md) | `CoreSBMLModel`, an SBML model compiled to WebAssembly by sbmlsim-core, with the values and selections of roadrunner, the compiled modules and the settings of a request |
 | [model.comparisons](model.comparisons.md) | the comparisons of the maths of a model, which COPASI and AMICI shift at their threshold |
 | [model.model_resources](model.model_resources.md) | `Source`, resolving the source of a model, i.e., a file or the SBML itself |
 | [model.event_rows](model.event_rows.md) | `with_event_markers`, the markers which tell the rows of the events of the model, and `at_event_times`, which gives the two rows of an event in the steps of the integrator the time of the event |
@@ -69,6 +70,7 @@ Execution of simulations.
 | [simulator.executor](simulator.executor.md) | `execute`, running a plan on roadrunner with the semantics of PEtab v2 |
 | [simulator.executor_copasi](simulator.executor_copasi.md) | `execute`, running a plan on COPASI with the semantics of the roadrunner executor, and the known differences |
 | [simulator.executor_amici](simulator.executor_amici.md) | `execute`, running a plan on AMICI with the semantics of the roadrunner executor, the executor firing the events, and the known differences |
+| [simulator.executor_core](simulator.executor_core.md) | `execute`, running a plan as one request of the engine core with the semantics of the roadrunner executor, the batches of a scan and the known differences |
 | [simulator.segments](simulator.segments.md) | `simulate_segments`, the segments of a plan between its changes, shared by the executors of COPASI and AMICI |
 | [simulator.engines](simulator.engines.md) | `execute_plan`, running a plan with the executor of the engine of a model |
 | [simulator.changes](simulator.changes.md) | the changes of a plan and the events a change fires, shared by the engines |
