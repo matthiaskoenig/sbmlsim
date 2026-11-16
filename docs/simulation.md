@@ -492,9 +492,9 @@ copasi
 [0.0 2.721 3.282 3.282 0.417 0.27 0.183 0.123] μM
 equal: True
 time           0.000000e+00
-Aurine_hctz    4.526183e-10
+Aurine_hctz    4.398536e-10
 Ri_hctz        0.000000e+00
-[Cve_hctz]     7.452937e-09
+[Cve_hctz]     7.446912e-09
 ```
 
 `is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences. With `"amici"` in place of `"copasi"`, AMICI agrees with roadrunner on the infusion to `7.3e-9` relative in `[Cve_hctz]`. `"core"` in its place runs it on the engine core, which agrees with roadrunner the most closely of the three at these tolerances: on the packaged models the largest relative difference is `2.4e-11` on the HCTZ model and `1.7e-8` on the midazolam model, a factor of 16 to 660 below COPASI and AMICI, because the engine core integrates with the vector of absolute tolerances which roadrunner computes per state while the other two have a single one, see [Benchmarks](benchmarks.md) and [Absolute tolerances](#absolute-tolerances). Agreeing with roadrunner closely is not the same as being more accurate: the error of the engine core is not bounded by roadrunner's, see [core](#core). With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.
