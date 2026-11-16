@@ -397,6 +397,51 @@ def test_the_diagrams_of_the_models(release: tuple[ProjectContext, Path]) -> Non
     assert "images/pathway.svg" not in models
 
 
+def test_the_body_of_a_model_comes_before_its_schematic(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    """The overview of the body with the bodies first, then the compartments."""
+    context, path = release
+    for name in ("toy.svg", "toy_body.svg", "toy_zoom.svg"):
+        write(path / BuildPaths.MODELS / name, "<svg/>")
+    write_docs(context, path)
+    for text, folder in (
+        ((path / "README.md").read_text(encoding="utf-8"), "models"),
+        ((path / "docs" / "index.md").read_text(encoding="utf-8"), "images"),
+    ):
+        shown = [
+            text.index(f"({folder}/toy{suffix}.svg)")
+            for suffix in ("_body", "", "_zoom")
+        ]
+        assert shown == sorted(shown)
+
+
+def test_the_index_embeds_the_snippet_of_a_diagram(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    """The index shows the interactive figure, the README and models page the SVG."""
+    context, path = release
+    write(path / BuildPaths.MODELS / "toy_body.svg", "<svg/>")
+    write(
+        path / BuildPaths.MODELS / "toy_body.html",
+        '<div id="pkf-toy-anatomy" class="pkf-figure">\n<svg/>\n</div>\n',
+    )
+    written = write_docs(context, path)
+    assert path / "docs" / "images" / "toy_body.html" not in written
+    index = (path / "docs" / "index.md").read_text(encoding="utf-8")
+    assert '<div id="pkf-toy-anatomy" class="pkf-figure">' in index
+    assert "images/toy_body.svg" not in index
+    # the snippet is one block of HTML: a blank line would end it in markdown
+    block = index.split('<div id="pkf-toy-anatomy"', 1)[1].split("</div>", 1)[0]
+    assert "\n\n" not in block
+    readme = (path / "README.md").read_text(encoding="utf-8")
+    assert "![toy_body](models/toy_body.svg)" in readme
+    assert "pkf-toy-anatomy" not in readme
+    models = (path / "docs" / "models.md").read_text(encoding="utf-8")
+    assert '![toy_body](images/toy_body.svg){ style="width: 100%" }' in models
+    assert "pkf-toy-anatomy" not in models
+
+
 def test_an_svg_overview_figure(release: tuple[ProjectContext, Path]) -> None:
     context, path = release
     (path / BuildPaths.FIGURES / "toy_model.png").unlink()

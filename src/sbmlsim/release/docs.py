@@ -28,6 +28,7 @@ from sbmlsim.release.project import ProjectContext, render
 from sbmlsim.release.source import ReleaseError
 
 __all__ = [
+    "DIAGRAM_ORDER",
     "PAGES",
     "Badge",
     "Diagram",
@@ -54,6 +55,14 @@ The page `credibility` of a model with an assessment of its contexts of use
 and the pages of the release hook come before `release-notes`, see `pages`.
 """
 _CREDIBILITY = ("credibility", "Credibility")
+
+#: the diagrams of a model in the order the README and the index show them, by
+#: the suffix of the name of the diagram after the stem of its model: the
+#: overview of the body with the bodies first (`<model>_body.svg` of the PBPK
+#: library of pkpdsim, `<model>_anatomy.svg` of its machine perfusion
+#: library), then the schematic of the compartments (`<model>.svg`); a diagram
+#: with another suffix follows them, in the order of its name
+DIAGRAM_ORDER: tuple[str, ...] = ("_body", "_anatomy", "")
 
 _IMAGES = "images"
 _HEADING = re.compile(r"^(#+ )", re.MULTILINE)
@@ -84,20 +93,25 @@ class ModelEntry:
 class Diagram:
     """A diagram of a model, an SVG which the factory writes beside the models.
 
-    The factory of a model can draw its models next to them, e.g. the schematic
-    `<stem>.svg` and the anatomy `<stem>_body.svg` of a model of the PBPK
-    library of pkpdsim. The release copies them into `models`, the README shows
-    them from there and the site from its images.
+    The factory of a model can draw its models next to them, e.g. the anatomy
+    `<stem>_body.svg` and the schematic `<stem>.svg` of a model of the PBPK
+    library of pkpdsim, and beside each the snippet of its interactive figure,
+    `<stem>_body.html` and `<stem>.html`. The release copies them into
+    `models`, the README shows the SVG from there, the models page of the site
+    from its images and the index embeds the snippet where there is one.
 
     Attributes:
         file: the file name of the diagram in `models` and in the images.
         model: the stem of the model it belongs to, the longest stem of a
             model which is its name or the start of its name followed by `_`;
             None if it belongs to no model.
+        snippet: the HTML of the interactive snippet beside it,
+            `<stem>.html` of the models; None without one.
     """
 
     file: str
     model: str | None
+    snippet: str | None = None
 
 
 @dataclass(frozen=True)
@@ -348,11 +362,24 @@ def _overview(release_path: Path, name: str, images: Path) -> str | None:
     return None
 
 
+def _diagram_key(diagram: Diagram) -> tuple[str, int, str]:
+    """The sort key of a diagram, the order the README and the index show it in."""
+    stem = PurePosixPath(diagram.file).stem
+    model = diagram.model if diagram.model is not None else stem
+    suffix = stem[len(model) :] if diagram.model is not None else ""
+    order = (
+        DIAGRAM_ORDER.index(suffix) if suffix in DIAGRAM_ORDER else len(DIAGRAM_ORDER)
+    )
+    return model, order, diagram.file
+
+
 def _diagrams(release_path: Path, images: Path) -> list[Diagram]:
     """Get the diagrams of the models and copy them into the images of the site.
 
     A diagram belongs to the model with the longest stem which is its name or
-    the start of its name followed by `_`, see `Diagram`.
+    the start of its name followed by `_`, and carries the interactive snippet
+    `<stem>.html` which the factory wrote beside it, see `Diagram`. The
+    diagrams of a model are ordered by `DIAGRAM_ORDER`.
     """
     models = release_path / BuildPaths.MODELS
     stems = sorted((path.stem for path in models.glob("*.xml")), key=len, reverse=True)
@@ -363,8 +390,17 @@ def _diagrams(release_path: Path, images: Path) -> list[Diagram]:
             (s for s in stems if path.stem == s or path.stem.startswith(f"{s}_")),
             None,
         )
-        diagrams.append(Diagram(file=path.name, model=model))
-    return diagrams
+        snippet = path.with_suffix(".html")
+        diagrams.append(
+            Diagram(
+                file=path.name,
+                model=model,
+                snippet=(
+                    snippet.read_text(encoding="utf-8") if snippet.is_file() else None
+                ),
+            )
+        )
+    return sorted(diagrams, key=_diagram_key)
 
 
 def _models(
