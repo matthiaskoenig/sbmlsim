@@ -47,6 +47,14 @@ in the names of sbmlsim-core, and the absolute tolerance of every state is the
 one the project's settings give it in roadrunner
 (`RoadrunnerSBMLModel.tolerances`).
 
+A bundle runs on sbmlsim-core whatever engine the project simulates with, so a
+panel that engine would get wrong is refused and not exported. Its recipe is no
+plan and reaches no executor, so the refusals of
+`sbmlsim.simulator.executor_core.check_supported`, which every plan of the
+engine passes, do not reach it; the rule of the one a declaration can hit is
+shared rather than copied (`_check_concentrations`,
+`executor_core.concentration_problem`).
+
 This module imports neither fastapi nor uvicorn: the export runs in an install
 without the extra `web`.
 """
@@ -87,6 +95,7 @@ from sbmlsim.serve.runner import (
     time_factor,
     time_unit,
 )
+from sbmlsim.simulator.executor_core import concentration_problem
 from sbmlsim.simulator.formula import compile_formula, formula_mathml
 
 logger = logging.getLogger(__name__)
@@ -263,7 +272,10 @@ def build_bundle(
         UnknownModel: for a model which is not in the registry.
         ValueError: naming the panel, for a unit which is no factor of the
             unit of the model; naming the target, for a derived target which
-            is no parameter or compartment of the model or which a rule sets.
+            is no parameter or compartment of the model or which a rule sets;
+            naming the model, the variant, the panel and the species, for a
+            pre-initialization the engine of the browser gets wrong, see
+            `_check_concentrations`.
     """
     runner = PanelRunner(registry) if runner is None else runner
     entry = registry.entry(model_id)
@@ -364,12 +376,18 @@ def _run(
 
     Returns:
         The run, see the module.
+
+    Raises:
+        ValueError: naming the model, the variant, the panel and the species,
+            for a pre-initialization the engine of the browser gets wrong, see
+            `_check_concentrations`.
     """
     project = entry.project
     # the variant which runs, as the service names it in its provenance
     variant = query or panel.simulation.variant or next(iter(project.variants))
     path = project.variant_path(variant).resolve()
     model = runner.model(entry, variant)
+    _check_concentrations(entry, panel, variant, model)
     parameters, key = _knob_parameters(model, panel, variant)
     if key not in models:
         models[key] = _BundleModel(
@@ -438,6 +456,59 @@ def _run(
             for dosing in panel.simulation.dosing
         ],
     }
+
+
+def _check_concentrations(
+    entry: ModelEntry, panel: Panel, variant: str, model: SBMLModel
+) -> None:
+    """Refuse a panel the engine of the browser gets wrong, see the module.
+
+    sbmlsim-core converts the concentration of a species a pre-initialization
+    sets into an amount with the volume its compartment has at the moment of
+    the assignment, where every executor of sbmlsim holds the concentration
+    across the initialization (PEtab v2). Its executor refuses that state
+    rather than simulate what no other engine answers for
+    (`sbmlsim.simulator.executor_core.check_supported`, which every plan of
+    the engine passes, a request of the service among them), and a bundle runs
+    on that engine in the browser whatever engine the project simulates with,
+    so the export refuses it here: its recipe is no plan and reaches no
+    executor. Both refusals go the day sbmlsim-core#7 is released, see
+    `concentration_problem`.
+
+    The pre-initialization of a point of a panel sets the `preinit` of its
+    simulation, the target of every knob and every derived target, so the
+    rule reads all three, whichever of them the bundle carries as a value of
+    its `preinit`, as the target of a knob or as an initial assignment of the
+    exported SBML (see the module): a derived target which is the compartment
+    of a species, or a symbol its size follows, is one the pre-initialization
+    changes as well.
+
+    Args:
+        entry: the model, which the problem names.
+        panel: the declaration of the panel in the variant.
+        variant: the variant which runs, which the problem names.
+        model: the model of the variant, whose symbols give the compartment of
+            a species and the symbols its size depends on.
+
+    Raises:
+        ValueError: naming the model, the variant, the panel and the species,
+            for a pre-initialization which sets the concentration of a species
+            and changes the size of its compartment.
+    """
+    simulation = panel.simulation
+    targets = [
+        *simulation.preinit,
+        *(knob.target for knob in panel.knobs if knob.target is not None),
+        *simulation.derived,
+    ]
+    problem = concentration_problem(
+        targets,
+        model.symbols,
+        f"of the panel '{panel.id}' of the model '{entry.id}' in its variant "
+        f"'{variant}'",
+    )
+    if problem is not None:
+        raise ValueError(problem)
 
 
 def _knob_parameters(

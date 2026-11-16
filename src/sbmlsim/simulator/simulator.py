@@ -11,7 +11,9 @@
    model and with their kinds and units, see `sbmlsim.simulator.observables`.
 2. Points: a point is a tuple of indices, nothing is built per point in the
    parent. The points are cut into chunks which share a plan, at most
-   `ceil(n_points / (4 * n_workers))` and at most `MAX_CHUNK` points each.
+   `ceil(n_points / (4 * n_workers))` and at most `MAX_CHUNK` points each,
+   `CORE_MAX_CHUNK` for the engine core, whose chunk is one batch and holds
+   the table of every one of its points at once.
 3. Worker: a chunk applies the values of each point to its plan and runs it,
    see `sbmlsim.simulator.worker`; the same function runs serially in the
    calling process and in a worker of a pool of `sbmlsim.parallel`; the
@@ -42,13 +44,19 @@ loads, each with its own tolerance per state. A setting of a model which the
 simulator does not set stays, and a worker loads the model with the
 integrator and the settings the model has in the calling process.
 
-The engine of a simulator, roadrunner by default, COPASI or AMICI, simulates every
-model it runs: a model of another engine is loaded again in the engine of the
-simulator, see `sbmlsim.model.model_sbml.load_model`, and a plan runs with the
-executor of the engine, see `sbmlsim.simulator.engines`. The engine is the
-attribute `engine` of the result. A feature the engine does not simulate
-raises its `NotImplementedError`, also with `on_error="flag"`, when the scan
-is compiled, before a point runs or a pool starts, see
+The engine of a simulator, roadrunner by default, COPASI, AMICI or the engine
+core, simulates every model it runs: a model of another engine is loaded
+again in the engine of the simulator, see
+`sbmlsim.model.model_sbml.load_model`, and a plan runs with the executor of
+the engine, see `sbmlsim.simulator.engines`. The engine is the attribute
+`engine` of the result. A run of the engine core runs no chunk in a pool: the
+engine simulates the points of a chunk as one batch on threads of its own, so
+such a run has one python worker and the threads of
+`core_threads(n_workers, n_points)` (`_workers`,
+`sbmlsim.simulator.worker._run_chunk_core`), and its result does not depend on
+them either. A feature the engine does not simulate raises its
+`NotImplementedError`, also with `on_error="flag"`, when the scan is compiled,
+before a point runs or a pool starts, see
 `sbmlsim.simulator.engines.check_plan`. A result of COPASI depends on the
 number of workers within the integration and not bitwise: COPASI sums the
 rates of the reactions of a species in an order which depends on the memory
@@ -78,7 +86,13 @@ import xarray as xr
 from numpy.typing import ArrayLike
 
 from sbmlsim import parallel
-from sbmlsim.engine import Engine, import_amici, import_copasi, resolve_engine
+from sbmlsim.engine import (
+    Engine,
+    import_amici,
+    import_copasi,
+    import_core,
+    resolve_engine,
+)
 from sbmlsim.events import emit
 from sbmlsim.model import AbstractModel, SBMLModel, load_model
 from sbmlsim.model.model_sbml import IntegratorSetting, IntegratorSettings
@@ -113,6 +127,7 @@ from sbmlsim.simulator.worker import (
     OnError,
     ScanPointError,
     SharedChunkResult,
+    core_threads,
     point_plan,
     run_chunk,
     run_chunk_in_worker,
@@ -123,6 +138,11 @@ logger = logging.getLogger(__name__)
 
 #: the most points of a chunk
 MAX_CHUNK: int = 1000
+
+#: the most points of a chunk of the engine core, which simulates them as one
+#: batch and holds the table of every point of it until the point is read, see
+#: `sbmlsim.simulator.worker._run_chunk_core`
+CORE_MAX_CHUNK: int = 250
 
 #: a model the simulator runs: a loaded model, its description or its path
 ModelLike = SBMLModel | AbstractModel | str | Path
@@ -154,8 +174,11 @@ class Simulator:
             n_workers: `1` runs serially, a number is the number of processes,
                 `None` uses every CPU for a scan of
                 `sbmlsim.parallel.POOL_THRESHOLD` points or more and runs a
-                smaller one serially.
-            engine: the engine or its name, `roadrunner`, `copasi` or `amici`.
+                smaller one serially. A run of the engine core has one
+                process and counts them as the threads of the batches of its
+                chunks instead, see `_workers`.
+            engine: the engine or its name, `roadrunner`, `copasi`, `amici`
+                or `core`.
             **integrator_settings: the settings of the integrator by their
                 names in roadrunner, see `IntegratorSettings`, e.g.
                 `relative_tolerance` or `variable_step_size`;
@@ -173,8 +196,10 @@ class Simulator:
         Raises:
             ValueError: if `n_workers` is less than 1 or the engine is
                 unknown.
-            ImportError: for the engine COPASI without python-copasi and for
-                the engine AMICI without AMICI.
+            ImportError: for the engine COPASI without python-copasi, for the
+                engine AMICI without AMICI and for the engine core without the
+                bindings of sbmlsim-core, which are no extra of sbmlsim, see
+                `sbmlsim.engine.import_core`.
         """
         parallel.check_workers(n_workers)
         self.n_workers = n_workers
@@ -183,6 +208,8 @@ class Simulator:
             import_copasi()
         elif self.engine is Engine.AMICI:
             import_amici()
+        elif self.engine is Engine.CORE:
+            import_core()
         self.integrator_settings: dict[str, IntegratorSetting] = {
             "absolute_tolerance": AbsoluteTolerance(),
             "relative_tolerance": 1e-10,
@@ -340,9 +367,20 @@ class Simulator:
         scan = Scan.of(scan)
         block = _block(points, scan.size)
         compiled = self._compile(model, scan, time, observables, keep)
-        workers = parallel.resolve_workers(self.n_workers, len(block))
-        chunks = compiled.chunks(workers, on_error, block)
-        show = workers > 1 if progress is None else progress
+        workers, threads = self._workers(len(block))
+        # the chunks of the processes of the run, four of them for a run of
+        # the engine core, which is one python process: a chunk of it is one
+        # batch which the engine spreads over its threads itself, and a batch
+        # costs a pool of threads, so chunks of the threads would pay for one
+        # per chunk (a scan of 64 points of HCTZ on 8 threads takes 214 ms in
+        # 32 chunks against 50 ms in 4, the same numbers bitwise); a wide
+        # chunk of the engine buys that with the tables of its points, which
+        # `CORE_MAX_CHUNK` bounds, see `sbmlsim.simulator.worker`
+        most = CORE_MAX_CHUNK if self.engine is Engine.CORE else MAX_CHUNK
+        chunks = compiled.chunks(workers, on_error, block, most)
+        # the points which run at once, the processes or the threads
+        at_once = max(workers, threads)
+        show = at_once > 1 if progress is None else progress
         assembly = _Assembly(compiled, block)
         done = 0
         with contextlib.ExitStack() as stack:
@@ -356,7 +394,7 @@ class Simulator:
             # a simulation is a scan of one point, which reports nothing
             scanned = (
                 stack.enter_context(
-                    progress_activity("scan", total=len(block), workers=workers)
+                    progress_activity("scan", total=len(block), workers=at_once)
                 )
                 if len(block) > 1
                 else None
@@ -376,7 +414,7 @@ class Simulator:
                 )
 
             if workers == 1:
-                self._run_serial(compiled, chunks, collect)
+                self._run_serial(compiled, chunks, collect, threads)
             else:
                 self._run_pool(compiled, chunks, workers, collect)
         return compiled.assemble(
@@ -528,17 +566,47 @@ class Simulator:
             observables=tuple(observables or ()),
         )
 
+    def _workers(self, n_points: int) -> tuple[int, int]:
+        """Get the processes and the engine threads the points of a run share.
+
+        A run of the engine core runs the points of a chunk as one batch on
+        the threads of the engine inside this process, see
+        `sbmlsim.simulator.worker._run_chunk_core`: it has one python worker
+        and the threads a run of another engine has processes, which is what
+        `n_workers` says. Every other engine runs its points one after the
+        other in the processes of the run.
+
+        Args:
+            n_points: the points of the run, which `n_workers=None` resolves
+                against.
+
+        Returns:
+            The processes of the run and the threads of a batch of a chunk,
+            one of which is always `1`.
+        """
+        if self.engine is Engine.CORE:
+            return 1, core_threads(self.n_workers, n_points)
+        return parallel.resolve_workers(self.n_workers, n_points), 1
+
     def _run_serial(
         self,
         compiled: _Compiled,
         chunks: Sequence[Chunk],
         collect: Callable[[ChunkResult], None],
+        threads: int,
     ) -> None:
         """Run the chunks in the calling process, each result to `collect`.
 
         The chunks are in the order of their first point. After a point
         failed, only the chunks which start before it still run: one of them
         may hold a point before it which fails as well.
+
+        Args:
+            compiled: the plans and the models of the run.
+            chunks: the points, in the order of their first point.
+            collect: what the result of a chunk goes to.
+            threads: the threads of the engine core a chunk of a model of
+                that engine is batched on, see `_workers`.
 
         Raises:
             ScanError: for the first point in the order of the scan which
@@ -549,7 +617,7 @@ class Simulator:
             if failed is not None and int(chunk.indices[0]) > failed.index:
                 break
             try:
-                result = run_chunk(chunk, compiled.models[chunk.model])
+                result = run_chunk(chunk, compiled.models[chunk.model], threads)
             except ScanPointError as err:
                 failed = _first(failed, err)
                 continue
@@ -848,7 +916,11 @@ class _Compiled:
         return self.scan.size
 
     def chunks(
-        self, workers: int, on_error: OnError, block: range | None = None
+        self,
+        workers: int,
+        on_error: OnError,
+        block: range | None = None,
+        most: int = MAX_CHUNK,
     ) -> list[Chunk]:
         """Cut the points of a block into chunks which share a plan, see the module.
 
@@ -858,12 +930,14 @@ class _Compiled:
             block: the flat indices of the points which run, `None` for the
                 whole scan; the sizes of the chunks follow its number of
                 points.
+            most: the most points of a chunk, `CORE_MAX_CHUNK` for a run of
+                the engine core.
 
         Returns:
             The chunks in the order of their first point.
         """
         block = range(self.size) if block is None else block
-        size = _chunk_size(len(block), workers)
+        size = _chunk_size(len(block), workers, most)
         # the positions of the points of the block only, a scan may have more
         # points than fit into memory
         positions = _positions(self.scan, block)
@@ -1270,20 +1344,22 @@ def _block(points: range | None, size: int) -> range:
     return points
 
 
-def _chunk_size(n_points: int, workers: int) -> int:
+def _chunk_size(n_points: int, workers: int, most: int = MAX_CHUNK) -> int:
     """Get the most points of a chunk.
 
     Four chunks per worker, so that a worker which finishes early takes
-    another one, of at most `MAX_CHUNK` points and of at least one.
+    another one, of at most `most` points and of at least one.
 
     Args:
         n_points: the points of the scan.
         workers: the number of processes of the run.
+        most: the most points of a chunk, `MAX_CHUNK` by default and
+            `CORE_MAX_CHUNK` for a run of the engine core.
 
     Returns:
         The size of a chunk.
     """
-    return max(1, min(MAX_CHUNK, math.ceil(n_points / (4 * workers))))
+    return max(1, min(most, math.ceil(n_points / (4 * workers))))
 
 
 def _first(failed: ScanPointError | None, err: ScanPointError) -> ScanPointError:

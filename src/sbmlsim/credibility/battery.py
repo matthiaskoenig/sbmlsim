@@ -18,9 +18,9 @@ against what every model must fulfil (`BATTERY_CHECKS`):
   (`BatterySettings.steady_state`, off by default) and is not applicable
   otherwise.
 - `cross_simulator`: a second engine of sbmlsim (`BatterySettings.engines`,
-  AMICI and COPASI, each one which is installed) gives the results of
-  roadrunner without a change and with every case of the hook which it
-  repeats (`BatteryCase.cross_simulator`), within `LIMIT`; both run through
+  AMICI, COPASI and the engine core, each one which is installed) gives the
+  results of roadrunner without a change and with every case of the hook which
+  it repeats (`BatteryCase.cross_simulator`), within `LIMIT`; both run through
   `sbmlsim.simulator.Simulator` on the same simulation, roadrunner compiled
   at `O0`. What an engine does not simulate as roadrunner
   (`sbmlsim.engine.UnsupportedModelError`, e.g. an algebraic rule in COPASI)
@@ -149,7 +149,15 @@ BOUND_MARGIN: Final = 1e-3
 COMPILE_TIMEOUT: Final = 900.0
 
 #: the second engines of the check `cross_simulator`, by their name
-_ENGINE_LABELS: Final = {"amici": "AMICI", "copasi": "COPASI"}
+_ENGINE_LABELS: Final = {"amici": "AMICI", "copasi": "COPASI", "core": "sbmlsim-core"}
+
+#: the extra of sbmlsim which installs a second engine, `None` for the engine
+#: core, whose bindings are no extra (`sbmlsim.engine.import_core`)
+_ENGINE_EXTRAS: Final[dict[str, str | None]] = {
+    "amici": "amici",
+    "copasi": "copasi",
+    "core": None,
+}
 
 
 @unique
@@ -316,7 +324,9 @@ class BatterySettings:
             a decay or an oscillator.
         cross_simulator: run the check `cross_simulator`.
         engines: the second engines of the check `cross_simulator`, each one
-            which is installed is compared with roadrunner.
+            which is installed is compared with roadrunner; AMICI and COPASI
+            come with an extra of sbmlsim, the engine core with the bindings
+            of sbmlsim-core (`_ENGINE_EXTRAS`).
         compile_timeout: the longest compilation of a variant by AMICI (s);
             a variant which takes longer is not compared with AMICI.
     """
@@ -329,7 +339,7 @@ class BatterySettings:
     bound_margin: float = BOUND_MARGIN
     steady_state: bool = False
     cross_simulator: bool = True
-    engines: tuple[str, ...] = ("amici", "copasi")
+    engines: tuple[str, ...] = ("amici", "copasi", "core")
     compile_timeout: float = COMPILE_TIMEOUT
 
     def __post_init__(self) -> None:
@@ -1223,14 +1233,47 @@ def _values(
 
 
 def _installed(engine: str) -> bool:
-    """Check whether a second engine is installed."""
-    from sbmlsim.engine import import_amici, import_copasi
+    """Check whether a second engine is installed.
 
+    The engine is imported through `sbmlsim.engine`, so the battery never
+    imports COPASI, AMICI or the bindings of sbmlsim-core statically.
+
+    Args:
+        engine: the name of the second engine, a key of `_ENGINE_LABELS`.
+
+    Returns:
+        Whether it is installed.
+    """
+    from sbmlsim.engine import import_amici, import_copasi, import_core
+
+    imports = {"amici": import_amici, "copasi": import_copasi, "core": import_core}
     try:
-        (import_amici if engine == "amici" else import_copasi)()
+        imports[engine]()
     except ImportError:
         return False
     return True
+
+
+def _install_hint(engines: Sequence[str]) -> str:
+    """Get how the second engines which are not installed are installed.
+
+    The extras of sbmlsim of AMICI and COPASI, and the bindings of
+    sbmlsim-core, which are no extra (`sbmlsim.engine.import_core`).
+
+    Args:
+        engines: the names of the second engines, keys of `_ENGINE_LABELS`.
+
+    Returns:
+        The sentence, with its full stop.
+    """
+    extras = [extra for e in engines if (extra := _ENGINE_EXTRAS[e]) is not None]
+    core = any(_ENGINE_EXTRAS[e] is None for e in engines)
+    if not extras:
+        return "install the bindings of sbmlsim-core."
+    hint = "install sbmlsim with the extra " + " or ".join(f"'{e}'" for e in extras)
+    if core:
+        hint += ", or the bindings of sbmlsim-core"
+    return f"{hint}."
 
 
 def _cross_simulator(
@@ -1251,10 +1294,7 @@ def _cross_simulator(
             else f"Neither {' nor '.join(names)} is installed"
         )
         return not_applicable_result(
-            CROSS_SIMULATOR,
-            f"{missing}, install sbmlsim with the extra "
-            + " or ".join(f"'{e}'" for e in settings.engines)
-            + ".",
+            CROSS_SIMULATOR, f"{missing}, {_install_hint(settings.engines)}"
         )
     labels = " and ".join(_ENGINE_LABELS[e] for e in engines)
     statement = (

@@ -102,6 +102,15 @@ def _project(tmp_path: Path, extra: str = "", model: str = STEADY) -> Project:
     )
 
 
+def _with_engines(project: Project, *engines: str) -> Project:
+    """Get the project with the second engines of its check `cross_simulator`."""
+    return project.replace(
+        credibility_settings=CredibilitySettings(
+            battery_settings={**STEADY_SETTINGS, "engines": list(engines)}
+        )
+    )
+
+
 def _battery(project: Project, **kwargs: object) -> Battery:
     return run_battery(
         project,
@@ -195,6 +204,11 @@ def _skip_without_copasi() -> None:
         import_copasi()
     except ImportError:
         pytest.skip("COPASI is not installed")
+
+
+def _skip_without_core() -> None:
+    """Skip a test without the bindings of sbmlsim-core, which are no extra."""
+    pytest.importorskip("sbmlsim_core")
 
 
 def test_the_hook_of_the_toy_package(credibility_project: Project) -> None:
@@ -503,6 +517,68 @@ def test_the_second_simulator(tmp_path: Path) -> None:
     assert result.cases == 1
     assert result.largest < 1e-6
     assert result.statement.startswith("COPASI gives the results of roadrunner")
+
+
+def test_the_engine_core_is_a_second_simulator(tmp_path: Path) -> None:
+    """The engine core gives the results of roadrunner, as COPASI and AMICI do."""
+    _skip_without_core()
+    result = run_battery(
+        _with_engines(_project(tmp_path), "core"), rebuild=False
+    ).result(CROSS_SIMULATOR)
+    assert result.status is BatteryStatus.PASSED, result.problems
+    assert result.cases == 1
+    assert result.largest < 1e-6
+    assert result.statement.startswith("sbmlsim-core gives the results of roadrunner")
+
+
+def test_the_core_is_a_second_simulator_by_default() -> None:
+    """Every assessment compares with the core, as it does with AMICI and COPASI."""
+    assert BatterySettings().engines == ("amici", "copasi", "core")
+
+
+def test_two_second_simulators_are_both_compared(tmp_path: Path) -> None:
+    """Every installed engine of the settings compares the cases of a variant."""
+    _skip_without_copasi()
+    _skip_without_core()
+    result = run_battery(
+        _with_engines(_project(tmp_path), "copasi", "core"), rebuild=False
+    ).result(CROSS_SIMULATOR)
+    assert result.status is BatteryStatus.PASSED, result.problems
+    assert result.cases == 2  # the case without a change in each engine
+    assert result.largest < 1e-6
+    assert result.statement.startswith(
+        "COPASI and sbmlsim-core give the results of roadrunner"
+    )
+
+
+def test_without_the_bindings_the_core_is_not_compared(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The bindings of sbmlsim-core are no extra, so the hint names them."""
+    import sbmlsim.engine as engine
+
+    def missing() -> None:
+        raise ImportError("not installed")
+
+    monkeypatch.setattr(engine, "import_core", missing)
+    alone = run_battery(
+        _with_engines(_project(tmp_path), "core"), rebuild=False
+    ).result(CROSS_SIMULATOR)
+    assert alone.status is BatteryStatus.NOT_APPLICABLE
+    assert alone.statement == (
+        "sbmlsim-core is not installed, install the bindings of sbmlsim-core."
+    )
+    monkeypatch.setattr(engine, "import_amici", missing)
+    monkeypatch.setattr(engine, "import_copasi", missing)
+    every = run_battery(
+        _with_engines(_project(tmp_path), "amici", "copasi", "core"), rebuild=False
+    ).result(CROSS_SIMULATOR)
+    assert every.status is BatteryStatus.NOT_APPLICABLE
+    assert every.statement == (
+        "Neither AMICI nor COPASI nor sbmlsim-core is installed, install "
+        "sbmlsim with the extra 'amici' or 'copasi', or the bindings of "
+        "sbmlsim-core."
+    )
 
 
 def test_the_settings_of_the_battery() -> None:

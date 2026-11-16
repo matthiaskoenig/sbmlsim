@@ -41,6 +41,7 @@ ENGINE_PACKAGES: dict[Engine, tuple[str, ...]] = {
     Engine.ROADRUNNER: (),
     Engine.COPASI: ("python-copasi",),
     Engine.AMICI: ("amici",),
+    Engine.CORE: ("sbmlsim-core",),
 }
 
 #: directories below a data path which hold no data: caches of python, of

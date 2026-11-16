@@ -2,8 +2,9 @@
 
 A module `test_*_engines.py` runs its tests with every engine of
 `OTHER_ENGINES` through the fixture `other_engine` of `tests.conftest`; a
-test of an engine whose extra is not installed is skipped. The tests of one
-engine only are in the modules of its name, e.g. `test_simulator_amici.py`.
+test of an engine whose extra is not installed is skipped, the engine core
+without the bindings of sbmlsim-core. The tests of one engine only are in the
+modules of its name, e.g. `test_simulator_amici.py`.
 """
 
 import contextlib
@@ -16,24 +17,34 @@ from sbmlsim.engine import Engine, import_copasi
 from sbmlsim.model.model_sbml import SBMLModel
 
 #: the engines besides roadrunner, by their names
-OTHER_ENGINES: list[Engine] = [Engine.COPASI, Engine.AMICI]
+OTHER_ENGINES: list[Engine] = [Engine.COPASI, Engine.AMICI, Engine.CORE]
 
-#: the module of the extra of an engine
-_MODULES: dict[Engine, str] = {Engine.COPASI: "COPASI", Engine.AMICI: "amici"}
+#: the module of the extra of an engine, the bindings of sbmlsim-core for the
+#: engine core, which are no extra of sbmlsim (`sbmlsim.engine.import_core`)
+_MODULES: dict[Engine, str] = {
+    Engine.COPASI: "COPASI",
+    Engine.AMICI: "amici",
+    Engine.CORE: "sbmlsim_core",
+}
 
 #: the integrator of an engine, as the methods of a fit report name it
 INTEGRATORS: dict[Engine, str] = {
     Engine.ROADRUNNER: "CVODE",
     Engine.COPASI: "LSODA",
     Engine.AMICI: "CVODES",
+    Engine.CORE: "CVODE",
 }
 
 #: the package of an engine whose version a fit records
-PACKAGES: dict[Engine, str] = {Engine.COPASI: "python-copasi", Engine.AMICI: "amici"}
+PACKAGES: dict[Engine, str] = {
+    Engine.COPASI: "python-copasi",
+    Engine.AMICI: "amici",
+    Engine.CORE: "sbmlsim-core",
+}
 
 
 def require(engine: Engine) -> None:
-    """Skip a test of an engine whose extra is not installed."""
+    """Skip a test of an engine whose extra or bindings are not installed."""
     if engine is Engine.COPASI:
         with contextlib.suppress(ImportError):
             # COPASI imported with the locale of the process kept, see
@@ -48,6 +59,10 @@ def model_class(engine: Engine) -> type[SBMLModel]:
         from sbmlsim.model.model_copasi import CopasiSBMLModel
 
         return CopasiSBMLModel
+    if engine is Engine.CORE:
+        from sbmlsim.model.model_core import CoreSBMLModel
+
+        return CoreSBMLModel
     from sbmlsim.model.model_amici import AmiciSBMLModel
 
     return AmiciSBMLModel

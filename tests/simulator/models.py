@@ -124,6 +124,26 @@ model volume
 end
 """
 
+#: a concentration species `A` and a substance species `N` in a compartment
+#: whose size follows the parameters `V` and `f` by an initial assignment and
+#: `V` the parameter `g` by a second one, so the size of `c` follows `g` two
+#: initial assignments deep: a pre-initialization of `f` or of `g` changes the
+#: volume without naming the compartment, which the engine core converts a
+#: concentration with, see `tests/simulator/test_simulator_core.py`
+INDIRECT_VOLUME = """
+model indirect_volume
+  g = 1
+  V = 2*g
+  f = 1
+  compartment c
+  c = V*f
+  species A in c = 5
+  substanceOnly species N in c = 6
+  k = 0.1
+  J: A -> ; k*A
+end
+"""
+
 #: a concentration species in a compartment whose initial assignment reads an
 #: assignment rule of the body weight, as the extracellular fluid of the HCTZ
 #: model of pkdb_models: roadrunner's resetAll computes the amount of `S` in

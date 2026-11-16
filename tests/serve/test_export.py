@@ -29,7 +29,7 @@ from examples.panels.hctz import CRCL, HCTZ_PATIENT_PLASMA, PROJECT
 from sbmlsim.model.model_roadrunner import RoadrunnerSBMLModel
 from sbmlsim.model.model_sbml import SBMLModel, load_model
 from sbmlsim.model.tolerances import AbsoluteTolerance
-from sbmlsim.panel import PanelSimulation, dose_times, panel_from_payload
+from sbmlsim.panel import Knob, Panel, PanelSimulation, dose_times, panel_from_payload
 from sbmlsim.serve import cli
 from sbmlsim.serve.export import (
     BUNDLE_FILE,
@@ -42,7 +42,7 @@ from sbmlsim.serve.export import (
 )
 from sbmlsim.serve.runner import ModelEntry, ModelRegistry, PanelRunner
 from sbmlsim.simulation import Change, Scan, Simulation
-from sbmlsim.simulator import Simulator
+from sbmlsim.simulator import Simulator, UnsupportedModelError
 
 #: the reference of the HCTZ demo
 HCTZ = "examples.panels.hctz:PROJECT"
@@ -61,6 +61,21 @@ VARIANTS = "examples.panels.hctz_variants:PROJECT_VARIANTS"
 #: project, e.g. 4e-10 of the peak between the glimepiride model compiled at
 #: O0 and at O2, which the bound admits.
 RTOL = 1e-9
+
+#: the clause of the refusal of a pre-initialization which sets the
+#: concentration of `Afeces_hctz` and changes the size of its compartment
+#: `Vfeces` (`sbmlsim.simulator.executor_core.concentration_problem`), which
+#: names the species, the panel, the model and the variant. Every branch of
+#: `sbmlsim.serve.export._check_concentrations` reports the same clause, since
+#: the `preinit` of the panel, the target of a knob and a derived target are
+#: one pre-initialization: `Afeces_hctz` is a species of `Vfeces`, one of the
+#: few compartments of the HCTZ model which no assignment rule sets, so it is
+#: a target a declaration can set
+CONCENTRATION_REFUSAL = (
+    "the concentration of the species 'Afeces_hctz' of the panel "
+    "'patient_plasma' of the model 'hctz' in its variant 'default' together "
+    "with 'Vfeces', which the size of its compartment 'Vfeces' follows"
+)
 
 
 @pytest.fixture(scope="module")
@@ -271,13 +286,126 @@ def test_a_derived_target_which_a_rule_sets_is_refused() -> None:
     _refused(panel.id, panel, "'GFR' of the panel 'patient_plasma' is set by a rule")
 
 
-def _refused(panel_id: str, panel: Any, message: str) -> None:
-    project = PROJECT.replace(panels={panel_id: panel}, app=None)
-    registry = ModelRegistry(
-        {"hctz": ModelEntry(id="hctz", project=project, title="t")}
+def test_a_preinit_of_a_concentration_which_changes_its_volume_is_refused(
+    tmp_path: Path,
+) -> None:
+    """The engine core of the browser gets such a pre-initialization wrong.
+
+    It converts the concentration with the volume at the moment of the
+    assignment, where every executor of sbmlsim holds the concentration
+    across the initialization (PEtab v2), so
+    `sbmlsim.simulator.executor_core.check_supported` refuses it for every
+    plan of the engine, a request of the service among them. A bundle runs on
+    that engine whatever engine the project simulates with and its recipe is
+    no plan, so the export shares that one rule (`concentration_problem`) and
+    refuses before it writes a file of the bundle.
+    """
+    panel = _with_preinit({"[Afeces_hctz]": 1.0, "Vfeces": 2.0})
+    with pytest.raises(ValueError, match=re.escape(CONCENTRATION_REFUSAL)) as failure:
+        export_bundles(_registry(panel.id, panel), tmp_path)
+    # the export is no feature check of an executor, so its refusals are the
+    # `ValueError` of every other problem of a bundle and of the checks of the
+    # registry and never the `UnsupportedModelError` of `check_supported`,
+    # which a `pytest.raises(ValueError)` alone would admit, since it is one
+    assert not isinstance(failure.value, UnsupportedModelError)
+    assert not (tmp_path / "hctz").exists()
+
+
+def test_a_knob_which_sets_a_concentration_of_a_changed_volume_is_refused() -> None:
+    """The pre-initialization of a point sets the target of every knob as well.
+
+    `sbmlsim.serve.runner._scan` puts the target of a knob which is no axis of
+    the grid into the pre-initialization of the simulation and the target of
+    one which is into the `Dimension`, whose values `Plan.with_values` appends
+    to it, so a plan of the live panel is refused for a concentration of a
+    knob. The recipe of a bundle carries that target as a knob of its own, so
+    the export reads the knobs with the `preinit` (`_check_concentrations`).
+    """
+    panel = _with_knob(
+        _with_preinit({"Vfeces": 2.0}),
+        Knob(
+            id="feces",
+            label="feces",
+            target="[Afeces_hctz]",
+            unit="mmol/litre",
+            min=0.0,
+            max=10.0,
+            default=1.0,
+        ),
     )
+    _refused(panel.id, panel, CONCENTRATION_REFUSAL)
+
+
+def test_a_derived_volume_of_a_preinitialized_concentration_is_refused() -> None:
+    """A derived target is a value of the pre-initialization of a point as well.
+
+    The service computes it from the numbers of the knobs and sets it before
+    the initialization, which is the plan the live panel is refused for; the
+    bundle carries it as an initial assignment of its SBML instead, which the
+    engine evaluates before it applies the values of the request, so the
+    volume of the conversion is the one of the model as loaded either way.
+    """
+    panel = _with_derived(
+        _with_preinit({"[Afeces_hctz]": 1.0}), {"Vfeces": "crcl / 110"}
+    )
+    _refused(panel.id, panel, CONCENTRATION_REFUSAL)
+
+
+def test_a_preinit_of_a_concentration_alone_is_exported() -> None:
+    """Only a concentration whose volume the pre-initialization changes is refused.
+
+    The engine carries the concentrations of a compartment whose size the
+    pre-initialization leaves alone across the initialization itself, so the
+    refusal is no refusal of every concentration.
+    """
+    panel = _with_preinit({"[Afeces_hctz]": 1.0})
+    run = build_bundle(_registry(panel.id, panel), "hctz").content["answers"][""][
+        "panels"
+    ][panel.id]["run"]
+    assert run["preinit"] == [
+        ["BW", 75.0],
+        ["PODOSE_hctz", 0.0],
+        ["[Afeces_hctz]", 1.0],
+    ]
+
+
+def _with_preinit(preinit: Mapping[str, float]) -> Panel:
+    """The panel `patient_plasma` with more values of its pre-initialization."""
+    simulation = HCTZ_PATIENT_PLASMA.simulation
+    return HCTZ_PATIENT_PLASMA.model_copy(
+        update={
+            "simulation": simulation.model_copy(
+                update={"preinit": {**simulation.preinit, **preinit}}
+            )
+        }
+    )
+
+
+def _with_knob(panel: Panel, knob: Knob) -> Panel:
+    """The panel with one more knob, after the ones it declares."""
+    return panel.model_copy(update={"knobs": (*panel.knobs, knob)})
+
+
+def _with_derived(panel: Panel, derived: Mapping[str, str]) -> Panel:
+    """The panel with more derived targets of its simulation."""
+    simulation = panel.simulation
+    return panel.model_copy(
+        update={
+            "simulation": simulation.model_copy(
+                update={"derived": {**simulation.derived, **derived}}
+            )
+        }
+    )
+
+
+def _registry(panel_id: str, panel: Any) -> ModelRegistry:
+    project = PROJECT.replace(panels={panel_id: panel}, app=None)
+    return ModelRegistry({"hctz": ModelEntry(id="hctz", project=project, title="t")})
+
+
+def _refused(panel_id: str, panel: Any, message: str) -> None:
     with pytest.raises(ValueError, match=re.escape(message)):
-        build_bundle(registry, "hctz")
+        build_bundle(_registry(panel_id, panel), "hctz")
 
 
 def test_a_parameter_of_a_knob_does_not_clash_with_the_model(

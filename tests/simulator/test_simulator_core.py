@@ -1,0 +1,798 @@
+"""`Simulator(engine="core")` runs a simulation with the engine core.
+
+Every test compares the engine with roadrunner, the reference of every engine,
+on the same simulation, see `test_simulator_engines.py` for COPASI and AMICI;
+the requests of the contract `simulation/1` a plan becomes are read as they
+are, so the fields of the contract are pinned.
+"""
+
+from typing import Final
+
+import numpy as np
+import pytest
+
+pytest.importorskip("sbmlsim_core")
+
+from sbmlsim import parallel
+from sbmlsim.engine import Engine, UnsupportedModelError, import_core
+from sbmlsim.model import RoadrunnerSBMLModel, load_model
+from sbmlsim.model.model_core import CoreSBMLModel
+from sbmlsim.resources import HCTZ_SBML
+from sbmlsim.result.timecourse import TimecourseResult
+from sbmlsim.simulation import (
+    Change,
+    Dimension,
+    Scan,
+    Simulation,
+    SteadyState,
+)
+from sbmlsim.simulator import IntegratorSettings, Simulator
+from sbmlsim.simulator.executor import SteadyStateError
+from sbmlsim.simulator.executor_core import (
+    CONTRACT,
+    INTEGRATOR_STEPS,
+    STEADY_STATE_FLAG,
+    _failed,
+    request_of,
+)
+from sbmlsim.simulator.worker import ModelSpec, core_threads
+from tests.simulator.models import INDIRECT_VOLUME, PROBE, TOLERANCE_PROBE, sbml
+
+#: a model whose parameter `tt` the test renames to `time`, an entity of the
+#: name of the clock, as in case 01820 of the SBML Test Suite
+ENTITY_TIME = """
+model entity_time
+  A = 1; k1 = 0.8
+  J1: A -> ; k1*A
+  tt = 10
+end
+"""
+
+#: the tolerances at which the engines agree, see the section Engines of
+#: `docs/simulation.md`
+TIGHT: Final[IntegratorSettings] = {
+    "absolute_tolerance": 1e-12,
+    "relative_tolerance": 1e-10,
+}
+
+#: the timecourses the engines are compared on, by the id of their model: the
+#: probe model of the simulation core and an oral dose of HCTZ, the reference
+#: model of the package, over a day in its time unit, the minute
+TIMECOURSES: Final[dict[str, Simulation]] = {
+    "probe": Simulation(end=20, times=np.linspace(0, 20, 41).tolist()),
+    "hctz": Simulation(
+        end=24 * 60,
+        preinit_changes={"PODOSE_hctz": 25.0},
+        times=np.linspace(0, 24 * 60, 49).tolist(),
+    ),
+}
+
+#: the largest error of a column relative to its largest magnitude at which
+#: the engines agree, see `_compare`: 180 times the worst error measured there,
+#: so an accuracy regression of the engine does not pass
+TOLERANCE: Final[float] = 1e-8
+
+
+def _integration(message: str, flag: int) -> Exception:
+    """Get the `IntegrationError` of the bindings of a message and a flag of CVODE."""
+    error = import_core().IntegrationError(message)
+    error.flag = flag
+    error.time = 0.0
+    return error
+
+
+@pytest.fixture(scope="module")
+def probe_sbml() -> str:
+    """Get the SBML of the probe model, which every engine simulates."""
+    return sbml(PROBE)
+
+
+@pytest.fixture(scope="module")
+def sources(probe_sbml: str) -> dict[str, str]:
+    """Get the SBML of the models the pre-initialization is measured on."""
+    return {
+        "probe": probe_sbml,
+        "tolerances": sbml(TOLERANCE_PROBE),
+        "volume": sbml(INDIRECT_VOLUME),
+    }
+
+
+def _orders(values: dict[str, float]) -> list[dict[str, float]]:
+    """Get a mapping of values in both orders, the one it is written in and the reverse.
+
+    The engine applies the values of a pre-initialization one after the other,
+    so a pair of them is measured in both orders, which roadrunner answers
+    alike.
+    """
+    if len(values) < 2:
+        return [values]
+    return [values, dict(reversed(list(values.items())))]
+
+
+@pytest.fixture
+def model_core(probe_sbml: str) -> CoreSBMLModel:
+    """Get the probe model in the engine core."""
+    model = load_model(probe_sbml, Engine.CORE)
+    assert isinstance(model, CoreSBMLModel)
+    return model
+
+
+@pytest.fixture
+def model_rr(probe_sbml: str) -> RoadrunnerSBMLModel:
+    """Get the probe model in roadrunner, the reference of the engine."""
+    model = load_model(probe_sbml, Engine.ROADRUNNER)
+    assert isinstance(model, RoadrunnerSBMLModel)
+    return model
+
+
+def _compare(core: TimecourseResult, roadrunner: TimecourseResult) -> None:
+    """Compare the output of the engine core with the one of roadrunner.
+
+    The error of a column is relative to its largest magnitude, as the tests
+    of COPASI and AMICI measure it (`_scaled_error` of
+    `test_simulator_engines.py`): the absolute tolerance of the integrator
+    bounds the error of a variable and not its relative error, so a value
+    which passes through a tiny magnitude, e.g. a concentration right after a
+    dose, differs by more relative to itself. At the tolerances of `TIGHT` the
+    engines agree to 5.7e-11 of the scale of a column on these simulations,
+    measured on the probe model (6.8e-12) and on the dose of HCTZ (5.6e-11).
+    """
+    assert core.columns == roadrunner.columns
+    assert core.values.shape == roadrunner.values.shape
+    # a `NaN` of a point which did not integrate is no error of the metric
+    # below, which skips it, so the two outputs are finite in the same places
+    np.testing.assert_array_equal(
+        np.isfinite(core.values), np.isfinite(roadrunner.values)
+    )
+    difference = np.abs(core.values - roadrunner.values)
+    scale = np.maximum(np.nanmax(np.abs(roadrunner.values), axis=0), 1e-12)
+    errors = np.nanmax(difference / scale, axis=0)
+    worst = int(np.argmax(errors))
+    assert errors[worst] <= TOLERANCE, (
+        f"the column '{core.columns[worst]}' differs by {errors[worst]:.3g} of its "
+        f"largest magnitude"
+    )
+
+
+@pytest.mark.parametrize("model_id", TIMECOURSES)
+def test_a_timecourse_matches_roadrunner(probe_sbml: str, model_id: str) -> None:
+    """The timecourse of the engine is the one of roadrunner at tight tolerances."""
+    model = probe_sbml if model_id == "probe" else HCTZ_SBML
+    simulation = TIMECOURSES[model_id]
+    core = Simulator(engine="core", **TIGHT).simulate(model, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model, simulation)
+    _compare(core, roadrunner)
+
+
+def test_a_change_gives_two_rows_at_its_time(model_core: CoreSBMLModel) -> None:
+    """A change after the start has the state before it and the state after it."""
+    result = Simulator(engine="core").simulate(
+        model_core, Simulation(end=20, changes=[Change(10, {"X": 5.0})], steps=20)
+    )
+    times = result.values[:, 0]
+    assert (times == 10.0).sum() == 2
+    before, after = result["X"][times == 10.0]
+    assert before != after
+    assert after == 5.0
+
+
+def test_the_changes_of_a_plan_match_roadrunner(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """The rows of changes at the start, after it and at the end are roadrunner's."""
+    simulation = Simulation(
+        end=20,
+        changes=[Change(0, {"k1": 0.5}), Change([5, 20], {"X": 3.0})],
+        times=np.linspace(0, 20, 21).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    _compare(core, roadrunner)
+
+
+def test_the_steps_of_the_integrator_are_the_output_without_times(
+    model_core: CoreSBMLModel,
+) -> None:
+    """A simulation without times or steps is the output of the integrator."""
+    result = Simulator(engine="core").simulate(model_core, Simulation(end=20))
+    assert result.values.shape[0] > 21
+    times = result.values[:, 0]
+    assert times[0] == 0.0
+    assert times[-1] == 20.0
+    assert np.all(np.diff(times) >= 0.0)
+
+
+def test_a_steady_state_before_the_start(model_core: CoreSBMLModel) -> None:
+    """A presimulation integrates to the steady state the simulation starts from."""
+    result = Simulator(engine="core").simulate(
+        model_core, Simulation(end=1, presimulation=SteadyState(), steps=1)
+    )
+    assert np.isfinite(result.values).all()
+    # the net rate of `A` vanishes in the steady state, up to the criterion of
+    # the presimulation (3.0e-11 relative here, bounded by `1e-8 + 1e-6 |A|`)
+    assert result["J1"][0] == pytest.approx(result["J2"][0], rel=1e-5)
+
+
+def test_a_steady_state_matches_roadrunner(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """The state a presimulation starts the simulation from is roadrunner's."""
+    simulation = Simulation(
+        end=5,
+        presimulation=SteadyState(preinit_changes={"a0": 2.0}),
+        times=np.linspace(0, 5, 11).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    _compare(core, roadrunner)
+
+
+def test_an_integration_which_fails_raises_as_in_roadrunner(
+    probe_sbml: str, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A simulation the engine fails is a `RuntimeError` and no error of the bindings."""
+    simulation = Simulation(end=1000, steps=2)
+    with pytest.raises(RuntimeError, match="failed to simulate the model") as failure:
+        Simulator(engine="core", maximum_num_steps=1).simulate(probe_sbml, simulation)
+    # the error of an executor and not the `IntegrationError` of the bindings,
+    # with the message of the engine and the flag of CVODE, here -1
+    assert type(failure.value) is RuntimeError
+    assert "(flag -1)" in str(failure.value)
+    # the engine writes nothing of its own, its message carries the failure
+    assert capfd.readouterr() == ("", "")
+    # roadrunner reports a failed integration the same way, the contract of
+    # `execute_plan`, and logs the error of CVODE on its own console
+    with pytest.raises(RuntimeError):
+        Simulator(maximum_num_steps=1).simulate(probe_sbml, simulation)
+
+
+def test_the_error_of_a_simulation_is_the_error_of_its_cause(
+    model_core: CoreSBMLModel,
+) -> None:
+    """Every error of a simulation of the engine maps onto the one of its cause.
+
+    The four errors of the bindings map onto the three a run tells apart, see
+    `_failed`: a feature the engine does not support is raised for the whole
+    scan (`UnsupportedModelError` is a `NotImplementedError`), a presimulation
+    without a steady state is a `SteadyStateError` and everything else is a
+    point a run flags.
+    """
+    core = import_core()
+    cases: list[tuple[Exception, type[Exception], str]] = [
+        (core.UnsupportedError("a fast reaction"), UnsupportedModelError, "fast"),
+        (
+            _integration("no steady state", STEADY_STATE_FLAG),
+            SteadyStateError,
+            "steady",
+        ),
+        (_integration("mxstep steps taken", -1), RuntimeError, "mxstep"),
+        (core.RequestError("a value which is not finite"), RuntimeError, "finite"),
+        (core.InternalError("the model trapped"), RuntimeError, "internally"),
+    ]
+    for error, expected, match in cases:
+        failed = _failed(error, model_core, core)
+        assert type(failed) is expected, error
+        assert match in str(failed)
+        assert model_core.label in str(failed)
+    # a `SteadyStateError` is a `RuntimeError`, the error of a failed point,
+    # while an unsupported feature is a `NotImplementedError`, which a run
+    # raises instead of flagging the point, see `worker.run_chunk`
+    assert issubclass(UnsupportedModelError, NotImplementedError)
+
+
+def test_a_value_which_is_not_finite_is_a_point_a_run_flags() -> None:
+    """A request the engine refuses is a `RuntimeError`, the point roadrunner flags too.
+
+    A `NaN` of a dimension reaches the engine as a request it refuses; with
+    roadrunner the point fails its integration (`CV_CONV_FAILURE`). Both are a
+    point a run flags, so a user sees the same of both engines, see `_failed`.
+    """
+    scan = Scan(
+        Simulation(end=10, steps=5),
+        dimensions=[Dimension("dose", values={"PODOSE_hctz": [10.0, float("nan")]})],
+    )
+    result = Simulator(engine="core", n_workers=1).run(HCTZ_SBML, scan, on_error="flag")
+    assert result["status"].values.tolist() == [0, 1]
+    (error,) = result.ds.attrs["errors"]
+    assert "RuntimeError" in error
+    assert np.isfinite(result["[Cve_hctz]"].values[0]).all()
+    assert np.isnan(result["[Cve_hctz]"].values[1]).all()
+
+
+def test_a_presimulation_without_a_steady_state_raises(probe_sbml: str) -> None:
+    """A presimulation which runs out of time is a `SteadyStateError`, as elsewhere."""
+    with pytest.raises(SteadyStateError, match="steady state"):
+        Simulator(engine="core").simulate(
+            probe_sbml,
+            Simulation(end=1, presimulation=SteadyState(max_time=0.1), steps=1),
+        )
+
+
+def test_the_pre_initialization_matches_roadrunner(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """The values before the initialization are set and the initial assignments see them."""
+    simulation = Simulation(end=10, preinit_changes={"f": 3.0, "a0": 2.0}, steps=10)
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    # `pinit` follows `f` by an initial assignment and `X` follows `pinit`
+    assert core["X"][0] == pytest.approx(18.0)
+    _compare(core, roadrunner)
+
+
+def test_a_formula_at_a_change_is_refused(model_core: CoreSBMLModel) -> None:
+    """A formula at a change which is no formula of the time is refused.
+
+    `check_plan` refuses it when the scan is compiled, before a point runs and
+    whatever `on_error` says, since a request of the engine carries numbers.
+    """
+    scan = Scan(Simulation(end=10, changes=[Change(5, {"X": "2 * A"})], steps=10), [])
+    with pytest.raises(UnsupportedModelError, match="formula") as failure:
+        Simulator(engine="core", n_workers=1).run(model_core, scan, on_error="flag")
+    message = str(failure.value)
+    # the target, the time and the formula, and what a request takes
+    assert "'X'" in message
+    assert "2 * A" in message
+    assert "5.0" in message
+    assert "is a number" in message
+
+
+@pytest.mark.parametrize(
+    "formula", ["2 * time", "5 + 5"], ids=["of the time", "of numbers"]
+)
+def test_a_formula_of_the_time_at_a_change_is_folded(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel, formula: str
+) -> None:
+    """A formula of the time and of numbers at a change is folded into its value.
+
+    The time of a change is the one of the plan, so the value is the one the
+    executor of roadrunner evaluates on the model at that time.
+    """
+    simulation = Simulation(
+        end=20,
+        changes=[Change(5, {"X": formula})],
+        times=np.linspace(0, 20, 21).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core["X"][core.values[:, 0] == 5.0][-1] == 10.0
+    _compare(core, roadrunner)
+
+
+def test_a_pre_initialization_formula_is_folded_against_the_model_as_loaded(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """A pre-initialization of formulas alone reads the model as loaded.
+
+    No value is set before the formulas are evaluated, so every symbol is the
+    value of the model as loaded, which is what roadrunner reads: `kk` is the
+    assignment rule `3*f`, 6 in the model as loaded.
+    """
+    simulation = Simulation(
+        end=20,
+        preinit_changes={"k1": "0.5 * kk"},
+        times=np.linspace(0, 20, 21).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core["k1"][0] == 3.0
+    _compare(core, roadrunner)
+
+
+def test_a_pre_initialization_formula_of_the_values_it_sets_is_folded(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """A formula whose symbols the same pre-initialization sets reads those numbers."""
+    simulation = Simulation(
+        end=20,
+        preinit_changes={"f": 3.0, "k1": "0.1 * f"},
+        times=np.linspace(0, 20, 21).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core["k1"][0] == 0.1 * 3.0
+    _compare(core, roadrunner)
+
+
+def test_a_formula_of_a_steady_state_reads_the_whole_pre_initialization(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """The pre-initialization of a plan and of its steady state are one.
+
+    Every executor applies them together (`preinit_targets`), so a formula of
+    the steady state reads the numbers the plan sets as well.
+    """
+    simulation = Simulation(
+        end=5,
+        preinit_changes={"a0": 2.0},
+        presimulation=SteadyState(preinit_changes={"k1": "0.1 * a0"}),
+        times=np.linspace(0, 5, 11).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core["k1"][0] == 0.1 * 2.0
+    _compare(core, roadrunner)
+
+
+def test_a_pre_initialization_formula_of_a_value_which_is_not_set_is_refused(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """A pre-initialization of values and a formula of another symbol is refused.
+
+    `kk` is the assignment rule `3*f`, which roadrunner evaluates with the `f`
+    the pre-initialization sets, `0.1 * 9`, and not with the 6 of the model as
+    loaded, `0.1 * 6`: the engine refuses such a formula rather than folding
+    the wrong value, since it cannot set the values of the pre-initialization
+    on the model before it evaluates them.
+    """
+    simulation = Simulation(
+        end=20, preinit_changes={"f": 3.0, "k1": "0.1 * kk"}, times=[0.0, 20.0]
+    )
+    with pytest.raises(UnsupportedModelError, match="formula") as failure:
+        Simulator(engine="core").simulate(model_core, simulation)
+    assert "'kk'" in str(failure.value)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    assert roadrunner["k1"][0] == 0.1 * 9.0
+    assert roadrunner["k1"][0] != 0.1 * 6.0
+
+
+@pytest.mark.parametrize("target", ["C", "X"], ids=["a compartment", "a species"])
+def test_a_pre_initialization_formula_of_a_compartment_or_a_species_is_refused(
+    model_core: CoreSBMLModel, target: str
+) -> None:
+    """Only a formula of a parameter is folded, see the module of the executor."""
+    simulation = Simulation(
+        end=10, preinit_changes={target: "2 * f"}, times=[0.0, 10.0]
+    )
+    with pytest.raises(UnsupportedModelError, match="formula") as failure:
+        Simulator(engine="core").simulate(model_core, simulation)
+    assert f"'{target}'" in str(failure.value)
+
+
+def test_a_steady_state_after_the_end_is_refused(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """The steady state after the end of a simulation is no part of the contract.
+
+    The `steady_state` of a request is the pre-equilibration before the start,
+    so one request cannot continue from the state the timecourse ended in:
+    roadrunner answers the output time `inf` with the row of the steady state
+    after the end, which the engine refuses rather than leaving out.
+    """
+    simulation = Simulation(end=10, times=[0.0, 10.0, float("inf")])
+    with pytest.raises(UnsupportedModelError, match="steady state after the end"):
+        Simulator(engine="core").simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    assert roadrunner.values[-1, 0] == float("inf")
+
+
+def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_reads_it_as_loaded(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """A symbol the same pre-initialization sets by a formula is its value as loaded.
+
+    Every executor evaluates the formulas of a pre-initialization against the
+    model before it sets the result of any of them, so the `k1` of `2 * k1` is
+    the 0.8 of the model as loaded and not the 6 the same pre-initialization
+    sets it to. Only an assignment of a number is a known value of the fold
+    (`_plain_values`), which is what keeps the two apart.
+    """
+    simulation = Simulation(
+        end=20,
+        preinit_changes={"k2": "2 * k1", "k1": "3 * f"},
+        times=np.linspace(0, 20, 21).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    assert core["k1"][0] == 3.0 * 2.0
+    assert core["k2"][0] == 2.0 * 0.8
+    _compare(core, roadrunner)
+
+
+def test_a_pre_initialization_formula_of_a_target_set_by_a_formula_and_a_number_is_refused(
+    model_core: CoreSBMLModel,
+) -> None:
+    """One number of the same pre-initialization makes it the mixed case.
+
+    The values it sets are not on the model when the formula is evaluated, so
+    the executor cannot tell the value of `k1` the formula reads any more and
+    refuses it, see `test_a_pre_initialization_formula_of_a_value_which_is_not_set_is_refused`.
+    """
+    simulation = Simulation(
+        end=20,
+        preinit_changes={"k2": "2 * k1", "k1": "3 * f", "a0": 2.0},
+        times=[0.0, 20.0],
+    )
+    with pytest.raises(UnsupportedModelError, match="formula") as failure:
+        Simulator(engine="core").simulate(model_core, simulation)
+    assert "'k1'" in str(failure.value)
+
+
+@pytest.mark.parametrize(
+    ("model_id", "preinit", "named"),
+    [
+        ("probe", {"[A]": 5.0, "C": 3.0}, ("A", "C")),
+        ("volume", {"[A]": 5.0, "f": 3.0}, ("A", "f", "c")),
+        ("volume", {"[A]": 5.0, "g": 3.0}, ("A", "g", "c")),
+        ("volume", {"[N]": 5.0, "f": 3.0}, ("N", "f", "c")),
+    ],
+    ids=[
+        "the compartment itself",
+        "a parameter of its size",
+        "a parameter its size follows",
+        "a substance species by its concentration",
+    ],
+)
+def test_a_pre_initialization_of_a_concentration_whose_volume_it_changes_is_refused(
+    sources: dict[str, str],
+    model_id: str,
+    preinit: dict[str, float],
+    named: tuple[str, ...],
+) -> None:
+    """The engine converts a concentration with the volume at the assignment.
+
+    roadrunner holds the concentration across the initialization and converts
+    it with the size the compartment has once the model is initialized (PEtab
+    v2), so `{"[A]": 5.0, "C": 3.0}` is `A = 15` there and `A = 10` in the
+    engine, and so is `{"[A]": 5.0, "f": 3.0}` of a compartment `c = V*f`,
+    which names no compartment at all. The refusal is keyed on the
+    concentration and on every symbol the size of its compartment follows,
+    and not on the order of the request: the engine applies the values one
+    after the other, so the direct pair comes out right in the other order,
+    which is a symptom of the same rule and no second case.
+    """
+    source = sources[model_id]
+    simulations = [
+        Simulation(end=10, preinit_changes=values, times=[0.0, 10.0])
+        for values in _orders(preinit)
+    ]
+    for simulation in simulations:
+        with pytest.raises(UnsupportedModelError, match="volume") as failure:
+            Simulator(engine="core").simulate(source, simulation)
+        message = str(failure.value)
+        for name in named:
+            assert f"'{name}'" in message
+    # the orders are one initial state in roadrunner, the reference
+    first, second = (
+        Simulator(**TIGHT).simulate(source, simulation) for simulation in simulations
+    )
+    np.testing.assert_array_equal(first.values, second.values)
+
+
+@pytest.mark.parametrize(
+    ("model_id", "preinit"),
+    [
+        ("probe", {"a0": 2.0, "C": 3.0}),
+        ("probe", {"[A]": 5.0, "k1": 0.5}),
+        ("probe", {"C": 3.0}),
+        ("probe", {"A": 5.0, "C": 3.0}),
+        ("probe", {"X": 5.0, "C": 3.0}),
+        ("tolerances", {"[A]": 2.0, "U": 2.0}),
+        ("volume", {"A": 5.0, "f": 3.0}),
+        ("volume", {"N": 5.0, "f": 3.0}),
+        ("volume", {"A": 5.0, "g": 3.0}),
+        ("volume", {"f": 3.0}),
+        ("volume", {"g": 3.0}),
+    ],
+    ids=[
+        "a parameter and a compartment",
+        "a concentration and a parameter",
+        "a compartment alone",
+        "an amount and its compartment",
+        "a substance species and its compartment",
+        "a concentration of another compartment",
+        "an amount of a changed volume",
+        "a substance species of a changed volume",
+        "an amount two steps from a changed volume",
+        "a changed volume alone",
+        "a volume changed two steps away alone",
+    ],
+)
+def test_a_pre_initialization_of_no_concentration_of_a_changed_volume_runs(
+    sources: dict[str, str], model_id: str, preinit: dict[str, float]
+) -> None:
+    """Only a concentration whose volume the pre-initialization changes is refused.
+
+    Every other pre-initialization of such a compartment is the one of
+    roadrunner in either order, measured here: an amount is set as it is
+    whenever the volume settles, the amount of a substance species among
+    them, and a compartment whose size the pre-initialization changes without
+    a species in it keeps the concentrations of its species in the engine as
+    well.
+    """
+    source = sources[model_id]
+    for values in _orders(preinit):
+        simulation = Simulation(end=10, preinit_changes=values, times=[0.0, 10.0])
+        core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+        roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+        _compare(core, roadrunner)
+
+
+@pytest.mark.parametrize("target", ["[A]", "A"], ids=["a concentration", "an amount"])
+def test_a_change_of_a_species_and_its_compartment_is_simultaneous(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel, target: str
+) -> None:
+    """A change of a request is simultaneous, unlike its pre-initialization.
+
+    The engine applies the values of a change at once, as the executor of
+    roadrunner does, so a change of a species and of its compartment is the
+    one of roadrunner in either order and nothing is refused there.
+    """
+    for values in _orders({target: 5.0, "C": 3.0}):
+        simulation = Simulation(
+            end=10, changes=[Change(5, values)], times=[0.0, 5.0, 10.0]
+        )
+        core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+        roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+        _compare(core, roadrunner)
+
+
+def test_the_time_of_the_output_is_the_time_of_the_simulation(
+    model_core: CoreSBMLModel,
+) -> None:
+    """The time is shifted and a later column `time` is a copy of it, see `output_time`."""
+    model_core.set_selections(["time", "A", "time"])
+    result = Simulator(engine="core").simulate(
+        model_core, Simulation(end=4, steps=4, time_shift=100)
+    )
+    np.testing.assert_array_equal(
+        result.values[:, 0], [100.0, 101.0, 102.0, 103.0, 104.0]
+    )
+    np.testing.assert_array_equal(result.values[:, 2], result.values[:, 0])
+
+
+def test_a_later_time_column_of_an_entity_time_is_its_value() -> None:
+    """A selection `time` of a model with an entity `time` is its value (case 01820)."""
+    source = sbml(ENTITY_TIME).replace('id="tt"', 'id="time"')
+    simulation = Simulation(end=3, times=[0, 1.5, 3])
+    results = []
+    for engine in ("core", "roadrunner"):
+        model = Simulator(engine=engine).load(source)
+        model.set_selections(["time", "time", "A"])
+        results.append(Simulator(engine=engine, **TIGHT).simulate(model, simulation))
+    core, roadrunner = results
+    np.testing.assert_array_equal(core.values[:, 1], 10.0)
+    _compare(core, roadrunner)
+
+
+def test_a_selection_the_model_cannot_write_is_reported(
+    model_core: CoreSBMLModel,
+) -> None:
+    """A kept selection the model has not is reported by its name."""
+    scan = Scan(
+        Simulation(end=10, steps=10),
+        dimensions=[Dimension("dose", values={"a0": [1.0, 2.0]})],
+    )
+    with pytest.raises(ValueError, match="nonsense"):
+        Simulator(engine="core", n_workers=1).run(model_core, scan, keep=["nonsense"])
+
+
+def test_the_request_of_a_plan_of_times(model_core: CoreSBMLModel) -> None:
+    """The request of a plan of output times carries them in the order of the plan."""
+    simulator = Simulator(engine="core", relative_tolerance=1e-9)
+    # the simulator sets its settings on the model it loads, which is this one
+    assert simulator.load(model_core) is model_core
+    plan = simulator.compile(model_core, Simulation(start=2, end=4, steps=2))
+    request = request_of(plan, model_core, ["time", "A"])
+    assert request["contract"] == CONTRACT
+    assert request["start"] == 2.0
+    assert request["end"] == 4.0
+    assert request["output"] == {"times": [2.0, 3.0, 4.0]}
+    assert request["preinit"] == []
+    assert request["changes"] == []
+    assert request["steady_state"] is None
+    assert request["selections"] == ["time", "A"]
+    assert request["settings"] == model_core.request_settings()
+    assert request["settings"]["relative_tolerance"] == 1e-9
+    # a plan has no seed, the engine orders simultaneous events with its own
+    assert "seed" not in request
+
+
+def test_the_request_of_the_steps_of_the_integrator(model_core: CoreSBMLModel) -> None:
+    """The output of a plan without times is the unit variant of the contract."""
+    plan = Simulator(engine="core").compile(model_core, Simulation(end=4))
+    request = request_of(plan, model_core, ["time"])
+    assert request["output"] == INTEGRATOR_STEPS
+
+
+def test_the_settings_of_a_request_can_be_given(
+    model_core: CoreSBMLModel,
+) -> None:
+    """A caller of many requests computes the settings once and passes them."""
+    plan = Simulator(engine="core").compile(model_core, Simulation(end=4, steps=4))
+    settings = model_core.request_settings()
+    assert request_of(plan, model_core, ["time"], settings)["settings"] is settings
+
+
+def test_the_request_carries_the_changes_and_the_steady_state(
+    model_core: CoreSBMLModel,
+) -> None:
+    """The changes are the events of the plan and the steady state its presimulation."""
+    simulation = Simulation(
+        end=20,
+        preinit_changes={"f": 3.0},
+        presimulation=SteadyState(preinit_changes={"a0": 2.0}, max_time=1e6),
+        changes=[Change([10, 5], {"X": 1.0}), Change(10, {"k1": 0.5})],
+        steps=20,
+    )
+    plan = Simulator(engine="core").compile(model_core, simulation)
+    request = request_of(plan, model_core, ["time"])
+    assert request["preinit"] == [["f", 3.0]]
+    assert request["changes"] == [
+        {"time": 5.0, "values": [["X", 1.0]]},
+        {"time": 10.0, "values": [["X", 1.0], ["k1", 0.5]]},
+    ]
+    assert request["steady_state"] == {
+        "preinit": [["a0", 2.0]],
+        "absolute_tolerance": SteadyState().absolute_tolerance,
+        "relative_tolerance": SteadyState().relative_tolerance,
+        "max_time": 1e6,
+    }
+
+
+def test_the_settings_of_a_request_are_computed_once(
+    model_core: CoreSBMLModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A simulation computes the tolerances of the states of its request once."""
+    computed = 0
+    settings = model_core.request_settings
+
+    def counted() -> dict[str, object]:
+        nonlocal computed
+        computed += 1
+        return settings()
+
+    monkeypatch.setattr(model_core, "request_settings", counted)
+    Simulator(engine="core").simulate(model_core, Simulation(end=4, steps=4))
+    assert computed == 1
+
+
+def test_a_core_model_round_trips_through_a_model_spec(
+    model_core: CoreSBMLModel,
+) -> None:
+    """A worker rebuilds a core model with its integrator and every setting."""
+    model_core.set_integrator_settings(relative_tolerance=1e-9, maximum_num_steps=777)
+    spec = ModelSpec.of(model_core)
+    assert spec.engine is Engine.CORE
+    assert spec.jit_optimization is None
+    assert spec.cache is None
+    assert spec.integrator == "cvode"
+    rebuilt = spec.load()
+    assert isinstance(rebuilt, CoreSBMLModel)
+    assert rebuilt.integrator_state() == model_core.integrator_state()
+    # the settings of its requests, the tolerance of every state among them,
+    # so the rebuilt model integrates as the one of the parent does
+    assert rebuilt.state_ids() == model_core.state_ids()
+    assert rebuilt.request_settings() == model_core.request_settings()
+    assert ModelSpec.of(rebuilt).key == spec.key
+
+
+def test_the_key_of_a_core_model_covers_its_settings(
+    model_core: CoreSBMLModel, probe_sbml: str
+) -> None:
+    """Two core models of other settings never share a cache entry of a worker."""
+    keys = {ModelSpec.of(model_core).key}
+    for settings in (
+        {"relative_tolerance": 1e-3},
+        {"absolute_tolerance": 1e-3},
+        {"maximum_num_steps": 123},
+    ):
+        other = load_model(probe_sbml, Engine.CORE)
+        other.set_integrator_settings(**settings)
+        keys.add(ModelSpec.of(other).key)
+    assert len(keys) == 4
+
+
+def test_the_threads_of_a_batch_are_the_workers_of_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The threads of a batch are the processes a run of another engine would have.
+
+    They are `parallel.resolve_workers` of the `n_workers` of the simulator
+    and of the points of the run: a number is taken as given, and inside a
+    worker, which starts no pool, a run is serial.
+    """
+    assert core_threads(1, n_points=1000) == 1
+    assert core_threads(3, n_points=1) == 3
+    monkeypatch.setattr(parallel, "in_worker", lambda: True)
+    assert core_threads(None, n_points=1000) == 1

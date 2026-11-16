@@ -2,9 +2,11 @@
 
 `execute_plan` runs a plan on a loaded model with the executor of its engine:
 `sbmlsim.simulator.executor` for roadrunner,
-`sbmlsim.simulator.executor_copasi` for COPASI and
-`sbmlsim.simulator.executor_amici` for AMICI, which are imported when a model
-of their engine runs, so a run of roadrunner never imports COPASI or AMICI.
+`sbmlsim.simulator.executor_copasi` for COPASI,
+`sbmlsim.simulator.executor_amici` for AMICI and
+`sbmlsim.simulator.executor_core` for the engine core, which are imported when
+a model of their engine runs, so a run of roadrunner never imports COPASI,
+AMICI or the bindings of sbmlsim-core.
 Every simulation of the package outside the executors runs through it: the
 simulator, the workers of a scan and the evaluation of a fit.
 """
@@ -24,6 +26,7 @@ from sbmlsim.simulator.plan import Plan
 if TYPE_CHECKING:
     from sbmlsim.model.model_amici import AmiciSBMLModel
     from sbmlsim.model.model_copasi import CopasiSBMLModel
+    from sbmlsim.model.model_core import CoreSBMLModel
 
 
 def execute_plan(
@@ -33,7 +36,8 @@ def execute_plan(
 
     Args:
         plan: the plan, compiled against the model.
-        model: the loaded model, of roadrunner, COPASI or AMICI.
+        model: the loaded model, of roadrunner, COPASI, AMICI or the engine
+            core.
         selections: the columns of the output, the time first.
 
     Returns:
@@ -59,6 +63,12 @@ def execute_plan(
         from sbmlsim.simulator import executor_amici
 
         return executor_amici.execute(plan, _amici(model), selections)
+    if model.engine is Engine.CORE:
+        # imports the bindings of sbmlsim-core, which only a model of the
+        # engine core needs
+        from sbmlsim.simulator import executor_core
+
+        return executor_core.execute(plan, core_model(model), selections)
     raise ValueError(f"The engine '{model.engine}' has no executor.")
 
 
@@ -72,7 +82,13 @@ def check_plan(plan: Plan, model: SBMLModel) -> None:
     of the model in a plan which sets values between two runs, see
     `sbmlsim.simulator.executor_copasi.check_supported`, and AMICI a change
     of a compartment it keeps out of its states, see
-    `sbmlsim.simulator.executor_amici.check_supported`.
+    `sbmlsim.simulator.executor_amici.check_supported`. The engine core
+    refuses a plan which one request of its contract cannot carry, a steady
+    state after the end of the simulation and a formula it cannot fold into a
+    number, and a pre-initialization of the concentration of a species whose
+    volume it changes, which the engine converts with the volume at the
+    moment of the assignment, see
+    `sbmlsim.simulator.executor_core.check_supported`.
 
     Args:
         plan: the plan, compiled against the model, with the values of a point.
@@ -94,6 +110,11 @@ def check_plan(plan: Plan, model: SBMLModel) -> None:
         from sbmlsim.simulator import executor_amici
 
         executor_amici.check_supported(plan, _amici(model))
+        return
+    if model.engine is Engine.CORE:
+        from sbmlsim.simulator import executor_core
+
+        executor_core.check_supported(plan, core_model(model))
         return
     raise ValueError(f"The engine '{model.engine}' has no executor.")
 
@@ -130,5 +151,32 @@ def _amici(model: SBMLModel) -> AmiciSBMLModel:
     if not isinstance(model, AmiciSBMLModel):
         raise TypeError(
             f"The model '{model.label}' of the engine AMICI is no `AmiciSBMLModel`."
+        )
+    return model
+
+
+def core_model(model: SBMLModel) -> CoreSBMLModel:
+    """Get a model of the engine core as its class.
+
+    The module of the model does not import the bindings of sbmlsim-core, a
+    model of the engine which is loaded has imported them. It is public,
+    unlike the three others, since the worker of a scan of the engine core
+    narrows its model as well, see
+    `sbmlsim.simulator.worker._run_chunk_core`.
+
+    Args:
+        model: the loaded model.
+
+    Returns:
+        The model as a `CoreSBMLModel`.
+
+    Raises:
+        TypeError: if the model is not a model of the engine core.
+    """
+    from sbmlsim.model.model_core import CoreSBMLModel
+
+    if not isinstance(model, CoreSBMLModel):
+        raise TypeError(
+            f"The model '{model.label}' of the engine core is no `CoreSBMLModel`."
         )
     return model

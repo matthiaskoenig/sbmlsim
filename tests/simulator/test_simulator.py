@@ -102,8 +102,8 @@ def test_the_time_is_selected_once(
     columns: list[tuple[str, ...]] = []
     run_chunk = simulator_module.run_chunk
 
-    def recording(chunk: Any, loaded: RoadrunnerSBMLModel) -> Any:
-        result = run_chunk(chunk, loaded)
+    def recording(chunk: Any, loaded: RoadrunnerSBMLModel, threads: int = 1) -> Any:
+        result = run_chunk(chunk, loaded, threads)
         columns.append(chunk.selections)
         assert result.values.shape[2] == 3
         return result
@@ -731,9 +731,11 @@ def test_the_chunks_share_a_plan_and_are_bounded(
     sizes: list[tuple[int, int]] = []
     run_chunk = simulator_module.run_chunk
 
-    def recording(chunk: object, model: RoadrunnerSBMLModel) -> object:
+    def recording(
+        chunk: object, model: RoadrunnerSBMLModel, threads: int = 1
+    ) -> object:
         sizes.append((id(chunk.plan), len(chunk.indices)))  # ty: ignore[missing-attribute]
-        return run_chunk(chunk, model)  # ty: ignore[invalid-argument-type]
+        return run_chunk(chunk, model, threads)  # ty: ignore[invalid-argument-type]
 
     monkeypatch.setattr(simulator_module, "run_chunk", recording)
     simulations = {"a": Simulation(end=1, steps=2), "b": Simulation(end=2, steps=2)}

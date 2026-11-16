@@ -1,8 +1,9 @@
-"""`Simulator(engine=...)` runs simulations and scans with COPASI and AMICI.
+"""`Simulator(engine=...)` runs simulations and scans with COPASI, AMICI and core.
 
 Every test runs with every engine besides roadrunner, see `tests.engines`,
 and compares it with roadrunner; the tests of one engine are in
-`test_simulator_copasi.py` and `test_simulator_amici.py`.
+`test_simulator_copasi.py`, `test_simulator_amici.py` and
+`test_simulator_core.py`.
 """
 
 from pathlib import Path
@@ -12,7 +13,7 @@ import pytest
 
 from sbmlsim import Q
 from sbmlsim.comparison.diff import DataSetsComparison
-from sbmlsim.engine import Engine
+from sbmlsim.engine import Engine, UnsupportedModelError
 from sbmlsim.model import AbstractModel, RoadrunnerSBMLModel
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.result.scan import ScanResult
@@ -44,7 +45,7 @@ class _Comparison(DataSetsComparison):
 
     Measured on `_dose_scan` at the defaults of `Simulator`, the largest
     relative difference beyond an absolute 1e-10 of AMICI is 7.9e-8, a factor
-    12 below `tol_rel`.
+    12 below `tol_rel`, and the one of the engine core 8.8e-9.
     """
 
     tol_abs = 1e-10
@@ -83,14 +84,35 @@ def _scaled_error(result: ScanResult, reference: ScanResult) -> float:
     return max(errors)
 
 
+#: how much larger than roadrunner's the error of an engine may be at the
+#: defaults of `Simulator`: COPASI and AMICI integrate with one absolute
+#: tolerance, whose factor was measured so that they are at least as accurate
+#: (`COPASI_ATOL_FACTOR`, `AMICI_ATOL_FACTOR`), while the engine core
+#: integrates with the absolute tolerance of every state of roadrunner and has
+#: no factor to measure, so its error is roadrunner's up to the steps its own
+#: CVODE chooses and is not bounded by it, the known difference 9 of
+#: `sbmlsim.simulator.executor_core`, which carries the measurements: 1.0003
+#: of roadrunner's error on the model of this test at these settings, 0.98 and
+#: 1.03 of it on the other packaged models with an error at all and 1.237 of
+#: it one pair of tolerances away. The margin is therefore no bound of the
+#: agreement of the two integrators but a check of the class of the error, a
+#: core which does not receive the tolerance vector of roadrunner being wrong
+#: by orders of magnitude
+ACCURACY_MARGIN: dict[Engine, float] = {
+    Engine.COPASI: 1.0,
+    Engine.AMICI: 1.0,
+    Engine.CORE: 1.1,
+}
+
+
 def test_the_engine_at_the_defaults_is_as_accurate_as_roadrunner(
     other_engine: Engine,
 ) -> None:
     """The engine integrates at least as accurately as roadrunner at equal settings.
 
-    See `COPASI_ATOL_FACTOR` and `AMICI_ATOL_FACTOR`: the reference is
-    roadrunner at tight tolerances, the error of a variable is relative to
-    its largest value.
+    See `COPASI_ATOL_FACTOR`, `AMICI_ATOL_FACTOR` and `ACCURACY_MARGIN`: the
+    reference is roadrunner at tight tolerances, the error of a variable is
+    relative to its largest value.
     """
     scan = Scan(
         Simulation(end=24 * 60, times=np.linspace(0, 24 * 60, 241).tolist()),
@@ -101,7 +123,8 @@ def test_the_engine_at_the_defaults_is_as_accurate_as_roadrunner(
     )
     r = Simulator().run(HCTZ_SBML, scan)
     e = Simulator(engine=other_engine).run(HCTZ_SBML, scan)
-    assert _scaled_error(e, reference) <= _scaled_error(r, reference)
+    margin = ACCURACY_MARGIN[other_engine]
+    assert _scaled_error(e, reference) <= margin * _scaled_error(r, reference)
 
 
 def test_simulator_engine_switch_gives_the_same_result(
@@ -236,28 +259,58 @@ def test_the_spec_of_a_model_loads_it_with_the_settings(other_engine: Engine) ->
     assert other.key != spec.key
 
 
+#: what the engine core says when it refuses a formula before the
+#: initialization: a value of a request is a number and the model of the engine
+#: is stateless, so the executor folds only the formula of a parameter whose
+#: symbols the same pre-initialization sets to numbers or sets none of, a known
+#: difference of `sbmlsim.simulator.executor_core` which
+#: `tests.simulator.test_simulator_core` pins
+PREINIT_FORMULA_REFUSED: str = (
+    "does not simulate the formula .* before the initialization"
+)
+
+#: what the engine core says when it refuses the steady state after the end of
+#: a simulation, the output at the time `inf`: it is no field of a request,
+#: whose steady state is the pre-equilibration before the start alone, a known
+#: difference of `sbmlsim.simulator.executor_core` which
+#: `tests.simulator.test_simulator_core` pins. The comparisons below assert
+#: that refusal in the shapes they build instead of skipping the case, so the
+#: day the engine approximates such a plan rather than refusing it fails here
+#: as well
+STEADY_STATE_REFUSED: str = "does not simulate the steady state after the end"
+
+
 @pytest.mark.parametrize(
-    "formula",
+    ("formula", "folded"),
     [
-        pytest.param("q", id="a target"),
-        pytest.param("p", id="a dependent of a target"),
-        pytest.param("u", id="an unrelated parameter"),
-        pytest.param("rq", id="a rule of a target"),
-        pytest.param("rp", id="a rule of a dependent of a target"),
-        pytest.param("rc + ra", id="rules of a species in a set compartment"),
-        pytest.param("2 * q + p - u", id="several parameters"),
+        pytest.param("q", True, id="a target"),
+        pytest.param("p", False, id="a dependent of a target"),
+        pytest.param("u", False, id="an unrelated parameter"),
+        pytest.param("rq", False, id="a rule of a target"),
+        pytest.param("rp", False, id="a rule of a dependent of a target"),
+        pytest.param("rc + ra", False, id="rules of a species in a set compartment"),
+        pytest.param("2 * q + p - u", False, id="several parameters"),
     ],
 )
 def test_preinit_formulas_read_what_they_read_in_roadrunner(
-    other_engine: Engine, formula: str
+    other_engine: Engine, formula: str, folded: bool
 ) -> None:
-    """A formula reads the values set and as loaded, as in roadrunner (PEtab v2)."""
+    """A formula reads the values set and as loaded, as in roadrunner (PEtab v2).
+
+    `folded` is whether the engine core can fold the formula, i.e. whether
+    every symbol of it is a parameter which the same pre-initialization sets
+    to a number: it refuses the others, see `PREINIT_FORMULA_REFUSED`.
+    """
     simulation = Simulation(
         end=10,
         times=[0, 5, 10],
         preinit_changes={"q": 5, "c": 2, "y": formula},
     )
     source = sbml(PREINIT_FORMULAS)
+    if other_engine is Engine.CORE and not folded:
+        with pytest.raises(UnsupportedModelError, match=PREINIT_FORMULA_REFUSED):
+            Simulator(engine=other_engine).simulate(source, simulation)
+        return
     r = Simulator().simulate(source, simulation)
     e = Simulator(engine=other_engine).simulate(source, simulation)
     assert sorted(e.columns) == sorted(r.columns)
@@ -374,11 +427,14 @@ def test_an_event_a_pre_initialization_makes_true_fires_at_the_start(
     Every engine fires it as raw libroadrunner after `resetAll` and the SBML
     Test Suite do, with a presimulation at its start, the time 0 (#439).
     """
-    res = _engine_run(
-        _engine(engine),
-        DOSE_EVENT.replace("RESET", reset),
-        _start_simulation(case, times, {"dose": 10}),
-    )
+    engine = _engine(engine)
+    model = DOSE_EVENT.replace("RESET", reset)
+    simulation = _start_simulation(case, times, {"dose": 10})
+    if engine is Engine.CORE and case == "steady state after the end":
+        with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
+            _engine_run(engine, model, simulation)
+        return
+    res = _engine_run(engine, model, simulation)
     first = _first_row(res)
     assert first["n"] == 1.0
     assert res.ds["n"].values[-1] == 1.0
@@ -473,6 +529,10 @@ def test_an_event_at_the_start_agrees_with_roadrunner(
     """
     model = TIME_EVENT.replace("RESET", reset)
     simulation = _start_simulation(case, times)
+    if other_engine is Engine.CORE and case == "steady state after the end":
+        with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
+            _engine_run(other_engine, model, simulation)
+        return
     res = _engine_run(other_engine, model, simulation)
     first = _first_row(res)
     time = res.ds["time"].values
@@ -505,12 +565,19 @@ def test_an_event_at_the_start_agrees_with_roadrunner(
 def test_copasi_and_amici_agree_on_a_dose_of_the_pre_initialization(
     case: str, times: bool
 ) -> None:
-    """COPASI and AMICI have the same states at the start and at the end of a dose of the pre-initialization."""
-    for engine in OTHER_ENGINES:
+    """COPASI and AMICI have the same states at the start and at the end of a dose of the pre-initialization.
+
+    The two engines are named here and not read from `OTHER_ENGINES`, which
+    has every engine besides roadrunner: this test compares exactly these two
+    with each other, so a third engine of that list must neither skip it nor
+    be unpacked into its two names.
+    """
+    pair = (Engine.COPASI, Engine.AMICI)
+    for engine in pair:
         require(engine)
     simulation = _start_simulation(case, times, {"dose": 10})
     model = DOSE_EVENT.replace("RESET", ", dose = 0")
-    copasi, amici = (_engine_run(engine, model, simulation) for engine in OTHER_ENGINES)
+    copasi, amici = (_engine_run(engine, model, simulation) for engine in pair)
     first = _first_row(copasi), _first_row(amici)
     assert first[0]["n"] == first[1]["n"] == 1.0
     assert first[0]["total"] == pytest.approx(first[1]["total"], rel=1e-6, abs=1e-9)
@@ -545,6 +612,11 @@ def test_a_later_time_column_is_the_time_of_the_rows(
             times=times,
         )
     )
+    # the last of the given times is the steady state after the end
+    if other_engine is Engine.CORE and times is not None:
+        with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
+            Simulator(engine=other_engine).simulate(model, simulation)
+        return
     results = {
         engine: Simulator(engine=engine).simulate(model, simulation)
         for engine in (Engine.ROADRUNNER, other_engine)
@@ -591,6 +663,7 @@ def test_a_trigger_of_the_time_at_the_horizons_of_a_steady_state_fires_once(
         source=sbml(TIME_TRIGGER.replace("OPERATOR", operator)),
         selections=["time", "n", "X"],
     )
+    refused = other_engine is Engine.CORE and output == "steady state after the end"
     for after in (0.0, 1e-3, 0.1):
         time = HORIZON_STARTS[output] + 10.0 + after
         if output == "presimulation":
@@ -602,6 +675,11 @@ def test_a_trigger_of_the_time_at_the_horizons_of_a_steady_state_fires_once(
                 end=1, times=[0, 1, float("inf")], preinit_changes={"T": time}
             )
         for engine in (Engine.ROADRUNNER, other_engine):
-            result = Simulator(engine=engine).simulate(model, simulation)
+            simulator = Simulator(engine=engine)
+            if refused and engine is other_engine:
+                with pytest.raises(UnsupportedModelError, match=STEADY_STATE_REFUSED):
+                    simulator.simulate(model, simulation)
+                continue
+            result = simulator.simulate(model, simulation)
             assert result["n"][-1] == 1.0, (engine, after)
             assert result["X"][-1] == pytest.approx(0.0, abs=1e-6)
