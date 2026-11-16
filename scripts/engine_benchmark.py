@@ -161,6 +161,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import statistics
 import sys
 import time
@@ -245,6 +246,10 @@ ENGINE_COLOURS: Final[dict[Engine, str]] = {
 
 #: the resolution of the figure
 FIGURE_DPI: Final[int] = 200
+
+#: the decades above which a panel of the figure labels whole decades only,
+#: since the 1, 2 and 5 of each of them would run into each other
+DENSE_DECADES: Final[float] = 2.5
 
 
 @dataclass(frozen=True)
@@ -1040,13 +1045,17 @@ def figure(result: BenchmarkResult, path: Path) -> None:
 
     One panel per model and measure, a row of panels per model and a column
     per measure: the dot of an engine is the mean of its rounds and the
-    whisker its standard deviation, on a logarithmic axis, which the panels
-    of a column share, so a measure is read across the models and the engines
-    of a model against each other. A dot and not a bar, since a bar on a
-    logarithmic axis encodes its length as the logarithm of its value and the
-    engines of this benchmark are three orders of magnitude apart; the engine
-    of every row is named next to it, so the identity of a mark is never its
-    colour alone, and the numbers are the tables of `markdown`.
+    whisker its standard deviation, on a logarithmic axis of its own, so the
+    engines of a model are read against each other, which is what the figure
+    is for. The panels of a column do not share their axis: the models of
+    this benchmark are five orders of magnitude apart, so a shared axis would
+    squeeze the engines of a small model into one point, and the models are
+    not comparable with each other anyway, since each of them is its own
+    simulation over its own number of points. A dot and not a bar, since a
+    bar on a logarithmic axis encodes its length as the logarithm of its
+    value; the engine of every row is named next to it, so the identity of a
+    mark is never its colour alone, and the numbers are the tables of
+    `markdown`.
 
     Args:
         result: the measurement.
@@ -1059,7 +1068,6 @@ def figure(result: BenchmarkResult, path: Path) -> None:
     # imported here: the measurement itself needs no matplotlib
     from matplotlib.figure import Figure
     from matplotlib.lines import Line2D
-    from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
 
     measures = [
         measure
@@ -1075,35 +1083,19 @@ def figure(result: BenchmarkResult, path: Path) -> None:
         raise ValueError("The measurement has no cell to draw.")
     engines = list(dict.fromkeys(engine for _, engine in result.rows))
     figure = Figure(
-        figsize=(1.6 + 2.5 * len(measures), 1.0 + 0.95 * len(models)),
+        figsize=(1.6 + 2.5 * len(measures), 0.9 + 1.15 * len(models)),
         layout="constrained",
     )
-    axes = figure.subplots(len(models), len(measures), sharex="col", squeeze=False)
+    axes = figure.subplots(len(models), len(measures), squeeze=False)
     for row_index, name in enumerate(models):
         for column, measure in enumerate(measures):
-            _draw_panel(
-                axes[row_index][column],
-                result,
-                name,
-                engines,
-                measure,
-                ticks=column == 0,
-            )
+            panel = axes[row_index][column]
+            _draw_panel(panel, result, name, engines, measure, ticks=column == 0)
+            _label_axis(panel)
         axes[row_index][0].set_ylabel(name, fontsize=9)
     for column, measure in enumerate(measures):
         axes[0][column].set_title(measure.title, fontsize=10)
-        bottom = axes[-1][column]
-        bottom.set_xlabel(f"{measure.unit}, logarithmic", fontsize=9)
-        # the stops of a decade which are labelled, and nothing on the minor
-        # ticks: the formatter of a logarithmic axis labels every minor tick
-        # of a range below one decade, in a scientific notation which runs
-        # into the label beside it
-        bottom.xaxis.set_major_locator(LogLocator(subs=(1.0, 2.0, 5.0), numticks=99))
-        bottom.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
-        bottom.xaxis.set_minor_formatter(NullFormatter())
-        # room for the whisker of a mark at the end of the range
-        bottom.margins(x=0.1)
-        _at_least_a_decade(bottom)
+        axes[-1][column].set_xlabel(f"{measure.unit}, logarithmic", fontsize=9)
     figure.legend(
         handles=[
             Line2D(
@@ -1131,22 +1123,36 @@ def figure(result: BenchmarkResult, path: Path) -> None:
     figure.savefig(path, dpi=FIGURE_DPI)
 
 
-def _at_least_a_decade(axes: Axes) -> None:
-    """Widen a logarithmic axis which spans less than one decade.
+def _label_axis(axes: Axes) -> None:
+    """Label the logarithmic axis of a panel with as many stops as it has room for.
 
-    The panels of a column share their axis, so this widens the column. A
-    range below a decade can hold none of the stops which are labelled, e.g.
-    0.021 to 0.027, which would leave the column without a single number;
-    the axis is centred on its range, so the marks stay where they are.
+    The formatter of a logarithmic axis labels every minor tick of a range
+    below one decade, in a scientific notation which runs into the label
+    beside it, and the stops of every decade of a range of five decades run
+    into each other as well, so the stops which are labelled are chosen by
+    the width of the range: every decade, or the 1, 2 and 5 of each.
+
+    A range below a decade can hold none of those stops, e.g. 0.021 to
+    0.027, which would leave the panel without a single number, so it is
+    widened to one decade around its middle, where the marks stay.
 
     Args:
-        axes: the lowest panel of the column, whose axis the column shares.
+        axes: the panel.
     """
+    from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
+
+    # room for the whisker of a mark at the end of the range
+    axes.margins(x=0.1)
     low, high = axes.get_xlim()
-    if low <= 0.0 or high / low >= 10.0:
-        return
-    middle = (low * high) ** 0.5
-    axes.set_xlim(middle / 10.0**0.5, middle * 10.0**0.5)
+    if low > 0.0 and high / low < 10.0:
+        middle = (low * high) ** 0.5
+        axes.set_xlim(middle / 10.0**0.5, middle * 10.0**0.5)
+        low, high = axes.get_xlim()
+    decades = math.log10(high / low) if low > 0.0 else 1.0
+    subs = (1.0,) if decades > DENSE_DECADES else (1.0, 2.0, 5.0)
+    axes.xaxis.set_major_locator(LogLocator(subs=subs, numticks=99))
+    axes.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+    axes.xaxis.set_minor_formatter(NullFormatter())
 
 
 def _draw_panel(
