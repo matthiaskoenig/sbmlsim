@@ -32,7 +32,9 @@ submission above that is a `TooManyJobs`, which the service answers with a
 429, so the queue of a public endpoint is bounded as every request of it is.
 What a finished job keeps is bounded as well: the store holds at most
 `max_finished` records and drops the oldest one with its directory when a job
-finishes above that (`_drop_old`), so a service which runs for weeks does not
+finishes above that (`_drop_old`, before that job is recorded finished and
+never that job, so a client which sees a job finished sees the store pruned),
+so a service which runs for weeks does not
 fill its disk with the reports of runs nobody reads any more.
 
 A run itself is serial: `n_workers=1` and `scan_workers=1`, so a job never
@@ -438,7 +440,9 @@ class JobStore:
         job (`_outcome`) and a `BaseException`, which ends the worker, is
         recorded as a failure before it is raised on, so a job never stays
         `running` and holds its slot in flight for the life of the process.
-        The finished jobs are pruned afterwards, see the module.
+        The finished jobs over `max_finished` are dropped with their
+        directories before the job is recorded as finished, so a client which
+        sees it finished finds the store pruned, see `_drop_old`.
 
         Args:
             job_id: the id of the job.
@@ -453,11 +457,11 @@ class JobStore:
             logger.exception(
                 "The job '%s' of the model '%s' was interrupted.", job_id, model.id
             )
+            self._drop_old(finishing=job_id)
             self._set(job_id, "failed", RUN_FAILED)
-            self._drop_old()
             raise
+        self._drop_old(finishing=job_id)
         self._set(job_id, status, message)
-        self._drop_old()
 
     def _outcome(
         self,
@@ -517,21 +521,28 @@ class JobStore:
             return "failed", f"{len(failed)} of {len(results)} experiments failed."
         return "done", ""
 
-    def _drop_old(self) -> None:
+    def _drop_old(self, finishing: str) -> None:
         """Drop the finished jobs over `max_finished`, the oldest ones first.
 
         A record is dropped with the directory of its job, so the reports, the
         datasets and the figures of a run are kept as long as the record which
         names them is. The directories are removed outside the lock, which is
-        never held over the filesystem.
+        never held over the filesystem. It runs before the job which finishes
+        is recorded as finished, counts it as finished and never drops it, so
+        the store is pruned when a client sees that job finished.
+
+        Args:
+            finishing: the id of the job which finishes.
         """
         with self._lock:
-            finished = [
+            # the others which finished, oldest first; the one which finishes
+            # is kept, so its record is there when it is recorded finished
+            others = [
                 job_id
                 for job_id, job in self._jobs.items()
-                if job.status not in IN_FLIGHT
+                if job.status not in IN_FLIGHT and job_id != finishing
             ]
-            dropped = finished[: max(0, len(finished) - self._max_finished)]
+            dropped = others[: max(0, len(others) + 1 - self._max_finished)]
             for job_id in dropped:
                 del self._jobs[job_id]
         for job_id in dropped:
