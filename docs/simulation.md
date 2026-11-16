@@ -363,7 +363,7 @@ An engine is the simulator which integrates a model. `sbmlsim` compiles every si
 
 `sbmlsim` simulates SBML level 3. A document of a lower level is converted to level 3 version 2 with libsbml once, when the model is loaded, for every engine, and a level 3 document is used byte for byte as it is. A conversion for which libsbml logs an error is refused with a `ValueError`, because the converted model would silently lose what level 3 version 2 cannot hold: the `fast` attribute of a reaction is the example, and a level 2 model with a fast reaction cannot be loaded. A level 2 model with a `stoichiometryMath` is converted faithfully, the math becomes an assignment rule of a non-constant species reference, which roadrunner cannot integrate: such a model fails with a CVODE `CV_CONV_FAILURE` instead of a result (the cases 01435, 01437, 01439, 01441 and 01443 of the SBML Test Suite). A level 3 version 1 document is not converted and can still carry a fast reaction.
 
-The engine is a setting of the `Simulator`, and every model it runs is simulated with that engine. A model loaded with roadrunner is loaded again in COPASI or AMICI from the same SBML, with its changes and selections, but without a state you set on it. Selecting an engine which is not installed raises an `ImportError` that names what to install, the extra of COPASI or of AMICI and, for the engine core, the editable install of its bindings. Everything that runs through a simulator can use another engine, shown here for COPASI, and the same with `engine="amici"`:
+The engine is a setting of the `Simulator`, and every model it runs is simulated with that engine. A model loaded with roadrunner is loaded again in COPASI, AMICI or the engine core from the same SBML, with its changes and selections, but without a state you set on it. Selecting an engine which is not installed raises an `ImportError` that names what to install, the extra of COPASI or of AMICI and, for the engine core, `sbmlsim-core`, whose bindings every install of sbmlsim brings. Everything that runs through a simulator can use another engine, shown here for COPASI, and the same with `engine="amici"` or `engine="core"`:
 
 - Simulations and scans: `Simulator(engine="copasi").run(model, simulation)`.
 - Simulation experiments: `ExperimentRunner(experiments, simulator=Simulator(engine="copasi"))` or `run_experiments(experiments, output_path, simulator=Simulator(engine="copasi"))`. The worker processes of a run use the engine of the simulator too.
@@ -463,40 +463,50 @@ Beyond what COPASI, AMICI and the engine core refuse, the engines differ where t
 
 At the default tolerances of the simulator, how closely COPASI agrees with roadrunner depends on the model: the largest difference relative to the largest value of a variable is about `1.3e-7` on the HCTZ model and `5e-5` on the midazolam model (`GU__MIDIM`). Verify a model in two engines with tight tolerances, e.g. `absolute_tolerance=1e-12` and `relative_tolerance=1e-10` as below, so that the comparison measures the engines and not the integration error.
 
-`DataSetsComparison` of `sbmlsim.comparison.diff` compares results column by column, row by row. The infusion runs once per engine at the same output times and with tight tolerances. Both results have the two rows at the stop of the infusion after 1 hour:
+`DataSetsComparison` of `sbmlsim.comparison.diff` compares results column by column, row by row. The infusion runs once per engine at the same output times and with tight tolerances, here roadrunner, COPASI and the engine core, and every engine is compared with roadrunner. Every result has the two rows at the stop of the infusion after 1 hour:
 
 ```python
+import pandas as pd
+
 from sbmlsim.comparison.diff import DataSetsComparison
 
 sampled = Simulation(
     time_unit="hr", end=12, times=[0, 0.5, 1, 2, 4, 8, 12], changes=infusion.changes
 )
+engines = ("roadrunner", "copasi", "core")
 results = {
     engine: Simulator(
         engine=engine, absolute_tolerance=1e-12, relative_tolerance=1e-10
     ).run(model, sampled)
-    for engine in ("roadrunner", "copasi")
+    for engine in engines
 }
 copasi = results["copasi"]
 print(copasi.ds.attrs["engine"])
 print(f"{copasi.q['[Cve_hctz]'].to('µM').round(3):~}")
 
-comparison = DataSetsComparison({engine: res.ds for engine, res in results.items()})
-print("equal:", comparison.is_equal())
-print(comparison.diff_rel.max().to_string())
+comparisons = {
+    engine: DataSetsComparison(
+        {"roadrunner": results["roadrunner"].ds, engine: results[engine].ds}
+    )
+    for engine in engines[1:]
+}
+print("equal:", all(c.is_equal() for c in comparisons.values()))
+agreement = pd.DataFrame({e: c.diff_rel.max() for e, c in comparisons.items()})
+print(agreement.to_string(float_format="{:.1e}".format))
 ```
 
 ```text title="Output"
 copasi
 [0.0 2.721 3.282 3.282 0.417 0.27 0.183 0.123] μM
 equal: True
-time           0.000000e+00
-Aurine_hctz    4.526183e-10
-Ri_hctz        0.000000e+00
-[Cve_hctz]     7.452937e-09
+             copasi    core
+time        0.0e+00 0.0e+00
+Aurine_hctz 4.4e-10 2.2e-11
+Ri_hctz     0.0e+00 0.0e+00
+[Cve_hctz]  7.4e-09 6.2e-11
 ```
 
-`is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences. With `"amici"` in place of `"copasi"`, AMICI agrees with roadrunner on the infusion to `7.3e-9` relative in `[Cve_hctz]`. `"core"` in its place runs it on the engine core, which agrees with roadrunner the most closely of the three at these tolerances: on the packaged models the largest relative difference is `2.4e-11` on the HCTZ model and `1.7e-8` on the midazolam model, a factor of 16 to 660 below COPASI and AMICI, because the engine core integrates with the vector of absolute tolerances which roadrunner computes per state while the other two have a single one, see [Benchmarks](benchmarks.md) and [Absolute tolerances](#absolute-tolerances). Agreeing with roadrunner closely is not the same as being more accurate: the error of the engine core is not bounded by roadrunner's, see [core](#core). With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.
+`is_equal` checks every value against the tolerances of the comparison, `DataSetsComparison.tol_abs` and `tol_rel`, and `diff_rel` holds the relative differences, the largest of each column per engine in the table. With `"amici"` among the engines, AMICI agrees with roadrunner on the infusion to `7.3e-9` relative in `[Cve_hctz]`. The engine core agrees with roadrunner the most closely of the three at these tolerances: on the packaged models the largest relative difference is `2.4e-11` on the HCTZ model and `1.7e-8` on the midazolam model, a factor of 16 to 660 below COPASI and AMICI, because the engine core integrates with the vector of absolute tolerances which roadrunner computes per state while the other two have a single one, see [Benchmarks](benchmarks.md) and [Absolute tolerances](#absolute-tolerances). Agreeing with roadrunner closely is not the same as being more accurate: the error of the engine core is not bounded by roadrunner's, see [core](#core). With `1e-6` for both tolerances, the residuals of the HCTZ fitting problem of `examples/hctz_fitting` differ between the engines by up to `3.8e-3` relative, the error of the integrators. With an absolute tolerance of `1e-12` and a relative one of `1e-10` they differ by at most `1.4e-7`.
 
 ## The semantics
 
