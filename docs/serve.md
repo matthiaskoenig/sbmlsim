@@ -219,12 +219,27 @@ A dosing protocol (`PanelDosing` of `PanelSimulation.dosing`) repeats a dose: th
 ```py
 from sbmlsim.panel import Choice, Knob, PanelDosing, PanelSimulation
 
-INTERVAL = Knob(id="interval", label="dosing", unit="hr", kind="choice", default=24.0,
-                choices=(Choice(label="single dose", value=0.0), Choice(label="once daily", value=24.0),
-                         Choice(label="twice daily", value=12.0)))
+INTERVAL = Knob(
+    id="interval",
+    label="dosing",
+    unit="hr",
+    kind="choice",
+    default=24.0,
+    choices=(
+        Choice(label="single dose", value=0.0),
+        Choice(label="once daily", value=24.0),
+        Choice(label="twice daily", value=12.0),
+    ),
+)
 DAYS = Knob(id="days", label="days", unit="day", min=1.0, max=7.0, steps=7, default=3.0)
-SIMULATION = PanelSimulation(end=7 * 24 * 60.0, dosing=(
-    PanelDosing(target="PODOSE_hctz", dose="dose", interval="interval", duration="days"),))
+SIMULATION = PanelSimulation(
+    end=7 * 24 * 60.0,
+    dosing=(
+        PanelDosing(
+            target="PODOSE_hctz", dose="dose", interval="interval", duration="days"
+        ),
+    ),
+)
 ```
 
 ### The limits
