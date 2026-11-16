@@ -240,6 +240,7 @@ def build_bundle(
     *,
     runner: PanelRunner | None = None,
     created: datetime | None = None,
+    stamped: bool = True,
 ) -> Bundle:
     """Build the bundle of a model of a registry, see the module.
 
@@ -249,6 +250,10 @@ def build_bundle(
         runner: the runner whose warm models resolve the units, a new one of
             the registry without.
         created: the time of the export, now without.
+        stamped: whether the bundle records the time of its export
+            (`created`); a bundle without is the same for the same models,
+            versions and declarations, as the web app of a model is
+            (`sbmlsim.webapp`).
 
     Returns:
         The bundle.
@@ -292,7 +297,6 @@ def build_bundle(
         "model": entry.id,
         "title": entry.title,
         "sbmlsim": sbmlsim.__version__,
-        "created": (created or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "answers": answers,
         "models": {
             key: {
@@ -306,6 +310,10 @@ def build_bundle(
             for key, model in models.items()
         },
     }
+    if stamped:
+        content["created"] = (created or datetime.now(UTC)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
     return Bundle(
         model=entry.id,
         content=content,

@@ -96,7 +96,13 @@ def test_the_release_of_the_toy(
     fit = (path / "docs" / "fit.md").read_text(encoding="utf-8")
     assert f"## {fit_id}" in fit
     assert "| `k` |" in fit
-    assert {p.stem for p in (path / "docs").glob("*.md")} == {p for p, _ in PAGES}
+    # the app of the model, which the factory writes with the models, and the
+    # compiled variants are part of the release, the app a page of its site
+    assert (path / "models" / "toy_app.html").is_file()
+    assert (path / "models" / "wasm" / "toy" / "model.wasm").is_file()
+    assert (path / "docs" / "toy_app.html").is_file()
+    pages = {p.stem for p in (path / "docs").glob("*.md")}
+    assert pages == {p for p, _ in PAGES} | {"app"}
     notes = (path / "release-notes" / f"{VERSION}.md").read_text(encoding="utf-8")
     assert f"`{fit_id}`" in notes
     assert "`toy.xml`" in notes

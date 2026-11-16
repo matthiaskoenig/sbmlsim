@@ -568,9 +568,25 @@ class ModelRegistry:
                 without a target which no formula reads, see `_check_derived`.
             ImportError: if the module of a reference is not imported.
         """
+        return cls.of_projects(
+            {model_id: load_project(reference) for model_id, reference in specs.items()}
+        )
+
+    @classmethod
+    def of_projects(cls, projects: Mapping[str, Project]) -> ModelRegistry:
+        """Create the registry of projects, with the checks of `of`.
+
+        Args:
+            projects: the project of every model id.
+
+        Returns:
+            The registry.
+
+        Raises:
+            ValueError: for an app or a panel `of` refuses.
+        """
         entries: dict[str, ModelEntry] = {}
-        for model_id, reference in specs.items():
-            project = load_project(reference)
+        for model_id, project in projects.items():
             entry = ModelEntry(
                 id=model_id,
                 project=project,

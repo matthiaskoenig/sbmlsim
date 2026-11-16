@@ -840,6 +840,9 @@ class Project(BaseModel):
             model without one. The pages are the project's and no part of the
             SBML: a page is a list of panel ids, which the service checks
             against the panels of the model when it registers it.
+        web_app: whether `create_models` writes the web assets of the model
+            after the factory, every variant compiled by sbmlsim-core and the
+            app of the model as one HTML file, see `sbmlsim.webapp.assets`.
         uncertainties: the uncertainty analyses by their name.
         sensitivities: the sensitivity analyses of the model over the groups
             of its simulations by their name, see
@@ -883,6 +886,7 @@ class Project(BaseModel):
     panels: dict[str, Panel] = {}
     variant_panels: dict[str, dict[str, Panel]] = {}
     app: App | None = None
+    web_app: bool = True
     uncertainties: Mapping[str, UncertaintyAnalysis] = {}
     sensitivities: Mapping[str, Any] = {}
     actions: Mapping[str, ProjectAction] = {}
@@ -1396,7 +1400,11 @@ class Project(BaseModel):
         A rebuild into another directory `out` keeps the layout of the
         package: the factory writes into `out / factory_dir.relative_to(root)`,
         so an output `o` of `factory_outputs` is `out / o` there and `root / o`
-        in the package, see `factory_paths` and `changed_outputs`.
+        in the package, see `factory_paths` and `changed_outputs`. After the
+        factory the web assets of the model are written into the same
+        directory, unless `web_app` is false: the variants compiled by
+        sbmlsim-core (`wasm/<stem>/`) and the app `<name>_app.html`, from the
+        models the factory wrote, see `sbmlsim.webapp.assets`.
 
         Args:
             out: the root of a rebuild, the package (`root`) without; a
@@ -1406,7 +1414,10 @@ class Project(BaseModel):
             The directory the factory wrote into.
 
         Raises:
-            ValueError: if the project has no factory or no directory of it.
+            ValueError: if the project has no factory or no directory of it,
+                or for an app or a panel the service refuses.
+            sbmlsim.webapp.compile.WebAppError: for a model sbmlsim-core
+                cannot compile.
         """
         factory = self.load_factory()
         if self.factory_dir is None:
@@ -1420,6 +1431,10 @@ class Project(BaseModel):
             else Path(out) / self.factory_dir.relative_to(self.root)
         )
         factory(directory)
+        if self.web_app:
+            from sbmlsim.webapp.assets import write_assets
+
+            write_assets(self, directory)
         return directory
 
     def factory_paths(self, out: Path | None = None) -> list[Path]:

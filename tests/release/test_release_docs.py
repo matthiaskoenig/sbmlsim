@@ -465,6 +465,11 @@ def test_no_model_section_without_figures(
 @pytest.mark.slow
 def test_zensical_strict(release: tuple[ProjectContext, Path]) -> None:
     context, path = release
+    # the app of the model, a page of the site with the app in a frame
+    write(
+        path / BuildPaths.MODELS / f"{context.project.name}_app.html",
+        "<!doctype html><title>app</title>",
+    )
     write_project_files(context, path)
     write_docs(context, path)
     result = subprocess.run(
@@ -476,6 +481,8 @@ def test_zensical_strict(release: tuple[ProjectContext, Path]) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     site = path / "site"
     assert (site / "index.html").is_file()
+    assert (site / f"{context.project.name}_app.html").is_file()
+    assert 'id="model-app"' in (site / "app.html").read_text(encoding="utf-8")
 
     # the docs workflow copies the reports into the site, they must not
     # replace the pages of the docs
@@ -867,3 +874,34 @@ def test_the_citation_of_a_release_is_the_one_of_its_settings(
     assert f"> {expected}" in index
     # the plain text of the footer of an app is the same citation
     assert settings.citation(context.year, markdown=False) == expected.replace("*", "")
+
+
+def test_the_app_of_the_model_is_a_page_of_the_site(
+    release: tuple[ProjectContext, Path],
+) -> None:
+    context, path = release
+    app = f"{context.project.name}_app.html"
+    write(path / BuildPaths.MODELS / app, "<!doctype html><title>app</title>")
+    write_project_files(context, path)
+    written = write_docs(context, path)
+    assert pages(context, path)[:2] == (PAGES[0], ("app", "App"))
+    assert (
+        (path / "docs" / app).read_text(encoding="utf-8").endswith("<title>app</title>")
+    )
+    page = (path / "docs" / "app.md").read_text(encoding="utf-8")
+    assert f'<iframe id="model-app" src="{app}"' in page
+    assert f"[open it in its own window]({app})" in page
+    assert path / "docs" / "app.md" in written
+    assert path / "docs" / app in written
+    nav = tomllib.loads((path / "zensical.toml").read_text(encoding="utf-8"))
+    assert {"App": "app.md"} in nav["project"]["nav"]
+    readme = (path / "README.md").read_text(encoding="utf-8")
+    assert f"{context.settings.site_url}{app}" in readme
+
+
+def test_no_app_page_without_an_app(release: tuple[ProjectContext, Path]) -> None:
+    context, path = release
+    write_docs(context, path)
+    assert pages(context, path) == PAGES
+    assert not (path / "docs" / "app.md").exists()
+    assert "App of the model" not in (path / "README.md").read_text(encoding="utf-8")

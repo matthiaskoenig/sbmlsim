@@ -648,6 +648,8 @@ A value `v` of a knob sets its target to `v * factor` and its parameter to `v`, 
 
 Each model of `models` names its SBML, the directory its compiled model goes to (sbmlsim-core writes `model.wasm` and `model.json` there), its variant, the selections of the curves of its panels, the settings of the integrator of the project in the names of sbmlsim-core (`relative_tolerance`, `absolute_tolerance`, `maximum_num_steps`, `maximum_time_step`, `initial_time_step`, `stiff`, `linear_solver`, `jacobian`; a setting of roadrunner sbmlsim-core does not have is logged and not carried) and `absolute_tolerances`, the tolerance of every state by its id as the settings of the project give it in roadrunner (`RoadrunnerSBMLModel.tolerances`). Simulating the exported SBML with this recipe alone reproduces the answer of `POST .../simulate`, which `tests/serve/test_export.py` checks with roadrunner. No number of a bundle is `NaN` or infinite; the export refuses them.
 
+The web app of a model ([Web app](webapp.md)) is this bundle embedded into one HTML file with its models compiled, written without the time of the export (`build_bundle(..., stamped=False)`), so the same models give the same file.
+
 ## The contracts
 
 `panel/1` (the declaration and the answer of a simulation), `paneldata/1` (the study data), `app/1` (the pages of a model) and `panelbundle/1` (the static bundle) are the exchange point of this feature: the python side writes them and a renderer reads them, and neither knows anything else of the other.

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="sbmlsim {{ versions['sbmlsim'] }}">
+<title>{{ title }}</title>
+<link rel="icon" href="data:,">
+<style>
+:root {
+  color-scheme: light dark;
+  --page-bg: #ffffff;
+  --page-fg: #1f2328;
+  --page-muted: #59636e;
+  --page-rule: #d1d9e0;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-bg: #0d1117;
+    --page-fg: #e6edf3;
+    --page-muted: #9198a1;
+    --page-rule: #30363d;
+  }
+}
+html, body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--page-fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+main {
+  box-sizing: border-box;
+  max-width: 1216px;
+  margin: 0 auto;
+  padding: 8px 0 32px;
+}
+main > h1 {
+  margin: 16px 16px 8px;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+.panels {
+  display: grid;
+  gap: 16px;
+  padding: 0 16px;
+}
+sbmlsim-app, sbmlsim-panel {
+  --sbmlsim-bg: var(--page-bg);
+}
+footer {
+  margin: 16px 16px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--page-rule);
+  color: var(--page-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+footer p { margin: 0 0 8px; }
+footer details { margin: 0 0 8px; }
+footer summary { cursor: pointer; }
+footer pre {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+}
+a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+{% if has_app %}
+<sbmlsim-app endpoint="local:{{ model }}" model="{{ model }}"></sbmlsim-app>
+{% else %}
+<h1>{{ title }}</h1>
+<div class="panels">
+{% for panel in panels %}
+<sbmlsim-panel endpoint="local:{{ model }}" model="{{ model }}" panel="{{ panel }}" auto></sbmlsim-panel>
+{% endfor %}
+</div>
+{% endif %}
+<footer>
+<p>Every simulation runs in this browser: the model is compiled to WebAssembly by <a href="https://matthiaskoenig.github.io/sbmlsim-core/">sbmlsim-core</a> {{ versions['sbmlsim-core'] }} and simulated in a pool of Web Workers, the panels are drawn by <a href="https://matthiaskoenig.github.io/sbmlsim-web/">sbmlsim-web</a> {{ versions['sbmlsim-web'] }}, and the page was written by <a href="https://matthiaskoenig.github.io/sbmlsim/">sbmlsim</a> {{ versions['sbmlsim'] }}. It is one file, which needs no server and no network.</p>
+<p>A research tool, provided as is and without warranty of any kind. It is not fit for any clinical application and does not diagnose, treat or inform dosing decisions.</p>
+<details>
+<summary>Licenses of the components of this page</summary>
+<p>sbmlsim-core: MIT; its engine links SUNDIALS (BSD-3-Clause) and KLU and BTF of SuiteSparse (LGPL-2.1-or-later), whose notices follow. sbmlsim-web: MIT.</p>
+<pre>{{ third_party }}</pre>
+<pre>{{ web_license }}</pre>
+</details>
+</footer>
+</main>
+<script>{{ web_script | safe }}</script>
+<script>{{ core_script | safe }}</script>
+<script type="application/json" id="sbmlsim-bundle">{{ bundle | safe }}</script>
+<script type="application/json" id="sbmlsim-files">{{ files | safe }}</script>
+<script type="application/octet-stream" id="sbmlsim-engine">{{ engine }}</script>
+<script type="application/octet-stream" id="sbmlsim-mathlib">{{ mathlib }}</script>
+<script>
+(() => {
+  const text = (id) => document.getElementById(id).textContent;
+  const bytes = (base64) => Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const files = {};
+  for (const [path, base64] of Object.entries(JSON.parse(text("sbmlsim-files")))) files[path] = bytes(base64);
+  const endpoint = sbmlsimCore.createInlineEndpoint({
+    bundle: JSON.parse(text("sbmlsim-bundle")),
+    files,
+    engine: bytes(text("sbmlsim-engine")),
+    mathlib: bytes(text("sbmlsim-mathlib")),
+  });
+  sbmlsimWeb.registerEndpoint({{ ('local:' ~ model) | tojson }}, endpoint);
+})();
+</script>
+</body>
+</html>

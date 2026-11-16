@@ -314,3 +314,27 @@ def test_a_project_imports_no_credibility() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "[]"
+
+
+def test_import_sbmlsim_does_not_import_sbmlsim_core() -> None:
+    """sbmlsim-core compiles the web assets of a model, imported when they are written.
+
+    `sbmlsim.project` writes them in `create_models` and the release reads the
+    names of their files (`sbmlsim.webapp`), neither imports the compiler, the
+    page or the bundle of the service.
+    """
+    code = (
+        "import sys, sbmlsim, sbmlsim.project, sbmlsim.release.build, "
+        "sbmlsim.release.docs; "
+        "print(sorted(m for m in ('sbmlsim_core', 'sbmlsim.webapp.page',"
+        " 'sbmlsim.webapp.compile', 'sbmlsim.serve.export') if m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "[]"
