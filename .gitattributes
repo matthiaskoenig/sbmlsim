@@ -1,3 +1,5 @@
 # the license texts are written into the COMBINE archives of the models byte
 # for byte, git never converts their line endings
 src/sbmlsim/resources/licenses/*.txt -text
+# the vendored components of sbmlsim-web, byte for byte the files of npm (scripts/web_assets.py)
+src/sbmlsim/resources/web/** -text
