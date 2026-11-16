@@ -3,7 +3,7 @@
 from pathlib import Path
 
 __author__ = "Matthias Koenig"
-__version__ = "0.27.1"
+__version__ = "0.28.0"
 
 
 BASE_PATH = Path(__file__).parent
