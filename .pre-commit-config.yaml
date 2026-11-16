@@ -21,6 +21,10 @@ repos:
     description: Prevent large files from being committed
     # the models and the data of the examples and tests are large
     args: [ --maxkb=2000 ]
+    # the large model of the benchmark is larger on purpose, see
+    # benchmarks/models/README.md; it is no part of the package and its
+    # annotations are part of the parse its load measures
+    exclude: ^benchmarks/models/
   - id: check-merge-conflict
     description: Check for files that contain merge conflict strings
   - id: check-symlinks

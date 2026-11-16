@@ -1,9 +1,9 @@
 """The cross-engine benchmark, `scripts/engine_benchmark.py`.
 
-These tests prove the shape of the measurement and of its table, not the
+These tests prove the shape of the measurement and of its tables, not the
 speed of the engines: they measure the smallest benchmark there is (two
-repetitions, one round, a scan of four points) and assert what the table
-says of it. The numbers of the documentation are measured by hand with the
+repetitions, one round, a scan of four points) and assert what the tables
+say of it. The numbers of the documentation are measured by hand with the
 command line of the script, see its module docstring.
 """
 
@@ -19,9 +19,12 @@ from sbmlsim.engine import Engine, UnsupportedModelError
 from sbmlsim.model import SBMLModel
 from sbmlsim.result.timecourse import TimecourseResult
 from scripts.engine_benchmark import (
+    MIN_ROUNDS,
     MODELS,
     BenchmarkResult,
     BenchmarkRow,
+    Measurement,
+    ModelConfiguration,
     agreement,
     main,
     markdown,
@@ -44,41 +47,103 @@ def measured() -> BenchmarkResult:
     )
 
 
-def _table(text: str) -> list[dict[str, str]]:
-    """Read the rows of the table of a markdown as the cells of their columns."""
-    lines = text.splitlines()
-    header = [cell.strip() for cell in lines[0].split("|")[1:-1]]
-    rows = []
-    for line in lines[2:]:
-        if not line.startswith("|"):
-            break
-        cells = [cell.strip() for cell in line.split("|")[1:-1]]
-        rows.append(dict(zip(header, cells, strict=True)))
-    return rows
+def _tables(text: str) -> dict[str, list[dict[str, str]]]:
+    """Read every markdown table of a text by the heading which introduces it.
+
+    Args:
+        text: the rendered tables and their legend.
+
+    Returns:
+        The rows of every table as the cells of their columns, by the text of
+        the `###` heading above it.
+    """
+    tables: dict[str, list[dict[str, str]]] = {}
+    heading, header = "", []
+    for line in text.splitlines():
+        if line.startswith("### "):
+            heading, header = line[4:], []
+        elif line.startswith("|") and not header:
+            header = [cell.strip() for cell in line.split("|")[1:-1]]
+            tables[heading] = []
+        elif line.startswith("|") and not line.startswith("|---"):
+            cells = [cell.strip() for cell in line.split("|")[1:-1]]
+            tables[heading].append(dict(zip(header, cells, strict=True)))
+        elif not line.strip():
+            header = []
+    return tables
+
+
+def _table(text: str, heading: str) -> list[dict[str, str]]:
+    """Read the rows of one table of a markdown.
+
+    Args:
+        text: the rendered tables and their legend.
+        heading: the text of the `###` heading above the table.
+
+    Returns:
+        The rows as the cells of their columns.
+    """
+    return _tables(text)[heading]
+
+
+def _cells(text: str) -> list[dict[str, str]]:
+    """Read the tables of a markdown as one row per model and engine.
+
+    The tables are narrow and share their rows, so a test reads a cell of
+    any of them by its column, see `markdown`.
+
+    Args:
+        text: the rendered tables and their legend.
+
+    Returns:
+        One mapping per model and engine, the columns of every table it has
+        a row in, in the order of the rows.
+    """
+    merged: dict[tuple[str, str], dict[str, str]] = {}
+    for heading, rows in _tables(text).items():
+        if heading == "What every model was measured with":
+            continue
+        for cells in rows:
+            key = (cells["model"], cells["engine"])
+            merged.setdefault(key, {}).update(cells)
+    return list(merged.values())
+
+
+def _measurement(mean: float, sd: float | None = None) -> Measurement:
+    """Get a measurement of a handmade result.
+
+    Args:
+        mean: the mean of its rounds.
+        sd: their standard deviation, `None` for a cell of one round.
+
+    Returns:
+        The measurement.
+    """
+    return Measurement(mean=mean, sd=sd, rounds=1 if sd is None else MIN_ROUNDS)
 
 
 def _handmade() -> BenchmarkResult:
     """Get a result of a parallel run of two engines, measured by nothing."""
     return BenchmarkResult(
         rows={
+            ("hctz", Engine.CORE): BenchmarkRow(
+                load_s=_measurement(0.0122),
+                compile_s=_measurement(0.003),
+                instantiate_s=_measurement(0.004),
+                first_compile_s=0.122,
+                simulate_s=_measurement(0.00289),
+                scan_serial_s=_measurement(1.137),
+                scan_parallel_s=_measurement(0.258, 0.0121),
+                max_relative_difference=2.4e-11,
+            ),
             ("hctz", Engine.ROADRUNNER): BenchmarkRow(
-                load_s=0.215,
+                load_s=_measurement(0.215),
                 first_compile_s=0.264,
-                simulate_s=0.00357,
-                scan_serial_s=1.643,
-                scan_parallel_s=1.583,
+                simulate_s=_measurement(0.00357),
+                scan_serial_s=_measurement(1.643),
+                scan_parallel_s=_measurement(1.583),
                 max_relative_difference=0.0,
                 max_absolute_difference=0.0,
-            ),
-            ("hctz", Engine.CORE): BenchmarkRow(
-                load_s=0.0122,
-                compile_s=0.003,
-                instantiate_s=0.004,
-                first_compile_s=0.122,
-                simulate_s=0.00289,
-                scan_serial_s=1.137,
-                scan_parallel_s=0.258,
-                max_relative_difference=2.4e-11,
             ),
         },
         repetitions=20,
@@ -86,6 +151,11 @@ def _handmade() -> BenchmarkResult:
         warmups=3,
         points=1000,
         workers=8,
+        configurations={
+            "hctz": ModelConfiguration(
+                output_times=101, points=1000, repetitions=20, warmups=3, rounds=3
+            )
+        },
         skipped={Engine.AMICI: "The engine 'amici' needs AMICI"},
         versions={"python": "3.14.1", "sbmlsim": "0.14.0"},
     )
@@ -103,23 +173,29 @@ def test_the_benchmark_measures_every_engine_it_finds() -> None:
         workers=1,
     )
     row = result.rows[("repressilator", Engine.ROADRUNNER)]
-    assert row.load_s is not None and row.load_s > 0
-    assert row.simulate_s is not None and row.simulate_s > 0
-    assert row.scan_serial_s is not None and row.scan_serial_s > 0
+    assert row.load_s is not None and row.load_s.mean > 0
+    assert row.simulate_s is not None and row.simulate_s.mean > 0
+    assert row.scan_serial_s is not None and row.scan_serial_s.mean > 0
     assert row.first_compile_s is not None and row.first_compile_s > 0
     assert row.note is None
 
 
-def test_the_table_has_a_row_per_model_and_engine(measured: BenchmarkResult) -> None:
-    """The table is a markdown table of a row per measured model and engine."""
-    text = markdown(measured)
-    lines = text.splitlines()
-    assert "| model | engine |" in lines[0]
-    assert "repressilator" in text
-    rows = [line for line in lines if line.startswith("| repressilator |")]
-    assert len(rows) == len(measured.rows)
-    for name, engine in measured.rows:
-        assert any(line.startswith(f"| {name} | {engine.value} |") for line in rows)
+def test_every_table_has_a_row_per_model_and_engine(measured: BenchmarkResult) -> None:
+    """Every table of the markdown has the same rows in the same order.
+
+    The tables are narrow so that a page can display them, see `markdown`,
+    and a reader follows a row down the tables, so they share their rows.
+    """
+    tables = _tables(markdown(measured))
+    expected = [(name, engine.value) for name, engine in measured.rows]
+    assert [row["model"] for row in tables["What every model was measured with"]] == [
+        "repressilator"
+    ]
+    for heading in ("Loading a model", "One simulation and a scan"):
+        assert [(row["model"], row["engine"]) for row in tables[heading]] == expected
+    assert [(row["model"], row["engine"]) for row in _cells(markdown(measured))] == (
+        expected
+    )
 
 
 def test_an_engine_which_is_not_installed_is_skipped() -> None:
@@ -213,7 +289,7 @@ def test_the_agreement_of_a_measured_engine_is_a_number(
     for key, row in measured.rows.items():
         for difference in (row.max_relative_difference, row.max_absolute_difference):
             assert difference is None or math.isfinite(difference), key
-    for row_cells in _table(markdown(measured)):
+    for row_cells in _cells(markdown(measured)):
         for column in ("max rel. diff.", "max abs. diff."):
             cell = row_cells[column]
             assert cell == "" or math.isfinite(float(cell)), (row_cells, column)
@@ -231,26 +307,28 @@ def test_a_parallel_scan_is_measured_on_the_workers_of_the_run() -> None:
         workers=2,
     )
     row = result.rows[("repressilator", Engine.ROADRUNNER)]
-    assert row.scan_parallel_s is not None and row.scan_parallel_s > 0
-    assert "2 processes" in markdown(result)
+    assert row.scan_parallel_s is not None and row.scan_parallel_s.mean > 0
+    assert "2 python processes" in markdown(result)
 
 
-def test_the_table_says_whether_a_parallel_scan_ran_on_processes_or_threads() -> None:
-    """A parallel scan of the engine core runs on threads, every other one on processes."""
+def test_the_legend_says_whether_a_parallel_scan_ran_on_processes_or_threads() -> None:
+    """A parallel scan of the engine core runs on threads, every other one on processes.
+
+    It is the same for every row of a run, so it is one line of the legend
+    and not a column which repeats it; the tables are narrow.
+    """
     text = markdown(_handmade())
-    rows = {cells["engine"]: cells for cells in _table(text)}
-    assert rows["roadrunner"]["parallel on"] == "8 processes"
-    assert rows["core"]["parallel on"] == "8 threads"
+    rows = {cells["engine"]: cells for cells in _cells(text)}
     assert rows["roadrunner"]["scan parallel s"] == "1.58"
-    # the legend says that the two do not scale alike
-    assert "processes for roadrunner" in text
+    assert "parallel on" not in rows["roadrunner"]
+    assert "8 python processes for roadrunner" in text
     assert "threads of the engine" in text
     assert "do not scale alike" in text
 
 
 def test_a_measurement_which_was_not_made_is_an_empty_cell() -> None:
     """A column an engine has no measurement of is an empty cell of its row."""
-    rows = {cells["engine"]: cells for cells in _table(markdown(_handmade()))}
+    rows = {cells["engine"]: cells for cells in _cells(markdown(_handmade()))}
     # the compilation of the model is part of the load of roadrunner
     assert rows["roadrunner"]["compile s"] == ""
     assert rows["roadrunner"]["instantiate s"] == ""
@@ -263,7 +341,7 @@ def test_a_measurement_which_was_not_made_is_an_empty_cell() -> None:
 
 def test_the_simulation_of_a_row_is_rendered_in_milliseconds() -> None:
     """`simulate ms` is the seconds of the row in milliseconds, the one column which converts."""
-    rows = {cells["engine"]: cells for cells in _table(markdown(_handmade()))}
+    rows = {cells["engine"]: cells for cells in _cells(markdown(_handmade()))}
     # the rows of `_handmade`, 0.00357 s and 0.00289 s
     assert rows["roadrunner"]["simulate ms"] == "3.57"
     assert rows["core"]["simulate ms"] == "2.89"
@@ -295,8 +373,8 @@ def test_a_model_an_engine_refuses_keeps_its_row_with_the_refusal(
     assert row.load_s is None
     assert row.simulate_s is None
     assert row.scan_serial_s is None
-    cells = _table(markdown(result))[0]
-    assert "cannot compile" in cells["note"]
+    cells = _cells(markdown(result))[0]
+    assert "cannot compile" in cells["why"]
     assert cells["load s"] == ""
     assert cells["simulate ms"] == ""
     assert cells["max rel. diff."] == ""
@@ -339,8 +417,8 @@ def test_a_comparison_which_fails_keeps_its_row_with_the_problem(
     assert row.simulate_s is None
     assert row.scan_serial_s is None
     assert row.max_relative_difference is None
-    cells = _table(markdown(result))[0]
-    assert cells["note"] == str(error)
+    cells = _cells(markdown(result))[0]
+    assert cells["why"] == str(error)
     assert cells["load s"] != ""
     assert cells["simulate ms"] == ""
 
@@ -376,18 +454,27 @@ def test_the_command_line_writes_the_table_and_the_json(tmp_path: Path) -> None:
         ]
     )
     assert code == 0
-    assert table.read_text(encoding="utf-8").splitlines()[0].startswith("| model |")
+    text = table.read_text(encoding="utf-8")
+    assert text.startswith("### What every model was measured with")
+    assert "| model | engine | load s |" in text
     written = json.loads(payload.read_text(encoding="utf-8"))
     assert written["points"] == 2
     assert [(row["model"], row["engine"]) for row in written["rows"]] == [
         ("repressilator", "roadrunner")
     ]
-    assert written["rows"][0]["load_s"] > 0
+    assert written["rows"][0]["load_s"]["mean"] > 0
+    assert written["configurations"]["repressilator"]["points"] == 2
 
 
-def test_every_packaged_model_is_a_model_of_the_benchmark() -> None:
-    """The models of the benchmark are the four packaged ones, by their names."""
-    assert list(MODELS) == ["repressilator", "demo", "midazolam", "hctz"]
+def test_every_model_of_the_benchmark_is_a_file_which_is_scanned() -> None:
+    """The models are the four packaged ones and the large model of `benchmarks/`."""
+    assert list(MODELS) == [
+        "repressilator",
+        "demo",
+        "midazolam",
+        "hctz",
+        "perfusion",
+    ]
     for name, benchmark in MODELS.items():
         assert benchmark.source.exists(), name
         # the scanned target is an entity of the model
@@ -428,9 +515,9 @@ def test_cold_reports_the_first_run_of_every_scan() -> None:
     # the cold run of a parallel scan starts the pool and loads the model in
     # every worker, which the warm median does not pay
     assert row.scan_parallel_s is not None
-    assert row.scan_parallel_cold_s > row.scan_parallel_s
+    assert row.scan_parallel_cold_s > row.scan_parallel_s.mean
     text = markdown(result)
-    cells = _table(text)[0]
+    cells = _cells(text)[0]
     assert cells["scan serial cold s"] != ""
     assert cells["scan parallel cold s"] != ""
     # the legend says that only the first cell of a run is a cold measurement
@@ -439,7 +526,7 @@ def test_cold_reports_the_first_run_of_every_scan() -> None:
 
 def test_without_cold_the_table_has_no_cold_columns(measured: BenchmarkResult) -> None:
     """The cold columns are rendered for `--cold` only, the default table is unchanged."""
-    header = list(_table(markdown(measured))[0])
+    header = list(_table(markdown(measured), "One simulation and a scan")[0])
     assert "scan serial cold s" not in header
     assert "scan parallel cold s" not in header
     assert all(
@@ -555,3 +642,158 @@ def test_the_command_line_takes_the_cold_runs_and_the_output_grid(
     assert written["cold"] is True
     assert written["steps"] == 5
     assert written["rows"][0]["scan_serial_cold_s"] > 0
+
+
+def test_a_measurement_is_the_mean_and_the_deviation_of_its_rounds() -> None:
+    """A cell is the mean of its rounds and their sample standard deviation."""
+    measurement = Measurement.of([1.0, 2.0, 3.0])
+    assert measurement.mean == 2.0
+    assert measurement.sd == pytest.approx(1.0)
+    assert measurement.rounds == 3
+    # the unit of a cell is the renderer's, which scales both
+    scaled = measurement.scaled(1e3)
+    assert (scaled.mean, scaled.sd, scaled.rounds) == (2000.0, pytest.approx(1000.0), 3)
+
+
+def test_a_measurement_of_too_few_rounds_has_no_deviation() -> None:
+    """Below `MIN_ROUNDS` rounds a cell is its mean alone: a deviation would say nothing."""
+    assert MIN_ROUNDS == 3
+    for values in ([1.0], [1.0, 2.0]):
+        measurement = Measurement.of(values)
+        assert measurement.sd is None
+        assert measurement.rounds == len(values)
+    with pytest.raises(ValueError, match="at least one round"):
+        Measurement.of([])
+
+
+def test_a_cell_is_rendered_as_its_mean_and_its_deviation() -> None:
+    """A cell with a deviation is `mean ± sd`, one without is the mean alone."""
+    rows = {cells["engine"]: cells for cells in _cells(markdown(_handmade()))}
+    # the parallel scan of the engine core, 0.258 s ± 0.0121 s
+    assert rows["core"]["scan parallel s"] == "0.258 ± 0.012"
+    # every other cell of the handmade result is one round
+    assert rows["core"]["scan serial s"] == "1.14"
+    assert rows["roadrunner"]["load s"] == "0.215"
+
+
+def test_the_tables_say_what_every_model_was_measured_with() -> None:
+    """The first table is the configuration of every model, which its cells are read with."""
+    rows = _table(markdown(_handmade()), "What every model was measured with")
+    assert rows == [
+        {
+            "model": "hctz",
+            "output times": "101",
+            "scan points": "1000",
+            "simulations": "20",
+            "warm ups": "3",
+            "rounds": "3",
+        }
+    ]
+
+
+def test_a_model_carries_its_own_points_and_rounds() -> None:
+    """A large model is scanned over fewer points and measured in shorter rounds.
+
+    One simulation of the perfusion model is tens of seconds in some
+    engines, so the defaults of a run would measure it for hours.
+    """
+    perfusion = MODELS["perfusion"]
+    assert perfusion.points == 8
+    assert perfusion.rounds == MIN_ROUNDS
+    assert perfusion.repetitions == 3
+    assert perfusion.warmups == 1
+    # a packaged model takes the configuration of the run
+    for name in ("repressilator", "demo", "midazolam", "hctz"):
+        model = MODELS[name]
+        assert (model.points, model.repetitions, model.warmups, model.rounds) == (
+            None,
+            None,
+            None,
+            None,
+        )
+
+
+def test_the_configuration_of_a_model_wins_over_the_one_of_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model with its own points and rounds is measured with them, not with the run's."""
+    from dataclasses import replace
+
+    monkeypatch.setitem(
+        MODELS, "demo", replace(MODELS["demo"], points=3, repetitions=1, rounds=1)
+    )
+    result = measure(
+        ["demo"],
+        [Engine.ROADRUNNER],
+        repetitions=7,
+        rounds=5,
+        warmups=0,
+        points=99,
+        workers=1,
+    )
+    configuration = result.configurations["demo"]
+    assert (configuration.points, configuration.repetitions, configuration.rounds) == (
+        3,
+        1,
+        1,
+    )
+    # the run keeps its own settings, which every other model is measured with
+    assert (result.points, result.repetitions, result.rounds) == (99, 7, 5)
+    row = result.rows[("demo", Engine.ROADRUNNER)]
+    assert row.load_s is not None and row.load_s.rounds == 1
+    rows = _table(markdown(result), "What every model was measured with")
+    assert rows[0]["scan points"] == "3"
+
+
+def test_the_engines_of_the_table_begin_with_the_engine_core() -> None:
+    """The order of the tables and of the figure is the order of the documentation."""
+    assert engine_benchmark.ENGINES == (
+        Engine.CORE,
+        Engine.ROADRUNNER,
+        Engine.COPASI,
+        Engine.AMICI,
+    )
+    # every engine is measured, each of them once
+    assert sorted(engine_benchmark.ENGINES, key=list(Engine).index) == list(Engine)
+
+
+def test_the_command_line_draws_the_figure(tmp_path: Path) -> None:
+    """`--figure` writes the comparison of the engines, which is a PNG file."""
+    drawn = tmp_path / "figures" / "engines.png"
+    code = main(
+        [
+            "--models",
+            "repressilator",
+            "--engines",
+            "roadrunner",
+            "--repetitions",
+            "1",
+            "--rounds",
+            "1",
+            "--points",
+            "2",
+            "--workers",
+            "1",
+            "--figure",
+            str(drawn),
+        ]
+    )
+    assert code == 0
+    # the directory of the figure is created and the file is a PNG
+    assert drawn.read_bytes().startswith(b"\x89PNG\r\n")
+
+
+def test_a_figure_of_nothing_which_was_measured_is_refused(tmp_path: Path) -> None:
+    """A measurement without a measured cell has nothing to draw and says so."""
+    from scripts.engine_benchmark import figure
+
+    empty = BenchmarkResult(
+        rows={("hctz", Engine.CORE): BenchmarkRow(note="refused")},
+        repetitions=1,
+        rounds=1,
+        warmups=0,
+        points=2,
+        workers=1,
+    )
+    with pytest.raises(ValueError, match="no cell to draw"):
+        figure(empty, tmp_path / "engines.png")

@@ -1,9 +1,12 @@
 """Compare the four simulation engines of sbmlsim: the load, one simulation and a scan.
 
-The engines of `sbmlsim.engine.Engine` - roadrunner, COPASI, AMICI and the
-engine core - simulate the same models through the same simulator, so their
-speed and their agreement are measured in one run on the packaged models
-(`repressilator`, `demo`, `midazolam`, `hctz`, see `MODELS`):
+The engines of `sbmlsim.engine.Engine` - the engine core, roadrunner, COPASI
+and AMICI, in the order of `ENGINES`, which the tables and the figure keep -
+simulate the same models through the same simulator, so their speed and their
+agreement are measured in one run on the four packaged models
+(`repressilator`, `demo`, `midazolam`, `hctz`) and on the large model
+`perfusion` of `benchmarks/models`, which is no part of the package, see
+`MODELS`:
 
 ```bash
 # the table of every model and every engine which is installed
@@ -18,23 +21,39 @@ uv run python scripts/engine_benchmark.py --models hctz --engines core --cold
 
 # the warm scans on another output grid, 26 output times instead of 101
 uv run python scripts/engine_benchmark.py --models hctz --steps 25
+
+# the tables and the figure of the documentation
+uv run python scripts/engine_benchmark.py --workers 8 \
+    --out docs/benchmarks-tables.md --figure docs/images/benchmarks/engines.png
 ```
 
-The table is printed and `--out` writes it, which is the copy to paste: a
-warning of an engine goes to the console as well.
+The tables are printed and `--out` writes them, which is the copy to paste,
+and `--figure` draws the comparison of the engines, see `figure`: a warning
+of an engine goes to the console as well. Nothing regenerates
+`docs/benchmarks.md`, so a new measurement is a run of this script and a
+commit of its tables and its figure.
 
 The numbers of a run belong to the machine it ran on: pin the process to a
 fixed set of cores, one per worker of the scans
 (`taskset -c 0,2,4,6,8,10,12,14 uv run python scripts/engine_benchmark.py
 --workers 8`, the cores of `docs/benchmarks.md`), and leave the machine alone
-while it runs, as `bench/RESULTS.md` of sbmlsim-core does, else the medians
+while it runs, as `bench/RESULTS.md` of sbmlsim-core does, else the cells
 move by tens of percent between runs. Pinning the process to one core while
 its scans run on several workers measures nothing: every worker would run on
 that core.
 
+Every timed cell is `mean ± sd`: a round is the median of its timed calls,
+the rounds are the sample, and the cell is their mean and their sample
+standard deviation (`Measurement`, the mean alone below `MIN_ROUNDS` rounds).
+The engines take turns within a model and a model is measured on its own, so
+a change of the load of the machine reaches every engine of a comparison
+alike, and a large model carries fewer points and shorter rounds of its own
+(`ModelBenchmark`, `ModelConfiguration`), since one of its simulations is
+tens of seconds in some engines.
+
 **What is measured.** Per model and engine:
 
-- `load s`: `load_model` with the engine, the median of `repetitions` loads
+- `load s`: `load_model` with the engine, `repetitions` loads of a round
   in this process, i.e. with the model already compiled; `first compile s` is
   the first load of that model in this process, the one which compiles it
   (the LLJIT of roadrunner, the WebAssembly module of the engine core). It is
@@ -53,15 +72,15 @@ that core.
   (`sbmlsim.model.model_core.compiled_model` keeps it per SBML and process),
   and they are part of its `first compile s`.
 - `simulate ms`: one `Simulator.simulate` of the simulation of the model at
-  the defaults of `Simulator`, the median of `repetitions` after `warmups`,
-  the configurations taking turns within a round and the median of the round
-  medians over `rounds`, which is the method of `bench/RESULTS.md`. The
+  the defaults of `Simulator`, `repetitions` simulations after `warmups` in
+  a round and `rounds` rounds, the engines of the model taking turns within
+  each of them, which is the method of `bench/RESULTS.md`. The
   defaults are the tolerances of a run and not the tighter ones of the
   agreement, which is measured in simulations of its own: every speed of the
   table is the speed of a run as a user gets it.
 - `scan serial s` and `scan parallel s`: a scan of `points` doses or
   parameter values of that simulation, `Simulator(n_workers=1)` and
-  `Simulator(n_workers=workers)`, each the median of `rounds` runs after
+  `Simulator(n_workers=workers)`, each one run per round after
   one run which `--cold` reports. A parallel scan is measured for `workers > 1` only. The times
   are therefore warm: they exclude the pool of worker processes, which
   `sbmlsim.parallel` keeps per process and number of workers, the model
@@ -80,12 +99,19 @@ that core.
 - `max rel. diff.` and `max abs. diff.`: the agreement with roadrunner, see
   `agreement`.
 
+The tables are narrow and the rows of every one of them are the same in the
+same order (`markdown`): what every model was measured with, the loads, the
+simulation and the scans, the agreement, and the cells which were not
+measured. `--figure` draws the speeds of them, a panel per model and
+measure, the dot of an engine its mean and the whisker its standard
+deviation (`figure`).
+
 **The workers of a parallel scan are not the same thing in every engine**, so
-the table says what they are in its column `parallel on`: python processes
+the legend of the tables says what they are: python processes
 for roadrunner, COPASI and AMICI, which load the model again in every worker
 and hand the arrays of a chunk back, and threads of the engine inside one
 python process for the engine core, which starts no pool at all. The two do
-not scale alike, which is why the column is there: a process runs the whole
+not scale alike, which is why the legend says so: a process runs the whole
 point, its integration and the python around it, while a thread of the core
 integrates and the rest of the run - the result of a chunk, the
 interpolation, the observables - stays in the one python process of the run,
@@ -135,6 +161,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import statistics
 import sys
 import time
@@ -142,7 +169,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from importlib import metadata
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 import numpy as np
 
@@ -154,6 +181,19 @@ from sbmlsim.resources import DEMO_SBML, HCTZ_SBML, MIDAZOLAM_SBML, REPRESSILATO
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation import Dimension, Scan, Simulation
 from sbmlsim.simulator import IntegratorSettings, Simulator
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+
+#: the engines in the order the table shows them, the engine core first, as
+#: the documentation names them (`docs/simulation.md`); `Engine` declares them
+#: in the order they were added, which is the order of `resolve_engine`
+ENGINES: Final[tuple[Engine, ...]] = (
+    Engine.CORE,
+    Engine.ROADRUNNER,
+    Engine.COPASI,
+    Engine.AMICI,
+)
 
 #: the engine every other one is compared with, see `agreement`: it is
 #: simulated whether or not it is one of the measured engines, so its version
@@ -175,17 +215,76 @@ DISTRIBUTIONS: Final[dict[Engine, str]] = {
     Engine.CORE: "sbmlsim-core",
 }
 
-#: the timed simulations of a cell, the median of this many after `WARMUPS`
+#: the timed simulations of a round, the median of this many after `WARMUPS`
 REPETITIONS: Final[int] = 20
 
-#: the rounds of the timed simulations, the median of their medians
-ROUNDS: Final[int] = 3
+#: the rounds of the timed simulations and the scans, whose medians are the
+#: sample the mean and the standard deviation of a cell are taken over, so a
+#: cell is `rounds` measurements and never fewer than `MIN_ROUNDS`
+ROUNDS: Final[int] = 5
+
+#: the rounds below which a standard deviation says nothing
+MIN_ROUNDS: Final[int] = 3
 
 #: the simulations before the timed ones of a round, which are not measured
 WARMUPS: Final[int] = 3
 
-#: the points of the scans of a cell
+#: the points of the scans of a cell, which a model of its own number of
+#: points replaces (`ModelBenchmark.points`)
 POINTS: Final[int] = 1000
+
+#: the colour of every engine in the figure, the first four slots of a
+#: categorical palette whose adjacent pairs are far enough apart under
+#: protanopia and tritanopia; the engine of every row is named next to it, so
+#: a mark is never told apart by its colour alone
+ENGINE_COLOURS: Final[dict[Engine, str]] = {
+    Engine.CORE: "#2a78d6",
+    Engine.ROADRUNNER: "#eb6834",
+    Engine.COPASI: "#1baf7a",
+    Engine.AMICI: "#eda100",
+}
+
+#: the resolution of the figure
+FIGURE_DPI: Final[int] = 200
+
+#: the decades above which a panel of the figure labels whole decades only,
+#: since the 1, 2 and 5 of each of them would run into each other
+DENSE_DECADES: Final[float] = 2.5
+
+
+@dataclass(frozen=True)
+class _Measure:
+    """One column of the figure, a timed field of `BenchmarkRow`.
+
+    Attributes:
+        field: the name of the field of the row.
+        title: the title of the column.
+        unit: the unit the field is drawn in.
+        factor: what the seconds of the field are scaled by for that unit.
+    """
+
+    field: str
+    title: str
+    unit: str
+    factor: float
+
+
+#: the columns of the figure, a column which no cell was measured in left
+#: out: the speed of a run, which is what the engines are compared on; the
+#: loads of a model, which are paid once, are the table of `_loading_table`
+MEASURES: Final[tuple[_Measure, ...]] = (
+    _Measure("simulate_s", "one simulation", "ms", 1e3),
+    _Measure("scan_serial_s", "a serial scan", "s", 1.0),
+    _Measure("scan_parallel_s", "a parallel scan", "s", 1.0),
+)
+
+#: the models which are no part of the package, see `benchmarks/models/README.md`
+BENCHMARK_MODELS: Final[Path] = (
+    Path(__file__).resolve().parent.parent / "benchmarks" / "models"
+)
+
+#: the liver of a machine perfusion, the large model of the benchmark
+PERFUSION_SBML: Final[Path] = BENCHMARK_MODELS / "machine_perfusion_liver_flat.xml"
 
 
 @dataclass(frozen=True)
@@ -198,6 +297,16 @@ class ModelBenchmark:
         target: the entity the scan of the model sets, a dose or a parameter.
         low: the first value of the scan.
         high: the last value of the scan.
+        points: the points of the scans of this model, `None` for the points
+            of the measurement: a large model is scanned over fewer points,
+            since one of its simulations is seconds in some engines.
+        repetitions: the timed simulations of a round of this model, `None`
+            for the ones of the measurement.
+        warmups: the simulations before them, `None` for the ones of the
+            measurement.
+        rounds: the rounds of this model, `None` for the ones of the
+            measurement; never fewer than `MIN_ROUNDS`, since the standard
+            deviation of a cell is taken over them.
     """
 
     source: Path
@@ -205,6 +314,10 @@ class ModelBenchmark:
     target: str
     low: float
     high: float
+    points: int | None = None
+    repetitions: int | None = None
+    warmups: int | None = None
+    rounds: int | None = None
 
     @property
     def output_times(self) -> int:
@@ -308,7 +421,103 @@ MODELS: Final[dict[str, ModelBenchmark]] = {
         low=5.0,
         high=100.0,
     ),
+    # an hour of a normothermic machine perfusion of a liver, the large model:
+    # 839 species and 1007 reactions against the 223 kB of HCTZ, scanned over
+    # the flow of the pump, the input of such an experiment. One simulation of
+    # it is tens of seconds in COPASI, so it is scanned over as many points as
+    # the parallel scan has workers, one per worker, and measured in fewer and
+    # shorter rounds; `MIN_ROUNDS` keeps the standard deviation meaningful
+    "perfusion": ModelBenchmark(
+        source=PERFUSION_SBML,
+        simulation=Simulation(end=60, steps=100),
+        target="Q_pump",
+        low=0.0015,
+        high=0.006,
+        points=8,
+        repetitions=3,
+        warmups=1,
+        rounds=MIN_ROUNDS,
+    ),
 }
+
+
+@dataclass(frozen=True)
+class Measurement:
+    """A timing as the mean and the standard deviation of its rounds.
+
+    A round is the median of the timed calls of that round (`_turns`), so one
+    slow call does not move it, and the rounds are the sample the mean and
+    the sample standard deviation are taken over, see the module.
+
+    Attributes:
+        mean: the mean of the rounds.
+        sd: the sample standard deviation of the rounds, `None` for fewer
+            than `MIN_ROUNDS` rounds, where it says nothing.
+        rounds: the rounds the two were taken over.
+    """
+
+    mean: float
+    sd: float | None
+    rounds: int
+
+    @classmethod
+    def of(cls, values: Sequence[float]) -> Measurement:
+        """Get the measurement of the times of the rounds.
+
+        Args:
+            values: the time of every round, at least one.
+
+        Returns:
+            The mean and, from `MIN_ROUNDS` rounds, the standard deviation.
+
+        Raises:
+            ValueError: if there is not one round.
+        """
+        if not values:
+            raise ValueError("A measurement needs the time of at least one round.")
+        return cls(
+            mean=statistics.fmean(values),
+            sd=statistics.stdev(values) if len(values) >= MIN_ROUNDS else None,
+            rounds=len(values),
+        )
+
+    def scaled(self, factor: float) -> Measurement:
+        """Get the measurement in another unit, e.g. milliseconds.
+
+        Args:
+            factor: what the mean and the standard deviation are multiplied by.
+
+        Returns:
+            The scaled measurement.
+        """
+        return replace(
+            self,
+            mean=self.mean * factor,
+            sd=None if self.sd is None else self.sd * factor,
+        )
+
+
+@dataclass(frozen=True)
+class ModelConfiguration:
+    """What one model was measured with, which a cell is read together with.
+
+    A large model is scanned over fewer points and measured in fewer and
+    shorter rounds than a small one (`ModelBenchmark`), so the configuration
+    belongs to the model and not to the run, see the module.
+
+    Attributes:
+        output_times: the equidistant output times of its simulation.
+        points: the points of its scans.
+        repetitions: the timed simulations of a round.
+        warmups: the simulations before them.
+        rounds: the rounds the mean and the standard deviation are over.
+    """
+
+    output_times: int
+    points: int
+    repetitions: int
+    warmups: int
+    rounds: int
 
 
 @dataclass(frozen=True)
@@ -339,14 +548,14 @@ class BenchmarkRow:
             simulation, no scan and no agreement, see the module.
     """
 
-    load_s: float | None = None
-    compile_s: float | None = None
-    instantiate_s: float | None = None
+    load_s: Measurement | None = None
+    compile_s: Measurement | None = None
+    instantiate_s: Measurement | None = None
     first_compile_s: float | None = None
-    simulate_s: float | None = None
-    scan_serial_s: float | None = None
+    simulate_s: Measurement | None = None
+    scan_serial_s: Measurement | None = None
     scan_serial_cold_s: float | None = None
-    scan_parallel_s: float | None = None
+    scan_parallel_s: Measurement | None = None
     scan_parallel_cold_s: float | None = None
     max_relative_difference: float | None = None
     max_absolute_difference: float | None = None
@@ -367,6 +576,11 @@ class BenchmarkResult:
         cold: whether the first run of every scan is reported, `--cold`.
         steps: the output grid every model was scanned on, `--steps`, `None`
             for the grid of the model, see `MODELS`.
+        configurations: what every model was measured with, by its name: a
+            large model carries fewer points and shorter rounds of its own,
+            so `points`, `repetitions`, `warmups` and `rounds` above are the
+            defaults of the run and the configuration is the cell's, see
+            `ModelConfiguration`.
         skipped: why an engine was not measured, by the engine.
         versions: the versions of python and of the engines.
     """
@@ -379,6 +593,7 @@ class BenchmarkResult:
     workers: int
     cold: bool = False
     steps: int | None = None
+    configurations: dict[str, ModelConfiguration] = field(default_factory=dict)
     skipped: dict[Engine, str] = field(default_factory=dict)
     versions: dict[str, str] = field(default_factory=dict)
 
@@ -507,20 +722,36 @@ def measure(
     benchmarks = {name: _benchmark(name, steps) for name in models}
     available, skipped = _installed(engines)
     rows: dict[tuple[str, Engine], BenchmarkRow] = {}
-    cells: list[_Cell] = []
+    configurations: dict[str, ModelConfiguration] = {}
+    # one model after the other, its engines taking turns within it: a
+    # comparison is read down a model, so that is where a change of the load
+    # of the machine has to hit every engine alike, and a model carries its
+    # own points and rounds, which a measurement of all models at once could
+    # not give it, see `ModelConfiguration`
     for name, benchmark in benchmarks.items():
+        configuration = ModelConfiguration(
+            output_times=benchmark.output_times,
+            points=points if benchmark.points is None else benchmark.points,
+            repetitions=(
+                repetitions if benchmark.repetitions is None else benchmark.repetitions
+            ),
+            warmups=warmups if benchmark.warmups is None else benchmark.warmups,
+            rounds=rounds if benchmark.rounds is None else benchmark.rounds,
+        )
+        configurations[name] = configuration
         prepared: list[_Cell] = []
         for engine in available:
             try:
-                cell = _prepare(name, benchmark, engine, points, workers)
+                cell = _prepare(name, benchmark, engine, configuration.points, workers)
             except UnsupportedModelError as err:
                 rows[name, engine] = BenchmarkRow(note=str(err))
                 continue
             prepared.append(cell)
         if not prepared:
             continue
-        rows.update(_loads(prepared, repetitions))
+        rows.update(_loads(prepared, configuration.repetitions, configuration.rounds))
         reference = _reference(benchmark)
+        cells: list[_Cell] = []
         for cell in prepared:
             try:
                 relative, absolute = agreement(_tight(cell), reference)
@@ -538,21 +769,33 @@ def measure(
                 max_absolute_difference=absolute,
             )
             cells.append(cell)
-    for key, seconds in _simulations(cells, repetitions, warmups, rounds).items():
-        rows[key] = replace(rows[key], simulate_s=seconds)
-    for key, (first, warm) in _scans(cells, rounds, parallel=False).items():
-        rows[key] = replace(
-            rows[key],
-            scan_serial_s=warm,
-            scan_serial_cold_s=first if cold else None,
+        if not cells:
+            continue
+        simulations = _simulations(
+            cells,
+            configuration.repetitions,
+            configuration.warmups,
+            configuration.rounds,
         )
-    if workers > 1:
-        for key, (first, warm) in _scans(cells, rounds, parallel=True).items():
+        for key, measurement in simulations.items():
+            rows[key] = replace(rows[key], simulate_s=measurement)
+        for key, (first, warm) in _scans(
+            cells, configuration.rounds, parallel=False
+        ).items():
             rows[key] = replace(
                 rows[key],
-                scan_parallel_s=warm,
-                scan_parallel_cold_s=first if cold else None,
+                scan_serial_s=warm,
+                scan_serial_cold_s=first if cold else None,
             )
+        if workers > 1:
+            for key, (first, warm) in _scans(
+                cells, configuration.rounds, parallel=True
+            ).items():
+                rows[key] = replace(
+                    rows[key],
+                    scan_parallel_s=warm,
+                    scan_parallel_cold_s=first if cold else None,
+                )
     return BenchmarkResult(
         rows=rows,
         repetitions=repetitions,
@@ -562,68 +805,407 @@ def measure(
         workers=workers,
         cold=cold,
         steps=steps,
+        configurations=configurations,
         skipped=skipped,
         versions=_versions(available),
     )
 
 
 def markdown(result: BenchmarkResult) -> str:
-    """Render a measurement as the markdown table of the documentation.
+    """Render a measurement as the tables of the documentation.
 
-    The first line is the header of the table, the lines after the table say
-    with what it was measured, what every column is and which engines were
-    not measured, see the module.
+    Every measurement of a cell in one table is thirteen columns of numbers
+    which no page displays well, so the measurements are narrow tables of the
+    same rows in the same order, the engine core first: what every model was
+    measured with, the loads, the simulation and the scans, the agreement,
+    and the cells which were not measured. The lines after them say with what
+    the measurement was made and what every column is, see the module.
 
     Args:
         result: the measurement.
 
     Returns:
-        The table and its legend.
+        The tables and their legend.
     """
-    noted = any(row.note for row in result.rows.values())
-    header = [
-        "model",
-        "engine",
-        "load s",
-        "compile s",
-        "instantiate s",
-        "first compile s",
-        "simulate ms",
-        "scan serial s",
-        *(["scan serial cold s"] if result.cold else []),
-        "scan parallel s",
-        *(["scan parallel cold s"] if result.cold else []),
-        "parallel on",
-        "max rel. diff.",
-        "max abs. diff.",
+    return (
+        "\n".join(
+            [
+                *_configuration_table(result),
+                *_loading_table(result),
+                *_simulating_table(result),
+                *_agreement_table(result),
+                *_notes_table(result),
+                *_legend(result),
+            ]
+        )
+        + "\n"
+    )
+
+
+def _table(
+    header: Sequence[str], aligned: Sequence[str], rows: Sequence[Sequence[str]]
+) -> list[str]:
+    """Render one markdown table and the empty line after it.
+
+    Args:
+        header: the names of the columns.
+        aligned: the alignment of every column, `---` or `---:`.
+        rows: the cells of every row.
+
+    Returns:
+        The lines of the table.
+    """
+    return [
+        f"| {' | '.join(header)} |",
+        f"|{'|'.join(aligned)}|",
+        *(f"| {' | '.join(row)} |" for row in rows),
+        "",
     ]
-    numbers = 9 if result.cold else 7
-    aligned = ["---", "---", *(["---:"] * numbers), "---", "---:", "---:"]
-    if noted:
-        header.append("note")
-        aligned.append("---")
-    lines = [f"| {' | '.join(header)} |", f"|{'|'.join(aligned)}|"]
+
+
+def _configuration_table(result: BenchmarkResult) -> list[str]:
+    """Render what every model was measured with, see `ModelConfiguration`.
+
+    Args:
+        result: the measurement.
+
+    Returns:
+        The lines of the table.
+    """
+    rows = [
+        [
+            name,
+            str(configuration.output_times),
+            str(configuration.points),
+            str(configuration.repetitions),
+            str(configuration.warmups),
+            str(configuration.rounds),
+        ]
+        for name, configuration in result.configurations.items()
+    ]
+    return [
+        "### What every model was measured with",
+        "",
+        *_table(
+            [
+                "model",
+                "output times",
+                "scan points",
+                "simulations",
+                "warm ups",
+                "rounds",
+            ],
+            ["---", "---:", "---:", "---:", "---:", "---:"],
+            rows,
+        ),
+    ]
+
+
+def _loading_table(result: BenchmarkResult) -> list[str]:
+    """Render the loads of every cell.
+
+    Args:
+        result: the measurement.
+
+    Returns:
+        The lines of the table.
+    """
+    rows = [
+        [
+            name,
+            engine.value,
+            _measurement(row.load_s),
+            _number(row.first_compile_s),
+            _measurement(row.compile_s),
+            _measurement(row.instantiate_s),
+        ]
+        for (name, engine), row in result.rows.items()
+    ]
+    return [
+        "### Loading a model",
+        "",
+        *_table(
+            [
+                "model",
+                "engine",
+                "load s",
+                "first compile s",
+                "compile s",
+                "instantiate s",
+            ],
+            ["---", "---", "---:", "---:", "---:", "---:"],
+            rows,
+        ),
+    ]
+
+
+def _simulating_table(result: BenchmarkResult) -> list[str]:
+    """Render one simulation and the scans of every cell.
+
+    Args:
+        result: the measurement.
+
+    Returns:
+        The lines of the table.
+    """
+    header = ["model", "engine", "simulate ms", "scan serial s", "scan parallel s"]
+    aligned = ["---", "---", "---:", "---:", "---:"]
+    if result.cold:
+        header[4:4] = ["scan serial cold s"]
+        header.append("scan parallel cold s")
+        aligned.extend(["---:", "---:"])
+    rows = []
     for (name, engine), row in result.rows.items():
         cells = [
             name,
             engine.value,
-            _number(row.load_s),
-            _number(row.compile_s),
-            _number(row.instantiate_s),
-            _number(row.first_compile_s),
-            _number(None if row.simulate_s is None else row.simulate_s * 1e3),
-            _number(row.scan_serial_s),
+            _measurement(row.simulate_s, 1e3),
+            _measurement(row.scan_serial_s),
             *([_number(row.scan_serial_cold_s)] if result.cold else []),
-            _number(row.scan_parallel_s),
+            _measurement(row.scan_parallel_s),
             *([_number(row.scan_parallel_cold_s)] if result.cold else []),
-            "" if row.scan_parallel_s is None else _parallel_on(engine, result.workers),
+        ]
+        rows.append(cells)
+    return ["### One simulation and a scan", "", *_table(header, aligned, rows)]
+
+
+def _agreement_table(result: BenchmarkResult) -> list[str]:
+    """Render the agreement of every cell with roadrunner.
+
+    Args:
+        result: the measurement.
+
+    Returns:
+        The lines of the table.
+    """
+    rows = [
+        [
+            name,
+            engine.value,
             _difference(row.max_relative_difference),
             _difference(row.max_absolute_difference),
         ]
-        if noted:
-            cells.append(row.note or "")
-        lines.append(f"| {' | '.join(cells)} |")
-    return "\n".join([*lines, "", *_legend(result)]) + "\n"
+        for (name, engine), row in result.rows.items()
+    ]
+    return [
+        "### The agreement with roadrunner",
+        "",
+        *_table(
+            ["model", "engine", "max rel. diff.", "max abs. diff."],
+            ["---", "---", "---:", "---:"],
+            rows,
+        ),
+    ]
+
+
+def _notes_table(result: BenchmarkResult) -> list[str]:
+    """Render the cells which were not measured, nothing where every one was.
+
+    Args:
+        result: the measurement.
+
+    Returns:
+        The lines of the table, empty for a measurement without a note.
+    """
+    rows = [
+        [name, engine.value, row.note]
+        for (name, engine), row in result.rows.items()
+        if row.note
+    ]
+    if not rows:
+        return []
+    return [
+        "### What was not measured",
+        "",
+        *_table(["model", "engine", "why"], ["---", "---", "---"], rows),
+    ]
+
+
+def _measurement(value: Measurement | None, factor: float = 1.0) -> str:
+    """Render a measurement as its mean and standard deviation.
+
+    Args:
+        value: the measurement, `None` for one which was not made.
+        factor: what it is scaled by, e.g. `1e3` for milliseconds.
+
+    Returns:
+        `mean ± sd`, the mean alone for fewer rounds than a deviation needs,
+        and an empty cell for a measurement which was not made.
+    """
+    if value is None:
+        return ""
+    scaled = value.scaled(factor)
+    if scaled.sd is None:
+        return f"{scaled.mean:.3g}"
+    return f"{scaled.mean:.3g} ± {scaled.sd:.2g}"
+
+
+def figure(result: BenchmarkResult, path: Path) -> None:
+    """Write the figure which compares the engines of every model.
+
+    One panel per model and measure, a row of panels per model and a column
+    per measure: the dot of an engine is the mean of its rounds and the
+    whisker its standard deviation, on a logarithmic axis of its own, so the
+    engines of a model are read against each other, which is what the figure
+    is for. The panels of a column do not share their axis: the models of
+    this benchmark are five orders of magnitude apart, so a shared axis would
+    squeeze the engines of a small model into one point, and the models are
+    not comparable with each other anyway, since each of them is its own
+    simulation over its own number of points. A dot and not a bar, since a
+    bar on a logarithmic axis encodes its length as the logarithm of its
+    value; the engine of every row is named next to it, so the identity of a
+    mark is never its colour alone, and the numbers are the tables of
+    `markdown`.
+
+    Args:
+        result: the measurement.
+        path: the file the figure is written to, whose suffix is its format;
+            its directory is created.
+
+    Raises:
+        ValueError: for a measurement without a cell which was measured.
+    """
+    # imported here: the measurement itself needs no matplotlib
+    from matplotlib.figure import Figure
+    from matplotlib.lines import Line2D
+
+    measures = [
+        measure
+        for measure in MEASURES
+        if any(getattr(row, measure.field) for row in result.rows.values())
+    ]
+    models = [
+        name
+        for name in result.configurations
+        if any(name == key[0] for key in result.rows)
+    ]
+    if not measures or not models:
+        raise ValueError("The measurement has no cell to draw.")
+    engines = list(dict.fromkeys(engine for _, engine in result.rows))
+    figure = Figure(
+        figsize=(1.6 + 2.5 * len(measures), 0.9 + 1.15 * len(models)),
+        layout="constrained",
+    )
+    axes = figure.subplots(len(models), len(measures), squeeze=False)
+    for row_index, name in enumerate(models):
+        for column, measure in enumerate(measures):
+            panel = axes[row_index][column]
+            _draw_panel(panel, result, name, engines, measure, ticks=column == 0)
+            _label_axis(panel)
+        axes[row_index][0].set_ylabel(name, fontsize=9)
+    for column, measure in enumerate(measures):
+        axes[0][column].set_title(measure.title, fontsize=10)
+        axes[-1][column].set_xlabel(f"{measure.unit}, logarithmic", fontsize=9)
+    figure.legend(
+        handles=[
+            Line2D(
+                [],
+                [],
+                color=ENGINE_COLOURS[engine],
+                marker="o",
+                markersize=5,
+                linestyle="none",
+                label=engine.value,
+            )
+            for engine in engines
+        ],
+        loc="outside lower center",
+        ncols=len(engines),
+        frameon=False,
+        fontsize=9,
+    )
+    figure.suptitle(
+        "The simulation engines of sbmlsim: the mean of the rounds of a cell "
+        "and their standard deviation",
+        fontsize=10,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(path, dpi=FIGURE_DPI)
+
+
+def _label_axis(axes: Axes) -> None:
+    """Label the logarithmic axis of a panel with as many stops as it has room for.
+
+    The formatter of a logarithmic axis labels every minor tick of a range
+    below one decade, in a scientific notation which runs into the label
+    beside it, and the stops of every decade of a range of five decades run
+    into each other as well, so the stops which are labelled are chosen by
+    the width of the range: every decade, or the 1, 2 and 5 of each.
+
+    A range below a decade can hold none of those stops, e.g. 0.021 to
+    0.027, which would leave the panel without a single number, so it is
+    widened to one decade around its middle, where the marks stay.
+
+    Args:
+        axes: the panel.
+    """
+    from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
+
+    # room for the whisker of a mark at the end of the range
+    axes.margins(x=0.1)
+    low, high = axes.get_xlim()
+    if low > 0.0 and high / low < 10.0:
+        middle = (low * high) ** 0.5
+        axes.set_xlim(middle / 10.0**0.5, middle * 10.0**0.5)
+        low, high = axes.get_xlim()
+    decades = math.log10(high / low) if low > 0.0 else 1.0
+    subs = (1.0,) if decades > DENSE_DECADES else (1.0, 2.0, 5.0)
+    axes.xaxis.set_major_locator(LogLocator(subs=subs, numticks=99))
+    axes.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:g}"))
+    axes.xaxis.set_minor_formatter(NullFormatter())
+
+
+def _draw_panel(
+    axes: Axes,
+    result: BenchmarkResult,
+    name: str,
+    engines: Sequence[Engine],
+    measure: _Measure,
+    *,
+    ticks: bool,
+) -> None:
+    """Draw the engines of one model and one measure into one panel.
+
+    Args:
+        axes: the panel.
+        result: the measurement.
+        name: the model of the panel.
+        engines: the engines in the order of the rows, the first one on top.
+        measure: the measure of the panel.
+        ticks: whether the engines are named, i.e. whether this is the first
+            panel of its row.
+    """
+    positions = {engine: len(engines) - index for index, engine in enumerate(engines)}
+    for engine in engines:
+        value = getattr(result.rows.get((name, engine), BenchmarkRow()), measure.field)
+        if value is None:
+            continue
+        scaled = value.scaled(measure.factor)
+        axes.errorbar(
+            scaled.mean,
+            positions[engine],
+            xerr=0.0 if scaled.sd is None else scaled.sd,
+            color=ENGINE_COLOURS[engine],
+            marker="o",
+            markersize=5,
+            linestyle="none",
+            elinewidth=1.2,
+            capsize=2.5,
+            zorder=3,
+        )
+    axes.set_xscale("log")
+    axes.set_ylim(0.4, len(engines) + 0.6)
+    axes.set_yticks([positions[engine] for engine in engines])
+    axes.set_yticklabels(
+        [engine.value if ticks else "" for engine in engines], fontsize=8
+    )
+    axes.tick_params(axis="x", labelsize=8, length=2)
+    # the engine of a row is named beside it, so its tick mark adds nothing
+    axes.tick_params(axis="y", length=0)
+    axes.grid(axis="x", linewidth=0.4, alpha=0.4, zorder=0)
+    for side in ("top", "right", "left"):
+        axes.spines[side].set_visible(False)
+    axes.spines["bottom"].set_linewidth(0.6)
 
 
 def json_payload(result: BenchmarkResult) -> dict[str, object]:
@@ -644,6 +1226,10 @@ def json_payload(result: BenchmarkResult) -> dict[str, object]:
         "workers": result.workers,
         "cold": result.cold,
         "steps": result.steps,
+        "configurations": {
+            name: asdict(configuration)
+            for name, configuration in result.configurations.items()
+        },
         "versions": result.versions,
         "skipped": {engine.value: reason for engine, reason in result.skipped.items()},
         "rows": [
@@ -674,8 +1260,9 @@ def main(argv: list[str] | None = None) -> int:
         "--engines",
         nargs="+",
         choices=[engine.value for engine in Engine],
-        default=[engine.value for engine in Engine],
-        help="the engines, every one which is installed by default",
+        default=[engine.value for engine in ENGINES],
+        help="the engines in the order of the table, every one which is "
+        "installed by default (the engine core first, see ENGINES)",
     )
     parser.add_argument(
         "--repetitions",
@@ -716,6 +1303,12 @@ def main(argv: list[str] | None = None) -> int:
         "--json", type=Path, help="write the measurement as JSON into this file"
     )
     parser.add_argument("--out", type=Path, help="write the table into this file")
+    parser.add_argument(
+        "--figure",
+        type=Path,
+        help="draw the comparison of the engines into this file, e.g. "
+        "docs/images/benchmarks/engines.png",
+    )
     args = parser.parse_args(argv)
     result = measure(
         args.models,
@@ -736,6 +1329,8 @@ def main(argv: list[str] | None = None) -> int:
         args.json.write_text(
             json.dumps(json_payload(result), indent=2) + "\n", encoding="utf-8"
         )
+    if args.figure:
+        figure(result, args.figure)
     return 0
 
 
@@ -860,7 +1455,7 @@ def _prepare(
 
 
 def _loads(
-    cells: Sequence[_Cell], repetitions: int
+    cells: Sequence[_Cell], repetitions: int, rounds: int
 ) -> dict[tuple[str, Engine], BenchmarkRow]:
     """Measure the load of the model of every cell.
 
@@ -870,23 +1465,25 @@ def _loads(
 
     Args:
         cells: the cells of one model.
-        repetitions: the loads of a cell after the first.
+        repetitions: the loads of a cell in a round.
+        rounds: the rounds the mean and the standard deviation are over.
 
     Returns:
         The row of every cell with its loads.
     """
-    warm = _turns(
+    warm = _rounds(
         {
             cell.key: lambda cell=cell: load_model(cell.benchmark.source, cell.engine)
             for cell in cells
         },
         repetitions=repetitions,
         warmups=0,
+        rounds=rounds,
     )
     rows: dict[tuple[str, Engine], BenchmarkRow] = {}
     for cell in cells:
         compile_s, instantiate_s = (
-            _core_compilation(cell, repetitions)
+            _core_compilation(cell, repetitions, rounds)
             if cell.engine is Engine.CORE
             else (None, None)
         )
@@ -899,7 +1496,9 @@ def _loads(
     return rows
 
 
-def _core_compilation(cell: _Cell, repetitions: int) -> tuple[float, float]:
+def _core_compilation(
+    cell: _Cell, repetitions: int, rounds: int
+) -> tuple[Measurement, Measurement]:
     """Measure the compilation and the instantiation of a model by the engine core.
 
     The engine compiles the SBML of a model into a WebAssembly module and the
@@ -911,10 +1510,11 @@ def _core_compilation(cell: _Cell, repetitions: int) -> tuple[float, float]:
 
     Args:
         cell: the cell of the engine core.
-        repetitions: the compilations, the median of their times.
+        repetitions: the compilations of a round.
+        rounds: the rounds the mean and the standard deviation are over.
 
     Returns:
-        The compilation and the instantiation, seconds.
+        The compilation and the instantiation.
     """
     # imported here: nothing of the benchmark of another engine imports the
     # bindings of sbmlsim-core
@@ -924,7 +1524,7 @@ def _core_compilation(cell: _Cell, repetitions: int) -> tuple[float, float]:
     core = import_core()
     sbml = cell.model.sbml
     compiled = core.compile_sbml(sbml, optimize=OPTIMIZE, jacobian=JACOBIAN)
-    times = _turns(
+    times = _rounds(
         {
             "compile": lambda: core.compile_sbml(
                 sbml, optimize=OPTIMIZE, jacobian=JACOBIAN
@@ -933,6 +1533,7 @@ def _core_compilation(cell: _Cell, repetitions: int) -> tuple[float, float]:
         },
         repetitions=repetitions,
         warmups=0,
+        rounds=rounds,
     )
     return times["compile"], times["instantiate"]
 
@@ -965,17 +1566,17 @@ def _tight(cell: _Cell) -> TimecourseResult:
 
 def _simulations(
     cells: Sequence[_Cell], repetitions: int, warmups: int, rounds: int
-) -> dict[tuple[str, Engine], float]:
+) -> dict[tuple[str, Engine], Measurement]:
     """Measure one simulation of every cell, the method of the module.
 
     Args:
-        cells: the cells of the measurement.
+        cells: the cells of one model, which take turns.
         repetitions: the timed simulations of a round.
         warmups: the simulations before them.
-        rounds: the rounds, the median of their medians.
+        rounds: the rounds the mean and the standard deviation are over.
 
     Returns:
-        The seconds of one simulation of every cell.
+        The measurement of one simulation of every cell.
     """
     functions = {
         cell.key: lambda cell=cell: cell.serial.simulate(
@@ -988,25 +1589,25 @@ def _simulations(
 
 def _scans(
     cells: Sequence[_Cell], rounds: int, *, parallel: bool
-) -> dict[tuple[str, Engine], tuple[float, float]]:
+) -> dict[tuple[str, Engine], tuple[float, Measurement]]:
     """Measure the scan of every cell, serially or on the workers of the run.
 
     A scan is run once before the timed ones, which pays the pool of the
     processes of a parallel run of roadrunner, COPASI or AMICI and the models
     its workers load, and the threads of a run of the engine core. That first
-    run is timed as well and returned next to the warm median, so the two
-    measurements of a run are the same whether or not `--cold` reports the
-    first one.
+    run is timed as well and returned next to the warm measurement, so the
+    two measurements of a run are the same whether or not `--cold` reports
+    the first one.
 
     Args:
-        cells: the cells of the measurement.
-        rounds: the timed runs, the median of their times.
+        cells: the cells of one model, which take turns.
+        rounds: the timed runs, the sample of the mean and the deviation.
         parallel: whether the scan runs on the workers of the measurement.
 
     Returns:
-        The seconds of the first run and of the warm scan of every cell; a
-        cell without a parallel simulator, i.e. a measurement of one worker,
-        is left out.
+        The seconds of the first run and the measurement of the warm scan of
+        every cell; a cell without a parallel simulator, i.e. a measurement
+        of one worker, is left out.
     """
     functions: dict[tuple[str, Engine], Callable[[], object]] = {}
     for cell in cells:
@@ -1020,7 +1621,7 @@ def _scans(
     # scan is seconds; it is timed too, which is the cold run of `--cold`
     cold = {key: _timed(function) for key, function in functions.items()}
     warm = _rounds(functions, repetitions=1, warmups=0, rounds=rounds)
-    return {key: (cold[key], seconds) for key, seconds in warm.items()}
+    return {key: (cold[key], measurement) for key, measurement in warm.items()}
 
 
 def _rounds[K](
@@ -1029,8 +1630,11 @@ def _rounds[K](
     repetitions: int,
     warmups: int,
     rounds: int,
-) -> dict[K, float]:
-    """Get the median of the round medians of every function.
+) -> dict[K, Measurement]:
+    """Get the mean and the standard deviation of the rounds of every function.
+
+    A round is the median of its timed calls (`_turns`), so one slow call does
+    not move it, and the rounds are the sample, see `Measurement`.
 
     Args:
         functions: the functions by their keys.
@@ -1039,7 +1643,7 @@ def _rounds[K](
         rounds: the rounds.
 
     Returns:
-        The median of the medians of the rounds of every function.
+        The measurement of every function.
     """
     medians: dict[K, list[float]] = {key: [] for key in functions}
     for _ in range(rounds):
@@ -1047,7 +1651,7 @@ def _rounds[K](
             functions, repetitions=repetitions, warmups=warmups
         ).items():
             medians[key].append(median)
-    return {key: statistics.median(values) for key, values in medians.items()}
+    return {key: Measurement.of(values) for key, values in medians.items()}
 
 
 def _turns[K](
@@ -1116,20 +1720,6 @@ def _versions(engines: Sequence[Engine]) -> dict[str, str]:
         except metadata.PackageNotFoundError:
             continue
     return versions
-
-
-def _parallel_on(engine: Engine, workers: int) -> str:
-    """Say what the workers of a parallel scan of an engine are.
-
-    Args:
-        engine: the engine.
-        workers: the workers of the measurement.
-
-    Returns:
-        The processes of a run of roadrunner, COPASI or AMICI, and the
-        threads of the engine of a run of the engine core.
-    """
-    return f"{workers} threads" if engine is Engine.CORE else f"{workers} processes"
 
 
 def _number(value: float | None) -> str:
@@ -1231,8 +1821,7 @@ def _output_line(result: BenchmarkResult) -> str:
 
     What a point of the table costs depends on the horizon and the output of
     its simulation, which the parallel scan of the engine core depends on
-    most, see `_parallel_on`: the line names them, so a row can be placed
-    and reproduced.
+    most: the line names them, so a row can be placed and reproduced.
 
     Args:
         result: the measurement.
@@ -1258,7 +1847,7 @@ def _output_line(result: BenchmarkResult) -> str:
         "integrator are each engine's own), in the time unit of the model: "
         + "; ".join(parts)
         + ". How much output a point has matters for the parallel scan of "
-        "the engine core, see `parallel on`."
+        "the engine core, see the workers of a parallel scan below."
     )
 
 
@@ -1276,13 +1865,23 @@ def _legend(result: BenchmarkResult) -> list[str]:
         f"{name} {version}" for name, version in result.versions.items()
     )
     lines = [
-        f"Measured with {versions}: the median of "
+        f"Measured with {versions}: every cell is the mean and the sample "
+        f"standard deviation of its rounds, a round the median of its timed "
+        f"calls after its warm ups, and the engines take turns within a "
+        f"model, so a change of the load of the machine reaches every engine "
+        f"of a comparison alike. The run measured "
         f"{_count(result.repetitions, 'simulation')} after "
         f"{_count(result.warmups, 'warm up')} in "
-        f"{_count(result.rounds, 'round')} (the median of the round medians, "
-        f"the engines taking turns), the scans over "
-        f"{_count(result.points, 'point')}.",
+        f"{_count(result.rounds, 'round')} and scanned "
+        f"{_count(result.points, 'point')} unless the model above says "
+        f"otherwise, and the parallel scans ran on "
+        f"{_count(result.workers, 'worker')}.",
         "",
+        "- A cell is `mean ± sd` over the rounds of its model and the mean "
+        f"alone below {MIN_ROUNDS} rounds, where a deviation of so small a "
+        "sample says nothing. A deviation which is a large part of its mean "
+        "is a cell to measure again on an idle machine rather than one to "
+        "read.",
         "- `load s` is `load_model` with the model already compiled, "
         "`first compile s` the first load of that model in this process, "
         "the one which compiles it (the LLJIT of roadrunner, the module of "
@@ -1304,17 +1903,22 @@ def _legend(result: BenchmarkResult) -> list[str]:
         "own: every speed of this table is the speed of a run as a user gets "
         "it. `scan serial s` and `scan parallel s` are that simulation over "
         "the points of the scan on one worker and on the workers of "
-        "`parallel on`.",
+        "the parallel scan below.",
         "- " + _scan_line(),
         *(["- " + _cold_line()] if result.cold else []),
         "- " + _output_line(result),
-        "- `parallel on` says what the workers are: python processes for "
-        "roadrunner, COPASI and AMICI, which load the model in every worker, "
-        "and threads of the engine inside one python process for the engine "
-        "core, which starts no pool. The two do not scale alike: a process "
-        "runs the whole point, a thread of the core integrates while the "
-        "result of the run is assembled in its one python process, so the "
-        "more output a point has, the less the threads gain.",
+        f"- The workers of a parallel scan are {result.workers} python "
+        "processes for roadrunner, COPASI and AMICI, which load the model in "
+        "every worker, and for the engine core the threads of the engine "
+        f"inside one python process: `Simulator.run` hands the points of a "
+        "scan to the engine in batches which it integrates on "
+        f"{result.workers} threads of its own (`worker._run_chunk_core`, at "
+        "most `CORE_MAX_CHUNK` points per batch), so a run of the engine "
+        "core starts no pool of processes at all and loads the model once. "
+        "The two do not scale alike: a process runs the whole point, a "
+        "thread of the engine integrates while the result of the run is "
+        "assembled in its one python process, so the more output a point "
+        "has, the less the threads gain.",
         "- `max rel. diff.` and `max abs. diff.` are the agreement with "
         "roadrunner at atol 1e-12 and rtol 1e-10: the largest difference of a "
         "column divided by the largest magnitude of that column in "
