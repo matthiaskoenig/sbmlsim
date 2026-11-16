@@ -371,11 +371,29 @@ The engine is a setting of the `Simulator`, and every model it runs is simulated
 
 The engine is part of the provenance: a `ScanResult` has it in `res.ds.attrs["engine"]`, the JSON of a simulation experiment and of a fit problem stores it, and the report of a fit names it with its integrator; a fit with AMICI records the version of AMICI. The roadrunner path never imports COPASI, AMICI or the bindings of the engine core.
 
-A fourth engine, the Rust engine `core` ([sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim-core), `Simulator(engine="core")`), compiles a model to WebAssembly and runs the points of a scan on threads of the engine instead of in worker processes. Its bindings are a dependency of sbmlsim and need no extra, see [Installation](installation.md). What a load, a simulation and a scan cost in each of the four engines, and how closely each of them reproduces roadrunner, is measured in [Benchmarks](benchmarks.md).
+The Rust engine `core` ([sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim-core), `Simulator(engine="core")`) compiles a model to WebAssembly and runs the points of a scan on threads of the engine instead of in worker processes. Its bindings are a dependency of sbmlsim and need no extra, see [Installation](installation.md). What a load, a simulation and a scan cost in each of the four engines, and how closely each of them reproduces roadrunner, is measured in [Benchmarks](benchmarks.md).
 
-The integrator settings keep their roadrunner names in every engine. COPASI and AMICI take `relative_tolerance`, `absolute_tolerance`, `maximum_num_steps` and `maximum_time_step`, the engine core the settings its request has a field for. Each of them ignores the other settings of roadrunner, e.g. `variable_step_size`, `initial_time_step`, `maximum_bdf_order` or `jit_optimization`, with one warning or report per model. A name no engine knows is an error. COPASI and AMICI have a single absolute tolerance, which is derived from the smallest tolerance of an `AbsoluteTolerance`, while the engine core takes one tolerance per state as roadrunner does, see the engines below. A parameter fit evaluates with the tolerances of the `FitSettings` it is initialized with, in every engine.
+The integrator settings keep their roadrunner names in every engine. The engine core takes the settings its request has a field for, COPASI and AMICI take `relative_tolerance`, `absolute_tolerance`, `maximum_num_steps` and `maximum_time_step`. Each of them ignores the other settings of roadrunner, e.g. `variable_step_size`, `initial_time_step`, `maximum_bdf_order` or `jit_optimization`, with one warning or report per model. A name no engine knows is an error. COPASI and AMICI have a single absolute tolerance, which is derived from the smallest tolerance of an `AbsoluteTolerance`, while the engine core takes one tolerance per state as roadrunner does, see the engines below. A parameter fit evaluates with the tolerances of the `FitSettings` it is initialized with, in every engine.
 
-COPASI, AMICI and the engine core refuse what they would simulate differently from roadrunner, with an error that names the feature; the sections of the engines list what each of them refuses. The reference values of a sampling design, see [Sampling](sampling.md), are read with roadrunner whatever the engine, so a design draws the same values for every engine.
+The engine core, COPASI and AMICI refuse what they would simulate differently from roadrunner, with an error that names the feature; the sections of the engines list what each of them refuses. The reference values of a sampling design, see [Sampling](sampling.md), are read with roadrunner whatever the engine, so a design draws the same values for every engine.
+
+### core
+
+[sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim-core) is an implementation of SBML in Rust, the engine the sections below name first. Its python bindings are a runtime dependency of sbmlsim, which the factory also reads to write the web app of a model, so the engine needs no extra and no build of its own, see [Installation](installation.md).
+
+The engine compiles a model into a WebAssembly module with a description of its states, parameters and selections, which the runtime of the engine loads. Both are kept per SBML and per process: the HCTZ model compiles in 3 milliseconds and its module loads in 4, while the runtime, which compiles the engine itself, is created once per process and takes about 50 milliseconds. What a load, a simulation and a scan cost here and in the three other engines is measured in [Benchmarks](benchmarks.md).
+
+The engine integrates with CVODE of SUNDIALS, as roadrunner does, and its absolute tolerance is one tolerance per state, computed as roadrunner computes its vector for CVODE, see [Absolute tolerances](#absolute-tolerances), so the engine core needs no factor on a single tolerance as COPASI and AMICI do. It is a build of CVODE of its own, which chooses its own steps, so a result is not roadrunner's bitwise and the error of the engine is not bounded by roadrunner's: measured against roadrunner at `absolute_tolerance=1e-16` and `relative_tolerance=1e-12`, the error of a scan of three doses of the HCTZ model is 1.0003 of roadrunner's, and 0.98 and 1.03 of it on the two other packaged models which have an error at all, while at `1e-10` and `1e-8` it is 1.24 of it.
+
+The engine is stateless: a simulation is one request which carries the values before the initialization, the changes, the output and the settings of the integrator, and the engine answers with the table of the selections, so a model holds nothing of the simulations which ran. A scan hands the requests of a chunk to the engine as one batch, which runs its points on threads of the engine inside one python process: a run of the engine core starts no worker processes at all, and `n_workers` is the number of those threads.
+
+The engine core refuses:
+
+- A model the compiler refuses, e.g. one with an algebraic rule, the `delay` csymbol, a fast reaction or a package it requires, raises a `ValueError` with the message of the compiler, which names the feature, and so does a model the engine cannot load.
+- A simulation with a steady state after its end, i.e. the output of a steady state which follows the simulation, since the steady state of a request is the pre-equilibration before the start alone.
+- A value which a plan sets by a formula, unless the formula can be evaluated without the model: a request carries numbers, and a formula of the time at a change or of a parameter before the initialization is folded into one.
+
+Beyond that the engine differs from roadrunner where their integrators differ: a change which sets a state exactly to the threshold of a strict comparison of a trigger fires that event right after the change, as in COPASI and AMICI, while the CVODE of roadrunner ignores a root which is 0 at the start of a segment; a change of an entity named `time` sets that entity, where roadrunner sets its clock; and events which accumulate, e.g. a bouncing ball at its accumulation point, and the roots of a condition which chatters share the budget of `maximum_num_steps` steps towards one output time, so a model which roadrunner finishes after millions of steps can end with `CV_TOO_MUCH_WORK` here.
 
 ### roadrunner
 
@@ -427,27 +445,9 @@ AMICI refuses:
 
 A simulation of the HCTZ model at given output times takes about five times as long with AMICI as with roadrunner, see [Benchmarks](benchmarks.md), and a model with many events 5 to 30 times as long, since `sbmlsim` fires every event between two integrations of AMICI.
 
-### core
-
-[sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim-core) is the fourth engine, an implementation of SBML in Rust. Its python bindings are a runtime dependency of sbmlsim, which the factory also reads to write the web app of a model, so the engine needs no extra and no build of its own, see [Installation](installation.md).
-
-The engine compiles a model into a WebAssembly module with a description of its states, parameters and selections, which the runtime of the engine loads. Both are kept per SBML and per process: the HCTZ model compiles in 3 milliseconds and its module loads in 4, while the runtime, which compiles the engine itself, is created once per process and takes about 50 milliseconds. What a load, a simulation and a scan cost here and in the three other engines is measured in [Benchmarks](benchmarks.md).
-
-The engine integrates with CVODE of SUNDIALS, as roadrunner does, and its absolute tolerance is one tolerance per state, computed as roadrunner computes its vector for CVODE, see [Absolute tolerances](#absolute-tolerances), so the engine core needs no factor on a single tolerance as COPASI and AMICI do. It is a build of CVODE of its own, which chooses its own steps, so a result is not roadrunner's bitwise and the error of the engine is not bounded by roadrunner's: measured against roadrunner at `absolute_tolerance=1e-16` and `relative_tolerance=1e-12`, the error of a scan of three doses of the HCTZ model is 1.0003 of roadrunner's, and 0.98 and 1.03 of it on the two other packaged models which have an error at all, while at `1e-10` and `1e-8` it is 1.24 of it.
-
-The engine is stateless: a simulation is one request which carries the values before the initialization, the changes, the output and the settings of the integrator, and the engine answers with the table of the selections, so a model holds nothing of the simulations which ran. A scan hands the requests of a chunk to the engine as one batch, which runs its points on threads of the engine inside one python process: a run of the engine core starts no worker processes at all, and `n_workers` is the number of those threads.
-
-The engine core refuses:
-
-- A model the compiler refuses, e.g. one with an algebraic rule, the `delay` csymbol, a fast reaction or a package it requires, raises a `ValueError` with the message of the compiler, which names the feature, and so does a model the engine cannot load.
-- A simulation with a steady state after its end, i.e. the output of a steady state which follows the simulation, since the steady state of a request is the pre-equilibration before the start alone.
-- A value which a plan sets by a formula, unless the formula can be evaluated without the model: a request carries numbers, and a formula of the time at a change or of a parameter before the initialization is folded into one.
-
-Beyond that the engine differs from roadrunner where their integrators differ: a change which sets a state exactly to the threshold of a strict comparison of a trigger fires that event right after the change, as in COPASI and AMICI, while the CVODE of roadrunner ignores a root which is 0 at the start of a segment; a change of an entity named `time` sets that entity, where roadrunner sets its clock; and events which accumulate, e.g. a bouncing ball at its accumulation point, and the roots of a condition which chatters share the budget of `maximum_num_steps` steps towards one output time, so a model which roadrunner finishes after millions of steps can end with `CV_TOO_MUCH_WORK` here.
-
 ### Differences between the engines
 
-Beyond what COPASI, AMICI and the engine core refuse, the engines differ where their integrators and their handling of events differ (the section of the engine core lists its own differences):
+Beyond what the engine core, COPASI and AMICI refuse, the engines differ where their integrators and their handling of events differ (the section of the engine core lists its own differences):
 
 - roadrunner fires a delayed event late in the steps of the integrator, at the end of the next step of CVODE. COPASI fires it at its time. The steps of LSODA can fail on a delayed event with "TCRIT behind TCUR", which raises a `RuntimeError`; output times work.
 - roadrunner does not fire an event whose trigger is true only within one step of CVODE, e.g. `X > 0.5 && X < 0.8`. COPASI fires it.
