@@ -8,7 +8,7 @@
 [![MIT License](https://img.shields.io/pypi/l/sbmlsim.svg)](https://opensource.org/licenses/MIT)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3597770.svg)](https://doi.org/10.5281/zenodo.3597770)
 
-`sbmlsim` is a collection of python utilities for the simulation of models in the [Systems Biology Markup Language](https://sbml.org) (SBML), built on [libroadrunner](https://libroadrunner.org).
+`sbmlsim` is a collection of python utilities for the simulation of models in the [Systems Biology Markup Language](https://sbml.org) (SBML), built on [libroadrunner](https://libroadrunner.org), with [COPASI](https://copasi.org), [AMICI](https://github.com/AMICI-dev/AMICI) and the Rust engine core of [sbmlsim-core](https://github.com/matthiaskoenig/sbmlsim-core) (the model compiled to WebAssembly) as further simulation engines, compared in the [benchmarks](https://matthiaskoenig.github.io/sbmlsim/benchmarks/).
 
 Features include
 
