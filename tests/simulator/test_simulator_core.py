@@ -6,6 +6,7 @@ the requests of the contract `simulation/1` a plan becomes are read as they
 are, so the fields of the contract are pinned.
 """
 
+from dataclasses import replace
 from typing import Final
 
 import numpy as np
@@ -17,6 +18,7 @@ from sbmlsim import parallel
 from sbmlsim.engine import Engine, UnsupportedModelError, import_core
 from sbmlsim.model import RoadrunnerSBMLModel, load_model
 from sbmlsim.model.model_core import CoreSBMLModel
+from sbmlsim.model.symbols import TargetKind
 from sbmlsim.resources import HCTZ_SBML
 from sbmlsim.result.timecourse import TimecourseResult
 from sbmlsim.simulation import (
@@ -35,6 +37,7 @@ from sbmlsim.simulator.executor_core import (
     _failed,
     request_of,
 )
+from sbmlsim.simulator.plan import Assignment, PlanEvent, compile_simulation
 from sbmlsim.simulator.worker import ModelSpec, core_threads
 from tests.simulator.models import INDIRECT_VOLUME, PROBE, TOLERANCE_PROBE, sbml
 
@@ -45,6 +48,33 @@ model entity_time
   A = 1; k1 = 0.8
   J1: A -> ; k1*A
   tt = 10
+end
+"""
+
+#: a parameter `p` which a relative change adds to, the parameter `q` another
+#: formula reads and `X`, whose rate is `p`: the timecourse of `X` is the one
+#: of the segments between the changes
+RELATIVE = """
+model relative
+  p = 0
+  q = 3
+  X = 0
+  X' = p
+end
+"""
+
+#: the dose state of a model of pkdb_models, the parameter `PODOSE_ra` which a
+#: repeated dose adds to and whose absorption fills the central compartment,
+#: the smallest model of the protocol of issue #548
+DOSE_STATE = """
+model dose_state
+  compartment Vc = 1
+  species Ac in Vc = 0
+  PODOSE_ra = 0
+  ka = 0.1
+  ke = 0.3
+  PODOSE_ra' = -ka * PODOSE_ra
+  Ac' = ka * PODOSE_ra - ke * Ac
 end
 """
 
@@ -320,21 +350,189 @@ def test_the_pre_initialization_matches_roadrunner(
     _compare(core, roadrunner)
 
 
-def test_a_formula_at_a_change_is_refused(model_core: CoreSBMLModel) -> None:
-    """A formula at a change which is no formula of the time is refused.
+def test_a_formula_at_a_change_of_a_symbol_the_model_has_not_is_refused(
+    model_core: CoreSBMLModel,
+) -> None:
+    """A formula at a change which reads no output of the engine is refused.
 
-    `check_plan` refuses it when the scan is compiled, before a point runs and
-    whatever `on_error` says, since a request of the engine carries numbers.
+    `compile_simulation` refuses a formula of a symbol which is neither the
+    time nor an entity of the model, so only a plan built by hand carries one;
+    the executor refuses it as well, since a request of the engine carries
+    numbers and the engine answers no value of such a symbol.
     """
-    scan = Scan(Simulation(end=10, changes=[Change(5, {"X": "2 * A"})], steps=10), [])
+    plan = compile_simulation(
+        Simulation(end=10, times=[0.0, 10.0]), model_core.symbols, model_core.uinfo
+    )
+    event = PlanEvent(
+        5.0, (Assignment("X", TargetKind.SPECIES_AMOUNT, formula="2 * nothing"),)
+    )
     with pytest.raises(UnsupportedModelError, match="formula") as failure:
-        Simulator(engine="core", n_workers=1).run(model_core, scan, on_error="flag")
+        request_of(replace(plan, events=(event,)), model_core, ["time", "X"])
     message = str(failure.value)
     # the target, the time and the formula, and what a request takes
     assert "'X'" in message
-    assert "2 * A" in message
+    assert "2 * nothing" in message
     assert "5.0" in message
+    assert "'nothing'" in message
     assert "is a number" in message
+
+
+def test_a_relative_change_matches_roadrunner() -> None:
+    """A change which adds to its target reads the state at its time, as roadrunner.
+
+    `p` is 0, 2 and 4 over the three segments of the simulation and `X`, whose
+    rate is `p`, follows them; the extra outputs the executor requests of the
+    engine are its own and no column of the result.
+    """
+    source = sbml(RELATIVE)
+    simulation = Simulation(
+        end=30,
+        changes=[Change([10, 20], {"p": "p + 2"})],
+        times=np.linspace(0, 30, 31).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    assert core.columns == roadrunner.columns
+    times = core.values[:, 0]
+    assert core["p"][times == 5.0].tolist() == [0.0]
+    assert core["p"][times == 15.0].tolist() == [2.0]
+    assert core["p"][times == 25.0].tolist() == [4.0]
+    # `X` integrates `p`: 0 until 10, then 2 per unit of time, then 4
+    assert core["X"][times == 30.0][-1] == pytest.approx(60.0)
+    _compare(core, roadrunner)
+
+
+def test_a_formula_at_a_change_reads_another_parameter() -> None:
+    """A formula of a change reads a parameter which is not its target."""
+    source = sbml(RELATIVE)
+    simulation = Simulation(
+        end=20,
+        changes=[Change(10, {"p": "2 * q + 1"})],
+        times=np.linspace(0, 20, 21).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    assert core["p"][core.values[:, 0] == 15.0].tolist() == [7.0]
+    _compare(core, roadrunner)
+
+
+def test_a_formula_at_a_change_at_the_start_reads_its_target() -> None:
+    """A change at the start folds with the values after the initialization."""
+    source = sbml(RELATIVE)
+    simulation = Simulation(
+        end=10,
+        changes=[Change(0, {"q": "q + 2", "p": "q + 1"})],
+        times=np.linspace(0, 10, 11).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    # the values of a change are evaluated before any of them is set, so `p`
+    # reads `q` as it is after the initialization, 3
+    assert core["q"][0] == 5.0
+    assert core["p"][0] == 4.0
+    _compare(core, roadrunner)
+
+
+@pytest.mark.parametrize(
+    "formula", ["A + 1", "[A] + 1"], ids=["an amount", "a concentration"]
+)
+def test_a_formula_at_a_change_reads_a_species(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel, formula: str
+) -> None:
+    """A formula which reads the amount or the concentration of a species is folded.
+
+    The outputs of the engine are the selections of roadrunner, `A` the amount
+    of a species and `[A]` its concentration, which is what `apply_changes`
+    reads of the model of roadrunner: both are folded with the state at the
+    time of the change.
+    """
+    simulation = Simulation(
+        end=20,
+        changes=[Change(5, {"X": formula})],
+        times=np.linspace(0, 20, 21).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    # the compartment of the probe model has the size 2, so the amount and the
+    # concentration of `A` differ and a change of the one is no change of the
+    # other
+    assert core["X"][core.values[:, 0] == 5.0][-1] != pytest.approx(
+        3.0, rel=1e-3, abs=0.0
+    )
+    _compare(core, roadrunner)
+
+
+def test_a_repeated_dose_of_a_dose_state_matches_roadrunner() -> None:
+    """Two doses a day apart on a dose state run and match roadrunner, see #548.
+
+    The protocol of every multiple-dose experiment of pkdb_models: the change
+    `PODOSE_ra: PODOSE_ra + 2.0` adds to the dose state instead of setting it,
+    so a protocol does not have to know what the state holds.
+    """
+    source = sbml(DOSE_STATE)
+    simulation = Simulation(
+        end=48,
+        changes=[Change([0, 24], {"PODOSE_ra": "PODOSE_ra + 2.0"})],
+        times=np.linspace(0, 48, 49).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(source, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(source, simulation)
+    times = core.values[:, 0]
+    # the first dose is the whole state, the second one adds to what is left
+    assert core["PODOSE_ra"][times == 0.0][-1] == 2.0
+    rest = core["PODOSE_ra"][times == 24.0]
+    assert rest[1] == pytest.approx(rest[0] + 2.0)
+    assert rest[0] == pytest.approx(2.0 * np.exp(-0.1 * 24.0))
+    _compare(core, roadrunner)
+
+
+def test_a_relative_change_after_a_presimulation_matches_roadrunner(
+    model_core: CoreSBMLModel, model_rr: RoadrunnerSBMLModel
+) -> None:
+    """A change is folded with the state the presimulation starts the simulation in.
+
+    The segment of a change carries the pre-equilibration of the plan, so the
+    state of a change at the start is the one of the steady state and not the
+    one of the initialization, as in roadrunner.
+    """
+    simulation = Simulation(
+        end=10,
+        presimulation=SteadyState(preinit_changes={"a0": 2.0}),
+        changes=[Change([0, 5], {"k1": "k1 + 0.1"})],
+        times=np.linspace(0, 10, 11).tolist(),
+    )
+    core = Simulator(engine="core", **TIGHT).simulate(model_core, simulation)
+    roadrunner = Simulator(**TIGHT).simulate(model_rr, simulation)
+    times = core.values[:, 0]
+    assert core["k1"][times == 0.0][-1] == pytest.approx(0.9)
+    assert core["k1"][times == 5.0][-1] == pytest.approx(1.0)
+    _compare(core, roadrunner)
+
+
+def test_a_scan_of_a_relative_change_matches_roadrunner() -> None:
+    """The points of a scan of a relative change are folded, each with its own state.
+
+    A scan of the engine builds the request of every point of a chunk, see
+    `sbmlsim.simulator.worker._run_chunk_core`, so the folding of a change
+    runs on the plan of a point and not only on a single simulation.
+    """
+    source = sbml(DOSE_STATE)
+    scan = Scan(
+        Simulation(
+            end=48,
+            changes=[Change([0, 24], {"PODOSE_ra": "PODOSE_ra + 2.0"})],
+            times=np.linspace(0, 48, 13).tolist(),
+        ),
+        dimensions=[Dimension("absorption", values={"ka": [0.05, 0.1, 0.2]})],
+    )
+    core = Simulator(engine="core", n_workers=1, **TIGHT).run(source, scan)
+    roadrunner = Simulator(n_workers=1, **TIGHT).run(source, scan)
+    # the dose state of every point is its own, the absorption of the point
+    assert core["PODOSE_ra"].values[:, 0].tolist() == [2.0, 2.0, 2.0]
+    assert len(set(core["PODOSE_ra"].values[:, -1].tolist())) == 3
+    np.testing.assert_allclose(
+        core["Ac"].values, roadrunner["Ac"].values, rtol=1e-6, atol=1e-9
+    )
 
 
 @pytest.mark.parametrize(

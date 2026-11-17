@@ -59,14 +59,48 @@ the engine documents:
    alone, so such a plan cannot be expressed as one request and
    `check_supported` refuses it rather than leaving its last row out.
 7. A value of a request is a number, so a value which a plan sets by a
-   formula is folded where the executor evaluates the formula without the
-   model and refused otherwise (`check_supported`): a formula of the time at
-   a change, whose time the plan carries, and a formula of a parameter
-   before the initialization whose symbols are the values of the model as
-   loaded or the numbers the same pre-initialization sets, see
-   `_preinit_value`. The model of the engine is stateless, so the executor
-   cannot set the values of a pre-initialization on it and read what a
-   formula reads, as the executor of roadrunner does. Only a formula of a
+   formula is folded before the request is sent and refused where the
+   executor cannot fold it (`check_supported`).
+
+   A formula at a change is folded with the state of the model at the time of
+   the change, which the executor reads as the outputs of the segment which
+   ends there: a request of its own, the one of the plan with its end at the
+   time of the change and the symbols of the formula as its selections, whose
+   last row is that state (`_state_at`). The outputs of the engine are the
+   selections of roadrunner, which is what `apply_changes` of
+   `sbmlsim.simulator.changes` reads of the model of roadrunner, so a formula
+   of a parameter, a compartment, an amount `S` or a concentration `[S]` is
+   the value of roadrunner; a symbol which is no output of the engine is
+   refused (`_check_change`, which only a plan built by hand reaches, since
+   `compile_simulation` refuses a symbol the model has not). The folded value
+   is the state of a request which ends at the change, where the integrator
+   stops, and not of the request of the plan, which integrates past it: the
+   two differ by the error of the integration, measured as 1.8e-8 of the
+   value at the default tolerances on a change in the middle of the probe
+   model of `tests.simulator.models` and as 4.5e-12 at the tolerances the
+   tests compare the engines at, so the step of a relative change is the
+   one of roadrunner within the integration and not exactly, which no other
+   executor needs a segment of its own for.
+
+   A plan with such a change costs one request per change besides its own,
+   each ending at that change, so the three doses of a day of the HCTZ model
+   over three days cost 9.7 ms against the 4.5 ms of the same protocol with
+   the doses as numbers (roadrunner takes 5.1 ms for either). The segments of
+   the points of a scan are simulated where the requests are built, one after
+   the other in the python process of the run and not on the threads of a
+   batch, so a scan of 20 points of that protocol costs 183 ms against the
+   82 ms of the doses as numbers and the 92 ms of roadrunner; folding the
+   k-th change of every point of a chunk as one batch would run them on the
+   threads again and is not done.
+
+   A formula before the initialization is folded where the executor
+   evaluates it without the model: a formula of a parameter whose symbols
+   are the values of the model as loaded or the numbers the same
+   pre-initialization sets, see `_preinit_value`. The model of the engine is
+   stateless, so the executor cannot set the values of a pre-initialization
+   on it and read what a formula reads, as the executor of roadrunner does,
+   and no request answers them either, since they are set before the
+   initialization of the simulation the request is. Only a formula of a
    parameter is folded: the size of a compartment and the amount or the
    concentration of a species are set with the bookkeeping of the volumes
    and the amounts of the initialization, which the engine does as every
@@ -115,6 +149,7 @@ from sbmlsim.simulator.plan import (
     PlanEvent,
     SteadyStatePlan,
     preinit_targets,
+    time_tolerance,
 )
 
 if TYPE_CHECKING:
@@ -129,6 +164,10 @@ INTEGRATOR_STEPS: Final[str] = "integrator_steps"
 
 #: the output of the given times, the variant which carries them
 TIMES: Final[str] = "times"
+
+#: the clock of a simulation, the symbol of the time in a formula and the
+#: first column of every output of the engine
+TIME: Final[str] = "time"
 
 #: the flag of an integration which did not reach a steady state, the
 #: `STEADY_STATE_FLAG` of the engine, which is no flag of CVODE: the engine
@@ -220,10 +259,19 @@ def request_of(
     (`check_supported`, which every request goes through): a request of the
     engine is always the one of a plan it simulates as roadrunner.
 
+    A formula at a change reads the state of the model at the time of the
+    change, so building the request simulates: the executor asks the engine
+    for the symbols the formula reads over the segment which ends at the
+    change, one request per such change, see `_changes` and `_state_at`. A
+    plan whose changes are numbers and formulas of the time, which every plan
+    of `compile_simulation` without a formula of an entity is, simulates
+    nothing here.
+
     Args:
         plan: the plan, compiled against the model.
-        model: the model, which gives the settings of the integrator and the
-            values a formula before the initialization reads.
+        model: the model, which gives the settings of the integrator, the
+            values a formula before the initialization reads and the state a
+            formula at a change reads.
         selections: the columns of the result, `time` is added as the first
             column if it is missing.
         settings: the settings of the request, `model.request_settings()` by
@@ -237,6 +285,10 @@ def request_of(
     Raises:
         UnsupportedModelError: for a plan the engine does not simulate as
             roadrunner, see `check_supported`.
+        SteadyStateError: if the presimulation of a segment which a formula at
+            a change is folded with reaches no steady state.
+        RuntimeError: if the engine fails to simulate such a segment, see
+            `_failed`.
     """
     check_supported(plan, model)
     output: Any = (
@@ -245,20 +297,21 @@ def request_of(
         else {TIMES: list(plan.times)}
     )
     plain = _plain_values(preinit_targets(plan))
-    return {
+    request: dict[str, Any] = {
         "contract": CONTRACT,
         "start": plan.start,
         "end": plan.end,
         "output": output,
         "preinit": _preinit_values(plan.preinit, plain, model),
-        "changes": [
-            {"time": event.time, "values": _change_values(event, model)}
-            for event in plan.events
-        ],
+        "changes": [],
         "steady_state": _steady_state(plan.steady_state, plain, model),
         "selections": output_columns(selections),
         "settings": model.request_settings() if settings is None else settings,
     }
+    # the changes last: a formula of a change is folded with the state at its
+    # time, which the executor reads with a request of its own, see `_changes`
+    request["changes"] = _changes(plan, model, request)
+    return request
 
 
 def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
@@ -272,13 +325,19 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
 
     The steady state after the end of a simulation is no field of the
     contract and a value of a request is a number, so a formula the executor
-    cannot fold is refused, see the module and `_preinit_value`.
+    cannot fold is refused, see the module and `_preinit_value`. The check is
+    the one of the plan alone and simulates nothing: a formula at a change is
+    folded with the state of the model at its time, which `request_of` reads
+    with a request of the segment which ends there (`_state_at`), and only the
+    symbols of such a formula are checked here, against the outputs of the
+    engine (`_check_change`).
 
     Args:
         plan: the plan, compiled against the model, with the values of a
             point.
         model: the model, which gives the values a formula before the
-            initialization reads.
+            initialization reads and the outputs a formula at a change may
+            read.
 
     Raises:
         UnsupportedModelError: a `NotImplementedError`, for a plan with a
@@ -293,15 +352,15 @@ def check_supported(plan: Plan, model: CoreSBMLModel) -> None:
             f"before the start of the simulation, so one request cannot continue "
             f"from the state the timecourse ended in."
         )
-    # the values the request carries, which every formula of the plan is
-    # folded into and which are discarded here: a formula the executor cannot
-    # fold raises, see `_preinit_values` and `_change_values`
+    # the values before the initialization the request carries, folded here
+    # and discarded: a formula the executor cannot fold raises, see
+    # `_preinit_values`
     plain = _plain_values(preinit_targets(plan))
     _preinit_values(plan.preinit, plain, model)
     if plan.steady_state is not None:
         _preinit_values(plan.steady_state.preinit, plain, model)
     for event in plan.events:
-        _change_values(event, model)
+        _check_change(event, model)
 
 
 def point_error(point: Any, model: CoreSBMLModel) -> Exception:
@@ -476,26 +535,80 @@ def _preinit_values(
     ]
 
 
-def _change_values(event: PlanEvent, model: CoreSBMLModel) -> list[list[Any]]:
-    """Get the values of a change as the `(id, value)` pairs of the contract.
+def _changes(
+    plan: Plan, model: CoreSBMLModel, request: Mapping[str, Any]
+) -> list[dict[str, Any]]:
+    """Get the changes of a request, the values of a plan folded into numbers.
 
     A formula at a change is evaluated by the executor of roadrunner with the
     state of the model at the time of the change (`apply_changes` of
-    `sbmlsim.simulator.changes`), which the engine does not hand out, so only
-    a formula of the time is folded, with the time of the change, which the
-    plan carries. Every other formula is refused: a value of a request is a
-    number.
+    `sbmlsim.simulator.changes`), which a request carries no formula of: the
+    executor reads that state as the outputs of the segment which ends at the
+    change, with a request of its own, and sends the number, see `_state_at`.
+    The changes are folded in their order, the one of their times, so the
+    request of a segment carries the changes before it, already folded.
+
+    Args:
+        plan: the plan, whose events are sorted by their time.
+        model: the model, which the engine reads the state of.
+        request: the request which is built, whose fields the request of a
+            segment takes, its `changes` excluded.
+
+    Returns:
+        The `changes` of the request, one entry per event of the plan.
+
+    Raises:
+        SteadyStateError: if the presimulation of a segment reaches no steady
+            state.
+        RuntimeError: if the engine fails to simulate a segment, see
+            `_failed`.
+    """
+    changes: list[dict[str, Any]] = []
+    for event in plan.events:
+        symbols = _change_symbols(event)
+        # the state of the model is read only where a formula reads it
+        state = (
+            _state_at(plan, model, request, changes, event.time, symbols)
+            if symbols
+            else {}
+        )
+        changes.append({"time": event.time, "values": _change_values(event, state)})
+    return changes
+
+
+def _change_symbols(event: PlanEvent) -> list[str]:
+    """Get the symbols of the model which the formulas of a change read, sorted.
 
     Args:
         event: the assignments at one time.
-        model: the model, which the error names.
+
+    Returns:
+        Every symbol but `time`, which is the time of the change and no value
+        of the model, as `apply_changes` reads it.
+    """
+    symbols: set[str] = set()
+    for a in event.assignments:
+        if a.value is None:
+            symbols |= set(compile_formula(str(a.formula)).symbols)
+    return sorted(symbols - {TIME})
+
+
+def _change_values(event: PlanEvent, state: Mapping[str, float]) -> list[list[Any]]:
+    """Get the values of a change as the `(id, value)` pairs of the contract.
+
+    Every formula is evaluated with the state at the time of the change and
+    `time` is that time, which is what `apply_changes` of
+    `sbmlsim.simulator.changes` does on the model of roadrunner: a value of a
+    change is evaluated before any of them is set, so the formulas of one
+    change read the state before it.
+
+    Args:
+        event: the assignments at one time.
+        state: the values of the symbols the formulas read, see `_state_at`,
+            empty for a change without a formula of the model.
 
     Returns:
         A pair of the target and its value per assignment, in their order.
-
-    Raises:
-        UnsupportedModelError: for a formula which reads anything but the
-            time.
     """
     values: list[list[Any]] = []
     for a in event.assignments:
@@ -503,18 +616,138 @@ def _change_values(event: PlanEvent, model: CoreSBMLModel) -> list[list[Any]]:
             values.append([a.target, a.value])
             continue
         formula = compile_formula(str(a.formula))
-        other = sorted(set(formula.symbols) - {"time"})
-        if other:
+        values.append(
+            [
+                a.target,
+                formula.evaluate(
+                    [event.time if s == TIME else state[s] for s in formula.symbols]
+                ),
+            ]
+        )
+    return values
+
+
+def _state_at(
+    plan: Plan,
+    model: CoreSBMLModel,
+    request: Mapping[str, Any],
+    changes: Sequence[dict[str, Any]],
+    time: float,
+    symbols: Sequence[str],
+) -> dict[str, float]:
+    """Get the values of the symbols at the time of a change.
+
+    The engine hands out no state of a model, only the outputs of a request,
+    so the executor asks it for the symbols a formula reads over the segment
+    which ends at the change: the request of the plan with its end at the
+    time of the change, the changes before it and the symbols as its
+    selections. The state at the change is the last row of that output, the
+    one the engine integrates up to before it applies a change there (the
+    first row of a request for a change at the start, whose segment is
+    empty), and the symbols are the executor's own and no column of the
+    result of the caller.
+
+    The outputs are the selections of roadrunner, `S` the amount of a
+    species, `[S]` its concentration and the id of a parameter or a
+    compartment, which is what `apply_changes` reads of the model of
+    roadrunner, so the amounts and the concentrations are the ones of
+    roadrunner. A symbol which is no output of the engine is refused before
+    the request is built, see `_check_change`.
+
+    Args:
+        plan: the plan, which gives the output of the segment.
+        model: the model, which the engine simulates the segment on.
+        request: the request which is built, whose fields the one of the
+            segment takes, its `end`, `output`, `changes` and `selections`
+            excluded.
+        changes: the changes before the time, folded into numbers.
+        time: the time of the change.
+        symbols: the symbols the formulas of the change read, sorted.
+
+    Returns:
+        The value of every symbol at the time of the change.
+
+    Raises:
+        SteadyStateError: if the presimulation reaches no steady state.
+        RuntimeError: if the engine fails to simulate the segment, see
+            `_failed`, which it fails the simulation of the plan with as
+            well.
+    """
+    core = import_core()
+    columns = output_columns(symbols)
+    segment = {
+        **request,
+        "end": time,
+        "output": _segment_output(plan, time),
+        "changes": list(changes),
+        "selections": columns,
+    }
+    try:
+        output = model.loaded.instance().simulate(segment)
+    except core.SimulationError as err:
+        raise _failed(err, model, core) from err
+    row = output.values[-1 if time > plan.start else 0]
+    return dict(zip(columns, (float(v) for v in row), strict=True))
+
+
+def _segment_output(plan: Plan, time: float) -> Any:
+    """Get the output of the segment which ends at the time of a change.
+
+    The output of the plan up to the time: the steps of the integrator, or the
+    output times of the plan before the change and the time itself, so that
+    the integrator of the segment is given the output times of the plan and
+    stops at the change. An output time within the resolution of the time of
+    the change (`time_tolerance`) is the time of the change itself and is left
+    out, so no two output times are a few units in the last place apart.
+
+    Args:
+        plan: the plan.
+        time: the time of the change, the end of the segment.
+
+    Returns:
+        The `output` of the request of the segment.
+    """
+    if plan.output is OutputMode.INTEGRATOR:
+        return INTEGRATOR_STEPS
+    tolerance = time_tolerance(plan.start, plan.end)
+    times = [t for t in plan.times if t < time - tolerance]
+    return {TIMES: [*times, time]}
+
+
+def _check_change(event: PlanEvent, model: CoreSBMLModel) -> None:
+    """Refuse a change whose formula reads a symbol the engine has no output of.
+
+    A formula is folded with the state at the time of the change, which the
+    executor reads as the outputs of the engine (`_state_at`): a symbol which
+    is no output of the compiled model, neither a parameter nor a compartment
+    nor an amount or a concentration of a species, has no value the executor
+    could read and is refused. `compile_simulation` refuses such a formula
+    already, so only a plan built by hand carries one.
+
+    Args:
+        event: the assignments at one time.
+        model: the model, whose outputs the symbols are checked against.
+
+    Raises:
+        UnsupportedModelError: for a formula which reads a symbol the engine
+            has no output of.
+    """
+    for a in event.assignments:
+        if a.value is not None:
+            continue
+        formula = compile_formula(str(a.formula))
+        unknown = sorted(
+            s for s in formula.symbols if s != TIME and not model.has_selection(s)
+        )
+        if unknown:
             raise _no_fold(
                 a,
                 model,
                 f"at the time {event.time}",
-                f"it reads {other}, which only the state of the model at the time "
-                f"of the change has",
+                f"it reads {unknown}, which the engine has no output of, so the "
+                f"executor cannot read the state of the model at the time of the "
+                f"change",
             )
-        # every symbol is the time, the time of the change
-        values.append([a.target, formula.evaluate([event.time] * len(formula.symbols))])
-    return values
 
 
 def _preinit_value(
@@ -597,7 +830,7 @@ def _preinit_value(
         try:
             loaded = model.loaded_value(symbol)
         except KeyError:
-            if symbol != "time":
+            if symbol != TIME:
                 raise _no_fold(
                     assignment,
                     model,
