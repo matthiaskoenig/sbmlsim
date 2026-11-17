@@ -44,8 +44,10 @@ dependencies = [
 	# simulation
 	# the develop builds of matthiaskoenig/roadrunner-wheels: the executor relies
 	# on fixes of libroadrunner which are not released yet (roadrunner #1381,
-	# #1382, #1383, #1384, #1420), a release of libroadrunner satisfies it as well
-	"libroadrunner>=2.11.1.dev655",
+	# #1382, #1383, #1384, #1420), and the benchmark on the sparse linear solver
+	# of roadrunner #1450 (KLU, `linear_solver`); a release of libroadrunner
+	# satisfies it as well
+	"libroadrunner>=2.12.0.dev683",
 	# the comparison of the installed libroadrunner with this requirement at
 	# `import sbmlsim` (`sbmlsim.engine.check_roadrunner`), which imports
 	# `packaging.version` (2 ms) and `packaging.requirements` only for a
@@ -92,7 +94,7 @@ dependencies = [
 	"jinja2>=3.1.6",
 	# the web app of a model (sbmlsim.webapp): the compiler of SBML to WebAssembly,
 	# the runtime of its engine and the inline build of its JavaScript host
-	"sbmlsim-core>=0.7.0",
+	"sbmlsim-core>=0.8.0",
 	"rich>=15.0.0",
 	# the methods report of a fit: MathML of the HTML report, the PDF of the Typst report
 	"latex2mathml>=3.77",

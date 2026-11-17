@@ -67,6 +67,8 @@ class IntegratorSettings(TypedDict, total=False):
     maximum_adams_order: int
     multiple_steps: bool
     max_output_rows: int
+    jacobian: str
+    linear_solver: str
 
 
 #: suffix of the parameter whose assignment rule is the math of an initial
@@ -845,12 +847,15 @@ PORTABLE_SETTINGS = frozenset(
 
 #: the settings of roadrunner which COPASI and AMICI have no equivalent of,
 #: ignored with a warning: the settings of CVODE which they do not set, e.g.
-#: the method (both integrate stiff systems) and the optimization of the
-#: compilation of roadrunner
+#: the method (both integrate stiff systems), the linear solver and the
+#: Jacobian of CVODE (COPASI solves densely and AMICI chooses its own sparse
+#: solver) and the optimization of the compilation of roadrunner
 ROADRUNNER_ONLY_SETTINGS = frozenset(
     {
         "initial_time_step",
+        "jacobian",
         "jit_optimization",
+        "linear_solver",
         "max_output_rows",
         "maximum_adams_order",
         "maximum_bdf_order",
